@@ -960,6 +960,7 @@ dependencies = [
     { name = "cachetools" },
     { name = "chardet" },
     { name = "tree-sitter" },
+    { name = "tree-sitter-java" },
 ]
 
 [package.optional-dependencies]
@@ -1078,6 +1079,7 @@ requires-dist = [
     { name = "tree-sitter-go", marker = "extra == 'all'", specifier = ">=0.20.0" },
     { name = "tree-sitter-go", marker = "extra == 'go'", specifier = ">=0.20.0" },
     { name = "tree-sitter-go", marker = "extra == 'systems'", specifier = ">=0.20.0" },
+    { name = "tree-sitter-java", specifier = ">=0.23.5" },
     { name = "tree-sitter-java", marker = "extra == 'all'", specifier = ">=0.21.0" },
     { name = "tree-sitter-java", marker = "extra == 'java'", specifier = ">=0.21.0" },
     { name = "tree-sitter-java", marker = "extra == 'popular'", specifier = ">=0.21.0" },

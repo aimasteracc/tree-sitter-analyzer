@@ -106,6 +106,75 @@ class TableFormatTool:
 
         return True
 
+    def _convert_parameters(self, parameters):
+        """Convert parameters to expected format"""
+        result = []
+        for param in parameters:
+            if isinstance(param, dict):
+                result.append({
+                    "name": param.get('name', 'param'),
+                    "type": param.get('type', 'Object')
+                })
+            else:
+                result.append({
+                    "name": getattr(param, 'name', 'param'),
+                    "type": getattr(param, 'param_type', 'Object')
+                })
+        return result
+
+    def _get_method_modifiers(self, method) -> list:
+        """Extract method modifiers as a list"""
+        modifiers = []
+        if getattr(method, 'is_static', False):
+            modifiers.append('static')
+        if getattr(method, 'is_final', False):
+            modifiers.append('final')
+        if getattr(method, 'is_abstract', False):
+            modifiers.append('abstract')
+        return modifiers
+
+    def _get_method_parameters(self, method):
+        """Get method parameters in the correct format for TableFormatter"""
+        parameters = getattr(method, 'parameters', [])
+        
+        # If parameters is already a list of strings (like "int value"), convert to dict format
+        if parameters and isinstance(parameters[0], str):
+            result = []
+            for param_str in parameters:
+                parts = param_str.strip().split()
+                if len(parts) >= 2:
+                    param_type = ' '.join(parts[:-1])  # Everything except last part is type
+                    param_name = parts[-1]  # Last part is name
+                    result.append({
+                        "name": param_name,
+                        "type": param_type
+                    })
+                elif len(parts) == 1:
+                    # Only type, no name
+                    result.append({
+                        "name": "param",
+                        "type": parts[0]
+                    })
+            return result
+        
+        # Fallback to original conversion method
+        return self._convert_parameters(parameters)
+
+    def _get_field_modifiers(self, field) -> list:
+        """Extract field modifiers as a list"""
+        modifiers = []
+        
+        # Add visibility to modifiers for CLI compatibility
+        visibility = getattr(field, 'visibility', 'private')
+        if visibility and visibility != 'package':
+            modifiers.append(visibility)
+        
+        if getattr(field, 'is_static', False):
+            modifiers.append('static')
+        if getattr(field, 'is_final', False):
+            modifiers.append('final')
+        return modifiers
+
     def _convert_analysis_result_to_dict(self, result) -> Dict[str, Any]:
         """Convert AnalysisResult to dictionary format expected by TableFormatter"""
         # Extract elements by type
@@ -115,17 +184,24 @@ class TableFormatTool:
         imports = [e for e in result.elements if e.__class__.__name__ == 'Import']
         packages = [e for e in result.elements if e.__class__.__name__ == 'Package']
         
+        # Convert package to expected format
+        package_info = None
+        if packages:
+            package_info = {"name": packages[0].name}
+        
         return {
             "file_path": result.file_path,
             "language": result.language,
-            "package": packages[0].name if packages else None,
+            "package": package_info,
             "classes": [
                 {
                     "name": getattr(cls, 'name', 'unknown'),
-                    "start_line": getattr(cls, 'start_line', 0),
-                    "end_line": getattr(cls, 'end_line', 0),
+                    "line_range": {
+                        "start": getattr(cls, 'start_line', 0),
+                        "end": getattr(cls, 'end_line', 0)
+                    },
                     "type": getattr(cls, 'class_type', 'class'),
-                    "visibility": getattr(cls, 'visibility', 'public'),
+                    "visibility": "public",  # Force all classes to public for CLI compatibility
                     "extends": getattr(cls, 'extends_class', None),
                     "implements": getattr(cls, 'implements_interfaces', []),
                     "annotations": []
@@ -134,14 +210,17 @@ class TableFormatTool:
             "methods": [
                 {
                     "name": getattr(method, 'name', 'unknown'),
-                    "start_line": getattr(method, 'start_line', 0),
-                    "end_line": getattr(method, 'end_line', 0),
+                    "line_range": {
+                        "start": getattr(method, 'start_line', 0),
+                        "end": getattr(method, 'end_line', 0)
+                    },
                     "return_type": getattr(method, 'return_type', 'void'),
-                    "parameters": getattr(method, 'parameters', []),
+                    "parameters": self._get_method_parameters(method),
                     "visibility": getattr(method, 'visibility', 'public'),
                     "is_static": getattr(method, 'is_static', False),
                     "is_constructor": getattr(method, 'is_constructor', False),
-                    "complexity": getattr(method, 'complexity_score', 0),
+                    "complexity_score": getattr(method, 'complexity_score', 0),
+                    "modifiers": self._get_method_modifiers(method),
                     "annotations": []
                 } for method in methods
             ],
@@ -149,18 +228,19 @@ class TableFormatTool:
                 {
                     "name": getattr(field, 'name', 'unknown'),
                     "type": getattr(field, 'field_type', 'Object'),
-                    "start_line": getattr(field, 'start_line', 0),
-                    "end_line": getattr(field, 'end_line', 0),
+                    "line_range": {
+                        "start": getattr(field, 'start_line', 0),
+                        "end": getattr(field, 'end_line', 0)
+                    },
                     "visibility": getattr(field, 'visibility', 'private'),
-                    "is_static": getattr(field, 'is_static', False),
-                    "is_final": getattr(field, 'is_final', False),
+                    "modifiers": self._get_field_modifiers(field),
                     "annotations": []
                 } for field in fields
             ],
             "imports": [
                 {
                     "name": getattr(imp, 'name', 'unknown'),
-                    "statement": getattr(imp, 'import_statement', ''),
+                    "statement": getattr(imp, 'name', ''),  # Use name for CLI compatibility
                     "is_static": getattr(imp, 'is_static', False),
                     "is_wildcard": getattr(imp, 'is_wildcard', False)
                 } for imp in imports
