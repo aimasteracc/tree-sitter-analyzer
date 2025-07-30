@@ -156,6 +156,11 @@ def create_argument_parser() -> argparse.ArgumentParser:
         "--language", help="言語を明示的に指定（省略時は拡張子から自動判定）"
     )
 
+    # Logging options
+    parser.add_argument(
+        "--quiet", action="store_true", help="INFOレベルのログを抑制（エラーのみ表示）"
+    )
+
     # Partial reading options
     parser.add_argument(
         "--partial-read",
@@ -220,11 +225,22 @@ def handle_special_commands(args: argparse.Namespace) -> Optional[int]:
 
 def main() -> None:
     """Main entry point for the CLI."""
+    # Early check for quiet mode to set environment variable before any imports
+    import os
+    if "--quiet" in sys.argv:
+        os.environ['LOG_LEVEL'] = 'ERROR'
+    
     parser = create_argument_parser()
     args = parser.parse_args()
 
     # Configure logging for table output
     if hasattr(args, "table") and args.table:
+        logging.getLogger().setLevel(logging.ERROR)
+        logging.getLogger("tree_sitter_analyzer").setLevel(logging.ERROR)
+        logging.getLogger("tree_sitter_analyzer.performance").setLevel(logging.ERROR)
+
+    # Configure logging for quiet mode
+    if hasattr(args, "quiet") and args.quiet:
         logging.getLogger().setLevel(logging.ERROR)
         logging.getLogger("tree_sitter_analyzer").setLevel(logging.ERROR)
         logging.getLogger("tree_sitter_analyzer.performance").setLevel(logging.ERROR)

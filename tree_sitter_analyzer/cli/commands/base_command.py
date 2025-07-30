@@ -49,7 +49,7 @@ class BaseCommand(ABC):
         """Detect or validate the target language."""
         if hasattr(self.args, "language") and self.args.language:
             target_language = self.args.language.lower()
-            if not hasattr(self.args, "table") or not self.args.table:
+            if (not hasattr(self.args, "table") or not self.args.table) and (not hasattr(self.args, "quiet") or not self.args.quiet):
                 output_info(f"INFO: 言語が明示的に指定されました: {target_language}")
         else:
             target_language = detect_language_from_file(self.args.file_path)
@@ -59,7 +59,7 @@ class BaseCommand(ABC):
                 )
                 return None
             else:
-                if not hasattr(self.args, "table") or not self.args.table:
+                if (not hasattr(self.args, "table") or not self.args.table) and (not hasattr(self.args, "quiet") or not self.args.quiet):
                     output_info(
                         f"INFO: 拡張子から言語を自動判定しました: {target_language}"
                     )
@@ -67,9 +67,10 @@ class BaseCommand(ABC):
         # Language support validation
         if not is_language_supported(target_language):
             if target_language != "java":
-                output_info(
-                    "INFO: Java解析エンジンで試行します。正しく動作しない可能性があります。"
-                )
+                if (not hasattr(self.args, "table") or not self.args.table) and (not hasattr(self.args, "quiet") or not self.args.quiet):
+                    output_info(
+                        "INFO: Java解析エンジンで試行します。正しく動作しない可能性があります。"
+                    )
                 target_language = "java"  # Fallback
 
         return target_language
