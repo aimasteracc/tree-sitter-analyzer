@@ -8,6 +8,7 @@ Provides logging, debugging, and common utility functions.
 
 import logging
 import sys
+import atexit
 from functools import wraps
 from typing import Any, Optional
 
@@ -33,7 +34,8 @@ def setup_logger(
     logger = logging.getLogger(name)
 
     if not logger.handlers:  # Avoid duplicate handlers
-        handler = logging.StreamHandler(sys.stdout)
+        # Create a safe handler that won't fail on closed streams
+        handler = SafeStreamHandler(sys.stdout)
         formatter = logging.Formatter(
             "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
         )
@@ -44,28 +46,97 @@ def setup_logger(
     return logger
 
 
+class SafeStreamHandler(logging.StreamHandler):
+    """
+    A StreamHandler that safely handles closed streams
+    """
+    
+    def emit(self, record):
+        """
+        Emit a record, safely handling closed streams
+        """
+        try:
+            # Check if stream is closed before writing
+            if hasattr(self.stream, 'closed') and self.stream.closed:
+                return
+            
+            # Check if we can write to the stream
+            if not hasattr(self.stream, 'write'):
+                return
+                
+            super().emit(record)
+        except (ValueError, OSError, AttributeError):
+            # Silently ignore I/O errors during shutdown
+            pass
+        except Exception:
+            # For any other unexpected errors, use handleError
+            self.handleError(record)
+
+
+def setup_safe_logging_shutdown():
+    """
+    Setup safe logging shutdown to prevent I/O errors
+    """
+    def cleanup_logging():
+        """Clean up logging handlers safely"""
+        try:
+            # Get all loggers
+            loggers = [logging.getLogger()] + [
+                logging.getLogger(name) for name in logging.Logger.manager.loggerDict
+            ]
+            
+            for logger in loggers:
+                for handler in logger.handlers[:]:
+                    try:
+                        handler.close()
+                        logger.removeHandler(handler)
+                    except:
+                        pass
+        except:
+            pass
+    
+    # Register cleanup function
+    atexit.register(cleanup_logging)
+
+
+# Setup safe shutdown on import
+setup_safe_logging_shutdown()
+
+
 # Global logger instance
 logger = setup_logger()
 
 
 def log_info(message: str, *args: Any, **kwargs: Any) -> None:
     """Log info message"""
-    logger.info(message, *args, **kwargs)
+    try:
+        logger.info(message, *args, **kwargs)
+    except (ValueError, OSError):
+        pass  # Silently ignore I/O errors
 
 
 def log_warning(message: str, *args: Any, **kwargs: Any) -> None:
     """Log warning message"""
-    logger.warning(message, *args, **kwargs)
+    try:
+        logger.warning(message, *args, **kwargs)
+    except (ValueError, OSError):
+        pass  # Silently ignore I/O errors
 
 
 def log_error(message: str, *args: Any, **kwargs: Any) -> None:
     """Log error message"""
-    logger.error(message, *args, **kwargs)
+    try:
+        logger.error(message, *args, **kwargs)
+    except (ValueError, OSError):
+        pass  # Silently ignore I/O errors
 
 
 def log_debug(message: str, *args: Any, **kwargs: Any) -> None:
     """Log debug message"""
-    logger.debug(message, *args, **kwargs)
+    try:
+        logger.debug(message, *args, **kwargs)
+    except (ValueError, OSError):
+        pass  # Silently ignore I/O errors
 
 
 def suppress_output(func: Any) -> Any:
@@ -79,14 +150,16 @@ def suppress_output(func: Any) -> Any:
 
         # Redirect stdout to suppress prints
         old_stdout = sys.stdout
-        sys.stdout = (
-            open("/dev/null", "w") if sys.platform != "win32" else open("nul", "w")
-        )
-
         try:
+            sys.stdout = (
+                open("/dev/null", "w") if sys.platform != "win32" else open("nul", "w")
+            )
             result = func(*args, **kwargs)
         finally:
-            sys.stdout.close()
+            try:
+                sys.stdout.close()
+            except:
+                pass
             sys.stdout = old_stdout
 
         return result
@@ -133,7 +206,7 @@ def create_performance_logger(name: str) -> logging.Logger:
     perf_logger = logging.getLogger(f"{name}.performance")
 
     if not perf_logger.handlers:
-        handler = logging.StreamHandler()
+        handler = SafeStreamHandler()
         formatter = logging.Formatter("%(asctime)s - PERF - %(message)s")
         handler.setFormatter(formatter)
         perf_logger.addHandler(handler)
@@ -152,16 +225,19 @@ def log_performance(
     details: Optional[dict] = None,
 ) -> None:
     """Log performance metrics"""
-    message = f"{operation}"
-    if execution_time is not None:
-        message += f": {execution_time:.4f}s"
-    if details:
-        if isinstance(details, dict):
-            detail_str = ", ".join([f"{k}: {v}" for k, v in details.items()])
-        else:
-            detail_str = str(details)
-        message += f" - {detail_str}"
-    perf_logger.info(message)
+    try:
+        message = f"{operation}"
+        if execution_time is not None:
+            message += f": {execution_time:.4f}s"
+        if details:
+            if isinstance(details, dict):
+                detail_str = ", ".join([f"{k}: {v}" for k, v in details.items()])
+            else:
+                detail_str = str(details)
+            message += f" - {detail_str}"
+        perf_logger.info(message)
+    except (ValueError, OSError):
+        pass  # Silently ignore I/O errors
 
 
 def setup_performance_logger() -> logging.Logger:
@@ -170,7 +246,7 @@ def setup_performance_logger() -> logging.Logger:
 
     # Add handler if not already configured
     if not perf_logger.handlers:
-        handler = logging.StreamHandler()
+        handler = SafeStreamHandler()
         formatter = logging.Formatter("%(asctime)s - Performance - %(message)s")
         handler.setFormatter(formatter)
         perf_logger.addHandler(handler)

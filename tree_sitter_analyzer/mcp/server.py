@@ -209,7 +209,10 @@ class TreeSitterAnalyzerMCPServer:
                     raise ValueError(f"Unknown tool: {name}")
 
             except Exception as e:
-                logger.error(f"Tool call error for {name}: {e}")
+                try:
+                    logger.error(f"Tool call error for {name}: {e}")
+                except (ValueError, OSError):
+                    pass  # Silently ignore logging errors during shutdown
                 return [
                     TextContent(
                         type="text",
@@ -258,11 +261,17 @@ class TreeSitterAnalyzerMCPServer:
                     raise ValueError(f"Resource not found: {uri}")
 
             except Exception as e:
-                logger.error(f"Resource read error for {uri}: {e}")
+                try:
+                    logger.error(f"Resource read error for {uri}: {e}")
+                except (ValueError, OSError):
+                    pass  # Silently ignore logging errors during shutdown
                 raise
 
         self.server = server
-        logger.info("MCP server created successfully")
+        try:
+            logger.info("MCP server created successfully")
+        except (ValueError, OSError):
+            pass  # Silently ignore logging errors during shutdown
         return server
 
     def set_project_path(self, project_path: str) -> None:
@@ -273,7 +282,10 @@ class TreeSitterAnalyzerMCPServer:
             project_path: Path to the project directory
         """
         self.project_stats_resource.set_project_path(project_path)
-        logger.info(f"Set project path to: {project_path}")
+        try:
+            logger.info(f"Set project path to: {project_path}")
+        except (ValueError, OSError):
+            pass  # Silently ignore logging errors during shutdown
 
     async def run(self) -> None:
         """
@@ -293,14 +305,27 @@ class TreeSitterAnalyzerMCPServer:
             capabilities=MCP_INFO["capabilities"],
         )
 
-        logger.info(f"Starting MCP server: {self.name} v{self.version}")
+        try:
+            logger.info(f"Starting MCP server: {self.name} v{self.version}")
+        except (ValueError, OSError):
+            pass  # Silently ignore logging errors during shutdown
 
         try:
             async with stdio_server() as (read_stream, write_stream):
                 await server.run(read_stream, write_stream, options)
         except Exception as e:
-            logger.error(f"Server error: {e}")
+            # Use safe logging to avoid I/O errors during shutdown
+            try:
+                logger.error(f"Server error: {e}")
+            except (ValueError, OSError):
+                pass  # Silently ignore logging errors during shutdown
             raise
+        finally:
+            # Safe cleanup
+            try:
+                logger.info("MCP server shutting down")
+            except (ValueError, OSError):
+                pass  # Silently ignore logging errors during shutdown
 
 
 async def main() -> None:
@@ -309,10 +334,22 @@ async def main() -> None:
         server = TreeSitterAnalyzerMCPServer()
         await server.run()
     except KeyboardInterrupt:
-        logger.info("Server stopped by user")
+        try:
+            logger.info("Server stopped by user")
+        except (ValueError, OSError):
+            pass  # Silently ignore logging errors during shutdown
     except Exception as e:
-        logger.error(f"Server failed: {e}")
+        try:
+            logger.error(f"Server failed: {e}")
+        except (ValueError, OSError):
+            pass  # Silently ignore logging errors during shutdown
         sys.exit(1)
+    finally:
+        # Ensure clean shutdown
+        try:
+            logger.info("MCP server shutdown complete")
+        except (ValueError, OSError):
+            pass  # Silently ignore logging errors during shutdown
 
 
 if __name__ == "__main__":

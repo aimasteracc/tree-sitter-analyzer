@@ -112,10 +112,10 @@ test = [
 
 [project.scripts]
 # Main CLI entry point
-tree-sitter-analyzer = "tree_sitter_analyzer.interfaces.cli:main"
+tree-sitter-analyzer = "tree_sitter_analyzer.cli_main:main"
 # Legacy aliases for backward compatibility
-code-analyzer = "tree_sitter_analyzer.interfaces.cli:main"
-java-analyzer = "tree_sitter_analyzer.interfaces.cli:main"
+code-analyzer = "tree_sitter_analyzer.cli_main:main"
+java-analyzer = "tree_sitter_analyzer.cli_main:main"
 
 [project.entry-points."tree_sitter_analyzer.plugins"]
 # Core language plugins (automatically discovered)

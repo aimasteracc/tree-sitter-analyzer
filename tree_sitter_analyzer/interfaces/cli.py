@@ -51,7 +51,7 @@ Examples:
   # Get framework information
   tree-sitter-analyzer info
 
-For more information, visit: https://github.com/tree-sitter-analyzer/tree-sitter-analyzer
+For more information, visit: https://github.com/aimasteracc/tree-sitter-analyzer
         """
     )
 
