@@ -1,0 +1,238 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "tree-sitter-analyzer"
+version = "0.0.1"
+description = "Extensible multi-language code analyzer framework using Tree-sitter with dynamic plugin architecture"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+authors = [
+    { name = "aisheng.yu", email = "aimasteracc@gmail.com" },
+]
+keywords = ["tree-sitter", "code-analysis", "ast", "parsing", "static-analysis", "multi-language"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Code Generators",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Software Development :: Quality Assurance",
+    "Topic :: Text Processing :: Linguistic",
+]
+
+# Core dependencies (minimal set)
+dependencies = [
+    "tree-sitter>=0.20.0",
+    "chardet>=5.0.0",
+    "cachetools>=5.0.0",
+]
+
+[project.optional-dependencies]
+# Core language support - install specific languages as needed
+java = ["tree-sitter-java>=0.21.0"]
+javascript = ["tree-sitter-javascript>=0.23.1"]
+typescript = ["tree-sitter-typescript>=0.20.0"]
+python = ["tree-sitter-python>=0.23.0"]
+c = ["tree-sitter-c>=0.20.0"]
+cpp = ["tree-sitter-cpp>=0.20.0"]
+rust = ["tree-sitter-rust>=0.20.0"]
+go = ["tree-sitter-go>=0.20.0"]
+
+# Language bundles for convenience
+web = [
+    "tree-sitter-javascript>=0.23.1", 
+    "tree-sitter-typescript>=0.20.0"
+]
+systems = [
+    "tree-sitter-c>=0.20.0", 
+    "tree-sitter-cpp>=0.20.0", 
+    "tree-sitter-rust>=0.20.0", 
+    "tree-sitter-go>=0.20.0"
+]
+popular = [
+    "tree-sitter-java>=0.21.0", 
+    "tree-sitter-python>=0.23.0", 
+    "tree-sitter-javascript>=0.23.1", 
+    "tree-sitter-typescript>=0.20.0"
+]
+all = [
+    "tree-sitter-java>=0.21.0",
+    "tree-sitter-javascript>=0.23.1", 
+    "tree-sitter-typescript>=0.20.0",
+    "tree-sitter-python>=0.23.0",
+    "tree-sitter-c>=0.20.0",
+    "tree-sitter-cpp>=0.20.0",
+    "tree-sitter-rust>=0.20.0",
+    "tree-sitter-go>=0.20.0",
+]
+
+# MCP server support
+mcp = [
+    "mcp>=1.0.0",
+    "pytest-asyncio>=1.1.0",
+]
+
+# Development dependencies
+dev = [
+    "pytest>=8.3.5",
+    "pytest-cov>=4.0.0",
+    "pytest-asyncio>=1.1.0",
+    "pytest-mock>=3.14.1",
+    "black>=23.0.0",
+    "flake8>=6.0.0",
+    "mypy>=1.17.0",
+    "isort>=5.12.0",
+    "types-psutil>=5.9.0",
+    "memory-profiler>=0.61.0",
+    "psutil>=7.0.0",
+]
+
+# Testing with specific language support
+test = [
+    "pytest>=8.3.5",
+    "pytest-cov>=4.0.0",
+    "pytest-asyncio>=1.1.0",
+    "pytest-mock>=3.14.1",
+    "tree-sitter-java>=0.21.0",
+    "tree-sitter-python>=0.23.0",
+    "tree-sitter-javascript>=0.23.1",
+]
+
+[project.scripts]
+# Main CLI entry point
+tree-sitter-analyzer = "tree_sitter_analyzer.interfaces.cli:main"
+# Legacy aliases for backward compatibility
+code-analyzer = "tree_sitter_analyzer.interfaces.cli:main"
+java-analyzer = "tree_sitter_analyzer.interfaces.cli:main"
+
+[project.entry-points."tree_sitter_analyzer.plugins"]
+# Core language plugins (automatically discovered)
+java = "tree_sitter_analyzer.languages.java_plugin:JavaPlugin"
+python = "tree_sitter_analyzer.plugins.python_plugin:PythonPlugin"
+
+[tool.hatch.build.targets.wheel]
+packages = ["tree_sitter_analyzer"]
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.black]
+line-length = 88
+target-version = ['py310']
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+  # directories
+  \.eggs
+  | \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | _build
+  | buck-out
+  | build
+  | dist
+  | archived_files
+)/
+'''
+
+[tool.isort]
+profile = "black"
+line_length = 88
+multi_line_output = 3
+include_trailing_comma = true
+force_grid_wrap = 0
+use_parentheses = true
+ensure_newline_before_comments = true
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+disallow_untyped_decorators = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+warn_unreachable = true
+strict_equality = true
+
+# Exclude archived files and test files from strict checking
+[[tool.mypy.overrides]]
+module = [
+    "tests.*",
+    "archived_files.*",
+]
+ignore_errors = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+python_classes = "Test*"
+python_functions = "test_*"
+asyncio_mode = "auto"
+addopts = [
+    "--strict-markers",
+    "--strict-config",
+    "--verbose",
+]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests as integration tests",
+    "unit: marks tests as unit tests",
+    "mcp: marks tests as MCP-related tests",
+]
+
+[tool.coverage.run]
+source = ["tree_sitter_analyzer"]
+omit = [
+    "*/tests/*",
+    "*/archived_files/*",
+    "*/__pycache__/*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if self.debug:",
+    "if settings.DEBUG",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if 0:",
+    "if __name__ == .__main__.:",
+    "class .*\\bProtocol\\):",
+    "@(abc\\.)?abstractmethod",
+]
+
+[dependency-groups]
+dev = [
+    "mypy>=1.17.0",
+    "black>=23.0.0",
+    "isort>=5.12.0",
+    "flake8>=6.0.0",
+]
+
+# MCP server configuration
+[tool.mcp]
+server_name = "tree-sitter-analyzer"
+server_version = "0.0.1"
+description = "Tree-sitter based code analysis MCP server"
+
+[project.urls]
+Homepage = "https://github.com/tree-sitter-analyzer/tree-sitter-analyzer"
+Documentation = "https://tree-sitter-analyzer.readthedocs.io/"
+Repository = "https://github.com/tree-sitter-analyzer/tree-sitter-analyzer.git"
+Issues = "https://github.com/tree-sitter-analyzer/tree-sitter-analyzer/issues"
+Changelog = "https://github.com/tree-sitter-analyzer/tree-sitter-analyzer/blob/main/CHANGELOG.md"

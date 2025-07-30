@@ -1,0 +1,121 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Information Commands for CLI
+
+Commands that display information without requiring file analysis.
+"""
+
+from abc import ABC, abstractmethod
+from argparse import Namespace
+
+from ..language_detector import detect_language_from_file, detector
+from ..output_manager import output_data, output_error, output_info, output_list
+from ..query_loader import query_loader
+
+
+class InfoCommand(ABC):
+    """Base class for information commands that don't require file analysis."""
+
+    def __init__(self, args: Namespace):
+        self.args = args
+
+    @abstractmethod
+    def execute(self) -> int:
+        """Execute the information command."""
+        pass
+
+
+class ListQueriesCommand(InfoCommand):
+    """Command to list available queries."""
+
+    def execute(self) -> int:
+        if self.args.language:
+            language = self.args.language
+        elif hasattr(self.args, "file_path") and self.args.file_path:
+            language = detect_language_from_file(self.args.file_path)
+        else:
+            output_list("サポートされている言語:")
+            for lang in query_loader.list_supported_languages():
+                output_list(f"  {lang}")
+                queries = query_loader.list_queries_for_language(lang)
+                for query_key in queries:
+                    description = (
+                        query_loader.get_query_description(lang, query_key)
+                        or "説明なし"
+                    )
+                    output_list(f"    {query_key:<20} - {description}")
+            return 0
+
+        output_list(f"利用可能なクエリキー ({language}):")
+        for query_key in query_loader.list_queries_for_language(language):
+            description = (
+                query_loader.get_query_description(language, query_key) or "説明なし"
+            )
+            output_list(f"  {query_key:<20} - {description}")
+        return 0
+
+
+class DescribeQueryCommand(InfoCommand):
+    """Command to describe a specific query."""
+
+    def execute(self) -> int:
+        if self.args.language:
+            language = self.args.language
+        elif hasattr(self.args, "file_path") and self.args.file_path:
+            language = detect_language_from_file(self.args.file_path)
+        else:
+            output_error(
+                "ERROR: クエリ説明表示には--languageまたは対象ファイルの指定が必要です"
+            )
+            return 1
+
+        try:
+            query_description = query_loader.get_query_description(
+                language, self.args.describe_query
+            )
+            query_content = query_loader.get_query(language, self.args.describe_query)
+
+            if query_description is None or query_content is None:
+                output_error(
+                    f"ERROR: クエリ '{self.args.describe_query}' が言語 '{language}' で見つかりません"
+                )
+                return 1
+
+            output_info(
+                f"クエリキー '{self.args.describe_query}' ({language}): {query_description}"
+            )
+            output_data(f"クエリ内容:\n{query_content}")
+        except ValueError as e:
+            output_error(f"ERROR: {e}")
+            return 1
+        return 0
+
+
+class ShowLanguagesCommand(InfoCommand):
+    """Command to show supported languages."""
+
+    def execute(self) -> int:
+        output_list("サポートされている言語:")
+        for language in detector.get_supported_languages():
+            info = detector.get_language_info(language)
+            extensions = ", ".join(info["extensions"][:5])
+            if len(info["extensions"]) > 5:
+                extensions += f", ... (他{len(info['extensions'])-5}個)"
+            output_list(f"  {language:<12} - 拡張子: {extensions}")
+        return 0
+
+
+class ShowExtensionsCommand(InfoCommand):
+    """Command to show supported extensions."""
+
+    def execute(self) -> int:
+        output_list("サポートされている拡張子:")
+        supported_extensions = detector.get_supported_extensions()
+        for i in range(0, len(supported_extensions), 8):
+            line = "  " + "  ".join(
+                f"{ext:<6}" for ext in supported_extensions[i : i + 8]
+            )
+            output_list(line)
+        output_info(f"\n合計 {len(supported_extensions)} 個の拡張子をサポート")
+        return 0

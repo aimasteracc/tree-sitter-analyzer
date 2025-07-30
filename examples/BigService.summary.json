@@ -1,0 +1,650 @@
+INFO: 拡張子から言語を自動判定しました: java
+2025-07-23 15:11:15,401 - tree_sitter_analyzer - INFO - Successfully read file BigService.java with encoding: utf-8
+2025-07-23 15:11:15,422 - tree_sitter_analyzer.performance - INFO - file_analysis: 0.0427s - 72 個の要素を抽出しました
+
+--- 要約解析結果 ---
+{
+  "file_path": "BigService.java",
+  "summary_elements": [
+    {
+      "name": "java.util",
+      "type": "import",
+      "lines": {
+        "start": 3,
+        "end": 3
+      }
+    },
+    {
+      "name": "java.time.LocalDateTime",
+      "type": "import",
+      "lines": {
+        "start": 4,
+        "end": 4
+      }
+    },
+    {
+      "name": "java.time.format.DateTimeFormatter",
+      "type": "import",
+      "lines": {
+        "start": 5,
+        "end": 5
+      }
+    },
+    {
+      "name": "java.sql.Connection",
+      "type": "import",
+      "lines": {
+        "start": 6,
+        "end": 6
+      }
+    },
+    {
+      "name": "java.sql.PreparedStatement",
+      "type": "import",
+      "lines": {
+        "start": 7,
+        "end": 7
+      }
+    },
+    {
+      "name": "java.sql.ResultSet",
+      "type": "import",
+      "lines": {
+        "start": 8,
+        "end": 8
+      }
+    },
+    {
+      "name": "java.sql.SQLException",
+      "type": "import",
+      "lines": {
+        "start": 9,
+        "end": 9
+      }
+    },
+    {
+      "name": "javax.sql.DataSource",
+      "type": "import",
+      "lines": {
+        "start": 10,
+        "end": 10
+      }
+    },
+    {
+      "name": "BigService",
+      "type": "class",
+      "lines": {
+        "start": 17,
+        "end": 1420
+      }
+    },
+    {
+      "name": "BigService",
+      "type": "method",
+      "lines": {
+        "start": 33,
+        "end": 39
+      }
+    },
+    {
+      "name": "initializeService",
+      "type": "method",
+      "lines": {
+        "start": 44,
+        "end": 50
+      }
+    },
+    {
+      "name": "loadConfiguration",
+      "type": "method",
+      "lines": {
+        "start": 55,
+        "end": 65
+      }
+    },
+    {
+      "name": "setupDatabaseConnection",
+      "type": "method",
+      "lines": {
+        "start": 70,
+        "end": 77
+      }
+    },
+    {
+      "name": "validateSystemRequirements",
+      "type": "method",
+      "lines": {
+        "start": 82,
+        "end": 88
+      }
+    },
+    {
+      "name": "checkMemoryUsage",
+      "type": "method",
+      "lines": {
+        "start": 93,
+        "end": 106
+      }
+    },
+    {
+      "name": "checkDiskSpace",
+      "type": "method",
+      "lines": {
+        "start": 111,
+        "end": 117
+      }
+    },
+    {
+      "name": "checkNetworkConnectivity",
+      "type": "method",
+      "lines": {
+        "start": 122,
+        "end": 136
+      }
+    },
+    {
+      "name": "authenticateUser",
+      "type": "method",
+      "lines": {
+        "start": 141,
+        "end": 172
+      }
+    },
+    {
+      "name": "createSession",
+      "type": "method",
+      "lines": {
+        "start": 177,
+        "end": 199
+      }
+    },
+    {
+      "name": "validateData",
+      "type": "method",
+      "lines": {
+        "start": 204,
+        "end": 246
+      }
+    },
+    {
+      "name": "validateEmail",
+      "type": "method",
+      "lines": {
+        "start": 251,
+        "end": 254
+      }
+    },
+    {
+      "name": "validatePhoneNumber",
+      "type": "method",
+      "lines": {
+        "start": 259,
+        "end": 262
+      }
+    },
+    {
+      "name": "validateDate",
+      "type": "method",
+      "lines": {
+        "start": 267,
+        "end": 275
+      }
+    },
+    {
+      "name": "logOperation",
+      "type": "method",
+      "lines": {
+        "start": 280,
+        "end": 290
+      }
+    },
+    {
+      "name": "manageCache",
+      "type": "method",
+      "lines": {
+        "start": 295,
+        "end": 308
+      }
+    },
+    {
+      "name": "cleanupCache",
+      "type": "method",
+      "lines": {
+        "start": 313,
+        "end": 326
+      }
+    },
+    {
+      "name": "updateCacheStatistics",
+      "type": "method",
+      "lines": {
+        "start": 331,
+        "end": 335
+      }
+    },
+    {
+      "name": "calculateCacheHitRatio",
+      "type": "method",
+      "lines": {
+        "start": 340,
+        "end": 343
+      }
+    },
+    {
+      "name": "performBackup",
+      "type": "method",
+      "lines": {
+        "start": 348,
+        "end": 367
+      }
+    },
+    {
+      "name": "performFullBackup",
+      "type": "method",
+      "lines": {
+        "start": 372,
+        "end": 395
+      }
+    },
+    {
+      "name": "performIncrementalBackup",
+      "type": "method",
+      "lines": {
+        "start": 400,
+        "end": 414
+      }
+    },
+    {
+      "name": "performDifferentialBackup",
+      "type": "method",
+      "lines": {
+        "start": 419,
+        "end": 433
+      }
+    },
+    {
+      "name": "generateReport",
+      "type": "method",
+      "lines": {
+        "start": 438,
+        "end": 471
+      }
+    },
+    {
+      "name": "prepareReportData",
+      "type": "method",
+      "lines": {
+        "start": 476,
+        "end": 490
+      }
+    },
+    {
+      "name": "generateSalesReport",
+      "type": "method",
+      "lines": {
+        "start": 495,
+        "end": 513
+      }
+    },
+    {
+      "name": "generatePerformanceReport",
+      "type": "method",
+      "lines": {
+        "start": 518,
+        "end": 534
+      }
+    },
+    {
+      "name": "generateUserActivityReport",
+      "type": "method",
+      "lines": {
+        "start": 539,
+        "end": 553
+      }
+    },
+    {
+      "name": "generateSystemHealthReport",
+      "type": "method",
+      "lines": {
+        "start": 558,
+        "end": 574
+      }
+    },
+    {
+      "name": "finalizeReport",
+      "type": "method",
+      "lines": {
+        "start": 579,
+        "end": 593
+      }
+    },
+    {
+      "name": "updateCustomerName",
+      "type": "method",
+      "lines": {
+        "start": 601,
+        "end": 617
+      }
+    },
+    {
+      "name": "getCustomerInfo",
+      "type": "method",
+      "lines": {
+        "start": 622,
+        "end": 652
+      }
+    },
+    {
+      "name": "deleteCustomer",
+      "type": "method",
+      "lines": {
+        "start": 657,
+        "end": 691
+      }
+    },
+    {
+      "name": "processOrder",
+      "type": "method",
+      "lines": {
+        "start": 696,
+        "end": 736
+      }
+    },
+    {
+      "name": "manageInventory",
+      "type": "method",
+      "lines": {
+        "start": 741,
+        "end": 773
+      }
+    },
+    {
+      "name": "addInventory",
+      "type": "method",
+      "lines": {
+        "start": 778,
+        "end": 792
+      }
+    },
+    {
+      "name": "removeInventory",
+      "type": "method",
+      "lines": {
+        "start": 797,
+        "end": 811
+      }
+    },
+    {
+      "name": "updateInventory",
+      "type": "method",
+      "lines": {
+        "start": 816,
+        "end": 830
+      }
+    },
+    {
+      "name": "checkInventory",
+      "type": "method",
+      "lines": {
+        "start": 835,
+        "end": 850
+      }
+    },
+    {
+      "name": "sendNotification",
+      "type": "method",
+      "lines": {
+        "start": 855,
+        "end": 884
+      }
+    },
+    {
+      "name": "shutdownSystem",
+      "type": "method",
+      "lines": {
+        "start": 890,
+        "end": 913
+      }
+    },
+    {
+      "name": "savePendingOperations",
+      "type": "method",
+      "lines": {
+        "start": 918,
+        "end": 927
+      }
+    },
+    {
+      "name": "closeDatabaseConnections",
+      "type": "method",
+      "lines": {
+        "start": 932,
+        "end": 941
+      }
+    },
+    {
+      "name": "finalizeSystemLogs",
+      "type": "method",
+      "lines": {
+        "start": 946,
+        "end": 954
+      }
+    },
+    {
+      "name": "handleError",
+      "type": "method",
+      "lines": {
+        "start": 959,
+        "end": 978
+      }
+    },
+    {
+      "name": "handleDatabaseError",
+      "type": "method",
+      "lines": {
+        "start": 983,
+        "end": 997
+      }
+    },
+    {
+      "name": "handleValidationError",
+      "type": "method",
+      "lines": {
+        "start": 1002,
+        "end": 1010
+      }
+    },
+    {
+      "name": "handleRuntimeError",
+      "type": "method",
+      "lines": {
+        "start": 1015,
+        "end": 1029
+      }
+    },
+    {
+      "name": "handleGenericError",
+      "type": "method",
+      "lines": {
+        "start": 1034,
+        "end": 1042
+      }
+    },
+    {
+      "name": "monitorPerformance",
+      "type": "method",
+      "lines": {
+        "start": 1047,
+        "end": 1068
+      }
+    },
+    {
+      "name": "monitorCpuUsage",
+      "type": "method",
+      "lines": {
+        "start": 1073,
+        "end": 1087
+      }
+    },
+    {
+      "name": "monitorMemoryUsage",
+      "type": "method",
+      "lines": {
+        "start": 1092,
+        "end": 1113
+      }
+    },
+    {
+      "name": "monitorDiskIO",
+      "type": "method",
+      "lines": {
+        "start": 1118,
+        "end": 1132
+      }
+    },
+    {
+      "name": "monitorNetworkUsage",
+      "type": "method",
+      "lines": {
+        "start": 1137,
+        "end": 1151
+      }
+    },
+    {
+      "name": "performSecurityCheck",
+      "type": "method",
+      "lines": {
+        "start": 1156,
+        "end": 1172
+      }
+    },
+    {
+      "name": "checkAccessPermissions",
+      "type": "method",
+      "lines": {
+        "start": 1177,
+        "end": 1193
+      }
+    },
+    {
+      "name": "validateSecuritySettings",
+      "type": "method",
+      "lines": {
+        "start": 1198,
+        "end": 1212
+      }
+    },
+    {
+      "name": "performVulnerabilityScan",
+      "type": "method",
+      "lines": {
+        "start": 1217,
+        "end": 1231
+      }
+    },
+    {
+      "name": "reviewSecurityLogs",
+      "type": "method",
+      "lines": {
+        "start": 1236,
+        "end": 1250
+      }
+    },
+    {
+      "name": "synchronizeData",
+      "type": "method",
+      "lines": {
+        "start": 1255,
+        "end": 1284
+      }
+    },
+    {
+      "name": "prepareSynchronization",
+      "type": "method",
+      "lines": {
+        "start": 1289,
+        "end": 1303
+      }
+    },
+    {
+      "name": "extractData",
+      "type": "method",
+      "lines": {
+        "start": 1308,
+        "end": 1324
+      }
+    },
+    {
+      "name": "transformData",
+      "type": "method",
+      "lines": {
+        "start": 1329,
+        "end": 1343
+      }
+    },
+    {
+      "name": "loadData",
+      "type": "method",
+      "lines": {
+        "start": 1348,
+        "end": 1362
+      }
+    },
+    {
+      "name": "verifySynchronization",
+      "type": "method",
+      "lines": {
+        "start": 1367,
+        "end": 1381
+      }
+    },
+    {
+      "name": "main",
+      "type": "method",
+      "lines": {
+        "start": 1386,
+        "end": 1419
+      }
+    },
+    {
+      "name": "DEFAULT_ENCODING",
+      "type": "field",
+      "lines": {
+        "start": 19,
+        "end": 19
+      }
+    },
+    {
+      "name": "MAX_RETRY_COUNT",
+      "type": "field",
+      "lines": {
+        "start": 20,
+        "end": 20
+      }
+    },
+    {
+      "name": "TIMEOUT_MILLISECONDS",
+      "type": "field",
+      "lines": {
+        "start": 21,
+        "end": 21
+      }
+    },
+    {
+      "name": "DATE_FORMAT",
+      "type": "field",
+      "lines": {
+        "start": 22,
+        "end": 22
+      }
+    },
+    {
+      "name": "dataSource",
+      "type": "field",
+      "lines": {
+        "start": 24,
+        "end": 24
+      }
+    }
+  ]
+}

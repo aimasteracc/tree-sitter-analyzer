@@ -1,0 +1,36 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+MCP Tools package for Tree-sitter Analyzer
+
+This package contains all MCP tools that provide specific functionality
+through the Model Context Protocol.
+"""
+
+from typing import Any, Dict, List
+
+__version__ = "1.0.0"
+
+# Tool registry for easy access
+AVAILABLE_TOOLS: Dict[str, Dict[str, Any]] = {
+    "analyze_code_scale": {
+        "description": "Analyze code scale, complexity, and structure metrics",
+        "module": "analyze_scale_tool",
+        "class": "AnalyzeScaleTool",
+    },
+    # Future tools will be added here
+    # "read_code_partial": {
+    #     "description": "Read partial content from code files",
+    #     "module": "read_partial_tool",
+    #     "class": "ReadPartialTool",
+    # },
+    # "get_code_positions": {
+    #     "description": "Get position information for code elements",
+    #     "module": "get_positions_tool",
+    #     "class": "GetPositionsTool",
+    # },
+}
+
+__all__ = [
+    "AVAILABLE_TOOLS",
+]
