@@ -78,111 +78,112 @@ python -m tree_sitter_analyzer examples/Sample.java --table=full
 #### CLI Output Examples
 
 **Code Scale Analysis (`--advanced --output-format=text`):**
-```
-PS C:\git-public\tree-sitter-analyzer> python -m tree_sitter_analyzer examples/Sample.java --advanced --output-format=text
-2025-07-30 16:57:47,827 - tree_sitter_analyzer - INFO - Successfully loaded 3 language plugins: java, javascript, python
-2025-07-30 16:57:47,916 - tree_sitter_analyzer - INFO - CacheService initialized: L1=100, L2=1000, L3=10000, TTL=3600s
-2025-07-30 16:57:47,917 - tree_sitter_analyzer - INFO - Loading plugins...
-2025-07-30 16:57:47,920 - tree_sitter_analyzer - INFO - Plugin registered for language: java
-2025-07-30 16:57:47,920 - tree_sitter_analyzer - INFO - Plugin registered for language: javascript
-2025-07-30 16:57:47,922 - tree_sitter_analyzer - INFO - Plugin registered for language: python
-2025-07-30 16:57:47,922 - tree_sitter_analyzer - INFO - Successfully loaded 3 language plugins: java, javascript, python     
-2025-07-30 16:57:47,923 - tree_sitter_analyzer - INFO - UnifiedAnalysisEngine initialized
-INFO: 拡張子から言語を自動判定しました: java
-2025-07-30 16:57:47,925 - tree_sitter_analyzer - INFO - Starting analysis for examples/Sample.java
-2025-07-30 16:57:47,945 - tree_sitter_analyzer.core.parser - INFO - Parser initialized successfully
-2025-07-30 16:57:47,951 - PERF - analyze_java: 0.0253s - Operation completed
-2025-07-30 16:57:47,951 - tree_sitter_analyzer.performance - INFO - analyze_java: 0.0253s - Operation completed
-2025-07-30 16:57:47,958 - PERF - unified_analysis: 0.0253s - Analyzed examples/Sample.java (java)
-2025-07-30 16:57:47,958 - tree_sitter_analyzer.performance - INFO - unified_analysis: 0.0253s - Analyzed examples/Sample.java (java)
 
---- 高度な解析結果 ---
-"ファイル: examples/Sample.java"
-"パッケージ: (default)"
-"行数: 178"
-"\nクラス数: 8"
-"メソッド数: 24"
-"フィールド数: 5"
-"インポート数: 2"
-"アノテーション数: 0"
-```
+>```
+>PS C:\git-public\tree-sitter-analyzer> python -m tree_sitter_analyzer examples/Sample.java --advanced --output-format=text
+>2025-07-30 16:57:47,827 - tree_sitter_analyzer - INFO - Successfully loaded 3 language plugins: java, javascript, python
+>2025-07-30 16:57:47,916 - tree_sitter_analyzer - INFO - CacheService initialized: L1=100, L2=1000, L3=10000, TTL=3600s
+>2025-07-30 16:57:47,917 - tree_sitter_analyzer - INFO - Loading plugins...
+>2025-07-30 16:57:47,920 - tree_sitter_analyzer - INFO - Plugin registered for language: java
+>2025-07-30 16:57:47,920 - tree_sitter_analyzer - INFO - Plugin registered for language: javascript
+>2025-07-30 16:57:47,922 - tree_sitter_analyzer - INFO - Plugin registered for language: python
+>2025-07-30 16:57:47,922 - tree_sitter_analyzer - INFO - Successfully loaded 3 language plugins: java, javascript, python     
+>2025-07-30 16:57:47,923 - tree_sitter_analyzer - INFO - UnifiedAnalysisEngine initialized
+>INFO: 拡張子から言語を自動判定しました: java
+>2025-07-30 16:57:47,925 - tree_sitter_analyzer - INFO - Starting analysis for examples/Sample.java
+>2025-07-30 16:57:47,945 - tree_sitter_analyzer.core.parser - INFO - Parser initialized successfully
+>2025-07-30 16:57:47,951 - PERF - analyze_java: 0.0253s - Operation completed
+>2025-07-30 16:57:47,951 - tree_sitter_analyzer.performance - INFO - analyze_java: 0.0253s - Operation completed
+>2025-07-30 16:57:47,958 - PERF - unified_analysis: 0.0253s - Analyzed examples/Sample.java (java)
+>2025-07-30 16:57:47,958 - tree_sitter_analyzer.performance - INFO - unified_analysis: 0.0253s - Analyzed examples/Sample.java (java)
+>
+>--- 高度な解析結果 ---
+>"ファイル: examples/Sample.java"
+>"パッケージ: (default)"
+>"行数: 178"
+>"\nクラス数: 8"
+>"メソッド数: 24"
+>"フィールド数: 5"
+>"インポート数: 2"
+>"アノテーション数: 0"
+>```
 
 **Partial Code Extraction (`--partial-read`):**
-```
-PS C:\git-public\tree-sitter-analyzer> python -m tree_sitter_analyzer examples/Sample.java --partial-read --start-line 84 --end-line 86
-2025-07-30 16:58:22,948 - tree_sitter_analyzer - INFO - Successfully loaded 3 language plugins: java, javascript, python
-2025-07-30 16:58:23,056 - tree_sitter_analyzer - INFO - Successfully read partial file examples/Sample.java: lines 84-86
-{
-  "file_path": "examples/Sample.java",
-  "range": {
-    "start_line": 84,
-    "end_line": 86,
-    "start_column": null,
-    "end_column": null
-  },
-  "content": "        public void innerMethod() {\n            System.out.println(\"Inner class method, value: \" + value);\n        }\n",
-  "content_length": 117
-}
-```
+>```
+>PS C:\git-public\tree-sitter-analyzer> python -m tree_sitter_analyzer examples/Sample.java --partial-read --start-line 84 --end-line 86
+>2025-07-30 16:58:22,948 - tree_sitter_analyzer - INFO - Successfully loaded 3 language plugins: java, javascript, python
+>2025-07-30 16:58:23,056 - tree_sitter_analyzer - INFO - Successfully read partial file examples/Sample.java: lines 84-86
+>{
+>  "file_path": "examples/Sample.java",
+>  "range": {
+>    "start_line": 84,
+>    "end_line": 86,
+>    "start_column": null,
+>    "end_column": null
+>  },
+>  "content": "        public void innerMethod() {\n            System.out.println(\"Inner class method, value: \" + value);\n        }\n",
+>  "content_length": 117
+>}
+>```
 
 **Table Format Analysis (`--table=full`):**
 
 The `--table=full` command produces detailed analysis tables:
 
 
-# Sample.java
-
-## Imports
-```java
-java.util.List
-java.util.ArrayList
-```
-
-## Classes
-| Class | Type | Visibility | Lines | Methods | Fields |
-|-------|------|------------|-------|---------|--------|
-| AbstractParentClass | class | public | 7-15 | 2 | 0 |
-| ParentClass | class | public | 18-45 | 4 | 2 |
-| TestInterface | class | public | 48-64 | 3 | 0 |
-| AnotherInterface | class | public | 67-69 | 1 | 0 |
-| Test | class | public | 72-159 | 14 | 3 |
-| InnerClass | class | public | 83-87 | 1 | 0 |
-| StaticNestedClass | class | public | 90-94 | 1 | 0 |
-| TestEnum | class | public | 162-178 | 0 | 0 |
-
-## Fields
-| Name | Type | Vis | Modifiers | Line | Doc |
-|------|------|-----|-----------|------|-----|
-| CONSTANT | String | ~ | static,final | 20 | - |
-| parentField | String | # | protected | 23 | - |
-| value | int | - | private | 74 | - |
-| staticValue | int | + | public,static | 77 | - |
-| finalField | String | - | private,final | 80 | - |
-
-## Constructor
-| Method | Signature | Vis | Lines | Cols | Cx | Doc |
-|--------|-----------|-----|-------|------|----|----|
-| ParentClass | ():void | + | 26-28 | 5-6 | 1 | - |
-| Test | (value:int):void | + | 97-100 | 5-6 | 1 | - |
-| Test | ():void | + | 103-105 | 5-6 | 1 | - |
-
-## Public Methods
-| Method | Signature | Vis | Lines | Cols | Cx | Doc |
-|--------|-----------|-----|-------|------|----|----|
-| innerMethod | ():void | + | 84-86 | 5-6 | 1 | - |
-| nestedMethod | ():void | + | 91-93 | 5-6 | 1 | - |
-| getValue | ():String | + | 108-110 | 5-6 | 1 | - |
-| staticMethod | ():void [static] | + | 128-130 | 5-6 | 1 | - |
-| finalMethod | ():void | + | 133-135 | 5-6 | 1 | - |
-| doSomething | ():void | + | 138-141 | 5-6 | 1 | - |
-| anotherMethod | ():void | + | 143-146 | 5-6 | 1 | - |
-| genericMethod | (input:T):void | + | 149-151 | 5-6 | 1 | - |
-| createList | (item:T):List<T> | + | 154-158 | 5-6 | 1 | - |
-
-## Private Methods
-| Method | Signature | Vis | Lines | Cols | Cx | Doc |
-|--------|-----------|-----|-------|------|----|----|
-| privateMethod | ():void | - | 123-125 | 5-6 | 1 | - |
+># Sample.java
+>
+>## Imports
+>```java
+>java.util.List
+>java.util.ArrayList
+>```
+>
+>## Classes
+>| Class | Type | Visibility | Lines | Methods | Fields |
+>|-------|------|------------|-------|---------|--------|
+>| AbstractParentClass | class | public | 7-15 | 2 | 0 |
+>| ParentClass | class | public | 18-45 | 4 | 2 |
+>| TestInterface | class | public | 48-64 | 3 | 0 |
+>| AnotherInterface | class | public | 67-69 | 1 | 0 |
+>| Test | class | public | 72-159 | 14 | 3 |
+>| InnerClass | class | public | 83-87 | 1 | 0 |
+>| StaticNestedClass | class | public | 90-94 | 1 | 0 |
+>| TestEnum | class | public | 162-178 | 0 | 0 |
+>
+>## Fields
+>| Name | Type | Vis | Modifiers | Line | Doc |
+>|------|------|-----|-----------|------|-----|
+>| CONSTANT | String | ~ | static,final | 20 | - |
+>| parentField | String | # | protected | 23 | - |
+>| value | int | - | private | 74 | - |
+>| staticValue | int | + | public,static | 77 | - |
+>| finalField | String | - | private,final | 80 | - |
+>
+>## Constructor
+>| Method | Signature | Vis | Lines | Cols | Cx | Doc |
+>|--------|-----------|-----|-------|------|----|----|
+>| ParentClass | ():void | + | 26-28 | 5-6 | 1 | - |
+>| Test | (value:int):void | + | 97-100 | 5-6 | 1 | - |
+>| Test | ():void | + | 103-105 | 5-6 | 1 | - |
+>
+>## Public Methods
+>| Method | Signature | Vis | Lines | Cols | Cx | Doc |
+>|--------|-----------|-----|-------|------|----|----|
+>| innerMethod | ():void | + | 84-86 | 5-6 | 1 | - |
+>| nestedMethod | ():void | + | 91-93 | 5-6 | 1 | - |
+>| getValue | ():String | + | 108-110 | 5-6 | 1 | - |
+>| staticMethod | ():void [static] | + | 128-130 | 5-6 | 1 | - |
+>| finalMethod | ():void | + | 133-135 | 5-6 | 1 | - |
+>| doSomething | ():void | + | 138-141 | 5-6 | 1 | - |
+>| anotherMethod | ():void | + | 143-146 | 5-6 | 1 | - |
+>| genericMethod | (input:T):void | + | 149-151 | 5-6 | 1 | - |
+>| createList | (item:T):List<T> | + | 154-158 | 5-6 | 1 | - |
+>
+>## Private Methods
+>| Method | Signature | Vis | Lines | Cols | Cx | Doc |
+>|--------|-----------|-----|-------|------|----|----|
+>| privateMethod | ():void | - | 123-125 | 5-6 | 1 | - |
 
 
 ### MCP Server
@@ -240,6 +241,28 @@ Add to your Claude Desktop config file:
 }
 ```
 
+>```json
+>{
+>  "file_path": "examples/Sample.java",
+>  "language": "java",
+>  "analyzer_type": "advanced",
+>  "analysis_type": "basic",
+>  "metrics": {
+>    "lines_total": 178,
+>    "lines_code": 0,
+>    "lines_comment": 0,
+>    "lines_blank": 0,
+>    "elements": {
+>      "classes": 8,
+>      "methods": 24,
+>      "fields": 5,
+>      "imports": 2,
+>      "annotations": 0
+>    }
+>  }
+>}
+>```
+
 **Table Format Analysis:**
 ```json
 {
@@ -250,6 +273,21 @@ Add to your Claude Desktop config file:
   }
 }
 ```
+>```json
+>{
+>  "table_output": "# Sample.java\n\n## Imports\n```java\njava.util.List\njava.util.ArrayList\n```\n\n## Classes\n| Class | Type | >Visibility | Lines | Methods | Fields |\n|-------|------|------------|-------|---------|--------|\n| AbstractParentClass | class | public | >7-15 | 2 | 0 |\n| ParentClass | class | public | 18-45 | 4 | 2 |\n| TestInterface | interface | public | 48-64 | 3 | 0 |\n| >AnotherInterface | interface | public | 67-69 | 1 | 0 |\n| Test | class | public | 72-159 | 14 | 3 |\n| InnerClass | class | public | >83-87 | 1 | 0 |\n| StaticNestedClass | class | public | 90-94 | 1 | 0 |\n| TestEnum | enum | public | 162-178 | 0 | 0 |\n\n## Fields\n| >Name | Type | Vis | Modifiers | Line | Doc |\n|------|------|-----|-----------|------|-----|\n| CONSTANT | String | ~ | static,final | 20 | >- |\n| parentField | String | # | protected | 23 | - |\n| value | int | - | private | 74 | - |\n| staticValue | int | + | public,static | >77 | - |\n| finalField | String | - | private,final | 80 | - |\n\n## Constructor\n| Method | Signature | Vis | Lines | Cols | Cx | Doc |\n|>--------|-----------|-----|-------|------|----|----|\n| ParentClass | ():void | + | 26-28 | 5-6 | 1 | - |\n| Test | (value:int):void | + | >97-100 | 5-6 | 1 | - |\n| Test | ():void | + | 103-105 | 5-6 | 1 | - |\n\n## Public Methods\n| Method | Signature | Vis | Lines | Cols | >Cx | Doc |\n|--------|-----------|-----|-------|------|----|----|\n| innerMethod | ():void | + | 84-86 | 5-6 | 1 | - |\n| nestedMethod | ()>:void | + | 91-93 | 5-6 | 1 | - |\n| getValue | ():String | + | 108-110 | 5-6 | 1 | - |\n| staticMethod | ():void [static] | + | 128-130 | >5-6 | 1 | - |\n| finalMethod | ():void | + | 133-135 | 5-6 | 1 | - |\n| doSomething | ():void | + | 138-141 | 5-6 | 1 | - |\n| >anotherMethod | ():void | + | 143-146 | 5-6 | 1 | - |\n| genericMethod | (input:T):void | + | 149-151 | 5-6 | 1 | - |\n| createList | >(item:T):List<T> | + | 154-158 | 5-6 | 1 | - |\n\n## Private Methods\n| Method | Signature | Vis | Lines | Cols | Cx | Doc |\n|--------|>-----------|-----|-------|------|----|----|\n| privateMethod | ():void | - | 123-125 | 5-6 | 1 | - |",
+>  "format_type": "full",
+>  "file_path": "examples/Sample.java",
+>  "language": "java",
+>  "metadata": {
+>    "classes_count": 8,
+>    "methods_count": 24,
+>    "fields_count": 5,
+>    "total_lines": 178
+>  }
+>}
+>```
+
 
 **Partial Code Reading:**
 ```json
@@ -262,6 +300,12 @@ Add to your Claude Desktop config file:
   }
 }
 ```
+>```json
+>{
+>  "partial_content_result": "--- 部分読み込み結果 ---\nファイル: examples/Sample.java\n範囲: 行 84-86\n読み込み文字数: 117\n{\n  \"file_path\": >\"examples/Sample.java\",\n  \"range\": {\n    \"start_line\": 84,\n    \"end_line\": 86,\n    \"start_column\": null,\n    \"end_column\": >null\n  },\n  \"content\": \"        public void innerMethod() {\\n            System.out.println(\\\"Inner class method, value: \\\" + >value);\\n        }\\n\",\n  \"content_length\": 117\n}"
+>}
+>```
+
 
 **Get Code Positions:**
 ```json
@@ -274,6 +318,153 @@ Add to your Claude Desktop config file:
   }
 }
 ```
+>```json
+>{
+>  "file_path": "examples/Sample.java",
+>  "language": "java",
+>  "element_types": [
+>    "methods",
+>    "classes"
+>  ],
+>  "include_details": true,
+>  "format": "json",
+>  "total_elements": 32,
+>  "positions": {
+>    "methods": [
+>      {
+>        "name": "abstractMethod",
+>        "start_line": 9,
+>        "end_line": 9,
+>        "start_column": 0,
+>        "end_column": 0,
+>        "signature": "abstractMethod()",
+>        "return_type": "void",
+>        "visibility": "package",
+>        "is_static": false,
+>        "is_constructor": false,
+>        "complexity": 1,
+>        "annotations": []
+>      },
+>     ...
+>      {
+>        "name": "createList",
+>        "start_line": 154,
+>        "end_line": 158,
+>        "start_column": 0,
+>        "end_column": 0,
+>        "signature": "createList(T item)",
+>        "return_type": "List<T>",
+>        "visibility": "public",
+>        "is_static": false,
+>        "is_constructor": false,
+>        "complexity": 1,
+>        "annotations": []
+>      }
+>     ],
+>     "classes": [
+>      {
+>        "name": "AbstractParentClass",
+>        "start_line": 7,
+>        "end_line": 15,
+>        "start_column": 0,
+>        "end_column": 0,
+>        "type": "class",
+>        "visibility": "package",
+>        "extends": null,
+>        "implements": [],
+>        "annotations": []
+>      },
+>      {
+>        "name": "ParentClass",
+>        "start_line": 18,
+>        "end_line": 45,
+>        "start_column": 0,
+>        "end_column": 0,
+>        "type": "class",
+>        "visibility": "package",
+>        "extends": "AbstractParentClass",
+>        "implements": [],
+>        "annotations": []
+>      },
+>      {
+>        "name": "TestInterface",
+>        "start_line": 48,
+>        "end_line": 64,
+>        "start_column": 0,
+>        "end_column": 0,
+>        "type": "interface",
+>        "visibility": "package",
+>        "extends": null,
+>        "implements": [],
+>        "annotations": []
+>      },
+>      {
+>        "name": "AnotherInterface",
+>        "start_line": 67,
+>        "end_line": 69,
+>        "start_column": 0,
+>        "end_column": 0,
+>        "type": "interface",
+>        "visibility": "package",
+>        "extends": null,
+>        "implements": [],
+>        "annotations": []
+>      },
+>      {
+>        "name": "Test",
+>        "start_line": 72,
+>        "end_line": 159,
+>        "start_column": 0,
+>        "end_column": 0,
+>        "type": "class",
+>        "visibility": "public",
+>        "extends": "ParentClass",
+>        "implements": [
+>          "TestInterface",
+>          "AnotherInterface"
+>        ],
+>        "annotations": []
+>      },
+>      {
+>        "name": "InnerClass",
+>        "start_line": 83,
+>        "end_line": 87,
+>        "start_column": 0,
+>        "end_column": 0,
+>        "type": "class",
+>        "visibility": "public",
+>        "extends": null,
+>        "implements": [],
+>        "annotations": []
+>      },
+>      {
+>        "name": "StaticNestedClass",
+>        "start_line": 90,
+>        "end_line": 94,
+>        "start_column": 0,
+>        "end_column": 0,
+>        "type": "class",
+>        "visibility": "public",
+>        "extends": null,
+>        "implements": [],
+>        "annotations": []
+>      },
+>      {
+>        "name": "TestEnum",
+>        "start_line": 162,
+>        "end_line": 178,
+>        "start_column": 0,
+>        "end_column": 0,
+>        "type": "enum",
+>        "visibility": "package",
+>        "extends": null,
+>        "implements": [],
+>        "annotations": []
+>      }
+>     ]
+>     }
+>     }
+>     ```
 
 ## Development
 
