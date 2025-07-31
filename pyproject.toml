@@ -343,3 +343,9 @@ ignore = [
 [tool.bandit]
 exclude_dirs = ["tests", "archived_files"]
 skips = ["B101", "B601"]
+
+[dependency-groups]
+dev = [
+    "build>=1.2.2.post1",
+    "twine>=6.1.0",
+]

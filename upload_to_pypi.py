@@ -16,17 +16,26 @@ def check_requirements():
     
     for tool in required_tools:
         try:
-            subprocess.check_call([sys.executable, "-m", tool, "--help"], 
-                                stdout=subprocess.DEVNULL, 
+            subprocess.check_call([sys.executable, "-m", tool, "--help"],
+                                stdout=subprocess.DEVNULL,
                                 stderr=subprocess.DEVNULL)
         except (subprocess.CalledProcessError, FileNotFoundError):
             missing_tools.append(tool)
     
     if missing_tools:
         print(f"Missing required tools: {', '.join(missing_tools)}")
-        print("Installing missing tools...")
+        print("Installing missing tools with uv...")
         for tool in missing_tools:
-            subprocess.check_call([sys.executable, "-m", "pip", "install", tool])
+            try:
+                # Try using uv first
+                subprocess.check_call(["uv", "add", "--dev", tool])
+            except (subprocess.CalledProcessError, FileNotFoundError):
+                # Fallback to pip if uv fails
+                try:
+                    subprocess.check_call(["uv", "pip", "install", tool])
+                except subprocess.CalledProcessError:
+                    print(f"❌ Failed to install {tool}. Please install manually with: uv add --dev {tool}")
+                    sys.exit(1)
         print("✓ All required tools installed")
     else:
         print("✓ All required tools are available")
