@@ -45,7 +45,6 @@ from ..utils import setup_logger
 from . import MCP_INFO
 from .resources import CodeFileResource, ProjectStatsResource
 from .tools.base_tool import MCPTool
-from .tools.get_positions_tool import GetPositionsTool
 from .tools.read_partial_tool import ReadPartialTool
 from .tools.table_format_tool import TableFormatTool
 from .tools.universal_analyze_tool import UniversalAnalyzeTool
@@ -73,7 +72,6 @@ class TreeSitterAnalyzerMCPServer:
         # Initialize MCP tools
         self.read_partial_tool: MCPTool = ReadPartialTool()
         self.universal_analyze_tool: MCPTool = UniversalAnalyzeTool()
-        self.get_positions_tool: MCPTool = GetPositionsTool()
         self.table_format_tool: MCPTool = TableFormatTool()
 
         # Initialize MCP resources
@@ -145,7 +143,6 @@ class TreeSitterAnalyzerMCPServer:
             # Add tools from tool classes - FIXED VERSION
             for tool_instance in [
                 self.read_partial_tool,
-                self.get_positions_tool,
                 self.table_format_tool,
                 self.universal_analyze_tool,
             ]:
@@ -175,14 +172,6 @@ class TreeSitterAnalyzerMCPServer:
                     ]
                 elif name == "read_code_partial":
                     result = await self.read_partial_tool.execute(arguments)
-                    return [
-                        TextContent(
-                            type="text",
-                            text=json.dumps(result, indent=2, ensure_ascii=False),
-                        )
-                    ]
-                elif name == "get_code_positions":
-                    result = await self.get_positions_tool.execute(arguments)
                     return [
                         TextContent(
                             type="text",

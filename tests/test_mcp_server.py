@@ -186,7 +186,9 @@ class TestMainFunction:
             loop.close()
         
         mock_server_class.assert_called_once()
-        mock_logger.info.assert_called_with("Server stopped by user")
+        # Check that both messages were logged
+        mock_logger.info.assert_any_call("Server stopped by user")
+        mock_logger.info.assert_called_with("MCP server shutdown complete")
     
     @patch('tree_sitter_analyzer.mcp.server.TreeSitterAnalyzerMCPServer')
     @patch('tree_sitter_analyzer.mcp.server.logger')
@@ -221,7 +223,6 @@ class TestToolsAndResources:
         
         assert server.read_partial_tool is not None
         assert server.universal_analyze_tool is not None
-        assert server.get_positions_tool is not None
         assert server.table_format_tool is not None
     
     @patch('tree_sitter_analyzer.mcp.server.MCP_AVAILABLE', True)

@@ -2,7 +2,7 @@
 
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-1268%20passed-brightgreen.svg)](#测试)
+[![Tests](https://img.shields.io/badge/tests-1251%20passed-brightgreen.svg)](#测试)
 
 An extensible multi-language code analyzer framework using Tree-sitter with dynamic plugin architecture, designed to solve the problem of large code files exceeding LLM single-pass token limits.
 
@@ -41,7 +41,6 @@ cd tree-sitter-analyzer
 
 # Install with Java support
 uv sync
-uv add tree-sitter-java
 
 # With popular languages (Java, Python, JavaScript, TypeScript)
 uv sync --extra popular
@@ -53,26 +52,19 @@ uv sync --extra mcp
 uv sync --extra all --extra mcp
 ```
 
-### Alternative: Using pip
-
-```bash
-# After the project is published to PyPI
-pip install "tree-sitter-analyzer[java]"
-```
-
 ## Usage
 
 ### CLI Commands
 
 ```bash
 # Code scale analysis
-python -m tree_sitter_analyzer examples/Sample.java --advanced --output-format=text
+uv run python -m tree_sitter_analyzer examples/Sample.java --advanced --output-format=text
 
 # Partial code extraction
-python -m tree_sitter_analyzer examples/Sample.java --partial-read --start-line 84 --end-line 86
+uv run python -m tree_sitter_analyzer examples/Sample.java --partial-read --start-line 84 --end-line 86
 
 # Position information table
-python -m tree_sitter_analyzer examples/Sample.java --table=full
+uv run python -m tree_sitter_analyzer examples/Sample.java --table=full
 ```
 
 #### CLI Output Examples
@@ -80,7 +72,7 @@ python -m tree_sitter_analyzer examples/Sample.java --table=full
 **Code Scale Analysis (`--advanced --output-format=text`):**
 
 >```
->PS C:\git-public\tree-sitter-analyzer> python -m tree_sitter_analyzer examples/Sample.java --advanced --output-format=text
+>PS C:\git-public\tree-sitter-analyzer> uv run python -m tree_sitter_analyzer examples/Sample.java --advanced --output-format=text
 >2025-07-30 16:57:47,827 - tree_sitter_analyzer - INFO - Successfully loaded 3 language plugins: java, javascript, python
 >2025-07-30 16:57:47,916 - tree_sitter_analyzer - INFO - CacheService initialized: L1=100, L2=1000, L3=10000, TTL=3600s
 >2025-07-30 16:57:47,917 - tree_sitter_analyzer - INFO - Loading plugins...
@@ -110,7 +102,7 @@ python -m tree_sitter_analyzer examples/Sample.java --table=full
 
 **Partial Code Extraction (`--partial-read`):**
 >```
->PS C:\git-public\tree-sitter-analyzer> python -m tree_sitter_analyzer examples/Sample.java --partial-read --start-line 84 --end-line 86
+>PS C:\git-public\tree-sitter-analyzer> uv run python -m tree_sitter_analyzer examples/Sample.java --partial-read --start-line 84 --end-line 86
 >2025-07-30 16:58:22,948 - tree_sitter_analyzer - INFO - Successfully loaded 3 language plugins: java, javascript, python
 >2025-07-30 16:58:23,056 - tree_sitter_analyzer - INFO - Successfully read partial file examples/Sample.java: lines 84-86
 >{
@@ -190,14 +182,8 @@ The `--table=full` command produces detailed analysis tables:
 
 The Tree-sitter Analyzer provides an MCP (Model Context Protocol) server that enables AI assistants to analyze code files directly.
 
-```bash
-# Start MCP server
-python -m tree_sitter_analyzer.mcp.server
-```
 
-
-
-### MCP Configuration
+#### MCP Configuration
 
 Add to your Claude Desktop config file:
 
@@ -224,8 +210,7 @@ Add to your Claude Desktop config file:
 1. **analyze_code_scale** - Get code scale and complexity metrics
 2. **format_table** - Generate table-formatted analysis (equivalent to CLI `--table=full`)
 3. **read_code_partial** - Extract specific line ranges from files
-4. **get_code_positions** - Get precise position information for code elements
-5. **analyze_code_universal** - Universal code analysis with automatic language detection
+4. **analyze_code_universal** - Universal code analysis with automatic language detection
 
 #### MCP Usage Examples
 
@@ -304,167 +289,7 @@ Add to your Claude Desktop config file:
 >{
 >  "partial_content_result": "--- 部分読み込み結果 ---\nファイル: examples/Sample.java\n範囲: 行 84-86\n読み込み文字数: 117\n{\n  \"file_path\": >\"examples/Sample.java\",\n  \"range\": {\n    \"start_line\": 84,\n    \"end_line\": 86,\n    \"start_column\": null,\n    \"end_column\": >null\n  },\n  \"content\": \"        public void innerMethod() {\\n            System.out.println(\\\"Inner class method, value: \\\" + >value);\\n        }\\n\",\n  \"content_length\": 117\n}"
 >}
->```
 
-
-**Get Code Positions:**
-```json
-{
-  "tool": "get_code_positions",
-  "arguments": {
-    "file_path": "examples/Sample.java",
-    "element_types": ["methods", "classes"],
-    "include_details": true
-  }
-}
-```
->```json
->{
->  "file_path": "examples/Sample.java",
->  "language": "java",
->  "element_types": [
->    "methods",
->    "classes"
->  ],
->  "include_details": true,
->  "format": "json",
->  "total_elements": 32,
->  "positions": {
->    "methods": [
->      {
->        "name": "abstractMethod",
->        "start_line": 9,
->        "end_line": 9,
->        "start_column": 0,
->        "end_column": 0,
->        "signature": "abstractMethod()",
->        "return_type": "void",
->        "visibility": "package",
->        "is_static": false,
->        "is_constructor": false,
->        "complexity": 1,
->        "annotations": []
->      },
->     ...
->      {
->        "name": "createList",
->        "start_line": 154,
->        "end_line": 158,
->        "start_column": 0,
->        "end_column": 0,
->        "signature": "createList(T item)",
->        "return_type": "List<T>",
->        "visibility": "public",
->        "is_static": false,
->        "is_constructor": false,
->        "complexity": 1,
->        "annotations": []
->      }
->     ],
->     "classes": [
->      {
->        "name": "AbstractParentClass",
->        "start_line": 7,
->        "end_line": 15,
->        "start_column": 0,
->        "end_column": 0,
->        "type": "class",
->        "visibility": "package",
->        "extends": null,
->        "implements": [],
->        "annotations": []
->      },
->      {
->        "name": "ParentClass",
->        "start_line": 18,
->        "end_line": 45,
->        "start_column": 0,
->        "end_column": 0,
->        "type": "class",
->        "visibility": "package",
->        "extends": "AbstractParentClass",
->        "implements": [],
->        "annotations": []
->      },
->      {
->        "name": "TestInterface",
->        "start_line": 48,
->        "end_line": 64,
->        "start_column": 0,
->        "end_column": 0,
->        "type": "interface",
->        "visibility": "package",
->        "extends": null,
->        "implements": [],
->        "annotations": []
->      },
->      {
->        "name": "AnotherInterface",
->        "start_line": 67,
->        "end_line": 69,
->        "start_column": 0,
->        "end_column": 0,
->        "type": "interface",
->        "visibility": "package",
->        "extends": null,
->        "implements": [],
->        "annotations": []
->      },
->      {
->        "name": "Test",
->        "start_line": 72,
->        "end_line": 159,
->        "start_column": 0,
->        "end_column": 0,
->        "type": "class",
->        "visibility": "public",
->        "extends": "ParentClass",
->        "implements": [
->          "TestInterface",
->          "AnotherInterface"
->        ],
->        "annotations": []
->      },
->      {
->        "name": "InnerClass",
->        "start_line": 83,
->        "end_line": 87,
->        "start_column": 0,
->        "end_column": 0,
->        "type": "class",
->        "visibility": "public",
->        "extends": null,
->        "implements": [],
->        "annotations": []
->      },
->      {
->        "name": "StaticNestedClass",
->        "start_line": 90,
->        "end_line": 94,
->        "start_column": 0,
->        "end_column": 0,
->        "type": "class",
->        "visibility": "public",
->        "extends": null,
->        "implements": [],
->        "annotations": []
->      },
->      {
->        "name": "TestEnum",
->        "start_line": 162,
->        "end_line": 178,
->        "start_column": 0,
->        "end_column": 0,
->        "type": "enum",
->        "visibility": "package",
->        "extends": null,
->        "implements": [],
->        "annotations": []
->      }
->     ]
->     }
->     }
->     ```
 
 ## Development
 

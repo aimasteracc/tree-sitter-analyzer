@@ -345,14 +345,8 @@ module.exports = { Calculator, createCalculator };
         assert "partial_content_result" in partial_result
         assert "package com.example.test" in partial_result["partial_content_result"]
         
-        # Test position detection
-        positions_result = await self.server.get_positions_tool.execute({
-            "file_path": java_file,
-            "include_metadata": True
-        })
-        
-        assert "positions" in positions_result
-        assert "classes" in positions_result["positions"]
+        # Position detection functionality has been removed
+        # Test continues with other tools
 
     @pytest.mark.asyncio
     async def test_multi_language_support(self) -> None:
@@ -405,7 +399,6 @@ module.exports = { Calculator, createCalculator };
         assert self.server.analysis_engine is not None
         assert self.server.read_partial_tool is not None
         assert self.server.universal_analyze_tool is not None
-        assert self.server.get_positions_tool is not None
         assert self.server.code_file_resource is not None
         assert self.server.project_stats_resource is not None
         

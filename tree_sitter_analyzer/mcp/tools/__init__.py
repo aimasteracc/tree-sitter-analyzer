@@ -24,11 +24,6 @@ AVAILABLE_TOOLS: Dict[str, Dict[str, Any]] = {
     #     "module": "read_partial_tool",
     #     "class": "ReadPartialTool",
     # },
-    # "get_code_positions": {
-    #     "description": "Get position information for code elements",
-    #     "module": "get_positions_tool",
-    #     "class": "GetPositionsTool",
-    # },
 }
 
 __all__ = [

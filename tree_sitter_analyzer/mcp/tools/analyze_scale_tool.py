@@ -235,7 +235,7 @@ class AnalyzeScaleTool:
         elif total_lines < 1500:
             guidance["size_category"] = "large"
             guidance["analysis_strategy"] = (
-                "This is a large file. Use targeted analysis with get_code_positions and read_code_partial."
+                "This is a large file. Use targeted analysis with read_code_partial."
             )
         else:
             guidance["size_category"] = "very_large"
@@ -245,7 +245,6 @@ class AnalyzeScaleTool:
 
         # Recommend tools based on file size and complexity
         if total_lines > 200:
-            guidance["recommended_tools"].append("get_code_positions")
             guidance["recommended_tools"].append("read_code_partial")
 
         if len(structural_overview["complexity_hotspots"]) > 0:

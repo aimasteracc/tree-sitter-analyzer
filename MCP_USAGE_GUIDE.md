@@ -11,8 +11,7 @@ tree-sitter-analyzerは、AI アシスタント（Claude Desktop等）がコー�
 1. **analyze_code_scale** - コードの規模と複雑性メトリクスを取得
 2. **format_table** - テーブル形式の解析結果を生成
 3. **read_code_partial** - ファイルの特定行範囲を抽出
-4. **get_code_positions** - コード要素の正確な位置情報を取得
-5. **analyze_code_universal** - 自動言語検出による汎用コード解析
+4. **analyze_code_universal** - 自動言語検出による汎用コード解析
 
 ## インストール方法
 

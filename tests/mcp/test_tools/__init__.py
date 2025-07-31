@@ -4,7 +4,7 @@
 Test package for MCP tools
 
 This package contains tests for all MCP tools including
-analyze_code_scale, read_code_partial, and get_code_positions.
+analyze_code_scale and read_code_partial.
 """
 
 __version__ = "1.0.0"
