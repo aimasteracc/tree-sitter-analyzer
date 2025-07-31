@@ -28,14 +28,14 @@ class PartialReadCommand(BaseCommand):
         """Validate input file exists and is accessible."""
         if not hasattr(self.args, "file_path") or not self.args.file_path:
             from ...output_manager import output_error
-            output_error("ERROR: ファイルパスが指定されていません。")
+            output_error("ERROR: File path not specified.")
             return False
 
         import os
 
         if not os.path.exists(self.args.file_path):
             from ...output_manager import output_error
-            output_error(f"ERROR: ファイルが見つかりません: {self.args.file_path}")
+            output_error(f"ERROR: File not found: {self.args.file_path}")
             return False
 
         return True
@@ -54,17 +54,17 @@ class PartialReadCommand(BaseCommand):
         # Validate partial read arguments
         if not self.args.start_line:
             from ...output_manager import output_error
-            output_error("ERROR: --start-lineが必須です")
+            output_error("ERROR: --start-line is required")
             return 1
 
         if self.args.start_line < 1:
             from ...output_manager import output_error
-            output_error("ERROR: --start-lineは1以上である必要があります")
+            output_error("ERROR: --start-line must be 1 or greater")
             return 1
 
         if self.args.end_line and self.args.end_line < self.args.start_line:
             from ...output_manager import output_error
-            output_error("ERROR: --end-lineは--start-line以上である必要があります")
+            output_error("ERROR: --end-line must be greater than or equal to --start-line")
             return 1
 
         # Read partial content
@@ -79,7 +79,7 @@ class PartialReadCommand(BaseCommand):
 
             if partial_content is None:
                 from ...output_manager import output_error
-                output_error("ERROR: ファイルの部分読み込みに失敗しました")
+                output_error("ERROR: Failed to read file partially")
                 return 1
 
             # Output the result
@@ -88,7 +88,7 @@ class PartialReadCommand(BaseCommand):
 
         except Exception as e:
             from ...output_manager import output_error
-            output_error(f"ERROR: ファイルの部分読み込みに失敗しました: {e}")
+            output_error(f"ERROR: Failed to read file partially: {e}")
             return 1
 
     def _output_partial_content(self, content: str) -> None:
@@ -107,7 +107,7 @@ class PartialReadCommand(BaseCommand):
         }
 
         # Build range info for header
-        range_info = f"行 {self.args.start_line}"
+        range_info = f"Line {self.args.start_line}"
         if hasattr(self.args, 'end_line') and self.args.end_line:
             range_info += f"-{self.args.end_line}"
 
@@ -119,10 +119,10 @@ class PartialReadCommand(BaseCommand):
             output_json(result_data)
         else:
             # Human-readable format with header
-            output_section("部分読み込み結果")
-            output_data(f"ファイル: {self.args.file_path}")
-            output_data(f"範囲: {range_info}")
-            output_data(f"読み込み文字数: {len(content)}")
+            output_section("Partial Read Result")
+            output_data(f"File: {self.args.file_path}")
+            output_data(f"Range: {range_info}")
+            output_data(f"Characters read: {len(content)}")
             output_data("")  # Empty line for separation
             
             # Output the actual content

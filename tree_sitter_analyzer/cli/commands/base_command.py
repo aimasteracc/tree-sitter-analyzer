@@ -34,13 +34,13 @@ class BaseCommand(ABC):
     def validate_file(self) -> bool:
         """Validate input file exists and is accessible."""
         if not hasattr(self.args, "file_path") or not self.args.file_path:
-            output_error("ERROR: ファイルパスが指定されていません。")
+            output_error("ERROR: File path not specified.")
             return False
 
         import os
 
         if not os.path.exists(self.args.file_path):
-            output_error(f"ERROR: ファイルが見つかりません: {self.args.file_path}")
+            output_error(f"ERROR: File not found: {self.args.file_path}")
             return False
 
         return True
@@ -50,18 +50,18 @@ class BaseCommand(ABC):
         if hasattr(self.args, "language") and self.args.language:
             target_language = self.args.language.lower()
             if (not hasattr(self.args, "table") or not self.args.table) and (not hasattr(self.args, "quiet") or not self.args.quiet):
-                output_info(f"INFO: 言語が明示的に指定されました: {target_language}")
+                output_info(f"INFO: Language explicitly specified: {target_language}")
         else:
             target_language = detect_language_from_file(self.args.file_path)
             if target_language == "unknown":
                 output_error(
-                    f"ERROR: ファイル '{self.args.file_path}' の言語を判定できませんでした。"
+                    f"ERROR: Could not determine language for file '{self.args.file_path}'."
                 )
                 return None
             else:
                 if (not hasattr(self.args, "table") or not self.args.table) and (not hasattr(self.args, "quiet") or not self.args.quiet):
                     output_info(
-                        f"INFO: 拡張子から言語を自動判定しました: {target_language}"
+                        f"INFO: Language auto-detected from extension: {target_language}"
                     )
 
         # Language support validation
@@ -69,7 +69,7 @@ class BaseCommand(ABC):
             if target_language != "java":
                 if (not hasattr(self.args, "table") or not self.args.table) and (not hasattr(self.args, "quiet") or not self.args.quiet):
                     output_info(
-                        "INFO: Java解析エンジンで試行します。正しく動作しない可能性があります。"
+                        "INFO: Trying with Java analysis engine. May not work correctly."
                     )
                 target_language = "java"  # Fallback
 
@@ -89,10 +89,10 @@ class BaseCommand(ABC):
                         end_column=getattr(self.args, 'end_column', None)
                     )
                     if partial_content is None:
-                        output_error("ERROR: ファイルの部分読み込みに失敗しました")
+                        output_error("ERROR: Failed to read file partially")
                         return None
                 except Exception as e:
-                    output_error(f"ERROR: ファイルの部分読み込みに失敗しました: {e}")
+                    output_error(f"ERROR: Failed to read file partially: {e}")
                     return None
             
             request = AnalysisRequest(
@@ -109,13 +109,13 @@ class BaseCommand(ABC):
                     if analysis_result
                     else "Unknown error"
                 )
-                output_error(f"ERROR: 解析に失敗しました: {error_msg}")
+                output_error(f"ERROR: Analysis failed: {error_msg}")
                 return None
 
             return analysis_result
 
         except Exception as e:
-            output_error(f"ERROR: 解析でエラーが発生しました: {e}")
+            output_error(f"ERROR: An error occurred during analysis: {e}")
             return None
 
     def execute(self) -> int:
@@ -138,7 +138,7 @@ class BaseCommand(ABC):
         try:
             return asyncio.run(self.execute_async(language))
         except Exception as e:
-            output_error(f"ERROR: コマンド実行中にエラーが発生しました: {e}")
+            output_error(f"ERROR: An error occurred during command execution: {e}")
             return 1
 
     @abstractmethod

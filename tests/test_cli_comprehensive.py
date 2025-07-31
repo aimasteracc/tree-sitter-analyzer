@@ -123,7 +123,7 @@ class TestCLIAdvancedOptions:
                 pass
             
             error_output = mock_stderr.getvalue()
-            assert "解析に失敗しました" in error_output
+            assert "Analysis failed" in error_output
 
     def test_statistics_option(self, monkeypatch, sample_java_file):
         """Test --statistics option"""
@@ -230,7 +230,7 @@ class TestCLISummaryOption:
                 pass
             
             error_output = mock_stderr.getvalue()
-            assert "解析に失敗しました" in error_output
+            assert "Analysis failed" in error_output
 
 
 class TestCLIStructureOption:
@@ -295,7 +295,7 @@ class TestCLIStructureOption:
                 pass
             
             error_output = mock_stderr.getvalue()
-            assert "解析に失敗しました" in error_output
+            assert "Analysis failed" in error_output
 
 
 class TestCLITableOption:
@@ -374,7 +374,7 @@ class TestCLITableOption:
                 pass
             
             error_output = mock_stderr.getvalue()
-            assert "解析に失敗しました" in error_output
+            assert "Analysis failed" in error_output
 
 
 class TestCLIPartialReadOption:
@@ -406,7 +406,7 @@ class TestCLIPartialReadOption:
             pass
         
         error_output = mock_stderr.getvalue()
-        assert "--start-lineが必須です" in error_output
+        assert "--start-line is required" in error_output
 
     def test_partial_read_invalid_start_line(self, monkeypatch, sample_java_file):
         """Test --partial-read option with invalid start line"""
@@ -420,7 +420,7 @@ class TestCLIPartialReadOption:
             pass
         
         error_output = mock_stderr.getvalue()
-        assert "--start-lineは1以上である必要があります" in error_output
+        assert "--start-line must be 1 or greater" in error_output
 
     def test_partial_read_invalid_end_line(self, monkeypatch, sample_java_file):
         """Test --partial-read option with invalid end line"""
@@ -434,7 +434,7 @@ class TestCLIPartialReadOption:
             pass
         
         error_output = mock_stderr.getvalue()
-        assert "--end-lineは--start-line以上である必要があります" in error_output
+        assert "--end-line must be greater than or equal to --start-line" in error_output
 
     def test_partial_read_invalid_start_column(self, monkeypatch, sample_java_file):
         """Test --partial-read option with invalid start column"""
@@ -448,7 +448,7 @@ class TestCLIPartialReadOption:
             pass
         
         error_output = mock_stderr.getvalue()
-        assert "--start-columnは0以上である必要があります" in error_output
+        assert "--start-column must be 0 or greater" in error_output
 
     def test_partial_read_invalid_end_column(self, monkeypatch, sample_java_file):
         """Test --partial-read option with invalid end column"""
@@ -462,7 +462,7 @@ class TestCLIPartialReadOption:
             pass
         
         error_output = mock_stderr.getvalue()
-        assert "--end-columnは0以上である必要があります" in error_output
+        assert "--end-column must be 0 or greater" in error_output
 
     def test_partial_read_failure(self, monkeypatch, sample_java_file):
         """Test --partial-read option when reading fails"""
@@ -478,7 +478,7 @@ class TestCLIPartialReadOption:
                 pass
             
             error_output = mock_stderr.getvalue()
-            assert "ファイルの部分読み込みに失敗しました" in error_output
+            assert "Failed to read file partially" in error_output
 
 
 class TestCLIQueryHandling:
@@ -496,7 +496,7 @@ class TestCLIQueryHandling:
             pass
         
         error_output = mock_stderr.getvalue()
-        assert "見つかりません" in error_output
+        assert "not found" in error_output or "見つかりません" in error_output
 
     def test_describe_query_exception(self, monkeypatch, sample_java_file):
         """Test --describe-query with exception"""
@@ -530,7 +530,7 @@ class TestCLILanguageHandling:
             pass
         
         output = mock_stdout.getvalue()
-        assert "Java解析エンジンで試行します" in output
+        assert "Trying with Java analysis engine" in output
 
 
 class TestCLIQueryExecution:
@@ -568,7 +568,7 @@ class TestCLIQueryExecution:
                 pass
             
             output = mock_stdout.getvalue()
-            assert "マッチする結果は見つかりませんでした" in output
+            assert "No matching results found" in output or "マッチする結果は見つかりませんでした" in output
 
     def test_query_execution_parse_failure(self, monkeypatch, sample_java_file):
         """Test query execution when parsing fails"""
@@ -627,7 +627,7 @@ class TestCLIQueryExecution:
                 pass
             
             error_output = mock_stderr.getvalue()
-            assert "見つかりません" in error_output
+            assert "not found" in error_output or "見つかりません" in error_output
 
     def test_query_exception_error(self, monkeypatch, sample_java_file):
         """Test error when query loading raises exception"""
@@ -687,7 +687,7 @@ class TestCLIAdditionalCoverage:
             pass
         
         output = mock_stdout.getvalue()
-        assert "サポートされている言語:" in output
+        assert "Supported languages" in output or "サポートされている言語:" in output
 
     def test_show_supported_extensions(self, monkeypatch):
         """Test --show-supported-extensions option"""
@@ -701,7 +701,7 @@ class TestCLIAdditionalCoverage:
             pass
         
         output = mock_stdout.getvalue()
-        assert "サポートされている拡張子:" in output
+        assert "Supported extensions" in output or "サポートされている拡張子:" in output
 
     def test_show_common_queries(self, monkeypatch):
         """Test --show-common-queries option"""
@@ -729,7 +729,7 @@ class TestCLIAdditionalCoverage:
             pass
         
         output = mock_stdout.getvalue()
-        assert "クエリサポートされている言語:" in output
+        assert "Query supported languages" in output or "クエリサポートされている言語:" in output
 
     def test_list_queries_with_language(self, monkeypatch):
         """Test --list-queries with --language option"""
@@ -743,7 +743,7 @@ class TestCLIAdditionalCoverage:
             pass
         
         output = mock_stdout.getvalue()
-        assert "利用可能なクエリキー (java):" in output
+        assert "Available query keys" in output or "利用可能なクエリキー" in output
 
     def test_list_queries_with_file(self, monkeypatch, sample_java_file):
         """Test --list-queries with file path"""
@@ -757,7 +757,7 @@ class TestCLIAdditionalCoverage:
             pass
         
         output = mock_stdout.getvalue()
-        assert "利用可能なクエリキー" in output
+        assert "Available query keys" in output or "利用可能なクエリキー" in output
 
     def test_list_queries_all_languages(self, monkeypatch):
         """Test --list-queries without language specification"""
@@ -771,7 +771,7 @@ class TestCLIAdditionalCoverage:
             pass
         
         output = mock_stdout.getvalue()
-        assert "サポートされている言語:" in output
+        assert "Supported languages" in output or "サポートされている言語:" in output
 
     def test_describe_query_with_language(self, monkeypatch):
         """Test --describe-query with --language option"""
@@ -785,7 +785,7 @@ class TestCLIAdditionalCoverage:
             pass
         
         output = mock_stdout.getvalue()
-        assert "クエリキー 'class'" in output
+        assert "Query key 'class'" in output or "クエリキー 'class'" in output
 
     def test_describe_query_with_file(self, monkeypatch, sample_java_file):
         """Test --describe-query with file path"""
@@ -799,7 +799,7 @@ class TestCLIAdditionalCoverage:
             pass
         
         output = mock_stdout.getvalue()
-        assert "クエリキー 'class'" in output
+        assert "Query key 'class'" in output or "クエリキー 'class'" in output
 
     def test_describe_query_missing_language_and_file(self, monkeypatch):
         """Test --describe-query without language or file"""
@@ -813,7 +813,7 @@ class TestCLIAdditionalCoverage:
             pass
         
         error_output = mock_stderr.getvalue()
-        assert "--languageまたは対象ファイルの指定が必要です" in error_output
+        assert "--language or target file specification is required" in error_output or "--languageまたは対象ファイルの指定が必要です" in error_output
 
     def test_missing_file_path_error(self, monkeypatch):
         """Test error when file path is missing"""
@@ -827,7 +827,7 @@ class TestCLIAdditionalCoverage:
             pass
         
         error_output = mock_stderr.getvalue()
-        assert "ファイルパスが指定されていません" in error_output
+        assert "File path not specified" in error_output
 
     def test_nonexistent_file_error(self, monkeypatch):
         """Test error when file does not exist"""
@@ -841,7 +841,7 @@ class TestCLIAdditionalCoverage:
             pass
         
         error_output = mock_stderr.getvalue()
-        assert "ファイルが見つかりません" in error_output
+        assert "File not found" in error_output
 
     def test_unknown_language_detection(self, monkeypatch):
         """Test unknown language detection"""
@@ -861,7 +861,7 @@ class TestCLIAdditionalCoverage:
             pass
         
         error_output = mock_stderr.getvalue()
-        assert "言語を判定できませんでした" in error_output
+        assert "Could not determine language for file" in error_output
         
         # Cleanup
         import os
@@ -880,7 +880,7 @@ class TestCLIAdditionalCoverage:
             pass
         
         output = mock_stdout.getvalue()
-        assert "Java解析エンジンで試行します" in output
+        assert "Trying with Java analysis engine" in output
 
     def test_query_string_option(self, monkeypatch, sample_java_file):
         """Test --query-string option"""

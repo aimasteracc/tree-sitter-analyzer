@@ -285,7 +285,7 @@ def test_cli_structure_option_with_sample_file(mocker, sample_java_path):
         pass
 
     output = mock_stdout.getvalue()
-    assert "構造解析結果" in output
+    assert "Structure Analysis Results" in output
 
     # JSON部分を抽出
     json_output = _extract_json_from_cli_output(output)
@@ -321,7 +321,7 @@ def test_cli_structure_option_json_format(mocker, simple_java_code):
             pass
 
         output = mock_stdout.getvalue()
-        assert "構造解析結果" in output
+        assert "Structure Analysis Results" in output
 
         # JSON部分を抽出
         json_output = _extract_json_from_cli_output(output)
@@ -791,13 +791,13 @@ def test_cli_structure_option_text_format(mocker, simple_java_code):
             pass
 
         output = mock_stdout.getvalue()
-        assert "構造解析結果" in output
-        assert "ファイル:" in output
+        assert "Structure Analysis Results" in output
+        assert "File:" in output
         # パッケージ情報は存在する場合のみ出力される
-        # assert "パッケージ:" in output  # この行をコメントアウト
-        assert "クラス数:" in output
-        assert "メソッド数:" in output
-        assert "フィールド数:" in output
+        # assert "Package:" in output  # この行をコメントアウト
+        assert "Classes:" in output
+        assert "Methods:" in output
+        assert "Fields:" in output
 
     finally:
         if os.path.exists(temp_path):

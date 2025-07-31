@@ -81,7 +81,7 @@ uv run python -m tree_sitter_analyzer examples/Sample.java --table=full
 >2025-07-30 16:57:47,922 - tree_sitter_analyzer - INFO - Plugin registered for language: python
 >2025-07-30 16:57:47,922 - tree_sitter_analyzer - INFO - Successfully loaded 3 language plugins: java, javascript, python     
 >2025-07-30 16:57:47,923 - tree_sitter_analyzer - INFO - UnifiedAnalysisEngine initialized
->INFO: 拡張子から言語を自動判定しました: java
+>INFO: Language auto-detected from extension: java
 >2025-07-30 16:57:47,925 - tree_sitter_analyzer - INFO - Starting analysis for examples/Sample.java
 >2025-07-30 16:57:47,945 - tree_sitter_analyzer.core.parser - INFO - Parser initialized successfully
 >2025-07-30 16:57:47,951 - PERF - analyze_java: 0.0253s - Operation completed
@@ -89,15 +89,15 @@ uv run python -m tree_sitter_analyzer examples/Sample.java --table=full
 >2025-07-30 16:57:47,958 - PERF - unified_analysis: 0.0253s - Analyzed examples/Sample.java (java)
 >2025-07-30 16:57:47,958 - tree_sitter_analyzer.performance - INFO - unified_analysis: 0.0253s - Analyzed examples/Sample.java (java)
 >
->--- 高度な解析結果 ---
->"ファイル: examples/Sample.java"
->"パッケージ: (default)"
->"行数: 178"
->"\nクラス数: 8"
->"メソッド数: 24"
->"フィールド数: 5"
->"インポート数: 2"
->"アノテーション数: 0"
+>--- Advanced Analysis Results ---
+>"File: examples/Sample.java"
+>"Package: (default)"
+>"Lines: 178"
+>"Classes: 8"
+>"Methods: 24"
+>"Fields: 5"
+>"Imports: 2"
+>"Annotations: 0"
 >```
 
 **Partial Code Extraction (`--partial-read`):**
@@ -287,7 +287,7 @@ Add to your Claude Desktop config file:
 ```
 >```json
 >{
->  "partial_content_result": "--- 部分読み込み結果 ---\nファイル: examples/Sample.java\n範囲: 行 84-86\n読み込み文字数: 117\n{\n  \"file_path\": >\"examples/Sample.java\",\n  \"range\": {\n    \"start_line\": 84,\n    \"end_line\": 86,\n    \"start_column\": null,\n    \"end_column\": >null\n  },\n  \"content\": \"        public void innerMethod() {\\n            System.out.println(\\\"Inner class method, value: \\\" + >value);\\n        }\\n\",\n  \"content_length\": 117\n}"
+>  "partial_content_result": "--- Partial Read Result ---\nFile: examples/Sample.java\nRange: Line 84-86\nCharacters read: 117\n{\n  \"file_path\": >\"examples/Sample.java\",\n  \"range\": {\n    \"start_line\": 84,\n    \"end_line\": 86,\n    \"start_column\": null,\n    \"end_column\": >null\n  },\n  \"content\": \"        public void innerMethod() {\\n            System.out.println(\\\"Inner class method, value: \\\" + >value);\\n        }\\n\",\n  \"content_length\": 117\n}"
 >}
 
 

@@ -158,16 +158,16 @@ class ReadPartialTool:
                 json_output = json.dumps(result_data, indent=2, ensure_ascii=False)
 
                 # Build range info for header
-                range_info = f"行 {start_line}"
+                range_info = f"Line {start_line}"
                 if end_line:
                     range_info += f"-{end_line}"
 
                 # Build CLI-compatible output with header and JSON (without log message)
                 cli_output = (
-                    f"--- 部分読み込み結果 ---\n"
-                    f"ファイル: {file_path}\n"
-                    f"範囲: {range_info}\n"
-                    f"読み込み文字数: {len(content)}\n"
+                    f"--- Partial Read Result ---\n"
+                    f"File: {file_path}\n"
+                    f"Range: {range_info}\n"
+                    f"Characters read: {len(content)}\n"
                     f"{json_output}"
                 )
 

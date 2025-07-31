@@ -27,7 +27,7 @@ class SummaryCommand(BaseCommand):
 
     def _output_summary_analysis(self, analysis_result: "AnalysisResult") -> None:
         """Output summary analysis results."""
-        output_section("要約結果")
+        output_section("Summary Results")
         
         # Get summary types from args (default: classes,methods)
         summary_types = getattr(self.args, 'summary', 'classes,methods')
@@ -75,19 +75,19 @@ class SummaryCommand(BaseCommand):
             
     def _output_text_format(self, summary_data: dict, requested_types: list) -> None:
         """Output summary in human-readable text format."""
-        output_data(f"ファイル: {summary_data['file_path']}")
-        output_data(f"言語: {summary_data['language']}")
+        output_data(f"File: {summary_data['file_path']}")
+        output_data(f"Language: {summary_data['language']}")
         
         for element_type in requested_types:
             if element_type in summary_data['summary']:
                 elements = summary_data['summary'][element_type]
                 type_name_map = {
-                    'classes': 'クラス',
-                    'methods': 'メソッド', 
-                    'fields': 'フィールド',
-                    'imports': 'インポート'
+                    'classes': 'Classes',
+                    'methods': 'Methods',
+                    'fields': 'Fields',
+                    'imports': 'Imports'
                 }
                 type_name = type_name_map.get(element_type, element_type)
-                output_data(f"\n{type_name} ({len(elements)}個):")
+                output_data(f"\n{type_name} ({len(elements)} items):")
                 for element in elements:
                     output_data(f"  - {element['name']}") 

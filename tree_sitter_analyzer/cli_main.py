@@ -183,23 +183,23 @@ def handle_special_commands(args: argparse.Namespace) -> Optional[int]:
     # Validate partial read options
     if hasattr(args, 'partial_read') and args.partial_read:
         if args.start_line is None:
-            output_error("ERROR: --start-lineが必須です")
+            output_error("ERROR: --start-line is required")
             return 1
         
         if args.start_line < 1:
-            output_error("ERROR: --start-lineは1以上である必要があります")
+            output_error("ERROR: --start-line must be 1 or greater")
             return 1
         
         if args.end_line and args.end_line < args.start_line:
-            output_error("ERROR: --end-lineは--start-line以上である必要があります")
+            output_error("ERROR: --end-line must be greater than or equal to --start-line")
             return 1
         
         if args.start_column is not None and args.start_column < 0:
-            output_error("ERROR: --start-columnは0以上である必要があります")
+            output_error("ERROR: --start-column must be 0 or greater")
             return 1
         
         if args.end_column is not None and args.end_column < 0:
-            output_error("ERROR: --end-columnは0以上である必要があります")
+            output_error("ERROR: --end-column must be 0 or greater")
             return 1
 
     # Query language commands
@@ -258,7 +258,7 @@ def main() -> None:
         sys.exit(exit_code)
     else:
         if not args.file_path:
-            output_error("ERROR: ファイルパスが指定されていません。")
+            output_error("ERROR: File path not specified.")
         else:
             output_error("ERROR: 実行可能なコマンドが指定されていません。")
         parser.print_help()

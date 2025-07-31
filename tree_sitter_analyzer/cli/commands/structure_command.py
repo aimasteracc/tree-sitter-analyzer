@@ -27,7 +27,7 @@ class StructureCommand(BaseCommand):
 
     def _output_structure_analysis(self, analysis_result: "AnalysisResult") -> None:
         """Output structure analysis results with appropriate Japanese header."""
-        output_section("構造解析結果")
+        output_section("Structure Analysis Results")
         
         # Convert to legacy structure format expected by tests
         structure_dict = self._convert_to_legacy_format(analysis_result)
@@ -91,31 +91,31 @@ class StructureCommand(BaseCommand):
     
     def _output_text_format(self, structure_dict: dict) -> None:
         """Output structure analysis in human-readable text format."""
-        output_data(f"ファイル: {structure_dict['file_path']}")
-        output_data(f"言語: {structure_dict['language']}")
+        output_data(f"File: {structure_dict['file_path']}")
+        output_data(f"Language: {structure_dict['language']}")
         
         if structure_dict['package']:
-            output_data(f"パッケージ: {structure_dict['package']['name']}")
+            output_data(f"Package: {structure_dict['package']['name']}")
         
         stats = structure_dict['statistics']
-        output_data(f"統計:")
-        output_data(f"  クラス数: {stats['class_count']}")
-        output_data(f"  メソッド数: {stats['method_count']}")
-        output_data(f"  フィールド数: {stats['field_count']}")
-        output_data(f"  インポート数: {stats['import_count']}")
-        output_data(f"  総行数: {stats['total_lines']}")
+        output_data(f"Statistics:")
+        output_data(f"  Classes: {stats['class_count']}")
+        output_data(f"  Methods: {stats['method_count']}")
+        output_data(f"  Fields: {stats['field_count']}")
+        output_data(f"  Imports: {stats['import_count']}")
+        output_data(f"  Total lines: {stats['total_lines']}")
         
         if structure_dict['classes']:
-            output_data("クラス:")
+            output_data("Classes:")
             for cls in structure_dict['classes']:
                 output_data(f"  - {cls['name']}")
         
         if structure_dict['methods']:
-            output_data("メソッド:")
+            output_data("Methods:")
             for method in structure_dict['methods']:
                 output_data(f"  - {method['name']}")
         
         if structure_dict['fields']:
-            output_data("フィールド:")
+            output_data("Fields:")
             for field in structure_dict['fields']:
                 output_data(f"  - {field['name']}") 

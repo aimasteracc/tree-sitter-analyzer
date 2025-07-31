@@ -37,7 +37,7 @@ class AdvancedCommand(BaseCommand):
             "node_count": analysis_result.node_count,
             "language": analysis_result.language,
         }
-        output_section("統計情報")
+        output_section("Statistics")
         if self.args.output_format == "json":
             output_json(stats)
         else:
@@ -46,7 +46,7 @@ class AdvancedCommand(BaseCommand):
 
     def _output_full_analysis(self, analysis_result: "AnalysisResult") -> None:
         """Output full analysis results."""
-        output_section("高度な解析結果")
+        output_section("Advanced Analysis Results")
         if self.args.output_format == "json":
             result_dict = {
                 "file_path": analysis_result.file_path,
@@ -72,17 +72,17 @@ class AdvancedCommand(BaseCommand):
 
     def _output_text_analysis(self, analysis_result: "AnalysisResult") -> None:
         """Output analysis in text format."""
-        output_data(f"ファイル: {analysis_result.file_path}")
-        output_data(f"パッケージ: (default)")
-        output_data(f"行数: {analysis_result.line_count}")
+        output_data(f"File: {analysis_result.file_path}")
+        output_data(f"Package: (default)")
+        output_data(f"Lines: {analysis_result.line_count}")
 
         element_counts = {}
         for element in analysis_result.elements:
             element_type = getattr(element, "__class__", type(element)).__name__
             element_counts[element_type] = element_counts.get(element_type, 0) + 1
 
-        output_data(f"\nクラス数: {element_counts.get('Class', 0)}")
-        output_data(f"メソッド数: {element_counts.get('Function', 0)}")
-        output_data(f"フィールド数: {element_counts.get('Variable', 0)}")
-        output_data(f"インポート数: {element_counts.get('Import', 0)}")
-        output_data(f"アノテーション数: 0")
+        output_data(f"Classes: {element_counts.get('Class', 0)}")
+        output_data(f"Methods: {element_counts.get('Function', 0)}")
+        output_data(f"Fields: {element_counts.get('Variable', 0)}")
+        output_data(f"Imports: {element_counts.get('Import', 0)}")
+        output_data(f"Annotations: 0")
