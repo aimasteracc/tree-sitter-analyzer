@@ -66,7 +66,7 @@ Add to your Claude Desktop config file:
 uv add "tree-sitter-analyzer[popular]"
 
 # Step 1: Check file scale
-uv run python -m tree_sitter_analyzer examples/Sample.java --advanced
+uv run python -m tree_sitter_analyzer examples/Sample.java --advanced --output-format=text
 
 # Step 2: Analyze structure (for large files)
 uv run python -m tree_sitter_analyzer examples/Sample.java --table=full
@@ -120,7 +120,7 @@ Four powerful MCP tools for AI assistants:
 
 **Step 1: Basic analysis (Check file scale):**
 ```bash
-uv run python -m tree_sitter_analyzer examples/Sample.java --advanced
+uv run python -m tree_sitter_analyzer examples/Sample.java --advanced --output-format=text
 ```
 
 **Step 2: Structure analysis (For large files that exceed LLM limits):**
@@ -136,7 +136,7 @@ uv run python -m tree_sitter_analyzer examples/Sample.java --partial-read --star
 **Additional Options:**
 ```bash
 # Quiet mode (suppress INFO messages, show only errors)
-uv run python -m tree_sitter_analyzer examples/Sample.java --advanced --quiet
+uv run python -m tree_sitter_analyzer examples/Sample.java --advanced --output-format=text --quiet
 
 # Table output with quiet mode
 uv run python -m tree_sitter_analyzer examples/Sample.java --table=full --quiet
@@ -193,6 +193,21 @@ MIT License - see [LICENSE](LICENSE) file for details.
 ## 🤝 Contributing
 
 We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
+
+### 🤖 AI/LLM Collaboration
+
+This project supports AI-assisted development with specialized quality controls:
+
+```bash
+# For AI systems - run before generating code
+python check_quality.py --new-code-only
+python llm_code_checker.py --check-all
+
+# For AI-generated code review
+python llm_code_checker.py path/to/new_file.py
+```
+
+📖 **See our [AI Collaboration Guide](AI_COLLABORATION_GUIDE.md) and [LLM Coding Guidelines](LLM_CODING_GUIDELINES.md) for detailed instructions on working with AI systems.**
 
 ---
 

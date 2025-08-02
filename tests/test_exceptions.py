@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Tests for tree_sitter_analyzer.exceptions module
 
@@ -7,25 +6,25 @@ This module tests all custom exception classes to improve coverage
 and ensure proper error handling according to .roo-config.json requirements.
 """
 
-import pytest
-from typing import Any, Dict, List, Optional
 from unittest.mock import Mock, patch
 
+import pytest
+
 from tree_sitter_analyzer.exceptions import (
-    TreeSitterAnalyzerError,
     AnalysisError,
-    ParseError,
+    ConfigurationError,
+    FileHandlingError,
     LanguageNotSupportedError,
+    MCPError,
+    ParseError,
     PluginError,
     QueryError,
-    FileHandlingError,
-    ConfigurationError,
+    TreeSitterAnalyzerError,
     ValidationError,
-    MCPError,
-    handle_exception,
-    safe_execute,
     create_error_response,
+    handle_exception,
     handle_exceptions,
+    safe_execute,
 )
 
 
@@ -56,14 +55,16 @@ class TestTreeSitterAnalyzerError:
     def test_to_dict_method(self) -> None:
         """Test exception to_dict conversion"""
         context = {"file": "test.py"}
-        error = TreeSitterAnalyzerError("Test error", error_code="TEST_ERROR", context=context)
+        error = TreeSitterAnalyzerError(
+            "Test error", error_code="TEST_ERROR", context=context
+        )
         result = error.to_dict()
-        
+
         expected = {
             "error_type": "TreeSitterAnalyzerError",
             "error_code": "TEST_ERROR",
             "message": "Test error",
-            "context": context
+            "context": context,
         }
         assert result == expected
 
@@ -90,6 +91,7 @@ class TestAnalysisError:
     def test_analysis_error_with_all_params(self) -> None:
         """Test analysis error with all parameters"""
         from pathlib import Path
+
         file_path = Path("test.py")
         error = AnalysisError("Analysis failed", file_path=file_path, language="python")
         assert error.context["file_path"] == "test.py"
@@ -159,7 +161,9 @@ class TestPluginError:
 
     def test_plugin_error_with_all_params(self) -> None:
         """Test plugin error with all parameters"""
-        error = PluginError("Plugin failed", plugin_name="java_plugin", operation="initialize")
+        error = PluginError(
+            "Plugin failed", plugin_name="java_plugin", operation="initialize"
+        )
         assert error.context["plugin_name"] == "java_plugin"
         assert error.context["operation"] == "initialize"
 
@@ -187,10 +191,10 @@ class TestQueryError:
     def test_query_error_with_all_params(self) -> None:
         """Test query error with all parameters"""
         error = QueryError(
-            "Query failed", 
-            query_name="functions", 
+            "Query failed",
+            query_name="functions",
             query_string="(function_declaration) @func",
-            language="python"
+            language="python",
         )
         assert error.context["query_name"] == "functions"
         assert error.context["query_string"] == "(function_declaration) @func"
@@ -280,64 +284,67 @@ class TestMCPError:
 class TestExceptionUtilities:
     """Test exception handling utilities"""
 
-    @patch('tree_sitter_analyzer.utils.log_error')
+    @patch("tree_sitter_analyzer.utils.log_error")
     def test_handle_exception_basic(self, mock_log_error: Mock) -> None:
         """Test basic exception handling"""
         original_error = ValueError("Test error")
-        
+
         with pytest.raises(ValueError):
             handle_exception(original_error)
-        
+
         mock_log_error.assert_called_once()
 
-    @patch('tree_sitter_analyzer.utils.log_error')
+    @patch("tree_sitter_analyzer.utils.log_error")
     def test_handle_exception_with_context(self, mock_log_error: Mock) -> None:
         """Test exception handling with context"""
         original_error = ValueError("Test error")
         context = {"file": "test.py"}
-        
+
         with pytest.raises(ValueError):
             handle_exception(original_error, context=context)
-        
+
         mock_log_error.assert_called_once()
 
-    @patch('tree_sitter_analyzer.utils.log_error')
+    @patch("tree_sitter_analyzer.utils.log_error")
     def test_handle_exception_reraise_as(self, mock_log_error: Mock) -> None:
         """Test exception handling with re-raising"""
         original_error = ValueError("Test error")
-        
+
         # Test that the function attempts to re-raise, but skip the actual re-raising due to context conflict
         try:
             handle_exception(original_error, reraise_as=AnalysisError)
         except (AnalysisError, TypeError):
             # Either the re-raise works or there's a context parameter conflict
             pass
-        
+
         mock_log_error.assert_called_once()
 
     def test_safe_execute_success(self) -> None:
         """Test safe execution with successful function"""
+
         def test_func(x: int) -> int:
             return x * 2
-        
+
         result = safe_execute(test_func, 5)
         assert result == 10
 
-    @patch('tree_sitter_analyzer.utils.log_error')
+    @patch("tree_sitter_analyzer.utils.log_error")
     def test_safe_execute_with_exception(self, mock_log_error: Mock) -> None:
         """Test safe execution with exception"""
+
         def failing_func() -> None:
             raise ValueError("Test error")
-        
+
         result = safe_execute(failing_func, default_return="default")
         assert result == "default"
         mock_log_error.assert_called_once()
 
     def test_safe_execute_no_logging(self) -> None:
         """Test safe execution without logging"""
+
         def failing_func() -> None:
             raise ValueError("Test error")
-        
+
         result = safe_execute(failing_func, default_return="default", log_errors=False)
         assert result == "default"
 
@@ -345,7 +352,7 @@ class TestExceptionUtilities:
         """Test basic error response creation"""
         error = ValueError("Test error")
         response = create_error_response(error)
-        
+
         assert response["success"] is False
         assert response["error"]["type"] == "ValueError"
         assert response["error"]["message"] == "Test error"
@@ -354,52 +361,58 @@ class TestExceptionUtilities:
         """Test error response with context"""
         error = AnalysisError("Test error", file_path="test.py")
         response = create_error_response(error)
-        
+
         assert response["error"]["context"]["file_path"] == "test.py"
 
     def test_create_error_response_with_traceback(self) -> None:
         """Test error response with traceback"""
         error = ValueError("Test error")
         response = create_error_response(error, include_traceback=True)
-        
+
         assert "traceback" in response["error"]
 
     def test_handle_exceptions_decorator_success(self) -> None:
         """Test exception handling decorator with successful function"""
+
         @handle_exceptions(default_return="default")
         def test_func(x: int) -> int:
             return x * 2
-        
+
         result = test_func(5)
         assert result == 10
 
-    @patch('tree_sitter_analyzer.utils.log_error')
-    def test_handle_exceptions_decorator_with_exception(self, mock_log_error: Mock) -> None:
+    @patch("tree_sitter_analyzer.utils.log_error")
+    def test_handle_exceptions_decorator_with_exception(
+        self, mock_log_error: Mock
+    ) -> None:
         """Test exception handling decorator with exception"""
+
         @handle_exceptions(default_return="default")
         def failing_func() -> None:
             raise ValueError("Test error")
-        
+
         result = failing_func()
         assert result == "default"
         mock_log_error.assert_called_once()
 
-    @patch('tree_sitter_analyzer.utils.log_error')
+    @patch("tree_sitter_analyzer.utils.log_error")
     def test_handle_exceptions_decorator_reraise(self, mock_log_error: Mock) -> None:
         """Test exception handling decorator with re-raising"""
+
         @handle_exceptions(reraise_as=AnalysisError)
         def failing_func() -> None:
             raise ValueError("Test error")
-        
+
         with pytest.raises(AnalysisError):
             failing_func()
 
     def test_handle_exceptions_decorator_no_logging(self) -> None:
         """Test exception handling decorator without logging"""
+
         @handle_exceptions(default_return="default", log_errors=False)
         def failing_func() -> None:
             raise ValueError("Test error")
-        
+
         result = failing_func()
         assert result == "default"
 
@@ -428,21 +441,21 @@ class TestExceptionInheritance:
     def test_exception_context_inheritance(self) -> None:
         """Test that context is properly inherited"""
         error = AnalysisError("Test", file_path="test.py", language="python")
-        assert hasattr(error, 'context')
+        assert hasattr(error, "context")
         assert error.context["file_path"] == "test.py"
         assert error.context["language"] == "python"
 
     def test_exception_error_code_inheritance(self) -> None:
         """Test that error codes are properly set"""
         error = PluginError("Test", plugin_name="test_plugin")
-        assert hasattr(error, 'error_code')
+        assert hasattr(error, "error_code")
         assert error.error_code == "PluginError"
 
     def test_exception_to_dict_inheritance(self) -> None:
         """Test that to_dict method works for all exceptions"""
         error = QueryError("Test", query_name="functions")
         result = error.to_dict()
-        
+
         assert "error_type" in result
         assert "error_code" in result
         assert "message" in result
@@ -457,7 +470,9 @@ class TestExceptionEdgeCases:
         """Test exceptions with None values"""
         error = AnalysisError("Test", file_path=None, language=None)
         # Should not add None values to context
-        assert "file_path" not in error.context or error.context.get("file_path") is None
+        assert (
+            "file_path" not in error.context or error.context.get("file_path") is None
+        )
         assert "language" not in error.context or error.context.get("language") is None
 
     def test_exception_with_empty_context(self) -> None:
@@ -473,20 +488,25 @@ class TestExceptionEdgeCases:
 
     def test_safe_execute_with_specific_exception_types(self) -> None:
         """Test safe execute with specific exception types"""
+
         def failing_func() -> None:
             raise ValueError("Test error")
-        
+
         # Should catch ValueError
-        result = safe_execute(failing_func, exception_types=(ValueError,), default_return="caught")
+        result = safe_execute(
+            failing_func, exception_types=(ValueError,), default_return="caught"
+        )
         assert result == "caught"
-        
+
         # Should not catch TypeError
         with pytest.raises(ValueError):
-            safe_execute(failing_func, exception_types=(TypeError,), default_return="not_caught")
+            safe_execute(
+                failing_func, exception_types=(TypeError,), default_return="not_caught"
+            )
 
     def test_handle_exception_with_tree_sitter_error(self) -> None:
         """Test handle_exception with TreeSitterAnalyzerError"""
         original_error = AnalysisError("Test error", file_path="test.py")
-        
+
         with pytest.raises(AnalysisError):
             handle_exception(original_error)

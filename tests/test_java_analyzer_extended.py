@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Extended Tests for Java Analyzer
 
@@ -9,8 +8,8 @@ Additional test cases to improve coverage for Java analyzer functionality.
 import os
 import sys
 import tempfile
+
 import pytest
-import pytest_asyncio
 
 # Add project root to path
 sys.path.insert(0, ".")
@@ -23,22 +22,20 @@ from tree_sitter_analyzer.java_analyzer import CodeAnalyzer, main
 @pytest.fixture
 def temp_java_file():
     """Create a temporary Java file for testing"""
-    temp_file = tempfile.NamedTemporaryFile(
-        mode="w", suffix=".java", delete=False
-    )
+    temp_file = tempfile.NamedTemporaryFile(mode="w", suffix=".java", delete=False)
     temp_file.write(
         """
 public class TestClass {
     private String name;
-    
+
     public TestClass(String name) {
         this.name = name;
     }
-    
+
     public String getName() {
         return this.name;
     }
-    
+
     public void setName(String name) {
         this.name = name;
     }
@@ -46,9 +43,9 @@ public class TestClass {
 """
     )
     temp_file.close()
-    
+
     yield temp_file.name
-    
+
     # Cleanup
     if os.path.exists(temp_file.name):
         os.unlink(temp_file.name)
@@ -240,20 +237,20 @@ import java.util.ArrayList;
 public class ComplexClass extends BaseClass implements Runnable {
     private static final String CONSTANT = "value";
     private List<String> items;
-    
+
     public ComplexClass() {
         this.items = new ArrayList<>();
     }
-    
+
     @Override
     public void run() {
         // Implementation
     }
-    
+
     public static void staticMethod() {
         // Static method
     }
-    
+
     private void privateMethod() throws Exception {
         // Private method that throws exception
     }
@@ -344,7 +341,7 @@ public class MalformedClass {
             """
 public class UnicodeClass {
     private String message = "こんにちは世界"; // Japanese text
-    
+
     public void printMessage() {
         System.out.println(message);
     }
@@ -425,7 +422,7 @@ class TestCodeAnalyzerEdgeCases:
             """
 public class MultiQueryTest {
     private int value;
-    
+
     public void method1() {}
     public void method2() {}
 }

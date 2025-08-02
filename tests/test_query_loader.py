@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Tests for query_loader module
 """
@@ -156,11 +155,11 @@ def test_get_common_queries():
 
 def test_is_language_supported_function():
     """Test standalone is_language_supported function"""
-    assert is_language_supported("java") == True
-    assert is_language_supported("javascript") == True
-    assert is_language_supported("python") == True
-    assert is_language_supported("typescript") == True
-    assert is_language_supported("unknown") == False
+    assert is_language_supported("java")
+    assert is_language_supported("javascript")
+    assert is_language_supported("python")
+    assert is_language_supported("typescript")
+    assert not is_language_supported("unknown")
 
 
 def test_get_all_queries_for_language():
@@ -170,7 +169,7 @@ def test_get_all_queries_for_language():
             all_queries = query_loader.get_all_queries_for_language(language)
             assert isinstance(all_queries, dict)
 
-            for query_name, (query_string, description) in all_queries.items():
+            for _query_name, (query_string, description) in all_queries.items():
                 assert isinstance(query_string, str)
                 assert isinstance(description, str)
                 assert len(query_string) > 0
@@ -241,7 +240,7 @@ def test_empty_language_name():
     """Test handling of empty language names"""
     assert query_loader.get_query("", "functions") is None
     assert query_loader.list_queries("") == []
-    assert query_loader.is_language_supported("") == False
+    assert not query_loader.is_language_supported("")
 
 
 def test_none_parameters():

@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 CLI Package
 
@@ -16,9 +15,10 @@ from .info_commands import (
 
 # Modern framework imports
 try:
+    from ..cli_main import main
     from ..core.analysis_engine import get_analysis_engine
     from ..query_loader import QueryLoader
-    from ..cli_main import main
+
     query_loader = QueryLoader()
 except ImportError:
     # Minimal fallback for import safety
@@ -28,7 +28,7 @@ except ImportError:
 
 __all__ = [
     "InfoCommand",
-    "ListQueriesCommand", 
+    "ListQueriesCommand",
     "DescribeQueryCommand",
     "ShowLanguagesCommand",
     "ShowExtensionsCommand",

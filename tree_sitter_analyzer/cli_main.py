@@ -1,11 +1,9 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """CLI Main Module - Entry point for command-line interface."""
 
 import argparse
 import logging
 import sys
-from typing import Optional
 
 # Import command classes
 from .cli.commands import (
@@ -177,27 +175,29 @@ def create_argument_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def handle_special_commands(args: argparse.Namespace) -> Optional[int]:
+def handle_special_commands(args: argparse.Namespace) -> int | None:
     """Handle special commands that don't fit the normal pattern."""
 
     # Validate partial read options
-    if hasattr(args, 'partial_read') and args.partial_read:
+    if hasattr(args, "partial_read") and args.partial_read:
         if args.start_line is None:
             output_error("ERROR: --start-line is required")
             return 1
-        
+
         if args.start_line < 1:
             output_error("ERROR: --start-line must be 1 or greater")
             return 1
-        
+
         if args.end_line and args.end_line < args.start_line:
-            output_error("ERROR: --end-line must be greater than or equal to --start-line")
+            output_error(
+                "ERROR: --end-line must be greater than or equal to --start-line"
+            )
             return 1
-        
+
         if args.start_column is not None and args.start_column < 0:
             output_error("ERROR: --start-column must be 0 or greater")
             return 1
-        
+
         if args.end_column is not None and args.end_column < 0:
             output_error("ERROR: --end-column must be 0 or greater")
             return 1
@@ -227,9 +227,10 @@ def main() -> None:
     """Main entry point for the CLI."""
     # Early check for quiet mode to set environment variable before any imports
     import os
+
     if "--quiet" in sys.argv:
-        os.environ['LOG_LEVEL'] = 'ERROR'
-    
+        os.environ["LOG_LEVEL"] = "ERROR"
+
     parser = create_argument_parser()
     args = parser.parse_args()
 

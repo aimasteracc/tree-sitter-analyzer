@@ -1,16 +1,14 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Test cases for encoding cache functionality
 """
 
-import os
+import shutil
 import tempfile
 import time
-import shutil
-import pytest
-import pytest_asyncio
 from pathlib import Path
+
+import pytest
 
 from tree_sitter_analyzer.encoding_utils import (
     EncodingCache,
@@ -33,26 +31,22 @@ def encoding_cache():
 def temp_files():
     """Fixture for temporary test files"""
     clear_encoding_cache()
-    
+
     # Create temporary test files
     temp_dir = tempfile.mkdtemp()
     utf8_file = Path(temp_dir) / "test_utf8.java"
     cp1252_file = Path(temp_dir) / "test_cp1252.java"
-    
+
     # Write UTF-8 content
     with open(utf8_file, "wb") as f:
-        f.write("public class Test { /* 日本語 */ }".encode("utf-8"))
-    
+        f.write("public class Test { /* 日本語 */ }".encode())
+
     # Write CP1252 content
     with open(cp1252_file, "wb") as f:
         f.write("public class Test { /* café */ }".encode("cp1252"))
-    
-    yield {
-        'temp_dir': temp_dir,
-        'utf8_file': utf8_file,
-        'cp1252_file': cp1252_file
-    }
-    
+
+    yield {"temp_dir": temp_dir, "utf8_file": utf8_file, "cp1252_file": cp1252_file}
+
     # Clean up test files
     shutil.rmtree(temp_dir, ignore_errors=True)
     clear_encoding_cache()
@@ -62,32 +56,29 @@ def temp_files():
 def performance_test_file():
     """Fixture for performance test file"""
     clear_encoding_cache()
-    
+
     # Create a test file
     temp_dir = tempfile.mkdtemp()
     test_file = Path(temp_dir) / "performance_test.java"
-    
+
     # Write test content
     test_content = """
 public class PerformanceTest {
     public void method1() {
         System.out.println("Test method 1");
     }
-    
+
     public void method2() {
         System.out.println("Test method 2");
     }
 }
 """.strip()
-    
+
     with open(test_file, "w", encoding="utf-8") as f:
         f.write(test_content)
-    
-    yield {
-        'temp_dir': temp_dir,
-        'test_file': test_file
-    }
-    
+
+    yield {"temp_dir": temp_dir, "test_file": test_file}
+
     # Clean up test files
     shutil.rmtree(temp_dir, ignore_errors=True)
     clear_encoding_cache()
@@ -157,8 +148,8 @@ def test_cache_clear(encoding_cache):
 
 def test_encoding_detection_with_caching(temp_files):
     """Test encoding detection with file path caching"""
-    utf8_file = temp_files['utf8_file']
-    
+    utf8_file = temp_files["utf8_file"]
+
     # First detection should cache the result
     with open(utf8_file, "rb") as f:
         data = f.read()
@@ -175,8 +166,8 @@ def test_encoding_detection_with_caching(temp_files):
 
 def test_encoding_detection_without_caching(temp_files):
     """Test encoding detection without file path (no caching)"""
-    utf8_file = temp_files['utf8_file']
-    
+    utf8_file = temp_files["utf8_file"]
+
     with open(utf8_file, "rb") as f:
         data = f.read()
 
@@ -192,9 +183,9 @@ def test_encoding_detection_without_caching(temp_files):
 
 def test_multiple_files_caching(temp_files):
     """Test caching with multiple files"""
-    utf8_file = temp_files['utf8_file']
-    cp1252_file = temp_files['cp1252_file']
-    
+    utf8_file = temp_files["utf8_file"]
+    cp1252_file = temp_files["cp1252_file"]
+
     # Detect encoding for UTF-8 file
     with open(utf8_file, "rb") as f:
         utf8_data = f.read()
@@ -219,8 +210,8 @@ def test_multiple_files_caching(temp_files):
 
 def test_repeated_detection_performance(performance_test_file):
     """Test that repeated detections use cache"""
-    test_file = performance_test_file['test_file']
-    
+    test_file = performance_test_file["test_file"]
+
     with open(test_file, "rb") as f:
         data = f.read()
 

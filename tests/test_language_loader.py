@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Tests for language_loader module
 """
@@ -50,8 +49,8 @@ def test_is_language_available_known_languages():
 
 def test_is_language_available_unknown_language():
     """Test availability check for unknown languages"""
-    assert loader.is_language_available("unknown_lang") == False
-    assert loader.is_language_available("nonexistent") == False
+    assert not loader.is_language_available("unknown_lang")
+    assert not loader.is_language_available("nonexistent")
 
 
 def test_create_parser_safely_with_available_language():
@@ -77,7 +76,7 @@ def test_check_language_availability_function():
 
     assert isinstance(java_available, bool)
     assert isinstance(unknown_available, bool)
-    assert unknown_available == False
+    assert not unknown_available
 
 
 def test_typescript_dialects():
@@ -145,26 +144,27 @@ def test_special_typescript_handling():
     # since TSX uses the same parser as TypeScript
     if ts_available:
         # If TypeScript is available, TSX should also be available
-        assert tsx_available == True
+        assert tsx_available
 
 
 # Edge cases and error conditions tests
 
+
 def test_empty_language_name():
     """Test handling of empty language names"""
-    assert loader.is_language_available("") == False
+    assert not loader.is_language_available("")
     assert create_parser_safely("") is None
 
 
 def test_none_language_name():
     """Test handling of None language names"""
-    assert loader.is_language_available(None) == False
+    assert not loader.is_language_available(None)
     assert create_parser_safely(None) is None
 
 
 def test_case_sensitivity():
     """Test case sensitivity of language names"""
     # Language names should be case sensitive
-    assert loader.is_language_available("JAVA") == False
-    assert loader.is_language_available("JavaScript") == False
-    assert loader.is_language_available("Python") == False
+    assert not loader.is_language_available("JAVA")
+    assert not loader.is_language_available("JavaScript")
+    assert not loader.is_language_available("Python")

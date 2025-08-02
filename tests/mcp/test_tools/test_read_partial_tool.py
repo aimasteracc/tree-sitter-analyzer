@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Test cases for read_partial_file MCP tool
 
@@ -7,14 +6,10 @@ Tests the partial file reading tool that provides selective
 content extraction from files.
 """
 
-import json
-import tempfile
-from pathlib import Path
-from typing import Any, Dict
+
 # Mock functionality now provided by pytest-mock
 
 import pytest
-import pytest_asyncio
 
 from tree_sitter_analyzer.mcp.tools.read_partial_tool import ReadPartialTool
 
@@ -29,18 +24,18 @@ class TestReadPartialToolSchema:
     def test_tool_schema_structure(self) -> None:
         """Test that tool schema has required structure"""
         schema = self.tool.get_tool_schema()
-        
+
         # Test schema structure
         assert "type" in schema
         assert "properties" in schema
         assert "required" in schema
-        
+
         # Test schema type
         assert schema["type"] == "object"
-        
+
         # Test required fields
         assert "file_path" in schema["required"]
-        
+
         # Test properties
         properties = schema["properties"]
         assert "file_path" in properties
@@ -57,9 +52,9 @@ class TestReadPartialToolSchema:
             "file_path": "/path/to/file.java",
             "start_line": 1,
             "end_line": 10,
-            "format": "json"
+            "format": "json",
         }
-        
+
         # Should not raise exception
         result = self.tool.validate_arguments(valid_args)
         assert result is True
@@ -67,11 +62,8 @@ class TestReadPartialToolSchema:
     def test_required_parameters(self) -> None:
         """Test required parameter validation"""
         # Missing file_path
-        invalid_args = {
-            "start_line": 1,
-            "end_line": 10
-        }
-        
+        invalid_args = {"start_line": 1, "end_line": 10}
+
         with pytest.raises(ValueError) as exc_info:
             self.tool.validate_arguments(invalid_args)
         assert "file_path" in str(exc_info.value)
@@ -83,21 +75,21 @@ class TestReadPartialToolFunctionality:
     def setup_method(self) -> None:
         """Set up test fixtures"""
         self.tool = ReadPartialTool()
-        self.sample_content = '''Line 1: package com.example;
-Line 2: 
+        self.sample_content = """Line 1: package com.example;
+Line 2:
 Line 3: import java.util.List;
-Line 4: 
+Line 4:
 Line 5: /**
 Line 6:  * Sample class
 Line 7:  */
 Line 8: public class Sample {
 Line 9:     private String name;
-Line 10:     
+Line 10:
 Line 11:     public String getName() {
 Line 12:         return name;
 Line 13:     }
 Line 14: }
-Line 15: '''
+Line 15: """
 
     def test_read_line_range_placeholder(self) -> None:
         """Test reading a specific line range - placeholder"""
@@ -138,9 +130,9 @@ class TestReadPartialToolErrorHandling:
         invalid_args = {
             "file_path": "/path/to/file.java",
             "start_line": 10,
-            "end_line": 5  # end < start
+            "end_line": 5,  # end < start
         }
-        
+
         with pytest.raises(ValueError):
             self.tool.validate_arguments(invalid_args)
 
@@ -165,11 +157,11 @@ class TestReadPartialToolIntegration:
     def test_integration_with_file_handler(self) -> None:
         """Test integration with file handling utilities"""
         from tree_sitter_analyzer.file_handler import read_file_partial
-        
+
         # Verify file handler exists and is callable
         # Function-based API, no handler object needed
         assert callable(read_file_partial)
-        
+
         # Test tool uses file handling
         assert True, "File handler integration placeholder"
 

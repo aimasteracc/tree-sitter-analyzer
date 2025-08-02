@@ -1,32 +1,21 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Java Language Plugin
 
 Provides Java-specific parsing and element extraction functionality.
 """
 
-import re
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
     import tree_sitter
+
     from ..core.analysis_engine import AnalysisRequest
     from ..models import AnalysisResult
 
 from ..language_loader import loader
-from ..models import (
-    Class,
-    Function,
-    Import,
-    JavaAnnotation,
-    JavaClass,
-    JavaField,
-    JavaImport,
-    JavaMethod,
-    Variable,
-)
-from ..utils import log_debug, log_error, log_warning
+from ..models import Class, Function, Import, JavaAnnotation, Variable
+from ..utils import log_error, log_warning
 from . import ElementExtractor, LanguagePlugin
 
 
@@ -38,14 +27,14 @@ class JavaElementExtractor(ElementExtractor):
         self.current_package: str = ""
         self.current_file: str = ""
         self.source_code: str = ""
-        self.imports: List[str] = []
+        self.imports: list[str] = []
 
     def extract_functions(
         self, tree: "tree_sitter.Tree", source_code: str
-    ) -> List[Function]:
+    ) -> list[Function]:
         """Extract Java method definitions with comprehensive analysis"""
         self.source_code = source_code
-        functions: List[Function] = []
+        functions: list[Function] = []
 
         # 複数のメソッドパターンを検索
         method_queries = [
@@ -103,10 +92,10 @@ class JavaElementExtractor(ElementExtractor):
 
     def extract_classes(
         self, tree: "tree_sitter.Tree", source_code: str
-    ) -> List[Class]:
+    ) -> list[Class]:
         """Extract Java class definitions with comprehensive analysis"""
         self.source_code = source_code
-        classes: List[Class] = []
+        classes: list[Class] = []
 
         # 複数のクラスタイプを検索
         class_queries = [
@@ -170,9 +159,9 @@ class JavaElementExtractor(ElementExtractor):
 
     def extract_variables(
         self, tree: "tree_sitter.Tree", source_code: str
-    ) -> List[Variable]:
+    ) -> list[Variable]:
         """Extract Java field and variable definitions"""
-        variables: List[Variable] = []
+        variables: list[Variable] = []
 
         # Field declarations
         query_string = """
@@ -202,9 +191,9 @@ class JavaElementExtractor(ElementExtractor):
 
     def extract_imports(
         self, tree: "tree_sitter.Tree", source_code: str
-    ) -> List[Import]:
+    ) -> list[Import]:
         """Extract Java import statements"""
-        imports: List[Import] = []
+        imports: list[Import] = []
 
         query_string = """
         (import_declaration
@@ -231,7 +220,7 @@ class JavaElementExtractor(ElementExtractor):
 
     def _extract_detailed_method_info(
         self, node: "tree_sitter.Node", source_code: str, is_constructor: bool = False
-    ) -> Optional[Function]:
+    ) -> Function | None:
         """Extract comprehensive method information from AST node"""
         try:
             # 基本情報の抽出
@@ -247,26 +236,26 @@ class JavaElementExtractor(ElementExtractor):
             )
             parameters = self._extract_parameters_from_node(node, source_code)
             modifiers = self._extract_modifiers_from_node(node, source_code)
-            annotations = self._extract_annotations_from_node(node, source_code)
-            throws = self._extract_throws_from_node(node, source_code)
+            # annotations = self._extract_annotations_from_node(node, source_code)  # Not used currently
+            # throws = self._extract_throws_from_node(node, source_code)  # Not used currently
 
             # 可視性の判定
-            visibility = "public"
-            if "private" in modifiers:
-                visibility = "private"
-            elif "protected" in modifiers:
-                visibility = "protected"
-            elif "public" not in modifiers and len(modifiers) > 0:
-                visibility = "package"
+            # visibility = "public"
+            # if "private" in modifiers:
+            #     visibility = "private"
+            # elif "protected" in modifiers:
+            #     visibility = "protected"  # Not used currently
+            # elif "public" not in modifiers and len(modifiers) > 0:
+            #     visibility = "package"  # Not used currently
 
             # メソッドボディの抽出
-            body = self._extract_method_body(node, source_code)
-            signature = self._generate_method_signature(
-                name, return_type, parameters, modifiers
-            )
+            # body = self._extract_method_body(node, source_code)  # Not used currently
+            # signature = self._generate_method_signature(
+            #     name, return_type, parameters, modifiers
+            # )  # Not used currently
 
             # 複雑度の簡易計算
-            complexity_score = self._calculate_complexity(body)
+            # complexity_score = self._calculate_complexity(body)  # Not used currently
 
             # Function型として返すため、基本的なFunction型を作成
             return Function(
@@ -289,7 +278,7 @@ class JavaElementExtractor(ElementExtractor):
 
     def _extract_name_from_node(
         self, node: "tree_sitter.Node", source_code: str
-    ) -> Optional[str]:
+    ) -> str | None:
         """Extract name from AST node"""
         for child in node.children:
             if child.type == "identifier":
@@ -312,9 +301,9 @@ class JavaElementExtractor(ElementExtractor):
 
     def _extract_parameters_from_node(
         self, node: "tree_sitter.Node", source_code: str
-    ) -> List[str]:
+    ) -> list[str]:
         """Extract parameters from method node"""
-        parameters: List[str] = []
+        parameters: list[str] = []
         for child in node.children:
             if child.type == "formal_parameters":
                 for param_child in child.children:
@@ -327,9 +316,9 @@ class JavaElementExtractor(ElementExtractor):
 
     def _extract_modifiers_from_node(
         self, node: "tree_sitter.Node", source_code: str
-    ) -> List[str]:
+    ) -> list[str]:
         """Extract modifiers from node"""
-        modifiers: List[str] = []
+        modifiers: list[str] = []
         for child in node.children:
             if child.type == "modifiers":
                 modifier_text = source_code[child.start_byte : child.end_byte]
@@ -349,17 +338,17 @@ class JavaElementExtractor(ElementExtractor):
 
     def _extract_annotations_from_node(
         self, node: "tree_sitter.Node", source_code: str
-    ) -> List[JavaAnnotation]:
+    ) -> list[JavaAnnotation]:
         """Extract annotations from node (simplified)"""
-        annotations: List[JavaAnnotation] = []
+        annotations: list[JavaAnnotation] = []
         # より詳細な実装が必要だが、今回は簡略化
         return annotations
 
     def _extract_throws_from_node(
         self, node: "tree_sitter.Node", source_code: str
-    ) -> List[str]:
+    ) -> list[str]:
         """Extract throws clause from method node"""
-        throws: List[str] = []
+        throws: list[str] = []
         for child in node.children:
             if child.type == "throws":
                 throws_text = source_code[child.start_byte : child.end_byte]
@@ -377,7 +366,7 @@ class JavaElementExtractor(ElementExtractor):
         return ""
 
     def _generate_method_signature(
-        self, name: str, return_type: str, parameters: List[str], modifiers: List[str]
+        self, name: str, return_type: str, parameters: list[str], modifiers: list[str]
     ) -> str:
         """Generate method signature"""
         modifier_str = " ".join(modifiers) + " " if modifiers else ""
@@ -394,7 +383,7 @@ class JavaElementExtractor(ElementExtractor):
 
     def _extract_detailed_class_info(
         self, node: "tree_sitter.Node", source_code: str, class_type: str = "class"
-    ) -> Optional[Class]:
+    ) -> Class | None:
         """Extract comprehensive class information from AST node"""
         try:
             # 基本情報の抽出
@@ -404,7 +393,7 @@ class JavaElementExtractor(ElementExtractor):
 
             # 詳細情報の抽出
             modifiers = self._extract_modifiers_from_node(node, source_code)
-            annotations = self._extract_annotations_from_node(node, source_code)
+            # annotations = self._extract_annotations_from_node(node, source_code)  # Not used currently
             superclass = self._extract_superclass_from_node(node, source_code)
             interfaces = self._extract_interfaces_from_node(node, source_code)
 
@@ -414,16 +403,16 @@ class JavaElementExtractor(ElementExtractor):
             )
 
             # 可視性の判定
-            visibility = "public"
-            if "private" in modifiers:
-                visibility = "private"
-            elif "protected" in modifiers:
-                visibility = "protected"
-            elif "public" not in modifiers and len(modifiers) > 0:
-                visibility = "package"
+            # visibility = "public"
+            # if "private" in modifiers:
+            #     visibility = "private"
+            # elif "protected" in modifiers:
+            #     visibility = "protected"  # Not used currently
+            # elif "public" not in modifiers and len(modifiers) > 0:
+            #     visibility = "package"  # Not used currently
 
             # ネストクラスかどうかの判定（簡略化）
-            is_nested = "." in self.current_package if self.current_package else False
+            # is_nested = "." in self.current_package if self.current_package else False  # Not used currently
 
             # Class型として返すため、基本的なClass型を作成
             return Class(
@@ -446,7 +435,7 @@ class JavaElementExtractor(ElementExtractor):
 
     def _extract_superclass_from_node(
         self, node: "tree_sitter.Node", source_code: str
-    ) -> Optional[str]:
+    ) -> str | None:
         """Extract superclass from class node"""
         for child in node.children:
             if child.type == "superclass":
@@ -457,9 +446,9 @@ class JavaElementExtractor(ElementExtractor):
 
     def _extract_interfaces_from_node(
         self, node: "tree_sitter.Node", source_code: str
-    ) -> List[str]:
+    ) -> list[str]:
         """Extract implemented interfaces from class node"""
-        interfaces: List[str] = []
+        interfaces: list[str] = []
         for child in node.children:
             if child.type in ["super_interfaces", "extends_interfaces"]:
                 for subchild in child.children:
@@ -471,7 +460,7 @@ class JavaElementExtractor(ElementExtractor):
 
     def _extract_field_info(
         self, node: "tree_sitter.Node", source_code: str
-    ) -> Optional[Variable]:
+    ) -> Variable | None:
         """Extract detailed field information from AST node"""
         try:
             # Check if node has required attributes
@@ -480,10 +469,7 @@ class JavaElementExtractor(ElementExtractor):
                 or not hasattr(node, "end_byte")
                 or not hasattr(node, "start_point")
                 or not hasattr(node, "end_point")
-            ):
-                return None
-            if (
-                node.start_byte is None
+                or node.start_byte is None
                 or node.end_byte is None
                 or node.start_point is None
                 or node.end_point is None
@@ -508,7 +494,7 @@ class JavaElementExtractor(ElementExtractor):
 
     def _extract_import_info(
         self, node: "tree_sitter.Node", source_code: str
-    ) -> Optional[Import]:
+    ) -> Import | None:
         """Extract detailed import information from AST node"""
         try:
             # Check if node has required attributes
@@ -517,10 +503,7 @@ class JavaElementExtractor(ElementExtractor):
                 or not hasattr(node, "end_byte")
                 or not hasattr(node, "start_point")
                 or not hasattr(node, "end_point")
-            ):
-                return None
-            if (
-                node.start_byte is None
+                or node.start_byte is None
                 or node.end_byte is None
                 or node.start_point is None
                 or node.end_point is None
@@ -549,21 +532,21 @@ class JavaPlugin(LanguagePlugin):
 
     def __init__(self) -> None:
         self._extractor = JavaElementExtractor()
-        self._language: Optional["tree_sitter.Language"] = None
+        self._language: tree_sitter.Language | None = None
 
     @property
     def language_name(self) -> str:
         return "java"
 
     @property
-    def file_extensions(self) -> List[str]:
+    def file_extensions(self) -> list[str]:
         return [".java", ".jsp", ".jspx"]
 
     def get_language_name(self) -> str:
         """Return the name of the programming language this plugin supports"""
         return "java"
 
-    def get_file_extensions(self) -> List[str]:
+    def get_file_extensions(self) -> list[str]:
         """Return list of file extensions this plugin supports"""
         return [".java", ".jsp", ".jspx"]
 
@@ -579,47 +562,47 @@ class JavaPlugin(LanguagePlugin):
         if self._language is None:
             self._language = loader.load_language("java")
         return self._language
-    
-    async def analyze_file(self, file_path: str, request: 'AnalysisRequest') -> 'AnalysisResult':
+
+    async def analyze_file(
+        self, file_path: str, request: "AnalysisRequest"
+    ) -> "AnalysisResult":
         """
         Javaファイルを解析してAnalysisResultを返す
-        
+
         Args:
             file_path: 解析対象ファイルのパス
             request: 解析リクエスト
-            
+
         Returns:
             解析結果
         """
+        from ..core.analysis_engine import AnalysisRequest, get_analysis_engine
         from ..models import AnalysisResult
-        from ..core.analysis_engine import get_analysis_engine, AnalysisRequest
-        
+
         try:
             # Use UnifiedAnalysisEngine for file analysis
             analyzer = get_analysis_engine()
-            
+
             # Create analysis request and analyze file
             request = AnalysisRequest(
                 file_path=file_path,
                 language="java",
                 include_complexity=True,
-                include_details=True
+                include_details=True,
             )
             result = await analyzer.analyze(request)
-            
+
             if not result or not result.success:
                 return AnalysisResult(
                     file_path=file_path,
                     success=False,
-                    error_message=f"Failed to analyze Java file: {file_path}"
+                    error_message=f"Failed to analyze Java file: {file_path}",
                 )
-            
+
             return result
-            
+
         except Exception as e:
             log_error(f"Error analyzing Java file {file_path}: {e}")
             return AnalysisResult(
-                file_path=file_path,
-                success=False,
-                error_message=str(e)
+                file_path=file_path, success=False, error_message=str(e)
             )

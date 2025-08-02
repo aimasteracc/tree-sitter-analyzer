@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Extended Tests for Language Detector
 
@@ -7,8 +6,8 @@ Additional test cases to improve coverage for language detection functionality.
 """
 
 import sys
+
 import pytest
-import pytest_asyncio
 
 # Add project root to path
 sys.path.insert(0, ".")
@@ -32,7 +31,7 @@ def test_detect_language_with_content_java(language_detector):
     file_path = "test.java"
     content = """
     package com.example;
-    
+
     public class TestClass {
         @Override
         public void method() {
@@ -54,7 +53,7 @@ def test_detect_language_with_content_python(language_detector):
     def main():
         import os
         from sys import argv
-        
+
         if __name__ == "__main__":
             print("Hello World")
     """
@@ -92,9 +91,9 @@ def test_detect_language_with_content_typescript(language_detector):
         name: string;
         age: number;
     }
-    
+
     type UserType = User;
-    
+
     export class UserService {
         getUser(): User {
             return { name: "John", age: 30 };
@@ -113,7 +112,7 @@ def test_detect_language_ambiguous_h_file_cpp(language_detector):
     file_path = "test.h"
     content = """
     #include <iostream>
-    
+
     namespace MyNamespace {
         class MyClass {
         public:
@@ -121,7 +120,7 @@ def test_detect_language_ambiguous_h_file_cpp(language_detector):
                 std::cout << "Hello" << std::endl;
             }
         };
-        
+
         template<typename T>
         void templateFunction(T value) {
             std::cout << value << std::endl;
@@ -141,12 +140,12 @@ def test_detect_language_ambiguous_h_file_c(language_detector):
     content = """
     #include <stdio.h>
     #include <stdlib.h>
-    
+
     typedef struct {
         int id;
         char name[50];
     } Person;
-    
+
     int main() {
         printf("Hello, World!\\n");
         Person* p = malloc(sizeof(Person));
@@ -165,12 +164,12 @@ def test_detect_language_ambiguous_h_file_objc(language_detector):
     file_path = "test.h"
     content = """
     #import <Foundation/Foundation.h>
-    
+
     @interface MyClass : NSObject
     @property (nonatomic, strong) NSString *name;
     - (void)doSomething;
     @end
-    
+
     @implementation MyClass
     - (void)doSomething {
         NSString *message = [[NSString alloc] initWithString:@"Hello"];
@@ -189,7 +188,7 @@ def test_detect_language_ambiguous_m_file_objc(language_detector):
     file_path = "test.m"
     content = """
     #import "MyClass.h"
-    
+
     @implementation MyClass
     - (void)doSomething {
         NSString *message = [[NSString alloc] initWithString:@"Hello"];
@@ -210,11 +209,11 @@ def test_detect_language_ambiguous_m_file_matlab(language_detector):
     function result = calculateSum(a, b)
         clc;
         clear all;
-        
+
         result = a + b;
         disp(['Result: ', num2str(result)]);
     end;
-    
+
     % Main script
     x = 5;
     y = 10;
@@ -247,50 +246,53 @@ def test_detect_language_unknown_extension(language_detector):
     assert confidence == 0.0
 
 
-@pytest.mark.parametrize("file_path,expected_language", [
-    ("test.java", "java"),
-    ("test.py", "python"),
-    ("test.js", "javascript"),
-    ("test.ts", "typescript"),
-    ("test.cpp", "cpp"),
-    ("test.rs", "rust"),
-    ("test.go", "go"),
-    ("test.rb", "ruby"),
-    ("test.php", "php"),
-    ("test.swift", "swift"),
-    ("test.kt", "kotlin"),
-    ("test.scala", "scala"),
-    ("test.unknown", "unknown"),
-])
-def test_detect_from_extension_various_files(language_detector, file_path, expected_language):
+@pytest.mark.parametrize(
+    "file_path,expected_language",
+    [
+        ("test.java", "java"),
+        ("test.py", "python"),
+        ("test.js", "javascript"),
+        ("test.ts", "typescript"),
+        ("test.cpp", "cpp"),
+        ("test.rs", "rust"),
+        ("test.go", "go"),
+        ("test.rb", "ruby"),
+        ("test.php", "php"),
+        ("test.swift", "swift"),
+        ("test.kt", "kotlin"),
+        ("test.scala", "scala"),
+        ("test.unknown", "unknown"),
+    ],
+)
+def test_detect_from_extension_various_files(
+    language_detector, file_path, expected_language
+):
     """Test extension-based detection for various files"""
     language = language_detector.detect_from_extension(file_path)
     assert language == expected_language
 
 
-@pytest.mark.parametrize("language", [
-    "java",
-    "javascript",
-    "typescript",
-    "python",
-    "c",
-    "cpp",
-    "rust",
-    "go",
-])
+@pytest.mark.parametrize(
+    "language",
+    [
+        "java",
+        "javascript",
+        "typescript",
+        "python",
+        "c",
+        "cpp",
+        "rust",
+        "go",
+    ],
+)
 def test_is_supported_supported_languages(language_detector, language):
     """Test support status for supported languages"""
     assert language_detector.is_supported(language) is True
 
 
-@pytest.mark.parametrize("language", [
-    "ruby",
-    "php",
-    "swift",
-    "kotlin",
-    "scala",
-    "unknown"
-])
+@pytest.mark.parametrize(
+    "language", ["ruby", "php", "swift", "kotlin", "scala", "unknown"]
+)
 def test_is_supported_unsupported_languages(language_detector, language):
     """Test support status for unsupported languages"""
     assert language_detector.is_supported(language) is False
@@ -453,12 +455,15 @@ def test_file_path_with_multiple_dots(language_detector):
     assert confidence == 1.0
 
 
-@pytest.mark.parametrize("file_path,expected_language", [
-    ("test.JAVA", "java"),
-    ("test.PY", "python"),
-    ("test.JS", "javascript"),
-    ("test.Cpp", "cpp"),
-])
+@pytest.mark.parametrize(
+    "file_path,expected_language",
+    [
+        ("test.JAVA", "java"),
+        ("test.PY", "python"),
+        ("test.JS", "javascript"),
+        ("test.Cpp", "cpp"),
+    ],
+)
 def test_case_insensitive_extensions(language_detector, file_path, expected_language):
     """Test case insensitive extension handling"""
     language = language_detector.detect_from_extension(file_path)

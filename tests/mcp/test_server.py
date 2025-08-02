@@ -1,73 +1,72 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Test cases for MCP Server functionality
 
 Tests the core MCP server implementation including initialization,
 tool registration, and basic protocol compliance.
 """
+
 import asyncio
 
-import json
-import tempfile
-from typing import Any, Dict, List, Optional
 # Mock functionality now provided by pytest-mock
-
 import pytest
 import pytest_asyncio
 
 from tree_sitter_analyzer.mcp import MCP_INFO
 
+
 @pytest_asyncio.fixture(autouse=True)
 async def cleanup_event_loop():
     """イベントループクリーンアップフィクスチャ（根本修正版）"""
     yield
-    
+
     # 明示的にシングルトンインスタンスをクリーンアップ
     try:
         from tree_sitter_analyzer.core.analysis_engine import UnifiedAnalysisEngine
         from tree_sitter_analyzer.core.cache_service import CacheService
-        
+
         # UnifiedAnalysisEngineのクリーンアップ
-        if hasattr(UnifiedAnalysisEngine, '_instance') and UnifiedAnalysisEngine._instance:
+        if (
+            hasattr(UnifiedAnalysisEngine, "_instance")
+            and UnifiedAnalysisEngine._instance
+        ):
             engine = UnifiedAnalysisEngine._instance
-            if hasattr(engine, 'cleanup'):
+            if hasattr(engine, "cleanup"):
                 engine.cleanup()
-        
+
         # CacheServiceのクリーンアップ
-        if hasattr(CacheService, '_instance') and CacheService._instance:
+        if hasattr(CacheService, "_instance") and CacheService._instance:
             cache_service = CacheService._instance
-            if hasattr(cache_service, 'clear_all_caches'):
+            if hasattr(cache_service, "clear_all_caches"):
                 cache_service.clear_all_caches()
-            
+
     except Exception as e:
         print(f"Warning: Error during explicit cleanup: {e}")
-    
+
     # テスト後のクリーンアップ
     try:
         loop = asyncio.get_running_loop()
     except RuntimeError:
         loop = None
-    
+
     if loop and not loop.is_closed():
         # 残っているタスクを調査
         pending = asyncio.all_tasks(loop)
         current_task = asyncio.current_task(loop)
-        
+
         # 現在のタスクを除外
         pending = {task for task in pending if task is not current_task}
-        
+
         if pending:
             # タスクをキャンセル
             for task in pending:
                 if not task.done():
                     task.cancel()
-            
+
             # 短時間待機してキャンセルを処理
             try:
                 await asyncio.wait_for(
-                    asyncio.gather(*pending, return_exceptions=True),
-                    timeout=1.0
+                    asyncio.gather(*pending, return_exceptions=True), timeout=1.0
                 )
             except asyncio.TimeoutError:
                 print(f"Warning: {len(pending)} tasks did not complete within timeout")
@@ -82,7 +81,6 @@ async def cleanup_event_loop():
                             pass
 
 
-
 class TestMCPServerInitialization:
     """Test MCP server initialization and basic functionality"""
 
@@ -93,14 +91,14 @@ class TestMCPServerInitialization:
         assert "description" in MCP_INFO
         assert "protocol_version" in MCP_INFO
         assert "capabilities" in MCP_INFO
-        
+
         # Test capabilities structure
         capabilities = MCP_INFO["capabilities"]
         assert "tools" in capabilities
         assert "resources" in capabilities
         assert "prompts" in capabilities
         assert "logging" in capabilities
-        
+
         # Test expected capability values
         assert isinstance(capabilities["tools"], dict)
         assert isinstance(capabilities["resources"], dict)
@@ -143,6 +141,7 @@ class TestMCPProtocolCompliance:
     def test_protocol_version_format(self) -> None:
         """Test that protocol version follows expected format"""
         import re
+
         version = MCP_INFO["protocol_version"]
         assert re.match(r"^\d{4}-\d{2}-\d{2}$", version)
 
@@ -150,7 +149,7 @@ class TestMCPProtocolCompliance:
         """Test that required capabilities are present"""
         capabilities = MCP_INFO["capabilities"]
         required_caps = ["tools", "resources", "prompts", "logging"]
-        
+
         for cap in required_caps:
             assert cap in capabilities
             assert isinstance(capabilities[cap], dict)

@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 MCP Server Interface
 
@@ -11,29 +10,24 @@ import asyncio
 import json
 import logging
 import sys
-from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 try:
     from mcp.server import Server
     from mcp.server.models import InitializationOptions
     from mcp.server.stdio import stdio_server
-    from mcp.types import (
-        Resource,
-        TextContent,
-        Tool,
-    )
+    from mcp.types import Resource, TextContent, Tool
+
     MCP_AVAILABLE = True
 except ImportError:
     MCP_AVAILABLE = False
 
 from .. import api
-from ..utils import log_error, log_info, log_warning
+from ..utils import log_error, log_info
 
 # Configure logging for MCP
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
@@ -41,7 +35,7 @@ logger = logging.getLogger(__name__)
 class TreeSitterAnalyzerMCPServer:
     """
     MCP Server for Tree-sitter Analyzer using the new API facade.
-    
+
     This server provides code analysis capabilities through the Model Context Protocol,
     using the unified API facade for all operations.
     """
@@ -50,11 +44,11 @@ class TreeSitterAnalyzerMCPServer:
         """Initialize the MCP server."""
         if not MCP_AVAILABLE:
             raise ImportError("MCP library not available. Please install mcp package.")
-        
-        self.server: Optional[Server] = None
+
+        self.server: Server | None = None
         self.name = "tree-sitter-analyzer"
         self.version = "2.0.0"
-        
+
         log_info(f"Initializing {self.name} v{self.version}")
 
     def create_server(self) -> Server:
@@ -62,7 +56,7 @@ class TreeSitterAnalyzerMCPServer:
         server = Server(self.name)
 
         @server.list_tools()
-        async def handle_list_tools() -> List[Tool]:
+        async def handle_list_tools() -> list[Tool]:
             """List available tools."""
             return [
                 Tool(
@@ -73,31 +67,31 @@ class TreeSitterAnalyzerMCPServer:
                         "properties": {
                             "file_path": {
                                 "type": "string",
-                                "description": "Path to the source file to analyze"
+                                "description": "Path to the source file to analyze",
                             },
                             "language": {
                                 "type": "string",
-                                "description": "Programming language (optional, auto-detected if not specified)"
+                                "description": "Programming language (optional, auto-detected if not specified)",
                             },
                             "queries": {
                                 "type": "array",
                                 "items": {"type": "string"},
-                                "description": "List of query names to execute (optional)"
+                                "description": "List of query names to execute (optional)",
                             },
                             "include_elements": {
                                 "type": "boolean",
                                 "description": "Whether to extract code elements",
-                                "default": True
+                                "default": True,
                             },
                             "include_queries": {
                                 "type": "boolean",
                                 "description": "Whether to execute queries",
-                                "default": True
-                            }
+                                "default": True,
+                            },
                         },
                         "required": ["file_path"],
-                        "additionalProperties": False
-                    }
+                        "additionalProperties": False,
+                    },
                 ),
                 Tool(
                     name="analyze_code",
@@ -107,31 +101,31 @@ class TreeSitterAnalyzerMCPServer:
                         "properties": {
                             "source_code": {
                                 "type": "string",
-                                "description": "Source code string to analyze"
+                                "description": "Source code string to analyze",
                             },
                             "language": {
                                 "type": "string",
-                                "description": "Programming language"
+                                "description": "Programming language",
                             },
                             "queries": {
                                 "type": "array",
                                 "items": {"type": "string"},
-                                "description": "List of query names to execute (optional)"
+                                "description": "List of query names to execute (optional)",
                             },
                             "include_elements": {
                                 "type": "boolean",
                                 "description": "Whether to extract code elements",
-                                "default": True
+                                "default": True,
                             },
                             "include_queries": {
                                 "type": "boolean",
                                 "description": "Whether to execute queries",
-                                "default": True
-                            }
+                                "default": True,
+                            },
                         },
                         "required": ["source_code", "language"],
-                        "additionalProperties": False
-                    }
+                        "additionalProperties": False,
+                    },
                 ),
                 Tool(
                     name="extract_elements",
@@ -141,21 +135,21 @@ class TreeSitterAnalyzerMCPServer:
                         "properties": {
                             "file_path": {
                                 "type": "string",
-                                "description": "Path to the source file"
+                                "description": "Path to the source file",
                             },
                             "language": {
                                 "type": "string",
-                                "description": "Programming language (optional, auto-detected if not specified)"
+                                "description": "Programming language (optional, auto-detected if not specified)",
                             },
                             "element_types": {
                                 "type": "array",
                                 "items": {"type": "string"},
-                                "description": "Types of elements to extract (optional)"
-                            }
+                                "description": "Types of elements to extract (optional)",
+                            },
                         },
                         "required": ["file_path"],
-                        "additionalProperties": False
-                    }
+                        "additionalProperties": False,
+                    },
                 ),
                 Tool(
                     name="execute_query",
@@ -165,20 +159,20 @@ class TreeSitterAnalyzerMCPServer:
                         "properties": {
                             "file_path": {
                                 "type": "string",
-                                "description": "Path to the source file"
+                                "description": "Path to the source file",
                             },
                             "query_name": {
                                 "type": "string",
-                                "description": "Name of the query to execute"
+                                "description": "Name of the query to execute",
                             },
                             "language": {
                                 "type": "string",
-                                "description": "Programming language (optional, auto-detected if not specified)"
-                            }
+                                "description": "Programming language (optional, auto-detected if not specified)",
+                            },
                         },
                         "required": ["file_path", "query_name"],
-                        "additionalProperties": False
-                    }
+                        "additionalProperties": False,
+                    },
                 ),
                 Tool(
                     name="validate_file",
@@ -188,12 +182,12 @@ class TreeSitterAnalyzerMCPServer:
                         "properties": {
                             "file_path": {
                                 "type": "string",
-                                "description": "Path to the source file to validate"
+                                "description": "Path to the source file to validate",
                             }
                         },
                         "required": ["file_path"],
-                        "additionalProperties": False
-                    }
+                        "additionalProperties": False,
+                    },
                 ),
                 Tool(
                     name="get_supported_languages",
@@ -201,8 +195,8 @@ class TreeSitterAnalyzerMCPServer:
                     inputSchema={
                         "type": "object",
                         "properties": {},
-                        "additionalProperties": False
-                    }
+                        "additionalProperties": False,
+                    },
                 ),
                 Tool(
                     name="get_available_queries",
@@ -212,12 +206,12 @@ class TreeSitterAnalyzerMCPServer:
                         "properties": {
                             "language": {
                                 "type": "string",
-                                "description": "Programming language name"
+                                "description": "Programming language name",
                             }
                         },
                         "required": ["language"],
-                        "additionalProperties": False
-                    }
+                        "additionalProperties": False,
+                    },
                 ),
                 Tool(
                     name="get_framework_info",
@@ -225,76 +219,78 @@ class TreeSitterAnalyzerMCPServer:
                     inputSchema={
                         "type": "object",
                         "properties": {},
-                        "additionalProperties": False
-                    }
-                )
+                        "additionalProperties": False,
+                    },
+                ),
             ]
 
         @server.call_tool()
-        async def handle_call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
+        async def handle_call_tool(
+            name: str, arguments: dict[str, Any]
+        ) -> list[TextContent]:
             """Handle tool calls."""
             try:
                 result = None
-                
+
                 if name == "analyze_file":
                     result = api.analyze_file(
                         file_path=arguments["file_path"],
                         language=arguments.get("language"),
                         queries=arguments.get("queries"),
                         include_elements=arguments.get("include_elements", True),
-                        include_queries=arguments.get("include_queries", True)
+                        include_queries=arguments.get("include_queries", True),
                     )
-                
+
                 elif name == "analyze_code":
                     result = api.analyze_code(
                         source_code=arguments["source_code"],
                         language=arguments["language"],
                         queries=arguments.get("queries"),
                         include_elements=arguments.get("include_elements", True),
-                        include_queries=arguments.get("include_queries", True)
+                        include_queries=arguments.get("include_queries", True),
                     )
-                
+
                 elif name == "extract_elements":
                     result = api.extract_elements(
                         file_path=arguments["file_path"],
                         language=arguments.get("language"),
-                        element_types=arguments.get("element_types")
+                        element_types=arguments.get("element_types"),
                     )
-                
+
                 elif name == "execute_query":
                     result = api.execute_query(
                         file_path=arguments["file_path"],
                         query_name=arguments["query_name"],
-                        language=arguments.get("language")
+                        language=arguments.get("language"),
                     )
-                
+
                 elif name == "validate_file":
                     result = api.validate_file(arguments["file_path"])
-                
+
                 elif name == "get_supported_languages":
                     result = {
                         "languages": api.get_supported_languages(),
-                        "total": len(api.get_supported_languages())
+                        "total": len(api.get_supported_languages()),
                     }
-                
+
                 elif name == "get_available_queries":
                     queries = api.get_available_queries(arguments["language"])
                     result = {
                         "language": arguments["language"],
                         "queries": queries,
-                        "total": len(queries)
+                        "total": len(queries),
                     }
-                
+
                 elif name == "get_framework_info":
                     result = api.get_framework_info()
-                
+
                 else:
                     raise ValueError(f"Unknown tool: {name}")
 
                 return [
                     TextContent(
                         type="text",
-                        text=json.dumps(result, indent=2, ensure_ascii=False)
+                        text=json.dumps(result, indent=2, ensure_ascii=False),
                     )
                 ]
 
@@ -304,31 +300,31 @@ class TreeSitterAnalyzerMCPServer:
                     "error": str(e),
                     "tool": name,
                     "arguments": arguments,
-                    "success": False
+                    "success": False,
                 }
                 return [
                     TextContent(
                         type="text",
-                        text=json.dumps(error_result, indent=2, ensure_ascii=False)
+                        text=json.dumps(error_result, indent=2, ensure_ascii=False),
                     )
                 ]
 
         @server.list_resources()
-        async def handle_list_resources() -> List[Resource]:
+        async def handle_list_resources() -> list[Resource]:
             """List available resources."""
             return [
                 Resource(
                     uri="code://file/{file_path}",
                     name="Code File Analysis",
                     description="Access to code file content and analysis",
-                    mimeType="application/json"
+                    mimeType="application/json",
                 ),
                 Resource(
                     uri="code://stats/{stats_type}",
                     name="Project Statistics",
                     description="Access to project statistics and analysis data",
-                    mimeType="application/json"
-                )
+                    mimeType="application/json",
+                ),
             ]
 
         @server.read_resource()
@@ -337,39 +333,35 @@ class TreeSitterAnalyzerMCPServer:
             try:
                 if uri.startswith("code://file/"):
                     # Extract file path from URI
-                    file_path = uri[len("code://file/"):]
-                    
+                    file_path = uri[len("code://file/") :]
+
                     # Analyze the file
                     result = api.analyze_file(file_path)
                     return json.dumps(result, indent=2, ensure_ascii=False)
-                
+
                 elif uri.startswith("code://stats/"):
                     # Extract stats type from URI
-                    stats_type = uri[len("code://stats/"):]
-                    
+                    stats_type = uri[len("code://stats/") :]
+
                     # Get framework info as basic stats
                     if stats_type == "framework":
                         result = api.get_framework_info()
                     elif stats_type == "languages":
                         result = {
                             "supported_languages": api.get_supported_languages(),
-                            "total_languages": len(api.get_supported_languages())
+                            "total_languages": len(api.get_supported_languages()),
                         }
                     else:
                         raise ValueError(f"Unknown stats type: {stats_type}")
-                    
+
                     return json.dumps(result, indent=2, ensure_ascii=False)
-                
+
                 else:
                     raise ValueError(f"Resource not found: {uri}")
 
             except Exception as e:
                 log_error(f"Resource read error for {uri}: {e}")
-                error_result = {
-                    "error": str(e),
-                    "uri": uri,
-                    "success": False
-                }
+                error_result = {"error": str(e), "uri": uri, "success": False}
                 return json.dumps(error_result, indent=2, ensure_ascii=False)
 
         self.server = server
@@ -384,10 +376,7 @@ class TreeSitterAnalyzerMCPServer:
         options = InitializationOptions(
             server_name=self.name,
             server_version=self.version,
-            capabilities={
-                "tools": {},
-                "resources": {}
-            }
+            capabilities={"tools": {}, "resources": {}},
         )
 
         log_info(f"Starting MCP server: {self.name} v{self.version}")

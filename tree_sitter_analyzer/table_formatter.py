@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Table Formatter for Tree-sitter Analyzer
 
@@ -9,15 +8,18 @@ Provides table-formatted output for Java code analysis results.
 import csv
 import io
 import os
-from typing import Any, Dict, List, Optional
-
-from .models import AnalysisResult
+from typing import Any
 
 
 class TableFormatter:
     """Table formatter for code analysis results"""
 
-    def __init__(self, format_type: str = "full", language: str = "java", include_javadoc: bool = False):
+    def __init__(
+        self,
+        format_type: str = "full",
+        language: str = "java",
+        include_javadoc: bool = False,
+    ):
         self.format_type = format_type
         self.language = language
         self.include_javadoc = include_javadoc
@@ -32,7 +34,7 @@ class TableFormatter:
             return text.replace("\n", os.linesep)
         return text
 
-    def format_structure(self, structure_data: Dict[str, Any]) -> str:
+    def format_structure(self, structure_data: dict[str, Any]) -> str:
         """Format structure data as table"""
         if self.format_type == "full":
             result = self._format_full_table(structure_data)
@@ -50,7 +52,7 @@ class TableFormatter:
 
         return self._convert_to_platform_newlines(result)
 
-    def _format_full_table(self, data: Dict[str, Any]) -> str:
+    def _format_full_table(self, data: dict[str, Any]) -> str:
         """Full table format"""
         lines = []
 
@@ -88,21 +90,33 @@ class TableFormatter:
             lines.append("## Classes")
             lines.append("| Class | Type | Visibility | Lines | Methods | Fields |")
             lines.append("|-------|------|------------|-------|---------|--------|")
-            
+
             for class_info in classes:
                 name = str(class_info.get("name", "Unknown"))
                 class_type = str(class_info.get("type", "class"))
                 visibility = str(class_info.get("visibility", "public"))
                 line_range = class_info.get("line_range", {})
                 lines_str = f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
-                
+
                 # このクラスのメソッド数とフィールド数を計算
-                class_methods = [m for m in data.get("methods", [])
-                               if line_range.get('start', 0) <= m.get('line_range', {}).get('start', 0) <= line_range.get('end', 0)]
-                class_fields = [f for f in data.get("fields", [])
-                              if line_range.get('start', 0) <= f.get('line_range', {}).get('start', 0) <= line_range.get('end', 0)]
-                
-                lines.append(f"| {name} | {class_type} | {visibility} | {lines_str} | {len(class_methods)} | {len(class_fields)} |")
+                class_methods = [
+                    m
+                    for m in data.get("methods", [])
+                    if line_range.get("start", 0)
+                    <= m.get("line_range", {}).get("start", 0)
+                    <= line_range.get("end", 0)
+                ]
+                class_fields = [
+                    f
+                    for f in data.get("fields", [])
+                    if line_range.get("start", 0)
+                    <= f.get("line_range", {}).get("start", 0)
+                    <= line_range.get("end", 0)
+                ]
+
+                lines.append(
+                    f"| {name} | {class_type} | {visibility} | {lines_str} | {len(class_methods)} | {len(class_fields)} |"
+                )
         else:
             # 単一クラスの場合は従来通り
             lines.append("## Class Info")
@@ -115,13 +129,15 @@ class TableFormatter:
 
             lines.append(f"| Package | {package_name} |")
             lines.append(f"| Type | {str(class_info.get('type', 'class'))} |")
-            lines.append(f"| Visibility | {str(class_info.get('visibility', 'public'))} |")
+            lines.append(
+                f"| Visibility | {str(class_info.get('visibility', 'public'))} |"
+            )
             lines.append(
                 f"| Lines | {class_info.get('line_range', {}).get('start', 0)}-{class_info.get('line_range', {}).get('end', 0)} |"
             )
             lines.append(f"| Total Methods | {stats.get('method_count', 0)} |")
             lines.append(f"| Total Fields | {stats.get('field_count', 0)} |")
-        
+
         lines.append("")
 
         # Fields
@@ -200,7 +216,7 @@ class TableFormatter:
 
         return "\n".join(lines)
 
-    def _format_compact_table(self, data: Dict[str, Any]) -> str:
+    def _format_compact_table(self, data: dict[str, Any]) -> str:
         """Compact table format"""
         lines = []
 
@@ -254,10 +270,12 @@ class TableFormatter:
 
         return "\n".join(lines)
 
-    def _format_csv(self, data: Dict[str, Any]) -> str:
+    def _format_csv(self, data: dict[str, Any]) -> str:
         """CSV format"""
         output = io.StringIO()
-        writer = csv.writer(output, lineterminator="\n")  # Explicitly specify newline character
+        writer = csv.writer(
+            output, lineterminator="\n"
+        )  # Explicitly specify newline character
 
         # Header
         writer.writerow(
@@ -305,7 +323,7 @@ class TableFormatter:
 
         return csv_content
 
-    def _format_method_row(self, method: Dict[str, Any]) -> str:
+    def _format_method_row(self, method: dict[str, Any]) -> str:
         """メソッド行のフォーマット"""
         name = str(method.get("name", ""))
         signature = self._create_full_signature(method)
@@ -323,7 +341,7 @@ class TableFormatter:
 
         return f"| {name} | {signature} | {visibility} | {lines_str} | {cols_str} | {complexity} | {doc} |"
 
-    def _create_full_signature(self, method: Dict[str, Any]) -> str:
+    def _create_full_signature(self, method: dict[str, Any]) -> str:
         """完全なメソッドシグネチャを作成"""
         params = method.get("parameters", [])
         param_strs = []
@@ -347,7 +365,7 @@ class TableFormatter:
 
         return signature
 
-    def _create_compact_signature(self, method: Dict[str, Any]) -> str:
+    def _create_compact_signature(self, method: dict[str, Any]) -> str:
         """コンパクトなメソッドシグネチャを作成"""
         params = method.get("parameters", [])
         param_types = [self._shorten_type(p.get("type", "O")) for p in params]
@@ -442,7 +460,9 @@ class TableFormatter:
         return cleaned
 
 
-def create_table_formatter(format_type: str, language: str = "java", include_javadoc: bool = False):
+def create_table_formatter(
+    format_type: str, language: str = "java", include_javadoc: bool = False
+):
     """Create table formatter (using new factory)"""
     # Create TableFormatter directly (for JavaDoc support)
     return TableFormatter(format_type, language, include_javadoc)

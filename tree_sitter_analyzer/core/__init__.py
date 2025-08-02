@@ -12,9 +12,4 @@ from .engine import AnalysisEngine
 from .parser import Parser, ParseResult
 from .query import QueryExecutor
 
-__all__ = [
-    'AnalysisEngine',
-    'Parser', 
-    'ParseResult',
-    'QueryExecutor'
-]
+__all__ = ["AnalysisEngine", "Parser", "ParseResult", "QueryExecutor"]

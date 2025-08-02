@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Output Manager for CLI
 
@@ -8,7 +7,7 @@ Handles different types of outputs: user information, errors, and structured dat
 
 import json
 import sys
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
 
 from .utils import log_error, log_warning
 
@@ -80,7 +79,7 @@ class OutputManager:
         if not self.quiet:
             print(f"\n--- {title} ---")
 
-    def query_result(self, index: int, result: Dict[str, Any]) -> None:
+    def query_result(self, index: int, result: dict[str, Any]) -> None:
         """Output query result in formatted way"""
         if not self.quiet:
             print(
@@ -92,7 +91,7 @@ class OutputManager:
             if "content" in result:
                 print(f"   内容:\n{result['content']}")
 
-    def analysis_summary(self, stats: Dict[str, Any]) -> None:
+    def analysis_summary(self, stats: dict[str, Any]) -> None:
         """Output analysis summary"""
         if self.json_output:
             self.data(stats)
@@ -102,7 +101,7 @@ class OutputManager:
                 print(f"{key}: {value}")
 
     def language_list(
-        self, languages: List[str], title: str = "サポートされている言語"
+        self, languages: list[str], title: str = "サポートされている言語"
     ) -> None:
         """Output language list"""
         if not self.quiet:
@@ -110,14 +109,14 @@ class OutputManager:
             for lang in languages:
                 print(f"  {lang}")
 
-    def query_list(self, queries: Dict[str, str], language: str) -> None:
+    def query_list(self, queries: dict[str, str], language: str) -> None:
         """Output query list for a language"""
         if not self.quiet:
             print(f"利用可能なクエリキー ({language}):")
             for query_key, description in queries.items():
                 print(f"  {query_key:<20} - {description}")
 
-    def extension_list(self, extensions: List[str]) -> None:
+    def extension_list(self, extensions: list[str]) -> None:
         """Output supported extensions"""
         if not self.quiet:
             print("サポートされている拡張子:")
@@ -130,9 +129,7 @@ class OutputManager:
         """Output JSON data"""
         print(json.dumps(data, indent=2, ensure_ascii=False))
 
-    def output_list(
-        self, items: Union[str, List[Any]], title: Optional[str] = None
-    ) -> None:
+    def output_list(self, items: str | list[Any], title: str | None = None) -> None:
         """Output a list of items"""
         if title and not self.quiet:
             print(f"{title}:")
@@ -152,15 +149,15 @@ class OutputManager:
         """Output query results"""
         self.data(results)
 
-    def output_statistics(self, stats: Dict[str, Any]) -> None:
+    def output_statistics(self, stats: dict[str, Any]) -> None:
         """Output statistics"""
         self.analysis_summary(stats)
 
-    def output_languages(self, languages: List[str]) -> None:
+    def output_languages(self, languages: list[str]) -> None:
         """Output available languages"""
         self.language_list(languages)
 
-    def output_queries(self, queries: List[str]) -> None:
+    def output_queries(self, queries: list[str]) -> None:
         """Output available queries"""
         if isinstance(queries, list):
             query_dict = {q: f"Query {q}" for q in queries}
@@ -168,7 +165,7 @@ class OutputManager:
         else:
             self.query_list(queries, "All")
 
-    def output_extensions(self, extensions: List[str]) -> None:
+    def output_extensions(self, extensions: list[str]) -> None:
         """Output file extensions"""
         self.extension_list(extensions)
 
@@ -218,7 +215,7 @@ def output_json(data: Any) -> None:
     _output_manager.output_json(data)
 
 
-def output_list(items: Union[str, List[Any]], title: Optional[str] = None) -> None:
+def output_list(items: str | list[Any], title: str | None = None) -> None:
     """Output a list of items"""
     _output_manager.output_list(items, title)
 
@@ -233,19 +230,19 @@ def output_query_results(results: Any) -> None:
     _output_manager.output_query_results(results)
 
 
-def output_statistics(stats: Dict[str, Any]) -> None:
+def output_statistics(stats: dict[str, Any]) -> None:
     """Output statistics"""
     _output_manager.output_statistics(stats)
 
 
 def output_languages(
-    languages: List[str], title: str = "サポートされている言語"
+    languages: list[str], title: str = "サポートされている言語"
 ) -> None:
     """Output available languages"""
     _output_manager.language_list(languages, title)
 
 
-def output_queries(queries: List[str], language: str = "All") -> None:
+def output_queries(queries: list[str], language: str = "All") -> None:
     """Output available queries"""
     if isinstance(queries, list):
         query_dict = {q: f"Query {q}" for q in queries}
@@ -254,7 +251,7 @@ def output_queries(queries: List[str], language: str = "All") -> None:
         _output_manager.query_list(queries, language)
 
 
-def output_extensions(extensions: List[str]) -> None:
+def output_extensions(extensions: list[str]) -> None:
     """Output file extensions"""
     _output_manager.output_extensions(extensions)
 

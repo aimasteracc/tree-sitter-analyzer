@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Tests for CLI-Compatible Analyze Scale Tool
 
@@ -9,16 +8,15 @@ Follows TDD principles and .roo-config.json requirements.
 """
 
 import json
-import pytest
 import tempfile
-from pathlib import Path
-from typing import Any, Dict
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 # Import the module under test
 from tree_sitter_analyzer.mcp.tools.analyze_scale_tool_cli_compatible import (
     AnalyzeScaleToolCLICompatible,
-    analyze_scale_tool_cli_compatible
+    analyze_scale_tool_cli_compatible,
 )
 
 
@@ -31,8 +29,9 @@ def tool() -> AnalyzeScaleToolCLICompatible:
 @pytest.fixture
 def sample_java_file() -> str:
     """Fixture providing a temporary Java file for testing"""
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.java', delete=False) as f:
-        f.write("""
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".java", delete=False) as f:
+        f.write(
+            """
 package com.example.test;
 
 import java.util.List;
@@ -44,7 +43,7 @@ import java.util.Map;
 public class TestClass {
     private String field1;
     private int field2;
-    
+
     /**
      * Constructor
      */
@@ -52,14 +51,14 @@ public class TestClass {
         this.field1 = field1;
         this.field2 = field2;
     }
-    
+
     /**
      * Public method
      */
     public String getField1() {
         return field1;
     }
-    
+
     /**
      * Private method
      */
@@ -67,7 +66,8 @@ public class TestClass {
         // Implementation
     }
 }
-""")
+"""
+        )
         return f.name
 
 
@@ -91,22 +91,26 @@ class TestAnalyzeScaleToolCLICompatibleInitialization:
     def test_initialization(self, tool: AnalyzeScaleToolCLICompatible) -> None:
         """Test tool initializes correctly"""
         assert tool is not None
-        assert hasattr(tool, 'analysis_engine')
+        assert hasattr(tool, "analysis_engine")
         assert tool.analysis_engine is not None
 
     def test_module_level_instance(self) -> None:
         """Test module-level tool instance exists"""
         assert analyze_scale_tool_cli_compatible is not None
-        assert isinstance(analyze_scale_tool_cli_compatible, AnalyzeScaleToolCLICompatible)
+        assert isinstance(
+            analyze_scale_tool_cli_compatible, AnalyzeScaleToolCLICompatible
+        )
 
 
 class TestAnalyzeScaleToolCLICompatibleSchema:
     """Test cases for tool schema"""
 
-    def test_get_tool_schema_structure(self, tool: AnalyzeScaleToolCLICompatible) -> None:
+    def test_get_tool_schema_structure(
+        self, tool: AnalyzeScaleToolCLICompatible
+    ) -> None:
         """Test tool schema has correct structure"""
         schema = tool.get_tool_schema()
-        
+
         assert isinstance(schema, dict)
         assert schema["type"] == "object"
         assert "properties" in schema
@@ -114,36 +118,40 @@ class TestAnalyzeScaleToolCLICompatibleSchema:
         assert "additionalProperties" in schema
         assert schema["additionalProperties"] is False
 
-    def test_get_tool_schema_properties(self, tool: AnalyzeScaleToolCLICompatible) -> None:
+    def test_get_tool_schema_properties(
+        self, tool: AnalyzeScaleToolCLICompatible
+    ) -> None:
         """Test tool schema properties are correct"""
         schema = tool.get_tool_schema()
         properties = schema["properties"]
-        
+
         # Check file_path property
         assert "file_path" in properties
         assert properties["file_path"]["type"] == "string"
         assert "description" in properties["file_path"]
-        
+
         # Check language property
         assert "language" in properties
         assert properties["language"]["type"] == "string"
         assert "description" in properties["language"]
-        
+
         # Check include_complexity property
         assert "include_complexity" in properties
         assert properties["include_complexity"]["type"] == "boolean"
         assert properties["include_complexity"]["default"] is True
-        
+
         # Check include_details property
         assert "include_details" in properties
         assert properties["include_details"]["type"] == "boolean"
         assert properties["include_details"]["default"] is False
 
-    def test_get_tool_schema_required_fields(self, tool: AnalyzeScaleToolCLICompatible) -> None:
+    def test_get_tool_schema_required_fields(
+        self, tool: AnalyzeScaleToolCLICompatible
+    ) -> None:
         """Test tool schema required fields"""
         schema = tool.get_tool_schema()
         required = schema["required"]
-        
+
         assert isinstance(required, list)
         assert "file_path" in required
         assert len(required) == 1
@@ -152,71 +160,78 @@ class TestAnalyzeScaleToolCLICompatibleSchema:
 class TestAnalyzeScaleToolCLICompatibleValidation:
     """Test cases for argument validation"""
 
-    def test_validate_arguments_valid_minimal(self, tool: AnalyzeScaleToolCLICompatible) -> None:
+    def test_validate_arguments_valid_minimal(
+        self, tool: AnalyzeScaleToolCLICompatible
+    ) -> None:
         """Test validation with minimal valid arguments"""
         arguments = {"file_path": "/path/to/file.java"}
         result = tool.validate_arguments(arguments)
         assert result is True
 
-    def test_validate_arguments_valid_complete(self, tool: AnalyzeScaleToolCLICompatible) -> None:
+    def test_validate_arguments_valid_complete(
+        self, tool: AnalyzeScaleToolCLICompatible
+    ) -> None:
         """Test validation with complete valid arguments"""
         arguments = {
             "file_path": "/path/to/file.java",
             "language": "java",
             "include_complexity": True,
-            "include_details": False
+            "include_details": False,
         }
         result = tool.validate_arguments(arguments)
         assert result is True
 
-    def test_validate_arguments_missing_required(self, tool: AnalyzeScaleToolCLICompatible) -> None:
+    def test_validate_arguments_missing_required(
+        self, tool: AnalyzeScaleToolCLICompatible
+    ) -> None:
         """Test validation fails with missing required field"""
         arguments = {"language": "java"}
-        
+
         with pytest.raises(ValueError, match="Required field 'file_path' is missing"):
             tool.validate_arguments(arguments)
 
-    def test_validate_arguments_invalid_file_path_type(self, tool: AnalyzeScaleToolCLICompatible) -> None:
+    def test_validate_arguments_invalid_file_path_type(
+        self, tool: AnalyzeScaleToolCLICompatible
+    ) -> None:
         """Test validation fails with invalid file_path type"""
         arguments = {"file_path": 123}
-        
+
         with pytest.raises(ValueError, match="file_path must be a string"):
             tool.validate_arguments(arguments)
 
-    def test_validate_arguments_empty_file_path(self, tool: AnalyzeScaleToolCLICompatible) -> None:
+    def test_validate_arguments_empty_file_path(
+        self, tool: AnalyzeScaleToolCLICompatible
+    ) -> None:
         """Test validation fails with empty file_path"""
         arguments = {"file_path": "   "}
-        
+
         with pytest.raises(ValueError, match="file_path cannot be empty"):
             tool.validate_arguments(arguments)
 
-    def test_validate_arguments_invalid_language_type(self, tool: AnalyzeScaleToolCLICompatible) -> None:
+    def test_validate_arguments_invalid_language_type(
+        self, tool: AnalyzeScaleToolCLICompatible
+    ) -> None:
         """Test validation fails with invalid language type"""
-        arguments = {
-            "file_path": "/path/to/file.java",
-            "language": 123
-        }
-        
+        arguments = {"file_path": "/path/to/file.java", "language": 123}
+
         with pytest.raises(ValueError, match="language must be a string"):
             tool.validate_arguments(arguments)
 
-    def test_validate_arguments_invalid_include_complexity_type(self, tool: AnalyzeScaleToolCLICompatible) -> None:
+    def test_validate_arguments_invalid_include_complexity_type(
+        self, tool: AnalyzeScaleToolCLICompatible
+    ) -> None:
         """Test validation fails with invalid include_complexity type"""
-        arguments = {
-            "file_path": "/path/to/file.java",
-            "include_complexity": "true"
-        }
-        
+        arguments = {"file_path": "/path/to/file.java", "include_complexity": "true"}
+
         with pytest.raises(ValueError, match="include_complexity must be a boolean"):
             tool.validate_arguments(arguments)
 
-    def test_validate_arguments_invalid_include_details_type(self, tool: AnalyzeScaleToolCLICompatible) -> None:
+    def test_validate_arguments_invalid_include_details_type(
+        self, tool: AnalyzeScaleToolCLICompatible
+    ) -> None:
         """Test validation fails with invalid include_details type"""
-        arguments = {
-            "file_path": "/path/to/file.java",
-            "include_details": "false"
-        }
-        
+        arguments = {"file_path": "/path/to/file.java", "include_details": "false"}
+
         with pytest.raises(ValueError, match="include_details must be a boolean"):
             tool.validate_arguments(arguments)
 
@@ -226,16 +241,18 @@ class TestAnalyzeScaleToolCLICompatibleExecution:
 
     @pytest.mark.asyncio
     async def test_execute_success(
-        self, 
-        tool: AnalyzeScaleToolCLICompatible, 
+        self,
+        tool: AnalyzeScaleToolCLICompatible,
         sample_java_file: str,
-        sample_analysis_result: MagicMock
+        sample_analysis_result: MagicMock,
     ) -> None:
         """Test successful execution with valid file"""
-        with patch.object(tool.analysis_engine, 'analyze_file', return_value=sample_analysis_result):
+        with patch.object(
+            tool.analysis_engine, "analyze_file", return_value=sample_analysis_result
+        ):
             arguments = {"file_path": sample_java_file}
             result = await tool.execute(arguments)
-            
+
             assert result["success"] is True
             assert result["file_path"] == sample_java_file
             assert result["package_name"] == "com.example.test"
@@ -245,103 +262,119 @@ class TestAnalyzeScaleToolCLICompatibleExecution:
             assert result["element_counts"]["fields"] == 2
             assert result["element_counts"]["annotations"] == 0
             assert "analysis_time_ms" in result
-            assert isinstance(result["analysis_time_ms"], (int, float))
+            assert isinstance(result["analysis_time_ms"], int | float)
             assert result["error_message"] is None
 
     @pytest.mark.asyncio
-    async def test_execute_missing_file_path(self, tool: AnalyzeScaleToolCLICompatible) -> None:
+    async def test_execute_missing_file_path(
+        self, tool: AnalyzeScaleToolCLICompatible
+    ) -> None:
         """Test execution fails with missing file_path"""
         arguments = {"language": "java"}
-        
+
         with pytest.raises(ValueError, match="file_path is required"):
             await tool.execute(arguments)
 
     @pytest.mark.asyncio
-    async def test_execute_nonexistent_file(self, tool: AnalyzeScaleToolCLICompatible) -> None:
+    async def test_execute_nonexistent_file(
+        self, tool: AnalyzeScaleToolCLICompatible
+    ) -> None:
         """Test execution fails with nonexistent file"""
         arguments = {"file_path": "/nonexistent/file.java"}
-        
-        with pytest.raises(FileNotFoundError, match="File not found: /nonexistent/file.java"):
+
+        with pytest.raises(
+            FileNotFoundError, match="File not found: /nonexistent/file.java"
+        ):
             await tool.execute(arguments)
 
     @pytest.mark.asyncio
     async def test_execute_with_language_detection(
-        self, 
-        tool: AnalyzeScaleToolCLICompatible, 
+        self,
+        tool: AnalyzeScaleToolCLICompatible,
         sample_java_file: str,
-        sample_analysis_result: MagicMock
+        sample_analysis_result: MagicMock,
     ) -> None:
         """Test execution with automatic language detection"""
-        with patch.object(tool.analysis_engine, 'analyze_file', return_value=sample_analysis_result), \
-             patch('tree_sitter_analyzer.mcp.tools.analyze_scale_tool_cli_compatible.detect_language_from_file', return_value='java'):
-            
+        with (
+            patch.object(
+                tool.analysis_engine,
+                "analyze_file",
+                return_value=sample_analysis_result,
+            ),
+            patch(
+                "tree_sitter_analyzer.mcp.tools.analyze_scale_tool_cli_compatible.detect_language_from_file",
+                return_value="java",
+            ),
+        ):
             arguments = {"file_path": sample_java_file}
             result = await tool.execute(arguments)
-            
+
             assert result["success"] is True
 
     @pytest.mark.asyncio
     async def test_execute_unknown_language(
-        self, 
-        tool: AnalyzeScaleToolCLICompatible, 
-        sample_java_file: str
+        self, tool: AnalyzeScaleToolCLICompatible, sample_java_file: str
     ) -> None:
         """Test execution fails with unknown language"""
-        with patch('tree_sitter_analyzer.mcp.tools.analyze_scale_tool_cli_compatible.detect_language_from_file', return_value='unknown'):
+        with patch(
+            "tree_sitter_analyzer.mcp.tools.analyze_scale_tool_cli_compatible.detect_language_from_file",
+            return_value="unknown",
+        ):
             arguments = {"file_path": sample_java_file}
-            
+
             # Escape backslashes for Windows paths in regex
             escaped_path = sample_java_file.replace("\\", "\\\\")
-            with pytest.raises(ValueError, match=f"Could not detect language for file: {escaped_path}"):
+            with pytest.raises(
+                ValueError, match=f"Could not detect language for file: {escaped_path}"
+            ):
                 await tool.execute(arguments)
 
     @pytest.mark.asyncio
     async def test_execute_with_explicit_language(
-        self, 
-        tool: AnalyzeScaleToolCLICompatible, 
+        self,
+        tool: AnalyzeScaleToolCLICompatible,
         sample_java_file: str,
-        sample_analysis_result: MagicMock
+        sample_analysis_result: MagicMock,
     ) -> None:
         """Test execution with explicitly specified language"""
-        with patch.object(tool.analysis_engine, 'analyze_file', return_value=sample_analysis_result):
-            arguments = {
-                "file_path": sample_java_file,
-                "language": "java"
-            }
+        with patch.object(
+            tool.analysis_engine, "analyze_file", return_value=sample_analysis_result
+        ):
+            arguments = {"file_path": sample_java_file, "language": "java"}
             result = await tool.execute(arguments)
-            
+
             assert result["success"] is True
 
     @pytest.mark.asyncio
     async def test_execute_with_optional_parameters(
-        self, 
-        tool: AnalyzeScaleToolCLICompatible, 
+        self,
+        tool: AnalyzeScaleToolCLICompatible,
         sample_java_file: str,
-        sample_analysis_result: MagicMock
+        sample_analysis_result: MagicMock,
     ) -> None:
         """Test execution with optional parameters"""
-        with patch.object(tool.analysis_engine, 'analyze_file', return_value=sample_analysis_result):
+        with patch.object(
+            tool.analysis_engine, "analyze_file", return_value=sample_analysis_result
+        ):
             arguments = {
                 "file_path": sample_java_file,
                 "language": "java",
                 "include_complexity": True,
-                "include_details": True
+                "include_details": True,
             }
             result = await tool.execute(arguments)
-            
+
             assert result["success"] is True
 
     @pytest.mark.asyncio
     async def test_execute_analysis_failure(
-        self, 
-        tool: AnalyzeScaleToolCLICompatible, 
-        sample_java_file: str
+        self, tool: AnalyzeScaleToolCLICompatible, sample_java_file: str
     ) -> None:
         """Test execution when analysis returns None"""
-        with patch.object(tool.analysis_engine, 'analyze_file', return_value=None):
+        with patch.object(tool.analysis_engine, "analyze_file", return_value=None):
             arguments = {"file_path": sample_java_file}
             result = await tool.execute(arguments)
-            
+
             assert result["success"] is False
             assert result["file_path"] == sample_java_file
             assert result["package_name"] is None
@@ -351,19 +384,23 @@ class TestAnalyzeScaleToolCLICompatibleExecution:
             assert result["element_counts"]["fields"] == 0
             assert result["element_counts"]["annotations"] == 0
             assert "analysis_time_ms" in result
-            assert result["error_message"] == f"Failed to analyze file: {sample_java_file}"
+            assert (
+                result["error_message"] == f"Failed to analyze file: {sample_java_file}"
+            )
 
     @pytest.mark.asyncio
     async def test_execute_analysis_exception(
-        self, 
-        tool: AnalyzeScaleToolCLICompatible, 
-        sample_java_file: str
+        self, tool: AnalyzeScaleToolCLICompatible, sample_java_file: str
     ) -> None:
         """Test execution when analysis raises exception"""
-        with patch.object(tool.analysis_engine, 'analyze_file', side_effect=Exception("Analysis error")):
+        with patch.object(
+            tool.analysis_engine,
+            "analyze_file",
+            side_effect=Exception("Analysis error"),
+        ):
             arguments = {"file_path": sample_java_file}
             result = await tool.execute(arguments)
-            
+
             assert result["success"] is False
             assert result["file_path"] == sample_java_file
             assert result["package_name"] is None
@@ -377,9 +414,7 @@ class TestAnalyzeScaleToolCLICompatibleExecution:
 
     @pytest.mark.asyncio
     async def test_execute_no_package(
-        self, 
-        tool: AnalyzeScaleToolCLICompatible, 
-        sample_java_file: str
+        self, tool: AnalyzeScaleToolCLICompatible, sample_java_file: str
     ) -> None:
         """Test execution with analysis result having no package"""
         result_no_package = MagicMock()
@@ -388,19 +423,19 @@ class TestAnalyzeScaleToolCLICompatibleExecution:
         result_no_package.classes = []
         result_no_package.methods = []
         result_no_package.fields = []
-        
-        with patch.object(tool.analysis_engine, 'analyze_file', return_value=result_no_package):
+
+        with patch.object(
+            tool.analysis_engine, "analyze_file", return_value=result_no_package
+        ):
             arguments = {"file_path": sample_java_file}
             result = await tool.execute(arguments)
-            
+
             assert result["success"] is True
             assert result["package_name"] is None
 
     @pytest.mark.asyncio
     async def test_execute_no_annotations_attribute(
-        self, 
-        tool: AnalyzeScaleToolCLICompatible, 
-        sample_java_file: str
+        self, tool: AnalyzeScaleToolCLICompatible, sample_java_file: str
     ) -> None:
         """Test execution with analysis result having no annotations attribute"""
         result_no_annotations = MagicMock()
@@ -410,13 +445,15 @@ class TestAnalyzeScaleToolCLICompatibleExecution:
         result_no_annotations.methods = []
         result_no_annotations.fields = []
         # Remove annotations attribute
-        if hasattr(result_no_annotations, 'annotations'):
-            delattr(result_no_annotations, 'annotations')
-        
-        with patch.object(tool.analysis_engine, 'analyze_file', return_value=result_no_annotations):
+        if hasattr(result_no_annotations, "annotations"):
+            delattr(result_no_annotations, "annotations")
+
+        with patch.object(
+            tool.analysis_engine, "analyze_file", return_value=result_no_annotations
+        ):
             arguments = {"file_path": sample_java_file}
             result = await tool.execute(arguments)
-            
+
             assert result["success"] is True
             assert result["element_counts"]["annotations"] == 0
 
@@ -424,19 +461,23 @@ class TestAnalyzeScaleToolCLICompatibleExecution:
 class TestAnalyzeScaleToolCLICompatibleToolDefinition:
     """Test cases for tool definition"""
 
-    def test_get_tool_definition_with_mcp(self, tool: AnalyzeScaleToolCLICompatible) -> None:
+    def test_get_tool_definition_with_mcp(
+        self, tool: AnalyzeScaleToolCLICompatible
+    ) -> None:
         """Test tool definition when MCP is available"""
         mock_tool = MagicMock()
-        
-        with patch('mcp.types.Tool', return_value=mock_tool):
+
+        with patch("mcp.types.Tool", return_value=mock_tool):
             result = tool.get_tool_definition()
             assert result == mock_tool
 
-    def test_get_tool_definition_without_mcp(self, tool: AnalyzeScaleToolCLICompatible) -> None:
+    def test_get_tool_definition_without_mcp(
+        self, tool: AnalyzeScaleToolCLICompatible
+    ) -> None:
         """Test tool definition fallback when MCP is not available"""
-        with patch('mcp.types.Tool', side_effect=ImportError):
+        with patch("mcp.types.Tool", side_effect=ImportError):
             result = tool.get_tool_definition()
-            
+
             assert isinstance(result, dict)
             assert result["name"] == "analyze_code_scale"
             assert "description" in result
@@ -449,68 +490,91 @@ class TestAnalyzeScaleToolCLICompatibleIntegration:
 
     @pytest.mark.asyncio
     async def test_full_workflow_success(
-        self, 
-        tool: AnalyzeScaleToolCLICompatible, 
+        self,
+        tool: AnalyzeScaleToolCLICompatible,
         sample_java_file: str,
-        sample_analysis_result: MagicMock
+        sample_analysis_result: MagicMock,
     ) -> None:
         """Test complete workflow from validation to execution"""
         arguments = {
             "file_path": sample_java_file,
             "language": "java",
             "include_complexity": True,
-            "include_details": False
+            "include_details": False,
         }
-        
+
         # Validate arguments
         assert tool.validate_arguments(arguments) is True
-        
+
         # Execute analysis
-        with patch.object(tool.analysis_engine, 'analyze_file', return_value=sample_analysis_result):
+        with patch.object(
+            tool.analysis_engine, "analyze_file", return_value=sample_analysis_result
+        ):
             result = await tool.execute(arguments)
-            
+
             assert result["success"] is True
             assert "analysis_time_ms" in result
             assert result["error_message"] is None
 
     def test_cli_output_format_compatibility(
-        self, 
-        tool: AnalyzeScaleToolCLICompatible, 
-        sample_analysis_result: MagicMock
+        self, tool: AnalyzeScaleToolCLICompatible, sample_analysis_result: MagicMock
     ) -> None:
         """Test that output format matches CLI --advanced --statistics exactly"""
         # This test verifies the exact structure expected by CLI compatibility
         expected_keys = {
-            "file_path", "success", "package_name", "element_counts", 
-            "analysis_time_ms", "error_message"
+            "file_path",
+            "success",
+            "package_name",
+            "element_counts",
+            "analysis_time_ms",
+            "error_message",
         }
-        
+
         expected_element_count_keys = {
-            "imports", "classes", "methods", "fields", "annotations"
+            "imports",
+            "classes",
+            "methods",
+            "fields",
+            "annotations",
         }
-        
+
         # Test success case structure with mocked file existence
-        with patch.object(tool.analysis_engine, 'analyze_file', return_value=sample_analysis_result), \
-             patch('pathlib.Path.exists', return_value=True):
+        with (
+            patch.object(
+                tool.analysis_engine,
+                "analyze_file",
+                return_value=sample_analysis_result,
+            ),
+            patch("pathlib.Path.exists", return_value=True),
+        ):
             import asyncio
+
             result = asyncio.run(tool.execute({"file_path": "/test/file.java"}))
-            
+
             assert set(result.keys()) == expected_keys
             assert set(result["element_counts"].keys()) == expected_element_count_keys
             assert isinstance(result["success"], bool)
-            assert isinstance(result["analysis_time_ms"], (int, float))
+            assert isinstance(result["analysis_time_ms"], int | float)
 
     @pytest.mark.asyncio
-    async def test_error_case_format_compatibility(self, tool: AnalyzeScaleToolCLICompatible) -> None:
+    async def test_error_case_format_compatibility(
+        self, tool: AnalyzeScaleToolCLICompatible
+    ) -> None:
         """Test that error output format matches CLI expectations"""
-        with patch.object(tool.analysis_engine, 'analyze_file', return_value=None), \
-             patch('pathlib.Path.exists', return_value=True):
+        with (
+            patch.object(tool.analysis_engine, "analyze_file", return_value=None),
+            patch("pathlib.Path.exists", return_value=True),
+        ):
             result = await tool.execute({"file_path": "/test/file.java"})
-            
+
             # Verify error case has same structure as success case
             expected_keys = {
-                "file_path", "success", "package_name", "element_counts", 
-                "analysis_time_ms", "error_message"
+                "file_path",
+                "success",
+                "package_name",
+                "element_counts",
+                "analysis_time_ms",
+                "error_message",
             }
             assert set(result.keys()) == expected_keys
             assert result["success"] is False
@@ -522,21 +586,25 @@ class TestAnalyzeScaleToolCLICompatiblePerformance:
 
     @pytest.mark.asyncio
     async def test_timing_accuracy(
-        self, 
-        tool: AnalyzeScaleToolCLICompatible, 
+        self,
+        tool: AnalyzeScaleToolCLICompatible,
         sample_java_file: str,
-        sample_analysis_result: MagicMock
+        sample_analysis_result: MagicMock,
     ) -> None:
         """Test that timing measurements are accurate"""
+
         def slow_analysis(file_path):
             import time
+
             time.sleep(0.1)  # Simulate 100ms analysis
             return sample_analysis_result
-        
-        with patch.object(tool.analysis_engine, 'analyze_file', side_effect=slow_analysis):
+
+        with patch.object(
+            tool.analysis_engine, "analyze_file", side_effect=slow_analysis
+        ):
             arguments = {"file_path": sample_java_file}
             result = await tool.execute(arguments)
-            
+
             # Should be at least 100ms
             assert result["analysis_time_ms"] >= 100
             # Should be reasonable (less than 1 second for this test)
@@ -544,9 +612,7 @@ class TestAnalyzeScaleToolCLICompatiblePerformance:
 
     @pytest.mark.asyncio
     async def test_memory_efficiency(
-        self, 
-        tool: AnalyzeScaleToolCLICompatible, 
-        sample_java_file: str
+        self, tool: AnalyzeScaleToolCLICompatible, sample_java_file: str
     ) -> None:
         """Test that tool doesn't leak memory or resources"""
         # Create large mock result
@@ -558,11 +624,13 @@ class TestAnalyzeScaleToolCLICompatiblePerformance:
         large_result.methods = [MagicMock() for _ in range(500)]
         large_result.fields = [MagicMock() for _ in range(200)]
         large_result.annotations = [MagicMock() for _ in range(50)]
-        
-        with patch.object(tool.analysis_engine, 'analyze_file', return_value=large_result):
+
+        with patch.object(
+            tool.analysis_engine, "analyze_file", return_value=large_result
+        ):
             arguments = {"file_path": sample_java_file}
             result = await tool.execute(arguments)
-            
+
             # Should handle large results correctly
             assert result["success"] is True
             assert result["element_counts"]["imports"] == 1000
@@ -576,39 +644,49 @@ class TestAnalyzeScaleToolCLICompatibleErrorHandling:
     """Test cases for comprehensive error handling"""
 
     @pytest.mark.asyncio
-    async def test_file_permission_error(self, tool: AnalyzeScaleToolCLICompatible) -> None:
+    async def test_file_permission_error(
+        self, tool: AnalyzeScaleToolCLICompatible
+    ) -> None:
         """Test handling of file permission errors"""
-        with patch('pathlib.Path.exists', return_value=True), \
-             patch.object(tool.analysis_engine, 'analyze_file', side_effect=PermissionError("Permission denied")):
-            
+        with (
+            patch("pathlib.Path.exists", return_value=True),
+            patch.object(
+                tool.analysis_engine,
+                "analyze_file",
+                side_effect=PermissionError("Permission denied"),
+            ),
+        ):
             arguments = {"file_path": "/restricted/file.java"}
             result = await tool.execute(arguments)
-            
+
             assert result["success"] is False
             assert "Permission denied" in result["error_message"]
 
     @pytest.mark.asyncio
     async def test_unicode_file_path(
-        self, 
-        tool: AnalyzeScaleToolCLICompatible,
-        sample_analysis_result: MagicMock
+        self, tool: AnalyzeScaleToolCLICompatible, sample_analysis_result: MagicMock
     ) -> None:
         """Test handling of Unicode file paths"""
         unicode_path = "/path/to/ファイル.java"
-        
-        with patch('pathlib.Path.exists', return_value=True), \
-             patch.object(tool.analysis_engine, 'analyze_file', return_value=sample_analysis_result):
-            
+
+        with (
+            patch("pathlib.Path.exists", return_value=True),
+            patch.object(
+                tool.analysis_engine,
+                "analyze_file",
+                return_value=sample_analysis_result,
+            ),
+        ):
             arguments = {"file_path": unicode_path}
             result = await tool.execute(arguments)
-            
+
             assert result["success"] is True
             assert result["file_path"] == unicode_path
 
     def test_schema_edge_cases(self, tool: AnalyzeScaleToolCLICompatible) -> None:
         """Test schema validation with edge cases"""
         schema = tool.get_tool_schema()
-        
+
         # Verify schema is JSON serializable
         json_str = json.dumps(schema)
         parsed_schema = json.loads(json_str)
@@ -616,6 +694,4 @@ class TestAnalyzeScaleToolCLICompatibleErrorHandling:
 
 
 # Additional test markers for categorization
-pytestmark = [
-    pytest.mark.unit
-]
+pytestmark = [pytest.mark.unit]

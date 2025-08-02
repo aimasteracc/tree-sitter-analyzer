@@ -1,13 +1,11 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 JavaScript Language Plugin
 
 Provides JavaScript-specific parsing and element extraction functionality.
 """
 
-import re
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -19,11 +17,11 @@ try:
 except ImportError:
     TREE_SITTER_AVAILABLE = False
 
+from ..core.analysis_engine import AnalysisRequest
 from ..language_loader import loader
 from ..models import AnalysisResult, Class, Function, Import, Variable
-from ..utils import log_debug, log_error, log_warning
+from ..utils import log_error, log_warning
 from . import ElementExtractor, LanguagePlugin
-from ..core.analysis_engine import AnalysisRequest
 
 
 class JavaScriptElementExtractor(ElementExtractor):
@@ -31,7 +29,7 @@ class JavaScriptElementExtractor(ElementExtractor):
 
     def extract_functions(
         self, tree: "tree_sitter.Tree", source_code: str
-    ) -> List[Function]:
+    ) -> list[Function]:
         """Extract JavaScript function definitions"""
         functions = []
 
@@ -78,10 +76,17 @@ class JavaScriptElementExtractor(ElementExtractor):
 
                     if isinstance(captures, dict):
                         # Handle different function types
-                        for capture_key in ["func.declaration", "func.method", "func.arrow", "func.expression"]:
+                        for capture_key in [
+                            "func.declaration",
+                            "func.method",
+                            "func.arrow",
+                            "func.expression",
+                        ]:
                             func_nodes = captures.get(capture_key, [])
                             for node in func_nodes:
-                                function = self._extract_function_info(node, source_code)
+                                function = self._extract_function_info(
+                                    node, source_code
+                                )
                                 if function:
                                     functions.append(function)
 
@@ -92,7 +97,7 @@ class JavaScriptElementExtractor(ElementExtractor):
 
     def extract_classes(
         self, tree: "tree_sitter.Tree", source_code: str
-    ) -> List[Class]:
+    ) -> list[Class]:
         """Extract JavaScript class definitions"""
         classes = []
 
@@ -122,7 +127,7 @@ class JavaScriptElementExtractor(ElementExtractor):
 
     def extract_variables(
         self, tree: "tree_sitter.Tree", source_code: str
-    ) -> List[Variable]:
+    ) -> list[Variable]:
         """Extract JavaScript variable definitions"""
         variables = []
 
@@ -141,7 +146,7 @@ class JavaScriptElementExtractor(ElementExtractor):
                 (variable_declarator
                     name: (identifier) @var.name
                     value: (_)? @var.value)) @var.lexical
-            """
+            """,
         ]
 
         try:
@@ -156,7 +161,9 @@ class JavaScriptElementExtractor(ElementExtractor):
                         for capture_key in ["var.declaration", "var.lexical"]:
                             var_nodes = captures.get(capture_key, [])
                             for node in var_nodes:
-                                variable = self._extract_variable_info(node, source_code)
+                                variable = self._extract_variable_info(
+                                    node, source_code
+                                )
                                 if variable:
                                     variables.append(variable)
 
@@ -167,7 +174,7 @@ class JavaScriptElementExtractor(ElementExtractor):
 
     def extract_imports(
         self, tree: "tree_sitter.Tree", source_code: str
-    ) -> List[Import]:
+    ) -> list[Import]:
         """Extract JavaScript import statements"""
         imports = []
 
@@ -197,7 +204,7 @@ class JavaScriptElementExtractor(ElementExtractor):
 
     def _extract_function_info(
         self, node: "tree_sitter.Node", source_code: str
-    ) -> Optional[Function]:
+    ) -> Function | None:
         """Extract function information from AST node"""
         try:
             name_node = None
@@ -249,7 +256,7 @@ class JavaScriptElementExtractor(ElementExtractor):
 
     def _extract_class_info(
         self, node: "tree_sitter.Node", source_code: str
-    ) -> Optional[Class]:
+    ) -> Class | None:
         """Extract class information from AST node"""
         try:
             name_node = None
@@ -279,7 +286,7 @@ class JavaScriptElementExtractor(ElementExtractor):
 
     def _extract_variable_info(
         self, node: "tree_sitter.Node", source_code: str
-    ) -> Optional[Variable]:
+    ) -> Variable | None:
         """Extract variable information from AST node"""
         try:
             name_node = None
@@ -312,7 +319,7 @@ class JavaScriptElementExtractor(ElementExtractor):
 
     def _extract_import_info(
         self, node: "tree_sitter.Node", source_code: str
-    ) -> Optional[Import]:
+    ) -> Import | None:
         """Extract import information from AST node"""
         try:
             source_node = None
@@ -348,21 +355,21 @@ class JavaScriptPlugin(LanguagePlugin):
 
     def __init__(self) -> None:
         self._extractor = JavaScriptElementExtractor()
-        self._language: Optional["tree_sitter.Language"] = None
+        self._language: tree_sitter.Language | None = None
 
     @property
     def language_name(self) -> str:
         return "javascript"
 
     @property
-    def file_extensions(self) -> List[str]:
+    def file_extensions(self) -> list[str]:
         return [".js", ".mjs", ".jsx"]
 
     def get_language_name(self) -> str:
         """Return the name of the programming language this plugin supports"""
         return "javascript"
 
-    def get_file_extensions(self) -> List[str]:
+    def get_file_extensions(self) -> list[str]:
         """Return list of file extensions this plugin supports"""
         return [".js", ".mjs", ".jsx"]
 
@@ -401,7 +408,7 @@ class JavaScriptPlugin(LanguagePlugin):
             )
 
         try:
-            with open(file_path, "r", encoding="utf-8") as f:
+            with open(file_path, encoding="utf-8") as f:
                 source_code = f.read()
 
             parser = tree_sitter.Parser()

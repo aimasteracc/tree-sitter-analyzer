@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Partial Read Command
 
 Handles partial file reading functionality, extracting specified line ranges.
 """
-import json
+
 from typing import TYPE_CHECKING
 
 from ...file_handler import read_file_partial
@@ -28,6 +27,7 @@ class PartialReadCommand(BaseCommand):
         """Validate input file exists and is accessible."""
         if not hasattr(self.args, "file_path") or not self.args.file_path:
             from ...output_manager import output_error
+
             output_error("ERROR: File path not specified.")
             return False
 
@@ -35,6 +35,7 @@ class PartialReadCommand(BaseCommand):
 
         if not os.path.exists(self.args.file_path):
             from ...output_manager import output_error
+
             output_error(f"ERROR: File not found: {self.args.file_path}")
             return False
 
@@ -54,17 +55,22 @@ class PartialReadCommand(BaseCommand):
         # Validate partial read arguments
         if not self.args.start_line:
             from ...output_manager import output_error
+
             output_error("ERROR: --start-line is required")
             return 1
 
         if self.args.start_line < 1:
             from ...output_manager import output_error
+
             output_error("ERROR: --start-line must be 1 or greater")
             return 1
 
         if self.args.end_line and self.args.end_line < self.args.start_line:
             from ...output_manager import output_error
-            output_error("ERROR: --end-line must be greater than or equal to --start-line")
+
+            output_error(
+                "ERROR: --end-line must be greater than or equal to --start-line"
+            )
             return 1
 
         # Read partial content
@@ -72,13 +78,14 @@ class PartialReadCommand(BaseCommand):
             partial_content = read_file_partial(
                 self.args.file_path,
                 start_line=self.args.start_line,
-                end_line=getattr(self.args, 'end_line', None),
-                start_column=getattr(self.args, 'start_column', None),
-                end_column=getattr(self.args, 'end_column', None)
+                end_line=getattr(self.args, "end_line", None),
+                start_column=getattr(self.args, "start_column", None),
+                end_column=getattr(self.args, "end_column", None),
             )
 
             if partial_content is None:
                 from ...output_manager import output_error
+
                 output_error("ERROR: Failed to read file partially")
                 return 1
 
@@ -88,6 +95,7 @@ class PartialReadCommand(BaseCommand):
 
         except Exception as e:
             from ...output_manager import output_error
+
             output_error(f"ERROR: Failed to read file partially: {e}")
             return 1
 
@@ -98,9 +106,9 @@ class PartialReadCommand(BaseCommand):
             "file_path": self.args.file_path,
             "range": {
                 "start_line": self.args.start_line,
-                "end_line": getattr(self.args, 'end_line', None),
-                "start_column": getattr(self.args, 'start_column', None),
-                "end_column": getattr(self.args, 'end_column', None),
+                "end_line": getattr(self.args, "end_line", None),
+                "start_column": getattr(self.args, "start_column", None),
+                "end_column": getattr(self.args, "end_column", None),
             },
             "content": content,
             "content_length": len(content),
@@ -108,13 +116,13 @@ class PartialReadCommand(BaseCommand):
 
         # Build range info for header
         range_info = f"Line {self.args.start_line}"
-        if hasattr(self.args, 'end_line') and self.args.end_line:
+        if hasattr(self.args, "end_line") and self.args.end_line:
             range_info += f"-{self.args.end_line}"
 
         # Output format selection
-        output_format = getattr(self.args, 'output_format', 'text')
+        output_format = getattr(self.args, "output_format", "text")
 
-        if output_format == 'json':
+        if output_format == "json":
             # Pure JSON output
             output_json(result_data)
         else:
@@ -124,10 +132,10 @@ class PartialReadCommand(BaseCommand):
             output_data(f"Range: {range_info}")
             output_data(f"Characters read: {len(content)}")
             output_data("")  # Empty line for separation
-            
+
             # Output the actual content
-            print(content, end='')  # Use print to avoid extra formatting
+            print(content, end="")  # Use print to avoid extra formatting
 
     async def execute_async(self, language: str) -> int:
         """Not used for partial read command."""
-        return self.execute() 
+        return self.execute()

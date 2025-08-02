@@ -1,22 +1,22 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Tests for JavaScript queries module
 """
 
 import pytest
+
 from tree_sitter_analyzer.queries.javascript import (
-    get_query,
-    get_all_queries,
-    list_queries,
     ALL_QUERIES,
-    FUNCTIONS,
     CLASSES,
-    VARIABLES,
-    IMPORTS,
-    EXPORTS,
-    OBJECTS,
     COMMENTS,
+    EXPORTS,
+    FUNCTIONS,
+    IMPORTS,
+    OBJECTS,
+    VARIABLES,
+    get_all_queries,
+    get_query,
+    list_queries,
 )
 
 
@@ -34,7 +34,7 @@ class TestJavaScriptQueries:
         """Test getting an invalid JavaScript query raises ValueError"""
         with pytest.raises(ValueError) as exc_info:
             get_query("nonexistent_query")
-        
+
         assert "Query 'nonexistent_query' not found" in str(exc_info.value)
         assert "Available queries:" in str(exc_info.value)
 
@@ -59,7 +59,7 @@ class TestJavaScriptQueries:
         """Test ALL_QUERIES dictionary structure"""
         assert isinstance(ALL_QUERIES, dict)
         assert len(ALL_QUERIES) > 0
-        
+
         # Test essential queries exist
         essential_queries = ["functions", "classes", "variables", "imports", "exports"]
         for query_name in essential_queries:
@@ -120,11 +120,13 @@ class TestJavaScriptQueries:
 
     def test_query_descriptions(self) -> None:
         """Test that all queries have meaningful descriptions"""
-        for query_name, query_data in ALL_QUERIES.items():
+        for _query_name, query_data in ALL_QUERIES.items():
             description = query_data["description"]
             assert isinstance(description, str)
             assert len(description) > 0
-            assert "検索" in description  # All descriptions should mention "search" in Japanese
+            assert (
+                "検索" in description
+            )  # All descriptions should mention "search" in Japanese
 
     def test_query_consistency(self) -> None:
         """Test consistency between constants and ALL_QUERIES"""

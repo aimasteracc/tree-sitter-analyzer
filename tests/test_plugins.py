@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Tests for Plugin System
 
@@ -12,16 +11,8 @@ import sys
 # Add project root to path
 sys.path.insert(0, ".")
 
-import os
-import tempfile
 
-from tree_sitter_analyzer.models import Class, Function, Import, Variable
-from tree_sitter_analyzer.plugins import (
-    ElementExtractor,
-    LanguagePlugin,
-    PluginRegistry,
-    plugin_registry,
-)
+from tree_sitter_analyzer.plugins import PluginRegistry, plugin_registry
 from tree_sitter_analyzer.plugins.java_plugin import JavaElementExtractor, JavaPlugin
 from tree_sitter_analyzer.plugins.javascript_plugin import (
     JavaScriptElementExtractor,

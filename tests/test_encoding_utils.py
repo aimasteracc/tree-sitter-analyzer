@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Tests for Encoding Utilities Module
 
@@ -8,9 +7,8 @@ This module tests unified encoding/decoding functionality.
 
 import os
 import tempfile
+
 import pytest
-import pytest_asyncio
-from pathlib import Path
 
 # Import the module under test
 from tree_sitter_analyzer.encoding_utils import (
@@ -257,7 +255,7 @@ import java.util.List;
  */
 public class TestClass {
     private String name = "Hello, 世界!";
-    
+
     public void method() {
         System.out.println("Testing unicode: 你好");
     }
@@ -300,7 +298,7 @@ class TestConvenienceFunctions:
 
     def test_detect_encoding_function(self):
         """Test detect_encoding convenience function"""
-        data = "Hello, World!".encode("utf-8")
+        data = b"Hello, World!"
         result = detect_encoding(data)
         assert isinstance(result, str)
 
@@ -348,11 +346,14 @@ class TestConvenienceFunctions:
 class TestErrorHandling:
     """Test error handling and edge cases"""
 
-    @pytest.mark.parametrize("test_string", [
-        "\x00\x01\x02",  # Control characters
-        "�",  # Replacement character
-        "\uffff",  # Non-character
-    ])
+    @pytest.mark.parametrize(
+        "test_string",
+        [
+            "\x00\x01\x02",  # Control characters
+            "�",  # Replacement character
+            "\uffff",  # Non-character
+        ],
+    )
     def test_encoding_with_invalid_characters(self, test_string):
         """Test encoding with potentially problematic characters"""
         # Should not raise exceptions

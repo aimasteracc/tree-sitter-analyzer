@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Read Code Partial MCP Tool
 
@@ -8,12 +7,11 @@ allowing selective content extraction with line and column range support.
 """
 
 import json
-import logging
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 from ...file_handler import read_file_partial
-from ...utils import log_performance, setup_logger
+from ...utils import setup_logger
 
 # Set up logging
 logger = setup_logger(__name__)
@@ -31,7 +29,7 @@ class ReadPartialTool:
         """Initialize the read partial tool."""
         logger.info("ReadPartialTool initialized")
 
-    def get_tool_schema(self) -> Dict[str, Any]:
+    def get_tool_schema(self) -> dict[str, Any]:
         """
         Get the MCP tool schema for read_code_partial.
 
@@ -76,7 +74,7 @@ class ReadPartialTool:
             "additionalProperties": False,
         }
 
-    async def execute(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
+    async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """
         Execute the read_code_partial tool.
 
@@ -102,7 +100,7 @@ class ReadPartialTool:
         end_line = arguments.get("end_line")
         start_column = arguments.get("start_column")
         end_column = arguments.get("end_column")
-        output_format = arguments.get("format", "text")
+        # output_format = arguments.get("format", "text")  # Not used currently
 
         # Validate file exists
         if not Path(file_path).exists():
@@ -185,10 +183,10 @@ class ReadPartialTool:
         self,
         file_path: str,
         start_line: int,
-        end_line: Optional[int] = None,
-        start_column: Optional[int] = None,
-        end_column: Optional[int] = None,
-    ) -> Optional[str]:
+        end_line: int | None = None,
+        start_column: int | None = None,
+        end_column: int | None = None,
+    ) -> str | None:
         """
         Internal method to read partial file content.
 
@@ -208,7 +206,7 @@ class ReadPartialTool:
             file_path, start_line, end_line, start_column, end_column
         )
 
-    def validate_arguments(self, arguments: Dict[str, Any]) -> bool:
+    def validate_arguments(self, arguments: dict[str, Any]) -> bool:
         """
         Validate tool arguments against the schema.
 

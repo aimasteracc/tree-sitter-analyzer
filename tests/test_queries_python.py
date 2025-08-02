@@ -1,20 +1,20 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Tests for Python queries module
 """
 
 import pytest
+
 from tree_sitter_analyzer.queries.python import (
-    get_query,
-    get_all_queries,
-    list_queries,
     ALL_QUERIES,
-    FUNCTIONS,
     CLASSES,
-    VARIABLES,
-    IMPORTS,
     COMMENTS,
+    FUNCTIONS,
+    IMPORTS,
+    VARIABLES,
+    get_all_queries,
+    get_query,
+    list_queries,
 )
 
 
@@ -32,7 +32,7 @@ class TestPythonQueries:
         """Test getting an invalid Python query raises ValueError"""
         with pytest.raises(ValueError) as exc_info:
             get_query("nonexistent_query")
-        
+
         assert "Query 'nonexistent_query' not found" in str(exc_info.value)
         assert "Available queries:" in str(exc_info.value)
 
@@ -57,7 +57,7 @@ class TestPythonQueries:
         """Test ALL_QUERIES dictionary structure"""
         assert isinstance(ALL_QUERIES, dict)
         assert len(ALL_QUERIES) > 0
-        
+
         # Test essential queries exist
         essential_queries = ["functions", "classes", "variables", "imports", "comments"]
         for query_name in essential_queries:
@@ -101,11 +101,13 @@ class TestPythonQueries:
 
     def test_query_descriptions(self) -> None:
         """Test that all queries have meaningful descriptions"""
-        for query_name, query_data in ALL_QUERIES.items():
+        for _query_name, query_data in ALL_QUERIES.items():
             description = query_data["description"]
             assert isinstance(description, str)
             assert len(description) > 0
-            assert "検索" in description  # All descriptions should mention "search" in Japanese
+            assert (
+                "検索" in description
+            )  # All descriptions should mention "search" in Japanese
 
     def test_query_consistency(self) -> None:
         """Test consistency between constants and ALL_QUERIES"""
@@ -121,11 +123,11 @@ class TestPythonQueries:
         # Functions should include async functions
         if "async_function_definition" in FUNCTIONS:
             assert "async_function_definition" in FUNCTIONS
-        
+
         # Classes should handle inheritance
         if "superclasses" in CLASSES:
             assert "superclasses" in CLASSES
-        
+
         # Imports should handle from imports
         if "import_from_statement" in IMPORTS:
             assert "import_from_statement" in IMPORTS
@@ -137,8 +139,10 @@ class TestPythonQueries:
             # Basic syntax checks
             assert "(" in query and ")" in query  # Should have parentheses
             assert "@" in query  # Should have capture names
-            
+
             # Check for balanced parentheses (basic check)
             open_count = query.count("(")
             close_count = query.count(")")
-            assert open_count == close_count, f"Unbalanced parentheses in {query_name} query"
+            assert (
+                open_count == close_count
+            ), f"Unbalanced parentheses in {query_name} query"

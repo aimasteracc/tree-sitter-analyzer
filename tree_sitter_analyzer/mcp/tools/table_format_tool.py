@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Table Format MCP Tool
 
@@ -7,12 +6,10 @@ This tool provides table-formatted output for code analysis results through the 
 equivalent to the CLI --table=full option functionality.
 """
 
-import logging
-import os
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
-from ...core.analysis_engine import get_analysis_engine, AnalysisRequest
+from ...core.analysis_engine import AnalysisRequest, get_analysis_engine
 from ...language_detector import detect_language_from_file
 from ...table_formatter import TableFormatter
 from ...utils import setup_logger
@@ -37,7 +34,7 @@ class TableFormatTool:
         self.analysis_engine = get_analysis_engine()
         logger.info("TableFormatTool initialized")
 
-    def get_tool_schema(self) -> Dict[str, Any]:
+    def get_tool_schema(self) -> dict[str, Any]:
         """
         Get the MCP tool schema for analyze_code_structure.
 
@@ -66,7 +63,7 @@ class TableFormatTool:
             "additionalProperties": False,
         }
 
-    def validate_arguments(self, arguments: Dict[str, Any]) -> bool:
+    def validate_arguments(self, arguments: dict[str, Any]) -> bool:
         """
         Validate tool arguments.
 
@@ -106,155 +103,161 @@ class TableFormatTool:
 
         return True
 
-    def _convert_parameters(self, parameters):
+    def _convert_parameters(self, parameters: Any) -> list[dict[str, str]]:
         """Convert parameters to expected format"""
         result = []
         for param in parameters:
             if isinstance(param, dict):
-                result.append({
-                    "name": param.get('name', 'param'),
-                    "type": param.get('type', 'Object')
-                })
+                result.append(
+                    {
+                        "name": param.get("name", "param"),
+                        "type": param.get("type", "Object"),
+                    }
+                )
             else:
-                result.append({
-                    "name": getattr(param, 'name', 'param'),
-                    "type": getattr(param, 'param_type', 'Object')
-                })
+                result.append(
+                    {
+                        "name": getattr(param, "name", "param"),
+                        "type": getattr(param, "param_type", "Object"),
+                    }
+                )
         return result
 
-    def _get_method_modifiers(self, method) -> list:
+    def _get_method_modifiers(self, method: Any) -> list[str]:
         """Extract method modifiers as a list"""
         modifiers = []
-        if getattr(method, 'is_static', False):
-            modifiers.append('static')
-        if getattr(method, 'is_final', False):
-            modifiers.append('final')
-        if getattr(method, 'is_abstract', False):
-            modifiers.append('abstract')
+        if getattr(method, "is_static", False):
+            modifiers.append("static")
+        if getattr(method, "is_final", False):
+            modifiers.append("final")
+        if getattr(method, "is_abstract", False):
+            modifiers.append("abstract")
         return modifiers
 
-    def _get_method_parameters(self, method):
+    def _get_method_parameters(self, method: Any) -> list[dict[str, str]]:
         """Get method parameters in the correct format for TableFormatter"""
-        parameters = getattr(method, 'parameters', [])
-        
+        parameters = getattr(method, "parameters", [])
+
         # If parameters is already a list of strings (like "int value"), convert to dict format
         if parameters and isinstance(parameters[0], str):
             result = []
             for param_str in parameters:
                 parts = param_str.strip().split()
                 if len(parts) >= 2:
-                    param_type = ' '.join(parts[:-1])  # Everything except last part is type
+                    param_type = " ".join(
+                        parts[:-1]
+                    )  # Everything except last part is type
                     param_name = parts[-1]  # Last part is name
-                    result.append({
-                        "name": param_name,
-                        "type": param_type
-                    })
+                    result.append({"name": param_name, "type": param_type})
                 elif len(parts) == 1:
                     # Only type, no name
-                    result.append({
-                        "name": "param",
-                        "type": parts[0]
-                    })
+                    result.append({"name": "param", "type": parts[0]})
             return result
-        
+
         # Fallback to original conversion method
         return self._convert_parameters(parameters)
 
     def _get_field_modifiers(self, field) -> list:
         """Extract field modifiers as a list"""
         modifiers = []
-        
+
         # Add visibility to modifiers for CLI compatibility
-        visibility = getattr(field, 'visibility', 'private')
-        if visibility and visibility != 'package':
+        visibility = getattr(field, "visibility", "private")
+        if visibility and visibility != "package":
             modifiers.append(visibility)
-        
-        if getattr(field, 'is_static', False):
-            modifiers.append('static')
-        if getattr(field, 'is_final', False):
-            modifiers.append('final')
+
+        if getattr(field, "is_static", False):
+            modifiers.append("static")
+        if getattr(field, "is_final", False):
+            modifiers.append("final")
         return modifiers
 
-    def _convert_analysis_result_to_dict(self, result) -> Dict[str, Any]:
+    def _convert_analysis_result_to_dict(self, result) -> dict[str, Any]:
         """Convert AnalysisResult to dictionary format expected by TableFormatter"""
         # Extract elements by type
-        classes = [e for e in result.elements if e.__class__.__name__ == 'Class']
-        methods = [e for e in result.elements if e.__class__.__name__ == 'Function']
-        fields = [e for e in result.elements if e.__class__.__name__ == 'Variable']
-        imports = [e for e in result.elements if e.__class__.__name__ == 'Import']
-        packages = [e for e in result.elements if e.__class__.__name__ == 'Package']
-        
+        classes = [e for e in result.elements if e.__class__.__name__ == "Class"]
+        methods = [e for e in result.elements if e.__class__.__name__ == "Function"]
+        fields = [e for e in result.elements if e.__class__.__name__ == "Variable"]
+        imports = [e for e in result.elements if e.__class__.__name__ == "Import"]
+        packages = [e for e in result.elements if e.__class__.__name__ == "Package"]
+
         # Convert package to expected format
         package_info = None
         if packages:
             package_info = {"name": packages[0].name}
-        
+
         return {
             "file_path": result.file_path,
             "language": result.language,
             "package": package_info,
             "classes": [
                 {
-                    "name": getattr(cls, 'name', 'unknown'),
+                    "name": getattr(cls, "name", "unknown"),
                     "line_range": {
-                        "start": getattr(cls, 'start_line', 0),
-                        "end": getattr(cls, 'end_line', 0)
+                        "start": getattr(cls, "start_line", 0),
+                        "end": getattr(cls, "end_line", 0),
                     },
-                    "type": getattr(cls, 'class_type', 'class'),
+                    "type": getattr(cls, "class_type", "class"),
                     "visibility": "public",  # Force all classes to public for CLI compatibility
-                    "extends": getattr(cls, 'extends_class', None),
-                    "implements": getattr(cls, 'implements_interfaces', []),
-                    "annotations": []
-                } for cls in classes
+                    "extends": getattr(cls, "extends_class", None),
+                    "implements": getattr(cls, "implements_interfaces", []),
+                    "annotations": [],
+                }
+                for cls in classes
             ],
             "methods": [
                 {
-                    "name": getattr(method, 'name', 'unknown'),
+                    "name": getattr(method, "name", "unknown"),
                     "line_range": {
-                        "start": getattr(method, 'start_line', 0),
-                        "end": getattr(method, 'end_line', 0)
+                        "start": getattr(method, "start_line", 0),
+                        "end": getattr(method, "end_line", 0),
                     },
-                    "return_type": getattr(method, 'return_type', 'void'),
+                    "return_type": getattr(method, "return_type", "void"),
                     "parameters": self._get_method_parameters(method),
-                    "visibility": getattr(method, 'visibility', 'public'),
-                    "is_static": getattr(method, 'is_static', False),
-                    "is_constructor": getattr(method, 'is_constructor', False),
-                    "complexity_score": getattr(method, 'complexity_score', 0),
+                    "visibility": getattr(method, "visibility", "public"),
+                    "is_static": getattr(method, "is_static", False),
+                    "is_constructor": getattr(method, "is_constructor", False),
+                    "complexity_score": getattr(method, "complexity_score", 0),
                     "modifiers": self._get_method_modifiers(method),
-                    "annotations": []
-                } for method in methods
+                    "annotations": [],
+                }
+                for method in methods
             ],
             "fields": [
                 {
-                    "name": getattr(field, 'name', 'unknown'),
-                    "type": getattr(field, 'field_type', 'Object'),
+                    "name": getattr(field, "name", "unknown"),
+                    "type": getattr(field, "field_type", "Object"),
                     "line_range": {
-                        "start": getattr(field, 'start_line', 0),
-                        "end": getattr(field, 'end_line', 0)
+                        "start": getattr(field, "start_line", 0),
+                        "end": getattr(field, "end_line", 0),
                     },
-                    "visibility": getattr(field, 'visibility', 'private'),
+                    "visibility": getattr(field, "visibility", "private"),
                     "modifiers": self._get_field_modifiers(field),
-                    "annotations": []
-                } for field in fields
+                    "annotations": [],
+                }
+                for field in fields
             ],
             "imports": [
                 {
-                    "name": getattr(imp, 'name', 'unknown'),
-                    "statement": getattr(imp, 'name', ''),  # Use name for CLI compatibility
-                    "is_static": getattr(imp, 'is_static', False),
-                    "is_wildcard": getattr(imp, 'is_wildcard', False)
-                } for imp in imports
+                    "name": getattr(imp, "name", "unknown"),
+                    "statement": getattr(
+                        imp, "name", ""
+                    ),  # Use name for CLI compatibility
+                    "is_static": getattr(imp, "is_static", False),
+                    "is_wildcard": getattr(imp, "is_wildcard", False),
+                }
+                for imp in imports
             ],
             "statistics": {
                 "class_count": len(classes),
                 "method_count": len(methods),
                 "field_count": len(fields),
                 "import_count": len(imports),
-                "total_lines": result.line_count
-            }
+                "total_lines": result.line_count,
+            },
         }
 
-    async def execute(self, args: Dict[str, Any]) -> Dict[str, Any]:
+    async def execute(self, args: dict[str, Any]) -> dict[str, Any]:
         """Execute code structure analysis tool."""
         try:
             # Validate arguments first
@@ -281,7 +284,7 @@ class TableFormatTool:
                     file_path=file_path,
                     language=language,
                     include_complexity=True,
-                    include_details=True
+                    include_details=True,
                 )
                 structure_result = await self.analysis_engine.analyze(request)
 
@@ -295,7 +298,7 @@ class TableFormatTool:
 
                 # Convert AnalysisResult to dict format for TableFormatter
                 structure_dict = self._convert_analysis_result_to_dict(structure_result)
-                
+
                 # Format table
                 table_output = formatter.format_structure(structure_dict)
 

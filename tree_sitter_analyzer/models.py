@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Data Models for Multi-Language Code Analysis
 
@@ -7,34 +6,18 @@ Data classes for representing code structures extracted through
 Tree-sitter analysis across multiple programming languages.
 """
 
-import sys
-from abc import ABC, abstractmethod
+from abc import ABC
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import (
-    TYPE_CHECKING,
-    Any,
-    Callable,
-    Dict,
-    List,
-    Optional,
-    Sequence,
-    TypeVar,
-    Union,
-)
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from typing_extensions import Self
+    pass
 
-# Python 3.10+ supports slots in dataclass, fallback for older versions
-if sys.version_info >= (3, 10):
 
-    def dataclass_with_slots(*args: Any, **kwargs: Any) -> Callable[..., Any]:
-        return dataclass(*args, slots=True, **kwargs)  # type: ignore[no-any-return]
-
-else:
-    # For Python < 3.10, use standard dataclass without slots for mypy compatibility
-    def dataclass_with_slots(*args: Any, **kwargs: Any) -> Callable[..., Any]:
-        return dataclass(*args, **kwargs)  # type: ignore[no-any-return]
+# Use dataclass with slots for Python 3.10+
+def dataclass_with_slots(*args: Any, **kwargs: Any) -> Callable[..., Any]:
+    return dataclass(*args, slots=True, **kwargs)  # type: ignore[no-any-return]
 
 
 # ========================================
@@ -51,16 +34,16 @@ class CodeElement(ABC):
     end_line: int
     raw_text: str = ""
     language: str = "unknown"
-    docstring: Optional[str] = None  # JavaDoc/docstring for this element
+    docstring: str | None = None  # JavaDoc/docstring for this element
 
 
 @dataclass(frozen=False)
 class Function(CodeElement):
     """Generic function/method representation"""
 
-    parameters: List[str] = field(default_factory=list)
-    return_type: Optional[str] = None
-    modifiers: List[str] = field(default_factory=list)
+    parameters: list[str] = field(default_factory=list)
+    return_type: str | None = None
+    modifiers: list[str] = field(default_factory=list)
     is_async: bool = False
     is_static: bool = False
     is_private: bool = False
@@ -69,8 +52,8 @@ class Function(CodeElement):
     visibility: str = "public"
     element_type: str = "function"
     # Java-specific fields for detailed analysis
-    annotations: List[Dict[str, Any]] = field(default_factory=list)
-    throws: List[str] = field(default_factory=list)
+    annotations: list[dict[str, Any]] = field(default_factory=list)
+    throws: list[str] = field(default_factory=list)
     complexity_score: int = 1
     is_abstract: bool = False
     is_final: bool = False
@@ -81,37 +64,39 @@ class Class(CodeElement):
     """Generic class representation"""
 
     class_type: str = "class"
-    full_qualified_name: Optional[str] = None
-    package_name: Optional[str] = None
-    superclass: Optional[str] = None
-    interfaces: List[str] = field(default_factory=list)
-    modifiers: List[str] = field(default_factory=list)
+    full_qualified_name: str | None = None
+    package_name: str | None = None
+    superclass: str | None = None
+    interfaces: list[str] = field(default_factory=list)
+    modifiers: list[str] = field(default_factory=list)
     visibility: str = "public"
     element_type: str = "class"
-    methods: List[Function] = field(default_factory=list)
+    methods: list[Function] = field(default_factory=list)
     # Java-specific fields for detailed analysis
-    annotations: List[Dict[str, Any]] = field(default_factory=list)
+    annotations: list[dict[str, Any]] = field(default_factory=list)
     is_nested: bool = False
-    parent_class: Optional[str] = None
-    extends_class: Optional[str] = None  # Alias for superclass
-    implements_interfaces: List[str] = field(default_factory=list)  # Alias for interfaces
+    parent_class: str | None = None
+    extends_class: str | None = None  # Alias for superclass
+    implements_interfaces: list[str] = field(
+        default_factory=list
+    )  # Alias for interfaces
 
 
 @dataclass(frozen=False)
 class Variable(CodeElement):
     """Generic variable representation"""
 
-    variable_type: Optional[str] = None
-    modifiers: List[str] = field(default_factory=list)
+    variable_type: str | None = None
+    modifiers: list[str] = field(default_factory=list)
     is_constant: bool = False
     is_static: bool = False
     visibility: str = "private"
     element_type: str = "variable"
-    initializer: Optional[str] = None
+    initializer: str | None = None
     # Java-specific fields for detailed analysis
-    annotations: List[Dict[str, Any]] = field(default_factory=list)
+    annotations: list[dict[str, Any]] = field(default_factory=list)
     is_final: bool = False
-    field_type: Optional[str] = None  # Alias for variable_type
+    field_type: str | None = None  # Alias for variable_type
 
 
 @dataclass(frozen=False)
@@ -120,11 +105,11 @@ class Import(CodeElement):
 
     module_name: str = ""
     module_path: str = ""  # Add module_path for compatibility with plugins
-    imported_names: List[str] = field(default_factory=list)
+    imported_names: list[str] = field(default_factory=list)
     is_wildcard: bool = False
     is_static: bool = False
     element_type: str = "import"
-    alias: Optional[str] = None
+    alias: str | None = None
     # Java-specific fields for detailed analysis
     imported_name: str = ""  # Alias for name
     import_statement: str = ""  # Full import statement
@@ -148,12 +133,12 @@ class JavaAnnotation:
     """Java annotation representation"""
 
     name: str
-    parameters: List[str] = field(default_factory=list)
+    parameters: list[str] = field(default_factory=list)
     start_line: int = 0
     end_line: int = 0
     raw_text: str = ""
 
-    def to_summary_item(self) -> Dict[str, Any]:
+    def to_summary_item(self) -> dict[str, Any]:
         """要約アイテムとして辞書を返す"""
         return {
             "name": self.name,
@@ -167,12 +152,12 @@ class JavaMethod:
     """Java method representation with comprehensive details"""
 
     name: str
-    return_type: Optional[str] = None
-    parameters: List[str] = field(default_factory=list)
-    modifiers: List[str] = field(default_factory=list)
+    return_type: str | None = None
+    parameters: list[str] = field(default_factory=list)
+    modifiers: list[str] = field(default_factory=list)
     visibility: str = "package"
-    annotations: List[JavaAnnotation] = field(default_factory=list)
-    throws: List[str] = field(default_factory=list)
+    annotations: list[JavaAnnotation] = field(default_factory=list)
+    throws: list[str] = field(default_factory=list)
     start_line: int = 0
     end_line: int = 0
     is_constructor: bool = False
@@ -182,7 +167,7 @@ class JavaMethod:
     complexity_score: int = 1
     file_path: str = ""
 
-    def to_summary_item(self) -> Dict[str, Any]:
+    def to_summary_item(self) -> dict[str, Any]:
         """要約アイテムとして辞書を返す"""
         return {
             "name": self.name,
@@ -199,18 +184,18 @@ class JavaClass:
     full_qualified_name: str = ""
     package_name: str = ""
     class_type: str = "class"
-    modifiers: List[str] = field(default_factory=list)
+    modifiers: list[str] = field(default_factory=list)
     visibility: str = "package"
-    extends_class: Optional[str] = None
-    implements_interfaces: List[str] = field(default_factory=list)
+    extends_class: str | None = None
+    implements_interfaces: list[str] = field(default_factory=list)
     start_line: int = 0
     end_line: int = 0
-    annotations: List[JavaAnnotation] = field(default_factory=list)
+    annotations: list[JavaAnnotation] = field(default_factory=list)
     is_nested: bool = False
-    parent_class: Optional[str] = None
+    parent_class: str | None = None
     file_path: str = ""
 
-    def to_summary_item(self) -> Dict[str, Any]:
+    def to_summary_item(self) -> dict[str, Any]:
         """要約アイテムとして辞書を返す"""
         return {
             "name": self.name,
@@ -225,16 +210,16 @@ class JavaField:
 
     name: str
     field_type: str = ""
-    modifiers: List[str] = field(default_factory=list)
+    modifiers: list[str] = field(default_factory=list)
     visibility: str = "package"
-    annotations: List[JavaAnnotation] = field(default_factory=list)
+    annotations: list[JavaAnnotation] = field(default_factory=list)
     start_line: int = 0
     end_line: int = 0
     is_static: bool = False
     is_final: bool = False
     file_path: str = ""
 
-    def to_summary_item(self) -> Dict[str, Any]:
+    def to_summary_item(self) -> dict[str, Any]:
         """要約アイテムとして辞書を返す"""
         return {
             "name": self.name,
@@ -257,7 +242,7 @@ class JavaImport:
     start_line: int = 0
     end_line: int = 0
 
-    def to_summary_item(self) -> Dict[str, Any]:
+    def to_summary_item(self) -> dict[str, Any]:
         """要約アイテムとして辞書を返す"""
         return {
             "name": self.name,
@@ -282,21 +267,25 @@ class AnalysisResult:
     file_path: str
     language: str = "unknown"  # Add language field for new architecture compatibility
     line_count: int = 0  # Add line_count for compatibility
-    elements: List[CodeElement] = field(default_factory=list)  # Generic elements for new architecture
+    elements: list[CodeElement] = field(
+        default_factory=list
+    )  # Generic elements for new architecture
     node_count: int = 0  # Node count for new architecture
-    query_results: Dict[str, Any] = field(default_factory=dict)  # Query results for new architecture
+    query_results: dict[str, Any] = field(
+        default_factory=dict
+    )  # Query results for new architecture
     source_code: str = ""  # Source code for new architecture
-    package: Optional[JavaPackage] = None
-    imports: List[JavaImport] = field(default_factory=list)
-    classes: List[JavaClass] = field(default_factory=list)
-    methods: List[JavaMethod] = field(default_factory=list)
-    fields: List[JavaField] = field(default_factory=list)
-    annotations: List[JavaAnnotation] = field(default_factory=list)
+    package: JavaPackage | None = None
+    imports: list[JavaImport] = field(default_factory=list)
+    classes: list[JavaClass] = field(default_factory=list)
+    methods: list[JavaMethod] = field(default_factory=list)
+    fields: list[JavaField] = field(default_factory=list)
+    annotations: list[JavaAnnotation] = field(default_factory=list)
     analysis_time: float = 0.0
     success: bool = True
-    error_message: Optional[str] = None
+    error_message: str | None = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert analysis result to dictionary for serialization"""
         return {
             "file_path": self.file_path,
@@ -331,7 +320,7 @@ class AnalysisResult:
             "error_message": self.error_message,
         }
 
-    def to_summary_dict(self, types: Optional[List[str]] = None) -> Dict[str, Any]:
+    def to_summary_dict(self, types: list[str] | None = None) -> dict[str, Any]:
         """
         分析結果の要約を辞書として返します。
         指定された型（'classes', 'methods', 'fields'など）の要素のみを含みます。
@@ -339,9 +328,9 @@ class AnalysisResult:
         if types is None:
             types = ["classes", "methods"]  # デフォルト値
 
-        summary: Dict[str, Any] = {"file_path": self.file_path, "summary_elements": []}
+        summary: dict[str, Any] = {"file_path": self.file_path, "summary_elements": []}
 
-        all_elements: Dict[str, List[Any]] = {
+        all_elements: dict[str, list[Any]] = {
             "imports": self.imports,
             "classes": self.classes,
             "methods": self.methods,
@@ -357,7 +346,7 @@ class AnalysisResult:
 
         return summary
 
-    def get_summary(self) -> Dict[str, Any]:
+    def get_summary(self) -> dict[str, Any]:
         """Get analysis summary statistics"""
         return {
             "file_path": self.file_path,
@@ -370,24 +359,24 @@ class AnalysisResult:
             "success": self.success,
             "analysis_time": self.analysis_time,
         }
-    
-    def to_mcp_format(self) -> Dict[str, Any]:
+
+    def to_mcp_format(self) -> dict[str, Any]:
         """
         MCP形式での出力を生成
-        
+
         Returns:
             MCP形式の分析結果辞書
         """
         # packageの安全な処理
         package_info = None
         if self.package:
-            if hasattr(self.package, 'name'):
+            if hasattr(self.package, "name"):
                 package_info = {"name": self.package.name}
             elif isinstance(self.package, dict):
                 package_info = self.package
             else:
                 package_info = {"name": str(self.package)}
-        
+
         # 安全なアイテム処理ヘルパー関数
         def safe_get_attr(obj, attr, default=""):
             if hasattr(obj, attr):
@@ -396,7 +385,7 @@ class AnalysisResult:
                 return obj.get(attr, default)
             else:
                 return default
-        
+
         return {
             "file_path": self.file_path,
             "structure": {
@@ -407,9 +396,9 @@ class AnalysisResult:
                         "is_static": safe_get_attr(imp, "is_static", False),
                         "is_wildcard": safe_get_attr(imp, "is_wildcard", False),
                         "line_range": {
-                            "start": safe_get_attr(imp, "start_line", 0), 
-                            "end": safe_get_attr(imp, "end_line", 0)
-                        }
+                            "start": safe_get_attr(imp, "start_line", 0),
+                            "end": safe_get_attr(imp, "end_line", 0),
+                        },
                     }
                     for imp in self.imports
                 ],
@@ -419,9 +408,9 @@ class AnalysisResult:
                         "type": safe_get_attr(cls, "class_type"),
                         "package": safe_get_attr(cls, "package_name"),
                         "line_range": {
-                            "start": safe_get_attr(cls, "start_line", 0), 
-                            "end": safe_get_attr(cls, "end_line", 0)
-                        }
+                            "start": safe_get_attr(cls, "start_line", 0),
+                            "end": safe_get_attr(cls, "end_line", 0),
+                        },
                     }
                     for cls in self.classes
                 ],
@@ -431,9 +420,9 @@ class AnalysisResult:
                         "return_type": safe_get_attr(method, "return_type"),
                         "parameters": safe_get_attr(method, "parameters", []),
                         "line_range": {
-                            "start": safe_get_attr(method, "start_line", 0), 
-                            "end": safe_get_attr(method, "end_line", 0)
-                        }
+                            "start": safe_get_attr(method, "start_line", 0),
+                            "end": safe_get_attr(method, "end_line", 0),
+                        },
                     }
                     for method in self.methods
                 ],
@@ -442,9 +431,9 @@ class AnalysisResult:
                         "name": safe_get_attr(field, "name"),
                         "type": safe_get_attr(field, "field_type"),
                         "line_range": {
-                            "start": safe_get_attr(field, "start_line", 0), 
-                            "end": safe_get_attr(field, "end_line", 0)
-                        }
+                            "start": safe_get_attr(field, "start_line", 0),
+                            "end": safe_get_attr(field, "end_line", 0),
+                        },
                     }
                     for field in self.fields
                 ],
@@ -452,12 +441,12 @@ class AnalysisResult:
                     {
                         "name": safe_get_attr(ann, "name"),
                         "line_range": {
-                            "start": safe_get_attr(ann, "start_line", 0), 
-                            "end": safe_get_attr(ann, "end_line", 0)
-                        }
+                            "start": safe_get_attr(ann, "start_line", 0),
+                            "end": safe_get_attr(ann, "end_line", 0),
+                        },
                     }
                     for ann in self.annotations
-                ]
+                ],
             },
             "metadata": {
                 "line_count": self.line_count,
@@ -468,14 +457,14 @@ class AnalysisResult:
                 "annotation_count": len(self.annotations),
                 "analysis_time": self.analysis_time,
                 "success": self.success,
-                "error_message": self.error_message
-            }
+                "error_message": self.error_message,
+            },
         }
 
-    def get_statistics(self) -> Dict[str, Any]:
+    def get_statistics(self) -> dict[str, Any]:
         """Get detailed statistics (alias for get_summary)"""
         return self.get_summary()
-    
-    def to_json(self) -> Dict[str, Any]:
+
+    def to_json(self) -> dict[str, Any]:
         """Convert to JSON-serializable format (alias for to_dict)"""
         return self.to_dict()

@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 CLI-Compatible Analyze Code Scale MCP Tool
 
@@ -7,13 +6,11 @@ This tool provides code scale analysis with output format
 that matches the CLI --advanced --statistics output exactly.
 """
 
-import json
-import logging
 import time
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any
 
-from ...core.analysis_engine import get_analysis_engine, AnalysisRequest
+from ...core.analysis_engine import get_analysis_engine
 from ...language_detector import detect_language_from_file
 from ...utils import setup_logger
 
@@ -33,7 +30,7 @@ class AnalyzeScaleToolCLICompatible:
         self.analysis_engine = get_analysis_engine()
         logger.info("AnalyzeScaleToolCLICompatible initialized")
 
-    def get_tool_schema(self) -> Dict[str, Any]:
+    def get_tool_schema(self) -> dict[str, Any]:
         """
         Get the MCP tool schema for analyze_code_scale.
 
@@ -66,7 +63,7 @@ class AnalyzeScaleToolCLICompatible:
             "additionalProperties": False,
         }
 
-    async def execute(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
+    async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """
         Execute the analyze_code_scale tool with CLI-compatible output.
 
@@ -86,8 +83,8 @@ class AnalyzeScaleToolCLICompatible:
 
         file_path = arguments["file_path"]
         language = arguments.get("language")
-        include_complexity = arguments.get("include_complexity", True)
-        include_details = arguments.get("include_details", False)
+        # include_complexity = arguments.get("include_complexity", True)  # Not used currently
+        # include_details = arguments.get("include_details", False)  # Not used currently
 
         # Validate file exists
         if not Path(file_path).exists():
@@ -170,7 +167,7 @@ class AnalyzeScaleToolCLICompatible:
                 "error_message": str(e),
             }
 
-    def validate_arguments(self, arguments: Dict[str, Any]) -> bool:
+    def validate_arguments(self, arguments: dict[str, Any]) -> bool:
         """
         Validate tool arguments against the schema.
 

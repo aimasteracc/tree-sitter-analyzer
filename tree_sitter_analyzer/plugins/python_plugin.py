@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Python Language Plugin
 
@@ -7,8 +6,7 @@ Provides Python-specific parsing and element extraction functionality.
 Integrates with the existing Python queries for comprehensive analysis.
 """
 
-import re
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -16,7 +14,7 @@ if TYPE_CHECKING:
 from ..language_loader import loader
 from ..models import Class, Function, Import, Variable
 from ..queries.python import ALL_QUERIES, get_query
-from ..utils import log_debug, log_error, log_warning
+from ..utils import log_warning
 from . import ElementExtractor, LanguagePlugin
 
 
@@ -28,14 +26,14 @@ class PythonElementExtractor(ElementExtractor):
         self.current_module: str = ""
         self.current_file: str = ""
         self.source_code: str = ""
-        self.imports: List[str] = []
+        self.imports: list[str] = []
 
     def extract_functions(
         self, tree: "tree_sitter.Tree", source_code: str
-    ) -> List[Function]:
+    ) -> list[Function]:
         """Extract Python function definitions with comprehensive analysis"""
         self.source_code = source_code
-        functions: List[Function] = []
+        functions: list[Function] = []
 
         try:
             language = tree.language if hasattr(tree, "language") else None
@@ -71,10 +69,10 @@ class PythonElementExtractor(ElementExtractor):
 
     def extract_classes(
         self, tree: "tree_sitter.Tree", source_code: str
-    ) -> List[Class]:
+    ) -> list[Class]:
         """Extract Python class definitions with comprehensive analysis"""
         self.source_code = source_code
-        classes: List[Class] = []
+        classes: list[Class] = []
 
         try:
             language = tree.language if hasattr(tree, "language") else None
@@ -98,9 +96,9 @@ class PythonElementExtractor(ElementExtractor):
 
     def extract_variables(
         self, tree: "tree_sitter.Tree", source_code: str
-    ) -> List[Variable]:
+    ) -> list[Variable]:
         """Extract Python variable definitions"""
-        variables: List[Variable] = []
+        variables: list[Variable] = []
 
         try:
             language = tree.language if hasattr(tree, "language") else None
@@ -143,9 +141,9 @@ class PythonElementExtractor(ElementExtractor):
 
     def extract_imports(
         self, tree: "tree_sitter.Tree", source_code: str
-    ) -> List[Import]:
+    ) -> list[Import]:
         """Extract Python import statements"""
-        imports: List[Import] = []
+        imports: list[Import] = []
 
         try:
             language = tree.language if hasattr(tree, "language") else None
@@ -195,7 +193,7 @@ class PythonElementExtractor(ElementExtractor):
 
     def _extract_detailed_function_info(
         self, node: "tree_sitter.Node", source_code: str, is_async: bool = False
-    ) -> Optional[Function]:
+    ) -> Function | None:
         """Extract comprehensive function information from AST node"""
         try:
             # 基本情報の抽出
@@ -230,7 +228,11 @@ class PythonElementExtractor(ElementExtractor):
 
             start_byte = min(node.start_byte, len(source_code))
             end_byte = min(node.end_byte, len(source_code))
-            raw_text = source_code[start_byte:end_byte] if start_byte < end_byte else source_code
+            raw_text = (
+                source_code[start_byte:end_byte]
+                if start_byte < end_byte
+                else source_code
+            )
 
             return Function(
                 name=name,
@@ -255,7 +257,7 @@ class PythonElementExtractor(ElementExtractor):
 
     def _extract_detailed_class_info(
         self, node: "tree_sitter.Node", source_code: str
-    ) -> Optional[Class]:
+    ) -> Class | None:
         """Extract comprehensive class information from AST node"""
         try:
             # 基本情報の抽出
@@ -278,9 +280,9 @@ class PythonElementExtractor(ElementExtractor):
             )
 
             # 可視性の判定
-            visibility = "public"
-            if name.startswith("_"):
-                visibility = "private"
+            # visibility = "public"
+            # if name.startswith("_"):
+            #     visibility = "private"  # Not used currently
 
             return Class(
                 name=name,
@@ -303,7 +305,7 @@ class PythonElementExtractor(ElementExtractor):
 
     def _extract_name_from_node(
         self, node: "tree_sitter.Node", source_code: str
-    ) -> Optional[str]:
+    ) -> str | None:
         """Extract name from AST node"""
         for child in node.children:
             if child.type == "identifier":
@@ -312,9 +314,9 @@ class PythonElementExtractor(ElementExtractor):
 
     def _extract_parameters_from_node(
         self, node: "tree_sitter.Node", source_code: str
-    ) -> List[str]:
+    ) -> list[str]:
         """Extract parameters from function node"""
-        parameters: List[str] = []
+        parameters: list[str] = []
         for child in node.children:
             if child.type == "parameters":
                 for param_child in child.children:
@@ -331,9 +333,9 @@ class PythonElementExtractor(ElementExtractor):
 
     def _extract_decorators_from_node(
         self, node: "tree_sitter.Node", source_code: str
-    ) -> List[str]:
+    ) -> list[str]:
         """Extract decorators from node"""
-        decorators: List[str] = []
+        decorators: list[str] = []
 
         # デコレータは関数/クラス定義の前にある
         if hasattr(node, "parent") and node.parent:
@@ -352,7 +354,7 @@ class PythonElementExtractor(ElementExtractor):
 
     def _extract_return_type_from_node(
         self, node: "tree_sitter.Node", source_code: str
-    ) -> Optional[str]:
+    ) -> str | None:
         """Extract return type annotation from function node"""
         for child in node.children:
             if child.type == "type":
@@ -361,7 +363,7 @@ class PythonElementExtractor(ElementExtractor):
 
     def _extract_docstring_from_node(
         self, node: "tree_sitter.Node", source_code: str
-    ) -> Optional[str]:
+    ) -> str | None:
         """Extract docstring from function/class node"""
         for child in node.children:
             if child.type == "block":
@@ -371,9 +373,15 @@ class PythonElementExtractor(ElementExtractor):
                         for expr in stmt.children:
                             if expr.type == "string":
                                 # start_byteとend_byteが整数であることを確認
-                                if (hasattr(expr, 'start_byte') and hasattr(expr, 'end_byte') and
-                                    isinstance(expr.start_byte, int) and isinstance(expr.end_byte, int)):
-                                    docstring = source_code[expr.start_byte : expr.end_byte]
+                                if (
+                                    hasattr(expr, "start_byte")
+                                    and hasattr(expr, "end_byte")
+                                    and isinstance(expr.start_byte, int)
+                                    and isinstance(expr.end_byte, int)
+                                ):
+                                    docstring = source_code[
+                                        expr.start_byte : expr.end_byte
+                                    ]
                                 else:
                                     return None
                                 # クォートを除去
@@ -399,9 +407,9 @@ class PythonElementExtractor(ElementExtractor):
 
     def _extract_superclasses_from_node(
         self, node: "tree_sitter.Node", source_code: str
-    ) -> List[str]:
+    ) -> list[str]:
         """Extract superclasses from class node"""
-        superclasses: List[str] = []
+        superclasses: list[str] = []
         for child in node.children:
             if child.type == "argument_list":
                 for arg in child.children:
@@ -423,7 +431,7 @@ class PythonElementExtractor(ElementExtractor):
         source_code: str,
         is_multiple: bool = False,
         is_augmented: bool = False,
-    ) -> Optional[Variable]:
+    ) -> Variable | None:
         """Extract detailed variable information from AST node"""
         try:
             if (
@@ -431,10 +439,7 @@ class PythonElementExtractor(ElementExtractor):
                 or not hasattr(node, "end_byte")
                 or not hasattr(node, "start_point")
                 or not hasattr(node, "end_point")
-            ):
-                return None
-            if (
-                node.start_byte is None
+                or node.start_byte is None
                 or node.end_byte is None
                 or node.start_point is None
                 or node.end_point is None
@@ -463,7 +468,9 @@ class PythonElementExtractor(ElementExtractor):
                 variable_type=(
                     "multiple"
                     if is_multiple
-                    else "augmented" if is_augmented else "assignment"
+                    else "augmented"
+                    if is_augmented
+                    else "assignment"
                 ),
             )
 
@@ -478,7 +485,7 @@ class PythonElementExtractor(ElementExtractor):
         is_from: bool = False,
         is_from_list: bool = False,
         is_aliased: bool = False,
-    ) -> Optional[Import]:
+    ) -> Import | None:
         """Extract detailed import information from AST node"""
         try:
             if (
@@ -486,10 +493,7 @@ class PythonElementExtractor(ElementExtractor):
                 or not hasattr(node, "end_byte")
                 or not hasattr(node, "start_point")
                 or not hasattr(node, "end_point")
-            ):
-                return None
-            if (
-                node.start_byte is None
+                or node.start_byte is None
                 or node.end_byte is None
                 or node.start_point is None
                 or node.end_point is None
@@ -504,11 +508,15 @@ class PythonElementExtractor(ElementExtractor):
             else:
                 start_byte = node.start_byte
                 end_byte = node.end_byte
-                import_text = source_code[start_byte:end_byte] if start_byte < end_byte else source_code
+                import_text = (
+                    source_code[start_byte:end_byte]
+                    if start_byte < end_byte
+                    else source_code
+                )
 
             # インポート名とモジュール名を抽出（完全なインポート文を保持）
             if is_from:
-                import_type = "from_import"
+                # import_type = "from_import"  # Not used currently
                 if "from" in import_text and "import" in import_text:
                     parts = import_text.split("import")
                     module_name = parts[0].replace("from", "").strip()
@@ -518,12 +526,12 @@ class PythonElementExtractor(ElementExtractor):
                     module_name = ""
                     import_name = import_text
             elif is_aliased:
-                import_type = "aliased_import"
+                # import_type = "aliased_import"  # Not used currently
                 module_name = ""
                 # エイリアスインポートも完全な文を保持
                 import_name = import_text
             else:
-                import_type = "import"
+                # import_type = "import"  # Not used currently
                 module_name = ""
                 # 通常のインポートも完全な文を保持
                 import_name = import_text
@@ -549,21 +557,21 @@ class PythonPlugin(LanguagePlugin):
 
     def __init__(self) -> None:
         self._extractor = PythonElementExtractor()
-        self._language: Optional["tree_sitter.Language"] = None
+        self._language: tree_sitter.Language | None = None
 
     @property
     def language_name(self) -> str:
         return "python"
 
     @property
-    def file_extensions(self) -> List[str]:
+    def file_extensions(self) -> list[str]:
         return [".py", ".pyw", ".pyi"]
 
     def get_language_name(self) -> str:
         """Return the name of the programming language this plugin supports"""
         return "python"
 
-    def get_file_extensions(self) -> List[str]:
+    def get_file_extensions(self) -> list[str]:
         """Return list of file extensions this plugin supports"""
         return [".py", ".pyw", ".pyi"]
 
@@ -580,7 +588,7 @@ class PythonPlugin(LanguagePlugin):
             self._language = loader.load_language("python")
         return self._language
 
-    def get_supported_queries(self) -> List[str]:
+    def get_supported_queries(self) -> list[str]:
         """Get list of supported query types for Python"""
         return list(ALL_QUERIES.keys())
 

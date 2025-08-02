@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Test --quiet Option Functionality
 
@@ -21,8 +20,6 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from tree_sitter_analyzer.cli.commands.base_command import BaseCommand
-from tree_sitter_analyzer.cli.commands.advanced_command import AdvancedCommand
-from tree_sitter_analyzer.cli_main import main
 
 
 class MockCommand(BaseCommand):
@@ -40,33 +37,38 @@ class TestQuietOption:
         """Set up test environment."""
         self.temp_dir = tempfile.mkdtemp()
         self.test_java_file = os.path.join(self.temp_dir, "Test.java")
-        
+
         # Create test Java file
-        with open(self.test_java_file, 'w', encoding='utf-8') as f:
-            f.write("""
+        with open(self.test_java_file, "w", encoding="utf-8") as f:
+            f.write(
+                """
 public class Test {
     public static void main(String[] args) {
         System.out.println("Hello World");
     }
 }
-""")
+"""
+            )
 
     def teardown_method(self) -> None:
         """Clean up test environment."""
         import shutil
+
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
     def test_quiet_option_suppresses_info_messages(self) -> None:
         """Test that --quiet option suppresses INFO messages in BaseCommand."""
         from argparse import Namespace
-        
+
         # Test with quiet=True - should not show info messages
-        args = Namespace(file_path=self.test_java_file, language=None, table=False, quiet=True)
+        args = Namespace(
+            file_path=self.test_java_file, language=None, table=False, quiet=True
+        )
         command = MockCommand(args)
-        
-        with patch('tree_sitter_analyzer.output_manager.output_info') as mock_info:
+
+        with patch("tree_sitter_analyzer.output_manager.output_info") as mock_info:
             language = command.detect_language()
-            
+
             assert language == "java"
             # With quiet=True, info messages should not be called
             mock_info.assert_not_called()
@@ -88,14 +90,16 @@ public class Test {
         """Test that --quiet option sets environment variable correctly."""
         # Test that --quiet in sys.argv sets LOG_LEVEL environment variable
         original_argv = sys.argv.copy()
-        original_log_level = os.environ.get('LOG_LEVEL')
-        
+        original_log_level = os.environ.get("LOG_LEVEL")
+
         try:
             # Simulate --quiet in command line
-            sys.argv = ['tree_sitter_analyzer', self.test_java_file, '--quiet']
-            
+            sys.argv = ["tree_sitter_analyzer", self.test_java_file, "--quiet"]
+
             # Mock the argument parser and main execution to avoid full execution
-            with patch('tree_sitter_analyzer.cli_main.create_argument_parser') as mock_parser:
+            with patch(
+                "tree_sitter_analyzer.cli_main.create_argument_parser"
+            ) as mock_parser:
                 mock_args = Mock()
                 mock_args.quiet = True
                 mock_args.table = False
@@ -106,12 +110,16 @@ public class Test {
                 mock_args.version = False
                 mock_parser.return_value.parse_args.return_value = mock_args
 
-                with patch('tree_sitter_analyzer.cli_main.CLICommandFactory.create_command') as mock_factory:
+                with patch(
+                    "tree_sitter_analyzer.cli_main.CLICommandFactory.create_command"
+                ) as mock_factory:
                     mock_command = Mock()
                     mock_command.execute.return_value = 0
                     mock_factory.return_value = mock_command
 
-                    with patch('tree_sitter_analyzer.cli_main.handle_special_commands') as mock_special:
+                    with patch(
+                        "tree_sitter_analyzer.cli_main.handle_special_commands"
+                    ) as mock_special:
                         mock_special.return_value = None
 
                         # Import and call main to trigger environment variable setting
@@ -124,48 +132,52 @@ public class Test {
                             pass  # Expected due to sys.exit() in main()
 
                         # Check that LOG_LEVEL was set to ERROR
-                        assert os.environ.get('LOG_LEVEL') == 'ERROR'
-        
+                        assert os.environ.get("LOG_LEVEL") == "ERROR"
+
         finally:
             # Restore original state
             sys.argv = original_argv
             if original_log_level is not None:
-                os.environ['LOG_LEVEL'] = original_log_level
-            elif 'LOG_LEVEL' in os.environ:
-                del os.environ['LOG_LEVEL']
+                os.environ["LOG_LEVEL"] = original_log_level
+            elif "LOG_LEVEL" in os.environ:
+                del os.environ["LOG_LEVEL"]
 
     def test_logging_level_configuration_with_quiet(self) -> None:
         """Test that logging level is configured correctly with --quiet option."""
         from argparse import Namespace
-        
+
         # Mock the logging configuration
-        with patch('logging.getLogger') as mock_get_logger:
+        with patch("logging.getLogger") as mock_get_logger:
             mock_logger = Mock()
             mock_get_logger.return_value = mock_logger
-            
+
             # Simulate the logging configuration that happens in cli_main
             args = Namespace(quiet=True, table=False)
-            
+
             # This simulates the logging configuration in cli_main.py
             if hasattr(args, "quiet") and args.quiet:
                 logging.getLogger().setLevel(logging.ERROR)
                 logging.getLogger("tree_sitter_analyzer").setLevel(logging.ERROR)
-                logging.getLogger("tree_sitter_analyzer.performance").setLevel(logging.ERROR)
-            
+                logging.getLogger("tree_sitter_analyzer.performance").setLevel(
+                    logging.ERROR
+                )
+
             # Verify that setLevel was called with ERROR level
             mock_logger.setLevel.assert_called_with(logging.ERROR)
 
     def test_quiet_option_vs_table_option(self) -> None:
         """Test interaction between --quiet and --table options."""
         from argparse import Namespace
-        
+
         # Test with both quiet=True and table=True
-        args = Namespace(file_path=self.test_java_file, language=None, table=True, quiet=True)
+        args = Namespace(
+            file_path=self.test_java_file, language=None, table=True, quiet=True
+        )
         command = MockCommand(args)
-        
-        with patch('tree_sitter_analyzer.output_manager.output_info') as mock_info:
+
+        with patch("tree_sitter_analyzer.output_manager.output_info") as mock_info:
             language = command.detect_language()
-            
+
             assert language == "java"
             # With both table=True and quiet=True, info messages should not be called
             mock_info.assert_not_called()
@@ -173,12 +185,12 @@ public class Test {
     def test_quiet_option_with_language_detection_error(self) -> None:
         """Test that --quiet option still shows language detection errors."""
         from argparse import Namespace
-        
+
         # Create a file with unknown extension
         unknown_file = os.path.join(self.temp_dir, "test.unknown")
-        with open(unknown_file, 'w') as f:
+        with open(unknown_file, "w") as f:
             f.write("some content")
-        
+
         args = Namespace(file_path=unknown_file, language=None, table=False, quiet=True)
         command = MockCommand(args)
 
@@ -189,38 +201,40 @@ public class Test {
     def test_quiet_option_environment_variable_early_setting(self) -> None:
         """Test that LOG_LEVEL environment variable is set early in main()."""
         original_argv = sys.argv.copy()
-        original_log_level = os.environ.get('LOG_LEVEL')
-        
+        original_log_level = os.environ.get("LOG_LEVEL")
+
         try:
             # Test the early check for quiet mode
-            sys.argv = ['tree_sitter_analyzer', '--quiet', self.test_java_file]
-            
+            sys.argv = ["tree_sitter_analyzer", "--quiet", self.test_java_file]
+
             # This simulates the early check in cli_main.py
             if "--quiet" in sys.argv:
-                os.environ['LOG_LEVEL'] = 'ERROR'
-            
+                os.environ["LOG_LEVEL"] = "ERROR"
+
             # Verify that LOG_LEVEL was set
-            assert os.environ.get('LOG_LEVEL') == 'ERROR'
-        
+            assert os.environ.get("LOG_LEVEL") == "ERROR"
+
         finally:
             # Restore original state
             sys.argv = original_argv
             if original_log_level is not None:
-                os.environ['LOG_LEVEL'] = original_log_level
-            elif 'LOG_LEVEL' in os.environ:
-                del os.environ['LOG_LEVEL']
+                os.environ["LOG_LEVEL"] = original_log_level
+            elif "LOG_LEVEL" in os.environ:
+                del os.environ["LOG_LEVEL"]
 
     def test_quiet_option_without_table_shows_no_info(self) -> None:
         """Test that quiet option without table option suppresses info messages."""
         from argparse import Namespace
-        
+
         # Test with quiet=True and table=False
-        args = Namespace(file_path=self.test_java_file, language=None, table=False, quiet=True)
+        args = Namespace(
+            file_path=self.test_java_file, language=None, table=False, quiet=True
+        )
         command = MockCommand(args)
-        
-        with patch('tree_sitter_analyzer.output_manager.output_info') as mock_info:
+
+        with patch("tree_sitter_analyzer.output_manager.output_info") as mock_info:
             language = command.detect_language()
-            
+
             assert language == "java"
             # With quiet=True, info messages should not be called
             mock_info.assert_not_called()
@@ -230,11 +244,12 @@ public class Test {
         from argparse import Namespace
 
         # Test with quiet=False - should show info messages
-        args = Namespace(file_path=self.test_java_file, language=None, table=False, quiet=False)
+        args = Namespace(
+            file_path=self.test_java_file, language=None, table=False, quiet=False
+        )
         command = MockCommand(args)
 
         # Capture stdout to verify the message is printed
-        from io import StringIO
         import sys
 
         captured_output = StringIO()
@@ -254,20 +269,22 @@ public class Test {
     def test_quiet_option_help_text(self) -> None:
         """Test that --quiet option has correct help text."""
         from tree_sitter_analyzer.cli_main import create_argument_parser
-        
+
         parser = create_argument_parser()
-        
+
         # Find the --quiet argument
         quiet_action = None
         for action in parser._actions:
-            if hasattr(action, 'dest') and action.dest == 'quiet':
+            if hasattr(action, "dest") and action.dest == "quiet":
                 quiet_action = action
                 break
-        
+
         assert quiet_action is not None, "--quiet option should be defined"
 
         # Check that it's a store_true action by checking the action type
-        assert hasattr(quiet_action, 'const') and quiet_action.const is True, "--quiet should be a store_true action"
+        assert (
+            hasattr(quiet_action, "const") and quiet_action.const is True
+        ), "--quiet should be a store_true action"
 
         # Check help text (it should contain relevant keywords)
         assert quiet_action.help is not None

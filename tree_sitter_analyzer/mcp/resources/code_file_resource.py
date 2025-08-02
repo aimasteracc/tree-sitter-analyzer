@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Code File Resource for MCP
 
@@ -10,7 +9,7 @@ The resource allows dynamic access to file content through URI-based identificat
 import logging
 import re
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 from tree_sitter_analyzer.encoding_utils import read_file_safe
 
@@ -36,7 +35,7 @@ class CodeFileResource:
         """Initialize the code file resource"""
         self._uri_pattern = re.compile(r"^code://file/(.+)$")
 
-    def get_resource_info(self) -> Dict[str, Any]:
+    def get_resource_info(self) -> dict[str, Any]:
         """
         Get resource information for MCP registration
 
@@ -119,7 +118,7 @@ class CodeFileResource:
             raise
         except Exception as e:
             logger.error(f"Unexpected error reading file {file_path}: {e}")
-            raise OSError(f"Failed to read file: {e}")
+            raise OSError(f"Failed to read file: {e}") from e
 
     def _validate_file_path(self, file_path: str) -> None:
         """
@@ -139,7 +138,7 @@ class CodeFileResource:
             raise ValueError("File path contains null bytes")
 
         # Check for potentially dangerous path traversal
-        normalized_path = Path(file_path).resolve()
+        # normalized_path = Path(file_path).resolve()  # Not used currently
         if ".." in file_path:
             logger.warning(f"Potentially dangerous path traversal in: {file_path}")
 
@@ -206,7 +205,7 @@ class CodeFileResource:
 
     def __str__(self) -> str:
         """String representation of the resource"""
-        return f"CodeFileResource(pattern=code://file/{{file_path}})"
+        return "CodeFileResource(pattern=code://file/{file_path})"
 
     def __repr__(self) -> str:
         """Detailed string representation of the resource"""

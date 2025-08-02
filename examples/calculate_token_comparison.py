@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 トークン消費量比較分析スクリプト
 構造化データ（詳細・要約）の有無によるトークン消費量の違いを計算・比較します。
@@ -29,7 +28,7 @@ def count_tokens_estimate(text):
 def read_file_content(file_path):
     """ファイルの内容を読み込む"""
     try:
-        with open(file_path, "r", encoding="utf-8") as f:
+        with open(file_path, encoding="utf-8") as f:
             return f.read()
     except Exception as e:
         print(f"ファイル読み込みエラー: {e}")
@@ -190,18 +189,18 @@ def main():
     print("【トークン消費量の最終比較】")
     print("=" * 80)
 
-    print(f"\n■ シナリオ1：従来型（ファイル全体）")
+    print("\n■ シナリオ1：従来型（ファイル全体）")
     print(f"   - 対象: BigService.java ({total_java_lines:,}行)")
     print(f"   - トークン数: 約 {scenario1_tokens:,} トークン")
 
-    print(f"\n■ シナリオ2：詳細データ活用")
+    print("\n■ シナリオ2：詳細データ活用")
     print(f"   - 対象: BigService.json + コード一部 ({method_lines_count}行)")
     print(
         f"   - トークン数: 約 {scenario2_tokens:,} トークン (JSON: {json_tokens:,} + コード: {method_tokens:,})"
     )
     print(f"   - 削減率 (vs シナリオ1): 約 {scenario2_reduction_percentage:.1f}%")
 
-    print(f"\n■ シナリオ3：要約データ活用")
+    print("\n■ シナリオ3：要約データ活用")
     print(f"   - 対象: BigService.summary.json + コード一部 ({method_lines_count}行)")
     print(
         f"   - トークン数: 約 {scenario3_tokens:,} トークン (JSON: {summary_tokens:,} + コード: {method_tokens:,})"
@@ -214,36 +213,36 @@ def main():
     )
 
     # 詳細情報
-    print(f"\n" + "=" * 80)
+    print("\n" + "=" * 80)
     print("【詳細情報】")
     print("=" * 80)
-    print(f"updateCustomerNameメソッド詳細:")
+    print("updateCustomerNameメソッド詳細:")
     print(f"  - 行範囲: {method_info_detailed['lines']}")
     print(f"  - 抽出行数: {method_lines_count}行")
     print(f"  - 可視性: {method_info_detailed.get('visibility', 'N/A')}")
     print(f"  - パラメータ数: {method_info_detailed.get('parameters', 'N/A')}")
     print(f"  - 複雑度: {method_info_detailed.get('complexity', 'N/A')}")
 
-    print(f"\nファイルサイズ比較:")
+    print("\nファイルサイズ比較:")
     print(f"  - BigService.java: {len(java_content):,} 文字")
     print(f"  - BigService.json: {len(json_content):,} 文字")
     print(f"  - BigService.summary.json: {len(summary_content):,} 文字")
     print(f"  - 抽出コード部分: {len(method_code):,} 文字")
 
-    print(f"\n注記: トークン数は文字数ベースの概算値です。")
-    print(f"      日本語文字=1トークン、その他4文字=1トークンとして計算。")
+    print("\n注記: トークン数は文字数ベースの概算値です。")
+    print("      日本語文字=1トークン、その他4文字=1トークンとして計算。")
 
     # 結論
-    print(f"\n" + "=" * 80)
+    print("\n" + "=" * 80)
     print("【結論】")
     print("=" * 80)
-    print(f"--summary機能の導入により、シナリオ2と比較して")
+    print("--summary機能の導入により、シナリオ2と比較して")
     print(
         f"さらに約 {scenario3_reduction_percentage_vs_scenario2:.1f}% のトークン削減が実現されました。"
     )
-    print(f"\nこの改善により、LLMを活用した開発支援ツールの")
-    print(f"実用性と経済性が大幅に向上し、より効率的な")
-    print(f"コード解析とAI支援開発が可能になります。")
+    print("\nこの改善により、LLMを活用した開発支援ツールの")
+    print("実用性と経済性が大幅に向上し、より効率的な")
+    print("コード解析とAI支援開発が可能になります。")
 
 
 if __name__ == "__main__":

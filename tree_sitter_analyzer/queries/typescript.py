@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 TypeScript Tree-sitter queries for code analysis.
 """

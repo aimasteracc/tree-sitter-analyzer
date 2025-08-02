@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Tests for Java Code Analyzer
 """
@@ -11,8 +10,8 @@ sys.path.insert(0, ".")
 
 import os
 import tempfile
+
 import pytest
-import pytest_asyncio
 
 from tree_sitter_analyzer.java_analyzer import CodeAnalyzer
 from tree_sitter_analyzer.query_loader import get_query
@@ -45,11 +44,11 @@ def test_parse_simple_java_class(analyzer):
     java_content = """
 public class TestClass {
     private String name;
-    
+
     public TestClass(String name) {
         this.name = name;
     }
-    
+
     public String getName() {
         return name;
     }
@@ -91,7 +90,7 @@ public class TestClass {
     public void testMethod() {
         System.out.println("Hello");
     }
-    
+
     private int getNumber() {
         return 42;
     }

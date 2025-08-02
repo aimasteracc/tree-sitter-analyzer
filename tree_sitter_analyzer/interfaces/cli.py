@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Command Line Interface
 
@@ -9,18 +8,16 @@ Provides a clean separation between CLI concerns and core analysis logic.
 
 import argparse
 import json
+import logging
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional
-import logging
+from typing import Any
 
 from .. import api
-from ..utils import log_error, log_info, log_warning
 
 # Configure logging for CLI
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
@@ -52,30 +49,25 @@ Examples:
   tree-sitter-analyzer info
 
 For more information, visit: https://github.com/aimasteracc/tree-sitter-analyzer
-        """
+        """,
     )
 
     # Global options
     parser.add_argument(
-        "--version",
-        action="version",
-        version="tree-sitter-analyzer 0.0.1"
+        "--version", action="version", version="tree-sitter-analyzer 0.0.1"
     )
     parser.add_argument(
-        "--verbose", "-v",
-        action="store_true",
-        help="Enable verbose output"
+        "--verbose", "-v", action="store_true", help="Enable verbose output"
     )
     parser.add_argument(
-        "--quiet", "-q",
-        action="store_true",
-        help="Suppress non-essential output"
+        "--quiet", "-q", action="store_true", help="Suppress non-essential output"
     )
     parser.add_argument(
-        "--output", "-o",
+        "--output",
+        "-o",
         choices=["json", "text", "table"],
         default="text",
-        help="Output format (default: text)"
+        help="Output format (default: text)",
     )
 
     # Subcommands
@@ -85,109 +77,85 @@ For more information, visit: https://github.com/aimasteracc/tree-sitter-analyzer
     analyze_parser = subparsers.add_parser(
         "analyze",
         help="Analyze source code files",
-        description="Perform comprehensive analysis of source code files"
+        description="Perform comprehensive analysis of source code files",
+    )
+    analyze_parser.add_argument("file_path", help="Path to the source file to analyze")
+    analyze_parser.add_argument(
+        "--language", "-l", help="Programming language (auto-detected if not specified)"
     )
     analyze_parser.add_argument(
-        "file_path",
-        help="Path to the source file to analyze"
+        "--queries", help="Comma-separated list of queries to execute"
     )
     analyze_parser.add_argument(
-        "--language", "-l",
-        help="Programming language (auto-detected if not specified)"
+        "--no-elements", action="store_true", help="Skip code element extraction"
     )
     analyze_parser.add_argument(
-        "--queries",
-        help="Comma-separated list of queries to execute"
-    )
-    analyze_parser.add_argument(
-        "--no-elements",
-        action="store_true",
-        help="Skip code element extraction"
-    )
-    analyze_parser.add_argument(
-        "--no-queries",
-        action="store_true",
-        help="Skip query execution"
+        "--no-queries", action="store_true", help="Skip query execution"
     )
 
     # Extract command
     extract_parser = subparsers.add_parser(
         "extract",
         help="Extract code elements from files",
-        description="Extract specific code elements like functions, classes, etc."
+        description="Extract specific code elements like functions, classes, etc.",
     )
+    extract_parser.add_argument("file_path", help="Path to the source file")
     extract_parser.add_argument(
-        "file_path",
-        help="Path to the source file"
-    )
-    extract_parser.add_argument(
-        "--language", "-l",
-        help="Programming language (auto-detected if not specified)"
+        "--language", "-l", help="Programming language (auto-detected if not specified)"
     )
     extract_parser.add_argument(
         "--types",
-        help="Comma-separated list of element types to extract (e.g., functions,classes)"
+        help="Comma-separated list of element types to extract (e.g., functions,classes)",
     )
 
     # Query command
     query_parser = subparsers.add_parser(
         "query",
         help="Execute specific queries on files",
-        description="Execute specific tree-sitter queries on source files"
+        description="Execute specific tree-sitter queries on source files",
     )
+    query_parser.add_argument("file_path", help="Path to the source file")
+    query_parser.add_argument("query_name", help="Name of the query to execute")
     query_parser.add_argument(
-        "file_path",
-        help="Path to the source file"
-    )
-    query_parser.add_argument(
-        "query_name",
-        help="Name of the query to execute"
-    )
-    query_parser.add_argument(
-        "--language", "-l",
-        help="Programming language (auto-detected if not specified)"
+        "--language", "-l", help="Programming language (auto-detected if not specified)"
     )
 
     # Validate command
     validate_parser = subparsers.add_parser(
         "validate",
         help="Validate source files",
-        description="Check if files can be parsed and analyzed"
+        description="Check if files can be parsed and analyzed",
     )
     validate_parser.add_argument(
-        "file_path",
-        help="Path to the source file to validate"
+        "file_path", help="Path to the source file to validate"
     )
 
     # Languages command
     languages_parser = subparsers.add_parser(
         "languages",
         help="List supported languages",
-        description="Show all supported programming languages and their extensions"
+        description="Show all supported programming languages and their extensions",
     )
     languages_parser.add_argument(
         "--extensions",
         action="store_true",
-        help="Show file extensions for each language"
+        help="Show file extensions for each language",
     )
 
     # Info command
-    info_parser = subparsers.add_parser(
+    subparsers.add_parser(
         "info",
         help="Show framework information",
-        description="Display information about the analyzer framework"
+        description="Display information about the analyzer framework",
     )
 
     # Queries command
     queries_parser = subparsers.add_parser(
         "queries",
         help="List available queries",
-        description="Show available queries for a specific language"
+        description="Show available queries for a specific language",
     )
-    queries_parser.add_argument(
-        "language",
-        help="Programming language name"
-    )
+    queries_parser.add_argument("language", help="Programming language name")
 
     return parser
 
@@ -196,7 +164,7 @@ def handle_analyze_command(args: argparse.Namespace) -> int:
     """Handle the analyze command."""
     try:
         file_path = Path(args.file_path)
-        
+
         if not file_path.exists():
             print(f"Error: File '{file_path}' does not exist", file=sys.stderr)
             return 1
@@ -212,7 +180,7 @@ def handle_analyze_command(args: argparse.Namespace) -> int:
             language=args.language,
             queries=queries,
             include_elements=not args.no_elements,
-            include_queries=not args.no_queries
+            include_queries=not args.no_queries,
         )
 
         # Output results
@@ -232,7 +200,7 @@ def handle_extract_command(args: argparse.Namespace) -> int:
     """Handle the extract command."""
     try:
         file_path = Path(args.file_path)
-        
+
         if not file_path.exists():
             print(f"Error: File '{file_path}' does not exist", file=sys.stderr)
             return 1
@@ -244,9 +212,7 @@ def handle_extract_command(args: argparse.Namespace) -> int:
 
         # Extract elements
         result = api.extract_elements(
-            file_path=file_path,
-            language=args.language,
-            element_types=element_types
+            file_path=file_path, language=args.language, element_types=element_types
         )
 
         # Output results
@@ -266,16 +232,14 @@ def handle_query_command(args: argparse.Namespace) -> int:
     """Handle the query command."""
     try:
         file_path = Path(args.file_path)
-        
+
         if not file_path.exists():
             print(f"Error: File '{file_path}' does not exist", file=sys.stderr)
             return 1
 
         # Execute query
         result = api.execute_query(
-            file_path=file_path,
-            query_name=args.query_name,
-            language=args.language
+            file_path=file_path, query_name=args.query_name, language=args.language
         )
 
         # Output results
@@ -295,7 +259,7 @@ def handle_validate_command(args: argparse.Namespace) -> int:
     """Handle the validate command."""
     try:
         file_path = Path(args.file_path)
-        
+
         # Validate file
         result = api.validate_file(file_path)
 
@@ -316,7 +280,7 @@ def handle_languages_command(args: argparse.Namespace) -> int:
     """Handle the languages command."""
     try:
         languages = api.get_supported_languages()
-        
+
         if args.output == "json":
             if args.extensions:
                 lang_info = {}
@@ -336,7 +300,7 @@ def handle_languages_command(args: argparse.Namespace) -> int:
                     print(f"  {lang:<12} - {ext_str}")
                 else:
                     print(f"  {lang}")
-            
+
             if not args.extensions:
                 print(f"\nTotal: {len(languages)} languages")
                 print("Use --extensions to see file extensions for each language")
@@ -352,7 +316,7 @@ def handle_info_command(args: argparse.Namespace) -> int:
     """Handle the info command."""
     try:
         info = api.get_framework_info()
-        
+
         if args.output == "json":
             print(json.dumps(info, indent=2))
         else:
@@ -361,12 +325,12 @@ def handle_info_command(args: argparse.Namespace) -> int:
             print(f"Name: {info.get('name', 'Unknown')}")
             print(f"Version: {info.get('version', 'Unknown')}")
             print(f"Supported Languages: {info.get('total_languages', 0)}")
-            
-            languages = info.get('supported_languages', [])
+
+            languages = info.get("supported_languages", [])
             if languages:
                 print(f"Languages: {', '.join(sorted(languages))}")
-            
-            components = info.get('core_components', [])
+
+            components = info.get("core_components", [])
             if components:
                 print(f"Core Components: {', '.join(components)}")
 
@@ -381,11 +345,13 @@ def handle_queries_command(args: argparse.Namespace) -> int:
     """Handle the queries command."""
     try:
         if not api.is_language_supported(args.language):
-            print(f"Error: Language '{args.language}' is not supported", file=sys.stderr)
+            print(
+                f"Error: Language '{args.language}' is not supported", file=sys.stderr
+            )
             return 1
 
         queries = api.get_available_queries(args.language)
-        
+
         if args.output == "json":
             print(json.dumps(queries, indent=2))
         else:
@@ -393,7 +359,7 @@ def handle_queries_command(args: argparse.Namespace) -> int:
             print("=" * (25 + len(args.language)))
             for query in sorted(queries):
                 print(f"  {query}")
-            
+
             print(f"\nTotal: {len(queries)} queries")
 
         return 0
@@ -403,38 +369,40 @@ def handle_queries_command(args: argparse.Namespace) -> int:
         return 1
 
 
-def format_analysis_output(result: Dict[str, Any], output_format: str) -> None:
+def format_analysis_output(result: dict[str, Any], output_format: str) -> None:
     """Format and display analysis results."""
     if not result.get("success", False):
-        print(f"Analysis failed: {result.get('error', 'Unknown error')}", file=sys.stderr)
+        print(
+            f"Analysis failed: {result.get('error', 'Unknown error')}", file=sys.stderr
+        )
         return
 
     print("Analysis Results")
     print("=" * 16)
-    
+
     # File information
     file_info = result.get("file_info", {})
     print(f"File: {file_info.get('path', 'Unknown')}")
-    
+
     # Language information
     lang_info = result.get("language_info", {})
     language = lang_info.get("language", "Unknown")
     auto_detected = lang_info.get("auto_detected", False)
     detection_str = " (auto-detected)" if auto_detected else ""
     print(f"Language: {language}{detection_str}")
-    
+
     # AST information
     ast_info = result.get("ast_info", {})
     print(f"Source Lines: {ast_info.get('source_lines', 0)}")
     print(f"AST Nodes: {ast_info.get('node_count', 0)}")
-    
+
     # Query results
     query_results = result.get("query_results", {})
     if query_results:
-        print(f"\nQuery Results:")
+        print("\nQuery Results:")
         for query_name, matches in query_results.items():
             print(f"  {query_name}: {len(matches)} matches")
-    
+
     # Elements
     elements = result.get("elements", [])
     if elements:
@@ -443,26 +411,29 @@ def format_analysis_output(result: Dict[str, Any], output_format: str) -> None:
         for element in elements:
             elem_type = element.get("type", "unknown")
             element_types[elem_type] = element_types.get(elem_type, 0) + 1
-        
+
         for elem_type, count in sorted(element_types.items()):
             print(f"  {elem_type}: {count}")
 
 
-def format_extraction_output(result: Dict[str, Any], output_format: str) -> None:
+def format_extraction_output(result: dict[str, Any], output_format: str) -> None:
     """Format and display extraction results."""
     if not result.get("success", False):
-        print(f"Extraction failed: {result.get('error', 'Unknown error')}", file=sys.stderr)
+        print(
+            f"Extraction failed: {result.get('error', 'Unknown error')}",
+            file=sys.stderr,
+        )
         return
 
     elements = result.get("elements", [])
     language = result.get("language", "Unknown")
-    
+
     print("Code Element Extraction Results")
     print("=" * 31)
     print(f"File: {result.get('file_path', 'Unknown')}")
     print(f"Language: {language}")
     print(f"Elements Found: {len(elements)}")
-    
+
     if elements:
         print("\nElements:")
         for element in elements:
@@ -472,7 +443,7 @@ def format_extraction_output(result: Dict[str, Any], output_format: str) -> None
             print(f"  {elem_type}: {name} (line {start_line})")
 
 
-def format_query_output(result: Dict[str, Any], output_format: str) -> None:
+def format_query_output(result: dict[str, Any], output_format: str) -> None:
     """Format and display query results."""
     if not result.get("success", False):
         print(f"Query failed: {result.get('error', 'Unknown error')}", file=sys.stderr)
@@ -481,14 +452,14 @@ def format_query_output(result: Dict[str, Any], output_format: str) -> None:
     query_name = result.get("query_name", "Unknown")
     matches = result.get("results", [])
     language = result.get("language", "Unknown")
-    
+
     print("Query Execution Results")
     print("=" * 23)
     print(f"File: {result.get('file_path', 'Unknown')}")
     print(f"Language: {language}")
     print(f"Query: {query_name}")
     print(f"Matches: {len(matches)}")
-    
+
     if matches:
         print("\nMatches:")
         for i, match in enumerate(matches, 1):
@@ -499,7 +470,7 @@ def format_query_output(result: Dict[str, Any], output_format: str) -> None:
             print(f"  {i}. Line {start_line}: {content}")
 
 
-def format_validation_output(result: Dict[str, Any], output_format: str) -> None:
+def format_validation_output(result: dict[str, Any], output_format: str) -> None:
     """Format and display validation results."""
     valid = result.get("valid", False)
     exists = result.get("exists", False)
@@ -507,7 +478,7 @@ def format_validation_output(result: Dict[str, Any], output_format: str) -> None
     language = result.get("language")
     supported = result.get("supported", False)
     errors = result.get("errors", [])
-    
+
     print("File Validation Results")
     print("=" * 23)
     print(f"Valid: {'✓' if valid else '✗'}")
@@ -515,7 +486,7 @@ def format_validation_output(result: Dict[str, Any], output_format: str) -> None
     print(f"Readable: {'✓' if readable else '✗'}")
     print(f"Language: {language or 'Unknown'}")
     print(f"Supported: {'✓' if supported else '✗'}")
-    
+
     if errors:
         print("\nErrors:")
         for error in errors:
@@ -526,13 +497,13 @@ def main() -> int:
     """Main CLI entry point."""
     parser = create_parser()
     args = parser.parse_args()
-    
+
     # Configure logging based on verbosity
     if args.quiet:
         logging.getLogger().setLevel(logging.ERROR)
     elif args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)
-    
+
     # Handle commands
     if args.command == "analyze":
         return handle_analyze_command(args)

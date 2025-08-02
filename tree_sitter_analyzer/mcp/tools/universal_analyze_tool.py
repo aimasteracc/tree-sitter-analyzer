@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Universal Code Analysis Tool for MCP
 
@@ -9,16 +8,12 @@ languages using the existing language detection and analysis infrastructure.
 
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
-from tree_sitter_analyzer.core.analysis_engine import (
-    AnalysisRequest,
-    get_analysis_engine,
-)
-from ...core.analysis_engine import get_analysis_engine, AnalysisRequest
+from ...core.analysis_engine import AnalysisRequest, get_analysis_engine
 from ...language_detector import detect_language_from_file, is_language_supported
-from ..utils.error_handler import handle_mcp_errors
 from ..utils import get_performance_monitor
+from ..utils.error_handler import handle_mcp_errors
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +31,7 @@ class UniversalAnalyzeTool:
         # Use unified analysis engine instead of deprecated AdvancedAnalyzer
         self.analysis_engine = get_analysis_engine()
 
-    def get_tool_definition(self) -> Dict[str, Any]:
+    def get_tool_definition(self) -> dict[str, Any]:
         """
         Get MCP tool definition for universal code analysis
 
@@ -79,9 +74,8 @@ class UniversalAnalyzeTool:
             },
         }
 
-
     @handle_mcp_errors("universal_analyze")
-    async def execute(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
+    async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """
         Execute universal code analysis
 
@@ -160,7 +154,7 @@ class UniversalAnalyzeTool:
 
     async def _analyze_with_advanced_analyzer(
         self, file_path: str, language: str, analysis_type: str, include_ast: bool
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Analyze using the advanced analyzer (Java-specific)
 
@@ -178,7 +172,7 @@ class UniversalAnalyzeTool:
             file_path=file_path,
             language=language,
             include_complexity=True,
-            include_details=True
+            include_details=True,
         )
         analysis_result = await self.analysis_engine.analyze(request)
 
@@ -186,7 +180,7 @@ class UniversalAnalyzeTool:
             raise RuntimeError(f"Failed to analyze file: {file_path}")
 
         # Build base result
-        result: Dict[str, Any] = {
+        result: dict[str, Any] = {
             "file_path": file_path,
             "language": language,
             "analyzer_type": "advanced",
@@ -214,7 +208,7 @@ class UniversalAnalyzeTool:
 
     async def _analyze_with_universal_analyzer(
         self, file_path: str, language: str, analysis_type: str, include_ast: bool
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Analyze using the universal analyzer
 
@@ -238,15 +232,13 @@ class UniversalAnalyzeTool:
             error_message = (
                 analysis_result.error_message if analysis_result else "Unknown error"
             )
-            raise RuntimeError(
-                f"Failed to analyze file: {file_path} - {error_message}"
-            )
+            raise RuntimeError(f"Failed to analyze file: {file_path} - {error_message}")
 
         # Convert AnalysisResult to dictionary for consistent processing
         analysis_dict = analysis_result.to_dict()
 
         # Build base result
-        result: Dict[str, Any] = {
+        result: dict[str, Any] = {
             "file_path": file_path,
             "language": language,
             "analyzer_type": "universal",
@@ -260,16 +252,14 @@ class UniversalAnalyzeTool:
         elif analysis_type == "structure":
             result.update(self._extract_universal_structure_info(analysis_dict))
         elif analysis_type == "metrics":
-            result.update(
-                self._extract_universal_comprehensive_metrics(analysis_dict)
-            )
+            result.update(self._extract_universal_comprehensive_metrics(analysis_dict))
 
         if include_ast:
             result["ast_info"] = analysis_dict.get("ast_info", {})
 
         return result
 
-    def _extract_basic_metrics(self, analysis_result: Any) -> Dict[str, Any]:
+    def _extract_basic_metrics(self, analysis_result: Any) -> dict[str, Any]:
         """Extract basic metrics from advanced analyzer result"""
         stats = analysis_result.get_statistics()
 
@@ -280,60 +270,129 @@ class UniversalAnalyzeTool:
                 "lines_comment": stats.get("comment_lines", 0),
                 "lines_blank": stats.get("blank_lines", 0),
                 "elements": {
-                    "classes": len([e for e in analysis_result.elements if e.__class__.__name__ == 'Class']),
-                    "methods": len([e for e in analysis_result.elements if e.__class__.__name__ == 'Function']),
-                    "fields": len([e for e in analysis_result.elements if e.__class__.__name__ == 'Variable']),
-                    "imports": len([e for e in analysis_result.elements if e.__class__.__name__ == 'Import']),
+                    "classes": len(
+                        [
+                            e
+                            for e in analysis_result.elements
+                            if e.__class__.__name__ == "Class"
+                        ]
+                    ),
+                    "methods": len(
+                        [
+                            e
+                            for e in analysis_result.elements
+                            if e.__class__.__name__ == "Function"
+                        ]
+                    ),
+                    "fields": len(
+                        [
+                            e
+                            for e in analysis_result.elements
+                            if e.__class__.__name__ == "Variable"
+                        ]
+                    ),
+                    "imports": len(
+                        [
+                            e
+                            for e in analysis_result.elements
+                            if e.__class__.__name__ == "Import"
+                        ]
+                    ),
                     "annotations": len(getattr(analysis_result, "annotations", [])),
                 },
             }
         }
 
-    def _extract_detailed_metrics(self, analysis_result: Any) -> Dict[str, Any]:
+    def _extract_detailed_metrics(self, analysis_result: Any) -> dict[str, Any]:
         """Extract detailed metrics from advanced analyzer result"""
         basic = self._extract_basic_metrics(analysis_result)
 
         # Add complexity metrics
-        methods = [e for e in analysis_result.elements if e.__class__.__name__ == 'Function']
+        methods = [
+            e for e in analysis_result.elements if e.__class__.__name__ == "Function"
+        ]
         total_complexity = sum(
-            getattr(method, 'complexity_score', 0) or 0 for method in methods
+            getattr(method, "complexity_score", 0) or 0 for method in methods
         )
 
         basic["metrics"]["complexity"] = {
             "total": total_complexity,
-            "average": (
-                total_complexity / len(methods)
-                if methods
-                else 0
-            ),
+            "average": (total_complexity / len(methods) if methods else 0),
             "max": max(
-                (getattr(method, 'complexity_score', 0) or 0 for method in methods),
+                (getattr(method, "complexity_score", 0) or 0 for method in methods),
                 default=0,
             ),
         }
 
         return basic
 
-    def _extract_structure_info(self, analysis_result: Any) -> Dict[str, Any]:
+    def _extract_structure_info(self, analysis_result: Any) -> dict[str, Any]:
         """Extract structure information from advanced analyzer result"""
         return {
             "structure": {
                 "package": (
                     analysis_result.package.name if analysis_result.package else None
                 ),
-                "classes": [cls.to_summary_item() if hasattr(cls, 'to_summary_item') else {'name': getattr(cls, 'name', 'unknown')} for cls in [e for e in analysis_result.elements if e.__class__.__name__ == 'Class']],
-                "methods": [
-                    method.to_summary_item() if hasattr(method, 'to_summary_item') else {'name': getattr(method, 'name', 'unknown')} for method in [e for e in analysis_result.elements if e.__class__.__name__ == 'Function']
+                "classes": [
+                    (
+                        cls.to_summary_item()
+                        if hasattr(cls, "to_summary_item")
+                        else {"name": getattr(cls, "name", "unknown")}
+                    )
+                    for cls in [
+                        e
+                        for e in analysis_result.elements
+                        if e.__class__.__name__ == "Class"
+                    ]
                 ],
-                "fields": [field.to_summary_item() if hasattr(field, 'to_summary_item') else {'name': getattr(field, 'name', 'unknown')} for field in [e for e in analysis_result.elements if e.__class__.__name__ == 'Variable']],
-                "imports": [imp.to_summary_item() if hasattr(imp, 'to_summary_item') else {'name': getattr(imp, 'name', 'unknown')} for imp in [e for e in analysis_result.elements if e.__class__.__name__ == 'Import']],
+                "methods": [
+                    (
+                        method.to_summary_item()
+                        if hasattr(method, "to_summary_item")
+                        else {"name": getattr(method, "name", "unknown")}
+                    )
+                    for method in [
+                        e
+                        for e in analysis_result.elements
+                        if e.__class__.__name__ == "Function"
+                    ]
+                ],
+                "fields": [
+                    (
+                        field.to_summary_item()
+                        if hasattr(field, "to_summary_item")
+                        else {"name": getattr(field, "name", "unknown")}
+                    )
+                    for field in [
+                        e
+                        for e in analysis_result.elements
+                        if e.__class__.__name__ == "Variable"
+                    ]
+                ],
+                "imports": [
+                    (
+                        imp.to_summary_item()
+                        if hasattr(imp, "to_summary_item")
+                        else {"name": getattr(imp, "name", "unknown")}
+                    )
+                    for imp in [
+                        e
+                        for e in analysis_result.elements
+                        if e.__class__.__name__ == "Import"
+                    ]
+                ],
                 "annotations": [
-                    ann.to_summary_item() if hasattr(ann, 'to_summary_item') else {'name': getattr(ann, 'name', 'unknown')} for ann in getattr(analysis_result, "annotations", [])
+                    (
+                        ann.to_summary_item()
+                        if hasattr(ann, "to_summary_item")
+                        else {"name": getattr(ann, "name", "unknown")}
+                    )
+                    for ann in getattr(analysis_result, "annotations", [])
                 ],
             }
         }
 
-    def _extract_comprehensive_metrics(self, analysis_result: Any) -> Dict[str, Any]:
+    def _extract_comprehensive_metrics(self, analysis_result: Any) -> dict[str, Any]:
         """Extract comprehensive metrics from advanced analyzer result"""
         detailed = self._extract_detailed_metrics(analysis_result)
         structure = self._extract_structure_info(analysis_result)
@@ -345,8 +404,8 @@ class UniversalAnalyzeTool:
         return result
 
     def _extract_universal_basic_metrics(
-        self, analysis_result: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        self, analysis_result: dict[str, Any]
+    ) -> dict[str, Any]:
         """Extract basic metrics from universal analyzer result"""
         elements = analysis_result.get("elements", [])
         return {
@@ -354,20 +413,28 @@ class UniversalAnalyzeTool:
                 "lines_total": analysis_result.get("line_count", 0),
                 "lines_code": analysis_result.get("line_count", 0),  # Approximation
                 "lines_comment": 0,  # Not available in universal analyzer
-                "lines_blank": 0,    # Not available in universal analyzer
+                "lines_blank": 0,  # Not available in universal analyzer
                 "elements": {
-                    "classes": len([e for e in elements if e.get("__class__", "") == "Class"]),
-                    "methods": len([e for e in elements if e.get("__class__", "") == "Function"]),
-                    "fields": len([e for e in elements if e.get("__class__", "") == "Variable"]),
-                    "imports": len([e for e in elements if e.get("__class__", "") == "Import"]),
+                    "classes": len(
+                        [e for e in elements if e.get("__class__", "") == "Class"]
+                    ),
+                    "methods": len(
+                        [e for e in elements if e.get("__class__", "") == "Function"]
+                    ),
+                    "fields": len(
+                        [e for e in elements if e.get("__class__", "") == "Variable"]
+                    ),
+                    "imports": len(
+                        [e for e in elements if e.get("__class__", "") == "Import"]
+                    ),
                     "annotations": 0,  # Not available in universal analyzer
                 },
             }
         }
 
     def _extract_universal_detailed_metrics(
-        self, analysis_result: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        self, analysis_result: dict[str, Any]
+    ) -> dict[str, Any]:
         """Extract detailed metrics from universal analyzer result"""
         basic = self._extract_universal_basic_metrics(analysis_result)
 
@@ -378,8 +445,8 @@ class UniversalAnalyzeTool:
         return basic
 
     def _extract_universal_structure_info(
-        self, analysis_result: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        self, analysis_result: dict[str, Any]
+    ) -> dict[str, Any]:
         """Extract structure information from universal analyzer result"""
         return {
             "structure": analysis_result.get("structure", {}),
@@ -387,8 +454,8 @@ class UniversalAnalyzeTool:
         }
 
     def _extract_universal_comprehensive_metrics(
-        self, analysis_result: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        self, analysis_result: dict[str, Any]
+    ) -> dict[str, Any]:
         """Extract comprehensive metrics from universal analyzer result"""
         detailed = self._extract_universal_detailed_metrics(analysis_result)
         structure = self._extract_universal_structure_info(analysis_result)
@@ -399,7 +466,7 @@ class UniversalAnalyzeTool:
 
         return result
 
-    async def _get_available_queries(self, language: str) -> Dict[str, Any]:
+    async def _get_available_queries(self, language: str) -> dict[str, Any]:
         """
         Get available queries for the specified language
 
@@ -425,7 +492,7 @@ class UniversalAnalyzeTool:
             logger.warning(f"Failed to get queries for {language}: {e}")
             return {"language": language, "queries": [], "error": str(e)}
 
-    def validate_arguments(self, arguments: Dict[str, Any]) -> bool:
+    def validate_arguments(self, arguments: dict[str, Any]) -> bool:
         """
         Validate tool arguments against the schema.
 

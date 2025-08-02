@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Tests for partial file reading functionality
 """
@@ -7,9 +6,8 @@ Tests for partial file reading functionality
 import os
 import sys
 import tempfile
+
 import pytest
-import pytest_asyncio
-from pathlib import Path
 
 # Add project root to path
 sys.path.insert(0, ".")
@@ -23,28 +21,28 @@ def test_file():
     content = """public class TestClass {
     private String name;
     private int age;
-    
+
     public TestClass(String name, int age) {
         this.name = name;
         this.age = age;
     }
-    
+
     public String getName() {
         return name;
     }
-    
+
     public void setName(String name) {
         this.name = name;
     }
-    
+
     public int getAge() {
         return age;
     }
-    
+
     public void setAge(int age) {
         this.age = age;
     }
-    
+
     @Override
     public String toString() {
         return "TestClass{name='" + name + "', age=" + age + "}";
@@ -103,7 +101,7 @@ def cli_test_file():
     public void method1() {
         System.out.println("Method 1");
     }
-    
+
     public void method2() {
         System.out.println("Method 2");
     }
@@ -131,7 +129,7 @@ def test_read_line_range_1_to_5(test_file):
     assert "private String name" in result
     assert "private int age" in result
     assert "public TestClass(String name, int age)" in result
-    assert len(result) == 121
+    assert len(result) == 117
 
 
 def test_read_single_line_5(test_file):
@@ -161,7 +159,7 @@ def test_read_from_line_10_to_end(test_file):
     assert len(lines) > 15  # Should have multiple lines
     assert "public String getName()" in result
     assert "return name" in result
-    assert len(result) == 382
+    assert len(result) == 366
 
 
 def test_read_file_lines_range_function(test_file):
@@ -171,7 +169,7 @@ def test_read_file_lines_range_function(test_file):
     assert result is not None
     assert "private String name" in result
     assert "private int age" in result
-    assert len(result) == 51
+    assert len(result) == 47
 
 
 def test_invalid_start_line_zero(test_file):

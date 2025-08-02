@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Tests for Plugin System Coverage Enhancement
 
@@ -7,8 +6,8 @@ Additional tests to improve coverage for plugins/__init__.py
 """
 
 import sys
+
 import pytest
-import pytest_asyncio
 
 # Add project root to path
 sys.path.insert(0, ".")
@@ -16,10 +15,7 @@ sys.path.insert(0, ".")
 from tree_sitter_analyzer.plugins import (
     DefaultExtractor,
     DefaultLanguagePlugin,
-    ElementExtractor,
-    LanguagePlugin,
     PluginRegistry,
-    plugin_registry,
 )
 
 
@@ -302,7 +298,9 @@ class TestPluginRegistryAdvanced:
         # Should not raise exception
         plugin_registry_instance.register_plugin(mock_plugin)
 
-    def test_get_plugin_for_file_with_applicable_plugin(self, mocker, plugin_registry_instance):
+    def test_get_plugin_for_file_with_applicable_plugin(
+        self, mocker, plugin_registry_instance
+    ):
         """Test getting plugin for file with applicable plugin"""
         mock_plugin = mocker.MagicMock()
         mock_plugin.get_language_name.return_value = "test"
@@ -314,7 +312,9 @@ class TestPluginRegistryAdvanced:
         result = plugin_registry_instance.get_plugin_for_file("test.test")
         assert result == mock_plugin
 
-    def test_get_plugin_for_file_with_no_applicable_plugin(self, plugin_registry_instance):
+    def test_get_plugin_for_file_with_no_applicable_plugin(
+        self, plugin_registry_instance
+    ):
         """Test getting plugin for file with no applicable plugin"""
         result = plugin_registry_instance.get_plugin_for_file("unknown.xyz")
         assert isinstance(result, DefaultLanguagePlugin)

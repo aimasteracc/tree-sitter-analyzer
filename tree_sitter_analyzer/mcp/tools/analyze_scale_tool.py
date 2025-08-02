@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Analyze Code Scale MCP Tool
 
@@ -8,16 +7,13 @@ complexity, size, and structure through the MCP protocol.
 Enhanced for LLM-friendly analysis workflow.
 """
 
-import json
-import logging
 import re
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
-from tree_sitter_analyzer.core.analysis_engine import get_analysis_engine, AnalysisRequest
-from ...core.analysis_engine import get_analysis_engine, AnalysisRequest
+from ...core.analysis_engine import AnalysisRequest, get_analysis_engine
 from ...language_detector import detect_language_from_file
-from ...utils import log_performance, setup_logger
+from ...utils import setup_logger
 
 # Set up logging
 logger = setup_logger(__name__)
@@ -38,7 +34,7 @@ class AnalyzeScaleTool:
         self.analysis_engine = get_analysis_engine()
         logger.info("AnalyzeScaleTool initialized")
 
-    def _calculate_file_metrics(self, file_path: str) -> Dict[str, Any]:
+    def _calculate_file_metrics(self, file_path: str) -> dict[str, Any]:
         """
         Calculate basic file metrics including line counts and estimated token count.
 
@@ -49,7 +45,7 @@ class AnalyzeScaleTool:
             Dictionary containing file metrics
         """
         try:
-            with open(file_path, "r", encoding="utf-8") as f:
+            with open(file_path, encoding="utf-8") as f:
                 content = f.read()
 
             lines = content.split("\n")
@@ -102,7 +98,7 @@ class AnalyzeScaleTool:
                 "file_size_kb": 0,
             }
 
-    def _extract_structural_overview(self, analysis_result: Any) -> Dict[str, Any]:
+    def _extract_structural_overview(self, analysis_result: Any) -> dict[str, Any]:
         """
         Extract structural overview with position information for LLM guidance.
 
@@ -112,7 +108,7 @@ class AnalyzeScaleTool:
         Returns:
             Dictionary containing structural overview
         """
-        overview = {
+        overview: dict[str, Any] = {
             "classes": [],
             "methods": [],
             "fields": [],
@@ -121,7 +117,9 @@ class AnalyzeScaleTool:
         }
 
         # Extract class information with position from unified analysis engine
-        classes = [e for e in analysis_result.elements if e.__class__.__name__ == 'Class']
+        classes = [
+            e for e in analysis_result.elements if e.__class__.__name__ == "Class"
+        ]
         for cls in classes:
             class_info = {
                 "name": cls.name,
@@ -137,7 +135,9 @@ class AnalyzeScaleTool:
             overview["classes"].append(class_info)
 
         # Extract method information with position and complexity from unified analysis engine
-        methods = [e for e in analysis_result.elements if e.__class__.__name__ == 'Function']
+        methods = [
+            e for e in analysis_result.elements if e.__class__.__name__ == "Function"
+        ]
         for method in methods:
             method_info = {
                 "name": method.name,
@@ -168,7 +168,9 @@ class AnalyzeScaleTool:
 
         # Extract field information with position
         # Extract field information from unified analysis engine
-        fields = [e for e in analysis_result.elements if e.__class__.__name__ == 'Variable']
+        fields = [
+            e for e in analysis_result.elements if e.__class__.__name__ == "Variable"
+        ]
         for field in fields:
             field_info = {
                 "name": field.name,
@@ -184,7 +186,9 @@ class AnalyzeScaleTool:
 
         # Extract import information
         # Extract import information from unified analysis engine
-        imports = [e for e in analysis_result.elements if e.__class__.__name__ == 'Import']
+        imports = [
+            e for e in analysis_result.elements if e.__class__.__name__ == "Import"
+        ]
         for imp in imports:
             import_info = {
                 "name": imp.imported_name,
@@ -198,8 +202,8 @@ class AnalyzeScaleTool:
         return overview
 
     def _generate_llm_guidance(
-        self, file_metrics: Dict[str, Any], structural_overview: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        self, file_metrics: dict[str, Any], structural_overview: dict[str, Any]
+    ) -> dict[str, Any]:
         """
         Generate guidance for LLM on how to efficiently analyze this file.
 
@@ -219,7 +223,7 @@ class AnalyzeScaleTool:
         }
 
         total_lines = file_metrics["total_lines"]
-        estimated_tokens = file_metrics["estimated_tokens"]
+        # estimated_tokens = file_metrics["estimated_tokens"]  # Not used currently
 
         # Determine size category
         if total_lines < 100:
@@ -273,7 +277,7 @@ class AnalyzeScaleTool:
 
         return guidance
 
-    def get_tool_schema(self) -> Dict[str, Any]:
+    def get_tool_schema(self) -> dict[str, Any]:
         """
         Get the MCP tool schema for analyze_code_scale.
 
@@ -311,7 +315,7 @@ class AnalyzeScaleTool:
             "additionalProperties": False,
         }
 
-    async def execute(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
+    async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """
         Execute the analyze_code_scale tool.
 
@@ -331,7 +335,7 @@ class AnalyzeScaleTool:
 
         file_path = arguments["file_path"]
         language = arguments.get("language")
-        include_complexity = arguments.get("include_complexity", True)
+        # include_complexity = arguments.get("include_complexity", True)  # Not used currently
         include_details = arguments.get("include_details", False)
         include_guidance = arguments.get("include_guidance", True)
 
@@ -365,25 +369,37 @@ class AnalyzeScaleTool:
                         file_path=file_path,
                         language=language,
                         include_complexity=True,
-                        include_details=True
+                        include_details=True,
                     )
                     analysis_result = await self.analysis_engine.analyze(request)
                     if analysis_result is None:
                         raise RuntimeError(f"Failed to analyze file: {file_path}")
                     # Extract structural overview
-                    structural_overview = self._extract_structural_overview(analysis_result)
+                    structural_overview = self._extract_structural_overview(
+                        analysis_result
+                    )
                 else:
                     # Use universal analysis_engine for other languages
-                    request = AnalysisRequest(file_path=file_path, language=language, include_details=include_details)
+                    request = AnalysisRequest(
+                        file_path=file_path,
+                        language=language,
+                        include_details=include_details,
+                    )
                     universal_result = await self.analysis_engine.analyze(request)
                     if not universal_result or not universal_result.success:
-                        error_msg = universal_result.error_message if universal_result else "Unknown error"
-                        raise RuntimeError(f"Failed to analyze file with universal engine: {error_msg}")
-                    
+                        error_msg = (
+                            universal_result.error_message
+                            if universal_result
+                            else "Unknown error"
+                        )
+                        raise RuntimeError(
+                            f"Failed to analyze file with universal engine: {error_msg}"
+                        )
+
                     # Adapt the result to a compatible structure for report generation
                     # This part needs careful implementation based on universal_result structure
-                    analysis_result = None # Placeholder
-                    structural_overview = {} # Placeholder
+                    analysis_result = None  # Placeholder
+                    structural_overview = {}  # Placeholder
 
                 # Generate LLM guidance
                 llm_guidance = None
@@ -398,10 +414,34 @@ class AnalyzeScaleTool:
                     "language": language,
                     "file_metrics": file_metrics,
                     "summary": {
-                                            "classes": len([e for e in analysis_result.elements if e.__class__.__name__ == 'Class']),
-                    "methods": len([e for e in analysis_result.elements if e.__class__.__name__ == 'Function']),
-                    "fields": len([e for e in analysis_result.elements if e.__class__.__name__ == 'Variable']),
-                    "imports": len([e for e in analysis_result.elements if e.__class__.__name__ == 'Import']),
+                        "classes": len(
+                            [
+                                e
+                                for e in analysis_result.elements
+                                if e.__class__.__name__ == "Class"
+                            ]
+                        ),
+                        "methods": len(
+                            [
+                                e
+                                for e in analysis_result.elements
+                                if e.__class__.__name__ == "Function"
+                            ]
+                        ),
+                        "fields": len(
+                            [
+                                e
+                                for e in analysis_result.elements
+                                if e.__class__.__name__ == "Variable"
+                            ]
+                        ),
+                        "imports": len(
+                            [
+                                e
+                                for e in analysis_result.elements
+                                if e.__class__.__name__ == "Import"
+                            ]
+                        ),
                         "annotations": len(getattr(analysis_result, "annotations", [])),
                         "package": (
                             analysis_result.package.name
@@ -429,12 +469,16 @@ class AnalyzeScaleTool:
                                 "annotations": [ann.name for ann in cls.annotations],
                                 "lines": f"{cls.start_line}-{cls.end_line}",
                             }
-                            for cls in [e for e in analysis_result.elements if e.__class__.__name__ == 'Class']
+                            for cls in [
+                                e
+                                for e in analysis_result.elements
+                                if e.__class__.__name__ == "Class"
+                            ]
                         ],
                         "methods": [
                             {
                                 "name": method.name,
-                                "file_path": getattr(method, 'file_path', file_path),
+                                "file_path": getattr(method, "file_path", file_path),
                                 "visibility": method.visibility,
                                 "return_type": method.return_type,
                                 "parameters": len(method.parameters),
@@ -444,27 +488,47 @@ class AnalyzeScaleTool:
                                 "complexity": method.complexity_score,
                                 "lines": f"{method.start_line}-{method.end_line}",
                             }
-                            for method in [e for e in analysis_result.elements if e.__class__.__name__ == 'Function']
+                            for method in [
+                                e
+                                for e in analysis_result.elements
+                                if e.__class__.__name__ == "Function"
+                            ]
                         ],
                         "fields": [
                             {
                                 "name": field.name,
                                 "type": field.field_type,
-                                "file_path": getattr(field, 'file_path', file_path),
+                                "file_path": getattr(field, "file_path", file_path),
                                 "visibility": field.visibility,
                                 "is_static": field.is_static,
                                 "is_final": field.is_final,
                                 "annotations": [ann.name for ann in field.annotations],
                                 "lines": f"{field.start_line}-{field.end_line}",
                             }
-                            for field in [e for e in analysis_result.elements if e.__class__.__name__ == 'Variable']
+                            for field in [
+                                e
+                                for e in analysis_result.elements
+                                if e.__class__.__name__ == "Variable"
+                            ]
                         ],
                     }
 
                 # Count elements by type
-                classes_count = len([e for e in analysis_result.elements if e.__class__.__name__ == 'Class'])
-                methods_count = len([e for e in analysis_result.elements if e.__class__.__name__ == 'Function'])
-                
+                classes_count = len(
+                    [
+                        e
+                        for e in analysis_result.elements
+                        if e.__class__.__name__ == "Class"
+                    ]
+                )
+                methods_count = len(
+                    [
+                        e
+                        for e in analysis_result.elements
+                        if e.__class__.__name__ == "Function"
+                    ]
+                )
+
                 logger.info(
                     f"Successfully analyzed {file_path}: {classes_count} classes, "
                     f"{methods_count} methods, {file_metrics['total_lines']} lines, "
@@ -477,7 +541,7 @@ class AnalyzeScaleTool:
             logger.error(f"Error analyzing {file_path}: {e}")
             raise
 
-    def validate_arguments(self, arguments: Dict[str, Any]) -> bool:
+    def validate_arguments(self, arguments: dict[str, Any]) -> bool:
         """
         Validate tool arguments against the schema.
 

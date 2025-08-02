@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Extended Tests for JavaScript Plugin
 
@@ -12,9 +11,8 @@ import sys
 sys.path.insert(0, ".")
 
 import pytest
-import pytest_asyncio
-# Mock functionality now provided by pytest-mock
 
+# Mock functionality now provided by pytest-mock
 from tree_sitter_analyzer.models import Class, Function, Import, Variable
 from tree_sitter_analyzer.plugins.javascript_plugin import (
     JavaScriptElementExtractor,

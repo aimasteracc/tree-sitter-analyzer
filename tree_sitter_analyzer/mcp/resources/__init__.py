@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 MCP Resources Module
 
@@ -15,7 +14,9 @@ The resources integrate with existing analyzer components to provide
 seamless access to code analysis functionality through the MCP protocol.
 """
 
-from typing import Any, Dict
+# Export main resource classes
+from .code_file_resource import CodeFileResource
+from .project_stats_resource import ProjectStatsResource
 
 # Resource metadata
 __version__ = "1.0.0"
@@ -39,9 +40,5 @@ MCP_RESOURCE_CAPABILITIES = {
         },
     ],
 }
-
-# Export main resource classes
-from .code_file_resource import CodeFileResource
-from .project_stats_resource import ProjectStatsResource
 
 __all__ = ["CodeFileResource", "ProjectStatsResource", "MCP_RESOURCE_CAPABILITIES"]

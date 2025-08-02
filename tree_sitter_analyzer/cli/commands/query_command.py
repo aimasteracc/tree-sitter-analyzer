@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Query Command
 
@@ -77,6 +76,6 @@ class QueryCommand(BaseCommand):
                     )
                     output_data(f"   内容:\n{query_result['content']}")
         else:
-            output_info(f"\nINFO: クエリにマッチする結果は見つかりませんでした。")
+            output_info("\nINFO: クエリにマッチする結果は見つかりませんでした。")
 
         return 0

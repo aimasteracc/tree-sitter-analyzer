@@ -3,18 +3,20 @@
 Tests for tree_sitter_analyzer.core.engine module.
 """
 
-import pytest
-import tempfile
 import os
-from unittest.mock import patch
+import tempfile
+
+import pytest
 
 from tree_sitter_analyzer.core.engine import AnalysisEngine
 from tree_sitter_analyzer.models import AnalysisResult
+
 
 @pytest.fixture
 def engine():
     """Fixture to provide an AnalysisEngine instance."""
     return AnalysisEngine()
+
 
 class TestAnalysisEngine:
     """Test cases for the core AnalysisEngine."""
@@ -61,7 +63,7 @@ def greet(name):
 class Greeter:
     def __init__(self, greeting):
         self.greeting = greeting
-    
+
     def greet(self, name):
         return f"{self.greeting}, {name}"
 """
@@ -71,7 +73,7 @@ class Greeter:
         assert result.language == "python"
         assert result.file_path == ""  # 新しいアーキテクチャでは空文字列
         assert len(result.elements) > 0
-        
+
         element_types = [elem.element_type for elem in result.elements]
         assert "import" in element_types
         assert "function" in element_types
@@ -95,7 +97,7 @@ class Greeter:
         with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
             f.write("print('hello')")
             temp_file = f.name
-        
+
         try:
             result = engine.analyze_file(temp_file)
             assert result.language == "python"
@@ -110,13 +112,14 @@ class Greeter:
         assert isinstance(result, AnalysisResult)
         # Depending on the severity, it might be a success with errors or a failure
         # For now, we just check it doesn't crash
-        
+
     def test_get_supported_languages(self, engine):
         """Test retrieving the list of supported languages."""
         supported_languages = engine.get_supported_languages()
         assert isinstance(supported_languages, list)
         assert "java" in supported_languages
         assert "python" in supported_languages
+
 
 if __name__ == "__main__":
     pytest.main([__file__])

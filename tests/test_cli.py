@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Tests for CLI module
 """
@@ -15,7 +14,6 @@ import tempfile
 from io import StringIO
 
 import pytest
-import pytest_asyncio
 
 from tree_sitter_analyzer.cli_main import main
 
@@ -28,14 +26,17 @@ class TestCLI:
         monkeypatch.setattr(sys, "argv", ["cli", "--show-query-languages"])
         mock_stdout = StringIO()
         monkeypatch.setattr("sys.stdout", mock_stdout)
-        
+
         try:
             main()
         except SystemExit:
             pass  # Expected for some CLI commands
 
         output = mock_stdout.getvalue()
-        assert "Query supported languages" in output or "クエリサポートされている言語" in output
+        assert (
+            "Query supported languages" in output
+            or "クエリサポートされている言語" in output
+        )
         assert "java" in output
         assert "javascript" in output
         assert "python" in output
@@ -45,7 +46,7 @@ class TestCLI:
         monkeypatch.setattr(sys, "argv", ["cli", "--show-supported-languages"])
         mock_stdout = StringIO()
         monkeypatch.setattr("sys.stdout", mock_stdout)
-        
+
         try:
             main()
         except SystemExit:
@@ -59,7 +60,7 @@ class TestCLI:
         monkeypatch.setattr(sys, "argv", ["cli", "--show-supported-extensions"])
         mock_stdout = StringIO()
         monkeypatch.setattr("sys.stdout", mock_stdout)
-        
+
         try:
             main()
         except SystemExit:
@@ -73,14 +74,17 @@ class TestCLI:
         monkeypatch.setattr(sys, "argv", ["cli", "--show-common-queries"])
         mock_stdout = StringIO()
         monkeypatch.setattr("sys.stdout", mock_stdout)
-        
+
         try:
             main()
         except SystemExit:
             pass
 
         output = mock_stdout.getvalue()
-        assert "Common queries for multiple languages" in output or "複数言語共通のクエリ" in output
+        assert (
+            "Common queries for multiple languages" in output
+            or "複数言語共通のクエリ" in output
+        )
         # Check for some common query names
         assert any(
             query in output
@@ -94,10 +98,12 @@ class TestCLI:
 
     def test_list_queries_with_language(self, monkeypatch):
         """Test --list-queries with --language option"""
-        monkeypatch.setattr(sys, "argv", ["cli", "--list-queries", "--language", "java"])
+        monkeypatch.setattr(
+            sys, "argv", ["cli", "--list-queries", "--language", "java"]
+        )
         mock_stdout = StringIO()
         monkeypatch.setattr("sys.stdout", mock_stdout)
-        
+
         try:
             main()
         except SystemExit:
@@ -111,7 +117,7 @@ class TestCLI:
         monkeypatch.setattr(sys, "argv", ["cli", "--list-queries"])
         mock_stdout = StringIO()
         monkeypatch.setattr("sys.stdout", mock_stdout)
-        
+
         try:
             main()
         except SystemExit:
@@ -127,7 +133,7 @@ class TestCLI:
         )
         mock_stdout = StringIO()
         monkeypatch.setattr("sys.stdout", mock_stdout)
-        
+
         try:
             main()
         except SystemExit:
@@ -147,15 +153,15 @@ class TestCLI:
         monkeypatch.setattr(sys, "argv", ["cli", "--describe-query", "class"])
         mock_stdout = StringIO()
         monkeypatch.setattr("sys.stdout", mock_stdout)
-        
+
         try:
             main()
         except SystemExit:
             pass
 
-        output = mock_stdout.getvalue()
         # This should show an error message since no language is specified
         # The error goes to stderr, so check that stdout is empty
+        _ = mock_stdout.getvalue()
 
     def test_analyze_java_file(self, monkeypatch):
         """Test analyzing a Java file"""
@@ -177,7 +183,7 @@ public class TestClass {
             monkeypatch.setattr(sys, "argv", ["cli", temp_path])
             mock_stdout = StringIO()
             monkeypatch.setattr("sys.stdout", mock_stdout)
-            
+
             try:
                 main()
             except SystemExit:
@@ -213,7 +219,7 @@ public class TestClass {
             )
             mock_stdout = StringIO()
             monkeypatch.setattr("sys.stdout", mock_stdout)
-            
+
             try:
                 main()
             except SystemExit:
@@ -250,7 +256,7 @@ public class TestClass {
             )
             mock_stdout = StringIO()
             monkeypatch.setattr("sys.stdout", mock_stdout)
-            
+
             try:
                 main()
             except SystemExit:
@@ -284,7 +290,7 @@ if __name__ == "__main__":
             monkeypatch.setattr(sys, "argv", ["cli", temp_path])
             mock_stdout = StringIO()
             monkeypatch.setattr("sys.stdout", mock_stdout)
-            
+
             try:
                 main()
             except SystemExit:
@@ -318,7 +324,7 @@ public class TestClass {
             monkeypatch.setattr(sys, "argv", ["cli", temp_path, "--language", "java"])
             mock_stdout = StringIO()
             monkeypatch.setattr("sys.stdout", mock_stdout)
-            
+
             try:
                 main()
             except SystemExit:
@@ -344,7 +350,7 @@ public class TestClass {
             monkeypatch.setattr(sys, "argv", ["cli", temp_path])
             mock_stderr = StringIO()
             monkeypatch.setattr("sys.stderr", mock_stderr)
-            
+
             try:
                 main()
             except SystemExit:
@@ -364,7 +370,7 @@ public class TestClass {
         monkeypatch.setattr(sys, "argv", ["cli", nonexistent_path])
         mock_stderr = StringIO()
         monkeypatch.setattr("sys.stderr", mock_stderr)
-        
+
         try:
             main()
         except SystemExit:
@@ -396,7 +402,7 @@ public class TestClass {
             )
             mock_stdout = StringIO()
             monkeypatch.setattr("sys.stdout", mock_stdout)
-            
+
             try:
                 main()
             except SystemExit:
@@ -432,7 +438,7 @@ public class TestClass {
             )
             mock_stdout = StringIO()
             monkeypatch.setattr("sys.stdout", mock_stdout)
-            
+
             try:
                 main()
             except SystemExit:
@@ -455,7 +461,7 @@ class TestCLIEdgeCases:
         monkeypatch.setattr(sys, "argv", ["cli"])
         mock_stderr = StringIO()
         monkeypatch.setattr("sys.stderr", mock_stderr)
-        
+
         try:
             main()
         except SystemExit:
@@ -481,7 +487,7 @@ class TestCLIEdgeCases:
             )
             mock_stderr = StringIO()
             monkeypatch.setattr("sys.stderr", mock_stderr)
-            
+
             try:
                 main()
             except SystemExit:
@@ -500,7 +506,7 @@ class TestCLIEdgeCases:
         monkeypatch.setattr(sys, "argv", ["cli", "--help"])
         mock_stdout = StringIO()
         monkeypatch.setattr("sys.stdout", mock_stdout)
-        
+
         try:
             main()
         except SystemExit:

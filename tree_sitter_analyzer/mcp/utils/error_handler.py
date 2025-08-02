@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Error Handler for MCP Server
 
@@ -10,10 +9,11 @@ mechanisms for the MCP server operations.
 import asyncio
 import logging
 import traceback
+from collections.abc import Callable
 from datetime import datetime
 from enum import Enum
 from functools import wraps
-from typing import Any, Callable, Dict, List, Optional, Type
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +48,7 @@ class MCPError(Exception):
         message: str,
         category: ErrorCategory = ErrorCategory.UNKNOWN,
         severity: ErrorSeverity = ErrorSeverity.MEDIUM,
-        details: Optional[Dict[str, Any]] = None,
+        details: dict[str, Any] | None = None,
         recoverable: bool = True,
     ):
         super().__init__(message)
@@ -59,7 +59,7 @@ class MCPError(Exception):
         self.recoverable = recoverable
         self.timestamp = datetime.now()
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert error to dictionary representation"""
         return {
             "error_type": self.__class__.__name__,
@@ -91,7 +91,7 @@ class ParsingError(MCPError):
         self,
         message: str,
         file_path: str,
-        language: Optional[str] = None,
+        language: str | None = None,
         **kwargs: Any,
     ):
         super().__init__(
@@ -151,10 +151,10 @@ class ErrorHandler:
 
     def __init__(self) -> None:
         """Initialize error handler"""
-        self.error_counts: Dict[str, int] = {}
-        self.error_history: List[Dict[str, Any]] = []
+        self.error_counts: dict[str, int] = {}
+        self.error_history: list[dict[str, Any]] = []
         self.max_history_size = 1000
-        self.recovery_strategies: Dict[Type[Exception], Callable] = {}
+        self.recovery_strategies: dict[type[Exception], Callable] = {}
 
         # Register default recovery strategies
         self._register_default_strategies()
@@ -165,8 +165,8 @@ class ErrorHandler:
         """Register default error recovery strategies"""
 
         def file_not_found_recovery(
-            error: FileNotFoundError, context: Dict[str, Any]
-        ) -> Dict[str, Any]:
+            error: FileNotFoundError, context: dict[str, Any]
+        ) -> dict[str, Any]:
             """Recovery strategy for file not found errors"""
             return {
                 "error": f"File not found: {context.get('file_path', 'unknown')}",
@@ -175,8 +175,8 @@ class ErrorHandler:
             }
 
         def permission_error_recovery(
-            error: PermissionError, context: Dict[str, Any]
-        ) -> Dict[str, Any]:
+            error: PermissionError, context: dict[str, Any]
+        ) -> dict[str, Any]:
             """Recovery strategy for permission errors"""
             return {
                 "error": f"Permission denied: {context.get('file_path', 'unknown')}",
@@ -185,8 +185,8 @@ class ErrorHandler:
             }
 
         def value_error_recovery(
-            error: ValueError, context: Dict[str, Any]
-        ) -> Dict[str, Any]:
+            error: ValueError, context: dict[str, Any]
+        ) -> dict[str, Any]:
             """Recovery strategy for value errors"""
             return {
                 "error": f"Invalid value: {str(error)}",
@@ -204,8 +204,8 @@ class ErrorHandler:
 
     def register_recovery_strategy(
         self,
-        exception_type: Type[Exception],
-        strategy: Callable[[Exception, Dict[str, Any]], Dict[str, Any]],
+        exception_type: type[Exception],
+        strategy: Callable[[Exception, dict[str, Any]], dict[str, Any]],
     ) -> None:
         """
         Register a custom recovery strategy for an exception type
@@ -220,9 +220,9 @@ class ErrorHandler:
     def handle_error(
         self,
         error: Exception,
-        context: Optional[Dict[str, Any]] = None,
+        context: dict[str, Any] | None = None,
         operation: str = "unknown",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Handle an error with classification, logging, and recovery
 
@@ -259,8 +259,8 @@ class ErrorHandler:
         return error_info
 
     def _classify_error(
-        self, error: Exception, context: Dict[str, Any], operation: str
-    ) -> Dict[str, Any]:
+        self, error: Exception, context: dict[str, Any], operation: str
+    ) -> dict[str, Any]:
         """
         Classify a generic exception into MCP error categories
 
@@ -281,7 +281,7 @@ class ErrorHandler:
         recoverable = True
 
         if isinstance(
-            error, (FileNotFoundError, IsADirectoryError, NotADirectoryError)
+            error, FileNotFoundError | IsADirectoryError | NotADirectoryError
         ):
             category = ErrorCategory.FILE_ACCESS
             severity = ErrorSeverity.MEDIUM
@@ -289,13 +289,13 @@ class ErrorHandler:
             category = ErrorCategory.FILE_ACCESS
             severity = ErrorSeverity.HIGH
             recoverable = False
-        elif isinstance(error, (ValueError, TypeError)):
+        elif isinstance(error, ValueError | TypeError):
             category = ErrorCategory.VALIDATION
             severity = ErrorSeverity.LOW
-        elif isinstance(error, (OSError, IOError)):
+        elif isinstance(error, OSError | IOError):
             category = ErrorCategory.FILE_ACCESS
             severity = ErrorSeverity.HIGH
-        elif isinstance(error, (RuntimeError, AttributeError)):
+        elif isinstance(error, RuntimeError | AttributeError):
             category = ErrorCategory.ANALYSIS
             severity = ErrorSeverity.MEDIUM
         elif isinstance(error, MemoryError):
@@ -321,8 +321,8 @@ class ErrorHandler:
     def _log_error(
         self,
         error: Exception,
-        error_info: Dict[str, Any],
-        context: Dict[str, Any],
+        error_info: dict[str, Any],
+        context: dict[str, Any],
         operation: str,
     ) -> None:
         """
@@ -350,7 +350,7 @@ class ErrorHandler:
         else:
             logger.info(message, extra={"error_info": error_info, "context": context})
 
-    def _update_error_stats(self, error_info: Dict[str, Any]) -> None:
+    def _update_error_stats(self, error_info: dict[str, Any]) -> None:
         """
         Update error statistics
 
@@ -377,7 +377,7 @@ class ErrorHandler:
         )
 
     def _add_to_history(
-        self, error_info: Dict[str, Any], context: Dict[str, Any], operation: str
+        self, error_info: dict[str, Any], context: dict[str, Any], operation: str
     ) -> None:
         """
         Add error to history with size limit
@@ -396,8 +396,8 @@ class ErrorHandler:
             self.error_history = self.error_history[-self.max_history_size :]
 
     def _attempt_recovery(
-        self, error: Exception, context: Dict[str, Any]
-    ) -> Optional[Dict[str, Any]]:
+        self, error: Exception, context: dict[str, Any]
+    ) -> dict[str, Any] | None:
         """
         Attempt to recover from error using registered strategies
 
@@ -429,7 +429,7 @@ class ErrorHandler:
 
         return None
 
-    def get_error_stats(self) -> Dict[str, Any]:
+    def get_error_stats(self) -> dict[str, Any]:
         """
         Get error statistics
 
@@ -454,7 +454,7 @@ class ErrorHandler:
             "history_size": len(self.error_history),
         }
 
-    def get_recent_errors(self, limit: int = 10) -> List[Dict[str, Any]]:
+    def get_recent_errors(self, limit: int = 10) -> list[dict[str, Any]]:
         """
         Get recent errors from history
 

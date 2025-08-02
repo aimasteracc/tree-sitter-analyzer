@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 MCP Server implementation for Tree-sitter Analyzer (Fixed Version)
 
@@ -9,22 +8,14 @@ functionality through the Model Context Protocol.
 
 import asyncio
 import json
-import logging
 import sys
-from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Union
+from typing import Any
 
 try:
     from mcp.server import Server
     from mcp.server.models import InitializationOptions
     from mcp.server.stdio import stdio_server
-    from mcp.types import (
-        EmbeddedResource,
-        ImageContent,
-        Resource,
-        TextContent,
-        Tool,
-    )
+    from mcp.types import Resource, TextContent, Tool
 
     MCP_AVAILABLE = True
 except ImportError:
@@ -38,9 +29,7 @@ except ImportError:
         pass
 
 
-from tree_sitter_analyzer.core.analysis_engine import get_analysis_engine
-from ..core.analysis_engine import get_analysis_engine, AnalysisRequest
-from ..language_detector import detect_language_from_file
+from ..core.analysis_engine import get_analysis_engine
 from ..utils import setup_logger
 from . import MCP_INFO
 from .resources import CodeFileResource, ProjectStatsResource
@@ -49,7 +38,6 @@ from .tools.read_partial_tool import ReadPartialTool
 from .tools.table_format_tool import TableFormatTool
 from .tools.universal_analyze_tool import UniversalAnalyzeTool
 from .utils.error_handler import handle_mcp_errors
-from .utils import get_performance_monitor
 
 # Set up logging
 logger = setup_logger(__name__)
@@ -65,7 +53,7 @@ class TreeSitterAnalyzerMCPServer:
 
     def __init__(self) -> None:
         """Initialize the MCP server with analyzer components."""
-        self.server: Optional[Server] = None
+        self.server: Server | None = None
         self.analysis_engine = get_analysis_engine()
         # Use unified analysis engine instead of deprecated AdvancedAnalyzer
 
@@ -85,7 +73,7 @@ class TreeSitterAnalyzerMCPServer:
         logger.info(f"Initializing {self.name} v{self.version}")
 
     @handle_mcp_errors("analyze_code_scale")
-    async def _analyze_code_scale(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
+    async def _analyze_code_scale(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """
         Analyze code scale and complexity metrics by delegating to the universal_analyze_tool.
         """
@@ -106,7 +94,7 @@ class TreeSitterAnalyzerMCPServer:
 
         # Register tools
         @server.list_tools()
-        async def handle_list_tools() -> List[Tool]:
+        async def handle_list_tools() -> list[Tool]:
             """List available tools."""
             tools = [
                 Tool(
@@ -158,8 +146,8 @@ class TreeSitterAnalyzerMCPServer:
 
         @server.call_tool()
         async def handle_call_tool(
-            name: str, arguments: Dict[str, Any]
-        ) -> List[TextContent]:
+            name: str, arguments: dict[str, Any]
+        ) -> list[TextContent]:
             """Handle tool calls."""
             try:
                 if name == "analyze_code_scale":
@@ -214,7 +202,7 @@ class TreeSitterAnalyzerMCPServer:
 
         # Register resources
         @server.list_resources()
-        async def handle_list_resources() -> List[Resource]:
+        async def handle_list_resources() -> list[Resource]:
             """List available resources."""
             return [
                 Resource(

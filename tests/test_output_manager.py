@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Tests for Output Manager
 
@@ -8,10 +7,9 @@ various output formats, quiet mode, and structured data output.
 """
 
 import json
-import sys
-import pytest
-import pytest_asyncio
 from io import StringIO
+
+import pytest
 
 # Import the module under test
 from tree_sitter_analyzer.output_manager import (
@@ -24,7 +22,6 @@ from tree_sitter_analyzer.output_manager import (
     output_languages,
     output_list,
     output_queries,
-    output_query_results,
     output_section,
     output_statistics,
     output_success,

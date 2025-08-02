@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Project Statistics Resource for MCP
 
@@ -13,10 +12,12 @@ import logging
 import re
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union, cast
+from typing import Any, cast
 
-from tree_sitter_analyzer.core.analysis_engine import get_analysis_engine, AnalysisRequest
-from tree_sitter_analyzer.core.analysis_engine import get_analysis_engine, AnalysisRequest
+from tree_sitter_analyzer.core.analysis_engine import (
+    AnalysisRequest,
+    get_analysis_engine,
+)
 from tree_sitter_analyzer.language_detector import (
     detect_language_from_file,
     is_language_supported,
@@ -51,14 +52,14 @@ class ProjectStatsResource:
     def __init__(self) -> None:
         """Initialize the project statistics resource"""
         self._uri_pattern = re.compile(r"^code://stats/(.+)$")
-        self._project_path: Optional[str] = None
+        self._project_path: str | None = None
         self.analysis_engine = get_analysis_engine()
         # Use unified analysis engine instead of deprecated AdvancedAnalyzer
 
         # Supported statistics types
         self._supported_stats_types = {"overview", "languages", "complexity", "files"}
 
-    def get_resource_info(self) -> Dict[str, Any]:
+    def get_resource_info(self) -> dict[str, Any]:
         """
         Get resource information for MCP registration
 
@@ -185,7 +186,7 @@ class ProjectStatsResource:
         except Exception:
             return "unknown"
 
-    async def _generate_overview_stats(self) -> Dict[str, Any]:
+    async def _generate_overview_stats(self) -> dict[str, Any]:
         """
         Generate overview statistics for the project
 
@@ -200,13 +201,13 @@ class ProjectStatsResource:
         project_dir = Path(self._project_path)
         total_files = 0
         total_lines = 0
-        language_counts: Dict[str, int] = {}
+        language_counts: dict[str, int] = {}
 
         for file_path in project_dir.rglob("*"):
             if file_path.is_file() and self._is_supported_code_file(file_path):
                 total_files += 1
                 try:
-                    with open(file_path, "r", encoding="utf-8") as f:
+                    with open(file_path, encoding="utf-8") as f:
                         file_lines = sum(1 for _ in f)
                         total_lines += file_lines
                 except Exception:
@@ -248,7 +249,7 @@ class ProjectStatsResource:
         logger.debug(f"Generated overview with {overview['total_files']} files")
         return overview
 
-    async def _generate_languages_stats(self) -> Dict[str, Any]:
+    async def _generate_languages_stats(self) -> dict[str, Any]:
         """
         Generate language-specific statistics
 
@@ -269,7 +270,7 @@ class ProjectStatsResource:
             if file_path.is_file() and self._is_supported_code_file(file_path):
                 total_files += 1
                 try:
-                    with open(file_path, "r", encoding="utf-8") as f:
+                    with open(file_path, encoding="utf-8") as f:
                         file_lines = sum(1 for _ in f)
                         total_lines += file_lines
                 except Exception:
@@ -308,7 +309,7 @@ class ProjectStatsResource:
         logger.debug(f"Generated stats for {len(languages_list)} languages")
         return languages_stats
 
-    async def _generate_complexity_stats(self) -> Dict[str, Any]:
+    async def _generate_complexity_stats(self) -> dict[str, Any]:
         """
         Generate complexity statistics
 
@@ -350,15 +351,24 @@ class ProjectStatsResource:
                             complexity = 0
                     else:
                         # Use universal analyzer for other languages
-                        request = AnalysisRequest(file_path=str(file_path), language=language)
-                        file_analysis_result = await self.analysis_engine.analyze(request)
-                        
+                        request = AnalysisRequest(
+                            file_path=str(file_path), language=language
+                        )
+                        file_analysis_result = await self.analysis_engine.analyze(
+                            request
+                        )
+
                         complexity = 0
                         if file_analysis_result and file_analysis_result.success:
                             analysis_dict = file_analysis_result.to_dict()
                             # Assuming complexity is part of the metrics in the new structure
-                            if 'metrics' in analysis_dict and 'complexity' in analysis_dict['metrics']:
-                                complexity = analysis_dict['metrics']['complexity'].get('total', 0)
+                            if (
+                                "metrics" in analysis_dict
+                                and "complexity" in analysis_dict["metrics"]
+                            ):
+                                complexity = analysis_dict["metrics"]["complexity"].get(
+                                    "total", 0
+                                )
 
                     if complexity > 0:
                         complexity_data.append(
@@ -395,7 +405,7 @@ class ProjectStatsResource:
         logger.debug(f"Generated complexity stats for {file_count} files")
         return complexity_stats
 
-    async def _generate_files_stats(self) -> Dict[str, Any]:
+    async def _generate_files_stats(self) -> dict[str, Any]:
         """
         Generate file-level statistics
 
@@ -422,7 +432,7 @@ class ProjectStatsResource:
 
                     # Count lines
                     try:
-                        with open(file_path, "r", encoding="utf-8") as f:
+                        with open(file_path, encoding="utf-8") as f:
                             line_count = sum(1 for _ in f)
                     except Exception:
                         line_count = 0
@@ -511,7 +521,7 @@ class ProjectStatsResource:
             logger.error(f"Failed to generate {stats_type} statistics: {e}")
             raise
 
-    def get_supported_schemes(self) -> List[str]:
+    def get_supported_schemes(self) -> list[str]:
         """
         Get list of supported URI schemes
 
@@ -520,7 +530,7 @@ class ProjectStatsResource:
         """
         return ["code"]
 
-    def get_supported_resource_types(self) -> List[str]:
+    def get_supported_resource_types(self) -> list[str]:
         """
         Get list of supported resource types
 
@@ -529,7 +539,7 @@ class ProjectStatsResource:
         """
         return ["stats"]
 
-    def get_supported_stats_types(self) -> List[str]:
+    def get_supported_stats_types(self) -> list[str]:
         """
         Get list of supported statistics types
 
@@ -540,7 +550,7 @@ class ProjectStatsResource:
 
     def __str__(self) -> str:
         """String representation of the resource"""
-        return f"ProjectStatsResource(pattern=code://stats/{{stats_type}})"
+        return "ProjectStatsResource(pattern=code://stats/{stats_type})"
 
     def __repr__(self) -> str:
         """Detailed string representation of the resource"""

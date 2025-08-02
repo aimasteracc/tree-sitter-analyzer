@@ -97,7 +97,7 @@ vim tree_sitter_analyzer/mcp/tools/analyze_scale_tool.py
 pytest tests/ -v
 
 # Test CLI
-uv run python -m tree_sitter_analyzer examples/Sample.java --advanced
+uv run python -m tree_sitter_analyzer examples/Sample.java --advanced --output-format=text
 ```
 
 ### 2. Test MCP Server

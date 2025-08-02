@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Tests for Utilities Module
 
@@ -9,16 +8,17 @@ This module tests logging, debugging, and utility functions.
 import logging
 import sys
 from io import StringIO
-# Mock imports removed - not used in this file
 
+# Mock imports removed - not used in this file
 import pytest
-import pytest_asyncio
 
 # Add project root to path
 sys.path.insert(0, ".")
 
 # Import the module under test
+# Import LoggingContext - it should be available
 from tree_sitter_analyzer.utils import (
+    LoggingContext,
     log_debug,
     log_error,
     log_info,
@@ -28,8 +28,6 @@ from tree_sitter_analyzer.utils import (
     setup_performance_logger,
 )
 
-# Import LoggingContext - it should be available
-from tree_sitter_analyzer.utils import LoggingContext
 LOGGING_CONTEXT_AVAILABLE = True
 
 
@@ -257,7 +255,6 @@ def test_testing_mode_detection():
     """Test detection of testing mode"""
     # This is a bit tricky to test since we're IN a test
     # Just verify the function exists and returns a boolean
-    import tree_sitter_analyzer.utils as utils
 
     # The _testing flag should be set during tests
     assert hasattr(sys, "_testing") or not hasattr(sys, "_testing")

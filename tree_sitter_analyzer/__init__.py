@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Tree-sitter Multi-Language Code Analyzer
 
@@ -12,18 +11,14 @@ Architecture:
 - Data Models: Generic and language-specific code element representations
 """
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 __author__ = "aisheng.yu"
 __email__ = "aimasteracc@gmail.com"
 
 # Legacy imports for backward compatibility
 
 # Core Engine - 一時的に直接インポート
-from .language_detector import LanguageDetector
-from .query_loader import QueryLoader, get_query_loader
-from .language_loader import get_loader
 from .core.analysis_engine import UnifiedAnalysisEngine as UniversalCodeAnalyzer
-
 from .encoding_utils import (
     EncodingManager,
     detect_encoding,
@@ -33,8 +28,11 @@ from .encoding_utils import (
     safe_encode,
     write_file_safe,
 )
+
 # from .java_advanced_analyzer import AdvancedAnalyzer  # Removed - migrated to plugin system
 from .java_analyzer import CodeAnalyzer
+from .language_detector import LanguageDetector
+from .language_loader import get_loader
 
 # Data Models (Java-specific for backward compatibility)
 # Data Models (Generic)
@@ -64,6 +62,7 @@ from .output_manager import (
 
 # Plugin System
 from .plugins import ElementExtractor, LanguagePlugin, plugin_registry
+from .query_loader import QueryLoader, get_query_loader
 
 # Import new utility modules
 from .utils import (
@@ -85,6 +84,19 @@ __all__ = [
     "JavaField",
     "JavaPackage",
     "AnalysisResult",
+    # Model classes
+    "Class",
+    "CodeElement",
+    "Function",
+    "Import",
+    "Variable",
+    # Plugin system
+    "ElementExtractor",
+    "LanguagePlugin",
+    "plugin_registry",
+    "QueryLoader",
+    # Language detection
+    "LanguageDetector",
     # Core Components (optimized)
     # "AdvancedAnalyzer",  # Removed - migrated to plugin system
     "get_loader",

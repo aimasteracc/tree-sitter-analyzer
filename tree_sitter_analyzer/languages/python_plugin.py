@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Python Language Plugin
 
@@ -7,16 +6,17 @@ Provides Python-specific parsing and element extraction functionality.
 Migrated to the new plugin architecture with enhanced query integration.
 """
 
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
     import tree_sitter
+
     from ..core.analysis_engine import AnalysisRequest
     from ..models import AnalysisResult
 
-from ..plugins.base import LanguagePlugin, ElementExtractor
 from ..models import Class, Function, Import, Variable
-from ..utils import log_debug, log_error, log_warning
+from ..plugins.base import ElementExtractor, LanguagePlugin
+from ..utils import log_error, log_warning
 
 
 class PythonElementExtractor(ElementExtractor):
@@ -27,14 +27,14 @@ class PythonElementExtractor(ElementExtractor):
         self.current_module: str = ""
         self.current_file: str = ""
         self.source_code: str = ""
-        self.imports: List[str] = []
+        self.imports: list[str] = []
 
     def extract_functions(
         self, tree: "tree_sitter.Tree", source_code: str
-    ) -> List[Function]:
+    ) -> list[Function]:
         """Extract Python function definitions with comprehensive analysis"""
         self.source_code = source_code
-        functions: List[Function] = []
+        functions: list[Function] = []
 
         # Function definition queries
         function_queries = [
@@ -88,10 +88,10 @@ class PythonElementExtractor(ElementExtractor):
 
     def extract_classes(
         self, tree: "tree_sitter.Tree", source_code: str
-    ) -> List[Class]:
+    ) -> list[Class]:
         """Extract Python class definitions with comprehensive analysis"""
         self.source_code = source_code
-        classes: List[Class] = []
+        classes: list[Class] = []
 
         # Class definition query
         query_string = """
@@ -121,9 +121,9 @@ class PythonElementExtractor(ElementExtractor):
 
     def extract_variables(
         self, tree: "tree_sitter.Tree", source_code: str
-    ) -> List[Variable]:
+    ) -> list[Variable]:
         """Extract Python variable definitions (class attributes only)"""
-        variables: List[Variable] = []
+        variables: list[Variable] = []
 
         # Only extract class-level attributes, not function-level variables
         try:
@@ -132,18 +132,20 @@ class PythonElementExtractor(ElementExtractor):
             (class_definition
                 body: (block) @class.body) @class.definition
             """
-            
+
             language = tree.language if hasattr(tree, "language") else None
             if language:
                 query = language.query(class_query)
                 captures = query.captures(tree.root_node)
-                
+
                 if isinstance(captures, dict):
                     class_bodies = captures.get("class.body", [])
-                    
+
                     # For each class body, extract attribute assignments
                     for class_body in class_bodies:
-                        variables.extend(self._extract_class_attributes(class_body, source_code))
+                        variables.extend(
+                            self._extract_class_attributes(class_body, source_code)
+                        )
 
         except Exception as e:
             log_warning(f"Could not extract Python class attributes: {e}")
@@ -152,10 +154,10 @@ class PythonElementExtractor(ElementExtractor):
 
     def _extract_class_attributes(
         self, class_body_node: "tree_sitter.Node", source_code: str
-    ) -> List[Variable]:
+    ) -> list[Variable]:
         """Extract class-level attribute assignments"""
-        attributes: List[Variable] = []
-        
+        attributes: list[Variable] = []
+
         try:
             # Look for assignments directly under class body
             for child in class_body_node.children:
@@ -163,31 +165,33 @@ class PythonElementExtractor(ElementExtractor):
                     # Check if it's an assignment
                     for grandchild in child.children:
                         if grandchild.type == "assignment":
-                            attribute = self._extract_class_attribute_info(grandchild, source_code)
+                            attribute = self._extract_class_attribute_info(
+                                grandchild, source_code
+                            )
                             if attribute:
                                 attributes.append(attribute)
                 elif child.type == "assignment":
                     attribute = self._extract_class_attribute_info(child, source_code)
                     if attribute:
                         attributes.append(attribute)
-        
+
         except Exception as e:
             log_warning(f"Could not extract class attributes: {e}")
-            
+
         return attributes
 
     def _extract_class_attribute_info(
         self, node: "tree_sitter.Node", source_code: str
-    ) -> Optional[Variable]:
+    ) -> Variable | None:
         """Extract class attribute information from assignment node"""
         try:
             # Get the full assignment text
             assignment_text = source_code[node.start_byte : node.end_byte]
-            
+
             # Extract attribute name and type annotation
             if "=" in assignment_text:
                 left_part = assignment_text.split("=")[0].strip()
-                
+
                 # Handle type annotations (e.g., "name: str = ...")
                 if ":" in left_part:
                     name_part, type_part = left_part.split(":", 1)
@@ -196,7 +200,7 @@ class PythonElementExtractor(ElementExtractor):
                 else:
                     attr_name = left_part
                     attr_type = None
-                
+
                 return Variable(
                     name=attr_name,
                     start_line=node.start_point[0] + 1,
@@ -205,17 +209,17 @@ class PythonElementExtractor(ElementExtractor):
                     language="python",
                     variable_type=attr_type,
                 )
-        
+
         except Exception as e:
             log_warning(f"Could not extract class attribute info: {e}")
-            
+
         return None
 
     def extract_imports(
         self, tree: "tree_sitter.Tree", source_code: str
-    ) -> List[Import]:
+    ) -> list[Import]:
         """Extract Python import statements"""
-        imports: List[Import] = []
+        imports: list[Import] = []
 
         # Import statement queries
         import_queries = [
@@ -264,7 +268,7 @@ class PythonElementExtractor(ElementExtractor):
 
     def _extract_detailed_function_info(
         self, node: "tree_sitter.Node", source_code: str, is_async: bool = False
-    ) -> Optional[Function]:
+    ) -> Function | None:
         """Extract comprehensive function information from AST node"""
         try:
             # Extract basic information
@@ -282,13 +286,13 @@ class PythonElementExtractor(ElementExtractor):
             return_type = self._extract_return_type_from_node(node, source_code)
 
             # Extract docstring
-            docstring = self._extract_docstring_from_node(node, source_code)
+            # docstring = self._extract_docstring_from_node(node, source_code)  # Not used currently
 
             # Extract function body
-            body = self._extract_function_body(node, source_code)
+            # body = self._extract_function_body(node, source_code)  # Not used currently
 
             # Calculate complexity (simplified)
-            complexity_score = self._calculate_complexity(body)
+            # complexity_score = self._calculate_complexity(body)  # Not used currently
 
             # Determine visibility (Python conventions)
             visibility = "public"
@@ -300,7 +304,11 @@ class PythonElementExtractor(ElementExtractor):
             # 安全地提取原始文本，避免索引越界
             start_byte = min(node.start_byte, len(source_code))
             end_byte = min(node.end_byte, len(source_code))
-            raw_text = source_code[start_byte:end_byte] if start_byte < end_byte else source_code
+            raw_text = (
+                source_code[start_byte:end_byte]
+                if start_byte < end_byte
+                else source_code
+            )
 
             return Function(
                 name=name,
@@ -322,7 +330,7 @@ class PythonElementExtractor(ElementExtractor):
 
     def _extract_detailed_class_info(
         self, node: "tree_sitter.Node", source_code: str
-    ) -> Optional[Class]:
+    ) -> Class | None:
         """Extract comprehensive class information from AST node"""
         try:
             # Extract basic information
@@ -337,7 +345,7 @@ class PythonElementExtractor(ElementExtractor):
             decorators = self._extract_decorators_from_node(node, source_code)
 
             # Extract docstring
-            docstring = self._extract_docstring_from_node(node, source_code)
+            # docstring = self._extract_docstring_from_node(node, source_code)  # Not used currently
 
             # Generate fully qualified name
             full_qualified_name = (
@@ -345,9 +353,9 @@ class PythonElementExtractor(ElementExtractor):
             )
 
             # Determine visibility
-            visibility = "public"
-            if name.startswith("_"):
-                visibility = "private"
+            # visibility = "public"
+            # if name.startswith("_"):
+            #     visibility = "private"  # Not used currently
 
             return Class(
                 name=name,
@@ -369,7 +377,7 @@ class PythonElementExtractor(ElementExtractor):
 
     def _extract_variable_info(
         self, node: "tree_sitter.Node", source_code: str, assignment_type: str
-    ) -> Optional[Variable]:
+    ) -> Variable | None:
         """Extract detailed variable information from AST node"""
         try:
             if not self._validate_node(node):
@@ -402,7 +410,7 @@ class PythonElementExtractor(ElementExtractor):
 
     def _extract_import_info(
         self, node: "tree_sitter.Node", source_code: str, import_type: str
-    ) -> Optional[Import]:
+    ) -> Import | None:
         """Extract detailed import information from AST node"""
         try:
             if not self._validate_node(node):
@@ -411,7 +419,11 @@ class PythonElementExtractor(ElementExtractor):
             # 安全地提取导入文本，避免索引越界
             start_byte = min(node.start_byte, len(source_code))
             end_byte = min(node.end_byte, len(source_code))
-            import_text = source_code[start_byte:end_byte] if start_byte < end_byte else source_code
+            import_text = (
+                source_code[start_byte:end_byte]
+                if start_byte < end_byte
+                else source_code
+            )
 
             # Extract import name and module name (simplified)
             if import_type == "from_import":
@@ -453,7 +465,7 @@ class PythonElementExtractor(ElementExtractor):
 
     def _extract_name_from_node(
         self, node: "tree_sitter.Node", source_code: str
-    ) -> Optional[str]:
+    ) -> str | None:
         """Extract name from AST node"""
         for child in node.children:
             if child.type == "identifier":
@@ -462,9 +474,9 @@ class PythonElementExtractor(ElementExtractor):
 
     def _extract_parameters_from_node(
         self, node: "tree_sitter.Node", source_code: str
-    ) -> List[str]:
+    ) -> list[str]:
         """Extract parameters from function node"""
-        parameters: List[str] = []
+        parameters: list[str] = []
         for child in node.children:
             if child.type == "parameters":
                 for param_child in child.children:
@@ -481,9 +493,9 @@ class PythonElementExtractor(ElementExtractor):
 
     def _extract_decorators_from_node(
         self, node: "tree_sitter.Node", source_code: str
-    ) -> List[str]:
+    ) -> list[str]:
         """Extract decorators from node"""
-        decorators: List[str] = []
+        decorators: list[str] = []
 
         # Decorators are before function/class definitions
         if hasattr(node, "parent") and node.parent:
@@ -502,7 +514,7 @@ class PythonElementExtractor(ElementExtractor):
 
     def _extract_return_type_from_node(
         self, node: "tree_sitter.Node", source_code: str
-    ) -> Optional[str]:
+    ) -> str | None:
         """Extract return type annotation from function node"""
         for child in node.children:
             if child.type == "type":
@@ -511,7 +523,7 @@ class PythonElementExtractor(ElementExtractor):
 
     def _extract_docstring_from_node(
         self, node: "tree_sitter.Node", source_code: str
-    ) -> Optional[str]:
+    ) -> str | None:
         """Extract docstring from function/class node"""
         for child in node.children:
             if child.type == "block":
@@ -521,11 +533,17 @@ class PythonElementExtractor(ElementExtractor):
                         for expr in stmt.children:
                             if expr.type == "string":
                                 if self._validate_node(expr):
-                                    docstring = source_code[expr.start_byte : expr.end_byte]
+                                    docstring = source_code[
+                                        expr.start_byte : expr.end_byte
+                                    ]
                                     # Remove quotes
-                                    if docstring.startswith('"""') or docstring.startswith("'''"):
+                                    if docstring.startswith(
+                                        '"""'
+                                    ) or docstring.startswith("'''"):
                                         return docstring[3:-3].strip()
-                                    elif docstring.startswith('"') or docstring.startswith("'"):
+                                    elif docstring.startswith(
+                                        '"'
+                                    ) or docstring.startswith("'"):
                                         return docstring[1:-1].strip()
                                     return docstring
                         break
@@ -541,9 +559,9 @@ class PythonElementExtractor(ElementExtractor):
 
     def _extract_superclasses_from_node(
         self, node: "tree_sitter.Node", source_code: str
-    ) -> List[str]:
+    ) -> list[str]:
         """Extract superclasses from class node"""
-        superclasses: List[str] = []
+        superclasses: list[str] = []
         for child in node.children:
             if child.type == "argument_list":
                 for arg in child.children:
@@ -566,13 +584,13 @@ class PythonPlugin(LanguagePlugin):
     def __init__(self) -> None:
         """Initialize the Python plugin"""
         super().__init__()
-        self._language_cache: Optional["tree_sitter.Language"] = None
+        self._language_cache: tree_sitter.Language | None = None
 
     def get_language_name(self) -> str:
         """Return the name of the programming language this plugin supports"""
         return "python"
 
-    def get_file_extensions(self) -> List[str]:
+    def get_file_extensions(self) -> list[str]:
         """Return list of file extensions this plugin supports"""
         return [".py", ".pyw", ".pyi"]
 
@@ -586,7 +604,7 @@ class PythonPlugin(LanguagePlugin):
             try:
                 import tree_sitter
                 import tree_sitter_python as tspython
-                
+
                 # PyCapsuleオブジェクトをLanguageオブジェクトに変換
                 language_capsule = tspython.language()
                 self._language_cache = tree_sitter.Language(language_capsule)
@@ -598,13 +616,16 @@ class PythonPlugin(LanguagePlugin):
                 return None
         return self._language_cache
 
-    def get_supported_queries(self) -> List[str]:
+    def get_supported_queries(self) -> list[str]:
         """Get list of supported query names for this language"""
         return ["class", "function", "variable", "import"]
 
     def is_applicable(self, file_path: str) -> bool:
         """Check if this plugin is applicable for the given file"""
-        return any(file_path.lower().endswith(ext.lower()) for ext in self.get_file_extensions())
+        return any(
+            file_path.lower().endswith(ext.lower())
+            for ext in self.get_file_extensions()
+        )
 
     def get_plugin_info(self) -> dict:
         """Get information about this plugin"""
@@ -613,32 +634,34 @@ class PythonPlugin(LanguagePlugin):
             "language": self.get_language_name(),
             "extensions": self.get_file_extensions(),
             "version": "2.0.0",
-            "supported_queries": self.get_supported_queries()
+            "supported_queries": self.get_supported_queries(),
         }
-    async def analyze_file(self, file_path: str, request: 'AnalysisRequest') -> 'AnalysisResult':
+
+    async def analyze_file(
+        self, file_path: str, request: "AnalysisRequest"
+    ) -> "AnalysisResult":
         """
         Analyze a Python file and return analysis results.
-        
+
         Args:
             file_path: Path to the Python file to analyze
             request: Analysis request object
-            
+
         Returns:
             AnalysisResult object containing the analysis results
         """
         try:
-            from ..models import AnalysisResult
             from ..core.parser import Parser
-            from ..core.analysis_engine import AnalysisRequest
-            
+            from ..models import AnalysisResult
+
             # Read file content
-            with open(file_path, 'r', encoding='utf-8') as f:
+            with open(file_path, encoding="utf-8") as f:
                 source_code = f.read()
-            
+
             # Parse the file
             parser = Parser()
             parse_result = parser.parse_code(source_code, "python")
-            
+
             if not parse_result.success:
                 return AnalysisResult(
                     file_path=file_path,
@@ -649,31 +672,33 @@ class PythonPlugin(LanguagePlugin):
                     query_results={},
                     source_code=source_code,
                     success=False,
-                    error_message=parse_result.error_message
+                    error_message=parse_result.error_message,
                 )
-            
+
             # Extract elements
             extractor = self.create_extractor()
             functions = extractor.extract_functions(parse_result.tree, source_code)
             classes = extractor.extract_classes(parse_result.tree, source_code)
             variables = extractor.extract_variables(parse_result.tree, source_code)
             imports = extractor.extract_imports(parse_result.tree, source_code)
-            
+
             # Combine all elements
             all_elements = functions + classes + variables + imports
-            
+
             return AnalysisResult(
                 file_path=file_path,
                 language="python",
                 line_count=len(source_code.splitlines()),
                 elements=all_elements,
-                node_count=parse_result.tree.root_node.child_count if parse_result.tree else 0,
+                node_count=(
+                    parse_result.tree.root_node.child_count if parse_result.tree else 0
+                ),
                 query_results={},
                 source_code=source_code,
                 success=True,
-                error_message=None
+                error_message=None,
             )
-            
+
         except Exception as e:
             log_error(f"Failed to analyze Python file {file_path}: {e}")
             return AnalysisResult(
@@ -685,7 +710,7 @@ class PythonPlugin(LanguagePlugin):
                 query_results={},
                 source_code="",
                 success=False,
-                error_message=str(e)
+                error_message=str(e),
             )
 
     def execute_query(self, tree: "tree_sitter.Tree", query_name: str) -> dict:

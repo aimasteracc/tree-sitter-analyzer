@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Advanced Command
 
 Handles advanced analysis functionality.
 """
+
 from typing import TYPE_CHECKING
 
 from ...output_manager import output_data, output_json, output_section
@@ -73,7 +73,7 @@ class AdvancedCommand(BaseCommand):
     def _output_text_analysis(self, analysis_result: "AnalysisResult") -> None:
         """Output analysis in text format."""
         output_data(f"File: {analysis_result.file_path}")
-        output_data(f"Package: (default)")
+        output_data("Package: (default)")
         output_data(f"Lines: {analysis_result.line_count}")
 
         element_counts = {}
@@ -85,4 +85,4 @@ class AdvancedCommand(BaseCommand):
         output_data(f"Methods: {element_counts.get('Function', 0)}")
         output_data(f"Fields: {element_counts.get('Variable', 0)}")
         output_data(f"Imports: {element_counts.get('Import', 0)}")
-        output_data(f"Annotations: 0")
+        output_data("Annotations: 0")

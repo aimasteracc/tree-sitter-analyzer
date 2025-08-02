@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Tests for Query Library Coverage Enhancement
 
@@ -7,17 +6,13 @@ Additional tests to improve coverage for query_library.py
 """
 
 import sys
+
 import pytest
-import pytest_asyncio
 
 # Add project root to path
 sys.path.insert(0, ".")
 
-from tree_sitter_analyzer.query_loader import (
-    get_query,
-    list_queries,
-    get_query_loader,
-)
+from tree_sitter_analyzer.query_loader import get_query, get_query_loader, list_queries
 
 # Use a fixed language for testing
 TEST_LANGUAGE = "java"
@@ -100,7 +95,7 @@ def test_queries_dict_structure():
     for key in expected_keys:
         assert key in queries
         query_info = queries[key]
-        assert isinstance(query_info, (str, dict))
+        assert isinstance(query_info, str | dict)
 
 
 def test_query_content_validity():

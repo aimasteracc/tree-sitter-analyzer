@@ -4,23 +4,27 @@
 PyInstallerを使用してtree-sitter-analyzerの実行ファイルを作成します。
 """
 
-import os
-import sys
 import subprocess
-from pathlib import Path
+import sys
+
 
 def install_pyinstaller():
     """PyInstallerをインストール"""
     try:
-        import PyInstaller
-        print("PyInstaller is already installed")
+        import importlib.util
+
+        if importlib.util.find_spec("PyInstaller") is not None:
+            print("PyInstaller is already installed")
+        else:
+            raise ImportError("PyInstaller not found")
     except ImportError:
         print("Installing PyInstaller...")
         subprocess.check_call([sys.executable, "-m", "pip", "install", "pyinstaller"])
 
+
 def create_spec_file():
     """PyInstaller用の.specファイルを作成"""
-    spec_content = '''# -*- mode: python ; coding: utf-8 -*-
+    spec_content = """# -*- mode: python ; coding: utf-8 -*-
 
 block_cipher = None
 
@@ -77,21 +81,26 @@ exe = EXE(
     codesign_identity=None,
     entitlements_file=None,
 )
-'''
-    
-    with open('tree-sitter-analyzer.spec', 'w', encoding='utf-8') as f:
+"""
+
+    with open("tree-sitter-analyzer.spec", "w", encoding="utf-8") as f:
         f.write(spec_content)
     print("Created tree-sitter-analyzer.spec")
+
 
 def build_executable():
     """実行ファイルをビルド"""
     print("Building standalone executable...")
     try:
-        subprocess.check_call([
-            sys.executable, "-m", "PyInstaller",
-            "--clean",
-            "tree-sitter-analyzer.spec"
-        ])
+        subprocess.check_call(
+            [
+                sys.executable,
+                "-m",
+                "PyInstaller",
+                "--clean",
+                "tree-sitter-analyzer.spec",
+            ]
+        )
         print("Build completed successfully!")
         print("Executable location: dist/tree-sitter-analyzer.exe")
     except subprocess.CalledProcessError as e:
@@ -99,16 +108,17 @@ def build_executable():
         return False
     return True
 
+
 def main():
     """メイン処理"""
     print("=== Tree-sitter Analyzer Standalone Builder ===")
-    
+
     # 必要な依存関係をインストール
     install_pyinstaller()
-    
+
     # .specファイルを作成
     create_spec_file()
-    
+
     # 実行ファイルをビルド
     if build_executable():
         print("\n=== Build Summary ===")
@@ -120,6 +130,7 @@ def main():
     else:
         print("\n❌ Build failed")
         sys.exit(1)
+
 
 if __name__ == "__main__":
     main()

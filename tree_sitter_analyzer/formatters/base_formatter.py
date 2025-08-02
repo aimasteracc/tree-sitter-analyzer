@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Base formatter for language-specific table formatting.
 """
@@ -8,7 +7,7 @@ import csv
 import io
 import os
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List
+from typing import Any
 
 
 class BaseTableFormatter(ABC):
@@ -27,7 +26,7 @@ class BaseTableFormatter(ABC):
             return text.replace("\n", os.linesep)
         return text
 
-    def format_structure(self, structure_data: Dict[str, Any]) -> str:
+    def format_structure(self, structure_data: dict[str, Any]) -> str:
         """構造データをテーブル形式でフォーマット"""
         if self.format_type == "full":
             result = self._format_full_table(structure_data)
@@ -45,16 +44,16 @@ class BaseTableFormatter(ABC):
         return self._convert_to_platform_newlines(result)
 
     @abstractmethod
-    def _format_full_table(self, data: Dict[str, Any]) -> str:
+    def _format_full_table(self, data: dict[str, Any]) -> str:
         """完全版テーブル形式（言語固有実装）"""
         pass
 
     @abstractmethod
-    def _format_compact_table(self, data: Dict[str, Any]) -> str:
+    def _format_compact_table(self, data: dict[str, Any]) -> str:
         """コンパクト版テーブル形式（言語固有実装）"""
         pass
 
-    def _format_csv(self, data: Dict[str, Any]) -> str:
+    def _format_csv(self, data: dict[str, Any]) -> str:
         """CSV形式（共通実装）"""
         output = io.StringIO()
         writer = csv.writer(output, lineterminator="\n")
@@ -104,7 +103,7 @@ class BaseTableFormatter(ABC):
         return csv_content
 
     # 共通ヘルパーメソッド
-    def _create_full_signature(self, method: Dict[str, Any]) -> str:
+    def _create_full_signature(self, method: dict[str, Any]) -> str:
         """完全なメソッドシグネチャを作成"""
         params = method.get("parameters", [])
         param_strs = []

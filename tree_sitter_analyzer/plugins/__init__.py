@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Plugin System for Multi-Language Code Analysis
 
@@ -8,15 +7,15 @@ the tree-sitter analyzer with language-specific parsers and extractors.
 """
 
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Type
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     import tree_sitter
 
+# from ..models import (
+#     CodeElement,
+# )  # Not used currently
 from ..models import Class as ModelClass
-from ..models import (
-    CodeElement,
-)
 from ..models import Function as ModelFunction
 from ..models import Import as ModelImport
 from ..models import Variable as ModelVariable
@@ -31,7 +30,7 @@ class ElementExtractor(ABC):
     @abstractmethod
     def extract_functions(
         self, tree: "tree_sitter.Tree", source_code: str
-    ) -> List[ModelFunction]:
+    ) -> list[ModelFunction]:
         """Extract function definitions from the syntax tree"""
         log_warning("extract_functions not implemented in subclass")
         return []
@@ -39,7 +38,7 @@ class ElementExtractor(ABC):
     @abstractmethod
     def extract_classes(
         self, tree: "tree_sitter.Tree", source_code: str
-    ) -> List[ModelClass]:
+    ) -> list[ModelClass]:
         """Extract class definitions from the syntax tree"""
         log_warning("extract_classes not implemented in subclass")
         return []
@@ -47,7 +46,7 @@ class ElementExtractor(ABC):
     @abstractmethod
     def extract_variables(
         self, tree: "tree_sitter.Tree", source_code: str
-    ) -> List[ModelVariable]:
+    ) -> list[ModelVariable]:
         """Extract variable declarations from the syntax tree"""
         log_warning("extract_variables not implemented in subclass")
         return []
@@ -55,7 +54,7 @@ class ElementExtractor(ABC):
     @abstractmethod
     def extract_imports(
         self, tree: "tree_sitter.Tree", source_code: str
-    ) -> List[ModelImport]:
+    ) -> list[ModelImport]:
         """Extract import statements from the syntax tree"""
         log_warning("extract_imports not implemented in subclass")
         return []
@@ -70,7 +69,7 @@ class LanguagePlugin(ABC):
         return "unknown"
 
     @abstractmethod
-    def get_file_extensions(self) -> List[str]:
+    def get_file_extensions(self) -> list[str]:
         """Return list of file extensions this plugin supports"""
         return []
 
@@ -90,9 +89,9 @@ class DefaultExtractor(ElementExtractor):
 
     def extract_functions(
         self, tree: "tree_sitter.Tree", source_code: str
-    ) -> List[ModelFunction]:
+    ) -> list[ModelFunction]:
         """Basic function extraction implementation"""
-        functions: List[ModelFunction] = []
+        functions: list[ModelFunction] = []
         try:
             if hasattr(tree, "root_node"):
                 # Generic function extraction logic
@@ -105,9 +104,9 @@ class DefaultExtractor(ElementExtractor):
 
     def extract_classes(
         self, tree: "tree_sitter.Tree", source_code: str
-    ) -> List[ModelClass]:
+    ) -> list[ModelClass]:
         """Basic class extraction implementation"""
-        classes: List[ModelClass] = []
+        classes: list[ModelClass] = []
         try:
             if hasattr(tree, "root_node"):
                 # Generic class extraction logic
@@ -120,9 +119,9 @@ class DefaultExtractor(ElementExtractor):
 
     def extract_variables(
         self, tree: "tree_sitter.Tree", source_code: str
-    ) -> List[ModelVariable]:
+    ) -> list[ModelVariable]:
         """Basic variable extraction implementation"""
-        variables: List[ModelVariable] = []
+        variables: list[ModelVariable] = []
         try:
             if hasattr(tree, "root_node"):
                 # Generic variable extraction logic
@@ -135,9 +134,9 @@ class DefaultExtractor(ElementExtractor):
 
     def extract_imports(
         self, tree: "tree_sitter.Tree", source_code: str
-    ) -> List[ModelImport]:
+    ) -> list[ModelImport]:
         """Basic import extraction implementation"""
-        imports: List[ModelImport] = []
+        imports: list[ModelImport] = []
         try:
             if hasattr(tree, "root_node"):
                 # Generic import extraction logic
@@ -149,7 +148,7 @@ class DefaultExtractor(ElementExtractor):
         return imports
 
     def _traverse_for_functions(
-        self, node: "tree_sitter.Node", functions: List[ModelFunction], lines: List[str]
+        self, node: "tree_sitter.Node", functions: list[ModelFunction], lines: list[str]
     ) -> None:
         """Traverse tree to find function-like nodes"""
         if hasattr(node, "type") and "function" in node.type.lower():
@@ -172,7 +171,7 @@ class DefaultExtractor(ElementExtractor):
                 self._traverse_for_functions(child, functions, lines)
 
     def _traverse_for_classes(
-        self, node: "tree_sitter.Node", classes: List[ModelClass], lines: List[str]
+        self, node: "tree_sitter.Node", classes: list[ModelClass], lines: list[str]
     ) -> None:
         """Traverse tree to find class-like nodes"""
         if hasattr(node, "type") and "class" in node.type.lower():
@@ -195,7 +194,7 @@ class DefaultExtractor(ElementExtractor):
                 self._traverse_for_classes(child, classes, lines)
 
     def _traverse_for_variables(
-        self, node: "tree_sitter.Node", variables: List[ModelVariable], lines: List[str]
+        self, node: "tree_sitter.Node", variables: list[ModelVariable], lines: list[str]
     ) -> None:
         """Traverse tree to find variable declarations"""
         if hasattr(node, "type") and (
@@ -220,7 +219,7 @@ class DefaultExtractor(ElementExtractor):
                 self._traverse_for_variables(child, variables, lines)
 
     def _traverse_for_imports(
-        self, node: "tree_sitter.Node", imports: List[ModelImport], lines: List[str]
+        self, node: "tree_sitter.Node", imports: list[ModelImport], lines: list[str]
     ) -> None:
         """Traverse tree to find import statements"""
         if hasattr(node, "type") and "import" in node.type.lower():
@@ -242,7 +241,7 @@ class DefaultExtractor(ElementExtractor):
             for child in node.children:
                 self._traverse_for_imports(child, imports, lines)
 
-    def _extract_node_name(self, node: "tree_sitter.Node") -> Optional[str]:
+    def _extract_node_name(self, node: "tree_sitter.Node") -> str | None:
         """Extract name from a tree-sitter node"""
         try:
             # Look for identifier children
@@ -260,8 +259,8 @@ class PluginRegistry:
     """Registry for managing language plugins"""
 
     def __init__(self) -> None:
-        self._plugins: Dict[str, LanguagePlugin] = {}
-        self._extension_map: Dict[str, LanguagePlugin] = {}
+        self._plugins: dict[str, LanguagePlugin] = {}
+        self._extension_map: dict[str, LanguagePlugin] = {}
         self._default_plugin = DefaultLanguagePlugin()
 
     def register_plugin(self, plugin: LanguagePlugin) -> None:
@@ -278,11 +277,11 @@ class PluginRegistry:
         except Exception as e:
             log_error(f"Failed to register plugin: {e}")
 
-    def get_plugin(self, language: str) -> Optional[LanguagePlugin]:
+    def get_plugin(self, language: str) -> LanguagePlugin | None:
         """Get plugin for specified language"""
         return self._plugins.get(language)
 
-    def get_plugin_by_extension(self, extension: str) -> Optional[LanguagePlugin]:
+    def get_plugin_by_extension(self, extension: str) -> LanguagePlugin | None:
         """Get plugin for specified file extension"""
         return self._extension_map.get(extension)
 
@@ -293,11 +292,11 @@ class PluginRegistry:
                 return plugin
         return self._default_plugin
 
-    def list_supported_languages(self) -> List[str]:
+    def list_supported_languages(self) -> list[str]:
         """List all supported languages"""
         return list(self._plugins.keys())
 
-    def list_supported_extensions(self) -> List[str]:
+    def list_supported_extensions(self) -> list[str]:
         """List all supported file extensions"""
         return list(self._extension_map.keys())
 
@@ -308,7 +307,7 @@ class DefaultLanguagePlugin(LanguagePlugin):
     def get_language_name(self) -> str:
         return "generic"
 
-    def get_file_extensions(self) -> List[str]:
+    def get_file_extensions(self) -> list[str]:
         return [".txt", ".md"]  # Fallback extensions
 
     def create_extractor(self) -> ElementExtractor:
@@ -321,12 +320,12 @@ plugin_registry = PluginRegistry()
 
 # Auto-load all plugins when the package is imported
 try:
-    from .plugin_loader import (
-        get_supported_extensions,
-        get_supported_languages,
-        load_all_plugins,
-    )
-
+    # from .plugin_loader import (
+    #     get_supported_extensions,  # Not used currently
+    #     get_supported_languages,  # Not used currently
+    #     load_all_plugins,  # Not used currently
+    # )
+    pass
     # Plugins are automatically loaded when plugin_loader is imported
 except ImportError as e:
     from ..utils import log_warning

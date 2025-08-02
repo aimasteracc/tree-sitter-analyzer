@@ -1,16 +1,15 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Utilities for Tree-sitter Analyzer
 
 Provides logging, debugging, and common utility functions.
 """
 
+import atexit
 import logging
 import sys
-import atexit
 from functools import wraps
-from typing import Any, Optional
+from typing import Any
 
 
 # Configure global logger
@@ -19,18 +18,18 @@ def setup_logger(
 ) -> logging.Logger:
     """Setup unified logger for the project"""
     import os
-    
+
     # 環境変数からログレベルを取得
-    env_level = os.environ.get('LOG_LEVEL', '').upper()
-    if env_level == 'DEBUG':
+    env_level = os.environ.get("LOG_LEVEL", "").upper()
+    if env_level == "DEBUG":
         level = logging.DEBUG
-    elif env_level == 'INFO':
+    elif env_level == "INFO":
         level = logging.INFO
-    elif env_level == 'WARNING':
+    elif env_level == "WARNING":
         level = logging.WARNING
-    elif env_level == 'ERROR':
+    elif env_level == "ERROR":
         level = logging.ERROR
-    
+
     logger = logging.getLogger(name)
 
     if not logger.handlers:  # Avoid duplicate handlers
@@ -50,20 +49,20 @@ class SafeStreamHandler(logging.StreamHandler):
     """
     A StreamHandler that safely handles closed streams
     """
-    
+
     def emit(self, record):
         """
         Emit a record, safely handling closed streams
         """
         try:
             # Check if stream is closed before writing
-            if hasattr(self.stream, 'closed') and self.stream.closed:
+            if hasattr(self.stream, "closed") and self.stream.closed:
                 return
-            
+
             # Check if we can write to the stream
-            if not hasattr(self.stream, 'write'):
+            if not hasattr(self.stream, "write"):
                 return
-                
+
             super().emit(record)
         except (ValueError, OSError, AttributeError):
             # Silently ignore I/O errors during shutdown
@@ -77,6 +76,7 @@ def setup_safe_logging_shutdown():
     """
     Setup safe logging shutdown to prevent I/O errors
     """
+
     def cleanup_logging():
         """Clean up logging handlers safely"""
         try:
@@ -84,17 +84,17 @@ def setup_safe_logging_shutdown():
             loggers = [logging.getLogger()] + [
                 logging.getLogger(name) for name in logging.Logger.manager.loggerDict
             ]
-            
+
             for logger in loggers:
                 for handler in logger.handlers[:]:
                     try:
                         handler.close()
                         logger.removeHandler(handler)
-                    except:
+                    except Exception:
                         pass
-        except:
+        except Exception:
             pass
-    
+
     # Register cleanup function
     atexit.register(cleanup_logging)
 
@@ -158,7 +158,7 @@ def suppress_output(func: Any) -> Any:
         finally:
             try:
                 sys.stdout.close()
-            except:
+            except Exception:
                 pass
             sys.stdout = old_stdout
 
@@ -172,7 +172,7 @@ class QuietMode:
 
     def __init__(self, enabled: bool = True):
         self.enabled = enabled
-        self.old_level: Optional[int] = None
+        self.old_level: int | None = None
 
     def __enter__(self) -> "QuietMode":
         if self.enabled:
@@ -221,8 +221,8 @@ perf_logger = create_performance_logger("tree_sitter_analyzer")
 
 def log_performance(
     operation: str,
-    execution_time: Optional[float] = None,
-    details: Optional[dict] = None,
+    execution_time: float | None = None,
+    details: dict | None = None,
 ) -> None:
     """Log performance metrics"""
     try:
@@ -258,10 +258,10 @@ def setup_performance_logger() -> logging.Logger:
 class LoggingContext:
     """Context manager for controlling logging behavior"""
 
-    def __init__(self, enabled: bool = True, level: Optional[int] = None):
+    def __init__(self, enabled: bool = True, level: int | None = None):
         self.enabled = enabled
         self.level = level
-        self.old_level: Optional[int] = None
+        self.old_level: int | None = None
         self.target_logger = (
             logging.getLogger()
         )  # Use root logger for compatibility with tests

@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Comprehensive Tests for CLI module
 
@@ -8,7 +7,6 @@ focusing on uncovered code paths to improve overall coverage.
 Follows TDD principles and .roo-config.json requirements.
 """
 
-import json
 import logging
 import os
 import sys
@@ -24,7 +22,7 @@ from tree_sitter_analyzer.cli_main import main
 @pytest.fixture
 def sample_java_file():
     """Fixture providing a temporary Java file for testing"""
-    java_code = '''
+    java_code = """
 package com.example.test;
 
 import java.util.List;
@@ -34,14 +32,14 @@ import java.util.List;
  */
 public class TestClass {
     private String field1;
-    
+
     /**
      * Constructor
      */
     public TestClass(String field1) {
         this.field1 = field1;
     }
-    
+
     /**
      * Public method
      */
@@ -49,13 +47,15 @@ public class TestClass {
         return field1;
     }
 }
-'''
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.java', delete=False, encoding='utf-8') as f:
+"""
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".java", delete=False, encoding="utf-8"
+    ) as f:
         f.write(java_code)
         temp_path = f.name
-    
+
     yield temp_path
-    
+
     # Cleanup
     if os.path.exists(temp_path):
         os.unlink(temp_path)
@@ -66,40 +66,50 @@ class TestCLIAdvancedOptions:
 
     def test_advanced_option_json_output(self, monkeypatch, sample_java_file):
         """Test --advanced option with JSON output"""
-        monkeypatch.setattr(sys, "argv", ["cli", sample_java_file, "--advanced", "--output-format", "json"])
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            ["cli", sample_java_file, "--advanced", "--output-format", "json"],
+        )
         mock_stdout = StringIO()
         monkeypatch.setattr("sys.stdout", mock_stdout)
-        
+
         try:
             main()
         except SystemExit:
             pass
-        
+
         output = mock_stdout.getvalue()
         assert len(output) > 0
 
     def test_advanced_option_text_output(self, monkeypatch, sample_java_file):
         """Test --advanced option with text output"""
-        monkeypatch.setattr(sys, "argv", ["cli", sample_java_file, "--advanced", "--output-format", "text"])
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            ["cli", sample_java_file, "--advanced", "--output-format", "text"],
+        )
         mock_stdout = StringIO()
         monkeypatch.setattr("sys.stdout", mock_stdout)
-        
+
         try:
             main()
         except SystemExit:
             pass
-        
+
         output = mock_stdout.getvalue()
         assert len(output) > 0
 
     def test_advanced_option_analysis_failure(self, monkeypatch, sample_java_file):
         """Test --advanced option when analysis fails"""
         monkeypatch.setattr(sys, "argv", ["cli", sample_java_file, "--advanced"])
-        
+
         # Mock the UnifiedAnalysisEngine.analyze method to return failed result
-        with patch('tree_sitter_analyzer.core.analysis_engine.UnifiedAnalysisEngine.analyze') as mock_analyze:
+        with patch(
+            "tree_sitter_analyzer.core.analysis_engine.UnifiedAnalysisEngine.analyze"
+        ) as mock_analyze:
             from tree_sitter_analyzer.models import AnalysisResult
-            
+
             # Create a failed analysis result
             failed_result = AnalysisResult(
                 file_path=sample_java_file,
@@ -110,46 +120,59 @@ class TestCLIAdvancedOptions:
                 source_code="",
                 language="java",
                 success=False,
-                error_message="Mocked analysis failure"
+                error_message="Mocked analysis failure",
             )
             mock_analyze.return_value = failed_result
-            
+
             mock_stderr = StringIO()
             monkeypatch.setattr("sys.stderr", mock_stderr)
-            
+
             try:
                 main()
             except SystemExit:
                 pass
-            
+
             error_output = mock_stderr.getvalue()
             assert "Analysis failed" in error_output
 
     def test_statistics_option(self, monkeypatch, sample_java_file):
         """Test --statistics option"""
-        monkeypatch.setattr(sys, "argv", ["cli", sample_java_file, "--advanced", "--statistics"])
+        monkeypatch.setattr(
+            sys, "argv", ["cli", sample_java_file, "--advanced", "--statistics"]
+        )
         mock_stdout = StringIO()
         monkeypatch.setattr("sys.stdout", mock_stdout)
-        
+
         try:
             main()
         except SystemExit:
             pass
-        
+
         output = mock_stdout.getvalue()
         assert len(output) > 0
 
     def test_statistics_option_json(self, monkeypatch, sample_java_file):
         """Test --statistics option with JSON output"""
-        monkeypatch.setattr(sys, "argv", ["cli", sample_java_file, "--advanced", "--statistics", "--output-format", "json"])
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            [
+                "cli",
+                sample_java_file,
+                "--advanced",
+                "--statistics",
+                "--output-format",
+                "json",
+            ],
+        )
         mock_stdout = StringIO()
         monkeypatch.setattr("sys.stdout", mock_stdout)
-        
+
         try:
             main()
         except SystemExit:
             pass
-        
+
         output = mock_stdout.getvalue()
         assert len(output) > 0
 
@@ -162,51 +185,59 @@ class TestCLISummaryOption:
         monkeypatch.setattr(sys, "argv", ["cli", sample_java_file, "--summary"])
         mock_stdout = StringIO()
         monkeypatch.setattr("sys.stdout", mock_stdout)
-        
+
         try:
             main()
         except SystemExit:
             pass
-        
+
         output = mock_stdout.getvalue()
         assert len(output) > 0
 
     def test_summary_option_specific_types(self, monkeypatch, sample_java_file):
         """Test --summary option with specific types"""
-        monkeypatch.setattr(sys, "argv", ["cli", sample_java_file, "--summary=classes,methods,fields"])
+        monkeypatch.setattr(
+            sys, "argv", ["cli", sample_java_file, "--summary=classes,methods,fields"]
+        )
         mock_stdout = StringIO()
         monkeypatch.setattr("sys.stdout", mock_stdout)
-        
+
         try:
             main()
         except SystemExit:
             pass
-        
+
         output = mock_stdout.getvalue()
         assert len(output) > 0
 
     def test_summary_option_json(self, monkeypatch, sample_java_file):
         """Test --summary option with JSON output"""
-        monkeypatch.setattr(sys, "argv", ["cli", sample_java_file, "--summary", "--output-format", "json"])
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            ["cli", sample_java_file, "--summary", "--output-format", "json"],
+        )
         mock_stdout = StringIO()
         monkeypatch.setattr("sys.stdout", mock_stdout)
-        
+
         try:
             main()
         except SystemExit:
             pass
-        
+
         output = mock_stdout.getvalue()
         assert len(output) > 0
 
     def test_summary_option_analysis_failure(self, monkeypatch, sample_java_file):
         """Test --summary option when analysis fails"""
         monkeypatch.setattr(sys, "argv", ["cli", sample_java_file, "--summary"])
-        
+
         # Mock the UnifiedAnalysisEngine.analyze method to return failed result
-        with patch('tree_sitter_analyzer.core.analysis_engine.UnifiedAnalysisEngine.analyze') as mock_analyze:
+        with patch(
+            "tree_sitter_analyzer.core.analysis_engine.UnifiedAnalysisEngine.analyze"
+        ) as mock_analyze:
             from tree_sitter_analyzer.models import AnalysisResult
-            
+
             # Create a failed analysis result
             failed_result = AnalysisResult(
                 file_path=sample_java_file,
@@ -217,18 +248,18 @@ class TestCLISummaryOption:
                 source_code="",
                 language="java",
                 success=False,
-                error_message="Mocked analysis failure"
+                error_message="Mocked analysis failure",
             )
             mock_analyze.return_value = failed_result
-            
+
             mock_stderr = StringIO()
             monkeypatch.setattr("sys.stderr", mock_stderr)
-            
+
             try:
                 main()
             except SystemExit:
                 pass
-            
+
             error_output = mock_stderr.getvalue()
             assert "Analysis failed" in error_output
 
@@ -238,40 +269,50 @@ class TestCLIStructureOption:
 
     def test_structure_option_json(self, monkeypatch, sample_java_file):
         """Test --structure option with JSON output"""
-        monkeypatch.setattr(sys, "argv", ["cli", sample_java_file, "--structure", "--output-format", "json"])
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            ["cli", sample_java_file, "--structure", "--output-format", "json"],
+        )
         mock_stdout = StringIO()
         monkeypatch.setattr("sys.stdout", mock_stdout)
-        
+
         try:
             main()
         except SystemExit:
             pass
-        
+
         output = mock_stdout.getvalue()
         assert len(output) > 0
 
     def test_structure_option_text(self, monkeypatch, sample_java_file):
         """Test --structure option with text output"""
-        monkeypatch.setattr(sys, "argv", ["cli", sample_java_file, "--structure", "--output-format", "text"])
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            ["cli", sample_java_file, "--structure", "--output-format", "text"],
+        )
         mock_stdout = StringIO()
         monkeypatch.setattr("sys.stdout", mock_stdout)
-        
+
         try:
             main()
         except SystemExit:
             pass
-        
+
         output = mock_stdout.getvalue()
         assert len(output) > 0
 
     def test_structure_option_analysis_failure(self, monkeypatch, sample_java_file):
         """Test --structure option when analysis fails"""
         monkeypatch.setattr(sys, "argv", ["cli", sample_java_file, "--structure"])
-        
+
         # Mock the UnifiedAnalysisEngine.analyze method to return failed result
-        with patch('tree_sitter_analyzer.core.analysis_engine.UnifiedAnalysisEngine.analyze') as mock_analyze:
+        with patch(
+            "tree_sitter_analyzer.core.analysis_engine.UnifiedAnalysisEngine.analyze"
+        ) as mock_analyze:
             from tree_sitter_analyzer.models import AnalysisResult
-            
+
             # Create a failed analysis result
             failed_result = AnalysisResult(
                 file_path=sample_java_file,
@@ -282,18 +323,18 @@ class TestCLIStructureOption:
                 source_code="",
                 language="java",
                 success=False,
-                error_message="Mocked analysis failure"
+                error_message="Mocked analysis failure",
             )
             mock_analyze.return_value = failed_result
-            
+
             mock_stderr = StringIO()
             monkeypatch.setattr("sys.stderr", mock_stderr)
-            
+
             try:
                 main()
             except SystemExit:
                 pass
-            
+
             error_output = mock_stderr.getvalue()
             assert "Analysis failed" in error_output
 
@@ -306,26 +347,28 @@ class TestCLITableOption:
         monkeypatch.setattr(sys, "argv", ["cli", sample_java_file, "--table", "full"])
         mock_stdout = StringIO()
         monkeypatch.setattr("sys.stdout", mock_stdout)
-        
+
         try:
             main()
         except SystemExit:
             pass
-        
+
         output = mock_stdout.getvalue()
         assert len(output) > 0
 
     def test_table_option_compact(self, monkeypatch, sample_java_file):
         """Test --table option with compact format"""
-        monkeypatch.setattr(sys, "argv", ["cli", sample_java_file, "--table", "compact"])
+        monkeypatch.setattr(
+            sys, "argv", ["cli", sample_java_file, "--table", "compact"]
+        )
         mock_stdout = StringIO()
         monkeypatch.setattr("sys.stdout", mock_stdout)
-        
+
         try:
             main()
         except SystemExit:
             pass
-        
+
         output = mock_stdout.getvalue()
         assert len(output) > 0
 
@@ -334,23 +377,25 @@ class TestCLITableOption:
         monkeypatch.setattr(sys, "argv", ["cli", sample_java_file, "--table", "csv"])
         mock_stdout = StringIO()
         monkeypatch.setattr("sys.stdout", mock_stdout)
-        
+
         try:
             main()
         except SystemExit:
             pass
-        
+
         output = mock_stdout.getvalue()
         assert len(output) > 0
 
     def test_table_option_analysis_failure(self, monkeypatch, sample_java_file):
         """Test --table option when analysis fails"""
         monkeypatch.setattr(sys, "argv", ["cli", sample_java_file, "--table", "full"])
-        
+
         # Mock the UnifiedAnalysisEngine.analyze method to return failed result
-        with patch('tree_sitter_analyzer.core.analysis_engine.UnifiedAnalysisEngine.analyze') as mock_analyze:
+        with patch(
+            "tree_sitter_analyzer.core.analysis_engine.UnifiedAnalysisEngine.analyze"
+        ) as mock_analyze:
             from tree_sitter_analyzer.models import AnalysisResult
-            
+
             # Create a failed analysis result
             failed_result = AnalysisResult(
                 file_path=sample_java_file,
@@ -361,18 +406,18 @@ class TestCLITableOption:
                 source_code="",
                 language="java",
                 success=False,
-                error_message="Mocked analysis failure"
+                error_message="Mocked analysis failure",
             )
             mock_analyze.return_value = failed_result
-            
+
             mock_stderr = StringIO()
             monkeypatch.setattr("sys.stderr", mock_stderr)
-            
+
             try:
                 main()
             except SystemExit:
                 pass
-            
+
             error_output = mock_stderr.getvalue()
             assert "Analysis failed" in error_output
 
@@ -382,15 +427,27 @@ class TestCLIPartialReadOption:
 
     def test_partial_read_basic(self, monkeypatch, sample_java_file):
         """Test --partial-read option with basic parameters"""
-        monkeypatch.setattr(sys, "argv", ["cli", sample_java_file, "--partial-read", "--start-line", "1", "--end-line", "5"])
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            [
+                "cli",
+                sample_java_file,
+                "--partial-read",
+                "--start-line",
+                "1",
+                "--end-line",
+                "5",
+            ],
+        )
         mock_stdout = StringIO()
         monkeypatch.setattr("sys.stdout", mock_stdout)
-        
+
         try:
             main()
         except SystemExit:
             pass
-        
+
         output = mock_stdout.getvalue()
         assert len(output) > 0
 
@@ -399,84 +456,133 @@ class TestCLIPartialReadOption:
         monkeypatch.setattr(sys, "argv", ["cli", sample_java_file, "--partial-read"])
         mock_stderr = StringIO()
         monkeypatch.setattr("sys.stderr", mock_stderr)
-        
+
         try:
             main()
         except SystemExit:
             pass
-        
+
         error_output = mock_stderr.getvalue()
         assert "--start-line is required" in error_output
 
     def test_partial_read_invalid_start_line(self, monkeypatch, sample_java_file):
         """Test --partial-read option with invalid start line"""
-        monkeypatch.setattr(sys, "argv", ["cli", sample_java_file, "--partial-read", "--start-line", "0"])
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            ["cli", sample_java_file, "--partial-read", "--start-line", "0"],
+        )
         mock_stderr = StringIO()
         monkeypatch.setattr("sys.stderr", mock_stderr)
-        
+
         try:
             main()
         except SystemExit:
             pass
-        
+
         error_output = mock_stderr.getvalue()
         assert "--start-line must be 1 or greater" in error_output
 
     def test_partial_read_invalid_end_line(self, monkeypatch, sample_java_file):
         """Test --partial-read option with invalid end line"""
-        monkeypatch.setattr(sys, "argv", ["cli", sample_java_file, "--partial-read", "--start-line", "5", "--end-line", "3"])
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            [
+                "cli",
+                sample_java_file,
+                "--partial-read",
+                "--start-line",
+                "5",
+                "--end-line",
+                "3",
+            ],
+        )
         mock_stderr = StringIO()
         monkeypatch.setattr("sys.stderr", mock_stderr)
-        
+
         try:
             main()
         except SystemExit:
             pass
-        
+
         error_output = mock_stderr.getvalue()
-        assert "--end-line must be greater than or equal to --start-line" in error_output
+        assert (
+            "--end-line must be greater than or equal to --start-line" in error_output
+        )
 
     def test_partial_read_invalid_start_column(self, monkeypatch, sample_java_file):
         """Test --partial-read option with invalid start column"""
-        monkeypatch.setattr(sys, "argv", ["cli", sample_java_file, "--partial-read", "--start-line", "1", "--start-column", "-1"])
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            [
+                "cli",
+                sample_java_file,
+                "--partial-read",
+                "--start-line",
+                "1",
+                "--start-column",
+                "-1",
+            ],
+        )
         mock_stderr = StringIO()
         monkeypatch.setattr("sys.stderr", mock_stderr)
-        
+
         try:
             main()
         except SystemExit:
             pass
-        
+
         error_output = mock_stderr.getvalue()
         assert "--start-column must be 0 or greater" in error_output
 
     def test_partial_read_invalid_end_column(self, monkeypatch, sample_java_file):
         """Test --partial-read option with invalid end column"""
-        monkeypatch.setattr(sys, "argv", ["cli", sample_java_file, "--partial-read", "--start-line", "1", "--end-column", "-1"])
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            [
+                "cli",
+                sample_java_file,
+                "--partial-read",
+                "--start-line",
+                "1",
+                "--end-column",
+                "-1",
+            ],
+        )
         mock_stderr = StringIO()
         monkeypatch.setattr("sys.stderr", mock_stderr)
-        
+
         try:
             main()
         except SystemExit:
             pass
-        
+
         error_output = mock_stderr.getvalue()
         assert "--end-column must be 0 or greater" in error_output
 
     def test_partial_read_failure(self, monkeypatch, sample_java_file):
         """Test --partial-read option when reading fails"""
-        monkeypatch.setattr(sys, "argv", ["cli", sample_java_file, "--partial-read", "--start-line", "1"])
-        
-        with patch('tree_sitter_analyzer.cli.commands.partial_read_command.read_file_partial', return_value=None):
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            ["cli", sample_java_file, "--partial-read", "--start-line", "1"],
+        )
+
+        with patch(
+            "tree_sitter_analyzer.cli.commands.partial_read_command.read_file_partial",
+            return_value=None,
+        ):
             mock_stderr = StringIO()
             monkeypatch.setattr("sys.stderr", mock_stderr)
-            
+
             try:
                 main()
             except SystemExit:
                 pass
-            
+
             error_output = mock_stderr.getvalue()
             assert "Failed to read file partially" in error_output
 
@@ -486,31 +592,40 @@ class TestCLIQueryHandling:
 
     def test_describe_query_not_found(self, monkeypatch, sample_java_file):
         """Test --describe-query with non-existent query"""
-        monkeypatch.setattr(sys, "argv", ["cli", "--describe-query", "nonexistent_query", "--language", "java"])
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            ["cli", "--describe-query", "nonexistent_query", "--language", "java"],
+        )
         mock_stderr = StringIO()
         monkeypatch.setattr("sys.stderr", mock_stderr)
-        
+
         try:
             main()
         except SystemExit:
             pass
-        
+
         error_output = mock_stderr.getvalue()
         assert "not found" in error_output or "見つかりません" in error_output
 
     def test_describe_query_exception(self, monkeypatch, sample_java_file):
         """Test --describe-query with exception"""
-        monkeypatch.setattr(sys, "argv", ["cli", "--describe-query", "class", "--language", "java"])
-        
-        with patch('tree_sitter_analyzer.cli.info_commands.query_loader.get_query_description', side_effect=ValueError("Test error")):
+        monkeypatch.setattr(
+            sys, "argv", ["cli", "--describe-query", "class", "--language", "java"]
+        )
+
+        with patch(
+            "tree_sitter_analyzer.cli.info_commands.query_loader.get_query_description",
+            side_effect=ValueError("Test error"),
+        ):
             mock_stderr = StringIO()
             monkeypatch.setattr("sys.stderr", mock_stderr)
-            
+
             try:
                 main()
             except SystemExit:
                 pass
-            
+
             error_output = mock_stderr.getvalue()
             assert "Test error" in error_output
 
@@ -520,15 +635,17 @@ class TestCLILanguageHandling:
 
     def test_unsupported_language_fallback(self, monkeypatch, sample_java_file):
         """Test unsupported language with Java fallback"""
-        monkeypatch.setattr(sys, "argv", ["cli", sample_java_file, "--language", "unsupported_lang"])
+        monkeypatch.setattr(
+            sys, "argv", ["cli", sample_java_file, "--language", "unsupported_lang"]
+        )
         mock_stdout = StringIO()
         monkeypatch.setattr("sys.stdout", mock_stdout)
-        
+
         try:
             main()
         except SystemExit:
             pass
-        
+
         output = mock_stdout.getvalue()
         assert "Trying with Java analysis engine" in output
 
@@ -538,12 +655,16 @@ class TestCLIQueryExecution:
 
     def test_query_execution_no_results(self, monkeypatch, sample_java_file):
         """Test query execution with no results"""
-        monkeypatch.setattr(sys, "argv", ["cli", sample_java_file, "--query-key", "class"])
-        
-        with patch('tree_sitter_analyzer.cli.commands.base_command.get_analysis_engine') as mock_engine_factory:
+        monkeypatch.setattr(
+            sys, "argv", ["cli", sample_java_file, "--query-key", "class"]
+        )
+
+        with patch(
+            "tree_sitter_analyzer.cli.commands.base_command.get_analysis_engine"
+        ) as mock_engine_factory:
             mock_engine = Mock()
+
             from tree_sitter_analyzer.models import AnalysisResult
-            import asyncio
 
             async def mock_analyze(*args, **kwargs):
                 return AnalysisResult(
@@ -558,26 +679,33 @@ class TestCLIQueryExecution:
 
             mock_engine.analyze = mock_analyze
             mock_engine_factory.return_value = mock_engine
-            
+
             mock_stdout = StringIO()
             monkeypatch.setattr("sys.stdout", mock_stdout)
-            
+
             try:
                 main()
             except SystemExit:
                 pass
-            
+
             output = mock_stdout.getvalue()
-            assert "No matching results found" in output or "マッチする結果は見つかりませんでした" in output
+            assert (
+                "No matching results found" in output
+                or "マッチする結果は見つかりませんでした" in output
+            )
 
     def test_query_execution_parse_failure(self, monkeypatch, sample_java_file):
         """Test query execution when parsing fails"""
-        monkeypatch.setattr(sys, "argv", ["cli", sample_java_file, "--query-key", "class"])
-        
-        with patch('tree_sitter_analyzer.cli.commands.base_command.get_analysis_engine') as mock_engine_factory:
+        monkeypatch.setattr(
+            sys, "argv", ["cli", sample_java_file, "--query-key", "class"]
+        )
+
+        with patch(
+            "tree_sitter_analyzer.cli.commands.base_command.get_analysis_engine"
+        ) as mock_engine_factory:
             mock_engine = Mock()
+
             from tree_sitter_analyzer.models import AnalysisResult
-            import asyncio
 
             async def mock_analyze(*args, **kwargs):
                 return AnalysisResult(
@@ -588,12 +716,12 @@ class TestCLIQueryExecution:
                     line_count=0,
                     node_count=0,
                     query_results={},
-                    error_message="Parse failure"
+                    error_message="Parse failure",
                 )
 
             mock_engine.analyze = mock_analyze
             mock_engine_factory.return_value = mock_engine
-            
+
             try:
                 main()
             except SystemExit as e:
@@ -604,44 +732,51 @@ class TestCLIQueryExecution:
         monkeypatch.setattr(sys, "argv", ["cli", sample_java_file])
         mock_stderr = StringIO()
         monkeypatch.setattr("sys.stderr", mock_stderr)
-        
+
         try:
             main()
         except SystemExit:
             pass
-        
+
         error_output = mock_stderr.getvalue()
         assert "クエリまたは--advancedオプションを指定してください" in error_output
 
     def test_query_not_found_error(self, monkeypatch, sample_java_file):
         """Test error when query is not found"""
-        monkeypatch.setattr(sys, "argv", ["cli", sample_java_file, "--query-key", "nonexistent"])
-        
-        with patch('tree_sitter_analyzer.query_loader.get_query', return_value=None):
+        monkeypatch.setattr(
+            sys, "argv", ["cli", sample_java_file, "--query-key", "nonexistent"]
+        )
+
+        with patch("tree_sitter_analyzer.query_loader.get_query", return_value=None):
             mock_stderr = StringIO()
             monkeypatch.setattr("sys.stderr", mock_stderr)
-            
+
             try:
                 main()
             except SystemExit:
                 pass
-            
+
             error_output = mock_stderr.getvalue()
             assert "not found" in error_output or "見つかりません" in error_output
 
     def test_query_exception_error(self, monkeypatch, sample_java_file):
         """Test error when query loading raises exception"""
-        monkeypatch.setattr(sys, "argv", ["cli", sample_java_file, "--query-key", "class"])
-        
-        with patch('tree_sitter_analyzer.cli.commands.query_command.query_loader.get_query', side_effect=ValueError("Query error")):
+        monkeypatch.setattr(
+            sys, "argv", ["cli", sample_java_file, "--query-key", "class"]
+        )
+
+        with patch(
+            "tree_sitter_analyzer.cli.commands.query_command.query_loader.get_query",
+            side_effect=ValueError("Query error"),
+        ):
             mock_stderr = StringIO()
             monkeypatch.setattr("sys.stderr", mock_stderr)
-            
+
             try:
                 main()
             except SystemExit:
                 pass
-            
+
             error_output = mock_stderr.getvalue()
             assert "Query error" in error_output
 
@@ -652,24 +787,22 @@ class TestCLILoggingConfiguration:
     def test_table_option_logging_suppression(self, monkeypatch, sample_java_file):
         """Test that --table option suppresses logging"""
         monkeypatch.setattr(sys, "argv", ["cli", sample_java_file, "--table", "full"])
-        
-        with patch('logging.getLogger') as mock_get_logger:
+
+        with patch("logging.getLogger") as mock_get_logger:
             mock_logger = Mock()
             mock_get_logger.return_value = mock_logger
-            
+
             try:
                 main()
             except SystemExit:
                 pass
-            
+
             # Should have set logging level to ERROR
             mock_logger.setLevel.assert_called_with(logging.ERROR)
 
 
 # Additional test markers for categorization
-pytestmark = [
-    pytest.mark.unit
-]
+pytestmark = [pytest.mark.unit]
 
 
 class TestCLIAdditionalCoverage:
@@ -680,12 +813,12 @@ class TestCLIAdditionalCoverage:
         monkeypatch.setattr(sys, "argv", ["cli", "--show-supported-languages"])
         mock_stdout = StringIO()
         monkeypatch.setattr("sys.stdout", mock_stdout)
-        
+
         try:
             main()
         except SystemExit:
             pass
-        
+
         output = mock_stdout.getvalue()
         assert "Supported languages" in output or "サポートされている言語:" in output
 
@@ -694,12 +827,12 @@ class TestCLIAdditionalCoverage:
         monkeypatch.setattr(sys, "argv", ["cli", "--show-supported-extensions"])
         mock_stdout = StringIO()
         monkeypatch.setattr("sys.stdout", mock_stdout)
-        
+
         try:
             main()
         except SystemExit:
             pass
-        
+
         output = mock_stdout.getvalue()
         assert "Supported extensions" in output or "サポートされている拡張子:" in output
 
@@ -708,12 +841,12 @@ class TestCLIAdditionalCoverage:
         monkeypatch.setattr(sys, "argv", ["cli", "--show-common-queries"])
         mock_stdout = StringIO()
         monkeypatch.setattr("sys.stdout", mock_stdout)
-        
+
         try:
             main()
         except SystemExit:
             pass
-        
+
         output = mock_stdout.getvalue()
         assert len(output) > 0
 
@@ -722,26 +855,31 @@ class TestCLIAdditionalCoverage:
         monkeypatch.setattr(sys, "argv", ["cli", "--show-query-languages"])
         mock_stdout = StringIO()
         monkeypatch.setattr("sys.stdout", mock_stdout)
-        
+
         try:
             main()
         except SystemExit:
             pass
-        
+
         output = mock_stdout.getvalue()
-        assert "Query supported languages" in output or "クエリサポートされている言語:" in output
+        assert (
+            "Query supported languages" in output
+            or "クエリサポートされている言語:" in output
+        )
 
     def test_list_queries_with_language(self, monkeypatch):
         """Test --list-queries with --language option"""
-        monkeypatch.setattr(sys, "argv", ["cli", "--list-queries", "--language", "java"])
+        monkeypatch.setattr(
+            sys, "argv", ["cli", "--list-queries", "--language", "java"]
+        )
         mock_stdout = StringIO()
         monkeypatch.setattr("sys.stdout", mock_stdout)
-        
+
         try:
             main()
         except SystemExit:
             pass
-        
+
         output = mock_stdout.getvalue()
         assert "Available query keys" in output or "利用可能なクエリキー" in output
 
@@ -750,12 +888,12 @@ class TestCLIAdditionalCoverage:
         monkeypatch.setattr(sys, "argv", ["cli", "--list-queries", sample_java_file])
         mock_stdout = StringIO()
         monkeypatch.setattr("sys.stdout", mock_stdout)
-        
+
         try:
             main()
         except SystemExit:
             pass
-        
+
         output = mock_stdout.getvalue()
         assert "Available query keys" in output or "利用可能なクエリキー" in output
 
@@ -764,40 +902,44 @@ class TestCLIAdditionalCoverage:
         monkeypatch.setattr(sys, "argv", ["cli", "--list-queries"])
         mock_stdout = StringIO()
         monkeypatch.setattr("sys.stdout", mock_stdout)
-        
+
         try:
             main()
         except SystemExit:
             pass
-        
+
         output = mock_stdout.getvalue()
         assert "Supported languages" in output or "サポートされている言語:" in output
 
     def test_describe_query_with_language(self, monkeypatch):
         """Test --describe-query with --language option"""
-        monkeypatch.setattr(sys, "argv", ["cli", "--describe-query", "class", "--language", "java"])
+        monkeypatch.setattr(
+            sys, "argv", ["cli", "--describe-query", "class", "--language", "java"]
+        )
         mock_stdout = StringIO()
         monkeypatch.setattr("sys.stdout", mock_stdout)
-        
+
         try:
             main()
         except SystemExit:
             pass
-        
+
         output = mock_stdout.getvalue()
         assert "Query key 'class'" in output or "クエリキー 'class'" in output
 
     def test_describe_query_with_file(self, monkeypatch, sample_java_file):
         """Test --describe-query with file path"""
-        monkeypatch.setattr(sys, "argv", ["cli", "--describe-query", "class", sample_java_file])
+        monkeypatch.setattr(
+            sys, "argv", ["cli", "--describe-query", "class", sample_java_file]
+        )
         mock_stdout = StringIO()
         monkeypatch.setattr("sys.stdout", mock_stdout)
-        
+
         try:
             main()
         except SystemExit:
             pass
-        
+
         output = mock_stdout.getvalue()
         assert "Query key 'class'" in output or "クエリキー 'class'" in output
 
@@ -806,40 +948,45 @@ class TestCLIAdditionalCoverage:
         monkeypatch.setattr(sys, "argv", ["cli", "--describe-query", "class"])
         mock_stderr = StringIO()
         monkeypatch.setattr("sys.stderr", mock_stderr)
-        
+
         try:
             main()
         except SystemExit:
             pass
-        
+
         error_output = mock_stderr.getvalue()
-        assert "--language or target file specification is required" in error_output or "--languageまたは対象ファイルの指定が必要です" in error_output
+        assert (
+            "--language or target file specification is required" in error_output
+            or "--languageまたは対象ファイルの指定が必要です" in error_output
+        )
 
     def test_missing_file_path_error(self, monkeypatch):
         """Test error when file path is missing"""
         monkeypatch.setattr(sys, "argv", ["cli"])
         mock_stderr = StringIO()
         monkeypatch.setattr("sys.stderr", mock_stderr)
-        
+
         try:
             main()
         except SystemExit:
             pass
-        
+
         error_output = mock_stderr.getvalue()
         assert "File path not specified" in error_output
 
     def test_nonexistent_file_error(self, monkeypatch):
         """Test error when file does not exist"""
-        monkeypatch.setattr(sys, "argv", ["cli", "/nonexistent/file.java", "--query-key", "class"])
+        monkeypatch.setattr(
+            sys, "argv", ["cli", "/nonexistent/file.java", "--query-key", "class"]
+        )
         mock_stderr = StringIO()
         monkeypatch.setattr("sys.stderr", mock_stderr)
-        
+
         try:
             main()
         except SystemExit:
             pass
-        
+
         error_output = mock_stderr.getvalue()
         assert "File not found" in error_output
 
@@ -847,52 +994,69 @@ class TestCLIAdditionalCoverage:
         """Test unknown language detection"""
         # Create a file with unknown extension
         import tempfile
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.unknown', delete=False) as f:
+
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".unknown", delete=False
+        ) as f:
             f.write("some content")
             unknown_file = f.name
-        
+
         monkeypatch.setattr(sys, "argv", ["cli", unknown_file, "--query-key", "class"])
         mock_stderr = StringIO()
         monkeypatch.setattr("sys.stderr", mock_stderr)
-        
+
         try:
             main()
         except SystemExit:
             pass
-        
+
         error_output = mock_stderr.getvalue()
         assert "Could not determine language for file" in error_output
-        
+
         # Cleanup
         import os
+
         if os.path.exists(unknown_file):
             os.unlink(unknown_file)
 
     def test_unsupported_language_fallback(self, monkeypatch, sample_java_file):
         """Test unsupported language with fallback to Java"""
-        monkeypatch.setattr(sys, "argv", ["cli", sample_java_file, "--language", "unsupported", "--query-key", "class"])
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            [
+                "cli",
+                sample_java_file,
+                "--language",
+                "unsupported",
+                "--query-key",
+                "class",
+            ],
+        )
         mock_stdout = StringIO()
         monkeypatch.setattr("sys.stdout", mock_stdout)
-        
+
         try:
             main()
         except SystemExit:
             pass
-        
+
         output = mock_stdout.getvalue()
         assert "Trying with Java analysis engine" in output
 
     def test_query_string_option(self, monkeypatch, sample_java_file):
         """Test --query-string option"""
         query_string = "(class_declaration) @class"
-        monkeypatch.setattr(sys, "argv", ["cli", sample_java_file, "--query-string", query_string])
+        monkeypatch.setattr(
+            sys, "argv", ["cli", sample_java_file, "--query-string", query_string]
+        )
         mock_stdout = StringIO()
         monkeypatch.setattr("sys.stdout", mock_stdout)
-        
+
         try:
             main()
         except SystemExit:
             pass
-        
+
         output = mock_stdout.getvalue()
         assert len(output) > 0

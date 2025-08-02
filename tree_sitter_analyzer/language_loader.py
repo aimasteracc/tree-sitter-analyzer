@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Dynamic Language Loader
 
@@ -8,9 +7,7 @@ and lazy loading for optimal performance.
 """
 
 import importlib
-import sys
-from functools import lru_cache
-from typing import TYPE_CHECKING, Any, Dict, Optional, Set
+from typing import TYPE_CHECKING, Any, Optional
 
 if TYPE_CHECKING:
     from tree_sitter import Language, Parser
@@ -22,7 +19,7 @@ try:
 except ImportError:
     TREE_SITTER_AVAILABLE = False
 
-from .utils import log_error, log_warning
+from .utils import log_warning
 
 
 class LanguageLoader:
@@ -51,13 +48,12 @@ class LanguageLoader:
 
     def __init__(self) -> None:
         """ローダーを初期化（最適化：事前キャッシュ容量指定）"""
-        self._loaded_languages: Dict[str, "Language"] = {}
-        self._loaded_modules: Dict[str, Any] = {}
-        self._availability_cache: Dict[str, bool] = {}
-        self._parser_cache: Dict[str, "Parser"] = {}  # パーサーキャッシュ追加
-        self._unavailable_languages: Set[str] = set()  # 利用不可言語の記録
+        self._loaded_languages: dict[str, Language] = {}
+        self._loaded_modules: dict[str, Any] = {}
+        self._availability_cache: dict[str, bool] = {}
+        self._parser_cache: dict[str, Parser] = {}  # パーサーキャッシュ追加
+        self._unavailable_languages: set[str] = set()  # 利用不可言語の記録
 
-    @lru_cache(maxsize=32)  # LRUキャッシュでメモリ効率向上
     def is_language_available(self, language: str) -> bool:
         """
         指定された言語のライブラリが利用可能かチェック

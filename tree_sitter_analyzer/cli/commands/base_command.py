@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Base Command Class
 
@@ -9,7 +8,7 @@ Abstract base class for all CLI commands implementing the Command Pattern.
 import asyncio
 from abc import ABC, abstractmethod
 from argparse import Namespace
-from typing import Any, Optional
+from typing import Optional
 
 from ...core.analysis_engine import AnalysisRequest, get_analysis_engine
 from ...file_handler import read_file_partial
@@ -45,11 +44,13 @@ class BaseCommand(ABC):
 
         return True
 
-    def detect_language(self) -> Optional[str]:
+    def detect_language(self) -> str | None:
         """Detect or validate the target language."""
         if hasattr(self.args, "language") and self.args.language:
             target_language = self.args.language.lower()
-            if (not hasattr(self.args, "table") or not self.args.table) and (not hasattr(self.args, "quiet") or not self.args.quiet):
+            if (not hasattr(self.args, "table") or not self.args.table) and (
+                not hasattr(self.args, "quiet") or not self.args.quiet
+            ):
                 output_info(f"INFO: Language explicitly specified: {target_language}")
         else:
             target_language = detect_language_from_file(self.args.file_path)
@@ -59,7 +60,9 @@ class BaseCommand(ABC):
                 )
                 return None
             else:
-                if (not hasattr(self.args, "table") or not self.args.table) and (not hasattr(self.args, "quiet") or not self.args.quiet):
+                if (not hasattr(self.args, "table") or not self.args.table) and (
+                    not hasattr(self.args, "quiet") or not self.args.quiet
+                ):
                     output_info(
                         f"INFO: Language auto-detected from extension: {target_language}"
                     )
@@ -67,7 +70,9 @@ class BaseCommand(ABC):
         # Language support validation
         if not is_language_supported(target_language):
             if target_language != "java":
-                if (not hasattr(self.args, "table") or not self.args.table) and (not hasattr(self.args, "quiet") or not self.args.quiet):
+                if (not hasattr(self.args, "table") or not self.args.table) and (
+                    not hasattr(self.args, "quiet") or not self.args.quiet
+                ):
                     output_info(
                         "INFO: Trying with Java analysis engine. May not work correctly."
                     )
@@ -79,14 +84,14 @@ class BaseCommand(ABC):
         """Perform file analysis using the unified analysis engine."""
         try:
             # Handle partial read if enabled
-            if hasattr(self.args, 'partial_read') and self.args.partial_read:
+            if hasattr(self.args, "partial_read") and self.args.partial_read:
                 try:
                     partial_content = read_file_partial(
                         self.args.file_path,
                         start_line=self.args.start_line,
-                        end_line=getattr(self.args, 'end_line', None),
-                        start_column=getattr(self.args, 'start_column', None),
-                        end_column=getattr(self.args, 'end_column', None)
+                        end_line=getattr(self.args, "end_line", None),
+                        start_column=getattr(self.args, "start_column", None),
+                        end_column=getattr(self.args, "end_column", None),
                     )
                     if partial_content is None:
                         output_error("ERROR: Failed to read file partially")
@@ -94,7 +99,7 @@ class BaseCommand(ABC):
                 except Exception as e:
                     output_error(f"ERROR: Failed to read file partially: {e}")
                     return None
-            
+
             request = AnalysisRequest(
                 file_path=self.args.file_path,
                 language=language,

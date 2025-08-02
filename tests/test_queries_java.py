@@ -1,20 +1,20 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Tests for Java queries module
 """
 
 import pytest
+
 from tree_sitter_analyzer.queries.java import (
+    ALL_QUERIES,
+    JAVA_QUERIES,
+    JAVA_QUERY_DESCRIPTIONS,
+    get_all_queries,
+    get_available_java_queries,
     get_java_query,
     get_java_query_description,
     get_query,
-    get_all_queries,
     list_queries,
-    get_available_java_queries,
-    JAVA_QUERIES,
-    JAVA_QUERY_DESCRIPTIONS,
-    ALL_QUERIES,
 )
 
 
@@ -32,7 +32,7 @@ class TestJavaQueries:
         """Test getting an invalid Java query raises ValueError"""
         with pytest.raises(ValueError) as exc_info:
             get_java_query("nonexistent_query")
-        
+
         assert "Javaクエリ 'nonexistent_query' は存在しません" in str(exc_info.value)
         assert "利用可能:" in str(exc_info.value)
 
@@ -56,7 +56,7 @@ class TestJavaQueries:
         """Test getting invalid query through ALL_QUERIES interface"""
         with pytest.raises(ValueError) as exc_info:
             get_query("nonexistent_query")
-        
+
         assert "Query 'nonexistent_query' not found" in str(exc_info.value)
         assert "Available queries:" in str(exc_info.value)
 
@@ -89,7 +89,7 @@ class TestJavaQueries:
         """Test JAVA_QUERIES dictionary structure"""
         assert isinstance(JAVA_QUERIES, dict)
         assert len(JAVA_QUERIES) > 0
-        
+
         # Test some essential queries exist
         essential_queries = ["class", "method", "field", "import", "package"]
         for query_name in essential_queries:
@@ -101,7 +101,7 @@ class TestJavaQueries:
         """Test JAVA_QUERY_DESCRIPTIONS dictionary structure"""
         assert isinstance(JAVA_QUERY_DESCRIPTIONS, dict)
         assert len(JAVA_QUERY_DESCRIPTIONS) > 0
-        
+
         # Test some essential descriptions exist
         essential_queries = ["class", "method", "field", "import", "package"]
         for query_name in essential_queries:
@@ -113,9 +113,9 @@ class TestJavaQueries:
         """Test ALL_QUERIES dictionary structure"""
         assert isinstance(ALL_QUERIES, dict)
         assert len(ALL_QUERIES) > 0
-        
+
         # Test structure of each query entry
-        for query_name, query_data in ALL_QUERIES.items():
+        for _query_name, query_data in ALL_QUERIES.items():
             assert isinstance(query_data, dict)
             assert "query" in query_data
             assert "description" in query_data
@@ -129,7 +129,7 @@ class TestJavaQueries:
         functions_query = ALL_QUERIES["functions"]["query"]
         method_query = JAVA_QUERIES["method"]
         assert functions_query == method_query
-        
+
         # Test classes alias
         assert "classes" in ALL_QUERIES
         classes_query = ALL_QUERIES["classes"]["query"]
@@ -157,11 +157,11 @@ class TestJavaQueries:
         """Test detailed information extraction queries"""
         detailed_queries = [
             "method_parameters_detailed",
-            "class_inheritance_detailed", 
+            "class_inheritance_detailed",
             "annotation_detailed",
             "import_detailed",
             "package_detailed",
-            "constructor_detailed"
+            "constructor_detailed",
         ]
         for query_name in detailed_queries:
             assert query_name in JAVA_QUERIES
@@ -183,7 +183,7 @@ class TestJavaQueries:
         for query_name in JAVA_QUERIES:
             assert query_name in ALL_QUERIES
             assert ALL_QUERIES[query_name]["query"] == JAVA_QUERIES[query_name]
-        
+
         # All queries in JAVA_QUERY_DESCRIPTIONS should have corresponding queries
         for query_name in JAVA_QUERY_DESCRIPTIONS:
             assert query_name in JAVA_QUERIES

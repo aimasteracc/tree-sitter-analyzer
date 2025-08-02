@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 File Handler Module
 
@@ -7,11 +6,8 @@ This module provides file reading functionality with encoding detection and fall
 """
 
 import os
-import sys
-from pathlib import Path
-from typing import Optional
 
-from .encoding_utils import detect_encoding, read_file_safe, safe_decode
+from .encoding_utils import read_file_safe
 from .utils import log_error, log_info, log_warning
 
 
@@ -49,7 +45,7 @@ def detect_language_from_extension(file_path: str) -> str:
     return extension_map.get(extension, "unknown")
 
 
-def read_file_with_fallback(file_path: str) -> Optional[bytes]:
+def read_file_with_fallback(file_path: str) -> bytes | None:
     """
     Read file with encoding fallback using unified encoding utilities
 
@@ -83,10 +79,10 @@ def read_file_with_fallback(file_path: str) -> Optional[bytes]:
 def read_file_partial(
     file_path: str,
     start_line: int,
-    end_line: Optional[int] = None,
-    start_column: Optional[int] = None,
-    end_column: Optional[int] = None,
-) -> Optional[str]:
+    end_line: int | None = None,
+    start_column: int | None = None,
+    end_column: int | None = None,
+) -> str | None:
     """
     指定した行番号・列番号範囲でファイルの一部を読み込み
 
@@ -160,7 +156,6 @@ def read_file_partial(
                     # 最後の行：終了列まで
                     if i == 0 and start_column is not None:
                         # 単一行の場合：開始列と終了列の両方を適用
-                        col_start = 0  # 既に開始列でカット済み
                         col_end = (
                             end_column - start_column
                             if end_column >= start_column
@@ -206,8 +201,8 @@ def read_file_partial(
 
 
 def read_file_lines_range(
-    file_path: str, start_line: int, end_line: Optional[int] = None
-) -> Optional[str]:
+    file_path: str, start_line: int, end_line: int | None = None
+) -> str | None:
     """
     指定した行番号範囲でファイルの一部を読み込み（列指定なし）
 

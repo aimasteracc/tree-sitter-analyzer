@@ -1,17 +1,14 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Java Code Analyzer with tree-sitter
 """
-import json
-import sys
-from pathlib import Path
-from typing import Any, Dict, List, Optional
+
+from typing import Any
 
 try:
     import tree_sitter
     import tree_sitter_java as tsjava
-    from tree_sitter import Language, Node, Parser
+    from tree_sitter import Language, Parser
 
     TREE_SITTER_AVAILABLE = True
 except ImportError:
@@ -24,7 +21,7 @@ except ImportError:
 
 from .file_handler import read_file_with_fallback
 from .output_manager import output_error, output_info, output_warning
-from .utils import log_error, log_info, log_warning
+from .utils import log_error, log_info
 
 
 class CodeAnalyzer:
@@ -55,20 +52,22 @@ class CodeAnalyzer:
         try:
             if language != "java":
                 output_warning(
-                    f"WARNING: Currently only Java is supported. Using Java parser."
+                    "WARNING: Currently only Java is supported. Using Java parser."
                 )
 
             self.language = Language(tsjava.language())
             self.parser = Parser(self.language)
             self.source_code_bytes: bytes = b""
-            self.tree: Optional[tree_sitter.Tree] = None
+            self.tree: tree_sitter.Tree | None = None
 
         except Exception as e:
             output_error(
                 f"ERROR: '{language}' 言語の初期化に失敗しました。ライブラリが正しくインストールされているか確認してください。"
             )
             output_error(f"詳細: {e}")
-            raise RuntimeError(f"Failed to initialize language '{language}': {e}")
+            raise RuntimeError(
+                f"Failed to initialize language '{language}': {e}"
+            ) from e
 
     def parse_file(self, file_path: str) -> bool:
         """
@@ -105,7 +104,7 @@ class CodeAnalyzer:
             output_error(f"ERROR: ファイル解析中にエラーが発生しました: {e}")
             return False
 
-    def execute_query(self, query_string: str) -> List[Dict[str, Any]]:
+    def execute_query(self, query_string: str) -> list[dict[str, Any]]:
         """
         ASTに対して指定されたクエリを実行し、マッチしたノードの情報を抽出する。
 

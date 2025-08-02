@@ -1,24 +1,19 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Dynamic query loader for language-specific Tree-sitter queries.
 Optimized with enhanced caching and lazy loading for better performance.
 """
 
 import importlib
-import pkgutil
-from functools import lru_cache
-from pathlib import Path
-from typing import Dict, List, Optional, Set, Tuple
 
-from .utils import log_debug, log_error, log_warning
+from .utils import log_error, log_warning
 
 
 class QueryLoader:
     """Load and manage language-specific Tree-sitter queries with optimizations."""
 
     # --- Predefined Queries (from query_library.py) ---
-    _PREDEFINED_QUERIES: Dict[str, Dict[str, str]] = {
+    _PREDEFINED_QUERIES: dict[str, dict[str, str]] = {
         "java": {
             "class": "(class_declaration) @class",
             "interface": "(interface_declaration) @interface",
@@ -37,7 +32,7 @@ class QueryLoader:
         # Add other languages here if needed
     }
 
-    _QUERY_DESCRIPTIONS: Dict[str, str] = {
+    _QUERY_DESCRIPTIONS: dict[str, str] = {
         "class": "クラス宣言を抽出",
         "interface": "インターフェース宣言を抽出",
         "method": "メソッド宣言を抽出",
@@ -53,11 +48,10 @@ class QueryLoader:
         "method_with_body": "メソッド宣言と本体を抽出",
     }
 
-
     def __init__(self) -> None:
-        self._loaded_queries: Dict[str, dict] = {}
-        self._query_modules: Dict[str, object] = {}
-        self._failed_languages: Set[str] = set()  # 読み込み失敗した言語をキャッシュ
+        self._loaded_queries: dict[str, dict] = {}
+        self._query_modules: dict[str, object] = {}
+        self._failed_languages: set[str] = set()  # 読み込み失敗した言語をキャッシュ
 
     def load_language_queries(self, language: str) -> dict:
         """Load queries for a specific language with optimized caching."""
@@ -82,24 +76,26 @@ class QueryLoader:
                 for attr_name in dir(module):
                     if not attr_name.startswith("_"):
                         attr_value = getattr(module, attr_name)
-                        if isinstance(attr_value, (str, dict)):
+                        if isinstance(attr_value, str | dict):
                             queries[attr_name] = attr_value
-            
+
             self._loaded_queries[language] = queries
             self._query_modules[language] = module
             return queries
 
         except ImportError:
-            log_warning(f"No dynamic query module for '{language}', using predefined queries.")
+            log_warning(
+                f"No dynamic query module for '{language}', using predefined queries."
+            )
             self._loaded_queries[language] = queries
             return queries
         except Exception as e:
             log_error(f"Error loading dynamic queries for '{language}': {e}")
             self._failed_languages.add(language)
-            self._loaded_queries[language] = {} # Reset on error
+            self._loaded_queries[language] = {}  # Reset on error
             return {}
 
-    def get_query(self, language: str, query_name: str) -> Optional[str]:
+    def get_query(self, language: str, query_name: str) -> str | None:
         """Get a specific query for a language with optimized lookup."""
         queries = self.load_language_queries(language)
 
@@ -112,7 +108,7 @@ class QueryLoader:
 
         return None
 
-    def get_query_description(self, language: str, query_name: str) -> Optional[str]:
+    def get_query_description(self, language: str, query_name: str) -> str | None:
         """Get description for a specific query."""
         # Check predefined descriptions first
         if query_name in self._QUERY_DESCRIPTIONS:
@@ -127,12 +123,12 @@ class QueryLoader:
 
         return None
 
-    def list_queries_for_language(self, language: str) -> List[str]:
+    def list_queries_for_language(self, language: str) -> list[str]:
         """List all available queries for a language."""
         queries = self.load_language_queries(language)
         return list(queries.keys())
 
-    def list_queries(self, language: str) -> List[str]:
+    def list_queries(self, language: str) -> list[str]:
         """List all available queries for a language.
 
         Args:
@@ -143,8 +139,7 @@ class QueryLoader:
         """
         return self.list_queries_for_language(language)
 
-    @lru_cache(maxsize=16)  # キャッシュサイズを制限
-    def list_supported_languages(self) -> List[str]:
+    def list_supported_languages(self) -> list[str]:
         """List all languages that have query modules available."""
         languages = []
 
@@ -171,12 +166,12 @@ class QueryLoader:
 
         return languages
 
-    def get_common_queries(self) -> List[str]:
+    def get_common_queries(self) -> list[str]:
         """Get commonly used queries across languages."""
         # Return a flat list of common query names
         return ["functions", "classes", "variables", "imports"]
 
-    def get_all_queries_for_language(self, language: str) -> Dict[str, Tuple[str, str]]:
+    def get_all_queries_for_language(self, language: str) -> dict[str, tuple[str, str]]:
         """Get all query information for a language including metadata.
 
         Returns:
@@ -202,8 +197,7 @@ class QueryLoader:
         self._loaded_queries.clear()
         self._query_modules.clear()
         self._failed_languages.clear()
-        # LRUキャッシュもクリア
-        self.list_supported_languages.cache_clear()
+        # Cache was removed for memory efficiency
 
     def is_language_supported(self, language: str) -> bool:
         """Check if a language has query support."""
@@ -211,7 +205,7 @@ class QueryLoader:
             return False
         return language in self.list_supported_languages()
 
-    def preload_languages(self, languages: List[str]) -> Dict[str, bool]:
+    def preload_languages(self, languages: list[str]) -> dict[str, bool]:
         """Preload queries for multiple languages efficiently."""
         results = {}
         for language in languages:
@@ -240,17 +234,17 @@ query_loader = get_query_loader()
 
 
 # 便利関数（最適化済み）
-def get_query(language: str, query_name: str) -> Optional[str]:
+def get_query(language: str, query_name: str) -> str | None:
     """Get a specific query."""
     return get_query_loader().get_query(language, query_name)
 
 
-def list_queries(language: str) -> List[str]:
+def list_queries(language: str) -> list[str]:
     """List queries for a language."""
     return get_query_loader().list_queries_for_language(language)
 
 
-def list_supported_languages() -> List[str]:
+def list_supported_languages() -> list[str]:
     """List all supported languages."""
     return get_query_loader().list_supported_languages()
 

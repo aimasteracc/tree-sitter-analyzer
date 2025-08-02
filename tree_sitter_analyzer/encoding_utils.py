@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Optimized Encoding Utilities Module
 
@@ -8,13 +7,12 @@ optimizations including file-based encoding caching to reduce redundant
 chardet.detect() calls.
 """
 
-import locale
 import os
 import sys
 import threading
 import time
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any
 
 
 # Set up encoding environment early
@@ -67,14 +65,14 @@ class EncodingCache:
             max_size: Maximum number of cached entries
             ttl_seconds: Time-to-live for cache entries in seconds
         """
-        self._cache: Dict[str, Tuple[str, float]] = (
-            {}
-        )  # file_path -> (encoding, timestamp)
+        self._cache: dict[
+            str, tuple[str, float]
+        ] = {}  # file_path -> (encoding, timestamp)
         self._lock = threading.RLock()
         self._max_size = max_size
         self._ttl_seconds = ttl_seconds
 
-    def get(self, file_path: str) -> Optional[str]:
+    def get(self, file_path: str) -> str | None:
         """
         Get cached encoding for file path
 
@@ -153,7 +151,7 @@ class EncodingManager:
     FALLBACK_ENCODINGS = ["utf-8", "cp1252", "iso-8859-1", "shift_jis", "gbk"]
 
     @classmethod
-    def safe_encode(cls, text: str, encoding: Optional[str] = None) -> bytes:
+    def safe_encode(cls, text: str, encoding: str | None = None) -> bytes:
         """
         Safely encode text to bytes with fallback handling
 
@@ -187,7 +185,7 @@ class EncodingManager:
             return text.encode(cls.DEFAULT_ENCODING, errors="replace")
 
     @classmethod
-    def safe_decode(cls, data: bytes, encoding: Optional[str] = None) -> str:
+    def safe_decode(cls, data: bytes, encoding: str | None = None) -> str:
         """
         Safely decode bytes to text with fallback handling
 
@@ -226,7 +224,7 @@ class EncodingManager:
             return data.decode(cls.DEFAULT_ENCODING, errors="replace")
 
     @classmethod
-    def detect_encoding(cls, data: bytes, file_path: Optional[str] = None) -> str:
+    def detect_encoding(cls, data: bytes, file_path: str | None = None) -> str:
         """
         Detect encoding of byte data with optional file-based caching
 
@@ -296,7 +294,7 @@ class EncodingManager:
         return detected_encoding
 
     @classmethod
-    def read_file_safe(cls, file_path: Union[str, Path]) -> Tuple[str, str]:
+    def read_file_safe(cls, file_path: str | Path) -> tuple[str, str]:
         """
         Safely read a file with automatic encoding detection and caching
 
@@ -325,13 +323,13 @@ class EncodingManager:
 
             return content, detected_encoding
 
-        except IOError as e:
+        except OSError as e:
             log_warning(f"Failed to read file {file_path}: {e}")
             raise e
 
     @classmethod
     def write_file_safe(
-        cls, file_path: Union[str, Path], content: str, encoding: Optional[str] = None
+        cls, file_path: str | Path, content: str, encoding: str | None = None
     ) -> bool:
         """
         Safely write content to a file
@@ -355,7 +353,7 @@ class EncodingManager:
 
             return True
 
-        except IOError as e:
+        except OSError as e:
             log_warning(f"Failed to write file {file_path}: {e}")
             return False
 
@@ -382,7 +380,7 @@ class EncodingManager:
         content_bytes: bytes,
         start_byte: int,
         end_byte: int,
-        encoding: Optional[str] = None,
+        encoding: str | None = None,
     ) -> str:
         """
         Extract a slice of text from bytes with proper encoding handling
@@ -414,35 +412,35 @@ class EncodingManager:
 
 
 # Convenience functions for backward compatibility
-def safe_encode(text: str, encoding: Optional[str] = None) -> bytes:
+def safe_encode(text: str, encoding: str | None = None) -> bytes:
     """Convenience function for safe encoding"""
     return EncodingManager.safe_encode(text, encoding)
 
 
-def safe_decode(data: bytes, encoding: Optional[str] = None) -> str:
+def safe_decode(data: bytes, encoding: str | None = None) -> str:
     """Convenience function for safe decoding"""
     return EncodingManager.safe_decode(data, encoding)
 
 
-def detect_encoding(data: bytes, file_path: Optional[str] = None) -> str:
+def detect_encoding(data: bytes, file_path: str | None = None) -> str:
     """Convenience function for encoding detection with optional caching"""
     return EncodingManager.detect_encoding(data, file_path)
 
 
-def read_file_safe(file_path: Union[str, Path]) -> Tuple[str, str]:
+def read_file_safe(file_path: str | Path) -> tuple[str, str]:
     """Convenience function for safe file reading"""
     return EncodingManager.read_file_safe(file_path)
 
 
 def write_file_safe(
-    file_path: Union[str, Path], content: str, encoding: Optional[str] = None
+    file_path: str | Path, content: str, encoding: str | None = None
 ) -> bool:
     """Convenience function for safe file writing"""
     return EncodingManager.write_file_safe(file_path, content, encoding)
 
 
 def extract_text_slice(
-    content_bytes: bytes, start_byte: int, end_byte: int, encoding: Optional[str] = None
+    content_bytes: bytes, start_byte: int, end_byte: int, encoding: str | None = None
 ) -> str:
     """Convenience function for text slice extraction"""
     return EncodingManager.extract_text_slice(

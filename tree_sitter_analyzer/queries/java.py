@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Java Language Queries
 
@@ -7,10 +6,8 @@ Tree-sitter queries specific to Java language constructs.
 Covers classes, methods, annotations, imports, and other Java-specific elements.
 """
 
-from typing import Dict
-
 # Java専用クエリライブラリ
-JAVA_QUERIES: Dict[str, str] = {
+JAVA_QUERIES: dict[str, str] = {
     # --- 基本構造 ---
     "class": """
     (class_declaration) @class
@@ -261,7 +258,7 @@ JAVA_QUERIES: Dict[str, str] = {
 }
 
 # クエリの説明
-JAVA_QUERY_DESCRIPTIONS: Dict[str, str] = {
+JAVA_QUERY_DESCRIPTIONS: dict[str, str] = {
     "class": "Javaクラス宣言を抽出",
     "interface": "Javaインターフェース宣言を抽出",
     "enum": "Java列挙型宣言を抽出",

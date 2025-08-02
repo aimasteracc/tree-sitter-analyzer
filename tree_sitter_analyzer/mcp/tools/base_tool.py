@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Base Tool Protocol for MCP Tools
 
@@ -7,7 +6,7 @@ This module defines the protocol that all MCP tools must implement
 to ensure type safety and consistency.
 """
 
-from typing import Any, Dict, Protocol
+from typing import Any, Protocol
 
 
 class MCPTool(Protocol):
@@ -27,7 +26,7 @@ class MCPTool(Protocol):
         """
         ...
 
-    async def execute(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
+    async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """
         Execute the tool with the given arguments.
 
@@ -39,7 +38,7 @@ class MCPTool(Protocol):
         """
         ...
 
-    def validate_arguments(self, arguments: Dict[str, Any]) -> bool:
+    def validate_arguments(self, arguments: dict[str, Any]) -> bool:
         """
         Validate tool arguments.
 

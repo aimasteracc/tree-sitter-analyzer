@@ -1,18 +1,20 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Plugin Loader for Tree-sitter Analyzer
 
 Automatically loads and registers all available language plugins.
 """
 
-from typing import List
+from typing import TYPE_CHECKING
 
 from ..utils import log_debug, log_error, log_info
 from . import plugin_registry
 
+if TYPE_CHECKING:
+    from .base import LanguagePlugin
 
-def load_all_plugins() -> List[str]:
+
+def load_all_plugins() -> list[str]:
     """Load and register all available language plugins"""
     loaded_plugins = []
 
@@ -59,22 +61,22 @@ def load_all_plugins() -> List[str]:
     return loaded_plugins
 
 
-def get_supported_languages() -> List[str]:
+def get_supported_languages() -> list[str]:
     """Get list of all supported languages"""
     return plugin_registry.list_supported_languages()
 
 
-def get_supported_extensions() -> List[str]:
+def get_supported_extensions() -> list[str]:
     """Get list of all supported file extensions"""
     return plugin_registry.list_supported_extensions()
 
 
-def get_plugin_for_file(file_path: str):
+def get_plugin_for_file(file_path: str) -> "LanguagePlugin | None":
     """Get appropriate plugin for a file"""
     return plugin_registry.get_plugin_for_file(file_path)
 
 
-def get_plugin_by_language(language: str):
+def get_plugin_by_language(language: str) -> "LanguagePlugin | None":
     """Get plugin by language name"""
     return plugin_registry.get_plugin(language)
 

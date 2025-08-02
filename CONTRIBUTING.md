@@ -49,8 +49,14 @@ pytest tests/test_partial_read_command_validation.py -v
 
 3. **Test your changes**
    ```bash
+   # Run tests
    pytest tests/ -v
-   uv run python -m tree_sitter_analyzer examples/Sample.java --advanced
+
+   # Run code quality checks
+   uv run black --check . && uv run ruff check . && uv run mypy .
+
+   # Test CLI functionality
+   uv run python -m tree_sitter_analyzer examples/Sample.java --advanced --output-format=text
    ```
 
 4. **Submit a pull request**
@@ -64,6 +70,93 @@ pytest tests/test_partial_read_command_validation.py -v
 - Use type hints where appropriate
 - Write clear docstrings
 - Keep functions focused and small
+
+📖 **For detailed guidelines, see our [Code Style Guide](CODE_STYLE_GUIDE.md)**
+
+### 🔧 Pre-commit Hooks (Recommended)
+
+Install pre-commit hooks to automatically check code quality:
+
+```bash
+# Install pre-commit
+uv add --dev pre-commit
+
+# Install hooks
+uv run pre-commit install
+
+# Run hooks manually (optional)
+uv run pre-commit run --all-files
+```
+
+### Code Quality Checks
+
+Before submitting your changes, run these quality checks:
+
+```bash
+# Format code with Black
+uv run black .
+
+# Check code formatting
+uv run black --check .
+
+# Lint with Ruff (faster alternative to flake8)
+uv run ruff check .
+
+# Auto-fix Ruff issues (safe fixes only)
+uv run ruff check . --fix
+
+# Type checking with mypy (note: has many legacy issues)
+uv run mypy . --no-error-summary
+
+# Run all quality checks at once
+uv run black --check . && uv run ruff check . && uv run mypy .
+
+# Or use our quality check script (recommended)
+python check_quality.py
+
+# Auto-fix issues and run checks
+python check_quality.py --fix
+
+# Focus on new code only (skip legacy issues) - RECOMMENDED FOR NEW CONTRIBUTORS
+python check_quality.py --new-code-only --fix
+```
+
+### Quality Check Script
+
+Our `check_quality.py` script provides:
+
+- **Black code formatting** (auto-fixes with `--fix`)
+- **Ruff linting** (auto-fixes safe issues with `--fix`)
+- **MyPy type checking** (skipped in `--new-code-only` mode)
+- **Quick test run**
+
+**Recommended workflow for new contributors:**
+```bash
+python check_quality.py --new-code-only --fix
+```
+
+This will auto-format your code and fix safe issues while skipping the ~300 legacy type issues.
+
+### Quality Standards
+
+**For new contributions:**
+- All code must pass Black formatting
+- New code should not introduce Ruff warnings
+- Type hints should be provided for new functions
+- Tests should be included for new functionality
+- Line length: 88 characters (Black default)
+
+**Legacy code reality:**
+- The project has ~300 historical code quality issues
+- Focus on not introducing new issues
+- Feel free to improve code you're modifying, but it's not required
+- Large-scale quality improvements should be separate PRs
+
+**For New Contributors:**
+- Focus on not introducing NEW quality issues
+- You can optionally fix existing issues in files you're modifying
+- Use `uv run ruff check . --fix` to auto-fix safe issues
+- Large-scale quality improvements should be separate PRs
 
 ## 🐛 Reporting Issues
 

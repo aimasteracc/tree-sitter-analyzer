@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Tests for language_detector module
 """
@@ -11,7 +10,6 @@ sys.path.insert(0, ".")
 
 import os
 import tempfile
-from pathlib import Path
 
 from tree_sitter_analyzer.language_detector import (
     detect_language_from_file,
@@ -98,11 +96,11 @@ def test_detect_from_file_with_temp_files():
 
 def test_is_language_supported():
     """Test language support checking"""
-    assert is_language_supported("java") == True
-    assert is_language_supported("javascript") == True
-    assert is_language_supported("python") == True
-    assert is_language_supported("typescript") == True
-    assert is_language_supported("unknown_lang") == False
+    assert is_language_supported("java")
+    assert is_language_supported("javascript")
+    assert is_language_supported("python")
+    assert is_language_supported("typescript")
+    assert not is_language_supported("unknown_lang")
 
 
 def test_detector_methods():

@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Tests for Plugin System - Fixed Version
 
@@ -12,24 +11,11 @@ import sys
 # Add project root to path
 sys.path.insert(0, ".")
 
-import os
-import tempfile
 
 import pytest
-import pytest_asyncio
 
-from tree_sitter_analyzer.models import Class, Function, Import, Variable
-from tree_sitter_analyzer.plugins import (
-    ElementExtractor,
-    LanguagePlugin,
-    PluginRegistry,
-    plugin_registry,
-)
-from tree_sitter_analyzer.plugins.java_plugin import JavaElementExtractor, JavaPlugin
-from tree_sitter_analyzer.plugins.javascript_plugin import (
-    JavaScriptElementExtractor,
-    JavaScriptPlugin,
-)
+from tree_sitter_analyzer.models import Function
+from tree_sitter_analyzer.plugins.java_plugin import JavaElementExtractor
 
 
 @pytest.fixture
@@ -101,9 +87,7 @@ def test_extract_parameters_from_node(mocker, java_extractor):
 
     source_code = "void test(String param) {}"
 
-    parameters = java_extractor._extract_parameters_from_node(
-        mock_node, source_code
-    )
+    parameters = java_extractor._extract_parameters_from_node(mock_node, source_code)
 
     assert len(parameters) == 1
     assert parameters[0] == "String param"
@@ -163,9 +147,7 @@ def test_extract_superclass_from_node(mocker, java_extractor):
 
     source_code = "class Test extends BaseClass {}"
 
-    superclass = java_extractor._extract_superclass_from_node(
-        mock_node, source_code
-    )
+    superclass = java_extractor._extract_superclass_from_node(mock_node, source_code)
 
     assert superclass == "BaseClass"
 
@@ -193,9 +175,7 @@ def test_extract_interfaces_from_node(mocker, java_extractor):
 
     source_code = "class Test implements Interface1, Interface2 {}"
 
-    interfaces = java_extractor._extract_interfaces_from_node(
-        mock_node, source_code
-    )
+    interfaces = java_extractor._extract_interfaces_from_node(mock_node, source_code)
 
     assert len(interfaces) == 2
     assert "Interface1" in interfaces

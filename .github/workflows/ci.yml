@@ -1,0 +1,160 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  quality-check:
+    name: Code Quality Check
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v4
+      with:
+        version: "latest"
+
+    - name: Set up Python ${{ matrix.python-version }}
+      run: uv python install ${{ matrix.python-version }}
+
+    - name: Install dependencies
+      run: |
+        uv sync --extra all --extra mcp
+
+    - name: Run quality checks
+      run: |
+        uv run python check_quality.py --new-code-only
+
+    - name: Upload coverage reports
+      if: matrix.python-version == '3.11'
+      uses: codecov/codecov-action@v4
+      with:
+        file: ./coverage.xml
+        fail_ci_if_error: false
+
+  test-matrix:
+    name: Test Suite
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+        exclude:
+          # Reduce matrix size for faster CI
+          - os: windows-latest
+            python-version: "3.10"
+          - os: macos-latest
+            python-version: "3.10"
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v4
+      with:
+        version: "latest"
+
+    - name: Set up Python ${{ matrix.python-version }}
+      run: uv python install ${{ matrix.python-version }}
+
+    - name: Install dependencies
+      run: |
+        uv sync --extra all --extra mcp
+
+    - name: Run tests
+      run: |
+        uv run pytest tests/ -v --tb=short --maxfail=5
+
+    - name: Test CLI functionality
+      run: |
+        uv run python -m tree_sitter_analyzer examples/Sample.java --advanced --output-format=text --quiet
+
+  security-check:
+    name: Security Check
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v4
+      with:
+        version: "latest"
+
+    - name: Set up Python
+      run: uv python install 3.11
+
+    - name: Install dependencies
+      run: |
+        uv sync --extra all --extra mcp
+
+    - name: Run security checks
+      run: |
+        uv run bandit -r tree_sitter_analyzer/ -f json -o bandit-report.json || true
+        uv run safety check --json || true
+
+  documentation-check:
+    name: Documentation Check
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v4
+      with:
+        version: "latest"
+
+    - name: Set up Python
+      run: uv python install 3.11
+
+    - name: Install dependencies
+      run: |
+        uv sync --extra all --extra mcp
+
+    - name: Check README commands
+      run: |
+        # Test README examples
+        uv run python -m tree_sitter_analyzer examples/Sample.java --advanced --output-format=text --quiet
+        uv run python -m tree_sitter_analyzer examples/Sample.java --table=full --quiet
+        uv run python -m tree_sitter_analyzer examples/Sample.java --partial-read --start-line 84 --end-line 86
+
+    - name: Check MCP setup
+      run: |
+        uv run --with "tree-sitter-analyzer[mcp]" python -c "import tree_sitter_analyzer; print('MCP setup OK')"
+
+  build-check:
+    name: Build Check
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v4
+      with:
+        version: "latest"
+
+    - name: Set up Python
+      run: uv python install 3.11
+
+    - name: Build package
+      run: |
+        uv build
+
+    - name: Check package
+      run: |
+        uv run twine check dist/*
+
+    - name: Test installation from wheel
+      run: |
+        uv pip install dist/*.whl
+        python -c "import tree_sitter_analyzer; print('Package installation OK')"

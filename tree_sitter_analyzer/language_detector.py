@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Language Detection System
 
@@ -7,16 +6,15 @@ Automatically detects programming language from file extensions and content.
 Supports multiple languages with extensible configuration.
 """
 
-import re
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 
 class LanguageDetector:
     """プログラミング言語の自動判定システム"""
 
     # 基本的な拡張子マッピング
-    EXTENSION_MAPPING: Dict[str, str] = {
+    EXTENSION_MAPPING: dict[str, str] = {
         # Java系
         ".java": "java",
         ".jsp": "jsp",
@@ -64,7 +62,7 @@ class LanguageDetector:
     }
 
     # 曖昧な拡張子（複数言語に対応）
-    AMBIGUOUS_EXTENSIONS: Dict[str, List[str]] = {
+    AMBIGUOUS_EXTENSIONS: dict[str, list[str]] = {
         ".h": ["c", "cpp", "objc"],
         ".m": ["objc", "matlab"],
         ".sql": ["sql", "plsql", "mysql"],
@@ -73,7 +71,7 @@ class LanguageDetector:
     }
 
     # コンテンツベース判定のキーワード
-    CONTENT_PATTERNS: Dict[str, Dict[str, List[str]]] = {
+    CONTENT_PATTERNS: dict[str, dict[str, list[str]]] = {
         "c_vs_cpp": {
             "cpp": ["#include <iostream>", "std::", "namespace", "class ", "template<"],
             "c": ["#include <stdio.h>", "printf(", "malloc(", "typedef struct"],
@@ -179,8 +177,8 @@ class LanguageDetector:
         self._log_warning = log_warning
 
     def detect_language(
-        self, file_path: str, content: Optional[str] = None
-    ) -> Tuple[str, float]:
+        self, file_path: str, content: str | None = None
+    ) -> tuple[str, float]:
         """
         ファイルパスとコンテンツから言語を判定
 
@@ -237,7 +235,7 @@ class LanguageDetector:
         """
         return language in self.SUPPORTED_LANGUAGES
 
-    def get_supported_extensions(self) -> List[str]:
+    def get_supported_extensions(self) -> list[str]:
         """
         サポートされている拡張子一覧を取得
 
@@ -246,7 +244,7 @@ class LanguageDetector:
         """
         return sorted(self.EXTENSION_MAPPING.keys())
 
-    def get_supported_languages(self) -> List[str]:
+    def get_supported_languages(self) -> list[str]:
         """
         サポートされている言語一覧を取得
 
@@ -282,7 +280,7 @@ class LanguageDetector:
         # デフォルトは最初の候補
         return candidates[0]
 
-    def _detect_c_family(self, content: str, candidates: List[str]) -> str:
+    def _detect_c_family(self, content: str, candidates: list[str]) -> str:
         """C系言語の判定"""
         cpp_score = 0
         c_score = 0
@@ -316,7 +314,7 @@ class LanguageDetector:
 
         return best_language if scores[best_language] > 0 else candidates[0]
 
-    def _detect_objc_vs_matlab(self, content: str, candidates: List[str]) -> str:
+    def _detect_objc_vs_matlab(self, content: str, candidates: list[str]) -> str:
         """Objective-C vs MATLAB の判定"""
         objc_score = 0
         matlab_score = 0
@@ -348,7 +346,7 @@ class LanguageDetector:
         """
         self.EXTENSION_MAPPING[extension.lower()] = language
 
-    def get_language_info(self, language: str) -> Dict[str, Any]:
+    def get_language_info(self, language: str) -> dict[str, Any]:
         """
         言語の詳細情報を取得
 

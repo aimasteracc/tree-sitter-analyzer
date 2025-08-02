@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "tree-sitter-analyzer"
-version = "0.2.0"
+version = "0.3.0"
 description = "Extensible multi-language code analyzer framework using Tree-sitter with dynamic plugin architecture"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -16,15 +16,15 @@ maintainers = [
     { name = "aisheng.yu", email = "aimasteracc@gmail.com" },
 ]
 keywords = [
-    "tree-sitter", 
-    "code-analysis", 
-    "ast", 
-    "parsing", 
-    "static-analysis", 
-    "multi-language", 
-    "mcp", 
-    "mcp-server", 
-    "model-context-protocol", 
+    "tree-sitter",
+    "code-analysis",
+    "ast",
+    "parsing",
+    "static-analysis",
+    "multi-language",
+    "mcp",
+    "mcp-server",
+    "model-context-protocol",
     "ai-tools"
 ]
 classifiers = [
@@ -73,24 +73,24 @@ go = ["tree-sitter-go>=0.20.0"]
 
 # Language bundles for convenience
 web = [
-    "tree-sitter-javascript>=0.23.1", 
+    "tree-sitter-javascript>=0.23.1",
     "tree-sitter-typescript>=0.20.0"
 ]
 systems = [
-    "tree-sitter-c>=0.20.0", 
-    "tree-sitter-cpp>=0.23.4", 
-    "tree-sitter-rust>=0.20.0", 
+    "tree-sitter-c>=0.20.0",
+    "tree-sitter-cpp>=0.23.4",
+    "tree-sitter-rust>=0.20.0",
     "tree-sitter-go>=0.20.0"
 ]
 popular = [
-    "tree-sitter-java>=0.23.5", 
-    "tree-sitter-python>=0.23.0", 
-    "tree-sitter-javascript>=0.23.1", 
+    "tree-sitter-java>=0.23.5",
+    "tree-sitter-python>=0.23.0",
+    "tree-sitter-javascript>=0.23.1",
     "tree-sitter-typescript>=0.20.0"
 ]
 all-languages = [
     "tree-sitter-java>=0.23.5",
-    "tree-sitter-javascript>=0.23.1", 
+    "tree-sitter-javascript>=0.23.1",
     "tree-sitter-typescript>=0.20.0",
     "tree-sitter-python>=0.23.0",
     "tree-sitter-c>=0.20.0",
@@ -115,7 +115,7 @@ dev = [
     "pytest-asyncio>=1.1.0",
     "pytest-mock>=3.14.1",
     "black>=24.0.0",
-    "flake8>=7.0.0",
+    "ruff>=0.1.0",
     "mypy>=1.17.0",
     "isort>=5.13.0",
     "types-psutil>=5.9.0",
@@ -309,11 +309,11 @@ directory = "htmlcov"
 # MCP server configuration
 [tool.mcp]
 server_name = "tree-sitter-analyzer"
-server_version = "0.1.1"
+server_version = "0.3.0"
 description = "Tree-sitter based code analysis MCP server with multi-language support"
 capabilities = [
     "code_analysis",
-    "structure_extraction", 
+    "structure_extraction",
     "table_formatting",
     "partial_reading",
     "universal_analysis",
@@ -322,6 +322,8 @@ capabilities = [
 [tool.ruff]
 line-length = 88
 target-version = "py310"
+
+[tool.ruff.lint]
 select = [
     "E",  # pycodestyle errors
     "W",  # pycodestyle warnings
@@ -337,7 +339,7 @@ ignore = [
     "C901",  # too complex
 ]
 
-[tool.ruff.per-file-ignores]
+[tool.ruff.lint.per-file-ignores]
 "tests/*" = ["B011"]
 
 [tool.bandit]
@@ -347,5 +349,7 @@ skips = ["B101", "B601"]
 [dependency-groups]
 dev = [
     "build>=1.2.2.post1",
+    "pre-commit>=4.2.0",
+    "ruff>=0.12.7",
     "twine>=6.1.0",
 ]

@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Python-specific table formatter.
 """
 
-from typing import Any, Dict, List
+from typing import Any
+
 from .base_formatter import BaseTableFormatter
 
 
 class PythonTableFormatter(BaseTableFormatter):
     """Python言語専用のテーブルフォーマッター"""
 
-    def _format_full_table(self, data: Dict[str, Any]) -> str:
+    def _format_full_table(self, data: dict[str, Any]) -> str:
         """Python用完全版テーブル形式"""
         lines = []
 
@@ -42,21 +42,33 @@ class PythonTableFormatter(BaseTableFormatter):
             lines.append("## Classes")
             lines.append("| Class | Type | Visibility | Lines | Methods | Fields |")
             lines.append("|-------|------|------------|-------|---------|--------|")
-            
+
             for class_info in classes:
                 name = str(class_info.get("name", "Unknown"))
                 class_type = str(class_info.get("type", "class"))
                 visibility = str(class_info.get("visibility", "public"))
                 line_range = class_info.get("line_range", {})
                 lines_str = f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
-                
+
                 # このクラスのメソッド数とフィールド数を計算
-                class_methods = [m for m in data.get("methods", []) 
-                               if line_range.get('start', 0) <= m.get('line_range', {}).get('start', 0) <= line_range.get('end', 0)]
-                class_fields = [f for f in data.get("fields", []) 
-                              if line_range.get('start', 0) <= f.get('line_range', {}).get('start', 0) <= line_range.get('end', 0)]
-                
-                lines.append(f"| {name} | {class_type} | {visibility} | {lines_str} | {len(class_methods)} | {len(class_fields)} |")
+                class_methods = [
+                    m
+                    for m in data.get("methods", [])
+                    if line_range.get("start", 0)
+                    <= m.get("line_range", {}).get("start", 0)
+                    <= line_range.get("end", 0)
+                ]
+                class_fields = [
+                    f
+                    for f in data.get("fields", [])
+                    if line_range.get("start", 0)
+                    <= f.get("line_range", {}).get("start", 0)
+                    <= line_range.get("end", 0)
+                ]
+
+                lines.append(
+                    f"| {name} | {class_type} | {visibility} | {lines_str} | {len(class_methods)} | {len(class_fields)} |"
+                )
         else:
             # 単一クラスの場合
             lines.append("## Class Info")
@@ -66,15 +78,17 @@ class PythonTableFormatter(BaseTableFormatter):
             class_info = data.get("classes", [{}])[0] if data.get("classes") else {}
             stats = data.get("statistics") or {}
 
-            lines.append(f"| Package | (default) |")
+            lines.append("| Package | (default) |")
             lines.append(f"| Type | {str(class_info.get('type', 'class'))} |")
-            lines.append(f"| Visibility | {str(class_info.get('visibility', 'public'))} |")
+            lines.append(
+                f"| Visibility | {str(class_info.get('visibility', 'public'))} |"
+            )
             lines.append(
                 f"| Lines | {class_info.get('line_range', {}).get('start', 0)}-{class_info.get('line_range', {}).get('end', 0)} |"
             )
             lines.append(f"| Total Methods | {stats.get('method_count', 0)} |")
             lines.append(f"| Total Fields | {stats.get('field_count', 0)} |")
-        
+
         lines.append("")
 
         # Fields
@@ -115,7 +129,7 @@ class PythonTableFormatter(BaseTableFormatter):
 
         return "\n".join(lines)
 
-    def _format_compact_table(self, data: Dict[str, Any]) -> str:
+    def _format_compact_table(self, data: dict[str, Any]) -> str:
         """Python用コンパクト版テーブル形式"""
         lines = []
 
@@ -168,7 +182,7 @@ class PythonTableFormatter(BaseTableFormatter):
 
         return "\n".join(lines)
 
-    def _format_method_row(self, method: Dict[str, Any]) -> str:
+    def _format_method_row(self, method: dict[str, Any]) -> str:
         """Python用メソッド行のフォーマット"""
         name = str(method.get("name", ""))
         signature = self._create_full_signature(method)
@@ -183,17 +197,17 @@ class PythonTableFormatter(BaseTableFormatter):
 
         return f"| {name} | {signature} | {visibility} | {lines_str} | {cols_str} | {complexity} | {doc} |"
 
-    def _create_compact_signature(self, method: Dict[str, Any]) -> str:
+    def _create_compact_signature(self, method: dict[str, Any]) -> str:
         """Python用コンパクトなメソッドシグネチャを作成"""
         params = method.get("parameters", [])
         param_types = []
-        
+
         for p in params:
             if isinstance(p, dict):
                 param_types.append(self._shorten_type(p.get("type", "Any")))
             else:
                 param_types.append("Any")
-        
+
         params_str = ",".join(param_types)
         return_type = self._shorten_type(method.get("return_type", "Any"))
 
@@ -222,14 +236,20 @@ class PythonTableFormatter(BaseTableFormatter):
 
         # List[str] -> L[s]
         if "List[" in type_name:
-            return type_name.replace("List[", "L[").replace("str", "s").replace("int", "i")
+            return (
+                type_name.replace("List[", "L[").replace("str", "s").replace("int", "i")
+            )
 
         # Dict[str, int] -> D[s,i]
         if "Dict[" in type_name:
-            return type_name.replace("Dict[", "D[").replace("str", "s").replace("int", "i")
+            return (
+                type_name.replace("Dict[", "D[").replace("str", "s").replace("int", "i")
+            )
 
         # Optional[str] -> O[s]
         if "Optional[" in type_name:
             return type_name.replace("Optional[", "O[").replace("str", "s")
 
-        return type_mapping.get(type_name, type_name[:3] if len(type_name) > 3 else type_name)
+        return type_mapping.get(
+            type_name, type_name[:3] if len(type_name) > 3 else type_name
+        )

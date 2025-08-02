@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Tests for Java Plugin Coverage Enhancement
 
@@ -7,8 +6,8 @@ Additional tests to improve coverage for plugins/java_plugin.py
 """
 
 import sys
+
 import pytest
-import pytest_asyncio
 
 # Add project root to path
 sys.path.insert(0, ".")
