@@ -15,7 +15,7 @@ from .models import AnalysisResult
 
 
 class TableFormatter:
-    """テーブル形式でのフォーマッター"""
+    """Table formatter for code analysis results"""
 
     def __init__(self, format_type: str = "full", language: str = "java", include_javadoc: bool = False):
         self.format_type = format_type
@@ -23,17 +23,17 @@ class TableFormatter:
         self.include_javadoc = include_javadoc
 
     def _get_platform_newline(self) -> str:
-        """プラットフォーム固有の改行コードを取得"""
+        """Get platform-specific newline character"""
         return os.linesep
 
     def _convert_to_platform_newlines(self, text: str) -> str:
-        """通常の\nをプラットフォーム固有の改行コードに変換"""
+        """Convert standard \\n to platform-specific newline characters"""
         if os.linesep != "\n":
             return text.replace("\n", os.linesep)
         return text
 
     def format_structure(self, structure_data: Dict[str, Any]) -> str:
-        """構造データをテーブル形式でフォーマット"""
+        """Format structure data as table"""
         if self.format_type == "full":
             result = self._format_full_table(structure_data)
         elif self.format_type == "compact":
@@ -43,18 +43,18 @@ class TableFormatter:
         else:
             raise ValueError(f"Unsupported format type: {self.format_type}")
 
-        # 最終的にプラットフォーム固有の改行コードに変換
-        # CSV形式の場合は改行変換をスキップ（改行制御は_format_csv内で完結）
+        # Finally convert to platform-specific newline characters
+        # Skip newline conversion for CSV format (newline control is handled within _format_csv)
         if self.format_type == "csv":
             return result
 
         return self._convert_to_platform_newlines(result)
 
     def _format_full_table(self, data: Dict[str, Any]) -> str:
-        """完全版テーブル形式"""
+        """Full table format"""
         lines = []
 
-        # ヘッダー - 複数クラスがある場合はファイル名を使用
+        # Header - use filename when multiple classes exist
         classes = data.get("classes", [])
         if classes is None:
             classes = []
@@ -201,10 +201,10 @@ class TableFormatter:
         return "\n".join(lines)
 
     def _format_compact_table(self, data: Dict[str, Any]) -> str:
-        """コンパクト版テーブル形式"""
+        """Compact table format"""
         lines = []
 
-        # ヘッダー
+        # Header
         package_name = (data.get("package") or {}).get("name", "unknown")
         classes = data.get("classes", [])
         if classes is None:
@@ -255,11 +255,11 @@ class TableFormatter:
         return "\n".join(lines)
 
     def _format_csv(self, data: Dict[str, Any]) -> str:
-        """CSV形式"""
+        """CSV format"""
         output = io.StringIO()
-        writer = csv.writer(output, lineterminator="\n")  # 改行文字を明示的に指定
+        writer = csv.writer(output, lineterminator="\n")  # Explicitly specify newline character
 
-        # ヘッダー
+        # Header
         writer.writerow(
             ["Type", "Name", "Signature", "Visibility", "Lines", "Complexity", "Doc"]
         )
@@ -296,9 +296,9 @@ class TableFormatter:
                 ]
             )
 
-        # CSV出力の改行を完全に制御
+        # Completely control CSV output newlines
         csv_content = output.getvalue()
-        # 全ての改行パターンを統一し、末尾の改行を除去
+        # Unify all newline patterns and remove trailing newlines
         csv_content = csv_content.replace("\r\n", "\n").replace("\r", "\n")
         csv_content = csv_content.rstrip("\n")
         output.close()
@@ -411,38 +411,38 @@ class TableFormatter:
         if not javadoc:
             return "-"
 
-        # コメント記号を除去
+        # Remove comment symbols
         clean_doc = (
             javadoc.replace("/**", "").replace("*/", "").replace("*", "").strip()
         )
 
-        # 最初の行を取得（通常の\nのみを使用）
+        # Get first line (use standard \\n only)
         lines = clean_doc.split("\n")
         first_line = lines[0].strip()
 
-        # 長すぎる場合は切り詰め
+        # Truncate if too long
         if len(first_line) > 50:
             first_line = first_line[:47] + "..."
 
-        # Markdownテーブルで問題となる文字をエスケープ（通常の\nのみを使用）
+        # Escape characters that cause problems in Markdown tables (use standard \\n only)
         return first_line.replace("|", "\\|").replace("\n", " ")
 
     def _clean_csv_text(self, text: str) -> str:
-        """CSV形式用のテキストクリーニング"""
+        """Text cleaning for CSV format"""
         if not text:
             return ""
 
-        # 改行文字を全て空白に置換
+        # Replace all newline characters with spaces
         cleaned = text.replace("\r\n", " ").replace("\r", " ").replace("\n", " ")
-        # 連続する空白を単一の空白に変換
+        # Convert consecutive spaces to single space
         cleaned = " ".join(cleaned.split())
-        # CSVで問題となる文字をエスケープ
-        cleaned = cleaned.replace('"', '""')  # ダブルクォートをエスケープ
+        # Escape characters that cause problems in CSV
+        cleaned = cleaned.replace('"', '""')  # Escape double quotes
 
         return cleaned
 
 
 def create_table_formatter(format_type: str, language: str = "java", include_javadoc: bool = False):
-    """テーブルフォーマッターを作成（新しいファクトリーを使用）"""
-    # 直接TableFormatterを作成（JavaDoc対応のため）
+    """Create table formatter (using new factory)"""
+    # Create TableFormatter directly (for JavaDoc support)
     return TableFormatter(format_type, language, include_javadoc)

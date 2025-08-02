@@ -39,7 +39,7 @@ class TableFormatTool:
 
     def get_tool_schema(self) -> Dict[str, Any]:
         """
-        Get the MCP tool schema for format_table.
+        Get the MCP tool schema for analyze_code_structure.
 
         Returns:
             Dictionary containing the tool schema
@@ -255,7 +255,7 @@ class TableFormatTool:
         }
 
     async def execute(self, args: Dict[str, Any]) -> Dict[str, Any]:
-        """Execute table formatting tool."""
+        """Execute code structure analysis tool."""
         try:
             # Validate arguments first
             if "file_path" not in args:
@@ -275,7 +275,7 @@ class TableFormatTool:
 
             # Use performance monitoring
             monitor = get_performance_monitor()
-            with monitor.measure_operation("table_format_analysis"):
+            with monitor.measure_operation("code_structure_analysis"):
                 # Analyze structure using the unified analysis engine
                 request = AnalysisRequest(
                     file_path=file_path,
@@ -328,12 +328,12 @@ class TableFormatTool:
                 }
 
         except Exception as e:
-            self.logger.error(f"Error in table format tool: {e}")
+            self.logger.error(f"Error in code structure analysis tool: {e}")
             raise
 
     def get_tool_definition(self) -> Any:
         """
-        Get the MCP tool definition for format_table.
+        Get the MCP tool definition for analyze_code_structure.
 
         Returns:
             Tool definition object compatible with MCP server
@@ -342,15 +342,15 @@ class TableFormatTool:
             from mcp.types import Tool
 
             return Tool(
-                name="format_table",
-                description="Format code analysis results as tables (equivalent to CLI --table=full option)",
+                name="analyze_code_structure",
+                description="Analyze code structure and generate detailed overview tables (classes, methods, fields) for large files",
                 inputSchema=self.get_tool_schema(),
             )
         except ImportError:
             # Fallback for when MCP is not available
             return {
-                "name": "format_table",
-                "description": "Format code analysis results as tables (equivalent to CLI --table=full option)",
+                "name": "analyze_code_structure",
+                "description": "Analyze code structure and generate detailed overview tables (classes, methods, fields) for large files",
                 "inputSchema": self.get_tool_schema(),
             }
 

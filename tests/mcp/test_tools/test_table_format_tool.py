@@ -95,12 +95,12 @@ public class TestClass {
         result = self.tool.get_tool_definition()
         
         assert isinstance(result, dict)
-        assert result["name"] == "format_table"
+        assert result["name"] == "analyze_code_structure"
         assert "table" in result["description"].lower()
 
     @pytest.mark.asyncio
     async def test_execute_success(self, mocker) -> None:
-        """Test successful execution of format_table tool with CLI-compatible flow."""
+        """Test successful execution of analyze_code_structure tool with CLI-compatible flow."""
         # Mock all dependencies - avoiding with statements
         mocker.patch("pathlib.Path.exists", return_value=True)
         mocker.patch("tree_sitter_analyzer.language_detector.detect_language_from_file", return_value="java")
