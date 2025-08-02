@@ -12,10 +12,11 @@ from typing import TYPE_CHECKING, Any, Optional
 if TYPE_CHECKING:
     import tree_sitter
 
-    from ..models import AnalysisRequest, AnalysisResult
+    from ..core.analysis_engine import AnalysisRequest
+    from ..models import AnalysisResult
 
 from ..encoding_utils import extract_text_slice, safe_encode
-from ..models import Class, Function, Import, Package, Variable
+from ..models import Class, CodeElement, Function, Import, Package, Variable
 from ..plugins.base import ElementExtractor, LanguagePlugin
 from ..utils import log_debug, log_error, log_warning
 
@@ -209,7 +210,7 @@ class JavaElementExtractor(ElementExtractor):
         Uses batch processing for optimal performance
         """
         if not root_node:
-            return
+            return  # type: ignore[unreachable]
 
         # Target node types for extraction
         target_node_types = set(extractors.keys())
@@ -611,6 +612,9 @@ class JavaElementExtractor(ElementExtractor):
                     "void_type",
                     "primitive_type",
                     "integral_type",
+                    "boolean_type",
+                    "floating_point_type",
+                    "array_type",
                 ]:
                     return_type = self._get_node_text_optimized(child)
                     break
@@ -650,7 +654,15 @@ class JavaElementExtractor(ElementExtractor):
             # Extract type (exactly as in AdvancedAnalyzer)
             field_type = None
             for child in node.children:
-                if child.type in ["type_identifier", "primitive_type", "integral_type"]:
+                if child.type in [
+                    "type_identifier",
+                    "primitive_type",
+                    "integral_type",
+                    "generic_type",
+                    "boolean_type",
+                    "floating_point_type",
+                    "array_type",
+                ]:
                     field_type = self._get_node_text_optimized(child)
                     break
 
@@ -784,44 +796,75 @@ class JavaElementExtractor(ElementExtractor):
         return complexity
 
     def _extract_javadoc_for_line(self, target_line: int) -> str | None:
-        """Extract JavaDoc comment immediately before the specified line (from AdvancedAnalyzer)"""
+        """Extract JavaDoc comment immediately before the specified line"""
         try:
+            if not self.content_lines or target_line <= 1:
+                return None
+
             # Search backwards from target_line
             javadoc_lines = []
             current_line = target_line - 1
 
             # Skip empty lines
-            while current_line > 0 and current_line <= len(self.content_lines):
+            while current_line > 0:
                 line = self.content_lines[current_line - 1].strip()
                 if line:
                     break
                 current_line -= 1
 
             # Check for JavaDoc end
-            if current_line > 0 and current_line <= len(self.content_lines):
+            if current_line > 0:
                 line = self.content_lines[current_line - 1].strip()
                 if line.endswith("*/"):
-                    javadoc_lines.append(line)
+                    # This might be a JavaDoc comment
+                    javadoc_lines.append(self.content_lines[current_line - 1])
                     current_line -= 1
 
                     # Collect JavaDoc content
                     while current_line > 0:
-                        line = self.content_lines[current_line - 1].strip()
-                        javadoc_lines.append(line)
-                        if line.startswith("/**"):
-                            break
-                        current_line -= 1
+                        line_content = self.content_lines[current_line - 1]
+                        line_stripped = line_content.strip()
+                        javadoc_lines.append(line_content)
 
-                    if javadoc_lines and javadoc_lines[-1].startswith("/**"):
-                        # Reverse to correct order
-                        javadoc_lines.reverse()
-                        return "\n".join(javadoc_lines)
+                        if line_stripped.startswith("/**"):
+                            # Found the start of JavaDoc
+                            javadoc_lines.reverse()
+                            javadoc_text = "\n".join(javadoc_lines)
+
+                            # Clean up the JavaDoc
+                            return self._clean_javadoc(javadoc_text)
+                        current_line -= 1
 
             return None
 
         except Exception as e:
             log_debug(f"Failed to extract JavaDoc: {e}")
             return None
+
+    def _clean_javadoc(self, javadoc_text: str) -> str:
+        """Clean JavaDoc text by removing comment markers"""
+        if not javadoc_text:
+            return ""
+
+        lines = javadoc_text.split("\n")
+        cleaned_lines = []
+
+        for line in lines:
+            # Remove leading/trailing whitespace
+            line = line.strip()
+
+            # Remove comment markers
+            if line.startswith("/**"):
+                line = line[3:].strip()
+            elif line.startswith("*/"):
+                line = line[2:].strip()
+            elif line.startswith("*"):
+                line = line[1:].strip()
+
+            if line:  # Only add non-empty lines
+                cleaned_lines.append(line)
+
+        return " ".join(cleaned_lines) if cleaned_lines else ""
 
     def _is_nested_class(self, node: "tree_sitter.Node") -> bool:
         """Check if this is a nested class (from AdvancedAnalyzer)"""
@@ -991,7 +1034,7 @@ class JavaPlugin(LanguagePlugin):
             try:
                 import tree_sitter_java as tsjava
 
-                self._language_cache = tsjava.language()
+                self._language_cache = tsjava.language()  # type: ignore
             except ImportError:
                 log_error("tree-sitter-java not available")
                 return None
@@ -1069,32 +1112,34 @@ class JavaPlugin(LanguagePlugin):
             # Extract elements
             extractor = self.create_extractor()
 
-            log_debug("Java Plugin: Extracting annotations...")
-            annotations = extractor.extract_annotations(parse_result.tree, source_code)
-            log_debug(f"Java Plugin: Found {len(annotations)} annotations")
+            if parse_result.tree:
+                log_debug("Java Plugin: Extracting functions...")
+                functions = extractor.extract_functions(parse_result.tree, source_code)
+                log_debug(f"Java Plugin: Found {len(functions)} functions")
 
-            log_debug("Java Plugin: Extracting packages...")
-            packages = extractor.extract_packages(parse_result.tree, source_code)
-            log_debug(f"Java Plugin: Found {len(packages)} packages")
+                log_debug("Java Plugin: Extracting classes...")
+                classes = extractor.extract_classes(parse_result.tree, source_code)
+                log_debug(f"Java Plugin: Found {len(classes)} classes")
 
-            log_debug("Java Plugin: Extracting functions...")
-            functions = extractor.extract_functions(parse_result.tree, source_code)
-            log_debug(f"Java Plugin: Found {len(functions)} functions")
+                log_debug("Java Plugin: Extracting variables...")
+                variables = extractor.extract_variables(parse_result.tree, source_code)
+                log_debug(f"Java Plugin: Found {len(variables)} variables")
 
-            log_debug("Java Plugin: Extracting classes...")
-            classes = extractor.extract_classes(parse_result.tree, source_code)
-            log_debug(f"Java Plugin: Found {len(classes)} classes")
+                log_debug("Java Plugin: Extracting imports...")
+                imports = extractor.extract_imports(parse_result.tree, source_code)
+                log_debug(f"Java Plugin: Found {len(imports)} imports")
+            else:
+                functions = []
+                classes = []
+                variables = []
+                imports = []
 
-            log_debug("Java Plugin: Extracting variables...")
-            variables = extractor.extract_variables(parse_result.tree, source_code)
-            log_debug(f"Java Plugin: Found {len(variables)} variables")
-
-            log_debug("Java Plugin: Extracting imports...")
-            imports = extractor.extract_imports(parse_result.tree, source_code)
-            log_debug(f"Java Plugin: Found {len(imports)} imports")
-
-            # Combine all elements (annotations are stored in extractor for cross-referencing)
-            all_elements = packages + functions + classes + variables + imports
+            # Combine all elements
+            all_elements: list[CodeElement] = []
+            all_elements.extend(functions)
+            all_elements.extend(classes)
+            all_elements.extend(variables)
+            all_elements.extend(imports)
             log_debug(f"Java Plugin: Total elements: {len(all_elements)}")
 
             return AnalysisResult(

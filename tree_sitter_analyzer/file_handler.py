@@ -62,14 +62,10 @@ def read_file_with_fallback(file_path: str) -> bytes | None:
 
     try:
         content, detected_encoding = read_file_safe(file_path)
-        if content is not None:  # 空文字列も有効なコンテンツ
-            log_info(
-                f"Successfully read file {file_path} with encoding: {detected_encoding}"
-            )
-            return content.encode("utf-8")
-        else:
-            log_warning(f"File {file_path} is empty or could not be read")
-            return b""
+        log_info(
+            f"Successfully read file {file_path} with encoding: {detected_encoding}"
+        )
+        return content.encode("utf-8")
 
     except Exception as e:
         log_error(f"Failed to read file {file_path}: {e}")
@@ -113,9 +109,6 @@ def read_file_partial(
     try:
         # ファイル全体を安全に読み込み
         content, detected_encoding = read_file_safe(file_path)
-        if content is None:
-            log_error(f"Failed to read file: {file_path}")
-            return None
 
         # 行に分割
         lines = content.splitlines(keepends=True)

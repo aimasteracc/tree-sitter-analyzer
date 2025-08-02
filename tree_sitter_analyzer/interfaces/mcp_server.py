@@ -53,9 +53,9 @@ class TreeSitterAnalyzerMCPServer:
 
     def create_server(self) -> Server:
         """Create and configure the MCP server."""
-        server = Server(self.name)
+        server: Any = Server(self.name)
 
-        @server.list_tools()
+        @server.list_tools()  # type: ignore
         async def handle_list_tools() -> list[Tool]:
             """List available tools."""
             return [
@@ -224,7 +224,7 @@ class TreeSitterAnalyzerMCPServer:
                 ),
             ]
 
-        @server.call_tool()
+        @server.call_tool()  # type: ignore
         async def handle_call_tool(
             name: str, arguments: dict[str, Any]
         ) -> list[TextContent]:
@@ -309,25 +309,25 @@ class TreeSitterAnalyzerMCPServer:
                     )
                 ]
 
-        @server.list_resources()
+        @server.list_resources()  # type: ignore
         async def handle_list_resources() -> list[Resource]:
             """List available resources."""
             return [
                 Resource(
-                    uri="code://file/{file_path}",
+                    uri="code://file/{file_path}",  # type: ignore
                     name="Code File Analysis",
                     description="Access to code file content and analysis",
                     mimeType="application/json",
                 ),
                 Resource(
-                    uri="code://stats/{stats_type}",
+                    uri="code://stats/{stats_type}",  # type: ignore
                     name="Project Statistics",
                     description="Access to project statistics and analysis data",
                     mimeType="application/json",
                 ),
             ]
 
-        @server.read_resource()
+        @server.read_resource()  # type: ignore
         async def handle_read_resource(uri: str) -> str:
             """Read resource content."""
             try:
@@ -366,7 +366,7 @@ class TreeSitterAnalyzerMCPServer:
 
         self.server = server
         log_info("MCP server created successfully")
-        return server
+        return server  # type: ignore
 
     async def run(self) -> None:
         """Run the MCP server."""
@@ -376,7 +376,7 @@ class TreeSitterAnalyzerMCPServer:
         options = InitializationOptions(
             server_name=self.name,
             server_version=self.version,
-            capabilities={"tools": {}, "resources": {}},
+            capabilities={"tools": {}, "resources": {}},  # type: ignore
         )
 
         log_info(f"Starting MCP server: {self.name} v{self.version}")

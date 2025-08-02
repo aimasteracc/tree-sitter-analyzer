@@ -78,7 +78,7 @@ class BaseCommand(ABC):
                     )
                 target_language = "java"  # Fallback
 
-        return target_language
+        return str(target_language) if target_language else None
 
     async def analyze_file(self, language: str) -> Optional["AnalysisResult"]:
         """Perform file analysis using the unified analysis engine."""

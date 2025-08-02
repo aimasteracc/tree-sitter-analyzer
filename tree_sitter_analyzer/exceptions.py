@@ -42,7 +42,7 @@ class AnalysisError(TreeSitterAnalyzerError):
         message: str,
         file_path: str | Path | None = None,
         language: str | None = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> None:
         context = kwargs.get("context", {})
         if file_path:
@@ -60,7 +60,7 @@ class ParseError(TreeSitterAnalyzerError):
         message: str,
         language: str | None = None,
         source_info: dict[str, Any] | None = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> None:
         context = kwargs.get("context", {})
         if language:
@@ -74,7 +74,7 @@ class LanguageNotSupportedError(TreeSitterAnalyzerError):
     """Raised when a language is not supported."""
 
     def __init__(
-        self, language: str, supported_languages: list | None = None, **kwargs
+        self, language: str, supported_languages: list[str] | None = None, **kwargs: Any
     ) -> None:
         message = f"Language '{language}' is not supported"
         context = kwargs.get("context", {})
@@ -93,7 +93,7 @@ class PluginError(TreeSitterAnalyzerError):
         message: str,
         plugin_name: str | None = None,
         operation: str | None = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> None:
         context = kwargs.get("context", {})
         if plugin_name:
@@ -112,7 +112,7 @@ class QueryError(TreeSitterAnalyzerError):
         query_name: str | None = None,
         query_string: str | None = None,
         language: str | None = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> None:
         context = kwargs.get("context", {})
         if query_name:
@@ -132,7 +132,7 @@ class FileHandlingError(TreeSitterAnalyzerError):
         message: str,
         file_path: str | Path | None = None,
         operation: str | None = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> None:
         context = kwargs.get("context", {})
         if file_path:
@@ -150,7 +150,7 @@ class ConfigurationError(TreeSitterAnalyzerError):
         message: str,
         config_key: str | None = None,
         config_value: Any | None = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> None:
         context = kwargs.get("context", {})
         if config_key:
@@ -168,7 +168,7 @@ class ValidationError(TreeSitterAnalyzerError):
         message: str,
         validation_type: str | None = None,
         invalid_value: Any | None = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> None:
         context = kwargs.get("context", {})
         if validation_type:
@@ -186,7 +186,7 @@ class MCPError(TreeSitterAnalyzerError):
         message: str,
         tool_name: str | None = None,
         resource_uri: str | None = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> None:
         context = kwargs.get("context", {})
         if tool_name:
@@ -200,7 +200,7 @@ class MCPError(TreeSitterAnalyzerError):
 def handle_exception(
     exception: Exception,
     context: dict[str, Any] | None = None,
-    reraise_as: type | None = None,
+    reraise_as: type[Exception] | None = None,
 ) -> None:
     """
     Handle exceptions with optional context and re-raising.
@@ -231,13 +231,13 @@ def handle_exception(
 
 
 def safe_execute(
-    func,
-    *args,
-    default_return=None,
-    exception_types: tuple = (Exception,),
+    func: Any,
+    *args: Any,
+    default_return: Any = None,
+    exception_types: tuple[type[Exception], ...] = (Exception,),
     log_errors: bool = True,
-    **kwargs,
-):
+    **kwargs: Any,
+) -> Any:
     """
     Safely execute a function with exception handling.
 
@@ -277,7 +277,7 @@ def create_error_response(
     """
     import traceback
 
-    response = {
+    response: dict[str, Any] = {
         "success": False,
         "error": {"type": exception.__class__.__name__, "message": str(exception)},
     }
@@ -299,11 +299,11 @@ def create_error_response(
 
 # Decorator for exception handling
 def handle_exceptions(
-    default_return=None,
-    exception_types: tuple = (Exception,),
-    reraise_as: type | None = None,
+    default_return: Any = None,
+    exception_types: tuple[type[Exception], ...] = (Exception,),
+    reraise_as: type[Exception] | None = None,
     log_errors: bool = True,
-):
+) -> Any:
     """
     Decorator for automatic exception handling.
 
@@ -314,8 +314,8 @@ def handle_exceptions(
         log_errors: Whether to log errors
     """
 
-    def decorator(func):
-        def wrapper(*args, **kwargs):
+    def decorator(func: Any) -> Any:
+        def wrapper(*args: Any, **kwargs: Any) -> Any:
             try:
                 return func(*args, **kwargs)
             except exception_types as e:

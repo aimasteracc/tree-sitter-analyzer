@@ -5,7 +5,7 @@ Partial Read Command
 Handles partial file reading functionality, extracting specified line ranges.
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from ...file_handler import read_file_partial
 from ...output_manager import output_data, output_json, output_section
@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 class PartialReadCommand(BaseCommand):
     """Command for reading partial file content by line range."""
 
-    def __init__(self, args):
+    def __init__(self, args: Any) -> None:
         """Initialize with arguments but skip base class analysis engine setup."""
         self.args = args
         # Don't call super().__init__() to avoid unnecessary analysis engine setup

@@ -76,8 +76,11 @@ class QueryLoader:
                 for attr_name in dir(module):
                     if not attr_name.startswith("_"):
                         attr_value = getattr(module, attr_name)
-                        if isinstance(attr_value, str | dict):
+                        if isinstance(attr_value, str):
                             queries[attr_name] = attr_value
+                        elif isinstance(attr_value, dict):
+                            # Convert dict to string representation for queries
+                            queries[attr_name] = str(attr_value)
 
             self._loaded_queries[language] = queries
             self._query_modules[language] = module

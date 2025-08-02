@@ -214,7 +214,7 @@ class AnalyzeScaleTool:
         Returns:
             Dictionary containing LLM guidance
         """
-        guidance = {
+        guidance: dict[str, Any] = {
             "analysis_strategy": "",
             "recommended_tools": [],
             "key_areas": [],
@@ -417,35 +417,47 @@ class AnalyzeScaleTool:
                         "classes": len(
                             [
                                 e
-                                for e in analysis_result.elements
+                                for e in (
+                                    analysis_result.elements if analysis_result else []
+                                )
                                 if e.__class__.__name__ == "Class"
                             ]
                         ),
                         "methods": len(
                             [
                                 e
-                                for e in analysis_result.elements
+                                for e in (
+                                    analysis_result.elements if analysis_result else []
+                                )
                                 if e.__class__.__name__ == "Function"
                             ]
                         ),
                         "fields": len(
                             [
                                 e
-                                for e in analysis_result.elements
+                                for e in (
+                                    analysis_result.elements if analysis_result else []
+                                )
                                 if e.__class__.__name__ == "Variable"
                             ]
                         ),
                         "imports": len(
                             [
                                 e
-                                for e in analysis_result.elements
+                                for e in (
+                                    analysis_result.elements if analysis_result else []
+                                )
                                 if e.__class__.__name__ == "Import"
                             ]
                         ),
-                        "annotations": len(getattr(analysis_result, "annotations", [])),
+                        "annotations": len(
+                            getattr(analysis_result, "annotations", [])
+                            if analysis_result
+                            else []
+                        ),
                         "package": (
                             analysis_result.package.name
-                            if analysis_result.package
+                            if analysis_result and analysis_result.package
                             else None
                         ),
                     },
@@ -458,20 +470,27 @@ class AnalyzeScaleTool:
                 # Add detailed information if requested (backward compatibility)
                 if include_details:
                     result["detailed_analysis"] = {
-                        "statistics": analysis_result.get_statistics(),
+                        "statistics": (
+                            analysis_result.get_statistics() if analysis_result else {}
+                        ),
                         "classes": [
                             {
                                 "name": cls.name,
-                                "type": cls.class_type,
-                                "visibility": cls.visibility,
-                                "extends": cls.extends_class,
-                                "implements": cls.implements_interfaces,
-                                "annotations": [ann.name for ann in cls.annotations],
+                                "type": getattr(cls, "class_type", "unknown"),
+                                "visibility": getattr(cls, "visibility", "unknown"),
+                                "extends": getattr(cls, "extends_class", None),
+                                "implements": getattr(cls, "implements_interfaces", []),
+                                "annotations": [
+                                    getattr(ann, "name", str(ann))
+                                    for ann in getattr(cls, "annotations", [])
+                                ],
                                 "lines": f"{cls.start_line}-{cls.end_line}",
                             }
                             for cls in [
                                 e
-                                for e in analysis_result.elements
+                                for e in (
+                                    analysis_result.elements if analysis_result else []
+                                )
                                 if e.__class__.__name__ == "Class"
                             ]
                         ],
@@ -479,35 +498,49 @@ class AnalyzeScaleTool:
                             {
                                 "name": method.name,
                                 "file_path": getattr(method, "file_path", file_path),
-                                "visibility": method.visibility,
-                                "return_type": method.return_type,
-                                "parameters": len(method.parameters),
-                                "annotations": [ann.name for ann in method.annotations],
-                                "is_constructor": method.is_constructor,
-                                "is_static": method.is_static,
-                                "complexity": method.complexity_score,
+                                "visibility": getattr(method, "visibility", "unknown"),
+                                "return_type": getattr(
+                                    method, "return_type", "unknown"
+                                ),
+                                "parameters": len(getattr(method, "parameters", [])),
+                                "annotations": [
+                                    getattr(ann, "name", str(ann))
+                                    for ann in getattr(method, "annotations", [])
+                                ],
+                                "is_constructor": getattr(
+                                    method, "is_constructor", False
+                                ),
+                                "is_static": getattr(method, "is_static", False),
+                                "complexity": getattr(method, "complexity_score", 0),
                                 "lines": f"{method.start_line}-{method.end_line}",
                             }
                             for method in [
                                 e
-                                for e in analysis_result.elements
+                                for e in (
+                                    analysis_result.elements if analysis_result else []
+                                )
                                 if e.__class__.__name__ == "Function"
                             ]
                         ],
                         "fields": [
                             {
                                 "name": field.name,
-                                "type": field.field_type,
+                                "type": getattr(field, "field_type", "unknown"),
                                 "file_path": getattr(field, "file_path", file_path),
-                                "visibility": field.visibility,
-                                "is_static": field.is_static,
-                                "is_final": field.is_final,
-                                "annotations": [ann.name for ann in field.annotations],
+                                "visibility": getattr(field, "visibility", "unknown"),
+                                "is_static": getattr(field, "is_static", False),
+                                "is_final": getattr(field, "is_final", False),
+                                "annotations": [
+                                    getattr(ann, "name", str(ann))
+                                    for ann in getattr(field, "annotations", [])
+                                ],
                                 "lines": f"{field.start_line}-{field.end_line}",
                             }
                             for field in [
                                 e
-                                for e in analysis_result.elements
+                                for e in (
+                                    analysis_result.elements if analysis_result else []
+                                )
                                 if e.__class__.__name__ == "Variable"
                             ]
                         ],
@@ -517,14 +550,14 @@ class AnalyzeScaleTool:
                 classes_count = len(
                     [
                         e
-                        for e in analysis_result.elements
+                        for e in (analysis_result.elements if analysis_result else [])
                         if e.__class__.__name__ == "Class"
                     ]
                 )
                 methods_count = len(
                     [
                         e
-                        for e in analysis_result.elements
+                        for e in (analysis_result.elements if analysis_result else [])
                         if e.__class__.__name__ == "Function"
                     ]
                 )

@@ -50,7 +50,7 @@ class SafeStreamHandler(logging.StreamHandler):
     A StreamHandler that safely handles closed streams
     """
 
-    def emit(self, record):
+    def emit(self, record: Any) -> None:
         """
         Emit a record, safely handling closed streams
         """
@@ -72,12 +72,12 @@ class SafeStreamHandler(logging.StreamHandler):
             self.handleError(record)
 
 
-def setup_safe_logging_shutdown():
+def setup_safe_logging_shutdown() -> None:
     """
     Setup safe logging shutdown to prevent I/O errors
     """
 
-    def cleanup_logging():
+    def cleanup_logging() -> None:
         """Clean up logging handlers safely"""
         try:
             # Get all loggers
@@ -178,7 +178,7 @@ class QuietMode:
         if self.enabled:
             self.old_level = logger.level
             logger.setLevel(logging.ERROR)
-        return self  # type: ignore
+        return self
 
     def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         if self.enabled and self.old_level is not None:
@@ -222,7 +222,7 @@ perf_logger = create_performance_logger("tree_sitter_analyzer")
 def log_performance(
     operation: str,
     execution_time: float | None = None,
-    details: dict | None = None,
+    details: dict[Any, Any] | str | None = None,
 ) -> None:
     """Log performance metrics"""
     try:
@@ -270,7 +270,7 @@ class LoggingContext:
         if self.enabled and self.level is not None:
             self.old_level = self.target_logger.level
             self.target_logger.setLevel(self.level)
-        return self  # type: ignore
+        return self
 
     def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         if self.enabled and self.old_level is not None:

@@ -5,7 +5,7 @@ Summary Command
 Handles summary functionality with specified element types.
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from ...output_manager import output_data, output_json, output_section
 from .base_command import BaseCommand
@@ -50,7 +50,7 @@ class SummaryCommand(BaseCommand):
             e for e in analysis_result.elements if e.__class__.__name__ == "Import"
         ]
 
-        summary_data = {
+        summary_data: dict[str, Any] = {
             "file_path": analysis_result.file_path,
             "language": analysis_result.language,
             "summary": {},

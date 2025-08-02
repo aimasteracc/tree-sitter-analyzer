@@ -12,12 +12,13 @@ sys.path.insert(0, ".")
 
 import pytest
 
-# Mock functionality now provided by pytest-mock
-from tree_sitter_analyzer.models import Class, Function, Import, Variable
-from tree_sitter_analyzer.plugins.javascript_plugin import (
+from tree_sitter_analyzer.languages.javascript_plugin import (
     JavaScriptElementExtractor,
     JavaScriptPlugin,
 )
+
+# Mock functionality now provided by pytest-mock
+from tree_sitter_analyzer.models import Class, Function, Import, Variable
 
 
 @pytest.fixture

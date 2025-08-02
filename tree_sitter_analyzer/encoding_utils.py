@@ -162,8 +162,6 @@ class EncodingManager:
         Returns:
             Encoded bytes
         """
-        if text is None:
-            return b""
 
         target_encoding = encoding or cls.DEFAULT_ENCODING
 

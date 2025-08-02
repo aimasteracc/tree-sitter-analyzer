@@ -9,7 +9,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from tree_sitter_analyzer.plugins.python_plugin import (
+from tree_sitter_analyzer.languages.python_plugin import (
     PythonElementExtractor,
     PythonPlugin,
 )

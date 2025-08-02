@@ -59,7 +59,7 @@ class TestUnifiedAnalysisEngine:
         # Assert
         assert engine is not None
         assert engine._cache_service is not None
-        assert engine._plugin_registry is not None
+        assert engine._plugin_manager is not None
         assert engine._performance_monitor is not None
 
     @pytest.mark.unit
@@ -186,7 +186,7 @@ class TestUnifiedAnalysisEngine:
 
         # Assert
         assert "test_lang" in engine.get_supported_languages()
-        retrieved_plugin = engine._plugin_registry.get_plugin("test_lang")
+        retrieved_plugin = engine._plugin_manager.get_plugin("test_lang")
         assert retrieved_plugin == plugin
 
     @pytest.mark.unit
@@ -272,6 +272,15 @@ class TestUnifiedAnalysisEngineErrorHandling:
 
         # エラーを発生させるモックプラグインを作成
         class ErrorPlugin:
+            def get_language_name(self) -> str:
+                return "error_lang"
+
+            def get_file_extensions(self) -> list[str]:
+                return [".error"]
+
+            def create_extractor(self):
+                return None
+
             async def analyze_file(self, file_path: str, request: AnalysisRequest):
                 raise Exception("Analysis failed")
 

@@ -164,7 +164,7 @@ class Parser:
             tree = parser.parse(source_bytes)
 
             if tree is None:
-                return ParseResult(
+                return ParseResult(  # type: ignore[unreachable]
                     tree=None,
                     source_code=source_code,
                     language=language,

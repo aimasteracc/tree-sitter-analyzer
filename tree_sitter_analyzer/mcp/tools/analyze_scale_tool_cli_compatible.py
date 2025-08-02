@@ -8,7 +8,7 @@ that matches the CLI --advanced --statistics output exactly.
 
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from ...core.analysis_engine import get_analysis_engine
 from ...language_detector import detect_language_from_file
@@ -104,8 +104,10 @@ class AnalyzeScaleToolCLICompatible:
             # Use AdvancedAnalyzer for comprehensive analysis
             analysis_result = await self.analysis_engine.analyze_file(file_path)
 
-            if analysis_result is None:
-                # Return CLI-compatible error format
+            # Handle potential None result (for testing purposes with mocked engine)
+            # This can only happen in tests where the engine is mocked to return None
+            # Use cast to tell MyPy this is possible in testing scenarios
+            if cast(Any, analysis_result) is None:
                 return {
                     "file_path": file_path,
                     "success": False,
@@ -129,7 +131,10 @@ class AnalyzeScaleToolCLICompatible:
                 "file_path": file_path,
                 "success": True,
                 "package_name": (
-                    analysis_result.package.name if analysis_result.package else None
+                    analysis_result.package.name
+                    if analysis_result.package
+                    and hasattr(analysis_result.package, "name")
+                    else None
                 ),
                 "element_counts": {
                     "imports": len(analysis_result.imports),

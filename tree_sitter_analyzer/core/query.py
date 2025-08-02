@@ -65,7 +65,7 @@ class QueryExecutor:
                 return self._create_error_result("Tree is None", query_name=query_name)
 
             if language is None:
-                return self._create_error_result(
+                return self._create_error_result(  # type: ignore[unreachable]
                     "Language is None", query_name=query_name
                 )
 
@@ -144,7 +144,7 @@ class QueryExecutor:
                 return self._create_error_result("Tree is None")
 
             if language is None:
-                return self._create_error_result("Language is None")
+                return self._create_error_result("Language is None")  # type: ignore[unreachable]
 
             # Create and execute the query
             try:
@@ -206,7 +206,7 @@ class QueryExecutor:
         return results
 
     def _process_captures(
-        self, captures: list[dict[str, Any] | tuple[Node, str]], source_code: str
+        self, captures: Any, source_code: str
     ) -> list[dict[str, Any]]:
         """
         Process query captures into standardized format.
@@ -290,7 +290,7 @@ class QueryExecutor:
             return {"capture_name": capture_name, "node_type": "error", "error": str(e)}
 
     def _create_error_result(
-        self, error_message: str, query_name: str | None = None, **kwargs
+        self, error_message: str, query_name: str | None = None, **kwargs: Any
     ) -> dict[str, Any]:
         """
         Create an error result dictionary.
@@ -322,7 +322,14 @@ class QueryExecutor:
             List of available query names
         """
         try:
-            return self._query_loader.get_all_queries_for_language(language)
+            queries = self._query_loader.get_all_queries_for_language(language)
+            if isinstance(queries, dict):
+                return list(queries.keys())
+            # Handle other iterable types
+            try:  # type: ignore[unreachable]
+                return list(queries) if queries else []
+            except (TypeError, ValueError):
+                return []
         except Exception as e:
             logger.error(f"Error getting available queries for {language}: {e}")
             return []
@@ -405,7 +412,7 @@ class QueryExecutor:
 
 
 # Module-level convenience functions for backward compatibility
-def get_available_queries(language: str = None) -> list[str]:
+def get_available_queries(language: str | None = None) -> list[str]:
     """
     Get available queries for a language (module-level function).
 
@@ -449,6 +456,7 @@ def get_query_description(language: str, query_name: str) -> str | None:
         return loader.get_query_description(language, query_name)
     except Exception as e:
         logger.error(f"Error getting query description: {e}")
+        return None
 
 
 # Module-level attributes for backward compatibility
@@ -457,7 +465,7 @@ try:
 
     query_loader = get_query_loader()
 except Exception:
-    query_loader = None
+    query_loader = None  # type: ignore
 
 
 def get_all_queries_for_language(language: str) -> list[str]:
@@ -491,4 +499,4 @@ try:
 
     loader = get_loader()
 except Exception:
-    loader = None
+    loader = None  # type: ignore

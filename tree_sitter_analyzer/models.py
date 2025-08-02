@@ -378,7 +378,7 @@ class AnalysisResult:
                 package_info = {"name": str(self.package)}
 
         # 安全なアイテム処理ヘルパー関数
-        def safe_get_attr(obj, attr, default=""):
+        def safe_get_attr(obj: Any, attr: str, default: Any = "") -> Any:
             if hasattr(obj, attr):
                 return getattr(obj, attr)
             elif isinstance(obj, dict):

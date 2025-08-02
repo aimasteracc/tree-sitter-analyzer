@@ -21,7 +21,7 @@ uv run python -c "import tree_sitter_analyzer; print('Setup OK')"
 ### Running Tests
 
 ```bash
-# Run all tests (1283+ tests)
+# Run all tests (1216+ tests)
 pytest tests/ -v
 
 # Run with coverage

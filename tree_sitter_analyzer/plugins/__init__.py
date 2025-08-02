@@ -21,7 +21,12 @@ from ..models import Import as ModelImport
 from ..models import Variable as ModelVariable
 from ..utils import log_debug, log_error, log_warning
 
-__all__ = ["LanguagePlugin", "ElementExtractor", "PluginRegistry", "plugin_registry"]
+__all__ = [
+    "LanguagePlugin",
+    "ElementExtractor",
+    "DefaultExtractor",
+    "DefaultLanguagePlugin",
+]
 
 
 class ElementExtractor(ABC):
@@ -255,50 +260,7 @@ class DefaultExtractor(ElementExtractor):
             return None
 
 
-class PluginRegistry:
-    """Registry for managing language plugins"""
-
-    def __init__(self) -> None:
-        self._plugins: dict[str, LanguagePlugin] = {}
-        self._extension_map: dict[str, LanguagePlugin] = {}
-        self._default_plugin = DefaultLanguagePlugin()
-
-    def register_plugin(self, plugin: LanguagePlugin) -> None:
-        """Register a language plugin"""
-        try:
-            language = plugin.get_language_name()
-            self._plugins[language] = plugin
-
-            # Register file extensions
-            for ext in plugin.get_file_extensions():
-                self._extension_map[ext] = plugin
-
-            log_debug(f"Registered plugin for language: {language}")
-        except Exception as e:
-            log_error(f"Failed to register plugin: {e}")
-
-    def get_plugin(self, language: str) -> LanguagePlugin | None:
-        """Get plugin for specified language"""
-        return self._plugins.get(language)
-
-    def get_plugin_by_extension(self, extension: str) -> LanguagePlugin | None:
-        """Get plugin for specified file extension"""
-        return self._extension_map.get(extension)
-
-    def get_plugin_for_file(self, file_path: str) -> LanguagePlugin:
-        """Get appropriate plugin for a file"""
-        for plugin in self._plugins.values():
-            if plugin.is_applicable(file_path):
-                return plugin
-        return self._default_plugin
-
-    def list_supported_languages(self) -> list[str]:
-        """List all supported languages"""
-        return list(self._plugins.keys())
-
-    def list_supported_extensions(self) -> list[str]:
-        """List all supported file extensions"""
-        return list(self._extension_map.keys())
+# Legacy PluginRegistry removed - now using PluginManager from .manager
 
 
 class DefaultLanguagePlugin(LanguagePlugin):
@@ -314,20 +276,5 @@ class DefaultLanguagePlugin(LanguagePlugin):
         return DefaultExtractor()
 
 
-# Global plugin registry instance
-plugin_registry = PluginRegistry()
-
-
-# Auto-load all plugins when the package is imported
-try:
-    # from .plugin_loader import (
-    #     get_supported_extensions,  # Not used currently
-    #     get_supported_languages,  # Not used currently
-    #     load_all_plugins,  # Not used currently
-    # )
-    pass
-    # Plugins are automatically loaded when plugin_loader is imported
-except ImportError as e:
-    from ..utils import log_warning
-
-    log_warning(f"Could not load plugin loader: {e}")
+# Legacy plugin registry removed - now using PluginManager
+# from .manager import PluginManager

@@ -266,22 +266,26 @@ class JavaTableFormatter(BaseTableFormatter):
 
         # Map<String,Object> -> M<S,O>
         if "Map<" in type_name:
-            return (
+            result = (
                 type_name.replace("Map<", "M<")
                 .replace("String", "S")
                 .replace("Object", "O")
             )
+            return str(result)
 
         # List<String> -> L<S>
         if "List<" in type_name:
-            return type_name.replace("List<", "L<").replace("String", "S")
+            result = type_name.replace("List<", "L<").replace("String", "S")
+            return str(result)
 
         # String[] -> S[]
         if "[]" in type_name:
             base_type = type_name.replace("[]", "")
             if base_type:
-                return type_mapping.get(base_type, base_type[0].upper()) + "[]"
+                result = type_mapping.get(base_type, base_type[0].upper()) + "[]"
+                return str(result)
             else:
                 return "O[]"
 
-        return type_mapping.get(type_name, type_name)
+        result = type_mapping.get(type_name, type_name)
+        return str(result)

@@ -76,7 +76,7 @@ class AdvancedCommand(BaseCommand):
         output_data("Package: (default)")
         output_data(f"Lines: {analysis_result.line_count}")
 
-        element_counts = {}
+        element_counts: dict[str, int] = {}
         for element in analysis_result.elements:
             element_type = getattr(element, "__class__", type(element)).__name__
             element_counts[element_type] = element_counts.get(element_type, 0) + 1

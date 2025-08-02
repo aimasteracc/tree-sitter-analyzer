@@ -14,8 +14,8 @@ sys.path.insert(0, ".")
 
 import pytest
 
+from tree_sitter_analyzer.languages.java_plugin import JavaElementExtractor
 from tree_sitter_analyzer.models import Function
-from tree_sitter_analyzer.plugins.java_plugin import JavaElementExtractor
 
 
 @pytest.fixture

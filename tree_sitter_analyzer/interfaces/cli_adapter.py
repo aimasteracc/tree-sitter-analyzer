@@ -153,13 +153,34 @@ class CLIAdapter:
             "file_path": result.file_path,
             "language": result.language,
             "package": result.package,
-            "imports": [imp.to_dict() for imp in result.imports],
-            "classes": [cls.to_dict() for cls in result.classes],
-            "methods": [method.to_dict() for method in result.methods],
-            "fields": [field.to_dict() for field in result.fields],
-            "annotations": [ann.to_dict() for ann in result.annotations],
+            "imports": [
+                {"name": imp.name, "type": str(type(imp).__name__)}
+                for imp in result.imports
+            ],
+            "classes": [
+                {"name": cls.name, "type": str(type(cls).__name__)}
+                for cls in result.classes
+            ],
+            "methods": [
+                {"name": method.name, "type": str(type(method).__name__)}
+                for method in result.methods
+            ],
+            "fields": [
+                {"name": field.name, "type": str(type(field).__name__)}
+                for field in result.fields
+            ],
+            "annotations": [
+                {
+                    "name": getattr(ann, "name", str(ann)),
+                    "type": str(type(ann).__name__),
+                }
+                for ann in getattr(result, "annotations", [])
+            ],
             "analysis_time": result.analysis_time,
-            "elements": [elem.to_dict() for elem in result.elements],
+            "elements": [
+                {"name": elem.name, "type": str(type(elem).__name__)}
+                for elem in result.elements
+            ],
             "success": result.success,
         }
 
@@ -315,8 +336,8 @@ class CLIAdapter:
 # Legacy AdvancedAnalyzerAdapter removed - use UnifiedAnalysisEngine directly
 
 
-def get_analysis_engine():
+def get_analysis_engine() -> "UnifiedAnalysisEngine":
     """Get analysis engine instance for testing compatibility."""
-    from ..core.analysis_engine import AnalysisEngine
+    from ..core.analysis_engine import UnifiedAnalysisEngine
 
-    return AnalysisEngine()
+    return UnifiedAnalysisEngine()

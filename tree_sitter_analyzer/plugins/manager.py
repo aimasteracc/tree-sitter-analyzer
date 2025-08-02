@@ -11,6 +11,7 @@ import importlib.metadata
 import logging
 import pkgutil
 from pathlib import Path
+from typing import Any
 
 from ..utils import log_debug, log_error, log_info, log_warning
 from .base import LanguagePlugin
@@ -29,7 +30,7 @@ class PluginManager:
     - Error handling and fallback mechanisms
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the plugin manager."""
         self._loaded_plugins: dict[str, LanguagePlugin] = {}
         self._plugin_classes: dict[str, type[LanguagePlugin]] = {}
@@ -52,13 +53,19 @@ class PluginManager:
         local_plugins = self._load_from_local_directory()
         loaded_plugins.extend(local_plugins)
 
-        # Store loaded plugins
+        # Store loaded plugins and deduplicate by language
+        unique_plugins = {}
         for plugin in loaded_plugins:
             language = plugin.get_language_name()
-            self._loaded_plugins[language] = plugin
+            if language not in unique_plugins:
+                unique_plugins[language] = plugin
+                self._loaded_plugins[language] = plugin
+            else:
+                log_debug(f"Skipping duplicate plugin for language: {language}")
 
-        log_info(f"Successfully loaded {len(loaded_plugins)} plugins")
-        return loaded_plugins
+        final_plugins = list(unique_plugins.values())
+        log_info(f"Successfully loaded {len(final_plugins)} plugins")
+        return final_plugins
 
     def _load_from_entry_points(self) -> list[LanguagePlugin]:
         """
@@ -74,12 +81,22 @@ class PluginManager:
             entry_points = importlib.metadata.entry_points()
 
             # Handle both old and new entry_points API
+            plugin_entries: Any = []
             if hasattr(entry_points, "select"):
                 # New API (Python 3.10+)
                 plugin_entries = entry_points.select(group=self._entry_point_group)
             else:
-                # Old API
-                plugin_entries = entry_points.get(self._entry_point_group, [])
+                # Old API - handle different return types
+                try:
+                    # Try to get entry points, handling different API versions
+                    if hasattr(entry_points, "get"):
+                        result = entry_points.get(self._entry_point_group)
+                        plugin_entries = list(result) if result else []
+                    else:
+                        plugin_entries = []
+                except (TypeError, AttributeError):
+                    # Fallback for incompatible entry_points types
+                    plugin_entries = []
 
             for entry_point in plugin_entries:
                 try:
@@ -116,7 +133,7 @@ class PluginManager:
         Returns:
             List of plugin instances loaded from local directory
         """
-        plugins = []
+        plugins: list[LanguagePlugin] = []
 
         try:
             # Get the languages directory path
@@ -171,7 +188,7 @@ class PluginManager:
 
         return plugins
 
-    def _find_plugin_classes(self, module) -> list[type[LanguagePlugin]]:
+    def _find_plugin_classes(self, module: Any) -> list[type[LanguagePlugin]]:
         """
         Find LanguagePlugin classes in a module.
 
@@ -181,7 +198,7 @@ class PluginManager:
         Returns:
             List of LanguagePlugin classes found in the module
         """
-        plugin_classes = []
+        plugin_classes: list[type[LanguagePlugin]] = []
 
         for attr_name in dir(module):
             attr = getattr(module, attr_name)
@@ -285,7 +302,7 @@ class PluginManager:
 
         return False
 
-    def get_plugin_info(self, language: str) -> dict[str, any] | None:
+    def get_plugin_info(self, language: str) -> dict[str, Any] | None:
         """
         Get information about a specific plugin.
 
@@ -347,7 +364,7 @@ class PluginManager:
 
             extensions = plugin.get_file_extensions()
             if not isinstance(extensions, list):
-                log_error("Plugin get_file_extensions() must return a list")
+                log_error("Plugin get_file_extensions() must return a list")  # type: ignore[unreachable]
                 return False
 
             extractor = plugin.create_extractor()

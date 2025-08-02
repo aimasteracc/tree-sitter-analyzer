@@ -11,13 +11,12 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from tree_sitter_analyzer.models import Class, Function, Import, Variable
-
 # Import the modules under test
-from tree_sitter_analyzer.plugins.python_plugin import (
+from tree_sitter_analyzer.languages.python_plugin import (
     PythonElementExtractor,
     PythonPlugin,
 )
+from tree_sitter_analyzer.models import Class, Function, Import, Variable
 
 
 @pytest.fixture

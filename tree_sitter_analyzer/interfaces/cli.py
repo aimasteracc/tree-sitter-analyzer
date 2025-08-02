@@ -407,7 +407,7 @@ def format_analysis_output(result: dict[str, Any], output_format: str) -> None:
     elements = result.get("elements", [])
     if elements:
         print(f"\nCode Elements: {len(elements)} found")
-        element_types = {}
+        element_types: dict[str, int] = {}
         for element in elements:
             elem_type = element.get("type", "unknown")
             element_types[elem_type] = element_types.get(elem_type, 0) + 1

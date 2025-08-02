@@ -19,9 +19,9 @@ except ImportError:
 
 from ..core.analysis_engine import AnalysisRequest
 from ..language_loader import loader
-from ..models import AnalysisResult, Class, Function, Import, Variable
+from ..models import AnalysisResult, Class, CodeElement, Function, Import, Variable
+from ..plugins.base import ElementExtractor, LanguagePlugin
 from ..utils import log_error, log_warning
-from . import ElementExtractor, LanguagePlugin
 
 
 class JavaScriptElementExtractor(ElementExtractor):
@@ -416,7 +416,7 @@ class JavaScriptPlugin(LanguagePlugin):
             tree = parser.parse(bytes(source_code, "utf8"))
 
             extractor = self.create_extractor()
-            elements = []
+            elements: list[CodeElement] = []
             elements.extend(extractor.extract_functions(tree, source_code))
             elements.extend(extractor.extract_classes(tree, source_code))
             elements.extend(extractor.extract_variables(tree, source_code))

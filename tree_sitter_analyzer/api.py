@@ -240,7 +240,8 @@ def get_available_queries(language: str) -> list[str]:
         # Try to get plugin and its supported queries
         plugin = engine._get_language_plugin(language)
         if plugin and hasattr(plugin, "get_supported_queries"):
-            return plugin.get_supported_queries()
+            result = plugin.get_supported_queries()
+            return list(result) if result else []
         else:
             # Return default queries
             return ["class", "method", "field"]
@@ -300,7 +301,8 @@ def get_file_extensions(language: str) -> list[str]:
         engine = get_engine()
         # Use language_detector to get extensions
         if hasattr(engine.language_detector, "get_extensions_for_language"):
-            return engine.language_detector.get_extensions_for_language(language)
+            result = engine.language_detector.get_extensions_for_language(language)
+            return list(result) if result else []
         else:
             # Fallback: return common extensions
             extension_map = {

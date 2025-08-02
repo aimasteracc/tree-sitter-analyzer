@@ -236,20 +236,24 @@ class PythonTableFormatter(BaseTableFormatter):
 
         # List[str] -> L[s]
         if "List[" in type_name:
-            return (
+            result = (
                 type_name.replace("List[", "L[").replace("str", "s").replace("int", "i")
             )
+            return str(result)
 
         # Dict[str, int] -> D[s,i]
         if "Dict[" in type_name:
-            return (
+            result = (
                 type_name.replace("Dict[", "D[").replace("str", "s").replace("int", "i")
             )
+            return str(result)
 
         # Optional[str] -> O[s]
         if "Optional[" in type_name:
-            return type_name.replace("Optional[", "O[").replace("str", "s")
+            result = type_name.replace("Optional[", "O[").replace("str", "s")
+            return str(result)
 
-        return type_mapping.get(
+        result = type_mapping.get(
             type_name, type_name[:3] if len(type_name) > 3 else type_name
         )
+        return str(result)

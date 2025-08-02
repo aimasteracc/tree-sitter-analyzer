@@ -4,6 +4,7 @@
 import argparse
 import logging
 import sys
+from typing import Any
 
 # Import command classes
 from .cli.commands import (
@@ -29,7 +30,7 @@ class CLICommandFactory:
     """Factory for creating CLI commands based on arguments."""
 
     @staticmethod
-    def create_command(args: argparse.Namespace):
+    def create_command(args: argparse.Namespace) -> Any:
         """Create appropriate command based on arguments."""
 
         # Information commands (no file analysis required)

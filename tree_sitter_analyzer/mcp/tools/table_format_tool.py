@@ -157,7 +157,7 @@ class TableFormatTool:
         # Fallback to original conversion method
         return self._convert_parameters(parameters)
 
-    def _get_field_modifiers(self, field) -> list:
+    def _get_field_modifiers(self, field: Any) -> list[str]:
         """Extract field modifiers as a list"""
         modifiers = []
 
@@ -172,7 +172,7 @@ class TableFormatTool:
             modifiers.append("final")
         return modifiers
 
-    def _convert_analysis_result_to_dict(self, result) -> dict[str, Any]:
+    def _convert_analysis_result_to_dict(self, result: Any) -> dict[str, Any]:
         """Convert AnalysisResult to dictionary format expected by TableFormatter"""
         # Extract elements by type
         classes = [e for e in result.elements if e.__class__.__name__ == "Class"]

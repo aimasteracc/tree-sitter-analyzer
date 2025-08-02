@@ -6,6 +6,7 @@ Handles table format output generation.
 """
 
 import sys
+from typing import Any
 
 from ...output_manager import output_error
 from ...table_formatter import create_table_formatter
@@ -44,7 +45,9 @@ class TableCommand(BaseCommand):
             output_error(f"ERROR: テーブル形式での解析でエラーが発生しました: {e}")
             return 1
 
-    def _convert_to_structure_format(self, analysis_result, language: str) -> dict:
+    def _convert_to_structure_format(
+        self, analysis_result: Any, language: str
+    ) -> dict[str, Any]:
         """Convert AnalysisResult to the format expected by table formatter."""
         classes = []
         methods = []
@@ -59,7 +62,7 @@ class TableCommand(BaseCommand):
                 element_name = getattr(element, "name", None)
 
                 if element_type == "Package":
-                    package_name = element_name
+                    package_name = str(element_name)
                 elif element_type == "Class":
                     classes.append(self._convert_class_element(element, i))
                 elif element_type == "Function":
@@ -90,7 +93,7 @@ class TableCommand(BaseCommand):
             },
         }
 
-    def _convert_class_element(self, element, index: int) -> dict:
+    def _convert_class_element(self, element: Any, index: int) -> dict[str, Any]:
         """Convert class element to table format."""
         element_name = getattr(element, "name", None)
         final_name = element_name if element_name else f"UnknownClass_{index}"
@@ -105,7 +108,7 @@ class TableCommand(BaseCommand):
             },
         }
 
-    def _convert_function_element(self, element, language: str) -> dict:
+    def _convert_function_element(self, element: Any, language: str) -> dict[str, Any]:
         """Convert function element to table format."""
         # Process parameters based on language
         params = getattr(element, "parameters", [])
@@ -133,7 +136,7 @@ class TableCommand(BaseCommand):
             "javadoc": javadoc,
         }
 
-    def _convert_variable_element(self, element, language: str) -> dict:
+    def _convert_variable_element(self, element: Any, language: str) -> dict[str, Any]:
         """Convert variable element to table format."""
         # Get field type based on language
         if language == "python":
@@ -162,14 +165,14 @@ class TableCommand(BaseCommand):
             "javadoc": javadoc,
         }
 
-    def _convert_import_element(self, element) -> dict:
+    def _convert_import_element(self, element: Any) -> dict[str, Any]:
         """Convert import element to table format."""
         return {
             "statement": getattr(element, "name", str(element)),
             "name": getattr(element, "name", str(element)),
         }
 
-    def _process_parameters(self, params, language: str) -> list:
+    def _process_parameters(self, params: Any, language: str) -> list[dict[str, str]]:
         """Process parameters based on language syntax."""
         if isinstance(params, str):
             param_list = []
@@ -213,7 +216,7 @@ class TableCommand(BaseCommand):
         else:
             return []
 
-    def _get_element_visibility(self, element) -> str:
+    def _get_element_visibility(self, element: Any) -> str:
         """Get element visibility."""
         visibility = getattr(element, "visibility", "public")
         if hasattr(element, "is_private") and getattr(element, "is_private", False):

@@ -5,19 +5,22 @@ MCP Adapter for Tree-Sitter Analyzer
 This module provides an adapter interface for integrating with the MCP protocol.
 """
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from ..models import AnalysisResult
 
+if TYPE_CHECKING:
+    from ..core.analysis_engine import UnifiedAnalysisEngine
 
-def get_analysis_engine():
+
+def get_analysis_engine() -> "UnifiedAnalysisEngine":
     """Get analysis engine instance for testing compatibility."""
-    from ..core.analysis_engine import AnalysisEngine
+    from ..core.analysis_engine import UnifiedAnalysisEngine
 
-    return AnalysisEngine()
+    return UnifiedAnalysisEngine()
 
 
-def handle_mcp_resource_request(uri):
+def handle_mcp_resource_request(uri: str) -> dict[str, Any]:
     """Handle MCP resource request for testing compatibility."""
     return {
         "contents": [
@@ -38,13 +41,15 @@ def read_file_safe(file_path: str) -> str:
 class MCPAdapter:
     """MCP Adapter for testing compatibility."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize MCP Adapter."""
         from ..core.analysis_engine import UnifiedAnalysisEngine
 
         self.engine = UnifiedAnalysisEngine()
 
-    async def analyze_file_async(self, file_path: str, **kwargs) -> "AnalysisResult":
+    async def analyze_file_async(
+        self, file_path: str, **kwargs: Any
+    ) -> "AnalysisResult":
         """Analyze file asynchronously."""
         from ..core.analysis_engine import AnalysisRequest
 
@@ -58,7 +63,7 @@ class MCPAdapter:
         return await self.engine.analyze(request)
 
     async def get_file_structure_async(
-        self, file_path: str, **kwargs
+        self, file_path: str, **kwargs: Any
     ) -> dict[str, Any]:
         """Get file structure asynchronously."""
         result = await self.analyze_file_async(file_path, **kwargs)
@@ -66,11 +71,29 @@ class MCPAdapter:
             "file_path": result.file_path,
             "language": result.language,
             "structure": {
-                "classes": [cls.to_dict() for cls in result.classes],
-                "methods": [method.to_dict() for method in result.methods],
-                "fields": [field.to_dict() for field in result.fields],
-                "imports": [imp.to_dict() for imp in result.imports],
-                "annotations": [ann.to_dict() for ann in result.annotations],
+                "classes": [
+                    {"name": cls.name, "type": str(type(cls).__name__)}
+                    for cls in result.classes
+                ],
+                "methods": [
+                    {"name": method.name, "type": str(type(method).__name__)}
+                    for method in result.methods
+                ],
+                "fields": [
+                    {"name": field.name, "type": str(type(field).__name__)}
+                    for field in result.fields
+                ],
+                "imports": [
+                    {"name": imp.name, "type": str(type(imp).__name__)}
+                    for imp in result.imports
+                ],
+                "annotations": [
+                    {
+                        "name": getattr(ann, "name", str(ann)),
+                        "type": str(type(ann).__name__),
+                    }
+                    for ann in getattr(result, "annotations", [])
+                ],
             },
             "metadata": {
                 "analysis_time": result.analysis_time,
@@ -86,7 +109,7 @@ class MCPAdapter:
         }
 
     async def analyze_batch_async(
-        self, file_paths: list[str], **kwargs
+        self, file_paths: list[str], **kwargs: Any
     ) -> list["AnalysisResult"]:
         """Analyze multiple files asynchronously."""
         results = []
@@ -157,17 +180,20 @@ class MCPAdapter:
         """Async cleanup."""
         pass
 
-    def analyze_with_mcp_request(self, arguments):
+    async def analyze_with_mcp_request(
+        self, arguments: dict[str, Any]
+    ) -> dict[str, Any]:
         """Analyze with MCP request."""
         if "file_path" not in arguments:
             raise KeyError("file_path is required in MCP request")
-        return self.analyze_file_async(arguments["file_path"])
+        result = await self.analyze_file_async(arguments["file_path"])
+        return {"result": str(result), "success": True}
 
 
 class MCPServerAdapter:
     """MCP Server Adapter for testing compatibility."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize MCP Server Adapter."""
         self.mcp_adapter = MCPAdapter()
 

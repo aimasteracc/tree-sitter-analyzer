@@ -83,9 +83,6 @@ class ProjectStatsResource:
         Returns:
             True if the URI matches the project stats pattern
         """
-        if not isinstance(uri, str):
-            return False
-
         return bool(self._uri_pattern.match(uri))
 
     def _extract_stats_type(self, uri: str) -> str:
@@ -336,8 +333,6 @@ class ProjectStatsResource:
                     # Use appropriate analyzer based on language
                     if language == "java":
                         # Use advanced analyzer for Java
-                        if self._advanced_analyzer is None:
-                            self._advanced_analyzer = get_analysis_engine()
                         # 使用 await 调用异步方法
                         file_analysis = await self._advanced_analyzer.analyze_file(
                             str(file_path)

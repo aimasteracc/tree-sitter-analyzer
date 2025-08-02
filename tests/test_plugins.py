@@ -12,59 +12,46 @@ import sys
 sys.path.insert(0, ".")
 
 
-from tree_sitter_analyzer.plugins import PluginRegistry, plugin_registry
-from tree_sitter_analyzer.plugins.java_plugin import JavaElementExtractor, JavaPlugin
-from tree_sitter_analyzer.plugins.javascript_plugin import (
+from tree_sitter_analyzer.languages.java_plugin import JavaElementExtractor, JavaPlugin
+from tree_sitter_analyzer.languages.javascript_plugin import (
     JavaScriptElementExtractor,
     JavaScriptPlugin,
 )
+from tree_sitter_analyzer.plugins.manager import PluginManager
 
 
-def test_plugin_registry_instance():
-    """Test plugin registry singleton instance"""
-    assert plugin_registry is not None
-    assert isinstance(plugin_registry, PluginRegistry)
+def test_plugin_manager_instance():
+    """Test plugin manager instance creation"""
+    manager = PluginManager()
+    assert manager is not None
 
 
 def test_register_plugin():
     """Test plugin registration"""
-    registry = PluginRegistry()
+    manager = PluginManager()
     java_plugin = JavaPlugin()
 
-    registry.register_plugin(java_plugin)
+    manager.register_plugin(java_plugin)
 
-    assert "java" in registry.list_supported_languages()
-    assert ".java" in registry.list_supported_extensions()
+    assert "java" in manager.get_supported_languages()
+    assert manager.get_plugin("java") is java_plugin
 
 
 def test_get_plugin():
     """Test getting plugin by language"""
-    registry = PluginRegistry()
+    manager = PluginManager()
     java_plugin = JavaPlugin()
-    registry.register_plugin(java_plugin)
+    manager.register_plugin(java_plugin)
 
-    retrieved_plugin = registry.get_plugin("java")
-    assert retrieved_plugin is java_plugin
-
-
-def test_get_plugin_by_extension():
-    """Test getting plugin by file extension"""
-    registry = PluginRegistry()
-    java_plugin = JavaPlugin()
-    registry.register_plugin(java_plugin)
-
-    retrieved_plugin = registry.get_plugin_by_extension(".java")
+    retrieved_plugin = manager.get_plugin("java")
     assert retrieved_plugin is java_plugin
 
 
 def test_get_nonexistent_plugin():
     """Test getting nonexistent plugin returns None"""
-    registry = PluginRegistry()
+    manager = PluginManager()
 
-    plugin = registry.get_plugin("nonexistent")
-    assert plugin is None
-
-    plugin = registry.get_plugin_by_extension(".unknown")
+    plugin = manager.get_plugin("nonexistent")
     assert plugin is None
 
 
@@ -72,16 +59,17 @@ def test_java_plugin_properties():
     """Test Java plugin basic properties"""
     plugin = JavaPlugin()
 
-    assert plugin.language_name == "java"
-    assert ".java" in plugin.file_extensions
-    assert ".jsp" in plugin.file_extensions
-    assert ".jspx" in plugin.file_extensions
+    assert plugin.get_language_name() == "java"
+    extensions = plugin.get_file_extensions()
+    assert ".java" in extensions
+    assert ".jsp" in extensions
+    assert ".jspx" in extensions
 
 
 def test_java_plugin_extractor():
     """Test Java plugin element extractor"""
     plugin = JavaPlugin()
-    extractor = plugin.get_extractor()
+    extractor = plugin.create_extractor()
 
     assert isinstance(extractor, JavaElementExtractor)
 
@@ -92,23 +80,25 @@ def test_java_plugin_tree_sitter_language():
     language = plugin.get_tree_sitter_language()
 
     # Language may be None if tree-sitter-java is not available
-    assert language is None or hasattr(language, "query")
+    # Tree-sitter Language objects are PyCapsule objects
+    assert language is None or str(type(language)) == "<class 'PyCapsule'>"
 
 
 def test_javascript_plugin_properties():
     """Test JavaScript plugin basic properties"""
     plugin = JavaScriptPlugin()
 
-    assert plugin.language_name == "javascript"
-    assert ".js" in plugin.file_extensions
-    assert ".mjs" in plugin.file_extensions
-    assert ".jsx" in plugin.file_extensions
+    assert plugin.get_language_name() == "javascript"
+    extensions = plugin.get_file_extensions()
+    assert ".js" in extensions
+    assert ".mjs" in extensions
+    assert ".jsx" in extensions
 
 
 def test_javascript_plugin_extractor():
     """Test JavaScript plugin element extractor"""
     plugin = JavaScriptPlugin()
-    extractor = plugin.get_extractor()
+    extractor = plugin.create_extractor()
 
     assert isinstance(extractor, JavaScriptElementExtractor)
 
@@ -213,105 +203,5 @@ def test_javascript_extract_methods_return_lists(mocker):
     assert isinstance(imports, list)
 
 
-def test_multiple_plugins_registration():
-    """Test registering multiple plugins"""
-    registry = PluginRegistry()
-
-    java_plugin = JavaPlugin()
-    js_plugin = JavaScriptPlugin()
-
-    registry.register_plugin(java_plugin)
-    registry.register_plugin(js_plugin)
-
-    languages = registry.list_supported_languages()
-    extensions = registry.list_supported_extensions()
-
-    assert "java" in languages
-    assert "javascript" in languages
-    assert ".java" in extensions
-    assert ".js" in extensions
-
-
-def test_plugin_extension_mapping():
-    """Test file extension to plugin mapping"""
-    registry = PluginRegistry()
-
-    java_plugin = JavaPlugin()
-    js_plugin = JavaScriptPlugin()
-
-    registry.register_plugin(java_plugin)
-    registry.register_plugin(js_plugin)
-
-    # Test Java extensions
-    assert registry.get_plugin_by_extension(".java") == java_plugin
-    assert registry.get_plugin_by_extension(".jsp") == java_plugin
-
-    # Test JavaScript extensions
-    assert registry.get_plugin_by_extension(".js") == js_plugin
-    assert registry.get_plugin_by_extension(".jsx") == js_plugin
-
-
-def test_global_plugin_registry_usage():
-    """Test using the global plugin registry"""
-    from tree_sitter_analyzer.plugins import plugin_registry
-
-    # Clear any existing plugins for clean test
-    original_plugins = plugin_registry._plugins.copy()
-    original_extensions = plugin_registry._extension_map.copy()
-
-    try:
-        plugin_registry._plugins.clear()
-        plugin_registry._extension_map.clear()
-
-        java_plugin = JavaPlugin()
-        plugin_registry.register_plugin(java_plugin)
-
-        assert "java" in plugin_registry.list_supported_languages()
-        retrieved = plugin_registry.get_plugin("java")
-        assert retrieved == java_plugin
-
-    finally:
-        # Restore original state
-        plugin_registry._plugins = original_plugins
-        plugin_registry._extension_map = original_extensions
-
-
-def test_empty_registry():
-    """Test empty plugin registry"""
-    registry = PluginRegistry()
-
-    assert registry.list_supported_languages() == []
-    assert registry.list_supported_extensions() == []
-    assert registry.get_plugin("any") is None
-    assert registry.get_plugin_by_extension(".any") is None
-
-
-def test_plugin_overwrite():
-    """Test overwriting existing plugin"""
-    registry = PluginRegistry()
-
-    plugin1 = JavaPlugin()
-    plugin2 = JavaPlugin()
-
-    registry.register_plugin(plugin1)
-    registry.register_plugin(plugin2)
-
-    # Should use the last registered plugin
-    retrieved = registry.get_plugin("java")
-    assert retrieved == plugin2
-
-
-def test_case_sensitivity():
-    """Test case sensitivity in plugin lookups"""
-    registry = PluginRegistry()
-    java_plugin = JavaPlugin()
-    registry.register_plugin(java_plugin)
-
-    # Language lookup should be case sensitive
-    assert registry.get_plugin("Java") is None
-    assert registry.get_plugin("JAVA") is None
-    assert registry.get_plugin("java") == java_plugin
-
-    # Extension lookup should be case sensitive
-    assert registry.get_plugin_by_extension(".JAVA") is None
-    assert registry.get_plugin_by_extension(".java") == java_plugin
+# Legacy PluginRegistry tests removed - now using PluginManager
+# See tests/test_plugins/test_manager.py for comprehensive PluginManager tests

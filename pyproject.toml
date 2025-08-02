@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "tree-sitter-analyzer"
-version = "0.3.0"
+version = "0.4.0"
 description = "Extensible multi-language code analyzer framework using Tree-sitter with dynamic plugin architecture"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -151,7 +151,8 @@ java-analyzer = "tree_sitter_analyzer.cli_main:main"
 [project.entry-points."tree_sitter_analyzer.plugins"]
 # Core language plugins (automatically discovered)
 java = "tree_sitter_analyzer.languages.java_plugin:JavaPlugin"
-python = "tree_sitter_analyzer.plugins.python_plugin:PythonPlugin"
+python = "tree_sitter_analyzer.languages.python_plugin:PythonPlugin"
+javascript = "tree_sitter_analyzer.languages.javascript_plugin:JavaScriptPlugin"
 
 [project.urls]
 Homepage = "https://github.com/aimasteracc/tree-sitter-analyzer"
@@ -352,4 +353,5 @@ dev = [
     "pre-commit>=4.2.0",
     "ruff>=0.12.7",
     "twine>=6.1.0",
+    "types-cachetools>=6.1.0.20250717",
 ]

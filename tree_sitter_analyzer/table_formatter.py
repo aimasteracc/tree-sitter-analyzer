@@ -383,6 +383,9 @@ class TableFormatter:
         if not isinstance(type_name, str):
             type_name = str(type_name)
 
+        # At this point, type_name is guaranteed to be a string
+        assert isinstance(type_name, str)
+
         type_mapping = {
             "String": "S",
             "int": "i",
@@ -462,7 +465,7 @@ class TableFormatter:
 
 def create_table_formatter(
     format_type: str, language: str = "java", include_javadoc: bool = False
-):
+) -> "TableFormatter":
     """Create table formatter (using new factory)"""
     # Create TableFormatter directly (for JavaDoc support)
     return TableFormatter(format_type, language, include_javadoc)

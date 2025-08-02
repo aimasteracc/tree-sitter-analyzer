@@ -350,7 +350,7 @@ class AnalysisEngine:
         """
         # This is a basic fallback implementation
         # Real implementation would extract meaningful elements
-        elements = []
+        elements: list[Any] = []
 
         try:
             if parse_result.tree and parse_result.tree.root_node:
@@ -473,6 +473,7 @@ class AnalysisEngine:
             return []
         except Exception as e:
             logger.error(f"Error getting supported languages: {e}")
+            return []
 
     def get_available_queries(self, language: str) -> list[str]:
         """
@@ -487,16 +488,18 @@ class AnalysisEngine:
         try:
             plugin = self._get_language_plugin(language)
             if plugin and hasattr(plugin, "get_supported_queries"):
-                return plugin.get_supported_queries()
+                queries = plugin.get_supported_queries()
+                return list(queries) if queries else []
             else:
                 # Return default queries
                 return ["class", "method", "field"]
         except Exception as e:
             logger.error(f"Error getting available queries for {language}: {e}")
+            return []
 
     # Add compatibility methods for API layer
     @property
-    def language_registry(self):
+    def language_registry(self) -> "AnalysisEngine":
         """Provide compatibility with API layer expecting language_registry"""
         return self
 
@@ -554,4 +557,3 @@ class AnalysisEngine:
         except Exception as e:
             logger.error(f"Error getting registry info: {e}")
             return {}
-            return []

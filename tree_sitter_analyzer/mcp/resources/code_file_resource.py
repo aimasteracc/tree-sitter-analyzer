@@ -59,9 +59,6 @@ class CodeFileResource:
         Returns:
             True if the URI matches the code file pattern
         """
-        if not isinstance(uri, str):
-            return False
-
         return bool(self._uri_pattern.match(uri))
 
     def _extract_file_path(self, uri: str) -> str:

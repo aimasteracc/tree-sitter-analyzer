@@ -22,9 +22,9 @@ try:
     query_loader = QueryLoader()
 except ImportError:
     # Minimal fallback for import safety
-    get_analysis_engine = None
-    main = None
-    query_loader = None
+    get_analysis_engine = None  # type: ignore
+    main = None  # type: ignore
+    query_loader = None  # type: ignore
 
 __all__ = [
     "InfoCommand",

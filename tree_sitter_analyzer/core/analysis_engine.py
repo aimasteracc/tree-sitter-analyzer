@@ -18,6 +18,8 @@ from dataclasses import dataclass
 from typing import Any, Optional, Protocol
 
 from ..models import AnalysisResult
+from ..plugins.base import LanguagePlugin as BaseLanguagePlugin
+from ..plugins.manager import PluginManager
 from ..utils import log_debug, log_error, log_info, log_performance
 from .cache_service import CacheService
 
@@ -181,24 +183,7 @@ class AnalysisRequest:
         )
 
 
-class SimplePluginRegistry:
-    """簡易プラグイン登録管理"""
-
-    def __init__(self) -> None:
-        self._plugins: dict[str, LanguagePlugin] = {}
-
-    def register_plugin(self, language: str, plugin: LanguagePlugin) -> None:
-        """プラグインを登録"""
-        self._plugins[language] = plugin
-        log_info(f"Plugin registered for language: {language}")
-
-    def get_plugin(self, language: str) -> LanguagePlugin | None:
-        """プラグインを取得"""
-        return self._plugins.get(language)
-
-    def get_supported_languages(self) -> list[str]:
-        """サポートされている言語一覧を取得"""
-        return list(self._plugins.keys())
+# SimplePluginRegistry removed - now using PluginManager
 
 
 class UnifiedAnalysisEngine:
@@ -215,7 +200,7 @@ class UnifiedAnalysisEngine:
 
     Attributes:
         _cache_service: キャッシュサービス
-        _plugin_registry: プラグイン登録管理
+        _plugin_manager: プラグイン管理
         _performance_monitor: パフォーマンス監視
     """
 
@@ -236,7 +221,7 @@ class UnifiedAnalysisEngine:
             return
 
         self._cache_service = CacheService()
-        self._plugin_registry = SimplePluginRegistry()
+        self._plugin_manager = PluginManager()
         self._performance_monitor = PerformanceMonitor()
 
         # プラグインを自動ロード
@@ -248,54 +233,21 @@ class UnifiedAnalysisEngine:
 
     def _load_plugins(self) -> None:
         """利用可能なプラグインを自動ロード"""
-        log_info("Loading plugins...")
+        log_info("Loading plugins using PluginManager...")
 
         try:
-            # Javaプラグインの登録
-            log_debug("Attempting to load Java plugin...")
-            from ..languages.java_plugin import JavaPlugin
+            # PluginManagerの自動ロード機能を使用
+            loaded_plugins = self._plugin_manager.load_plugins()
 
-            java_plugin = JavaPlugin()
-            self._plugin_registry.register_plugin("java", java_plugin)
-            log_debug("Loaded Java plugin")
+            final_languages = [plugin.get_language_name() for plugin in loaded_plugins]
+            log_info(
+                f"Successfully loaded {len(final_languages)} language plugins: {', '.join(final_languages)}"
+            )
         except Exception as e:
-            log_error(f"Failed to load Java plugin: {e}")
+            log_error(f"Failed to load plugins: {e}")
             import traceback
 
-            log_error(f"Java plugin traceback: {traceback.format_exc()}")
-
-        try:
-            # JavaScriptプラグインの登録
-            log_debug("Attempting to load JavaScript plugin...")
-            from ..plugins.javascript_plugin import JavaScriptPlugin
-
-            js_plugin = JavaScriptPlugin()
-            self._plugin_registry.register_plugin("javascript", js_plugin)
-            log_debug("Loaded JavaScript plugin")
-        except Exception as e:
-            log_error(f"Failed to load JavaScript plugin: {e}")
-            import traceback
-
-            log_error(f"JavaScript plugin traceback: {traceback.format_exc()}")
-
-        try:
-            # Pythonプラグインの登録
-            log_debug("Attempting to load Python plugin...")
-            from ..languages.python_plugin import PythonPlugin
-
-            python_plugin = PythonPlugin()
-            self._plugin_registry.register_plugin("python", python_plugin)
-            log_debug("Loaded Python plugin")
-        except Exception as e:
-            log_error(f"Failed to load Python plugin: {e}")
-            import traceback
-
-            log_error(f"Python plugin traceback: {traceback.format_exc()}")
-
-        final_languages = self._plugin_registry.get_supported_languages()
-        log_info(
-            f"Successfully loaded {len(final_languages)} language plugins: {', '.join(final_languages)}"
-        )
+            log_error(f"Plugin loading traceback: {traceback.format_exc()}")
 
     async def analyze(self, request: AnalysisRequest) -> AnalysisResult:
         """
@@ -318,19 +270,19 @@ class UnifiedAnalysisEngine:
         cached_result = await self._cache_service.get(cache_key)
         if cached_result:
             log_info(f"Cache hit for {request.file_path}")
-            return cached_result
+            return cached_result  # type: ignore
 
         # 言語検出
         language = request.language or self._detect_language(request.file_path)
         log_debug(f"Detected language: {language}")
 
         # デバッグ：登録されているプラグインを確認
-        supported_languages = self._plugin_registry.get_supported_languages()
+        supported_languages = self._plugin_manager.get_supported_languages()
         log_debug(f"Supported languages: {supported_languages}")
         log_debug(f"Looking for plugin for language: {language}")
 
         # プラグイン取得
-        plugin = self._plugin_registry.get_plugin(language)
+        plugin = self._plugin_manager.get_plugin(language)
         if not plugin:
             error_msg = f"Language {language} not supported"
             log_error(error_msg)
@@ -440,15 +392,15 @@ class UnifiedAnalysisEngine:
         self._cache_service.clear()
         log_info("Analysis engine cache cleared")
 
-    def register_plugin(self, language: str, plugin: LanguagePlugin) -> None:
+    def register_plugin(self, language: str, plugin: BaseLanguagePlugin) -> None:
         """
         プラグインを登録
 
         Args:
-            language: 言語名
+            language: 言語名（互換性のため保持、実際は使用されない）
             plugin: 言語プラグイン
         """
-        self._plugin_registry.register_plugin(language, plugin)
+        self._plugin_manager.register_plugin(plugin)
 
     def get_supported_languages(self) -> list[str]:
         """
@@ -457,7 +409,7 @@ class UnifiedAnalysisEngine:
         Returns:
             サポート言語のリスト
         """
-        return self._plugin_registry.get_supported_languages()
+        return self._plugin_manager.get_supported_languages()
 
     def get_cache_stats(self) -> dict[str, Any]:
         """
@@ -553,6 +505,18 @@ class MockLanguagePlugin:
 
     def __init__(self, language: str) -> None:
         self.language = language
+
+    def get_language_name(self) -> str:
+        """言語名を取得"""
+        return self.language
+
+    def get_file_extensions(self) -> list[str]:
+        """ファイル拡張子を取得"""
+        return [f".{self.language}"]
+
+    def create_extractor(self) -> None:
+        """エクストラクタを作成（モック）"""
+        return None
 
     async def analyze_file(
         self, file_path: str, request: AnalysisRequest

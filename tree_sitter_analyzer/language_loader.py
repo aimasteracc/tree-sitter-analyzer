@@ -189,8 +189,8 @@ class LanguageLoader:
         self._availability_cache.clear()
         self._parser_cache.clear()
         self._unavailable_languages.clear()
-        # LRUキャッシュもクリア
-        self.is_language_available.cache_clear()
+        # 可用性キャッシュもクリア
+        self._availability_cache.clear()
 
 
 # グローバルインスタンス（最適化：シングルトンパターン）

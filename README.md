@@ -2,7 +2,7 @@
 
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-1283%20passed-brightgreen.svg)](#testing)
+[![Tests](https://img.shields.io/badge/tests-1216%20passed-brightgreen.svg)](#testing)
 
 **Solve the LLM token limit problem for large code files.**
 
@@ -176,7 +176,7 @@ uv sync --extra all --extra mcp
 
 ## 🧪 Testing
 
-This project maintains high code quality with **1283 passing tests**.
+This project maintains high code quality with **1216 passing tests**.
 
 ```bash
 # Run tests

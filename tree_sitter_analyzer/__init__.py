@@ -11,7 +11,7 @@ Architecture:
 - Data Models: Generic and language-specific code element representations
 """
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 __author__ = "aisheng.yu"
 __email__ = "aimasteracc@gmail.com"
 
@@ -61,7 +61,8 @@ from .output_manager import (
 )
 
 # Plugin System
-from .plugins import ElementExtractor, LanguagePlugin, plugin_registry
+from .plugins import ElementExtractor, LanguagePlugin
+from .plugins.manager import PluginManager
 from .query_loader import QueryLoader, get_query_loader
 
 # Import new utility modules
@@ -93,7 +94,7 @@ __all__ = [
     # Plugin system
     "ElementExtractor",
     "LanguagePlugin",
-    "plugin_registry",
+    "PluginManager",
     "QueryLoader",
     # Language detection
     "LanguageDetector",

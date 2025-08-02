@@ -159,11 +159,8 @@ class OutputManager:
 
     def output_queries(self, queries: list[str]) -> None:
         """Output available queries"""
-        if isinstance(queries, list):
-            query_dict = {q: f"Query {q}" for q in queries}
-            self.query_list(query_dict, "All")
-        else:
-            self.query_list(queries, "All")
+        query_dict = {q: f"Query {q}" for q in queries}
+        self.query_list(query_dict, "All")
 
     def output_extensions(self, extensions: list[str]) -> None:
         """Output file extensions"""
@@ -244,11 +241,8 @@ def output_languages(
 
 def output_queries(queries: list[str], language: str = "All") -> None:
     """Output available queries"""
-    if isinstance(queries, list):
-        query_dict = {q: f"Query {q}" for q in queries}
-        _output_manager.query_list(query_dict, language)
-    else:
-        _output_manager.query_list(queries, language)
+    query_dict = {q: f"Query {q}" for q in queries}
+    _output_manager.query_list(query_dict, language)
 
 
 def output_extensions(extensions: list[str]) -> None:

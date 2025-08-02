@@ -93,7 +93,7 @@ class TreeSitterAnalyzerMCPServer:
         server: Server = Server(self.name)
 
         # Register tools
-        @server.list_tools()
+        @server.list_tools()  # type: ignore
         async def handle_list_tools() -> list[Tool]:
             """List available tools."""
             tools = [
@@ -144,7 +144,7 @@ class TreeSitterAnalyzerMCPServer:
 
             return tools
 
-        @server.call_tool()
+        @server.call_tool()  # type: ignore
         async def handle_call_tool(
             name: str, arguments: dict[str, Any]
         ) -> list[TextContent]:
@@ -201,7 +201,7 @@ class TreeSitterAnalyzerMCPServer:
                 ]
 
         # Register resources
-        @server.list_resources()
+        @server.list_resources()  # type: ignore
         async def handle_list_resources() -> list[Resource]:
             """List available resources."""
             return [
@@ -225,7 +225,7 @@ class TreeSitterAnalyzerMCPServer:
                 ),
             ]
 
-        @server.read_resource()
+        @server.read_resource()  # type: ignore
         async def handle_read_resource(uri: str) -> str:
             """Read resource content."""
             try:

@@ -14,7 +14,7 @@ if TYPE_CHECKING:
     from ..core.analysis_engine import AnalysisRequest
     from ..models import AnalysisResult
 
-from ..models import Class, Function, Import, Variable
+from ..models import Class, CodeElement, Function, Import, Variable
 from ..plugins.base import ElementExtractor, LanguagePlugin
 from ..utils import log_error, log_warning
 
@@ -677,13 +677,23 @@ class PythonPlugin(LanguagePlugin):
 
             # Extract elements
             extractor = self.create_extractor()
-            functions = extractor.extract_functions(parse_result.tree, source_code)
-            classes = extractor.extract_classes(parse_result.tree, source_code)
-            variables = extractor.extract_variables(parse_result.tree, source_code)
-            imports = extractor.extract_imports(parse_result.tree, source_code)
+            if parse_result.tree:
+                functions = extractor.extract_functions(parse_result.tree, source_code)
+                classes = extractor.extract_classes(parse_result.tree, source_code)
+                variables = extractor.extract_variables(parse_result.tree, source_code)
+                imports = extractor.extract_imports(parse_result.tree, source_code)
+            else:
+                functions = []
+                classes = []
+                variables = []
+                imports = []
 
             # Combine all elements
-            all_elements = functions + classes + variables + imports
+            all_elements: list[CodeElement] = []
+            all_elements.extend(functions)
+            all_elements.extend(classes)
+            all_elements.extend(variables)
+            all_elements.extend(imports)
 
             return AnalysisResult(
                 file_path=file_path,

@@ -93,10 +93,7 @@ class CodeAnalyzer:
             self.source_code_bytes = source_bytes
             self.tree = self.parser.parse(self.source_code_bytes)
 
-            if self.tree is None:
-                output_error(f"ERROR: '{file_path}' のAST構築に失敗しました。")
-                return False
-
+            # Tree parsing should always succeed with valid input
             log_info(f"INFO: '{file_path}' の解析が完了し、ASTを構築しました。")
             return True
 
@@ -141,54 +138,26 @@ class CodeAnalyzer:
 
         # Tree-sitter 0.24以降の辞書形式に対応
         try:
-            if isinstance(captures, dict):
-                # 新しい辞書形式: {capture_name: [nodes...]}
-                for capture_name, nodes in captures.items():
-                    if isinstance(nodes, list):
-                        for node in nodes:
-                            try:
-                                start_line = node.start_point[0] + 1
-                                end_line = node.end_point[0] + 1
-                                node_text = self.source_code_bytes[
-                                    node.start_byte : node.end_byte
-                                ].decode("utf-8", errors="ignore")
-
-                                results.append(
-                                    {
-                                        "capture_name": capture_name,
-                                        "content": node_text,
-                                        "start_line": start_line,
-                                        "end_line": end_line,
-                                        "node_type": node.type,
-                                    }
-                                )
-                            except Exception as e:
-                                output_warning(
-                                    f"WARNING: ノード処理中にエラーが発生しました: {e}"
-                                )
-                                continue
-            else:
-                # 古い形式への対応（フォールバック）
-                if hasattr(captures, "__iter__"):
-                    for capture in captures:
+            # 辞書形式: {capture_name: [nodes...]}
+            for capture_name, nodes in captures.items():
+                if isinstance(nodes, list):
+                    for node in nodes:
                         try:
-                            if isinstance(capture, tuple) and len(capture) == 2:
-                                node, capture_name = capture
-                                start_line = node.start_point[0] + 1
-                                end_line = node.end_point[0] + 1
-                                node_text = self.source_code_bytes[
-                                    node.start_byte : node.end_byte
-                                ].decode("utf-8", errors="ignore")
+                            start_line = node.start_point[0] + 1
+                            end_line = node.end_point[0] + 1
+                            node_text = self.source_code_bytes[
+                                node.start_byte : node.end_byte
+                            ].decode("utf-8", errors="ignore")
 
-                                results.append(
-                                    {
-                                        "capture_name": capture_name,
-                                        "content": node_text,
-                                        "start_line": start_line,
-                                        "end_line": end_line,
-                                        "node_type": node.type,
-                                    }
-                                )
+                            results.append(
+                                {
+                                    "capture_name": capture_name,
+                                    "content": node_text,
+                                    "start_line": start_line,
+                                    "end_line": end_line,
+                                    "node_type": node.type,
+                                }
+                            )
                         except Exception as e:
                             output_warning(
                                 f"WARNING: ノード処理中にエラーが発生しました: {e}"

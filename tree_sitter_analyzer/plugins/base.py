@@ -13,6 +13,9 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     import tree_sitter
 
+    from ..core.analysis_engine import AnalysisRequest
+    from ..models import AnalysisResult
+
 from ..models import Class as ModelClass
 from ..models import CodeElement
 from ..models import Function as ModelFunction
@@ -108,7 +111,7 @@ class ElementExtractor(ABC):
         Returns:
             List of all extracted code elements
         """
-        elements = []
+        elements: list[CodeElement] = []
 
         try:
             elements.extend(self.extract_functions(tree, source_code))
@@ -156,6 +159,22 @@ class LanguagePlugin(ABC):
 
         Returns:
             ElementExtractor instance for this language
+        """
+        pass
+
+    @abstractmethod
+    async def analyze_file(
+        self, file_path: str, request: "AnalysisRequest"
+    ) -> "AnalysisResult":
+        """
+        Analyze a file and return analysis results.
+
+        Args:
+            file_path: Path to the file to analyze
+            request: Analysis request with configuration
+
+        Returns:
+            AnalysisResult containing extracted information
         """
         pass
 
