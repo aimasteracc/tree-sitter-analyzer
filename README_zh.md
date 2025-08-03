@@ -162,17 +162,17 @@ uv add "tree-sitter-analyzer[all,mcp]"
 ### 面向开发者
 ```bash
 # 克隆并安装用于开发
-git clone https://github.com/aisheng-yu/tree-sitter-analyzer.git
+git clone https://github.com/aimasteracc/tree-sitter-analyzer.git
 cd tree-sitter-analyzer
 uv sync --extra all --extra mcp
 ```
 
 ## 📚 文档
 
-- **[用户MCP设置指南](https://github.com/aisheng-yu/tree-sitter-analyzer/blob/main/MCP_SETUP_USERS.md)** - AI助手用户的简单设置
-- **[开发者MCP设置指南](https://github.com/aisheng-yu/tree-sitter-analyzer/blob/main/MCP_SETUP_DEVELOPERS.md)** - 本地开发配置
-- **[API文档](https://github.com/aisheng-yu/tree-sitter-analyzer/blob/main/docs/api.md)** - 详细API参考
-- **[贡献指南](https://github.com/aisheng-yu/tree-sitter-analyzer/blob/main/CONTRIBUTING.md)** - 如何贡献
+- **[用户MCP设置指南](https://github.com/aimasteracc/tree-sitter-analyzer/blob/main/MCP_SETUP_USERS.md)** - AI助手用户的简单设置
+- **[开发者MCP设置指南](https://github.com/aimasteracc/tree-sitter-analyzer/blob/main/MCP_SETUP_DEVELOPERS.md)** - 本地开发配置
+- **[API文档](https://github.com/aimasteracc/tree-sitter-analyzer/blob/main/docs/api.md)** - 详细API参考
+- **[贡献指南](https://github.com/aimasteracc/tree-sitter-analyzer/blob/main/CONTRIBUTING.md)** - 如何贡献
 
 ## 🧪 测试
 
@@ -192,7 +192,7 @@ MIT许可证 - 详见[LICENSE](LICENSE)文件。
 
 ## 🤝 贡献
 
-我们欢迎贡献！请查看我们的[贡献指南](https://github.com/aisheng-yu/tree-sitter-analyzer/blob/main/CONTRIBUTING.md)了解详情。
+我们欢迎贡献！请查看我们的[贡献指南](https://github.com/aimasteracc/tree-sitter-analyzer/blob/main/CONTRIBUTING.md)了解详情。
 
 ### 🤖 AI/LLM协作
 
@@ -207,7 +207,7 @@ python llm_code_checker.py --check-all
 python llm_code_checker.py path/to/new_file.py
 ```
 
-📖 **查看我们的[AI协作指南](https://github.com/aisheng-yu/tree-sitter-analyzer/blob/main/AI_COLLABORATION_GUIDE.md)和[LLM编码指南](https://github.com/aisheng-yu/tree-sitter-analyzer/blob/main/LLM_CODING_GUIDELINES.md)了解与AI系统协作的详细说明。**
+📖 **查看我们的[AI协作指南](https://github.com/aimasteracc/tree-sitter-analyzer/blob/main/AI_COLLABORATION_GUIDE.md)和[LLM编码指南](https://github.com/aimasteracc/tree-sitter-analyzer/blob/main/LLM_CODING_GUIDELINES.md)了解与AI系统协作的详细说明。**
 
 ---
 

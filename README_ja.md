@@ -162,17 +162,17 @@ uv add "tree-sitter-analyzer[all,mcp]"
 ### 開発者向け
 ```bash
 # 開発用にクローンしてインストール
-git clone https://github.com/aisheng-yu/tree-sitter-analyzer.git
+git clone https://github.com/aimasteracc/tree-sitter-analyzer.git
 cd tree-sitter-analyzer
 uv sync --extra all --extra mcp
 ```
 
 ## 📚 ドキュメント
 
-- **[ユーザー向けMCPセットアップガイド](https://github.com/aisheng-yu/tree-sitter-analyzer/blob/main/MCP_SETUP_USERS.md)** - AIアシスタントユーザー向けの簡単セットアップ
-- **[開発者向けMCPセットアップガイド](https://github.com/aisheng-yu/tree-sitter-analyzer/blob/main/MCP_SETUP_DEVELOPERS.md)** - ローカル開発設定
-- **[APIドキュメント](https://github.com/aisheng-yu/tree-sitter-analyzer/blob/main/docs/api.md)** - 詳細なAPIリファレンス
-- **[コントリビューションガイド](https://github.com/aisheng-yu/tree-sitter-analyzer/blob/main/CONTRIBUTING.md)** - 貢献方法
+- **[ユーザー向けMCPセットアップガイド](https://github.com/aimasteracc/tree-sitter-analyzer/blob/main/MCP_SETUP_USERS.md)** - AIアシスタントユーザー向けの簡単セットアップ
+- **[開発者向けMCPセットアップガイド](https://github.com/aimasteracc/tree-sitter-analyzer/blob/main/MCP_SETUP_DEVELOPERS.md)** - ローカル開発設定
+- **[APIドキュメント](https://github.com/aimasteracc/tree-sitter-analyzer/blob/main/docs/api.md)** - 詳細なAPIリファレンス
+- **[コントリビューションガイド](https://github.com/aimasteracc/tree-sitter-analyzer/blob/main/CONTRIBUTING.md)** - 貢献方法
 
 ## 🧪 テスト
 
@@ -192,7 +192,7 @@ MITライセンス - 詳細は[LICENSE](LICENSE)ファイルをご覧くださ�
 
 ## 🤝 コントリビューション
 
-コントリビューションを歓迎します！詳細は[コントリビューションガイド](https://github.com/aisheng-yu/tree-sitter-analyzer/blob/main/CONTRIBUTING.md)をご覧ください。
+コントリビューションを歓迎します！詳細は[コントリビューションガイド](https://github.com/aimasteracc/tree-sitter-analyzer/blob/main/CONTRIBUTING.md)をご覧ください。
 
 ### 🤖 AI/LLMコラボレーション
 
@@ -207,7 +207,7 @@ python llm_code_checker.py --check-all
 python llm_code_checker.py path/to/new_file.py
 ```
 
-📖 **AIシステムとの作業に関する詳細な手順については、[AIコラボレーションガイド](https://github.com/aisheng-yu/tree-sitter-analyzer/blob/main/AI_COLLABORATION_GUIDE.md)と[LLMコーディングガイドライン](https://github.com/aisheng-yu/tree-sitter-analyzer/blob/main/LLM_CODING_GUIDELINES.md)をご覧ください。**
+📖 **AIシステムとの作業に関する詳細な手順については、[AIコラボレーションガイド](https://github.com/aimasteracc/tree-sitter-analyzer/blob/main/AI_COLLABORATION_GUIDE.md)と[LLMコーディングガイドライン](https://github.com/aimasteracc/tree-sitter-analyzer/blob/main/LLM_CODING_GUIDELINES.md)をご覧ください。**
 
 ---
 

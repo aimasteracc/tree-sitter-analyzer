@@ -162,17 +162,17 @@ uv add "tree-sitter-analyzer[all,mcp]"
 ### For Developers
 ```bash
 # Clone and install for development
-git clone https://github.com/aisheng-yu/tree-sitter-analyzer.git
+git clone https://github.com/aimasteracc/tree-sitter-analyzer.git
 cd tree-sitter-analyzer
 uv sync --extra all --extra mcp
 ```
 
 ## 📚 Documentation
 
-- **[MCP Setup Guide for Users](https://github.com/aisheng-yu/tree-sitter-analyzer/blob/main/MCP_SETUP_USERS.md)** - Simple setup for AI assistant users
-- **[MCP Setup Guide for Developers](https://github.com/aisheng-yu/tree-sitter-analyzer/blob/main/MCP_SETUP_DEVELOPERS.md)** - Local development configuration
-- **[API Documentation](https://github.com/aisheng-yu/tree-sitter-analyzer/blob/main/docs/api.md)** - Detailed API reference
-- **[Contributing Guide](https://github.com/aisheng-yu/tree-sitter-analyzer/blob/main/CONTRIBUTING.md)** - How to contribute
+- **[MCP Setup Guide for Users](https://github.com/aimasteracc/tree-sitter-analyzer/blob/main/MCP_SETUP_USERS.md)** - Simple setup for AI assistant users
+- **[MCP Setup Guide for Developers](https://github.com/aimasteracc/tree-sitter-analyzer/blob/main/MCP_SETUP_DEVELOPERS.md)** - Local development configuration
+- **[API Documentation](https://github.com/aimasteracc/tree-sitter-analyzer/blob/main/docs/api.md)** - Detailed API reference
+- **[Contributing Guide](https://github.com/aimasteracc/tree-sitter-analyzer/blob/main/CONTRIBUTING.md)** - How to contribute
 
 ## 🧪 Testing
 
@@ -192,7 +192,7 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 ## 🤝 Contributing
 
-We welcome contributions! Please see our [Contributing Guide](https://github.com/aisheng-yu/tree-sitter-analyzer/blob/main/CONTRIBUTING.md) for details.
+We welcome contributions! Please see our [Contributing Guide](https://github.com/aimasteracc/tree-sitter-analyzer/blob/main/CONTRIBUTING.md) for details.
 
 ### 🤖 AI/LLM Collaboration
 
@@ -207,7 +207,7 @@ python llm_code_checker.py --check-all
 python llm_code_checker.py path/to/new_file.py
 ```
 
-📖 **See our [AI Collaboration Guide](https://github.com/aisheng-yu/tree-sitter-analyzer/blob/main/AI_COLLABORATION_GUIDE.md) and [LLM Coding Guidelines](https://github.com/aisheng-yu/tree-sitter-analyzer/blob/main/LLM_CODING_GUIDELINES.md) for detailed instructions on working with AI systems.**
+📖 **See our [AI Collaboration Guide](https://github.com/aimasteracc/tree-sitter-analyzer/blob/main/AI_COLLABORATION_GUIDE.md) and [LLM Coding Guidelines](https://github.com/aimasteracc/tree-sitter-analyzer/blob/main/LLM_CODING_GUIDELINES.md) for detailed instructions on working with AI systems.**
 
 ---
 
