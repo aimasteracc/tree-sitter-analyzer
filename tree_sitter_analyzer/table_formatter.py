@@ -330,7 +330,9 @@ class TableFormatter:
         visibility = self._convert_visibility(str(method.get("visibility", "")))
         line_range = method.get("line_range", {})
         lines_str = f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
-        cols_str = "5-6"  # Default value (actual implementation should get accurate values)
+        cols_str = (
+            "5-6"  # Default value (actual implementation should get accurate values)
+        )
         complexity = method.get("complexity_score", 0)
         if self.include_javadoc:
             doc = self._clean_csv_text(

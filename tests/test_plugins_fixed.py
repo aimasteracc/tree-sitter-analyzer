@@ -15,7 +15,7 @@ sys.path.insert(0, ".")
 import pytest
 
 from tree_sitter_analyzer.languages.java_plugin import JavaElementExtractor
-from tree_sitter_analyzer.models import Function, Class
+from tree_sitter_analyzer.models import Class, Function
 
 
 @pytest.fixture
@@ -56,7 +56,12 @@ def test_extract_method_optimized_with_valid_node(mocker, java_extractor):
     mock_params.type = "formal_parameters"
     mock_params.children = []
 
-    mock_node.children = [mock_modifiers, mock_return_type, mock_identifier, mock_params]
+    mock_node.children = [
+        mock_modifiers,
+        mock_return_type,
+        mock_identifier,
+        mock_params,
+    ]
 
     # Mock the source code and content lines
     java_extractor.source_code = "public void testMethod() {}"
@@ -94,7 +99,9 @@ def test_extract_class_name_with_identifier(mocker, java_extractor):
     mock_node.children = [mock_identifier]
 
     # Mock the _get_node_text_optimized method
-    java_extractor._get_node_text_optimized = lambda node: "TestClass" if node == mock_identifier else ""
+    java_extractor._get_node_text_optimized = lambda node: (
+        "TestClass" if node == mock_identifier else ""
+    )
 
     name = java_extractor._extract_class_name(mock_node)
 
@@ -168,7 +175,9 @@ def test_parse_method_signature_throws(mocker, java_extractor):
     assert method_name == "testMethod"
     assert len(throws) >= 1  # Should extract at least one exception
     # The current implementation uses regex to find exceptions
-    assert any("Exception" in throw for throw in throws) or any("IOException" in throw for throw in throws)
+    assert any("Exception" in throw for throw in throws) or any(
+        "IOException" in throw for throw in throws
+    )
 
 
 def test_extract_method_with_body(mocker, java_extractor):

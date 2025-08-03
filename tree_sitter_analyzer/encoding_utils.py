@@ -65,9 +65,9 @@ class EncodingCache:
             max_size: Maximum number of cached entries
             ttl_seconds: Time-to-live for cache entries in seconds
         """
-        self._cache: dict[str, tuple[str, float]] = (
-            {}
-        )  # file_path -> (encoding, timestamp)
+        self._cache: dict[
+            str, tuple[str, float]
+        ] = {}  # file_path -> (encoding, timestamp)
         self._lock = threading.RLock()
         self._max_size = max_size
         self._ttl_seconds = ttl_seconds
