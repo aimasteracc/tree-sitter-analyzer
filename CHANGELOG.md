@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.1] - 2025-08-04
+
+### 🔧 Fixed
+
+#### Documentation
+- **Fixed**: Updated all GitHub URLs from `aisheng-yu` to `aimasteracc` in README files
+- **Fixed**: Corrected clone URLs in installation instructions
+- **Fixed**: Updated documentation links to point to correct repository
+- **Fixed**: Fixed contribution guide links in all language versions
+
+#### Files Updated
+- `README.md` - English documentation
+- `README_zh.md` - Chinese documentation
+- `README_ja.md` - Japanese documentation
+
+### 📦 Package Updates
+
+- **Updated**: Package metadata now includes correct repository URLs
+- **Updated**: All documentation links point to the correct GitHub repository
+
+---
+
 ## [0.6.0] - 2025-08-03
 
 ### 💥 Breaking Changes - Legacy Code Removal
