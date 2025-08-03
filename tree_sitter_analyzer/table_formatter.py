@@ -53,24 +53,25 @@ class TableFormatter:
         return self._convert_to_platform_newlines(result)
 
     def _format_full_table(self, data: dict[str, Any]) -> str:
-        """Full table format"""
+        """Full table format - organized by class"""
         lines = []
 
-        # Header - use filename when multiple classes exist
+        # Header - use filename for multi-class files
         classes = data.get("classes", [])
         if classes is None:
             classes = []
-        if len(classes) > 1:
-            # Use file name when multiple classes exist
-            file_name = data.get("file_path", "Unknown").split("/")[-1].split("\\")[-1]
-            lines.append(f"# {file_name}")
-        else:
-            # Use class name for single class as before
-            class_name = classes[0].get("name", "Unknown") if classes else "Unknown"
-            lines.append(
-                f"# {(data.get('package') or {}).get('name', 'unknown')}.{class_name}"
-            )
+
+        # Always use filename for header to be consistent
+        file_name = data.get("file_path", "Unknown").split("/")[-1].split("\\")[-1]
+        lines.append(f"# {file_name}")
         lines.append("")
+
+        # Package info
+        package_name = (data.get("package") or {}).get("name", "")
+        if package_name:
+            lines.append("## Package")
+            lines.append(f"`{package_name}`")
+            lines.append("")
 
         # Imports
         imports = data.get("imports", [])
@@ -82,12 +83,9 @@ class TableFormatter:
             lines.append("```")
             lines.append("")
 
-        # Class Info - Support for multiple classes
-        classes = data.get("classes", [])
-        if classes is None:
-            classes = []
+        # Classes Overview
         if len(classes) > 1:
-            lines.append("## Classes")
+            lines.append("## Classes Overview")
             lines.append("| Class | Type | Visibility | Lines | Methods | Fields |")
             lines.append("|-------|------|------------|-------|---------|--------|")
 
@@ -99,51 +97,198 @@ class TableFormatter:
                 lines_str = f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
 
                 # Calculate method and field counts for this class
-                class_methods = [
-                    m
-                    for m in data.get("methods", [])
-                    if line_range.get("start", 0)
-                    <= m.get("line_range", {}).get("start", 0)
-                    <= line_range.get("end", 0)
-                ]
-                class_fields = [
-                    f
-                    for f in data.get("fields", [])
-                    if line_range.get("start", 0)
-                    <= f.get("line_range", {}).get("start", 0)
-                    <= line_range.get("end", 0)
-                ]
+                class_methods = self._get_class_methods(data, line_range)
+                class_fields = self._get_class_fields(data, line_range)
 
                 lines.append(
                     f"| {name} | {class_type} | {visibility} | {lines_str} | {len(class_methods)} | {len(class_fields)} |"
                 )
-        else:
-            # Use traditional format for single class
-            lines.append("## Class Info")
-            lines.append("| Property | Value |")
-            lines.append("|----------|-------|")
+            lines.append("")
 
-            package_name = (data.get("package") or {}).get("name", "unknown")
-            class_info = data.get("classes", [{}])[0] if data.get("classes") else {}
-            stats = data.get("statistics") or {}
+        # Detailed class information - organized by class
+        for class_info in classes:
+            lines.extend(self._format_class_details(class_info, data))
 
-            lines.append(f"| Package | {package_name} |")
-            lines.append(f"| Type | {str(class_info.get('type', 'class'))} |")
-            lines.append(
-                f"| Visibility | {str(class_info.get('visibility', 'public'))} |"
-            )
-            lines.append(
-                f"| Lines | {class_info.get('line_range', {}).get('start', 0)}-{class_info.get('line_range', {}).get('end', 0)} |"
-            )
-            lines.append(f"| Total Methods | {stats.get('method_count', 0)} |")
-            lines.append(f"| Total Fields | {stats.get('field_count', 0)} |")
+        # Remove trailing empty lines
+        while lines and lines[-1] == "":
+            lines.pop()
 
+        return "\n".join(lines)
+
+    def _get_class_methods(self, data: dict[str, Any], class_line_range: dict[str, int]) -> list[dict[str, Any]]:
+        """Get methods that belong to a specific class based on line range, excluding nested classes."""
+        methods = data.get("methods", [])
+        classes = data.get("classes", [])
+        class_methods = []
+
+        # Get nested class ranges to exclude their methods
+        nested_class_ranges = []
+        for cls in classes:
+            cls_range = cls.get("line_range", {})
+            cls_start = cls_range.get("start", 0)
+            cls_end = cls_range.get("end", 0)
+
+            # If this class is nested within the current class range
+            if (class_line_range.get("start", 0) < cls_start and
+                cls_end < class_line_range.get("end", 0)):
+                nested_class_ranges.append((cls_start, cls_end))
+
+        for method in methods:
+            method_line = method.get("line_range", {}).get("start", 0)
+
+            # Check if method is within the class range
+            if (class_line_range.get("start", 0) <= method_line <= class_line_range.get("end", 0)):
+                # Check if method is NOT within any nested class
+                in_nested_class = False
+                for nested_start, nested_end in nested_class_ranges:
+                    if nested_start <= method_line <= nested_end:
+                        in_nested_class = True
+                        break
+
+                if not in_nested_class:
+                    class_methods.append(method)
+
+        return class_methods
+
+    def _get_class_fields(self, data: dict[str, Any], class_line_range: dict[str, int]) -> list[dict[str, Any]]:
+        """Get fields that belong to a specific class based on line range, excluding nested classes."""
+        fields = data.get("fields", [])
+        classes = data.get("classes", [])
+        class_fields = []
+
+        # Get nested class ranges to exclude their fields
+        nested_class_ranges = []
+        for cls in classes:
+            cls_range = cls.get("line_range", {})
+            cls_start = cls_range.get("start", 0)
+            cls_end = cls_range.get("end", 0)
+
+            # If this class is nested within the current class range
+            if (class_line_range.get("start", 0) < cls_start and
+                cls_end < class_line_range.get("end", 0)):
+                nested_class_ranges.append((cls_start, cls_end))
+
+        for field in fields:
+            field_line = field.get("line_range", {}).get("start", 0)
+
+            # Check if field is within the class range
+            if (class_line_range.get("start", 0) <= field_line <= class_line_range.get("end", 0)):
+                # Check if field is NOT within any nested class
+                in_nested_class = False
+                for nested_start, nested_end in nested_class_ranges:
+                    if nested_start <= field_line <= nested_end:
+                        in_nested_class = True
+                        break
+
+                if not in_nested_class:
+                    class_fields.append(field)
+
+        return class_fields
+
+    def _format_class_details(self, class_info: dict[str, Any], data: dict[str, Any]) -> list[str]:
+        """Format detailed information for a single class."""
+        lines = []
+
+        name = str(class_info.get("name", "Unknown"))
+        line_range = class_info.get("line_range", {})
+        lines_str = f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
+
+        # Class header
+        lines.append(f"## {name} ({lines_str})")
+
+        # Get class-specific methods and fields
+        class_methods = self._get_class_methods(data, line_range)
+        class_fields = self._get_class_fields(data, line_range)
+
+        # Fields section
+        if class_fields:
+            lines.append("### Fields")
+            lines.append("| Name | Type | Vis | Modifiers | Line | Doc |")
+            lines.append("|------|------|-----|-----------|------|-----|")
+
+            for field in class_fields:
+                name_field = str(field.get("name", ""))
+                type_field = str(field.get("type", ""))
+                visibility = self._convert_visibility(str(field.get("visibility", "")))
+                modifiers = ",".join(field.get("modifiers", []))
+                line_num = field.get("line_range", {}).get("start", 0)
+                doc = self._extract_doc_summary(str(field.get("javadoc", ""))) if self.include_javadoc else "-"
+
+                lines.append(f"| {name_field} | {type_field} | {visibility} | {modifiers} | {line_num} | {doc} |")
+            lines.append("")
+
+        # Methods section - separate by type
+        constructors = [m for m in class_methods if m.get("is_constructor", False)]
+        regular_methods = [m for m in class_methods if not m.get("is_constructor", False)]
+
+        # Constructors
+        if constructors:
+            lines.append("### Constructors")
+            lines.append("| Constructor | Signature | Vis | Lines | Cx | Doc |")
+            lines.append("|-------------|-----------|-----|-------|----|----|")
+
+            for method in constructors:
+                lines.append(self._format_method_row_detailed(method))
+            lines.append("")
+
+        # Methods grouped by visibility
+        public_methods = [m for m in regular_methods if m.get("visibility", "") == "public"]
+        protected_methods = [m for m in regular_methods if m.get("visibility", "") == "protected"]
+        package_methods = [m for m in regular_methods if m.get("visibility", "") == "package"]
+        private_methods = [m for m in regular_methods if m.get("visibility", "") == "private"]
+
+        for method_group, title in [
+            (public_methods, "Public Methods"),
+            (protected_methods, "Protected Methods"),
+            (package_methods, "Package Methods"),
+            (private_methods, "Private Methods")
+        ]:
+            if method_group:
+                lines.append(f"### {title}")
+                lines.append("| Method | Signature | Vis | Lines | Cx | Doc |")
+                lines.append("|--------|-----------|-----|-------|----|----|")
+
+                for method in method_group:
+                    lines.append(self._format_method_row_detailed(method))
+                lines.append("")
+
+        return lines
+
+    def _format_method_row_detailed(self, method: dict[str, Any]) -> str:
+        """Format method row for detailed class view."""
+        name = str(method.get("name", ""))
+        signature = self._create_full_signature(method)
+        visibility = self._convert_visibility(str(method.get("visibility", "")))
+        line_range = method.get("line_range", {})
+        lines_str = f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
+        complexity = method.get("complexity_score", 0)
+        doc = self._extract_doc_summary(str(method.get("javadoc", ""))) if self.include_javadoc else "-"
+
+        return f"| {name} | {signature} | {visibility} | {lines_str} | {complexity} | {doc} |"
+
+    def _format_traditional_sections(self, data: dict[str, Any]) -> list[str]:
+        """Format traditional sections when no classes are found."""
+        lines = []
+
+        # Traditional class info
+        lines.append("## Class Info")
+        lines.append("| Property | Value |")
+        lines.append("|----------|-------|")
+
+        package_name = (data.get("package") or {}).get("name", "unknown")
+        class_info = data.get("classes", [{}])[0] if data.get("classes") else {}
+        stats = data.get("statistics") or {}
+
+        lines.append(f"| Package | {package_name} |")
+        lines.append(f"| Type | {str(class_info.get('type', 'class'))} |")
+        lines.append(f"| Visibility | {str(class_info.get('visibility', 'public'))} |")
+        lines.append(f"| Lines | {class_info.get('line_range', {}).get('start', 0)}-{class_info.get('line_range', {}).get('end', 0)} |")
+        lines.append(f"| Total Methods | {stats.get('method_count', 0)} |")
+        lines.append(f"| Total Fields | {stats.get('field_count', 0)} |")
         lines.append("")
 
         # Fields
         fields = data.get("fields", [])
-        if fields is None:
-            fields = []
         if fields:
             lines.append("## Fields")
             lines.append("| Name | Type | Vis | Modifiers | Line | Doc |")
@@ -155,66 +300,37 @@ class TableFormatter:
                 visibility = self._convert_visibility(str(field.get("visibility", "")))
                 modifiers = ",".join([str(m) for m in field.get("modifiers", [])])
                 line = field.get("line_range", {}).get("start", 0)
-                if self.include_javadoc:
-                    doc = self._extract_doc_summary(str(field.get("javadoc", "")))
-                else:
-                    doc = "-"
+                doc = self._extract_doc_summary(str(field.get("javadoc", ""))) if self.include_javadoc else "-"
 
-                lines.append(
-                    f"| {name} | {field_type} | {visibility} | {modifiers} | {line} | {doc} |"
-                )
+                lines.append(f"| {name} | {field_type} | {visibility} | {modifiers} | {line} | {doc} |")
             lines.append("")
 
-        # Constructor
-        constructors = [
-            m for m in (data.get("methods") or []) if m.get("is_constructor", False)
-        ]
+        # Methods by type
+        methods = data.get("methods", [])
+        constructors = [m for m in methods if m.get("is_constructor", False)]
+        regular_methods = [m for m in methods if not m.get("is_constructor", False)]
+
+        # Constructors
         if constructors:
             lines.append("## Constructor")
             lines.append("| Method | Signature | Vis | Lines | Cols | Cx | Doc |")
             lines.append("|--------|-----------|-----|-------|------|----|----|")
-
             for method in constructors:
                 lines.append(self._format_method_row(method))
             lines.append("")
 
-        # Public Methods
-        public_methods = [
-            m
-            for m in (data.get("methods") or [])
-            if not m.get("is_constructor", False)
-            and str(m.get("visibility")) == "public"
-        ]
-        if public_methods:
-            lines.append("## Public Methods")
-            lines.append("| Method | Signature | Vis | Lines | Cols | Cx | Doc |")
-            lines.append("|--------|-----------|-----|-------|------|----|----|")
+        # Methods by visibility
+        for visibility, title in [("public", "Public Methods"), ("private", "Private Methods")]:
+            visibility_methods = [m for m in regular_methods if str(m.get("visibility")) == visibility]
+            if visibility_methods:
+                lines.append(f"## {title}")
+                lines.append("| Method | Signature | Vis | Lines | Cols | Cx | Doc |")
+                lines.append("|--------|-----------|-----|-------|------|----|----|")
+                for method in visibility_methods:
+                    lines.append(self._format_method_row(method))
+                lines.append("")
 
-            for method in public_methods:
-                lines.append(self._format_method_row(method))
-            lines.append("")
-
-        # Private Methods
-        private_methods = [
-            m
-            for m in (data.get("methods") or [])
-            if not m.get("is_constructor", False)
-            and str(m.get("visibility")) == "private"
-        ]
-        if private_methods:
-            lines.append("## Private Methods")
-            lines.append("| Method | Signature | Vis | Lines | Cols | Cx | Doc |")
-            lines.append("|--------|-----------|-----|-------|------|----|----|")
-
-            for method in private_methods:
-                lines.append(self._format_method_row(method))
-            lines.append("")
-
-        # Remove trailing empty lines
-        while lines and lines[-1] == "":
-            lines.pop()
-
-        return "\n".join(lines)
+        return lines
 
     def _format_compact_table(self, data: dict[str, Any]) -> str:
         """Compact table format"""

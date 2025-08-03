@@ -5,6 +5,50 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2025-08-04
+
+### 🚀 Added
+
+#### Improved Table Output Structure
+- **Enhanced**: Complete restructure of `--table=full` output format
+- **Added**: Class-based organization - each class now has its own section
+- **Added**: Clear separation of fields, constructors, and methods by class
+- **Added**: Proper attribution of methods and fields to their respective classes
+- **Added**: Nested class handling - inner class members no longer appear in outer class sections
+
+#### Better Output Organization
+- **Enhanced**: File header now shows filename instead of class name for multi-class files
+- **Enhanced**: Package information displayed in dedicated section with clear formatting
+- **Enhanced**: Methods grouped by visibility (Public, Protected, Package, Private)
+- **Enhanced**: Constructors separated from regular methods
+- **Enhanced**: Fields properly attributed to their containing class
+
+#### Improved Readability
+- **Enhanced**: Cleaner section headers with line range information
+- **Enhanced**: Better visual separation between different classes
+- **Enhanced**: More logical information flow from overview to details
+
+### 🔧 Fixed
+
+#### Output Structure Issues
+- **Fixed**: Methods and fields now correctly attributed to their containing classes
+- **Fixed**: Inner class methods no longer appear duplicated in outer class sections
+- **Fixed**: Nested class field attribution corrected
+- **Fixed**: Multi-class file handling improved
+
+#### Test Updates
+- **Updated**: All tests updated to work with new output format
+- **Updated**: Package name verification tests adapted to new structure
+- **Updated**: MCP tool tests updated for new format compatibility
+
+### 📦 Package Updates
+
+- **Updated**: Table formatter completely rewritten for better organization
+- **Updated**: Class-based output structure for improved code navigation
+- **Updated**: Enhanced support for complex class hierarchies and nested classes
+
+---
+
 ## [0.6.2] - 2025-08-04
 
 ### 🔧 Fixed

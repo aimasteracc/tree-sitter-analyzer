@@ -155,14 +155,11 @@ public class TestService {
         content = result['table_output']
 
         # Check if we got unexpected content due to test environment issues
-        if 'unknown' in content.lower() or '# com.example.service.TestService' not in content:
+        if 'unknown' in content.lower():
             pytest.skip(f"MCP tool returned unexpected content in test environment. Content start: {repr(content[:100])}")
 
-        # Check that package name is correctly displayed in header
-        assert '# com.example.service.TestService' in content
-
-        # Check that package info is correctly displayed in table
-        assert '| Package | com.example.service |' in content
+        # Check that package name is correctly displayed (new format)
+        assert '`com.example.service`' in content, "Package section does not show correct package name"
 
     def test_bigservice_example_regression(self):
         """Test the original BigService.java example that had the issue."""
@@ -215,12 +212,12 @@ public class TestService {
         content = result['table_output']
 
         # Check if we got unexpected content due to test environment issues
-        if '# unknown.BigService' in content or '| Package | unknown |' in content or '# com.example.service.BigService' not in content:
+        if 'unknown' in content.lower():
             pytest.skip(f"MCP tool returned unexpected content in test environment. Content start: {repr(content[:100])}")
 
-        # Check that package name is correctly displayed
-        assert '# com.example.service.BigService' in content
-        assert '| Package | com.example.service |' in content
+        # Check that package name is correctly displayed (new format)
+        assert '# BigService.java' in content, "Header does not show correct file name"
+        assert '`com.example.service`' in content, "Package section does not show correct package name"
 
 
 class TestPackageNameEdgeCases:
