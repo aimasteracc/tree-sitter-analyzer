@@ -5,10 +5,10 @@ Integration tests for MCP Server (Fixed Version)
 Tests the complete MCP server functionality including tools,
 resources, and their interactions.
 
-修正点：
-- 根本原因に基づくクリーンアップフィクスチャの改良
-- シングルトンインスタンスの明示的なクリーンアップ
-- デストラクタでの非同期処理問題の解決
+Fixes:
+- Improved cleanup fixtures based on root cause analysis
+- Explicit cleanup of singleton instances
+- Resolved async processing issues in destructors
 """
 
 import asyncio
@@ -32,17 +32,17 @@ from tree_sitter_analyzer.mcp.utils import (
 
 @pytest_asyncio.fixture(autouse=True)
 async def cleanup_event_loop():
-    """イベントループクリーンアップフィクスチャ（根本修正版）"""
+    """Event loop cleanup fixture (root fix version)"""
     yield
 
-    # 明示的にシングルトンインスタンスをクリーンアップ
+    # Explicitly cleanup singleton instances
     try:
-        # パフォーマンスモニター（UnifiedAnalysisEngine）のクリーンアップ
+        # Performance monitor (UnifiedAnalysisEngine) cleanup
         monitor = get_performance_monitor()
         if monitor and hasattr(monitor, "cleanup"):
             monitor.cleanup()
 
-        # キャッシュマネージャーのクリーンアップ
+        # Cache manager cleanup
         cache_manager = get_cache_manager()
         if cache_manager and hasattr(cache_manager, "clear_all_caches"):
             cache_manager.clear_all_caches()
@@ -50,55 +50,55 @@ async def cleanup_event_loop():
     except Exception as e:
         print(f"Warning: Error during explicit cleanup: {e}")
 
-    # テスト後のクリーンアップ
+    # Post-test cleanup
     try:
         loop = asyncio.get_running_loop()
     except RuntimeError:
         loop = None
 
     if loop and not loop.is_closed():
-        # 残っているタスクを調査
+        # Investigate remaining tasks
         pending = asyncio.all_tasks(loop)
         current_task = asyncio.current_task(loop)
 
-        # 現在のタスクを除外
+        # Exclude current task
         pending = {task for task in pending if task is not current_task}
 
         if pending:
-            # タスクをキャンセル
+            # Cancel tasks
             for task in pending:
                 if not task.done():
                     task.cancel()
 
-            # 短時間待機してキャンセルを処理
+            # Wait briefly to process cancellations
             try:
                 await asyncio.wait_for(
                     asyncio.gather(*pending, return_exceptions=True), timeout=1.0
                 )
             except asyncio.TimeoutError:
                 print(f"Warning: {len(pending)} tasks did not complete within timeout")
-                # 強制的にタスクの状態を確認
+                # Forcibly check task status
                 for i, task in enumerate(pending):
                     if not task.done():
                         print(f"  Task {i} is still running: {task}")
-                        # 強制終了を試行
+                        # Attempt forced termination
                         try:
                             task.cancel()
                         except Exception:
                             pass
 
-        # イベントループの明示的なクリーンアップ
+        # Explicit event loop cleanup
         try:
-            # 残っているコールバックを処理
+            # Process remaining callbacks
             if hasattr(loop, "_ready"):
                 loop._ready.clear()
             if hasattr(loop, "_scheduled"):
                 loop._scheduled.clear()
 
-            # ソケットとファイルディスクリプタのクリーンアップ
+            # Socket and file descriptor cleanup
             if hasattr(loop, "_selector") and loop._selector:
                 try:
-                    # セレクターの登録されたファイルディスクリプタをクリーンアップ
+                    # Cleanup registered file descriptors in selector
                     for key in list(loop._selector.get_map().values()):
                         try:
                             loop._selector.unregister(key.fileobj)
@@ -110,7 +110,7 @@ async def cleanup_event_loop():
         except Exception as e:
             print(f"Warning: Error during loop cleanup: {e}")
 
-    # ガベージコレクションを強制実行
+    # Force garbage collection
     gc.collect()
 
 
@@ -137,11 +137,11 @@ class TestMCPServerIntegration:
         """Clean up test fixtures"""
         import shutil
 
-        # ResourceWarningを一時的に抑制
+        # Temporarily suppress ResourceWarning
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", ResourceWarning)
 
-            # 明示的なクリーンアップ
+            # Explicit cleanup
             try:
                 monitor = get_performance_monitor()
                 if monitor and hasattr(monitor, "cleanup"):
@@ -149,14 +149,14 @@ class TestMCPServerIntegration:
             except Exception:
                 pass
 
-            # サーバーインスタンスのクリーンアップ
+            # Server instance cleanup
             if hasattr(self, "server"):
                 try:
-                    # サーバーの参照をクリア
+                    # Clear server references
                     if hasattr(self.server, "server") and self.server.server:
                         self.server.server = None
 
-                    # アナライザーの参照をクリア
+                    # Clear analyzer references
                     if hasattr(self.server, "universal_analyzers"):
                         self.server.universal_analyzers.clear()
 
@@ -164,10 +164,10 @@ class TestMCPServerIntegration:
                 except Exception:
                     pass
 
-            # 一時ディレクトリの削除
+            # Delete temporary directory
             shutil.rmtree(self.temp_dir, ignore_errors=True)
 
-            # ガベージコレクションを強制実行
+            # Force garbage collection
             gc.collect()
 
     def _create_test_files(self) -> dict[str, Path]:

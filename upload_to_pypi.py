@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-PyPIアップロード用スクリプト
-tree-sitter-analyzerをPyPIに安全にアップロードするためのスクリプト
+PyPI Upload Script
+Script for safely uploading tree-sitter-analyzer to PyPI
 """
 
 import subprocess
@@ -10,7 +10,7 @@ from pathlib import Path
 
 
 def check_requirements():
-    """必要なツールがインストールされているかチェック"""
+    """Check if required tools are installed"""
     required_tools = ["twine", "build"]
     missing_tools = []
 
@@ -46,7 +46,7 @@ def check_requirements():
 
 
 def clean_dist():
-    """distフォルダをクリーンアップ"""
+    """Clean up dist folder"""
     dist_path = Path("dist")
     if dist_path.exists():
         import shutil
@@ -56,7 +56,7 @@ def clean_dist():
 
 
 def build_package():
-    """パッケージをビルド"""
+    """Build package"""
     print("Building package...")
     try:
         subprocess.check_call([sys.executable, "-m", "build"])
@@ -68,7 +68,7 @@ def build_package():
 
 
 def check_package():
-    """パッケージの整合性をチェック"""
+    """Check package integrity"""
     print("Checking package integrity...")
     try:
         subprocess.check_call([sys.executable, "-m", "twine", "check", "dist/*"])
@@ -80,7 +80,7 @@ def check_package():
 
 
 def upload_to_test_pypi():
-    """TestPyPIにアップロード"""
+    """Upload to TestPyPI"""
     print("Uploading to TestPyPI...")
     print("Note: You need to have TestPyPI credentials configured")
     print("Visit: https://test.pypi.org/account/register/")
@@ -109,7 +109,7 @@ def upload_to_test_pypi():
 
 
 def upload_to_pypi():
-    """本番PyPIにアップロード"""
+    """Upload to production PyPI"""
     print("Uploading to PyPI...")
     print("Note: You need to have PyPI credentials configured")
     print("Visit: https://pypi.org/account/register/")
@@ -131,20 +131,20 @@ def upload_to_pypi():
 
 
 def main():
-    """メイン処理"""
+    """Main processing"""
     print("=== PyPI Upload Tool for tree-sitter-analyzer ===")
 
-    # 必要なツールをチェック
+    # Check required tools
     check_requirements()
 
-    # distフォルダをクリーンアップ
+    # Clean up dist folder
     clean_dist()
 
-    # パッケージをビルド
+    # Build package
     if not build_package():
         sys.exit(1)
 
-    # パッケージの整合性をチェック
+    # Check package integrity
     if not check_package():
         sys.exit(1)
 

@@ -106,8 +106,8 @@ class TestPythonQueries:
             assert isinstance(description, str)
             assert len(description) > 0
             assert (
-                "検索" in description
-            )  # All descriptions should mention "search" in Japanese
+                "search" in description.lower()
+            )  # All descriptions should mention "search"
 
     def test_query_consistency(self) -> None:
         """Test consistency between constants and ALL_QUERIES"""

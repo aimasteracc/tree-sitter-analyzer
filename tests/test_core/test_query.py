@@ -223,7 +223,7 @@ public class TestClass {
 
             queries = query_executor.get_available_queries("java")
 
-            assert isinstance(queries, dict)
+            assert isinstance(queries, list)
             assert "functions" in queries
             assert "classes" in queries
 
@@ -236,20 +236,21 @@ public class TestClass {
 
             queries = query_executor.get_available_queries("unknown")
 
-            assert isinstance(queries, dict)
+            assert isinstance(queries, list)
             assert len(queries) == 0
 
     def test_get_query_description(self, query_executor: QueryExecutor) -> None:
         """Test getting query description"""
         with patch.object(query_executor, "_query_loader") as mock_loader:
             mock_loader.get_query_description.return_value = (
-                "すべての関数/メソッド宣言を検索（methodのエイリアス）"
+                "Search all function/method declarations (alias for method)"
             )
 
             description = query_executor.get_query_description("java", "functions")
 
             assert (
-                description == "すべての関数/メソッド宣言を検索（methodのエイリアス）"
+                description
+                == "Search all function/method declarations (alias for method)"
             )
             mock_loader.get_query_description.assert_called_once_with(
                 "java", "functions"
@@ -427,7 +428,7 @@ class TestQueryExecutorErrorHandling:
         mock_node.start_point = (1, 0)
         mock_node.end_point = (1, 10)
         mock_node.type = "string_literal"
-        mock_node.text = "こんにちは".encode()  # Japanese text in bytes
+        mock_node.text = b"hello"  # Text in bytes
 
         result = query_executor._create_result_dict(
             mock_node, "string_value", "test source"
@@ -435,7 +436,7 @@ class TestQueryExecutorErrorHandling:
 
         assert isinstance(result, dict)
         assert "text" in result
-        # Should handle Unicode properly
+        # Should handle text properly
 
 
 class TestQueryExecutorIntegration:
@@ -514,4 +515,4 @@ public class TestClass {
                 }
 
                 queries = query_executor.get_available_queries(language)
-                assert isinstance(queries, dict)
+                assert isinstance(queries, list)

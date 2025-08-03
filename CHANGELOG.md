@@ -5,6 +5,134 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2025-08-03
+
+### 💥 Breaking Changes - Legacy Code Removal
+
+This release removes deprecated legacy code to streamline the codebase and improve maintainability.
+
+### 🗑️ Removed
+
+#### Legacy Components
+- **BREAKING**: Removed `java_analyzer.py` module and `CodeAnalyzer` class
+- **BREAKING**: Removed legacy test files (`test_java_analyzer.py`, `test_java_analyzer_extended.py`)
+- **BREAKING**: Removed `CodeAnalyzer` from public API exports
+
+#### Migration Guide
+Users previously using the legacy `CodeAnalyzer` should migrate to the new plugin system:
+
+**Old Code (No longer works):**
+```python
+from tree_sitter_analyzer import CodeAnalyzer
+analyzer = CodeAnalyzer()
+result = analyzer.analyze_file("file.java")
+```
+
+**New Code:**
+```python
+from tree_sitter_analyzer.core.analysis_engine import get_analysis_engine
+engine = get_analysis_engine()
+result = await engine.analyze_file("file.java")
+```
+
+**Or use the CLI:**
+```bash
+tree-sitter-analyzer file.java --advanced
+```
+
+### 🔄 Changed
+
+#### Test Suite
+- **Updated**: Test count reduced from 1216 to 1126 tests (removed 29 legacy tests)
+- **Updated**: All README files updated with new test count
+- **Updated**: Documentation examples updated to use new plugin system
+
+#### Documentation
+- **Updated**: `CODE_STYLE_GUIDE.md` examples updated to use new plugin system
+- **Updated**: All language-specific README files updated
+
+
+
+### ✅ Benefits
+
+- **Cleaner Codebase**: Removed duplicate functionality and legacy code
+- **Reduced Maintenance**: No longer maintaining two separate analysis systems
+- **Unified Experience**: All users now use the modern plugin system
+- **Better Performance**: New plugin system is more efficient and feature-rich
+
+---
+
+## [0.5.0] - 2025-08-03
+
+### 🌐 Complete Internationalization Release
+
+This release celebrates the completion of comprehensive internationalization support, making Tree-sitter Analyzer accessible to a global audience.
+
+### ✨ Added
+
+#### 🌍 Internationalization Support
+- **NEW**: Complete internationalization framework implementation
+- **NEW**: Chinese (Simplified) README ([README_zh.md](README_zh.md))
+- **NEW**: Japanese README ([README_ja.md](README_ja.md))
+- **NEW**: Full URL links for PyPI compatibility and better accessibility
+- **NEW**: Multi-language documentation support structure
+
+#### 📚 Documentation Enhancements
+- **NEW**: Comprehensive language-specific documentation
+- **NEW**: International user guides and examples
+- **NEW**: Cross-language code examples and usage patterns
+- **NEW**: Global accessibility improvements
+
+### 🔄 Changed
+
+#### 🌐 Language Standardization
+- **ENHANCED**: All Japanese and Chinese text translated to English for consistency
+- **ENHANCED**: CLI messages, error messages, and help text now in English
+- **ENHANCED**: Query descriptions and comments translated to English
+- **ENHANCED**: Code examples and documentation translated to English
+- **ENHANCED**: Improved code quality and consistency across all modules
+
+#### 🔗 Link Improvements
+- **ENHANCED**: Relative links converted to absolute URLs for PyPI compatibility
+- **ENHANCED**: Better cross-platform documentation accessibility
+- **ENHANCED**: Improved navigation between different language versions
+
+### 🔧 Fixed
+
+#### 🐛 Quality & Compatibility Issues
+- **FIXED**: Multiple test failures and compatibility issues resolved
+- **FIXED**: Plugin architecture improvements and stability enhancements
+- **FIXED**: Code formatting and linting issues across the codebase
+- **FIXED**: Documentation consistency and formatting improvements
+
+#### 🧪 Testing & Validation
+- **FIXED**: Enhanced test coverage and reliability
+- **FIXED**: Cross-language compatibility validation
+- **FIXED**: Documentation link validation and accessibility
+
+### 📊 Technical Achievements
+
+#### 🎯 Translation Metrics
+- **COMPLETED**: 368 translation targets successfully processed
+- **ACHIEVED**: 100% English language consistency across codebase
+- **VALIDATED**: All documentation links and references updated
+
+#### ✅ Quality Metrics
+- **PASSING**: 222 tests with improved coverage and stability
+- **ACHIEVED**: 4/4 quality checks passing (Ruff, Black, MyPy, Tests)
+- **ENHANCED**: Plugin system compatibility and reliability
+- **IMPROVED**: Code maintainability and international accessibility
+
+### 🌟 Impact
+
+This release establishes Tree-sitter Analyzer as a **truly international, accessible tool** that serves developers worldwide while maintaining the highest standards of code quality and documentation excellence.
+
+**Key Benefits:**
+- 🌍 **Global Accessibility**: Multi-language documentation for international users
+- 🔧 **Enhanced Quality**: Improved code consistency and maintainability
+- 📚 **Better Documentation**: Comprehensive guides in multiple languages
+- 🚀 **PyPI Ready**: Optimized for package distribution and discovery
+
 ## [0.4.0] - 2025-08-02
 
 ### 🎯 Perfect Type Safety & Architecture Unification Release

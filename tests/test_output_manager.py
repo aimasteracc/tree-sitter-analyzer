@@ -102,7 +102,7 @@ class TestOutputManager:
         test_data = {"name": "test", "value": 123}
         output_manager.output_data(test_data)
         output = mock_stdout.getvalue()
-        # JSON形式での出力を期待
+        # Expect JSON format output
         parsed = json.loads(output.strip())
         assert parsed["name"] == "test"
         assert parsed["value"] == 123
@@ -114,7 +114,7 @@ class TestOutputManager:
         test_data = ["item1", "item2", "item3"]
         output_manager.output_data(test_data)
         output = mock_stdout.getvalue()
-        # JSON形式での出力を期待
+        # Expect JSON format output
         parsed = json.loads(output.strip())
         assert parsed == ["item1", "item2", "item3"]
 
@@ -291,7 +291,7 @@ class TestSpecializedOutputFunctions:
         }
         output_queries(queries, "java")
         output = mock_stdout.getvalue()
-        assert "利用可能なクエリキー (java):" in output
+        assert "Available query keys (java):" in output
         assert "class_declaration" in output
         assert "method_declaration" in output
         assert "field_declaration" in output
@@ -303,10 +303,10 @@ class TestSpecializedOutputFunctions:
         extensions = [".java", ".js", ".py", ".ts", ".cpp", ".c", ".go", ".rs"]
         output_extensions(extensions)
         output = mock_stdout.getvalue()
-        assert "サポートされている拡張子:" in output
-        # 拡張子の数をカウントして確認
+        assert "Supported file extensions:" in output
+        # Count and verify the number of extensions
         extension_count = len(extensions)
-        assert f"合計 {extension_count} 個の拡張子をサポート" in output
+        assert f"Total {extension_count} extensions supported" in output
         for ext in extensions:
             assert ext in output
 

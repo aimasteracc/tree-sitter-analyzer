@@ -173,40 +173,40 @@ COMMENTS = """
 ALL_QUERIES = {
     "functions": {
         "query": FUNCTIONS,
-        "description": "型アノテーション付きのすべての関数宣言、式、メソッドを検索",
+        "description": "Search all function declarations, expressions, and methods with type annotations",
     },
     "classes": {
         "query": CLASSES,
-        "description": "抽象クラスを含むすべてのクラス宣言を検索",
+        "description": "Search all class declarations including abstract classes",
     },
     "interfaces": {
         "query": INTERFACES,
-        "description": "すべてのインターフェース宣言を検索",
+        "description": "Search all interface declarations",
     },
     "type_aliases": {
         "query": TYPE_ALIASES,
-        "description": "すべての型エイリアス宣言を検索",
+        "description": "Search all type alias declarations",
     },
-    "enums": {"query": ENUMS, "description": "すべての列挙型宣言を検索"},
+    "enums": {"query": ENUMS, "description": "Search all enum declarations"},
     "variables": {
         "query": VARIABLES,
-        "description": "型アノテーション付きのすべての変数宣言を検索",
+        "description": "Search all variable declarations with type annotations",
     },
     "imports": {
         "query": IMPORTS,
-        "description": "型インポートを含むすべてのインポート文を検索",
+        "description": "Search all import statements including type imports",
     },
-    "exports": {"query": EXPORTS, "description": "すべてのエクスポート文を検索"},
-    "decorators": {"query": DECORATORS, "description": "すべてのデコレータを検索"},
+    "exports": {"query": EXPORTS, "description": "Search all export statements"},
+    "decorators": {"query": DECORATORS, "description": "Search all decorators"},
     "generics": {
         "query": GENERICS,
-        "description": "すべてのジェネリック型パラメータを検索",
+        "description": "Search all generic type parameters",
     },
     "signatures": {
         "query": SIGNATURES,
-        "description": "プロパティシグネチャ、メソッドシグネチャ、コンストラクタシグネチャを検索",
+        "description": "Search property signatures, method signatures, and constructor signatures",
     },
-    "comments": {"query": COMMENTS, "description": "すべてのコメントを検索"},
+    "comments": {"query": COMMENTS, "description": "Search all comments"},
 }
 
 

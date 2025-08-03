@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-Tree-sitter Analyzer パッケージのメインエントリーポイント
+Tree-sitter Analyzer package main entry point
 
-このファイルにより、`python -m tree_sitter_analyzer` でパッケージを実行できます。
+This file allows the package to be executed with `python -m tree_sitter_analyzer`.
 """
 
 from .cli_main import main

@@ -13,13 +13,13 @@ from .utils import log_error, log_info, log_warning
 
 def detect_language_from_extension(file_path: str) -> str:
     """
-    ファイル拡張子から言語を判定
+    Detect programming language from file extension
 
     Args:
-        file_path: ファイルパス
+        file_path: File path to analyze
 
     Returns:
-        言語名または'unknown'
+        Language name or 'unknown' if not recognized
     """
     extension = os.path.splitext(file_path)[1].lower()
 

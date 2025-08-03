@@ -301,7 +301,7 @@ class PythonElementExtractor(ElementExtractor):
             elif name.startswith("_"):
                 visibility = "private"
 
-            # 安全地提取原始文本，避免索引越界
+            # Safely extract raw text, avoiding index out of bounds
             start_byte = min(node.start_byte, len(source_code))
             end_byte = min(node.end_byte, len(source_code))
             raw_text = (
@@ -402,6 +402,7 @@ class PythonElementExtractor(ElementExtractor):
                 end_line=node.end_point[0] + 1,
                 raw_text=variable_text,
                 language="python",
+                variable_type=assignment_type,
             )
 
         except Exception as e:
@@ -416,7 +417,7 @@ class PythonElementExtractor(ElementExtractor):
             if not self._validate_node(node):
                 return None
 
-            # 安全地提取导入文本，避免索引越界
+            # Safely extract import text, avoiding index out of bounds
             start_byte = min(node.start_byte, len(source_code))
             end_byte = min(node.end_byte, len(source_code))
             import_text = (
@@ -585,6 +586,7 @@ class PythonPlugin(LanguagePlugin):
         """Initialize the Python plugin"""
         super().__init__()
         self._language_cache: tree_sitter.Language | None = None
+        self._extractor: PythonElementExtractor | None = None
 
     def get_language_name(self) -> str:
         """Return the name of the programming language this plugin supports"""
@@ -597,6 +599,12 @@ class PythonPlugin(LanguagePlugin):
     def create_extractor(self) -> ElementExtractor:
         """Create and return an element extractor for this language"""
         return PythonElementExtractor()
+
+    def get_extractor(self) -> ElementExtractor:
+        """Get the cached extractor instance, creating it if necessary"""
+        if self._extractor is None:
+            self._extractor = PythonElementExtractor()
+        return self._extractor
 
     def get_tree_sitter_language(self) -> Optional["tree_sitter.Language"]:
         """Get the Tree-sitter language object for Python"""

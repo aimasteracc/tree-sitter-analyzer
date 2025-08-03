@@ -42,7 +42,7 @@ class TableCommand(BaseCommand):
             return 0
 
         except Exception as e:
-            output_error(f"ERROR: テーブル形式での解析でエラーが発生しました: {e}")
+            output_error(f"ERROR: An error occurred during table format analysis: {e}")
             return 1
 
     def _convert_to_structure_format(
@@ -228,8 +228,8 @@ class TableCommand(BaseCommand):
     def _output_table(self, table_output: str) -> None:
         """Output the table with proper encoding."""
         try:
-            # Windows対応: UTF-8エンコーディングで出力
+            # Windows support: Output with UTF-8 encoding
             sys.stdout.buffer.write(table_output.encode("utf-8"))
         except (AttributeError, UnicodeEncodeError):
-            # フォールバック: 通常のprint
+            # Fallback: Normal print
             print(table_output, end="")

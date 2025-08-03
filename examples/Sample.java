@@ -3,138 +3,138 @@ package com.example;
 import java.util.List;
 import java.util.ArrayList;
 
-// 抽象クラスの例
+// Example of abstract class
 abstract class AbstractParentClass {
-    // 抽象メソッド
+    // Abstract method
     abstract void abstractMethod();
 
-    // 具象メソッド
+    // Concrete method
     void concreteMethod() {
         System.out.println("Concrete method in abstract class");
     }
 }
 
-// 通常の親クラス
+// Regular parent class
 class ParentClass extends AbstractParentClass {
-    // static フィールド
+    // Static field
     static final String CONSTANT = "Parent constant";
 
-    // インスタンスフィールド
+    // Instance field
     protected String parentField;
 
-    // コンストラクタ
+    // Constructor
     public ParentClass() {
         this.parentField = "Default";
     }
 
-    // static メソッド
+    // Static method
     static void staticParentMethod() {
         System.out.println("Static parent method");
     }
 
-    // 抽象メソッドの実装
+    // Implementation of abstract method
     @Override
     void abstractMethod() {
         System.out.println("Implementation of abstract method");
     }
 
-    // 通常メソッド
+    // Regular method
     void parentMethod() {
         System.out.println("Parent method");
     }
 }
 
-// インターフェース
+// Interface
 interface TestInterface {
-    // 定数
+    // Constant
     String INTERFACE_CONSTANT = "Interface constant";
 
-    // 抽象メソッド
+    // Abstract method
     void doSomething();
 
-    // デフォルトメソッド
+    // Default method
     default void defaultMethod() {
         System.out.println("Default method in interface");
     }
 
-    // staticメソッド
+    // Static method
     static void staticInterfaceMethod() {
         System.out.println("Static method in interface");
     }
 }
 
-// 別のインターフェース
+// Another interface
 interface AnotherInterface {
     void anotherMethod();
 }
 
-// メインクラス（public）
+// Main class (public)
 public class Test extends ParentClass implements TestInterface, AnotherInterface {
-    // private フィールド
+    // Private field
     private int value;
 
-    // static フィールド
+    // Static field
     public static int staticValue = 10;
 
-    // final フィールド
+    // Final field
     private final String finalField;
 
-    // 内部クラス（ネストクラス）
+    // Inner class (nested class)
     public class InnerClass {
         public void innerMethod() {
             System.out.println("Inner class method, value: " + value);
         }
     }
 
-    // static 内部クラス
+    // Static inner class
     public static class StaticNestedClass {
         public void nestedMethod() {
             System.out.println("Static nested class method");
         }
     }
 
-    // コンストラクタ
+    // Constructor
     public Test(int value) {
         this.value = value;
         this.finalField = "Cannot be changed";
     }
 
-    // オーバーロードされたコンストラクタ
+    // Overloaded constructor
     public Test() {
         this(0);
     }
 
-    // public メソッド
+    // Public method
     public String getValue() {
         return "Value: " + value;
     }
 
-    // protected メソッド
+    // Protected method
     protected void setValue(int value) {
         this.value = value;
     }
 
-    // package-private メソッド
+    // Package-private method
     void packageMethod() {
         System.out.println("Package method");
     }
 
-    // private メソッド
+    // Private method
     private void privateMethod() {
         System.out.println("Private method");
     }
 
-    // static メソッド
+    // Static method
     public static void staticMethod() {
         System.out.println("Static method");
     }
 
-    // final メソッド
+    // Final method
     public final void finalMethod() {
         System.out.println("This method cannot be overridden");
     }
 
-    // インターフェースメソッドの実装
+    // Implementation of interface method
     @Override
     public void doSomething() {
         System.out.println("Implementation of TestInterface method");
@@ -145,12 +145,12 @@ public class Test extends ParentClass implements TestInterface, AnotherInterface
         System.out.println("Implementation of AnotherInterface method");
     }
 
-    // ジェネリクスの使用例
+    // Example of generics usage
     public <T> void genericMethod(T input) {
         System.out.println("Generic input: " + input);
     }
 
-    // ジェネリクス型を返すメソッド
+    // Method returning generic type
     public <T> List<T> createList(T item) {
         List<T> list = new ArrayList<>();
         list.add(item);
@@ -158,7 +158,7 @@ public class Test extends ParentClass implements TestInterface, AnotherInterface
     }
 }
 
-// 列挙型
+// Enumeration
 enum TestEnum {
     A("First"),
     B("Second"),
@@ -166,12 +166,12 @@ enum TestEnum {
 
     private final String description;
 
-    // 列挙型コンストラクタ
+    // Enum constructor
     TestEnum(String description) {
         this.description = description;
     }
 
-    // 列挙型メソッド
+    // Enum method
     public String getDescription() {
         return description;
     }

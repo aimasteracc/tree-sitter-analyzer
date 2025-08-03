@@ -2,7 +2,7 @@
 """
 Global test configuration for tree-sitter-analyzer
 
-テスト実行時の警告とログを制御し、クリーンな出力を確保します。
+Controls warnings and logs during test execution to ensure clean output.
 """
 
 import asyncio
@@ -17,29 +17,29 @@ import pytest
 @pytest.fixture(autouse=True)
 def configure_logging():
     """
-    テスト用ログ設定の自動適用
+    Automatic application of test logging configuration
 
-    全テスト実行前にログレベルを調整し、
-    不要なログ出力を抑制します。
+    Adjusts log levels before all test execution and
+    suppresses unnecessary log output.
     """
-    # メインロガーの設定
+    # Main logger configuration
     root_logger = logging.getLogger()
     original_level = root_logger.level
     root_logger.setLevel(logging.ERROR)
 
-    # アプリケーション固有のロガー設定
+    # Application-specific logger configuration
     app_logger = logging.getLogger("tree_sitter_analyzer")
     app_original_level = app_logger.level
     app_logger.setLevel(logging.ERROR)
 
-    # パフォーマンスロガーの設定
+    # Performance logger configuration
     perf_logger = logging.getLogger("tree_sitter_analyzer.performance")
     perf_original_level = perf_logger.level
     perf_logger.setLevel(logging.ERROR)
 
     yield
 
-    # テスト後にレベルを復元
+    # Restore levels after test
     root_logger.setLevel(original_level)
     app_logger.setLevel(app_original_level)
     perf_logger.setLevel(perf_original_level)
@@ -48,66 +48,66 @@ def configure_logging():
 @pytest.fixture(autouse=True)
 def cleanup_event_loops():
     """
-    Event loop ResourceWarning の根本解決
+    Root solution for Event loop ResourceWarning
 
-    テスト後に未クローズのイベントループを適切にクリーンアップ
+    Properly cleanup unclosed event loops after tests
     """
     yield
 
-    # 明示的なイベントループクリーンアップ
+    # Explicit event loop cleanup
     try:
-        # 現在のイベントループを取得してクローズ
+        # Get current event loop and close it
         try:
             loop = asyncio.get_running_loop()
             if loop and not loop.is_closed():
-                # 実行中のタスクをキャンセル
+                # Cancel running tasks
                 pending_tasks = [
                     task for task in asyncio.all_tasks(loop) if not task.done()
                 ]
                 for task in pending_tasks:
                     task.cancel()
 
-                # タスクの完了を待機
+                # Wait for task completion
                 if pending_tasks:
                     loop.run_until_complete(
                         asyncio.gather(*pending_tasks, return_exceptions=True)
                     )
         except RuntimeError:
-            # イベントループが実行中でない場合は無視
+            # Ignore if event loop is not running
             pass
 
-        # すべてのイベントループを取得してクローズ
+        # Get and close all event loops
         try:
-            # 既存のループを取得（新規作成しない）
+            # Get existing loop (don't create new one)
             try:
-                # Python 3.12+対応: DeprecationWarningを避けるため警告を抑制
+                # Python 3.12+ support: suppress warnings to avoid DeprecationWarning
                 with warnings.catch_warnings():
                     warnings.simplefilter("ignore", DeprecationWarning)
                     try:
                         loop = asyncio.get_event_loop_policy().get_event_loop()
                     except RuntimeError:
-                        # イベントループが存在しない場合
+                        # If event loop doesn't exist
                         loop = None
                 if loop and not loop.is_closed():
-                    # 全ての未完了タスクをキャンセル
+                    # Cancel all incomplete tasks
                     pending = [
                         task for task in asyncio.all_tasks(loop) if not task.done()
                     ]
                     for task in pending:
                         task.cancel()
 
-                    # タスクをクリーンアップ
+                    # Cleanup tasks
                     if pending:
                         loop.run_until_complete(
                             asyncio.gather(*pending, return_exceptions=True)
                         )
 
-                    # ループを明示的にクローズ
+                    # Explicitly close loop
                     loop.close()
             except (RuntimeError, AttributeError):
                 pass
 
-            # イベントループポリシーをリセット
+            # Reset event loop policy
             try:
                 if (
                     hasattr(asyncio, "WindowsProactorEventLoopPolicy")
@@ -123,14 +123,14 @@ def cleanup_event_loops():
                 pass
 
         except Exception:
-            # エラーが発生しても継続
+            # Continue even if error occurs
             pass
 
-        # ガベージコレクションを強制実行
+        # Force garbage collection
         gc.collect()
 
     except Exception:
-        # クリーンアップエラーは無視（テストの継続を優先）
+        # Ignore cleanup errors (prioritize test continuation)
         pass
 
 
@@ -138,18 +138,18 @@ def cleanup_event_loops():
 # @pytest.fixture(autouse=True)
 # def suppress_warnings():
 #     """
-#     警告の抑制設定
+#     Warning suppression configuration
 #
-#     テスト実行中の不要な警告を抑制します。
+#     Suppresses unnecessary warnings during test execution.
 #     """
-#     # 各種警告を抑制
+#     # Suppress various warnings
 #     warnings.filterwarnings("ignore", category=DeprecationWarning)
 #     warnings.filterwarnings("ignore", category=PendingDeprecationWarning)
 #     warnings.filterwarnings("ignore", category=FutureWarning)
 #     warnings.filterwarnings("ignore", category=UserWarning)
 #     warnings.filterwarnings("ignore", category=ResourceWarning)
 #
-#     # pytest固有の警告
+#     # pytest-specific warnings
 #     try:
 #         import pytest
 #         warnings.filterwarnings("ignore", category=pytest.PytestMockWarning)
@@ -157,12 +157,12 @@ def cleanup_event_loops():
 #     except (ImportError, AttributeError):
 #         pass
 #
-#     # asyncio固有の警告
+#     # asyncio-specific warnings
 #     warnings.filterwarnings("ignore", message=".*unclosed event loop.*", category=ResourceWarning)
 #     warnings.filterwarnings("ignore", message=".*Enable tracemalloc.*", category=ResourceWarning)
 #
 #     yield
 
 
-# pytest-asyncio設定
+# pytest-asyncio configuration
 pytest_plugins = ["pytest_asyncio"]

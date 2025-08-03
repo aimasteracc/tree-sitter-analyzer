@@ -182,12 +182,12 @@ class MCPAdapter:
 
     async def analyze_with_mcp_request(
         self, arguments: dict[str, Any]
-    ) -> dict[str, Any]:
+    ) -> AnalysisResult:
         """Analyze with MCP request."""
         if "file_path" not in arguments:
             raise KeyError("file_path is required in MCP request")
         result = await self.analyze_file_async(arguments["file_path"])
-        return {"result": str(result), "success": True}
+        return result
 
 
 class MCPServerAdapter:

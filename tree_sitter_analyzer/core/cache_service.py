@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 """
-統一キャッシュサービス - CLI・MCP共通キャッシュシステム
+Unified Cache Service - Common Cache System for CLI and MCP
 
-このモジュールは、メモリ効率的な階層キャッシュシステムを提供します。
-L1（高速）、L2（中期）、L3（長期）の3層構造で最適なパフォーマンスを実現。
+This module provides a memory-efficient hierarchical cache system.
+Achieves optimal performance with a 3-tier structure: L1 (fast), L2 (medium-term), L3 (long-term).
 
-Roo Code規約準拠:
-- 型ヒント: 全関数に型ヒント必須
-- MCPログ: 各ステップでログ出力
+Roo Code compliance:
+- Type hints: Required for all functions
+- MCP logging: Log output at each step
 - docstring: Google Style docstring
-- パフォーマンス重視: メモリ効率とアクセス速度の最適化
+- Performance-focused: Optimization of memory efficiency and access speed
 """
 
 import hashlib
@@ -26,15 +26,15 @@ from ..utils import log_debug, log_error, log_info
 @dataclass(frozen=True)
 class CacheEntry:
     """
-    キャッシュエントリ
+    Cache Entry
 
-    キャッシュされた値とメタデータを保持するデータクラス。
+    Data class that holds cached values and metadata.
 
     Attributes:
-        value: キャッシュされた値
-        created_at: 作成日時
-        expires_at: 有効期限
-        access_count: アクセス回数
+        value: Cached value
+        created_at: Creation timestamp
+        expires_at: Expiration time
+        access_count: Access count
     """
 
     value: Any
@@ -44,10 +44,10 @@ class CacheEntry:
 
     def is_expired(self) -> bool:
         """
-        有効期限チェック
+        Expiration check
 
         Returns:
-            bool: 期限切れの場合True
+            bool: True if expired
         """
         if self.expires_at is None:
             return False
@@ -56,17 +56,17 @@ class CacheEntry:
 
 class CacheService:
     """
-    統一キャッシュサービス
+    Unified Cache Service
 
-    階層化キャッシュシステムを提供し、CLI・MCP間でキャッシュを共有。
-    メモリ効率とアクセス速度を最適化した3層構造。
+    Provides hierarchical cache system and shares cache between CLI and MCP.
+    3-tier structure optimized for memory efficiency and access speed.
 
     Attributes:
-        _l1_cache: L1キャッシュ（高速アクセス用）
-        _l2_cache: L2キャッシュ（中期保存用）
-        _l3_cache: L3キャッシュ（長期保存用）
-        _lock: スレッドセーフ用ロック
-        _stats: キャッシュ統計情報
+        _l1_cache: L1 cache (for fast access)
+        _l2_cache: L2 cache (for medium-term storage)
+        _l3_cache: L3 cache (for long-term storage)
+        _lock: Lock for thread safety
+        _stats: Cache statistics
     """
 
     def __init__(
@@ -77,25 +77,25 @@ class CacheService:
         ttl_seconds: int = 3600,
     ) -> None:
         """
-        初期化
+        Initialization
 
         Args:
-            l1_maxsize: L1キャッシュの最大サイズ
-            l2_maxsize: L2キャッシュの最大サイズ
-            l3_maxsize: L3キャッシュの最大サイズ
-            ttl_seconds: デフォルトTTL（秒）
+            l1_maxsize: Maximum size of L1 cache
+            l2_maxsize: Maximum size of L2 cache
+            l3_maxsize: Maximum size of L3 cache
+            ttl_seconds: Default TTL (seconds)
         """
-        # 階層化キャッシュの初期化
+        # Initialize hierarchical cache
         self._l1_cache: LRUCache[str, CacheEntry] = LRUCache(maxsize=l1_maxsize)
         self._l2_cache: TTLCache[str, CacheEntry] = TTLCache(
             maxsize=l2_maxsize, ttl=ttl_seconds
         )
         self._l3_cache: LRUCache[str, CacheEntry] = LRUCache(maxsize=l3_maxsize)
 
-        # スレッドセーフ用ロック
+        # Lock for thread safety
         self._lock = threading.RLock()
 
-        # キャッシュ統計
+        # Cache statistics
         self._stats = {
             "hits": 0,
             "misses": 0,

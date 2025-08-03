@@ -65,9 +65,9 @@ class EncodingCache:
             max_size: Maximum number of cached entries
             ttl_seconds: Time-to-live for cache entries in seconds
         """
-        self._cache: dict[
-            str, tuple[str, float]
-        ] = {}  # file_path -> (encoding, timestamp)
+        self._cache: dict[str, tuple[str, float]] = (
+            {}
+        )  # file_path -> (encoding, timestamp)
         self._lock = threading.RLock()
         self._max_size = max_size
         self._ttl_seconds = ttl_seconds
@@ -151,17 +151,20 @@ class EncodingManager:
     FALLBACK_ENCODINGS = ["utf-8", "cp1252", "iso-8859-1", "shift_jis", "gbk"]
 
     @classmethod
-    def safe_encode(cls, text: str, encoding: str | None = None) -> bytes:
+    def safe_encode(cls, text: str | None, encoding: str | None = None) -> bytes:
         """
         Safely encode text to bytes with fallback handling
 
         Args:
-            text: Text to encode
+            text: Text to encode (can be None)
             encoding: Target encoding (defaults to UTF-8)
 
         Returns:
             Encoded bytes
         """
+        # Handle None input
+        if text is None:
+            return b""
 
         target_encoding = encoding or cls.DEFAULT_ENCODING
 

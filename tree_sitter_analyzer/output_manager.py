@@ -86,22 +86,22 @@ class OutputManager:
                 f"\n{index}. {result.get('capture_name', 'Unknown')} ({result.get('node_type', 'Unknown')})"
             )
             print(
-                f"   位置: 行 {result.get('start_line', '?')}-{result.get('end_line', '?')}"
+                f"   Position: Line {result.get('start_line', '?')}-{result.get('end_line', '?')}"
             )
             if "content" in result:
-                print(f"   内容:\n{result['content']}")
+                print(f"   Content:\n{result['content']}")
 
     def analysis_summary(self, stats: dict[str, Any]) -> None:
         """Output analysis summary"""
         if self.json_output:
             self.data(stats)
         else:
-            self.results_header("統計情報")
+            self.results_header("Statistics")
             for key, value in stats.items():
                 print(f"{key}: {value}")
 
     def language_list(
-        self, languages: list[str], title: str = "サポートされている言語"
+        self, languages: list[str], title: str = "Supported Languages"
     ) -> None:
         """Output language list"""
         if not self.quiet:
@@ -112,18 +112,18 @@ class OutputManager:
     def query_list(self, queries: dict[str, str], language: str) -> None:
         """Output query list for a language"""
         if not self.quiet:
-            print(f"利用可能なクエリキー ({language}):")
+            print(f"Available query keys ({language}):")
             for query_key, description in queries.items():
                 print(f"  {query_key:<20} - {description}")
 
     def extension_list(self, extensions: list[str]) -> None:
         """Output supported extensions"""
         if not self.quiet:
-            print("サポートされている拡張子:")
+            print("Supported file extensions:")
             for i in range(0, len(extensions), 10):
                 chunk = extensions[i : i + 10]
                 print(f"  {' '.join(chunk)}")
-            print(f"合計 {len(extensions)} 個の拡張子をサポート")
+            print(f"Total {len(extensions)} extensions supported")
 
     def output_json(self, data: Any) -> None:
         """Output JSON data"""
@@ -232,9 +232,7 @@ def output_statistics(stats: dict[str, Any]) -> None:
     _output_manager.output_statistics(stats)
 
 
-def output_languages(
-    languages: list[str], title: str = "サポートされている言語"
-) -> None:
+def output_languages(languages: list[str], title: str = "Supported Languages") -> None:
     """Output available languages"""
     _output_manager.language_list(languages, title)
 

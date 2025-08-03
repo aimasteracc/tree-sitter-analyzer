@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-トークン消費量比較分析スクリプト
-構造化データ（詳細・要約）の有無によるトークン消費量の違いを計算・比較します。
+Token consumption comparison analysis script
+Calculates and compares token consumption differences with and without structured data (detailed/summary).
 """
 
 import json
@@ -10,33 +10,33 @@ import re
 
 def count_tokens_estimate(text):
     """
-    厳密なトークナイザーの代わりに文字数でトークン数を概算する。
-    一般的に、日本語は1文字=1トークン、英数字は4文字=1トークン程度として計算。
+    Estimate token count by character count instead of strict tokenizer.
+    Generally calculated as Japanese: 1 character = 1 token, alphanumeric: 4 characters = 1 token.
     """
-    # 日本語文字（ひらがな、カタカナ、漢字）をカウント
+    # Count Japanese characters (hiragana, katakana, kanji)
     japanese_chars = len(re.findall(r"[\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF]", text))
 
-    # その他の文字（英数字、記号、スペースなど）をカウント
+    # Count other characters (alphanumeric, symbols, spaces, etc.)
     other_chars = len(text) - japanese_chars
 
-    # トークン数の概算：日本語1文字=1トークン、その他4文字=1トークン
+    # Token count estimation: Japanese 1 char = 1 token, others 4 chars = 1 token
     estimated_tokens = japanese_chars + (other_chars // 4)
 
     return estimated_tokens
 
 
 def read_file_content(file_path):
-    """ファイルの内容を読み込む"""
+    """Read file content"""
     try:
         with open(file_path, encoding="utf-8") as f:
             return f.read()
     except Exception as e:
-        print(f"ファイル読み込みエラー: {e}")
+        print(f"File reading error: {e}")
         return ""
 
 
 def extract_method_lines(java_content, start_line, end_line):
-    """指定された行範囲のコードを抽出"""
+    """Extract code from specified line range"""
     lines = java_content.split("\n")
     # 1-based indexing to 0-based indexing
     start_idx = max(0, start_line - 1)
@@ -47,16 +47,16 @@ def extract_method_lines(java_content, start_line, end_line):
 
 
 def find_update_customer_name_method_detailed(json_content):
-    """BigService.jsonからupdateCustomerNameメソッドの情報を取得（詳細版）"""
+    """Get updateCustomerName method information from BigService.json (detailed version)"""
     try:
-        # JSONコンテンツから実際のJSON部分を抽出
+        # Extract actual JSON part from JSON content
         json_start = json_content.find("{")
         if json_start == -1:
             return None
 
         json_data = json.loads(json_content[json_start:])
 
-        # methodsセクションからupdateCustomerNameを探す
+        # Search for updateCustomerName in methods section
         for method in json_data.get("methods", []):
             if method.get("name") == "updateCustomerName":
                 lines_str = method.get("lines", "")
@@ -73,21 +73,21 @@ def find_update_customer_name_method_detailed(json_content):
                     }
         return None
     except Exception as e:
-        print(f"詳細JSON解析エラー: {e}")
+        print(f"Detailed JSON parsing error: {e}")
         return None
 
 
 def find_update_customer_name_method_summary(summary_content):
-    """BigService.summary.jsonからupdateCustomerNameメソッドの情報を取得（要約版）"""
+    """Get updateCustomerName method information from BigService.summary.json (summary version)"""
     try:
-        # JSONコンテンツから実際のJSON部分を抽出
+        # Extract actual JSON part from JSON content
         json_start = summary_content.find("{")
         if json_start == -1:
             return None
 
         json_data = json.loads(summary_content[json_start:])
 
-        # summary_elementsセクションからupdateCustomerNameを探す
+        # Search for updateCustomerName in summary_elements section
         for element in json_data.get("summary_elements", []):
             if (
                 element.get("name") == "updateCustomerName"
@@ -107,47 +107,47 @@ def find_update_customer_name_method_summary(summary_content):
                     }
         return None
     except Exception as e:
-        print(f"要約JSON解析エラー: {e}")
+        print(f"Summary JSON parsing error: {e}")
         return None
 
 
 def main():
     print("=" * 80)
-    print("トークン消費量の最終比較分析")
+    print("Final Token Consumption Comparison Analysis")
     print("=" * 80)
 
-    # ファイル読み込み
+    # File reading
     java_content = read_file_content("BigService.java")
     json_content = read_file_content("BigService.json")
     summary_content = read_file_content("BigService.summary.json")
 
     if not java_content or not json_content or not summary_content:
-        print("ファイルの読み込みに失敗しました。")
+        print("Failed to read files.")
         return
 
-    # BigService.javaの基本情報
+    # Basic information of BigService.java
     java_lines = java_content.split("\n")
     total_java_lines = len(java_lines)
 
-    print(f"BigService.java: {total_java_lines:,}行")
+    print(f"BigService.java: {total_java_lines:,} lines")
 
-    # updateCustomerNameメソッドの情報を取得（詳細版と要約版）
+    # Get updateCustomerName method information (detailed and summary versions)
     method_info_detailed = find_update_customer_name_method_detailed(json_content)
     method_info_summary = find_update_customer_name_method_summary(summary_content)
 
     if not method_info_detailed or not method_info_summary:
-        print("updateCustomerNameメソッドの情報が見つかりませんでした。")
+        print("updateCustomerName method information not found.")
         return
 
-    print(f"updateCustomerNameメソッド: {method_info_detailed['lines']}行")
+    print(f"updateCustomerName method: {method_info_detailed['lines']} lines")
 
-    # シナリオ1: BigService.java全体のトークン数
+    # Scenario 1: Token count for entire BigService.java
     scenario1_tokens = count_tokens_estimate(java_content)
 
-    # シナリオ2: BigService.json + updateCustomerNameメソッド部分のトークン数
+    # Scenario 2: BigService.json + updateCustomerName method part token count
     json_tokens = count_tokens_estimate(json_content)
 
-    # updateCustomerNameメソッドの部分を抽出
+    # Extract updateCustomerName method part
     method_code = extract_method_lines(
         java_content,
         method_info_detailed["start_line"],
@@ -160,11 +160,11 @@ def main():
 
     scenario2_tokens = json_tokens + method_tokens
 
-    # シナリオ3: BigService.summary.json + updateCustomerNameメソッド部分のトークン数
+    # Scenario 3: BigService.summary.json + updateCustomerName method part token count
     summary_tokens = count_tokens_estimate(summary_content)
     scenario3_tokens = summary_tokens + method_tokens
 
-    # 削減量と削減率の計算
+    # Calculate reduction amount and reduction rate
     scenario2_reduction = scenario1_tokens - scenario2_tokens
     scenario2_reduction_percentage = (
         (scenario2_reduction / scenario1_tokens) * 100 if scenario1_tokens > 0 else 0
@@ -184,65 +184,71 @@ def main():
         else 0
     )
 
-    # 結果の表示
+    # Display results
     print("\n" + "=" * 80)
-    print("【トークン消費量の最終比較】")
+    print("【Final Token Consumption Comparison】")
     print("=" * 80)
 
-    print("\n■ シナリオ1：従来型（ファイル全体）")
-    print(f"   - 対象: BigService.java ({total_java_lines:,}行)")
-    print(f"   - トークン数: 約 {scenario1_tokens:,} トークン")
+    print("\n■ Scenario 1: Traditional (Entire File)")
+    print(f"   - Target: BigService.java ({total_java_lines:,} lines)")
+    print(f"   - Token count: Approx. {scenario1_tokens:,} tokens")
 
-    print("\n■ シナリオ2：詳細データ活用")
-    print(f"   - 対象: BigService.json + コード一部 ({method_lines_count}行)")
+    print("\n■ Scenario 2: Detailed Data Utilization")
+    print(f"   - Target: BigService.json + Code part ({method_lines_count} lines)")
     print(
-        f"   - トークン数: 約 {scenario2_tokens:,} トークン (JSON: {json_tokens:,} + コード: {method_tokens:,})"
-    )
-    print(f"   - 削減率 (vs シナリオ1): 約 {scenario2_reduction_percentage:.1f}%")
-
-    print("\n■ シナリオ3：要約データ活用")
-    print(f"   - 対象: BigService.summary.json + コード一部 ({method_lines_count}行)")
-    print(
-        f"   - トークン数: 約 {scenario3_tokens:,} トークン (JSON: {summary_tokens:,} + コード: {method_tokens:,})"
+        f"   - Token count: Approx. {scenario2_tokens:,} tokens (JSON: {json_tokens:,} + Code: {method_tokens:,})"
     )
     print(
-        f"   - 削減率 (vs シナリオ1): 約 {scenario3_reduction_percentage_vs_scenario1:.1f}%"
-    )
-    print(
-        f"   - 削減率 (vs シナリオ2): 約 {scenario3_reduction_percentage_vs_scenario2:.1f}%"
+        f"   - Reduction rate (vs Scenario 1): Approx. {scenario2_reduction_percentage:.1f}%"
     )
 
-    # 詳細情報
+    print("\n■ Scenario 3: Summary Data Utilization")
+    print(
+        f"   - Target: BigService.summary.json + Code part ({method_lines_count} lines)"
+    )
+    print(
+        f"   - Token count: Approx. {scenario3_tokens:,} tokens (JSON: {summary_tokens:,} + Code: {method_tokens:,})"
+    )
+    print(
+        f"   - Reduction rate (vs Scenario 1): Approx. {scenario3_reduction_percentage_vs_scenario1:.1f}%"
+    )
+    print(
+        f"   - Reduction rate (vs Scenario 2): Approx. {scenario3_reduction_percentage_vs_scenario2:.1f}%"
+    )
+
+    # Detailed information
     print("\n" + "=" * 80)
-    print("【詳細情報】")
+    print("【Detailed Information】")
     print("=" * 80)
-    print("updateCustomerNameメソッド詳細:")
-    print(f"  - 行範囲: {method_info_detailed['lines']}")
-    print(f"  - 抽出行数: {method_lines_count}行")
-    print(f"  - 可視性: {method_info_detailed.get('visibility', 'N/A')}")
-    print(f"  - パラメータ数: {method_info_detailed.get('parameters', 'N/A')}")
-    print(f"  - 複雑度: {method_info_detailed.get('complexity', 'N/A')}")
+    print("updateCustomerName method details:")
+    print(f"  - Line range: {method_info_detailed['lines']}")
+    print(f"  - Extracted lines: {method_lines_count} lines")
+    print(f"  - Visibility: {method_info_detailed.get('visibility', 'N/A')}")
+    print(f"  - Parameter count: {method_info_detailed.get('parameters', 'N/A')}")
+    print(f"  - Complexity: {method_info_detailed.get('complexity', 'N/A')}")
 
-    print("\nファイルサイズ比較:")
-    print(f"  - BigService.java: {len(java_content):,} 文字")
-    print(f"  - BigService.json: {len(json_content):,} 文字")
-    print(f"  - BigService.summary.json: {len(summary_content):,} 文字")
-    print(f"  - 抽出コード部分: {len(method_code):,} 文字")
+    print("\nFile size comparison:")
+    print(f"  - BigService.java: {len(java_content):,} characters")
+    print(f"  - BigService.json: {len(json_content):,} characters")
+    print(f"  - BigService.summary.json: {len(summary_content):,} characters")
+    print(f"  - Extracted code part: {len(method_code):,} characters")
 
-    print("\n注記: トークン数は文字数ベースの概算値です。")
-    print("      日本語文字=1トークン、その他4文字=1トークンとして計算。")
-
-    # 結論
-    print("\n" + "=" * 80)
-    print("【結論】")
-    print("=" * 80)
-    print("--summary機能の導入により、シナリオ2と比較して")
+    print("\nNote: Token counts are estimated values based on character count.")
     print(
-        f"さらに約 {scenario3_reduction_percentage_vs_scenario2:.1f}% のトークン削減が実現されました。"
+        "      Calculated as Japanese characters = 1 token, others 4 characters = 1 token."
     )
-    print("\nこの改善により、LLMを活用した開発支援ツールの")
-    print("実用性と経済性が大幅に向上し、より効率的な")
-    print("コード解析とAI支援開発が可能になります。")
+
+    # Conclusion
+    print("\n" + "=" * 80)
+    print("【Conclusion】")
+    print("=" * 80)
+    print("With the introduction of the --summary feature, compared to Scenario 2,")
+    print(
+        f"an additional approx. {scenario3_reduction_percentage_vs_scenario2:.1f}% token reduction was achieved."
+    )
+    print("\nThis improvement significantly enhances the practicality and")
+    print("economic efficiency of LLM-powered development support tools,")
+    print("enabling more efficient code analysis and AI-assisted development.")
 
 
 if __name__ == "__main__":

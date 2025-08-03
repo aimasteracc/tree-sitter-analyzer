@@ -2,7 +2,7 @@
 
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-1216%20passed-brightgreen.svg)](#testing)
+[![Tests](https://img.shields.io/badge/tests-1126%20passed-brightgreen.svg)](#testing)
 
 **Solve the LLM token limit problem for large code files.**
 
@@ -162,21 +162,21 @@ uv add "tree-sitter-analyzer[all,mcp]"
 ### For Developers
 ```bash
 # Clone and install for development
-git clone https://github.com/aimasteracc/tree-sitter-analyzer.git
+git clone https://github.com/aisheng-yu/tree-sitter-analyzer.git
 cd tree-sitter-analyzer
 uv sync --extra all --extra mcp
 ```
 
 ## 📚 Documentation
 
-- **[MCP Setup Guide for Users](MCP_SETUP_USERS.md)** - Simple setup for AI assistant users
-- **[MCP Setup Guide for Developers](MCP_SETUP_DEVELOPERS.md)** - Local development configuration
-- **[API Documentation](docs/api.md)** - Detailed API reference
-- **[Contributing Guide](CONTRIBUTING.md)** - How to contribute
+- **[MCP Setup Guide for Users](https://github.com/aisheng-yu/tree-sitter-analyzer/blob/main/MCP_SETUP_USERS.md)** - Simple setup for AI assistant users
+- **[MCP Setup Guide for Developers](https://github.com/aisheng-yu/tree-sitter-analyzer/blob/main/MCP_SETUP_DEVELOPERS.md)** - Local development configuration
+- **[API Documentation](https://github.com/aisheng-yu/tree-sitter-analyzer/blob/main/docs/api.md)** - Detailed API reference
+- **[Contributing Guide](https://github.com/aisheng-yu/tree-sitter-analyzer/blob/main/CONTRIBUTING.md)** - How to contribute
 
 ## 🧪 Testing
 
-This project maintains high code quality with **1216 passing tests**.
+This project maintains high code quality with **1126 passing tests**.
 
 ```bash
 # Run tests
@@ -192,7 +192,7 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 ## 🤝 Contributing
 
-We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
+We welcome contributions! Please see our [Contributing Guide](https://github.com/aisheng-yu/tree-sitter-analyzer/blob/main/CONTRIBUTING.md) for details.
 
 ### 🤖 AI/LLM Collaboration
 
@@ -207,7 +207,7 @@ python llm_code_checker.py --check-all
 python llm_code_checker.py path/to/new_file.py
 ```
 
-📖 **See our [AI Collaboration Guide](AI_COLLABORATION_GUIDE.md) and [LLM Coding Guidelines](LLM_CODING_GUIDELINES.md) for detailed instructions on working with AI systems.**
+📖 **See our [AI Collaboration Guide](https://github.com/aisheng-yu/tree-sitter-analyzer/blob/main/AI_COLLABORATION_GUIDE.md) and [LLM Coding Guidelines](https://github.com/aisheng-yu/tree-sitter-analyzer/blob/main/LLM_CODING_GUIDELINES.md) for detailed instructions on working with AI systems.**
 
 ---
 

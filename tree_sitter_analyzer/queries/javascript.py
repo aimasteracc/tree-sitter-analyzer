@@ -106,26 +106,26 @@ COMMENTS = """
 ALL_QUERIES = {
     "functions": {
         "query": FUNCTIONS,
-        "description": "すべての関数宣言、式、メソッドを検索",
+        "description": "Search all function declarations, expressions, and methods",
     },
     "classes": {
         "query": CLASSES,
-        "description": "すべてのクラス宣言と式を検索",
+        "description": "Search all class declarations and expressions",
     },
     "variables": {
         "query": VARIABLES,
-        "description": "すべての変数宣言（var、let、const）を検索",
+        "description": "Search all variable declarations (var, let, const)",
     },
     "imports": {
         "query": IMPORTS,
-        "description": "すべてのインポート文と句を検索",
+        "description": "Search all import statements and clauses",
     },
-    "exports": {"query": EXPORTS, "description": "すべてのエクスポート文を検索"},
+    "exports": {"query": EXPORTS, "description": "Search all export statements"},
     "objects": {
         "query": OBJECTS,
-        "description": "オブジェクトリテラルとプロパティ定義を検索",
+        "description": "Search object literals and property definitions",
     },
-    "comments": {"query": COMMENTS, "description": "すべてのコメントを検索"},
+    "comments": {"query": COMMENTS, "description": "Search all comments"},
 }
 
 

@@ -22,7 +22,7 @@ class QueryCommand(BaseCommand):
                 query_to_execute = query_loader.get_query(language, self.args.query_key)
                 if query_to_execute is None:
                     output_error(
-                        f"ERROR: クエリ '{self.args.query_key}' が言語 '{language}' で見つかりません"
+                        f"ERROR: Query '{self.args.query_key}' not found for language '{language}'"
                     )
                     return 1
             except ValueError as e:
@@ -32,7 +32,7 @@ class QueryCommand(BaseCommand):
             query_to_execute = self.args.query_string
 
         if not query_to_execute:
-            output_error("ERROR: クエリが指定されていません。")
+            output_error("ERROR: No query specified.")
             return 1
 
         # Perform analysis
@@ -72,10 +72,10 @@ class QueryCommand(BaseCommand):
                         f"\n{i}. {query_result['capture_name']} ({query_result['node_type']})"
                     )
                     output_data(
-                        f"   位置: 行 {query_result['start_line']}-{query_result['end_line']}"
+                        f"   Position: Line {query_result['start_line']}-{query_result['end_line']}"
                     )
-                    output_data(f"   内容:\n{query_result['content']}")
+                    output_data(f"   Content:\n{query_result['content']}")
         else:
-            output_info("\nINFO: クエリにマッチする結果は見つかりませんでした。")
+            output_info("\nINFO: No results found matching the query.")
 
         return 0

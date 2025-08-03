@@ -33,19 +33,19 @@ class QueryLoader:
     }
 
     _QUERY_DESCRIPTIONS: dict[str, str] = {
-        "class": "クラス宣言を抽出",
-        "interface": "インターフェース宣言を抽出",
-        "method": "メソッド宣言を抽出",
-        "constructor": "コンストラクタ宣言を抽出",
-        "field": "フィールド宣言を抽出",
-        "import": "インポート文を抽出",
-        "package": "パッケージ宣言を抽出",
-        "annotation": "アノテーションを抽出",
-        "method_name": "メソッド名のみを抽出",
-        "class_name": "クラス名のみを抽出",
-        "method_invocations": "メソッド呼び出しを抽出",
-        "class_with_body": "クラス宣言と本体を抽出",
-        "method_with_body": "メソッド宣言と本体を抽出",
+        "class": "Extract class declarations",
+        "interface": "Extract interface declarations",
+        "method": "Extract method declarations",
+        "constructor": "Extract constructor declarations",
+        "field": "Extract field declarations",
+        "import": "Extract import statements",
+        "package": "Extract package declarations",
+        "annotation": "Extract annotations",
+        "method_name": "Extract method names only",
+        "class_name": "Extract class names only",
+        "method_invocations": "Extract method invocations",
+        "class_with_body": "Extract class declarations with body",
+        "method_with_body": "Extract method declarations with body",
     }
 
     def __init__(self) -> None:

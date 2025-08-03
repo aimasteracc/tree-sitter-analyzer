@@ -10,9 +10,9 @@ import java.sql.SQLException;
 import javax.sql.DataSource;
 
 /**
- * BigService - 大規模なビジネスサービスクラス
- * このクラスは様々なビジネスロジックを含んでいます。
- * デモンストレーション用に約1000行のコードを含みます。
+ * BigService - Large-scale business service class
+ * This class contains various business logic.
+ * Contains approximately 1000 lines of code for demonstration purposes.
  */
 public class BigService {
 
@@ -28,7 +28,7 @@ public class BigService {
     private Queue<String> pendingOperations;
 
     /**
-     * コンストラクタ
+     * Constructor
      */
     public BigService() {
         this.configurationCache = new HashMap<>();
@@ -39,7 +39,7 @@ public class BigService {
     }
 
     /**
-     * サービスの初期化
+     * Service initialization
      */
     private void initializeService() {
         System.out.println("Initializing BigService...");
@@ -50,7 +50,7 @@ public class BigService {
     }
 
     /**
-     * 設定の読み込み
+     * Load configuration
      */
     private void loadConfiguration() {
         configurationCache.put("max_connections", 100);
@@ -65,11 +65,11 @@ public class BigService {
     }
 
     /**
-     * データベース接続の設定
+     * Database connection setup
      */
     private void setupDatabaseConnection() {
         System.out.println("Setting up database connection...");
-        // ダミーの接続設定処理
+        // Dummy connection setup process
         for (int i = 0; i < 5; i++) {
             activeConnections.add("connection_" + i);
             System.out.println("Created connection: connection_" + i);
@@ -77,7 +77,7 @@ public class BigService {
     }
 
     /**
-     * システム要件の検証
+     * System requirements validation
      */
     private void validateSystemRequirements() {
         System.out.println("Validating system requirements...");
@@ -88,7 +88,7 @@ public class BigService {
     }
 
     /**
-     * メモリ使用量のチェック
+     * Memory usage check
      */
     private void checkMemoryUsage() {
         Runtime runtime = Runtime.getRuntime();
@@ -106,18 +106,18 @@ public class BigService {
     }
 
     /**
-     * ディスク容量のチェック
+     * Disk space check
      */
     private void checkDiskSpace() {
         System.out.println("Checking disk space...");
-        // ダミーのディスク容量チェック
+        // Dummy disk space check
         for (int i = 0; i < 3; i++) {
             System.out.println("Disk " + i + ": Available space OK");
         }
     }
 
     /**
-     * ネットワーク接続のチェック
+     * Network connectivity check
      */
     private void checkNetworkConnectivity() {
         System.out.println("Checking network connectivity...");
@@ -125,7 +125,7 @@ public class BigService {
 
         for (String host : hosts) {
             System.out.println("Testing connection to: " + host);
-            // ダミーの接続テスト
+            // Dummy connection test
             try {
                 Thread.sleep(100);
                 System.out.println("Connection to " + host + " successful");
@@ -136,7 +136,7 @@ public class BigService {
     }
 
     /**
-     * ユーザー認証
+     * User authentication
      */
     public boolean authenticateUser(String username, String password) {
         if (username == null || username.isEmpty()) {
@@ -172,7 +172,7 @@ public class BigService {
     }
 
     /**
-     * セッション管理
+     * Session management
      */
     public String createSession(String username) {
         if (!validatedUsers.contains(username)) {
@@ -183,7 +183,7 @@ public class BigService {
         String sessionId = "session_" + System.currentTimeMillis() + "_" + username;
         System.out.println("Creating session: " + sessionId);
 
-        // セッション作成処理
+        // Session creation process
         for (int i = 0; i < 15; i++) {
             System.out.println("Session creation step " + i);
             if (i == 7) {
@@ -199,7 +199,7 @@ public class BigService {
     }
 
     /**
-     * データ検証
+     * Data validation
      */
     public boolean validateData(Map<String, Object> data) {
         if (data == null || data.isEmpty()) {
@@ -220,7 +220,7 @@ public class BigService {
                 continue;
             }
 
-            // フィールド別の検証
+            // Field-specific validation
             if (key.contains("email")) {
                 if (!validateEmail(value.toString())) {
                     System.out.println("ERROR: Invalid email format: " + value);
@@ -246,7 +246,7 @@ public class BigService {
     }
 
     /**
-     * メール形式の検証
+     * Email format validation
      */
     private boolean validateEmail(String email) {
         System.out.println("Validating email: " + email);
@@ -254,7 +254,7 @@ public class BigService {
     }
 
     /**
-     * 電話番号の検証
+     * Phone number validation
      */
     private boolean validatePhoneNumber(String phone) {
         System.out.println("Validating phone number: " + phone);
@@ -262,7 +262,7 @@ public class BigService {
     }
 
     /**
-     * 日付形式の検証
+     * Date format validation
      */
     private boolean validateDate(String date) {
         System.out.println("Validating date: " + date);
@@ -275,7 +275,7 @@ public class BigService {
     }
 
     /**
-     * ログ記録
+     * Log operation
      */
     public void logOperation(String operation, String details) {
         String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern(DATE_FORMAT));
@@ -283,14 +283,14 @@ public class BigService {
 
         System.out.println("LOG: " + logEntry);
 
-        // ログファイルへの書き込み処理（ダミー）
+        // Log file writing process (dummy)
         for (int i = 0; i < 5; i++) {
             System.out.println("Writing log entry, step " + i);
         }
     }
 
     /**
-     * キャッシュ管理
+     * Cache management
      */
     public void manageCache(String key, Object value) {
         System.out.println("Managing cache for key: " + key);
@@ -303,12 +303,12 @@ public class BigService {
         configurationCache.put(key, value);
         System.out.println("Cache updated for key: " + key);
 
-        // キャッシュ統計の更新
+        // Update cache statistics
         updateCacheStatistics();
     }
 
     /**
-     * キャッシュのクリーンアップ
+     * Cache cleanup
      */
     private void cleanupCache() {
         System.out.println("Starting cache cleanup...");
@@ -326,7 +326,7 @@ public class BigService {
     }
 
     /**
-     * キャッシュ統計の更新
+     * Update cache statistics
      */
     private void updateCacheStatistics() {
         System.out.println("Updating cache statistics...");
@@ -335,15 +335,15 @@ public class BigService {
     }
 
     /**
-     * キャッシュヒット率の計算
+     * Calculate cache hit ratio
      */
     private double calculateCacheHitRatio() {
-        // ダミーの計算
-        return Math.random() * 0.3 + 0.7; // 70-100%の範囲
+        // Dummy calculation
+        return Math.random() * 0.3 + 0.7; // 70-100% range
     }
 
     /**
-     * バックアップ処理
+     * Backup processing
      */
     public void performBackup(String backupType) {
         System.out.println("Starting backup process: " + backupType);
@@ -367,7 +367,7 @@ public class BigService {
     }
 
     /**
-     * フルバックアップ
+     * Full backup
      */
     private void performFullBackup() {
         System.out.println("Performing full backup...");
@@ -395,7 +395,7 @@ public class BigService {
     }
 
     /**
-     * 増分バックアップ
+     * Incremental backup
      */
     private void performIncrementalBackup() {
         System.out.println("Performing incremental backup...");
@@ -414,7 +414,7 @@ public class BigService {
     }
 
     /**
-     * 差分バックアップ
+     * Differential backup
      */
     private void performDifferentialBackup() {
         System.out.println("Performing differential backup...");
@@ -593,13 +593,13 @@ public class BigService {
     }
 
     /**
-     * 顧客名を更新します。
-     * このメソッドは重要なビジネスロジックを含んでいます。
-     * @param customerId 顧客ID
-     * @param newName 新しい顧客名
+     * Updates customer name.
+     * This method contains important business logic.
+     * @param customerId Customer ID
+     * @param newName New customer name
      */
     public void updateCustomerName(String customerId, String newName) {
-        // 本来はここにデータベース更新などの複雑な処理が入る
+        // Originally, complex processing such as database updates would be included here
         if (customerId == null || customerId.isEmpty()) {
             System.out.println("ERROR: Customer ID is null or empty.");
             return;
@@ -609,7 +609,7 @@ public class BigService {
             return;
         }
         System.out.println("Updating customer " + customerId + " to name " + newName);
-        // ... 50行程度のダミー処理 ...
+        // ... About 50 lines of dummy processing ...
         for (int i = 0; i < 50; i++) {
             System.out.println("Processing step " + i);
         }
@@ -617,7 +617,7 @@ public class BigService {
     }
 
     /**
-     * 顧客情報の取得
+     * Get customer information
      */
     public Map<String, Object> getCustomerInfo(String customerId) {
         System.out.println("Retrieving customer information for ID: " + customerId);
@@ -629,7 +629,7 @@ public class BigService {
 
         Map<String, Object> customerInfo = new HashMap<>();
 
-        // ダミーの顧客情報取得処理
+        // Dummy customer information retrieval process
         for (int i = 0; i < 15; i++) {
             System.out.println("Customer info retrieval step " + (i + 1) + "/15");
 
@@ -652,7 +652,7 @@ public class BigService {
     }
 
     /**
-     * 顧客の削除
+     * Delete customer
      */
     public boolean deleteCustomer(String customerId) {
         System.out.println("Deleting customer: " + customerId);
@@ -662,7 +662,7 @@ public class BigService {
             return false;
         }
 
-        // 削除前の検証
+        // Pre-deletion validation
         for (int i = 0; i < 10; i++) {
             System.out.println("Pre-deletion validation step " + (i + 1) + "/10");
 
@@ -673,7 +673,7 @@ public class BigService {
             }
         }
 
-        // 実際の削除処理
+        // Actual deletion process
         for (int i = 0; i < 20; i++) {
             System.out.println("Customer deletion step " + (i + 1) + "/20");
 
@@ -691,7 +691,7 @@ public class BigService {
     }
 
     /**
-     * 注文処理
+     * Order processing
      */
     public String processOrder(String customerId, List<String> items, double totalAmount) {
         System.out.println("Processing order for customer: " + customerId);
@@ -714,7 +714,7 @@ public class BigService {
         String orderId = "ORDER_" + System.currentTimeMillis();
         System.out.println("Generated order ID: " + orderId);
 
-        // 注文処理のステップ
+        // Order processing steps
         for (int i = 0; i < 25; i++) {
             System.out.println("Order processing step " + (i + 1) + "/25");
 
@@ -736,7 +736,7 @@ public class BigService {
     }
 
     /**
-     * 在庫管理
+     * Inventory management
      */
     public void manageInventory(String action, String itemId, int quantity) {
         System.out.println("Managing inventory - Action: " + action + ", Item: " + itemId + ", Quantity: " + quantity);
@@ -773,7 +773,7 @@ public class BigService {
     }
 
     /**
-     * 在庫追加
+     * Add inventory
      */
     private void addInventory(String itemId, int quantity) {
         System.out.println("Adding inventory for item: " + itemId + ", quantity: " + quantity);
@@ -792,7 +792,7 @@ public class BigService {
     }
 
     /**
-     * 在庫削除
+     * Remove inventory
      */
     private void removeInventory(String itemId, int quantity) {
         System.out.println("Removing inventory for item: " + itemId + ", quantity: " + quantity);
@@ -811,7 +811,7 @@ public class BigService {
     }
 
     /**
-     * 在庫更新
+     * Update inventory
      */
     private void updateInventory(String itemId, int quantity) {
         System.out.println("Updating inventory for item: " + itemId + ", new quantity: " + quantity);
@@ -830,7 +830,7 @@ public class BigService {
     }
 
     /**
-     * 在庫確認
+     * Check inventory
      */
     private void checkInventory(String itemId) {
         System.out.println("Checking inventory for item: " + itemId);
@@ -850,7 +850,7 @@ public class BigService {
     }
 
     /**
-     * 通知送信
+     * Send notification
      */
     public void sendNotification(String recipient, String message, String type) {
         System.out.println("Sending notification to: " + recipient);
@@ -867,7 +867,7 @@ public class BigService {
             return;
         }
 
-        // 通知送信処理
+        // Notification sending process
         for (int i = 0; i < 15; i++) {
             System.out.println("Notification sending step " + (i + 1) + "/15");
 
@@ -884,13 +884,12 @@ public class BigService {
     }
 
     /**
-     * システ
-ムシャットダウン
+     * System shutdown
      */
     public void shutdownSystem() {
         System.out.println("Initiating system shutdown...");
 
-        // シャットダウン前の処理
+        // Pre-shutdown processing
         for (int i = 0; i < 20; i++) {
             System.out.println("Shutdown preparation step " + (i + 1) + "/20");
 
@@ -913,7 +912,7 @@ public class BigService {
     }
 
     /**
-     * 保留中の操作を保存
+     * Save pending operations
      */
     private void savePendingOperations() {
         System.out.println("Saving " + pendingOperations.size() + " pending operations...");
@@ -927,7 +926,7 @@ public class BigService {
     }
 
     /**
-     * データベース接続を閉じる
+     * Close database connections
      */
     private void closeDatabaseConnections() {
         System.out.println("Closing database connections...");
@@ -941,7 +940,7 @@ public class BigService {
     }
 
     /**
-     * システムログの最終処理
+     * Finalize system logs
      */
     private void finalizeSystemLogs() {
         System.out.println("Finalizing system logs...");
@@ -954,16 +953,16 @@ public class BigService {
     }
 
     /**
-     * エラーハンドリング
+     * Error handling
      */
     public void handleError(Exception error, String context) {
         System.out.println("Handling error in context: " + context);
         System.out.println("Error message: " + error.getMessage());
 
-        // エラーログの記録
+        // Record error log
         logOperation("ERROR", "Error in " + context + ": " + error.getMessage());
 
-        // エラーの種類に応じた処理
+        // Processing according to error type
         if (error instanceof SQLException) {
             handleDatabaseError((SQLException) error);
         } else if (error instanceof IllegalArgumentException) {
@@ -978,7 +977,7 @@ public class BigService {
     }
 
     /**
-     * データベースエラーの処理
+     * Handle database error
      */
     private void handleDatabaseError(SQLException error) {
         System.out.println("Handling database error: " + error.getSQLState());
@@ -997,7 +996,7 @@ public class BigService {
     }
 
     /**
-     * バリデーションエラーの処理
+     * Handle validation error
      */
     private void handleValidationError(IllegalArgumentException error) {
         System.out.println("Handling validation error: " + error.getMessage());
@@ -1010,7 +1009,7 @@ public class BigService {
     }
 
     /**
-     * ランタイムエラーの処理
+     * Handle runtime error
      */
     private void handleRuntimeError(RuntimeException error) {
         System.out.println("Handling runtime error: " + error.getMessage());
@@ -1029,7 +1028,7 @@ public class BigService {
     }
 
     /**
-     * 一般的なエラーの処理
+     * Handle generic error
      */
     private void handleGenericError(Exception error) {
         System.out.println("Handling generic error: " + error.getClass().getSimpleName());
@@ -1042,23 +1041,23 @@ public class BigService {
     }
 
     /**
-     * パフォーマンス監視
+     * Performance monitoring
      */
     public void monitorPerformance() {
         System.out.println("Starting performance monitoring...");
 
         long startTime = System.currentTimeMillis();
 
-        // CPU使用率の監視
+        // Monitor CPU usage
         monitorCpuUsage();
 
-        // メモリ使用率の監視
+        // Monitor memory usage
         monitorMemoryUsage();
 
-        // ディスクI/Oの監視
+        // Monitor disk I/O
         monitorDiskIO();
 
-        // ネットワーク使用率の監視
+        // Monitor network usage
         monitorNetworkUsage();
 
         long endTime = System.currentTimeMillis();
@@ -1068,7 +1067,7 @@ public class BigService {
     }
 
     /**
-     * CPU使用率の監視
+     * Monitor CPU usage
      */
     private void monitorCpuUsage() {
         System.out.println("Monitoring CPU usage...");
@@ -1087,7 +1086,7 @@ public class BigService {
     }
 
     /**
-     * メモリ使用率の監視
+     * Monitor memory usage
      */
     private void monitorMemoryUsage() {
         System.out.println("Monitoring memory usage...");
@@ -1113,7 +1112,7 @@ public class BigService {
     }
 
     /**
-     * ディスクI/Oの監視
+     * Monitor disk I/O
      */
     private void monitorDiskIO() {
         System.out.println("Monitoring disk I/O...");
@@ -1132,7 +1131,7 @@ public class BigService {
     }
 
     /**
-     * ネットワーク使用率の監視
+     * Monitor network usage
      */
     private void monitorNetworkUsage() {
         System.out.println("Monitoring network usage...");
@@ -1151,28 +1150,28 @@ public class BigService {
     }
 
     /**
-     * セキュリティチェック
+     * Security check
      */
     public void performSecurityCheck() {
         System.out.println("Starting security check...");
 
-        // アクセス権限のチェック
+        // Check access permissions
         checkAccessPermissions();
 
-        // セキュリティ設定の検証
+        // Validate security settings
         validateSecuritySettings();
 
-        // 脆弱性スキャン
+        // Perform vulnerability scan
         performVulnerabilityScan();
 
-        // セキュリティログの確認
+        // Review security logs
         reviewSecurityLogs();
 
         System.out.println("Security check completed");
     }
 
     /**
-     * アクセス権限のチェック
+     * Check access permissions
      */
     private void checkAccessPermissions() {
         System.out.println("Checking access permissions...");
@@ -1193,7 +1192,7 @@ public class BigService {
     }
 
     /**
-     * セキュリティ設定の検証
+     * Validate security settings
      */
     private void validateSecuritySettings() {
         System.out.println("Validating security settings...");
@@ -1212,7 +1211,7 @@ public class BigService {
     }
 
     /**
-     * 脆弱性スキャン
+     * Perform vulnerability scan
      */
     private void performVulnerabilityScan() {
         System.out.println("Performing vulnerability scan...");
@@ -1231,7 +1230,7 @@ public class BigService {
     }
 
     /**
-     * セキュリティログの確認
+     * Review security logs
      */
     private void reviewSecurityLogs() {
         System.out.println("Reviewing security logs...");
@@ -1250,7 +1249,7 @@ public class BigService {
     }
 
     /**
-     * データ同期
+     * Data synchronization
      */
     public void synchronizeData(String sourceSystem, String targetSystem) {
         System.out.println("Starting data synchronization from " + sourceSystem + " to " + targetSystem);
@@ -1265,26 +1264,26 @@ public class BigService {
             return;
         }
 
-        // データ同期の準備
+        // Prepare data synchronization
         prepareSynchronization(sourceSystem, targetSystem);
 
-        // データの抽出
+        // Extract data
         extractData(sourceSystem);
 
-        // データの変換
+        // Transform data
         transformData();
 
-        // データの読み込み
+        // Load data
         loadData(targetSystem);
 
-        // 同期の検証
+        // Verify synchronization
         verifySynchronization(sourceSystem, targetSystem);
 
         System.out.println("Data synchronization completed successfully");
     }
 
     /**
-     * 同期の準備
+     * Prepare synchronization
      */
     private void prepareSynchronization(String sourceSystem, String targetSystem) {
         System.out.println("Preparing synchronization between " + sourceSystem + " and " + targetSystem);
@@ -1303,7 +1302,7 @@ public class BigService {
     }
 
     /**
-     * データの抽出
+     * Extract data
      */
     private void extractData(String sourceSystem) {
         System.out.println("Extracting data from " + sourceSystem);
@@ -1324,7 +1323,7 @@ public class BigService {
     }
 
     /**
-     * データの変換
+     * Transform data
      */
     private void transformData() {
         System.out.println("Transforming data...");
@@ -1343,7 +1342,7 @@ public class BigService {
     }
 
     /**
-     * データの読み込み
+     * Load data
      */
     private void loadData(String targetSystem) {
         System.out.println("Loading data into " + targetSystem);
@@ -1362,7 +1361,7 @@ public class BigService {
     }
 
     /**
-     * 同期の検証
+     * Verify synchronization
      */
     private void verifySynchronization(String sourceSystem, String targetSystem) {
         System.out.println("Verifying synchronization between " + sourceSystem + " and " + targetSystem);
@@ -1381,7 +1380,7 @@ public class BigService {
     }
 
     /**
-     * メインメソッド - テスト用
+     * Main method - for testing
      */
     public static void main(String[] args) {
         System.out.println("BigService Demo Application");
@@ -1389,28 +1388,28 @@ public class BigService {
 
         BigService service = new BigService();
 
-        // 基本的な機能のテスト
+        // Test basic functions
         System.out.println("\n--- Testing Basic Functions ---");
         service.authenticateUser("testuser", "password123");
         service.createSession("testuser");
 
-        // 顧客管理のテスト
+        // Test customer management
         System.out.println("\n--- Testing Customer Management ---");
         service.updateCustomerName("CUST001", "New Customer Name");
         Map<String, Object> customerInfo = service.getCustomerInfo("CUST001");
 
-        // レポート生成のテスト
+        // Test report generation
         System.out.println("\n--- Testing Report Generation ---");
         Map<String, Object> reportParams = new HashMap<>();
         reportParams.put("start_date", "2024-01-01");
         reportParams.put("end_date", "2024-12-31");
         service.generateReport("sales", reportParams);
 
-        // パフォーマンス監視のテスト
+        // Test performance monitoring
         System.out.println("\n--- Testing Performance Monitoring ---");
         service.monitorPerformance();
 
-        // セキュリティチェックのテスト
+        // Test security check
         System.out.println("\n--- Testing Security Check ---");
         service.performSecurityCheck();
 

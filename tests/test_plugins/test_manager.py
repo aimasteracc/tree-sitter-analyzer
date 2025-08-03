@@ -33,6 +33,22 @@ class MockLanguagePlugin(LanguagePlugin):
     def is_applicable(self, file_path: str) -> bool:
         return any(file_path.endswith(ext) for ext in self._extensions)
 
+    async def analyze_file(self, file_path: str, request):
+        """Mock implementation of analyze_file"""
+        from tree_sitter_analyzer.models import AnalysisResult
+
+        return AnalysisResult(
+            file_path=file_path,
+            language=self._language,
+            line_count=10,
+            elements=[],
+            node_count=5,
+            query_results={},
+            source_code="// Mock source code",
+            success=True,
+            error_message=None,
+        )
+
 
 class TestPluginManager:
     """Test cases for PluginManager class"""

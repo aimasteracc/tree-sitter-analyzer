@@ -2,12 +2,12 @@
 """
 Tests for core.cache_service
 
-Roo Code規約準拠:
-- TDD: テスト先行実装
-- 型ヒント: 全関数に型ヒント必須
-- MCPログ: 各ステップでログ出力
+Roo Code compliance:
+- TDD: Test-driven development
+- Type hints: Required for all functions
+- MCP logging: Log output at each step
 - docstring: Google Style docstring
-- カバレッジ: 80%以上目標
+- Coverage: Target 80%+
 """
 
 import asyncio
@@ -16,13 +16,13 @@ import time
 # Mock functionality now provided by pytest-mock
 import pytest
 
-# テスト対象のインポート
+# Import test targets
 from tree_sitter_analyzer.core.cache_service import CacheEntry, CacheService
 
 
 @pytest.fixture
 def cache_service():
-    """キャッシュサービスのフィクスチャ"""
+    """Cache service fixture"""
     service = CacheService()
     yield service
     service.clear()
@@ -30,7 +30,7 @@ def cache_service():
 
 @pytest.mark.unit
 def test_initialization():
-    """初期化テスト"""
+    """Initialization test"""
     # Arrange & Act
     cache_service = CacheService()
 
@@ -44,7 +44,7 @@ def test_initialization():
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_cache_set_and_get(cache_service):
-    """キャッシュ設定・取得テスト"""
+    """Cache set and get test"""
     # Arrange
     key = "test_key"
     value = {"test": "data", "number": 42}
@@ -60,7 +60,7 @@ async def test_cache_set_and_get(cache_service):
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_cache_miss(cache_service):
-    """キャッシュミステスト"""
+    """Cache miss test"""
     # Arrange
     non_existent_key = "non_existent_key"
 
@@ -74,9 +74,9 @@ async def test_cache_miss(cache_service):
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_cache_expiration():
-    """キャッシュ有効期限テスト"""
+    """Cache expiration test"""
     # Arrange
-    cache_service = CacheService(ttl_seconds=1)  # 1秒で期限切れ
+    cache_service = CacheService(ttl_seconds=1)  # Expires in 1 second
     key = "expiring_key"
     value = "expiring_value"
 
@@ -84,7 +84,7 @@ async def test_cache_expiration():
     await cache_service.set(key, value)
     immediate_result = await cache_service.get(key)
 
-    # 2秒待機
+    # Wait 2 seconds
     await asyncio.sleep(2)
     expired_result = await cache_service.get(key)
 
@@ -95,13 +95,13 @@ async def test_cache_expiration():
 
 @pytest.mark.unit
 def test_cache_size_limit():
-    """キャッシュサイズ制限テスト"""
+    """Cache size limit test"""
     # Arrange
     max_size = 3
     cache_service = CacheService(l1_maxsize=max_size)
 
     # Act
-    for i in range(max_size + 2):  # 制限を超えて追加
+    for i in range(max_size + 2):  # Add beyond limit
         asyncio.run(cache_service.set(f"key_{i}", f"value_{i}"))
 
     # Assert
@@ -111,7 +111,7 @@ def test_cache_size_limit():
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_cache_clear(cache_service):
-    """キャッシュクリアテスト"""
+    """Cache clear test"""
     # Arrange
     await cache_service.set("key1", "value1")
     await cache_service.set("key2", "value2")
@@ -130,7 +130,7 @@ async def test_cache_clear(cache_service):
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_hierarchical_cache_l1_hit(cache_service, mocker):
-    """階層キャッシュL1ヒットテスト"""
+    """Hierarchical cache L1 hit test"""
     # Arrange
     key = "l1_test_key"
     value = "l1_test_value"
@@ -138,24 +138,24 @@ async def test_hierarchical_cache_l1_hit(cache_service, mocker):
     # Act
     await cache_service.set(key, value)
 
-    # L1キャッシュから取得されることを確認
+    # Verify retrieval from L1 cache
     mock_l2_get = mocker.patch.object(cache_service._l2_cache, "get")
     result = await cache_service.get(key)
 
     # Assert
     assert result == value
-    mock_l2_get.assert_not_called()  # L2は呼ばれない
+    mock_l2_get.assert_not_called()  # L2 is not called
 
 
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_hierarchical_cache_l2_hit(cache_service):
-    """階層キャッシュL2ヒットテスト"""
+    """Hierarchical cache L2 hit test"""
     # Arrange
     key = "l2_test_key"
     value = "l2_test_value"
 
-    # L1をクリアしてL2のみに保存
+    # Clear L1 and store only in L2
     await cache_service.set(key, value)
     cache_service._l1_cache.clear()
 
@@ -164,7 +164,7 @@ async def test_hierarchical_cache_l2_hit(cache_service):
 
     # Assert
     assert result == value
-    # L1に昇格されていることを確認
+    # Verify promotion to L1
     l1_entry = cache_service._l1_cache.get(key)
     assert l1_entry is not None
     assert l1_entry.value == value
@@ -173,7 +173,7 @@ async def test_hierarchical_cache_l2_hit(cache_service):
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_concurrent_access(cache_service):
-    """並行アクセステスト"""
+    """Concurrent access test"""
     # Arrange
     num_operations = 100
 
@@ -184,10 +184,10 @@ async def test_concurrent_access(cache_service):
         return await cache_service.get(f"key_{i}")
 
     # Act
-    # 並行でset操作を実行
+    # Execute set operations concurrently
     await asyncio.gather(*[set_operation(i) for i in range(num_operations)])
 
-    # 並行でget操作を実行
+    # Execute get operations concurrently
     results = await asyncio.gather(*[get_operation(i) for i in range(num_operations)])
 
     # Assert
@@ -197,7 +197,7 @@ async def test_concurrent_access(cache_service):
 
 @pytest.mark.unit
 def test_cache_key_generation(cache_service):
-    """キャッシュキー生成テスト"""
+    """Cache key generation test"""
     # Arrange
     file_path = "/path/to/test.java"
     language = "java"
@@ -209,15 +209,15 @@ def test_cache_key_generation(cache_service):
     key3 = cache_service.generate_cache_key(file_path, "python", options)
 
     # Assert
-    assert key1 == key2  # 同じ入力なら同じキー
-    assert key1 != key3  # 異なる入力なら異なるキー
+    assert key1 == key2  # Same input produces same key
+    assert key1 != key3  # Different input produces different key
     assert isinstance(key1, str)
     assert len(key1) > 0
 
 
 @pytest.mark.unit
 def test_cache_stats(cache_service):
-    """キャッシュ統計テスト"""
+    """Cache statistics test"""
     # Arrange & Act
     stats = cache_service.get_stats()
 
@@ -232,7 +232,7 @@ def test_cache_stats(cache_service):
 
 @pytest.mark.unit
 def test_cache_entry_creation():
-    """キャッシュエントリ作成テスト"""
+    """Cache entry creation test"""
     # Arrange
     from datetime import datetime, timedelta
 
@@ -251,7 +251,7 @@ def test_cache_entry_creation():
 
 @pytest.mark.unit
 def test_cache_entry_expiration_check():
-    """キャッシュエントリ有効期限チェックテスト"""
+    """Cache entry expiration check test"""
     # Arrange
     from datetime import datetime, timedelta
 
@@ -262,37 +262,37 @@ def test_cache_entry_expiration_check():
     entry = CacheEntry(value=value, created_at=created_at, expires_at=expires_at)
 
     # Act & Assert
-    assert not entry.is_expired()  # 作成直後は有効
+    assert not entry.is_expired()  # Valid immediately after creation
 
-    # 2秒待機
+    # Wait 2 seconds
     time.sleep(2)
-    assert entry.is_expired()  # 期限切れ
+    assert entry.is_expired()  # Expired
 
 
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_invalid_key_handling():
-    """無効なキーの処理テスト"""
+    """Invalid key handling test"""
     # Arrange
     cache_service = CacheService()
 
     # Act & Assert
     with pytest.raises(ValueError):
-        await cache_service.set("", "value")  # 空文字キー
+        await cache_service.set("", "value")  # Empty string key
 
     with pytest.raises(ValueError):
-        await cache_service.set(None, "value")  # Noneキー
+        await cache_service.set(None, "value")  # None key
 
 
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_serialization_error_handling():
-    """シリアライゼーションエラーハンドリングテスト"""
+    """Serialization error handling test"""
     # Arrange
     cache_service = CacheService()
 
     def non_serializable_value(x):
-        """関数は通常シリアライズできない"""
+        """Functions are typically not serializable"""
         return x
 
     # Act & Assert

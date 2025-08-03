@@ -2,12 +2,12 @@
 """
 Tests for core.analysis_engine
 
-Roo Code規約準拠:
-- TDD: テスト先行実装
-- 型ヒント: 全関数に型ヒント必須
-- MCPログ: 各ステップでログ出力
+Roo Code compliance:
+- TDD: Test-driven development
+- Type hints: Type hints required for all functions
+- MCP logs: Log output at each step
 - docstring: Google Style docstring
-- カバレッジ: 80%以上目標
+- Coverage: Target 80% or higher
 """
 
 
@@ -15,7 +15,7 @@ Roo Code規約準拠:
 
 import pytest
 
-# テスト対象のインポート
+# Import test targets
 from tree_sitter_analyzer.core.analysis_engine import (
     AnalysisRequest,
     MockLanguagePlugin,
@@ -26,33 +26,33 @@ from tree_sitter_analyzer.core.analysis_engine import (
 
 @pytest.fixture
 def engine():
-    """統一解析エンジンのフィクスチャ"""
+    """Unified analysis engine fixture"""
     engine = UnifiedAnalysisEngine()
-    # テスト用プラグインを登録
+    # Register test plugins
     engine.register_plugin("java", MockLanguagePlugin("java"))
     engine.register_plugin("python", MockLanguagePlugin("python"))
     yield engine
-    # クリーンアップ
+    # Cleanup
     engine.clear_cache()
 
 
 class TestUnifiedAnalysisEngine:
-    """統一解析エンジンのテスト"""
+    """Unified analysis engine tests"""
 
     @pytest.mark.unit
     def test_singleton_pattern(self) -> None:
-        """シングルトンパターンのテスト"""
+        """Singleton pattern test"""
         # Arrange & Act
         engine1 = UnifiedAnalysisEngine()
         engine2 = UnifiedAnalysisEngine()
 
         # Assert
-        assert engine1 is engine2  # 同じインスタンス
+        assert engine1 is engine2  # Same instance
         assert id(engine1) == id(engine2)
 
     @pytest.mark.unit
     def test_initialization(self) -> None:
-        """初期化テスト"""
+        """Initialization test"""
         # Arrange & Act
         engine = UnifiedAnalysisEngine()
 
@@ -65,11 +65,11 @@ class TestUnifiedAnalysisEngine:
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_analyze_with_cache_hit(self, engine) -> None:
-        """キャッシュヒット時の解析テスト"""
+        """Analysis test with cache hit"""
         # Arrange
         request = AnalysisRequest(file_path="test.java", language="java")
 
-        # 事前にキャッシュに結果を設定
+        # Set result in cache beforehand
         cache_key = engine._generate_cache_key(request)
         from tree_sitter_analyzer.models import AnalysisResult
 
@@ -97,7 +97,7 @@ class TestUnifiedAnalysisEngine:
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_analyze_with_cache_miss(self, engine) -> None:
-        """キャッシュミス時の解析テスト"""
+        """Analysis test with cache miss"""
         # Arrange
         request = AnalysisRequest(file_path="test.java", language="java")
 
@@ -112,7 +112,7 @@ class TestUnifiedAnalysisEngine:
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_analyze_unsupported_language(self, engine) -> None:
-        """サポートされていない言語のテスト"""
+        """Test for unsupported language"""
         # Arrange
         request = AnalysisRequest(file_path="test.unknown", language="unknown")
 
@@ -125,9 +125,9 @@ class TestUnifiedAnalysisEngine:
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_language_detection(self, engine) -> None:
-        """言語自動検出のテスト"""
+        """Language auto-detection test"""
         # Arrange
-        request = AnalysisRequest(file_path="test.java")  # languageなし
+        request = AnalysisRequest(file_path="test.java")  # no language
 
         # Act
         result = await engine.analyze(request)
@@ -138,7 +138,7 @@ class TestUnifiedAnalysisEngine:
 
     @pytest.mark.unit
     def test_generate_cache_key(self, engine) -> None:
-        """キャッシュキー生成のテスト"""
+        """Cache key generation test"""
         # Arrange
         request1 = AnalysisRequest(
             file_path="test.java", language="java", include_complexity=True
@@ -156,14 +156,14 @@ class TestUnifiedAnalysisEngine:
         key3 = engine._generate_cache_key(request3)
 
         # Assert
-        assert key1 == key2  # 同じリクエストなら同じキー
-        assert key1 != key3  # 異なるリクエストなら異なるキー
+        assert key1 == key2  # Same key for same request
+        assert key1 != key3  # Different key for different request
         assert isinstance(key1, str)
         assert len(key1) > 0
 
     @pytest.mark.unit
     def test_language_detection_by_extension(self, engine) -> None:
-        """拡張子による言語検出のテスト"""
+        """Language detection by extension test"""
         # Act & Assert
         assert engine._detect_language("test.java") == "java"
         assert engine._detect_language("test.py") == "python"
@@ -177,7 +177,7 @@ class TestUnifiedAnalysisEngine:
 
     @pytest.mark.unit
     def test_plugin_registration(self, engine) -> None:
-        """プラグイン登録のテスト"""
+        """Plugin registration test"""
         # Arrange
         plugin = MockLanguagePlugin("test_lang")
 
@@ -191,7 +191,7 @@ class TestUnifiedAnalysisEngine:
 
     @pytest.mark.unit
     def test_cache_stats(self, engine) -> None:
-        """キャッシュ統計のテスト"""
+        """Cache statistics test"""
         # Act
         stats = engine.get_cache_stats()
 
@@ -205,11 +205,11 @@ class TestUnifiedAnalysisEngine:
 
 
 class TestAnalysisRequest:
-    """AnalysisRequestのテスト"""
+    """AnalysisRequest tests"""
 
     @pytest.mark.unit
     def test_analysis_request_creation(self) -> None:
-        """AnalysisRequest作成テスト"""
+        """AnalysisRequest creation test"""
         # Arrange & Act
         request = AnalysisRequest(
             file_path="test.java",
@@ -226,7 +226,7 @@ class TestAnalysisRequest:
 
     @pytest.mark.unit
     def test_analysis_request_defaults(self) -> None:
-        """AnalysisRequestデフォルト値テスト"""
+        """AnalysisRequest default values test"""
         # Arrange & Act
         request = AnalysisRequest(file_path="test.java")
 
@@ -239,7 +239,7 @@ class TestAnalysisRequest:
 
     @pytest.mark.unit
     def test_from_mcp_arguments(self) -> None:
-        """MCP引数からの作成テスト"""
+        """Creation from MCP arguments test"""
         # Arrange
         mcp_args = {
             "file_path": "test.java",
@@ -261,16 +261,16 @@ class TestAnalysisRequest:
 
 
 class TestUnifiedAnalysisEngineErrorHandling:
-    """統一解析エンジンエラーハンドリングテスト"""
+    """Unified analysis engine error handling tests"""
 
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_plugin_analysis_error(self) -> None:
-        """プラグイン解析エラーのハンドリング"""
+        """Plugin analysis error handling"""
         # Arrange
         engine = UnifiedAnalysisEngine()
 
-        # エラーを発生させるモックプラグインを作成
+        # Create mock plugin that raises errors
         class ErrorPlugin:
             def get_language_name(self) -> str:
                 return "error_lang"
@@ -295,12 +295,12 @@ class TestUnifiedAnalysisEngineErrorHandling:
 
 
 class TestMockLanguagePlugin:
-    """MockLanguagePluginのテスト"""
+    """MockLanguagePlugin tests"""
 
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_mock_plugin_analysis(self) -> None:
-        """モックプラグインの解析テスト"""
+        """Mock plugin analysis test"""
         # Arrange
         plugin = MockLanguagePlugin("java")
         request = AnalysisRequest(file_path="test.java", language="java")

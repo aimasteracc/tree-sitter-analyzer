@@ -17,7 +17,7 @@ __email__ = "aimasteracc@gmail.com"
 
 # Legacy imports for backward compatibility
 
-# Core Engine - 一時的に直接インポート
+# Core Engine - temporary direct import
 from .core.analysis_engine import UnifiedAnalysisEngine as UniversalCodeAnalyzer
 from .encoding_utils import (
     EncodingManager,
@@ -30,7 +30,6 @@ from .encoding_utils import (
 )
 
 # from .java_advanced_analyzer import AdvancedAnalyzer  # Removed - migrated to plugin system
-from .java_analyzer import CodeAnalyzer
 from .language_detector import LanguageDetector
 from .language_loader import get_loader
 
@@ -119,7 +118,6 @@ __all__ = [
     "output_error",
     "output_data",
     # Legacy Components (backward compatibility)
-    "CodeAnalyzer",
     "UniversalCodeAnalyzer",
     # Version
     "__version__",

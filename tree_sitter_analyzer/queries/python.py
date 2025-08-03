@@ -210,58 +210,58 @@ MODERN_PATTERNS = """
 ALL_QUERIES = {
     "functions": {
         "query": FUNCTIONS,
-        "description": "すべての関数定義（async含む）を検索",
+        "description": "Search all function definitions (including async)",
     },
-    "classes": {"query": CLASSES, "description": "すべてのクラス定義を検索"},
-    "imports": {"query": IMPORTS, "description": "すべてのインポート文を検索"},
-    "variables": {"query": VARIABLES, "description": "すべての変数代入を検索"},
-    "decorators": {"query": DECORATORS, "description": "すべてのデコレータを検索"},
+    "classes": {"query": CLASSES, "description": "Search all class definitions"},
+    "imports": {"query": IMPORTS, "description": "Search all import statements"},
+    "variables": {"query": VARIABLES, "description": "Search all variable assignments"},
+    "decorators": {"query": DECORATORS, "description": "Search all decorators"},
     "methods": {
         "query": METHODS,
-        "description": "クラス内のすべてのメソッド定義を検索",
+        "description": "Search all method definitions within classes",
     },
     "exceptions": {
         "query": EXCEPTIONS,
-        "description": "例外処理とraise文を検索",
+        "description": "Search exception handling and raise statements",
     },
     "comprehensions": {
         "query": COMPREHENSIONS,
-        "description": "リスト、辞書、セット内包表記を検索",
+        "description": "Search list, dictionary, and set comprehensions",
     },
-    "comments": {"query": COMMENTS, "description": "コメントとdocstringを検索"},
+    "comments": {"query": COMMENTS, "description": "Search comments and docstrings"},
     "type_hints": {
         "query": TYPE_HINTS,
-        "description": "型ヒントとアノテーションを検索",
+        "description": "Search type hints and annotations",
     },
     "async_patterns": {
         "query": ASYNC_PATTERNS,
-        "description": "async/awaitパターンを検索",
+        "description": "Search async/await patterns",
     },
     "string_formatting": {
         "query": STRING_FORMATTING,
-        "description": "f文字列と文字列フォーマットを検索",
+        "description": "Search f-strings and string formatting",
     },
     "context_managers": {
         "query": CONTEXT_MANAGERS,
-        "description": "コンテキストマネージャー（with文）を検索",
+        "description": "Search context managers (with statements)",
     },
-    "lambdas": {"query": LAMBDAS, "description": "ラムダ式を検索"},
+    "lambdas": {"query": LAMBDAS, "description": "Search lambda expressions"},
     "modern_patterns": {
         "query": MODERN_PATTERNS,
-        "description": "モダンなPythonパターン（match/case、セイウチ演算子）を検索",
+        "description": "Search modern Python patterns (match/case, walrus operator)",
     },
     # Convenience aliases
     "function_names": {
         "query": FUNCTIONS,
-        "description": "関数のエイリアス - すべての関数定義を検索",
+        "description": "Function alias - search all function definitions",
     },
     "class_names": {
         "query": CLASSES,
-        "description": "クラスのエイリアス - すべてのクラス定義を検索",
+        "description": "Class alias - search all class definitions",
     },
     "all_declarations": {
         "query": FUNCTIONS + "\n\n" + CLASSES + "\n\n" + VARIABLES,
-        "description": "すべての関数、クラス、変数宣言を検索",
+        "description": "Search all function, class, and variable declarations",
     },
 }
 

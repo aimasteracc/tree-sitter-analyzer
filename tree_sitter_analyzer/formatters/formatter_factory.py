@@ -9,7 +9,7 @@ from .python_formatter import PythonTableFormatter
 
 
 class TableFormatterFactory:
-    """言語固有のテーブルフォーマッターを作成するファクトリー"""
+    """Factory for creating language-specific table formatters"""
 
     _formatters: dict[str, type[BaseTableFormatter]] = {
         "java": JavaTableFormatter,
@@ -21,19 +21,19 @@ class TableFormatterFactory:
         cls, language: str, format_type: str = "full"
     ) -> BaseTableFormatter:
         """
-        指定された言語用のテーブルフォーマッターを作成
+        Create table formatter for specified language
 
         Args:
-            language: プログラミング言語名
-            format_type: フォーマットタイプ（full, compact, csv）
+            language: Programming language name
+            format_type: Format type (full, compact, csv)
 
         Returns:
-            言語固有のテーブルフォーマッター
+            Language-specific table formatter
         """
         formatter_class = cls._formatters.get(language.lower())
 
         if formatter_class is None:
-            # デフォルトとしてJavaフォーマッターを使用
+            # Use Java formatter as default
             formatter_class = JavaTableFormatter
 
         return formatter_class(format_type)
@@ -43,21 +43,21 @@ class TableFormatterFactory:
         cls, language: str, formatter_class: type[BaseTableFormatter]
     ) -> None:
         """
-        新しい言語フォーマッターを登録
+        Register new language formatter
 
         Args:
-            language: プログラミング言語名
-            formatter_class: フォーマッタークラス
+            language: Programming language name
+            formatter_class: Formatter class
         """
         cls._formatters[language.lower()] = formatter_class
 
     @classmethod
     def get_supported_languages(cls) -> list[str]:
         """
-        サポートされている言語一覧を取得
+        Get list of supported languages
 
         Returns:
-            サポートされている言語のリスト
+            List of supported languages
         """
         return list(cls._formatters.keys())
 
@@ -66,13 +66,13 @@ def create_table_formatter(
     format_type: str, language: str = "java"
 ) -> BaseTableFormatter:
     """
-    テーブルフォーマッターを作成（互換性のための関数）
+    Create table formatter (function for compatibility)
 
     Args:
-        format_type: フォーマットタイプ
-        language: プログラミング言語名
+        format_type: Format type
+        language: Programming language name
 
     Returns:
-        テーブルフォーマッター
+        Table formatter
     """
     return TableFormatterFactory.create_formatter(language, format_type)

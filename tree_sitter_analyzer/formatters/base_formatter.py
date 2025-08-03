@@ -17,17 +17,17 @@ class BaseTableFormatter(ABC):
         self.format_type = format_type
 
     def _get_platform_newline(self) -> str:
-        """プラットフォーム固有の改行コードを取得"""
+        """Get platform-specific newline code"""
         return os.linesep
 
     def _convert_to_platform_newlines(self, text: str) -> str:
-        """通常の\nをプラットフォーム固有の改行コードに変換"""
+        """Convert regular \n to platform-specific newline code"""
         if os.linesep != "\n":
             return text.replace("\n", os.linesep)
         return text
 
     def format_structure(self, structure_data: dict[str, Any]) -> str:
-        """構造データをテーブル形式でフォーマット"""
+        """Format structure data in table format"""
         if self.format_type == "full":
             result = self._format_full_table(structure_data)
         elif self.format_type == "compact":
@@ -37,7 +37,7 @@ class BaseTableFormatter(ABC):
         else:
             raise ValueError(f"Unsupported format type: {self.format_type}")
 
-        # 最終的にプラットフォーム固有の改行コードに変換
+        # Finally convert to platform-specific newline code
         if self.format_type == "csv":
             return result
 
@@ -45,25 +45,25 @@ class BaseTableFormatter(ABC):
 
     @abstractmethod
     def _format_full_table(self, data: dict[str, Any]) -> str:
-        """完全版テーブル形式（言語固有実装）"""
+        """Full table format (language-specific implementation)"""
         pass
 
     @abstractmethod
     def _format_compact_table(self, data: dict[str, Any]) -> str:
-        """コンパクト版テーブル形式（言語固有実装）"""
+        """Compact table format (language-specific implementation)"""
         pass
 
     def _format_csv(self, data: dict[str, Any]) -> str:
-        """CSV形式（共通実装）"""
+        """CSV format (common implementation)"""
         output = io.StringIO()
         writer = csv.writer(output, lineterminator="\n")
 
-        # ヘッダー
+        # Header
         writer.writerow(
             ["Type", "Name", "Signature", "Visibility", "Lines", "Complexity", "Doc"]
         )
 
-        # フィールド
+        # Fields
         for field in data.get("fields", []):
             writer.writerow(
                 [
@@ -79,7 +79,7 @@ class BaseTableFormatter(ABC):
                 ]
             )
 
-        # メソッド
+        # Methods
         for method in data.get("methods", []):
             writer.writerow(
                 [
@@ -102,9 +102,9 @@ class BaseTableFormatter(ABC):
 
         return csv_content
 
-    # 共通ヘルパーメソッド
+    # Common helper methods
     def _create_full_signature(self, method: dict[str, Any]) -> str:
-        """完全なメソッドシグネチャを作成"""
+        """Create complete method signature"""
         params = method.get("parameters", [])
         param_strs = []
         for param in params:
@@ -131,32 +131,32 @@ class BaseTableFormatter(ABC):
         return signature
 
     def _convert_visibility(self, visibility: str) -> str:
-        """可視性を記号に変換"""
+        """Convert visibility to symbol"""
         mapping = {"public": "+", "private": "-", "protected": "#", "package": "~"}
         return mapping.get(visibility, visibility)
 
     def _extract_doc_summary(self, javadoc: str) -> str:
-        """ドキュメントから要約を抽出"""
+        """Extract summary from documentation"""
         if not javadoc:
             return "-"
 
-        # コメント記号を除去
+        # Remove comment symbols
         clean_doc = (
             javadoc.replace("/**", "").replace("*/", "").replace("*", "").strip()
         )
 
-        # 最初の行を取得
+        # Get first line
         lines = clean_doc.split("\n")
         first_line = lines[0].strip()
 
-        # 長すぎる場合は切り詰め
+        # Truncate if too long
         if len(first_line) > 50:
             first_line = first_line[:47] + "..."
 
         return first_line.replace("|", "\\|").replace("\n", " ")
 
     def _clean_csv_text(self, text: str) -> str:
-        """CSV形式用のテキストクリーニング"""
+        """Text cleaning for CSV format"""
         if not text:
             return ""
 

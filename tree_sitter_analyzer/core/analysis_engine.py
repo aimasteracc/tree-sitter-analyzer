@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 """
-統一解析エンジン - CLI・MCP共通解析システム（修正版）
+Unified Analysis Engine - Common Analysis System for CLI and MCP (Fixed Version)
 
-このモジュールは、すべての解析処理の中心となる統一エンジンを提供します。
-CLI、MCP、その他のインターフェースから共通して使用されます。
+This module provides a unified engine that serves as the center of all analysis processing.
+It is commonly used by CLI, MCP, and other interfaces.
 
-Roo Code規約準拠:
-- 型ヒント: 全関数に型ヒント必須
-- MCPログ: 各ステップでログ出力
+Roo Code compliance:
+- Type hints: Required for all functions
+- MCP logging: Log output at each step
 - docstring: Google Style docstring
-- パフォーマンス重視: シングルトンパターンとキャッシュ共有
+- Performance-focused: Singleton pattern and cache sharing
 """
 
 import hashlib
@@ -25,31 +25,31 @@ from .cache_service import CacheService
 
 
 class UnsupportedLanguageError(Exception):
-    """サポートされていない言語エラー"""
+    """Unsupported language error"""
 
     pass
 
 
 class PluginRegistry(Protocol):
-    """プラグイン登録管理のプロトコル"""
+    """Protocol for plugin registration management"""
 
     def get_plugin(self, language: str) -> Optional["LanguagePlugin"]:
-        """言語プラグインを取得"""
+        """Get language plugin"""
         ...
 
 
 class LanguagePlugin(Protocol):
-    """言語プラグインのプロトコル"""
+    """Language plugin protocol"""
 
     async def analyze_file(
         self, file_path: str, request: "AnalysisRequest"
     ) -> AnalysisResult:
-        """ファイル解析"""
+        """File analysis"""
         ...
 
 
 class PerformanceMonitor:
-    """パフォーマンス監視（簡易版）"""
+    """Performance monitoring (simplified version)"""
 
     def __init__(self) -> None:
         self._last_duration: float = 0.0
@@ -58,33 +58,33 @@ class PerformanceMonitor:
         self._total_operations: int = 0
 
     def measure_operation(self, operation_name: str) -> "PerformanceContext":
-        """操作の測定コンテキストを返す"""
+        """Return measurement context for operation"""
         return PerformanceContext(operation_name, self)
 
     def get_last_duration(self) -> float:
-        """最後の操作時間を取得"""
+        """Get last operation time"""
         return self._last_duration
 
     def _set_duration(self, duration: float) -> None:
-        """操作時間を設定（内部用）"""
+        """Set operation time (internal use)"""
         self._last_duration = duration
 
     def start_monitoring(self) -> None:
-        """パフォーマンス監視を開始"""
+        """Start performance monitoring"""
         self._monitoring_active = True
         log_info("Performance monitoring started")
 
     def stop_monitoring(self) -> None:
-        """パフォーマンス監視を停止"""
+        """Stop performance monitoring"""
         self._monitoring_active = False
         log_info("Performance monitoring stopped")
 
     def get_operation_stats(self) -> dict[str, Any]:
-        """操作統計を取得"""
+        """Get operation statistics"""
         return self._operation_stats.copy()
 
     def get_performance_summary(self) -> dict[str, Any]:
-        """パフォーマンス要約を取得"""
+        """Get performance summary"""
         return {
             "total_operations": self._total_operations,
             "monitoring_active": self._monitoring_active,
@@ -93,7 +93,7 @@ class PerformanceMonitor:
         }
 
     def record_operation(self, operation_name: str, duration: float) -> None:
-        """操作を記録"""
+        """Record operation"""
         if self._monitoring_active:
             if operation_name not in self._operation_stats:
                 self._operation_stats[operation_name] = {

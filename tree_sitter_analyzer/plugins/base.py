@@ -494,3 +494,36 @@ class DefaultLanguagePlugin(LanguagePlugin):
 
     def create_extractor(self) -> ElementExtractor:
         return DefaultExtractor()
+
+    async def analyze_file(
+        self, file_path: str, request: "AnalysisRequest"
+    ) -> "AnalysisResult":
+        """
+        Analyze a file using the default extractor.
+
+        Args:
+            file_path: Path to the file to analyze
+            request: Analysis request with configuration
+
+        Returns:
+            AnalysisResult containing extracted information
+        """
+        from ..core.analysis_engine import UnifiedAnalysisEngine
+        from ..models import AnalysisResult
+
+        try:
+            engine = UnifiedAnalysisEngine()
+            return await engine.analyze_file(file_path)
+        except Exception as e:
+            log_error(f"Failed to analyze file {file_path}: {e}")
+            return AnalysisResult(
+                file_path=file_path,
+                language=self.get_language_name(),
+                line_count=0,
+                elements=[],
+                node_count=0,
+                query_results={},
+                source_code="",
+                success=False,
+                error_message=str(e),
+            )

@@ -33,18 +33,18 @@ class TestJavaQueries:
         with pytest.raises(ValueError) as exc_info:
             get_java_query("nonexistent_query")
 
-        assert "Javaクエリ 'nonexistent_query' は存在しません" in str(exc_info.value)
-        assert "利用可能:" in str(exc_info.value)
+        assert "Java query 'nonexistent_query' does not exist" in str(exc_info.value)
+        assert "Available:" in str(exc_info.value)
 
     def test_get_java_query_description_valid(self) -> None:
         """Test getting description for valid query"""
         description = get_java_query_description("class")
-        assert description == "Javaクラス宣言を抽出"
+        assert description == "Extract Java class declarations"
 
     def test_get_java_query_description_invalid(self) -> None:
         """Test getting description for invalid query returns default"""
         description = get_java_query_description("nonexistent_query")
-        assert description == "説明なし"
+        assert description == "No description"
 
     def test_get_query_valid(self) -> None:
         """Test getting query through ALL_QUERIES interface"""

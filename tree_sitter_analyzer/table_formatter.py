@@ -61,11 +61,11 @@ class TableFormatter:
         if classes is None:
             classes = []
         if len(classes) > 1:
-            # 複数クラスがある場合はファイル名を使用
+            # Use file name when multiple classes exist
             file_name = data.get("file_path", "Unknown").split("/")[-1].split("\\")[-1]
             lines.append(f"# {file_name}")
         else:
-            # 単一クラスの場合は従来通り
+            # Use class name for single class as before
             class_name = classes[0].get("name", "Unknown") if classes else "Unknown"
             lines.append(
                 f"# {(data.get('package') or {}).get('name', 'unknown')}.{class_name}"
@@ -82,7 +82,7 @@ class TableFormatter:
             lines.append("```")
             lines.append("")
 
-        # Class Info - 複数クラスに対応
+        # Class Info - Support for multiple classes
         classes = data.get("classes", [])
         if classes is None:
             classes = []
@@ -98,7 +98,7 @@ class TableFormatter:
                 line_range = class_info.get("line_range", {})
                 lines_str = f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
 
-                # このクラスのメソッド数とフィールド数を計算
+                # Calculate method and field counts for this class
                 class_methods = [
                     m
                     for m in data.get("methods", [])
@@ -118,7 +118,7 @@ class TableFormatter:
                     f"| {name} | {class_type} | {visibility} | {lines_str} | {len(class_methods)} | {len(class_fields)} |"
                 )
         else:
-            # 単一クラスの場合は従来通り
+            # Use traditional format for single class
             lines.append("## Class Info")
             lines.append("| Property | Value |")
             lines.append("|----------|-------|")
@@ -210,7 +210,7 @@ class TableFormatter:
                 lines.append(self._format_method_row(method))
             lines.append("")
 
-        # 末尾の空行を削除
+        # Remove trailing empty lines
         while lines and lines[-1] == "":
             lines.pop()
 
@@ -229,7 +229,7 @@ class TableFormatter:
         lines.append(f"# {package_name}.{class_name}")
         lines.append("")
 
-        # 基本情報
+        # Basic information
         stats = data.get("statistics") or {}
         lines.append("## Info")
         lines.append("| Property | Value |")
@@ -239,7 +239,7 @@ class TableFormatter:
         lines.append(f"| Fields | {stats.get('field_count', 0)} |")
         lines.append("")
 
-        # メソッド（簡略版）
+        # Methods (simplified version)
         methods = data.get("methods", [])
         if methods is None:
             methods = []
@@ -264,7 +264,7 @@ class TableFormatter:
                 )
             lines.append("")
 
-        # 末尾の空行を削除
+        # Remove trailing empty lines
         while lines and lines[-1] == "":
             lines.pop()
 
@@ -282,7 +282,7 @@ class TableFormatter:
             ["Type", "Name", "Signature", "Visibility", "Lines", "Complexity", "Doc"]
         )
 
-        # フィールド
+        # Fields
         for field in data.get("fields", []):
             writer.writerow(
                 [
@@ -298,7 +298,7 @@ class TableFormatter:
                 ]
             )
 
-        # メソッド
+        # Methods
         for method in data.get("methods", []):
             writer.writerow(
                 [
@@ -324,13 +324,13 @@ class TableFormatter:
         return csv_content
 
     def _format_method_row(self, method: dict[str, Any]) -> str:
-        """メソッド行のフォーマット"""
+        """Format method row"""
         name = str(method.get("name", ""))
         signature = self._create_full_signature(method)
         visibility = self._convert_visibility(str(method.get("visibility", "")))
         line_range = method.get("line_range", {})
         lines_str = f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
-        cols_str = "5-6"  # デフォルト値（実際の実装では正確な値を取得）
+        cols_str = "5-6"  # Default value (actual implementation should get accurate values)
         complexity = method.get("complexity_score", 0)
         if self.include_javadoc:
             doc = self._clean_csv_text(
@@ -342,7 +342,7 @@ class TableFormatter:
         return f"| {name} | {signature} | {visibility} | {lines_str} | {cols_str} | {complexity} | {doc} |"
 
     def _create_full_signature(self, method: dict[str, Any]) -> str:
-        """完全なメソッドシグネチャを作成"""
+        """Create complete method signature"""
         params = method.get("parameters", [])
         param_strs = []
         for param in params:
@@ -366,7 +366,7 @@ class TableFormatter:
         return signature
 
     def _create_compact_signature(self, method: dict[str, Any]) -> str:
-        """コンパクトなメソッドシグネチャを作成"""
+        """Create compact method signature"""
         params = method.get("parameters", [])
         param_types = [self._shorten_type(p.get("type", "O")) for p in params]
         params_str = ",".join(param_types)
@@ -375,7 +375,7 @@ class TableFormatter:
         return f"({params_str}):{return_type}"
 
     def _shorten_type(self, type_name: Any) -> str:
-        """型名を短縮"""
+        """Shorten type name"""
         if type_name is None:
             return "O"
 
@@ -423,12 +423,12 @@ class TableFormatter:
         return type_mapping.get(type_name, type_name)
 
     def _convert_visibility(self, visibility: str) -> str:
-        """可視性を記号に変換"""
+        """Convert visibility to symbol"""
         mapping = {"public": "+", "private": "-", "protected": "#", "package": "~"}
         return mapping.get(visibility, visibility)
 
     def _extract_doc_summary(self, javadoc: str) -> str:
-        """JavaDocから要約を抽出"""
+        """Extract summary from JavaDoc"""
         if not javadoc:
             return "-"
 

@@ -46,13 +46,13 @@ def test_get_query_description_valid_key():
     """Test getting query description with valid key"""
     loader = get_query_loader()
     description = loader.get_query_description(TEST_LANGUAGE, "class")
-    assert description == "クラス宣言を抽出"
+    assert description == "Extract class declarations"
 
     description = loader.get_query_description(TEST_LANGUAGE, "method")
-    assert description == "メソッド宣言を抽出"
+    assert description == "Extract method declarations"
 
     description = loader.get_query_description(TEST_LANGUAGE, "interface")
-    assert description == "インターフェース宣言を抽出"
+    assert description == "Extract interface declarations"
 
 
 def test_get_query_description_invalid_key():
@@ -121,14 +121,14 @@ def test_structured_queries():
     # Test class_with_body query
     class_with_body = get_query(TEST_LANGUAGE, "class_with_body")
     assert "class_declaration" in class_with_body
-    assert "@name" in class_with_body  # 新しいクエリ構造では@nameを使用
+    assert "@name" in class_with_body  # New query structure uses @name
     assert "@body" in class_with_body
 
     # Test method_with_body query
     method_with_body = get_query(TEST_LANGUAGE, "method_with_body")
     if method_with_body:  # クエリが存在する場合のみテスト
         assert "method_declaration" in method_with_body
-        assert "@name" in method_with_body  # 新しいクエリ構造では@nameを使用
+        assert "@name" in method_with_body  # New query structure uses @name
         assert "@body" in method_with_body
 
 
@@ -139,7 +139,7 @@ def test_query_descriptions_completeness():
     for query_key in available_queries:
         loader = get_query_loader()
         description = loader.get_query_description(TEST_LANGUAGE, query_key)
-        # Should not be empty or default "説明なし"
+        # Should not be empty or default "No description"
         assert description is not None
         assert len(description) > 0
 

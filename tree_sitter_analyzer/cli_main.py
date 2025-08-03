@@ -79,46 +79,50 @@ class CLICommandFactory:
 def create_argument_parser() -> argparse.ArgumentParser:
     """Create and configure the argument parser."""
     parser = argparse.ArgumentParser(
-        description="Tree-sitterを使用してコードを解析し、構造化された情報を抽出します。",
-        epilog="例: tree-sitter-analyzer example.java --table=full",
+        description="Analyze code using Tree-sitter and extract structured information.",
+        epilog="Example: tree-sitter-analyzer example.java --table=full",
     )
 
     # File path
-    parser.add_argument("file_path", nargs="?", help="解析対象のファイルのパス")
+    parser.add_argument("file_path", nargs="?", help="Path to the file to analyze")
 
     # Query options
     query_group = parser.add_mutually_exclusive_group(required=False)
     query_group.add_argument(
-        "--query-key", help="利用可能なクエリのキー (例: class, method)"
+        "--query-key", help="Available query key (e.g., class, method)"
     )
     query_group.add_argument(
-        "--query-string", help="実行するTree-sitterクエリを直接指定"
+        "--query-string", help="Directly specify Tree-sitter query to execute"
     )
 
     # Information options
     parser.add_argument(
-        "--list-queries", action="store_true", help="利用可能なクエリキーの一覧を表示"
+        "--list-queries",
+        action="store_true",
+        help="Display list of available query keys",
     )
-    parser.add_argument("--describe-query", help="指定されたクエリキーの説明を表示")
+    parser.add_argument(
+        "--describe-query", help="Display description of specified query key"
+    )
     parser.add_argument(
         "--show-supported-languages",
         action="store_true",
-        help="サポートされている言語一覧を表示",
+        help="Display list of supported languages",
     )
     parser.add_argument(
         "--show-supported-extensions",
         action="store_true",
-        help="サポートされている拡張子一覧を表示",
+        help="Display list of supported file extensions",
     )
     parser.add_argument(
         "--show-common-queries",
         action="store_true",
-        help="複数言語共通のクエリ一覧を表示",
+        help="Display list of common queries across multiple languages",
     )
     parser.add_argument(
         "--show-query-languages",
         action="store_true",
-        help="クエリサポートされている言語一覧を表示",
+        help="Display list of languages with query support",
     )
 
     # Output format options
@@ -126,52 +130,67 @@ def create_argument_parser() -> argparse.ArgumentParser:
         "--output-format",
         choices=["json", "text"],
         default="json",
-        help="出力形式を指定",
+        help="Specify output format",
     )
     parser.add_argument(
-        "--table", choices=["full", "compact", "csv"], help="テーブル形式での出力"
+        "--table", choices=["full", "compact", "csv"], help="Output in table format"
     )
     parser.add_argument(
         "--include-javadoc",
         action="store_true",
-        help="JavaDoc/ドキュメントコメントを出力に含める",
+        help="Include JavaDoc/documentation comments in output",
     )
 
     # Analysis options
-    parser.add_argument("--advanced", action="store_true", help="高度な解析機能を使用")
+    parser.add_argument(
+        "--advanced", action="store_true", help="Use advanced analysis features"
+    )
     parser.add_argument(
         "--summary",
         nargs="?",
         const="classes,methods",
-        help="指定された要素タイプの要約を表示",
+        help="Display summary of specified element types",
     )
     parser.add_argument(
-        "--structure", action="store_true", help="詳細な構造情報をJSON形式で出力"
+        "--structure",
+        action="store_true",
+        help="Output detailed structure information in JSON format",
     )
-    parser.add_argument("--statistics", action="store_true", help="統計情報のみを表示")
+    parser.add_argument(
+        "--statistics", action="store_true", help="Display only statistical information"
+    )
 
     # Language options
     parser.add_argument(
-        "--language", help="言語を明示的に指定（省略時は拡張子から自動判定）"
+        "--language",
+        help="Explicitly specify language (auto-detected from extension if omitted)",
     )
 
     # Logging options
     parser.add_argument(
-        "--quiet", action="store_true", help="INFOレベルのログを抑制（エラーのみ表示）"
+        "--quiet",
+        action="store_true",
+        help="Suppress INFO level logs (show errors only)",
     )
 
     # Partial reading options
     parser.add_argument(
         "--partial-read",
         action="store_true",
-        help="ファイルの部分読み込みモードを有効にする",
+        help="Enable partial file reading mode",
     )
-    parser.add_argument("--start-line", type=int, help="読み込み開始行番号（1ベース）")
-    parser.add_argument("--end-line", type=int, help="読み込み終了行番号（1ベース）")
     parser.add_argument(
-        "--start-column", type=int, help="読み込み開始列番号（0ベース）"
+        "--start-line", type=int, help="Starting line number for reading (1-based)"
     )
-    parser.add_argument("--end-column", type=int, help="読み込み終了列番号（0ベース）")
+    parser.add_argument(
+        "--end-line", type=int, help="Ending line number for reading (1-based)"
+    )
+    parser.add_argument(
+        "--start-column", type=int, help="Starting column number for reading (0-based)"
+    )
+    parser.add_argument(
+        "--end-column", type=int, help="Ending column number for reading (0-based)"
+    )
 
     return parser
 
@@ -205,20 +224,20 @@ def handle_special_commands(args: argparse.Namespace) -> int | None:
 
     # Query language commands
     if args.show_query_languages:
-        output_list(["クエリサポートされている言語:"])
+        output_list(["Languages with query support:"])
         for lang in query_loader.list_supported_languages():
             query_count = len(query_loader.list_queries_for_language(lang))
-            output_list([f"  {lang:<15} ({query_count} クエリ)"])
+            output_list([f"  {lang:<15} ({query_count} queries)"])
         return 0
 
     if args.show_common_queries:
         common_queries = query_loader.get_common_queries()
         if common_queries:
-            output_list("複数言語共通のクエリ:")
+            output_list("Common queries across multiple languages:")
             for query in common_queries:
                 output_list(f"  {query}")
         else:
-            output_info("共通クエリが見つかりませんでした。")
+            output_info("No common queries found.")
         return 0
 
     return None
@@ -262,7 +281,7 @@ def main() -> None:
         if not args.file_path:
             output_error("ERROR: File path not specified.")
         else:
-            output_error("ERROR: 実行可能なコマンドが指定されていません。")
+            output_error("ERROR: No executable command specified.")
         parser.print_help()
         sys.exit(1)
 

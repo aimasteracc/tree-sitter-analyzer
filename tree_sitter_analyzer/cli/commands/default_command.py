@@ -14,5 +14,5 @@ class DefaultCommand(BaseCommand):
 
     async def execute_async(self, language: str) -> int:
         """Execute default command - show error for missing options."""
-        output_error("ERROR: クエリまたは--advancedオプションを指定してください")
+        output_error("ERROR: Please specify a query or --advanced option")
         return 1

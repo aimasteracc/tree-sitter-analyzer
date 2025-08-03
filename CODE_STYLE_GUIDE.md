@@ -76,11 +76,11 @@ def analyze_file(file_path: str, language: Optional[str] = None) -> AnalysisResu
     """Analyze a code file and return results."""
     pass
 
-class CodeAnalyzer:
+class JavaElementExtractor:
     def __init__(self, config: Dict[str, Any]) -> None:
         self.config = config
-    
-    def process(self, content: str) -> List[CodeElement]:
+
+    def extract_functions(self, tree: Tree, source_code: str) -> List[Function]:
         return []
 ```
 
@@ -133,18 +133,19 @@ def extract_functions(source_code: str, language: str) -> List[Function]:
 ### Test Structure
 
 ```python
-class TestCodeAnalyzer:
-    """Test suite for CodeAnalyzer class."""
-    
-    def test_analyze_java_file_success(self):
-        """Test successful analysis of Java file."""
+class TestJavaPlugin:
+    """Test suite for Java plugin analysis."""
+
+    async def test_analyze_java_file_success(self):
+        """Test successful analysis of Java file using new plugin system."""
         # Arrange
-        analyzer = CodeAnalyzer()
+        from tree_sitter_analyzer.core.analysis_engine import get_analysis_engine
+        engine = get_analysis_engine()
         file_path = "examples/Sample.java"
-        
+
         # Act
-        result = analyzer.analyze_file(file_path)
-        
+        result = await engine.analyze_file(file_path)
+
         # Assert
         assert result is not None
         assert result.language == "java"

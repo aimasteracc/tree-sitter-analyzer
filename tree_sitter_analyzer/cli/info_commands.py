@@ -34,22 +34,23 @@ class ListQueriesCommand(InfoCommand):
         elif hasattr(self.args, "file_path") and self.args.file_path:
             language = detect_language_from_file(self.args.file_path)
         else:
-            output_list("サポートされている言語:")
+            output_list("Supported languages:")
             for lang in query_loader.list_supported_languages():
                 output_list(f"  {lang}")
                 queries = query_loader.list_queries_for_language(lang)
                 for query_key in queries:
                     description = (
                         query_loader.get_query_description(lang, query_key)
-                        or "説明なし"
+                        or "No description"
                     )
                     output_list(f"    {query_key:<20} - {description}")
             return 0
 
-        output_list(f"利用可能なクエリキー ({language}):")
+        output_list(f"Available query keys ({language}):")
         for query_key in query_loader.list_queries_for_language(language):
             description = (
-                query_loader.get_query_description(language, query_key) or "説明なし"
+                query_loader.get_query_description(language, query_key)
+                or "No description"
             )
             output_list(f"  {query_key:<20} - {description}")
         return 0
@@ -65,7 +66,7 @@ class DescribeQueryCommand(InfoCommand):
             language = detect_language_from_file(self.args.file_path)
         else:
             output_error(
-                "ERROR: クエリ説明表示には--languageまたは対象ファイルの指定が必要です"
+                "ERROR: Query description display requires --language or target file specification"
             )
             return 1
 
@@ -77,14 +78,14 @@ class DescribeQueryCommand(InfoCommand):
 
             if query_description is None or query_content is None:
                 output_error(
-                    f"ERROR: クエリ '{self.args.describe_query}' が言語 '{language}' で見つかりません"
+                    f"ERROR: Query '{self.args.describe_query}' not found for language '{language}'"
                 )
                 return 1
 
             output_info(
-                f"クエリキー '{self.args.describe_query}' ({language}): {query_description}"
+                f"Query key '{self.args.describe_query}' ({language}): {query_description}"
             )
-            output_data(f"クエリ内容:\n{query_content}")
+            output_data(f"Query content:\n{query_content}")
         except ValueError as e:
             output_error(f"ERROR: {e}")
             return 1
@@ -95,13 +96,13 @@ class ShowLanguagesCommand(InfoCommand):
     """Command to show supported languages."""
 
     def execute(self) -> int:
-        output_list("サポートされている言語:")
+        output_list("Supported languages:")
         for language in detector.get_supported_languages():
             info = detector.get_language_info(language)
             extensions = ", ".join(info["extensions"][:5])
             if len(info["extensions"]) > 5:
-                extensions += f", ... (他{len(info['extensions'])-5}個)"
-            output_list(f"  {language:<12} - 拡張子: {extensions}")
+                extensions += f", ... ({len(info['extensions'])-5} more)"
+            output_list(f"  {language:<12} - Extensions: {extensions}")
         return 0
 
 
@@ -109,12 +110,12 @@ class ShowExtensionsCommand(InfoCommand):
     """Command to show supported extensions."""
 
     def execute(self) -> int:
-        output_list("サポートされている拡張子:")
+        output_list("Supported file extensions:")
         supported_extensions = detector.get_supported_extensions()
         for i in range(0, len(supported_extensions), 8):
             line = "  " + "  ".join(
                 f"{ext:<6}" for ext in supported_extensions[i : i + 8]
             )
             output_list(line)
-        output_info(f"\n合計 {len(supported_extensions)} 個の拡張子をサポート")
+        output_info(f"\nTotal {len(supported_extensions)} extensions supported")
         return 0

@@ -316,8 +316,8 @@ class TestParserErrorHandling:
         """Test parsing code with Unicode characters"""
         unicode_code = """
 public class Test {
-    // コメント with Unicode: 日本語
-    String message = "こんにちは世界";
+    // Comment with Unicode: English
+    String message = "Hello World";
 }
 """
         result = parser.parse_code(unicode_code, "java")

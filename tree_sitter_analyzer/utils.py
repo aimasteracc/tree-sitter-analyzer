@@ -19,7 +19,7 @@ def setup_logger(
     """Setup unified logger for the project"""
     import os
 
-    # 環境変数からログレベルを取得
+    # Get log level from environment variable
     env_level = os.environ.get("LOG_LEVEL", "").upper()
     if env_level == "DEBUG":
         level = logging.DEBUG

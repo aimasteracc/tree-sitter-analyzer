@@ -6,9 +6,9 @@ Tree-sitter queries specific to Java language constructs.
 Covers classes, methods, annotations, imports, and other Java-specific elements.
 """
 
-# Java専用クエリライブラリ
+# Java-specific query library
 JAVA_QUERIES: dict[str, str] = {
-    # --- 基本構造 ---
+    # --- Basic Structure ---
     "class": """
     (class_declaration) @class
     """,
@@ -21,7 +21,7 @@ JAVA_QUERIES: dict[str, str] = {
     "annotation_type": """
     (annotation_type_declaration) @annotation_type
     """,
-    # --- メソッドと構築子 ---
+    # --- Methods and Constructors ---
     "method": """
     (method_declaration) @method
     """,
@@ -33,7 +33,7 @@ JAVA_QUERIES: dict[str, str] = {
       (modifiers) @mod
       (#match? @mod "abstract")) @abstract_method
     """,
-    # --- フィールドと変数 ---
+    # --- Fields and Variables ---
     "field": """
     (field_declaration) @field
     """,
@@ -47,7 +47,7 @@ JAVA_QUERIES: dict[str, str] = {
       (modifiers) @mod
       (#match? @mod "final")) @final_field
     """,
-    # --- インポートとパッケージ ---
+    # --- Imports and Packages ---
     "import": """
     (import_declaration) @import
     """,
@@ -58,7 +58,7 @@ JAVA_QUERIES: dict[str, str] = {
     "package": """
     (package_declaration) @package
     """,
-    # --- アノテーション ---
+    # --- Annotations ---
     "annotation": """
     (annotation) @annotation
     """,
@@ -69,7 +69,7 @@ JAVA_QUERIES: dict[str, str] = {
     (annotation
       (annotation_argument_list)) @annotation_with_params
     """,
-    # --- Java特有のコンストラクト ---
+    # --- Java-specific Constructs ---
     "lambda": """
     (lambda_expression) @lambda
     """,
@@ -82,7 +82,7 @@ JAVA_QUERIES: dict[str, str] = {
     "generic_type": """
     (generic_type) @generic_type
     """,
-    # --- 名前のみ抽出 ---
+    # --- Name-only Extraction ---
     "class_name": """
     (class_declaration
       name: (identifier) @class_name)
@@ -96,7 +96,7 @@ JAVA_QUERIES: dict[str, str] = {
       declarator: (variable_declarator
         name: (identifier) @field_name))
     """,
-    # --- 詳細付きクエリ ---
+    # --- Detailed Queries ---
     "class_with_body": """
     (class_declaration
       name: (identifier) @name
@@ -112,7 +112,7 @@ JAVA_QUERIES: dict[str, str] = {
       (modifiers (annotation) @annotation)*
       name: (identifier) @name) @method_with_annotations
     """,
-    # --- 継承関係 ---
+    # --- Inheritance Relations ---
     "extends_clause": """
     (class_declaration
       (superclass) @extends_clause)
@@ -121,7 +121,7 @@ JAVA_QUERIES: dict[str, str] = {
     (class_declaration
       (super_interfaces) @implements_clause)
     """,
-    # --- 修飾子別 ---
+    # --- By Modifiers ---
     "public_methods": """
     (method_declaration
       (modifiers) @mod
@@ -140,7 +140,7 @@ JAVA_QUERIES: dict[str, str] = {
       (#match? @mod "static")
       name: (identifier) @name) @static_methods
     """,
-    # --- Spring Framework アノテーション ---
+    # --- Spring Framework Annotations ---
     "spring_controller": """
     (class_declaration
       (modifiers (annotation
@@ -162,7 +162,7 @@ JAVA_QUERIES: dict[str, str] = {
         (#match? @annotation_name "Repository")))
       name: (identifier) @repository_name) @spring_repository
     """,
-    # --- JPA アノテーション ---
+    # --- JPA Annotations ---
     "jpa_entity": """
     (class_declaration
       (modifiers (annotation
@@ -178,7 +178,7 @@ JAVA_QUERIES: dict[str, str] = {
       declarator: (variable_declarator
         name: (identifier) @field_name)) @jpa_id_field
     """,
-    # --- 構造情報抽出用クエリ ---
+    # --- Structural Information Extraction Queries ---
     "javadoc_comment": """
     (block_comment) @javadoc_comment
     (#match? @javadoc_comment "^/\\*\\*")
@@ -257,108 +257,108 @@ JAVA_QUERIES: dict[str, str] = {
     """,
 }
 
-# クエリの説明
+# Query descriptions
 JAVA_QUERY_DESCRIPTIONS: dict[str, str] = {
-    "class": "Javaクラス宣言を抽出",
-    "interface": "Javaインターフェース宣言を抽出",
-    "enum": "Java列挙型宣言を抽出",
-    "annotation_type": "Javaアノテーション型宣言を抽出",
-    "method": "Javaメソッド宣言を抽出",
-    "constructor": "Javaコンストラクタ宣言を抽出",
-    "field": "Javaフィールド宣言を抽出",
-    "import": "Javaインポート文を抽出",
-    "package": "Javaパッケージ宣言を抽出",
-    "annotation": "Javaアノテーションを抽出",
-    "lambda": "Javaラムダ式を抽出",
-    "try_catch": "Java try-catch文を抽出",
-    "class_name": "クラス名のみを抽出",
-    "method_name": "メソッド名のみを抽出",
-    "field_name": "フィールド名のみを抽出",
-    "class_with_body": "クラス宣言と本体を抽出",
-    "method_with_body": "メソッド宣言と本体を抽出",
-    "extends_clause": "クラスの継承句を抽出",
-    "implements_clause": "クラスの実装句を抽出",
-    "public_methods": "publicメソッドを抽出",
-    "private_methods": "privateメソッドを抽出",
-    "static_methods": "staticメソッドを抽出",
-    # 構造情報抽出用クエリの説明
-    "javadoc_comment": "JavaDocコメントを抽出",
-    "class_with_javadoc": "JavaDoc付きクラスを抽出",
-    "method_with_javadoc": "JavaDoc付きメソッドを抽出",
-    "field_with_javadoc": "JavaDoc付きフィールドを抽出",
-    "method_parameters_detailed": "メソッドパラメータの詳細情報を抽出",
-    "class_inheritance_detailed": "クラスの継承関係詳細を抽出",
-    "annotation_detailed": "アノテーションの詳細情報を抽出",
-    "import_detailed": "インポート文の詳細情報を抽出",
-    "package_detailed": "パッケージ宣言の詳細情報を抽出",
-    "constructor_detailed": "コンストラクタの詳細情報を抽出",
-    "enum_constant": "列挙型定数を抽出",
-    "interface_method": "インターフェースメソッドを抽出",
-    "spring_controller": "Spring Controllerクラスを抽出",
-    "spring_service": "Spring Serviceクラスを抽出",
-    "spring_repository": "Spring Repositoryクラスを抽出",
-    "jpa_entity": "JPA Entityクラスを抽出",
-    "abstract_method": "抽象メソッドを抽出",
-    "static_field": "静的フィールドを抽出",
-    "final_field": "finalフィールドを抽出",
-    "static_import": "静的インポート文を抽出",
-    "marker_annotation": "マーカーアノテーションを抽出",
-    "annotation_with_params": "パラメータ付きアノテーションを抽出",
-    "synchronized_block": "synchronized文を抽出",
-    "generic_type": "ジェネリック型を抽出",
-    "method_with_annotations": "アノテーション付きメソッドを抽出",
-    "jpa_id_field": "JPA IDフィールドを抽出",
+    "class": "Extract Java class declarations",
+    "interface": "Extract Java interface declarations",
+    "enum": "Extract Java enum declarations",
+    "annotation_type": "Extract Java annotation type declarations",
+    "method": "Extract Java method declarations",
+    "constructor": "Extract Java constructor declarations",
+    "field": "Extract Java field declarations",
+    "import": "Extract Java import statements",
+    "package": "Extract Java package declarations",
+    "annotation": "Extract Java annotations",
+    "lambda": "Extract Java lambda expressions",
+    "try_catch": "Extract Java try-catch statements",
+    "class_name": "Extract class names only",
+    "method_name": "Extract method names only",
+    "field_name": "Extract field names only",
+    "class_with_body": "Extract class declarations with body",
+    "method_with_body": "Extract method declarations with body",
+    "extends_clause": "Extract class inheritance clauses",
+    "implements_clause": "Extract class implementation clauses",
+    "public_methods": "Extract public methods",
+    "private_methods": "Extract private methods",
+    "static_methods": "Extract static methods",
+    # Structural information extraction query descriptions
+    "javadoc_comment": "Extract JavaDoc comments",
+    "class_with_javadoc": "Extract classes with JavaDoc",
+    "method_with_javadoc": "Extract methods with JavaDoc",
+    "field_with_javadoc": "Extract fields with JavaDoc",
+    "method_parameters_detailed": "Extract detailed method parameter information",
+    "class_inheritance_detailed": "Extract detailed class inheritance relationships",
+    "annotation_detailed": "Extract detailed annotation information",
+    "import_detailed": "Extract detailed import statement information",
+    "package_detailed": "Extract detailed package declaration information",
+    "constructor_detailed": "Extract detailed constructor information",
+    "enum_constant": "Extract enum constants",
+    "interface_method": "Extract interface methods",
+    "spring_controller": "Extract Spring Controller classes",
+    "spring_service": "Extract Spring Service classes",
+    "spring_repository": "Extract Spring Repository classes",
+    "jpa_entity": "Extract JPA Entity classes",
+    "abstract_method": "Extract abstract methods",
+    "static_field": "Extract static fields",
+    "final_field": "Extract final fields",
+    "static_import": "Extract static import statements",
+    "marker_annotation": "Extract marker annotations",
+    "annotation_with_params": "Extract annotations with parameters",
+    "synchronized_block": "Extract synchronized statements",
+    "generic_type": "Extract generic types",
+    "method_with_annotations": "Extract methods with annotations",
+    "jpa_id_field": "Extract JPA ID fields",
 }
 
 
 def get_java_query(name: str) -> str:
     """
-    指定されたJavaクエリを取得
+    Get the specified Java query
 
     Args:
-        name: クエリ名
+        name: Query name
 
     Returns:
-        クエリ文字列
+        Query string
 
     Raises:
-        ValueError: クエリが見つからない場合
+        ValueError: When query is not found
     """
     if name not in JAVA_QUERIES:
         available = list(JAVA_QUERIES.keys())
-        raise ValueError(f"Javaクエリ '{name}' は存在しません。利用可能: {available}")
+        raise ValueError(f"Java query '{name}' does not exist. Available: {available}")
 
     return JAVA_QUERIES[name]
 
 
 def get_java_query_description(name: str) -> str:
     """
-    指定されたJavaクエリの説明を取得
+    Get the description of the specified Java query
 
     Args:
-        name: クエリ名
+        name: Query name
 
     Returns:
-        クエリの説明
+        Query description
     """
-    return JAVA_QUERY_DESCRIPTIONS.get(name, "説明なし")
+    return JAVA_QUERY_DESCRIPTIONS.get(name, "No description")
 
 
 # Convert to ALL_QUERIES format for dynamic loader compatibility
 ALL_QUERIES = {}
 for query_name, query_string in JAVA_QUERIES.items():
-    description = JAVA_QUERY_DESCRIPTIONS.get(query_name, "説明なし")
+    description = JAVA_QUERY_DESCRIPTIONS.get(query_name, "No description")
     ALL_QUERIES[query_name] = {"query": query_string, "description": description}
 
 # Add common query aliases for cross-language compatibility
 ALL_QUERIES["functions"] = {
     "query": JAVA_QUERIES["method"],
-    "description": "すべての関数/メソッド宣言を検索（methodのエイリアス）",
+    "description": "Search all function/method declarations (alias for method)",
 }
 
 ALL_QUERIES["classes"] = {
     "query": JAVA_QUERIES["class"],
-    "description": "すべてのクラス宣言を検索（classのエイリアス）",
+    "description": "Search all class declarations (alias for class)",
 }
 
 
@@ -383,9 +383,9 @@ def list_queries() -> list:
 
 def get_available_java_queries() -> list[str]:
     """
-    利用可能なJavaクエリ一覧を取得
+    Get list of available Java queries
 
     Returns:
-        クエリ名のリスト
+        List of query names
     """
     return list(JAVA_QUERIES.keys())

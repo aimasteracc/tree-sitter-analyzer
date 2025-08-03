@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "tree-sitter-analyzer"
-version = "0.4.0"
+version = "0.6.0"
 description = "Extensible multi-language code analyzer framework using Tree-sitter with dynamic plugin architecture"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -49,7 +49,7 @@ classifiers = [
 
 # Core dependencies (minimal set for basic functionality)
 dependencies = [
-    "tree-sitter>=0.20.0",
+    "tree-sitter==0.24.0",
     "chardet>=5.0.0",
     "cachetools>=5.0.0",
     "tree-sitter-java>=0.23.5",

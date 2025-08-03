@@ -2,14 +2,14 @@
 """
 CLI Adapter for tree-sitter-analyzer
 
-既存のCLI APIとの互換性を保ちながら、新しい統一解析エンジンを使用するアダプター。
+Adapter that uses the new unified analysis engine while maintaining compatibility with existing CLI API.
 
-Roo Code規約準拠:
-- 型ヒント: 全関数に型ヒント必須
-- MCPログ: 各ステップでログ出力
+Roo Code compliance:
+- Type hints: Required for all functions
+- MCP logging: Log output at each step
 - docstring: Google Style docstring
-- エラーハンドリング: 適切な例外処理
-- パフォーマンス: 統一エンジンによる最適化
+- Error handling: Proper exception handling
+- Performance: Optimization through unified engine
 """
 
 import asyncio
@@ -26,17 +26,17 @@ logger = logging.getLogger(__name__)
 
 class CLIAdapter:
     """
-    CLI用アダプター
+    CLI Adapter
 
-    既存のCLI APIとの互換性を保ちながら、新しい統一解析エンジンを使用します。
-    同期APIを提供し、内部的に非同期エンジンを呼び出します。
+    Uses the new unified analysis engine while maintaining compatibility with existing CLI API.
+    Provides synchronous API and internally calls asynchronous engine.
 
     Features:
-        - 既存API互換性の維持
-        - 統一解析エンジンの活用
-        - 同期/非同期変換
-        - パフォーマンス監視
-        - エラーハンドリング
+        - Maintaining existing API compatibility
+        - Utilizing unified analysis engine
+        - Sync/async conversion
+        - Performance monitoring
+        - Error handling
 
     Example:
         >>> adapter = CLIAdapter()
@@ -46,10 +46,10 @@ class CLIAdapter:
 
     def __init__(self) -> None:
         """
-        CLIアダプターを初期化
+        Initialize CLI adapter
 
         Raises:
-            Exception: 統一解析エンジンの初期化に失敗した場合
+            Exception: If unified analysis engine initialization fails
         """
         try:
             self._engine = UnifiedAnalysisEngine()
@@ -60,26 +60,26 @@ class CLIAdapter:
 
     def analyze_file(self, file_path: str, **kwargs: Any) -> AnalysisResult:
         """
-        ファイルを解析（同期版）
+        Analyze file (synchronous version)
 
-        既存のCLI APIとの互換性を保つため、同期インターフェースを提供します。
-        内部的には統一解析エンジンの非同期メソッドを呼び出します。
+        Provides synchronous interface to maintain compatibility with existing CLI API.
+        Internally calls asynchronous methods of unified analysis engine.
 
         Args:
-            file_path: 解析対象ファイルのパス
-            **kwargs: 解析オプション
-                - language: 言語指定（自動検出も可能）
-                - include_complexity: 複雑度計算を含める
-                - include_details: 詳細情報を含める
-                - format_type: 出力形式（"standard", "structure", "summary"）
+            file_path: Path to file to analyze
+            **kwargs: Analysis options
+                - language: Language specification (auto-detection possible)
+                - include_complexity: Include complexity calculation
+                - include_details: Include detailed information
+                - format_type: Output format ("standard", "structure", "summary")
 
         Returns:
-            AnalysisResult: 解析結果
+            AnalysisResult: Analysis result
 
         Raises:
-            ValueError: 無効なファイルパスの場合
-            FileNotFoundError: ファイルが存在しない場合
-            UnsupportedLanguageError: サポートされていない言語の場合
+            ValueError: For invalid file path
+            FileNotFoundError: If file does not exist
+            UnsupportedLanguageError: For unsupported language
 
         Example:
             >>> adapter = CLIAdapter()
@@ -88,16 +88,16 @@ class CLIAdapter:
         """
         start_time = time.time()
 
-        # 入力検証
+        # Input validation
         if not file_path or not file_path.strip():
             raise ValueError("File path cannot be empty")
 
-        # ファイル存在チェック
+        # File existence check
         if not Path(file_path).exists():
             raise FileNotFoundError(f"File not found: {file_path}")
 
         try:
-            # AnalysisRequestを作成
+            # Create AnalysisRequest
             request = AnalysisRequest(
                 file_path=file_path,
                 language=kwargs.get("language"),

@@ -606,7 +606,7 @@ class TestCLIQueryHandling:
             pass
 
         error_output = mock_stderr.getvalue()
-        assert "not found" in error_output or "見つかりません" in error_output
+        assert "not found" in error_output
 
     def test_describe_query_exception(self, monkeypatch, sample_java_file):
         """Test --describe-query with exception"""
@@ -689,10 +689,7 @@ class TestCLIQueryExecution:
                 pass
 
             output = mock_stdout.getvalue()
-            assert (
-                "No matching results found" in output
-                or "マッチする結果は見つかりませんでした" in output
-            )
+            assert "No results found matching the query" in output
 
     def test_query_execution_parse_failure(self, monkeypatch, sample_java_file):
         """Test query execution when parsing fails"""
@@ -739,7 +736,7 @@ class TestCLIQueryExecution:
             pass
 
         error_output = mock_stderr.getvalue()
-        assert "クエリまたは--advancedオプションを指定してください" in error_output
+        assert "Please specify a query or --advanced option" in error_output
 
     def test_query_not_found_error(self, monkeypatch, sample_java_file):
         """Test error when query is not found"""
@@ -757,7 +754,7 @@ class TestCLIQueryExecution:
                 pass
 
             error_output = mock_stderr.getvalue()
-            assert "not found" in error_output or "見つかりません" in error_output
+            assert "not found" in error_output
 
     def test_query_exception_error(self, monkeypatch, sample_java_file):
         """Test error when query loading raises exception"""
@@ -820,7 +817,7 @@ class TestCLIAdditionalCoverage:
             pass
 
         output = mock_stdout.getvalue()
-        assert "Supported languages" in output or "サポートされている言語:" in output
+        assert "Supported languages" in output
 
     def test_show_supported_extensions(self, monkeypatch):
         """Test --show-supported-extensions option"""
@@ -834,7 +831,7 @@ class TestCLIAdditionalCoverage:
             pass
 
         output = mock_stdout.getvalue()
-        assert "Supported extensions" in output or "サポートされている拡張子:" in output
+        assert "Supported file extensions" in output
 
     def test_show_common_queries(self, monkeypatch):
         """Test --show-common-queries option"""
@@ -862,10 +859,7 @@ class TestCLIAdditionalCoverage:
             pass
 
         output = mock_stdout.getvalue()
-        assert (
-            "Query supported languages" in output
-            or "クエリサポートされている言語:" in output
-        )
+        assert "Languages with query support" in output
 
     def test_list_queries_with_language(self, monkeypatch):
         """Test --list-queries with --language option"""
@@ -881,7 +875,7 @@ class TestCLIAdditionalCoverage:
             pass
 
         output = mock_stdout.getvalue()
-        assert "Available query keys" in output or "利用可能なクエリキー" in output
+        assert "Available query keys" in output
 
     def test_list_queries_with_file(self, monkeypatch, sample_java_file):
         """Test --list-queries with file path"""
@@ -895,7 +889,7 @@ class TestCLIAdditionalCoverage:
             pass
 
         output = mock_stdout.getvalue()
-        assert "Available query keys" in output or "利用可能なクエリキー" in output
+        assert "Available query keys" in output
 
     def test_list_queries_all_languages(self, monkeypatch):
         """Test --list-queries without language specification"""
@@ -909,7 +903,7 @@ class TestCLIAdditionalCoverage:
             pass
 
         output = mock_stdout.getvalue()
-        assert "Supported languages" in output or "サポートされている言語:" in output
+        assert "Supported languages" in output
 
     def test_describe_query_with_language(self, monkeypatch):
         """Test --describe-query with --language option"""
@@ -925,7 +919,7 @@ class TestCLIAdditionalCoverage:
             pass
 
         output = mock_stdout.getvalue()
-        assert "Query key 'class'" in output or "クエリキー 'class'" in output
+        assert "Query key 'class'" in output
 
     def test_describe_query_with_file(self, monkeypatch, sample_java_file):
         """Test --describe-query with file path"""
@@ -941,7 +935,7 @@ class TestCLIAdditionalCoverage:
             pass
 
         output = mock_stdout.getvalue()
-        assert "Query key 'class'" in output or "クエリキー 'class'" in output
+        assert "Query key 'class'" in output
 
     def test_describe_query_missing_language_and_file(self, monkeypatch):
         """Test --describe-query without language or file"""
@@ -956,8 +950,8 @@ class TestCLIAdditionalCoverage:
 
         error_output = mock_stderr.getvalue()
         assert (
-            "--language or target file specification is required" in error_output
-            or "--languageまたは対象ファイルの指定が必要です" in error_output
+            "Query description display requires --language or target file specification"
+            in error_output
         )
 
     def test_missing_file_path_error(self, monkeypatch):

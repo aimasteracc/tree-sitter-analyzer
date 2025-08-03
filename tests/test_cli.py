@@ -33,10 +33,7 @@ class TestCLI:
             pass  # Expected for some CLI commands
 
         output = mock_stdout.getvalue()
-        assert (
-            "Query supported languages" in output
-            or "クエリサポートされている言語" in output
-        )
+        assert "Languages with query support" in output
         assert "java" in output
         assert "javascript" in output
         assert "python" in output
@@ -53,7 +50,7 @@ class TestCLI:
             pass
 
         output = mock_stdout.getvalue()
-        assert "Supported languages" in output or "サポートされている言語" in output
+        assert "Supported languages" in output
 
     def test_show_supported_extensions(self, monkeypatch):
         """Test --show-supported-extensions option"""
@@ -67,7 +64,7 @@ class TestCLI:
             pass
 
         output = mock_stdout.getvalue()
-        assert "Supported extensions" in output or "サポートされている拡張子" in output
+        assert "Supported file extensions" in output
 
     def test_show_common_queries(self, monkeypatch):
         """Test --show-common-queries option"""
@@ -81,10 +78,7 @@ class TestCLI:
             pass
 
         output = mock_stdout.getvalue()
-        assert (
-            "Common queries for multiple languages" in output
-            or "複数言語共通のクエリ" in output
-        )
+        assert "Common queries across multiple languages" in output
         # Check for some common query names
         assert any(
             query in output
@@ -124,7 +118,7 @@ class TestCLI:
             pass
 
         output = mock_stdout.getvalue()
-        assert "Supported languages" in output or "サポートされている言語" in output
+        assert "Supported languages" in output
 
     def test_describe_query_with_language(self, monkeypatch):
         """Test --describe-query with --language option"""
@@ -495,7 +489,7 @@ class TestCLIEdgeCases:
 
             error_output = mock_stderr.getvalue()
             # Should contain error about invalid query
-            assert "not found" in error_output or "見つかりません" in error_output
+            assert "not found" in error_output
         finally:
             # Clean up
             if os.path.exists(temp_path):
