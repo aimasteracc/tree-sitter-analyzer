@@ -100,6 +100,12 @@ class JavaElementExtractor(ElementExtractor):
         self.content_lines = source_code.split("\n")
         self._reset_caches()
 
+        # Ensure package information is extracted before processing classes
+        # This fixes the issue where current_package is empty when extract_classes
+        # is called independently or before extract_imports
+        if not self.current_package:
+            self._extract_package_from_tree(tree)
+
         classes: list[Class] = []
 
         # Use AdvancedAnalyzer's optimized traversal
@@ -754,6 +760,22 @@ class JavaElementExtractor(ElementExtractor):
             log_error(f"Unexpected error in package element extraction: {e}")
         return None
 
+    def _extract_package_from_tree(self, tree: "tree_sitter.Tree") -> None:
+        """
+        Extract package information from the tree and set current_package.
+
+        This method ensures that package information is available for class extraction
+        regardless of the order in which extraction methods are called.
+        """
+        try:
+            # Look for package declaration in the root node's children
+            for child in tree.root_node.children:
+                if child.type == "package_declaration":
+                    self._extract_package_info(child)
+                    break  # Only one package declaration per file
+        except Exception as e:
+            log_debug(f"Failed to extract package from tree: {e}")
+
     def _determine_visibility(self, modifiers: list[str]) -> str:
         """Determine visibility from modifiers"""
         if "public" in modifiers:
@@ -1113,6 +1135,10 @@ class JavaPlugin(LanguagePlugin):
             extractor = self.create_extractor()
 
             if parse_result.tree:
+                log_debug("Java Plugin: Extracting packages...")
+                packages = extractor.extract_packages(parse_result.tree, source_code)
+                log_debug(f"Java Plugin: Found {len(packages)} packages")
+
                 log_debug("Java Plugin: Extracting functions...")
                 functions = extractor.extract_functions(parse_result.tree, source_code)
                 log_debug(f"Java Plugin: Found {len(functions)} functions")
@@ -1129,6 +1155,7 @@ class JavaPlugin(LanguagePlugin):
                 imports = extractor.extract_imports(parse_result.tree, source_code)
                 log_debug(f"Java Plugin: Found {len(imports)} imports")
             else:
+                packages = []
                 functions = []
                 classes = []
                 variables = []
@@ -1136,6 +1163,7 @@ class JavaPlugin(LanguagePlugin):
 
             # Combine all elements
             all_elements: list[CodeElement] = []
+            all_elements.extend(packages)
             all_elements.extend(functions)
             all_elements.extend(classes)
             all_elements.extend(variables)

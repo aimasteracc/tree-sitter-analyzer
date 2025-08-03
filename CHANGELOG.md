@@ -5,6 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.2] - 2025-08-04
+
+### 🔧 Fixed
+
+#### Java Package Name Parsing
+- **Fixed**: Java package names now display correctly instead of "unknown"
+- **Fixed**: Package name extraction works regardless of method call order
+- **Fixed**: CLI commands now show correct package names (e.g., `# com.example.service.BigService`)
+- **Fixed**: MCP tools now display proper package information
+- **Fixed**: Table formatter shows accurate package data (`| Package | com.example.service |`)
+
+#### Core Improvements
+- **Enhanced**: JavaElementExtractor now ensures package info is available before class extraction
+- **Enhanced**: JavaPlugin.analyze_file includes package elements in analysis results
+- **Enhanced**: Added robust package extraction fallback mechanism
+
+#### Testing
+- **Added**: Comprehensive regression test suite for package name parsing
+- **Added**: Verification script to prevent future package name issues
+- **Added**: Edge case testing for various package declaration patterns
+
+### 📦 Package Updates
+
+- **Updated**: Java analysis now includes Package elements in results
+- **Updated**: MCP tools provide complete package information
+- **Updated**: CLI output format consistency improved
+
+---
+
 ## [0.6.1] - 2025-08-04
 
 ### 🔧 Fixed

@@ -301,6 +301,13 @@ class AnalysisEngine:
                     # Extract different types of elements
                     elements = []
 
+                    # Extract packages first (needed for proper class package resolution)
+                    if hasattr(extractor, "extract_packages"):
+                        packages = extractor.extract_packages(
+                            parse_result.tree, parse_result.source_code
+                        )
+                        elements.extend(packages)
+
                     # Extract functions/methods
                     if hasattr(extractor, "extract_functions"):
                         functions = extractor.extract_functions(
