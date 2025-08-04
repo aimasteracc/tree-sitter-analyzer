@@ -76,7 +76,7 @@ class TestSecurityValidator:
         
         # Assert
         assert not is_valid
-        assert "Absolute file paths are not allowed" in error
+        assert "Absolute" in error and ("not allowed" in error or "within project" in error)
 
     @pytest.mark.unit
     def test_validate_file_path_windows_drive(self):
@@ -89,7 +89,7 @@ class TestSecurityValidator:
         
         # Assert
         assert not is_valid
-        assert "drive letters are not allowed" in error
+        assert ("drive" in error.lower() and "not allowed" in error.lower()) or ("absolute" in error.lower() and "project" in error.lower())
 
     @pytest.mark.unit
     def test_validate_file_path_traversal_attack(self):

@@ -161,7 +161,7 @@ class TestSecurityIntegration:
             ("", None, False, "non-empty"),
             ("src/test\x00.py", None, False, "null"),
             ("/etc/passwd", None, False, "Absolute"),
-            ("C:\\Windows\\System32", None, False, "drive"),
+            ("C:\\Windows\\System32", None, False, "absolute"),
             ("../../../etc/passwd", None, False, "traversal"),
             ("src/../../../etc/passwd", None, False, "traversal"),
         ]

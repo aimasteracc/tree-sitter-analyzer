@@ -27,7 +27,7 @@ uv run python -c "import tree_sitter_analyzer; print('Development setup OK')"
 
 ### 2. Configure Claude Desktop for Local Development
 
-Add this configuration to your Claude Desktop config file:
+#### Recommended Development Configuration
 
 ```json
 {
@@ -41,13 +41,157 @@ Add this configuration to your Claude Desktop config file:
         "python",
         "-m",
         "tree_sitter_analyzer.mcp.server"
-      ]
+      ],
+      "env": {
+        "TREE_SITTER_PROJECT_ROOT": "${workspaceFolder}"
+      }
     }
   }
 }
 ```
 
 **Important:** Replace `/absolute/path/to/tree-sitter-analyzer` with your actual project path.
+
+## Project Root Configuration Options
+
+The MCP server supports multiple ways to configure the project root directory for security and functionality:
+
+### Configuration Priority (Highest to Lowest)
+
+1. **Command Line Argument** (Highest Priority)
+2. **Environment Variable** (Medium Priority)
+3. **Auto-Detection** (Lowest Priority)
+
+### Option 1: Environment Variable (Recommended)
+
+```json
+{
+  "mcpServers": {
+    "tree-sitter-analyzer-dev": {
+      "command": "uv",
+      "args": ["run", "--directory", "/path/to/tree-sitter-analyzer", "python", "-m", "tree_sitter_analyzer.mcp.server"],
+      "env": {
+        "TREE_SITTER_PROJECT_ROOT": "${workspaceFolder}"
+      }
+    }
+  }
+}
+```
+
+**Benefits:**
+- ✅ Automatically adapts to current workspace
+- ✅ Works with any IDE supporting workspace variables
+- ✅ Flexible and dynamic configuration
+
+### Option 2: Command Line Argument
+
+```json
+{
+  "mcpServers": {
+    "tree-sitter-analyzer-dev": {
+      "command": "uv",
+      "args": [
+        "run", "--directory", "/path/to/tree-sitter-analyzer",
+        "python", "-m", "tree_sitter_analyzer.mcp.server",
+        "--project-root", "/specific/project/path"
+      ]
+    }
+  }
+}
+```
+
+**Use cases:**
+- 🎯 Fixed project path requirements
+- 🎯 Override environment variable settings
+- 🎯 Multi-project environments
+
+### Option 3: Auto-Detection (Zero Configuration)
+
+```json
+{
+  "mcpServers": {
+    "tree-sitter-analyzer-dev": {
+      "command": "uv",
+      "args": ["run", "--directory", "/path/to/tree-sitter-analyzer", "python", "-m", "tree_sitter_analyzer.mcp.server"]
+    }
+  }
+}
+```
+
+**How it works:**
+- 🔍 Searches for project markers (.git, pyproject.toml, package.json, etc.)
+- 🔍 Traverses up directory tree from server working directory
+- 🔍 Falls back to current working directory if no markers found
+
+**Supported project markers:**
+- Version control: `.git`, `.hg`, `.svn`
+- Python: `pyproject.toml`, `setup.py`, `requirements.txt`
+- JavaScript: `package.json`, `yarn.lock`, `node_modules`
+- Java: `pom.xml`, `build.gradle`, `gradlew`
+- And many more...
+
+## Testing Project Root Configuration
+
+### Test Auto-Detection
+
+```bash
+# Test from project directory
+cd /your/project/directory
+uv run python -m tree_sitter_analyzer.mcp.server --help
+
+# Should show detected project root in logs
+```
+
+### Test Command Line Override
+
+```bash
+# Test explicit project root
+uv run python -m tree_sitter_analyzer.mcp.server --project-root /specific/path --help
+```
+
+### Test Environment Variable
+
+```bash
+# Test environment variable
+export TREE_SITTER_PROJECT_ROOT=/your/project
+uv run python -m tree_sitter_analyzer.mcp.server --help
+```
+
+### Test Priority Handling
+
+```bash
+# Test priority (command line should win)
+export TREE_SITTER_PROJECT_ROOT=/env/path
+uv run python -m tree_sitter_analyzer.mcp.server --project-root /cmd/path --help
+# Should use /cmd/path
+```
+
+## Debugging Project Root Issues
+
+### Check Current Configuration
+
+```bash
+# Run with verbose logging
+uv run python -c "
+from tree_sitter_analyzer.project_detector import detect_project_root
+import logging
+logging.basicConfig(level=logging.INFO)
+result = detect_project_root()
+print(f'Detected project root: {result}')
+"
+```
+
+### Verify Security Boundaries
+
+```bash
+# Test file access validation
+uv run python -c "
+from tree_sitter_analyzer.security import SecurityValidator
+validator = SecurityValidator('/your/project/root')
+is_valid, msg = validator.validate_file_path('/your/project/root/src/file.py')
+print(f'Valid: {is_valid}, Message: {msg}')
+"
+```
 
 ### 3. Dual Configuration (Development + Stable)
 

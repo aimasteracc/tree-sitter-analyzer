@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from ...file_handler import read_file_partial
+from ...security import SecurityValidator
 from ...utils import setup_logger
 
 # Set up logging
@@ -25,9 +26,10 @@ class ReadPartialTool:
     selective file content reading through the MCP protocol.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, project_root: str = None) -> None:
         """Initialize the read partial tool."""
-        logger.info("ReadPartialTool initialized")
+        self.security_validator = SecurityValidator(project_root)
+        logger.info("ReadPartialTool initialized with security validation")
 
     def get_tool_schema(self) -> dict[str, Any]:
         """
@@ -101,6 +103,12 @@ class ReadPartialTool:
         start_column = arguments.get("start_column")
         end_column = arguments.get("end_column")
         # output_format = arguments.get("format", "text")  # Not used currently
+
+        # Security validation
+        is_valid, error_msg = self.security_validator.validate_file_path(file_path)
+        if not is_valid:
+            logger.warning(f"Security validation failed for file path: {file_path} - {error_msg}")
+            raise ValueError(f"Invalid file path: {error_msg}")
 
         # Validate file exists
         if not Path(file_path).exists():

@@ -15,6 +15,8 @@ from ...file_handler import read_file_partial
 from ...language_detector import detect_language_from_file, is_language_supported
 from ...models import AnalysisResult
 from ...output_manager import output_error, output_info
+from ...project_detector import detect_project_root
+from ...security import SecurityValidator
 
 
 class BaseCommand(ABC):
@@ -28,18 +30,32 @@ class BaseCommand(ABC):
     def __init__(self, args: Namespace):
         """Initialize command with parsed arguments."""
         self.args = args
-        self.analysis_engine = get_analysis_engine()
+
+        # Detect project root with priority handling
+        file_path = getattr(args, 'file_path', None)
+        explicit_root = getattr(args, 'project_root', None)
+        self.project_root = detect_project_root(file_path, explicit_root)
+
+        # Initialize components with project root
+        self.analysis_engine = get_analysis_engine(self.project_root)
+        self.security_validator = SecurityValidator(self.project_root)
 
     def validate_file(self) -> bool:
         """Validate input file exists and is accessible."""
         if not hasattr(self.args, "file_path") or not self.args.file_path:
-            output_error("ERROR: File path not specified.")
+            output_error("File path not specified.")
+            return False
+
+        # Security validation
+        is_valid, error_msg = self.security_validator.validate_file_path(self.args.file_path)
+        if not is_valid:
+            output_error(f"Invalid file path: {error_msg}")
             return False
 
         import os
 
         if not os.path.exists(self.args.file_path):
-            output_error(f"ERROR: File not found: {self.args.file_path}")
+            output_error(f"File not found: {self.args.file_path}")
             return False
 
         return True
@@ -47,7 +63,9 @@ class BaseCommand(ABC):
     def detect_language(self) -> str | None:
         """Detect or validate the target language."""
         if hasattr(self.args, "language") and self.args.language:
-            target_language = self.args.language.lower()
+            # Sanitize language input
+            sanitized_language = self.security_validator.sanitize_input(self.args.language, max_length=50)
+            target_language = sanitized_language.lower()
             if (not hasattr(self.args, "table") or not self.args.table) and (
                 not hasattr(self.args, "quiet") or not self.args.quiet
             ):
@@ -94,10 +112,10 @@ class BaseCommand(ABC):
                         end_column=getattr(self.args, "end_column", None),
                     )
                     if partial_content is None:
-                        output_error("ERROR: Failed to read file partially")
+                        output_error("Failed to read file partially")
                         return None
                 except Exception as e:
-                    output_error(f"ERROR: Failed to read file partially: {e}")
+                    output_error(f"Failed to read file partially: {e}")
                     return None
 
             request = AnalysisRequest(
@@ -114,13 +132,13 @@ class BaseCommand(ABC):
                     if analysis_result
                     else "Unknown error"
                 )
-                output_error(f"ERROR: Analysis failed: {error_msg}")
+                output_error(f"Analysis failed: {error_msg}")
                 return None
 
             return analysis_result
 
         except Exception as e:
-            output_error(f"ERROR: An error occurred during analysis: {e}")
+            output_error(f"An error occurred during analysis: {e}")
             return None
 
     def execute(self) -> int:
@@ -143,7 +161,7 @@ class BaseCommand(ABC):
         try:
             return asyncio.run(self.execute_async(language))
         except Exception as e:
-            output_error(f"ERROR: An error occurred during command execution: {e}")
+            output_error(f"An error occurred during command execution: {e}")
             return 1
 
     @abstractmethod

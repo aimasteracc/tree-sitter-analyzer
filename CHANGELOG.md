@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.1] - 2025-08-05
+
+### 🔧 Fixed
+- **Fixed**: Eliminated duplicate "ERROR:" prefixes in error messages across all CLI commands
+- **Fixed**: Updated all CLI tests to match unified error message format
+- **Fixed**: Resolved missing `--project-root` parameters in comprehensive CLI tests
+- **Fixed**: Corrected module import issues in language detection tests
+- **Fixed**: Updated test expectations to match security validation behavior
+
+### 🧪 Testing Improvements
+- **Enhanced**: Fixed 6 failing tests in `test_partial_read_command_validation.py`
+- **Enhanced**: Fixed 6 failing tests in `test_cli_comprehensive.py` and Java structure analyzer tests
+- **Enhanced**: Improved test stability and reliability across all CLI functionality
+- **Enhanced**: Unified error message testing with consistent format expectations
+
+### 📦 Code Quality
+- **Improved**: Centralized error message formatting in `output_manager.py`
+- **Improved**: Consistent error handling architecture across all CLI commands
+- **Improved**: Better separation of concerns between error content and formatting
+
+---
+
 ## [0.8.0] - 2025-08-04
 
 ### 🚀 Added

@@ -78,7 +78,7 @@ class DescribeQueryCommand(InfoCommand):
 
             if query_description is None or query_content is None:
                 output_error(
-                    f"ERROR: Query '{self.args.describe_query}' not found for language '{language}'"
+                    f"Query '{self.args.describe_query}' not found for language '{language}'"
                 )
                 return 1
 
@@ -87,7 +87,7 @@ class DescribeQueryCommand(InfoCommand):
             )
             output_data(f"Query content:\n{query_content}")
         except ValueError as e:
-            output_error(f"ERROR: {e}")
+            output_error(f"{e}")
             return 1
         return 0
 

@@ -6,8 +6,10 @@ This module provides the main MCP server that exposes tree-sitter analyzer
 functionality through the Model Context Protocol.
 """
 
+import argparse
 import asyncio
 import json
+import os
 import sys
 from typing import Any
 
@@ -43,6 +45,8 @@ except ImportError:
 
 
 from ..core.analysis_engine import get_analysis_engine
+from ..project_detector import detect_project_root
+from ..security import SecurityValidator
 from ..utils import setup_logger
 from . import MCP_INFO
 from .resources import CodeFileResource, ProjectStatsResource
@@ -64,16 +68,17 @@ class TreeSitterAnalyzerMCPServer:
     integrating with existing analyzer components.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, project_root: str = None) -> None:
         """Initialize the MCP server with analyzer components."""
         self.server: Server | None = None
-        self.analysis_engine = get_analysis_engine()
+        self.analysis_engine = get_analysis_engine(project_root)
+        self.security_validator = SecurityValidator(project_root)
         # Use unified analysis engine instead of deprecated AdvancedAnalyzer
 
-        # Initialize MCP tools
-        self.read_partial_tool: MCPTool = ReadPartialTool()
-        self.universal_analyze_tool: MCPTool = UniversalAnalyzeTool()
-        self.table_format_tool: MCPTool = TableFormatTool()
+        # Initialize MCP tools with security validation
+        self.read_partial_tool: MCPTool = ReadPartialTool(project_root)
+        self.universal_analyze_tool: MCPTool = UniversalAnalyzeTool(project_root)
+        self.table_format_tool: MCPTool = TableFormatTool(project_root)
 
         # Initialize MCP resources
         self.code_file_resource = CodeFileResource()
@@ -161,9 +166,25 @@ class TreeSitterAnalyzerMCPServer:
         async def handle_call_tool(
             name: str, arguments: dict[str, Any]
         ) -> list[TextContent]:
-            """Handle tool calls."""
+            """Handle tool calls with security validation."""
             try:
-                if name == "analyze_code_scale":
+                # Security validation for tool name
+                sanitized_name = self.security_validator.sanitize_input(name, max_length=100)
+
+                # Log tool call for audit
+                logger.info(f"MCP tool call: {sanitized_name} with args: {list(arguments.keys())}")
+
+                # Validate arguments contain no malicious content
+                for key, value in arguments.items():
+                    if isinstance(value, str):
+                        # Check for potential injection attempts
+                        if len(value) > 10000:  # Prevent extremely large inputs
+                            raise ValueError(f"Input too large for parameter {key}")
+
+                        # Basic sanitization for string inputs
+                        sanitized_value = self.security_validator.sanitize_input(value, max_length=10000)
+                        arguments[key] = sanitized_value
+                if sanitized_name == "analyze_code_scale":
                     result = await self._analyze_code_scale(arguments)
                     return [
                         TextContent(
@@ -171,7 +192,7 @@ class TreeSitterAnalyzerMCPServer:
                             text=json.dumps(result, indent=2, ensure_ascii=False),
                         )
                     ]
-                elif name == "read_code_partial":
+                elif sanitized_name == "read_code_partial":
                     result = await self.read_partial_tool.execute(arguments)
                     return [
                         TextContent(
@@ -179,7 +200,7 @@ class TreeSitterAnalyzerMCPServer:
                             text=json.dumps(result, indent=2, ensure_ascii=False),
                         )
                     ]
-                elif name == "format_table":
+                elif sanitized_name == "format_table":
                     result = await self.table_format_tool.execute(arguments)
                     return [
                         TextContent(
@@ -187,7 +208,7 @@ class TreeSitterAnalyzerMCPServer:
                             text=json.dumps(result, indent=2, ensure_ascii=False),
                         )
                     ]
-                elif name == "analyze_code_universal":
+                elif sanitized_name == "analyze_code_universal":
                     result = await self.universal_analyze_tool.execute(arguments)
                     return [
                         TextContent(
@@ -318,10 +339,51 @@ class TreeSitterAnalyzerMCPServer:
                 pass  # Silently ignore logging errors during shutdown
 
 
+def parse_mcp_args(args=None) -> argparse.Namespace:
+    """Parse command line arguments for MCP server."""
+    parser = argparse.ArgumentParser(
+        description="Tree-sitter Analyzer MCP Server",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Environment Variables:
+  TREE_SITTER_PROJECT_ROOT    Project root directory (alternative to --project-root)
+
+Examples:
+  python -m tree_sitter_analyzer.mcp.server
+  python -m tree_sitter_analyzer.mcp.server --project-root /path/to/project
+        """
+    )
+
+    parser.add_argument(
+        "--project-root",
+        help="Project root directory for security validation (auto-detected if not specified)"
+    )
+
+    return parser.parse_args(args)
+
+
 async def main() -> None:
     """Main entry point for the MCP server."""
     try:
-        server = TreeSitterAnalyzerMCPServer()
+        # Parse command line arguments (empty list for testing)
+        args = parse_mcp_args([])
+
+        # Determine project root with priority handling
+        project_root = None
+
+        # Priority 1: Command line argument
+        if args.project_root:
+            project_root = args.project_root
+        # Priority 2: Environment variable
+        elif os.getenv('TREE_SITTER_PROJECT_ROOT'):
+            project_root = os.getenv('TREE_SITTER_PROJECT_ROOT')
+        # Priority 3: Auto-detection from current directory
+        else:
+            project_root = detect_project_root()
+
+        logger.info(f"MCP server starting with project root: {project_root}")
+
+        server = TreeSitterAnalyzerMCPServer(project_root)
         await server.run()
     except KeyboardInterrupt:
         try:

@@ -47,7 +47,7 @@ uv --version
 
 ### Add Configuration
 
-Open the config file and add this configuration:
+Open the config file and add this **recommended configuration**:
 
 ```json
 {
@@ -55,17 +55,60 @@ Open the config file and add this configuration:
     "tree-sitter-analyzer": {
       "command": "uv",
       "args": [
-        "run", 
-        "--with", 
+        "run",
+        "--with",
         "tree-sitter-analyzer[mcp]",
-        "python", 
-        "-m", 
+        "python",
+        "-m",
         "tree_sitter_analyzer.mcp.server"
+      ],
+      "env": {
+        "TREE_SITTER_PROJECT_ROOT": "${workspaceFolder}"
+      }
+    }
+  }
+}
+```
+
+> **💡 Why this configuration?**
+> - `${workspaceFolder}` automatically uses your current project directory
+> - Provides secure file access boundaries
+> - Works with any project without manual path changes
+> - Enables intelligent project root detection
+
+## Project Root Configuration
+
+The tree-sitter-analyzer automatically detects your project boundaries for security and functionality. Here's how it works:
+
+### ✅ Recommended: Use the configuration above
+The `${workspaceFolder}` setting automatically adapts to your current project directory. This works for:
+- VS Code workspaces
+- Any IDE that supports workspace variables
+- Most development environments
+
+### 🔧 Alternative: Fixed project path (for specific use cases)
+If you need to analyze files from a specific directory only:
+
+```json
+{
+  "mcpServers": {
+    "tree-sitter-analyzer": {
+      "command": "uv",
+      "args": [
+        "run", "--with", "tree-sitter-analyzer[mcp]",
+        "python", "-m", "tree_sitter_analyzer.mcp.server",
+        "--project-root", "/absolute/path/to/your/project"
       ]
     }
   }
 }
 ```
+
+### 🎯 What happens with project root?
+- **Security**: Only files within the project directory can be analyzed
+- **Smart detection**: Automatically finds project markers (.git, package.json, pyproject.toml, etc.)
+- **Path resolution**: Resolves relative paths correctly
+- **Performance**: Optimizes analysis for your project structure
 
 ## Step 3: Restart Claude Desktop
 

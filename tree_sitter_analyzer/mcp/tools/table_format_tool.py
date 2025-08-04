@@ -11,6 +11,7 @@ from typing import Any
 
 from ...core.analysis_engine import AnalysisRequest, get_analysis_engine
 from ...language_detector import detect_language_from_file
+from ...security import SecurityValidator
 from ...table_formatter import TableFormatter
 from ...utils import setup_logger
 from ..utils import get_performance_monitor
@@ -28,11 +29,13 @@ class TableFormatTool:
     the CLI --table=full option.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, project_root: str = None) -> None:
         """Initialize the table format tool."""
         self.logger = logger
-        self.analysis_engine = get_analysis_engine()
-        logger.info("TableFormatTool initialized")
+        self.project_root = project_root
+        self.analysis_engine = get_analysis_engine(project_root)
+        self.security_validator = SecurityValidator(project_root)
+        logger.info("TableFormatTool initialized with security validation")
 
     def get_tool_schema(self) -> dict[str, Any]:
         """
@@ -267,6 +270,20 @@ class TableFormatTool:
             file_path = args["file_path"]
             format_type = args.get("format_type", "full")
             language = args.get("language")
+
+            # Security validation
+            is_valid, error_msg = self.security_validator.validate_file_path(file_path)
+            if not is_valid:
+                self.logger.warning(f"Security validation failed for file path: {file_path} - {error_msg}")
+                raise ValueError(f"Invalid file path: {error_msg}")
+
+            # Sanitize format_type input
+            if format_type:
+                format_type = self.security_validator.sanitize_input(format_type, max_length=50)
+
+            # Sanitize language input
+            if language:
+                language = self.security_validator.sanitize_input(language, max_length=50)
 
             # Validate file exists
             if not Path(file_path).exists():

@@ -12,6 +12,7 @@ from typing import Any
 
 from ...core.analysis_engine import AnalysisRequest, get_analysis_engine
 from ...language_detector import detect_language_from_file, is_language_supported
+from ...security import SecurityValidator
 from ..utils import get_performance_monitor
 from ..utils.error_handler import handle_mcp_errors
 
@@ -26,10 +27,13 @@ class UniversalAnalyzeTool:
     the appropriate analyzer to provide comprehensive code analysis.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, project_root: str = None) -> None:
         """Initialize the universal analysis tool"""
         # Use unified analysis engine instead of deprecated AdvancedAnalyzer
-        self.analysis_engine = get_analysis_engine()
+        self.project_root = project_root
+        self.analysis_engine = get_analysis_engine(project_root)
+        self.security_validator = SecurityValidator(project_root)
+        logger.info("UniversalAnalyzeTool initialized with security validation")
 
     def get_tool_definition(self) -> dict[str, Any]:
         """
@@ -96,6 +100,18 @@ class UniversalAnalyzeTool:
         file_path = arguments["file_path"]
         language = arguments.get("language")
         analysis_type = arguments.get("analysis_type", "basic")
+
+        # Security validation
+        is_valid, error_msg = self.security_validator.validate_file_path(file_path)
+        if not is_valid:
+            logger.warning(f"Security validation failed for file path: {file_path} - {error_msg}")
+            raise ValueError(f"Invalid file path: {error_msg}")
+
+        # Sanitize inputs
+        if language:
+            language = self.security_validator.sanitize_input(language, max_length=50)
+        if analysis_type:
+            analysis_type = self.security_validator.sanitize_input(analysis_type, max_length=50)
         include_ast = arguments.get("include_ast", False)
         include_queries = arguments.get("include_queries", False)
 

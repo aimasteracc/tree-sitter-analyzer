@@ -42,7 +42,7 @@ class TableCommand(BaseCommand):
             return 0
 
         except Exception as e:
-            output_error(f"ERROR: An error occurred during table format analysis: {e}")
+            output_error(f"An error occurred during table format analysis: {e}")
             return 1
 
     def _convert_to_structure_format(

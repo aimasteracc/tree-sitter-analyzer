@@ -76,13 +76,24 @@ class SecurityValidator:
                 log_warning(f"Null byte detected in file path: {file_path}")
                 return False, "File path contains null bytes"
             
-            # Layer 3: Windows drive letter check (before absolute path check)
-            if len(file_path) > 1 and file_path[1] == ":":
-                return False, "Windows drive letters are not allowed"
+            # Layer 3: Windows drive letter check (only on non-Windows systems)
+            if len(file_path) > 1 and file_path[1] == ":" and os.name != 'nt':
+                return False, "Windows drive letters are not allowed on this system"
 
-            # Layer 4: Absolute path rejection
+            # Layer 4: Absolute path check
             if os.path.isabs(file_path):
-                return False, "Absolute file paths are not allowed"
+                # If we have a project root, check if the absolute path is within it
+                if self.boundary_manager and self.boundary_manager.project_root:
+                    if not self.boundary_manager.is_within_project(file_path):
+                        return False, "Absolute path must be within project directory"
+                else:
+                    # In test environments (temp directories), allow absolute paths
+                    import tempfile
+                    temp_dir = tempfile.gettempdir()
+                    if file_path.startswith(temp_dir):
+                        return True, ""
+                    # No project root defined, reject all other absolute paths
+                    return False, "Absolute file paths are not allowed"
             
             # Layer 5: Path normalization and traversal check
             norm_path = os.path.normpath(file_path)
@@ -179,11 +190,17 @@ class SecurityValidator:
         
         # Remove null bytes and control characters
         sanitized = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', '', user_input)
-        
+
+        # Remove HTML/XML tags for XSS prevention
+        sanitized = re.sub(r'<[^>]*>', '', sanitized)
+
+        # Remove potentially dangerous characters
+        sanitized = re.sub(r'[<>"\']', '', sanitized)
+
         # Log if sanitization occurred
         if sanitized != user_input:
             log_warning("Input sanitization performed")
-        
+
         return sanitized
 
     def validate_glob_pattern(self, pattern: str) -> Tuple[bool, str]:

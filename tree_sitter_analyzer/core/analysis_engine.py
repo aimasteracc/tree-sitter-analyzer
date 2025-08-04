@@ -15,11 +15,12 @@ Roo Code compliance:
 import hashlib
 import threading
 from dataclasses import dataclass
-from typing import Any, Optional, Protocol
+from typing import Any, Dict, Optional, Protocol
 
 from ..models import AnalysisResult
 from ..plugins.base import LanguagePlugin as BaseLanguagePlugin
 from ..plugins.manager import PluginManager
+from ..security import SecurityValidator
 from ..utils import log_debug, log_error, log_info, log_performance
 from .cache_service import CacheService
 
@@ -204,32 +205,41 @@ class UnifiedAnalysisEngine:
         _performance_monitor: パフォーマンス監視
     """
 
-    _instance: Optional["UnifiedAnalysisEngine"] = None
+    _instances: Dict[str, "UnifiedAnalysisEngine"] = {}
     _lock: threading.Lock = threading.Lock()
 
-    def __new__(cls) -> "UnifiedAnalysisEngine":
-        """シングルトンパターンでインスタンス共有"""
-        if cls._instance is None:
-            with cls._lock:
-                if cls._instance is None:
-                    cls._instance = super().__new__(cls)
-        return cls._instance
+    def __new__(cls, project_root: str = None) -> "UnifiedAnalysisEngine":
+        """シングルトンパターンでインスタンス共有 (project_root aware)"""
+        # Create a key based on project_root for different instances
+        instance_key = project_root or "default"
 
-    def __init__(self) -> None:
+        if instance_key not in cls._instances:
+            with cls._lock:
+                if instance_key not in cls._instances:
+                    instance = super().__new__(cls)
+                    cls._instances[instance_key] = instance
+                    # Mark as not initialized for this instance
+                    instance._initialized = False
+
+        return cls._instances[instance_key]
+
+    def __init__(self, project_root: str = None) -> None:
         """初期化（一度のみ実行）"""
-        if hasattr(self, "_initialized"):
+        if hasattr(self, "_initialized") and self._initialized:
             return
 
         self._cache_service = CacheService()
         self._plugin_manager = PluginManager()
         self._performance_monitor = PerformanceMonitor()
+        self._security_validator = SecurityValidator(project_root)
+        self._project_root = project_root
 
         # プラグインを自動ロード
         self._load_plugins()
 
         self._initialized = True
 
-        log_info("UnifiedAnalysisEngine initialized")
+        log_info(f"UnifiedAnalysisEngine initialized with project root: {project_root}")
 
     def _load_plugins(self) -> None:
         """利用可能なプラグインを自動ロード"""
@@ -264,6 +274,12 @@ class UnifiedAnalysisEngine:
             FileNotFoundError: ファイルが見つからない
         """
         log_info(f"Starting analysis for {request.file_path}")
+
+        # Security validation
+        is_valid, error_msg = self._security_validator.validate_file_path(request.file_path)
+        if not is_valid:
+            log_error(f"Security validation failed for file path: {request.file_path} - {error_msg}")
+            raise ValueError(f"Invalid file path: {error_msg}")
 
         # キャッシュチェック（CLI・MCP間で共有）
         cache_key = self._generate_cache_key(request)
@@ -323,6 +339,12 @@ class UnifiedAnalysisEngine:
         Returns:
             Analysis result
         """
+        # Security validation
+        is_valid, error_msg = self._security_validator.validate_file_path(file_path)
+        if not is_valid:
+            log_error(f"Security validation failed for file path: {file_path} - {error_msg}")
+            raise ValueError(f"Invalid file path: {error_msg}")
+
         request = AnalysisRequest(
             file_path=file_path,
             language=None,  # Auto-detect
@@ -545,11 +567,14 @@ class MockLanguagePlugin:
         )
 
 
-def get_analysis_engine() -> UnifiedAnalysisEngine:
+def get_analysis_engine(project_root: str = None) -> UnifiedAnalysisEngine:
     """
     統一解析エンジンのインスタンスを取得
+
+    Args:
+        project_root: Project root directory for security validation
 
     Returns:
         統一解析エンジンのシングルトンインスタンス
     """
-    return UnifiedAnalysisEngine()
+    return UnifiedAnalysisEngine(project_root)

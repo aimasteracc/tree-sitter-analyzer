@@ -254,7 +254,7 @@ line 10"""
             result = command.execute()
 
             assert result == 1
-            mock_error.assert_called_with("ERROR: --start-line is required")
+            mock_error.assert_called_with("--start-line is required")
 
     def test_error_message_content_for_invalid_start_line(self) -> None:
         """Test that correct error message is shown for invalid start_line."""
@@ -269,7 +269,7 @@ line 10"""
 
             assert result == 1
             # 0 is treated as falsy, so it shows "required" message
-            mock_error.assert_called_with("ERROR: --start-line is required")
+            mock_error.assert_called_with("--start-line is required")
 
     def test_error_message_content_for_negative_start_line(self) -> None:
         """Test that correct error message is shown for negative start_line."""
@@ -284,7 +284,7 @@ line 10"""
 
             assert result == 1
             # Negative numbers pass the "not start_line" check but fail the "< 1" check
-            mock_error.assert_called_with("ERROR: --start-line must be 1 or greater")
+            mock_error.assert_called_with("--start-line must be 1 or greater")
 
     def test_error_message_content_for_invalid_end_line(self) -> None:
         """Test that correct error message is shown for invalid end_line."""
@@ -298,7 +298,7 @@ line 10"""
 
             assert result == 1
             mock_error.assert_called_with(
-                "ERROR: --end-line must be greater than or equal to --start-line"
+                "--end-line must be greater than or equal to --start-line"
             )
 
     def test_error_message_content_for_missing_file(self) -> None:
@@ -313,7 +313,7 @@ line 10"""
             result = command.execute()
 
             assert result == 1
-            mock_error.assert_called_with(f"ERROR: File not found: {nonexistent_file}")
+            mock_error.assert_called_with(f"File not found: {nonexistent_file}")
 
     def test_successful_execution_with_valid_parameters(self) -> None:
         """Test successful execution with all valid parameters."""
@@ -349,7 +349,7 @@ line 10"""
 
             assert result == 1
             # Should fail on file path validation first
-            mock_error.assert_called_with("ERROR: File path not specified.")
+            mock_error.assert_called_with("File path not specified.")
 
 
 if __name__ == "__main__":

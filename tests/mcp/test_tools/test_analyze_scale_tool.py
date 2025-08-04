@@ -254,8 +254,9 @@ public class SampleClass {
     @pytest.mark.asyncio
     async def test_execute_with_nonexistent_file(self) -> None:
         """Test error handling for nonexistent file"""
-        with pytest.raises(FileNotFoundError):
+        with pytest.raises(ValueError) as exc_info:
             await self.tool.execute({"file_path": "/nonexistent/file.java"})
+        assert "Invalid file path" in str(exc_info.value)
 
     @pytest.mark.asyncio
     async def test_execute_with_missing_file_path(self) -> None:
@@ -466,8 +467,9 @@ class TestAnalyzeScaleToolErrorHandling:
     @pytest.mark.asyncio
     async def test_invalid_file_path(self) -> None:
         """Test handling of invalid file paths"""
-        with pytest.raises(FileNotFoundError):
+        with pytest.raises(ValueError) as exc_info:
             await self.tool.execute({"file_path": "/invalid/path/file.java"})
+        assert "Invalid file path" in str(exc_info.value)
 
     @pytest.mark.asyncio
     async def test_unsupported_language(self) -> None:

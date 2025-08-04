@@ -28,7 +28,7 @@ class PartialReadCommand(BaseCommand):
         if not hasattr(self.args, "file_path") or not self.args.file_path:
             from ...output_manager import output_error
 
-            output_error("ERROR: File path not specified.")
+            output_error("File path not specified.")
             return False
 
         import os
@@ -36,7 +36,7 @@ class PartialReadCommand(BaseCommand):
         if not os.path.exists(self.args.file_path):
             from ...output_manager import output_error
 
-            output_error(f"ERROR: File not found: {self.args.file_path}")
+            output_error(f"File not found: {self.args.file_path}")
             return False
 
         return True
@@ -56,20 +56,20 @@ class PartialReadCommand(BaseCommand):
         if not self.args.start_line:
             from ...output_manager import output_error
 
-            output_error("ERROR: --start-line is required")
+            output_error("--start-line is required")
             return 1
 
         if self.args.start_line < 1:
             from ...output_manager import output_error
 
-            output_error("ERROR: --start-line must be 1 or greater")
+            output_error("--start-line must be 1 or greater")
             return 1
 
         if self.args.end_line and self.args.end_line < self.args.start_line:
             from ...output_manager import output_error
 
             output_error(
-                "ERROR: --end-line must be greater than or equal to --start-line"
+                "--end-line must be greater than or equal to --start-line"
             )
             return 1
 
@@ -86,7 +86,7 @@ class PartialReadCommand(BaseCommand):
             if partial_content is None:
                 from ...output_manager import output_error
 
-                output_error("ERROR: Failed to read file partially")
+                output_error("Failed to read file partially")
                 return 1
 
             # Output the result
@@ -96,7 +96,7 @@ class PartialReadCommand(BaseCommand):
         except Exception as e:
             from ...output_manager import output_error
 
-            output_error(f"ERROR: Failed to read file partially: {e}")
+            output_error(f"Failed to read file partially: {e}")
             return 1
 
     def _output_partial_content(self, content: str) -> None:

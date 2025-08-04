@@ -166,6 +166,12 @@ def create_argument_parser() -> argparse.ArgumentParser:
         help="Explicitly specify language (auto-detected from extension if omitted)",
     )
 
+    # Project options
+    parser.add_argument(
+        "--project-root",
+        help="Project root directory for security validation (auto-detected if not specified)",
+    )
+
     # Logging options
     parser.add_argument(
         "--quiet",
@@ -201,25 +207,25 @@ def handle_special_commands(args: argparse.Namespace) -> int | None:
     # Validate partial read options
     if hasattr(args, "partial_read") and args.partial_read:
         if args.start_line is None:
-            output_error("ERROR: --start-line is required")
+            output_error("--start-line is required")
             return 1
 
         if args.start_line < 1:
-            output_error("ERROR: --start-line must be 1 or greater")
+            output_error("--start-line must be 1 or greater")
             return 1
 
         if args.end_line and args.end_line < args.start_line:
             output_error(
-                "ERROR: --end-line must be greater than or equal to --start-line"
+                "--end-line must be greater than or equal to --start-line"
             )
             return 1
 
         if args.start_column is not None and args.start_column < 0:
-            output_error("ERROR: --start-column must be 0 or greater")
+            output_error("--start-column must be 0 or greater")
             return 1
 
         if args.end_column is not None and args.end_column < 0:
-            output_error("ERROR: --end-column must be 0 or greater")
+            output_error("--end-column must be 0 or greater")
             return 1
 
     # Query language commands
@@ -279,9 +285,9 @@ def main() -> None:
         sys.exit(exit_code)
     else:
         if not args.file_path:
-            output_error("ERROR: File path not specified.")
+            output_error("File path not specified.")
         else:
-            output_error("ERROR: No executable command specified.")
+            output_error("No executable command specified.")
         parser.print_help()
         sys.exit(1)
 

@@ -171,8 +171,31 @@ uv sync --extra all --extra mcp
 
 - **[MCP Setup Guide for Users](https://github.com/aimasteracc/tree-sitter-analyzer/blob/main/MCP_SETUP_USERS.md)** - Simple setup for AI assistant users
 - **[MCP Setup Guide for Developers](https://github.com/aimasteracc/tree-sitter-analyzer/blob/main/MCP_SETUP_DEVELOPERS.md)** - Local development configuration
+- **[Project Root Configuration](https://github.com/aimasteracc/tree-sitter-analyzer/blob/main/PROJECT_ROOT_CONFIG.md)** - Complete configuration reference
 - **[API Documentation](https://github.com/aimasteracc/tree-sitter-analyzer/blob/main/docs/api.md)** - Detailed API reference
 - **[Contributing Guide](https://github.com/aimasteracc/tree-sitter-analyzer/blob/main/CONTRIBUTING.md)** - How to contribute
+
+### 🔒 Project Root Configuration
+
+Tree-sitter-analyzer automatically detects and secures your project boundaries:
+
+- **Auto-detection**: Finds project root from `.git`, `pyproject.toml`, `package.json`, etc.
+- **CLI**: Use `--project-root /path/to/project` for explicit control
+- **MCP**: Set `TREE_SITTER_PROJECT_ROOT=${workspaceFolder}` for workspace integration
+- **Security**: Only analyzes files within project boundaries
+
+**Recommended MCP configuration:**
+```json
+{
+  "mcpServers": {
+    "tree-sitter-analyzer": {
+      "command": "uv",
+      "args": ["run", "--with", "tree-sitter-analyzer[mcp]", "python", "-m", "tree_sitter_analyzer.mcp.server"],
+      "env": {"TREE_SITTER_PROJECT_ROOT": "${workspaceFolder}"}
+    }
+  }
+}
+```
 
 ## 🧪 Testing
 

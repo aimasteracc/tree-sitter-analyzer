@@ -174,7 +174,11 @@ public class TestClass {
             temp_path = f.name
 
         try:
-            monkeypatch.setattr(sys, "argv", ["cli", temp_path])
+            temp_dir = os.path.dirname(temp_path)
+            temp_dir = os.path.dirname(temp_path)
+            monkeypatch.setattr(
+                sys, "argv", ["cli", temp_path, "--project-root", temp_dir]
+            )
             mock_stdout = StringIO()
             monkeypatch.setattr("sys.stdout", mock_stdout)
 
@@ -208,8 +212,10 @@ public class TestClass {
             temp_path = f.name
 
         try:
+            temp_dir = os.path.dirname(temp_path)
+            temp_dir = os.path.dirname(temp_path)
             monkeypatch.setattr(
-                sys, "argv", ["cli", temp_path, "--query-key", "class_names"]
+                sys, "argv", ["cli", temp_path, "--query-key", "class_names", "--project-root", temp_dir]
             )
             mock_stdout = StringIO()
             monkeypatch.setattr("sys.stdout", mock_stdout)
@@ -245,8 +251,9 @@ public class TestClass {
 
         try:
             custom_query = "(class_declaration name: (identifier) @class-name)"
+            temp_dir = os.path.dirname(temp_path)
             monkeypatch.setattr(
-                sys, "argv", ["cli", temp_path, "--query-string", custom_query]
+                sys, "argv", ["cli", temp_path, "--query-string", custom_query, "--project-root", temp_dir]
             )
             mock_stdout = StringIO()
             monkeypatch.setattr("sys.stdout", mock_stdout)
@@ -281,7 +288,11 @@ if __name__ == "__main__":
             temp_path = f.name
 
         try:
-            monkeypatch.setattr(sys, "argv", ["cli", temp_path])
+            temp_dir = os.path.dirname(temp_path)
+            temp_dir = os.path.dirname(temp_path)
+            monkeypatch.setattr(
+                sys, "argv", ["cli", temp_path, "--project-root", temp_dir]
+            )
             mock_stdout = StringIO()
             monkeypatch.setattr("sys.stdout", mock_stdout)
 
@@ -315,7 +326,10 @@ public class TestClass {
             temp_path = f.name
 
         try:
-            monkeypatch.setattr(sys, "argv", ["cli", temp_path, "--language", "java"])
+            temp_dir = os.path.dirname(temp_path)
+            monkeypatch.setattr(
+                sys, "argv", ["cli", temp_path, "--language", "java", "--project-root", temp_dir]
+            )
             mock_stdout = StringIO()
             monkeypatch.setattr("sys.stdout", mock_stdout)
 
@@ -341,7 +355,11 @@ public class TestClass {
             temp_path = f.name
 
         try:
-            monkeypatch.setattr(sys, "argv", ["cli", temp_path])
+            temp_dir = os.path.dirname(temp_path)
+            temp_dir = os.path.dirname(temp_path)
+            monkeypatch.setattr(
+                sys, "argv", ["cli", temp_path, "--project-root", temp_dir]
+            )
             mock_stderr = StringIO()
             monkeypatch.setattr("sys.stderr", mock_stderr)
 
@@ -361,7 +379,7 @@ public class TestClass {
     def test_nonexistent_file(self, monkeypatch):
         """Test handling of nonexistent files"""
         nonexistent_path = "/path/that/does/not/exist.java"
-        monkeypatch.setattr(sys, "argv", ["cli", nonexistent_path])
+        monkeypatch.setattr(sys, "argv", ["cli", nonexistent_path, "--project-root", "/tmp"])
         mock_stderr = StringIO()
         monkeypatch.setattr("sys.stderr", mock_stderr)
 
@@ -371,8 +389,8 @@ public class TestClass {
             pass
 
         error_output = mock_stderr.getvalue()
-        # Should contain error message about file not found
-        assert "File not found" in error_output
+        # Should contain error message about invalid file path (security validation)
+        assert "Invalid file path" in error_output
 
     def test_output_format_json(self, monkeypatch):
         """Test JSON output format"""
@@ -391,8 +409,9 @@ public class TestClass {
             temp_path = f.name
 
         try:
+            temp_dir = os.path.dirname(temp_path)
             monkeypatch.setattr(
-                sys, "argv", ["cli", temp_path, "--output-format", "json", "--advanced"]
+                sys, "argv", ["cli", temp_path, "--output-format", "json", "--advanced", "--project-root", temp_dir]
             )
             mock_stdout = StringIO()
             monkeypatch.setattr("sys.stdout", mock_stdout)
@@ -427,8 +446,9 @@ public class TestClass {
             temp_path = f.name
 
         try:
+            temp_dir = os.path.dirname(temp_path)
             monkeypatch.setattr(
-                sys, "argv", ["cli", temp_path, "--output-format", "text"]
+                sys, "argv", ["cli", temp_path, "--output-format", "text", "--project-root", temp_dir]
             )
             mock_stdout = StringIO()
             monkeypatch.setattr("sys.stdout", mock_stdout)
@@ -476,8 +496,9 @@ class TestCLIEdgeCases:
             temp_path = f.name
 
         try:
+            temp_dir = os.path.dirname(temp_path)
             monkeypatch.setattr(
-                sys, "argv", ["cli", temp_path, "--query-key", "invalid_query_key"]
+                sys, "argv", ["cli", temp_path, "--query-key", "invalid_query_key", "--project-root", temp_dir]
             )
             mock_stderr = StringIO()
             monkeypatch.setattr("sys.stderr", mock_stderr)

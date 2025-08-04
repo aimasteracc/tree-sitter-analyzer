@@ -13,6 +13,7 @@ from typing import Any
 
 from ...core.analysis_engine import AnalysisRequest, get_analysis_engine
 from ...language_detector import detect_language_from_file
+from ...security import SecurityValidator
 from ...utils import setup_logger
 
 # Set up logging
@@ -28,11 +29,13 @@ class AnalyzeScaleTool:
     for LLM workflow efficiency.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, project_root: str = None) -> None:
         """Initialize the analyze scale tool."""
         # Use unified analysis engine instead of deprecated AdvancedAnalyzer
-        self.analysis_engine = get_analysis_engine()
-        logger.info("AnalyzeScaleTool initialized")
+        self.project_root = project_root
+        self.analysis_engine = get_analysis_engine(project_root)
+        self.security_validator = SecurityValidator(project_root)
+        logger.info("AnalyzeScaleTool initialized with security validation")
 
     def _calculate_file_metrics(self, file_path: str) -> dict[str, Any]:
         """
@@ -251,6 +254,12 @@ class AnalyzeScaleTool:
         if total_lines > 200:
             guidance["recommended_tools"].append("read_code_partial")
 
+        # Ensure all required fields exist
+        required_fields = ["complexity_hotspots", "classes", "methods", "fields", "imports"]
+        for field in required_fields:
+            if field not in structural_overview:
+                structural_overview[field] = []
+
         if len(structural_overview["complexity_hotspots"]) > 0:
             guidance["recommended_tools"].append("format_table")
             guidance["complexity_assessment"] = (
@@ -338,6 +347,16 @@ class AnalyzeScaleTool:
         # include_complexity = arguments.get("include_complexity", True)  # Not used currently
         include_details = arguments.get("include_details", False)
         include_guidance = arguments.get("include_guidance", True)
+
+        # Security validation
+        is_valid, error_msg = self.security_validator.validate_file_path(file_path)
+        if not is_valid:
+            logger.warning(f"Security validation failed for file path: {file_path} - {error_msg}")
+            raise ValueError(f"Invalid file path: {error_msg}")
+
+        # Sanitize inputs
+        if language:
+            language = self.security_validator.sanitize_input(language, max_length=50)
 
         # Validate file exists
         if not Path(file_path).exists():
