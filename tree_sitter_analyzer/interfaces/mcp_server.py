@@ -22,6 +22,26 @@ try:
 except ImportError:
     MCP_AVAILABLE = False
 
+    # Fallback types for development without MCP
+    class Server:
+        pass
+
+    class InitializationOptions:
+        def __init__(self, **kwargs):
+            pass
+
+    class Tool:
+        pass
+
+    class Resource:
+        pass
+
+    class TextContent:
+        pass
+
+    def stdio_server():
+        pass
+
 from .. import api
 from ..utils import log_error, log_info
 

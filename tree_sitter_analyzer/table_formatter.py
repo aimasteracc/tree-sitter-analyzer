@@ -56,14 +56,45 @@ class TableFormatter:
         """Full table format - organized by class"""
         lines = []
 
-        # Header - use filename for multi-class files
+        # Header - use package.class format for single class, filename for multi-class files
         classes = data.get("classes", [])
         if classes is None:
             classes = []
 
-        # Always use filename for header to be consistent
-        file_name = data.get("file_path", "Unknown").split("/")[-1].split("\\")[-1]
-        lines.append(f"# {file_name}")
+        # Determine header format
+        package_name = (data.get("package") or {}).get("name", "")
+        if len(classes) == 1:
+            # Single class: use package.ClassName format
+            class_name = classes[0].get("name", "Unknown")
+            if package_name:
+                header = f"{package_name}.{class_name}"
+            else:
+                header = class_name
+        else:
+            # Multiple classes or no classes: use filename or default
+            file_path = data.get("file_path", "")
+            if file_path and file_path != "Unknown":
+                file_name = file_path.split("/")[-1].split("\\")[-1]
+                if file_name.endswith(".java"):
+                    file_name = file_name[:-5]  # Remove .java extension
+                elif file_name.endswith(".py"):
+                    file_name = file_name[:-3]  # Remove .py extension
+                elif file_name.endswith(".js"):
+                    file_name = file_name[:-3]  # Remove .js extension
+
+                if package_name and len(classes) == 0:
+                    # No classes but has package: use package.filename
+                    header = f"{package_name}.{file_name}"
+                else:
+                    header = file_name
+            else:
+                # No file path: use default format
+                if package_name:
+                    header = f"{package_name}.Unknown"
+                else:
+                    header = "unknown.Unknown"
+
+        lines.append(f"# {header}")
         lines.append("")
 
         # Package info
@@ -81,6 +112,38 @@ class TableFormatter:
             for imp in imports:
                 lines.append(str(imp.get("statement", "")))
             lines.append("```")
+            lines.append("")
+
+        # Class Info section (for single class files or empty data)
+        if len(classes) == 1 or len(classes) == 0:
+            lines.append("## Class Info")
+            lines.append("| Property | Value |")
+            lines.append("|----------|-------|")
+
+            package_name = (data.get("package") or {}).get("name", "unknown")
+
+            if len(classes) == 1:
+                class_info = classes[0]
+                lines.append(f"| Package | {package_name} |")
+                lines.append(f"| Type | {str(class_info.get('type', 'class'))} |")
+                lines.append(f"| Visibility | {str(class_info.get('visibility', 'public'))} |")
+
+                # Lines
+                line_range = class_info.get("line_range", {})
+                lines_str = f"{line_range.get('start', 1)}-{line_range.get('end', 50)}"
+                lines.append(f"| Lines | {lines_str} |")
+            else:
+                # Empty data case
+                lines.append(f"| Package | {package_name} |")
+                lines.append("| Type | class |")
+                lines.append("| Visibility | public |")
+                lines.append("| Lines | 0-0 |")
+
+            # Count methods and fields
+            all_methods = data.get("methods", []) or []
+            all_fields = data.get("fields", []) or []
+            lines.append(f"| Total Methods | {len(all_methods)} |")
+            lines.append(f"| Total Fields | {len(all_fields)} |")
             lines.append("")
 
         # Classes Overview

@@ -22,10 +22,23 @@ except ImportError:
     MCP_AVAILABLE = False
 
     # Fallback types for development without MCP
-    class FallbackServer:
+    class Server:
         pass
 
-    class FallbackInitializationOptions:
+    class InitializationOptions:
+        def __init__(self, **kwargs):
+            pass
+
+    class Tool:
+        pass
+
+    class Resource:
+        pass
+
+    class TextContent:
+        pass
+
+    def stdio_server():
         pass
 
 

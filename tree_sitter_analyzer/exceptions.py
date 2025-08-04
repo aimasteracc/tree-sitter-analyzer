@@ -335,3 +335,72 @@ def handle_exceptions(
         return wrapper
 
     return decorator
+
+
+class SecurityError(TreeSitterAnalyzerError):
+    """Raised when security validation fails."""
+
+    def __init__(
+        self,
+        message: str,
+        security_type: str | None = None,
+        file_path: str | Path | None = None,
+        **kwargs: Any,
+    ) -> None:
+        context = kwargs.get("context", {})
+        if security_type:
+            context["security_type"] = security_type
+        if file_path:
+            context["file_path"] = str(file_path)
+
+        super().__init__(message, context=context, **kwargs)
+        self.security_type = security_type
+        self.file_path = str(file_path) if file_path else None
+
+
+class PathTraversalError(SecurityError):
+    """Raised when path traversal attack is detected."""
+
+    def __init__(
+        self,
+        message: str,
+        attempted_path: str | None = None,
+        **kwargs: Any,
+    ) -> None:
+        context = kwargs.get("context", {})
+        if attempted_path:
+            context["attempted_path"] = attempted_path
+
+        super().__init__(
+            message,
+            security_type="path_traversal",
+            context=context,
+            **kwargs
+        )
+        self.attempted_path = attempted_path
+
+
+class RegexSecurityError(SecurityError):
+    """Raised when unsafe regex pattern is detected."""
+
+    def __init__(
+        self,
+        message: str,
+        pattern: str | None = None,
+        dangerous_construct: str | None = None,
+        **kwargs: Any,
+    ) -> None:
+        context = kwargs.get("context", {})
+        if pattern:
+            context["pattern"] = pattern
+        if dangerous_construct:
+            context["dangerous_construct"] = dangerous_construct
+
+        super().__init__(
+            message,
+            security_type="regex_security",
+            context=context,
+            **kwargs
+        )
+        self.pattern = pattern
+        self.dangerous_construct = dangerous_construct
