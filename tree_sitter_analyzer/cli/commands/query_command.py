@@ -24,7 +24,7 @@ class QueryCommand(BaseCommand):
                 query_to_execute = query_loader.get_query(language, sanitized_query_key)
                 if query_to_execute is None:
                     output_error(
-                        f"ERROR: Query '{sanitized_query_key}' not found for language '{language}'"
+                        f"Query '{sanitized_query_key}' not found for language '{language}'"
                     )
                     return 1
             except ValueError as e:

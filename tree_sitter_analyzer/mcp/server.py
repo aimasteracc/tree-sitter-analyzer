@@ -71,6 +71,10 @@ class TreeSitterAnalyzerMCPServer:
     def __init__(self, project_root: str = None) -> None:
         """Initialize the MCP server with analyzer components."""
         self.server: Server | None = None
+        self._initialization_complete = False
+
+        logger.info("Starting MCP server initialization...")
+
         self.analysis_engine = get_analysis_engine(project_root)
         self.security_validator = SecurityValidator(project_root)
         # Use unified analysis engine instead of deprecated AdvancedAnalyzer
@@ -88,13 +92,24 @@ class TreeSitterAnalyzerMCPServer:
         self.name = MCP_INFO["name"]
         self.version = MCP_INFO["version"]
 
-        logger.info(f"Initializing {self.name} v{self.version}")
+        self._initialization_complete = True
+        logger.info(f"MCP server initialization complete: {self.name} v{self.version}")
+
+    def is_initialized(self) -> bool:
+        """Check if the server is fully initialized."""
+        return self._initialization_complete
+
+    def _ensure_initialized(self) -> None:
+        """Ensure the server is initialized before processing requests."""
+        if not self._initialization_complete:
+            raise RuntimeError("Server not fully initialized. Please wait for initialization to complete.")
 
     @handle_mcp_errors("analyze_code_scale")
     async def _analyze_code_scale(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """
         Analyze code scale and complexity metrics by delegating to the universal_analyze_tool.
         """
+        self._ensure_initialized()
         # Delegate the execution to the already initialized tool
         return await self.universal_analyze_tool.execute(arguments)
 
@@ -168,6 +183,9 @@ class TreeSitterAnalyzerMCPServer:
         ) -> list[TextContent]:
             """Handle tool calls with security validation."""
             try:
+                # Ensure server is fully initialized
+                self._ensure_initialized()
+
                 # Security validation for tool name
                 sanitized_name = self.security_validator.sanitize_input(name, max_length=100)
 

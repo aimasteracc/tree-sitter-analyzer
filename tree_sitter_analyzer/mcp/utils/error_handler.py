@@ -491,6 +491,24 @@ def handle_mcp_errors(
         async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
             try:
                 return await func(*args, **kwargs)
+            except RuntimeError as e:
+                # Handle initialization errors specifically
+                if "not fully initialized" in str(e):
+                    logger.warning(f"Request received before initialization complete: {operation}")
+                    raise MCPError(
+                        "Server is still initializing. Please wait a moment and try again.",
+                        category=ErrorCategory.CONFIGURATION,
+                        severity=ErrorSeverity.LOW
+                    ) from e
+                # Handle other runtime errors normally
+                error_handler = get_error_handler()
+                context = {
+                    "function": func.__name__,
+                    "args": str(args)[:200],  # Limit length
+                    "kwargs": str(kwargs)[:200],
+                }
+                error_info = error_handler.handle_error(e, context, operation)
+                raise
             except Exception as e:
                 error_handler = get_error_handler()
                 context = {
