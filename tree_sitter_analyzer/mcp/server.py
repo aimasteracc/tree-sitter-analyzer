@@ -55,6 +55,7 @@ from .tools.read_partial_tool import ReadPartialTool
 from .tools.table_format_tool import TableFormatTool
 from .tools.universal_analyze_tool import UniversalAnalyzeTool
 from .tools.magic_solve_tool import MagicSolveTool
+from .tools.magic_course_tool import MagicCourseGeneratorTool
 from .utils.error_handler import handle_mcp_errors
 
 # Set up logging
@@ -87,6 +88,7 @@ class TreeSitterAnalyzerMCPServer:
 
         # Initialize revolutionary magic tools
         self.magic_solve_tool: MagicSolveTool = MagicSolveTool()
+        self.magic_course_tool: MagicCourseGeneratorTool = MagicCourseGeneratorTool()
 
         # Initialize MCP resources
         self.code_file_resource = CodeFileResource()
@@ -171,6 +173,7 @@ class TreeSitterAnalyzerMCPServer:
                 self.table_format_tool,
                 self.universal_analyze_tool,
                 self.magic_solve_tool,
+                self.magic_course_tool,
             ]:
                 tool_def = tool_instance.get_tool_definition()
                 if isinstance(tool_def, dict):
@@ -242,6 +245,15 @@ class TreeSitterAnalyzerMCPServer:
                 elif sanitized_name == "magic_solve":
                     # 🚀 革命的障害解決魔法の実行
                     result = await self.magic_solve_tool.execute(arguments)
+                    return [
+                        TextContent(
+                            type="text",
+                            text=json.dumps(result, indent=2, ensure_ascii=False),
+                        )
+                    ]
+                elif sanitized_name == "magic_course":
+                    # 🎓 革命的教育コンテンツ生成魔法の実行
+                    result = await self.magic_course_tool.execute(arguments)
                     return [
                         TextContent(
                             type="text",

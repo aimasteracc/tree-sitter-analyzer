@@ -203,6 +203,20 @@ class SecurityValidator:
 
         return sanitized
 
+    def validate_path(self, path: str, base_path: Optional[str] = None) -> bool:
+        """
+        Validate path (alias for validate_file_path for backward compatibility).
+
+        Args:
+            path: Path to validate
+            base_path: Optional base path for relative validation
+
+        Returns:
+            bool: True if path is valid and safe
+        """
+        is_valid, _ = self.validate_file_path(path, base_path)
+        return is_valid
+
     def validate_glob_pattern(self, pattern: str) -> Tuple[bool, str]:
         """
         Validate glob pattern for safe file matching.
