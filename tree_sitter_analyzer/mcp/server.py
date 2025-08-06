@@ -54,6 +54,7 @@ from .tools.base_tool import MCPTool
 from .tools.read_partial_tool import ReadPartialTool
 from .tools.table_format_tool import TableFormatTool
 from .tools.universal_analyze_tool import UniversalAnalyzeTool
+from .tools.magic_solve_tool import MagicSolveTool
 from .utils.error_handler import handle_mcp_errors
 
 # Set up logging
@@ -83,6 +84,9 @@ class TreeSitterAnalyzerMCPServer:
         self.read_partial_tool: MCPTool = ReadPartialTool(project_root)
         self.universal_analyze_tool: MCPTool = UniversalAnalyzeTool(project_root)
         self.table_format_tool: MCPTool = TableFormatTool(project_root)
+
+        # Initialize revolutionary magic tools
+        self.magic_solve_tool: MagicSolveTool = MagicSolveTool()
 
         # Initialize MCP resources
         self.code_file_resource = CodeFileResource()
@@ -166,6 +170,7 @@ class TreeSitterAnalyzerMCPServer:
                 self.read_partial_tool,
                 self.table_format_tool,
                 self.universal_analyze_tool,
+                self.magic_solve_tool,
             ]:
                 tool_def = tool_instance.get_tool_definition()
                 if isinstance(tool_def, dict):
@@ -228,6 +233,15 @@ class TreeSitterAnalyzerMCPServer:
                     ]
                 elif sanitized_name == "analyze_code_universal":
                     result = await self.universal_analyze_tool.execute(arguments)
+                    return [
+                        TextContent(
+                            type="text",
+                            text=json.dumps(result, indent=2, ensure_ascii=False),
+                        )
+                    ]
+                elif sanitized_name == "magic_solve":
+                    # 🚀 革命的障害解決魔法の実行
+                    result = await self.magic_solve_tool.execute(arguments)
                     return [
                         TextContent(
                             type="text",
