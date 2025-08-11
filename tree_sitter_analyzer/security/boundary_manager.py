@@ -14,6 +14,47 @@ from ..exceptions import SecurityError
 from ..utils import log_debug, log_info, log_warning
 
 
+def _to_long_path(path: str) -> str:
+    """Convert Windows 8.3 short paths to long form. No-op on non-Windows."""
+    try:
+        if os.name != "nt":
+            return path
+
+        # First try pathlib's resolve which often returns the proper long path
+        try:
+            from pathlib import Path
+
+            resolved = Path(path).resolve(strict=True)
+            return str(resolved)
+        except Exception:
+            pass
+
+        # Fallback to WinAPI
+        try:
+            import ctypes
+
+            GetLongPathNameW = ctypes.windll.kernel32.GetLongPathNameW  # type: ignore[attr-defined]
+            GetLongPathNameW.argtypes = [ctypes.c_wchar_p, ctypes.c_wchar_p, ctypes.c_uint]
+            GetLongPathNameW.restype = ctypes.c_uint
+
+            buffer_len = 260
+            buffer = ctypes.create_unicode_buffer(buffer_len)
+            result = GetLongPathNameW(path, buffer, buffer_len)
+
+            if result == 0:
+                return path
+            if result > buffer_len:
+                buffer = ctypes.create_unicode_buffer(result)
+                result = GetLongPathNameW(path, buffer, result)
+                if result == 0:
+                    return path
+            return buffer.value
+        except Exception:
+            return path
+    except Exception:
+        return path
+
+
 class ProjectBoundaryManager:
     """
     Project boundary manager for access control.
@@ -47,8 +88,9 @@ class ProjectBoundaryManager:
         if not os.path.isdir(project_root):
             raise SecurityError(f"Project root is not a directory: {project_root}")
         
-        # Store real path to prevent symlink attacks
-        self.project_root = os.path.realpath(project_root)
+        abs_root = os.path.abspath(project_root)
+        # Use realpath for consistency with tests expecting os.path.realpath
+        self.project_root = os.path.realpath(abs_root)
         self.allowed_directories: Set[str] = {self.project_root}
         
         log_info(f"ProjectBoundaryManager initialized with root: {self.project_root}")

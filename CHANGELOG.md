@@ -1,5 +1,17 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+- CLI: Ensure security validation error messaging uses "Invalid file path" when path fails project boundary checks.
+- Windows: Normalize project root handling to avoid 8.3 short/long path mismatches in MCP server and security boundary checks.
+- Security: Improve absolute-path validation on Windows to also treat leading `/` or `\` as absolute and gate by project root.
+- MCP AnalyzeScaleTool: Return `ValueError("Invalid file path ...")` for invalid input paths (previously `FileNotFoundError`).
+- Boundary Manager: Use `os.path.realpath` for `project_root` to align with expectations in tests and relative-path calculations.
+
+### Performance
+- AnalyzeScaleToolCLICompatible: Use `time.perf_counter()` and measure only the engine call to improve timing accuracy and reduce measured latency.
+
 All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),

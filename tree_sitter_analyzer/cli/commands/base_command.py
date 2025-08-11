@@ -47,7 +47,9 @@ class BaseCommand(ABC):
             return False
 
         # Security validation
-        is_valid, error_msg = self.security_validator.validate_file_path(self.args.file_path)
+        is_valid, error_msg = self.security_validator.validate_file_path(
+            self.args.file_path, base_path=self.project_root
+        )
         if not is_valid:
             output_error(f"Invalid file path: {error_msg}")
             return False

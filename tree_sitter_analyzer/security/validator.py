@@ -80,8 +80,11 @@ class SecurityValidator:
             if len(file_path) > 1 and file_path[1] == ":" and os.name != 'nt':
                 return False, "Windows drive letters are not allowed on this system"
 
-            # Layer 4: Absolute path check
-            if os.path.isabs(file_path):
+            # Layer 4: Absolute path check (handle Windows leading slash/backslash explicitly)
+            is_abs = os.path.isabs(file_path) or (
+                os.name == 'nt' and (file_path.startswith('/') or file_path.startswith('\\'))
+            )
+            if is_abs:
                 # If we have a project root, check if the absolute path is within it
                 if self.boundary_manager and self.boundary_manager.project_root:
                     if not self.boundary_manager.is_within_project(file_path):

@@ -348,10 +348,14 @@ class AnalyzeScaleTool:
         include_details = arguments.get("include_details", False)
         include_guidance = arguments.get("include_guidance", True)
 
-        # Security validation
-        is_valid, error_msg = self.security_validator.validate_file_path(file_path)
+        # Security validation (use project_root as base when available)
+        is_valid, error_msg = self.security_validator.validate_file_path(
+            file_path, base_path=self.project_root
+        )
         if not is_valid:
-            logger.warning(f"Security validation failed for file path: {file_path} - {error_msg}")
+            logger.warning(
+                f"Security validation failed for file path: {file_path} - {error_msg}"
+            )
             raise ValueError(f"Invalid file path: {error_msg}")
 
         # Sanitize inputs

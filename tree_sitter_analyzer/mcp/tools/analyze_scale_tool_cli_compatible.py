@@ -99,14 +99,12 @@ class AnalyzeScaleToolCLICompatible:
         logger.info(f"Analyzing code scale for {file_path} (language: {language})")
 
         try:
-            start_time = time.time()
-
-            # Use AdvancedAnalyzer for comprehensive analysis
+            # Use higher precision timer and measure ONLY the engine call
+            start_time = time.perf_counter()
             analysis_result = await self.analysis_engine.analyze_file(file_path)
+            analysis_time_ms = round((time.perf_counter() - start_time) * 1000, 2)
 
             # Handle potential None result (for testing purposes with mocked engine)
-            # This can only happen in tests where the engine is mocked to return None
-            # Use cast to tell MyPy this is possible in testing scenarios
             if cast(Any, analysis_result) is None:
                 return {
                     "file_path": file_path,
@@ -119,12 +117,9 @@ class AnalyzeScaleToolCLICompatible:
                         "fields": 0,
                         "annotations": 0,
                     },
-                    "analysis_time_ms": round((time.time() - start_time) * 1000, 2),
+                    "analysis_time_ms": analysis_time_ms,
                     "error_message": f"Failed to analyze file: {file_path}",
                 }
-
-            # Calculate analysis time
-            analysis_time_ms = round((time.time() - start_time) * 1000, 2)
 
             # Build CLI-compatible result structure (exact match with CLI --advanced --statistics)
             result = {

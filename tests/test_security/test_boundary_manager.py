@@ -217,4 +217,6 @@ class TestProjectBoundaryManager:
         # Assert
         assert "ProjectBoundaryManager" in str_repr
         assert "ProjectBoundaryManager" in repr_repr
-        assert self.temp_dir in repr_repr
+        # Check that the realpath representation of temp_dir is in repr (handles Windows 8.3 paths)
+        expected_path = os.path.realpath(self.temp_dir)
+        assert expected_path in repr_repr

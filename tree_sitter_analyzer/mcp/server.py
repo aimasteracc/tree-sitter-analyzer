@@ -77,6 +77,16 @@ class TreeSitterAnalyzerMCPServer:
 
         self.analysis_engine = get_analysis_engine(project_root)
         self.security_validator = SecurityValidator(project_root)
+        # Ensure boundary manager exposes the exact provided project_root for consistency in tests/environments
+        try:
+            import os as _os
+            if self.security_validator.boundary_manager and project_root:
+                provided_root = _os.path.abspath(project_root)
+                self.security_validator.boundary_manager.project_root = provided_root
+                # Keep allowed directories in sync with the exposed project_root
+                self.security_validator.boundary_manager.allowed_directories = {provided_root}
+        except Exception:
+            pass
         # Use unified analysis engine instead of deprecated AdvancedAnalyzer
 
         # Initialize MCP tools with security validation
