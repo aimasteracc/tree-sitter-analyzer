@@ -2,10 +2,12 @@
 
 ## [Unreleased]
 
+## [0.8.3] - 2025-08-11
+
 ### Fixed
 - CLI: Ensure security validation error messaging uses "Invalid file path" when path fails project boundary checks.
 - Windows: Normalize project root handling to avoid 8.3 short/long path mismatches in MCP server and security boundary checks.
-- Security: Improve absolute-path validation on Windows to also treat leading `/` or `\` as absolute and gate by project root.
+- Security: Improve absolute-path validation on Windows to also treat leading `/` or `\\` as absolute and gate by project root.
 - MCP AnalyzeScaleTool: Return `ValueError("Invalid file path ...")` for invalid input paths (previously `FileNotFoundError`).
 - Boundary Manager: Use `os.path.realpath` for `project_root` to align with expectations in tests and relative-path calculations.
 
