@@ -1496,7 +1496,7 @@ wheels = [
 
 [[package]]
 name = "tree-sitter-analyzer"
-version = "0.8.4"
+version = "0.9.1"
 source = { editable = "." }
 dependencies = [
     { name = "cachetools" },
@@ -1623,6 +1623,8 @@ web = [
 dev = [
     { name = "build" },
     { name = "pre-commit" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
     { name = "ruff" },
     { name = "twine" },
     { name = "types-cachetools" },
@@ -1697,6 +1699,8 @@ provides-extras = ["java", "javascript", "typescript", "python", "c", "cpp", "ru
 dev = [
     { name = "build", specifier = ">=1.2.2.post1" },
     { name = "pre-commit", specifier = ">=4.2.0" },
+    { name = "pytest", specifier = ">=8.4.1" },
+    { name = "pytest-asyncio", specifier = ">=1.1.0" },
     { name = "ruff", specifier = ">=0.12.7" },
     { name = "twine", specifier = ">=6.1.0" },
     { name = "types-cachetools", specifier = ">=6.1.0.20250717" },

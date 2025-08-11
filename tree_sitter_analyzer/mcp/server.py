@@ -53,6 +53,8 @@ from .resources import CodeFileResource, ProjectStatsResource
 from .tools.base_tool import MCPTool
 from .tools.read_partial_tool import ReadPartialTool
 from .tools.table_format_tool import TableFormatTool
+from .tools.learning_complexity_tool import LearningComplexityTool
+from .tools.educational_content_generator import EducationalContentGenerator
 from .utils.error_handler import handle_mcp_errors
 
 # Set up logging
@@ -78,9 +80,11 @@ class TreeSitterAnalyzerMCPServer:
         self.security_validator = SecurityValidator(project_root)
         # Use unified analysis engine instead of deprecated AdvancedAnalyzer
 
-        # Initialize MCP tools with security validation (three core tools)
+        # Initialize MCP tools with security validation (core tools + educational extensions)
         self.read_partial_tool: MCPTool = ReadPartialTool(project_root)  # extract_code_section
         self.table_format_tool: MCPTool = TableFormatTool(project_root)  # analyze_code_structure
+        self.learning_complexity_tool: MCPTool = LearningComplexityTool(project_root)  # analyze_learning_complexity
+        self.educational_content_generator: MCPTool = EducationalContentGenerator(project_root)  # generate_educational_content
 
         # Initialize MCP resources
         self.code_file_resource = CodeFileResource()
@@ -217,10 +221,14 @@ class TreeSitterAnalyzerMCPServer:
 
             🎯 SOLVE LLM TOKEN LIMIT PROBLEMS FOR LARGE CODE FILES
 
-            REQUIRED WORKFLOW FOR LLM (follow this order):
+            CORE WORKFLOW FOR CODE ANALYSIS (follow this order):
             1. FIRST: 'check_code_scale' - understand file size and complexity
             2. SECOND: 'analyze_code_structure' - get detailed structure with line positions
             3. THIRD: 'extract_code_section' - get specific code from line positions
+
+            🎓 EDUCATIONAL CONTENT GENERATION WORKFLOW:
+            4. 'analyze_learning_complexity' - assess learning difficulty and complexity
+            5. 'generate_educational_content' - create comprehensive educational materials
 
             ⚠️  PARAMETER NAMES: Use snake_case (file_path, start_line, end_line, format_type)
             📖 Full guide: See README.md AI Assistant Integration section
@@ -321,6 +329,93 @@ class TreeSitterAnalyzerMCPServer:
                         "additionalProperties": False,
                     },
                 ),
+                Tool(
+                    name="analyze_learning_complexity",
+                    description="🎓 EDUCATIONAL: Analyze learning complexity and difficulty of code files for educational content generation. Evaluates cognitive load, prerequisites, and teaching strategies.",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "file_path": {
+                                "type": "string",
+                                "description": "Path to the code file to analyze for learning complexity (REQUIRED)",
+                            },
+                            "analysis_depth": {
+                                "type": "string",
+                                "enum": ["basic", "detailed", "comprehensive"],
+                                "description": "Depth of complexity analysis (default: detailed)",
+                                "default": "detailed"
+                            },
+                            "target_audience": {
+                                "type": "string",
+                                "enum": ["beginner", "intermediate", "advanced", "expert"],
+                                "description": "Target learning audience level (default: intermediate)",
+                                "default": "intermediate"
+                            },
+                            "include_recommendations": {
+                                "type": "boolean",
+                                "description": "Include learning path recommendations (default: true)",
+                                "default": True
+                            }
+                        },
+                        "required": ["file_path"],
+                        "additionalProperties": False,
+                    },
+                ),
+                Tool(
+                    name="generate_educational_content",
+                    description="🚀 EDUCATIONAL: Generate comprehensive educational content for open source projects using multi-agent AI collaboration. Creates tutorials, exercises, and learning materials.",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "project_path": {
+                                "type": "string",
+                                "description": "Path to the project or main file to analyze (REQUIRED)",
+                            },
+                            "target_audience": {
+                                "type": "string",
+                                "enum": ["beginner", "intermediate", "advanced", "expert"],
+                                "description": "Target learning audience level (default: intermediate)",
+                                "default": "intermediate"
+                            },
+                            "content_type": {
+                                "type": "string",
+                                "enum": ["overview", "tutorial", "example", "exercise", "project", "reference"],
+                                "description": "Type of educational content to generate (default: tutorial)",
+                                "default": "tutorial"
+                            },
+                            "learning_objectives": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": "Specific learning objectives for the content (optional)",
+                                "default": []
+                            },
+                            "content_depth": {
+                                "type": "string",
+                                "enum": ["basic", "detailed", "comprehensive"],
+                                "description": "Depth of content analysis and generation (default: detailed)",
+                                "default": "detailed"
+                            },
+                            "include_exercises": {
+                                "type": "boolean",
+                                "description": "Include practical exercises and activities (default: true)",
+                                "default": True
+                            },
+                            "include_assessments": {
+                                "type": "boolean",
+                                "description": "Include assessment criteria and rubrics (default: true)",
+                                "default": True
+                            },
+                            "output_format": {
+                                "type": "string",
+                                "enum": ["markdown", "html", "json", "structured"],
+                                "description": "Output format for the generated content (default: structured)",
+                                "default": "structured"
+                            }
+                        },
+                        "required": ["project_path"],
+                        "additionalProperties": False,
+                    },
+                ),
             ]
 
             return tools
@@ -376,8 +471,24 @@ class TreeSitterAnalyzerMCPServer:
                             text=json.dumps(result, indent=2, ensure_ascii=False),
                         )
                     ]
+                elif sanitized_name == "analyze_learning_complexity":
+                    result = await self.learning_complexity_tool.execute(arguments)
+                    return [
+                        TextContent(
+                            type="text",
+                            text=json.dumps(result, indent=2, ensure_ascii=False),
+                        )
+                    ]
+                elif sanitized_name == "generate_educational_content":
+                    result = await self.educational_content_generator.execute(arguments)
+                    return [
+                        TextContent(
+                            type="text",
+                            text=json.dumps(result, indent=2, ensure_ascii=False),
+                        )
+                    ]
                 else:
-                    raise ValueError(f"Unknown tool: {name}. Available tools: check_code_scale, analyze_code_structure, extract_code_section")
+                    raise ValueError(f"Unknown tool: {name}. Available tools: check_code_scale, analyze_code_structure, extract_code_section, analyze_learning_complexity, generate_educational_content")
 
             except Exception as e:
                 try:
