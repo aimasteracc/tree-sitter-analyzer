@@ -291,15 +291,15 @@ class ReadPartialTool:
             from mcp.types import Tool
 
             return Tool(
-                name="read_code_partial",
-                description="Read partial content from code files with line and column range support (equivalent to CLI --partial-read option)",
+                name="extract_code_section",
+                description="Extract specific code sections by line range (equivalent to CLI --partial-read option)",
                 inputSchema=self.get_tool_schema(),
             )
         except ImportError:
             # Fallback for when MCP is not available
             return {
-                "name": "read_code_partial",
-                "description": "Read partial content from code files with line and column range support (equivalent to CLI --partial-read option)",
+                "name": "extract_code_section",
+                "description": "Extract specific code sections by line range (equivalent to CLI --partial-read option)",
                 "inputSchema": self.get_tool_schema(),
             }
 

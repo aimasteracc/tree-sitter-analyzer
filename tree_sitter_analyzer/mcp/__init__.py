@@ -15,12 +15,26 @@ __author__ = "Tree-sitter Analyzer Team"
 MCP_INFO: dict[str, Any] = {
     "name": "tree-sitter-analyzer-mcp",
     "version": __version__,
-    "description": "Tree-sitter based code analyzer with MCP support",
+    "description": "Tree-sitter based code analyzer with MCP support - Solve LLM token limit problems for large code files",
     "protocol_version": "2024-11-05",
     "capabilities": {
-        "tools": {},
+        "tools": {
+            "description": "Three-step workflow for analyzing large code files",
+            "available_tools": [
+                "check_code_scale",
+                "analyze_code_structure",
+                "extract_code_section"
+            ],
+            "workflow": [
+                "1. check_code_scale - Get file metrics and complexity",
+                "2. analyze_code_structure - Generate structure tables for large files",
+                "3. extract_code_section - Get specific code sections by line range"
+            ]
+        },
         "resources": {},
-        "prompts": {},
+        "prompts": {
+            "usage_guide": "See README.md AI Assistant Integration section for complete workflow guide"
+        },
         "logging": {},
     },
 }

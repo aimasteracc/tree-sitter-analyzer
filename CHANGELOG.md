@@ -5,6 +5,42 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.3] - 2025-08-11
+
+### 🎯 MCP Tools Unification & Simplification
+
+#### 🔧 Unified Tool Names
+- **BREAKING**: Simplified MCP tools to 3 core tools with clear naming:
+  - `check_code_scale` - Step 1: Check file scale and complexity
+  - `analyze_code_structure` - Step 2: Generate structure tables with line positions
+  - `extract_code_section` - Step 3: Extract specific code sections by line range
+- **Removed**: Backward compatibility for old tool names (`analyze_code_scale`, `read_code_partial`, `format_table`, `analyze_code_universal`)
+- **Enhanced**: Tool descriptions with step numbers and usage guidance
+
+#### 📋 Parameter Standardization
+- **Standardized**: All parameters use snake_case naming convention
+- **Fixed**: Common LLM parameter mistakes with clear validation
+- **Required**: `file_path` parameter for all tools
+- **Required**: `start_line` parameter for `extract_code_section`
+
+#### 📖 Documentation Improvements
+- **Updated**: README.md with unified tool workflow examples
+- **Enhanced**: MCP_INFO with workflow guidance
+- **Simplified**: Removed redundant documentation files
+- **Added**: Clear three-step workflow instructions for LLMs
+
+#### 🧪 Test Suite Updates
+- **Fixed**: All MCP-related tests updated for new tool names
+- **Updated**: 138 MCP tests passing with new unified structure
+- **Enhanced**: Test coverage for unified tool workflow
+- **Maintained**: 100% backward compatibility in core analysis engine
+
+#### 🎉 Benefits
+- **Simplified**: LLM integration with clear tool naming
+- **Reduced**: Parameter confusion with consistent snake_case
+- **Improved**: Workflow clarity with numbered steps
+- **Enhanced**: Error messages with available tool suggestions
+
 ## [0.8.2] - 2025-08-05
 
 ### 🎯 Major Quality Improvements

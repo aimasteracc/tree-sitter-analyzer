@@ -2,7 +2,7 @@
 
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-1358%20passed-brightgreen.svg)](#testing)
+[![Tests](https://img.shields.io/badge/tests-1496%20passed-brightgreen.svg)](#testing)
 [![Coverage](https://img.shields.io/badge/coverage-74.82%25-green.svg)](#testing)
 [![Quality](https://img.shields.io/badge/quality-enterprise%20grade-blue.svg)](#quality)
 
@@ -93,11 +93,10 @@ Extract specific code sections efficiently:
 - Content length information
 
 ### 3. AI Assistant Integration
-Four powerful MCP tools for AI assistants:
-- `analyze_code_scale` - Get code metrics and complexity
-- `analyze_code_structure` - Generate detailed structure tables
-- `read_code_partial` - Extract specific line ranges
-- `analyze_code_universal` - Universal analysis with auto-detection
+Three-step workflow MCP tools for AI assistants:
+- `check_code_scale` - **Step 1:** Get code metrics and complexity
+- `analyze_code_structure` - **Step 2:** Generate detailed structure tables with line positions
+- `extract_code_section` - **Step 3:** Extract specific code sections by line range
 
 ### 4. Multi-Language Support
 - **Java** - Full support with advanced analysis
@@ -109,14 +108,25 @@ Four powerful MCP tools for AI assistants:
 
 ### AI Assistant Usage (via Claude Desktop)
 
-**Step 1: Get code overview:**
-> "What's the overall complexity and size of this Java file examples/Sample.java?"
+**Step 1: Check code scale**
+```
+Use tool: check_code_scale
+Parameters: {"file_path": "examples/Sample.java"}
+```
 
-**Step 2: Analyze code structure (for large files):**
-> "Please analyze the structure of examples/Sample.java and show me a detailed table"
+**Step 2: Analyze structure (for large files >100 lines)**
+```
+Use tool: analyze_code_structure
+Parameters: {"file_path": "examples/Sample.java", "format_type": "full"}
+```
 
-**Step 3: Extract specific code:**
-> "Show me lines 84-86 from examples/Sample.java"
+**Step 3: Extract specific code (using line positions from step 2)**
+```
+Use tool: extract_code_section
+Parameters: {"file_path": "examples/Sample.java", "start_line": 84, "end_line": 86}
+```
+
+> **Note:** Always use snake_case parameter names: `file_path`, `start_line`, `end_line`, `format_type`
 
 ### CLI Usage
 

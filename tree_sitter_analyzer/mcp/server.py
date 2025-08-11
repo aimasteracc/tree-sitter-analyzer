@@ -53,7 +53,6 @@ from .resources import CodeFileResource, ProjectStatsResource
 from .tools.base_tool import MCPTool
 from .tools.read_partial_tool import ReadPartialTool
 from .tools.table_format_tool import TableFormatTool
-from .tools.universal_analyze_tool import UniversalAnalyzeTool
 from .utils.error_handler import handle_mcp_errors
 
 # Set up logging
@@ -79,10 +78,9 @@ class TreeSitterAnalyzerMCPServer:
         self.security_validator = SecurityValidator(project_root)
         # Use unified analysis engine instead of deprecated AdvancedAnalyzer
 
-        # Initialize MCP tools with security validation
-        self.read_partial_tool: MCPTool = ReadPartialTool(project_root)
-        self.universal_analyze_tool: MCPTool = UniversalAnalyzeTool(project_root)
-        self.table_format_tool: MCPTool = TableFormatTool(project_root)
+        # Initialize MCP tools with security validation (three core tools)
+        self.read_partial_tool: MCPTool = ReadPartialTool(project_root)  # extract_code_section
+        self.table_format_tool: MCPTool = TableFormatTool(project_root)  # analyze_code_structure
 
         # Initialize MCP resources
         self.code_file_resource = CodeFileResource()
@@ -104,14 +102,100 @@ class TreeSitterAnalyzerMCPServer:
         if not self._initialization_complete:
             raise RuntimeError("Server not fully initialized. Please wait for initialization to complete.")
 
-    @handle_mcp_errors("analyze_code_scale")
+    @handle_mcp_errors("check_code_scale")
     async def _analyze_code_scale(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """
-        Analyze code scale and complexity metrics by delegating to the universal_analyze_tool.
+        Analyze code scale and complexity metrics using the analysis engine directly.
         """
         self._ensure_initialized()
-        # Delegate the execution to the already initialized tool
-        return await self.universal_analyze_tool.execute(arguments)
+
+        # Validate required arguments
+        if "file_path" not in arguments:
+            raise ValueError("file_path is required")
+
+        file_path = arguments["file_path"]
+        language = arguments.get("language")
+        include_complexity = arguments.get("include_complexity", True)
+        include_details = arguments.get("include_details", False)
+
+        # Security validation
+        is_valid, error_msg = self.security_validator.validate_file_path(file_path)
+        if not is_valid:
+            raise ValueError(f"Invalid file path: {error_msg}")
+
+        # Use analysis engine directly
+        from ..core.analysis_engine import AnalysisRequest
+        from ..language_detector import detect_language_from_file
+        from pathlib import Path
+
+        # Validate file exists
+        if not Path(file_path).exists():
+            raise FileNotFoundError(f"File not found: {file_path}")
+
+        # Detect language if not specified
+        if not language:
+            language = detect_language_from_file(file_path)
+
+        # Create analysis request
+        request = AnalysisRequest(
+            file_path=file_path,
+            language=language,
+            include_complexity=include_complexity,
+            include_details=include_details,
+        )
+
+        # Perform analysis
+        analysis_result = await self.analysis_engine.analyze(request)
+
+        if analysis_result is None or not analysis_result.success:
+            error_msg = analysis_result.error_message if analysis_result else "Unknown error"
+            raise RuntimeError(f"Failed to analyze file: {file_path} - {error_msg}")
+
+        # Convert to dictionary format
+        result_dict = analysis_result.to_dict()
+
+        # Format result to match test expectations
+        elements = result_dict.get("elements", [])
+
+        # Count elements by type
+        classes_count = len([e for e in elements if e.get("__class__") == "Class"])
+        methods_count = len([e for e in elements if e.get("__class__") == "Function"])
+        fields_count = len([e for e in elements if e.get("__class__") == "Variable"])
+        imports_count = len([e for e in elements if e.get("__class__") == "Import"])
+
+        result = {
+            "file_path": file_path,
+            "language": language,
+            "metrics": {
+                "lines_total": result_dict.get("line_count", 0),
+                "lines_code": result_dict.get("line_count", 0),  # Approximation
+                "lines_comment": 0,  # Not available in basic analysis
+                "lines_blank": 0,    # Not available in basic analysis
+                "elements": {
+                    "classes": classes_count,
+                    "methods": methods_count,
+                    "fields": fields_count,
+                    "imports": imports_count,
+                    "total": len(elements),
+                }
+            }
+        }
+
+        if include_complexity:
+            # Add complexity metrics if available
+            methods = [e for e in elements if e.get("__class__") == "Function"]
+            if methods:
+                complexities = [e.get("complexity_score", 0) for e in methods]
+                result["metrics"]["complexity"] = {
+                    "total": sum(complexities),
+                    "average": sum(complexities) / len(complexities) if complexities else 0,
+                    "max": max(complexities) if complexities else 0,
+                }
+
+        if include_details:
+            result["detailed_elements"] = elements
+
+        return result
 
     def create_server(self) -> Server:
         """
@@ -128,17 +212,29 @@ class TreeSitterAnalyzerMCPServer:
         # Register tools
         @server.list_tools()  # type: ignore
         async def handle_list_tools() -> list[Tool]:
-            """List available tools."""
+            """
+            List available tools with clear naming and usage guidance.
+
+            🎯 SOLVE LLM TOKEN LIMIT PROBLEMS FOR LARGE CODE FILES
+
+            REQUIRED WORKFLOW FOR LLM (follow this order):
+            1. FIRST: 'check_code_scale' - understand file size and complexity
+            2. SECOND: 'analyze_code_structure' - get detailed structure with line positions
+            3. THIRD: 'extract_code_section' - get specific code from line positions
+
+            ⚠️  PARAMETER NAMES: Use snake_case (file_path, start_line, end_line, format_type)
+            📖 Full guide: See README.md AI Assistant Integration section
+            """
             tools = [
                 Tool(
-                    name="analyze_code_scale",
-                    description="Analyze code scale, complexity, and structure metrics",
+                    name="check_code_scale",
+                    description="🔍 STEP 1: Check code file scale, complexity, and basic metrics. Use this FIRST to understand if the file is large and needs structure analysis. Returns: line count, element counts, complexity metrics.",
                     inputSchema={
                         "type": "object",
                         "properties": {
                             "file_path": {
                                 "type": "string",
-                                "description": "Path to the code file to analyze",
+                                "description": "Path to the code file to analyze (REQUIRED - use exact file path)",
                             },
                             "language": {
                                 "type": "string",
@@ -146,34 +242,86 @@ class TreeSitterAnalyzerMCPServer:
                             },
                             "include_complexity": {
                                 "type": "boolean",
-                                "description": "Include complexity metrics in the analysis",
+                                "description": "Include complexity metrics in the analysis (default: true)",
                                 "default": True,
                             },
                             "include_details": {
                                 "type": "boolean",
-                                "description": "Include detailed element information",
+                                "description": "Include detailed element information (default: false)",
                                 "default": False,
                             },
                         },
                         "required": ["file_path"],
                         "additionalProperties": False,
                     },
-                )
+                ),
+                Tool(
+                    name="analyze_code_structure",
+                    description="📊 STEP 2: Generate detailed structure tables (classes, methods, fields) with LINE POSITIONS for large files. Use AFTER check_code_scale shows file is large (>100 lines). Returns: tables with start_line/end_line for each element.",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "file_path": {
+                                "type": "string",
+                                "description": "Path to the code file to analyze (REQUIRED - use exact file path)",
+                            },
+                            "format_type": {
+                                "type": "string",
+                                "description": "Table format type (default: 'full' for detailed tables)",
+                                "enum": ["full", "compact", "csv"],
+                                "default": "full",
+                            },
+                            "language": {
+                                "type": "string",
+                                "description": "Programming language (optional, auto-detected if not specified)",
+                            },
+                        },
+                        "required": ["file_path"],
+                        "additionalProperties": False,
+                    },
+                ),
+                Tool(
+                    name="extract_code_section",
+                    description="✂️ STEP 3: Extract specific code sections by line range. Use AFTER analyze_code_structure to get exact code from structure table line positions. Returns: precise code content without reading entire file.",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "file_path": {
+                                "type": "string",
+                                "description": "Path to the code file to read (REQUIRED - use exact file path)",
+                            },
+                            "start_line": {
+                                "type": "integer",
+                                "description": "Starting line number (REQUIRED - 1-based, get from structure table)",
+                                "minimum": 1,
+                            },
+                            "end_line": {
+                                "type": "integer",
+                                "description": "Ending line number (optional - 1-based, reads to end if not specified)",
+                                "minimum": 1,
+                            },
+                            "start_column": {
+                                "type": "integer",
+                                "description": "Starting column number (optional - 0-based)",
+                                "minimum": 0,
+                            },
+                            "end_column": {
+                                "type": "integer",
+                                "description": "Ending column number (optional - 0-based)",
+                                "minimum": 0,
+                            },
+                            "format": {
+                                "type": "string",
+                                "description": "Output format for the content (default: 'text')",
+                                "enum": ["text", "json"],
+                                "default": "text",
+                            },
+                        },
+                        "required": ["file_path", "start_line"],
+                        "additionalProperties": False,
+                    },
+                ),
             ]
-
-            # Add tools from tool classes - FIXED VERSION
-            for tool_instance in [
-                self.read_partial_tool,
-                self.table_format_tool,
-                self.universal_analyze_tool,
-            ]:
-                tool_def = tool_instance.get_tool_definition()
-                if isinstance(tool_def, dict):
-                    # Convert dict to Tool object
-                    tools.append(Tool(**tool_def))
-                else:
-                    # Already a Tool object
-                    tools.append(tool_def)
 
             return tools
 
@@ -202,7 +350,9 @@ class TreeSitterAnalyzerMCPServer:
                         # Basic sanitization for string inputs
                         sanitized_value = self.security_validator.sanitize_input(value, max_length=10000)
                         arguments[key] = sanitized_value
-                if sanitized_name == "analyze_code_scale":
+
+                # Handle tool calls with unified naming (only new names)
+                if sanitized_name == "check_code_scale":
                     result = await self._analyze_code_scale(arguments)
                     return [
                         TextContent(
@@ -210,15 +360,7 @@ class TreeSitterAnalyzerMCPServer:
                             text=json.dumps(result, indent=2, ensure_ascii=False),
                         )
                     ]
-                elif sanitized_name == "read_code_partial":
-                    result = await self.read_partial_tool.execute(arguments)
-                    return [
-                        TextContent(
-                            type="text",
-                            text=json.dumps(result, indent=2, ensure_ascii=False),
-                        )
-                    ]
-                elif sanitized_name == "format_table":
+                elif sanitized_name == "analyze_code_structure":
                     result = await self.table_format_tool.execute(arguments)
                     return [
                         TextContent(
@@ -226,8 +368,8 @@ class TreeSitterAnalyzerMCPServer:
                             text=json.dumps(result, indent=2, ensure_ascii=False),
                         )
                     ]
-                elif sanitized_name == "analyze_code_universal":
-                    result = await self.universal_analyze_tool.execute(arguments)
+                elif sanitized_name == "extract_code_section":
+                    result = await self.read_partial_tool.execute(arguments)
                     return [
                         TextContent(
                             type="text",
@@ -235,7 +377,7 @@ class TreeSitterAnalyzerMCPServer:
                         )
                     ]
                 else:
-                    raise ValueError(f"Unknown tool: {name}")
+                    raise ValueError(f"Unknown tool: {name}. Available tools: check_code_scale, analyze_code_structure, extract_code_section")
 
             except Exception as e:
                 try:

@@ -156,27 +156,48 @@ class TestAnalyzeCodeScale:
     @patch("tree_sitter_analyzer.mcp.server.setup_logger")
     def test_analyze_code_scale_method(self, mock_logger, mock_engine):
         """Test _analyze_code_scale method."""
+        # Mock dependencies
         mock_engine.return_value = Mock()
         mock_logger.return_value = Mock()
 
         server = TreeSitterAnalyzerMCPServer()
 
-        # Mock the universal_analyze_tool
-        server.universal_analyze_tool.execute = AsyncMock(
-            return_value={"success": True}
-        )
+        # Mock the analysis engine and file operations
+        mock_result = Mock()
+        mock_result.success = True
+        mock_result.to_dict.return_value = {
+            "elements": [
+                {"__class__": "Class", "name": "TestClass"},
+                {"__class__": "Function", "name": "test_method"}
+            ],
+            "line_count": 50
+        }
+        server.analysis_engine.analyze = AsyncMock(return_value=mock_result)
 
-        import asyncio
+        # Mock file existence and language detection
+        with patch("pathlib.Path") as mock_path, \
+             patch("tree_sitter_analyzer.language_detector.detect_language_from_file") as mock_detect_lang:
 
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            result = loop.run_until_complete(
-                server._analyze_code_scale({"file_path": "test.py"})
-            )
-            assert result == {"success": True}
-        finally:
-            loop.close()
+            mock_path_instance = Mock()
+            mock_path_instance.exists.return_value = True
+            mock_path.return_value = mock_path_instance
+            mock_detect_lang.return_value = "python"
+
+            import asyncio
+
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                result = loop.run_until_complete(
+                    server._analyze_code_scale({"file_path": "test.py"})
+                )
+                # Check the new format
+                assert "metrics" in result
+                assert "elements" in result["metrics"]
+                assert result["metrics"]["elements"]["classes"] == 1
+                assert result["metrics"]["elements"]["methods"] == 1
+            finally:
+                loop.close()
 
 
 class TestMainFunction:
@@ -236,9 +257,10 @@ class TestToolsAndResources:
 
         server = TreeSitterAnalyzerMCPServer()
 
-        assert server.read_partial_tool is not None
-        assert server.universal_analyze_tool is not None
-        assert server.table_format_tool is not None
+        # Test that the three core tools are initialized
+        assert server.read_partial_tool is not None  # extract_code_section
+        assert server.table_format_tool is not None  # analyze_code_structure
+        assert server.analysis_engine is not None    # used by check_code_scale
 
     @patch("tree_sitter_analyzer.mcp.server.MCP_AVAILABLE", True)
     @patch("tree_sitter_analyzer.mcp.server.get_analysis_engine")
