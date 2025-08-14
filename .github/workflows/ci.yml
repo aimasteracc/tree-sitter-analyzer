@@ -27,7 +27,7 @@ jobs:
 
     - name: Install dependencies
       run: |
-        uv sync --extra all --extra mcp
+        uv sync --extra full
 
     - name: Run quality checks
       run: |
@@ -67,7 +67,7 @@ jobs:
 
     - name: Install dependencies
       run: |
-        uv sync --extra all --extra mcp
+        uv sync --extra full
 
     - name: Run tests
       run: |
@@ -94,7 +94,7 @@ jobs:
 
     - name: Install dependencies
       run: |
-        uv sync --extra all --extra mcp
+        uv sync --extra full
 
     - name: Run security checks
       run: |
@@ -118,7 +118,7 @@ jobs:
 
     - name: Install dependencies
       run: |
-        uv sync --extra all --extra mcp
+        uv sync --extra full
 
     - name: Check README commands
       run: |
@@ -145,6 +145,10 @@ jobs:
 
     - name: Set up Python
       run: uv python install 3.11
+
+    - name: Install build dependencies
+      run: |
+        uv sync --extra dev
 
     - name: Build package
       run: |
