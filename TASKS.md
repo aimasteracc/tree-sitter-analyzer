@@ -9,6 +9,7 @@
 - [x] All tests green: 1358/1358
 - [x] Update CHANGELOG.md (0.9.2)
 - [ ] Create RELEASE_NOTES_v0.9.2.md
+- [x] Create RELEASE_NOTES_v0.9.2.md
 - [ ] Commit with UTF-8 console; resolve Bandit output encoding on Windows
 - [ ] Tag v0.9.2 and push to GitHub
 - [ ] Build and publish to PyPI via upload_to_pypi.py
