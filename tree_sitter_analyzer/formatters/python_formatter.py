@@ -9,20 +9,20 @@ from .base_formatter import BaseTableFormatter
 
 
 class PythonTableFormatter(BaseTableFormatter):
-    """Python言語専用のテーブルフォーマッター"""
+    """Table formatter specialized for Python"""
 
     def _format_full_table(self, data: dict[str, Any]) -> str:
-        """Python用完全版テーブル形式"""
+        """Full table format for Python"""
         lines = []
 
-        # ヘッダー - Python用（複数クラス対応）
+        # Header - Python (multi-class supported)
         classes = data.get("classes", [])
         if len(classes) > 1:
-            # 複数クラスがある場合はファイル名を使用
+            # If multiple classes exist, use filename
             file_name = data.get("file_path", "Unknown").split("/")[-1].split("\\")[-1]
             lines.append(f"# {file_name}")
         else:
-            # 単一クラスの場合はクラス名を使用
+            # Single class: use class name
             class_name = classes[0].get("name", "Unknown") if classes else "Unknown"
             lines.append(f"# {class_name}")
         lines.append("")
@@ -37,7 +37,7 @@ class PythonTableFormatter(BaseTableFormatter):
             lines.append("```")
             lines.append("")
 
-        # Classes - Python用（複数クラス対応）
+        # Classes - Python (multi-class aware)
         if len(classes) > 1:
             lines.append("## Classes")
             lines.append("| Class | Type | Visibility | Lines | Methods | Fields |")
@@ -50,7 +50,7 @@ class PythonTableFormatter(BaseTableFormatter):
                 line_range = class_info.get("line_range", {})
                 lines_str = f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
 
-                # このクラスのメソッド数とフィールド数を計算
+                # Count methods/fields within the class range
                 class_methods = [
                     m
                     for m in data.get("methods", [])
@@ -70,7 +70,7 @@ class PythonTableFormatter(BaseTableFormatter):
                     f"| {name} | {class_type} | {visibility} | {lines_str} | {len(class_methods)} | {len(class_fields)} |"
                 )
         else:
-            # 単一クラスの場合
+            # Single class details
             lines.append("## Class Info")
             lines.append("| Property | Value |")
             lines.append("|----------|-------|")
@@ -112,7 +112,7 @@ class PythonTableFormatter(BaseTableFormatter):
                 )
             lines.append("")
 
-        # Methods - Python用（コンストラクタ分離なし）
+        # Methods - Python (no constructor separation)
         methods = data.get("methods", [])
         if methods:
             lines.append("## Methods")
@@ -123,17 +123,17 @@ class PythonTableFormatter(BaseTableFormatter):
                 lines.append(self._format_method_row(method))
             lines.append("")
 
-        # 末尾の空行を削除
+        # Trim trailing blank lines
         while lines and lines[-1] == "":
             lines.pop()
 
         return "\n".join(lines)
 
     def _format_compact_table(self, data: dict[str, Any]) -> str:
-        """Python用コンパクト版テーブル形式"""
+        """Compact table format for Python"""
         lines = []
 
-        # ヘッダー
+        # Header
         classes = data.get("classes", [])
         if len(classes) > 1:
             file_name = data.get("file_path", "Unknown").split("/")[-1].split("\\")[-1]
@@ -143,7 +143,7 @@ class PythonTableFormatter(BaseTableFormatter):
             lines.append(f"# {class_name}")
         lines.append("")
 
-        # 基本情報
+        # Info
         stats = data.get("statistics") or {}
         lines.append("## Info")
         lines.append("| Property | Value |")
@@ -153,7 +153,7 @@ class PythonTableFormatter(BaseTableFormatter):
         lines.append(f"| Fields | {stats.get('field_count', 0)} |")
         lines.append("")
 
-        # メソッド（簡略版）
+        # Methods (compact)
         methods = data.get("methods", [])
         if methods:
             lines.append("## Methods")
@@ -176,20 +176,20 @@ class PythonTableFormatter(BaseTableFormatter):
                 )
             lines.append("")
 
-        # 末尾の空行を削除
+        # Trim trailing blank lines
         while lines and lines[-1] == "":
             lines.pop()
 
         return "\n".join(lines)
 
     def _format_method_row(self, method: dict[str, Any]) -> str:
-        """Python用メソッド行のフォーマット"""
+        """Format a method table row for Python"""
         name = str(method.get("name", ""))
         signature = self._create_full_signature(method)
         visibility = self._convert_visibility(str(method.get("visibility", "")))
         line_range = method.get("line_range", {})
         lines_str = f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
-        cols_str = "5-6"  # デフォルト値
+        cols_str = "5-6"  # default placeholder
         complexity = method.get("complexity_score", 0)
         doc = self._clean_csv_text(
             self._extract_doc_summary(str(method.get("javadoc", "")))
@@ -198,7 +198,7 @@ class PythonTableFormatter(BaseTableFormatter):
         return f"| {name} | {signature} | {visibility} | {lines_str} | {cols_str} | {complexity} | {doc} |"
 
     def _create_compact_signature(self, method: dict[str, Any]) -> str:
-        """Python用コンパクトなメソッドシグネチャを作成"""
+        """Create compact method signature for Python"""
         params = method.get("parameters", [])
         param_types = []
 
@@ -214,7 +214,7 @@ class PythonTableFormatter(BaseTableFormatter):
         return f"({params_str}):{return_type}"
 
     def _shorten_type(self, type_name: Any) -> str:
-        """Python用型名を短縮"""
+        """Shorten type name for Python tables"""
         if type_name is None:
             return "Any"
 

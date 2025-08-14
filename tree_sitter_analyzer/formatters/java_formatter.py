@@ -9,22 +9,22 @@ from .base_formatter import BaseTableFormatter
 
 
 class JavaTableFormatter(BaseTableFormatter):
-    """Java言語専用のテーブルフォーマッター"""
+    """Table formatter specialized for Java"""
 
     def _format_full_table(self, data: dict[str, Any]) -> str:
-        """Java用完全版テーブル形式"""
+        """Full table format for Java"""
         lines = []
 
-        # ヘッダー - Java用（複数クラス対応）
+        # Header - Java (multi-class supported)
         classes = data.get("classes", [])
         package_name = (data.get("package") or {}).get("name", "unknown")
 
         if len(classes) > 1:
-            # 複数クラスがある場合はファイル名を使用
+            # If multiple classes exist, use filename
             file_name = data.get("file_path", "Unknown").split("/")[-1].split("\\")[-1]
             lines.append(f"# {package_name}.{file_name}")
         else:
-            # 単一クラスの場合は従来通り
+            # Single class: use class name
             class_name = classes[0].get("name", "Unknown") if classes else "Unknown"
             lines.append(f"# {package_name}.{class_name}")
         lines.append("")
@@ -39,7 +39,7 @@ class JavaTableFormatter(BaseTableFormatter):
             lines.append("```")
             lines.append("")
 
-        # Class Info - Java用（複数クラス対応）
+        # Class Info - Java (multi-class aware)
         if len(classes) > 1:
             lines.append("## Classes")
             lines.append("| Class | Type | Visibility | Lines | Methods | Fields |")
@@ -52,7 +52,7 @@ class JavaTableFormatter(BaseTableFormatter):
                 line_range = class_info.get("line_range", {})
                 lines_str = f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
 
-                # このクラスのメソッド数とフィールド数を計算
+                # Count methods/fields within the class range
                 class_methods = [
                     m
                     for m in data.get("methods", [])
@@ -72,7 +72,7 @@ class JavaTableFormatter(BaseTableFormatter):
                     f"| {name} | {class_type} | {visibility} | {lines_str} | {len(class_methods)} | {len(class_fields)} |"
                 )
         else:
-            # 単一クラスの場合は従来通り
+            # Single class details
             lines.append("## Class Info")
             lines.append("| Property | Value |")
             lines.append("|----------|-------|")
@@ -159,24 +159,24 @@ class JavaTableFormatter(BaseTableFormatter):
                 lines.append(self._format_method_row(method))
             lines.append("")
 
-        # 末尾の空行を削除
+        # Trim trailing blank lines
         while lines and lines[-1] == "":
             lines.pop()
 
         return "\n".join(lines)
 
     def _format_compact_table(self, data: dict[str, Any]) -> str:
-        """Java用コンパクト版テーブル形式"""
+        """Compact table format for Java"""
         lines = []
 
-        # ヘッダー
+        # Header
         package_name = (data.get("package") or {}).get("name", "unknown")
         classes = data.get("classes", [])
         class_name = classes[0].get("name", "Unknown") if classes else "Unknown"
         lines.append(f"# {package_name}.{class_name}")
         lines.append("")
 
-        # 基本情報
+        # Info
         stats = data.get("statistics") or {}
         lines.append("## Info")
         lines.append("| Property | Value |")
@@ -186,7 +186,7 @@ class JavaTableFormatter(BaseTableFormatter):
         lines.append(f"| Fields | {stats.get('field_count', 0)} |")
         lines.append("")
 
-        # メソッド（簡略版）
+        # Methods (compact)
         methods = data.get("methods", [])
         if methods:
             lines.append("## Methods")
@@ -209,20 +209,20 @@ class JavaTableFormatter(BaseTableFormatter):
                 )
             lines.append("")
 
-        # 末尾の空行を削除
+        # Trim trailing blank lines
         while lines and lines[-1] == "":
             lines.pop()
 
         return "\n".join(lines)
 
     def _format_method_row(self, method: dict[str, Any]) -> str:
-        """Java用メソッド行のフォーマット"""
+        """Format a method table row for Java"""
         name = str(method.get("name", ""))
         signature = self._create_full_signature(method)
         visibility = self._convert_visibility(str(method.get("visibility", "")))
         line_range = method.get("line_range", {})
         lines_str = f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
-        cols_str = "5-6"  # デフォルト値
+        cols_str = "5-6"  # default placeholder
         complexity = method.get("complexity_score", 0)
         doc = self._clean_csv_text(
             self._extract_doc_summary(str(method.get("javadoc", "")))
@@ -231,7 +231,7 @@ class JavaTableFormatter(BaseTableFormatter):
         return f"| {name} | {signature} | {visibility} | {lines_str} | {cols_str} | {complexity} | {doc} |"
 
     def _create_compact_signature(self, method: dict[str, Any]) -> str:
-        """Java用コンパクトなメソッドシグネチャを作成"""
+        """Create compact method signature for Java"""
         params = method.get("parameters", [])
         param_types = [
             self._shorten_type(p.get("type", "O") if isinstance(p, dict) else str(p))
@@ -243,7 +243,7 @@ class JavaTableFormatter(BaseTableFormatter):
         return f"({params_str}):{return_type}"
 
     def _shorten_type(self, type_name: Any) -> str:
-        """Java用型名を短縮"""
+        """Shorten type name for Java tables"""
         if type_name is None:
             return "O"
 

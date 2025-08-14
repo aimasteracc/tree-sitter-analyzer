@@ -11,9 +11,9 @@ from typing import Any
 
 
 class LanguageDetector:
-    """プログラミング言語の自動判定システム"""
+    """Automatic programming language detector"""
 
-    # 基本的な拡張子マッピング
+    # Basic extension mapping
     EXTENSION_MAPPING: dict[str, str] = {
         # Java系
         ".java": "java",
@@ -36,7 +36,7 @@ class LanguageDetector:
         ".cpp": "cpp",
         ".cxx": "cpp",
         ".cc": "cpp",
-        ".h": "c",  # 曖昧性あり
+        ".h": "c",  # Ambiguous
         ".hpp": "cpp",
         ".hxx": "cpp",
         # その他の言語
@@ -56,12 +56,12 @@ class LanguageDetector:
         ".lua": "lua",
         ".pl": "perl",
         ".r": "r",
-        ".m": "objc",  # 曖昧性あり（MATLABとも）
+        ".m": "objc",  # Ambiguous (MATLAB as well)
         ".dart": "dart",
         ".elm": "elm",
     }
 
-    # 曖昧な拡張子（複数言語に対応）
+    # Ambiguous extensions (map to multiple languages)
     AMBIGUOUS_EXTENSIONS: dict[str, list[str]] = {
         ".h": ["c", "cpp", "objc"],
         ".m": ["objc", "matlab"],
@@ -70,7 +70,7 @@ class LanguageDetector:
         ".json": ["json", "jsonc"],
     }
 
-    # コンテンツベース判定のキーワード
+    # Content-based detection patterns
     CONTENT_PATTERNS: dict[str, dict[str, list[str]]] = {
         "c_vs_cpp": {
             "cpp": ["#include <iostream>", "std::", "namespace", "class ", "template<"],
@@ -82,7 +82,7 @@ class LanguageDetector:
         },
     }
 
-    # Tree-sitter対応言語（現在サポート済み）
+    # Tree-sitter supported languages
     SUPPORTED_LANGUAGES = {
         "java",
         "javascript",
@@ -95,7 +95,7 @@ class LanguageDetector:
     }
 
     def __init__(self) -> None:
-        """言語検出器を初期化"""
+        """Initialize detector"""
         self.extension_map = {
             ".java": ("java", 0.9),
             ".js": ("javascript", 0.9),
@@ -192,139 +192,139 @@ class LanguageDetector:
         path = Path(file_path)
         extension = path.suffix.lower()
 
-        # 直接マッピングで判定できる場合
+        # Direct mapping by extension
         if extension in self.EXTENSION_MAPPING:
             language = self.EXTENSION_MAPPING[extension]
 
-            # 曖昧性がない場合は高信頼度
+            # No ambiguity -> high confidence
             if extension not in self.AMBIGUOUS_EXTENSIONS:
                 return language, 1.0
 
-            # 曖昧性がある場合はコンテンツベース判定
+            # Resolve ambiguity using content
             if content:
                 refined_language = self._resolve_ambiguity(extension, content)
                 return refined_language, 0.9 if refined_language != language else 0.7
             else:
-                return language, 0.7  # コンテンツなしなので信頼度低下
+                return language, 0.7  # Lower confidence without content
 
-        # 拡張子が不明な場合
+        # Unknown extension
         return "unknown", 0.0
 
     def detect_from_extension(self, file_path: str) -> str:
         """
-        ファイル拡張子のみから言語を簡易判定
+        Quick detection using extension only
 
         Args:
-            file_path: ファイルパス
+            file_path: File path
 
         Returns:
-            判定された言語名
+            Detected language name
         """
         language, _ = self.detect_language(file_path)
         return language
 
     def is_supported(self, language: str) -> bool:
         """
-        指定された言語がTree-sitterでサポートされているか確認
+        Check if language is supported by Tree-sitter
 
         Args:
-            language: 言語名
+            language: Language name
 
         Returns:
-            サポート状況
+            Support status
         """
         return language in self.SUPPORTED_LANGUAGES
 
     def get_supported_extensions(self) -> list[str]:
         """
-        サポートされている拡張子一覧を取得
+        Get list of supported extensions
 
         Returns:
-            拡張子のリスト
+            List of extensions
         """
         return sorted(self.EXTENSION_MAPPING.keys())
 
     def get_supported_languages(self) -> list[str]:
         """
-        サポートされている言語一覧を取得
+        Get list of supported languages
 
         Returns:
-            言語のリスト
+            List of languages
         """
         return sorted(self.SUPPORTED_LANGUAGES)
 
     def _resolve_ambiguity(self, extension: str, content: str) -> str:
         """
-        曖昧な拡張子をコンテンツベースで解決
+        Resolve ambiguous extension using content
 
         Args:
-            extension: ファイル拡張子
-            content: ファイルコンテンツ
+            extension: File extension
+            content: File content
 
         Returns:
-            解決された言語名
+            Resolved language name
         """
         if extension not in self.AMBIGUOUS_EXTENSIONS:
             return self.EXTENSION_MAPPING.get(extension, "unknown")
 
         candidates = self.AMBIGUOUS_EXTENSIONS[extension]
 
-        # .h ファイルの場合（C vs C++ vs Objective-C）
+        # .h: C vs C++ vs Objective-C
         if extension == ".h":
             return self._detect_c_family(content, candidates)
 
-        # .m ファイルの場合（Objective-C vs MATLAB）
+        # .m: Objective-C vs MATLAB
         elif extension == ".m":
             return self._detect_objc_vs_matlab(content, candidates)
 
-        # デフォルトは最初の候補
+        # Fallback to first candidate
         return candidates[0]
 
     def _detect_c_family(self, content: str, candidates: list[str]) -> str:
-        """C系言語の判定"""
+        """Detect among C-family languages"""
         cpp_score = 0
         c_score = 0
         objc_score = 0
 
-        # C++の特徴
+        # C++ features
         cpp_patterns = self.CONTENT_PATTERNS["c_vs_cpp"]["cpp"]
         for pattern in cpp_patterns:
             if pattern in content:
                 cpp_score += 1
 
-        # Cの特徴
+        # C features
         c_patterns = self.CONTENT_PATTERNS["c_vs_cpp"]["c"]
         for pattern in c_patterns:
             if pattern in content:
                 c_score += 1
 
-        # Objective-Cの特徴
+        # Objective-C features
         objc_patterns = self.CONTENT_PATTERNS["objc_vs_matlab"]["objc"]
         for pattern in objc_patterns:
             if pattern in content:
                 objc_score += 3  # 強い指標なので重み大
 
-        # 最高スコアの言語を選択
+        # Select best-scoring language
         scores = {"cpp": cpp_score, "c": c_score, "objc": objc_score}
         best_language = max(scores, key=lambda x: scores[x])
 
-        # objcが候補にない場合は除外
+        # If objc not a candidate, fallback to C/C++
         if best_language == "objc" and "objc" not in candidates:
             best_language = "cpp" if cpp_score > c_score else "c"
 
         return best_language if scores[best_language] > 0 else candidates[0]
 
     def _detect_objc_vs_matlab(self, content: str, candidates: list[str]) -> str:
-        """Objective-C vs MATLAB の判定"""
+        """Detect between Objective-C and MATLAB"""
         objc_score = 0
         matlab_score = 0
 
-        # Objective-Cパターン
+        # Objective-C patterns
         for pattern in self.CONTENT_PATTERNS["objc_vs_matlab"]["objc"]:
             if pattern in content:
                 objc_score += 1
 
-        # MATLABパターン
+        # MATLAB patterns
         for pattern in self.CONTENT_PATTERNS["objc_vs_matlab"]["matlab"]:
             if pattern in content:
                 matlab_score += 1
@@ -334,27 +334,27 @@ class LanguageDetector:
         elif matlab_score > objc_score:
             return "matlab"
         else:
-            return candidates[0]  # デフォルト
+            return candidates[0]  # default
 
     def add_extension_mapping(self, extension: str, language: str) -> None:
         """
-        カスタム拡張子マッピングを追加
+        Add custom extension mapping
 
         Args:
-            extension: ファイル拡張子（.付き）
-            language: 言語名
+            extension: File extension (with dot)
+            language: Language name
         """
         self.EXTENSION_MAPPING[extension.lower()] = language
 
     def get_language_info(self, language: str) -> dict[str, Any]:
         """
-        言語の詳細情報を取得
+        Get language information
 
         Args:
-            language: 言語名
+            language: Language name
 
         Returns:
-            言語情報の辞書
+            Language info dictionary
         """
         extensions = [
             ext for ext, lang in self.EXTENSION_MAPPING.items() if lang == language
@@ -368,31 +368,31 @@ class LanguageDetector:
         }
 
 
-# グローバルインスタンス
+# Global instance
 detector = LanguageDetector()
 
 
 def detect_language_from_file(file_path: str) -> str:
     """
-    ファイルパスから言語を自動判定（シンプルAPI）
+    Detect language from path (simple API)
 
     Args:
-        file_path: ファイルパス
+        file_path: File path
 
     Returns:
-        判定された言語名
+        Detected language name
     """
     return detector.detect_from_extension(file_path)
 
 
 def is_language_supported(language: str) -> bool:
     """
-    言語がサポートされているか確認（シンプルAPI）
+    Check if language is supported (simple API)
 
     Args:
-        language: 言語名
+        language: Language name
 
     Returns:
-        サポート状況
+        Support status
     """
     return detector.is_supported(language)
