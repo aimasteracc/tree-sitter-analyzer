@@ -33,13 +33,26 @@ def setup_logger(
     logger = logging.getLogger(name)
 
     if not logger.handlers:  # Avoid duplicate handlers
-        # Create a safe handler that won't fail on closed streams
-        handler = SafeStreamHandler(sys.stdout)
+        # Create a safe handler that writes to stderr to avoid breaking MCP stdio
+        handler = SafeStreamHandler()
         formatter = logging.Formatter(
             "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
         )
         handler.setFormatter(formatter)
         logger.addHandler(handler)
+
+        # Also log to a local file for debugging when launched by clients (e.g., Cursor)
+        # This helps diagnose cases where stdio is captured by the client and logs are hidden.
+        try:
+            file_handler = logging.FileHandler(
+                "cursor_mcp_server.log", encoding="utf-8"
+            )
+            file_handler.setFormatter(formatter)
+            logger.addHandler(file_handler)
+        except Exception:
+            # Never let logging configuration break runtime behavior
+            pass
+
         logger.setLevel(level)
 
     return logger
@@ -49,6 +62,10 @@ class SafeStreamHandler(logging.StreamHandler):
     """
     A StreamHandler that safely handles closed streams
     """
+
+    def __init__(self, stream=None):
+        # Default to sys.stderr to keep stdout clean for MCP stdio
+        super().__init__(stream if stream is not None else sys.stderr)
 
     def emit(self, record: Any) -> None:
         """

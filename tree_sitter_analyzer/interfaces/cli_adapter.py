@@ -106,7 +106,7 @@ class CLIAdapter:
                 format_type=kwargs.get("format_type", "standard"),
             )
 
-            # 非同期エンジンを同期的に実行
+            # Run async engine synchronously
             result = asyncio.run(self._engine.analyze(request))
 
             # パフォーマンスログ
@@ -121,21 +121,22 @@ class CLIAdapter:
 
     def analyze_structure(self, file_path: str, **kwargs: Any) -> dict[str, Any]:
         """
-        構造解析（既存API互換）
+        Structure analysis (legacy API compatible)
 
-        既存のCLI APIとの互換性を保つため、構造情報を辞書形式で返します。
+        Returns structure info as a dictionary to keep compatibility with
+        existing CLI API.
 
         Args:
-            file_path: 解析対象ファイルのパス
-            **kwargs: 解析オプション
+            file_path: Path to the file to analyze
+            **kwargs: Analysis options
 
         Returns:
-            Dict[str, Any]: 構造情報の辞書
-                - file_path: ファイルパス
-                - classes: クラス情報のリスト
-                - methods: メソッド情報のリスト
-                - fields: フィールド情報のリスト
-                - imports: インポート情報のリスト
+            Dict[str, Any]: Structure dictionary
+                - file_path
+                - classes
+                - methods
+                - fields
+                - imports
 
         Example:
             >>> adapter = CLIAdapter()
@@ -188,14 +189,14 @@ class CLIAdapter:
         self, file_paths: list[str], **kwargs: Any
     ) -> list[AnalysisResult]:
         """
-        複数ファイルの一括解析
+        Analyze multiple files in batch
 
         Args:
-            file_paths: 解析対象ファイルパスのリスト
-            **kwargs: 解析オプション
+            file_paths: List of file paths
+            **kwargs: Analysis options
 
         Returns:
-            list[AnalysisResult]: 解析結果のリスト
+            list[AnalysisResult]: List of results
 
         Example:
             >>> adapter = CLIAdapter()
@@ -210,7 +211,7 @@ class CLIAdapter:
                 results.append(result)
             except Exception as e:
                 logger.warning(f"Failed to analyze {file_path}: {e}")
-                # エラーの場合も結果に含める（失敗情報付き）
+                # Include failed item with error message
                 error_result = AnalysisResult(
                     file_path=file_path,
                     package=None,
@@ -229,10 +230,10 @@ class CLIAdapter:
 
     def get_supported_languages(self) -> list[str]:
         """
-        サポートされている言語のリストを取得
+        Get list of supported languages
 
         Returns:
-            list[str]: サポート言語のリスト
+            list[str]
 
         Example:
             >>> adapter = CLIAdapter()
@@ -243,7 +244,7 @@ class CLIAdapter:
 
     def clear_cache(self) -> None:
         """
-        キャッシュをクリア
+        Clear cache
 
         Example:
             >>> adapter = CLIAdapter()
@@ -254,10 +255,10 @@ class CLIAdapter:
 
     def get_cache_stats(self) -> dict[str, Any]:
         """
-        キャッシュ統計情報を取得
+        Get cache statistics
 
         Returns:
-            Dict[str, Any]: キャッシュ統計情報
+            Dict[str, Any]
 
         Example:
             >>> adapter = CLIAdapter()
@@ -268,13 +269,13 @@ class CLIAdapter:
 
     def validate_file(self, file_path: str) -> bool:
         """
-        ファイルが解析可能かどうかを検証
+        Validate whether a file is analyzable
 
         Args:
-            file_path: 検証対象ファイルのパス
+            file_path: File path to validate
 
         Returns:
-            bool: 解析可能な場合True
+            bool
 
         Example:
             >>> adapter = CLIAdapter()
@@ -314,10 +315,10 @@ class CLIAdapter:
 
     def get_engine_info(self) -> dict[str, Any]:
         """
-        エンジン情報を取得
+        Get engine information
 
         Returns:
-            Dict[str, Any]: エンジン情報
+            Dict[str, Any]
 
         Example:
             >>> adapter = CLIAdapter()

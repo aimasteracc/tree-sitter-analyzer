@@ -4,6 +4,8 @@ PyPI Upload Script
 Script for safely uploading tree-sitter-analyzer to PyPI
 """
 
+import argparse
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -114,10 +116,19 @@ def upload_to_pypi():
     print("Note: You need to have PyPI credentials configured")
     print("Visit: https://pypi.org/account/register/")
 
-    confirm = input("Are you sure you want to upload to production PyPI? (yes/no): ")
-    if confirm.lower() != "yes":
-        print("Upload cancelled")
-        return False
+    # Allow non-interactive mode via env var
+    auto_yes = os.environ.get("PYPI_UPLOAD_AUTO_YES", "").lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+    if not auto_yes:
+        confirm = input(
+            "Are you sure you want to upload to production PyPI? (yes/no): "
+        )
+        if confirm.lower() != "yes":
+            print("Upload cancelled")
+            return False
 
     try:
         subprocess.check_call([sys.executable, "-m", "twine", "upload", "dist/*"])
@@ -132,6 +143,22 @@ def upload_to_pypi():
 
 def main():
     """Main processing"""
+    parser = argparse.ArgumentParser(
+        description="Upload tree-sitter-analyzer to (Test)PyPI"
+    )
+    parser.add_argument(
+        "--target",
+        choices=["pypi", "testpypi"],
+        default=None,
+        help="Upload target repository. If omitted, interactive menu is shown.",
+    )
+    parser.add_argument(
+        "--non-interactive",
+        action="store_true",
+        help="Run without prompts. For --target pypi also set PYPI_UPLOAD_AUTO_YES=1.",
+    )
+    args = parser.parse_args()
+
     print("=== PyPI Upload Tool for tree-sitter-analyzer ===")
 
     # Check required tools
@@ -148,6 +175,18 @@ def main():
     if not check_package():
         sys.exit(1)
 
+    # Non-interactive path
+    if args.target:
+        if args.target == "testpypi":
+            ok = upload_to_test_pypi()
+            sys.exit(0 if ok else 1)
+        elif args.target == "pypi":
+            if args.non_interactive:
+                os.environ["PYPI_UPLOAD_AUTO_YES"] = "1"
+            ok = upload_to_pypi()
+            sys.exit(0 if ok else 1)
+
+    # Interactive menu
     print("\n=== Upload Options ===")
     print("1. Upload to TestPyPI (recommended first)")
     print("2. Upload to production PyPI")

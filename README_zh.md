@@ -2,42 +2,44 @@
 
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-1126%20passed-brightgreen.svg)](#testing)
+[![Tests](https://img.shields.io/badge/tests-1358%20passed-brightgreen.svg)](#testing)
+[![Coverage](https://img.shields.io/badge/coverage-74.82%25-green.svg)](#testing)
+[![Quality](https://img.shields.io/badge/quality-enterprise%20grade-blue.svg)](#quality)
 
-**解决大型代码文件的LLM令牌限制问题。**
+**解决大型代码文件的 LLM Token 限制问题。**
 
-一个可扩展的多语言代码分析器，帮助AI助手理解代码结构而无需读取整个文件。获取代码概览、提取特定部分、分析复杂度——全部针对LLM工作流程进行优化。
+一个可扩展的多语言代码分析器，帮助 AI 助手在无需读取整文件的情况下理解代码结构。可获取代码概览、按行区间抽取片段、分析复杂度——全部针对 LLM 工作流优化。
 
-## ✨ 为什么选择Tree-sitter Analyzer？
+## ✨ 为什么选择 Tree-sitter Analyzer？
 
-**问题：** 大型代码文件超出LLM令牌限制，使代码分析变得低效或不可能。
+**问题：** 大型代码文件会超出 LLM Token 限制，导致分析困难。
 
 **解决方案：** 智能代码分析提供：
-- 📊 **代码概览** 无需读取完整文件
-- 🎯 **目标提取** 特定行范围
-- 📍 **精确定位** 准确的代码操作
-- 🤖 **AI助手集成** 通过MCP协议
+- 📊 **代码概览** 无需读完整文件
+- 🎯 **目标提取** 精确的行区间抽取
+- 📍 **精确定位** 便于后续代码操作
+- 🤖 **AI 助手集成** 通过 MCP 协议
 
-## 🚀 快速开始（5分钟）
+## 🚀 5 分钟快速开始
 
-### 面向AI助手用户（Claude Desktop）
+### 面向 AI 助手用户（Claude Desktop）
 
-1. **安装包：**
+1. **安装：**
 ```bash
-# 安装uv（快速Python包管理器）
+# 安装 uv（快速 Python 包管理器）
 curl -LsSf https://astral.sh/uv/install.sh | sh  # macOS/Linux
-# 或者：powershell -c "irm https://astral.sh/uv/install.ps1 | iex"  # Windows
+# 或：powershell -c "irm https://astral.sh/uv/install.ps1 | iex"  # Windows
 
-# 无需单独安装包 - uv会处理
+# 无需单独安装本包，uv 会自动处理
 ```
 
-2. **配置Claude Desktop：**
+2. **配置 Claude Desktop：**
 
-添加到您的Claude Desktop配置文件：
+将以下内容添加到设置文件：
 
-**Windows：** `%APPDATA%\Claude\claude_desktop_config.json`
-**macOS：** `~/Library/Application Support/Claude/claude_desktop_config.json`
-**Linux：** `~/.config/claude/claude_desktop_config.json`
+**Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
+**macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
+**Linux:** `~/.config/claude/claude_desktop_config.json`
 
 ```json
 {
@@ -45,11 +47,11 @@ curl -LsSf https://astral.sh/uv/install.sh | sh  # macOS/Linux
     "tree-sitter-analyzer": {
       "command": "uv",
       "args": [
-        "run", 
-        "--with", 
+        "run",
+        "--with",
         "tree-sitter-analyzer[mcp]",
-        "python", 
-        "-m", 
+        "python",
+        "-m",
         "tree_sitter_analyzer.mcp.server"
       ]
     }
@@ -57,45 +59,44 @@ curl -LsSf https://astral.sh/uv/install.sh | sh  # macOS/Linux
 }
 ```
 
-3. **重启Claude Desktop** 并开始分析代码！
+3. **重启 Claude Desktop** 开始分析代码！
 
-### 面向CLI用户
+### 面向 CLI 用户
 
 ```bash
-# 使用uv安装（推荐）
+# 使用 uv 安装（推荐）
 uv add "tree-sitter-analyzer[popular]"
 
-# 步骤1：检查文件规模
+# 步骤 1：检查文件规模
 uv run python -m tree_sitter_analyzer examples/Sample.java --advanced --output-format=text
 
-# 步骤2：分析结构（针对大文件）
+# 步骤 2：分析结构（针对大文件）
 uv run python -m tree_sitter_analyzer examples/Sample.java --table=full
 
-# 步骤3：提取特定行
+# 步骤 3：按行抽取片段
 uv run python -m tree_sitter_analyzer examples/Sample.java --partial-read --start-line 84 --end-line 86
 ```
 
 ## 🛠️ 核心功能
 
 ### 1. 代码结构分析
-获取全面概览而无需读取整个文件：
-- 类、方法、字段计数
+无需读全文件即可获取：
+- 类、方法、字段数量
 - 包信息
 - 导入依赖
 - 复杂度指标
 
-### 2. 目标代码提取
-高效提取特定代码部分：
-- 行范围提取
-- 精确定位数据
+### 2. 目标代码抽取
+高效提取指定代码区间：
+- 行范围抽取
+- 位置元数据
 - 内容长度信息
 
-### 3. AI助手集成
-为AI助手提供四个强大的MCP工具：
-- `analyze_code_scale` - 获取代码指标和复杂度
-- `analyze_code_structure` - 生成详细结构表
-- `read_code_partial` - 提取特定行范围
-- `analyze_code_universal` - 通用分析与自动检测
+### 3. AI 助手集成（MCP）
+三步工作流工具：
+- `check_code_scale` - 第一步：文件规模与复杂度
+- `analyze_code_structure` - 第二步：生成带行号的结构表
+- `extract_code_section` - 第三步：按行范围抽取代码
 
 ### 4. 多语言支持
 - **Java** - 完整支持与高级分析
@@ -105,63 +106,73 @@ uv run python -m tree_sitter_analyzer examples/Sample.java --partial-read --star
 
 ## 📖 使用示例
 
-### AI助手使用（通过Claude Desktop）
+### AI 助手（通过 Claude Desktop）
 
-**步骤1：获取代码概览：**
-> "这个Java文件examples/Sample.java的整体复杂度和大小如何？"
+**步骤 1：检查规模**
+```
+使用工具：check_code_scale
+参数：{"file_path": "examples/Sample.java"}
+```
 
-**步骤2：分析代码结构（针对大文件）：**
-> "请分析examples/Sample.java的结构并显示详细表格"
+**步骤 2：结构分析（>100 行建议执行）**
+```
+使用工具：analyze_code_structure
+参数：{"file_path": "examples/Sample.java", "format_type": "full"}
+```
 
-**步骤3：提取特定代码：**
-> "显示examples/Sample.java的第84-86行"
+**步骤 3：按行抽取（利用步骤 2 的行号）**
+```
+使用工具：extract_code_section
+参数：{"file_path": "examples/Sample.java", "start_line": 84, "end_line": 86}
+```
 
-### CLI使用
+> 注意：参数一律使用 snake_case：`file_path`, `start_line`, `end_line`, `format_type`
 
-**步骤1：基础分析（检查文件规模）：**
+### CLI 使用
+
+**步骤 1：基础分析（检查文件规模）**
 ```bash
 uv run python -m tree_sitter_analyzer examples/Sample.java --advanced --output-format=text
 ```
 
-**步骤2：结构分析（针对超出LLM限制的大文件）：**
+**步骤 2：结构分析（大文件推荐）**
 ```bash
 uv run python -m tree_sitter_analyzer examples/Sample.java --table=full
 ```
 
-**步骤3：目标提取（读取特定代码部分）：**
+**步骤 3：目标抽取（读取特定片段）**
 ```bash
 uv run python -m tree_sitter_analyzer examples/Sample.java --partial-read --start-line 84 --end-line 86
 ```
 
 **其他选项：**
 ```bash
-# 静默模式（抑制INFO消息，仅显示错误）
+# 静默模式（抑制 INFO，仅显示错误）
 uv run python -m tree_sitter_analyzer examples/Sample.java --advanced --output-format=text --quiet
 
-# 表格输出与静默模式
+# 配合静默模式输出表格
 uv run python -m tree_sitter_analyzer examples/Sample.java --table=full --quiet
 ```
 
 ## 🔧 安装选项
 
-### 面向最终用户
+### 最终用户
 ```bash
 # 基础安装
 uv add tree-sitter-analyzer
 
-# 包含流行语言（Java、Python、JS、TS）
+# 流行语言（Java、Python、JS、TS）
 uv add "tree-sitter-analyzer[popular]"
 
-# 包含MCP服务器支持
+# 启用 MCP 服务器支持
 uv add "tree-sitter-analyzer[mcp]"
 
 # 完整安装
 uv add "tree-sitter-analyzer[all,mcp]"
 ```
 
-### 面向开发者
+### 开发者
 ```bash
-# 克隆并安装用于开发
 git clone https://github.com/aimasteracc/tree-sitter-analyzer.git
 cd tree-sitter-analyzer
 uv sync --extra all --extra mcp
@@ -169,46 +180,90 @@ uv sync --extra all --extra mcp
 
 ## 📚 文档
 
-- **[用户MCP设置指南](https://github.com/aimasteracc/tree-sitter-analyzer/blob/main/MCP_SETUP_USERS.md)** - AI助手用户的简单设置
-- **[开发者MCP设置指南](https://github.com/aimasteracc/tree-sitter-analyzer/blob/main/MCP_SETUP_DEVELOPERS.md)** - 本地开发配置
-- **[API文档](https://github.com/aimasteracc/tree-sitter-analyzer/blob/main/docs/api.md)** - 详细API参考
-- **[贡献指南](https://github.com/aimasteracc/tree-sitter-analyzer/blob/main/CONTRIBUTING.md)** - 如何贡献
+- **[面向用户的 MCP 设置指南](https://github.com/aimasteracc/tree-sitter-analyzer/blob/main/MCP_SETUP_USERS.md)**
+- **[面向开发者的 MCP 设置指南](https://github.com/aimasteracc/tree-sitter-analyzer/blob/main/MCP_SETUP_DEVELOPERS.md)**
+- **[项目根目录配置](https://github.com/aimasteracc/tree-sitter-analyzer/blob/main/PROJECT_ROOT_CONFIG.md)**
+- **[API 文档](https://github.com/aimasteracc/tree-sitter-analyzer/blob/main/docs/api.md)**
+- **[贡献指南](https://github.com/aimasteracc/tree-sitter-analyzer/blob/main/CONTRIBUTING.md)**
 
-## 🧪 测试
+### 🔒 项目根目录配置
 
-本项目通过**1126个测试**维护高代码质量。
+Tree-sitter-analyzer 自动检测并加固项目边界：
 
+- 自动检测：基于 `.git`、`pyproject.toml`、`package.json` 等
+- CLI：`--project-root /path/to/project`
+- MCP：设置环境变量 `TREE_SITTER_PROJECT_ROOT=${workspaceFolder}`
+- 安全性：仅分析项目边界内的文件
+
+**推荐 MCP 配置：**
+```json
+{
+  "mcpServers": {
+    "tree-sitter-analyzer": {
+      "command": "uv",
+      "args": ["run", "--with", "tree-sitter-analyzer[mcp]", "python", "-m", "tree_sitter_analyzer.mcp.server"],
+      "env": {"TREE_SITTER_PROJECT_ROOT": "${workspaceFolder}"}
+    }
+  }
+}
+```
+
+## 🧪 测试与质量
+
+本项目保持企业级质量，测试完善：
+
+### 📊 质量指标
+- **1358 个测试** - 100% 通过 ✅
+- **74.82% 覆盖率** - 行业标准
+- **跨平台** - Windows / macOS / Linux
+
+### 🏆 最近质量成果（v0.8.2）
+- ✅ 测试套稳定化 - 修复所有 31 个失败用例
+- ✅ 格式化模块覆盖率从 0% → 42.30%
+- ✅ 错误处理覆盖率 61.64% → 82.76%
+- ✅ 新增 104 个关键模块测试
+
+### 🔧 运行测试
 ```bash
-# 运行测试
 pytest tests/ -v
 
-# 运行覆盖率测试
-pytest tests/ --cov=tree_sitter_analyzer
+pytest tests/ --cov=tree_sitter_analyzer --cov-report=html
+
+pytest tests/test_formatters_comprehensive.py -v
+pytest tests/test_core_engine_extended.py -v
+pytest tests/test_mcp_server_initialization.py -v
 ```
+
+### 📈 覆盖率亮点
+- 格式化器：42.30%
+- 错误处理：82.76%
+- 语言检测：98.41%
+- CLI 主入口：97.78%
+- 安全框架：78%+
 
 ## 📄 许可证
 
-MIT许可证 - 详见[LICENSE](LICENSE)文件。
+MIT 许可证 - 详见 [LICENSE](LICENSE)。
 
 ## 🤝 贡献
 
-我们欢迎贡献！请查看我们的[贡献指南](https://github.com/aimasteracc/tree-sitter-analyzer/blob/main/CONTRIBUTING.md)了解详情。
+欢迎贡献！请参阅我们的 [贡献指南](https://github.com/aimasteracc/tree-sitter-analyzer/blob/main/CONTRIBUTING.md)。
 
-### 🤖 AI/LLM协作
+### 🤖 AI/LLM 协作
 
-本项目支持AI辅助开发，具有专门的质量控制：
+本项目支持 AI 辅助开发并提供专门质量控制：
 
 ```bash
-# 面向AI系统 - 生成代码前运行
+# AI 系统在生成代码前执行
 python check_quality.py --new-code-only
 python llm_code_checker.py --check-all
 
-# 面向AI生成代码审查
+# AI 生成代码的审查
 python llm_code_checker.py path/to/new_file.py
 ```
 
-📖 **查看我们的[AI协作指南](https://github.com/aimasteracc/tree-sitter-analyzer/blob/main/AI_COLLABORATION_GUIDE.md)和[LLM编码指南](https://github.com/aimasteracc/tree-sitter-analyzer/blob/main/LLM_CODING_GUIDELINES.md)了解与AI系统协作的详细说明。**
+📖 参阅 [AI 协作指南](https://github.com/aimasteracc/tree-sitter-analyzer/blob/main/AI_COLLABORATION_GUIDE.md) 与 [LLM 编码规范](https://github.com/aimasteracc/tree-sitter-analyzer/blob/main/LLM_CODING_GUIDELINES.md)。
 
 ---
 
-**为处理大型代码库和AI助手的开发者用❤️制作。**
+**献给处理大型代码库与 AI 助手的开发者。**

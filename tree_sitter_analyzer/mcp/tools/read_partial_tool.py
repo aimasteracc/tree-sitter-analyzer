@@ -107,12 +107,14 @@ class ReadPartialTool:
         # Security validation
         is_valid, error_msg = self.security_validator.validate_file_path(file_path)
         if not is_valid:
-            logger.warning(f"Security validation failed for file path: {file_path} - {error_msg}")
+            logger.warning(
+                f"Security validation failed for file path: {file_path} - {error_msg}"
+            )
             raise ValueError(f"Invalid file path: {error_msg}")
 
         # Validate file exists
         if not Path(file_path).exists():
-            raise FileNotFoundError(f"File not found: {file_path}")
+            raise ValueError("Invalid file path: file does not exist")
 
         # Validate line numbers
         if start_line < 1:

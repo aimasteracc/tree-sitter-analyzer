@@ -115,7 +115,7 @@ class PerformanceMonitor:
             self._total_operations += 1
 
     def clear_metrics(self) -> None:
-        """メトリクスをクリア"""
+        """Clear collected metrics"""
         self._operation_stats.clear()
         self._total_operations = 0
         self._last_duration = 0.0
@@ -123,7 +123,7 @@ class PerformanceMonitor:
 
 
 class PerformanceContext:
-    """パフォーマンス測定コンテキスト"""
+    """Performance measurement context"""
 
     def __init__(self, operation_name: str, monitor: PerformanceMonitor) -> None:
         self.operation_name = operation_name
@@ -148,14 +148,14 @@ class PerformanceContext:
 @dataclass(frozen=True)
 class AnalysisRequest:
     """
-    解析リクエスト
+    Analysis request
 
     Attributes:
-        file_path: 解析対象ファイルパス
-        language: プログラミング言語（Noneの場合は自動検出）
-        include_complexity: 複雑度計算を含むか
-        include_details: 詳細情報を含むか
-        format_type: 出力フォーマット
+        file_path: Path to target file to analyze
+        language: Programming language (auto-detected if None)
+        include_complexity: Whether to include complexity metrics
+        include_details: Whether to include detailed structure info
+        format_type: Output format
     """
 
     file_path: str
@@ -167,13 +167,13 @@ class AnalysisRequest:
     @classmethod
     def from_mcp_arguments(cls, arguments: dict[str, Any]) -> "AnalysisRequest":
         """
-        MCP引数から解析リクエストを作成
+        Create analysis request from MCP tool arguments
 
         Args:
-            arguments: MCP引数辞書
+            arguments: MCP argument dictionary
 
         Returns:
-            解析リクエスト
+            AnalysisRequest
         """
         return cls(
             file_path=arguments.get("file_path", ""),
@@ -189,27 +189,26 @@ class AnalysisRequest:
 
 class UnifiedAnalysisEngine:
     """
-    統一解析エンジン（修正版）
+    Unified analysis engine (revised)
 
-    CLI・MCP・その他のインターフェースから共通して使用される
-    中央集権的な解析エンジン。シングルトンパターンで実装し、
-    リソースの効率的な利用とキャッシュの共有を実現。
+    Central engine shared by CLI, MCP and other interfaces, implemented as a
+    singleton to enable efficient resource usage and cache sharing.
 
-    修正点：
-    - デストラクタでの非同期処理問題を解決
-    - 明示的なクリーンアップメソッドを提供
+    Improvements:
+    - Fix async issues in destructor
+    - Provide explicit cleanup() method
 
     Attributes:
-        _cache_service: キャッシュサービス
-        _plugin_manager: プラグイン管理
-        _performance_monitor: パフォーマンス監視
+        _cache_service: Cache service
+        _plugin_manager: Plugin manager
+        _performance_monitor: Performance monitor
     """
 
     _instances: Dict[str, "UnifiedAnalysisEngine"] = {}
     _lock: threading.Lock = threading.Lock()
 
     def __new__(cls, project_root: str = None) -> "UnifiedAnalysisEngine":
-        """シングルトンパターンでインスタンス共有 (project_root aware)"""
+        """Singleton instance sharing (project_root aware)"""
         # Create a key based on project_root for different instances
         instance_key = project_root or "default"
 
@@ -224,7 +223,7 @@ class UnifiedAnalysisEngine:
         return cls._instances[instance_key]
 
     def __init__(self, project_root: str = None) -> None:
-        """初期化（一度のみ実行）"""
+        """Initialize (executed only once per instance)"""
         if hasattr(self, "_initialized") and self._initialized:
             return
 
@@ -234,7 +233,7 @@ class UnifiedAnalysisEngine:
         self._security_validator = SecurityValidator(project_root)
         self._project_root = project_root
 
-        # プラグインを自動ロード
+        # Auto-load plugins
         self._load_plugins()
 
         self._initialized = True
@@ -242,7 +241,7 @@ class UnifiedAnalysisEngine:
         log_info(f"UnifiedAnalysisEngine initialized with project root: {project_root}")
 
     def _load_plugins(self) -> None:
-        """利用可能なプラグインを自動ロード"""
+        """Auto-load available plugins"""
         log_info("Loading plugins using PluginManager...")
 
         try:
@@ -261,17 +260,17 @@ class UnifiedAnalysisEngine:
 
     async def analyze(self, request: AnalysisRequest) -> AnalysisResult:
         """
-        統一解析メソッド
+        Unified analysis method
 
         Args:
-            request: 解析リクエスト
+            request: Analysis request
 
         Returns:
-            解析結果
+            Analysis result
 
         Raises:
-            UnsupportedLanguageError: サポートされていない言語
-            FileNotFoundError: ファイルが見つからない
+            UnsupportedLanguageError: When language is not supported
+            FileNotFoundError: When file is not found
         """
         log_info(f"Starting analysis for {request.file_path}")
 
@@ -281,23 +280,23 @@ class UnifiedAnalysisEngine:
             log_error(f"Security validation failed for file path: {request.file_path} - {error_msg}")
             raise ValueError(f"Invalid file path: {error_msg}")
 
-        # キャッシュチェック（CLI・MCP間で共有）
+        # Cache check (shared across CLI/MCP)
         cache_key = self._generate_cache_key(request)
         cached_result = await self._cache_service.get(cache_key)
         if cached_result:
             log_info(f"Cache hit for {request.file_path}")
             return cached_result  # type: ignore
 
-        # 言語検出
+        # Language detection
         language = request.language or self._detect_language(request.file_path)
         log_debug(f"Detected language: {language}")
 
-        # デバッグ：登録されているプラグインを確認
+        # Debug: inspect registered plugins
         supported_languages = self._plugin_manager.get_supported_languages()
         log_debug(f"Supported languages: {supported_languages}")
         log_debug(f"Looking for plugin for language: {language}")
 
-        # プラグイン取得
+        # Get plugin
         plugin = self._plugin_manager.get_plugin(language)
         if not plugin:
             error_msg = f"Language {language} not supported"
@@ -306,7 +305,7 @@ class UnifiedAnalysisEngine:
 
         log_debug(f"Found plugin for {language}: {type(plugin)}")
 
-        # 解析実行（パフォーマンス監視付き）
+        # Run analysis (with performance monitoring)
         with self._performance_monitor.measure_operation(f"analyze_{language}"):
             log_debug(f"Calling plugin.analyze_file for {request.file_path}")
             result = await plugin.analyze_file(request.file_path, request)
@@ -314,11 +313,11 @@ class UnifiedAnalysisEngine:
                 f"Plugin returned result: success={result.success}, elements={len(result.elements) if result.elements else 0}"
             )
 
-        # 言語情報を確実に設定
+        # Ensure language field is set
         if result.language == "unknown" or not result.language:
             result.language = language
 
-        # キャッシュ保存
+        # Save to cache
         await self._cache_service.set(cache_key, result)
 
         log_performance(
@@ -355,13 +354,13 @@ class UnifiedAnalysisEngine:
 
     def _generate_cache_key(self, request: AnalysisRequest) -> str:
         """
-        キャッシュキーを生成
+        Generate cache key
 
         Args:
-            request: 解析リクエスト
+            request: Analysis request
 
         Returns:
-            ハッシュ化されたキャッシュキー
+            Hashed cache key
         """
         # 一意なキーを生成するための文字列を構築
         key_components = [
@@ -379,13 +378,13 @@ class UnifiedAnalysisEngine:
 
     def _detect_language(self, file_path: str) -> str:
         """
-        言語検出
+        Detect language from file extension
 
         Args:
-            file_path: ファイルパス
+            file_path: File path
 
         Returns:
-            検出された言語
+            Detected language name
         """
         # 簡易的な拡張子ベース検出
         import os
@@ -410,84 +409,83 @@ class UnifiedAnalysisEngine:
         return detected
 
     def clear_cache(self) -> None:
-        """キャッシュクリア（テスト用）"""
+        """Clear cache (for tests)"""
         self._cache_service.clear()
         log_info("Analysis engine cache cleared")
 
     def register_plugin(self, language: str, plugin: BaseLanguagePlugin) -> None:
         """
-        プラグインを登録
+        Register plugin
 
         Args:
-            language: 言語名（互換性のため保持、実際は使用されない）
-            plugin: 言語プラグイン
+            language: Language name (kept for compatibility, not used)
+            plugin: Language plugin instance
         """
         self._plugin_manager.register_plugin(plugin)
 
     def get_supported_languages(self) -> list[str]:
         """
-        サポートされている言語一覧を取得
+        Get list of supported languages
 
         Returns:
-            サポート言語のリスト
+            List of language names
         """
         return self._plugin_manager.get_supported_languages()
 
     def get_cache_stats(self) -> dict[str, Any]:
         """
-        キャッシュ統計を取得
+        Get cache statistics
 
         Returns:
-            キャッシュ統計情報
+            Cache statistics dictionary
         """
         return self._cache_service.get_stats()
 
     async def invalidate_cache_pattern(self, pattern: str) -> int:
         """
-        パターンに一致するキャッシュを無効化
+        Invalidate cached entries matching a pattern
 
         Args:
-            pattern: 無効化するキーのパターン
+            pattern: Pattern to match keys
 
         Returns:
-            無効化されたキー数
+            Number of invalidated keys
         """
         return await self._cache_service.invalidate_pattern(pattern)
 
     def measure_operation(self, operation_name: str) -> "PerformanceContext":
         """
-        パフォーマンス計測のためのコンテキストマネージャ
+        Context manager for performance measurement
 
         Args:
-            operation_name: 操作名
+            operation_name: Operation name
 
         Returns:
-            パフォーマンス測定コンテキスト
+            PerformanceContext
         """
         return self._performance_monitor.measure_operation(operation_name)
 
     def start_monitoring(self) -> None:
-        """パフォーマンス監視を開始"""
+        """Start performance monitoring"""
         self._performance_monitor.start_monitoring()
 
     def stop_monitoring(self) -> None:
-        """パフォーマンス監視を停止"""
+        """Stop performance monitoring"""
         self._performance_monitor.stop_monitoring()
 
     def get_operation_stats(self) -> dict[str, Any]:
-        """操作統計を取得"""
+        """Get operation statistics"""
         return self._performance_monitor.get_operation_stats()
 
     def get_performance_summary(self) -> dict[str, Any]:
-        """パフォーマンス要約を取得"""
+        """Get performance summary"""
         return self._performance_monitor.get_performance_summary()
 
     def clear_metrics(self) -> None:
         """
-        収集したパフォーマンスメトリクスをクリア
+        Clear collected performance metrics
 
-        パフォーマンス監視で収集されたメトリクスをリセットします。
-        テストやデバッグ時に使用されます。
+        Resets metrics collected by performance monitoring. Used in tests/debugging.
         """
         # 新しいパフォーマンスモニターインスタンスを作成してリセット
         self._performance_monitor = PerformanceMonitor()
@@ -495,10 +493,10 @@ class UnifiedAnalysisEngine:
 
     def cleanup(self) -> None:
         """
-        明示的なリソースクリーンアップ
+        Explicit resource cleanup
 
-        テスト終了時などに明示的に呼び出してリソースをクリーンアップします。
-        デストラクタでの非同期処理問題を避けるため、明示的な呼び出しが必要です。
+        Call explicitly (e.g., at end of tests) to clean up resources and avoid
+        async issues in destructors.
         """
         try:
             if hasattr(self, "_cache_service"):
@@ -511,11 +509,9 @@ class UnifiedAnalysisEngine:
 
     def __del__(self) -> None:
         """
-        デストラクタ - 非同期コンテキストでの問題を避けるため最小限の処理
+        Destructor - keep minimal to avoid issues in async contexts
 
-        デストラクタでは何もしません。これは非同期コンテキストでの
-        ガベージコレクション時に発生する問題を避けるためです。
-        明示的なクリーンアップはcleanup()メソッドを使用してください。
+        Performs no cleanup; use cleanup() explicitly when needed.
         """
         # デストラクタでは何もしない（非同期コンテキストでの問題を避けるため）
         pass
@@ -523,27 +519,27 @@ class UnifiedAnalysisEngine:
 
 # 簡易的なプラグイン実装（テスト用）
 class MockLanguagePlugin:
-    """テスト用のモックプラグイン"""
+    """Mock plugin for testing"""
 
     def __init__(self, language: str) -> None:
         self.language = language
 
     def get_language_name(self) -> str:
-        """言語名を取得"""
+        """Get language name"""
         return self.language
 
     def get_file_extensions(self) -> list[str]:
-        """ファイル拡張子を取得"""
+        """Get supported file extensions"""
         return [f".{self.language}"]
 
     def create_extractor(self) -> None:
-        """エクストラクタを作成（モック）"""
+        """Create extractor (mock)"""
         return None
 
     async def analyze_file(
         self, file_path: str, request: AnalysisRequest
     ) -> AnalysisResult:
-        """モック解析実装"""
+        """Mock analysis implementation"""
         log_info(f"Mock analysis for {file_path} ({self.language})")
 
         # 簡易的な解析結果を返す
@@ -569,12 +565,12 @@ class MockLanguagePlugin:
 
 def get_analysis_engine(project_root: str = None) -> UnifiedAnalysisEngine:
     """
-    統一解析エンジンのインスタンスを取得
+    Get unified analysis engine instance
 
     Args:
         project_root: Project root directory for security validation
 
     Returns:
-        統一解析エンジンのシングルトンインスタンス
+        Singleton instance of UnifiedAnalysisEngine
     """
     return UnifiedAnalysisEngine(project_root)

@@ -255,7 +255,13 @@ class AnalyzeScaleTool:
             guidance["recommended_tools"].append("read_code_partial")
 
         # Ensure all required fields exist
-        required_fields = ["complexity_hotspots", "classes", "methods", "fields", "imports"]
+        required_fields = [
+            "complexity_hotspots",
+            "classes",
+            "methods",
+            "fields",
+            "imports",
+        ]
         for field in required_fields:
             if field not in structural_overview:
                 structural_overview[field] = []
@@ -351,7 +357,9 @@ class AnalyzeScaleTool:
         # Security validation
         is_valid, error_msg = self.security_validator.validate_file_path(file_path)
         if not is_valid:
-            logger.warning(f"Security validation failed for file path: {file_path} - {error_msg}")
+            logger.warning(
+                f"Security validation failed for file path: {file_path} - {error_msg}"
+            )
             raise ValueError(f"Invalid file path: {error_msg}")
 
         # Sanitize inputs
@@ -360,7 +368,7 @@ class AnalyzeScaleTool:
 
         # Validate file exists
         if not Path(file_path).exists():
-            raise FileNotFoundError(f"File not found: {file_path}")
+            raise ValueError("Invalid file path: file does not exist")
 
         # Detect language if not specified
         if not language:

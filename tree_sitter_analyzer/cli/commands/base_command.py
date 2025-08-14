@@ -32,8 +32,8 @@ class BaseCommand(ABC):
         self.args = args
 
         # Detect project root with priority handling
-        file_path = getattr(args, 'file_path', None)
-        explicit_root = getattr(args, 'project_root', None)
+        file_path = getattr(args, "file_path", None)
+        explicit_root = getattr(args, "project_root", None)
         self.project_root = detect_project_root(file_path, explicit_root)
 
         # Initialize components with project root
@@ -47,7 +47,9 @@ class BaseCommand(ABC):
             return False
 
         # Security validation
-        is_valid, error_msg = self.security_validator.validate_file_path(self.args.file_path)
+        is_valid, error_msg = self.security_validator.validate_file_path(
+            self.args.file_path
+        )
         if not is_valid:
             output_error(f"Invalid file path: {error_msg}")
             return False
@@ -55,7 +57,7 @@ class BaseCommand(ABC):
         import os
 
         if not os.path.exists(self.args.file_path):
-            output_error(f"File not found: {self.args.file_path}")
+            output_error("Invalid file path: file does not exist")
             return False
 
         return True
@@ -64,7 +66,9 @@ class BaseCommand(ABC):
         """Detect or validate the target language."""
         if hasattr(self.args, "language") and self.args.language:
             # Sanitize language input
-            sanitized_language = self.security_validator.sanitize_input(self.args.language, max_length=50)
+            sanitized_language = self.security_validator.sanitize_input(
+                self.args.language, max_length=50
+            )
             target_language = sanitized_language.lower()
             if (not hasattr(self.args, "table") or not self.args.table) and (
                 not hasattr(self.args, "quiet") or not self.args.quiet

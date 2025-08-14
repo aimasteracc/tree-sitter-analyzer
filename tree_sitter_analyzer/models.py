@@ -139,7 +139,7 @@ class JavaAnnotation:
     raw_text: str = ""
 
     def to_summary_item(self) -> dict[str, Any]:
-        """要約アイテムとして辞書を返す"""
+        """Return dictionary for summary item"""
         return {
             "name": self.name,
             "type": "annotation",
@@ -168,7 +168,7 @@ class JavaMethod:
     file_path: str = ""
 
     def to_summary_item(self) -> dict[str, Any]:
-        """要約アイテムとして辞書を返す"""
+        """Return dictionary for summary item"""
         return {
             "name": self.name,
             "type": "method",
@@ -196,7 +196,7 @@ class JavaClass:
     file_path: str = ""
 
     def to_summary_item(self) -> dict[str, Any]:
-        """要約アイテムとして辞書を返す"""
+        """Return dictionary for summary item"""
         return {
             "name": self.name,
             "type": "class",
@@ -220,7 +220,7 @@ class JavaField:
     file_path: str = ""
 
     def to_summary_item(self) -> dict[str, Any]:
-        """要約アイテムとして辞書を返す"""
+        """Return dictionary for summary item"""
         return {
             "name": self.name,
             "type": "field",
@@ -322,11 +322,11 @@ class AnalysisResult:
 
     def to_summary_dict(self, types: list[str] | None = None) -> dict[str, Any]:
         """
-        分析結果の要約を辞書として返します。
-        指定された型（'classes', 'methods', 'fields'など）の要素のみを含みます。
+        Return analysis summary as a dictionary.
+        Only include specified element types (e.g., 'classes', 'methods', 'fields').
         """
         if types is None:
-            types = ["classes", "methods"]  # デフォルト値
+            types = ["classes", "methods"]  # default
 
         summary: dict[str, Any] = {"file_path": self.file_path, "summary_elements": []}
 
@@ -341,7 +341,7 @@ class AnalysisResult:
         for type_name, elements in all_elements.items():
             if "all" in types or type_name in types:
                 for element in elements:
-                    # 各要素モデルの to_summary_item() を呼び出し
+                    # Call each element model's to_summary_item()
                     summary["summary_elements"].append(element.to_summary_item())
 
         return summary
@@ -362,10 +362,10 @@ class AnalysisResult:
 
     def to_mcp_format(self) -> dict[str, Any]:
         """
-        MCP形式での出力を生成
+        Produce output in MCP-compatible format
 
         Returns:
-            MCP形式の分析結果辞書
+            MCP-style result dictionary
         """
         # packageの安全な処理
         package_info = None

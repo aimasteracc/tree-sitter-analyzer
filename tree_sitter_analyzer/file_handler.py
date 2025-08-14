@@ -55,7 +55,7 @@ def read_file_with_fallback(file_path: str) -> bytes | None:
     Returns:
         File content as bytes, or None if file doesn't exist
     """
-    # まずファイルの存在を確認
+    # Check file existence first
     if not os.path.exists(file_path):
         log_error(f"File does not exist: {file_path}")
         return None
@@ -80,24 +80,24 @@ def read_file_partial(
     end_column: int | None = None,
 ) -> str | None:
     """
-    指定した行番号・列番号範囲でファイルの一部を読み込み
+    Read partial file content by line/column range
 
     Args:
-        file_path: 読み込むファイルのパス
-        start_line: 開始行番号（1ベース）
-        end_line: 終了行番号（Noneの場合はファイル末尾まで、1ベース）
-        start_column: 開始列番号（0ベース、省略可）
-        end_column: 終了列番号（0ベース、省略可）
+        file_path: Path to file
+        start_line: Start line (1-based)
+        end_line: End line (1-based, None means EOF)
+        start_column: Start column (0-based, optional)
+        end_column: End column (0-based, optional)
 
     Returns:
-        指定範囲のファイル内容（文字列）、エラーの場合はNone
+        Selected content string, or None on error
     """
-    # ファイルの存在確認
+    # Check file existence
     if not os.path.exists(file_path):
         log_error(f"File does not exist: {file_path}")
         return None
 
-    # パラメータ検証
+    # Parameter validation
     if start_line < 1:
         log_error(f"Invalid start_line: {start_line}. Line numbers start from 1.")
         return None
@@ -107,38 +107,38 @@ def read_file_partial(
         return None
 
     try:
-        # ファイル全体を安全に読み込み
+        # Read whole file safely
         content, detected_encoding = read_file_safe(file_path)
 
-        # 行に分割
+        # Split to lines
         lines = content.splitlines(keepends=True)
         total_lines = len(lines)
 
-        # 行範囲の調整
-        start_idx = start_line - 1  # 0ベースに変換
+        # Adjust line indexes
+        start_idx = start_line - 1  # convert to 0-based
         end_idx = min(
             end_line - 1 if end_line is not None else total_lines - 1, total_lines - 1
         )
 
-        # 範囲チェック
+        # Range check
         if start_idx >= total_lines:
             log_warning(
                 f"start_line ({start_line}) exceeds file length ({total_lines})"
             )
             return ""
 
-        # 指定範囲の行を取得
+        # Select lines
         selected_lines = lines[start_idx : end_idx + 1]
 
-        # 列範囲の処理
+        # Handle column range
         if start_column is not None or end_column is not None:
             processed_lines = []
             for i, line in enumerate(selected_lines):
-                # 改行文字を除去して処理
+                # Strip newline for processing
                 line_content = line.rstrip("\r\n")
 
                 if i == 0 and start_column is not None:
-                    # 最初の行：開始列から
+                    # First line: apply start_column
                     line_content = (
                         line_content[start_column:]
                         if start_column < len(line_content)
@@ -146,9 +146,9 @@ def read_file_partial(
                     )
 
                 if i == len(selected_lines) - 1 and end_column is not None:
-                    # 最後の行：終了列まで
+                    # Last line: apply end_column
                     if i == 0 and start_column is not None:
-                        # 単一行の場合：開始列と終了列の両方を適用
+                        # Single line: apply both start and end columns
                         col_end = (
                             end_column - start_column
                             if end_column >= start_column
@@ -162,9 +162,9 @@ def read_file_partial(
                             else line_content
                         )
 
-                # 元の改行文字を保持（最後の行以外）
+                # Preserve original newline (except last line)
                 if i < len(selected_lines) - 1:
-                    # 元の行の改行文字を取得
+                    # Detect original newline char of the line
                     original_line = lines[start_idx + i]
                     if original_line.endswith("\r\n"):
                         line_content += "\r\n"
@@ -177,7 +177,7 @@ def read_file_partial(
 
             result = "".join(processed_lines)
         else:
-            # 列指定なしの場合は行をそのまま結合
+            # No column range: join lines directly
             result = "".join(selected_lines)
 
         log_info(

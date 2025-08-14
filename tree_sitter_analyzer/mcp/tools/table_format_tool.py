@@ -274,19 +274,26 @@ class TableFormatTool:
             # Security validation
             is_valid, error_msg = self.security_validator.validate_file_path(file_path)
             if not is_valid:
-                self.logger.warning(f"Security validation failed for file path: {file_path} - {error_msg}")
+                self.logger.warning(
+                    f"Security validation failed for file path: {file_path} - {error_msg}"
+                )
                 raise ValueError(f"Invalid file path: {error_msg}")
 
             # Sanitize format_type input
             if format_type:
-                format_type = self.security_validator.sanitize_input(format_type, max_length=50)
+                format_type = self.security_validator.sanitize_input(
+                    format_type, max_length=50
+                )
 
             # Sanitize language input
             if language:
-                language = self.security_validator.sanitize_input(language, max_length=50)
+                language = self.security_validator.sanitize_input(
+                    language, max_length=50
+                )
 
             # Validate file exists
             if not Path(file_path).exists():
+                # Tests expect FileNotFoundError here
                 raise FileNotFoundError(f"File not found: {file_path}")
 
             # Detect language if not provided

@@ -2,42 +2,44 @@
 
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-1126%20passed-brightgreen.svg)](#testing)
+[![Tests](https://img.shields.io/badge/tests-1358%20passed-brightgreen.svg)](#testing)
+[![Coverage](https://img.shields.io/badge/coverage-74.82%25-green.svg)](#testing)
+[![Quality](https://img.shields.io/badge/quality-enterprise%20grade-blue.svg)](#quality)
 
-**大型コードファイルのLLMトークン制限問題を解決。**
+**大型コードファイルの LLM トークン制限を解決します。**
 
-AI アシスタントがファイル全体を読み取ることなくコード構造を理解できる拡張可能な多言語コード解析器。コード概要の取得、特定セクションの抽出、複雑度解析 - すべてLLMワークフロー向けに最適化。
+AI アシスタントがファイル全体を読まずにコード構造を理解できる拡張可能な多言語コード解析ツール。コード概要、行範囲抽出、複雑度解析など、LLM ワークフローに最適化。
 
-## ✨ なぜTree-sitter Analyzerなのか？
+## ✨ なぜ Tree-sitter Analyzer なのか？
 
-**問題：** 大型コードファイルがLLMトークン制限を超え、コード解析が非効率または不可能になる。
+**問題:** 大型コードは LLM トークン制限を超え、解析が困難。
 
-**解決策：** スマートなコード解析により以下を提供：
-- 📊 **コード概要** ファイル全体を読み取らずに
-- 🎯 **ターゲット抽出** 特定の行範囲
-- 📍 **精密な位置特定** 正確なコード操作のため
-- 🤖 **AIアシスタント統合** MCPプロトコル経由
+**解決:** スマート解析により以下を提供：
+- 📊 **コード概要** 全文読まずに把握
+- 🎯 **ターゲット抽出** 行範囲で精密抽出
+- 📍 **正確な位置情報** 後続操作を容易に
+- 🤖 **AI アシスタント統合** MCP プロトコル対応
 
-## 🚀 クイックスタート（5分）
+## 🚀 5 分でクイックスタート
 
-### AIアシスタントユーザー向け（Claude Desktop）
+### AI アシスタント利用（Claude Desktop）
 
-1. **パッケージのインストール：**
+1. **インストール:**
 ```bash
-# uv（高速Pythonパッケージマネージャー）をインストール
+# uv（高速 Python パッケージマネージャ）
 curl -LsSf https://astral.sh/uv/install.sh | sh  # macOS/Linux
-# または：powershell -c "irm https://astral.sh/uv/install.ps1 | iex"  # Windows
+# または: powershell -c "irm https://astral.sh/uv/install.ps1 | iex"  # Windows
 
-# パッケージを個別にインストールする必要はありません - uvが処理します
+# 本パッケージの個別インストールは不要（uv が処理）
 ```
 
-2. **Claude Desktopの設定：**
+2. **Claude Desktop 設定:**
 
-Claude Desktop設定ファイルに追加：
+設定ファイルに追加：
 
-**Windows：** `%APPDATA%\Claude\claude_desktop_config.json`
-**macOS：** `~/Library/Application Support/Claude/claude_desktop_config.json`
-**Linux：** `~/.config/claude/claude_desktop_config.json`
+**Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
+**macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
+**Linux:** `~/.config/claude/claude_desktop_config.json`
 
 ```json
 {
@@ -45,11 +47,11 @@ Claude Desktop設定ファイルに追加：
     "tree-sitter-analyzer": {
       "command": "uv",
       "args": [
-        "run", 
-        "--with", 
+        "run",
+        "--with",
         "tree-sitter-analyzer[mcp]",
-        "python", 
-        "-m", 
+        "python",
+        "-m",
         "tree_sitter_analyzer.mcp.server"
       ]
     }
@@ -57,111 +59,113 @@ Claude Desktop設定ファイルに追加：
 }
 ```
 
-3. **Claude Desktopを再起動** してコード解析を開始！
+3. **Claude Desktop を再起動** して開始
 
-### CLIユーザー向け
+### CLI 利用
 
 ```bash
-# uvでインストール（推奨）
+# 推奨: uv でインストール
 uv add "tree-sitter-analyzer[popular]"
 
-# ステップ1：ファイル規模をチェック
+# ステップ 1: 規模チェック
 uv run python -m tree_sitter_analyzer examples/Sample.java --advanced --output-format=text
 
-# ステップ2：構造解析（大型ファイル向け）
+# ステップ 2: 構造解析（大規模ファイル向け）
 uv run python -m tree_sitter_analyzer examples/Sample.java --table=full
 
-# ステップ3：特定行の抽出
+# ステップ 3: 行範囲抽出
 uv run python -m tree_sitter_analyzer examples/Sample.java --partial-read --start-line 84 --end-line 86
 ```
 
 ## 🛠️ コア機能
 
 ### 1. コード構造解析
-ファイル全体を読み取らずに包括的な概要を取得：
-- クラス、メソッド、フィールド数
+全文を読まずに取得：
+- クラス/メソッド/フィールド数
 - パッケージ情報
-- インポート依存関係
+- インポート依存
 - 複雑度メトリクス
 
-### 2. ターゲットコード抽出
-特定のコードセクションを効率的に抽出：
-- 行範囲抽出
-- 精密な位置データ
-- コンテンツ長情報
+### 2. ターゲット抽出
+指定行範囲を効率抽出：
+- 行レンジ抽出
+- 正確な位置データ
+- コンテンツ長
 
-### 3. AIアシスタント統合
-AIアシスタント向けの4つの強力なMCPツール：
-- `analyze_code_scale` - コードメトリクスと複雑度を取得
-- `analyze_code_structure` - 詳細な構造テーブルを生成
-- `read_code_partial` - 特定の行範囲を抽出
-- `analyze_code_universal` - 自動検出による汎用解析
+### 3. AI アシスタント統合（MCP）
+三段階ワークフロー：
+- `check_code_scale` - 第1段階：規模と複雑度
+- `analyze_code_structure` - 第2段階：行位置つき構造表
+- `extract_code_section` - 第3段階：行範囲抽出
 
 ### 4. 多言語サポート
-- **Java** - 高度解析による完全サポート
-- **Python** - 完全サポート
-- **JavaScript/TypeScript** - 完全サポート
-- **C/C++、Rust、Go** - 基本サポート
+- **Java** 完全サポート（高度解析）
+- **Python** 完全サポート
+- **JavaScript/TypeScript** 完全サポート
+- **C/C++、Rust、Go** 基本サポート
 
 ## 📖 使用例
 
-### AIアシスタント使用（Claude Desktop経由）
+### AI アシスタント（Claude Desktop）
 
-**ステップ1：コード概要の取得：**
-> "このJavaファイルexamples/Sample.javaの全体的な複雑度とサイズはどうですか？"
+**ステップ 1：規模チェック**
+```
+ツール: check_code_scale
+引数: {"file_path": "examples/Sample.java"}
+```
 
-**ステップ2：コード構造の解析（大型ファイル向け）：**
-> "examples/Sample.javaの構造を解析して詳細なテーブルを表示してください"
+**ステップ 2：構造解析（>100 行推奨）**
+```
+ツール: analyze_code_structure
+引数: {"file_path": "examples/Sample.java", "format_type": "full"}
+```
 
-**ステップ3：特定コードの抽出：**
-> "examples/Sample.javaの84-86行目を表示してください"
+**ステップ 3：行範囲抽出（ステップ2の行情報を利用）**
+```
+ツール: extract_code_section
+引数: {"file_path": "examples/Sample.java", "start_line": 84, "end_line": 86}
+```
 
-### CLI使用
+> 注意：パラメータ名はすべて snake_case（`file_path`, `start_line`, `end_line`, `format_type`）
 
-**ステップ1：基本解析（ファイル規模チェック）：**
+### CLI 使用
+
+**ステップ 1：基本解析（規模チェック）**
 ```bash
 uv run python -m tree_sitter_analyzer examples/Sample.java --advanced --output-format=text
 ```
 
-**ステップ2：構造解析（LLM制限を超える大型ファイル向け）：**
+**ステップ 2：構造解析（大規模ファイル）**
 ```bash
 uv run python -m tree_sitter_analyzer examples/Sample.java --table=full
 ```
 
-**ステップ3：ターゲット抽出（特定コードセクションの読み取り）：**
+**ステップ 3：ターゲット抽出（特定セクションを読み取り）**
 ```bash
 uv run python -m tree_sitter_analyzer examples/Sample.java --partial-read --start-line 84 --end-line 86
 ```
 
 **追加オプション：**
 ```bash
-# クワイエットモード（INFOメッセージを抑制、エラーのみ表示）
+# Quiet モード（INFO 抑制、エラーのみ）
 uv run python -m tree_sitter_analyzer examples/Sample.java --advanced --output-format=text --quiet
 
-# クワイエットモードでのテーブル出力
+# Quiet + テーブル出力
 uv run python -m tree_sitter_analyzer examples/Sample.java --table=full --quiet
 ```
 
-## 🔧 インストールオプション
+## 🔧 インストール
 
-### エンドユーザー向け
+### エンドユーザー
 ```bash
-# 基本インストール
 uv add tree-sitter-analyzer
-
-# 人気言語付き（Java、Python、JS、TS）
 uv add "tree-sitter-analyzer[popular]"
-
-# MCPサーバーサポート付き
 uv add "tree-sitter-analyzer[mcp]"
-
-# フルインストール
 uv add "tree-sitter-analyzer[all,mcp]"
 ```
 
-### 開発者向け
+### 開発者
 ```bash
-# 開発用にクローンしてインストール
 git clone https://github.com/aimasteracc/tree-sitter-analyzer.git
 cd tree-sitter-analyzer
 uv sync --extra all --extra mcp
@@ -169,46 +173,83 @@ uv sync --extra all --extra mcp
 
 ## 📚 ドキュメント
 
-- **[ユーザー向けMCPセットアップガイド](https://github.com/aimasteracc/tree-sitter-analyzer/blob/main/MCP_SETUP_USERS.md)** - AIアシスタントユーザー向けの簡単セットアップ
-- **[開発者向けMCPセットアップガイド](https://github.com/aimasteracc/tree-sitter-analyzer/blob/main/MCP_SETUP_DEVELOPERS.md)** - ローカル開発設定
-- **[APIドキュメント](https://github.com/aimasteracc/tree-sitter-analyzer/blob/main/docs/api.md)** - 詳細なAPIリファレンス
-- **[コントリビューションガイド](https://github.com/aimasteracc/tree-sitter-analyzer/blob/main/CONTRIBUTING.md)** - 貢献方法
+- **[ユーザー向け MCP セットアップ](https://github.com/aimasteracc/tree-sitter-analyzer/blob/main/MCP_SETUP_USERS.md)**
+- **[開発者向け MCP セットアップ](https://github.com/aimasteracc/tree-sitter-analyzer/blob/main/MCP_SETUP_DEVELOPERS.md)**
+- **[プロジェクトルート設定](https://github.com/aimasteracc/tree-sitter-analyzer/blob/main/PROJECT_ROOT_CONFIG.md)**
+- **[API ドキュメント](https://github.com/aimasteracc/tree-sitter-analyzer/blob/main/docs/api.md)**
+- **[貢献ガイド](https://github.com/aimasteracc/tree-sitter-analyzer/blob/main/CONTRIBUTING.md)**
 
-## 🧪 テスト
+### 🔒 プロジェクトルート設定
 
-このプロジェクトは**1126個のテスト**により高いコード品質を維持しています。
+自動検出と境界保護：
+- 自動検出: `.git`、`pyproject.toml`、`package.json`
+- CLI: `--project-root /path/to/project`
+- MCP: `TREE_SITTER_PROJECT_ROOT=${workspaceFolder}`
+- セキュリティ: プロジェクト境界内のみ解析
 
-```bash
-# テスト実行
-pytest tests/ -v
-
-# カバレッジ付きで実行
-pytest tests/ --cov=tree_sitter_analyzer
+**推奨 MCP 設定：**
+```json
+{
+  "mcpServers": {
+    "tree-sitter-analyzer": {
+      "command": "uv",
+      "args": ["run", "--with", "tree-sitter-analyzer[mcp]", "python", "-m", "tree_sitter_analyzer.mcp.server"],
+      "env": {"TREE_SITTER_PROJECT_ROOT": "${workspaceFolder}"}
+    }
+  }
+}
 ```
+
+## 🧪 テストと品質
+
+エンタープライズ品質を維持：
+
+### 📊 指標
+- **1358 テスト** すべて成功 ✅
+- **74.82% カバレッジ**
+- **クロスプラットフォーム** Windows / macOS / Linux
+
+### 🏆 最近の成果（v0.8.2）
+- ✅ テスト安定化（31 失敗修正）
+- ✅ フォーマッタのカバレッジ 0% → 42.30%
+- ✅ エラーハンドリング 61.64% → 82.76%
+- ✅ 重要モジュールへ 104 テスト追加
+
+### 🔧 テスト実行
+```bash
+pytest tests/ -v
+pytest tests/ --cov=tree_sitter_analyzer --cov-report=html
+pytest tests/test_formatters_comprehensive.py -v
+pytest tests/test_core_engine_extended.py -v
+pytest tests/test_mcp_server_initialization.py -v
+```
+
+### 📈 カバレッジハイライト
+- フォーマッタ：42.30%
+- エラーハンドリング：82.76%
+- 言語判定：98.41%
+- CLI メイン：97.78%
+- セキュリティ基盤：78%+
 
 ## 📄 ライセンス
 
-MITライセンス - 詳細は[LICENSE](LICENSE)ファイルをご覧ください。
+MIT ライセンス（[LICENSE](LICENSE)）
 
 ## 🤝 コントリビューション
 
-コントリビューションを歓迎します！詳細は[コントリビューションガイド](https://github.com/aimasteracc/tree-sitter-analyzer/blob/main/CONTRIBUTING.md)をご覧ください。
+歓迎します。詳細は [CONTRIBUTING.md](https://github.com/aimasteracc/tree-sitter-analyzer/blob/main/CONTRIBUTING.md) を参照。
 
-### 🤖 AI/LLMコラボレーション
+### 🤖 AI/LLM コラボレーション
 
-このプロジェクトは専門的な品質管理によりAI支援開発をサポートします：
-
+AI 支援開発向けの品質コントロール：
 ```bash
-# AIシステム向け - コード生成前に実行
 python check_quality.py --new-code-only
 python llm_code_checker.py --check-all
-
-# AI生成コードレビュー向け
 python llm_code_checker.py path/to/new_file.py
 ```
 
-📖 **AIシステムとの作業に関する詳細な手順については、[AIコラボレーションガイド](https://github.com/aimasteracc/tree-sitter-analyzer/blob/main/AI_COLLABORATION_GUIDE.md)と[LLMコーディングガイドライン](https://github.com/aimasteracc/tree-sitter-analyzer/blob/main/LLM_CODING_GUIDELINES.md)をご覧ください。**
+📖 [AI コラボレーションガイド](https://github.com/aimasteracc/tree-sitter-analyzer/blob/main/AI_COLLABORATION_GUIDE.md) と [LLM コーディングガイドライン](https://github.com/aimasteracc/tree-sitter-analyzer/blob/main/LLM_CODING_GUIDELINES.md) を参照。
 
 ---
 
-**大型コードベースとAIアシスタントを扱う開発者のために❤️で作られました。**
+**大型コードベースと AI アシスタントに取り組む開発者のために。**

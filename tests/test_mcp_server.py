@@ -31,8 +31,11 @@ class TestMCPServerBasic:
 
         assert server.server is None
         assert server.analysis_engine is not None
+        from tree_sitter_analyzer.mcp import MCP_INFO
+
         assert server.name == "tree-sitter-analyzer-mcp"
-        assert server.version == "0.2.1"
+        # 版本号应与主体一致
+        assert server.version == MCP_INFO["version"]
 
     @patch("tree_sitter_analyzer.mcp.server.MCP_AVAILABLE", True)
     @patch("tree_sitter_analyzer.mcp.server.get_analysis_engine")
@@ -168,16 +171,19 @@ class TestAnalyzeCodeScale:
         mock_result.to_dict.return_value = {
             "elements": [
                 {"__class__": "Class", "name": "TestClass"},
-                {"__class__": "Function", "name": "test_method"}
+                {"__class__": "Function", "name": "test_method"},
             ],
-            "line_count": 50
+            "line_count": 50,
         }
         server.analysis_engine.analyze = AsyncMock(return_value=mock_result)
 
         # Mock file existence and language detection
-        with patch("pathlib.Path") as mock_path, \
-             patch("tree_sitter_analyzer.language_detector.detect_language_from_file") as mock_detect_lang:
-
+        with (
+            patch("pathlib.Path") as mock_path,
+            patch(
+                "tree_sitter_analyzer.language_detector.detect_language_from_file"
+            ) as mock_detect_lang,
+        ):
             mock_path_instance = Mock()
             mock_path_instance.exists.return_value = True
             mock_path.return_value = mock_path_instance
@@ -260,7 +266,7 @@ class TestToolsAndResources:
         # Test that the three core tools are initialized
         assert server.read_partial_tool is not None  # extract_code_section
         assert server.table_format_tool is not None  # analyze_code_structure
-        assert server.analysis_engine is not None    # used by check_code_scale
+        assert server.analysis_engine is not None  # used by check_code_scale
 
     @patch("tree_sitter_analyzer.mcp.server.MCP_AVAILABLE", True)
     @patch("tree_sitter_analyzer.mcp.server.get_analysis_engine")

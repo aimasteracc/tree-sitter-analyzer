@@ -233,7 +233,7 @@ class JavaElementExtractor(ElementExtractor):
             "method_declaration",
             "constructor_declaration",
             "block",
-            "modifiers",  # アノテーションは修飾子に含まれることがある
+            "modifiers",  # Annotation nodes can appear inside modifiers
         }
 
         # Iterative DFS stack: (node, depth)
