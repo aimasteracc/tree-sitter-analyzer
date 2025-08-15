@@ -1,0 +1,19 @@
+# Example .pypirc configuration for PyPI uploads
+# Save this as ~/.pypirc (Linux/Mac) or %USERPROFILE%\.pypirc (Windows)
+
+[distutils]
+index-servers =
+    pypi
+    testpypi
+
+[pypi]
+username = __token__
+password = pypi-your-actual-token-here
+
+[testpypi]
+repository = https://test.pypi.org/legacy/
+username = __token__
+password = pypi-your-actual-token-here
+
+# Replace 'pypi-your-actual-token-here' with your real PyPI API token
+# Get your token from: https://pypi.org/manage/account/token/

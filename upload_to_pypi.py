@@ -191,6 +191,35 @@ def upload_with_uv() -> bool:
     """Upload using uv"""
     print("\n🚀 Uploading to PyPI using uv...")
 
+    # Check for .pypirc file first
+    pypirc_path = os.path.expanduser("~/.pypirc")
+    has_pypirc = os.path.exists(pypirc_path)
+    
+    if has_pypirc:
+        print("📁 Found .pypirc configuration file")
+        try:
+            # Try upload without token (using .pypirc)
+            cmd = ["uv", "publish"]
+            print("Running: uv publish (using .pypirc)")
+
+            result = subprocess.run(cmd, capture_output=True, text=True)
+
+            if result.returncode == 0:
+                print("✅ Successfully uploaded to PyPI using .pypirc!")
+                if result.stdout:
+                    print(result.stdout)
+                return True
+            else:
+                print("⚠️  .pypirc upload failed, trying token method...")
+                # Fall through to token method
+        except Exception as e:
+            print(f"⚠️  .pypirc upload error: {e}, trying token method...")
+            # Fall through to token method
+
+    # Token method (fallback or when no .pypirc)
+    if not has_pypirc:
+        print("📁 No .pypirc found, using token authentication")
+    
     # Check for environment variable first
     token = os.getenv("PYPI_API_TOKEN") or os.getenv("UV_PUBLISH_TOKEN")
 
@@ -201,12 +230,12 @@ def upload_with_uv() -> bool:
             return False
 
     try:
-        # Upload using uv
+        # Upload using uv with token
         env = os.environ.copy()
         env["UV_PUBLISH_TOKEN"] = token
 
         cmd = ["uv", "publish"]
-        print("Running: uv publish")
+        print("Running: uv publish (using token)")
 
         result = subprocess.run(cmd, env=env, capture_output=True, text=True)
 
@@ -221,6 +250,17 @@ def upload_with_uv() -> bool:
                 print(result.stderr)
             if result.stdout:
                 print(result.stdout)
+            
+            # Provide helpful tip about .pypirc
+            if not has_pypirc:
+                print("\n💡 Tip: Consider setting up .pypirc for easier uploads:")
+                print("   Create ~/.pypirc with:")
+                print("   [distutils]")
+                print("   index-servers = pypi")
+                print("   ")
+                print("   [pypi]")
+                print("   username = __token__")
+                print("   password = pypi-your-token-here")
             return False
 
     except Exception as e:
