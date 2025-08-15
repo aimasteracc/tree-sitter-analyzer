@@ -14,6 +14,9 @@ An extensible multi-language code analyzer that helps AI assistants understand c
 
 If you find this project useful, please consider giving it a ⭐ on GitHub to support development.
 
+### Quick links
+- Prompts for AI IDEs: [jump](#ai-ide-prompts)
+
 ## ✨ Why Tree-sitter Analyzer?
 
 **The Problem:** Large code files exceed LLM token limits, making code analysis inefficient or impossible.
@@ -110,27 +113,35 @@ Three-step workflow MCP tools for AI assistants:
 
 ## 📖 Usage Examples
 
-### AI Assistant Usage (via Claude Desktop)
+<a id="ai-ide-prompts"></a>
+### Prompts for AI IDEs (Cursor, Roo Code, Claude Desktop)
 
-**Step 1: Check code scale**
-```
-Use tool: check_code_scale
-Parameters: {"file_path": "examples/Sample.java"}
-```
+Copy these prompts into your AI IDE chat. They guide the assistant to use the MCP tools correctly and safely.
 
-**Step 2: Analyze structure (for large files >100 lines)**
+1) Check file scale and complexity
 ```
-Use tool: analyze_code_structure
-Parameters: {"file_path": "examples/Sample.java", "format_type": "full"}
+Use the MCP tool "check_code_scale" on "examples/Sample.java".
+Return: language, total_lines, non_empty_lines, comment_lines, bytes, and a short note if the file likely needs table/structure analysis.
+Important: If the path is relative, resolve it against ${workspaceFolder} (project root). Use snake_case argument names.
 ```
 
-**Step 3: Extract specific code (using line positions from step 2)**
+2) Generate structure table (for large files)
 ```
-Use tool: extract_code_section
-Parameters: {"file_path": "examples/Sample.java", "start_line": 84, "end_line": 86}
+Use the MCP tool "analyze_code_structure" with:
+  {"file_path": "examples/Sample.java", "format_type": "full"}
+Return a compact markdown table (classes/methods/fields/imports with start_line/end_line). Keep the table readable in chat. If the file is very large, summarize long sections.
 ```
 
-> **Note:** Always use snake_case parameter names: `file_path`, `start_line`, `end_line`, `format_type`
+3) Extract specific lines (surgery-safe snippet)
+```
+Use the MCP tool "extract_code_section" with:
+  {"file_path": "examples/Sample.java", "start_line": 84, "end_line": 86}
+Return a fenced code block with the correct language, and include the exact line numbers in plain text above the block. Do not modify code content.
+```
+
+Notes
+- Always use snake_case parameter names: `file_path`, `start_line`, `end_line`, `format_type`.
+- Relative paths are resolved to the project root (secured boundary). Files outside the boundary must be rejected with a clear message.
 
 ### CLI Usage
 

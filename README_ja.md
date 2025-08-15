@@ -10,6 +10,9 @@
 
 AI アシスタントがファイル全体を読まずにコード構造を理解できる拡張可能な多言語コード解析ツール。コード概要、行範囲抽出、複雑度解析など、LLM ワークフローに最適化。
 
+### クイックリンク
+- AI IDE 向けプロンプト: [ジャンプ](#ai-ide-prompts)
+
 ## ✨ なぜ Tree-sitter Analyzer なのか？
 
 **問題:** 大型コードは LLM トークン制限を超え、解析が困難。
@@ -106,6 +109,7 @@ uv run python -m tree_sitter_analyzer examples/Sample.java --partial-read --star
 
 ## 📖 使用例
 
+<a id="ai-ide-prompts"></a>
 ### AI IDE 向けプロンプト（Cursor / Roo Code / Claude Desktop）
 
 以下を AI IDE のチャットに貼り付けてください。MCP ツールを安全かつ正しく使うための指示です。

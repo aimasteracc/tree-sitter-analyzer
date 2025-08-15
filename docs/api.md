@@ -47,13 +47,13 @@ Contains the results of code analysis.
 
 ## MCP Tools
 
-### analyze_code_scale
+### check_code_scale
 
 Get code metrics and complexity information.
 
 ```python
 {
-  "tool": "analyze_code_scale",
+  "tool": "check_code_scale",
   "arguments": {
     "file_path": "path/to/file.java",
     "include_complexity": true,

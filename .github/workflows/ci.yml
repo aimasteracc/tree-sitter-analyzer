@@ -36,22 +36,24 @@ jobs:
     - name: Upload coverage reports
       if: matrix.python-version == '3.11'
       uses: codecov/codecov-action@v4
+      env:
+        CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
       with:
-        file: ./coverage.xml
-        fail_ci_if_error: false
+        files: ./coverage.xml
+        fail_ci_if_error: true
 
   test-matrix:
     name: Test Suite
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: [ubuntu-latest, windows-latest, macos-13]
         python-version: ["3.10", "3.11", "3.12", "3.13"]
         exclude:
           # Reduce matrix size for faster CI
           - os: windows-latest
             python-version: "3.10"
-          - os: macos-latest
+          - os: macos-13
             python-version: "3.10"
 
     steps:

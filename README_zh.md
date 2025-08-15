@@ -12,6 +12,9 @@
 
 一个可扩展的多语言代码分析器，帮助 AI 助手在无需读取整文件的情况下理解代码结构。可获取代码概览、按行区间抽取片段、分析复杂度——全部针对 LLM 工作流优化。
 
+### 快速链接
+- 面向 AI IDE 的提示： [跳转](#ai-ide-prompts)
+
 ## ✨ 为什么选择 Tree-sitter Analyzer？
 
 **问题：** 大型代码文件会超出 LLM Token 限制，导致分析困难。
@@ -108,6 +111,7 @@ uv run python -m tree_sitter_analyzer examples/Sample.java --partial-read --star
 
 ## 📖 使用示例
 
+<a id="ai-ide-prompts"></a>
 ### 面向 AI IDE 的提示（Cursor、Roo Code、Claude Desktop）
 
 将以下提示复制到你的 AI IDE 对话中，它们会引导助手正确、安全地使用 MCP 工具。

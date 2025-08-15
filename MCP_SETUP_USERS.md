@@ -138,10 +138,10 @@ You should see the tree-sitter-analyzer tools being used automatically.
 
 Once configured, you'll have access to these tools:
 
-1. **analyze_code_scale** - Get code metrics and complexity
+1. **check_code_scale** - Get code metrics and complexity
    ```json
    {
-     "tool": "analyze_code_scale",
+     "tool": "check_code_scale",
      "arguments": {
        "file_path": "examples/Sample.java",
        "include_complexity": true,
