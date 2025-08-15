@@ -296,5 +296,5 @@ async def test_serialization_error_handling():
         return x
 
     # Act & Assert
-    with pytest.raises(AttributeError):
+    with pytest.raises(TypeError):
         await cache_service.set("key", non_serializable_value)
