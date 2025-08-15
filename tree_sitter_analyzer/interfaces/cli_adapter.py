@@ -53,7 +53,7 @@ class CLIAdapter:
         """
         try:
             self._engine = UnifiedAnalysisEngine()
-            logger.info("CLIAdapter initialized successfully")
+            logger.debug("CLIAdapter initialized successfully")
         except Exception as e:
             logger.error(f"Failed to initialize CLIAdapter: {e}")
             raise
@@ -111,7 +111,7 @@ class CLIAdapter:
 
             # パフォーマンスログ
             elapsed_time = time.time() - start_time
-            logger.info(f"CLI analysis completed: {file_path} in {elapsed_time:.3f}s")
+            logger.debug(f"CLI analysis completed: {file_path} in {elapsed_time:.3f}s")
 
             return result
 
@@ -251,7 +251,7 @@ class CLIAdapter:
             >>> adapter.clear_cache()
         """
         self._engine.clear_cache()
-        logger.info("CLI adapter cache cleared")
+        logger.debug("CLI adapter cache cleared")
 
     def get_cache_stats(self) -> dict[str, Any]:
         """

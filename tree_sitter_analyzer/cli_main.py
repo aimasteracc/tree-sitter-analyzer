@@ -215,9 +215,7 @@ def handle_special_commands(args: argparse.Namespace) -> int | None:
             return 1
 
         if args.end_line and args.end_line < args.start_line:
-            output_error(
-                "--end-line must be greater than or equal to --start-line"
-            )
+            output_error("--end-line must be greater than or equal to --start-line")
             return 1
 
         if args.start_column is not None and args.start_column < 0:
@@ -256,9 +254,15 @@ def main() -> None:
 
     if "--quiet" in sys.argv:
         os.environ["LOG_LEVEL"] = "ERROR"
+    else:
+        # Set default log level to WARNING to reduce output
+        os.environ.setdefault("LOG_LEVEL", "WARNING")
 
     parser = create_argument_parser()
     args = parser.parse_args()
+
+    # Configure default logging levels to reduce output
+    logging.getLogger("tree_sitter_analyzer.performance").setLevel(logging.ERROR)
 
     # Configure logging for table output
     if hasattr(args, "table") and args.table:

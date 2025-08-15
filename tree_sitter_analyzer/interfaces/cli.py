@@ -54,7 +54,7 @@ For more information, visit: https://github.com/aimasteracc/tree-sitter-analyzer
 
     # Global options
     parser.add_argument(
-        "--version", action="version", version="tree-sitter-analyzer 0.0.1"
+        "--version", action="version", version="tree-sitter-analyzer 0.9.3"
     )
     parser.add_argument(
         "--verbose", "-v", action="store_true", help="Enable verbose output"

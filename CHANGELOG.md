@@ -1,23 +1,42 @@
 # Changelog
+## [0.9.3] - 2025-08-15
+
+### 🔇 Improved Output Experience
+- Significantly reduced verbose logging in CLI default output
+- Downgraded initialization and debug messages from INFO to DEBUG level
+- Set default log level to WARNING for cleaner user experience
+- Performance logs disabled by default, only shown in verbose mode
+
+### 🎯 Affected Components
+- CLI main program default log level adjustment
+- Project detection, cache service, boundary manager log level optimization
+- Performance monitoring log output optimization
+- Preserved full functionality of `--quiet` and `--verbose` options
+
+### 🚀 User Impact
+- More concise and professional command line output
+- Only displays critical information and error messages
+- Enhanced user experience, especially when used in automation scripts
+
 ## [0.9.2] - 2025-08-14
 
 ### 🔄 Changed
-- MCP 模块版本与主体版本保持一致（统一从包 `__version__` 读取）
-- 初始化状态错误改为抛出 `MCPError`，与 MCP 语义一致
-- 安全校验：绝对路径策略强化，临时目录用例在测试环境安全放行
-- 代码与工具描述英文化，移除残留的中文/日文注释与文档片段
+- MCP module version is now synchronized with the main package version (both read from package `__version__`)
+- Initialization state errors now raise `MCPError`, consistent with MCP semantics
+- Security checks: strengthened absolute path policy, temporary directory cases are safely allowed in test environments
+- Code and tool descriptions fully Anglicized, removed remaining Chinese/Japanese comments and documentation fragments
 
 ### 📚 Docs
-- `README.md` 作为英文真源，同步一比一翻译到 `README_zh.md`、`README_ja.md`
-- 增补 MCP 三步工作流示例与推荐配置
+- `README.md` is now the English source of truth, with 1:1 translations to `README_zh.md` and `README_ja.md`
+- Added examples and recommended configuration for the three-step MCP workflow
 
 ### 🧪 Tests
-- 全量 1358/1358 用例通过，覆盖率 74.82%
-- 更新断言以读取动态版本与新错误类型
+- All 1358/1358 test cases passed, coverage at 74.82%
+- Updated assertions to read dynamic version and new error types
 
 ### 🚀 Impact
-- 提升 IDE（Cursor/Claude）工具可见性与一致性
-- 降低国际用户上手门槛，统一英文描述与本地化文档
+- Improved IDE (Cursor/Claude) tool visibility and consistency
+- Lowered onboarding barrier for international users, unified English descriptions and localized documentation
 
 
 All notable changes to this project will be documented in this file.

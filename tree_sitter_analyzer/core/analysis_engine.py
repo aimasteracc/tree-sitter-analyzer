@@ -15,7 +15,7 @@ Roo Code compliance:
 import hashlib
 import threading
 from dataclasses import dataclass
-from typing import Any, Dict, Optional, Protocol
+from typing import Any, Optional, Protocol
 
 from ..models import AnalysisResult
 from ..plugins.base import LanguagePlugin as BaseLanguagePlugin
@@ -204,7 +204,7 @@ class UnifiedAnalysisEngine:
         _performance_monitor: Performance monitor
     """
 
-    _instances: Dict[str, "UnifiedAnalysisEngine"] = {}
+    _instances: dict[str, "UnifiedAnalysisEngine"] = {}
     _lock: threading.Lock = threading.Lock()
 
     def __new__(cls, project_root: str = None) -> "UnifiedAnalysisEngine":
@@ -238,18 +238,20 @@ class UnifiedAnalysisEngine:
 
         self._initialized = True
 
-        log_info(f"UnifiedAnalysisEngine initialized with project root: {project_root}")
+        log_debug(
+            f"UnifiedAnalysisEngine initialized with project root: {project_root}"
+        )
 
     def _load_plugins(self) -> None:
         """Auto-load available plugins"""
-        log_info("Loading plugins using PluginManager...")
+        log_debug("Loading plugins using PluginManager...")
 
         try:
             # PluginManagerの自動ロード機能を使用
             loaded_plugins = self._plugin_manager.load_plugins()
 
             final_languages = [plugin.get_language_name() for plugin in loaded_plugins]
-            log_info(
+            log_debug(
                 f"Successfully loaded {len(final_languages)} language plugins: {', '.join(final_languages)}"
             )
         except Exception as e:
@@ -272,12 +274,16 @@ class UnifiedAnalysisEngine:
             UnsupportedLanguageError: When language is not supported
             FileNotFoundError: When file is not found
         """
-        log_info(f"Starting analysis for {request.file_path}")
+        log_debug(f"Starting analysis for {request.file_path}")
 
         # Security validation
-        is_valid, error_msg = self._security_validator.validate_file_path(request.file_path)
+        is_valid, error_msg = self._security_validator.validate_file_path(
+            request.file_path
+        )
         if not is_valid:
-            log_error(f"Security validation failed for file path: {request.file_path} - {error_msg}")
+            log_error(
+                f"Security validation failed for file path: {request.file_path} - {error_msg}"
+            )
             raise ValueError(f"Invalid file path: {error_msg}")
 
         # Cache check (shared across CLI/MCP)
@@ -341,7 +347,9 @@ class UnifiedAnalysisEngine:
         # Security validation
         is_valid, error_msg = self._security_validator.validate_file_path(file_path)
         if not is_valid:
-            log_error(f"Security validation failed for file path: {file_path} - {error_msg}")
+            log_error(
+                f"Security validation failed for file path: {file_path} - {error_msg}"
+            )
             raise ValueError(f"Invalid file path: {error_msg}")
 
         request = AnalysisRequest(

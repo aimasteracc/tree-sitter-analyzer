@@ -109,7 +109,7 @@ class CacheService:
         # デフォルト設定
         self._default_ttl = ttl_seconds
 
-        log_info(
+        log_debug(
             f"CacheService initialized: L1={l1_maxsize}, L2={l2_maxsize}, "
             f"L3={l3_maxsize}, TTL={ttl_seconds}s"
         )

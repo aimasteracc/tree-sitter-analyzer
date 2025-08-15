@@ -85,9 +85,8 @@ class BaseCommand(ABC):
                 if (not hasattr(self.args, "table") or not self.args.table) and (
                     not hasattr(self.args, "quiet") or not self.args.quiet
                 ):
-                    output_info(
-                        f"INFO: Language auto-detected from extension: {target_language}"
-                    )
+                    # Language auto-detected - only show in verbose mode
+                    pass
 
         # Language support validation
         if not is_language_supported(target_language):

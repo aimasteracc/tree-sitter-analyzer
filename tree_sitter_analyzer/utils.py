@@ -14,7 +14,7 @@ from typing import Any
 
 # Configure global logger
 def setup_logger(
-    name: str = "tree_sitter_analyzer", level: int = logging.INFO
+    name: str = "tree_sitter_analyzer", level: int = logging.WARNING
 ) -> logging.Logger:
     """Setup unified logger for the project"""
     import os
@@ -227,7 +227,7 @@ def create_performance_logger(name: str) -> logging.Logger:
         formatter = logging.Formatter("%(asctime)s - PERF - %(message)s")
         handler.setFormatter(formatter)
         perf_logger.addHandler(handler)
-        perf_logger.setLevel(logging.INFO)
+        perf_logger.setLevel(logging.DEBUG)  # Change to DEBUG level
 
     return perf_logger
 
@@ -252,7 +252,7 @@ def log_performance(
             else:
                 detail_str = str(details)
             message += f" - {detail_str}"
-        perf_logger.info(message)
+        perf_logger.debug(message)  # Change to DEBUG level
     except (ValueError, OSError):
         pass  # Silently ignore I/O errors
 
