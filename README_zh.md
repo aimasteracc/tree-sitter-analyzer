@@ -108,27 +108,34 @@ uv run python -m tree_sitter_analyzer examples/Sample.java --partial-read --star
 
 ## 📖 使用示例
 
-### AI 助手（通过 Claude Desktop）
+### 面向 AI IDE 的提示（Cursor、Roo Code、Claude Desktop）
 
-**步骤 1：检查规模**
-```
-使用工具：check_code_scale
-参数：{"file_path": "examples/Sample.java"}
-```
+将以下提示复制到你的 AI IDE 对话中，它们会引导助手正确、安全地使用 MCP 工具。
 
-**步骤 2：结构分析（>100 行建议执行）**
+1）检查文件规模与复杂度
 ```
-使用工具：analyze_code_structure
-参数：{"file_path": "examples/Sample.java", "format_type": "full"}
+请使用 MCP 工具 "check_code_scale" 处理 "examples/Sample.java"。
+返回：language、total_lines、non_empty_lines、comment_lines、bytes；并简单说明是否建议进行表格/结构分析。
+重要：若为相对路径，请基于 ${workspaceFolder}（项目根）解析。参数名使用 snake_case。
 ```
 
-**步骤 3：按行抽取（利用步骤 2 的行号）**
+2）生成结构表（适合大文件）
 ```
-使用工具：extract_code_section
-参数：{"file_path": "examples/Sample.java", "start_line": 84, "end_line": 86}
+请使用 MCP 工具 "analyze_code_structure"：
+  {"file_path": "examples/Sample.java", "format_type": "full"}
+返回紧凑的 Markdown 表（classes/methods/fields/imports 及 start_line/end_line）。尽量保证可读性；若文件很大，请适当总结长区段。
 ```
 
-> 注意：参数一律使用 snake_case：`file_path`, `start_line`, `end_line`, `format_type`
+3）按行抽取片段（保真片段）
+```
+请使用 MCP 工具 "extract_code_section"：
+  {"file_path": "examples/Sample.java", "start_line": 84, "end_line": 86}
+返回带正确语言的代码围栏，并在代码块上方以纯文本标注精确行号。不要改动代码内容。
+```
+
+注意
+- 参数统一使用 snake_case：`file_path`、`start_line`、`end_line`、`format_type`。
+- 相对路径按项目根解析（受边界保护）。超出边界的文件应明确拒绝。
 
 ### CLI 使用
 

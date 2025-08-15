@@ -106,27 +106,35 @@ uv run python -m tree_sitter_analyzer examples/Sample.java --partial-read --star
 
 ## 📖 使用例
 
-### AI アシスタント（Claude Desktop）
+### AI IDE 向けプロンプト（Cursor / Roo Code / Claude Desktop）
 
-**ステップ 1：規模チェック**
-```
-ツール: check_code_scale
-引数: {"file_path": "examples/Sample.java"}
-```
+以下を AI IDE のチャットに貼り付けてください。MCP ツールを安全かつ正しく使うための指示です。
 
-**ステップ 2：構造解析（>100 行推奨）**
+1）規模と複雑度の確認
 ```
-ツール: analyze_code_structure
-引数: {"file_path": "examples/Sample.java", "format_type": "full"}
+MCP ツール "check_code_scale" を "examples/Sample.java" に実行してください。
+返却：language、total_lines、non_empty_lines、comment_lines、bytes。
+さらに、表/構造解析の推奨有無を一言で示してください。
+重要：相対パスは ${workspaceFolder}（プロジェクトルート）で解決。引数名は snake_case。
 ```
 
-**ステップ 3：行範囲抽出（ステップ2の行情報を利用）**
+2）構造テーブルの生成（大きなファイル向け）
 ```
-ツール: extract_code_section
-引数: {"file_path": "examples/Sample.java", "start_line": 84, "end_line": 86}
+MCP ツール "analyze_code_structure" を次の引数で実行：
+  {"file_path": "examples/Sample.java", "format_type": "full"}
+classes/methods/fields/imports と start_line/end_line を含むコンパクトな Markdown 表を返してください。チャットで読みやすく保ち、非常に長い部分は要約してください。
 ```
 
-> 注意：パラメータ名はすべて snake_case（`file_path`, `start_line`, `end_line`, `format_type`）
+3）特定行の抽出（原文保持のスニペット）
+```
+MCP ツール "extract_code_section" を次の引数で実行：
+  {"file_path": "examples/Sample.java", "start_line": 84, "end_line": 86}
+適切な言語のコードフェンスで返し、コードブロックの上に該当行番号をプレーンテキストで明記してください。コード内容は変更しないでください。
+```
+
+注意
+- 引数名は snake_case に統一：`file_path`、`start_line`、`end_line`、`format_type`。
+- 相対パスはプロジェクトルートで解決（境界で保護）。境界外のファイルは明確に拒否。
 
 ### CLI 使用
 
