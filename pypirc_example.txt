@@ -13,7 +13,17 @@ password = pypi-your-actual-token-here
 [testpypi]
 repository = https://test.pypi.org/legacy/
 username = __token__
-password = pypi-your-actual-token-here
+password = pypi-your-test-token-here
 
 # Replace 'pypi-your-actual-token-here' with your real PyPI API token
-# Get your token from: https://pypi.org/manage/account/token/
+# Replace 'pypi-your-test-token-here' with your TestPyPI token
+# Get your tokens from: 
+#   PyPI: https://pypi.org/manage/account/token/
+#   TestPyPI: https://test.pypi.org/manage/account/token/
+
+# Note: Our upload script reads tokens from .pypirc automatically
+# No need to manually enter tokens when using this configuration!
+
+# Alternative: Set environment variables (highest priority)
+# export PYPI_API_TOKEN="pypi-your-token-here"
+# export UV_PUBLISH_TOKEN="pypi-your-token-here"

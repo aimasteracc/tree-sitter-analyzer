@@ -136,10 +136,47 @@ def check_packages(version: str) -> bool:
 
 def check_pypi_version(version: str) -> bool:
     """Check if version already exists on PyPI"""
+    print(f"🔍 Checking if version {version} already exists on PyPI...")
+    
+    # Method 1: Direct PyPI API check (most reliable)
     try:
-        # Try using pip index first (newer pip versions)
+        import urllib.request
+        import json
+        
+        url = "https://pypi.org/pypi/tree-sitter-analyzer/json"
+        with urllib.request.urlopen(url, timeout=10) as response:
+            data = json.loads(response.read().decode())
+            existing_versions = list(data.get("releases", {}).keys())
+            
+        if version in existing_versions:
+            print(f"❌ Version {version} already exists on PyPI")
+            print(f"📋 Existing versions: {', '.join(sorted(existing_versions, reverse=True)[:5])}...")
+            return False
+        else:
+            print(f"✅ Version {version} is new")
+            return True
+            
+    except Exception as e:
+        print(f"⚠️  PyPI API check failed ({e}), trying alternative method...")
+    
+    # Method 2: Try using requests as fallback
+    try:
+        import requests
+        url = f"https://pypi.org/pypi/tree-sitter-analyzer/{version}/json"
+        response = requests.head(url, timeout=10)
+        if response.status_code == 200:
+            print(f"❌ Version {version} already exists on PyPI")
+            return False
+        else:
+            print(f"✅ Version {version} is new")
+            return True
+    except Exception as e:
+        print(f"⚠️  Requests check failed ({e}), trying pip method...")
+    
+    # Method 3: Try pip index (may not work in all environments)
+    try:
         result = subprocess.run(
-            ["pip", "index", "versions", "tree-sitter-analyzer"],
+            ["uv", "run", "pip", "index", "versions", "tree-sitter-analyzer"],
             capture_output=True,
             text=True,
             check=True,
@@ -150,21 +187,10 @@ def check_pypi_version(version: str) -> bool:
         else:
             print(f"✅ Version {version} is new")
             return True
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        # Fallback: try using requests to check PyPI API
-        try:
-            import requests
-            url = f"https://pypi.org/pypi/tree-sitter-analyzer/{version}/json"
-            response = requests.head(url, timeout=10)
-            if response.status_code == 200:
-                print(f"❌ Version {version} already exists on PyPI")
-                return False
-            else:
-                print(f"✅ Version {version} is new")
-                return True
-        except Exception:
-            print("⚠️  Could not check PyPI versions (will proceed anyway)")
-            return True
+    except Exception:
+        print("⚠️  Could not reliably check PyPI versions")
+        print("⚠️  Proceeding anyway - upload will fail if version exists")
+        return True
 
 
 def run_tests() -> bool:
@@ -210,8 +236,21 @@ def upload_with_uv() -> bool:
                     print(result.stdout)
                 return True
             else:
-                print("⚠️  .pypirc upload failed, trying token method...")
-                # Fall through to token method
+                # Check if it's a version conflict error
+                error_output = (result.stderr or "") + (result.stdout or "")
+                if any(keyword in error_output.lower() for keyword in [
+                    "already exists", "file already exists", "conflict", 
+                    "version already exists", "403", "forbidden"
+                ]):
+                    print("❌ Upload failed: Version already exists on PyPI")
+                    print("💡 Please increment the version number and try again")
+                    if result.stderr:
+                        print(f"Error details: {result.stderr}")
+                    return False
+                else:
+                    print("⚠️  .pypirc upload failed, trying token method...")
+                    print(f"Error: {result.stderr}")
+                    # Fall through to token method
         except Exception as e:
             print(f"⚠️  .pypirc upload error: {e}, trying token method...")
             # Fall through to token method
@@ -245,22 +284,33 @@ def upload_with_uv() -> bool:
                 print(result.stdout)
             return True
         else:
-            print("❌ Upload failed:")
-            if result.stderr:
-                print(result.stderr)
-            if result.stdout:
-                print(result.stdout)
-            
-            # Provide helpful tip about .pypirc
-            if not has_pypirc:
-                print("\n💡 Tip: Consider setting up .pypirc for easier uploads:")
-                print("   Create ~/.pypirc with:")
-                print("   [distutils]")
-                print("   index-servers = pypi")
-                print("   ")
-                print("   [pypi]")
-                print("   username = __token__")
-                print("   password = pypi-your-token-here")
+            # Check if it's a version conflict error
+            error_output = (result.stderr or "") + (result.stdout or "")
+            if any(keyword in error_output.lower() for keyword in [
+                "already exists", "file already exists", "conflict", 
+                "version already exists", "403", "forbidden"
+            ]):
+                print("❌ Upload failed: Version already exists on PyPI")
+                print("💡 Please increment the version number and try again")
+                if result.stderr:
+                    print(f"Error details: {result.stderr}")
+            else:
+                print("❌ Upload failed:")
+                if result.stderr:
+                    print(result.stderr)
+                if result.stdout:
+                    print(result.stdout)
+                
+                # Provide helpful tip about .pypirc
+                if not has_pypirc:
+                    print("\n💡 Tip: Consider setting up .pypirc for easier uploads:")
+                    print("   Create ~/.pypirc with:")
+                    print("   [distutils]")
+                    print("   index-servers = pypi")
+                    print("   ")
+                    print("   [pypi]")
+                    print("   username = __token__")
+                    print("   password = pypi-your-token-here")
             return False
 
     except Exception as e:
