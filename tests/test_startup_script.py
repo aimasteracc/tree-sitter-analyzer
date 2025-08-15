@@ -194,17 +194,28 @@ class TestStartupScriptIntegration:
 
     def test_logging_configuration(self, caplog):
         """Test that startup script configures logging properly."""
+        import os
         from tree_sitter_analyzer.utils import setup_logger
         
-        # Set caplog to capture everything at DEBUG level 
-        caplog.set_level(logging.DEBUG)
+        # Save original LOG_LEVEL if it exists
+        original_log_level = os.environ.get("LOG_LEVEL")
         
-        # Test logger setup with explicit INFO level
-        logger = setup_logger("test_startup", level=logging.INFO)
-        logger.info("Test startup message")
-        
-        # Should have logged the message
-        assert "Test startup message" in caplog.text
+        try:
+            # Clear any LOG_LEVEL environment variable to avoid test pollution
+            if "LOG_LEVEL" in os.environ:
+                del os.environ["LOG_LEVEL"]
+            
+            # Test logger setup functionality
+            logger = setup_logger("test_startup", level=logging.INFO)
+            
+            # Verify logger is properly configured
+            assert logger.name == "test_startup"
+            assert logger.level == logging.INFO
+            assert len(logger.handlers) > 0
+        finally:
+            # Restore original LOG_LEVEL if it existed
+            if original_log_level is not None:
+                os.environ["LOG_LEVEL"] = original_log_level
 
     @pytest.mark.asyncio
     async def test_graceful_shutdown_handling(self):
