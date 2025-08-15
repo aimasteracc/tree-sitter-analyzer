@@ -373,14 +373,17 @@ module.exports = { Calculator, createCalculator };
             except Exception as e:
                 # Check if this is a language support issue
                 error_msg = str(e).lower()
-                if any(keyword in error_msg for keyword in [
-                    "language not supported",
-                    "no module named 'tree_sitter_",
-                    "language plugin not found",
-                    "unsupported language",
-                    "could not load",
-                    "language for parsing"
-                ]):
+                if any(
+                    keyword in error_msg
+                    for keyword in [
+                        "language not supported",
+                        "no module named 'tree_sitter_",
+                        "language plugin not found",
+                        "unsupported language",
+                        "could not load",
+                        "language for parsing",
+                    ]
+                ):
                     # Skip languages that aren't supported in this environment
                     languages_skipped.append(lang)
                     print(f"Skipping {lang} analysis: {e}")
@@ -388,7 +391,9 @@ module.exports = { Calculator, createCalculator };
                     pytest.fail(f"Failed to analyze {lang} file: {e}")
 
         # Verify we tested at least one language successfully
-        assert len(languages_tested) >= 1, f"No languages tested successfully. Tested: {languages_tested}, Skipped: {languages_skipped}"
+        assert (
+            len(languages_tested) >= 1
+        ), f"No languages tested successfully. Tested: {languages_tested}, Skipped: {languages_skipped}"
 
         # Log results for debugging
         print(f"Languages tested: {languages_tested}")

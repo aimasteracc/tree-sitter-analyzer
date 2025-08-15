@@ -19,7 +19,9 @@ class QueryCommand(BaseCommand):
 
         if hasattr(self.args, "query_key") and self.args.query_key:
             # Sanitize query key input
-            sanitized_query_key = self.security_validator.sanitize_input(self.args.query_key, max_length=100)
+            sanitized_query_key = self.security_validator.sanitize_input(
+                self.args.query_key, max_length=100
+            )
             try:
                 query_to_execute = query_loader.get_query(language, sanitized_query_key)
                 if query_to_execute is None:
@@ -32,7 +34,9 @@ class QueryCommand(BaseCommand):
                 return 1
         elif hasattr(self.args, "query_string") and self.args.query_string:
             # Security check for query string (potential regex patterns)
-            is_safe, error_msg = self.security_validator.regex_checker.validate_pattern(self.args.query_string)
+            is_safe, error_msg = self.security_validator.regex_checker.validate_pattern(
+                self.args.query_string
+            )
             if not is_safe:
                 output_error(f"Unsafe query pattern: {error_msg}")
                 return 1

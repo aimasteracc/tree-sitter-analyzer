@@ -126,7 +126,9 @@ class TableFormatter:
                 class_info = classes[0]
                 lines.append(f"| Package | {package_name} |")
                 lines.append(f"| Type | {str(class_info.get('type', 'class'))} |")
-                lines.append(f"| Visibility | {str(class_info.get('visibility', 'public'))} |")
+                lines.append(
+                    f"| Visibility | {str(class_info.get('visibility', 'public'))} |"
+                )
 
                 # Lines
                 line_range = class_info.get("line_range", {})
@@ -178,7 +180,9 @@ class TableFormatter:
 
         return "\n".join(lines)
 
-    def _get_class_methods(self, data: dict[str, Any], class_line_range: dict[str, int]) -> list[dict[str, Any]]:
+    def _get_class_methods(
+        self, data: dict[str, Any], class_line_range: dict[str, int]
+    ) -> list[dict[str, Any]]:
         """Get methods that belong to a specific class based on line range, excluding nested classes."""
         methods = data.get("methods", [])
         classes = data.get("classes", [])
@@ -192,15 +196,20 @@ class TableFormatter:
             cls_end = cls_range.get("end", 0)
 
             # If this class is nested within the current class range
-            if (class_line_range.get("start", 0) < cls_start and
-                cls_end < class_line_range.get("end", 0)):
+            if class_line_range.get(
+                "start", 0
+            ) < cls_start and cls_end < class_line_range.get("end", 0):
                 nested_class_ranges.append((cls_start, cls_end))
 
         for method in methods:
             method_line = method.get("line_range", {}).get("start", 0)
 
             # Check if method is within the class range
-            if (class_line_range.get("start", 0) <= method_line <= class_line_range.get("end", 0)):
+            if (
+                class_line_range.get("start", 0)
+                <= method_line
+                <= class_line_range.get("end", 0)
+            ):
                 # Check if method is NOT within any nested class
                 in_nested_class = False
                 for nested_start, nested_end in nested_class_ranges:
@@ -213,7 +222,9 @@ class TableFormatter:
 
         return class_methods
 
-    def _get_class_fields(self, data: dict[str, Any], class_line_range: dict[str, int]) -> list[dict[str, Any]]:
+    def _get_class_fields(
+        self, data: dict[str, Any], class_line_range: dict[str, int]
+    ) -> list[dict[str, Any]]:
         """Get fields that belong to a specific class based on line range, excluding nested classes."""
         fields = data.get("fields", [])
         classes = data.get("classes", [])
@@ -227,15 +238,20 @@ class TableFormatter:
             cls_end = cls_range.get("end", 0)
 
             # If this class is nested within the current class range
-            if (class_line_range.get("start", 0) < cls_start and
-                cls_end < class_line_range.get("end", 0)):
+            if class_line_range.get(
+                "start", 0
+            ) < cls_start and cls_end < class_line_range.get("end", 0):
                 nested_class_ranges.append((cls_start, cls_end))
 
         for field in fields:
             field_line = field.get("line_range", {}).get("start", 0)
 
             # Check if field is within the class range
-            if (class_line_range.get("start", 0) <= field_line <= class_line_range.get("end", 0)):
+            if (
+                class_line_range.get("start", 0)
+                <= field_line
+                <= class_line_range.get("end", 0)
+            ):
                 # Check if field is NOT within any nested class
                 in_nested_class = False
                 for nested_start, nested_end in nested_class_ranges:
@@ -248,7 +264,9 @@ class TableFormatter:
 
         return class_fields
 
-    def _format_class_details(self, class_info: dict[str, Any], data: dict[str, Any]) -> list[str]:
+    def _format_class_details(
+        self, class_info: dict[str, Any], data: dict[str, Any]
+    ) -> list[str]:
         """Format detailed information for a single class."""
         lines = []
 
@@ -275,14 +293,22 @@ class TableFormatter:
                 visibility = self._convert_visibility(str(field.get("visibility", "")))
                 modifiers = ",".join(field.get("modifiers", []))
                 line_num = field.get("line_range", {}).get("start", 0)
-                doc = self._extract_doc_summary(str(field.get("javadoc", ""))) if self.include_javadoc else "-"
+                doc = (
+                    self._extract_doc_summary(str(field.get("javadoc", "")))
+                    if self.include_javadoc
+                    else "-"
+                )
 
-                lines.append(f"| {name_field} | {type_field} | {visibility} | {modifiers} | {line_num} | {doc} |")
+                lines.append(
+                    f"| {name_field} | {type_field} | {visibility} | {modifiers} | {line_num} | {doc} |"
+                )
             lines.append("")
 
         # Methods section - separate by type
         constructors = [m for m in class_methods if m.get("is_constructor", False)]
-        regular_methods = [m for m in class_methods if not m.get("is_constructor", False)]
+        regular_methods = [
+            m for m in class_methods if not m.get("is_constructor", False)
+        ]
 
         # Constructors
         if constructors:
@@ -295,16 +321,24 @@ class TableFormatter:
             lines.append("")
 
         # Methods grouped by visibility
-        public_methods = [m for m in regular_methods if m.get("visibility", "") == "public"]
-        protected_methods = [m for m in regular_methods if m.get("visibility", "") == "protected"]
-        package_methods = [m for m in regular_methods if m.get("visibility", "") == "package"]
-        private_methods = [m for m in regular_methods if m.get("visibility", "") == "private"]
+        public_methods = [
+            m for m in regular_methods if m.get("visibility", "") == "public"
+        ]
+        protected_methods = [
+            m for m in regular_methods if m.get("visibility", "") == "protected"
+        ]
+        package_methods = [
+            m for m in regular_methods if m.get("visibility", "") == "package"
+        ]
+        private_methods = [
+            m for m in regular_methods if m.get("visibility", "") == "private"
+        ]
 
         for method_group, title in [
             (public_methods, "Public Methods"),
             (protected_methods, "Protected Methods"),
             (package_methods, "Package Methods"),
-            (private_methods, "Private Methods")
+            (private_methods, "Private Methods"),
         ]:
             if method_group:
                 lines.append(f"### {title}")
@@ -325,7 +359,11 @@ class TableFormatter:
         line_range = method.get("line_range", {})
         lines_str = f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
         complexity = method.get("complexity_score", 0)
-        doc = self._extract_doc_summary(str(method.get("javadoc", ""))) if self.include_javadoc else "-"
+        doc = (
+            self._extract_doc_summary(str(method.get("javadoc", "")))
+            if self.include_javadoc
+            else "-"
+        )
 
         return f"| {name} | {signature} | {visibility} | {lines_str} | {complexity} | {doc} |"
 
@@ -345,7 +383,9 @@ class TableFormatter:
         lines.append(f"| Package | {package_name} |")
         lines.append(f"| Type | {str(class_info.get('type', 'class'))} |")
         lines.append(f"| Visibility | {str(class_info.get('visibility', 'public'))} |")
-        lines.append(f"| Lines | {class_info.get('line_range', {}).get('start', 0)}-{class_info.get('line_range', {}).get('end', 0)} |")
+        lines.append(
+            f"| Lines | {class_info.get('line_range', {}).get('start', 0)}-{class_info.get('line_range', {}).get('end', 0)} |"
+        )
         lines.append(f"| Total Methods | {stats.get('method_count', 0)} |")
         lines.append(f"| Total Fields | {stats.get('field_count', 0)} |")
         lines.append("")
@@ -363,9 +403,15 @@ class TableFormatter:
                 visibility = self._convert_visibility(str(field.get("visibility", "")))
                 modifiers = ",".join([str(m) for m in field.get("modifiers", [])])
                 line = field.get("line_range", {}).get("start", 0)
-                doc = self._extract_doc_summary(str(field.get("javadoc", ""))) if self.include_javadoc else "-"
+                doc = (
+                    self._extract_doc_summary(str(field.get("javadoc", "")))
+                    if self.include_javadoc
+                    else "-"
+                )
 
-                lines.append(f"| {name} | {field_type} | {visibility} | {modifiers} | {line} | {doc} |")
+                lines.append(
+                    f"| {name} | {field_type} | {visibility} | {modifiers} | {line} | {doc} |"
+                )
             lines.append("")
 
         # Methods by type
@@ -383,8 +429,13 @@ class TableFormatter:
             lines.append("")
 
         # Methods by visibility
-        for visibility, title in [("public", "Public Methods"), ("private", "Private Methods")]:
-            visibility_methods = [m for m in regular_methods if str(m.get("visibility")) == visibility]
+        for visibility, title in [
+            ("public", "Public Methods"),
+            ("private", "Private Methods"),
+        ]:
+            visibility_methods = [
+                m for m in regular_methods if str(m.get("visibility")) == visibility
+            ]
             if visibility_methods:
                 lines.append(f"## {title}")
                 lines.append("| Method | Signature | Vis | Lines | Cols | Cx | Doc |")

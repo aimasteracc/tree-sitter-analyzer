@@ -494,11 +494,13 @@ def handle_mcp_errors(
             except RuntimeError as e:
                 # Handle initialization errors specifically
                 if "not fully initialized" in str(e):
-                    logger.warning(f"Request received before initialization complete: {operation}")
+                    logger.warning(
+                        f"Request received before initialization complete: {operation}"
+                    )
                     raise MCPError(
                         "Server is still initializing. Please wait a moment and try again.",
                         category=ErrorCategory.CONFIGURATION,
-                        severity=ErrorSeverity.LOW
+                        severity=ErrorSeverity.LOW,
                     ) from e
                 # Handle other runtime errors normally
                 error_handler = get_error_handler()

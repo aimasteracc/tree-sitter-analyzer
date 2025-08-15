@@ -372,10 +372,7 @@ class PathTraversalError(SecurityError):
             context["attempted_path"] = attempted_path
 
         super().__init__(
-            message,
-            security_type="path_traversal",
-            context=context,
-            **kwargs
+            message, security_type="path_traversal", context=context, **kwargs
         )
         self.attempted_path = attempted_path
 
@@ -397,10 +394,7 @@ class RegexSecurityError(SecurityError):
             context["dangerous_construct"] = dangerous_construct
 
         super().__init__(
-            message,
-            security_type="regex_security",
-            context=context,
-            **kwargs
+            message, security_type="regex_security", context=context, **kwargs
         )
         self.pattern = pattern
         self.dangerous_construct = dangerous_construct

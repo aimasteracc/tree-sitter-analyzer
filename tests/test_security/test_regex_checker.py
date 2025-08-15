@@ -26,11 +26,11 @@ class TestRegexSafetyChecker:
             r"^start.*end$",
             r"simple",
         ]
-        
+
         for pattern in safe_patterns:
             # Act
             is_safe, error = self.checker.validate_pattern(pattern)
-            
+
             # Assert
             assert is_safe, f"Pattern should be safe: {pattern}, error: {error}"
             assert error == ""
@@ -40,7 +40,7 @@ class TestRegexSafetyChecker:
         """Test validation fails for empty pattern."""
         # Act
         is_safe, error = self.checker.validate_pattern("")
-        
+
         # Assert
         assert not is_safe
         assert "non-empty string" in error
@@ -50,10 +50,10 @@ class TestRegexSafetyChecker:
         """Test validation fails for too long pattern."""
         # Arrange
         long_pattern = "a" * 2000
-        
+
         # Act
         is_safe, error = self.checker.validate_pattern(long_pattern)
-        
+
         # Assert
         assert not is_safe
         assert "too long" in error
@@ -63,16 +63,16 @@ class TestRegexSafetyChecker:
         """Test validation fails for dangerous patterns."""
         # Arrange
         dangerous_patterns = [
-            r"(.+)+",      # Nested quantifiers
-            r"(.*)*",      # Nested quantifiers
-            r"(.{0,})+",   # Potential ReDoS
-            r"(a|a)*",     # Alternation with overlap
+            r"(.+)+",  # Nested quantifiers
+            r"(.*)*",  # Nested quantifiers
+            r"(.{0,})+",  # Potential ReDoS
+            r"(a|a)*",  # Alternation with overlap
         ]
-        
+
         for pattern in dangerous_patterns:
             # Act
             is_safe, error = self.checker.validate_pattern(pattern)
-            
+
             # Assert
             assert not is_safe, f"Pattern should be dangerous: {pattern}"
             assert "dangerous" in error.lower()
@@ -82,16 +82,16 @@ class TestRegexSafetyChecker:
         """Test validation fails for invalid regex syntax."""
         # Arrange
         invalid_patterns = [
-            r"[",          # Unclosed bracket
-            r"(?P<",       # Incomplete group
-            r"*",          # Invalid quantifier
-            r"(?",         # Incomplete group
+            r"[",  # Unclosed bracket
+            r"(?P<",  # Incomplete group
+            r"*",  # Invalid quantifier
+            r"(?",  # Incomplete group
         ]
-        
+
         for pattern in invalid_patterns:
             # Act
             is_safe, error = self.checker.validate_pattern(pattern)
-            
+
             # Assert
             assert not is_safe, f"Pattern should be invalid: {pattern}"
 
@@ -100,10 +100,10 @@ class TestRegexSafetyChecker:
         """Test regex complexity analysis."""
         # Arrange
         pattern = r"^[a-zA-Z]+\d{2,4}(test|demo)*$"
-        
+
         # Act
         metrics = self.checker.analyze_complexity(pattern)
-        
+
         # Assert
         assert "length" in metrics
         assert "quantifiers" in metrics
@@ -120,10 +120,10 @@ class TestRegexSafetyChecker:
         """Test safer pattern suggestions."""
         # Arrange
         dangerous_pattern = r"(.+)+"
-        
+
         # Act
         suggestion = self.checker.suggest_safer_pattern(dangerous_pattern)
-        
+
         # Assert
         assert suggestion is not None
         assert suggestion != dangerous_pattern
@@ -133,10 +133,10 @@ class TestRegexSafetyChecker:
         """Test no suggestion for safe patterns."""
         # Arrange
         safe_pattern = r"hello.*world"
-        
+
         # Act
         suggestion = self.checker.suggest_safer_pattern(safe_pattern)
-        
+
         # Assert
         assert suggestion is None
 
@@ -145,7 +145,7 @@ class TestRegexSafetyChecker:
         """Test getting safe regex flags."""
         # Act
         flags = self.checker.get_safe_flags()
-        
+
         # Assert
         assert isinstance(flags, int)
         assert flags > 0
@@ -155,10 +155,10 @@ class TestRegexSafetyChecker:
         """Test creating safe compiled pattern."""
         # Arrange
         safe_pattern = r"hello.*world"
-        
+
         # Act
         compiled = self.checker.create_safe_pattern(safe_pattern)
-        
+
         # Assert
         assert compiled is not None
         assert hasattr(compiled, "search")
@@ -169,10 +169,10 @@ class TestRegexSafetyChecker:
         """Test creating safe pattern fails for dangerous input."""
         # Arrange
         dangerous_pattern = r"(.+)+"
-        
+
         # Act
         compiled = self.checker.create_safe_pattern(dangerous_pattern)
-        
+
         # Assert
         assert compiled is None
 
@@ -181,10 +181,10 @@ class TestRegexSafetyChecker:
         """Test creating safe pattern fails for invalid syntax."""
         # Arrange
         invalid_pattern = r"["
-        
+
         # Act
         compiled = self.checker.create_safe_pattern(invalid_pattern)
-        
+
         # Assert
         assert compiled is None
 
@@ -193,10 +193,10 @@ class TestRegexSafetyChecker:
         """Test performance check passes for fast patterns."""
         # Arrange
         fast_pattern = r"hello"
-        
+
         # Act
         is_safe, error = self.checker.validate_pattern(fast_pattern)
-        
+
         # Assert
         assert is_safe
         assert error == ""
@@ -206,10 +206,10 @@ class TestRegexSafetyChecker:
         """Test dangerous pattern detection."""
         # Arrange
         dangerous_pattern = r"(.+)+"
-        
+
         # Act
         dangerous_found = self.checker._check_dangerous_patterns(dangerous_pattern)
-        
+
         # Assert
         assert dangerous_found is not None
 
@@ -218,9 +218,9 @@ class TestRegexSafetyChecker:
         """Test safe pattern passes dangerous pattern check."""
         # Arrange
         safe_pattern = r"hello.*world"
-        
+
         # Act
         dangerous_found = self.checker._check_dangerous_patterns(safe_pattern)
-        
+
         # Assert
         assert dangerous_found is None

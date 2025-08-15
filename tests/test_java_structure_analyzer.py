@@ -400,7 +400,15 @@ def test_cli_structure_option_json_format(mocker, simple_java_code):
         mocker.patch.object(
             sys,
             "argv",
-            ["cli", temp_path, "--structure", "--output-format", "json", "--project-root", temp_dir],
+            [
+                "cli",
+                temp_path,
+                "--structure",
+                "--output-format",
+                "json",
+                "--project-root",
+                temp_dir,
+            ],
         )
         mock_stdout = mocker.patch("sys.stdout", new=StringIO())
 
@@ -948,7 +956,15 @@ def test_cli_structure_option_text_format(mocker, simple_java_code):
         mocker.patch.object(
             sys,
             "argv",
-            ["cli", temp_path, "--structure", "--output-format", "text", "--project-root", temp_dir],
+            [
+                "cli",
+                temp_path,
+                "--structure",
+                "--output-format",
+                "text",
+                "--project-root",
+                temp_dir,
+            ],
         )
         mock_stdout = mocker.patch("sys.stdout", new=StringIO())
 

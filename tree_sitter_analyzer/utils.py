@@ -49,9 +49,12 @@ def setup_logger(
             )
             file_handler.setFormatter(formatter)
             logger.addHandler(file_handler)
-        except Exception:
-            # Never let logging configuration break runtime behavior
-            pass
+        except Exception as e:
+            # Never let logging configuration break runtime behavior; log to stderr if possible
+            try:
+                sys.stderr.write(f"[logging_setup] file handler init skipped: {e}\n")
+            except Exception:
+                pass
 
         logger.setLevel(level)
 
@@ -107,10 +110,18 @@ def setup_safe_logging_shutdown() -> None:
                     try:
                         handler.close()
                         logger.removeHandler(handler)
-                    except Exception:
-                        pass
-        except Exception:
-            pass
+                    except Exception as e:
+                        try:
+                            sys.stderr.write(
+                                f"[logging_cleanup] handler close/remove skipped: {e}\n"
+                            )
+                        except Exception:
+                            pass
+        except Exception as e:
+            try:
+                sys.stderr.write(f"[logging_cleanup] cleanup skipped: {e}\n")
+            except Exception:
+                pass
 
     # Register cleanup function
     atexit.register(cleanup_logging)
@@ -128,32 +139,44 @@ def log_info(message: str, *args: Any, **kwargs: Any) -> None:
     """Log info message"""
     try:
         logger.info(message, *args, **kwargs)
-    except (ValueError, OSError):
-        pass  # Silently ignore I/O errors
+    except (ValueError, OSError) as e:
+        try:
+            sys.stderr.write(f"[log_info] suppressed: {e}\n")
+        except Exception:
+            pass
 
 
 def log_warning(message: str, *args: Any, **kwargs: Any) -> None:
     """Log warning message"""
     try:
         logger.warning(message, *args, **kwargs)
-    except (ValueError, OSError):
-        pass  # Silently ignore I/O errors
+    except (ValueError, OSError) as e:
+        try:
+            sys.stderr.write(f"[log_warning] suppressed: {e}\n")
+        except Exception:
+            pass
 
 
 def log_error(message: str, *args: Any, **kwargs: Any) -> None:
     """Log error message"""
     try:
         logger.error(message, *args, **kwargs)
-    except (ValueError, OSError):
-        pass  # Silently ignore I/O errors
+    except (ValueError, OSError) as e:
+        try:
+            sys.stderr.write(f"[log_error] suppressed: {e}\n")
+        except Exception:
+            pass
 
 
 def log_debug(message: str, *args: Any, **kwargs: Any) -> None:
     """Log debug message"""
     try:
         logger.debug(message, *args, **kwargs)
-    except (ValueError, OSError):
-        pass  # Silently ignore I/O errors
+    except (ValueError, OSError) as e:
+        try:
+            sys.stderr.write(f"[log_debug] suppressed: {e}\n")
+        except Exception:
+            pass
 
 
 def suppress_output(func: Any) -> Any:
@@ -175,8 +198,13 @@ def suppress_output(func: Any) -> Any:
         finally:
             try:
                 sys.stdout.close()
-            except Exception:
-                pass
+            except Exception as e:
+                try:
+                    sys.stderr.write(
+                        f"[suppress_output] stdout close suppressed: {e}\n"
+                    )
+                except Exception:
+                    pass
             sys.stdout = old_stdout
 
         return result
@@ -253,8 +281,11 @@ def log_performance(
                 detail_str = str(details)
             message += f" - {detail_str}"
         perf_logger.debug(message)  # Change to DEBUG level
-    except (ValueError, OSError):
-        pass  # Silently ignore I/O errors
+    except (ValueError, OSError) as e:
+        try:
+            sys.stderr.write(f"[log_performance] suppressed: {e}\n")
+        except Exception:
+            pass
 
 
 def setup_performance_logger() -> logging.Logger:

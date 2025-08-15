@@ -6,6 +6,7 @@ This tool provides table-formatted output for code analysis results through the 
 equivalent to the CLI --table=full option functionality.
 """
 
+import os
 from pathlib import Path
 from typing import Any
 
@@ -271,8 +272,25 @@ class TableFormatTool:
             format_type = args.get("format_type", "full")
             language = args.get("language")
 
+            # Resolve relative path against project root for consistent behavior
+            base_root = (
+                getattr(
+                    getattr(self.security_validator, "boundary_manager", None),
+                    "project_root",
+                    None,
+                )
+                or self.project_root
+            )
+
+            if not os.path.isabs(file_path) and base_root:
+                resolved_path = os.path.realpath(os.path.join(base_root, file_path))
+            else:
+                resolved_path = file_path
+
             # Security validation
-            is_valid, error_msg = self.security_validator.validate_file_path(file_path)
+            is_valid, error_msg = self.security_validator.validate_file_path(
+                resolved_path
+            )
             if not is_valid:
                 self.logger.warning(
                     f"Security validation failed for file path: {file_path} - {error_msg}"
@@ -292,20 +310,20 @@ class TableFormatTool:
                 )
 
             # Validate file exists
-            if not Path(file_path).exists():
+            if not Path(resolved_path).exists():
                 # Tests expect FileNotFoundError here
                 raise FileNotFoundError(f"File not found: {file_path}")
 
             # Detect language if not provided
             if not language:
-                language = detect_language_from_file(file_path)
+                language = detect_language_from_file(resolved_path)
 
             # Use performance monitoring
             monitor = get_performance_monitor()
             with monitor.measure_operation("code_structure_analysis"):
                 # Analyze structure using the unified analysis engine
                 request = AnalysisRequest(
-                    file_path=file_path,
+                    file_path=resolved_path,
                     language=language,
                     include_complexity=True,
                     include_details=True,

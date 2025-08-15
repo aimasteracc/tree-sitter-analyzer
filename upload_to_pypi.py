@@ -137,31 +137,34 @@ def check_packages(version: str) -> bool:
 def check_pypi_version(version: str) -> bool:
     """Check if version already exists on PyPI"""
     print(f"🔍 Checking if version {version} already exists on PyPI...")
-    
+
     # Method 1: Direct PyPI API check (most reliable)
     try:
-        import urllib.request
         import json
-        
+        import urllib.request
+
         url = "https://pypi.org/pypi/tree-sitter-analyzer/json"
         with urllib.request.urlopen(url, timeout=10) as response:
             data = json.loads(response.read().decode())
             existing_versions = list(data.get("releases", {}).keys())
-            
+
         if version in existing_versions:
             print(f"❌ Version {version} already exists on PyPI")
-            print(f"📋 Existing versions: {', '.join(sorted(existing_versions, reverse=True)[:5])}...")
+            print(
+                f"📋 Existing versions: {', '.join(sorted(existing_versions, reverse=True)[:5])}..."
+            )
             return False
         else:
             print(f"✅ Version {version} is new")
             return True
-            
+
     except Exception as e:
         print(f"⚠️  PyPI API check failed ({e}), trying alternative method...")
-    
+
     # Method 2: Try using requests as fallback
     try:
         import requests
+
         url = f"https://pypi.org/pypi/tree-sitter-analyzer/{version}/json"
         response = requests.head(url, timeout=10)
         if response.status_code == 200:
@@ -172,7 +175,7 @@ def check_pypi_version(version: str) -> bool:
             return True
     except Exception as e:
         print(f"⚠️  Requests check failed ({e}), trying pip method...")
-    
+
     # Method 3: Try pip index (may not work in all environments)
     try:
         result = subprocess.run(
@@ -220,7 +223,7 @@ def upload_with_uv() -> bool:
     # Check for .pypirc file first
     pypirc_path = os.path.expanduser("~/.pypirc")
     has_pypirc = os.path.exists(pypirc_path)
-    
+
     if has_pypirc:
         print("📁 Found .pypirc configuration file")
         try:
@@ -238,10 +241,17 @@ def upload_with_uv() -> bool:
             else:
                 # Check if it's a version conflict error
                 error_output = (result.stderr or "") + (result.stdout or "")
-                if any(keyword in error_output.lower() for keyword in [
-                    "already exists", "file already exists", "conflict", 
-                    "version already exists", "403", "forbidden"
-                ]):
+                if any(
+                    keyword in error_output.lower()
+                    for keyword in [
+                        "already exists",
+                        "file already exists",
+                        "conflict",
+                        "version already exists",
+                        "403",
+                        "forbidden",
+                    ]
+                ):
                     print("❌ Upload failed: Version already exists on PyPI")
                     print("💡 Please increment the version number and try again")
                     if result.stderr:
@@ -258,7 +268,7 @@ def upload_with_uv() -> bool:
     # Token method (fallback or when no .pypirc)
     if not has_pypirc:
         print("📁 No .pypirc found, using token authentication")
-    
+
     # Check for environment variable first
     token = os.getenv("PYPI_API_TOKEN") or os.getenv("UV_PUBLISH_TOKEN")
 
@@ -286,10 +296,17 @@ def upload_with_uv() -> bool:
         else:
             # Check if it's a version conflict error
             error_output = (result.stderr or "") + (result.stdout or "")
-            if any(keyword in error_output.lower() for keyword in [
-                "already exists", "file already exists", "conflict", 
-                "version already exists", "403", "forbidden"
-            ]):
+            if any(
+                keyword in error_output.lower()
+                for keyword in [
+                    "already exists",
+                    "file already exists",
+                    "conflict",
+                    "version already exists",
+                    "403",
+                    "forbidden",
+                ]
+            ):
                 print("❌ Upload failed: Version already exists on PyPI")
                 print("💡 Please increment the version number and try again")
                 if result.stderr:
@@ -300,7 +317,7 @@ def upload_with_uv() -> bool:
                     print(result.stderr)
                 if result.stdout:
                     print(result.stdout)
-                
+
                 # Provide helpful tip about .pypirc
                 if not has_pypirc:
                     print("\n💡 Tip: Consider setting up .pypirc for easier uploads:")

@@ -138,8 +138,21 @@ class TreeSitterAnalyzerMCPServer:
         include_complexity = arguments.get("include_complexity", True)
         include_details = arguments.get("include_details", False)
 
+        # Resolve relative path against project root for consistent behavior
+        import os
+
+        base_root = getattr(
+            getattr(self.security_validator, "boundary_manager", None),
+            "project_root",
+            None,
+        )
+        if not os.path.isabs(file_path) and base_root:
+            resolved_path = os.path.realpath(os.path.join(base_root, file_path))
+        else:
+            resolved_path = file_path
+
         # Security validation
-        is_valid, error_msg = self.security_validator.validate_file_path(file_path)
+        is_valid, error_msg = self.security_validator.validate_file_path(resolved_path)
         if not is_valid:
             raise ValueError(f"Invalid file path: {error_msg}")
 
@@ -150,16 +163,16 @@ class TreeSitterAnalyzerMCPServer:
         from ..language_detector import detect_language_from_file
 
         # Validate file exists
-        if not Path(file_path).exists():
+        if not Path(resolved_path).exists():
             raise FileNotFoundError(f"File not found: {file_path}")
 
         # Detect language if not specified
         if not language:
-            language = detect_language_from_file(file_path)
+            language = detect_language_from_file(resolved_path)
 
         # Create analysis request
         request = AnalysisRequest(
-            file_path=file_path,
+            file_path=resolved_path,
             language=language,
             include_complexity=include_complexity,
             include_details=include_details,
@@ -332,8 +345,13 @@ class TreeSitterAnalyzerMCPServer:
                 # Validate file path security
                 if "file_path" in arguments:
                     file_path = arguments["file_path"]
-                    if not self.security_validator.validate_file_path(file_path):
-                        raise ValueError(f"Invalid or unsafe file path: {file_path}")
+                    is_valid, error_msg = self.security_validator.validate_file_path(
+                        file_path
+                    )
+                    if not is_valid:
+                        raise ValueError(
+                            f"Invalid or unsafe file path: {error_msg or file_path}"
+                        )
 
                 # Handle tool calls with simplified parameter handling
                 if name == "check_code_scale":
@@ -467,9 +485,12 @@ class TreeSitterAnalyzerMCPServer:
                 logger.info("Client requested prompts list (returning empty)")
                 return []
 
-        except Exception:
-            # If Prompt type is unavailable, it's safe to ignore
-            pass
+        except Exception as e:
+            # If Prompt type is unavailable, log at debug level and continue safely
+            try:
+                logger.debug(f"Prompts API unavailable or incompatible: {e}")
+            except (ValueError, OSError):
+                pass
 
         self.server = server
         try:

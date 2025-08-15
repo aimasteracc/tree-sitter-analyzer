@@ -7,9 +7,6 @@ including base formatter, factory, and language-specific formatters.
 """
 
 import pytest
-import tempfile
-import os
-from unittest.mock import Mock, patch
 
 from tree_sitter_analyzer.formatters.base_formatter import BaseTableFormatter
 from tree_sitter_analyzer.formatters.formatter_factory import TableFormatterFactory
@@ -28,21 +25,27 @@ class TestBaseTableFormatter:
     def test_base_formatter_interface(self):
         """Test that BaseTableFormatter defines the expected interface."""
         # Check that required methods exist
-        assert hasattr(BaseTableFormatter, 'format_structure')
-        assert hasattr(BaseTableFormatter, '_get_platform_newline')
-        assert hasattr(BaseTableFormatter, '_convert_to_platform_newlines')
-        assert hasattr(BaseTableFormatter, '_format_full_table')
-        assert hasattr(BaseTableFormatter, '_format_compact_table')
-        assert hasattr(BaseTableFormatter, '_format_csv')
+        assert hasattr(BaseTableFormatter, "format_structure")
+        assert hasattr(BaseTableFormatter, "_get_platform_newline")
+        assert hasattr(BaseTableFormatter, "_convert_to_platform_newlines")
+        assert hasattr(BaseTableFormatter, "_format_full_table")
+        assert hasattr(BaseTableFormatter, "_format_compact_table")
+        assert hasattr(BaseTableFormatter, "_format_csv")
 
     def test_platform_newline_detection(self):
         """Test platform newline detection."""
+
         # Create a concrete implementation for testing
         class TestFormatter(BaseTableFormatter):
-            def _format_full_table(self, data): return "test"
-            def _format_compact_table(self, data): return "test"
-            def _format_csv(self, data): return "test"
-        
+            def _format_full_table(self, data):
+                return "test"
+
+            def _format_compact_table(self, data):
+                return "test"
+
+            def _format_csv(self, data):
+                return "test"
+
         formatter = TestFormatter()
         newline = formatter._get_platform_newline()
         assert isinstance(newline, str)
@@ -50,11 +53,17 @@ class TestBaseTableFormatter:
 
     def test_newline_conversion(self):
         """Test newline conversion functionality."""
+
         class TestFormatter(BaseTableFormatter):
-            def _format_full_table(self, data): return "test"
-            def _format_compact_table(self, data): return "test"
-            def _format_csv(self, data): return "test"
-        
+            def _format_full_table(self, data):
+                return "test"
+
+            def _format_compact_table(self, data):
+                return "test"
+
+            def _format_csv(self, data):
+                return "test"
+
         formatter = TestFormatter()
         test_text = "line1\nline2\nline3"
         converted = formatter._convert_to_platform_newlines(test_text)
@@ -63,11 +72,17 @@ class TestBaseTableFormatter:
 
     def test_format_structure_with_invalid_type(self):
         """Test format_structure with invalid format type."""
+
         class TestFormatter(BaseTableFormatter):
-            def _format_full_table(self, data): return "test"
-            def _format_compact_table(self, data): return "test"
-            def _format_csv(self, data): return "test"
-        
+            def _format_full_table(self, data):
+                return "test"
+
+            def _format_compact_table(self, data):
+                return "test"
+
+            def _format_csv(self, data):
+                return "test"
+
         formatter = TestFormatter("invalid_type")
         with pytest.raises(ValueError, match="Unsupported format type"):
             formatter.format_structure({})
@@ -78,61 +93,67 @@ class TestTableFormatterFactory:
 
     def test_create_formatter_for_java(self):
         """Test creating formatter for Java language."""
-        formatter = TableFormatterFactory.create_formatter('java')
+        formatter = TableFormatterFactory.create_formatter("java")
         assert isinstance(formatter, JavaTableFormatter)
 
     def test_create_formatter_for_python(self):
         """Test creating formatter for Python language."""
-        formatter = TableFormatterFactory.create_formatter('python')
+        formatter = TableFormatterFactory.create_formatter("python")
         assert isinstance(formatter, PythonTableFormatter)
 
     def test_create_formatter_case_insensitive(self):
         """Test that formatter factory is case insensitive."""
-        formatter1 = TableFormatterFactory.create_formatter('JAVA')
-        formatter2 = TableFormatterFactory.create_formatter('java')
+        formatter1 = TableFormatterFactory.create_formatter("JAVA")
+        formatter2 = TableFormatterFactory.create_formatter("java")
         assert type(formatter1) == type(formatter2)
 
     def test_create_formatter_with_format_type(self):
         """Test creating formatter with specific format type."""
-        formatter = TableFormatterFactory.create_formatter('java', 'compact')
-        assert formatter.format_type == 'compact'
+        formatter = TableFormatterFactory.create_formatter("java", "compact")
+        assert formatter.format_type == "compact"
 
     def test_create_formatter_for_unsupported_language(self):
         """Test creating formatter for unsupported language uses default."""
-        formatter = TableFormatterFactory.create_formatter('unsupported')
+        formatter = TableFormatterFactory.create_formatter("unsupported")
         assert isinstance(formatter, JavaTableFormatter)  # Default fallback
 
     def test_register_new_formatter(self):
         """Test registering a new language formatter."""
+
         class CustomFormatter(BaseTableFormatter):
-            def _format_full_table(self, data): return "custom"
-            def _format_compact_table(self, data): return "custom"
-            def _format_csv(self, data): return "custom"
-        
+            def _format_full_table(self, data):
+                return "custom"
+
+            def _format_compact_table(self, data):
+                return "custom"
+
+            def _format_csv(self, data):
+                return "custom"
+
         # Register custom formatter
-        TableFormatterFactory.register_formatter('custom', CustomFormatter)
-        
+        TableFormatterFactory.register_formatter("custom", CustomFormatter)
+
         # Test that it can be created
-        formatter = TableFormatterFactory.create_formatter('custom')
+        formatter = TableFormatterFactory.create_formatter("custom")
         assert isinstance(formatter, CustomFormatter)
-        
+
         # Clean up
-        if 'custom' in TableFormatterFactory._formatters:
-            del TableFormatterFactory._formatters['custom']
+        if "custom" in TableFormatterFactory._formatters:
+            del TableFormatterFactory._formatters["custom"]
 
     def test_get_supported_languages(self):
         """Test getting list of supported languages."""
         languages = TableFormatterFactory.get_supported_languages()
         assert isinstance(languages, list)
-        assert 'java' in languages
-        assert 'python' in languages
+        assert "java" in languages
+        assert "python" in languages
 
     def test_is_language_supported(self):
         """Test checking if language is supported."""
         supported_languages = TableFormatterFactory.get_supported_languages()
-        assert 'java' in supported_languages
-        assert 'python' in supported_languages
-        assert 'unsupported' not in supported_languages
+        assert "java" in supported_languages
+        assert "python" in supported_languages
+        assert "unsupported" not in supported_languages
 
 
 class TestJavaTableFormatter:
@@ -154,22 +175,24 @@ class TestJavaTableFormatter:
     def test_format_java_structure_basic(self):
         """Test formatting a basic Java structure."""
         formatter = JavaTableFormatter()
-        
+
         # Mock basic structure data
         structure_data = {
-            'classes': [{
-                'name': 'TestClass',
-                'type': 'class',
-                'modifiers': ['public'],
-                'start_line': 1,
-                'end_line': 10,
-                'methods': [],
-                'fields': []
-            }],
-            'package': {'name': 'com.example'},
-            'file_path': 'TestClass.java'
+            "classes": [
+                {
+                    "name": "TestClass",
+                    "type": "class",
+                    "modifiers": ["public"],
+                    "start_line": 1,
+                    "end_line": 10,
+                    "methods": [],
+                    "fields": [],
+                }
+            ],
+            "package": {"name": "com.example"},
+            "file_path": "TestClass.java",
         }
-        
+
         result = formatter.format_structure(structure_data)
         assert isinstance(result, str)
         assert len(result) > 0
@@ -177,35 +200,35 @@ class TestJavaTableFormatter:
     def test_format_java_structure_with_methods_and_fields(self):
         """Test formatting Java structure with methods and fields."""
         formatter = JavaTableFormatter()
-        
+
         # Mock complex data structure
         data = {
-            'classes': [
+            "classes": [
                 {
-                    'name': 'ComplexClass',
-                    'type': 'class',
-                    'modifiers': ['public'],
-                    'methods': [
+                    "name": "ComplexClass",
+                    "type": "class",
+                    "modifiers": ["public"],
+                    "methods": [
                         {
-                            'name': 'complexMethod',
-                            'modifiers': ['public'],
-                            'return_type': 'int',
-                            'parameters': ['String arg1', 'int arg2']
+                            "name": "complexMethod",
+                            "modifiers": ["public"],
+                            "return_type": "int",
+                            "parameters": ["String arg1", "int arg2"],
                         }
                     ],
-                    'fields': [
+                    "fields": [
                         {
-                            'name': 'complexField',
-                            'modifiers': ['private'],
-                            'field_type': 'List<String>'
+                            "name": "complexField",
+                            "modifiers": ["private"],
+                            "field_type": "List<String>",
                         }
-                    ]
+                    ],
                 }
             ],
-            'package': {'name': 'com.example'},
-            'file_path': 'ComplexClass.java'
+            "package": {"name": "com.example"},
+            "file_path": "ComplexClass.java",
         }
-        
+
         result = formatter.format_structure(data)
         assert isinstance(result, str)
         assert len(result) > 0
@@ -213,16 +236,18 @@ class TestJavaTableFormatter:
     def test_format_java_structure_compact(self):
         """Test formatting Java structure in compact format."""
         formatter = JavaTableFormatter("compact")
-        
+
         structure_data = {
-            'classes': [{
-                'name': 'TestClass',
-                'methods': [{'name': 'testMethod'}],
-                'fields': [{'name': 'testField'}]
-            }],
-            'package': {'name': 'com.example'}
+            "classes": [
+                {
+                    "name": "TestClass",
+                    "methods": [{"name": "testMethod"}],
+                    "fields": [{"name": "testField"}],
+                }
+            ],
+            "package": {"name": "com.example"},
         }
-        
+
         result = formatter.format_structure(structure_data)
         assert isinstance(result, str)
         assert len(result) > 0
@@ -230,15 +255,17 @@ class TestJavaTableFormatter:
     def test_format_java_structure_csv(self):
         """Test formatting Java structure in CSV format."""
         formatter = JavaTableFormatter("csv")
-        
+
         structure_data = {
-            'classes': [{
-                'name': 'TestClass',
-                'methods': [{'name': 'testMethod'}],
-                'fields': [{'name': 'testField'}]
-            }]
+            "classes": [
+                {
+                    "name": "TestClass",
+                    "methods": [{"name": "testMethod"}],
+                    "fields": [{"name": "testField"}],
+                }
+            ]
         }
-        
+
         result = formatter.format_structure(structure_data)
         assert isinstance(result, str)
         assert len(result) > 0
@@ -263,22 +290,24 @@ class TestPythonTableFormatter:
     def test_format_python_structure_basic(self):
         """Test formatting a basic Python structure."""
         formatter = PythonTableFormatter()
-        
+
         # Mock basic structure data
         structure_data = {
-            'classes': [{
-                'name': 'TestClass',
-                'type': 'class',
-                'base_classes': ['BaseClass'],
-                'start_line': 1,
-                'end_line': 10,
-                'methods': [],
-                'decorators': []
-            }],
-            'functions': [],
-            'file_path': 'test_class.py'
+            "classes": [
+                {
+                    "name": "TestClass",
+                    "type": "class",
+                    "base_classes": ["BaseClass"],
+                    "start_line": 1,
+                    "end_line": 10,
+                    "methods": [],
+                    "decorators": [],
+                }
+            ],
+            "functions": [],
+            "file_path": "test_class.py",
         }
-        
+
         result = formatter.format_structure(structure_data)
         assert isinstance(result, str)
         assert len(result) > 0
@@ -286,39 +315,39 @@ class TestPythonTableFormatter:
     def test_format_python_structure_with_functions_and_classes(self):
         """Test formatting complex Python structure."""
         formatter = PythonTableFormatter()
-        
+
         # Mock complex data structure
         data = {
-            'classes': [
+            "classes": [
                 {
-                    'name': 'ComplexClass',
-                    'type': 'class',
-                    'base_classes': ['BaseClass', 'Mixin'],
-                    'methods': [
+                    "name": "ComplexClass",
+                    "type": "class",
+                    "base_classes": ["BaseClass", "Mixin"],
+                    "methods": [
                         {
-                            'name': '__init__',
-                            'parameters': ['self', 'arg1'],
-                            'decorators': []
+                            "name": "__init__",
+                            "parameters": ["self", "arg1"],
+                            "decorators": [],
                         },
                         {
-                            'name': 'complex_method',
-                            'parameters': ['self'],
-                            'decorators': ['@property'],
-                            'is_async': True
-                        }
-                    ]
+                            "name": "complex_method",
+                            "parameters": ["self"],
+                            "decorators": ["@property"],
+                            "is_async": True,
+                        },
+                    ],
                 }
             ],
-            'functions': [
+            "functions": [
                 {
-                    'name': 'standalone_function',
-                    'parameters': ['arg1', 'arg2=None'],
-                    'decorators': ['@staticmethod']
+                    "name": "standalone_function",
+                    "parameters": ["arg1", "arg2=None"],
+                    "decorators": ["@staticmethod"],
                 }
             ],
-            'file_path': 'complex_module.py'
+            "file_path": "complex_module.py",
         }
-        
+
         result = formatter.format_structure(data)
         assert isinstance(result, str)
         assert len(result) > 0
@@ -326,15 +355,12 @@ class TestPythonTableFormatter:
     def test_format_python_structure_compact(self):
         """Test formatting Python structure in compact format."""
         formatter = PythonTableFormatter("compact")
-        
+
         structure_data = {
-            'classes': [{
-                'name': 'TestClass',
-                'methods': [{'name': 'test_method'}]
-            }],
-            'functions': [{'name': 'test_function'}]
+            "classes": [{"name": "TestClass", "methods": [{"name": "test_method"}]}],
+            "functions": [{"name": "test_function"}],
         }
-        
+
         result = formatter.format_structure(structure_data)
         assert isinstance(result, str)
         assert len(result) > 0
@@ -342,15 +368,12 @@ class TestPythonTableFormatter:
     def test_format_python_structure_csv(self):
         """Test formatting Python structure in CSV format."""
         formatter = PythonTableFormatter("csv")
-        
+
         structure_data = {
-            'classes': [{
-                'name': 'TestClass',
-                'methods': [{'name': 'test_method'}]
-            }],
-            'functions': [{'name': 'test_function'}]
+            "classes": [{"name": "TestClass", "methods": [{"name": "test_method"}]}],
+            "functions": [{"name": "test_function"}],
         }
-        
+
         result = formatter.format_structure(structure_data)
         assert isinstance(result, str)
         assert len(result) > 0
@@ -376,10 +399,10 @@ class TestFormatterErrorHandling:
         formatter = PythonTableFormatter()
 
         empty_data = {
-            'classes': [],
-            'functions': [],
-            'imports': [],
-            'file_path': 'empty.py'
+            "classes": [],
+            "functions": [],
+            "imports": [],
+            "file_path": "empty.py",
         }
 
         result = formatter.format_structure(empty_data)
@@ -391,10 +414,10 @@ class TestFormatterErrorHandling:
         formatter = JavaTableFormatter()
 
         malformed_data = {
-            'classes': [
+            "classes": [
                 {
-                    'name': None,  # Invalid name
-                    'methods': 'not_a_list',  # Should be list
+                    "name": None,  # Invalid name
+                    "methods": "not_a_list",  # Should be list
                 }
             ]
         }
@@ -415,32 +438,32 @@ class TestFormatterIntegration:
         """Test formatters with realistic Java analysis data."""
         # This would typically come from the analysis engine
         java_data = {
-            'classes': [
+            "classes": [
                 {
-                    'name': 'HelloWorld',
-                    'type': 'class',
-                    'modifiers': ['public'],
-                    'start_line': 1,
-                    'end_line': 10,
-                    'methods': [
+                    "name": "HelloWorld",
+                    "type": "class",
+                    "modifiers": ["public"],
+                    "start_line": 1,
+                    "end_line": 10,
+                    "methods": [
                         {
-                            'name': 'main',
-                            'modifiers': ['public', 'static'],
-                            'return_type': 'void',
-                            'parameters': ['String[] args'],
-                            'start_line': 3,
-                            'end_line': 6
+                            "name": "main",
+                            "modifiers": ["public", "static"],
+                            "return_type": "void",
+                            "parameters": ["String[] args"],
+                            "start_line": 3,
+                            "end_line": 6,
                         }
                     ],
-                    'fields': []
+                    "fields": [],
                 }
             ],
-            'package': {'name': 'com.example'},
-            'file_path': 'HelloWorld.java',
-            'imports': [{'statement': 'java.util.List'}]
+            "package": {"name": "com.example"},
+            "file_path": "HelloWorld.java",
+            "imports": [{"statement": "java.util.List"}],
         }
 
-        formatter = TableFormatterFactory.create_formatter('java')
+        formatter = TableFormatterFactory.create_formatter("java")
         result = formatter.format_structure(java_data)
 
         assert isinstance(result, str)
@@ -449,19 +472,23 @@ class TestFormatterIntegration:
     def test_all_format_types_produce_output(self):
         """Test that all format types produce valid output."""
         test_data = {
-            'classes': [{
-                'name': 'TestClass',
-                'methods': [{'name': 'testMethod'}],
-                'fields': [{'name': 'testField'}]
-            }]
+            "classes": [
+                {
+                    "name": "TestClass",
+                    "methods": [{"name": "testMethod"}],
+                    "fields": [{"name": "testField"}],
+                }
+            ]
         }
 
-        format_types = ['full', 'compact', 'csv']
-        languages = ['java', 'python']
+        format_types = ["full", "compact", "csv"]
+        languages = ["java", "python"]
 
         for language in languages:
             for format_type in format_types:
-                formatter = TableFormatterFactory.create_formatter(language, format_type)
+                formatter = TableFormatterFactory.create_formatter(
+                    language, format_type
+                )
                 result = formatter.format_structure(test_data)
 
                 assert isinstance(result, str)

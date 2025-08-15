@@ -6,15 +6,14 @@ This module provides comprehensive test coverage for the UniversalAnalyzeTool
 to improve overall test coverage and test edge cases.
 """
 
-import pytest
-import tempfile
-import os
 import asyncio
-from unittest.mock import Mock, patch, AsyncMock
-from pathlib import Path
+import os
+import tempfile
 
-from tree_sitter_analyzer.mcp.tools.universal_analyze_tool import UniversalAnalyzeTool
+import pytest
+
 from tree_sitter_analyzer.exceptions import SecurityError
+from tree_sitter_analyzer.mcp.tools.universal_analyze_tool import UniversalAnalyzeTool
 from tree_sitter_analyzer.mcp.utils.error_handler import AnalysisError
 
 
@@ -37,11 +36,11 @@ class TestUniversalAnalyzeToolEdgeCases:
         """Test executing analysis on an empty file."""
         # Create empty file
         empty_file = os.path.join(temp_dir, "empty.py")
-        with open(empty_file, 'w') as f:
+        with open(empty_file, "w") as f:
             f.write("")
-        
+
         args = {"file_path": empty_file}
-        
+
         try:
             result = await tool.execute(args)
             assert isinstance(result, dict)
@@ -56,11 +55,11 @@ class TestUniversalAnalyzeToolEdgeCases:
         """Test executing analysis on a binary file."""
         # Create binary file
         binary_file = os.path.join(temp_dir, "binary.bin")
-        with open(binary_file, 'wb') as f:
-            f.write(b'\x00\x01\x02\x03\x04\x05')
-        
+        with open(binary_file, "wb") as f:
+            f.write(b"\x00\x01\x02\x03\x04\x05")
+
         args = {"file_path": binary_file}
-        
+
         try:
             result = await tool.execute(args)
             assert isinstance(result, dict)
@@ -76,12 +75,12 @@ class TestUniversalAnalyzeToolEdgeCases:
         # Create large file
         large_file = os.path.join(temp_dir, "large.py")
         large_content = "# Large Python file\n" + "def function_{}(): pass\n" * 1000
-        
-        with open(large_file, 'w') as f:
+
+        with open(large_file, "w") as f:
             f.write(large_content)
-        
+
         args = {"file_path": large_file}
-        
+
         try:
             result = await tool.execute(args)
             assert isinstance(result, dict)
@@ -100,14 +99,14 @@ class TestUniversalAnalyzeToolEdgeCases:
             ("incomplete_import.py", "import"),
             ("syntax_error.py", "if True\n    pass"),
         ]
-        
+
         for filename, code in malformed_samples:
             file_path = os.path.join(temp_dir, filename)
-            with open(file_path, 'w') as f:
+            with open(file_path, "w") as f:
                 f.write(code)
-            
+
             args = {"file_path": file_path}
-            
+
             try:
                 result = await tool.execute(args)
                 # Should handle malformed syntax gracefully
@@ -128,12 +127,12 @@ def 函数名():
     变量 = "Hello, 世界! 🌍"
     return 变量
 """
-        
-        with open(unicode_file, 'w', encoding='utf-8') as f:
+
+        with open(unicode_file, "w", encoding="utf-8") as f:
             f.write(unicode_content)
-        
+
         args = {"file_path": unicode_file}
-        
+
         try:
             result = await tool.execute(args)
             assert isinstance(result, dict)
@@ -146,7 +145,7 @@ def 函数名():
     async def test_execute_with_nonexistent_file(self, tool):
         """Test executing analysis on a non-existent file."""
         args = {"file_path": "/path/that/does/not/exist.py"}
-        
+
         try:
             result = await tool.execute(args)
             # Should return error result
@@ -160,14 +159,14 @@ def 函数名():
     async def test_execute_with_invalid_arguments(self, tool):
         """Test executing with invalid arguments."""
         invalid_args_list = [
-            {},                                    # Empty arguments
-            {"invalid_key": "value"},             # Invalid key
-            {"file_path": None},                  # None file path
-            {"file_path": ""},                    # Empty file path
-            {"file_path": 123},                   # Non-string file path
-            {"file_path": ["not", "a", "string"]}, # List instead of string
+            {},  # Empty arguments
+            {"invalid_key": "value"},  # Invalid key
+            {"file_path": None},  # None file path
+            {"file_path": ""},  # Empty file path
+            {"file_path": 123},  # Non-string file path
+            {"file_path": ["not", "a", "string"]},  # List instead of string
         ]
-        
+
         for args in invalid_args_list:
             try:
                 result = await tool.execute(args)
@@ -187,10 +186,10 @@ def 函数名():
             "/etc/shadow",
             "C:\\Windows\\System32\\config\\SAM",
         ]
-        
+
         for dangerous_path in dangerous_paths:
             args = {"file_path": dangerous_path}
-            
+
             try:
                 result = await tool.execute(args)
                 # Should reject dangerous paths
@@ -209,9 +208,9 @@ class TestUniversalAnalyzeToolConfiguration:
         with tempfile.TemporaryDirectory() as temp_dir:
             tool = UniversalAnalyzeTool(temp_dir)
             assert tool is not None
-            assert hasattr(tool, 'execute')
-            assert hasattr(tool, 'analysis_engine')
-            assert hasattr(tool, 'security_validator')
+            assert hasattr(tool, "execute")
+            assert hasattr(tool, "analysis_engine")
+            assert hasattr(tool, "security_validator")
 
     def test_tool_initialization_with_none_project_root(self):
         """Test tool initialization with None project root."""
@@ -227,7 +226,7 @@ class TestUniversalAnalyzeToolConfiguration:
             123,
             ["not", "a", "string"],
         ]
-        
+
         for invalid_path in invalid_paths:
             try:
                 tool = UniversalAnalyzeTool(invalid_path)
@@ -240,14 +239,14 @@ class TestUniversalAnalyzeToolConfiguration:
         """Test that tool components are properly initialized."""
         with tempfile.TemporaryDirectory() as temp_dir:
             tool = UniversalAnalyzeTool(temp_dir)
-            
+
             # Check that all components are initialized
             assert tool.analysis_engine is not None
             assert tool.security_validator is not None
-            
+
             # Check that components have expected methods
-            assert hasattr(tool.analysis_engine, 'analyze_file')
-            assert hasattr(tool.security_validator, 'validate_file_path')
+            assert hasattr(tool.analysis_engine, "analyze_file")
+            assert hasattr(tool.security_validator, "validate_file_path")
 
 
 class TestUniversalAnalyzeToolPerformance:
@@ -271,34 +270,36 @@ class TestUniversalAnalyzeToolPerformance:
         test_files = []
         for i in range(5):
             file_path = os.path.join(temp_dir, f"test_{i}.py")
-            with open(file_path, 'w') as f:
+            with open(file_path, "w") as f:
                 f.write(f"def function_{i}(): pass\nclass Class_{i}: pass")
             test_files.append(file_path)
-        
+
         # Run concurrent analysis
         tasks = [
             asyncio.create_task(tool.execute({"file_path": file_path}))
             for file_path in test_files
         ]
-        
+
         results = await asyncio.gather(*tasks, return_exceptions=True)
-        
+
         # Check results
-        successful_results = [r for r in results if isinstance(r, dict) and "error" not in r]
+        successful_results = [
+            r for r in results if isinstance(r, dict) and "error" not in r
+        ]
         assert len(successful_results) >= 0  # At least some should succeed
 
     @pytest.mark.asyncio
     async def test_memory_usage_with_repeated_analysis(self, tool, temp_dir):
         """Test memory usage with repeated analysis."""
         import gc
-        
+
         # Create test file
         test_file = os.path.join(temp_dir, "test.py")
-        with open(test_file, 'w') as f:
+        with open(test_file, "w") as f:
             f.write("def test_function(): pass\nclass TestClass: pass")
-        
+
         args = {"file_path": test_file}
-        
+
         # Perform repeated analysis
         for i in range(10):
             try:
@@ -307,11 +308,11 @@ class TestUniversalAnalyzeToolPerformance:
             except Exception:
                 # Some failures are acceptable in stress testing
                 pass
-            
+
             # Force garbage collection
             if i % 5 == 0:
                 gc.collect()
-        
+
         # Test should complete without memory issues
         assert True
 
@@ -322,16 +323,19 @@ class TestUniversalAnalyzeToolPerformance:
         complex_file = os.path.join(temp_dir, "complex.py")
         complex_content = """
 # Complex Python file with nested structures
-""" + "\n".join([
-            f"class Class_{i}:\n    def method_{j}(self): pass"
-            for i in range(20) for j in range(5)
-        ])
-        
-        with open(complex_file, 'w') as f:
+""" + "\n".join(
+            [
+                f"class Class_{i}:\n    def method_{j}(self): pass"
+                for i in range(20)
+                for j in range(5)
+            ]
+        )
+
+        with open(complex_file, "w") as f:
             f.write(complex_content)
-        
+
         args = {"file_path": complex_file}
-        
+
         try:
             # Test with potential timeout
             result = await asyncio.wait_for(tool.execute(args), timeout=10.0)
@@ -371,16 +375,16 @@ from typing import List, Dict, Optional
 
 class Calculator:
     '''A simple calculator class.'''
-    
+
     def __init__(self):
         self.history: List[str] = []
-    
+
     def add(self, a: float, b: float) -> float:
         '''Add two numbers.'''
         result = a + b
         self.history.append(f"{a} + {b} = {result}")
         return result
-    
+
     def multiply(self, a: float, b: float) -> float:
         '''Multiply two numbers.'''
         result = a * b
@@ -396,13 +400,13 @@ def main():
 if __name__ == "__main__":
     main()
 """
-        
-        with open(python_file, 'w') as f:
+
+        with open(python_file, "w") as f:
             f.write(python_content)
-        
+
         args = {"file_path": python_file}
         result = await tool.execute(args)
-        
+
         assert isinstance(result, dict)
         # Should successfully analyze realistic Python file
         assert "file_path" in result or "error" not in result
@@ -422,23 +426,23 @@ import java.util.List;
  */
 public class Calculator {
     private List<String> history;
-    
+
     public Calculator() {
         this.history = new ArrayList<>();
     }
-    
+
     public double add(double a, double b) {
         double result = a + b;
         history.add(a + " + " + b + " = " + result);
         return result;
     }
-    
+
     public double multiply(double a, double b) {
         double result = a * b;
         history.add(a + " * " + b + " = " + result);
         return result;
     }
-    
+
     public static void main(String[] args) {
         Calculator calc = new Calculator();
         System.out.println(calc.add(2, 3));
@@ -446,13 +450,13 @@ public class Calculator {
     }
 }
 """
-        
-        with open(java_file, 'w') as f:
+
+        with open(java_file, "w") as f:
             f.write(java_content)
-        
+
         args = {"file_path": java_file}
         result = await tool.execute(args)
-        
+
         assert isinstance(result, dict)
         # Should successfully analyze realistic Java file
         assert "file_path" in result or "error" not in result

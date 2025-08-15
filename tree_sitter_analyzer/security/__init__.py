@@ -17,6 +17,6 @@ from .validator import SecurityValidator
 
 __all__ = [
     "SecurityValidator",
-    "ProjectBoundaryManager", 
+    "ProjectBoundaryManager",
     "RegexSafetyChecker",
 ]

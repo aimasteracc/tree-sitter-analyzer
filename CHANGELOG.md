@@ -1,4 +1,22 @@
 # Changelog
+## [0.9.4] - 2025-08-15
+
+### 🔧 Fixed (MCP)
+- Unified relative path resolution: In MCP's `read_partial_tool`, `table_format_tool`, and the `check_code_scale` path handling in `server`, all relative paths are now consistently resolved to absolute paths based on `project_root` before security validation and file reading. This prevents boundary misjudgments and false "file not found" errors.
+- Fixed boolean evaluation: Corrected the issue where the tuple returned by `validate_file_path` was directly used as a boolean. Now, the boolean value and error message are unpacked and used appropriately.
+
+### 📚 Docs
+- Added and emphasized in contribution and collaboration docs: Always use `uv run` to execute commands locally (including on Windows/PowerShell).
+- Replaced example commands from plain `pytest`/`python` to `uv run pytest`/`uv run python`.
+
+### 🧪 Tests
+- All MCP-related tests (tools, resources, server) passed.
+- Full test suite: 1358/1358 tests passed.
+
+### 🚀 Impact
+- Improved execution consistency on Windows/PowerShell, avoiding issues caused by redirection/interaction.
+- Relative path behavior in MCP scenarios is now stable and predictable.
+
 ## [0.9.3] - 2025-08-15
 
 ### 🔇 Improved Output Experience

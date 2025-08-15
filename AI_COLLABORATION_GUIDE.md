@@ -10,10 +10,10 @@ Before generating any code, AI systems should run these commands to understand t
 
 ```bash
 # 1. Check current code quality
-python check_quality.py --new-code-only
+uv run python check_quality.py --new-code-only
 
 # 2. Run LLM-specific code checker
-python llm_code_checker.py --check-all
+uv run python llm_code_checker.py --check-all
 
 # 3. Review test coverage
 uv run pytest tests/ --cov=tree_sitter_analyzer --cov-report=term-missing
@@ -48,10 +48,10 @@ find tree_sitter_analyzer -name "*.py" | head -20
    uv run pytest tests/ -v
    
    # LLM-specific checks
-   python llm_code_checker.py [new_file.py]
+   uv run python llm_code_checker.py [new_file.py]
    
    # Final quality check
-   python check_quality.py
+   uv run python check_quality.py
    ```
 
 ### Mandatory Patterns
@@ -96,7 +96,7 @@ def analyze_code(file_path: str, options: Optional[Dict[str, Any]] = None) -> An
 
 AI-generated code MUST pass all these checks:
 
-- [ ] ✅ `python llm_code_checker.py [file]` - No issues
+- [ ] ✅ `uv run python llm_code_checker.py [file]` - No issues
 - [ ] ✅ `uv run black --check .` - Properly formatted
 - [ ] ✅ `uv run ruff check .` - No linting errors
 - [ ] ✅ `uv run mypy tree_sitter_analyzer/` - Type checks pass
@@ -115,10 +115,10 @@ When reviewing AI-generated code:
 
 ```bash
 # Quick quality check
-python llm_code_checker.py path/to/ai_generated_file.py
+uv run python llm_code_checker.py path/to/ai_generated_file.py
 
 # Comprehensive review
-python check_quality.py --new-code-only
+uv run python check_quality.py --new-code-only
 ```
 
 #### 2. Common AI Code Issues
@@ -135,16 +135,16 @@ Watch out for these common problems:
 
 ```bash
 # 1. Run AI code checker
-python llm_code_checker.py ai_generated_file.py
+uv run python llm_code_checker.py ai_generated_file.py
 
 # 2. Fix identified issues
 # [Manual fixes based on checker output]
 
 # 3. Verify fixes
-python llm_code_checker.py ai_generated_file.py
+uv run python llm_code_checker.py ai_generated_file.py
 
 # 4. Run full quality check
-python check_quality.py
+uv run python check_quality.py
 ```
 
 ### Requesting AI Assistance
@@ -183,16 +183,16 @@ Always provide:
 
 ```bash
 # Check specific AI-generated file
-python llm_code_checker.py tree_sitter_analyzer/new_feature.py
+uv run python llm_code_checker.py tree_sitter_analyzer/new_feature.py
 
 # Check all files for AI-specific issues
-python llm_code_checker.py --check-all
+uv run python llm_code_checker.py --check-all
 
 # Run comprehensive quality check
-python check_quality.py
+uv run python check_quality.py
 
 # Check only new/modified code
-python check_quality.py --new-code-only
+uv run python check_quality.py --new-code-only
 
 # Auto-fix common issues
 uv run black . && uv run isort . && uv run ruff check . --fix
@@ -206,11 +206,11 @@ AI-generated code should achieve:
 
 | Metric | Target | Command |
 |--------|--------|---------|
-| Test Coverage | ≥90% | `pytest --cov=tree_sitter_analyzer` |
-| Type Coverage | 100% | `mypy tree_sitter_analyzer/` |
-| Linting Score | 0 errors | `ruff check .` |
+| Test Coverage | ≥90% | `uv run pytest --cov=tree_sitter_analyzer` |
+| Type Coverage | 100% | `uv run mypy tree_sitter_analyzer/` |
+| Linting Score | 0 errors | `uv run ruff check .` |
 | Security Score | 0 issues | `bandit -r tree_sitter_analyzer/` |
-| Documentation | 100% public APIs | `llm_code_checker.py` |
+| Documentation | 100% public APIs | `uv run python llm_code_checker.py` |
 
 ### Performance Benchmarks
 

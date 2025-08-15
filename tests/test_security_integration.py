@@ -6,20 +6,18 @@ Tests to verify that security features are properly integrated
 across all components of the tree-sitter-analyzer system.
 """
 
-import asyncio
-import pytest
-import tempfile
 import os
-from pathlib import Path
-from unittest.mock import patch, MagicMock
+import tempfile
 
-from tree_sitter_analyzer.core.analysis_engine import get_analysis_engine
-from tree_sitter_analyzer.mcp.tools.table_format_tool import TableFormatTool
-from tree_sitter_analyzer.mcp.tools.universal_analyze_tool import UniversalAnalyzeTool
-from tree_sitter_analyzer.mcp.tools.read_partial_tool import ReadPartialTool
-from tree_sitter_analyzer.mcp.tools.analyze_scale_tool import AnalyzeScaleTool
+import pytest
+
 from tree_sitter_analyzer.cli.commands.base_command import BaseCommand
 from tree_sitter_analyzer.cli.commands.query_command import QueryCommand
+from tree_sitter_analyzer.core.analysis_engine import get_analysis_engine
+from tree_sitter_analyzer.mcp.tools.analyze_scale_tool import AnalyzeScaleTool
+from tree_sitter_analyzer.mcp.tools.read_partial_tool import ReadPartialTool
+from tree_sitter_analyzer.mcp.tools.table_format_tool import TableFormatTool
+from tree_sitter_analyzer.mcp.tools.universal_analyze_tool import UniversalAnalyzeTool
 from tree_sitter_analyzer.security import SecurityValidator
 
 
@@ -30,6 +28,7 @@ class TestSecurityIntegration:
         """Set up test environment."""
         # Reset singleton instance to ensure clean state
         from tree_sitter_analyzer.core.analysis_engine import UnifiedAnalysisEngine
+
         UnifiedAnalysisEngine._instance = None
 
         self.temp_dir = tempfile.mkdtemp()
@@ -37,7 +36,8 @@ class TestSecurityIntegration:
 
         # Create a test file
         with open(self.test_file, "w") as f:
-            f.write("""
+            f.write(
+                """
 def hello_world():
     print("Hello, World!")
     return True
@@ -45,11 +45,13 @@ def hello_world():
 class TestClass:
     def __init__(self):
         self.value = 42
-""")
+"""
+            )
 
     def teardown_method(self):
         """Clean up test environment."""
         import shutil
+
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
     @pytest.mark.asyncio
@@ -76,6 +78,7 @@ class TestClass:
         """Test that MCP tools properly validate inputs."""
         # Reset singleton instance to ensure clean state
         from tree_sitter_analyzer.core.analysis_engine import UnifiedAnalysisEngine
+
         UnifiedAnalysisEngine._instance = None
 
         # Get parent directory of temp_dir to use as project root
@@ -89,7 +92,9 @@ class TestClass:
         assert "error" not in result
 
         # Invalid path should be rejected
-        with pytest.raises(Exception, match="Invalid file path|Directory traversal|Operation failed"):
+        with pytest.raises(
+            Exception, match="Invalid file path|Directory traversal|Operation failed"
+        ):
             await table_tool.execute({"file_path": "../../../etc/passwd"})
 
         # Test UniversalAnalyzeTool
@@ -100,7 +105,9 @@ class TestClass:
         assert "error" not in result
 
         # Invalid path should be rejected
-        with pytest.raises(Exception, match="Invalid file path|Directory traversal|Operation failed"):
+        with pytest.raises(
+            Exception, match="Invalid file path|Directory traversal|Operation failed"
+        ):
             await analyze_tool.execute({"file_path": "../../../etc/passwd"})
 
     @pytest.mark.asyncio
@@ -110,25 +117,25 @@ class TestClass:
         read_tool = ReadPartialTool(project_root)
 
         # Valid file should work
-        result = await read_tool.execute({
-            "file_path": self.test_file,
-            "start_line": 1,
-            "end_line": 5
-        })
+        result = await read_tool.execute(
+            {"file_path": self.test_file, "start_line": 1, "end_line": 5}
+        )
         assert "error" not in result
 
         # Invalid path should be rejected
-        with pytest.raises(Exception, match="Invalid file path|Directory traversal|Operation failed"):
-            await read_tool.execute({
-                "file_path": "../../../etc/passwd",
-                "start_line": 1
-            })
+        with pytest.raises(
+            Exception, match="Invalid file path|Directory traversal|Operation failed"
+        ):
+            await read_tool.execute(
+                {"file_path": "../../../etc/passwd", "start_line": 1}
+            )
 
     @pytest.mark.asyncio
     async def test_analyze_scale_tool_security(self):
         """Test AnalyzeScaleTool security validation."""
         # Reset singleton instance to ensure clean state
         from tree_sitter_analyzer.core.analysis_engine import UnifiedAnalysisEngine
+
         UnifiedAnalysisEngine._instance = None
 
         project_root = os.path.dirname(self.temp_dir)
@@ -139,16 +146,20 @@ class TestClass:
         assert "error" not in result
 
         # Invalid path should be rejected
-        with pytest.raises(Exception, match="Invalid file path|Directory traversal|Operation failed"):
+        with pytest.raises(
+            Exception, match="Invalid file path|Directory traversal|Operation failed"
+        ):
             await scale_tool.execute({"file_path": "../../../etc/passwd"})
 
         # Test input sanitization - use a more realistic malicious input
         # that won't break the language detection
         try:
-            result = await scale_tool.execute({
-                "file_path": self.test_file,
-                "language": "python<script>alert('xss')</script>"
-            })
+            result = await scale_tool.execute(
+                {
+                    "file_path": self.test_file,
+                    "language": "python<script>alert('xss')</script>",
+                }
+            )
             # Should not contain the malicious script
             assert "<script>" not in str(result)
         except Exception as e:
@@ -188,7 +199,7 @@ class TestClass:
             query_string="(function_definition) @func",
             language="python",
             project_root=self.temp_dir,
-            output_format="text"
+            output_format="text",
         )
 
         query_cmd = QueryCommand(args)
@@ -214,16 +225,20 @@ class TestClass:
         analyze_tool = UniversalAnalyzeTool(project_root)
 
         # All should have security_validator attribute
-        assert hasattr(engine, '_security_validator')
-        assert hasattr(table_tool, 'security_validator')
-        assert hasattr(analyze_tool, 'security_validator')
+        assert hasattr(engine, "_security_validator")
+        assert hasattr(table_tool, "security_validator")
+        assert hasattr(analyze_tool, "security_validator")
 
         # All should reject the same malicious paths
         malicious_path = "../../../etc/passwd"
 
         engine_valid, _ = engine._security_validator.validate_file_path(malicious_path)
-        table_valid, _ = table_tool.security_validator.validate_file_path(malicious_path)
-        analyze_valid, _ = analyze_tool.security_validator.validate_file_path(malicious_path)
+        table_valid, _ = table_tool.security_validator.validate_file_path(
+            malicious_path
+        )
+        analyze_valid, _ = analyze_tool.security_validator.validate_file_path(
+            malicious_path
+        )
 
         assert not engine_valid
         assert not table_valid
@@ -272,7 +287,7 @@ class TestClass:
         # Capture log output
         log_capture = StringIO()
         handler = logging.StreamHandler(log_capture)
-        logger = logging.getLogger('tree_sitter_analyzer')
+        logger = logging.getLogger("tree_sitter_analyzer")
         logger.addHandler(handler)
         logger.setLevel(logging.WARNING)
 
@@ -298,7 +313,7 @@ class TestClass:
             "../../../etc/passwd",
             "/etc/shadow",
             "C:\\Windows\\System32\\config\\SAM",
-            "\\\\server\\share\\file.txt"
+            "\\\\server\\share\\file.txt",
         ]
 
         for malicious_input in malicious_inputs:
@@ -314,7 +329,17 @@ class TestClass:
             print(f"Error message for {malicious_input}: '{error_msg}'")
 
             # Should contain generic security message
-            assert any(word in error_msg.lower() for word in ["security", "invalid", "not allowed", "denied", "traversal", "absolute"])
+            assert any(
+                word in error_msg.lower()
+                for word in [
+                    "security",
+                    "invalid",
+                    "not allowed",
+                    "denied",
+                    "traversal",
+                    "absolute",
+                ]
+            )
 
 
 if __name__ == "__main__":

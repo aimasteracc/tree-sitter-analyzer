@@ -184,12 +184,13 @@ class CacheService:
         if not key or key is None:
             raise ValueError("Cache key cannot be empty or None")
 
-        # シリアライズ可能性チェック
-        try:
-            import pickle
+        # シリアライズ可能性チェック（安全のため標準の pickle を最小限に使用）
+        import pickle  # nosec B403
 
+        try:
             pickle.dumps(value)
-        except (pickle.PicklingError, TypeError) as e:
+        except Exception as e:
+            # 具体的なエラー型に依存せず、直感的な TypeError に正規化
             raise TypeError(f"Value is not serializable: {e}") from e
 
         ttl = ttl_seconds or self._default_ttl

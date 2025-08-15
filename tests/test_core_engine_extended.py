@@ -6,15 +6,15 @@ This module provides additional test coverage for the AnalysisEngine
 to improve overall test coverage and test edge cases.
 """
 
-import pytest
-import tempfile
 import os
-from unittest.mock import Mock, patch, MagicMock
-from pathlib import Path
+import tempfile
+from unittest.mock import Mock, patch
+
+import pytest
 
 from tree_sitter_analyzer.core.engine import AnalysisEngine
-from tree_sitter_analyzer.models import AnalysisResult
 from tree_sitter_analyzer.exceptions import AnalysisError, ParseError
+from tree_sitter_analyzer.models import AnalysisResult
 
 
 class TestAnalysisEngineEdgeCases:
@@ -27,7 +27,7 @@ class TestAnalysisEngineEdgeCases:
 
     def test_analyze_file_with_empty_file(self, engine):
         """Test analyzing an empty file."""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=True) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=True) as f:
             f.write("")  # Empty file
             f.flush()
 
@@ -42,8 +42,8 @@ class TestAnalysisEngineEdgeCases:
 
     def test_analyze_file_with_binary_file(self, engine):
         """Test analyzing a binary file."""
-        with tempfile.NamedTemporaryFile(mode='wb', suffix='.bin', delete=True) as f:
-            f.write(b'\x00\x01\x02\x03\x04\x05')  # Binary content
+        with tempfile.NamedTemporaryFile(mode="wb", suffix=".bin", delete=True) as f:
+            f.write(b"\x00\x01\x02\x03\x04\x05")  # Binary content
             f.flush()
 
             try:
@@ -52,13 +52,17 @@ class TestAnalysisEngineEdgeCases:
                 assert result is not None
             except Exception as e:
                 # Exceptions are expected for binary files
-                assert isinstance(e, (AnalysisError, ParseError, UnicodeDecodeError, ValueError))
+                assert isinstance(
+                    e, (AnalysisError, ParseError, UnicodeDecodeError, ValueError)
+                )
 
     def test_analyze_file_with_very_large_file(self, engine):
         """Test analyzing a very large file."""
-        large_content = "# Large Python file\n" + "def function_{}(): pass\n" * 1000  # Reduced size
+        large_content = (
+            "# Large Python file\n" + "def function_{}(): pass\n" * 1000
+        )  # Reduced size
 
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=True) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=True) as f:
             f.write(large_content)
             f.flush()
 
@@ -75,14 +79,14 @@ class TestAnalysisEngineEdgeCases:
         """Test analyzing files with malformed syntax."""
         malformed_samples = [
             "def incomplete_function(",  # Incomplete function
-            "class MissingColon",        # Missing colon
-            "import",                    # Incomplete import
-            "if True\n    pass",         # Missing colon
-            "def func():\n  return",     # Incomplete return
+            "class MissingColon",  # Missing colon
+            "import",  # Incomplete import
+            "if True\n    pass",  # Missing colon
+            "def func():\n  return",  # Incomplete return
         ]
-        
+
         for code in malformed_samples:
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=True) as f:
+            with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=True) as f:
                 f.write(code)
                 f.flush()
 
@@ -108,8 +112,10 @@ class 类名:
     def __init__(self):
         self.属性 = "值"
 """
-        
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=True, encoding='utf-8') as f:
+
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".py", delete=True, encoding="utf-8"
+        ) as f:
             f.write(unicode_content)
             f.flush()
 
@@ -124,24 +130,26 @@ class 类名:
     def test_analyze_file_with_nonexistent_file(self, engine):
         """Test analyzing a non-existent file."""
         nonexistent_file = "/path/that/does/not/exist.py"
-        
+
         with pytest.raises((FileNotFoundError, AnalysisError)):
             engine.analyze_file(nonexistent_file)
 
     def test_analyze_file_with_permission_denied(self, engine):
         """Test analyzing a file with permission issues."""
         # This test might not work on all systems, so we'll mock it
-        with patch('builtins.open', side_effect=PermissionError("Permission denied")):
+        with patch("builtins.open", side_effect=PermissionError("Permission denied")):
             with pytest.raises((PermissionError, AnalysisError, FileNotFoundError)):
                 engine.analyze_file("some_file.py")
 
     def test_analyze_file_with_different_encodings(self, engine):
         """Test analyzing files with different encodings."""
         test_content = "def hello(): return 'Hello, World!'"
-        encodings = ['utf-8', 'latin-1', 'ascii']
-        
+        encodings = ["utf-8", "latin-1", "ascii"]
+
         for encoding in encodings:
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=True, encoding=encoding) as f:
+            with tempfile.NamedTemporaryFile(
+                mode="w", suffix=".py", delete=True, encoding=encoding
+            ) as f:
                 try:
                     f.write(test_content)
                     f.flush()
@@ -165,7 +173,7 @@ class TestAnalysisEngineConfiguration:
             {"max_file_size": 1024 * 1024},
             {"enable_caching": True},
         ]
-        
+
         for config in configs:
             try:
                 engine = AnalysisEngine(**config)
@@ -177,7 +185,9 @@ class TestAnalysisEngineConfiguration:
     def test_engine_with_mock_dependencies(self):
         """Test engine with mocked dependencies."""
         try:
-            with patch('tree_sitter_analyzer.language_loader.LanguageLoader') as mock_loader:
+            with patch(
+                "tree_sitter_analyzer.language_loader.LanguageLoader"
+            ) as mock_loader:
                 mock_loader.return_value.load_language.return_value = Mock()
 
                 engine = AnalysisEngine()
@@ -189,14 +199,14 @@ class TestAnalysisEngineConfiguration:
     def test_engine_language_detection(self):
         """Test engine language detection capabilities."""
         engine = AnalysisEngine()
-        
+
         test_files = [
             ("test.py", "python"),
             ("test.java", "java"),
             ("test.js", "javascript"),
             ("test.unknown", None),
         ]
-        
+
         for filename, expected_lang in test_files:
             # Test language detection logic
             # This might be internal to the engine
@@ -213,15 +223,14 @@ class TestAnalysisEnginePerformance:
 
     def test_concurrent_analysis(self, engine):
         """Test concurrent file analysis."""
-        import asyncio
         import threading
-        
+
         # Create multiple test files using context manager
         with tempfile.TemporaryDirectory() as temp_dir:
             test_files = []
             for i in range(5):
                 file_path = os.path.join(temp_dir, f"test_{i}.py")
-                with open(file_path, 'w') as f:
+                with open(file_path, "w") as f:
                     f.write(f"def function_{i}(): pass\nclass Class_{i}: pass")
                 test_files.append(file_path)
 
@@ -236,7 +245,9 @@ class TestAnalysisEnginePerformance:
             results = []
 
             for file_path in test_files:
-                thread = threading.Thread(target=lambda f=file_path: results.append(analyze_file(f)))
+                thread = threading.Thread(
+                    target=lambda f=file_path: results.append(analyze_file(f))
+                )
                 threads.append(thread)
                 thread.start()
 
@@ -250,10 +261,10 @@ class TestAnalysisEnginePerformance:
     def test_memory_usage_with_repeated_analysis(self, engine):
         """Test memory usage with repeated analysis."""
         import gc
-        
+
         test_content = "def test_function(): pass\nclass TestClass: pass"
 
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=True) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=True) as f:
             f.write(test_content)
             f.flush()
 
@@ -277,12 +288,15 @@ class TestAnalysisEnginePerformance:
         # Create a file that might take time to analyze
         complex_content = """
 # Complex Python file with nested structures
-""" + "\n".join([
-            f"class Class_{i}:\n    def method_{j}(self): pass"
-            for i in range(20) for j in range(5)  # Reduced complexity
-        ])
+""" + "\n".join(
+            [
+                f"class Class_{i}:\n    def method_{j}(self): pass"
+                for i in range(20)
+                for j in range(5)  # Reduced complexity
+            ]
+        )
 
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=True) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=True) as f:
             f.write(complex_content)
             f.flush()
 

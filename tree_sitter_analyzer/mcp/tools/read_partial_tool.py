@@ -7,6 +7,7 @@ allowing selective content extraction with line and column range support.
 """
 
 import json
+import os
 from pathlib import Path
 from typing import Any
 
@@ -29,6 +30,7 @@ class ReadPartialTool:
     def __init__(self, project_root: str = None) -> None:
         """Initialize the read partial tool."""
         self.security_validator = SecurityValidator(project_root)
+        self.project_root = project_root
         logger.info("ReadPartialTool initialized with security validation")
 
     def get_tool_schema(self) -> dict[str, Any]:
@@ -104,8 +106,23 @@ class ReadPartialTool:
         end_column = arguments.get("end_column")
         # output_format = arguments.get("format", "text")  # Not used currently
 
-        # Security validation
-        is_valid, error_msg = self.security_validator.validate_file_path(file_path)
+        # Resolve relative path against project root for consistent behavior
+        base_root = (
+            getattr(
+                getattr(self.security_validator, "boundary_manager", None),
+                "project_root",
+                None,
+            )
+            or self.project_root
+        )
+
+        if not os.path.isabs(file_path) and base_root:
+            resolved_path = os.path.realpath(os.path.join(base_root, file_path))
+        else:
+            resolved_path = file_path
+
+        # Security validation (validate resolved absolute path when possible)
+        is_valid, error_msg = self.security_validator.validate_file_path(resolved_path)
         if not is_valid:
             logger.warning(
                 f"Security validation failed for file path: {file_path} - {error_msg}"
@@ -113,7 +130,7 @@ class ReadPartialTool:
             raise ValueError(f"Invalid file path: {error_msg}")
 
         # Validate file exists
-        if not Path(file_path).exists():
+        if not Path(resolved_path).exists():
             raise ValueError("Invalid file path: file does not exist")
 
         # Validate line numbers
@@ -141,7 +158,7 @@ class ReadPartialTool:
 
             with get_performance_monitor().measure_operation("read_code_partial"):
                 content = self._read_file_partial(
-                    file_path, start_line, end_line, start_column, end_column
+                    resolved_path, start_line, end_line, start_column, end_column
                 )
 
                 if content is None:

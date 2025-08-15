@@ -70,7 +70,15 @@ class TestCLIAdvancedOptions:
         monkeypatch.setattr(
             sys,
             "argv",
-            ["cli", sample_java_file, "--advanced", "--output-format", "json", "--project-root", sample_dir],
+            [
+                "cli",
+                sample_java_file,
+                "--advanced",
+                "--output-format",
+                "json",
+                "--project-root",
+                sample_dir,
+            ],
         )
         mock_stdout = StringIO()
         monkeypatch.setattr("sys.stdout", mock_stdout)
@@ -89,7 +97,15 @@ class TestCLIAdvancedOptions:
         monkeypatch.setattr(
             sys,
             "argv",
-            ["cli", sample_java_file, "--advanced", "--output-format", "text", "--project-root", sample_dir],
+            [
+                "cli",
+                sample_java_file,
+                "--advanced",
+                "--output-format",
+                "text",
+                "--project-root",
+                sample_dir,
+            ],
         )
         mock_stdout = StringIO()
         monkeypatch.setattr("sys.stdout", mock_stdout)
@@ -106,7 +122,11 @@ class TestCLIAdvancedOptions:
         """Test --advanced option when analysis fails"""
         sample_dir = os.path.dirname(sample_java_file)
 
-        monkeypatch.setattr(sys, "argv", ["cli", sample_java_file, "--advanced", "--project-root", sample_dir])
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            ["cli", sample_java_file, "--advanced", "--project-root", sample_dir],
+        )
 
         # Mock the UnifiedAnalysisEngine.analyze method to return failed result
         with patch(
@@ -144,7 +164,16 @@ class TestCLIAdvancedOptions:
         sample_dir = os.path.dirname(sample_java_file)
 
         monkeypatch.setattr(
-            sys, "argv", ["cli", sample_java_file, "--advanced", "--statistics", "--project-root", sample_dir]
+            sys,
+            "argv",
+            [
+                "cli",
+                sample_java_file,
+                "--advanced",
+                "--statistics",
+                "--project-root",
+                sample_dir,
+            ],
         )
         mock_stdout = StringIO()
         monkeypatch.setattr("sys.stdout", mock_stdout)
@@ -194,8 +223,9 @@ class TestCLISummaryOption:
         sample_dir = os.path.dirname(sample_java_file)
 
         monkeypatch.setattr(
-
-            sys, "argv", ["cli", sample_java_file, "--summary", "--project-root", sample_dir]
+            sys,
+            "argv",
+            ["cli", sample_java_file, "--summary", "--project-root", sample_dir],
         )
         mock_stdout = StringIO()
         monkeypatch.setattr("sys.stdout", mock_stdout)
@@ -213,7 +243,15 @@ class TestCLISummaryOption:
         sample_dir = os.path.dirname(sample_java_file)
 
         monkeypatch.setattr(
-            sys, "argv", ["cli", sample_java_file, "--summary=classes,methods,fields", "--project-root", sample_dir]
+            sys,
+            "argv",
+            [
+                "cli",
+                sample_java_file,
+                "--summary=classes,methods,fields",
+                "--project-root",
+                sample_dir,
+            ],
         )
         mock_stdout = StringIO()
         monkeypatch.setattr("sys.stdout", mock_stdout)
@@ -232,7 +270,15 @@ class TestCLISummaryOption:
         monkeypatch.setattr(
             sys,
             "argv",
-            ["cli", sample_java_file, "--summary", "--output-format", "json", "--project-root", sample_dir],
+            [
+                "cli",
+                sample_java_file,
+                "--summary",
+                "--output-format",
+                "json",
+                "--project-root",
+                sample_dir,
+            ],
         )
         mock_stdout = StringIO()
         monkeypatch.setattr("sys.stdout", mock_stdout)
@@ -250,8 +296,9 @@ class TestCLISummaryOption:
         sample_dir = os.path.dirname(sample_java_file)
 
         monkeypatch.setattr(
-
-            sys, "argv", ["cli", sample_java_file, "--summary", "--project-root", sample_dir]
+            sys,
+            "argv",
+            ["cli", sample_java_file, "--summary", "--project-root", sample_dir],
         )
 
         # Mock the UnifiedAnalysisEngine.analyze method to return failed result
@@ -295,7 +342,15 @@ class TestCLIStructureOption:
         monkeypatch.setattr(
             sys,
             "argv",
-            ["cli", sample_java_file, "--structure", "--output-format", "json", "--project-root", sample_dir],
+            [
+                "cli",
+                sample_java_file,
+                "--structure",
+                "--output-format",
+                "json",
+                "--project-root",
+                sample_dir,
+            ],
         )
         mock_stdout = StringIO()
         monkeypatch.setattr("sys.stdout", mock_stdout)
@@ -314,7 +369,15 @@ class TestCLIStructureOption:
         monkeypatch.setattr(
             sys,
             "argv",
-            ["cli", sample_java_file, "--structure", "--output-format", "text", "--project-root", sample_dir],
+            [
+                "cli",
+                sample_java_file,
+                "--structure",
+                "--output-format",
+                "text",
+                "--project-root",
+                sample_dir,
+            ],
         )
         mock_stdout = StringIO()
         monkeypatch.setattr("sys.stdout", mock_stdout)
@@ -332,8 +395,9 @@ class TestCLIStructureOption:
         sample_dir = os.path.dirname(sample_java_file)
 
         monkeypatch.setattr(
-
-            sys, "argv", ["cli", sample_java_file, "--structure", "--project-root", sample_dir]
+            sys,
+            "argv",
+            ["cli", sample_java_file, "--structure", "--project-root", sample_dir],
         )
 
         # Mock the UnifiedAnalysisEngine.analyze method to return failed result
@@ -376,8 +440,9 @@ class TestCLITableOption:
         sample_dir = os.path.dirname(sample_java_file)
 
         monkeypatch.setattr(
-
-            sys, "argv", ["cli", sample_java_file, "--table", "full", "--project-root", sample_dir]
+            sys,
+            "argv",
+            ["cli", sample_java_file, "--table", "full", "--project-root", sample_dir],
         )
         mock_stdout = StringIO()
         monkeypatch.setattr("sys.stdout", mock_stdout)
@@ -395,9 +460,16 @@ class TestCLITableOption:
         sample_dir = os.path.dirname(sample_java_file)
 
         monkeypatch.setattr(
-
-            sys, "argv", ["cli", sample_java_file, "--table", "compact", "--project-root", sample_dir]
-
+            sys,
+            "argv",
+            [
+                "cli",
+                sample_java_file,
+                "--table",
+                "compact",
+                "--project-root",
+                sample_dir,
+            ],
         )
         mock_stdout = StringIO()
         monkeypatch.setattr("sys.stdout", mock_stdout)
@@ -415,9 +487,9 @@ class TestCLITableOption:
         sample_dir = os.path.dirname(sample_java_file)
 
         monkeypatch.setattr(
-
-            sys, "argv", ["cli", sample_java_file, "--table", "csv", "--project-root", sample_dir]
-
+            sys,
+            "argv",
+            ["cli", sample_java_file, "--table", "csv", "--project-root", sample_dir],
         )
         mock_stdout = StringIO()
         monkeypatch.setattr("sys.stdout", mock_stdout)
@@ -435,8 +507,9 @@ class TestCLITableOption:
         sample_dir = os.path.dirname(sample_java_file)
 
         monkeypatch.setattr(
-
-            sys, "argv", ["cli", sample_java_file, "--table", "full", "--project-root", sample_dir]
+            sys,
+            "argv",
+            ["cli", sample_java_file, "--table", "full", "--project-root", sample_dir],
         )
 
         # Mock the UnifiedAnalysisEngine.analyze method to return failed result
@@ -505,8 +578,9 @@ class TestCLIPartialReadOption:
         sample_dir = os.path.dirname(sample_java_file)
 
         monkeypatch.setattr(
-
-            sys, "argv", ["cli", sample_java_file, "--partial-read", "--project-root", sample_dir]
+            sys,
+            "argv",
+            ["cli", sample_java_file, "--partial-read", "--project-root", sample_dir],
         )
         mock_stderr = StringIO()
         monkeypatch.setattr("sys.stderr", mock_stderr)
@@ -692,9 +766,16 @@ class TestCLILanguageHandling:
         sample_dir = os.path.dirname(sample_java_file)
 
         monkeypatch.setattr(
-
-            sys, "argv", ["cli", sample_java_file, "--language", "unsupported_lang", "--project-root", sample_dir]
-
+            sys,
+            "argv",
+            [
+                "cli",
+                sample_java_file,
+                "--language",
+                "unsupported_lang",
+                "--project-root",
+                sample_dir,
+            ],
         )
         mock_stdout = StringIO()
         monkeypatch.setattr("sys.stdout", mock_stdout)
@@ -716,8 +797,16 @@ class TestCLIQueryExecution:
         sample_dir = os.path.dirname(sample_java_file)
 
         monkeypatch.setattr(
-
-            sys, "argv", ["cli", sample_java_file, "--query-key", "class", "--project-root", sample_dir]
+            sys,
+            "argv",
+            [
+                "cli",
+                sample_java_file,
+                "--query-key",
+                "class",
+                "--project-root",
+                sample_dir,
+            ],
         )
 
         with patch(
@@ -757,8 +846,16 @@ class TestCLIQueryExecution:
         sample_dir = os.path.dirname(sample_java_file)
 
         monkeypatch.setattr(
-
-            sys, "argv", ["cli", sample_java_file, "--query-key", "class", "--project-root", sample_dir]
+            sys,
+            "argv",
+            [
+                "cli",
+                sample_java_file,
+                "--query-key",
+                "class",
+                "--project-root",
+                sample_dir,
+            ],
         )
 
         with patch(
@@ -793,7 +890,6 @@ class TestCLIQueryExecution:
         sample_dir = os.path.dirname(sample_java_file)
 
         monkeypatch.setattr(
-
             sys, "argv", ["cli", sample_java_file, "--project-root", sample_dir]
         )
         mock_stderr = StringIO()
@@ -812,9 +908,16 @@ class TestCLIQueryExecution:
         sample_dir = os.path.dirname(sample_java_file)
 
         monkeypatch.setattr(
-
-            sys, "argv", ["cli", sample_java_file, "--query-key", "nonexistent", "--project-root", sample_dir]
-
+            sys,
+            "argv",
+            [
+                "cli",
+                sample_java_file,
+                "--query-key",
+                "nonexistent",
+                "--project-root",
+                sample_dir,
+            ],
         )
 
         with patch("tree_sitter_analyzer.query_loader.get_query", return_value=None):
@@ -834,9 +937,16 @@ class TestCLIQueryExecution:
         sample_dir = os.path.dirname(sample_java_file)
 
         monkeypatch.setattr(
-
-            sys, "argv", ["cli", sample_java_file, "--query-key", "class", "--project-root", sample_dir]
-
+            sys,
+            "argv",
+            [
+                "cli",
+                sample_java_file,
+                "--query-key",
+                "class",
+                "--project-root",
+                sample_dir,
+            ],
         )
 
         with patch(
@@ -863,8 +973,9 @@ class TestCLILoggingConfiguration:
         sample_dir = os.path.dirname(sample_java_file)
 
         monkeypatch.setattr(
-
-            sys, "argv", ["cli", sample_java_file, "--table", "full", "--project-root", sample_dir]
+            sys,
+            "argv",
+            ["cli", sample_java_file, "--table", "full", "--project-root", sample_dir],
         )
 
         with patch("logging.getLogger") as mock_get_logger:
@@ -1007,7 +1118,16 @@ class TestCLIAdditionalCoverage:
         """Test --describe-query with file path"""
         sample_dir = os.path.dirname(sample_java_file)
         monkeypatch.setattr(
-            sys, "argv", ["cli", "--describe-query", "class", sample_java_file, "--project-root", sample_dir]
+            sys,
+            "argv",
+            [
+                "cli",
+                "--describe-query",
+                "class",
+                sample_java_file,
+                "--project-root",
+                sample_dir,
+            ],
         )
         mock_stdout = StringIO()
         monkeypatch.setattr("sys.stdout", mock_stdout)
@@ -1054,7 +1174,16 @@ class TestCLIAdditionalCoverage:
     def test_nonexistent_file_error(self, monkeypatch):
         """Test error when file does not exist"""
         monkeypatch.setattr(
-            sys, "argv", ["cli", "/nonexistent/file.java", "--query-key", "class", "--project-root", "/tmp"]
+            sys,
+            "argv",
+            [
+                "cli",
+                "/nonexistent/file.java",
+                "--query-key",
+                "class",
+                "--project-root",
+                "/tmp",
+            ],
         )
         mock_stderr = StringIO()
         monkeypatch.setattr("sys.stderr", mock_stderr)
@@ -1070,8 +1199,8 @@ class TestCLIAdditionalCoverage:
     def test_unknown_language_detection(self, monkeypatch):
         """Test unknown language detection"""
         # Create a file with unknown extension
-        import tempfile
         import os
+        import tempfile
 
         with tempfile.NamedTemporaryFile(
             mode="w", suffix=".unknown", delete=False
@@ -1080,7 +1209,18 @@ class TestCLIAdditionalCoverage:
             unknown_file = f.name
 
         unknown_dir = os.path.dirname(unknown_file)
-        monkeypatch.setattr(sys, "argv", ["cli", unknown_file, "--query-key", "class", "--project-root", unknown_dir])
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            [
+                "cli",
+                unknown_file,
+                "--query-key",
+                "class",
+                "--project-root",
+                unknown_dir,
+            ],
+        )
         mock_stderr = StringIO()
         monkeypatch.setattr("sys.stderr", mock_stderr)
 
@@ -1132,8 +1272,16 @@ class TestCLIAdditionalCoverage:
         sample_dir = os.path.dirname(sample_java_file)
 
         monkeypatch.setattr(
-
-            sys, "argv", ["cli", sample_java_file, "--query-string", query_string, "--project-root", sample_dir]
+            sys,
+            "argv",
+            [
+                "cli",
+                sample_java_file,
+                "--query-string",
+                query_string,
+                "--project-root",
+                sample_dir,
+            ],
         )
         mock_stdout = StringIO()
         monkeypatch.setattr("sys.stdout", mock_stdout)

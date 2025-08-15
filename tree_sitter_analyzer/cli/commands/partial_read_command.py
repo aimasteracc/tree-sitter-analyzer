@@ -68,9 +68,7 @@ class PartialReadCommand(BaseCommand):
         if self.args.end_line and self.args.end_line < self.args.start_line:
             from ...output_manager import output_error
 
-            output_error(
-                "--end-line must be greater than or equal to --start-line"
-            )
+            output_error("--end-line must be greater than or equal to --start-line")
             return 1
 
         # Read partial content

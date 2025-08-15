@@ -20,19 +20,21 @@ uv run python -c "import tree_sitter_analyzer; print('Setup OK')"
 
 ### Running Tests
 
+> 本项目在所有本地命令中统一使用 `uv run`（Windows/PowerShell 亦同）。请不要直接调用裸 `pytest` 或 `python`，以确保一致的解释器与虚拟环境。
+
 ```bash
 # Run all tests (1216+ tests)
-pytest tests/ -v
+uv run pytest tests/ -v
 
 # Run with coverage
-pytest tests/ --cov=tree_sitter_analyzer
+uv run pytest tests/ --cov=tree_sitter_analyzer
 
 # Run specific test file
-pytest tests/test_mcp_tools.py -v
+uv run pytest tests/test_mcp_tools.py -v
 
 # Run tests for specific functionality
-pytest tests/test_quiet_option.py -v
-pytest tests/test_partial_read_command_validation.py -v
+uv run pytest tests/test_quiet_option.py -v
+uv run pytest tests/test_partial_read_command_validation.py -v
 ```
 
 ## 🛠️ Development Workflow
@@ -50,7 +52,7 @@ pytest tests/test_partial_read_command_validation.py -v
 3. **Test your changes**
    ```bash
    # Run tests
-   pytest tests/ -v
+   uv run pytest tests/ -v
 
    # Run code quality checks
    uv run black --check . && uv run ruff check . && uv run mypy .
@@ -71,7 +73,7 @@ pytest tests/test_partial_read_command_validation.py -v
 - Write clear docstrings
 - Keep functions focused and small
 
-📖 **For detailed guidelines, see our [Code Style Guide](CODE_STYLE_GUIDE.md)**
+📖 **For detailed guidelines, see our `CODE_STYLE_GUIDE.md`**
 
 ### 🔧 Pre-commit Hooks (Recommended)
 
@@ -112,13 +114,13 @@ uv run mypy . --no-error-summary
 uv run black --check . && uv run ruff check . && uv run mypy .
 
 # Or use our quality check script (recommended)
-python check_quality.py
+uv run python check_quality.py
 
 # Auto-fix issues and run checks
-python check_quality.py --fix
+uv run python check_quality.py --fix
 
 # Focus on new code only (skip legacy issues) - RECOMMENDED FOR NEW CONTRIBUTORS
-python check_quality.py --new-code-only --fix
+uv run python check_quality.py --new-code-only --fix
 ```
 
 ### Quality Check Script
@@ -132,7 +134,7 @@ Our `check_quality.py` script provides:
 
 **Recommended workflow for new contributors:**
 ```bash
-python check_quality.py --new-code-only --fix
+uv run python check_quality.py --new-code-only --fix
 ```
 
 This will auto-format your code and fix safe issues while skipping the ~300 legacy type issues.

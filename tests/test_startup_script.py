@@ -6,13 +6,13 @@ This module tests the improved startup script functionality
 including dependency checking and initialization handling.
 """
 
-import pytest
 import asyncio
 import logging
-import sys
-from unittest.mock import Mock, patch, AsyncMock, MagicMock
-import tempfile
 import os
+import sys
+from unittest.mock import Mock, patch
+
+import pytest
 
 # Import the startup script functions
 # Note: We need to be careful about imports since start_mcp_server.py is a script
@@ -22,12 +22,14 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 class TestStartupScriptFunctions:
     """Test startup script functionality."""
 
-    @patch('start_mcp_server.check_dependencies')
-    @patch('start_mcp_server.asyncio.run')
-    def test_main_execution_with_dependencies_ok(self, mock_asyncio_run, mock_check_deps):
+    @patch("start_mcp_server.check_dependencies")
+    @patch("start_mcp_server.asyncio.run")
+    def test_main_execution_with_dependencies_ok(
+        self, mock_asyncio_run, mock_check_deps
+    ):
         """Test main execution when dependencies are available."""
         mock_check_deps.return_value = True
-        
+
         # Import and test the main execution logic
         # This is a bit tricky since it's a script, so we'll test the logic
         assert mock_check_deps.return_value is True
@@ -37,17 +39,19 @@ class TestStartupScriptFunctions:
         # Test MCP library availability
         try:
             import mcp
+
             mcp_available = True
         except ImportError:
             mcp_available = False
-        
+
         # Test tree-sitter library availability
         try:
             import tree_sitter
+
             tree_sitter_available = True
         except ImportError:
             tree_sitter_available = False
-        
+
         # At least one should be available in our test environment
         # (since we're running tests, tree-sitter should be available)
         assert tree_sitter_available is True
@@ -85,16 +89,16 @@ class TestStartupScriptFunctions:
         # Mock server that never becomes initialized
         mock_server = Mock()
         mock_server.is_initialized.return_value = False
-        
+
         # Simulate the waiting logic with timeout
         max_wait_time = 0.2  # Short timeout for testing
         wait_interval = 0.05
         elapsed_time = 0
-        
+
         while not mock_server.is_initialized() and elapsed_time < max_wait_time:
             await asyncio.sleep(wait_interval)
             elapsed_time += wait_interval
-        
+
         # Should have timed out
         assert not mock_server.is_initialized()
         assert elapsed_time >= max_wait_time
@@ -105,26 +109,26 @@ class TestStartupScriptFunctions:
         attempt_count = 0
         max_retries = 3
         retry_delay = 0.1  # Start with 0.1 seconds
-        
+
         async def mock_operation():
             nonlocal attempt_count
             attempt_count += 1
             if attempt_count < 3:
                 raise Exception(f"Attempt {attempt_count} failed")
             return "success"
-        
+
         # Simulate retry logic
         for attempt in range(max_retries):
             try:
                 result = await mock_operation()
                 break  # Success, exit retry loop
-            except Exception as e:
+            except Exception:
                 if attempt < max_retries - 1:
                     await asyncio.sleep(retry_delay)
                     retry_delay *= 2  # Exponential backoff
                 else:
                     raise
-        
+
         assert result == "success"
         assert attempt_count == 3
 
@@ -134,14 +138,14 @@ class TestStartupScriptFunctions:
         # Mock server with thread-safe initialization check
         mock_server = Mock()
         mock_server.is_initialized.return_value = True
-        
+
         # Run multiple concurrent checks
         async def check_initialization():
             return mock_server.is_initialized()
-        
+
         tasks = [asyncio.create_task(check_initialization()) for _ in range(10)]
         results = await asyncio.gather(*tasks)
-        
+
         # All should return True
         assert all(results)
         assert len(results) == 10
@@ -150,28 +154,29 @@ class TestStartupScriptFunctions:
 class TestStartupScriptIntegration:
     """Integration tests for startup script functionality."""
 
-    @patch('tree_sitter_analyzer.project_detector.detect_project_root')
+    @patch("tree_sitter_analyzer.project_detector.detect_project_root")
     def test_project_root_detection(self, mock_detect):
         """Test project root detection in startup."""
         mock_detect.return_value = "/test/project/root"
-        
+
         from tree_sitter_analyzer.project_detector import detect_project_root
+
         result = detect_project_root()
-        
+
         # Should call the detection function
         assert mock_detect.called
 
-    @patch('tree_sitter_analyzer.mcp.server.TreeSitterAnalyzerMCPServer')
+    @patch("tree_sitter_analyzer.mcp.server.TreeSitterAnalyzerMCPServer")
     def test_server_creation_in_startup(self, mock_server_class):
         """Test server creation during startup."""
         mock_server = Mock()
         mock_server.is_initialized.return_value = True
         mock_server_class.return_value = mock_server
-        
+
         # Simulate server creation
         project_root = "/test/root"
         server = mock_server_class(project_root)
-        
+
         # Should create server with project root
         mock_server_class.assert_called_once_with(project_root)
         assert server.is_initialized()
@@ -184,9 +189,9 @@ class TestStartupScriptIntegration:
             ImportError("Missing dependency"),
             RuntimeError("Initialization failed"),
             FileNotFoundError("Project root not found"),
-            PermissionError("Permission denied")
+            PermissionError("Permission denied"),
         ]
-        
+
         for error in startup_errors:
             # Each error should be handleable
             assert isinstance(error, Exception)
@@ -195,19 +200,20 @@ class TestStartupScriptIntegration:
     def test_logging_configuration(self, caplog):
         """Test that startup script configures logging properly."""
         import os
+
         from tree_sitter_analyzer.utils import setup_logger
-        
+
         # Save original LOG_LEVEL if it exists
         original_log_level = os.environ.get("LOG_LEVEL")
-        
+
         try:
             # Clear any LOG_LEVEL environment variable to avoid test pollution
             if "LOG_LEVEL" in os.environ:
                 del os.environ["LOG_LEVEL"]
-            
+
             # Test logger setup functionality
             logger = setup_logger("test_startup", level=logging.INFO)
-            
+
             # Verify logger is properly configured
             assert logger.name == "test_startup"
             assert logger.level == logging.INFO
@@ -221,7 +227,7 @@ class TestStartupScriptIntegration:
     async def test_graceful_shutdown_handling(self):
         """Test graceful shutdown handling."""
         shutdown_called = False
-        
+
         async def mock_server_run():
             # Simulate server running
             try:
@@ -230,19 +236,19 @@ class TestStartupScriptIntegration:
                 nonlocal shutdown_called
                 shutdown_called = True
                 raise
-        
+
         # Start server task
         server_task = asyncio.create_task(mock_server_run())
-        
+
         # Simulate shutdown after short time
         await asyncio.sleep(0.1)
         server_task.cancel()
-        
+
         try:
             await server_task
         except asyncio.CancelledError:
             pass
-        
+
         # Should have handled shutdown gracefully
         assert shutdown_called
 
@@ -252,9 +258,9 @@ class TestStartupScriptIntegration:
         test_cases = [
             ("TREE_SITTER_DEBUG", "1"),
             ("MCP_SERVER_PORT", "8080"),
-            ("PROJECT_ROOT", "/custom/root")
+            ("PROJECT_ROOT", "/custom/root"),
         ]
-        
+
         for env_var, value in test_cases:
             with patch.dict(os.environ, {env_var: value}):
                 # Environment variable should be accessible
@@ -268,14 +274,14 @@ class TestStartupScriptErrorRecovery:
     async def test_recovery_from_temporary_failures(self):
         """Test recovery from temporary failures."""
         failure_count = 0
-        
+
         async def flaky_operation():
             nonlocal failure_count
             failure_count += 1
             if failure_count <= 2:
                 raise RuntimeError("Temporary failure")
             return "success"
-        
+
         # Simulate retry with recovery
         max_retries = 5
         for attempt in range(max_retries):
@@ -286,15 +292,15 @@ class TestStartupScriptErrorRecovery:
                 if attempt == max_retries - 1:
                     raise
                 await asyncio.sleep(0.1)
-        
+
         assert result == "success"
         assert failure_count == 3  # Failed twice, succeeded on third
 
     def test_dependency_fallback_mechanisms(self):
         """Test fallback mechanisms for missing dependencies."""
         # Test fallback when optional dependencies are missing
-        optional_deps = ['optional_package', 'another_optional']
-        
+        optional_deps = ["optional_package", "another_optional"]
+
         available_deps = []
         for dep in optional_deps:
             try:
@@ -303,7 +309,7 @@ class TestStartupScriptErrorRecovery:
             except ImportError:
                 # Expected for non-existent packages
                 pass
-        
+
         # Should handle missing optional dependencies gracefully
         assert isinstance(available_deps, list)
 
@@ -312,20 +318,20 @@ class TestStartupScriptErrorRecovery:
         """Test that resources are cleaned up on startup failure."""
         resources_created = []
         resources_cleaned = []
-        
+
         class MockResource:
             def __init__(self, name):
                 self.name = name
                 resources_created.append(name)
-            
+
             def cleanup(self):
                 resources_cleaned.append(self.name)
-        
+
         async def failing_startup():
             # Create some resources
             resource1 = MockResource("resource1")
             resource2 = MockResource("resource2")
-            
+
             try:
                 # Simulate startup failure
                 raise RuntimeError("Startup failed")
@@ -333,11 +339,11 @@ class TestStartupScriptErrorRecovery:
                 # Cleanup resources
                 resource1.cleanup()
                 resource2.cleanup()
-        
+
         # Run failing startup
         with pytest.raises(RuntimeError):
             await failing_startup()
-        
+
         # Resources should be cleaned up
         assert len(resources_created) == 2
         assert len(resources_cleaned) == 2
