@@ -5,6 +5,8 @@
 [![Tests](https://img.shields.io/badge/tests-1358%20passed-brightgreen.svg)](#testing)
 [![Coverage](https://img.shields.io/badge/coverage-74.82%25-green.svg)](#testing)
 [![Quality](https://img.shields.io/badge/quality-enterprise%20grade-blue.svg)](#quality)
+[![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
+[![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
 **解决大型代码文件的 LLM Token 限制问题。**
 
@@ -225,13 +227,13 @@ Tree-sitter-analyzer 自动检测并加固项目边界：
 
 ### 🔧 运行测试
 ```bash
-pytest tests/ -v
+uv run pytest tests/ -v
 
-pytest tests/ --cov=tree_sitter_analyzer --cov-report=html
+uv run pytest tests/ --cov=tree_sitter_analyzer --cov-report=html
 
-pytest tests/test_formatters_comprehensive.py -v
-pytest tests/test_core_engine_extended.py -v
-pytest tests/test_mcp_server_initialization.py -v
+uv run pytest tests/test_formatters_comprehensive.py -v
+uv run pytest tests/test_core_engine_extended.py -v
+uv run pytest tests/test_mcp_server_initialization.py -v
 ```
 
 ### 📈 覆盖率亮点
@@ -255,11 +257,11 @@ MIT 许可证 - 详见 [LICENSE](LICENSE)。
 
 ```bash
 # AI 系统在生成代码前执行
-python check_quality.py --new-code-only
-python llm_code_checker.py --check-all
+uv run python check_quality.py --new-code-only
+uv run python llm_code_checker.py --check-all
 
 # AI 生成代码的审查
-python llm_code_checker.py path/to/new_file.py
+uv run python llm_code_checker.py path/to/new_file.py
 ```
 
 📖 参阅 [AI 协作指南](https://github.com/aimasteracc/tree-sitter-analyzer/blob/main/AI_COLLABORATION_GUIDE.md) 与 [LLM 编码规范](https://github.com/aimasteracc/tree-sitter-analyzer/blob/main/LLM_CODING_GUIDELINES.md)。

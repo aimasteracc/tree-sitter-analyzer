@@ -215,13 +215,13 @@ uv sync --extra all --extra mcp
 - ✅ エラーハンドリング 61.64% → 82.76%
 - ✅ 重要モジュールへ 104 テスト追加
 
-### 🔧 テスト実行
+### 🔧 テスト実行（uv run を統一）
 ```bash
-pytest tests/ -v
-pytest tests/ --cov=tree_sitter_analyzer --cov-report=html
-pytest tests/test_formatters_comprehensive.py -v
-pytest tests/test_core_engine_extended.py -v
-pytest tests/test_mcp_server_initialization.py -v
+uv run pytest tests/ -v
+uv run pytest tests/ --cov=tree_sitter_analyzer --cov-report=html
+uv run pytest tests/test_formatters_comprehensive.py -v
+uv run pytest tests/test_core_engine_extended.py -v
+uv run pytest tests/test_mcp_server_initialization.py -v
 ```
 
 ### 📈 カバレッジハイライト
@@ -243,9 +243,9 @@ MIT ライセンス（[LICENSE](LICENSE)）
 
 AI 支援開発向けの品質コントロール：
 ```bash
-python check_quality.py --new-code-only
-python llm_code_checker.py --check-all
-python llm_code_checker.py path/to/new_file.py
+uv run python check_quality.py --new-code-only
+uv run python llm_code_checker.py --check-all
+uv run python llm_code_checker.py path/to/new_file.py
 ```
 
 📖 [AI コラボレーションガイド](https://github.com/aimasteracc/tree-sitter-analyzer/blob/main/AI_COLLABORATION_GUIDE.md) と [LLM コーディングガイドライン](https://github.com/aimasteracc/tree-sitter-analyzer/blob/main/LLM_CODING_GUIDELINES.md) を参照。

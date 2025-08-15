@@ -1,12 +1,12 @@
-# PyPI Release Guide for tree-sitter-analyzer v0.9.1
+# PyPI Release Guide for tree-sitter-analyzer v0.9.4
 
 ## 📦 Package Ready for Release
 
-✅ **All tests passed**: 306 tests  
-✅ **Package built**: `dist/tree_sitter_analyzer-0.9.1-py3-none-any.whl`  
-✅ **Source distribution**: `dist/tree_sitter_analyzer-0.9.1.tar.gz`  
+✅ **All tests passed**: 1358 tests  
+✅ **Package built**: `dist/tree_sitter_analyzer-0.9.4-py3-none-any.whl`  
+✅ **Source distribution**: `dist/tree_sitter_analyzer-0.9.4.tar.gz`  
 ✅ **Documentation updated**: README, CHANGELOG, release notes  
-✅ **GitHub released**: Tagged v0.9.1 and pushed  
+✅ **GitHub released**: Tagged v0.9.4 and pushed  
 
 ## 🚀 Manual PyPI Release Steps
 
@@ -55,7 +55,7 @@
 
 2. **Test Installation**:
    ```bash
-   pip install --index-url https://test.pypi.org/simple/ tree-sitter-analyzer==0.9.1
+   pip install --index-url https://test.pypi.org/simple/ tree-sitter-analyzer==0.9.4
    ```
 
 3. **If successful, upload to production PyPI**:
@@ -65,9 +65,9 @@
 
 ## 📋 Pre-Release Checklist
 
-- [x] All tests pass (306/306)
-- [x] Version updated in pyproject.toml (0.9.1)
-- [x] Version updated in __init__.py (0.9.1)
+- [x] All tests pass (1358/1358)
+- [x] Version updated in pyproject.toml (0.9.4)
+- [x] Version updated in __init__.py (0.9.4)
 - [x] CHANGELOG.md updated
 - [x] README.md updated
 - [x] Release notes created
@@ -87,7 +87,7 @@
 - Consistent snake_case parameter naming
 - Enhanced error messages and guidance
 - Simplified codebase (removed backward compatibility)
-- 306 comprehensive tests
+- 1358 comprehensive tests
 
 ## 📊 Test Results Summary
 
@@ -95,7 +95,7 @@
 MCP Tests:           103 passed ✅
 Core Tests:          168 passed ✅  
 MCP Server Tests:     35 passed ✅
-Total:               306 passed ✅
+Total:               1358 passed ✅
 ```
 
 ## 🔗 Post-Release Actions
@@ -104,7 +104,7 @@ After successful PyPI upload:
 
 1. **Verify Installation**:
    ```bash
-   pip install tree-sitter-analyzer==0.9.1
+   pip install tree-sitter-analyzer==0.9.4
    python -c "import tree_sitter_analyzer; print(tree_sitter_analyzer.__version__)"
    ```
 
@@ -114,12 +114,12 @@ After successful PyPI upload:
    - Update project status
 
 3. **GitHub Release**:
-   - Create GitHub release from tag v0.9.1
+   - Create GitHub release from tag v0.9.4
    - Attach release notes
    - Include built packages
 
 ## 🎉 Ready to Release!
 
-The package is fully tested and ready for PyPI release. All 306 tests pass, documentation is complete, and the MCP tools unification provides significant improvements for LLM integration.
+The package is fully tested and ready for PyPI release. All 1358 tests pass, documentation is complete, and the MCP tools unification provides significant improvements for LLM integration.
 
 **This release represents a major improvement in usability for AI assistants working with large codebases!**

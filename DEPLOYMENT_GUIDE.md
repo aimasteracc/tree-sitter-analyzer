@@ -19,8 +19,8 @@
 2. API トークンの設定
    ```bash
    # PyPI用
-   python -m pip install --upgrade pip
-   python -m pip install --upgrade build twine
+   uv run python -m pip install --upgrade pip
+   uv add --dev build twine
    
    # 認証情報の設定（~/.pypirc）
    [distutils]
@@ -43,8 +43,8 @@
 #### 方法1: 自動スクリプトを使用
 
 ```bash
-# アップロードスクリプトを実行
-python upload_to_pypi.py
+# アップロードスクリプトを実行（uv 統一）
+uv run python upload_to_pypi.py
 ```
 
 このスクリプトは以下を自動実行します：
@@ -57,29 +57,29 @@ python upload_to_pypi.py
 
 ```bash
 # 1. 依存関係のインストール
-pip install build twine
+uv add --dev build twine
 
 # 2. パッケージのビルド
-python -m build
+uv run python -m build
 
 # 3. パッケージの検証
-python -m twine check dist/*
+uv run python -m twine check dist/*
 
 # 4. TestPyPIにアップロード（テスト用）
-python -m twine upload --repository testpypi dist/*
+uv run python -m twine upload --repository testpypi dist/*
 
 # 5. 本番PyPIにアップロード
-python -m twine upload dist/*
+uv run python -m twine upload dist/*
 ```
 
 ### アップロード後の確認
 
 ```bash
 # TestPyPIからのインストールテスト
-pip install --index-url https://test.pypi.org/simple/ tree-sitter-analyzer
+pip install --index-url https://test.pypi.org/simple/ tree-sitter-analyzer==0.9.4
 
 # 本番PyPIからのインストール
-pip install tree-sitter-analyzer
+pip install tree-sitter-analyzer==0.9.4
 ```
 
 ## スタンドアロン実行ファイルの作成
@@ -90,7 +90,7 @@ Python環境がないユーザーでも使用できるスタンドアロン実�
 
 ```bash
 # PyInstallerのインストール
-pip install pyinstaller
+uv add --dev pyinstaller
 ```
 
 ### ビルド手順
@@ -99,7 +99,7 @@ pip install pyinstaller
 
 ```bash
 # スタンドアロンビルドスクリプトを実行
-python build_standalone.py
+uv run python build_standalone.py
 ```
 
 #### 方法2: 手動実行

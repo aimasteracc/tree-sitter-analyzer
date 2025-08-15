@@ -2,13 +2,17 @@
 
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-306%20passed-brightgreen.svg)](#testing)
+[![Tests](https://img.shields.io/badge/tests-1358%20passed-brightgreen.svg)](#testing)
 [![Coverage](https://img.shields.io/badge/coverage-74.82%25-green.svg)](#testing)
 [![Quality](https://img.shields.io/badge/quality-enterprise%20grade-blue.svg)](#quality)
+[![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
+[![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
 **Solve the LLM token limit problem for large code files.**
 
 An extensible multi-language code analyzer that helps AI assistants understand code structure without reading entire files. Get code overview, extract specific sections, and analyze complexity - all optimized for LLM workflows.
+
+If you find this project useful, please consider giving it a ⭐ on GitHub to support development.
 
 ## ✨ Why Tree-sitter Analyzer?
 
@@ -228,15 +232,15 @@ This project maintains **enterprise-grade quality** with comprehensive testing:
 ### 🔧 Running Tests
 ```bash
 # Run all tests
-pytest tests/ -v
+uv run pytest tests/ -v
 
 # Run with coverage report
-pytest tests/ --cov=tree_sitter_analyzer --cov-report=html
+uv run pytest tests/ --cov=tree_sitter_analyzer --cov-report=html
 
 # Run specific test categories
-pytest tests/test_formatters_comprehensive.py -v
-pytest tests/test_core_engine_extended.py -v
-pytest tests/test_mcp_server_initialization.py -v
+uv run pytest tests/test_formatters_comprehensive.py -v
+uv run pytest tests/test_core_engine_extended.py -v
+uv run pytest tests/test_mcp_server_initialization.py -v
 ```
 
 ### 📈 Coverage Highlights
@@ -260,11 +264,11 @@ This project supports AI-assisted development with specialized quality controls:
 
 ```bash
 # For AI systems - run before generating code
-python check_quality.py --new-code-only
-python llm_code_checker.py --check-all
+uv run python check_quality.py --new-code-only
+uv run python llm_code_checker.py --check-all
 
 # For AI-generated code review
-python llm_code_checker.py path/to/new_file.py
+uv run python llm_code_checker.py path/to/new_file.py
 ```
 
 📖 **See our [AI Collaboration Guide](https://github.com/aimasteracc/tree-sitter-analyzer/blob/main/AI_COLLABORATION_GUIDE.md) and [LLM Coding Guidelines](https://github.com/aimasteracc/tree-sitter-analyzer/blob/main/LLM_CODING_GUIDELINES.md) for detailed instructions on working with AI systems.**
