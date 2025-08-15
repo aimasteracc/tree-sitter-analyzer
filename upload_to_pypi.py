@@ -137,6 +137,7 @@ def check_packages(version: str) -> bool:
 def check_pypi_version(version: str) -> bool:
     """Check if version already exists on PyPI"""
     try:
+        # Try using pip index first (newer pip versions)
         result = subprocess.run(
             ["pip", "index", "versions", "tree-sitter-analyzer"],
             capture_output=True,
@@ -149,9 +150,21 @@ def check_pypi_version(version: str) -> bool:
         else:
             print(f"✅ Version {version} is new")
             return True
-    except subprocess.CalledProcessError:
-        print("⚠️  Could not check PyPI versions")
-        return True
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        # Fallback: try using requests to check PyPI API
+        try:
+            import requests
+            url = f"https://pypi.org/pypi/tree-sitter-analyzer/{version}/json"
+            response = requests.head(url, timeout=10)
+            if response.status_code == 200:
+                print(f"❌ Version {version} already exists on PyPI")
+                return False
+            else:
+                print(f"✅ Version {version} is new")
+                return True
+        except Exception:
+            print("⚠️  Could not check PyPI versions (will proceed anyway)")
+            return True
 
 
 def run_tests() -> bool:
