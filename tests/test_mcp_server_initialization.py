@@ -7,6 +7,7 @@ of the MCP server, including the fixes we recently implemented.
 """
 
 import asyncio
+import logging
 import pytest
 from unittest.mock import Mock, patch, AsyncMock
 import tempfile
@@ -30,6 +31,10 @@ class TestMCPServerInitialization:
 
     def test_server_initialization_logging(self, caplog):
         """Test that initialization produces proper log messages."""
+        # Set log level to INFO for tree_sitter_analyzer logger
+        caplog.set_level(logging.INFO, logger="tree_sitter_analyzer")
+        caplog.set_level(logging.INFO, logger="tree_sitter_analyzer.mcp.server")
+        
         with tempfile.TemporaryDirectory() as temp_dir:
             server = TreeSitterAnalyzerMCPServer(temp_dir)
             

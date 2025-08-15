@@ -177,7 +177,7 @@ public class TestClass {
             temp_dir = os.path.dirname(temp_path)
             temp_dir = os.path.dirname(temp_path)
             monkeypatch.setattr(
-                sys, "argv", ["cli", temp_path, "--project-root", temp_dir]
+                sys, "argv", ["cli", temp_path, "--project-root", temp_dir, "--advanced"]
             )
             mock_stdout = StringIO()
             monkeypatch.setattr("sys.stdout", mock_stdout)
@@ -215,7 +215,7 @@ public class TestClass {
             temp_dir = os.path.dirname(temp_path)
             temp_dir = os.path.dirname(temp_path)
             monkeypatch.setattr(
-                sys, "argv", ["cli", temp_path, "--query-key", "class_names", "--project-root", temp_dir]
+                sys, "argv", ["cli", temp_path, "--query-key", "classes", "--project-root", temp_dir]
             )
             mock_stdout = StringIO()
             monkeypatch.setattr("sys.stdout", mock_stdout)
@@ -291,7 +291,7 @@ if __name__ == "__main__":
             temp_dir = os.path.dirname(temp_path)
             temp_dir = os.path.dirname(temp_path)
             monkeypatch.setattr(
-                sys, "argv", ["cli", temp_path, "--project-root", temp_dir]
+                sys, "argv", ["cli", temp_path, "--project-root", temp_dir, "--advanced"]
             )
             mock_stdout = StringIO()
             monkeypatch.setattr("sys.stdout", mock_stdout)
@@ -448,7 +448,7 @@ public class TestClass {
         try:
             temp_dir = os.path.dirname(temp_path)
             monkeypatch.setattr(
-                sys, "argv", ["cli", temp_path, "--output-format", "text", "--project-root", temp_dir]
+                sys, "argv", ["cli", temp_path, "--output-format", "text", "--project-root", temp_dir, "--advanced"]
             )
             mock_stdout = StringIO()
             monkeypatch.setattr("sys.stdout", mock_stdout)

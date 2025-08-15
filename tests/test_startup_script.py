@@ -8,6 +8,7 @@ including dependency checking and initialization handling.
 
 import pytest
 import asyncio
+import logging
 import sys
 from unittest.mock import Mock, patch, AsyncMock, MagicMock
 import tempfile
@@ -195,8 +196,11 @@ class TestStartupScriptIntegration:
         """Test that startup script configures logging properly."""
         from tree_sitter_analyzer.utils import setup_logger
         
-        # Test logger setup
-        logger = setup_logger("test_startup")
+        # Set caplog to capture everything at DEBUG level 
+        caplog.set_level(logging.DEBUG)
+        
+        # Test logger setup with explicit INFO level
+        logger = setup_logger("test_startup", level=logging.INFO)
         logger.info("Test startup message")
         
         # Should have logged the message

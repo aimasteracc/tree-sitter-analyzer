@@ -63,7 +63,7 @@ def perf_logger():
     handler = logging.StreamHandler(log_capture)
     handler.setFormatter(logging.Formatter("PERF - %(message)s"))
     logger.addHandler(handler)
-    logger.setLevel(logging.INFO)
+    logger.setLevel(logging.DEBUG)  # Changed to DEBUG to match new performance logging level
 
     yield logger, log_capture
 
