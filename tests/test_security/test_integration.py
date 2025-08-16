@@ -241,12 +241,14 @@ class TestSecurityIntegration:
         # Arrange
         boundary_manager = ProjectBoundaryManager(self.project_root)
 
-        # Test regular file (should be safe)
-        assert boundary_manager.is_symlink_safe(self.test_file)
+        # Test regular file (should be safe). On macOS CI, temp roots sometimes
+        # involve symlinked parents (/private/var/folders). Our check treats
+        # regular files within project as safe, so accept True here.
+        assert boundary_manager.is_symlink_safe(self.test_file) in (True,)
 
         # Test nonexistent file (should be safe)
         nonexistent = os.path.join(self.project_root, "nonexistent.txt")
-        assert boundary_manager.is_symlink_safe(nonexistent)
+        assert boundary_manager.is_symlink_safe(nonexistent) in (True,)
 
         # Test directory (should be safe)
-        assert boundary_manager.is_symlink_safe(self.src_dir)
+        assert boundary_manager.is_symlink_safe(self.src_dir) in (True,)
