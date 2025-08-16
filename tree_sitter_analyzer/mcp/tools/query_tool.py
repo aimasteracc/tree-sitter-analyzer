@@ -74,7 +74,7 @@ class QueryTool:
             },
         }
 
-    @handle_mcp_errors
+    @handle_mcp_errors("query_code")
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """
         Execute query tool
@@ -91,7 +91,11 @@ class QueryTool:
             raise ValueError("file_path is required")
 
         # Security validation
-        validated_path = self.security_validator.validate_file_path(file_path)
+        is_valid, error_msg = self.security_validator.validate_file_path(file_path)
+        if not is_valid:
+            raise ValueError(f"Invalid or unsafe file path: {error_msg or file_path}")
+        # Use the original path as validated path after checks
+        validated_path = file_path
 
         # Get query parameters
         query_key = arguments.get("query_key")
