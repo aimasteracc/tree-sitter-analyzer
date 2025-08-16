@@ -6,6 +6,7 @@
 [![カバレッジ](https://img.shields.io/badge/coverage-74.36%25-green.svg)](#品質保証)
 [![品質](https://img.shields.io/badge/quality-enterprise%20grade-blue.svg)](#品質保証)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
+[![バージョン](https://img.shields.io/badge/version-0.9.7-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
 ## 🚀 LLMトークン制限を突破し、AIにあらゆるサイズのコードファイルを理解させる
@@ -224,7 +225,12 @@ MCPツールextract_code_sectionを使用して指定されたコードセクシ
 }
 ```
 
-#### 🔍 **ステップ4: スマートクエリフィルタリング（NEW！）**
+#### 🔍 **ステップ4: スマートクエリフィルタリング（v0.9.6+）**
+
+**エラーハンドリングの強化（v0.9.7）：**
+- ツール名識別を追加した`@handle_mcp_errors`デコレータの改善
+- デバッグとトラブルシューティングのためのより良いエラーコンテキスト
+- ファイルパスのセキュリティ検証の強化
 
 **特定のメソッドを検索：**
 ```
@@ -283,7 +289,7 @@ uv run python -m tree_sitter_analyzer examples/BigService.java --partial-read --
 # サイレントモード（結果のみ表示）
 uv run python -m tree_sitter_analyzer examples/BigService.java --table=full --quiet
 
-# 🔍 クエリフィルタリング例（NEW！）
+# 🔍 クエリフィルタリング例（v0.9.6+）
 # 特定のメソッドを検索
 uv run python -m tree_sitter_analyzer examples/BigService.java --query-key methods --filter "name=main"
 

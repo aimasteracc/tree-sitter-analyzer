@@ -6,6 +6,7 @@
 [![Coverage](https://img.shields.io/badge/coverage-74.36%25-green.svg)](#quality-assurance)
 [![Quality](https://img.shields.io/badge/quality-enterprise%20grade-blue.svg)](#quality-assurance)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
+[![Version](https://img.shields.io/badge/version-0.9.7-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
 ## 🚀 Break Through LLM Token Limits, Let AI Understand Code Files of Any Size
@@ -224,7 +225,12 @@ Parameters: {"file_path": "examples/BigService.java", "start_line": 100, "end_li
 }
 ```
 
-#### 🔍 **Step 4: Smart Query Filtering (NEW!)**
+#### 🔍 **Step 4: Smart Query Filtering (v0.9.6+)**
+
+**Enhanced Error Handling (v0.9.7):**
+- Improved `@handle_mcp_errors` decorator with tool name identification
+- Better error context for debugging and troubleshooting
+- Enhanced security validation for file paths
 
 **Find specific methods:**
 ```
@@ -283,7 +289,7 @@ uv run python -m tree_sitter_analyzer examples/BigService.java --partial-read --
 # Silent mode (display results only)
 uv run python -m tree_sitter_analyzer examples/BigService.java --table=full --quiet
 
-# 🔍 Query filtering examples (NEW!)
+# 🔍 Query filtering examples (v0.9.6+)
 # Find specific methods
 uv run python -m tree_sitter_analyzer examples/BigService.java --query-key methods --filter "name=main"
 

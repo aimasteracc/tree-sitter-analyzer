@@ -6,6 +6,7 @@
 [![覆盖率](https://img.shields.io/badge/coverage-74.36%25-green.svg)](#质量保证)
 [![质量](https://img.shields.io/badge/quality-enterprise%20grade-blue.svg)](#质量保证)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
+[![版本](https://img.shields.io/badge/version-0.9.7-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
 ## 🚀 突破LLM token限制，让AI理解任意大小的代码文件
@@ -224,7 +225,12 @@ uv run python -m tree_sitter_analyzer examples/BigService.java --partial-read --
 }
 ```
 
-#### 🔍 **步骤4: 智能查询过滤（NEW！）**
+#### 🔍 **步骤4: 智能查询过滤（v0.9.6+）**
+
+**增强的错误处理（v0.9.7）：**
+- 改进了`@handle_mcp_errors`装饰器，添加工具名称标识
+- 更好的错误上下文，便于调试和故障排除
+- 增强的文件路径安全验证
 
 **查找特定方法：**
 ```
@@ -283,7 +289,7 @@ uv run python -m tree_sitter_analyzer examples/BigService.java --partial-read --
 # 静默模式（仅显示结果）
 uv run python -m tree_sitter_analyzer examples/BigService.java --table=full --quiet
 
-# 🔍 查询过滤示例（NEW！）
+# 🔍 查询过滤示例（v0.9.6+）
 # 查找特定方法
 uv run python -m tree_sitter_analyzer examples/BigService.java --query-key methods --filter "name=main"
 

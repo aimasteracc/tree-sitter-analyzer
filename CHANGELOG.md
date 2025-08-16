@@ -1,4 +1,22 @@
 # Changelog
+## [0.9.7] - 2025-01-17
+
+### 🛠️ Error Handling Improvements
+
+#### 🔧 MCP Tool Enhancements
+- **Enhanced Error Decorator**: Improved `@handle_mcp_errors` decorator with tool name identification
+- **Better Error Context**: Added tool name "query_code" to error handling for improved debugging
+- **Security Validation**: Enhanced file path security validation in query tool
+
+#### 🧪 Code Quality
+- **Pre-commit Hooks**: All code quality checks passed including black, ruff, bandit, and isort
+- **Mixed Line Endings**: Fixed mixed line ending issues in query_tool.py
+- **Type Safety**: Maintained existing type annotations and code structure
+
+#### 📚 Documentation
+- **Updated Examples**: Enhanced error handling documentation
+- **Security Guidelines**: Improved security validation documentation
+
 ## [0.9.6] - 2025-01-17
 
 ### 🎉 New Feature: Advanced Query Filtering System
