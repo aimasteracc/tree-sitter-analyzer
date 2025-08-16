@@ -27,20 +27,11 @@ jobs:
 
     - name: Install dependencies
       run: |
-        uv sync --extra full
+        uv sync --extra all --extra mcp
 
     - name: Run quality checks
       run: |
         uv run python check_quality.py --new-code-only || true
-
-    - name: Upload coverage reports
-      if: matrix.python-version == '3.11'
-      uses: codecov/codecov-action@v4
-      env:
-        CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
-      with:
-        files: ./coverage.xml
-        fail_ci_if_error: true
 
   test-matrix:
     name: Test Suite
@@ -69,11 +60,24 @@ jobs:
 
     - name: Install dependencies
       run: |
-        uv sync --extra full
+        uv sync --extra all --extra mcp
 
-    - name: Run tests
+    - name: Run tests with coverage (only on 3.11 Linux)
       run: |
-        uv run pytest tests/ -v --tb=short --maxfail=5
+        if [ "${{ matrix.os }}" = "ubuntu-latest" ] && [ "${{ matrix.python-version }}" = "3.11" ]; then \
+          uv run pytest tests/ -v --tb=short --maxfail=5 --cov=tree_sitter_analyzer --cov-report=xml; \
+        else \
+          uv run pytest tests/ -v --tb=short --maxfail=5; \
+        fi
+
+    - name: Upload coverage to Codecov (only on 3.11 Linux)
+      if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.11'
+      uses: codecov/codecov-action@v4
+      env:
+        CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+      with:
+        files: ./coverage.xml
+        fail_ci_if_error: true
 
     - name: Test CLI functionality
       run: |
@@ -96,7 +100,7 @@ jobs:
 
     - name: Install dependencies
       run: |
-        uv sync --extra full
+        uv sync --extra all --extra mcp
 
     - name: Run security checks
       run: |
@@ -120,7 +124,7 @@ jobs:
 
     - name: Install dependencies
       run: |
-        uv sync --extra full
+        uv sync --extra dev
 
     - name: Check README commands
       run: |
@@ -154,11 +158,11 @@ jobs:
 
     - name: Build package
       run: |
-        uv build
+        uv run python -m build
 
     - name: Check package
       run: |
-        uv run twine check dist/*
+        uv run python -m twine check dist/*
 
     - name: Test installation from wheel
       run: |
