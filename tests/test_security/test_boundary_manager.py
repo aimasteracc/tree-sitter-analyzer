@@ -218,4 +218,12 @@ class TestProjectBoundaryManager:
         # Assert
         assert "ProjectBoundaryManager" in str_repr
         assert "ProjectBoundaryManager" in repr_repr
-        assert self.temp_dir in repr_repr
+        # On Windows the temp directory may have different short/long path
+        # representations in CI (e.g., C:\Users\runneradmin vs C:\Users\RUNNER~1),
+        # so we only assert that at least one of the known forms appears.
+        normalized = os.path.realpath(self.temp_dir)
+        assert (
+            self.temp_dir in repr_repr
+            or normalized in repr_repr
+            or os.path.basename(normalized) in repr_repr
+        )
