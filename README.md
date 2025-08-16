@@ -3,7 +3,7 @@
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Tests](https://img.shields.io/badge/tests-1420%20passed-brightgreen.svg)](#quality-assurance)
-[![Coverage](https://img.shields.io/badge/coverage-74.19%25-green.svg)](#quality-assurance)
+[![Coverage](https://img.shields.io/badge/coverage-74.36%25-green.svg)](#quality-assurance)
 [![Quality](https://img.shields.io/badge/quality-enterprise%20grade-blue.svg)](#quality-assurance)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
@@ -410,16 +410,16 @@ Tree-sitter Analyzer automatically detects and protects project boundaries:
 ## 🏆 Quality Assurance
 
 ### 📊 **Quality Metrics**
-- **1,358 Tests** - 100% pass rate ✅
-- **74.54% Code Coverage** - Industry-leading level
+- **1,420 Tests** - 100% pass rate ✅
+- **74.36% Code Coverage** - Industry-leading level
 - **Zero Test Failures** - Complete CI/CD ready
 - **Cross-platform Compatible** - Windows, macOS, Linux
 
-### ⚡ **Latest Quality Achievements (v0.9.4)**
-- ✅ **Test Suite Completely Stable** - Fixed all historical issues
-- ✅ **Formatter Module Breakthrough** - Coverage significantly improved
-- ✅ **Error Handling Optimization** - Enterprise-grade exception handling
-- ✅ **100+ New Comprehensive Tests** - Covering critical modules
+### ⚡ **Latest Quality Achievements (v0.9.6)**
+- ✅ **Smart Query Filtering System** - 62 new tests all passed
+- ✅ **Unified Architecture Design** - QueryService eliminates code duplication
+- ✅ **CI Test Fixes** - All platforms test stable
+- ✅ **Multi-language Documentation** - Complete updates in EN/ZH/JA
 
 ### ⚙️ **Running Tests**
 ```bash
@@ -435,9 +435,10 @@ uv run pytest tests/test_mcp_server_initialization.py -v
 
 ### 📈 **Coverage Highlights**
 - **Language Detector**: 98.41% (Excellent)
-- **CLI Main Entry**: 97.78% (Excellent)
+- **CLI Main Entry**: 94.36% (Excellent)
+- **Query Filtering System**: 96.06% (Excellent)
+- **Query Service**: 86.25% (Good)
 - **Error Handling**: 82.76% (Good)
-- **Security Framework**: 78%+ (Reliable)
 
 ---
 

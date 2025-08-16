@@ -3,7 +3,7 @@
 [![Pythonバージョン](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![ライセンス](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![テスト](https://img.shields.io/badge/tests-1420%20passed-brightgreen.svg)](#品質保証)
-[![カバレッジ](https://img.shields.io/badge/coverage-74.19%25-green.svg)](#品質保証)
+[![カバレッジ](https://img.shields.io/badge/coverage-74.36%25-green.svg)](#品質保証)
 [![品質](https://img.shields.io/badge/quality-enterprise%20grade-blue.svg)](#品質保証)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
@@ -410,16 +410,16 @@ Tree-sitter Analyzerは自動的にプロジェクト境界を検出・保護：
 ## 🏆 品質保証
 
 ### 📊 **品質メトリクス**
-- **1,358テスト** - 100%合格率 ✅
-- **74.54%コードカバレッジ** - 業界最高レベル
+- **1,420テスト** - 100%合格率 ✅
+- **74.36%コードカバレッジ** - 業界最高レベル
 - **ゼロテスト失敗** - 完全なCI/CD対応
 - **クロスプラットフォーム対応** - Windows、macOS、Linux
 
-### ⚡ **最新の品質成果（v0.9.4）**
-- ✅ **テストスイート完全安定化** - すべての歴史的問題を修正
-- ✅ **フォーマッターモジュールブレークスルー** - カバレッジ大幅向上
-- ✅ **エラーハンドリング最適化** - エンタープライズグレードの例外処理
-- ✅ **100+新総合テスト** - 重要なモジュールをカバー
+### ⚡ **最新の品質成果（v0.9.6）**
+- ✅ **スマートクエリフィルタリングシステム** - 62の新しいテストすべて合格
+- ✅ **統合アーキテクチャ設計** - QueryServiceによるコード重複の排除
+- ✅ **CIテスト修正** - すべてのプラットフォームでテスト安定化
+- ✅ **多言語ドキュメンテーション** - 中英日三言語の完全更新
 
 ### ⚙️ **テスト実行**
 ```bash
@@ -435,9 +435,10 @@ uv run pytest tests/test_mcp_server_initialization.py -v
 
 ### 📈 **カバレッジハイライト**
 - **言語検出器**: 98.41%（優秀）
-- **CLIメインエントリ**: 97.78%（優秀）
+- **CLIメインエントリ**: 94.36%（優秀）
+- **クエリフィルタリングシステム**: 96.06%（優秀）
+- **クエリサービス**: 86.25%（良好）
 - **エラーハンドリング**: 82.76%（良好）
-- **セキュリティフレームワーク**: 78%+（信頼性）
 
 ---
 
