@@ -41,7 +41,7 @@ class TestMCPServerInitialization:
         caplog.set_level(logging.INFO, logger="tree_sitter_analyzer.mcp.server")
 
         with tempfile.TemporaryDirectory() as temp_dir:
-            server = TreeSitterAnalyzerMCPServer(temp_dir)
+            TreeSitterAnalyzerMCPServer(temp_dir)
 
             # Check for initialization log messages
             assert "Starting MCP server initialization..." in caplog.text
@@ -146,8 +146,11 @@ class TestMCPServerInitialization:
         # Use a non-existent directory
         invalid_path = "/nonexistent/path/that/should/not/exist"
 
-        # Should raise SecurityError (security validator rejects invalid paths)
-        with pytest.raises(Exception):  # Could be SecurityError or other exception
+        # Should raise an error (security validator rejects invalid paths)
+        # Accept either SecurityError or generic Exception depending on platform
+        from tree_sitter_analyzer.exceptions import SecurityError
+
+        with pytest.raises((SecurityError, Exception)):
             TreeSitterAnalyzerMCPServer(invalid_path)
 
 
@@ -207,9 +210,12 @@ class TestMCPServerIntegration:
 
             # Components should be functional
             if server.security_validator.boundary_manager:
-                assert (
-                    server.security_validator.boundary_manager.project_root == temp_dir
+                # Normalize realpath to handle Windows short/long path variations in CI
+                expected = os.path.realpath(temp_dir)
+                actual = os.path.realpath(
+                    server.security_validator.boundary_manager.project_root
                 )
+                assert expected == actual
 
     @pytest.mark.asyncio
     async def test_server_handles_concurrent_initialization_checks(self):
