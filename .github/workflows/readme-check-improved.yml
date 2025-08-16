@@ -7,7 +7,6 @@ on:
       - 'pyproject.toml'
       - 'examples/*.java'
       - 'tree_sitter_analyzer/**/*.py'
-      - 'scripts/update_readme_stats.py'
       - 'scripts/improved_readme_updater.py'
       - 'scripts/readme_config.py'
   push:
@@ -38,12 +37,12 @@ jobs:
 
     - name: Validate README content first
       run: |
-        echo "🔍 Validating README content structure..."
+        echo "Validating README content structure..."
         uv run python scripts/improved_readme_updater.py --validate-only
 
     - name: Check if README statistics are up to date (dry-run)
       run: |
-        echo "🔍 Checking if README statistics need updates..."
+        echo "Checking if README statistics need updates..."
 
         # Run in dry-run mode to see what would change
         uv run python scripts/improved_readme_updater.py --dry-run --verbose > dry_run_output.txt 2>&1
@@ -54,20 +53,19 @@ jobs:
         # Check if any files would be updated
         if grep -q "Would update" dry_run_output.txt; then
           echo ""
-          echo "❌ README statistics are outdated!"
+          echo "README statistics are outdated!"
           echo "The following files need updates:"
           grep "Would update" dry_run_output.txt
           echo ""
           echo "Please run: uv run python scripts/improved_readme_updater.py"
-          echo "Or use the legacy script: uv run python scripts/update_readme_stats.py"
           exit 1
         else
-          echo "✅ All README statistics are up to date!"
+          echo "All README statistics are up to date!"
         fi
 
     - name: Test README update script functionality
       run: |
-        echo "🧪 Testing README update script functionality..."
+        echo "Testing README update script functionality..."
 
         # Create backup copies
         cp README_zh.md README_zh.md.backup
@@ -79,19 +77,19 @@ jobs:
 
         # Check if files were actually modified (they shouldn't be if stats are current)
         if ! diff -q README_zh.md README_zh.md.backup > /dev/null; then
-          echo "⚠️  README_zh.md was modified during test run"
+          echo "WARNING: README_zh.md was modified during test run"
           echo "This suggests the statistics were actually outdated"
           diff README_zh.md.backup README_zh.md || true
         fi
 
         if ! diff -q README.md README.md.backup > /dev/null; then
-          echo "⚠️  README.md was modified during test run"
+          echo "WARNING: README.md was modified during test run"
           echo "This suggests the statistics were actually outdated"
           diff README.md.backup README.md || true
         fi
 
         if ! diff -q README_ja.md README_ja.md.backup > /dev/null; then
-          echo "⚠️  README_ja.md was modified during test run"
+          echo "WARNING: README_ja.md was modified during test run"
           echo "This suggests the statistics were actually outdated"
           diff README_ja.md.backup README_ja.md || true
         fi
@@ -101,11 +99,11 @@ jobs:
         mv README.md.backup README.md
         mv README_ja.md.backup README_ja.md
 
-        echo "✅ README update script test completed!"
+        echo "README update script test completed!"
 
     - name: Validate final README content
       run: |
-        echo "🔍 Final validation of README content..."
+        echo "Final validation of README content..."
 
         # Check all README files have required elements
         for readme in README_zh.md README.md README_ja.md; do
@@ -113,26 +111,26 @@ jobs:
 
           # Check test count badge
           if ! grep -q "tests-[0-9]\+%20passed" "$readme"; then
-            echo "❌ Test count badge missing in $readme"
+            echo "ERROR: Test count badge missing in $readme"
             exit 1
           fi
 
           # Check coverage badge
           if ! grep -q "coverage-[0-9]\+\.[0-9]\+%25" "$readme"; then
-            echo "❌ Coverage badge missing in $readme"
+            echo "ERROR: Coverage badge missing in $readme"
             exit 1
           fi
 
           # Check BigService statistics
           if ! grep -q "Lines: [0-9]\+" "$readme"; then
-            echo "❌ BigService lines count missing in $readme"
+            echo "ERROR: BigService lines count missing in $readme"
             exit 1
           fi
 
-          echo "✅ $readme validation passed"
+          echo "SUCCESS: $readme validation passed"
         done
 
-        echo "✅ All README files passed final validation!"
+        echo "SUCCESS: All README files passed final validation!"
 
   # Optional: Auto-fix outdated statistics (commented out by default)
   # auto-fix-stats:
