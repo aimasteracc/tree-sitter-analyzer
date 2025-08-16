@@ -91,7 +91,6 @@ class TestSecurityIntegration:
         """Test regex checker integration with validator."""
         # Arrange
         checker = RegexSafetyChecker()
-        validator = SecurityValidator()
 
         # Test safe pattern
         safe_pattern = r"[a-zA-Z0-9]+"
@@ -162,12 +161,16 @@ class TestSecurityIntegration:
 
         # Test cases with expected results
         test_cases = [
-            # (path, base_path, should_be_valid, error_keyword)
+            # (path, base_path, should_be_valid, error_keyword or tuple of keywords)
             ("src/main.py", self.project_root, True, ""),
             ("", None, False, "non-empty"),
             ("src/test\x00.py", None, False, "null"),
             ("/etc/passwd", None, False, "Absolute"),
-            ("C:\\Windows\\System32", None, False, "absolute"),
+            # On non-Windows platforms our validator may return a platform-aware message
+            # like "Windows drive letters are not allowed on this system" for paths with
+            # Windows drive letters. To keep this test portable, accept either the generic
+            # "absolute" keyword or a message mentioning "windows drive".
+            ("C:\\Windows\\System32", None, False, ("absolute", "windows drive")),
             ("../../../etc/passwd", None, False, "traversal"),
             ("src/../../../etc/passwd", None, False, "traversal"),
         ]
@@ -183,9 +186,15 @@ class TestSecurityIntegration:
             else:
                 assert not is_valid, f"Path should be invalid: {path}"
                 if error_keyword:
-                    assert (
-                        error_keyword.lower() in error.lower()
-                    ), f"Expected '{error_keyword}' in error: {error}"
+                    # error_keyword can be a single string or a collection of accepted keywords
+                    if isinstance(error_keyword, (list | tuple | set)):
+                        assert any(
+                            kw.lower() in error.lower() for kw in error_keyword
+                        ), f"Expected one of {error_keyword} in error: {error}"
+                    else:
+                        assert (
+                            error_keyword.lower() in error.lower()
+                        ), f"Expected '{error_keyword}' in error: {error}"
 
     @pytest.mark.integration
     def test_regex_performance_and_safety(self):

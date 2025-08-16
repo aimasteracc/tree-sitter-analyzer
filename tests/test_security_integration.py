@@ -296,9 +296,8 @@ class TestClass:
             validator = SecurityValidator(self.temp_dir)
             validator.validate_file_path("../../../etc/passwd")
 
-            # Check that security event was logged
-            log_output = log_capture.getvalue()
-            # Note: Actual logging depends on implementation
+            # Check that security event was logged (content may vary by impl)
+            _ = log_capture.getvalue()
 
         finally:
             logger.removeHandler(handler)
@@ -328,18 +327,20 @@ class TestClass:
             # Debug: print the actual error message
             print(f"Error message for {malicious_input}: '{error_msg}'")
 
-            # Should contain generic security message
-            assert any(
-                word in error_msg.lower()
-                for word in [
-                    "security",
-                    "invalid",
-                    "not allowed",
-                    "denied",
-                    "traversal",
-                    "absolute",
-                ]
-            )
+            # Should contain at least one generic security keyword. On non-Windows
+            # platforms, Windows-drive specific inputs may yield a platform-aware
+            # message such as "Windows drive letters are not allowed on this system".
+            # Accept any of the following keywords for portability.
+            generic_keywords = [
+                "security",
+                "invalid",
+                "not allowed",
+                "denied",
+                "traversal",
+                "absolute",
+                "windows drive",
+            ]
+            assert any(word in error_msg.lower() for word in generic_keywords)
 
 
 if __name__ == "__main__":
