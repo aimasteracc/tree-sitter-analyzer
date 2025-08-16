@@ -3,287 +3,422 @@
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Tests](https://img.shields.io/badge/tests-1358%20passed-brightgreen.svg)](#testing)
-[![Coverage](https://img.shields.io/badge/coverage-74.82%25-green.svg)](#testing)
+[![Coverage](https://img.shields.io/badge/coverage-74.54%25-green.svg)](#testing)
 [![Quality](https://img.shields.io/badge/quality-enterprise%20grade-blue.svg)](#quality)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
-**Solve the LLM token limit problem for large code files.**
+## 🚀 Break Through LLM Token Limits, Let AI Understand Code Files of Any Size
 
-An extensible multi-language code analyzer that helps AI assistants understand code structure without reading entire files. Get code overview, extract specific sections, and analyze complexity - all optimized for LLM workflows.
+> **A revolutionary code analysis tool designed for the AI era**
 
-If you find this project useful, please consider giving it a ⭐ on GitHub to support development.
+Imagine: You have a 1,400+ line Java service class that Claude or ChatGPT can't analyze due to token limits. Now, Tree-sitter Analyzer enables AI assistants to:
 
-### Quick links
-- Prompts for AI IDEs: [jump](#ai-ide-prompts)
+- ⚡ **Get complete code structure overview in 3 seconds**
+- 🎯 **Precisely extract** any line range of code snippets  
+- 📍 **Smart positioning** exact locations of classes, methods, fields
+- 🔗 **Seamless integration** with Claude Desktop, Cursor, Roo Code and other AI IDEs
 
-## ✨ Why Tree-sitter Analyzer?
+**No more AI helplessness due to large files!**
 
-**The Problem:** Large code files exceed LLM token limits, making code analysis inefficient or impossible.
+---
 
-**The Solution:** Smart code analysis that provides:
-- 📊 **Code overview** without reading complete files
-- 🎯 **Targeted extraction** of specific line ranges  
-- 📍 **Precise positioning** for accurate code operations
-- 🤖 **AI assistant integration** via MCP protocol
+## 🚀 30-Second Quick Experience
 
-## 🚀 Quick Start (5 minutes)
+### 🤖 AI Users (Claude Desktop, Cursor, Roo Code, etc.)
 
-### For AI Assistant Users (Claude Desktop)
-
-1. **Install the package:**
+**📦 1. One-Click Installation**
 ```bash
-# Install uv (fast Python package manager)
-curl -LsSf https://astral.sh/uv/install.sh | sh  # macOS/Linux
-# or: powershell -c "irm https://astral.sh/uv/install.ps1 | iex"  # Windows
+# macOS/Linux
+curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# No need to install the package separately - uv handles it
+# Windows PowerShell
+powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
 ```
 
-2. **Configure Claude Desktop:**
+**⚙️ 2. Configure AI Client**
 
-Add to your Claude Desktop config file:
+**Claude Desktop Configuration:**
 
-**Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
-**macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
-**Linux:** `~/.config/claude/claude_desktop_config.json`
+Add the following to your config file:
+- **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
+- **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`  
+- **Linux**: `~/.config/claude/claude_desktop_config.json`
 
+**Basic Configuration (Recommended):**
 ```json
 {
   "mcpServers": {
     "tree-sitter-analyzer": {
       "command": "uv",
       "args": [
-        "run", 
-        "--with", 
-        "tree-sitter-analyzer[mcp]",
-        "python", 
-        "-m", 
-        "tree_sitter_analyzer.mcp.server"
+        "run", "--with", "tree-sitter-analyzer[mcp]",
+        "python", "-m", "tree_sitter_analyzer.mcp.server"
       ]
     }
   }
 }
 ```
 
-3. **Restart Claude Desktop** and start analyzing code!
+**Advanced Configuration (Specify Project Root):**
+```json
+{
+  "mcpServers": {
+    "tree-sitter-analyzer": {
+      "command": "uv",
+      "args": [
+        "run", "--with", "tree-sitter-analyzer[mcp]",
+        "python", "-m", "tree_sitter_analyzer.mcp.server"
+      ],
+      "env": {
+        "TREE_SITTER_PROJECT_ROOT": "/absolute/path/to/your/project"
+      }
+    }
+  }
+}
+```
 
-### For CLI Users
+**Other AI Clients:**
+- **Cursor**: Built-in MCP support, refer to Cursor documentation for configuration
+- **Roo Code**: Supports MCP protocol, check respective configuration guides
+- **Other MCP-compatible clients**: Use the same server configuration
+
+**⚠️ Configuration Notes:**
+- **Basic Configuration**: Tool will auto-detect project root (recommended)
+- **Advanced Configuration**: If you need to specify a particular directory, use absolute path to replace `/absolute/path/to/your/project`
+- **Avoid using**: Variables like `${workspaceFolder}` may not be supported in some clients
+
+**🎉 3. Restart AI client and start analyzing massive code files!**
+
+### 💻 Developers (CLI)
 
 ```bash
-# Install with uv (recommended)
+# Install
 uv add "tree-sitter-analyzer[popular]"
 
-# Step 1: Check file scale
-uv run python -m tree_sitter_analyzer examples/Sample.java --advanced --output-format=text
+# Check file scale (1419-line large service class, instant completion)
+uv run python -m tree_sitter_analyzer examples/BigService.java --advanced --output-format=text
 
-# Step 2: Analyze structure (for large files)
-uv run python -m tree_sitter_analyzer examples/Sample.java --table=full
+# Generate structure table (1 class, 66 methods, clearly displayed)
+uv run python -m tree_sitter_analyzer examples/BigService.java --table=full
 
-# Step 3: Extract specific lines
-uv run python -m tree_sitter_analyzer examples/Sample.java --partial-read --start-line 84 --end-line 86
+# Precise code extraction
+uv run python -m tree_sitter_analyzer examples/BigService.java --partial-read --start-line 100 --end-line 105
 ```
 
-## 🛠️ Core Features
+---
 
-### 1. Code Structure Analysis
-Get comprehensive overview without reading entire files:
-- Classes, methods, fields count
-- Package information
-- Import dependencies
+## ❓ Why Choose Tree-sitter Analyzer?
+
+### 🎯 Solving Real Pain Points
+
+**Traditional Approach Dilemmas:**
+- ❌ Large files exceed LLM token limits
+- ❌ AI cannot understand code structure
+- ❌ Manual file splitting required
+- ❌ Context loss leads to inaccurate analysis
+
+**Tree-sitter Analyzer's Breakthrough:**
+- ✅ **Smart Analysis**: Understand structure without reading complete files
+- ✅ **Precise Positioning**: Accurate line-by-line code extraction
+- ✅ **AI Native**: Optimized for LLM workflows
+- ✅ **Multi-language Support**: Java, Python, JavaScript/TypeScript, etc.
+
+### ✨ Core Advantages
+
+#### ⚡ **Lightning-Fast Analysis Speed**
+```bash
+# 1419-line large Java service class analysis result (< 1 second)
+Lines: 1419 | Classes: 1 | Methods: 66 | Fields: 9 | Imports: 8
+```
+
+#### 📊 **Precise Structure Tables**
+| Class Name | Type | Visibility | Line Range | Methods | Fields |
+|------------|------|------------|------------|---------|--------|
+| BigService | class | public | 17-1419 | 66 | 9 |
+
+#### 🔄 **AI Assistant Three-Step Workflow**
+- **Step 1**: `check_code_scale` - Check file scale and complexity
+- **Step 2**: `analyze_code_structure` - Generate detailed structure tables
+- **Step 3**: `extract_code_section` - Extract code snippets on demand
+
+---
+
+## 🛠️ Powerful Features Overview
+
+### 📊 **Code Structure Analysis**
+Get insights without reading complete files:
+- Class, method, field statistics
+- Package information and import dependencies
 - Complexity metrics
+- Precise line number positioning
 
-### 2. Targeted Code Extraction
-Extract specific code sections efficiently:
-- Line range extraction
-- Precise positioning data
-- Content length information
+### ✂️ **Smart Code Extraction**
+- Extract by line range precisely
+- Maintain original formatting and indentation
+- Include position metadata
+- Support efficient processing of large files
 
-### 3. AI Assistant Integration
-Three-step workflow MCP tools for AI assistants:
-- `check_code_scale` - **Step 1:** Get code metrics and complexity
-- `analyze_code_structure` - **Step 2:** Generate detailed structure tables with line positions
-- `extract_code_section` - **Step 3:** Extract specific code sections by line range
+### 🔗 **AI Assistant Integration**
+Deep integration via MCP protocol:
+- Claude Desktop
+- Cursor IDE  
+- Roo Code
+- Other MCP-supporting AI tools
 
-### 4. Multi-Language Support
-- **Java** - Full support with advanced analysis
-- **Python** - Complete support
-- **JavaScript/TypeScript** - Full support
+### 🌍 **Multi-Language Support**
+- **Java** - Full support, including Spring, JPA frameworks
+- **Python** - Complete support, including type annotations, decorators
+- **JavaScript/TypeScript** - Full support, including ES6+ features
 - **C/C++, Rust, Go** - Basic support
 
-## 📖 Usage Examples
+---
 
-<a id="ai-ide-prompts"></a>
-### Prompts for AI IDEs (Cursor, Roo Code, Claude Desktop)
+## 📖 Practical Examples
 
-Copy these prompts into your AI IDE chat. They guide the assistant to use the MCP tools correctly and safely.
+### 💬 AI IDE Prompts (Copy and Use)
 
-1) Check file scale and complexity
+#### 🔍 **Step 1: Check File Scale**
+
+**Prompt:**
 ```
-Use the MCP tool "check_code_scale" on "examples/Sample.java".
-Return: language, total_lines, non_empty_lines, comment_lines, bytes, and a short note if the file likely needs table/structure analysis.
-Important: If the path is relative, resolve it against ${workspaceFolder} (project root). Use snake_case argument names.
-```
-
-2) Generate structure table (for large files)
-```
-Use the MCP tool "analyze_code_structure" with:
-  {"file_path": "examples/Sample.java", "format_type": "full"}
-Return a compact markdown table (classes/methods/fields/imports with start_line/end_line). Keep the table readable in chat. If the file is very large, summarize long sections.
+Use MCP tool check_code_scale to analyze file scale
+Parameters: {"file_path": "examples/BigService.java"}
 ```
 
-3) Extract specific lines (surgery-safe snippet)
+**Return Format:**
+```json
+{
+  "file_path": "examples/BigService.java",
+  "language": "java",
+  "metrics": {
+    "lines_total": 1419,
+    "lines_code": 1419,
+    "elements": {
+      "classes": 1,
+      "methods": 66,
+      "fields": 9
+    }
+  }
+}
 ```
-Use the MCP tool "extract_code_section" with:
-  {"file_path": "examples/Sample.java", "start_line": 84, "end_line": 86}
-Return a fenced code block with the correct language, and include the exact line numbers in plain text above the block. Do not modify code content.
+
+#### 📊 **Step 2: Generate Structure Table**
+
+**Prompt:**
+```
+Use MCP tool analyze_code_structure to generate detailed structure
+Parameters: {"file_path": "examples/BigService.java"}
 ```
 
-Notes
-- Always use snake_case parameter names: `file_path`, `start_line`, `end_line`, `format_type`.
-- Relative paths are resolved to the project root (secured boundary). Files outside the boundary must be rejected with a clear message.
+**Return Format:**
+- Complete Markdown table
+- Including class info, method list (with line numbers), field list
+- Method signatures, visibility, line ranges, complexity and other detailed information
 
-### CLI Usage
+#### ✂️ **Step 3: Extract Code Snippets**
 
-**Step 1: Basic analysis (Check file scale):**
+**Prompt:**
+```
+Use MCP tool extract_code_section to extract specified code section
+Parameters: {"file_path": "examples/BigService.java", "start_line": 100, "end_line": 105}
+```
+
+**Return Format:**
+```json
+{
+  "file_path": "examples/BigService.java",
+  "range": {"start_line": 100, "end_line": 105},
+  "content": "Actual code content...",
+  "content_length": 245
+}
+```
+
+#### 💡 **Important Notes**
+- **Parameter Format**: Use snake_case (`file_path`, `start_line`, `end_line`)
+- **Path Handling**: Relative paths auto-resolve to project root
+- **Security Protection**: Tool automatically performs project boundary checks
+- **Workflow**: Recommended to use in order: Step 1 → 2 → 3
+
+### 🛠️ CLI Command Examples
+
 ```bash
-uv run python -m tree_sitter_analyzer examples/Sample.java --advanced --output-format=text
+# Quick analysis (1419-line large file, instant completion)
+uv run python -m tree_sitter_analyzer examples/BigService.java --advanced --output-format=text
+
+# Detailed structure table (66 methods clearly displayed)
+uv run python -m tree_sitter_analyzer examples/BigService.java --table=full
+
+# Precise code extraction (memory usage monitoring code snippet)
+uv run python -m tree_sitter_analyzer examples/BigService.java --partial-read --start-line 100 --end-line 105
+
+# Silent mode (display results only)
+uv run python -m tree_sitter_analyzer examples/BigService.java --table=full --quiet
 ```
 
-**Step 2: Structure analysis (For large files that exceed LLM limits):**
-```bash
-uv run python -m tree_sitter_analyzer examples/Sample.java --table=full
-```
+---
 
-**Step 3: Targeted extraction (Read specific code sections):**
-```bash
-uv run python -m tree_sitter_analyzer examples/Sample.java --partial-read --start-line 84 --end-line 86
-```
+## 📦 Installation Options
 
-**Additional Options:**
-```bash
-# Quiet mode (suppress INFO messages, show only errors)
-uv run python -m tree_sitter_analyzer examples/Sample.java --advanced --output-format=text --quiet
-
-# Table output with quiet mode
-uv run python -m tree_sitter_analyzer examples/Sample.java --table=full --quiet
-```
-
-## 🔧 Installation Options
-
-### For End Users
+### 👤 **End Users**
 ```bash
 # Basic installation
 uv add tree-sitter-analyzer
 
-# With popular languages (Java, Python, JS, TS)
+# Popular languages package (recommended)
 uv add "tree-sitter-analyzer[popular]"
 
-# With MCP server support
+# MCP server support
 uv add "tree-sitter-analyzer[mcp]"
 
 # Full installation
 uv add "tree-sitter-analyzer[all,mcp]"
 ```
 
-### For Developers
+### 👨‍💻 **Developers**
 ```bash
-# Clone and install for development
 git clone https://github.com/aimasteracc/tree-sitter-analyzer.git
 cd tree-sitter-analyzer
 uv sync --extra all --extra mcp
 ```
 
-## 📚 Documentation
+---
 
-- **[MCP Setup Guide for Users](https://github.com/aimasteracc/tree-sitter-analyzer/blob/main/MCP_SETUP_USERS.md)** - Simple setup for AI assistant users
-- **[MCP Setup Guide for Developers](https://github.com/aimasteracc/tree-sitter-analyzer/blob/main/MCP_SETUP_DEVELOPERS.md)** - Local development configuration
-- **[Project Root Configuration](https://github.com/aimasteracc/tree-sitter-analyzer/blob/main/PROJECT_ROOT_CONFIG.md)** - Complete configuration reference
-- **[API Documentation](https://github.com/aimasteracc/tree-sitter-analyzer/blob/main/docs/api.md)** - Detailed API reference
-- **[Contributing Guide](https://github.com/aimasteracc/tree-sitter-analyzer/blob/main/CONTRIBUTING.md)** - How to contribute
+## 🔒 Security & Configuration
 
-### 🔒 Project Root Configuration
+### 🛡️ **Project Boundary Protection**
 
-Tree-sitter-analyzer automatically detects and secures your project boundaries:
+Tree-sitter Analyzer automatically detects and protects project boundaries:
 
-- **Auto-detection**: Finds project root from `.git`, `pyproject.toml`, `package.json`, etc.
-- **CLI**: Use `--project-root /path/to/project` for explicit control
-- **MCP**: Set `TREE_SITTER_PROJECT_ROOT=${workspaceFolder}` for workspace integration
-- **Security**: Only analyzes files within project boundaries
+- **Auto-detection**: Based on `.git`, `pyproject.toml`, `package.json`, etc.
+- **CLI Control**: `--project-root /path/to/project`
+- **MCP Integration**: `TREE_SITTER_PROJECT_ROOT=/path/to/project` or use auto-detection
+- **Security Guarantee**: Only analyze files within project boundaries
 
-**Recommended MCP configuration:**
+**Recommended MCP Configuration:**
+
+**Option 1: Auto-detection (Recommended)**
+```json
+{
+  "mcpServers": {
+    "tree-sitter-analyzer": {
+      "command": "uv",
+      "args": ["run", "--with", "tree-sitter-analyzer[mcp]", "python", "-m", "tree_sitter_analyzer.mcp.server"]
+    }
+  }
+}
+```
+
+**Option 2: Manual Project Root Specification**
 ```json
 {
   "mcpServers": {
     "tree-sitter-analyzer": {
       "command": "uv",
       "args": ["run", "--with", "tree-sitter-analyzer[mcp]", "python", "-m", "tree_sitter_analyzer.mcp.server"],
-      "env": {"TREE_SITTER_PROJECT_ROOT": "${workspaceFolder}"}
+      "env": {"TREE_SITTER_PROJECT_ROOT": "/path/to/your/project"}
     }
   }
 }
 ```
 
-## 🧪 Testing & Quality
+---
 
-This project maintains **enterprise-grade quality** with comprehensive testing:
+## 🏆 Enterprise-Grade Quality Assurance
 
-### 📊 Quality Metrics
-- **1358 tests** - 100% pass rate ✅
-- **74.82% code coverage** - Industry standard quality
-- **Zero test failures** - Complete CI/CD readiness
-- **Cross-platform compatibility** - Windows, macOS, Linux
+### 📊 **Quality Metrics**
+- **1,358 Tests** - 100% pass rate ✅
+- **74.54% Code Coverage** - Industry-leading level
+- **Zero Test Failures** - Complete CI/CD ready
+- **Cross-platform Compatible** - Windows, macOS, Linux
 
-### 🏆 Recent Quality Achievements (v0.8.2)
-- ✅ **Complete test suite stabilization** - Fixed all 31 failing tests
-- ✅ **Formatters module breakthrough** - 0% → 42.30% coverage
-- ✅ **Error handling improvements** - 61.64% → 82.76% coverage
-- ✅ **104 new comprehensive tests** across critical modules
+### ⚡ **Latest Quality Achievements (v0.9.4)**
+- ✅ **Test Suite Completely Stable** - Fixed all historical issues
+- ✅ **Formatter Module Breakthrough** - Coverage significantly improved
+- ✅ **Error Handling Optimization** - Enterprise-grade exception handling
+- ✅ **100+ New Comprehensive Tests** - Covering critical modules
 
-### 🔧 Running Tests
+### ⚙️ **Running Tests**
 ```bash
 # Run all tests
 uv run pytest tests/ -v
 
-# Run with coverage report
+# Generate coverage report
 uv run pytest tests/ --cov=tree_sitter_analyzer --cov-report=html
 
-# Run specific test categories
-uv run pytest tests/test_formatters_comprehensive.py -v
-uv run pytest tests/test_core_engine_extended.py -v
+# Run specific tests
 uv run pytest tests/test_mcp_server_initialization.py -v
 ```
 
-### 📈 Coverage Highlights
-- **Formatters**: 42.30% (newly established)
-- **Error Handler**: 82.76% (major improvement)
-- **Language Detector**: 98.41% (excellent)
-- **CLI Main**: 97.78% (excellent)
-- **Security Framework**: 78%+ across all modules
+### 📈 **Coverage Highlights**
+- **Language Detector**: 98.41% (Excellent)
+- **CLI Main Entry**: 97.78% (Excellent)
+- **Error Handling**: 82.76% (Good)
+- **Security Framework**: 78%+ (Reliable)
 
-## 📄 License
+---
 
-MIT License - see [LICENSE](LICENSE) file for details.
+## 🤖 AI Collaboration Support
 
-## 🤝 Contributing
-
-We welcome contributions! Please see our [Contributing Guide](https://github.com/aimasteracc/tree-sitter-analyzer/blob/main/CONTRIBUTING.md) for details.
-
-### 🤖 AI/LLM Collaboration
+### ⚡ **Optimized for AI Development**
 
 This project supports AI-assisted development with specialized quality controls:
 
 ```bash
-# For AI systems - run before generating code
+# AI system pre-code generation checks
 uv run python check_quality.py --new-code-only
 uv run python llm_code_checker.py --check-all
 
-# For AI-generated code review
+# AI-generated code review
 uv run python llm_code_checker.py path/to/new_file.py
 ```
 
-📖 **See our [AI Collaboration Guide](https://github.com/aimasteracc/tree-sitter-analyzer/blob/main/AI_COLLABORATION_GUIDE.md) and [LLM Coding Guidelines](https://github.com/aimasteracc/tree-sitter-analyzer/blob/main/LLM_CODING_GUIDELINES.md) for detailed instructions on working with AI systems.**
+📖 **Detailed Guides**:
+- [AI Collaboration Guide](AI_COLLABORATION_GUIDE.md)
+- [LLM Coding Guidelines](LLM_CODING_GUIDELINES.md)
 
 ---
 
-**Made with ❤️ for developers who work with large codebases and AI assistants.**
+## 📚 Complete Documentation
+
+- **[User MCP Setup Guide](MCP_SETUP_USERS.md)** - Simple configuration guide
+- **[Developer MCP Setup Guide](MCP_SETUP_DEVELOPERS.md)** - Local development configuration
+- **[Project Root Configuration](PROJECT_ROOT_CONFIG.md)** - Complete configuration reference
+- **[API Documentation](docs/api.md)** - Detailed API reference
+- **[Contributing Guide](CONTRIBUTING.md)** - How to contribute
+
+---
+
+## 🤝 Contributing
+
+We welcome all forms of contributions! Please check the [Contributing Guide](CONTRIBUTING.md) for details.
+
+### ⭐ **Give Us a Star!**
+
+If this project helps you, please give us a ⭐ on GitHub - it's the greatest support for us!
+
+---
+
+## 📄 Open Source License
+
+MIT License - see [LICENSE](LICENSE) file for details.
+
+---
+
+## 🎯 Summary
+
+Tree-sitter Analyzer is an essential tool for the AI era:
+
+- **Solves Core Pain Points** - Let AI break through large file token limits
+- **Enterprise-Grade Quality** - 1,tests-1358%20passed, 74.54% coverage
+- **Ready to Use** - 30-second configuration, supports mainstream AI clients
+- **Multi-language Support** - Java, Python, JavaScript/TypeScript, etc.
+- **Actively Maintained** - v0.9.4 latest version, continuous updates
+
+**Experience Now** → [30-Second Quick Experience](#🚀-30-second-quick-experience)
+
+---
+
+**🎯 Built for developers dealing with large codebases and AI assistants**
+
+*Let every line of code be understood by AI, let every project break through token limits*

@@ -80,10 +80,32 @@ repos:
     hooks:
       - id: quality-check
         name: Tree-sitter Analyzer Quality Check
-        entry: python check_quality.py --new-code-only
+        entry: uv run python check_quality.py --new-code-only
         language: system
         pass_filenames: false
         stages: [pre-push]  # Only run on push
+
+  # README stats update (improved version)
+  - repo: local
+    hooks:
+      - id: update-readme-stats
+        name: Update README Statistics
+        entry: uv run python scripts/improved_readme_updater.py
+        language: system
+        pass_filenames: false
+        stages: [pre-push]  # Only run on push
+        files: ^(README.*\.md|pyproject\.toml|examples/.*\.java)$
+
+  # README stats validation
+  - repo: local
+    hooks:
+      - id: validate-readme-stats
+        name: Validate README Statistics
+        entry: uv run python scripts/improved_readme_updater.py --validate-only
+        language: system
+        pass_filenames: false
+        stages: [pre-commit]  # Run on every commit
+        files: ^README.*\.md$
 
 # Configuration
 default_stages: [pre-commit]
