@@ -62,13 +62,15 @@ jobs:
       run: |
         uv sync --extra full
 
-    - name: Run tests with coverage (only on 3.11 Linux)
+    - name: Run tests with coverage
+      if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.11'
       run: |
-        if [ "${{ matrix.os }}" = "ubuntu-latest" ] && [ "${{ matrix.python-version }}" = "3.11" ]; then \
-          uv run pytest tests/ -v --tb=short --maxfail=5 --cov=tree_sitter_analyzer --cov-report=xml; \
-        else \
-          uv run pytest tests/ -v --tb=short --maxfail=5; \
-        fi
+        uv run pytest tests/ -v --tb=short --maxfail=5 --cov=tree_sitter_analyzer --cov-report=xml
+
+    - name: Run tests (no coverage)
+      if: matrix.os != 'ubuntu-latest' || matrix.python-version != '3.11'
+      run: |
+        uv run pytest tests/ -v --tb=short --maxfail=5
 
     - name: Upload coverage to Codecov (only on 3.11 Linux)
       if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.11'
