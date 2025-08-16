@@ -2,15 +2,37 @@
 
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-1358%20passed-brightgreen.svg)](#testing)
-[![Coverage](https://img.shields.io/badge/coverage-74.54%25-green.svg)](#testing)
-[![Quality](https://img.shields.io/badge/quality-enterprise%20grade-blue.svg)](#quality)
+[![Tests](https://img.shields.io/badge/tests-1358%20passed-brightgreen.svg)](#quality-assurance)
+[![Coverage](https://img.shields.io/badge/coverage-74.19%25-green.svg)](#quality-assurance)
+[![Quality](https://img.shields.io/badge/quality-enterprise%20grade-blue.svg)](#quality-assurance)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
 ## 🚀 Break Through LLM Token Limits, Let AI Understand Code Files of Any Size
 
 > **A revolutionary code analysis tool designed for the AI era**
+
+## 📋 Table of Contents
+
+- [🚀 Break Through LLM Token Limits](#-break-through-llm-token-limits-let-ai-understand-code-files-of-any-size)
+- [📋 Table of Contents](#-table-of-contents)
+- [💡 What Makes This Special](#-what-makes-this-special)
+- [📊 Live Demo & Results](#-live-demo--results)
+- [🚀 30-Second Quick Start](#-30-second-quick-start)
+  - [🤖 For AI Users (Claude Desktop, Cursor, etc.)](#-for-ai-users-claude-desktop-cursor-etc)
+  - [💻 For Developers (CLI)](#-for-developers-cli)
+- [❓ Why Choose Tree-sitter Analyzer](#-why-choose-tree-sitter-analyzer)
+- [📖 Practical Usage Examples](#-practical-usage-examples)
+- [🛠️ Core Features](#️-core-features)
+- [📦 Installation Guide](#-installation-guide)
+- [🔒 Security & Configuration](#-security--configuration)
+- [🏆 Quality Assurance](#-quality-assurance)
+- [🤖 AI Collaboration Support](#-ai-collaboration-support)
+- [📚 Documentation](#-documentation)
+- [🤝 Contributing](#-contributing)
+- [📄 License](#-license)
+
+## 💡 What Makes This Special
 
 Imagine: You have a 1,400+ line Java service class that Claude or ChatGPT can't analyze due to token limits. Now, Tree-sitter Analyzer enables AI assistants to:
 
@@ -21,11 +43,29 @@ Imagine: You have a 1,400+ line Java service class that Claude or ChatGPT can't 
 
 **No more AI helplessness due to large files!**
 
+## 📊 Live Demo & Results
+
+### ⚡ **Lightning-Fast Analysis Speed**
+```bash
+# 1419-line large Java service class analysis result (< 1 second)
+Lines: 1419 | Classes: 1 | Methods: 66 | Fields: 9 | Imports: 8
+```
+
+### 📊 **Precise Structure Tables**
+| Class Name | Type | Visibility | Line Range | Methods | Fields |
+|------------|------|------------|------------|---------|--------|
+| BigService | class | public | 17-1419 | 66 | 9 |
+
+### 🔄 **AI Assistant Three-Step Workflow**
+- **Step 1**: `check_code_scale` - Check file scale and complexity
+- **Step 2**: `analyze_code_structure` - Generate detailed structure tables
+- **Step 3**: `extract_code_section` - Extract code snippets on demand
+
 ---
 
-## 🚀 30-Second Quick Experience
+## 🚀 30-Second Quick Start
 
-### 🤖 AI Users (Claude Desktop, Cursor, Roo Code, etc.)
+### 🤖 For AI Users (Claude Desktop, Cursor, etc.)
 
 **📦 1. One-Click Installation**
 ```bash
@@ -90,7 +130,7 @@ Add the following to your config file:
 
 **🎉 3. Restart AI client and start analyzing massive code files!**
 
-### 💻 Developers (CLI)
+### 💻 For Developers (CLI)
 
 ```bash
 # Install
@@ -108,7 +148,7 @@ uv run python -m tree_sitter_analyzer examples/BigService.java --partial-read --
 
 ---
 
-## ❓ Why Choose Tree-sitter Analyzer?
+## ❓ Why Choose Tree-sitter Analyzer
 
 ### 🎯 Solving Real Pain Points
 
@@ -124,57 +164,7 @@ uv run python -m tree_sitter_analyzer examples/BigService.java --partial-read --
 - ✅ **AI Native**: Optimized for LLM workflows
 - ✅ **Multi-language Support**: Java, Python, JavaScript/TypeScript, etc.
 
-### ✨ Core Advantages
-
-#### ⚡ **Lightning-Fast Analysis Speed**
-```bash
-# 1419-line large Java service class analysis result (< 1 second)
-Lines: 1419 | Classes: 1 | Methods: 66 | Fields: 9 | Imports: 8
-```
-
-#### 📊 **Precise Structure Tables**
-| Class Name | Type | Visibility | Line Range | Methods | Fields |
-|------------|------|------------|------------|---------|--------|
-| BigService | class | public | 17-1419 | 66 | 9 |
-
-#### 🔄 **AI Assistant Three-Step Workflow**
-- **Step 1**: `check_code_scale` - Check file scale and complexity
-- **Step 2**: `analyze_code_structure` - Generate detailed structure tables
-- **Step 3**: `extract_code_section` - Extract code snippets on demand
-
----
-
-## 🛠️ Powerful Features Overview
-
-### 📊 **Code Structure Analysis**
-Get insights without reading complete files:
-- Class, method, field statistics
-- Package information and import dependencies
-- Complexity metrics
-- Precise line number positioning
-
-### ✂️ **Smart Code Extraction**
-- Extract by line range precisely
-- Maintain original formatting and indentation
-- Include position metadata
-- Support efficient processing of large files
-
-### 🔗 **AI Assistant Integration**
-Deep integration via MCP protocol:
-- Claude Desktop
-- Cursor IDE  
-- Roo Code
-- Other MCP-supporting AI tools
-
-### 🌍 **Multi-Language Support**
-- **Java** - Full support, including Spring, JPA frameworks
-- **Python** - Complete support, including type annotations, decorators
-- **JavaScript/TypeScript** - Full support, including ES6+ features
-- **C/C++, Rust, Go** - Basic support
-
----
-
-## 📖 Practical Examples
+## 📖 Practical Usage Examples
 
 ### 💬 AI IDE Prompts (Copy and Use)
 
@@ -258,7 +248,37 @@ uv run python -m tree_sitter_analyzer examples/BigService.java --table=full --qu
 
 ---
 
-## 📦 Installation Options
+## 🛠️ Core Features
+
+### 📊 **Code Structure Analysis**
+Get insights without reading complete files:
+- Class, method, field statistics
+- Package information and import dependencies
+- Complexity metrics
+- Precise line number positioning
+
+### ✂️ **Smart Code Extraction**
+- Extract by line range precisely
+- Maintain original formatting and indentation
+- Include position metadata
+- Support efficient processing of large files
+
+### 🔗 **AI Assistant Integration**
+Deep integration via MCP protocol:
+- Claude Desktop
+- Cursor IDE  
+- Roo Code
+- Other MCP-supporting AI tools
+
+### 🌍 **Multi-Language Support**
+- **Java** - Full support, including Spring, JPA frameworks
+- **Python** - Complete support, including type annotations, decorators
+- **JavaScript/TypeScript** - Full support, including ES6+ features
+- **C/C++, Rust, Go** - Basic support
+
+---
+
+## 📦 Installation Guide
 
 ### 👤 **End Users**
 ```bash
@@ -324,7 +344,7 @@ Tree-sitter Analyzer automatically detects and protects project boundaries:
 
 ---
 
-## 🏆 Enterprise-Grade Quality Assurance
+## 🏆 Quality Assurance
 
 ### 📊 **Quality Metrics**
 - **1,358 Tests** - 100% pass rate ✅
@@ -379,7 +399,7 @@ uv run python llm_code_checker.py path/to/new_file.py
 
 ---
 
-## 📚 Complete Documentation
+## 📚 Documentation
 
 - **[User MCP Setup Guide](MCP_SETUP_USERS.md)** - Simple configuration guide
 - **[Developer MCP Setup Guide](MCP_SETUP_DEVELOPERS.md)** - Local development configuration
@@ -399,26 +419,14 @@ If this project helps you, please give us a ⭐ on GitHub - it's the greatest su
 
 ---
 
-## 📄 Open Source License
+## 📄 License
 
 MIT License - see [LICENSE](LICENSE) file for details.
-
----
-
-## 🎯 Summary
-
-Tree-sitter Analyzer is an essential tool for the AI era:
-
-- **Solves Core Pain Points** - Let AI break through large file token limits
-- **Enterprise-Grade Quality** - 1,tests-1358%20passed, 74.54% coverage
-- **Ready to Use** - 30-second configuration, supports mainstream AI clients
-- **Multi-language Support** - Java, Python, JavaScript/TypeScript, etc.
-- **Actively Maintained** - v0.9.4 latest version, continuous updates
-
-**Experience Now** → [30-Second Quick Experience](#🚀-30-second-quick-experience)
 
 ---
 
 **🎯 Built for developers dealing with large codebases and AI assistants**
 
 *Let every line of code be understood by AI, let every project break through token limits*
+
+**🚀 Start Now** → [30-Second Quick Start](#-30-second-quick-start)

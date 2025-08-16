@@ -1,4 +1,41 @@
 # Changelog
+## [0.9.5] - 2025-01-15
+
+### 🚀 CI/CD Stability & Cross-Platform Compatibility
+- **Enhanced CI Matrix Strategy**: Disabled `fail-fast` strategy for quality-check and test-matrix jobs, ensuring all platform/Python version combinations run to completion
+- **Improved Test Visibility**: Better diagnosis of platform-specific issues with comprehensive matrix results
+- **Cross-Platform Fixes**: Resolved persistent CI failures on Windows, macOS, and Linux
+
+### 🔒 Security Improvements
+- **macOS Symlink Safety**: Fixed symlink safety checks to properly handle macOS temporary directory symlinks (`/var` ↔ `/private/var`)
+- **Project Boundary Management**: Enhanced boundary detection to correctly handle real paths within project boundaries
+- **Security Code Quality**: Addressed all Bandit security linter low-risk findings:
+  - Replaced bare `pass` statements with explicit `...` for better intent documentation
+  - Added proper attribute checks for `sys.stderr` writes
+  - Replaced runtime `assert` statements with defensive type checking
+
+### 📊 Documentation & Structure
+- **README Enhancement**: Complete restructure with table of contents, improved content flow, and visual hierarchy
+- **Multi-language Support**: Fully translated README into Chinese (`README_zh.md`) and Japanese (`README_ja.md`)
+- **Documentation Standards**: Normalized line endings across all markdown files
+- **Project Guidelines**: Added new language development guidelines and project structure documentation
+
+### 🛠️ Code Quality Enhancements
+- **Error Handling**: Improved robustness in `encoding_utils.py` and `utils.py` with better exception handling patterns
+- **Platform Compatibility**: Enhanced test assertions for cross-platform compatibility
+- **Security Practices**: Strengthened security validation while maintaining usability
+
+### 🧪 Testing & Quality Assurance
+- **Test Suite**: 1,358 tests passing with 74.54% coverage
+- **Platform Coverage**: Full testing across Python 3.10-3.13 × Windows/macOS/Linux
+- **CI Reliability**: Stable CI pipeline with comprehensive error reporting
+
+### 🚀 Impact
+- **Enterprise Ready**: Improved stability for production deployments
+- **Developer Experience**: Better local development workflow with consistent tooling
+- **AI Integration**: Enhanced MCP protocol compatibility across all supported platforms
+- **International Reach**: Multi-language documentation for global developer community
+
 ## [0.9.4] - 2025-08-15
 
 ### 🔧 Fixed (MCP)
