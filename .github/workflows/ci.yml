@@ -155,6 +155,8 @@ jobs:
     - name: Install build dependencies
       run: |
         uv sync --extra full --group dev
+        # Ensure core runtime deps exist in the runner env for import-time checks
+        uv pip install tree-sitter==0.24.0
 
     - name: Build package
       run: |
@@ -167,4 +169,4 @@ jobs:
     - name: Test installation from wheel
       run: |
         uv pip install dist/*.whl
-        python -c "import tree_sitter_analyzer; print('Package installation OK')"
+        uv run python -c "import tree_sitter_analyzer; print('Package installation OK')"
