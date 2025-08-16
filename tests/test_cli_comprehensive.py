@@ -854,26 +854,20 @@ class TestCLIQueryExecution:
         )
 
         with patch(
-            "tree_sitter_analyzer.cli.commands.base_command.get_analysis_engine"
-        ) as mock_engine_factory:
-            mock_engine = Mock()
+            "tree_sitter_analyzer.cli.commands.query_command.QueryService"
+        ) as mock_query_service_class:
+            mock_query_service = Mock()
 
-            from tree_sitter_analyzer.models import AnalysisResult
+            # Mock QueryService to raise an exception during execution
+            async def mock_execute_query(*args, **kwargs):
+                raise Exception("Parse failure")
 
-            async def mock_analyze(*args, **kwargs):
-                return AnalysisResult(
-                    file_path=sample_java_file,
-                    language="java",
-                    success=False,
-                    elements=[],
-                    line_count=0,
-                    node_count=0,
-                    query_results={},
-                    error_message="Parse failure",
-                )
+            def mock_get_available_queries(language):
+                return ["methods", "class", "imports"]
 
-            mock_engine.analyze = mock_analyze
-            mock_engine_factory.return_value = mock_engine
+            mock_query_service.execute_query = mock_execute_query
+            mock_query_service.get_available_queries = mock_get_available_queries
+            mock_query_service_class.return_value = mock_query_service
 
             try:
                 main()
@@ -945,7 +939,7 @@ class TestCLIQueryExecution:
         )
 
         with patch(
-            "tree_sitter_analyzer.cli.commands.query_command.query_loader.get_query",
+            "tree_sitter_analyzer.core.query_service.query_loader.get_query",
             side_effect=ValueError("Query error"),
         ):
             mock_stderr = StringIO()
