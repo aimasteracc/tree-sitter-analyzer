@@ -189,7 +189,15 @@ class ProjectBoundaryManager:
             if not os.path.exists(file_path):
                 return True  # Non-existent files are safe
 
-            # Check if any component in the path is a symlink
+            # If the fully resolved path is within project boundaries, we treat it as safe.
+            # This makes the check tolerant to system-level symlinks like
+            # /var -> /private/var on macOS runners.
+            resolved = os.path.realpath(file_path)
+            if self.is_within_project(resolved):
+                return True
+
+            # Otherwise, inspect each path component symlink to ensure no hop jumps outside
+            # the allowed directories.
             path_parts = Path(file_path).parts
             current_path = ""
 
@@ -199,7 +207,6 @@ class ProjectBoundaryManager:
                 )
 
                 if os.path.islink(current_path):
-                    # Check if symlink target is within boundaries
                     target = os.path.realpath(current_path)
                     if not self.is_within_project(target):
                         log_warning(
@@ -207,6 +214,7 @@ class ProjectBoundaryManager:
                         )
                         return False
 
+            # If no unsafe hop found, consider safe
             return True
 
         except Exception as e:

@@ -1,28 +1,27 @@
-# Tree-sitter Analyzer デプロイメントガイド
+# Tree-sitter Analyzer Deployment Guide
 
-このガイドでは、tree-sitter-analyzerをPyPIに登録し、スタンドアロン実行ファイルを作成する手順を説明します。
+This guide explains how to register tree-sitter-analyzer on PyPI and create standalone executable files.
 
-## 目次
+## Table of Contents
 
-1. [PyPIへの登録](#pypiへの登録)
-2. [スタンドアロン実行ファイルの作成](#スタンドアロン実行ファイルの作成)
-3. [ユーザー向けインストール手順](#ユーザー向けインストール手順)
+1. [PyPI Registration](#pypi-registration)
+2. [Creating Standalone Executables](#creating-standalone-executables)
+3. [User Installation Instructions](#user-installation-instructions)
 
-## PyPIへの登録
+## PyPI Registration
 
-### 前提条件
+### Prerequisites
 
-1. PyPIアカウントの作成
-   - [PyPI](https://pypi.org/account/register/) でアカウントを作成
-   - [TestPyPI](https://test.pypi.org/account/register/) でテスト用アカウントを作成
+1. **Create PyPI Accounts**
+   - Create account on [PyPI](https://pypi.org/account/register/)
+   - Create test account on [TestPyPI](https://test.pypi.org/account/register/)
 
-2. API トークンの設定
+2. **API Token Setup**
    ```bash
-   # PyPI用
-   uv run python -m pip install --upgrade pip
+   # Install build tools
    uv add --dev build twine
    
-   # 認証情報の設定（~/.pypirc）
+   # Configure authentication (~/.pypirc)
    [distutils]
    index-servers =
        pypi
@@ -38,241 +37,171 @@
    password = <your-testpypi-api-token>
    ```
 
-### アップロード手順
+### Upload Process
 
-#### 方法1: 自動スクリプトを使用
+#### Method 1: Using Automated Script
 
 ```bash
-# アップロードスクリプトを実行（uv 統一）
+# Run upload script (uv unified)
 uv run python upload_to_pypi.py
 ```
 
-このスクリプトは以下を自動実行します：
-- 必要なツールのインストール
-- パッケージのビルド
-- 整合性チェック
-- TestPyPI または PyPI へのアップロード
+This script automatically performs:
+- Version validation
+- Build package creation
+- Test upload to TestPyPI
+- Production upload to PyPI
+- Cleanup of build artifacts
 
-#### 方法2: 手動実行
+#### Method 2: Manual Upload
 
 ```bash
-# 1. 依存関係のインストール
-uv add --dev build twine
+# 1. Clean previous builds
+rm -rf dist/ build/ *.egg-info/
 
-# 2. パッケージのビルド
-uv run python -m build
+# 2. Build package
+uv build
 
-# 3. パッケージの検証
-uv run python -m twine check dist/*
+# 3. Test upload to TestPyPI
+uv run twine upload --repository testpypi dist/*
 
-# 4. TestPyPIにアップロード（テスト用）
-uv run python -m twine upload --repository testpypi dist/*
+# 4. Test installation from TestPyPI
+pip install --index-url https://test.pypi.org/simple/ tree-sitter-analyzer
 
-# 5. 本番PyPIにアップロード
-uv run python -m twine upload dist/*
+# 5. Upload to production PyPI
+uv run twine upload dist/*
 ```
 
-### アップロード後の確認
+### Version Management
 
-```bash
-# TestPyPIからのインストールテスト
-pip install --index-url https://test.pypi.org/simple/ tree-sitter-analyzer==0.9.4
-
-# 本番PyPIからのインストール
-pip install tree-sitter-analyzer==0.9.4
+Update version in `pyproject.toml`:
+```toml
+[project]
+name = "tree-sitter-analyzer"
+version = "0.9.5"  # Update this
 ```
 
-## スタンドアロン実行ファイルの作成
+## Creating Standalone Executables
 
-Python環境がないユーザーでも使用できるスタンドアロン実行ファイルを作成できます。
-
-### 前提条件
+### Using PyInstaller
 
 ```bash
-# PyInstallerのインストール
+# Install PyInstaller
 uv add --dev pyinstaller
-```
 
-### ビルド手順
-
-#### 方法1: 自動スクリプトを使用
-
-```bash
-# スタンドアロンビルドスクリプトを実行
+# Create standalone executable
 uv run python build_standalone.py
 ```
 
-#### 方法2: 手動実行
+### Build Script Features
+
+The `build_standalone.py` script:
+- Creates cross-platform executables
+- Includes all necessary dependencies
+- Optimizes file size
+- Generates distribution packages
+
+### Manual Build Process
 
 ```bash
-# 1. PyInstallerのインストール
-pip install pyinstaller
-
-# 2. 実行ファイルの作成
-pyinstaller --onefile --name tree-sitter-analyzer tree_sitter_analyzer/cli_main.py
-
-# 3. 必要なデータファイルを含める場合
-pyinstaller --onefile --name tree-sitter-analyzer \
-    --add-data "tree_sitter_analyzer/queries:tree_sitter_analyzer/queries" \
+# Create executable
+uv run pyinstaller --onefile \
+    --name tree-sitter-analyzer \
+    --add-data "tree_sitter_analyzer:tree_sitter_analyzer" \
     tree_sitter_analyzer/cli_main.py
-```
 
-### 生成されるファイル
-
-- Windows: `dist/tree-sitter-analyzer.exe`
-- Linux/macOS: `dist/tree-sitter-analyzer`
-
-### 使用方法
-
-```bash
-# Windows
-./dist/tree-sitter-analyzer.exe examples/Sample.java --advanced
-
-# Linux/macOS
+# Test executable
 ./dist/tree-sitter-analyzer examples/Sample.java --advanced
 ```
 
-## ユーザー向けインストール手順
+## User Installation Instructions
 
-### Python環境がある場合
-
-#### PyPIからのインストール
+### Standard Installation
 
 ```bash
-# 基本インストール
-pip install tree-sitter-analyzer
-
-# Java サポート付き
-pip install "tree-sitter-analyzer[java]"
-
-# 人気言語サポート付き（Java, Python, JavaScript, TypeScript）
-pip install "tree-sitter-analyzer[popular]"
-
-# 全言語サポート付き
-pip install "tree-sitter-analyzer[all]"
-
-# MCP サーバーサポート付き
-pip install "tree-sitter-analyzer[mcp]"
-```
-
-#### uvを使用したインストール（推奨）
-
-```bash
-# uvのインストール
-curl -LsSf https://astral.sh/uv/install.sh | sh
-
-# プロジェクトのインストール
+# Basic installation
 uv add tree-sitter-analyzer
 
-# 特定の機能付きインストール
+# With popular languages
 uv add "tree-sitter-analyzer[popular]"
+
+# With MCP server support
+uv add "tree-sitter-analyzer[mcp]"
+
+# Full installation
+uv add "tree-sitter-analyzer[all,mcp]"
 ```
 
-### Python環境がない場合
+### Alternative Installation Methods
 
-1. **スタンドアロン実行ファイルをダウンロード**
-   - GitHubのReleasesページから最新版をダウンロード
-   - または、開発者から提供された実行ファイルを使用
+```bash
+# Using pip
+pip install tree-sitter-analyzer[popular]
 
-2. **実行権限の付与（Linux/macOS）**
-   ```bash
-   chmod +x tree-sitter-analyzer
-   ```
-
-3. **使用方法**
-   ```bash
-   # Windows
-   tree-sitter-analyzer.exe your-code-file.java --advanced
-   
-   # Linux/macOS
-   ./tree-sitter-analyzer your-code-file.java --advanced
-   ```
-
-## 配布戦略
-
-### 1. PyPI配布
-- Python開発者向け
-- 依存関係の自動管理
-- 簡単なインストール
-
-### 2. スタンドアロン実行ファイル配布
-- Python環境がないユーザー向け
-- 単一ファイルで完結
-- 依存関係なし
-
-### 3. GitHub Releases
-- 両方の配布形式を提供
-- バージョン管理
-- ダウンロード統計
-
-## トラブルシューティング
-
-### PyPIアップロード時の問題
-
-1. **認証エラー**
-   ```
-   解決策: API トークンの確認、~/.pypirc の設定確認
-   ```
-
-2. **パッケージ名の重複**
-   ```
-   解決策: pyproject.toml の name フィールドを変更
-   ```
-
-3. **バージョンの重複**
-   ```
-   解決策: pyproject.toml の version を更新
-   ```
-
-### スタンドアロンビルド時の問題
-
-1. **モジュールが見つからない**
-   ```
-   解決策: --hidden-import オプションでモジュールを明示的に指定
-   ```
-
-2. **データファイルが含まれない**
-   ```
-   解決策: --add-data オプションでデータファイルを指定
-   ```
-
-3. **実行ファイルサイズが大きい**
-   ```
-   解決策: --exclude-module で不要なモジュールを除外
-   ```
-
-## 継続的デプロイメント
-
-GitHub Actionsを使用した自動デプロイメントの設定例：
-
-```yaml
-# .github/workflows/deploy.yml
-name: Deploy to PyPI
-
-on:
-  release:
-    types: [published]
-
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v3
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.10'
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install build twine
-    - name: Build package
-      run: python -m build
-    - name: Publish to PyPI
-      env:
-        TWINE_USERNAME: __token__
-        TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
-      run: twine upload dist/*
+# From source
+git clone https://github.com/aimasteracc/tree-sitter-analyzer.git
+cd tree-sitter-analyzer
+uv sync --extra all --extra mcp
 ```
 
-このガイドに従って、tree-sitter-analyzerを効果的に配布し、幅広いユーザーに提供できます。
+### Verification
+
+```bash
+# Test CLI
+uv run python -m tree_sitter_analyzer examples/Sample.java --advanced
+
+# Test MCP server
+uv run python -m tree_sitter_analyzer.mcp.server
+```
+
+## Release Checklist
+
+Before each release:
+
+1. **Update Version**
+   - [ ] Update `pyproject.toml` version
+   - [ ] Update README statistics: `python scripts/update_readme_stats.py`
+   - [ ] Update CHANGELOG.md
+
+2. **Quality Checks**
+   - [ ] Run full test suite: `uv run pytest tests/ -v`
+   - [ ] Check code quality: `uv run python check_quality.py`
+   - [ ] Verify coverage: `uv run pytest tests/ --cov=tree_sitter_analyzer`
+
+3. **Build and Test**
+   - [ ] Test build: `uv build`
+   - [ ] Test upload to TestPyPI
+   - [ ] Test installation from TestPyPI
+
+4. **Release**
+   - [ ] Upload to PyPI: `uv run python upload_to_pypi.py`
+   - [ ] Create GitHub release
+   - [ ] Update documentation
+
+## Troubleshooting
+
+### Common Issues
+
+**Build Failures:**
+- Ensure all dependencies are installed: `uv sync --extra all`
+- Check Python version compatibility (3.10+)
+
+**Upload Failures:**
+- Verify API tokens are correct
+- Check if version already exists on PyPI
+- Ensure package name is available
+
+**Installation Issues:**
+- Clear pip cache: `pip cache purge`
+- Use virtual environment
+- Check system dependencies
+
+### Getting Help
+
+- Check [GitHub Issues](https://github.com/aimasteracc/tree-sitter-analyzer/issues)
+- Review [Contributing Guide](CONTRIBUTING.md)
+- Contact maintainers
+
+---
+
+This guide ensures effective distribution of tree-sitter-analyzer to a wide user base.

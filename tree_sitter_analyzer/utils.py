@@ -51,10 +51,13 @@ def setup_logger(
             logger.addHandler(file_handler)
         except Exception as e:
             # Never let logging configuration break runtime behavior; log to stderr if possible
-            try:
-                sys.stderr.write(f"[logging_setup] file handler init skipped: {e}\n")
-            except Exception:
-                pass
+            if hasattr(sys, "stderr") and hasattr(sys.stderr, "write"):
+                try:
+                    sys.stderr.write(
+                        f"[logging_setup] file handler init skipped: {e}\n"
+                    )
+                except Exception:
+                    ...
 
         logger.setLevel(level)
 
@@ -111,17 +114,19 @@ def setup_safe_logging_shutdown() -> None:
                         handler.close()
                         logger.removeHandler(handler)
                     except Exception as e:
-                        try:
-                            sys.stderr.write(
-                                f"[logging_cleanup] handler close/remove skipped: {e}\n"
-                            )
-                        except Exception:
-                            pass
+                        if hasattr(sys, "stderr") and hasattr(sys.stderr, "write"):
+                            try:
+                                sys.stderr.write(
+                                    f"[logging_cleanup] handler close/remove skipped: {e}\n"
+                                )
+                            except Exception:
+                                ...
         except Exception as e:
-            try:
-                sys.stderr.write(f"[logging_cleanup] cleanup skipped: {e}\n")
-            except Exception:
-                pass
+            if hasattr(sys, "stderr") and hasattr(sys.stderr, "write"):
+                try:
+                    sys.stderr.write(f"[logging_cleanup] cleanup skipped: {e}\n")
+                except Exception:
+                    ...
 
     # Register cleanup function
     atexit.register(cleanup_logging)
@@ -140,10 +145,11 @@ def log_info(message: str, *args: Any, **kwargs: Any) -> None:
     try:
         logger.info(message, *args, **kwargs)
     except (ValueError, OSError) as e:
-        try:
-            sys.stderr.write(f"[log_info] suppressed: {e}\n")
-        except Exception:
-            pass
+        if hasattr(sys, "stderr") and hasattr(sys.stderr, "write"):
+            try:
+                sys.stderr.write(f"[log_info] suppressed: {e}\n")
+            except Exception:
+                ...
 
 
 def log_warning(message: str, *args: Any, **kwargs: Any) -> None:
@@ -151,10 +157,11 @@ def log_warning(message: str, *args: Any, **kwargs: Any) -> None:
     try:
         logger.warning(message, *args, **kwargs)
     except (ValueError, OSError) as e:
-        try:
-            sys.stderr.write(f"[log_warning] suppressed: {e}\n")
-        except Exception:
-            pass
+        if hasattr(sys, "stderr") and hasattr(sys.stderr, "write"):
+            try:
+                sys.stderr.write(f"[log_warning] suppressed: {e}\n")
+            except Exception:
+                ...
 
 
 def log_error(message: str, *args: Any, **kwargs: Any) -> None:
@@ -162,10 +169,11 @@ def log_error(message: str, *args: Any, **kwargs: Any) -> None:
     try:
         logger.error(message, *args, **kwargs)
     except (ValueError, OSError) as e:
-        try:
-            sys.stderr.write(f"[log_error] suppressed: {e}\n")
-        except Exception:
-            pass
+        if hasattr(sys, "stderr") and hasattr(sys.stderr, "write"):
+            try:
+                sys.stderr.write(f"[log_error] suppressed: {e}\n")
+            except Exception:
+                ...
 
 
 def log_debug(message: str, *args: Any, **kwargs: Any) -> None:
@@ -173,10 +181,11 @@ def log_debug(message: str, *args: Any, **kwargs: Any) -> None:
     try:
         logger.debug(message, *args, **kwargs)
     except (ValueError, OSError) as e:
-        try:
-            sys.stderr.write(f"[log_debug] suppressed: {e}\n")
-        except Exception:
-            pass
+        if hasattr(sys, "stderr") and hasattr(sys.stderr, "write"):
+            try:
+                sys.stderr.write(f"[log_debug] suppressed: {e}\n")
+            except Exception:
+                ...
 
 
 def suppress_output(func: Any) -> Any:
@@ -199,12 +208,13 @@ def suppress_output(func: Any) -> Any:
             try:
                 sys.stdout.close()
             except Exception as e:
-                try:
-                    sys.stderr.write(
-                        f"[suppress_output] stdout close suppressed: {e}\n"
-                    )
-                except Exception:
-                    pass
+                if hasattr(sys, "stderr") and hasattr(sys.stderr, "write"):
+                    try:
+                        sys.stderr.write(
+                            f"[suppress_output] stdout close suppressed: {e}\n"
+                        )
+                    except Exception:
+                        ...
             sys.stdout = old_stdout
 
         return result
@@ -282,10 +292,11 @@ def log_performance(
             message += f" - {detail_str}"
         perf_logger.debug(message)  # Change to DEBUG level
     except (ValueError, OSError) as e:
-        try:
-            sys.stderr.write(f"[log_performance] suppressed: {e}\n")
-        except Exception:
-            pass
+        if hasattr(sys, "stderr") and hasattr(sys.stderr, "write"):
+            try:
+                sys.stderr.write(f"[log_performance] suppressed: {e}\n")
+            except Exception:
+                ...
 
 
 def setup_performance_logger() -> logging.Logger:

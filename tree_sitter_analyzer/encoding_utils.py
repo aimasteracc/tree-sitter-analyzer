@@ -29,10 +29,13 @@ def _setup_encoding_environment() -> None:
             sys.stderr.reconfigure(encoding="utf-8", errors="replace")
     except Exception as e:
         # Ignore setup errors, use defaults; log at debug when possible
-        try:
-            sys.stderr.write(f"[encoding_setup] non-fatal setup error: {e}\n")
-        except Exception:
-            pass
+        msg = f"[encoding_setup] non-fatal setup error: {e}\n"
+        if hasattr(sys, "stderr") and hasattr(sys.stderr, "write"):
+            try:
+                sys.stderr.write(msg)
+            except Exception:
+                # Swallow secondary I/O errors intentionally
+                ...
 
 
 # Set up environment when module is imported

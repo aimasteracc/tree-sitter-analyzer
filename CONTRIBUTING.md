@@ -20,7 +20,7 @@ uv run python -c "import tree_sitter_analyzer; print('Setup OK')"
 
 ### Running Tests
 
-> 本项目在所有本地命令中统一使用 `uv run`（Windows/PowerShell 亦同）。请不要直接调用裸 `pytest` 或 `python`，以确保一致的解释器与虚拟环境。
+> This project uses `uv run` for all local commands (including Windows/PowerShell). Do not call `pytest` or `python` directly to ensure consistent interpreter and virtual environment.
 
 ```bash
 # Run all tests (1216+ tests)
@@ -189,5 +189,51 @@ This will auto-format your code and fix safe issues while skipping the ~300 lega
 - Update README.md for user-facing changes
 - Add docstrings to new functions/classes
 - Update MCP setup guides if needed
+
+## 📊 README Data Maintenance
+
+**Important:** README files contain dynamic statistics that need regular updates!
+
+### Data That Needs Synchronization
+
+1. **Test Statistics**
+   - Test count: `1,358 tests`
+   - Code coverage: `74.54%`
+   - Location: Badges and quality metrics sections
+
+2. **Version Information**
+   - Current version: From `pyproject.toml`
+   - Location: Quality achievements section
+
+3. **Example File Statistics**
+   - BigService.java lines: `1419 lines`
+   - Method count: `66 methods`
+   - Field count: `9 fields`
+   - Class count: `1 class`
+   - Import count: `8 imports`
+
+### Auto-update README Statistics
+```bash
+# Run this script after significant changes
+python scripts/update_readme_stats.py
+```
+
+### When to Update
+- Add/remove test files
+- Modify examples/BigService.java
+- Update version numbers in pyproject.toml
+- Before releases
+- After major feature additions
+
+### Automated Checks
+- **Pre-commit Hook**: Runs on `git push`
+- **GitHub Actions**: Validates README consistency on PRs
+- **CI/CD**: Ensures main branch README is always current
+
+### Development Workflow
+1. Make code changes
+2. Run quality checks: `uv run python check_quality.py --new-code-only --fix`
+3. Update README stats: `python scripts/update_readme_stats.py`
+4. Commit and push changes
 
 Thank you for contributing! 🎉

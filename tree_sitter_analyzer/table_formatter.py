@@ -616,7 +616,12 @@ class TableFormatter:
             type_name = str(type_name)
 
         # At this point, type_name is guaranteed to be a string
-        assert isinstance(type_name, str)
+        # Defensive check (avoid using assert for runtime safety and security checks)
+        if not isinstance(type_name, str):
+            try:
+                type_name = str(type_name)
+            except Exception:
+                type_name = "O"
 
         type_mapping = {
             "String": "S",
