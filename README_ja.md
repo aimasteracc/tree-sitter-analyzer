@@ -2,7 +2,7 @@
 
 [![Pythonバージョン](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![ライセンス](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![テスト](https://img.shields.io/badge/tests-1358%20passed-brightgreen.svg)](#品質保証)
+[![テスト](https://img.shields.io/badge/tests-1420%20passed-brightgreen.svg)](#品質保証)
 [![カバレッジ](https://img.shields.io/badge/coverage-74.19%25-green.svg)](#品質保証)
 [![品質](https://img.shields.io/badge/quality-enterprise%20grade-blue.svg)](#品質保証)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
@@ -224,11 +224,49 @@ MCPツールextract_code_sectionを使用して指定されたコードセクシ
 }
 ```
 
+#### 🔍 **ステップ4: スマートクエリフィルタリング（NEW！）**
+
+**特定のメソッドを検索：**
+```
+MCPツールquery_codeを使用してコード要素を正確に検索
+パラメーター: {"file_path": "examples/BigService.java", "query_key": "methods", "filter": "name=main"}
+```
+
+**認証関連メソッドを検索：**
+```
+MCPツールquery_codeを使用して認証メソッドを検索
+パラメーター: {"file_path": "examples/BigService.java", "query_key": "methods", "filter": "name=~auth*"}
+```
+
+**パラメーターなしのパブリックメソッドを検索：**
+```
+MCPツールquery_codeを使用してgetterメソッドを検索
+パラメーター: {"file_path": "examples/BigService.java", "query_key": "methods", "filter": "params=0,public=true"}
+```
+
+**戻り値の形式：**
+```json
+{
+  "success": true,
+  "results": [
+    {
+      "capture_name": "method",
+      "node_type": "method_declaration",
+      "start_line": 1385,
+      "end_line": 1418,
+      "content": "public static void main(String[] args) { ... }"
+    }
+  ],
+  "count": 1
+}
+```
+
 #### 💡 **重要な注意事項**
 - **パラメーター形式**: スネークケースを使用（`file_path`、`start_line`、`end_line`）
 - **パス処理**: 相対パスは自動的にプロジェクトルートに解決
 - **セキュリティ保護**: ツールは自動的にプロジェクト境界チェックを実行
-- **ワークフロー**: 順序通りの使用を推奨：ステップ1 → 2 → 3
+- **ワークフロー**: 順序通りの使用を推奨：ステップ1 → 2 → 4（クエリフィルタリング）→ 3（正確な抽出）
+- **フィルター構文**: `name=値`、`name=~パターン*`、`params=数字`、`static/public/private=true/false`をサポート
 
 ### 🛠️ CLIコマンド例
 
@@ -244,6 +282,22 @@ uv run python -m tree_sitter_analyzer examples/BigService.java --partial-read --
 
 # サイレントモード（結果のみ表示）
 uv run python -m tree_sitter_analyzer examples/BigService.java --table=full --quiet
+
+# 🔍 クエリフィルタリング例（NEW！）
+# 特定のメソッドを検索
+uv run python -m tree_sitter_analyzer examples/BigService.java --query-key methods --filter "name=main"
+
+# 認証関連メソッドを検索
+uv run python -m tree_sitter_analyzer examples/BigService.java --query-key methods --filter "name=~auth*"
+
+# パラメーターなしのパブリックメソッドを検索
+uv run python -m tree_sitter_analyzer examples/BigService.java --query-key methods --filter "params=0,public=true"
+
+# 静的メソッドを検索
+uv run python -m tree_sitter_analyzer examples/BigService.java --query-key methods --filter "static=true"
+
+# フィルター構文ヘルプを表示
+uv run python -m tree_sitter_analyzer --filter-help
 ```
 
 ---
@@ -262,6 +316,15 @@ uv run python -m tree_sitter_analyzer examples/BigService.java --table=full --qu
 - 元の形式とインデントを維持
 - 位置メタデータを含む
 - 大ファイルの効率的な処理をサポート
+
+### 🔍 **高度なクエリフィルタリング**
+強力なコード要素クエリとフィルタリングシステム：
+- **完全一致**: `--filter "name=main"` 特定のメソッドを検索
+- **パターンマッチング**: `--filter "name=~auth*"` 認証関連メソッドを検索  
+- **パラメーターフィルタリング**: `--filter "params=2"` 特定のパラメーター数のメソッドを検索
+- **修飾子フィルタリング**: `--filter "static=true,public=true"` 静的パブリックメソッドを検索
+- **複合条件**: `--filter "name=~get*,params=0,public=true"` 複数の条件を組み合わせ
+- **CLI/MCP一貫性**: コマンドラインとAIアシスタントで同じフィルタリング構文
 
 ### 🔗 **AIアシスタント統合**
 MCPプロトコルを通じた深い統合：

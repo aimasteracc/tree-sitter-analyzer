@@ -46,6 +46,13 @@ class CLICommandFactory:
         if args.show_supported_extensions:
             return ShowExtensionsCommand(args)
 
+        if args.filter_help:
+            from tree_sitter_analyzer.core.query_filter import QueryFilter
+
+            filter_service = QueryFilter()
+            output_info(filter_service.get_filter_help())
+            return None  # This will exit with code 0
+
         # File analysis commands (require file path)
         if not args.file_path:
             return None
@@ -95,11 +102,22 @@ def create_argument_parser() -> argparse.ArgumentParser:
         "--query-string", help="Directly specify Tree-sitter query to execute"
     )
 
+    # Query filter options
+    parser.add_argument(
+        "--filter",
+        help="Filter query results (e.g., 'name=main', 'name=~get*,public=true')",
+    )
+
     # Information options
     parser.add_argument(
         "--list-queries",
         action="store_true",
         help="Display list of available query keys",
+    )
+    parser.add_argument(
+        "--filter-help",
+        action="store_true",
+        help="Display help for query filter syntax",
     )
     parser.add_argument(
         "--describe-query", help="Display description of specified query key"
@@ -287,6 +305,9 @@ def main() -> None:
     if command:
         exit_code = command.execute()
         sys.exit(exit_code)
+    elif command is None and hasattr(args, "filter_help") and args.filter_help:
+        # filter_help was processed successfully
+        sys.exit(0)
     else:
         if not args.file_path:
             output_error("File path not specified.")

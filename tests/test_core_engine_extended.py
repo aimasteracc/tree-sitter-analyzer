@@ -38,7 +38,7 @@ class TestAnalysisEngineEdgeCases:
                 assert result.file_path == f.name
             except Exception as e:
                 # Some exceptions are acceptable for empty files
-                assert isinstance(e, (AnalysisError, ParseError, ValueError))
+                assert isinstance(e, AnalysisError | ParseError | ValueError)
 
     def test_analyze_file_with_binary_file(self, engine):
         """Test analyzing a binary file."""
@@ -53,7 +53,7 @@ class TestAnalysisEngineEdgeCases:
             except Exception as e:
                 # Exceptions are expected for binary files
                 assert isinstance(
-                    e, (AnalysisError, ParseError, UnicodeDecodeError, ValueError)
+                    e, AnalysisError | ParseError | UnicodeDecodeError | ValueError
                 )
 
     def test_analyze_file_with_very_large_file(self, engine):
@@ -73,7 +73,7 @@ class TestAnalysisEngineEdgeCases:
                 assert result.file_path == f.name
             except Exception as e:
                 # Memory or timeout errors might be acceptable
-                assert isinstance(e, (MemoryError, TimeoutError, AnalysisError))
+                assert isinstance(e, MemoryError | TimeoutError | AnalysisError)
 
     def test_analyze_file_with_malformed_syntax(self, engine):
         """Test analyzing files with malformed syntax."""
@@ -96,7 +96,7 @@ class TestAnalysisEngineEdgeCases:
                     assert result is not None
                 except Exception as e:
                     # Parsing errors are expected for malformed code
-                    assert isinstance(e, (ParseError, SyntaxError, AnalysisError))
+                    assert isinstance(e, ParseError | SyntaxError | AnalysisError)
 
     def test_analyze_file_with_unicode_content(self, engine):
         """Test analyzing files with Unicode content."""
@@ -125,7 +125,7 @@ class 类名:
                 assert result.file_path == f.name
             except Exception as e:
                 # Unicode handling errors might occur
-                assert isinstance(e, (UnicodeError, AnalysisError))
+                assert isinstance(e, UnicodeError | AnalysisError)
 
     def test_analyze_file_with_nonexistent_file(self, engine):
         """Test analyzing a non-existent file."""
@@ -207,7 +207,7 @@ class TestAnalysisEngineConfiguration:
             ("test.unknown", None),
         ]
 
-        for filename, expected_lang in test_files:
+        for _filename, _expected_lang in test_files:
             # Test language detection logic
             # This might be internal to the engine
             assert engine is not None  # Basic test that engine exists
@@ -269,7 +269,7 @@ class TestAnalysisEnginePerformance:
             f.flush()
 
             # Perform repeated analysis
-            for i in range(10):
+            for _i in range(10):
                 try:
                     result = engine.analyze_file(f.name)
                     assert result is not None or result is None  # Either is acceptable

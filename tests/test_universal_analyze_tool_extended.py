@@ -48,7 +48,7 @@ class TestUniversalAnalyzeToolEdgeCases:
             assert "file_path" in result or "error" in result
         except Exception as e:
             # Some exceptions are acceptable for empty files
-            assert isinstance(e, (AnalysisError, ValueError))
+            assert isinstance(e, AnalysisError | ValueError)
 
     @pytest.mark.asyncio
     async def test_execute_with_binary_file(self, tool, temp_dir):
@@ -88,7 +88,7 @@ class TestUniversalAnalyzeToolEdgeCases:
             assert "file_path" in result or "error" in result
         except Exception as e:
             # Memory or timeout errors might be acceptable
-            assert isinstance(e, (MemoryError, TimeoutError, AnalysisError))
+            assert isinstance(e, MemoryError | TimeoutError | AnalysisError)
 
     @pytest.mark.asyncio
     async def test_execute_with_malformed_syntax(self, tool, temp_dir):
@@ -114,7 +114,7 @@ class TestUniversalAnalyzeToolEdgeCases:
                 assert "error" in result or "file_path" in result
             except Exception as e:
                 # Parsing errors are expected for malformed code
-                assert isinstance(e, (AnalysisError, SyntaxError))
+                assert isinstance(e, AnalysisError | SyntaxError)
 
     @pytest.mark.asyncio
     async def test_execute_with_unicode_content(self, tool, temp_dir):
@@ -139,7 +139,7 @@ def 函数名():
             assert "file_path" in result or "error" in result
         except Exception as e:
             # Unicode handling errors might occur
-            assert isinstance(e, (UnicodeError, AnalysisError))
+            assert isinstance(e, UnicodeError | AnalysisError)
 
     @pytest.mark.asyncio
     async def test_execute_with_nonexistent_file(self, tool):
@@ -233,7 +233,7 @@ class TestUniversalAnalyzeToolConfiguration:
                 assert tool is not None
             except Exception as e:
                 # Some initialization errors are acceptable
-                assert isinstance(e, (SecurityError, TypeError, ValueError))
+                assert isinstance(e, SecurityError | TypeError | ValueError)
 
     def test_tool_components_initialization(self):
         """Test that tool components are properly initialized."""

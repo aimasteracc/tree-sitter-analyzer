@@ -153,7 +153,7 @@ class TestErrorHandlerImprovements:
             ),  # Special case
         ]
 
-        for error, expected_severity in test_cases:
+        for error, _expected_severity in test_cases:
             error_info = error_handler.handle_error(error, {}, "test_operation")
             # Note: The actual severity might be determined by the error handler's logic
             assert "severity" in error_info

@@ -86,16 +86,22 @@ async def main_with_retry():
 def check_dependencies():
     """Check if all required dependencies are available."""
     try:
-        import mcp
+        import importlib.util
 
+        mcp_spec = importlib.util.find_spec("mcp")
+        if mcp_spec is None:
+            raise ImportError()
         logger.info("✅ MCP library available")
     except ImportError:
         logger.error("❌ MCP library not found. Please install: pip install mcp")
         return False
 
     try:
-        import tree_sitter
+        import importlib.util
 
+        tree_sitter_spec = importlib.util.find_spec("tree_sitter")
+        if tree_sitter_spec is None:
+            raise ImportError()
         logger.info("✅ Tree-sitter library available")
     except ImportError:
         logger.error(

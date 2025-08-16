@@ -135,9 +135,8 @@ class CodeFileResource:
             raise ValueError("File path contains null bytes")
 
         # Check for potentially dangerous path traversal
-        # normalized_path = Path(file_path).resolve()  # Not used currently
         if ".." in file_path:
-            logger.warning(f"Potentially dangerous path traversal in: {file_path}")
+            raise ValueError(f"Path traversal not allowed: {file_path}")
 
         # Additional security checks could be added here
         # For example, restricting to certain directories

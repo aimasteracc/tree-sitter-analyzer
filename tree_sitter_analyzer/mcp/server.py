@@ -51,6 +51,7 @@ from ..utils import setup_logger
 from . import MCP_INFO
 from .resources import CodeFileResource, ProjectStatsResource
 from .tools.base_tool import MCPTool
+from .tools.query_tool import QueryTool
 from .tools.read_partial_tool import ReadPartialTool
 from .tools.table_format_tool import TableFormatTool
 
@@ -77,7 +78,8 @@ class TreeSitterAnalyzerMCPServer:
         self.security_validator = SecurityValidator(project_root)
         # Use unified analysis engine instead of deprecated AdvancedAnalyzer
 
-        # Initialize MCP tools with security validation (three core tools)
+        # Initialize MCP tools with security validation (four core tools)
+        self.query_tool = QueryTool(project_root)  # query_code
         self.read_partial_tool: MCPTool = ReadPartialTool(
             project_root
         )  # extract_code_section
@@ -324,6 +326,7 @@ class TreeSitterAnalyzerMCPServer:
                         "additionalProperties": False,
                     },
                 ),
+                Tool(**self.query_tool.get_tool_definition()),
             ]
 
             logger.info(f"Returning {len(tools)} tools: {[t.name for t in tools]}")
@@ -405,6 +408,9 @@ class TreeSitterAnalyzerMCPServer:
                         raise ValueError(f"Project path does not exist: {project_path}")
                     self.set_project_path(project_path)
                     result = {"status": "success", "project_root": project_path}
+
+                elif name == "query_code":
+                    result = await self.query_tool.execute(arguments)
 
                 else:
                     raise ValueError(f"Unknown tool: {name}")

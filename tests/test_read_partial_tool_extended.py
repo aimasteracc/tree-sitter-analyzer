@@ -94,7 +94,7 @@ class TestReadPartialToolEdgeCases:
             assert "error" in result or "partial_content_result" in result
         except Exception as e:
             # ValueError is expected for negative line numbers
-            assert isinstance(e, (ValueError, FileHandlingError))
+            assert isinstance(e, ValueError | FileHandlingError)
 
     @pytest.mark.asyncio
     async def test_execute_with_reversed_line_range(self, tool, temp_dir):
@@ -116,7 +116,7 @@ class TestReadPartialToolEdgeCases:
             assert "error" in result or "partial_content_result" in result
         except Exception as e:
             # ValueError is expected for reversed range
-            assert isinstance(e, (ValueError, FileHandlingError))
+            assert isinstance(e, ValueError | FileHandlingError)
 
     @pytest.mark.asyncio
     async def test_execute_with_unicode_content(self, tool, temp_dir):
@@ -154,7 +154,7 @@ Line 5: 日本語テスト"""
             assert "error" in result or "partial_content_result" in result
         except Exception as e:
             # UnicodeDecodeError is expected for binary files
-            assert isinstance(e, (UnicodeDecodeError, FileHandlingError))
+            assert isinstance(e, UnicodeDecodeError | FileHandlingError)
 
     @pytest.mark.asyncio
     async def test_execute_with_nonexistent_file(self, tool):
@@ -172,7 +172,7 @@ Line 5: 日本語テスト"""
         except Exception as e:
             # Various file-related errors are expected
             assert isinstance(
-                e, (FileNotFoundError, SecurityError, FileHandlingError, ValueError)
+                e, FileNotFoundError | SecurityError | FileHandlingError | ValueError
             )
 
     @pytest.mark.asyncio
@@ -205,13 +205,11 @@ Line 5: 日本語テスト"""
                 # Various errors are expected for invalid arguments
                 assert isinstance(
                     e,
-                    (
-                        ValueError,
-                        TypeError,
-                        KeyError,
-                        FileHandlingError,
-                        FileNotFoundError,
-                    ),
+                    ValueError
+                    | TypeError
+                    | KeyError
+                    | FileHandlingError
+                    | FileNotFoundError,
                 )
 
     @pytest.mark.asyncio
@@ -234,7 +232,8 @@ Line 5: 日本語テスト"""
             except Exception as e:
                 # Various security-related errors are expected
                 assert isinstance(
-                    e, (SecurityError, FileHandlingError, FileNotFoundError, ValueError)
+                    e,
+                    SecurityError | FileHandlingError | FileNotFoundError | ValueError,
                 )
 
 
@@ -270,7 +269,7 @@ class TestReadPartialToolConfiguration:
                 assert tool is not None
             except Exception as e:
                 # Some initialization errors are acceptable
-                assert isinstance(e, (SecurityError, TypeError, ValueError))
+                assert isinstance(e, SecurityError | TypeError | ValueError)
 
     def test_tool_components_initialization(self):
         """Test that tool components are properly initialized."""

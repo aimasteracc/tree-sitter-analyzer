@@ -2,7 +2,7 @@
 
 [![Python版本](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![许可证](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![测试](https://img.shields.io/badge/tests-1358%20passed-brightgreen.svg)](#质量保证)
+[![测试](https://img.shields.io/badge/tests-1420%20passed-brightgreen.svg)](#质量保证)
 [![覆盖率](https://img.shields.io/badge/coverage-74.19%25-green.svg)](#质量保证)
 [![质量](https://img.shields.io/badge/quality-enterprise%20grade-blue.svg)](#质量保证)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
@@ -224,11 +224,49 @@ uv run python -m tree_sitter_analyzer examples/BigService.java --partial-read --
 }
 ```
 
+#### 🔍 **步骤4: 智能查询过滤（NEW！）**
+
+**查找特定方法：**
+```
+使用MCP工具query_code精确查找代码元素
+参数: {"file_path": "examples/BigService.java", "query_key": "methods", "filter": "name=main"}
+```
+
+**查找认证相关方法：**
+```
+使用MCP工具query_code查找认证方法
+参数: {"file_path": "examples/BigService.java", "query_key": "methods", "filter": "name=~auth*"}
+```
+
+**查找无参数公开方法：**
+```
+使用MCP工具query_code查找getter方法
+参数: {"file_path": "examples/BigService.java", "query_key": "methods", "filter": "params=0,public=true"}
+```
+
+**返回格式：**
+```json
+{
+  "success": true,
+  "results": [
+    {
+      "capture_name": "method",
+      "node_type": "method_declaration",
+      "start_line": 1385,
+      "end_line": 1418,
+      "content": "public static void main(String[] args) { ... }"
+    }
+  ],
+  "count": 1
+}
+```
+
 #### 💡 **重要注意事项**
 - **参数格式**: 使用蛇形命名法（`file_path`、`start_line`、`end_line`）
 - **路径处理**: 相对路径自动解析到项目根目录
 - **安全保护**: 工具自动执行项目边界检查
-- **工作流**: 建议按顺序使用：步骤1 → 2 → 3
+- **工作流**: 建议按顺序使用：步骤1 → 2 → 4（查询过滤）→ 3（精确提取）
+- **过滤语法**: 支持`name=值`、`name=~模式*`、`params=数字`、`static/public/private=true/false`
 
 ### 🛠️ CLI命令示例
 
@@ -244,6 +282,22 @@ uv run python -m tree_sitter_analyzer examples/BigService.java --partial-read --
 
 # 静默模式（仅显示结果）
 uv run python -m tree_sitter_analyzer examples/BigService.java --table=full --quiet
+
+# 🔍 查询过滤示例（NEW！）
+# 查找特定方法
+uv run python -m tree_sitter_analyzer examples/BigService.java --query-key methods --filter "name=main"
+
+# 查找认证相关方法
+uv run python -m tree_sitter_analyzer examples/BigService.java --query-key methods --filter "name=~auth*"
+
+# 查找无参数的公开方法
+uv run python -m tree_sitter_analyzer examples/BigService.java --query-key methods --filter "params=0,public=true"
+
+# 查找静态方法
+uv run python -m tree_sitter_analyzer examples/BigService.java --query-key methods --filter "static=true"
+
+# 查看过滤语法帮助
+uv run python -m tree_sitter_analyzer --filter-help
 ```
 
 ---
@@ -262,6 +316,15 @@ uv run python -m tree_sitter_analyzer examples/BigService.java --table=full --qu
 - 保持原始格式和缩进
 - 包含位置元数据
 - 支持大文件高效处理
+
+### 🔍 **高级查询过滤**
+强大的代码元素查询和过滤系统：
+- **精确匹配**: `--filter "name=main"` 查找特定方法
+- **模式匹配**: `--filter "name=~auth*"` 查找认证相关方法  
+- **参数过滤**: `--filter "params=2"` 查找特定参数数量的方法
+- **修饰符过滤**: `--filter "static=true,public=true"` 查找静态公开方法
+- **复合条件**: `--filter "name=~get*,params=0,public=true"` 组合多个条件
+- **CLI/MCP一致**: 命令行和AI助手中使用相同的过滤语法
 
 ### 🔗 **AI助手集成**
 通过MCP协议深度集成：
@@ -406,6 +469,7 @@ uv run python llm_code_checker.py path/to/new_file.py
 - **[项目根目录配置](PROJECT_ROOT_CONFIG.md)** - 完整配置参考
 - **[API文档](docs/api.md)** - 详细API参考
 - **[贡献指南](CONTRIBUTING.md)** - 如何贡献
+ - **[接管与训练指南](training/README.md)** - 为新成员/维护者准备的系统上手资料
 
 ---
 

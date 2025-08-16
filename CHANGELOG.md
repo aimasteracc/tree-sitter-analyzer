@@ -1,4 +1,163 @@
 # Changelog
+## [0.9.6] - 2025-01-17
+
+### 🎉 New Feature: Advanced Query Filtering System
+
+#### 🚀 Major Features
+
+##### Smart Query Filtering
+- **Precise Method Search**: Find specific methods using `--filter "name=main"`
+- **Pattern Matching**: Use wildcards like `--filter "name=~auth*"` for authentication-related methods
+- **Parameter Filtering**: Filter by parameter count with `--filter "params=0"`
+- **Modifier Filtering**: Search by visibility and modifiers like `--filter "static=true,public=true"`
+- **Compound Conditions**: Combine multiple filters with `--filter "name=~get*,params=0,public=true"`
+
+##### Unified Architecture
+- **QueryService**: New unified query service eliminates code duplication between CLI and MCP
+- **QueryFilter**: Powerful filtering engine supporting multiple criteria
+- **Consistent API**: Same filtering syntax works in both command line and AI assistants
+
+#### 🛠️ Technical Improvements
+
+##### New Core Components
+- `core/query_service.py`: Unified query execution service
+- `core/query_filter.py`: Advanced result filtering system
+- `cli/commands/query_command.py`: Enhanced CLI query command
+- `mcp/tools/query_tool.py`: New MCP query tool with filtering support
+
+##### Enhanced CLI
+- Added `--filter` argument for query result filtering
+- Added `--filter-help` command to display filter syntax help
+- Improved query command to use unified QueryService
+
+##### MCP Protocol Extensions
+- New `query_code` tool for AI assistants
+- Full filtering support in MCP environment
+- Consistent with CLI filtering syntax
+
+#### 📚 Documentation Updates
+
+##### README Updates
+- **Chinese (README_zh.md)**: Added comprehensive query filtering examples
+- **English (README.md)**: Complete documentation with usage examples
+- **Japanese (README_ja.md)**: Full translation with feature explanations
+
+##### Training Materials
+- Updated `training/01_onboarding.md` with new feature demonstrations
+- Enhanced `training/02_architecture_map.md` with architecture improvements
+- Cross-platform examples for Windows, Linux, and macOS
+
+#### 🧪 Comprehensive Testing
+
+##### Test Coverage
+- **QueryService Tests**: 13 comprehensive unit tests
+- **QueryFilter Tests**: 29 detailed filtering tests  
+- **CLI Integration Tests**: 11 real-world usage scenarios
+- **MCP Tool Tests**: 9 tool definition and functionality tests
+
+##### Test Categories
+- Unit tests for core filtering logic
+- Integration tests with real Java files
+- Edge case handling (overloaded methods, generics, annotations)
+- Error handling and validation
+
+#### 🎯 Usage Examples
+
+##### Command Line Interface
+```bash
+# Find specific method
+uv run python -m tree_sitter_analyzer examples/BigService.java --query-key methods --filter "name=main"
+
+# Find authentication methods
+uv run python -m tree_sitter_analyzer examples/BigService.java --query-key methods --filter "name=~auth*"
+
+# Find public methods with no parameters
+uv run python -m tree_sitter_analyzer examples/BigService.java --query-key methods --filter "params=0,public=true"
+
+# View filter syntax help
+uv run python -m tree_sitter_analyzer --filter-help
+```
+
+##### AI Assistant (MCP)
+```json
+{
+  "tool": "query_code",
+  "arguments": {
+    "file_path": "examples/BigService.java",
+    "query_key": "methods",
+    "filter": "name=main"
+  }
+}
+```
+
+#### 🔧 Filter Syntax Reference
+
+##### Supported Filters
+- **name**: Method/function name matching
+  - Exact: `name=main`
+  - Pattern: `name=~auth*` (supports wildcards)
+- **params**: Parameter count filtering
+  - Example: `params=0`, `params=2`
+- **Modifiers**: Visibility and static modifiers
+  - `static=true/false`
+  - `public=true/false`
+  - `private=true/false`
+  - `protected=true/false`
+
+##### Combining Filters
+Use commas for AND logic: `name=~get*,params=0,public=true`
+
+#### 🏗️ Architecture Benefits
+
+##### Code Quality
+- **DRY Principle**: Eliminated duplication between CLI and MCP
+- **Single Responsibility**: Clear separation of concerns
+- **Extensibility**: Easy to add new filter types
+- **Maintainability**: Centralized query logic
+
+##### Performance
+- **Efficient Filtering**: Post-query filtering for optimal performance
+- **Memory Optimized**: Filter after parsing, not during
+- **Scalable**: Works efficiently with large codebases
+
+#### 🚦 Quality Assurance
+
+##### Code Standards
+- **Type Safety**: Full MyPy type annotations
+- **Code Style**: Black formatting, Ruff linting
+- **Documentation**: Comprehensive docstrings and examples
+- **Testing**: 62 new tests with 100% pass rate
+
+##### Platform Support
+- **Windows**: PowerShell examples and testing
+- **Linux/macOS**: Bash examples and compatibility
+- **Codespaces**: Full support for GitHub Codespaces
+
+#### 🎯 Impact
+
+##### Productivity Gains
+- **Faster Code Navigation**: Find specific methods in seconds
+- **Enhanced Code Analysis**: AI assistants can understand code structure better
+- **Reduced Token Usage**: Extract only relevant methods for LLM analysis
+
+##### Integration Benefits
+- **IDE Support**: Works with Cursor, Claude Desktop, Roo Code
+- **CLI Flexibility**: Powerful command-line filtering
+- **API Consistency**: Same functionality across all interfaces
+
+#### 📝 Technical Details
+- **Files Changed**: 15+ core files
+- **New Files**: 6 new modules and test files
+- **Lines Added**: 2000+ lines of code and tests
+- **Documentation**: 500+ lines of updated documentation
+
+#### ✅ Migration Notes
+- All existing CLI and MCP functionality remains compatible
+- New filtering features are additive and optional
+- No breaking changes to existing APIs
+
+---
+
 ## [0.9.5] - 2025-01-15
 
 ### 🚀 CI/CD Stability & Cross-Platform Compatibility

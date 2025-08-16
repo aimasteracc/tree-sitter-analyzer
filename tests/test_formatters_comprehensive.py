@@ -105,7 +105,7 @@ class TestTableFormatterFactory:
         """Test that formatter factory is case insensitive."""
         formatter1 = TableFormatterFactory.create_formatter("JAVA")
         formatter2 = TableFormatterFactory.create_formatter("java")
-        assert type(formatter1) == type(formatter2)
+        assert isinstance(formatter1, type(formatter2))
 
     def test_create_formatter_with_format_type(self):
         """Test creating formatter with specific format type."""

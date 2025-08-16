@@ -37,20 +37,15 @@ class TestStartupScriptFunctions:
     def test_dependency_checking_logic(self):
         """Test the dependency checking logic."""
         # Test MCP library availability
-        try:
-            import mcp
+        import importlib.util
 
-            mcp_available = True
-        except ImportError:
-            mcp_available = False
+        mcp_spec = importlib.util.find_spec("mcp")
+        # Check if MCP is available (not used in assertions but validates import logic)
+        _ = mcp_spec is not None
 
         # Test tree-sitter library availability
-        try:
-            import tree_sitter
-
-            tree_sitter_available = True
-        except ImportError:
-            tree_sitter_available = False
+        tree_sitter_spec = importlib.util.find_spec("tree_sitter")
+        tree_sitter_available = tree_sitter_spec is not None
 
         # At least one should be available in our test environment
         # (since we're running tests, tree-sitter should be available)
@@ -161,7 +156,7 @@ class TestStartupScriptIntegration:
 
         from tree_sitter_analyzer.project_detector import detect_project_root
 
-        result = detect_project_root()
+        detect_project_root()
 
         # Should call the detection function
         assert mock_detect.called

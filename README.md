@@ -2,7 +2,7 @@
 
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-1358%20passed-brightgreen.svg)](#quality-assurance)
+[![Tests](https://img.shields.io/badge/tests-1420%20passed-brightgreen.svg)](#quality-assurance)
 [![Coverage](https://img.shields.io/badge/coverage-74.19%25-green.svg)](#quality-assurance)
 [![Quality](https://img.shields.io/badge/quality-enterprise%20grade-blue.svg)](#quality-assurance)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
@@ -224,11 +224,49 @@ Parameters: {"file_path": "examples/BigService.java", "start_line": 100, "end_li
 }
 ```
 
+#### 🔍 **Step 4: Smart Query Filtering (NEW!)**
+
+**Find specific methods:**
+```
+Use MCP tool query_code to precisely find code elements
+Parameters: {"file_path": "examples/BigService.java", "query_key": "methods", "filter": "name=main"}
+```
+
+**Find authentication-related methods:**
+```
+Use MCP tool query_code to find authentication methods
+Parameters: {"file_path": "examples/BigService.java", "query_key": "methods", "filter": "name=~auth*"}
+```
+
+**Find parameterless public methods:**
+```
+Use MCP tool query_code to find getter methods
+Parameters: {"file_path": "examples/BigService.java", "query_key": "methods", "filter": "params=0,public=true"}
+```
+
+**Return Format:**
+```json
+{
+  "success": true,
+  "results": [
+    {
+      "capture_name": "method",
+      "node_type": "method_declaration",
+      "start_line": 1385,
+      "end_line": 1418,
+      "content": "public static void main(String[] args) { ... }"
+    }
+  ],
+  "count": 1
+}
+```
+
 #### 💡 **Important Notes**
 - **Parameter Format**: Use snake_case (`file_path`, `start_line`, `end_line`)
 - **Path Handling**: Relative paths auto-resolve to project root
 - **Security Protection**: Tool automatically performs project boundary checks
-- **Workflow**: Recommended to use in order: Step 1 → 2 → 3
+- **Workflow**: Recommended to use in order: Step 1 → 2 → 4 (Query Filtering) → 3 (Precise Extraction)
+- **Filter Syntax**: Supports `name=value`, `name=~pattern*`, `params=number`, `static/public/private=true/false`
 
 ### 🛠️ CLI Command Examples
 
@@ -244,6 +282,22 @@ uv run python -m tree_sitter_analyzer examples/BigService.java --partial-read --
 
 # Silent mode (display results only)
 uv run python -m tree_sitter_analyzer examples/BigService.java --table=full --quiet
+
+# 🔍 Query filtering examples (NEW!)
+# Find specific methods
+uv run python -m tree_sitter_analyzer examples/BigService.java --query-key methods --filter "name=main"
+
+# Find authentication-related methods
+uv run python -m tree_sitter_analyzer examples/BigService.java --query-key methods --filter "name=~auth*"
+
+# Find parameterless public methods
+uv run python -m tree_sitter_analyzer examples/BigService.java --query-key methods --filter "params=0,public=true"
+
+# Find static methods
+uv run python -m tree_sitter_analyzer examples/BigService.java --query-key methods --filter "static=true"
+
+# View filter syntax help
+uv run python -m tree_sitter_analyzer --filter-help
 ```
 
 ---
@@ -262,6 +316,15 @@ Get insights without reading complete files:
 - Maintain original formatting and indentation
 - Include position metadata
 - Support efficient processing of large files
+
+### 🔍 **Advanced Query Filtering**
+Powerful code element querying and filtering system:
+- **Exact matching**: `--filter "name=main"` Find specific methods
+- **Pattern matching**: `--filter "name=~auth*"` Find authentication-related methods  
+- **Parameter filtering**: `--filter "params=2"` Find methods with specific parameter counts
+- **Modifier filtering**: `--filter "static=true,public=true"` Find static public methods
+- **Compound conditions**: `--filter "name=~get*,params=0,public=true"` Combine multiple conditions
+- **CLI/MCP consistency**: Same filtering syntax in command line and AI assistants
 
 ### 🔗 **AI Assistant Integration**
 Deep integration via MCP protocol:

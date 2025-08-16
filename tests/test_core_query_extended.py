@@ -163,7 +163,7 @@ class TestQueryExecutorEdgeCases:
                 assert result is not None or result is None
             except Exception as e:
                 # Some complex queries might fail, which is acceptable
-                assert isinstance(e, (QueryError, ValueError, AttributeError))
+                assert isinstance(e, QueryError | ValueError | AttributeError)
 
     def test_execute_query_with_large_tree(self, query_executor, mock_language):
         """Test executing query on a large tree structure."""
@@ -197,7 +197,7 @@ class TestQueryExecutorEdgeCases:
             assert result is not None or result is None
         except Exception as e:
             # Performance issues might cause exceptions
-            assert isinstance(e, (MemoryError, TimeoutError, QueryError))
+            assert isinstance(e, MemoryError | TimeoutError | QueryError)
 
 
 class TestQueryExecutorConfiguration:
@@ -240,7 +240,7 @@ class TestQueryExecutorConfiguration:
             Exception("Generic error"),
         ]
 
-        for error in error_types:
+        for _error in error_types:
             # Test that executor can handle different error types
             # This is more of a structural test
             assert executor is not None
@@ -361,7 +361,11 @@ class TestQueryExecutorIntegration:
     def test_query_executor_with_real_tree_sitter_objects(self, query_executor):
         """Test QueryExecutor with real tree-sitter objects (if available)."""
         try:
-            import tree_sitter
+            import importlib.util
+
+            tree_sitter_spec = importlib.util.find_spec("tree_sitter")
+            if tree_sitter_spec is None:
+                pytest.skip("tree-sitter not available")
 
             # This test only runs if tree-sitter is available
             # and we can create real objects

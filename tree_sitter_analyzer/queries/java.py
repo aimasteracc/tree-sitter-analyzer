@@ -356,6 +356,11 @@ ALL_QUERIES["functions"] = {
     "description": "Search all function/method declarations (alias for method)",
 }
 
+ALL_QUERIES["methods"] = {
+    "query": JAVA_QUERIES["method"],
+    "description": "Search all method declarations (alias for method)",
+}
+
 ALL_QUERIES["classes"] = {
     "query": JAVA_QUERIES["class"],
     "description": "Search all class declarations (alias for class)",

@@ -8,7 +8,7 @@ and more robust statistics collection.
 
 import logging
 import re
-import subprocess
+import subprocess  # nosec B404
 from pathlib import Path
 from typing import Any
 
@@ -48,12 +48,13 @@ class ImprovedReadmeUpdater:
 
         try:
             # Get test count
-            result = subprocess.run(
+            result = subprocess.run(  # nosec B603
                 self.config.stat_commands["test_count"],
                 capture_output=True,
                 text=True,
                 cwd=self.project_root,
                 timeout=60,
+                check=False,
             )
 
             if result.returncode == 0:
@@ -65,12 +66,13 @@ class ImprovedReadmeUpdater:
                             break
 
             # Get coverage
-            result = subprocess.run(
+            result = subprocess.run(  # nosec B603
                 self.config.stat_commands["coverage"],
                 capture_output=True,
                 text=True,
                 cwd=self.project_root,
                 timeout=120,
+                check=False,
             )
 
             if result.returncode == 0:
@@ -110,12 +112,13 @@ class ImprovedReadmeUpdater:
         stats = {}
 
         try:
-            result = subprocess.run(
+            result = subprocess.run(  # nosec B603
                 self.config.stat_commands["bigservice_analysis"],
                 capture_output=True,
                 text=True,
                 cwd=self.project_root,
                 timeout=30,
+                check=False,
             )
 
             if result.returncode == 0:
@@ -184,12 +187,15 @@ class ImprovedReadmeUpdater:
                             def create_replacer(value):
                                 def replacer(m):
                                     return m.group(0).replace(
-                                        m.group(1) if m.groups() else str(value), 
-                                        str(value)
+                                        m.group(1) if m.groups() else str(value),
+                                        str(value),
                                     )
+
                                 return replacer
-                            
-                            new_content = re.sub(pattern, create_replacer(stat_value), content)
+
+                            new_content = re.sub(
+                                pattern, create_replacer(stat_value), content
+                            )
 
                         if new_content != content:
                             content = new_content
@@ -359,10 +365,10 @@ class ImprovedReadmeUpdater:
                 self.logger.info(f"  - {key}: {value:.2f}")
             else:
                 self.logger.info(f"  - {key}: {value}")
-        
+
         if self.dry_run:
             self.logger.info("Running in dry-run mode - no files will be modified")
-        
+
         self.logger.info("\nUpdating README files...")
 
         success = True
@@ -435,7 +441,7 @@ def main():
                 print(f"  - {key}: {value:.2f}")
             else:
                 print(f"  - {key}: {value}")
-        
+
         print("\nValidating README content and statistics...")
         all_issues = []
         for filename in updater.config.readme_files.values():
