@@ -47,7 +47,14 @@ class TestProjectRootDetector:
 
         # Test detection
         detected_root = self.detector.detect_from_file(str(test_file))
-        assert detected_root == str(project_root)
+        # Handle macOS /private/var vs /var difference
+        if detected_root.startswith("/private") and str(project_root).startswith("/"):
+            detected_root = detected_root.replace("/private", "", 1)
+        elif str(project_root).startswith("/private") and detected_root.startswith("/"):
+            project_root_str = str(project_root).replace("/private", "", 1)
+        else:
+            project_root_str = str(project_root)
+        assert detected_root == project_root_str
 
     def test_detect_from_python_project(self):
         """Test detection from Python project markers."""

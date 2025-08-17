@@ -57,16 +57,16 @@ class TestMCPToolsPathResolution(unittest.TestCase):
         elif expected_root.startswith("/private") and actual_root.startswith("/"):
             expected_root = expected_root.replace("/private", "", 1)
         # Handle Windows short name vs long name difference (e.g., RUNNER~1 vs runneradmin)
-        if os.name == "nt" and "\\" in actual_root and "\\" in expected_root:
+        if os.name == "nt" and "/" in actual_root and "/" in expected_root:
             # Extract the username part and normalize it
-            actual_parts = actual_root.split("\\")
-            expected_parts = expected_root.split("\\")
+            actual_parts = actual_root.split("/")
+            expected_parts = expected_root.split("/")
             if len(actual_parts) >= 3 and len(expected_parts) >= 3:
                 # Compare paths ignoring username differences
-                actual_normalized = "\\".join(
+                actual_normalized = "/".join(
                     actual_parts[3:]
                 )  # Skip drive, Users, username
-                expected_normalized = "\\".join(
+                expected_normalized = "/".join(
                     expected_parts[3:]
                 )  # Skip drive, Users, username
                 self.assertEqual(actual_normalized, expected_normalized)
@@ -85,16 +85,16 @@ class TestMCPToolsPathResolution(unittest.TestCase):
         elif expected_root.startswith("/private") and actual_root.startswith("/"):
             expected_root = expected_root.replace("/private", "", 1)
         # Handle Windows short name vs long name difference (e.g., RUNNER~1 vs runneradmin)
-        if os.name == "nt" and "\\" in actual_root and "\\" in expected_root:
+        if os.name == "nt" and "/" in actual_root and "/" in expected_root:
             # Extract the username part and normalize it
-            actual_parts = actual_root.split("\\")
-            expected_parts = expected_root.split("\\")
+            actual_parts = actual_root.split("/")
+            expected_parts = expected_root.split("/")
             if len(actual_parts) >= 3 and len(expected_parts) >= 3:
                 # Compare paths ignoring username differences
-                actual_normalized = "\\".join(
+                actual_normalized = "/".join(
                     actual_parts[3:]
                 )  # Skip drive, Users, username
-                expected_normalized = "\\".join(
+                expected_normalized = "/".join(
                     expected_parts[3:]
                 )  # Skip drive, Users, username
                 self.assertEqual(actual_normalized, expected_normalized)
@@ -115,16 +115,16 @@ class TestMCPToolsPathResolution(unittest.TestCase):
         elif expected_root.startswith("/private") and actual_root.startswith("/"):
             expected_root = expected_root.replace("/private", "", 1)
         # Handle Windows short name vs long name difference (e.g., RUNNER~1 vs runneradmin)
-        if os.name == "nt" and "\\" in actual_root and "\\" in expected_root:
+        if os.name == "nt" and "/" in actual_root and "/" in expected_root:
             # Extract the username part and normalize it
-            actual_parts = actual_root.split("\\")
-            expected_parts = expected_root.split("\\")
+            actual_parts = actual_root.split("/")
+            expected_parts = expected_root.split("/")
             if len(actual_parts) >= 3 and len(expected_parts) >= 3:
                 # Compare paths ignoring username differences
-                actual_normalized = "\\".join(
+                actual_normalized = "/".join(
                     actual_parts[3:]
                 )  # Skip drive, Users, username
-                expected_normalized = "\\".join(
+                expected_normalized = "/".join(
                     expected_parts[3:]
                 )  # Skip drive, Users, username
                 self.assertEqual(actual_normalized, expected_normalized)
@@ -145,16 +145,16 @@ class TestMCPToolsPathResolution(unittest.TestCase):
         elif expected_root.startswith("/private") and actual_root.startswith("/"):
             expected_root = expected_root.replace("/private", "", 1)
         # Handle Windows short name vs long name difference (e.g., RUNNER~1 vs runneradmin)
-        if os.name == "nt" and "\\" in actual_root and "\\" in expected_root:
+        if os.name == "nt" and "/" in actual_root and "/" in expected_root:
             # Extract the username part and normalize it
-            actual_parts = actual_root.split("\\")
-            expected_parts = expected_root.split("\\")
+            actual_parts = actual_root.split("/")
+            expected_parts = expected_root.split("/")
             if len(actual_parts) >= 3 and len(expected_parts) >= 3:
                 # Compare paths ignoring username differences
-                actual_normalized = "\\".join(
+                actual_normalized = "/".join(
                     actual_parts[3:]
                 )  # Skip drive, Users, username
-                expected_normalized = "\\".join(
+                expected_normalized = "/".join(
                     expected_parts[3:]
                 )  # Skip drive, Users, username
                 self.assertEqual(actual_normalized, expected_normalized)
@@ -175,16 +175,16 @@ class TestMCPToolsPathResolution(unittest.TestCase):
         elif expected_root.startswith("/private") and actual_root.startswith("/"):
             expected_root = expected_root.replace("/private", "", 1)
         # Handle Windows short name vs long name difference (e.g., RUNNER~1 vs runneradmin)
-        if os.name == "nt" and "\\" in actual_root and "\\" in expected_root:
+        if os.name == "nt" and "/" in actual_root and "/" in expected_root:
             # Extract the username part and normalize it
-            actual_parts = actual_root.split("\\")
-            expected_parts = expected_root.split("\\")
+            actual_parts = actual_root.split("/")
+            expected_parts = expected_root.split("/")
             if len(actual_parts) >= 3 and len(expected_parts) >= 3:
                 # Compare paths ignoring username differences
-                actual_normalized = "\\".join(
+                actual_normalized = "/".join(
                     actual_parts[3:]
                 )  # Skip drive, Users, username
-                expected_normalized = "\\".join(
+                expected_normalized = "/".join(
                     expected_parts[3:]
                 )  # Skip drive, Users, username
                 self.assertEqual(actual_normalized, expected_normalized)
@@ -255,6 +255,11 @@ class TestMCPToolsPathResolution(unittest.TestCase):
         # Should still work with absolute paths
         absolute_path = self.test_file
         resolved = tool_without_root.path_resolver.resolve(absolute_path)
+        # Handle macOS /private/var vs /var difference
+        if resolved.startswith("/private") and absolute_path.startswith("/"):
+            resolved = resolved.replace("/private", "", 1)
+        elif absolute_path.startswith("/private") and resolved.startswith("/"):
+            absolute_path = absolute_path.replace("/private", "", 1)
         self.assertEqual(resolved, absolute_path)
 
     def test_query_tool_execute_with_path_resolution(self):
@@ -310,7 +315,14 @@ public class Test {
 
         for tool in tools:
             self.assertIsNotNone(tool.path_resolver)
-            self.assertEqual(tool.path_resolver.project_root, self.project_root)
+            # Handle macOS /private/var vs /var difference
+            actual_root = tool.path_resolver.project_root
+            expected_root = self.project_root
+            if actual_root.startswith("/private") and expected_root.startswith("/"):
+                actual_root = actual_root.replace("/private", "", 1)
+            elif expected_root.startswith("/private") and actual_root.startswith("/"):
+                expected_root = expected_root.replace("/private", "", 1)
+            self.assertEqual(actual_root, expected_root)
 
     def test_query_tool_execute_with_path_resolution(self):
         """Test that QueryTool execute method uses path resolution."""

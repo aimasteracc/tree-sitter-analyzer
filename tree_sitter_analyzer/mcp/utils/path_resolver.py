@@ -100,7 +100,12 @@ class PathResolver:
             # If no drive available, continue with normal processing
 
         # Check if path is absolute (after handling Unix paths on Windows)
-        if path_obj.is_absolute():
+        # For Unix-style paths on Unix systems, this should work correctly
+        # Use both pathlib's is_absolute() and our own check for Unix paths
+        is_absolute_by_pathlib = path_obj.is_absolute()
+        is_absolute_by_our_check = normalized_input.startswith("/")
+
+        if is_absolute_by_pathlib or is_absolute_by_our_check:
             resolved_path = str(path_obj.resolve())
             logger.debug(f"Path already absolute: {file_path} -> {resolved_path}")
             self._add_to_cache(file_path, resolved_path)
