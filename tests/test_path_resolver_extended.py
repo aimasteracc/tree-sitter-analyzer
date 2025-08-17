@@ -185,7 +185,10 @@ class TestPathResolverExtended(unittest.TestCase):
         windows_path = "C:\\Users\\test\\file.txt"
         result = self.resolver.resolve(windows_path)
         # Should return the normalized absolute path
-        self.assertEqual(os.path.normpath(result), os.path.normpath(windows_path))
+        # Convert to forward slashes for consistent comparison
+        normalized_result = result.replace("\\", "/")
+        normalized_windows = windows_path.replace("\\", "/")
+        self.assertEqual(normalized_result, normalized_windows)
 
         # Test Unix-style paths on all platforms
         unix_path = "/home/user/file.txt"

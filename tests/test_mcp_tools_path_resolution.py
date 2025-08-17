@@ -103,9 +103,9 @@ class TestMCPToolsPathResolution(unittest.TestCase):
         resolved_unix = self.analyze_scale_tool.path_resolver.resolve(unix_path)
 
         # Both should resolve to the same normalized path
-        # Use normpath to handle platform differences
-        normalized_windows = os.path.normpath(resolved_windows)
-        normalized_unix = os.path.normpath(resolved_unix)
+        # Convert both to forward slashes for consistent comparison
+        normalized_windows = resolved_windows.replace("\\", "/")
+        normalized_unix = resolved_unix.replace("\\", "/")
         self.assertEqual(normalized_windows, normalized_unix)
 
     def test_tools_without_project_root(self):

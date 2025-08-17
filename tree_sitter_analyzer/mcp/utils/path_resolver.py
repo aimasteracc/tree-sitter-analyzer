@@ -52,8 +52,12 @@ class PathResolver:
         if not file_path:
             raise ValueError("file_path cannot be empty or None")
 
-        # Normalize input path first to handle mixed separators
-        normalized_input = os.path.normpath(file_path)
+        # Convert Windows backslashes to forward slashes for consistent handling
+        # This ensures cross-platform compatibility
+        normalized_input = file_path.replace("\\", "/")
+
+        # Normalize the path to handle any remaining issues
+        normalized_input = os.path.normpath(normalized_input)
 
         # If already absolute, return normalized
         if os.path.isabs(normalized_input):
