@@ -3,7 +3,6 @@
 Integration tests for MCP tools path resolution.
 """
 
-import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -46,149 +45,49 @@ class TestMCPToolsPathResolution(unittest.TestCase):
     def test_analyze_scale_tool_uses_path_resolver(self):
         """Test that AnalyzeScaleTool uses PathResolver."""
         self.assertIsNotNone(self.analyze_scale_tool.path_resolver)
-        # Use normalized paths for comparison to handle platform differences
-        actual_root = self.analyze_scale_tool.path_resolver.project_root.replace(
-            "\\", "/"
+        # Use Path.resolve() for proper normalization
+        actual_root = str(
+            Path(self.analyze_scale_tool.path_resolver.project_root).resolve()
         )
-        expected_root = self.project_root.replace("\\", "/")
-        # Handle macOS /private/var vs /var difference
-        if actual_root.startswith("/private") and expected_root.startswith("/"):
-            actual_root = actual_root.replace("/private", "", 1)
-        elif expected_root.startswith("/private") and actual_root.startswith("/"):
-            expected_root = expected_root.replace("/private", "", 1)
-        # Handle Windows short name vs long name difference (e.g., RUNNER~1 vs runneradmin)
-        if os.name == "nt" and "/" in actual_root and "/" in expected_root:
-            # Extract the username part and normalize it
-            actual_parts = actual_root.split("/")
-            expected_parts = expected_root.split("/")
-            if len(actual_parts) >= 3 and len(expected_parts) >= 3:
-                # Compare paths ignoring username differences
-                actual_normalized = "/".join(
-                    actual_parts[3:]
-                )  # Skip drive, Users, username
-                expected_normalized = "/".join(
-                    expected_parts[3:]
-                )  # Skip drive, Users, username
-                self.assertEqual(actual_normalized, expected_normalized)
-                return
+        expected_root = str(Path(self.project_root).resolve())
         self.assertEqual(actual_root, expected_root)
 
     def test_query_tool_uses_path_resolver(self):
         """Test that QueryTool uses PathResolver."""
         self.assertIsNotNone(self.query_tool.path_resolver)
-        # Use normalized paths for comparison to handle platform differences
-        actual_root = self.query_tool.path_resolver.project_root.replace("\\", "/")
-        expected_root = self.project_root.replace("\\", "/")
-        # Handle macOS /private/var vs /var difference
-        if actual_root.startswith("/private") and expected_root.startswith("/"):
-            actual_root = actual_root.replace("/private", "", 1)
-        elif expected_root.startswith("/private") and actual_root.startswith("/"):
-            expected_root = expected_root.replace("/private", "", 1)
-        # Handle Windows short name vs long name difference (e.g., RUNNER~1 vs runneradmin)
-        if os.name == "nt" and "/" in actual_root and "/" in expected_root:
-            # Extract the username part and normalize it
-            actual_parts = actual_root.split("/")
-            expected_parts = expected_root.split("/")
-            if len(actual_parts) >= 3 and len(expected_parts) >= 3:
-                # Compare paths ignoring username differences
-                actual_normalized = "/".join(
-                    actual_parts[3:]
-                )  # Skip drive, Users, username
-                expected_normalized = "/".join(
-                    expected_parts[3:]
-                )  # Skip drive, Users, username
-                self.assertEqual(actual_normalized, expected_normalized)
-                return
+        # Use Path.resolve() for proper normalization
+        actual_root = str(Path(self.query_tool.path_resolver.project_root).resolve())
+        expected_root = str(Path(self.project_root).resolve())
         self.assertEqual(actual_root, expected_root)
 
     def test_read_partial_tool_uses_path_resolver(self):
         """Test that ReadPartialTool uses PathResolver."""
         self.assertIsNotNone(self.read_partial_tool.path_resolver)
-        # Use normalized paths for comparison to handle platform differences
-        actual_root = self.read_partial_tool.path_resolver.project_root.replace(
-            "\\", "/"
+        # Use Path.resolve() for proper normalization
+        actual_root = str(
+            Path(self.read_partial_tool.path_resolver.project_root).resolve()
         )
-        expected_root = self.project_root.replace("\\", "/")
-        # Handle macOS /private/var vs /var difference
-        if actual_root.startswith("/private") and expected_root.startswith("/"):
-            actual_root = actual_root.replace("/private", "", 1)
-        elif expected_root.startswith("/private") and actual_root.startswith("/"):
-            expected_root = expected_root.replace("/private", "", 1)
-        # Handle Windows short name vs long name difference (e.g., RUNNER~1 vs runneradmin)
-        if os.name == "nt" and "/" in actual_root and "/" in expected_root:
-            # Extract the username part and normalize it
-            actual_parts = actual_root.split("/")
-            expected_parts = expected_root.split("/")
-            if len(actual_parts) >= 3 and len(expected_parts) >= 3:
-                # Compare paths ignoring username differences
-                actual_normalized = "/".join(
-                    actual_parts[3:]
-                )  # Skip drive, Users, username
-                expected_normalized = "/".join(
-                    expected_parts[3:]
-                )  # Skip drive, Users, username
-                self.assertEqual(actual_normalized, expected_normalized)
-                return
+        expected_root = str(Path(self.project_root).resolve())
         self.assertEqual(actual_root, expected_root)
 
     def test_table_format_tool_uses_path_resolver(self):
         """Test that TableFormatTool uses PathResolver."""
         self.assertIsNotNone(self.table_format_tool.path_resolver)
-        # Use normalized paths for comparison to handle platform differences
-        actual_root = self.table_format_tool.path_resolver.project_root.replace(
-            "\\", "/"
+        # Use Path.resolve() for proper normalization
+        actual_root = str(
+            Path(self.table_format_tool.path_resolver.project_root).resolve()
         )
-        expected_root = self.project_root.replace("\\", "/")
-        # Handle macOS /private/var vs /var difference
-        if actual_root.startswith("/private") and expected_root.startswith("/"):
-            actual_root = actual_root.replace("/private", "", 1)
-        elif expected_root.startswith("/private") and actual_root.startswith("/"):
-            expected_root = expected_root.replace("/private", "", 1)
-        # Handle Windows short name vs long name difference (e.g., RUNNER~1 vs runneradmin)
-        if os.name == "nt" and "/" in actual_root and "/" in expected_root:
-            # Extract the username part and normalize it
-            actual_parts = actual_root.split("/")
-            expected_parts = expected_root.split("/")
-            if len(actual_parts) >= 3 and len(expected_parts) >= 3:
-                # Compare paths ignoring username differences
-                actual_normalized = "/".join(
-                    actual_parts[3:]
-                )  # Skip drive, Users, username
-                expected_normalized = "/".join(
-                    expected_parts[3:]
-                )  # Skip drive, Users, username
-                self.assertEqual(actual_normalized, expected_normalized)
-                return
+        expected_root = str(Path(self.project_root).resolve())
         self.assertEqual(actual_root, expected_root)
 
     def test_universal_analyze_tool_uses_path_resolver(self):
         """Test that UniversalAnalyzeTool uses PathResolver."""
         self.assertIsNotNone(self.universal_analyze_tool.path_resolver)
-        # Use normalized paths for comparison to handle platform differences
-        actual_root = self.universal_analyze_tool.path_resolver.project_root.replace(
-            "\\", "/"
+        # Use Path.resolve() for proper normalization
+        actual_root = str(
+            Path(self.universal_analyze_tool.path_resolver.project_root).resolve()
         )
-        expected_root = self.project_root.replace("\\", "/")
-        # Handle macOS /private/var vs /var difference
-        if actual_root.startswith("/private") and expected_root.startswith("/"):
-            actual_root = actual_root.replace("/private", "", 1)
-        elif expected_root.startswith("/private") and actual_root.startswith("/"):
-            expected_root = expected_root.replace("/private", "", 1)
-        # Handle Windows short name vs long name difference (e.g., RUNNER~1 vs runneradmin)
-        if os.name == "nt" and "/" in actual_root and "/" in expected_root:
-            # Extract the username part and normalize it
-            actual_parts = actual_root.split("/")
-            expected_parts = expected_root.split("/")
-            if len(actual_parts) >= 3 and len(expected_parts) >= 3:
-                # Compare paths ignoring username differences
-                actual_normalized = "/".join(
-                    actual_parts[3:]
-                )  # Skip drive, Users, username
-                expected_normalized = "/".join(
-                    expected_parts[3:]
-                )  # Skip drive, Users, username
-                self.assertEqual(actual_normalized, expected_normalized)
-                return
+        expected_root = str(Path(self.project_root).resolve())
         self.assertEqual(actual_root, expected_root)
 
     def test_consistent_path_resolution_across_tools(self):
@@ -206,29 +105,9 @@ class TestMCPToolsPathResolution(unittest.TestCase):
 
         # All resolved paths should be the same
         self.assertEqual(len(set(resolved_paths)), 1)
-        # Use normalized paths for comparison to handle platform differences
-        actual_path = resolved_paths[0].replace("\\", "/")
-        expected_path = self.test_file.replace("\\", "/")
-        # Handle macOS /private/var vs /var difference
-        if actual_path.startswith("/private") and expected_path.startswith("/"):
-            actual_path = actual_path.replace("/private", "", 1)
-        elif expected_path.startswith("/private") and actual_path.startswith("/"):
-            expected_path = expected_path.replace("/private", "", 1)
-        # Handle Windows short name vs long name difference (e.g., RUNNER~1 vs runneradmin)
-        if os.name == "nt" and "\\" in actual_path and "\\" in expected_path:
-            # Extract the username part and normalize it
-            actual_parts = actual_path.split("\\")
-            expected_parts = expected_path.split("\\")
-            if len(actual_parts) >= 3 and len(expected_parts) >= 3:
-                # Compare paths ignoring username differences
-                actual_normalized = "\\".join(
-                    actual_parts[3:]
-                )  # Skip drive, Users, username
-                expected_normalized = "\\".join(
-                    expected_parts[3:]
-                )  # Skip drive, Users, username
-                self.assertEqual(actual_normalized, expected_normalized)
-                return
+        # Use Path.resolve() for proper normalization
+        actual_path = str(Path(resolved_paths[0]).resolve())
+        expected_path = str(Path(self.test_file).resolve())
         self.assertEqual(actual_path, expected_path)
 
     def test_cross_platform_path_handling(self):
@@ -255,12 +134,10 @@ class TestMCPToolsPathResolution(unittest.TestCase):
         # Should still work with absolute paths
         absolute_path = self.test_file
         resolved = tool_without_root.path_resolver.resolve(absolute_path)
-        # Handle macOS /private/var vs /var difference
-        if resolved.startswith("/private") and absolute_path.startswith("/"):
-            resolved = resolved.replace("/private", "", 1)
-        elif absolute_path.startswith("/private") and resolved.startswith("/"):
-            absolute_path = absolute_path.replace("/private", "", 1)
-        self.assertEqual(resolved, absolute_path)
+        # Use Path.resolve() for proper normalization
+        resolved_normalized = str(Path(resolved).resolve())
+        expected_normalized = str(Path(absolute_path).resolve())
+        self.assertEqual(resolved_normalized, expected_normalized)
 
     def test_query_tool_execute_with_path_resolution(self):
         """Test that QueryTool execute method uses path resolution."""
@@ -315,13 +192,9 @@ public class Test {
 
         for tool in tools:
             self.assertIsNotNone(tool.path_resolver)
-            # Handle macOS /private/var vs /var difference
-            actual_root = tool.path_resolver.project_root
-            expected_root = self.project_root
-            if actual_root.startswith("/private") and expected_root.startswith("/"):
-                actual_root = actual_root.replace("/private", "", 1)
-            elif expected_root.startswith("/private") and actual_root.startswith("/"):
-                expected_root = expected_root.replace("/private", "", 1)
+            # Use Path.resolve() for proper normalization
+            actual_root = str(Path(tool.path_resolver.project_root).resolve())
+            expected_root = str(Path(self.project_root).resolve())
             self.assertEqual(actual_root, expected_root)
 
     def test_query_tool_execute_with_path_resolution(self):

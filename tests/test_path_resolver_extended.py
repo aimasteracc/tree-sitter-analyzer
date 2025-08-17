@@ -210,7 +210,8 @@ class TestPathResolverExtended(unittest.TestCase):
                 f"Result should start with 'C:\\', got: {result}",
             )
         else:
-            # On non-Windows, should be the same
+            # On non-Windows, Windows absolute paths should be returned as-is
+            # They should not be resolved relative to project root
             normalized_windows = windows_path.replace("\\", "/")
             self.assertEqual(normalized_result, normalized_windows)
 

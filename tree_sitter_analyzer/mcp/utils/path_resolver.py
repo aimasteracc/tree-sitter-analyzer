@@ -8,9 +8,86 @@ operating systems.
 """
 
 import logging
+import os
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
+
+
+def _normalize_path_cross_platform(path_str: str) -> str:
+    """
+    Normalize path for cross-platform compatibility.
+
+    Args:
+        path_str: Input path string
+
+    Returns:
+        Normalized path string
+    """
+    if not path_str:
+        return path_str
+
+    # Handle macOS /private/var vs /var symlink difference
+    if path_str.startswith("/private/var/folders/") and os.name == "posix":
+        # On macOS, /var is a symlink to /private/var
+        # Normalize to the canonical form
+        try:
+            canonical = str(Path(path_str).resolve())
+            # If resolution changes the path, use the resolved version
+            if canonical != path_str:
+                return canonical
+        except (OSError, RuntimeError):
+            # If resolution fails, continue with original path
+            pass
+
+    # Handle Windows short path names (8.3 format)
+    if os.name == "nt" and path_str:
+        try:
+            # Try to get the long path name on Windows
+            import ctypes
+            from ctypes import wintypes
+
+            # GetLongPathNameW function
+            _GetLongPathNameW = ctypes.windll.kernel32.GetLongPathNameW
+            _GetLongPathNameW.argtypes = [
+                wintypes.LPCWSTR,
+                wintypes.LPWSTR,
+                wintypes.DWORD,
+            ]
+            _GetLongPathNameW.restype = wintypes.DWORD
+
+            # Buffer for the long path
+            buffer_size = 1000
+            buffer = ctypes.create_unicode_buffer(buffer_size)
+
+            # Get the long path name
+            result = _GetLongPathNameW(path_str, buffer, buffer_size)
+            if result > 0 and result < buffer_size:
+                long_path = buffer.value
+                if long_path and long_path != path_str:
+                    return long_path
+        except (ImportError, AttributeError, OSError):
+            # If Windows API calls fail, continue with original path
+            pass
+
+    return path_str
+
+
+def _is_windows_absolute_path(path_str: str) -> bool:
+    """
+    Check if a path is a Windows-style absolute path.
+
+    Args:
+        path_str: Path string to check
+
+    Returns:
+        True if it's a Windows absolute path (e.g., C:\\path or C:/path)
+    """
+    if not path_str or len(path_str) < 3:
+        return False
+
+    # Check for drive letter pattern: X:\ or X:/
+    return path_str[1] == ":" and path_str[0].isalpha() and path_str[2] in ("\\", "/")
 
 
 class PathResolver:
@@ -36,7 +113,9 @@ class PathResolver:
             # Use pathlib for consistent path handling, but preserve relative paths for compatibility
             path_obj = Path(project_root)
             if path_obj.is_absolute():
-                self.project_root = str(path_obj.resolve())
+                resolved_root = str(path_obj.resolve())
+                # Apply cross-platform normalization
+                self.project_root = _normalize_path_cross_platform(resolved_root)
             else:
                 # For relative paths, normalize but don't resolve to absolute
                 self.project_root = str(path_obj)
@@ -71,17 +150,25 @@ class PathResolver:
             logger.debug(f"Cache hit for path: {file_path}")
             return self._cache[file_path]
 
-        # Use pathlib for consistent cross-platform path handling
         # Normalize path separators first
         normalized_input = file_path.replace("\\", "/")
+
+        # Special handling for Windows absolute paths on non-Windows systems
+        if _is_windows_absolute_path(file_path) and os.name != "nt":
+            # On non-Windows systems, Windows absolute paths should be treated as-is
+            # Don't try to resolve them relative to project root
+            logger.debug(f"Windows absolute path on non-Windows system: {file_path}")
+            self._add_to_cache(file_path, file_path)
+            return file_path
+
         path_obj = Path(normalized_input)
 
         # Handle Unix-style absolute paths on Windows (starting with /) FIRST
         # This must come before the is_absolute() check because Unix paths aren't
         # considered absolute on Windows by pathlib
         if (
-            normalized_input.startswith("/") and Path.cwd().anchor
-        ):  # Check if we're on Windows by checking for drive letter
+            normalized_input.startswith("/") and os.name == "nt"
+        ):  # Check if we're on Windows
             # On Windows, convert Unix-style absolute paths to Windows format
             # by prepending the current drive with proper separator
             current_drive = Path.cwd().drive
@@ -95,19 +182,18 @@ class PathResolver:
                 logger.debug(
                     f"Converted Unix absolute path: {file_path} -> {resolved_path}"
                 )
+                # Apply cross-platform normalization
+                resolved_path = _normalize_path_cross_platform(resolved_path)
                 self._add_to_cache(file_path, resolved_path)
                 return resolved_path
             # If no drive available, continue with normal processing
 
-        # Check if path is absolute (after handling Unix paths on Windows)
-        # For Unix-style paths on Unix systems, this should work correctly
-        # Use both pathlib's is_absolute() and our own check for Unix paths
-        is_absolute_by_pathlib = path_obj.is_absolute()
-        is_absolute_by_our_check = normalized_input.startswith("/")
-
-        if is_absolute_by_pathlib or is_absolute_by_our_check:
+        # Check if path is absolute
+        if path_obj.is_absolute():
             resolved_path = str(path_obj.resolve())
             logger.debug(f"Path already absolute: {file_path} -> {resolved_path}")
+            # Apply cross-platform normalization
+            resolved_path = _normalize_path_cross_platform(resolved_path)
             self._add_to_cache(file_path, resolved_path)
             return resolved_path
 
@@ -117,6 +203,8 @@ class PathResolver:
             logger.debug(
                 f"Resolved relative path '{file_path}' to '{resolved_path}' using project root"
             )
+            # Apply cross-platform normalization
+            resolved_path = _normalize_path_cross_platform(resolved_path)
             self._add_to_cache(file_path, resolved_path)
             return resolved_path
 
@@ -125,6 +213,9 @@ class PathResolver:
         logger.debug(
             f"Resolved relative path '{file_path}' to '{resolved_path}' using current working directory"
         )
+
+        # Apply cross-platform normalization
+        resolved_path = _normalize_path_cross_platform(resolved_path)
 
         # Cache the result
         self._add_to_cache(file_path, resolved_path)
@@ -276,7 +367,9 @@ class PathResolver:
             # Use pathlib for consistent path handling, but preserve relative paths for compatibility
             path_obj = Path(project_root)
             if path_obj.is_absolute():
-                self.project_root = str(path_obj.resolve())
+                resolved_root = str(path_obj.resolve())
+                # Apply cross-platform normalization
+                self.project_root = _normalize_path_cross_platform(resolved_root)
             else:
                 # For relative paths, normalize but don't resolve to absolute
                 self.project_root = str(path_obj)

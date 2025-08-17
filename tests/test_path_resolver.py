@@ -148,44 +148,18 @@ class TestPathResolver(unittest.TestCase):
         windows_path = "dir\\subdir\\file.txt"
         resolved = self.resolver.resolve(windows_path)
         expected = str(Path(self.project_root) / "dir" / "subdir" / "file.txt")
-        # Both should normalize to the same path
-        # Convert to forward slashes for consistent comparison
-        normalized_resolved = resolved.replace("\\", "/")
-        normalized_expected = expected.replace("\\", "/")
-        # Remove any double slashes for consistent comparison
-        normalized_resolved = normalized_resolved.replace("//", "/")
-        normalized_expected = normalized_expected.replace("//", "/")
-        # Handle macOS /private/var vs /var difference
-        if normalized_resolved.startswith(
-            "/private"
-        ) and normalized_expected.startswith("/"):
-            normalized_resolved = normalized_resolved.replace("/private", "", 1)
-        elif normalized_expected.startswith(
-            "/private"
-        ) and normalized_resolved.startswith("/"):
-            normalized_expected = normalized_resolved.replace("/private", "", 1)
+        # Use Path.resolve() for proper normalization
+        normalized_resolved = str(Path(resolved).resolve())
+        normalized_expected = str(Path(expected).resolve())
         self.assertEqual(normalized_resolved, normalized_expected)
 
         # Test Unix-style path
         unix_path = "dir/subdir/file.txt"
         resolved = self.resolver.resolve(unix_path)
         expected = str(Path(self.project_root) / "dir" / "subdir" / "file.txt")
-        # Both should normalize to the same path
-        # Convert to forward slashes for consistent comparison
-        normalized_resolved = resolved.replace("\\", "/")
-        normalized_expected = expected.replace("\\", "/")
-        # Remove any double slashes for consistent comparison
-        normalized_resolved = normalized_resolved.replace("//", "/")
-        normalized_expected = normalized_expected.replace("//", "/")
-        # Handle macOS /private/var vs /var difference
-        if normalized_resolved.startswith(
-            "/private"
-        ) and normalized_expected.startswith("/"):
-            normalized_resolved = normalized_resolved.replace("/private", "", 1)
-        elif normalized_expected.startswith(
-            "/private"
-        ) and normalized_resolved.startswith("/"):
-            normalized_expected = normalized_resolved.replace("/private", "", 1)
+        # Use Path.resolve() for proper normalization
+        normalized_resolved = str(Path(resolved).resolve())
+        normalized_expected = str(Path(expected).resolve())
         self.assertEqual(normalized_resolved, normalized_expected)
 
     def test_path_normalization(self):
@@ -194,44 +168,18 @@ class TestPathResolver(unittest.TestCase):
         messy_path = "dir//subdir\\\\file.txt"
         resolved = self.resolver.resolve(messy_path)
         expected = str(Path(self.project_root) / "dir" / "subdir" / "file.txt")
-        # Both should normalize to the same path
-        # Convert to forward slashes for consistent comparison
-        normalized_resolved = resolved.replace("\\", "/")
-        normalized_expected = expected.replace("\\", "/")
-        # Remove any double slashes for consistent comparison
-        normalized_resolved = normalized_resolved.replace("//", "/")
-        normalized_expected = normalized_expected.replace("//", "/")
-        # Handle macOS /private/var vs /var difference
-        if normalized_resolved.startswith(
-            "/private"
-        ) and normalized_expected.startswith("/"):
-            normalized_resolved = normalized_resolved.replace("/private", "", 1)
-        elif normalized_expected.startswith(
-            "/private"
-        ) and normalized_resolved.startswith("/"):
-            normalized_expected = normalized_resolved.replace("/private", "", 1)
+        # Use Path.resolve() for proper normalization
+        normalized_resolved = str(Path(resolved).resolve())
+        normalized_expected = str(Path(expected).resolve())
         self.assertEqual(normalized_resolved, normalized_expected)
 
         # Test path with dots
         dot_path = "./dir/../dir/file.txt"
         resolved = self.resolver.resolve(dot_path)
         expected = str(Path(self.project_root) / "dir" / "file.txt")
-        # Both should normalize to the same path
-        # Convert to forward slashes for consistent comparison
-        normalized_resolved = resolved.replace("\\", "/")
-        normalized_expected = expected.replace("\\", "/")
-        # Remove any double slashes for consistent comparison
-        normalized_resolved = normalized_resolved.replace("//", "/")
-        normalized_expected = normalized_expected.replace("//", "/")
-        # Handle macOS /private/var vs /var difference
-        if normalized_resolved.startswith(
-            "/private"
-        ) and normalized_expected.startswith("/"):
-            normalized_resolved = normalized_resolved.replace("/private", "", 1)
-        elif normalized_expected.startswith(
-            "/private"
-        ) and normalized_resolved.startswith("/"):
-            normalized_expected = normalized_resolved.replace("/private", "", 1)
+        # Use Path.resolve() for proper normalization
+        normalized_resolved = str(Path(resolved).resolve())
+        normalized_expected = str(Path(expected).resolve())
         self.assertEqual(normalized_resolved, normalized_expected)
 
 

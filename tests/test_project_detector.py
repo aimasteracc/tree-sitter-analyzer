@@ -48,13 +48,13 @@ class TestProjectRootDetector:
         # Test detection
         detected_root = self.detector.detect_from_file(str(test_file))
         # Handle macOS /private/var vs /var difference
-        if detected_root.startswith("/private") and str(project_root).startswith("/"):
-            detected_root = detected_root.replace("/private", "", 1)
-        elif str(project_root).startswith("/private") and detected_root.startswith("/"):
-            project_root_str = str(project_root).replace("/private", "", 1)
+        if detected_root and str(project_root):
+            # Normalize both paths to handle symlink differences
+            detected_normalized = Path(detected_root).resolve()
+            expected_normalized = Path(project_root).resolve()
+            assert str(detected_normalized) == str(expected_normalized)
         else:
-            project_root_str = str(project_root)
-        assert detected_root == project_root_str
+            assert detected_root == str(project_root)
 
     def test_detect_from_python_project(self):
         """Test detection from Python project markers."""
@@ -75,7 +75,14 @@ class TestProjectRootDetector:
 
         # Test detection
         detected_root = self.detector.detect_from_file(str(test_file))
-        assert detected_root == str(project_root)
+        # Handle macOS /private/var vs /var difference
+        if detected_root and str(project_root):
+            # Normalize both paths to handle symlink differences
+            detected_normalized = Path(detected_root).resolve()
+            expected_normalized = Path(project_root).resolve()
+            assert str(detected_normalized) == str(expected_normalized)
+        else:
+            assert detected_root == str(project_root)
 
     def test_detect_from_javascript_project(self):
         """Test detection from JavaScript project markers."""
@@ -96,7 +103,14 @@ class TestProjectRootDetector:
 
         # Test detection
         detected_root = self.detector.detect_from_file(str(test_file))
-        assert detected_root == str(project_root)
+        # Handle macOS /private/var vs /var difference
+        if detected_root and str(project_root):
+            # Normalize both paths to handle symlink differences
+            detected_normalized = Path(detected_root).resolve()
+            expected_normalized = Path(project_root).resolve()
+            assert str(detected_normalized) == str(expected_normalized)
+        else:
+            assert detected_root == str(project_root)
 
     def test_detect_from_java_project(self):
         """Test detection from Java project markers."""
@@ -117,7 +131,14 @@ class TestProjectRootDetector:
 
         # Test detection
         detected_root = self.detector.detect_from_file(str(test_file))
-        assert detected_root == str(project_root)
+        # Handle macOS /private/var vs /var difference
+        if detected_root and str(project_root):
+            # Normalize both paths to handle symlink differences
+            detected_normalized = Path(detected_root).resolve()
+            expected_normalized = Path(project_root).resolve()
+            assert str(detected_normalized) == str(expected_normalized)
+        else:
+            assert detected_root == str(project_root)
 
     def test_multiple_markers_priority(self):
         """Test that higher priority markers are preferred."""
