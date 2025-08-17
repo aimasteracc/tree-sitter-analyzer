@@ -79,7 +79,15 @@ class PathResolver:
                 resolved_path = resolved_path.replace("/", "\\")
             elif os.name == "nt":
                 # On actual Windows, convert other absolute paths to Windows separators
-                resolved_path = resolved_path.replace("/", "\\")
+                # Also handle Unix-style absolute paths by converting to Windows format
+                if normalized_input.startswith("/"):
+                    # Convert Unix absolute path to Windows format with current drive
+                    current_drive = os.path.splitdrive(os.getcwd())[0]
+                    resolved_path = (
+                        current_drive + "\\" + normalized_input[1:].replace("/", "\\")
+                    )
+                else:
+                    resolved_path = resolved_path.replace("/", "\\")
 
             logger.debug(f"Path already absolute: {file_path} -> {resolved_path}")
             return resolved_path
