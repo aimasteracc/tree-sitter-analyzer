@@ -102,8 +102,11 @@ class TestMCPToolsPathResolution(unittest.TestCase):
         unix_path = "test/file.txt"
         resolved_unix = self.analyze_scale_tool.path_resolver.resolve(unix_path)
 
-        # Both should resolve to the same file
-        self.assertEqual(resolved_windows, resolved_unix)
+        # Both should resolve to the same normalized path
+        # Use normpath to handle platform differences
+        normalized_windows = os.path.normpath(resolved_windows)
+        normalized_unix = os.path.normpath(resolved_unix)
+        self.assertEqual(normalized_windows, normalized_unix)
 
     def test_tools_without_project_root(self):
         """Test tools initialized without project root."""

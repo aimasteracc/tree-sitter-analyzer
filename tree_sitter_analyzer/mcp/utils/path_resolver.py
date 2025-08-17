@@ -52,16 +52,19 @@ class PathResolver:
         if not file_path:
             raise ValueError("file_path cannot be empty or None")
 
-        # If already absolute, return as is
-        if os.path.isabs(file_path):
-            resolved_path = os.path.normpath(file_path)
+        # Normalize input path first to handle mixed separators
+        normalized_input = os.path.normpath(file_path)
+
+        # If already absolute, return normalized
+        if os.path.isabs(normalized_input):
+            resolved_path = os.path.normpath(normalized_input)
             logger.debug(f"Path already absolute: {file_path} -> {resolved_path}")
             return resolved_path
 
         # If we have a project root, resolve relative to it
         if self.project_root:
-            resolved_path = os.path.join(self.project_root, file_path)
-            # Normalize path separators for cross-platform compatibility
+            # Use os.path.join for cross-platform compatibility, then normalize
+            resolved_path = os.path.join(self.project_root, normalized_input)
             resolved_path = os.path.normpath(resolved_path)
             logger.debug(
                 f"Resolved relative path '{file_path}' to '{resolved_path}' using project root"
@@ -69,7 +72,7 @@ class PathResolver:
             return resolved_path
 
         # Fallback: try to resolve relative to current working directory
-        resolved_path = os.path.abspath(file_path)
+        resolved_path = os.path.abspath(normalized_input)
         resolved_path = os.path.normpath(resolved_path)
         logger.debug(
             f"Resolved relative path '{file_path}' to '{resolved_path}' using current working directory"
@@ -141,6 +144,10 @@ class PathResolver:
             # Check if it's a file (not directory)
             if not os.path.isfile(resolved_path):
                 return False, f"Path is not a file: {resolved_path}"
+
+            # Check if it's a symlink (reject symlinks for security)
+            if os.path.islink(resolved_path):
+                return False, f"Path is a symlink: {resolved_path}"
 
             # Check if it's within project root (if we have one)
             if self.project_root:

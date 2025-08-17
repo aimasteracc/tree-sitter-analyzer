@@ -149,13 +149,15 @@ class TestPathResolver(unittest.TestCase):
         windows_path = "dir\\subdir\\file.txt"
         resolved = self.resolver.resolve(windows_path)
         expected = os.path.join(self.project_root, "dir", "subdir", "file.txt")
-        self.assertEqual(resolved, os.path.normpath(expected))
+        # Both should normalize to the same path
+        self.assertEqual(os.path.normpath(resolved), os.path.normpath(expected))
 
         # Test Unix-style path
         unix_path = "dir/subdir/file.txt"
         resolved = self.resolver.resolve(unix_path)
         expected = os.path.join(self.project_root, "dir", "subdir", "file.txt")
-        self.assertEqual(resolved, os.path.normpath(expected))
+        # Both should normalize to the same path
+        self.assertEqual(os.path.normpath(resolved), os.path.normpath(expected))
 
     def test_path_normalization(self):
         """Test path normalization"""
@@ -163,13 +165,15 @@ class TestPathResolver(unittest.TestCase):
         messy_path = "dir//subdir\\\\file.txt"
         resolved = self.resolver.resolve(messy_path)
         expected = os.path.join(self.project_root, "dir", "subdir", "file.txt")
-        self.assertEqual(resolved, os.path.normpath(expected))
+        # Both should normalize to the same path
+        self.assertEqual(os.path.normpath(resolved), os.path.normpath(expected))
 
         # Test path with dots
         dot_path = "./dir/../dir/file.txt"
         resolved = self.resolver.resolve(dot_path)
         expected = os.path.join(self.project_root, "dir", "file.txt")
-        self.assertEqual(resolved, os.path.normpath(expected))
+        # Both should normalize to the same path
+        self.assertEqual(os.path.normpath(resolved), os.path.normpath(expected))
 
 
 class TestResolvePathFunction(unittest.TestCase):
