@@ -5,8 +5,8 @@ Tests for Encoding Utilities Module
 This module tests unified encoding/decoding functionality.
 """
 
-import os
 import tempfile
+from pathlib import Path
 
 import pytest
 
@@ -176,7 +176,7 @@ class TestFileOperations:
 
         finally:
             try:
-                os.unlink(temp_path)
+                Path(temp_path).unlink()
             except (OSError, PermissionError):
                 pass  # Ignore cleanup errors on Windows
 
@@ -196,7 +196,7 @@ class TestFileOperations:
 
         finally:
             try:
-                os.unlink(temp_path)
+                Path(temp_path).unlink()
             except (OSError, PermissionError):
                 pass  # Ignore cleanup errors on Windows
 
@@ -221,8 +221,9 @@ class TestFileOperations:
             assert result_content == content
 
         finally:
-            if os.path.exists(temp_path):
-                os.unlink(temp_path)
+            temp_file = Path(temp_path)
+            if temp_file.exists():
+                temp_file.unlink()
 
     def test_write_file_safe_unicode(self):
         """Test safe file writing with unicode"""
@@ -240,8 +241,9 @@ class TestFileOperations:
             assert result_content == content
 
         finally:
-            if os.path.exists(temp_path):
-                os.unlink(temp_path)
+            temp_file = Path(temp_path)
+            if temp_file.exists():
+                temp_file.unlink()
 
     def test_read_write_roundtrip(self):
         """Test read-write roundtrip consistency"""
@@ -277,8 +279,9 @@ public class TestClass {
             assert read_content == original_content
 
         finally:
-            if os.path.exists(temp_path):
-                os.unlink(temp_path)
+            temp_file = Path(temp_path)
+            if temp_file.exists():
+                temp_file.unlink()
 
 
 class TestConvenienceFunctions:
@@ -316,7 +319,7 @@ class TestConvenienceFunctions:
 
         finally:
             try:
-                os.unlink(temp_path)
+                Path(temp_path).unlink()
             except (OSError, PermissionError):
                 pass  # Ignore cleanup errors on Windows
 
@@ -332,8 +335,9 @@ class TestConvenienceFunctions:
             assert success is True
 
         finally:
-            if os.path.exists(temp_path):
-                os.unlink(temp_path)
+            temp_file = Path(temp_path)
+            if temp_file.exists():
+                temp_file.unlink()
 
     def test_extract_text_slice_function(self):
         """Test extract_text_slice convenience function"""

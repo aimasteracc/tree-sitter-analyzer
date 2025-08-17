@@ -8,7 +8,7 @@ operating systems.
 """
 
 import logging
-import os
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -28,10 +28,18 @@ class PathResolver:
         Args:
             project_root: Optional project root directory for resolving relative paths
         """
-        self.project_root = project_root
+        self.project_root = None
+        self._cache = {}  # Simple cache for resolved paths
+        self._cache_size_limit = 100  # Limit cache size to prevent memory issues
+
         if project_root:
-            # Normalize project root path
-            self.project_root = os.path.normpath(project_root)
+            # Use pathlib for consistent path handling, but preserve relative paths for compatibility
+            path_obj = Path(project_root)
+            if path_obj.is_absolute():
+                self.project_root = str(path_obj.resolve())
+            else:
+                # For relative paths, normalize but don't resolve to absolute
+                self.project_root = str(path_obj)
             logger.debug(
                 f"PathResolver initialized with project root: {self.project_root}"
             )
@@ -58,61 +66,93 @@ class PathResolver:
                 f"file_path must be a string, got {type(file_path).__name__}"
             )
 
-        # Convert Windows backslashes to forward slashes for consistent handling
-        # This ensures cross-platform compatibility
-        normalized_input = file_path.replace("\\", "/")
+        # Check cache first
+        if file_path in self._cache:
+            logger.debug(f"Cache hit for path: {file_path}")
+            return self._cache[file_path]
 
-        # Normalize the path to handle any remaining issues
-        normalized_input = os.path.normpath(normalized_input)
+        # Use pathlib for consistent cross-platform path handling
+        path_obj = Path(file_path)
 
-        # Check if path is absolute (including Windows drive letters)
-        # Windows absolute paths like "C:/Users/test/file.txt" should be detected
-        if os.path.isabs(normalized_input) or (
-            len(normalized_input) > 1 and normalized_input[1] == ":"
-        ):
-            resolved_path = os.path.normpath(normalized_input)
-
-            # Detect Windows-style paths by checking for drive letter pattern
-            # This works regardless of the actual platform
-            if len(normalized_input) > 1 and normalized_input[1] == ":":
-                # This is a Windows drive letter path, convert to Windows separators
-                resolved_path = resolved_path.replace("/", "\\")
-            elif normalized_input.startswith("/"):
-                # This is a Unix-style absolute path
-                # Convert to Windows format if we're on Windows or if the test expects Windows format
-                if os.name == "nt":
-                    # On actual Windows, convert to Windows format with current drive
-                    current_drive = os.path.splitdrive(os.getcwd())[0]
-                    resolved_path = (
-                        current_drive + "\\" + normalized_input[1:].replace("/", "\\")
-                    )
-                else:
-                    # On non-Windows, keep Unix format but ensure consistent separators
-                    resolved_path = resolved_path.replace("\\", "/")
-            elif os.name == "nt":
-                # On actual Windows, convert other absolute paths to Windows separators
-                resolved_path = resolved_path.replace("/", "\\")
-
+        # Check if path is absolute
+        if path_obj.is_absolute():
+            resolved_path = str(path_obj.resolve())
             logger.debug(f"Path already absolute: {file_path} -> {resolved_path}")
+            self._add_to_cache(file_path, resolved_path)
             return resolved_path
+
+        # Handle Unix-style absolute paths on Windows (starting with /)
+        if (
+            file_path.startswith("/") and Path().anchor
+        ):  # Check if we're on Windows by checking for drive letter
+            # On Windows, convert Unix-style absolute paths to Windows format
+            # by prepending the current drive with proper separator
+            current_drive = Path.cwd().drive
+            if current_drive:
+                # Remove leading slash and join with current drive
+                unix_path_without_slash = file_path[1:]
+                # Ensure proper Windows path format with backslash after drive
+                resolved_path = str(
+                    Path(current_drive + "\\") / unix_path_without_slash
+                )
+                logger.debug(
+                    f"Converted Unix absolute path: {file_path} -> {resolved_path}"
+                )
+                self._add_to_cache(file_path, resolved_path)
+                return resolved_path
 
         # If we have a project root, resolve relative to it
         if self.project_root:
-            # Use os.path.join for cross-platform compatibility, then normalize
-            resolved_path = os.path.join(self.project_root, normalized_input)
-            resolved_path = os.path.normpath(resolved_path)
+            resolved_path = str((Path(self.project_root) / file_path).resolve())
             logger.debug(
                 f"Resolved relative path '{file_path}' to '{resolved_path}' using project root"
             )
+            self._add_to_cache(file_path, resolved_path)
             return resolved_path
 
         # Fallback: try to resolve relative to current working directory
-        resolved_path = os.path.abspath(normalized_input)
-        resolved_path = os.path.normpath(resolved_path)
+        resolved_path = str(Path(file_path).resolve())
         logger.debug(
             f"Resolved relative path '{file_path}' to '{resolved_path}' using current working directory"
         )
+
+        # Cache the result
+        self._add_to_cache(file_path, resolved_path)
+
         return resolved_path
+
+    def _add_to_cache(self, file_path: str, resolved_path: str) -> None:
+        """
+        Add a resolved path to the cache.
+
+        Args:
+            file_path: Original file path
+            resolved_path: Resolved absolute path
+        """
+        # Limit cache size to prevent memory issues
+        if len(self._cache) >= self._cache_size_limit:
+            # Remove oldest entries (simple FIFO)
+            oldest_key = next(iter(self._cache))
+            del self._cache[oldest_key]
+            logger.debug(f"Cache full, removed oldest entry: {oldest_key}")
+
+        self._cache[file_path] = resolved_path
+        logger.debug(f"Cached path resolution: {file_path} -> {resolved_path}")
+
+    def clear_cache(self) -> None:
+        """Clear the path resolution cache."""
+        cache_size = len(self._cache)
+        self._cache.clear()
+        logger.info(f"Cleared path resolution cache ({cache_size} entries)")
+
+    def get_cache_stats(self) -> dict[str, int]:
+        """
+        Get cache statistics.
+
+        Returns:
+            Dictionary with cache statistics
+        """
+        return {"size": len(self._cache), "limit": self._cache_size_limit}
 
     def is_relative(self, file_path: str) -> bool:
         """
@@ -124,7 +164,7 @@ class PathResolver:
         Returns:
             True if the path is relative, False if absolute
         """
-        return not os.path.isabs(file_path)
+        return not Path(file_path).is_absolute()
 
     def get_relative_path(self, absolute_path: str) -> str:
         """
@@ -139,15 +179,17 @@ class PathResolver:
         Raises:
             ValueError: If absolute_path is not actually absolute
         """
-        if not os.path.isabs(absolute_path):
+        abs_path = Path(absolute_path)
+        if not abs_path.is_absolute():
             raise ValueError(f"Path is not absolute: {absolute_path}")
 
         if not self.project_root:
             return absolute_path
 
         try:
-            # Get relative path from project root
-            relative_path = os.path.relpath(absolute_path, self.project_root)
+            # Get relative path from project root using pathlib
+            project_path = Path(self.project_root)
+            relative_path = str(abs_path.relative_to(project_path))
             logger.debug(
                 f"Converted absolute path '{absolute_path}' to relative path '{relative_path}'"
             )
@@ -171,23 +213,26 @@ class PathResolver:
         """
         try:
             resolved_path = self.resolve(file_path)
+            resolved_path_obj = Path(resolved_path)
 
-            # Check if file exists
-            if not os.path.exists(resolved_path):
+            if not resolved_path_obj.exists():
                 return False, f"File does not exist: {resolved_path}"
 
             # Check if it's a file (not directory)
-            if not os.path.isfile(resolved_path):
+            if not resolved_path_obj.is_file():
                 return False, f"Path is not a file: {resolved_path}"
 
             # Check if it's a symlink (reject symlinks for security)
-            if os.path.islink(resolved_path):
+            if resolved_path_obj.is_symlink():
                 return False, f"Path is a symlink: {resolved_path}"
 
             # Check if it's within project root (if we have one)
             if self.project_root:
                 try:
-                    os.path.commonpath([resolved_path, self.project_root])
+                    project_path = Path(self.project_root).resolve()
+                    resolved_abs_path = resolved_path_obj.resolve()
+                    # Check if the resolved path is within the project root
+                    resolved_abs_path.relative_to(project_path)
                 except ValueError:
                     return False, f"File path is outside project root: {resolved_path}"
 
@@ -213,7 +258,13 @@ class PathResolver:
             project_root: New project root directory
         """
         if project_root:
-            self.project_root = os.path.normpath(project_root)
+            # Use pathlib for consistent path handling, but preserve relative paths for compatibility
+            path_obj = Path(project_root)
+            if path_obj.is_absolute():
+                self.project_root = str(path_obj.resolve())
+            else:
+                # For relative paths, normalize but don't resolve to absolute
+                self.project_root = str(path_obj)
             logger.info(f"Project root updated to: {self.project_root}")
         else:
             self.project_root = None

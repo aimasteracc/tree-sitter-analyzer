@@ -7,8 +7,8 @@ to improve overall test coverage and test edge cases.
 """
 
 import asyncio
-import os
 import tempfile
+from pathlib import Path
 
 import pytest
 
@@ -33,7 +33,7 @@ class TestReadPartialToolEdgeCases:
     @pytest.mark.asyncio
     async def test_execute_with_empty_file(self, tool, temp_dir):
         """Test reading from an empty file."""
-        empty_file = os.path.join(temp_dir, "empty.txt")
+        empty_file = str(Path(temp_dir) / "empty.txt")
         with open(empty_file, "w") as f:
             f.write("")
 
@@ -47,7 +47,7 @@ class TestReadPartialToolEdgeCases:
     @pytest.mark.asyncio
     async def test_execute_with_single_line_file(self, tool, temp_dir):
         """Test reading from a single line file."""
-        single_line_file = os.path.join(temp_dir, "single.txt")
+        single_line_file = str(Path(temp_dir) / "single.txt")
         with open(single_line_file, "w") as f:
             f.write("Single line content")
 
@@ -61,7 +61,7 @@ class TestReadPartialToolEdgeCases:
     @pytest.mark.asyncio
     async def test_execute_with_large_line_range(self, tool, temp_dir):
         """Test reading with a very large line range."""
-        test_file = os.path.join(temp_dir, "test.txt")
+        test_file = str(Path(temp_dir) / "test.txt")
         content = "\n".join([f"Line {i}" for i in range(1, 101)])  # 100 lines
 
         with open(test_file, "w") as f:
@@ -81,7 +81,7 @@ class TestReadPartialToolEdgeCases:
     @pytest.mark.asyncio
     async def test_execute_with_negative_line_numbers(self, tool, temp_dir):
         """Test reading with negative line numbers."""
-        test_file = os.path.join(temp_dir, "test.txt")
+        test_file = str(Path(temp_dir) / "test.txt")
         with open(test_file, "w") as f:
             f.write("Line 1\nLine 2\nLine 3")
 
@@ -99,7 +99,7 @@ class TestReadPartialToolEdgeCases:
     @pytest.mark.asyncio
     async def test_execute_with_reversed_line_range(self, tool, temp_dir):
         """Test reading with start_line > end_line."""
-        test_file = os.path.join(temp_dir, "test.txt")
+        test_file = str(Path(temp_dir) / "test.txt")
         with open(test_file, "w") as f:
             f.write("Line 1\nLine 2\nLine 3")
 
@@ -121,7 +121,7 @@ class TestReadPartialToolEdgeCases:
     @pytest.mark.asyncio
     async def test_execute_with_unicode_content(self, tool, temp_dir):
         """Test reading files with Unicode content."""
-        unicode_file = os.path.join(temp_dir, "unicode.txt")
+        unicode_file = str(Path(temp_dir) / "unicode.txt")
         unicode_content = """Line 1: Hello, 世界!
 Line 2: 🌍 Unicode test
 Line 3: Тест на русском
@@ -141,7 +141,7 @@ Line 5: 日本語テスト"""
     @pytest.mark.asyncio
     async def test_execute_with_binary_file(self, tool, temp_dir):
         """Test reading from a binary file."""
-        binary_file = os.path.join(temp_dir, "binary.bin")
+        binary_file = str(Path(temp_dir) / "binary.bin")
         with open(binary_file, "wb") as f:
             f.write(b"\x00\x01\x02\x03\x04\x05")
 
@@ -302,7 +302,7 @@ class TestReadPartialToolPerformance:
         # Create multiple test files
         test_files = []
         for i in range(5):
-            file_path = os.path.join(temp_dir, f"test_{i}.txt")
+            file_path = str(Path(temp_dir) / f"test_{i}.txt")
             content = "\n".join([f"File {i}, Line {j}" for j in range(1, 21)])
             with open(file_path, "w") as f:
                 f.write(content)
@@ -328,7 +328,7 @@ class TestReadPartialToolPerformance:
     async def test_reading_large_file_portions(self, tool, temp_dir):
         """Test reading large portions of files."""
         # Create a large file
-        large_file = os.path.join(temp_dir, "large.txt")
+        large_file = str(Path(temp_dir) / "large.txt")
         large_content = "\n".join(
             [f"Line {i}: " + "x" * 100 for i in range(1, 1001)]
         )  # 1000 lines
@@ -357,7 +357,7 @@ class TestReadPartialToolPerformance:
         import gc
 
         # Create test file
-        test_file = os.path.join(temp_dir, "test.txt")
+        test_file = str(Path(temp_dir) / "test.txt")
         content = "\n".join([f"Line {i}" for i in range(1, 101)])
 
         with open(test_file, "w") as f:
@@ -399,7 +399,7 @@ class TestReadPartialToolIntegration:
     @pytest.mark.asyncio
     async def test_tool_with_realistic_source_file(self, tool, temp_dir):
         """Test tool with realistic source code file."""
-        source_file = os.path.join(temp_dir, "example.py")
+        source_file = str(Path(temp_dir) / "example.py")
         source_content = """#!/usr/bin/env python3
 '''
 Example Python module for testing partial reading.
@@ -465,7 +465,7 @@ if __name__ == "__main__":
         ]
 
         for filename, content in file_types:
-            file_path = os.path.join(temp_dir, filename)
+            file_path = str(Path(temp_dir) / filename)
             with open(file_path, "w") as f:
                 f.write(content)
 

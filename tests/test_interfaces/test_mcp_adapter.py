@@ -7,8 +7,8 @@ between the MCP server and the core analysis engine in the new architecture.
 """
 
 import asyncio
-import os
 import tempfile
+from pathlib import Path
 from unittest.mock import Mock, patch
 
 import pytest
@@ -105,7 +105,7 @@ if __name__ == "__main__":
             assert result.node_count > 0
 
         finally:
-            os.unlink(sample_java_file)
+            Path(sample_java_file).unlink()
 
     @pytest.mark.asyncio
     async def test_analyze_file_async_python_success(
@@ -122,7 +122,7 @@ if __name__ == "__main__":
             assert result.elements is not None
 
         finally:
-            os.unlink(sample_python_file)
+            Path(sample_python_file).unlink()
 
     @pytest.mark.asyncio
     async def test_analyze_file_async_with_options(
@@ -138,7 +138,7 @@ if __name__ == "__main__":
             assert result.file_path == sample_java_file
 
         finally:
-            os.unlink(sample_java_file)
+            Path(sample_java_file).unlink()
 
     @pytest.mark.asyncio
     @pytest.mark.asyncio
@@ -165,7 +165,7 @@ if __name__ == "__main__":
             assert "structure" in result or "elements" in result
 
         finally:
-            os.unlink(sample_java_file)
+            Path(sample_java_file).unlink()
 
     @pytest.mark.asyncio
     async def test_get_file_structure_async_with_options(
@@ -180,7 +180,7 @@ if __name__ == "__main__":
             assert isinstance(result, dict)
 
         finally:
-            os.unlink(sample_java_file)
+            Path(sample_java_file).unlink()
 
     @pytest.mark.asyncio
     async def test_analyze_batch_async_success(self, mcp_adapter: MCPAdapter) -> None:
@@ -210,8 +210,9 @@ if __name__ == "__main__":
 
         finally:
             for file_path in files:
-                if os.path.exists(file_path):
-                    os.unlink(file_path)
+                path_obj = Path(file_path)
+                if path_obj.exists():
+                    path_obj.unlink()
 
     @pytest.mark.asyncio
     async def test_analyze_batch_async_with_options(
@@ -237,8 +238,9 @@ if __name__ == "__main__":
 
         finally:
             for file_path in files:
-                if os.path.exists(file_path):
-                    os.unlink(file_path)
+                path_obj = Path(file_path)
+                if path_obj.exists():
+                    path_obj.unlink()
 
     @pytest.mark.asyncio
     async def test_analyze_batch_async_empty_list(
@@ -336,7 +338,7 @@ if __name__ == "__main__":
             assert result.language == "java"
 
         finally:
-            os.unlink(mcp_request["file_path"])
+            Path(mcp_request["file_path"]).unlink()
 
     @pytest.mark.asyncio
     async def test_analyze_with_mcp_request_missing_file_path(
@@ -392,7 +394,7 @@ class TestMCPAdapterErrorHandling:
                 with pytest.raises(PermissionError):
                     await mcp_adapter.analyze_file_async(temp_path)
             finally:
-                os.unlink(temp_path)
+                Path(temp_path).unlink()
 
     @pytest.mark.asyncio
     async def test_analyze_file_async_unsupported_language(
@@ -408,7 +410,7 @@ class TestMCPAdapterErrorHandling:
                 await mcp_adapter.analyze_file_async(temp_path)
 
         finally:
-            os.unlink(temp_path)
+            Path(temp_path).unlink()
 
     @pytest.mark.asyncio
     @pytest.mark.asyncio
@@ -446,8 +448,9 @@ class TestMCPAdapterErrorHandling:
 
         finally:
             for file_path in files:
-                if os.path.exists(file_path):
-                    os.unlink(file_path)
+                path_obj = Path(file_path)
+                if path_obj.exists():
+                    path_obj.unlink()
 
     @pytest.mark.asyncio
     @pytest.mark.asyncio
@@ -503,7 +506,7 @@ class TestMCPAdapterErrorHandling:
                     await mcp_adapter.analyze_file_async(temp_path)
 
             finally:
-                os.unlink(temp_path)
+                Path(temp_path).unlink()
 
 
 class TestMCPServerAdapter:
@@ -546,7 +549,7 @@ class TestMCPServerAdapter:
             assert "result" in result or "error" in result
 
         finally:
-            os.unlink(request["params"]["file_path"])
+            Path(request["params"]["file_path"]).unlink()
 
     @pytest.mark.asyncio
     async def test_handle_request_get_structure(
@@ -567,7 +570,7 @@ class TestMCPServerAdapter:
             assert isinstance(result, dict)
 
         finally:
-            os.unlink(request["params"]["file_path"])
+            Path(request["params"]["file_path"]).unlink()
 
     @pytest.mark.asyncio
     async def test_handle_request_invalid_method(
@@ -665,7 +668,7 @@ public class DataProcessor {
             assert isinstance(mcp_result, AnalysisResult)
 
         finally:
-            os.unlink(temp_path)
+            Path(temp_path).unlink()
 
     @pytest.mark.asyncio
     async def test_concurrent_analysis_requests(self, mcp_adapter: MCPAdapter) -> None:
@@ -691,8 +694,9 @@ public class DataProcessor {
 
         finally:
             for file_path in files:
-                if os.path.exists(file_path):
-                    os.unlink(file_path)
+                path_obj = Path(file_path)
+                if path_obj.exists():
+                    path_obj.unlink()
 
     @pytest.mark.asyncio
     async def test_mcp_adapter_resource_management(
@@ -714,7 +718,7 @@ public class DataProcessor {
                 assert isinstance(result, AnalysisResult)
 
             finally:
-                os.unlink(temp_path)
+                Path(temp_path).unlink()
 
         # Test cleanup
         mcp_adapter.cleanup()
@@ -748,4 +752,4 @@ public class DataProcessor {
             assert result.node_count > 0
 
         finally:
-            os.unlink(temp_path)
+            Path(temp_path).unlink()

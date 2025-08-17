@@ -3,9 +3,9 @@
 Tests for partial file reading functionality
 """
 
-import os
 import sys
 import tempfile
+from pathlib import Path
 
 import pytest
 
@@ -59,8 +59,9 @@ def test_file():
     yield file_path
 
     # Cleanup
-    if os.path.exists(file_path):
-        os.unlink(file_path)
+    path_obj = Path(file_path)
+    if path_obj.exists():
+        path_obj.unlink()
 
 
 @pytest.fixture
@@ -74,8 +75,9 @@ def empty_file():
     yield file_path
 
     # Cleanup
-    if os.path.exists(file_path):
-        os.unlink(file_path)
+    path_obj = Path(file_path)
+    if path_obj.exists():
+        path_obj.unlink()
 
 
 @pytest.fixture
@@ -90,8 +92,9 @@ def single_line_file():
     yield file_path
 
     # Cleanup
-    if os.path.exists(file_path):
-        os.unlink(file_path)
+    path_obj = Path(file_path)
+    if path_obj.exists():
+        path_obj.unlink()
 
 
 @pytest.fixture
@@ -116,8 +119,9 @@ def cli_test_file():
     yield file_path
 
     # Cleanup
-    if os.path.exists(file_path):
-        os.unlink(file_path)
+    path_obj = Path(file_path)
+    if path_obj.exists():
+        path_obj.unlink()
 
 
 def test_read_line_range_1_to_5(test_file):

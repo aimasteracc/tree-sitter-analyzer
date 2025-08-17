@@ -3,9 +3,9 @@
 Integration tests for MCP tools path resolution.
 """
 
-import os
 import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 from tree_sitter_analyzer.mcp.tools.analyze_scale_tool import AnalyzeScaleTool
@@ -21,11 +21,11 @@ class TestMCPToolsPathResolution(unittest.TestCase):
     def setUp(self):
         """Set up test fixtures."""
         self.temp_dir = tempfile.mkdtemp()
-        self.project_root = os.path.join(self.temp_dir, "project")
-        os.makedirs(self.project_root, exist_ok=True)
+        self.project_root = str(Path(self.temp_dir) / "project")
+        Path(self.project_root).mkdir(parents=True, exist_ok=True)
 
         # Create test files
-        self.test_file = os.path.join(self.project_root, "test_file.txt")
+        self.test_file = str(Path(self.project_root) / "test_file.txt")
         with open(self.test_file, "w") as f:
             f.write("test content")
 
@@ -138,11 +138,11 @@ class TestMCPToolsIntegration(unittest.TestCase):
     def setUp(self):
         """Set up test fixtures."""
         self.temp_dir = tempfile.mkdtemp()
-        self.project_root = os.path.join(self.temp_dir, "project")
-        os.makedirs(self.project_root, exist_ok=True)
+        self.project_root = str(Path(self.temp_dir) / "project")
+        Path(self.project_root).mkdir(exist_ok=True)
 
         # Create a simple Java file for testing
-        self.java_file = os.path.join(self.project_root, "Test.java")
+        self.java_file = str(Path(self.project_root) / "Test.java")
         with open(self.java_file, "w") as f:
             f.write(
                 """

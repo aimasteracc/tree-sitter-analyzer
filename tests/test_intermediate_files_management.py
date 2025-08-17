@@ -6,7 +6,6 @@ This module tests the intermediate files management features added in .roo-confi
 to ensure proper cleanup, isolation, and monitoring according to coding rules.
 """
 
-import os
 import time
 from pathlib import Path
 from typing import Any
@@ -51,7 +50,7 @@ class IntermediateFilesManager:
         if not self.enabled:
             return False
 
-        file_name = os.path.basename(file_path)
+        file_name = Path(file_path).name
 
         # Check excluded patterns first
         for pattern in self.excluded_patterns:
@@ -97,14 +96,14 @@ class IntermediateFilesManager:
 
     def cleanup_file(self, file_path: str) -> bool:
         """Clean up a specific intermediate file"""
-        if not self.enabled or not os.path.exists(file_path):
+        if not self.enabled or not Path(file_path).exists():
             return False
 
         try:
             if self.cleanup_rules.get("warn_before_deletion", True):
                 log_warning(f"Cleaning up intermediate file: {file_path}")
 
-            os.remove(file_path)
+            Path(file_path).unlink()
 
             if file_path in self.tracked_files:
                 self.tracked_files.remove(file_path)
@@ -165,7 +164,7 @@ class IntermediateFilesManager:
         if not self.project_pollution_prevention.get("validate_cleanup", True):
             return True
 
-        remaining_files = [f for f in self.tracked_files if os.path.exists(f)]
+        remaining_files = [f for f in self.tracked_files if Path(f).exists()]
 
         if remaining_files:
             log_warning(
@@ -197,7 +196,7 @@ class IntermediateFilesManager:
             "tracked_files_count": len(self.tracked_files),
             "tracked_files": self.tracked_files.copy(),
             "temp_directory": self.temp_directory,
-            "temp_directory_exists": os.path.exists(self.temp_directory),
+            "temp_directory_exists": Path(self.temp_directory).exists(),
             "cleanup_validation_passed": self.validate_cleanup(),
             "within_file_limit": self.check_temp_file_limit(),
         }
@@ -304,8 +303,9 @@ class TestIntermediateFilesManager:
 
         temp_dir = manager.create_temp_directory()
         assert temp_dir == str(tmp_path / "test_temp")
-        assert os.path.exists(temp_dir)
-        assert os.path.isdir(temp_dir)
+        temp_path = Path(temp_dir)
+        assert temp_path.exists()
+        assert temp_path.is_dir()
 
     def test_track_file(self, manager: IntermediateFilesManager) -> None:
         """Test file tracking functionality"""
@@ -482,7 +482,7 @@ class TestIntermediateFilesIntegration:
 
         # 1. Create temp directory
         temp_dir = manager.create_temp_directory()
-        assert os.path.exists(temp_dir)
+        assert Path(temp_dir).exists()
 
         # 2. Create and track intermediate files
         files = []

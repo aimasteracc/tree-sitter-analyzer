@@ -6,7 +6,7 @@ Intelligent detection of project root directories based on common project marker
 """
 
 import logging
-import os
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -93,13 +93,13 @@ class ProjectRootDetector:
 
         try:
             # Convert to absolute path and get directory
-            abs_path = os.path.abspath(file_path)
-            if os.path.isfile(abs_path):
-                start_dir = os.path.dirname(abs_path)
+            abs_path = Path(file_path).resolve()
+            if abs_path.is_file():
+                start_dir = abs_path.parent
             else:
                 start_dir = abs_path
 
-            return self._traverse_upward(start_dir)
+            return self._traverse_upward(str(start_dir))
 
         except Exception as e:
             logger.warning(f"Error detecting project root from {file_path}: {e}")
@@ -113,7 +113,7 @@ class ProjectRootDetector:
             Project root directory path, or None if not detected
         """
         try:
-            return self._traverse_upward(os.getcwd())
+            return self._traverse_upward(str(Path.cwd()))
         except Exception as e:
             logger.warning(f"Error detecting project root from cwd: {e}")
             return None
@@ -128,7 +128,7 @@ class ProjectRootDetector:
         Returns:
             Project root directory path, or None if not found
         """
-        current_dir = os.path.abspath(start_dir)
+        current_dir = str(Path(start_dir).resolve())
         candidates = []
 
         for _depth in range(self.max_depth):
@@ -159,10 +159,11 @@ class ProjectRootDetector:
                     return current_dir
 
             # Move up one directory
-            parent_dir = os.path.dirname(current_dir)
-            if parent_dir == current_dir:  # Reached filesystem root
+            current_path = Path(current_dir)
+            parent_path = current_path.parent
+            if parent_path == current_path:  # Reached filesystem root
                 break
-            current_dir = parent_dir
+            current_dir = str(parent_path)
 
         # Return the best candidate if any found
         if candidates:
@@ -190,19 +191,16 @@ class ProjectRootDetector:
         found_markers = []
 
         try:
-            dir_contents = os.listdir(directory)
+            dir_path = Path(directory)
 
             for marker in PROJECT_MARKERS:
                 if "*" in marker:
-                    # Handle glob patterns
-                    import glob
-
-                    pattern = os.path.join(directory, marker)
-                    if glob.glob(pattern):
+                    # Handle glob patterns using pathlib
+                    if list(dir_path.glob(marker)):
                         found_markers.append(marker)
                 else:
                     # Handle exact matches
-                    if marker in dir_contents:
+                    if (dir_path / marker).exists():
                         found_markers.append(marker)
 
         except (OSError, PermissionError) as e:
@@ -258,15 +256,16 @@ class ProjectRootDetector:
             Fallback directory (file's directory or cwd)
         """
         try:
-            if file_path and os.path.exists(file_path):
-                if os.path.isfile(file_path):
-                    return os.path.dirname(os.path.abspath(file_path))
-                else:
-                    return os.path.abspath(file_path)
-            else:
-                return os.getcwd()
+            if file_path:
+                path = Path(file_path)
+                if path.exists():
+                    if path.is_file():
+                        return str(path.resolve().parent)
+                    else:
+                        return str(path.resolve())
+            return str(Path.cwd())
         except Exception:
-            return os.getcwd()
+            return str(Path.cwd())
 
 
 def detect_project_root(
@@ -292,9 +291,10 @@ def detect_project_root(
 
     # Priority 1: Explicit root
     if explicit_root:
-        if os.path.exists(explicit_root) and os.path.isdir(explicit_root):
+        explicit_path = Path(explicit_root)
+        if explicit_path.exists() and explicit_path.is_dir():
             logger.debug(f"Using explicit project root: {explicit_root}")
-            return os.path.abspath(explicit_root)
+            return str(explicit_path.resolve())
         else:
             logger.warning(f"Explicit project root does not exist: {explicit_root}")
 

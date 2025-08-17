@@ -126,11 +126,20 @@ def analyze_file(
     except FileNotFoundError as e:
         # Re-raise FileNotFoundError for tests that expect it
         raise e
-    except Exception as e:
-        log_error(f"API analyze_file failed: {e}")
+    except (ValueError, TypeError, OSError) as e:
+        # Handle specific expected errors
+        log_error(f"API analyze_file failed with {type(e).__name__}: {e}")
         return {
             "success": False,
-            "error": str(e),
+            "error": f"{type(e).__name__}: {str(e)}",
+            "file_info": {"path": str(file_path), "exists": Path(file_path).exists()},
+        }
+    except Exception as e:
+        # Handle unexpected errors
+        log_error(f"API analyze_file failed with unexpected error: {e}")
+        return {
+            "success": False,
+            "error": f"Unexpected error: {str(e)}",
             "file_info": {"path": str(file_path), "exists": Path(file_path).exists()},
         }
 

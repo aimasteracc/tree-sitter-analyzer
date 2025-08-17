@@ -69,7 +69,7 @@ public class TestClass {
             assert len(result.elements) > 0
 
         finally:
-            os.unlink(sample_java_file)
+            Path(sample_java_file).unlink()
 
     def test_analyze_file_with_language_override(
         self, engine: AnalysisEngine, sample_java_file: str
@@ -82,7 +82,7 @@ public class TestClass {
             assert result.language == "java"
 
         finally:
-            os.unlink(sample_java_file)
+            Path(sample_java_file).unlink()
 
     def test_analyze_file_nonexistent(self, engine: AnalysisEngine) -> None:
         """Test analysis of non-existent file"""
@@ -101,7 +101,7 @@ public class TestClass {
             assert isinstance(result, AnalysisResult)
 
         finally:
-            os.unlink(temp_path)
+            Path(temp_path).unlink()
 
     def test_analyze_code_success(self, engine: AnalysisEngine) -> None:
         """Test successful code analysis"""
@@ -223,7 +223,7 @@ class TestAnalysisEngineErrorHandling:
         finally:
             # Restore permissions and cleanup
             os.chmod(temp_path, 0o644)
-            os.unlink(temp_path)
+            Path(temp_path).unlink()
 
     def test_analyze_code_empty_content(self, engine: AnalysisEngine) -> None:
         """Test analysis of empty code content"""
@@ -260,7 +260,7 @@ public class Test {
             assert isinstance(result, AnalysisResult)
 
         finally:
-            os.unlink(temp_path)
+            Path(temp_path).unlink()
 
 
 class TestAnalysisEngineIntegration:
@@ -312,7 +312,7 @@ public class Calculator {
             assert "class" in element_types or "function" in element_types
 
         finally:
-            os.unlink(temp_path)
+            Path(temp_path).unlink()
 
     def test_full_analysis_workflow_python(self, engine: AnalysisEngine) -> None:
         """Test complete analysis workflow for Python file"""
@@ -354,7 +354,7 @@ if __name__ == "__main__":
             assert result.node_count > 0
 
         finally:
-            os.unlink(temp_path)
+            Path(temp_path).unlink()
 
     def test_multiple_file_analysis(self, engine: AnalysisEngine) -> None:
         """Test analysis of multiple files"""
@@ -384,5 +384,6 @@ if __name__ == "__main__":
 
         finally:
             for file_path in files:
-                if os.path.exists(file_path):
-                    os.unlink(file_path)
+                path_obj = Path(file_path)
+                if path_obj.exists():
+                    path_obj.unlink()
