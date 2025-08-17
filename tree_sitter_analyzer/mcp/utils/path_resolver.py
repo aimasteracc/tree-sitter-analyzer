@@ -102,6 +102,9 @@ class PathResolver:
                 )
                 self._add_to_cache(file_path, resolved_path)
                 return resolved_path
+            else:
+                # No drive available, treat as relative to current directory
+                pass
 
         # If we have a project root, resolve relative to it
         if self.project_root:

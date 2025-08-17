@@ -6,7 +6,6 @@ Base formatter for language-specific table formatting.
 import csv
 import io
 from abc import ABC, abstractmethod
-from pathlib import Path
 from typing import Any
 
 
@@ -18,7 +17,9 @@ class BaseTableFormatter(ABC):
 
     def _get_platform_newline(self) -> str:
         """Get platform-specific newline code"""
-        return "\r\n" if Path().anchor else "\n"  # Windows uses \r\n, others use \n
+        import os
+
+        return "\r\n" if os.name == "nt" else "\n"  # Windows uses \r\n, others use \n
 
     def _convert_to_platform_newlines(self, text: str) -> str:
         """Convert regular \n to platform-specific newline code"""

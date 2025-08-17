@@ -142,8 +142,6 @@ class TreeSitterAnalyzerMCPServer:
         include_details = arguments.get("include_details", False)
 
         # Resolve relative path against project root for consistent behavior
-        from pathlib import Path
-
         base_root = getattr(
             getattr(self.security_validator, "boundary_manager", None),
             "project_root",
@@ -160,8 +158,6 @@ class TreeSitterAnalyzerMCPServer:
             raise ValueError(f"Invalid file path: {error_msg}")
 
         # Use analysis engine directly
-        from pathlib import Path
-
         from ..core.analysis_engine import AnalysisRequest
         from ..language_detector import detect_language_from_file
 

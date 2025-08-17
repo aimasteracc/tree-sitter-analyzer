@@ -124,19 +124,25 @@ class TestTableFormatterPlatformHandling:
         """Test platform newline detection"""
         formatter = TableFormatter()
         newline = formatter._get_platform_newline()
-        assert newline == os.linesep
+        # On Windows, should return \r\n, on Unix-like systems \n
+        if os.name == "nt":
+            assert newline == "\r\n"
+        else:
+            assert newline == "\n"
 
     def test_convert_to_platform_newlines_unix(self) -> None:
         """Test newline conversion on Unix-like systems"""
         formatter = TableFormatter()
-        with patch("os.linesep", "\n"):
+        # Mock the _get_platform_newline method to return Unix newlines
+        with patch.object(formatter, "_get_platform_newline", return_value="\n"):
             result = formatter._convert_to_platform_newlines("line1\nline2\nline3")
             assert result == "line1\nline2\nline3"
 
     def test_convert_to_platform_newlines_windows(self) -> None:
         """Test newline conversion on Windows systems"""
         formatter = TableFormatter()
-        with patch("os.linesep", "\r\n"):
+        # Mock the _get_platform_newline method to return Windows newlines
+        with patch.object(formatter, "_get_platform_newline", return_value="\r\n"):
             result = formatter._convert_to_platform_newlines("line1\nline2\nline3")
             assert result == "line1\r\nline2\r\nline3"
 
@@ -567,11 +573,11 @@ class TestTableFormatterIntegration:
         """Test format consistency across different platform newline settings"""
         formatter = TableFormatter("full")
 
-        # Test with different os.linesep values
-        with patch("os.linesep", "\n"):
+        # Test with different platform newline values
+        with patch.object(formatter, "_get_platform_newline", return_value="\n"):
             result_unix = formatter.format_structure(sample_structure_data)
 
-        with patch("os.linesep", "\r\n"):
+        with patch.object(formatter, "_get_platform_newline", return_value="\r\n"):
             result_windows = formatter.format_structure(sample_structure_data)
 
         # Content should be the same except for newlines
