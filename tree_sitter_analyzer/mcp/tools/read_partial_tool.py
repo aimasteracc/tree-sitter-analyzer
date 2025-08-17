@@ -7,13 +7,13 @@ allowing selective content extraction with line and column range support.
 """
 
 import json
-import os
 from pathlib import Path
 from typing import Any
 
 from ...file_handler import read_file_partial
 from ...security import SecurityValidator
 from ...utils import setup_logger
+from ..utils.path_resolver import PathResolver
 
 # Set up logging
 logger = setup_logger(__name__)
@@ -31,6 +31,7 @@ class ReadPartialTool:
         """Initialize the read partial tool."""
         self.security_validator = SecurityValidator(project_root)
         self.project_root = project_root
+        self.path_resolver = PathResolver(project_root)
         logger.info("ReadPartialTool initialized with security validation")
 
     def get_tool_schema(self) -> dict[str, Any]:
@@ -106,20 +107,8 @@ class ReadPartialTool:
         end_column = arguments.get("end_column")
         # output_format = arguments.get("format", "text")  # Not used currently
 
-        # Resolve relative path against project root for consistent behavior
-        base_root = (
-            getattr(
-                getattr(self.security_validator, "boundary_manager", None),
-                "project_root",
-                None,
-            )
-            or self.project_root
-        )
-
-        if not os.path.isabs(file_path) and base_root:
-            resolved_path = os.path.realpath(os.path.join(base_root, file_path))
-        else:
-            resolved_path = file_path
+        # Resolve file path using common path resolver
+        resolved_path = self.path_resolver.resolve(file_path)
 
         # Security validation (validate resolved absolute path when possible)
         is_valid, error_msg = self.security_validator.validate_file_path(resolved_path)

@@ -26,6 +26,9 @@ from .error_handler import (
     handle_mcp_errors,
 )
 
+# Export path resolver utilities
+from .path_resolver import PathResolver, resolve_path
+
 # Module metadata
 __version__ = "2.0.0"
 __author__ = "Tree-Sitter Analyzer Team"
@@ -36,6 +39,7 @@ MCP_UTILS_CAPABILITIES = {
     "features": [
         "Comprehensive Error Handling",
         "Unified Core Services Integration",
+        "Cross-Platform Path Resolution",
     ],
     "deprecated_features": [
         "LRU Cache with TTL (moved to core.cache_service)",
@@ -99,6 +103,9 @@ __all__ = [
     "ErrorCategory",
     "handle_mcp_errors",
     "get_error_handler",
+    # Path resolution
+    "PathResolver",
+    "resolve_path",
     # Backward compatibility
     "get_cache_manager",
     "get_performance_monitor",

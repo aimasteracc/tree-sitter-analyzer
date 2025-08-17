@@ -2,11 +2,11 @@
 
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-1420%20passed-brightgreen.svg)](#quality-assurance)
-[![Coverage](https://img.shields.io/badge/coverage-74.36%25-green.svg)](#quality-assurance)
+[![Tests](https://img.shields.io/badge/tests-1358%20passed-brightgreen.svg)](#quality-assurance)
+[![Coverage](https://img.shields.io/badge/coverage-74.54%25-green.svg)](#quality-assurance)
 [![Quality](https://img.shields.io/badge/quality-enterprise%20grade-blue.svg)](#quality-assurance)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
-[![Version](https://img.shields.io/badge/version-0.9.7-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
+[![Version](https://img.shields.io/badge/version-0.9.8-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
 ## 🚀 Break Through LLM Token Limits, Let AI Understand Code Files of Any Size
@@ -212,16 +212,21 @@ Parameters: {"file_path": "examples/BigService.java"}
 **Prompt:**
 ```
 Use MCP tool extract_code_section to extract specified code section
-Parameters: {"file_path": "examples/BigService.java", "start_line": 100, "end_line": 105}
+Parameters: {"file_path": "examples/BigService.java", "start_line": 93, "end_line": 105}
 ```
 
 **Return Format:**
 ```json
 {
   "file_path": "examples/BigService.java",
-  "range": {"start_line": 100, "end_line": 105},
-  "content": "Actual code content...",
-  "content_length": 245
+  "range": {
+    "start_line": 93,
+    "end_line": 105,
+    "start_column": null,
+    "end_column": null
+  },
+  "content": "    private void checkMemoryUsage() {\n        Runtime runtime = Runtime.getRuntime();\n        long totalMemory = runtime.totalMemory();\n        long freeMemory = runtime.freeMemory();\n        long usedMemory = totalMemory - freeMemory;\n\n        System.out.println(\"Total Memory: \" + totalMemory);\n        System.out.println(\"Free Memory: \" + freeMemory);\n        System.out.println(\"Used Memory: \" + usedMemory);\n\n        if (usedMemory > totalMemory * 0.8) {\n            System.out.println(\"WARNING: High memory usage detected!\");\n        }\n",
+  "content_length": 542
 }
 ```
 
@@ -416,8 +421,8 @@ Tree-sitter Analyzer automatically detects and protects project boundaries:
 ## 🏆 Quality Assurance
 
 ### 📊 **Quality Metrics**
-- **1,420 Tests** - 100% pass rate ✅
-- **74.36% Code Coverage** - Industry-leading level
+- **1,358 Tests** - 100% pass rate ✅
+- **74.54% Code Coverage** - Industry-leading level
 - **Zero Test Failures** - Complete CI/CD ready
 - **Cross-platform Compatible** - Windows, macOS, Linux
 

@@ -15,6 +15,7 @@ from ...core.analysis_engine import AnalysisRequest, get_analysis_engine
 from ...language_detector import detect_language_from_file
 from ...security import SecurityValidator
 from ...utils import setup_logger
+from ..utils.path_resolver import PathResolver
 
 # Set up logging
 logger = setup_logger(__name__)
@@ -35,6 +36,7 @@ class AnalyzeScaleTool:
         self.project_root = project_root
         self.analysis_engine = get_analysis_engine(project_root)
         self.security_validator = SecurityValidator(project_root)
+        self.path_resolver = PathResolver(project_root)
         logger.info("AnalyzeScaleTool initialized with security validation")
 
     def _calculate_file_metrics(self, file_path: str) -> dict[str, Any]:
@@ -354,11 +356,17 @@ class AnalyzeScaleTool:
         include_details = arguments.get("include_details", False)
         include_guidance = arguments.get("include_guidance", True)
 
-        # Security validation
-        is_valid, error_msg = self.security_validator.validate_file_path(file_path)
+        # Resolve file path to absolute path
+        resolved_file_path = self.path_resolver.resolve(file_path)
+        logger.info(f"Analyzing file: {file_path} (resolved to: {resolved_file_path})")
+
+        # Security validation using resolved path
+        is_valid, error_msg = self.security_validator.validate_file_path(
+            resolved_file_path
+        )
         if not is_valid:
             logger.warning(
-                f"Security validation failed for file path: {file_path} - {error_msg}"
+                f"Security validation failed for file path: {resolved_file_path} - {error_msg}"
             )
             raise ValueError(f"Invalid file path: {error_msg}")
 
@@ -367,16 +375,20 @@ class AnalyzeScaleTool:
             language = self.security_validator.sanitize_input(language, max_length=50)
 
         # Validate file exists
-        if not Path(file_path).exists():
+        if not Path(resolved_file_path).exists():
             raise ValueError("Invalid file path: file does not exist")
 
         # Detect language if not specified
         if not language:
-            language = detect_language_from_file(file_path)
+            language = detect_language_from_file(resolved_file_path)
             if language == "unknown":
-                raise ValueError(f"Could not detect language for file: {file_path}")
+                raise ValueError(
+                    f"Could not detect language for file: {resolved_file_path}"
+                )
 
-        logger.info(f"Analyzing code scale for {file_path} (language: {language})")
+        logger.info(
+            f"Analyzing code scale for {resolved_file_path} (language: {language})"
+        )
 
         try:
             # Use performance monitoring with proper context manager
@@ -386,14 +398,14 @@ class AnalyzeScaleTool:
                 "analyze_code_scale_enhanced"
             ):
                 # Calculate basic file metrics
-                file_metrics = self._calculate_file_metrics(file_path)
+                file_metrics = self._calculate_file_metrics(resolved_file_path)
 
                 # Use appropriate analyzer based on language
                 if language == "java":
                     # Use AdvancedAnalyzer for comprehensive analysis
                     # Use unified analysis engine instead of deprecated advanced_analyzer
                     request = AnalysisRequest(
-                        file_path=file_path,
+                        file_path=resolved_file_path,
                         language=language,
                         include_complexity=True,
                         include_details=True,
@@ -408,7 +420,7 @@ class AnalyzeScaleTool:
                 else:
                     # Use universal analysis_engine for other languages
                     request = AnalysisRequest(
-                        file_path=file_path,
+                        file_path=resolved_file_path,
                         language=language,
                         include_details=include_details,
                     )

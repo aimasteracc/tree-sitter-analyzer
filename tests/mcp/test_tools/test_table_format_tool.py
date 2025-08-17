@@ -173,6 +173,13 @@ public class TestClass {
     @pytest.mark.asyncio
     async def test_execute_file_not_found(self, mocker) -> None:
         """Test execute with non-existent file."""
+        # Mock path resolver to allow the file path to pass security validation
+        mocker.patch.object(
+            self.tool.path_resolver, "resolve", return_value="nonexistent.java"
+        )
+        mocker.patch.object(
+            self.tool.path_resolver, "validate_path", return_value=(True, None)
+        )
         mocker.patch("pathlib.Path.exists", return_value=False)
         arguments = {"file_path": "nonexistent.java"}
 

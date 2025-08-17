@@ -13,6 +13,7 @@ from ...core.query_service import QueryService
 from ...language_detector import detect_language_from_file
 from ...security import SecurityValidator
 from ..utils.error_handler import handle_mcp_errors
+from ..utils.path_resolver import PathResolver
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +26,7 @@ class QueryTool:
         self.project_root = project_root
         self.query_service = QueryService(project_root)
         self.security_validator = SecurityValidator(project_root)
+        self.path_resolver = PathResolver(project_root)
 
     def get_tool_definition(self) -> dict[str, Any]:
         """
@@ -41,7 +43,7 @@ class QueryTool:
                 "properties": {
                     "file_path": {
                         "type": "string",
-                        "description": "Path to the code file to query (relative to project root)",
+                        "description": "Path to the code file to query (relative to project root or absolute path)",
                     },
                     "language": {
                         "type": "string",
@@ -90,12 +92,18 @@ class QueryTool:
         if not file_path:
             raise ValueError("file_path is required")
 
-        # Security validation
-        is_valid, error_msg = self.security_validator.validate_file_path(file_path)
+        # Resolve file path to absolute path
+        resolved_file_path = self.path_resolver.resolve(file_path)
+        logger.info(f"Querying file: {file_path} (resolved to: {resolved_file_path})")
+
+        # Security validation using resolved path
+        is_valid, error_msg = self.security_validator.validate_file_path(
+            resolved_file_path
+        )
         if not is_valid:
-            raise ValueError(f"Invalid or unsafe file path: {error_msg or file_path}")
-        # Use the original path as validated path after checks
-        validated_path = file_path
+            raise ValueError(
+                f"Invalid or unsafe file path: {error_msg or resolved_file_path}"
+            )
 
         # Get query parameters
         query_key = arguments.get("query_key")
@@ -112,14 +120,14 @@ class QueryTool:
         # Detect language
         language = arguments.get("language")
         if not language:
-            language = detect_language_from_file(validated_path)
+            language = detect_language_from_file(resolved_file_path)
             if not language:
                 raise ValueError(f"Could not detect language for file: {file_path}")
 
         try:
             # Execute query
             results = await self.query_service.execute_query(
-                validated_path, language, query_key, query_string, filter_expression
+                resolved_file_path, language, query_key, query_string, filter_expression
             )
 
             if not results:

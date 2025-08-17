@@ -2,11 +2,11 @@
 
 [![Python版本](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![许可证](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![测试](https://img.shields.io/badge/tests-1420%20passed-brightgreen.svg)](#质量保证)
-[![覆盖率](https://img.shields.io/badge/coverage-74.36%25-green.svg)](#质量保证)
+[![测试](https://img.shields.io/badge/tests-1358%20passed-brightgreen.svg)](#质量保证)
+[![覆盖率](https://img.shields.io/badge/coverage-74.54%25-green.svg)](#质量保证)
 [![质量](https://img.shields.io/badge/quality-enterprise%20grade-blue.svg)](#质量保证)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
-[![版本](https://img.shields.io/badge/version-0.9.7-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
+[![版本](https://img.shields.io/badge/version-0.9.8-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
 ## 🚀 突破LLM token限制，让AI理解任意大小的代码文件
@@ -207,21 +207,26 @@ uv run python -m tree_sitter_analyzer examples/BigService.java --partial-read --
 - 包含类信息、方法列表（带行号）、字段列表
 - 方法签名、可见性、行范围、复杂度等详细信息
 
-#### ✂️ **步骤3: 提取代码片段**
+#### ✂️ **步骤 3：提取代码片段**
 
 **提示词：**
 ```
-使用MCP工具extract_code_section提取指定代码段
-参数: {"file_path": "examples/BigService.java", "start_line": 100, "end_line": 105}
+使用 MCP 工具 extract_code_section 提取指定的代码段
+参数：{"file_path": "examples/BigService.java", "start_line": 93, "end_line": 105}
 ```
 
 **返回格式：**
 ```json
 {
   "file_path": "examples/BigService.java",
-  "range": {"start_line": 100, "end_line": 105},
-  "content": "实际代码内容...",
-  "content_length": 245
+  "range": {
+    "start_line": 93,
+    "end_line": 105,
+    "start_column": null,
+    "end_column": null
+  },
+  "content": "    private void checkMemoryUsage() {\n        Runtime runtime = Runtime.getRuntime();\n        long totalMemory = runtime.totalMemory();\n        long freeMemory = runtime.freeMemory();\n        long usedMemory = totalMemory - freeMemory;\n\n        System.out.println(\"Total Memory: \" + totalMemory);\n        System.out.println(\"Free Memory: \" + freeMemory);\n        System.out.println(\"Used Memory: \" + usedMemory);\n\n        if (usedMemory > totalMemory * 0.8) {\n            System.out.println(\"WARNING: High memory usage detected!\");\n        }\n",
+  "content_length": 542
 }
 ```
 
@@ -416,8 +421,8 @@ Tree-sitter Analyzer自动检测和保护项目边界：
 ## 🏆 质量保证
 
 ### 📊 **质量指标**
-- **1,420个测试** - 100%通过率 ✅
-- **74.36%代码覆盖率** - 行业领先水平
+- **1,358个测试** - 100%通过率 ✅
+- **74.54%代码覆盖率** - 行业领先水平
 - **零测试失败** - 完全CI/CD就绪
 - **跨平台兼容** - Windows、macOS、Linux
 

@@ -2,11 +2,11 @@
 
 [![Pythonバージョン](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![ライセンス](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![テスト](https://img.shields.io/badge/tests-1420%20passed-brightgreen.svg)](#品質保証)
-[![カバレッジ](https://img.shields.io/badge/coverage-74.36%25-green.svg)](#品質保証)
+[![テスト](https://img.shields.io/badge/tests-1358%20passed-brightgreen.svg)](#品質保証)
+[![カバレッジ](https://img.shields.io/badge/coverage-74.54%25-green.svg)](#品質保証)
 [![品質](https://img.shields.io/badge/quality-enterprise%20grade-blue.svg)](#品質保証)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
-[![バージョン](https://img.shields.io/badge/version-0.9.7-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
+[![バージョン](https://img.shields.io/badge/version-0.9.8-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
 ## 🚀 LLMトークン制限を突破し、AIにあらゆるサイズのコードファイルを理解させる
@@ -207,7 +207,7 @@ MCPツールanalyze_code_structureを使用して詳細な構造を生成
 - クラス情報、メソッドリスト（行番号付き）、フィールドリストを含む
 - メソッドシグネチャ、可視性、行範囲、複雑さなどの詳細情報
 
-#### ✂️ **ステップ3: コードセクション抽出**
+#### ✂️ **ステップ3: コードスニペットの抽出**
 
 **プロンプト：**
 ```
@@ -215,13 +215,18 @@ MCPツールextract_code_sectionを使用して指定されたコードセクシ
 パラメーター: {"file_path": "examples/BigService.java", "start_line": 100, "end_line": 105}
 ```
 
-**戻り値の形式：**
+**戻り値の形式:**
 ```json
 {
   "file_path": "examples/BigService.java",
-  "range": {"start_line": 100, "end_line": 105},
-  "content": "実際のコード内容...",
-  "content_length": 245
+  "range": {
+    "start_line": 93,
+    "end_line": 105,
+    "start_column": null,
+    "end_column": null
+  },
+  "content": "    private void checkMemoryUsage() {\n        Runtime runtime = Runtime.getRuntime();\n        long totalMemory = runtime.totalMemory();\n        long freeMemory = runtime.freeMemory();\n        long usedMemory = totalMemory - freeMemory;\n\n        System.out.println(\"Total Memory: \" + totalMemory);\n        System.out.println(\"Free Memory: \" + freeMemory);\n        System.out.println(\"Used Memory: \" + usedMemory);\n\n        if (usedMemory > totalMemory * 0.8) {\n            System.out.println(\"WARNING: High memory usage detected!\");\n        }\n",
+  "content_length": 542
 }
 ```
 
@@ -416,8 +421,8 @@ Tree-sitter Analyzerは自動的にプロジェクト境界を検出・保護：
 ## 🏆 品質保証
 
 ### 📊 **品質メトリクス**
-- **1,420テスト** - 100%合格率 ✅
-- **74.36%コードカバレッジ** - 業界最高レベル
+- **1,358テスト** - 100%合格率 ✅
+- **74.54%コードカバレッジ** - 業界最高レベル
 - **ゼロテスト失敗** - 完全なCI/CD対応
 - **クロスプラットフォーム対応** - Windows、macOS、Linux
 

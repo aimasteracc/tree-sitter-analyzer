@@ -1,38 +1,40 @@
 #!/usr/bin/env python3
 """
-Universal Code Analysis Tool for MCP
+Universal Analyze Tool for MCP
 
-This tool provides universal code analysis capabilities for multiple programming
-languages using the existing language detection and analysis infrastructure.
+This tool provides universal code analysis capabilities through the MCP protocol,
+supporting multiple languages with both basic and detailed analysis options.
 """
 
-import logging
 from pathlib import Path
 from typing import Any
 
 from ...core.analysis_engine import AnalysisRequest, get_analysis_engine
 from ...language_detector import detect_language_from_file, is_language_supported
 from ...security import SecurityValidator
+from ...utils import setup_logger
 from ..utils import get_performance_monitor
 from ..utils.error_handler import handle_mcp_errors
+from ..utils.path_resolver import PathResolver
 
-logger = logging.getLogger(__name__)
+# Set up logging
+logger = setup_logger(__name__)
 
 
 class UniversalAnalyzeTool:
     """
-    Universal code analysis tool for multiple programming languages
+    Universal MCP Tool for code analysis across multiple languages.
 
-    This tool automatically detects the programming language and applies
-    the appropriate analyzer to provide comprehensive code analysis.
+    This tool provides comprehensive code analysis capabilities through the MCP protocol,
+    supporting both basic and detailed analysis with language-specific optimizations.
     """
 
-    def __init__(self, project_root: str = None) -> None:
-        """Initialize the universal analysis tool"""
-        # Use unified analysis engine instead of deprecated AdvancedAnalyzer
+    def __init__(self, project_root: str | None = None) -> None:
+        """Initialize the universal analyze tool."""
         self.project_root = project_root
         self.analysis_engine = get_analysis_engine(project_root)
         self.security_validator = SecurityValidator(project_root)
+        self.path_resolver = PathResolver(project_root)
         logger.info("UniversalAnalyzeTool initialized with security validation")
 
     def get_tool_definition(self) -> dict[str, Any]:
@@ -101,11 +103,17 @@ class UniversalAnalyzeTool:
         language = arguments.get("language")
         analysis_type = arguments.get("analysis_type", "basic")
 
-        # Security validation
-        is_valid, error_msg = self.security_validator.validate_file_path(file_path)
+        # Resolve file path to absolute path
+        resolved_file_path = self.path_resolver.resolve(file_path)
+        logger.info(f"Analyzing file: {file_path} (resolved to: {resolved_file_path})")
+
+        # Security validation using resolved path
+        is_valid, error_msg = self.security_validator.validate_file_path(
+            resolved_file_path
+        )
         if not is_valid:
             logger.warning(
-                f"Security validation failed for file path: {file_path} - {error_msg}"
+                f"Security validation failed for file path: {resolved_file_path} - {error_msg}"
             )
             raise ValueError(f"Invalid file path: {error_msg}")
 
@@ -120,14 +128,16 @@ class UniversalAnalyzeTool:
         include_queries = arguments.get("include_queries", False)
 
         # Validate file exists
-        if not Path(file_path).exists():
+        if not Path(resolved_file_path).exists():
             raise ValueError("Invalid file path: file does not exist")
 
         # Detect language if not specified
         if not language:
-            language = detect_language_from_file(file_path)
+            language = detect_language_from_file(resolved_file_path)
             if language == "unknown":
-                raise ValueError(f"Could not detect language for file: {file_path}")
+                raise ValueError(
+                    f"Could not detect language for file: {resolved_file_path}"
+                )
 
         # Check if language is supported
         if not is_language_supported(language):
@@ -141,7 +151,7 @@ class UniversalAnalyzeTool:
             )
 
         logger.info(
-            f"Analyzing {file_path} (language: {language}, type: {analysis_type})"
+            f"Analyzing {resolved_file_path} (language: {language}, type: {analysis_type})"
         )
 
         try:
@@ -151,12 +161,12 @@ class UniversalAnalyzeTool:
                 if language == "java":
                     # Use advanced analyzer for Java
                     result = await self._analyze_with_advanced_analyzer(
-                        file_path, language, analysis_type, include_ast
+                        resolved_file_path, language, analysis_type, include_ast
                     )
                 else:
                     # Use universal analyzer for other languages
                     result = await self._analyze_with_universal_analyzer(
-                        file_path, language, analysis_type, include_ast
+                        resolved_file_path, language, analysis_type, include_ast
                     )
 
                 # Add query information if requested
@@ -165,11 +175,11 @@ class UniversalAnalyzeTool:
                         language
                     )
 
-                logger.info(f"Successfully analyzed {file_path}")
+                logger.info(f"Successfully analyzed {resolved_file_path}")
                 return result
 
         except Exception as e:
-            logger.error(f"Error analyzing {file_path}: {e}")
+            logger.error(f"Error analyzing {resolved_file_path}: {e}")
             raise
 
     async def _analyze_with_advanced_analyzer(

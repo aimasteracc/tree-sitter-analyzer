@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
 """
-Table Format MCP Tool
+Table Format Tool for MCP
 
-This tool provides table-formatted output for code analysis results through the MCP protocol,
-equivalent to the CLI --table=full option functionality.
+This tool provides code structure analysis and table formatting through the MCP protocol,
+converting analysis results into structured table formats for better readability.
 """
 
-import os
 from pathlib import Path
 from typing import Any
 
@@ -16,6 +15,7 @@ from ...security import SecurityValidator
 from ...table_formatter import TableFormatter
 from ...utils import setup_logger
 from ..utils import get_performance_monitor
+from ..utils.path_resolver import PathResolver
 
 # Set up logging
 logger = setup_logger(__name__)
@@ -23,20 +23,19 @@ logger = setup_logger(__name__)
 
 class TableFormatTool:
     """
-    MCP Tool for formatting code analysis results as tables.
+    MCP Tool for code structure analysis and table formatting.
 
-    This tool integrates with existing table_formatter and analyzer components
-    to provide table-formatted output through the MCP protocol, equivalent to
-    the CLI --table=full option.
+    This tool integrates with existing analyzer components to provide
+    structured table output through the MCP protocol.
     """
 
     def __init__(self, project_root: str = None) -> None:
         """Initialize the table format tool."""
-        self.logger = logger
         self.project_root = project_root
         self.analysis_engine = get_analysis_engine(project_root)
         self.security_validator = SecurityValidator(project_root)
-        logger.info("TableFormatTool initialized with security validation")
+        self.path_resolver = PathResolver(project_root)
+        self.logger = logger
 
     def get_tool_schema(self) -> dict[str, Any]:
         """
@@ -272,20 +271,8 @@ class TableFormatTool:
             format_type = args.get("format_type", "full")
             language = args.get("language")
 
-            # Resolve relative path against project root for consistent behavior
-            base_root = (
-                getattr(
-                    getattr(self.security_validator, "boundary_manager", None),
-                    "project_root",
-                    None,
-                )
-                or self.project_root
-            )
-
-            if not os.path.isabs(file_path) and base_root:
-                resolved_path = os.path.realpath(os.path.join(base_root, file_path))
-            else:
-                resolved_path = file_path
+            # Resolve file path using common path resolver
+            resolved_path = self.path_resolver.resolve(file_path)
 
             # Security validation
             is_valid, error_msg = self.security_validator.validate_file_path(
