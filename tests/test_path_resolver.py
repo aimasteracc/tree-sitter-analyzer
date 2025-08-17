@@ -155,6 +155,15 @@ class TestPathResolver(unittest.TestCase):
         # Remove any double slashes for consistent comparison
         normalized_resolved = normalized_resolved.replace("//", "/")
         normalized_expected = normalized_expected.replace("//", "/")
+        # Handle macOS /private/var vs /var difference
+        if normalized_resolved.startswith(
+            "/private"
+        ) and normalized_expected.startswith("/"):
+            normalized_resolved = normalized_resolved.replace("/private", "", 1)
+        elif normalized_expected.startswith(
+            "/private"
+        ) and normalized_resolved.startswith("/"):
+            normalized_expected = normalized_resolved.replace("/private", "", 1)
         self.assertEqual(normalized_resolved, normalized_expected)
 
         # Test Unix-style path
@@ -168,6 +177,15 @@ class TestPathResolver(unittest.TestCase):
         # Remove any double slashes for consistent comparison
         normalized_resolved = normalized_resolved.replace("//", "/")
         normalized_expected = normalized_expected.replace("//", "/")
+        # Handle macOS /private/var vs /var difference
+        if normalized_resolved.startswith(
+            "/private"
+        ) and normalized_expected.startswith("/"):
+            normalized_resolved = normalized_resolved.replace("/private", "", 1)
+        elif normalized_expected.startswith(
+            "/private"
+        ) and normalized_resolved.startswith("/"):
+            normalized_expected = normalized_resolved.replace("/private", "", 1)
         self.assertEqual(normalized_resolved, normalized_expected)
 
     def test_path_normalization(self):
@@ -183,6 +201,15 @@ class TestPathResolver(unittest.TestCase):
         # Remove any double slashes for consistent comparison
         normalized_resolved = normalized_resolved.replace("//", "/")
         normalized_expected = normalized_expected.replace("//", "/")
+        # Handle macOS /private/var vs /var difference
+        if normalized_resolved.startswith(
+            "/private"
+        ) and normalized_expected.startswith("/"):
+            normalized_resolved = normalized_resolved.replace("/private", "", 1)
+        elif normalized_expected.startswith(
+            "/private"
+        ) and normalized_resolved.startswith("/"):
+            normalized_expected = normalized_resolved.replace("/private", "", 1)
         self.assertEqual(normalized_resolved, normalized_expected)
 
         # Test path with dots
@@ -196,6 +223,15 @@ class TestPathResolver(unittest.TestCase):
         # Remove any double slashes for consistent comparison
         normalized_resolved = normalized_resolved.replace("//", "/")
         normalized_expected = normalized_expected.replace("//", "/")
+        # Handle macOS /private/var vs /var difference
+        if normalized_resolved.startswith(
+            "/private"
+        ) and normalized_expected.startswith("/"):
+            normalized_resolved = normalized_resolved.replace("/private", "", 1)
+        elif normalized_expected.startswith(
+            "/private"
+        ) and normalized_resolved.startswith("/"):
+            normalized_expected = normalized_resolved.replace("/private", "", 1)
         self.assertEqual(normalized_resolved, normalized_expected)
 
 

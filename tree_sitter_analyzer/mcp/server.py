@@ -11,7 +11,7 @@ import asyncio
 import json
 import os
 import sys
-from pathlib import Path
+from pathlib import Path as PathClass
 from typing import Any
 
 try:
@@ -147,8 +147,8 @@ class TreeSitterAnalyzerMCPServer:
             "project_root",
             None,
         )
-        if not Path(file_path).is_absolute() and base_root:
-            resolved_path = str((Path(base_root) / file_path).resolve())
+        if not PathClass(file_path).is_absolute() and base_root:
+            resolved_path = str((PathClass(base_root) / file_path).resolve())
         else:
             resolved_path = file_path
 
@@ -162,7 +162,7 @@ class TreeSitterAnalyzerMCPServer:
         from ..language_detector import detect_language_from_file
 
         # Validate file exists
-        if not Path(resolved_path).exists():
+        if not PathClass(resolved_path).exists():
             raise FileNotFoundError(f"File not found: {file_path}")
 
         # Detect language if not specified
@@ -401,7 +401,7 @@ class TreeSitterAnalyzerMCPServer:
                         raise ValueError(
                             "project_path parameter is required and must be a string"
                         )
-                    if not Path(project_path).is_dir():
+                    if not PathClass(project_path).is_dir():
                         raise ValueError(f"Project path does not exist: {project_path}")
                     self.set_project_path(project_path)
                     result = {"status": "success", "project_root": project_path}
@@ -594,7 +594,9 @@ async def main() -> None:
             project_root = args.project_root
         # Priority 2: Environment variable
         elif (
-            Path.cwd().joinpath(os.environ.get("TREE_SITTER_PROJECT_ROOT", "")).exists()
+            PathClass.cwd()
+            .joinpath(os.environ.get("TREE_SITTER_PROJECT_ROOT", ""))
+            .exists()
         ):
             project_root = os.environ.get("TREE_SITTER_PROJECT_ROOT")
         # Priority 3: Auto-detection from current directory
@@ -607,7 +609,11 @@ async def main() -> None:
         )
 
         # Validate existence; if invalid, fall back to auto-detected root
-        if not project_root or invalid_placeholder or not Path(project_root).is_dir():
+        if (
+            not project_root
+            or invalid_placeholder
+            or not PathClass(project_root).is_dir()
+        ):
             detected = detect_project_root()
             try:
                 logger.warning(

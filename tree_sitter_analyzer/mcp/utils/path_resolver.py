@@ -76,14 +76,9 @@ class PathResolver:
         normalized_input = file_path.replace("\\", "/")
         path_obj = Path(normalized_input)
 
-        # Check if path is absolute
-        if path_obj.is_absolute():
-            resolved_path = str(path_obj.resolve())
-            logger.debug(f"Path already absolute: {file_path} -> {resolved_path}")
-            self._add_to_cache(file_path, resolved_path)
-            return resolved_path
-
-        # Handle Unix-style absolute paths on Windows (starting with /)
+        # Handle Unix-style absolute paths on Windows (starting with /) FIRST
+        # This must come before the is_absolute() check because Unix paths aren't
+        # considered absolute on Windows by pathlib
         if (
             normalized_input.startswith("/") and Path.cwd().anchor
         ):  # Check if we're on Windows by checking for drive letter
@@ -103,6 +98,13 @@ class PathResolver:
                 self._add_to_cache(file_path, resolved_path)
                 return resolved_path
             # If no drive available, continue with normal processing
+
+        # Check if path is absolute (after handling Unix paths on Windows)
+        if path_obj.is_absolute():
+            resolved_path = str(path_obj.resolve())
+            logger.debug(f"Path already absolute: {file_path} -> {resolved_path}")
+            self._add_to_cache(file_path, resolved_path)
+            return resolved_path
 
         # If we have a project root, resolve relative to it
         if self.project_root:
