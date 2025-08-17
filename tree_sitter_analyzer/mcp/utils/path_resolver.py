@@ -27,18 +27,34 @@ def _normalize_path_cross_platform(path_str: str) -> str:
     if not path_str:
         return path_str
 
-    # Handle macOS /private/var vs /var symlink difference
-    if path_str.startswith("/private/var/folders/") and os.name == "posix":
-        # On macOS, /var is a symlink to /private/var
-        # Normalize to the canonical form
-        try:
-            canonical = str(Path(path_str).resolve())
-            # If resolution changes the path, use the resolved version
-            if canonical != path_str:
+    # Handle macOS path normalization issues
+    if os.name == "posix":
+        # Handle /System/Volumes/Data prefix on macOS
+        if path_str.startswith("/System/Volumes/Data/"):
+            # Remove the /System/Volumes/Data prefix
+            normalized = path_str[len("/System/Volumes/Data") :]
+            return normalized
+
+        # Handle /private/var vs /var symlink difference
+        if path_str.startswith("/private/var/"):
+            # Try to normalize to /var form if possible
+            var_path = path_str.replace("/private/var/", "/var/", 1)
+            # Check if the /var version exists and points to the same location
+            try:
+                if (
+                    Path(var_path).exists()
+                    and Path(var_path).resolve() == Path(path_str).resolve()
+                ):
+                    return var_path
+            except (OSError, RuntimeError):
+                pass
+        elif path_str.startswith("/var/"):
+            # Ensure we use the canonical form
+            try:
+                canonical = str(Path(path_str).resolve())
                 return canonical
-        except (OSError, RuntimeError):
-            # If resolution fails, continue with original path
-            pass
+            except (OSError, RuntimeError):
+                pass
 
     # Handle Windows short path names (8.3 format)
     if os.name == "nt" and path_str:

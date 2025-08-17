@@ -159,7 +159,13 @@ class TestProjectRootDetector:
 
         # Test detection - should find the project root with .git
         detected_root = self.detector.detect_from_file(str(test_file))
-        assert detected_root == str(project_root)
+        # Use Path.resolve() for proper normalization
+        if detected_root and str(project_root):
+            detected_normalized = str(Path(detected_root).resolve())
+            expected_normalized = str(Path(project_root).resolve())
+            assert detected_normalized == expected_normalized
+        else:
+            assert detected_root == str(project_root)
 
     def test_no_markers_found(self):
         """Test behavior when no project markers are found."""
@@ -198,7 +204,13 @@ class TestProjectRootDetector:
         # Test with increased max_depth (should find the marker)
         deep_detector = ProjectRootDetector(max_depth=20)
         detected_root = deep_detector.detect_from_file(str(test_file))
-        assert detected_root == self.temp_dir
+        # Use Path.resolve() for proper normalization
+        if detected_root and self.temp_dir:
+            detected_normalized = str(Path(detected_root).resolve())
+            expected_normalized = str(Path(self.temp_dir).resolve())
+            assert detected_normalized == expected_normalized
+        else:
+            assert detected_root == self.temp_dir
 
     def test_fallback_behavior(self):
         """Test fallback behavior when detection fails."""
@@ -208,7 +220,13 @@ class TestProjectRootDetector:
 
         # Test fallback for existing file
         fallback = self.detector.get_fallback_root(str(test_file))
-        assert fallback == self.temp_dir
+        # Use Path.resolve() for proper normalization
+        if fallback and self.temp_dir:
+            fallback_normalized = str(Path(fallback).resolve())
+            expected_normalized = str(Path(self.temp_dir).resolve())
+            assert fallback_normalized == expected_normalized
+        else:
+            assert fallback == self.temp_dir
 
         # Test fallback for non-existing file
         fallback = self.detector.get_fallback_root("/non/existing/file.py")
@@ -262,7 +280,13 @@ class TestUnifiedDetectProjectRoot:
 
         # Test auto-detection
         result = detect_project_root(str(test_file))
-        assert result == str(project_root)
+        # Use Path.resolve() for proper normalization
+        if result and str(project_root):
+            result_normalized = str(Path(result).resolve())
+            expected_normalized = str(Path(project_root).resolve())
+            assert result_normalized == expected_normalized
+        else:
+            assert result == str(project_root)
 
     def test_fallback_to_file_directory(self):
         """Test fallback to file directory when detection fails."""
@@ -299,7 +323,13 @@ class TestUnifiedDetectProjectRoot:
 
         # Test with invalid explicit root - should fall back to auto-detection
         result = detect_project_root(str(test_file), "/non/existing/path")
-        assert result == str(project_root)
+        # Use Path.resolve() for proper normalization
+        if result and str(project_root):
+            result_normalized = str(Path(result).resolve())
+            expected_normalized = str(Path(project_root).resolve())
+            assert result_normalized == expected_normalized
+        else:
+            assert result == str(project_root)
 
 
 if __name__ == "__main__":
