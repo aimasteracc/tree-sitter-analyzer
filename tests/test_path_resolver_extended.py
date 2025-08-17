@@ -197,7 +197,8 @@ class TestPathResolverExtended(unittest.TestCase):
         if os.name == "nt":
             # On Windows, absolute paths starting with / are converted to current drive
             # The result will be something like "C:\home\user\file.txt"
-            self.assertTrue(result.startswith("C:\\"))
+            current_drive = os.path.splitdrive(os.getcwd())[0]
+            self.assertTrue(result.startswith(current_drive + "\\"))
             self.assertTrue(result.endswith("\\home\\user\\file.txt"))
         else:
             expected = unix_path
