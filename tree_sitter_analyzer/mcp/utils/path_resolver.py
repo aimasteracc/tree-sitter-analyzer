@@ -71,9 +71,16 @@ class PathResolver:
             len(normalized_input) > 1 and normalized_input[1] == ":"
         ):
             resolved_path = os.path.normpath(normalized_input)
-            # On Windows, convert back to Windows-style separators for consistency
-            if os.name == "nt":
+
+            # Detect Windows-style paths by checking for drive letter pattern
+            # This works regardless of the actual platform
+            if len(normalized_input) > 1 and normalized_input[1] == ":":
+                # This is a Windows drive letter path, convert to Windows separators
                 resolved_path = resolved_path.replace("/", "\\")
+            elif os.name == "nt":
+                # On actual Windows, convert other absolute paths to Windows separators
+                resolved_path = resolved_path.replace("/", "\\")
+
             logger.debug(f"Path already absolute: {file_path} -> {resolved_path}")
             return resolved_path
 
