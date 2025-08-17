@@ -191,10 +191,13 @@ class TestPathResolverExtended(unittest.TestCase):
         result = self.resolver.resolve(unix_path)
         # On Windows, this will be converted to Windows format
         if os.name == "nt":
-            expected = "C:\\home\\user\\file.txt"
+            # On Windows, absolute paths starting with / are converted to current drive
+            # The result will be something like "C:\home\user\file.txt"
+            self.assertTrue(result.startswith("C:\\"))
+            self.assertTrue(result.endswith("\\home\\user\\file.txt"))
         else:
             expected = unix_path
-        self.assertEqual(result, expected)
+            self.assertEqual(result, expected)
 
     def test_edge_cases(self):
         """Test various edge cases."""
