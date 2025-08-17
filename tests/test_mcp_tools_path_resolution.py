@@ -50,6 +50,11 @@ class TestMCPToolsPathResolution(unittest.TestCase):
             "\\", "/"
         )
         expected_root = self.project_root.replace("\\", "/")
+        # Handle macOS /private/var vs /var difference
+        if actual_root.startswith("/private") and expected_root.startswith("/"):
+            actual_root = actual_root.replace("/private", "", 1)
+        elif expected_root.startswith("/private") and actual_root.startswith("/"):
+            expected_root = expected_root.replace("/private", "", 1)
         self.assertEqual(actual_root, expected_root)
 
     def test_query_tool_uses_path_resolver(self):
@@ -58,6 +63,11 @@ class TestMCPToolsPathResolution(unittest.TestCase):
         # Use normalized paths for comparison to handle platform differences
         actual_root = self.query_tool.path_resolver.project_root.replace("\\", "/")
         expected_root = self.project_root.replace("\\", "/")
+        # Handle macOS /private/var vs /var difference
+        if actual_root.startswith("/private") and expected_root.startswith("/"):
+            actual_root = actual_root.replace("/private", "", 1)
+        elif expected_root.startswith("/private") and actual_root.startswith("/"):
+            expected_root = expected_root.replace("/private", "", 1)
         self.assertEqual(actual_root, expected_root)
 
     def test_read_partial_tool_uses_path_resolver(self):
@@ -68,6 +78,11 @@ class TestMCPToolsPathResolution(unittest.TestCase):
             "\\", "/"
         )
         expected_root = self.project_root.replace("\\", "/")
+        # Handle macOS /private/var vs /var difference
+        if actual_root.startswith("/private") and expected_root.startswith("/"):
+            actual_root = actual_root.replace("/private", "", 1)
+        elif expected_root.startswith("/private") and actual_root.startswith("/"):
+            expected_root = expected_root.replace("/private", "", 1)
         self.assertEqual(actual_root, expected_root)
 
     def test_table_format_tool_uses_path_resolver(self):
@@ -78,6 +93,11 @@ class TestMCPToolsPathResolution(unittest.TestCase):
             "\\", "/"
         )
         expected_root = self.project_root.replace("\\", "/")
+        # Handle macOS /private/var vs /var difference
+        if actual_root.startswith("/private") and expected_root.startswith("/"):
+            actual_root = actual_root.replace("/private", "", 1)
+        elif expected_root.startswith("/private") and actual_root.startswith("/"):
+            expected_root = expected_root.replace("/private", "", 1)
         self.assertEqual(actual_root, expected_root)
 
     def test_universal_analyze_tool_uses_path_resolver(self):
@@ -88,6 +108,11 @@ class TestMCPToolsPathResolution(unittest.TestCase):
             "\\", "/"
         )
         expected_root = self.project_root.replace("\\", "/")
+        # Handle macOS /private/var vs /var difference
+        if actual_root.startswith("/private") and expected_root.startswith("/"):
+            actual_root = actual_root.replace("/private", "", 1)
+        elif expected_root.startswith("/private") and actual_root.startswith("/"):
+            expected_root = expected_root.replace("/private", "", 1)
         self.assertEqual(actual_root, expected_root)
 
     def test_consistent_path_resolution_across_tools(self):
@@ -108,6 +133,11 @@ class TestMCPToolsPathResolution(unittest.TestCase):
         # Use normalized paths for comparison to handle platform differences
         actual_path = resolved_paths[0].replace("\\", "/")
         expected_path = self.test_file.replace("\\", "/")
+        # Handle macOS /private/var vs /var difference
+        if actual_path.startswith("/private") and expected_path.startswith("/"):
+            actual_path = actual_path.replace("/private", "", 1)
+        elif expected_path.startswith("/private") and actual_path.startswith("/"):
+            expected_path = expected_path.replace("/private", "", 1)
         self.assertEqual(actual_path, expected_path)
 
     def test_cross_platform_path_handling(self):
