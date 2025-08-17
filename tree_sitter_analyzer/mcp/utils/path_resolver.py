@@ -71,6 +71,9 @@ class PathResolver:
             len(normalized_input) > 1 and normalized_input[1] == ":"
         ):
             resolved_path = os.path.normpath(normalized_input)
+            # On Windows, convert back to Windows-style separators for consistency
+            if os.name == "nt":
+                resolved_path = resolved_path.replace("/", "\\")
             logger.debug(f"Path already absolute: {file_path} -> {resolved_path}")
             return resolved_path
 
