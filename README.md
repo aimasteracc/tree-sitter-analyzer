@@ -6,7 +6,7 @@
 [![Coverage](https://img.shields.io/badge/coverage-74.54%25-green.svg)](#quality-assurance)
 [![Quality](https://img.shields.io/badge/quality-enterprise%20grade-blue.svg)](#quality-assurance)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
-[![Version](https://img.shields.io/badge/version-0.9.8-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
+[![Version](https://img.shields.io/badge/version-0.9.9-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
 ## 🚀 Break Through LLM Token Limits, Let AI Understand Code Files of Any Size
@@ -426,10 +426,11 @@ Tree-sitter Analyzer automatically detects and protects project boundaries:
 - **Zero Test Failures** - Complete CI/CD ready
 - **Cross-platform Compatible** - Windows, macOS, Linux
 
-### ⚡ **Latest Quality Achievements (v0.9.6)**
-- ✅ **Smart Query Filtering System** - 62 new tests all passed
-- ✅ **Unified Architecture Design** - QueryService eliminates code duplication
-- ✅ **CI Test Fixes** - All platforms test stable
+### ⚡ **Latest Quality Achievements (v0.9.9)**
+- ✅ **Unified Path Resolution System** - Centralized PathResolver for all MCP tools
+- ✅ **Cross-platform Compatibility** - Fixed Windows path separator issues
+- ✅ **MCP Tools Enhancement** - Eliminated FileNotFoundError in all tools
+- ✅ **Comprehensive Test Coverage** - 74.54% coverage with 1358 tests
 - ✅ **Multi-language Documentation** - Complete updates in EN/ZH/JA
 
 ### ⚙️ **Running Tests**

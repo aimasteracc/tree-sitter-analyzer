@@ -1,4 +1,4 @@
-# PyPI Release Guide for tree-sitter-analyzer v0.9.4
+# PyPI Release Guide for tree-sitter-analyzer v0.9.9
 
 ## 📦 Package Ready for Release
 
@@ -55,7 +55,7 @@
 
 2. **Test Installation**:
    ```bash
-   pip install --index-url https://test.pypi.org/simple/ tree-sitter-analyzer==0.9.4
+   pip install --index-url https://test.pypi.org/simple/ tree-sitter-analyzer==0.9.9
    ```
 
 3. **If successful, upload to production PyPI**:
@@ -104,7 +104,7 @@ After successful PyPI upload:
 
 1. **Verify Installation**:
    ```bash
-   pip install tree-sitter-analyzer==0.9.4
+   pip install tree-sitter-analyzer==0.9.9
    python -c "import tree_sitter_analyzer; print(tree_sitter_analyzer.__version__)"
    ```
 

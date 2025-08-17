@@ -7,6 +7,7 @@ Provides a clean separation between CLI concerns and core analysis logic.
 """
 
 import argparse
+import importlib.metadata
 import json
 import logging
 import sys
@@ -53,8 +54,14 @@ For more information, visit: https://github.com/aimasteracc/tree-sitter-analyzer
     )
 
     # Global options
+    # Get version dynamically from package metadata
+    try:
+        version = importlib.metadata.version("tree-sitter-analyzer")
+    except importlib.metadata.PackageNotFoundError:
+        version = "0.9.9"  # Fallback version
+
     parser.add_argument(
-        "--version", action="version", version="tree-sitter-analyzer 0.9.3"
+        "--version", action="version", version=f"tree-sitter-analyzer {version}"
     )
     parser.add_argument(
         "--verbose", "-v", action="store_true", help="Enable verbose output"

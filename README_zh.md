@@ -6,7 +6,7 @@
 [![覆盖率](https://img.shields.io/badge/coverage-74.54%25-green.svg)](#质量保证)
 [![质量](https://img.shields.io/badge/quality-enterprise%20grade-blue.svg)](#质量保证)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
-[![版本](https://img.shields.io/badge/version-0.9.8-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
+[![版本](https://img.shields.io/badge/version-0.9.9-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
 ## 🚀 突破LLM token限制，让AI理解任意大小的代码文件
@@ -426,10 +426,11 @@ Tree-sitter Analyzer自动检测和保护项目边界：
 - **零测试失败** - 完全CI/CD就绪
 - **跨平台兼容** - Windows、macOS、Linux
 
-### ⚡ **最新质量成就（v0.9.6）**
-- ✅ **智能查询过滤系统** - 62个新测试全部通过
-- ✅ **统一架构设计** - QueryService消除代码重复
-- ✅ **CI测试修复** - 所有平台测试稳定通过
+### ⚡ **最新质量成就（v0.9.9）**
+- ✅ **统一路径解析系统** - 为所有MCP工具提供中央化PathResolver
+- ✅ **跨平台兼容性** - 修复Windows路径分隔符问题
+- ✅ **MCP工具增强** - 消除所有工具中的FileNotFoundError
+- ✅ **全面测试覆盖** - 1358个测试，74.54%覆盖率
 - ✅ **多语言文档** - 中英日三语言完整更新
 
 ### ⚙️ **运行测试**

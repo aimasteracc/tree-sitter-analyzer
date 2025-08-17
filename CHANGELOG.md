@@ -1,4 +1,20 @@
 # Changelog
+
+## [0.9.9] - 2025-08-17
+
+### 📚 Documentation Updates
+- **README Synchronization**: Updated all README files (EN/ZH/JA) with latest quality achievements
+- **Version Alignment**: Synchronized version information from v0.9.6 to v0.9.8 across all documentation
+- **Statistics Update**: Corrected test count (1358) and coverage (74.54%) in all language versions
+
+### 🎯 Quality Achievements Update
+- **Unified Path Resolution System**: Centralized PathResolver for all MCP tools
+- **Cross-platform Compatibility**: Fixed Windows path separator issues
+- **MCP Tools Enhancement**: Eliminated FileNotFoundError in all tools
+- **Comprehensive Test Coverage**: 1358 tests with 74.54% coverage
+
+---
+
 ## [0.9.8] - 2025-08-17
 
 ### 🚀 Major Enhancement: Unified Path Resolution System
