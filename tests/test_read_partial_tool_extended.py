@@ -203,6 +203,7 @@ Line 5: 日本語テスト"""
                 assert "error" in result
             except Exception as e:
                 # Various errors are expected for invalid arguments
+                # TypeError is now expected for non-string file_path
                 assert isinstance(
                     e,
                     ValueError

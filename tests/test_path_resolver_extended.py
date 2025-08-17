@@ -184,7 +184,7 @@ class TestPathResolverExtended(unittest.TestCase):
         # Test Windows-style paths on all platforms
         windows_path = "C:\\Users\\test\\file.txt"
         result = self.resolver.resolve(windows_path)
-        # Should return the normalized absolute path
+        # Should return the normalized absolute path without project root prefix
         # Convert to forward slashes for consistent comparison
         normalized_result = result.replace("\\", "/")
         normalized_windows = windows_path.replace("\\", "/")

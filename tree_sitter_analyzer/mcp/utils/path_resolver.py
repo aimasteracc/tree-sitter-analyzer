@@ -48,9 +48,15 @@ class PathResolver:
 
         Raises:
             ValueError: If file_path is empty or None
+            TypeError: If file_path is not a string
         """
         if not file_path:
             raise ValueError("file_path cannot be empty or None")
+
+        if not isinstance(file_path, str):
+            raise TypeError(
+                f"file_path must be a string, got {type(file_path).__name__}"
+            )
 
         # Convert Windows backslashes to forward slashes for consistent handling
         # This ensures cross-platform compatibility
@@ -59,8 +65,11 @@ class PathResolver:
         # Normalize the path to handle any remaining issues
         normalized_input = os.path.normpath(normalized_input)
 
-        # If already absolute, return normalized
-        if os.path.isabs(normalized_input):
+        # Check if path is absolute (including Windows drive letters)
+        # Windows absolute paths like "C:/Users/test/file.txt" should be detected
+        if os.path.isabs(normalized_input) or (
+            len(normalized_input) > 1 and normalized_input[1] == ":"
+        ):
             resolved_path = os.path.normpath(normalized_input)
             logger.debug(f"Path already absolute: {file_path} -> {resolved_path}")
             return resolved_path
