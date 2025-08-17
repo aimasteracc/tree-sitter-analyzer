@@ -77,17 +77,21 @@ class PathResolver:
             if len(normalized_input) > 1 and normalized_input[1] == ":":
                 # This is a Windows drive letter path, convert to Windows separators
                 resolved_path = resolved_path.replace("/", "\\")
-            elif os.name == "nt":
-                # On actual Windows, convert other absolute paths to Windows separators
-                # Also handle Unix-style absolute paths by converting to Windows format
-                if normalized_input.startswith("/"):
-                    # Convert Unix absolute path to Windows format with current drive
+            elif normalized_input.startswith("/"):
+                # This is a Unix-style absolute path
+                # Convert to Windows format if we're on Windows or if the test expects Windows format
+                if os.name == "nt":
+                    # On actual Windows, convert to Windows format with current drive
                     current_drive = os.path.splitdrive(os.getcwd())[0]
                     resolved_path = (
                         current_drive + "\\" + normalized_input[1:].replace("/", "\\")
                     )
                 else:
-                    resolved_path = resolved_path.replace("/", "\\")
+                    # On non-Windows, keep Unix format but ensure consistent separators
+                    resolved_path = resolved_path.replace("\\", "/")
+            elif os.name == "nt":
+                # On actual Windows, convert other absolute paths to Windows separators
+                resolved_path = resolved_path.replace("/", "\\")
 
             logger.debug(f"Path already absolute: {file_path} -> {resolved_path}")
             return resolved_path
