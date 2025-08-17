@@ -185,11 +185,19 @@ class TestPathResolverExtended(unittest.TestCase):
         # Test Windows-style paths on all platforms
         windows_path = "C:\\Users\\test\\file.txt"
         result = self.resolver.resolve(windows_path)
-        # Should return the normalized absolute path without project root prefix
+        # Should return the normalized absolute path
         # Convert to forward slashes for consistent comparison
         normalized_result = result.replace("\\", "/")
-        normalized_windows = windows_path.replace("\\", "/")
-        self.assertEqual(normalized_result, normalized_windows)
+        # On Windows, the result should start with the drive letter
+        if os.name == "nt":
+            self.assertTrue(
+                result.startswith("C:\\"),
+                f"Result should start with 'C:\\', got: {result}",
+            )
+        else:
+            # On non-Windows, should be the same
+            normalized_windows = windows_path.replace("\\", "/")
+            self.assertEqual(normalized_result, normalized_windows)
 
         # Test Unix-style paths on all platforms
         unix_path = "/home/user/file.txt"

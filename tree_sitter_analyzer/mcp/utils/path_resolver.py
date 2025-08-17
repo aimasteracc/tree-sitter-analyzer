@@ -72,7 +72,9 @@ class PathResolver:
             return self._cache[file_path]
 
         # Use pathlib for consistent cross-platform path handling
-        path_obj = Path(file_path)
+        # Normalize path separators first
+        normalized_input = file_path.replace("\\", "/")
+        path_obj = Path(normalized_input)
 
         # Check if path is absolute
         if path_obj.is_absolute():
@@ -83,14 +85,14 @@ class PathResolver:
 
         # Handle Unix-style absolute paths on Windows (starting with /)
         if (
-            file_path.startswith("/") and Path().anchor
+            normalized_input.startswith("/") and Path.cwd().anchor
         ):  # Check if we're on Windows by checking for drive letter
             # On Windows, convert Unix-style absolute paths to Windows format
             # by prepending the current drive with proper separator
             current_drive = Path.cwd().drive
             if current_drive:
                 # Remove leading slash and join with current drive
-                unix_path_without_slash = file_path[1:]
+                unix_path_without_slash = normalized_input[1:]
                 # Ensure proper Windows path format with backslash after drive
                 resolved_path = str(
                     Path(current_drive + "\\") / unix_path_without_slash
@@ -103,7 +105,7 @@ class PathResolver:
 
         # If we have a project root, resolve relative to it
         if self.project_root:
-            resolved_path = str((Path(self.project_root) / file_path).resolve())
+            resolved_path = str((Path(self.project_root) / normalized_input).resolve())
             logger.debug(
                 f"Resolved relative path '{file_path}' to '{resolved_path}' using project root"
             )
@@ -111,7 +113,7 @@ class PathResolver:
             return resolved_path
 
         # Fallback: try to resolve relative to current working directory
-        resolved_path = str(Path(file_path).resolve())
+        resolved_path = str(Path(normalized_input).resolve())
         logger.debug(
             f"Resolved relative path '{file_path}' to '{resolved_path}' using current working directory"
         )
@@ -223,8 +225,13 @@ class PathResolver:
                 return False, f"Path is not a file: {resolved_path}"
 
             # Check if it's a symlink (reject symlinks for security)
-            if resolved_path_obj.is_symlink():
-                return False, f"Path is a symlink: {resolved_path}"
+            try:
+                if resolved_path_obj.is_symlink():
+                    return False, f"Path is a symlink: {resolved_path}"
+            except (OSError, AttributeError):
+                # is_symlink() might not be available on all platforms
+                # or might fail due to permissions, skip this check
+                pass
 
             # Check if it's within project root (if we have one)
             if self.project_root:

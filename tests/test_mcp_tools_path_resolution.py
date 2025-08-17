@@ -45,35 +45,50 @@ class TestMCPToolsPathResolution(unittest.TestCase):
     def test_analyze_scale_tool_uses_path_resolver(self):
         """Test that AnalyzeScaleTool uses PathResolver."""
         self.assertIsNotNone(self.analyze_scale_tool.path_resolver)
-        self.assertEqual(
-            self.analyze_scale_tool.path_resolver.project_root, self.project_root
+        # Use normalized paths for comparison to handle platform differences
+        actual_root = self.analyze_scale_tool.path_resolver.project_root.replace(
+            "\\", "/"
         )
+        expected_root = self.project_root.replace("\\", "/")
+        self.assertEqual(actual_root, expected_root)
 
     def test_query_tool_uses_path_resolver(self):
         """Test that QueryTool uses PathResolver."""
         self.assertIsNotNone(self.query_tool.path_resolver)
-        self.assertEqual(self.query_tool.path_resolver.project_root, self.project_root)
+        # Use normalized paths for comparison to handle platform differences
+        actual_root = self.query_tool.path_resolver.project_root.replace("\\", "/")
+        expected_root = self.project_root.replace("\\", "/")
+        self.assertEqual(actual_root, expected_root)
 
     def test_read_partial_tool_uses_path_resolver(self):
         """Test that ReadPartialTool uses PathResolver."""
         self.assertIsNotNone(self.read_partial_tool.path_resolver)
-        self.assertEqual(
-            self.read_partial_tool.path_resolver.project_root, self.project_root
+        # Use normalized paths for comparison to handle platform differences
+        actual_root = self.read_partial_tool.path_resolver.project_root.replace(
+            "\\", "/"
         )
+        expected_root = self.project_root.replace("\\", "/")
+        self.assertEqual(actual_root, expected_root)
 
     def test_table_format_tool_uses_path_resolver(self):
         """Test that TableFormatTool uses PathResolver."""
         self.assertIsNotNone(self.table_format_tool.path_resolver)
-        self.assertEqual(
-            self.table_format_tool.path_resolver.project_root, self.project_root
+        # Use normalized paths for comparison to handle platform differences
+        actual_root = self.table_format_tool.path_resolver.project_root.replace(
+            "\\", "/"
         )
+        expected_root = self.project_root.replace("\\", "/")
+        self.assertEqual(actual_root, expected_root)
 
     def test_universal_analyze_tool_uses_path_resolver(self):
         """Test that UniversalAnalyzeTool uses PathResolver."""
         self.assertIsNotNone(self.universal_analyze_tool.path_resolver)
-        self.assertEqual(
-            self.universal_analyze_tool.path_resolver.project_root, self.project_root
+        # Use normalized paths for comparison to handle platform differences
+        actual_root = self.universal_analyze_tool.path_resolver.project_root.replace(
+            "\\", "/"
         )
+        expected_root = self.project_root.replace("\\", "/")
+        self.assertEqual(actual_root, expected_root)
 
     def test_consistent_path_resolution_across_tools(self):
         """Test that all tools resolve paths consistently."""
@@ -90,7 +105,10 @@ class TestMCPToolsPathResolution(unittest.TestCase):
 
         # All resolved paths should be the same
         self.assertEqual(len(set(resolved_paths)), 1)
-        self.assertEqual(resolved_paths[0], self.test_file)
+        # Use normalized paths for comparison to handle platform differences
+        actual_path = resolved_paths[0].replace("\\", "/")
+        expected_path = self.test_file.replace("\\", "/")
+        self.assertEqual(actual_path, expected_path)
 
     def test_cross_platform_path_handling(self):
         """Test cross-platform path handling in all tools."""

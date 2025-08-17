@@ -611,8 +611,8 @@ class TestIntermediateFilesErrorHandling:
 
         manager.track_file(str(test_file))
 
-        # Mock os.remove to raise PermissionError
-        with patch("os.remove", side_effect=PermissionError("Access denied")):
+        # Mock Path.unlink to raise PermissionError
+        with patch("pathlib.Path.unlink", side_effect=PermissionError("Access denied")):
             result = manager.cleanup_file(str(test_file))
 
         # Should handle error gracefully
