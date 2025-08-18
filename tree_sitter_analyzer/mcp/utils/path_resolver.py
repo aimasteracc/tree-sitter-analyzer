@@ -35,26 +35,14 @@ def _normalize_path_cross_platform(path_str: str) -> str:
             normalized = path_str[len("/System/Volumes/Data") :]
             return normalized
 
-        # Handle /private/var vs /var symlink difference
+        # Handle /private/var vs /var symlink difference on macOS
         if path_str.startswith("/private/var/"):
-            # Try to normalize to /var form if possible
+            # Always normalize to /var form on macOS for consistency
             var_path = path_str.replace("/private/var/", "/var/", 1)
-            # Check if the /var version exists and points to the same location
-            try:
-                if (
-                    Path(var_path).exists()
-                    and Path(var_path).resolve() == Path(path_str).resolve()
-                ):
-                    return var_path
-            except (OSError, RuntimeError):
-                pass
+            return var_path
         elif path_str.startswith("/var/"):
-            # Ensure we use the canonical form
-            try:
-                canonical = str(Path(path_str).resolve())
-                return canonical
-            except (OSError, RuntimeError):
-                pass
+            # Keep /var form as is
+            return path_str
 
     # Handle Windows short path names (8.3 format)
     if os.name == "nt" and path_str:
@@ -306,7 +294,22 @@ class PathResolver:
         try:
             # Get relative path from project root using pathlib
             project_path = Path(self.project_root)
-            relative_path = str(abs_path.relative_to(project_path))
+
+            # Normalize both paths for consistent comparison
+            normalized_abs_path = _normalize_path_cross_platform(
+                str(abs_path.resolve())
+            )
+            normalized_project_root = _normalize_path_cross_platform(
+                str(project_path.resolve())
+            )
+
+            # Convert back to Path objects for relative_to calculation
+            normalized_abs_path_obj = Path(normalized_abs_path)
+            normalized_project_root_obj = Path(normalized_project_root)
+
+            relative_path = str(
+                normalized_abs_path_obj.relative_to(normalized_project_root_obj)
+            )
             logger.debug(
                 f"Converted absolute path '{absolute_path}' to relative path '{relative_path}'"
             )
