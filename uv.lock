@@ -1509,6 +1509,33 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+all = [
+    { name = "anyio" },
+    { name = "black" },
+    { name = "httpx" },
+    { name = "isort" },
+    { name = "mcp" },
+    { name = "memory-profiler" },
+    { name = "mypy" },
+    { name = "pre-commit" },
+    { name = "psutil" },
+    { name = "pydantic" },
+    { name = "pydantic-settings" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "pytest-cov" },
+    { name = "pytest-mock" },
+    { name = "ruff" },
+    { name = "tree-sitter-c" },
+    { name = "tree-sitter-cpp" },
+    { name = "tree-sitter-go" },
+    { name = "tree-sitter-java" },
+    { name = "tree-sitter-javascript" },
+    { name = "tree-sitter-python" },
+    { name = "tree-sitter-rust" },
+    { name = "tree-sitter-typescript" },
+    { name = "types-psutil" },
+]
 all-languages = [
     { name = "tree-sitter-c" },
     { name = "tree-sitter-cpp" },
@@ -1652,6 +1679,7 @@ requires-dist = [
     { name = "pytest-mock", marker = "extra == 'test'", specifier = ">=3.14.1" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.5.0" },
     { name = "tree-sitter", specifier = "==0.24.0" },
+    { name = "tree-sitter-analyzer", extras = ["all-languages", "mcp", "dev", "test"], marker = "extra == 'all'" },
     { name = "tree-sitter-analyzer", extras = ["all-languages", "mcp", "dev", "test"], marker = "extra == 'full'" },
     { name = "tree-sitter-c", marker = "extra == 'all-languages'", specifier = ">=0.20.0" },
     { name = "tree-sitter-c", marker = "extra == 'c'", specifier = ">=0.20.0" },
@@ -1689,7 +1717,7 @@ requires-dist = [
     { name = "tree-sitter-typescript", marker = "extra == 'web'", specifier = ">=0.20.0" },
     { name = "types-psutil", marker = "extra == 'dev'", specifier = ">=5.9.0" },
 ]
-provides-extras = ["java", "javascript", "typescript", "python", "c", "cpp", "rust", "go", "web", "systems", "popular", "all-languages", "mcp", "dev", "test", "full"]
+provides-extras = ["java", "javascript", "typescript", "python", "c", "cpp", "rust", "go", "web", "systems", "popular", "all-languages", "mcp", "dev", "test", "full", "all"]
 
 [package.metadata.requires-dev]
 dev = [
