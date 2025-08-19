@@ -6,7 +6,6 @@ This module tests the CLIAdapter class which provides a clean interface
 between the CLI and the core analysis engine in the new architecture.
 """
 
-import os
 import tempfile
 from pathlib import Path
 from unittest.mock import patch
@@ -104,7 +103,7 @@ if __name__ == "__main__":
             assert result.node_count > 0
 
         finally:
-            os.unlink(sample_java_file)
+            Path(sample_java_file).unlink()
 
     def test_analyze_file_python_success(
         self, cli_adapter: CLIAdapter, sample_python_file: str
@@ -120,7 +119,7 @@ if __name__ == "__main__":
             assert result.elements is not None
 
         finally:
-            os.unlink(sample_python_file)
+            Path(sample_python_file).unlink()
 
     def test_analyze_file_with_language_override(
         self, cli_adapter: CLIAdapter, sample_java_file: str
@@ -133,7 +132,7 @@ if __name__ == "__main__":
             assert result.language == "java"
 
         finally:
-            os.unlink(sample_java_file)
+            Path(sample_java_file).unlink()
 
     def test_analyze_file_with_options(
         self, cli_adapter: CLIAdapter, sample_java_file: str
@@ -148,7 +147,7 @@ if __name__ == "__main__":
             assert result.file_path == sample_java_file
 
         finally:
-            os.unlink(sample_java_file)
+            Path(sample_java_file).unlink()
 
     def test_analyze_file_nonexistent(self, cli_adapter: CLIAdapter) -> None:
         """Test analysis of non-existent file"""
@@ -167,7 +166,7 @@ if __name__ == "__main__":
             assert result.file_path == str(path_obj)
 
         finally:
-            os.unlink(sample_java_file)
+            Path(sample_java_file).unlink()
 
     def test_analyze_structure_success(
         self, cli_adapter: CLIAdapter, sample_java_file: str
@@ -182,7 +181,7 @@ if __name__ == "__main__":
             assert "structure" in result or "elements" in result
 
         finally:
-            os.unlink(sample_java_file)
+            Path(sample_java_file).unlink()
 
     def test_analyze_structure_with_options(
         self, cli_adapter: CLIAdapter, sample_java_file: str
@@ -196,7 +195,7 @@ if __name__ == "__main__":
             assert isinstance(result, dict)
 
         finally:
-            os.unlink(sample_java_file)
+            Path(sample_java_file).unlink()
 
     def test_analyze_batch_success(self, cli_adapter: CLIAdapter) -> None:
         """Test successful batch analysis"""
@@ -225,8 +224,9 @@ if __name__ == "__main__":
 
         finally:
             for file_path in files:
-                if os.path.exists(file_path):
-                    os.unlink(file_path)
+                path_obj = Path(file_path)
+                if path_obj.exists():
+                    path_obj.unlink()
 
     def test_analyze_batch_with_options(self, cli_adapter: CLIAdapter) -> None:
         """Test batch analysis with options"""
@@ -249,8 +249,9 @@ if __name__ == "__main__":
 
         finally:
             for file_path in files:
-                if os.path.exists(file_path):
-                    os.unlink(file_path)
+                path_obj = Path(file_path)
+                if path_obj.exists():
+                    path_obj.unlink()
 
     def test_analyze_batch_empty_list(self, cli_adapter: CLIAdapter) -> None:
         """Test batch analysis with empty file list"""
@@ -291,7 +292,7 @@ if __name__ == "__main__":
             assert is_valid is True
 
         finally:
-            os.unlink(sample_java_file)
+            Path(sample_java_file).unlink()
 
     def test_validate_file_nonexistent(self, cli_adapter: CLIAdapter) -> None:
         """Test file validation with non-existent file"""
@@ -313,7 +314,7 @@ if __name__ == "__main__":
             assert isinstance(is_valid, bool)
 
         finally:
-            os.unlink(temp_path)
+            Path(temp_path).unlink()
 
     def test_get_engine_info(self, cli_adapter: CLIAdapter) -> None:
         """Test getting engine information"""
@@ -346,7 +347,7 @@ class TestCLIAdapterErrorHandling:
                 with pytest.raises(PermissionError):
                     cli_adapter.analyze_file(temp_path)
             finally:
-                os.unlink(temp_path)
+                Path(temp_path).unlink()
 
     def test_analyze_file_unsupported_language(self, cli_adapter: CLIAdapter) -> None:
         """Test analysis with unsupported language"""
@@ -359,7 +360,7 @@ class TestCLIAdapterErrorHandling:
                 cli_adapter.analyze_file(temp_path)
 
         finally:
-            os.unlink(temp_path)
+            Path(temp_path).unlink()
 
     def test_analyze_structure_nonexistent_file(self, cli_adapter: CLIAdapter) -> None:
         """Test structure analysis with non-existent file"""
@@ -388,8 +389,9 @@ class TestCLIAdapterErrorHandling:
 
         finally:
             for file_path in files:
-                if os.path.exists(file_path):
-                    os.unlink(file_path)
+                path_obj = Path(file_path)
+                if path_obj.exists():
+                    path_obj.unlink()
 
     def test_analyze_file_engine_failure(self, cli_adapter: CLIAdapter) -> None:
         """Test handling of analysis engine failure"""
@@ -408,7 +410,7 @@ class TestCLIAdapterErrorHandling:
                     cli_adapter.analyze_file(temp_path)
 
             finally:
-                os.unlink(temp_path)
+                Path(temp_path).unlink()
 
 
 class TestCLIAdapterIntegration:
@@ -472,7 +474,7 @@ public class DataProcessor {
             assert isinstance(engine_info, dict)
 
         finally:
-            os.unlink(temp_path)
+            Path(temp_path).unlink()
 
     def test_multiple_file_analysis_workflow(self, cli_adapter: CLIAdapter) -> None:
         """Test analysis workflow with multiple files"""
@@ -510,8 +512,9 @@ public class DataProcessor {
 
         finally:
             for file_path in files:
-                if os.path.exists(file_path):
-                    os.unlink(file_path)
+                path_obj = Path(file_path)
+                if path_obj.exists():
+                    path_obj.unlink()
 
     def test_cli_adapter_performance_with_large_file(
         self, cli_adapter: CLIAdapter
@@ -540,7 +543,7 @@ public class DataProcessor {
             assert result.node_count > 0
 
         finally:
-            os.unlink(temp_path)
+            Path(temp_path).unlink()
 
     def test_cli_adapter_caching_behavior(self, cli_adapter: CLIAdapter) -> None:
         """Test CLI adapter caching behavior"""
@@ -572,4 +575,4 @@ public class DataProcessor {
             assert result3.language == result1.language
 
         finally:
-            os.unlink(temp_path)
+            Path(temp_path).unlink()

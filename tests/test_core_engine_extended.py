@@ -6,8 +6,8 @@ This module provides additional test coverage for the AnalysisEngine
 to improve overall test coverage and test edge cases.
 """
 
-import os
 import tempfile
+from pathlib import Path
 from unittest.mock import Mock, patch
 
 import pytest
@@ -229,7 +229,7 @@ class TestAnalysisEnginePerformance:
         with tempfile.TemporaryDirectory() as temp_dir:
             test_files = []
             for i in range(5):
-                file_path = os.path.join(temp_dir, f"test_{i}.py")
+                file_path = Path(temp_dir) / f"test_{i}.py"
                 with open(file_path, "w") as f:
                     f.write(f"def function_{i}(): pass\nclass Class_{i}: pass")
                 test_files.append(file_path)

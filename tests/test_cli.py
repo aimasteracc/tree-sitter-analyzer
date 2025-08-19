@@ -8,10 +8,10 @@ import sys
 # Add project root to path
 sys.path.insert(0, ".")
 
-import os
 import sys
 import tempfile
 from io import StringIO
+from pathlib import Path
 
 import pytest
 
@@ -174,8 +174,7 @@ public class TestClass {
             temp_path = f.name
 
         try:
-            temp_dir = os.path.dirname(temp_path)
-            temp_dir = os.path.dirname(temp_path)
+            temp_dir = str(Path(temp_path).parent)
             monkeypatch.setattr(
                 sys,
                 "argv",
@@ -194,8 +193,9 @@ public class TestClass {
             assert len(output) > 0
         finally:
             # Clean up
-            if os.path.exists(temp_path):
-                os.unlink(temp_path)
+            temp_file = Path(temp_path)
+            if temp_file.exists():
+                temp_file.unlink()
 
     def test_analyze_with_query_key(self, monkeypatch):
         """Test analyzing file with specific query"""
@@ -214,8 +214,7 @@ public class TestClass {
             temp_path = f.name
 
         try:
-            temp_dir = os.path.dirname(temp_path)
-            temp_dir = os.path.dirname(temp_path)
+            temp_dir = str(Path(temp_path).parent)
             monkeypatch.setattr(
                 sys,
                 "argv",
@@ -241,8 +240,9 @@ public class TestClass {
             assert len(output) > 0
         finally:
             # Clean up
-            if os.path.exists(temp_path):
-                os.unlink(temp_path)
+            temp_file = Path(temp_path)
+            if temp_file.exists():
+                temp_file.unlink()
 
     def test_analyze_with_custom_query(self, monkeypatch):
         """Test analyzing file with custom query string"""
@@ -262,7 +262,7 @@ public class TestClass {
 
         try:
             custom_query = "(class_declaration name: (identifier) @class-name)"
-            temp_dir = os.path.dirname(temp_path)
+            temp_dir = str(Path(temp_path).parent)
             monkeypatch.setattr(
                 sys,
                 "argv",
@@ -288,8 +288,9 @@ public class TestClass {
             assert len(output) > 0
         finally:
             # Clean up
-            if os.path.exists(temp_path):
-                os.unlink(temp_path)
+            temp_file = Path(temp_path)
+            if temp_file.exists():
+                temp_file.unlink()
 
     def test_language_detection(self, monkeypatch):
         """Test automatic language detection"""
@@ -308,8 +309,7 @@ if __name__ == "__main__":
             temp_path = f.name
 
         try:
-            temp_dir = os.path.dirname(temp_path)
-            temp_dir = os.path.dirname(temp_path)
+            temp_dir = str(Path(temp_path).parent)
             monkeypatch.setattr(
                 sys,
                 "argv",
@@ -328,8 +328,9 @@ if __name__ == "__main__":
             assert len(output) > 0
         finally:
             # Clean up
-            if os.path.exists(temp_path):
-                os.unlink(temp_path)
+            temp_file = Path(temp_path)
+            if temp_file.exists():
+                temp_file.unlink()
 
     def test_explicit_language_override(self, monkeypatch):
         """Test explicit language specification"""
@@ -348,7 +349,7 @@ public class TestClass {
             temp_path = f.name
 
         try:
-            temp_dir = os.path.dirname(temp_path)
+            temp_dir = str(Path(temp_path).parent)
             monkeypatch.setattr(
                 sys,
                 "argv",
@@ -367,8 +368,9 @@ public class TestClass {
             assert len(output) > 0
         finally:
             # Clean up
-            if os.path.exists(temp_path):
-                os.unlink(temp_path)
+            temp_file = Path(temp_path)
+            if temp_file.exists():
+                temp_file.unlink()
 
     def test_unsupported_file_extension(self, monkeypatch):
         """Test handling of unsupported file extensions"""
@@ -379,8 +381,7 @@ public class TestClass {
             temp_path = f.name
 
         try:
-            temp_dir = os.path.dirname(temp_path)
-            temp_dir = os.path.dirname(temp_path)
+            temp_dir = str(Path(temp_path).parent)
             monkeypatch.setattr(
                 sys, "argv", ["cli", temp_path, "--project-root", temp_dir]
             )
@@ -397,8 +398,9 @@ public class TestClass {
             assert "Could not determine language for file" in error_output
         finally:
             # Clean up
-            if os.path.exists(temp_path):
-                os.unlink(temp_path)
+            temp_file = Path(temp_path)
+            if temp_file.exists():
+                temp_file.unlink()
 
     def test_nonexistent_file(self, monkeypatch):
         """Test handling of nonexistent files"""
@@ -435,7 +437,7 @@ public class TestClass {
             temp_path = f.name
 
         try:
-            temp_dir = os.path.dirname(temp_path)
+            temp_dir = str(Path(temp_path).parent)
             monkeypatch.setattr(
                 sys,
                 "argv",
@@ -462,8 +464,9 @@ public class TestClass {
             assert "{" in output or "[" in output
         finally:
             # Clean up
-            if os.path.exists(temp_path):
-                os.unlink(temp_path)
+            temp_file = Path(temp_path)
+            if temp_file.exists():
+                temp_file.unlink()
 
     def test_output_format_text(self, monkeypatch):
         """Test text output format"""
@@ -482,7 +485,7 @@ public class TestClass {
             temp_path = f.name
 
         try:
-            temp_dir = os.path.dirname(temp_path)
+            temp_dir = str(Path(temp_path).parent)
             monkeypatch.setattr(
                 sys,
                 "argv",
@@ -509,8 +512,9 @@ public class TestClass {
             assert len(output) > 0
         finally:
             # Clean up
-            if os.path.exists(temp_path):
-                os.unlink(temp_path)
+            temp_file = Path(temp_path)
+            if temp_file.exists():
+                temp_file.unlink()
 
 
 class TestCLIEdgeCases:
@@ -542,7 +546,7 @@ class TestCLIEdgeCases:
             temp_path = f.name
 
         try:
-            temp_dir = os.path.dirname(temp_path)
+            temp_dir = str(Path(temp_path).parent)
             monkeypatch.setattr(
                 sys,
                 "argv",
@@ -568,8 +572,9 @@ class TestCLIEdgeCases:
             assert "not found" in error_output
         finally:
             # Clean up
-            if os.path.exists(temp_path):
-                os.unlink(temp_path)
+            temp_file = Path(temp_path)
+            if temp_file.exists():
+                temp_file.unlink()
 
     def test_help_option(self, monkeypatch):
         """Test help option"""

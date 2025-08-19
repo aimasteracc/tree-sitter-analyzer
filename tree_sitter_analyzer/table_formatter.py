@@ -7,7 +7,6 @@ Provides table-formatted output for Java code analysis results.
 
 import csv
 import io
-import os
 from typing import Any
 
 
@@ -26,12 +25,15 @@ class TableFormatter:
 
     def _get_platform_newline(self) -> str:
         """Get platform-specific newline character"""
-        return os.linesep
+        import os
+
+        return "\r\n" if os.name == "nt" else "\n"  # Windows uses \r\n, others use \n
 
     def _convert_to_platform_newlines(self, text: str) -> str:
         """Convert standard \\n to platform-specific newline characters"""
-        if os.linesep != "\n":
-            return text.replace("\n", os.linesep)
+        platform_newline = self._get_platform_newline()
+        if platform_newline != "\n":
+            return text.replace("\n", platform_newline)
         return text
 
     def format_structure(self, structure_data: dict[str, Any]) -> str:

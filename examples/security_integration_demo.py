@@ -7,8 +7,8 @@ of the tree-sitter-analyzer system.
 """
 
 import asyncio
-import os
 import tempfile
+from pathlib import Path
 
 from tree_sitter_analyzer.core.analysis_engine import get_analysis_engine
 from tree_sitter_analyzer.mcp.tools.table_format_tool import TableFormatTool
@@ -22,8 +22,8 @@ async def main():
     print("=" * 60)
 
     # Create a temporary test environment
-    temp_dir = tempfile.mkdtemp()
-    test_file = os.path.join(temp_dir, "example.py")
+    temp_dir = Path(tempfile.mkdtemp())
+    test_file = temp_dir / "example.py"
     # Use temp_dir itself as project_root to ensure test_file is within it
     project_root = temp_dir
 
@@ -54,11 +54,11 @@ class MathUtils:
     print("1️⃣ Testing Analysis Engine Security")
     print("-" * 40)
 
-    engine = get_analysis_engine(project_root)
+    engine = get_analysis_engine(str(project_root))
 
     try:
         # Valid file should work
-        result = await engine.analyze_file(test_file)
+        result = await engine.analyze_file(str(test_file))
         print(
             f"✅ Valid file analysis: SUCCESS (found {len(result.elements)} elements)"
         )
@@ -79,10 +79,10 @@ class MathUtils:
     print("-" * 40)
 
     # Test TableFormatTool
-    table_tool = TableFormatTool(project_root)
+    table_tool = TableFormatTool(str(project_root))
 
     try:
-        result = await table_tool.execute({"file_path": test_file})
+        result = await table_tool.execute({"file_path": str(test_file)})
         print("✅ TableFormatTool valid file: SUCCESS")
     except Exception as e:
         print(f"❌ TableFormatTool valid file: FAILED - {e}")
@@ -94,10 +94,10 @@ class MathUtils:
         print("✅ TableFormatTool path traversal: BLOCKED")
 
     # Test UniversalAnalyzeTool
-    analyze_tool = UniversalAnalyzeTool(project_root)
+    analyze_tool = UniversalAnalyzeTool(str(project_root))
 
     try:
-        result = await analyze_tool.execute({"file_path": test_file})
+        result = await analyze_tool.execute({"file_path": str(test_file)})
         print("✅ UniversalAnalyzeTool valid file: SUCCESS")
     except Exception as e:
         print(f"❌ UniversalAnalyzeTool valid file: FAILED - {e}")
@@ -114,7 +114,7 @@ class MathUtils:
     print("3️⃣ Testing Input Sanitization")
     print("-" * 40)
 
-    validator = SecurityValidator(project_root)
+    validator = SecurityValidator(str(project_root))
 
     malicious_inputs = [
         "<script>alert('xss')</script>",
@@ -156,7 +156,7 @@ class MathUtils:
     print("-" * 40)
 
     test_paths = [
-        test_file,  # Valid path
+        str(test_file),  # Valid path
         "../../../etc/passwd",  # Path traversal
         "/etc/shadow",  # Absolute path outside project
         "C:\\Windows\\System32\\config\\SAM",  # Windows system file
@@ -179,13 +179,13 @@ class MathUtils:
     # Test without security (baseline)
     start_time = time.time()
     for _ in range(100):
-        os.path.exists(test_file)
+        test_file.exists()
     baseline_time = time.time() - start_time
 
     # Test with security validation
     start_time = time.time()
     for _ in range(100):
-        validator.validate_file_path(test_file)
+        validator.validate_file_path(str(test_file))
     security_time = time.time() - start_time
 
     overhead = ((security_time - baseline_time) / baseline_time) * 100
@@ -203,7 +203,7 @@ class MathUtils:
     # Cleanup
     import shutil
 
-    shutil.rmtree(temp_dir, ignore_errors=True)
+    shutil.rmtree(str(temp_dir), ignore_errors=True)
 
     print("🎉 Security Integration Demo Complete!")
     print("=" * 60)

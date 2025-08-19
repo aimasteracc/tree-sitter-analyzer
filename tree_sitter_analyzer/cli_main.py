@@ -3,6 +3,7 @@
 
 import argparse
 import logging
+import os
 import sys
 from typing import Any
 
@@ -268,8 +269,6 @@ def handle_special_commands(args: argparse.Namespace) -> int | None:
 def main() -> None:
     """Main entry point for the CLI."""
     # Early check for quiet mode to set environment variable before any imports
-    import os
-
     if "--quiet" in sys.argv:
         os.environ["LOG_LEVEL"] = "ERROR"
     else:

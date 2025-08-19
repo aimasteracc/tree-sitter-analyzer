@@ -112,10 +112,13 @@ class ShowExtensionsCommand(InfoCommand):
     def execute(self) -> int:
         output_list("Supported file extensions:")
         supported_extensions = detector.get_supported_extensions()
-        for i in range(0, len(supported_extensions), 8):
-            line = "  " + "  ".join(
-                f"{ext:<6}" for ext in supported_extensions[i : i + 8]
-            )
+        # Use more efficient chunking with itertools.islice
+        from itertools import islice
+
+        chunk_size = 8
+        for i in range(0, len(supported_extensions), chunk_size):
+            chunk = list(islice(supported_extensions, i, i + chunk_size))
+            line = "  " + "  ".join(f"{ext:<6}" for ext in chunk)
             output_list(line)
         output_info(f"\nTotal {len(supported_extensions)} extensions supported")
         return 0

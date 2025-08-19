@@ -11,6 +11,7 @@ import asyncio
 import json
 import os
 import sys
+from pathlib import Path as PathClass
 from typing import Any
 
 try:
@@ -141,15 +142,13 @@ class TreeSitterAnalyzerMCPServer:
         include_details = arguments.get("include_details", False)
 
         # Resolve relative path against project root for consistent behavior
-        import os
-
         base_root = getattr(
             getattr(self.security_validator, "boundary_manager", None),
             "project_root",
             None,
         )
-        if not os.path.isabs(file_path) and base_root:
-            resolved_path = os.path.realpath(os.path.join(base_root, file_path))
+        if not PathClass(file_path).is_absolute() and base_root:
+            resolved_path = str((PathClass(base_root) / file_path).resolve())
         else:
             resolved_path = file_path
 
@@ -159,13 +158,11 @@ class TreeSitterAnalyzerMCPServer:
             raise ValueError(f"Invalid file path: {error_msg}")
 
         # Use analysis engine directly
-        from pathlib import Path
-
         from ..core.analysis_engine import AnalysisRequest
         from ..language_detector import detect_language_from_file
 
         # Validate file exists
-        if not Path(resolved_path).exists():
+        if not PathClass(resolved_path).exists():
             raise FileNotFoundError(f"File not found: {file_path}")
 
         # Detect language if not specified
@@ -404,7 +401,7 @@ class TreeSitterAnalyzerMCPServer:
                         raise ValueError(
                             "project_path parameter is required and must be a string"
                         )
-                    if not os.path.isdir(project_path):
+                    if not PathClass(project_path).is_dir():
                         raise ValueError(f"Project path does not exist: {project_path}")
                     self.set_project_path(project_path)
                     result = {"status": "success", "project_root": project_path}
@@ -596,8 +593,12 @@ async def main() -> None:
         if args.project_root:
             project_root = args.project_root
         # Priority 2: Environment variable
-        elif os.getenv("TREE_SITTER_PROJECT_ROOT"):
-            project_root = os.getenv("TREE_SITTER_PROJECT_ROOT")
+        elif (
+            PathClass.cwd()
+            .joinpath(os.environ.get("TREE_SITTER_PROJECT_ROOT", ""))
+            .exists()
+        ):
+            project_root = os.environ.get("TREE_SITTER_PROJECT_ROOT")
         # Priority 3: Auto-detection from current directory
         else:
             project_root = detect_project_root()
@@ -608,7 +609,11 @@ async def main() -> None:
         )
 
         # Validate existence; if invalid, fall back to auto-detected root
-        if not project_root or invalid_placeholder or not os.path.isdir(project_root):
+        if (
+            not project_root
+            or invalid_placeholder
+            or not PathClass(project_root).is_dir()
+        ):
             detected = detect_project_root()
             try:
                 logger.warning(

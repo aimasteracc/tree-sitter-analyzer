@@ -6,7 +6,7 @@ Automatically detects version and handles all edge cases
 
 import getpass
 import os
-import subprocess
+import subprocess  # nosec B404
 import sys
 from pathlib import Path
 
@@ -72,7 +72,7 @@ def get_version() -> str | None:
 def check_git_status() -> bool:
     """Check if git repo is clean"""
     try:
-        result = subprocess.run(
+        result = subprocess.run(  # nosec B607, B603
             ["git", "status", "--porcelain"], capture_output=True, text=True, check=True
         )
         if result.stdout.strip():
@@ -89,7 +89,7 @@ def check_git_status() -> bool:
 def check_git_tag(version: str) -> bool:
     """Check if git tag exists for version"""
     try:
-        result = subprocess.run(
+        result = subprocess.run(  # nosec B607, B603
             ["git", "tag", "-l", f"v{version}"],
             capture_output=True,
             text=True,
@@ -144,7 +144,7 @@ def check_pypi_version(version: str) -> bool:
         import urllib.request
 
         url = "https://pypi.org/pypi/tree-sitter-analyzer/json"
-        with urllib.request.urlopen(url, timeout=10) as response:
+        with urllib.request.urlopen(url, timeout=10) as response:  # nosec B310
             data = json.loads(response.read().decode())
             existing_versions = list(data.get("releases", {}).keys())
 
@@ -178,7 +178,7 @@ def check_pypi_version(version: str) -> bool:
 
     # Method 3: Try pip index (may not work in all environments)
     try:
-        result = subprocess.run(
+        result = subprocess.run(  # nosec B607, B603
             ["uv", "run", "pip", "index", "versions", "tree-sitter-analyzer"],
             capture_output=True,
             text=True,
@@ -200,7 +200,7 @@ def run_tests() -> bool:
     """Run tests before upload"""
     print("🧪 Running tests...")
     try:
-        result = subprocess.run(
+        result = subprocess.run(  # nosec B607, B603
             ["uv", "run", "pytest", "--tb=short"], capture_output=True, text=True
         )
         if result.returncode == 0:
@@ -221,8 +221,8 @@ def upload_with_uv() -> bool:
     print("\n🚀 Uploading to PyPI using uv...")
 
     # Check for .pypirc file first
-    pypirc_path = os.path.expanduser("~/.pypirc")
-    has_pypirc = os.path.exists(pypirc_path)
+    pypirc_path = Path.home() / ".pypirc"
+    has_pypirc = pypirc_path.exists()
 
     if has_pypirc:
         print("📁 Found .pypirc configuration file")
@@ -231,7 +231,7 @@ def upload_with_uv() -> bool:
             cmd = ["uv", "publish"]
             print("Running: uv publish (using .pypirc)")
 
-            result = subprocess.run(cmd, capture_output=True, text=True)
+            result = subprocess.run(cmd, capture_output=True, text=True)  # nosec B607, B603
 
             if result.returncode == 0:
                 print("✅ Successfully uploaded to PyPI using .pypirc!")
@@ -286,7 +286,7 @@ def upload_with_uv() -> bool:
         cmd = ["uv", "publish"]
         print("Running: uv publish (using token)")
 
-        result = subprocess.run(cmd, env=env, capture_output=True, text=True)
+        result = subprocess.run(cmd, env=env, capture_output=True, text=True)  # nosec B607, B603
 
         if result.returncode == 0:
             print("✅ Successfully uploaded to PyPI!")

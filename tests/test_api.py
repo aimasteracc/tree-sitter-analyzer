@@ -6,7 +6,6 @@ This module tests the unified API facade that provides a consistent
 interface for both CLI and MCP components in the new architecture.
 """
 
-import os
 import tempfile
 from pathlib import Path
 
@@ -89,7 +88,7 @@ if __name__ == "__main__":
             assert result["ast_info"]["node_count"] > 0
 
         finally:
-            os.unlink(sample_java_file)
+            Path(sample_java_file).unlink()
 
     def test_analyze_file_python_success(self, sample_python_file: str) -> None:
         """Test successful Python file analysis through API"""
@@ -104,7 +103,7 @@ if __name__ == "__main__":
             assert len(result["elements"]) > 0
 
         finally:
-            os.unlink(sample_python_file)
+            Path(sample_python_file).unlink()
 
     def test_analyze_file_with_language_override(self, sample_java_file: str) -> None:
         """Test file analysis with explicit language specification"""
@@ -116,7 +115,7 @@ if __name__ == "__main__":
             assert result["language_info"]["language"] == "java"
 
         finally:
-            os.unlink(sample_java_file)
+            Path(sample_java_file).unlink()
 
     def test_analyze_file_with_options(self, sample_java_file: str) -> None:
         """Test file analysis with additional options"""
@@ -130,7 +129,7 @@ if __name__ == "__main__":
             assert result["file_info"]["path"] == sample_java_file
 
         finally:
-            os.unlink(sample_java_file)
+            Path(sample_java_file).unlink()
 
     def test_analyze_file_nonexistent(self) -> None:
         """Test analysis of non-existent file"""
@@ -148,7 +147,7 @@ if __name__ == "__main__":
             assert result["file_info"]["path"] == str(path_obj)
 
         finally:
-            os.unlink(sample_java_file)
+            Path(sample_java_file).unlink()
 
     def test_analyze_code_java_success(self) -> None:
         """Test successful Java code analysis through API"""
@@ -196,7 +195,7 @@ class TestClass:
             assert len(result["elements"]) > 0
 
         finally:
-            os.unlink(sample_java_file)
+            Path(sample_java_file).unlink()
 
     def test_extract_elements_python(self, sample_python_file: str) -> None:
         """Test element extraction from Python file"""
@@ -209,7 +208,7 @@ class TestClass:
             assert len(result["elements"]) > 0
 
         finally:
-            os.unlink(sample_python_file)
+            Path(sample_python_file).unlink()
 
     def test_extract_elements_with_types(self, sample_java_file: str) -> None:
         """Test element extraction with specific types"""
@@ -223,7 +222,7 @@ class TestClass:
             assert "elements" in result
 
         finally:
-            os.unlink(sample_java_file)
+            Path(sample_java_file).unlink()
 
     def test_get_supported_languages(self) -> None:
         """Test getting list of supported languages"""
@@ -248,7 +247,7 @@ class TestClass:
             assert language == "java"
 
         finally:
-            os.unlink(sample_java_file)
+            Path(sample_java_file).unlink()
 
     def test_get_available_queries(self) -> None:
         """Test getting available queries for a language"""
@@ -266,7 +265,7 @@ class TestClass:
             assert "success" in result
 
         finally:
-            os.unlink(sample_java_file)
+            Path(sample_java_file).unlink()
 
     def test_validate_file(self, sample_java_file: str) -> None:
         """Test file validation"""
@@ -279,7 +278,7 @@ class TestClass:
             assert result["exists"] is True
 
         finally:
-            os.unlink(sample_java_file)
+            Path(sample_java_file).unlink()
 
     def test_get_framework_info(self) -> None:
         """Test getting framework information"""
@@ -328,7 +327,7 @@ public class Test {
             assert "success" in result
 
         finally:
-            os.unlink(temp_path)
+            Path(temp_path).unlink()
 
     def test_extract_elements_nonexistent_file(self) -> None:
         """Test element extraction from non-existent file"""
@@ -352,7 +351,7 @@ public class Test {
             assert "success" in result
 
         finally:
-            os.unlink(temp_path)
+            Path(temp_path).unlink()
 
     def test_validate_file_nonexistent(self) -> None:
         """Test validation of non-existent file"""
@@ -432,7 +431,7 @@ public class DataProcessor {
             assert "success" in query_result
 
         finally:
-            os.unlink(temp_path)
+            Path(temp_path).unlink()
 
     def test_multiple_file_analysis(self) -> None:
         """Test analysis of multiple files through API"""
@@ -464,8 +463,9 @@ public class DataProcessor {
 
         finally:
             for file_path in files:
-                if os.path.exists(file_path):
-                    os.unlink(file_path)
+                path_obj = Path(file_path)
+                if path_obj.exists():
+                    path_obj.unlink()
 
     def test_api_consistency_across_methods(self) -> None:
         """Test that API methods return consistent results"""
@@ -503,7 +503,7 @@ public class ConsistencyTest {
             assert len(file_result["elements"]) == len(code_result["elements"])
 
         finally:
-            os.unlink(temp_path)
+            Path(temp_path).unlink()
 
     def test_api_performance_with_large_file(self) -> None:
         """Test API performance with large code files"""
@@ -531,4 +531,4 @@ public class ConsistencyTest {
             assert result["ast_info"]["node_count"] > 0
 
         finally:
-            os.unlink(temp_path)
+            Path(temp_path).unlink()

@@ -6,7 +6,6 @@ Tests for the enhanced parameter validation logic in PartialReadCommand,
 including boundary conditions and error handling.
 """
 
-import os
 import sys
 import tempfile
 from pathlib import Path
@@ -26,7 +25,7 @@ class TestPartialReadCommandValidation:
     def setup_method(self) -> None:
         """Set up test environment."""
         self.temp_dir = tempfile.mkdtemp()
-        self.test_file = os.path.join(self.temp_dir, "test.java")
+        self.test_file = str(Path(self.temp_dir) / "test.java")
 
         # Create test file with multiple lines
         with open(self.test_file, "w", encoding="utf-8") as f:
@@ -144,7 +143,7 @@ line 10"""
         """Test validation with nonexistent file."""
         from argparse import Namespace
 
-        nonexistent_file = os.path.join(self.temp_dir, "nonexistent.java")
+        nonexistent_file = str(Path(self.temp_dir) / "nonexistent.java")
         args = Namespace(file_path=nonexistent_file, start_line=1, end_line=5)
         command = PartialReadCommand(args)
 
@@ -305,7 +304,7 @@ line 10"""
         """Test that correct error message is shown for missing file."""
         from argparse import Namespace
 
-        nonexistent_file = os.path.join(self.temp_dir, "nonexistent.java")
+        nonexistent_file = str(Path(self.temp_dir) / "nonexistent.java")
         args = Namespace(file_path=nonexistent_file, start_line=1, end_line=5)
         command = PartialReadCommand(args)
 

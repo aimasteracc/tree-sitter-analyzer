@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "tree-sitter-analyzer"
-version = "0.9.8"
+version = "0.9.9"
 description = "Extensible multi-language code analyzer framework using Tree-sitter with dynamic plugin architecture"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -141,6 +141,11 @@ test = [
 
 # Complete development environment
 full = [
+    "tree-sitter-analyzer[all-languages,mcp,dev,test]",
+]
+
+# All dependencies (alias for full)
+all = [
     "tree-sitter-analyzer[all-languages,mcp,dev,test]",
 ]
 

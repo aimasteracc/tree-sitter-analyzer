@@ -35,7 +35,7 @@ class TestQuietOption:
     def setup_method(self) -> None:
         """Set up test environment."""
         self.temp_dir = tempfile.mkdtemp()
-        self.test_java_file = os.path.join(self.temp_dir, "Test.java")
+        self.test_java_file = str(Path(self.temp_dir) / "Test.java")
 
         # Create test Java file
         with open(self.test_java_file, "w", encoding="utf-8") as f:
@@ -77,7 +77,7 @@ public class Test {
         from argparse import Namespace
 
         # Create nonexistent file
-        nonexistent_file = os.path.join(self.temp_dir, "nonexistent.java")
+        nonexistent_file = str(Path(self.temp_dir) / "nonexistent.java")
         args = Namespace(file_path=nonexistent_file, quiet=True)
         command = MockCommand(args)
 
@@ -186,7 +186,7 @@ public class Test {
         from argparse import Namespace
 
         # Create a file with unknown extension
-        unknown_file = os.path.join(self.temp_dir, "test.unknown")
+        unknown_file = str(Path(self.temp_dir) / "test.unknown")
         with open(unknown_file, "w") as f:
             f.write("some content")
 

@@ -2,9 +2,10 @@ name: CI
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ main, develop, hotfix/*, feature/*, release/* ]
   pull_request:
     branches: [ main, develop ]
+  workflow_dispatch:  # 允许手动触发
 
 jobs:
   quality-check:

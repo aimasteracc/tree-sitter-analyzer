@@ -8,10 +8,10 @@ Follows TDD principles and .roo-config.json requirements.
 """
 
 import logging
-import os
 import sys
 import tempfile
 from io import StringIO
+from pathlib import Path
 from unittest.mock import Mock, patch
 
 import pytest
@@ -57,8 +57,8 @@ public class TestClass {
     yield temp_path
 
     # Cleanup
-    if os.path.exists(temp_path):
-        os.unlink(temp_path)
+    if Path(temp_path).exists():
+        Path(temp_path).unlink()
 
 
 class TestCLIAdvancedOptions:
@@ -66,7 +66,7 @@ class TestCLIAdvancedOptions:
 
     def test_advanced_option_json_output(self, monkeypatch, sample_java_file):
         """Test --advanced option with JSON output"""
-        sample_dir = os.path.dirname(sample_java_file)
+        sample_dir = str(Path(sample_java_file).parent)
         monkeypatch.setattr(
             sys,
             "argv",
@@ -93,7 +93,7 @@ class TestCLIAdvancedOptions:
 
     def test_advanced_option_text_output(self, monkeypatch, sample_java_file):
         """Test --advanced option with text output"""
-        sample_dir = os.path.dirname(sample_java_file)
+        sample_dir = str(Path(sample_java_file).parent)
         monkeypatch.setattr(
             sys,
             "argv",
@@ -120,7 +120,7 @@ class TestCLIAdvancedOptions:
 
     def test_advanced_option_analysis_failure(self, monkeypatch, sample_java_file):
         """Test --advanced option when analysis fails"""
-        sample_dir = os.path.dirname(sample_java_file)
+        sample_dir = str(Path(sample_java_file).parent)
 
         monkeypatch.setattr(
             sys,
@@ -161,7 +161,7 @@ class TestCLIAdvancedOptions:
 
     def test_statistics_option(self, monkeypatch, sample_java_file):
         """Test --statistics option"""
-        sample_dir = os.path.dirname(sample_java_file)
+        sample_dir = str(Path(sample_java_file).parent)
 
         monkeypatch.setattr(
             sys,
@@ -188,7 +188,7 @@ class TestCLIAdvancedOptions:
 
     def test_statistics_option_json(self, monkeypatch, sample_java_file):
         """Test --statistics option with JSON output"""
-        sample_dir = os.path.dirname(sample_java_file)
+        sample_dir = str(Path(sample_java_file).parent)
         monkeypatch.setattr(
             sys,
             "argv",
@@ -220,7 +220,7 @@ class TestCLISummaryOption:
 
     def test_summary_option_default(self, monkeypatch, sample_java_file):
         """Test --summary option with default types"""
-        sample_dir = os.path.dirname(sample_java_file)
+        sample_dir = str(Path(sample_java_file).parent)
 
         monkeypatch.setattr(
             sys,
@@ -240,7 +240,7 @@ class TestCLISummaryOption:
 
     def test_summary_option_specific_types(self, monkeypatch, sample_java_file):
         """Test --summary option with specific types"""
-        sample_dir = os.path.dirname(sample_java_file)
+        sample_dir = str(Path(sample_java_file).parent)
 
         monkeypatch.setattr(
             sys,
@@ -266,7 +266,7 @@ class TestCLISummaryOption:
 
     def test_summary_option_json(self, monkeypatch, sample_java_file):
         """Test --summary option with JSON output"""
-        sample_dir = os.path.dirname(sample_java_file)
+        sample_dir = str(Path(sample_java_file).parent)
         monkeypatch.setattr(
             sys,
             "argv",
@@ -293,7 +293,7 @@ class TestCLISummaryOption:
 
     def test_summary_option_analysis_failure(self, monkeypatch, sample_java_file):
         """Test --summary option when analysis fails"""
-        sample_dir = os.path.dirname(sample_java_file)
+        sample_dir = str(Path(sample_java_file).parent)
 
         monkeypatch.setattr(
             sys,
@@ -338,7 +338,7 @@ class TestCLIStructureOption:
 
     def test_structure_option_json(self, monkeypatch, sample_java_file):
         """Test --structure option with JSON output"""
-        sample_dir = os.path.dirname(sample_java_file)
+        sample_dir = str(Path(sample_java_file).parent)
         monkeypatch.setattr(
             sys,
             "argv",
@@ -365,7 +365,7 @@ class TestCLIStructureOption:
 
     def test_structure_option_text(self, monkeypatch, sample_java_file):
         """Test --structure option with text output"""
-        sample_dir = os.path.dirname(sample_java_file)
+        sample_dir = str(Path(sample_java_file).parent)
         monkeypatch.setattr(
             sys,
             "argv",
@@ -392,7 +392,7 @@ class TestCLIStructureOption:
 
     def test_structure_option_analysis_failure(self, monkeypatch, sample_java_file):
         """Test --structure option when analysis fails"""
-        sample_dir = os.path.dirname(sample_java_file)
+        sample_dir = str(Path(sample_java_file).parent)
 
         monkeypatch.setattr(
             sys,
@@ -437,7 +437,7 @@ class TestCLITableOption:
 
     def test_table_option_full(self, monkeypatch, sample_java_file):
         """Test --table option with full format"""
-        sample_dir = os.path.dirname(sample_java_file)
+        sample_dir = str(Path(sample_java_file).parent)
 
         monkeypatch.setattr(
             sys,
@@ -457,7 +457,7 @@ class TestCLITableOption:
 
     def test_table_option_compact(self, monkeypatch, sample_java_file):
         """Test --table option with compact format"""
-        sample_dir = os.path.dirname(sample_java_file)
+        sample_dir = str(Path(sample_java_file).parent)
 
         monkeypatch.setattr(
             sys,
@@ -484,7 +484,7 @@ class TestCLITableOption:
 
     def test_table_option_csv(self, monkeypatch, sample_java_file):
         """Test --table option with CSV format"""
-        sample_dir = os.path.dirname(sample_java_file)
+        sample_dir = str(Path(sample_java_file).parent)
 
         monkeypatch.setattr(
             sys,
@@ -504,7 +504,7 @@ class TestCLITableOption:
 
     def test_table_option_analysis_failure(self, monkeypatch, sample_java_file):
         """Test --table option when analysis fails"""
-        sample_dir = os.path.dirname(sample_java_file)
+        sample_dir = str(Path(sample_java_file).parent)
 
         monkeypatch.setattr(
             sys,
@@ -575,7 +575,7 @@ class TestCLIPartialReadOption:
 
     def test_partial_read_missing_start_line(self, monkeypatch, sample_java_file):
         """Test --partial-read option without required --start-line"""
-        sample_dir = os.path.dirname(sample_java_file)
+        sample_dir = str(Path(sample_java_file).parent)
 
         monkeypatch.setattr(
             sys,
@@ -763,7 +763,7 @@ class TestCLILanguageHandling:
 
     def test_unsupported_language_fallback(self, monkeypatch, sample_java_file):
         """Test unsupported language with Java fallback"""
-        sample_dir = os.path.dirname(sample_java_file)
+        sample_dir = str(Path(sample_java_file).parent)
 
         monkeypatch.setattr(
             sys,
@@ -794,7 +794,7 @@ class TestCLIQueryExecution:
 
     def test_query_execution_no_results(self, monkeypatch, sample_java_file):
         """Test query execution with no results"""
-        sample_dir = os.path.dirname(sample_java_file)
+        sample_dir = str(Path(sample_java_file).parent)
 
         monkeypatch.setattr(
             sys,
@@ -838,7 +838,7 @@ class TestCLIQueryExecution:
 
     def test_query_execution_parse_failure(self, monkeypatch, sample_java_file):
         """Test query execution when parsing fails"""
-        sample_dir = os.path.dirname(sample_java_file)
+        sample_dir = str(Path(sample_java_file).parent)
 
         monkeypatch.setattr(
             sys,
@@ -876,7 +876,7 @@ class TestCLIQueryExecution:
 
     def test_no_query_or_advanced_error(self, monkeypatch, sample_java_file):
         """Test error when neither query nor --advanced is specified"""
-        sample_dir = os.path.dirname(sample_java_file)
+        sample_dir = str(Path(sample_java_file).parent)
 
         monkeypatch.setattr(
             sys, "argv", ["cli", sample_java_file, "--project-root", sample_dir]
@@ -894,7 +894,7 @@ class TestCLIQueryExecution:
 
     def test_query_not_found_error(self, monkeypatch, sample_java_file):
         """Test error when query is not found"""
-        sample_dir = os.path.dirname(sample_java_file)
+        sample_dir = str(Path(sample_java_file).parent)
 
         monkeypatch.setattr(
             sys,
@@ -923,7 +923,7 @@ class TestCLIQueryExecution:
 
     def test_query_exception_error(self, monkeypatch, sample_java_file):
         """Test error when query loading raises exception"""
-        sample_dir = os.path.dirname(sample_java_file)
+        sample_dir = str(Path(sample_java_file).parent)
 
         monkeypatch.setattr(
             sys,
@@ -959,7 +959,7 @@ class TestCLILoggingConfiguration:
 
     def test_table_option_logging_suppression(self, monkeypatch, sample_java_file):
         """Test that --table option suppresses logging"""
-        sample_dir = os.path.dirname(sample_java_file)
+        sample_dir = str(Path(sample_java_file).parent)
 
         monkeypatch.setattr(
             sys,
@@ -1105,7 +1105,7 @@ class TestCLIAdditionalCoverage:
 
     def test_describe_query_with_file(self, monkeypatch, sample_java_file):
         """Test --describe-query with file path"""
-        sample_dir = os.path.dirname(sample_java_file)
+        sample_dir = str(Path(sample_java_file).parent)
         monkeypatch.setattr(
             sys,
             "argv",
@@ -1188,7 +1188,6 @@ class TestCLIAdditionalCoverage:
     def test_unknown_language_detection(self, monkeypatch):
         """Test unknown language detection"""
         # Create a file with unknown extension
-        import os
         import tempfile
 
         with tempfile.NamedTemporaryFile(
@@ -1197,7 +1196,7 @@ class TestCLIAdditionalCoverage:
             f.write("some content")
             unknown_file = f.name
 
-        unknown_dir = os.path.dirname(unknown_file)
+        unknown_dir = str(Path(unknown_file).parent)
         monkeypatch.setattr(
             sys,
             "argv",
@@ -1222,14 +1221,13 @@ class TestCLIAdditionalCoverage:
         assert "Could not determine language for file" in error_output
 
         # Cleanup
-        import os
 
-        if os.path.exists(unknown_file):
-            os.unlink(unknown_file)
+        if Path(unknown_file).exists():
+            Path(unknown_file).unlink()
 
     def test_unsupported_language_fallback(self, monkeypatch, sample_java_file):
         """Test unsupported language with fallback to Java"""
-        sample_dir = os.path.dirname(sample_java_file)
+        sample_dir = str(Path(sample_java_file).parent)
         monkeypatch.setattr(
             sys,
             "argv",
@@ -1258,7 +1256,7 @@ class TestCLIAdditionalCoverage:
     def test_query_string_option(self, monkeypatch, sample_java_file):
         """Test --query-string option"""
         query_string = "(class_declaration) @class"
-        sample_dir = os.path.dirname(sample_java_file)
+        sample_dir = str(Path(sample_java_file).parent)
 
         monkeypatch.setattr(
             sys,

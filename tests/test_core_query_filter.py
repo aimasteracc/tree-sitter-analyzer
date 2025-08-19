@@ -280,24 +280,24 @@ class TestQueryFilter:
         """Test exact name matching"""
         test_result = {"content": "public void main() {}"}
 
-        assert self.filter._match_name(test_result, "exact", "main") == True
-        assert self.filter._match_name(test_result, "exact", "helper") == False
+        assert self.filter._match_name(test_result, "exact", "main")
+        assert not self.filter._match_name(test_result, "exact", "helper")
 
     def test_match_name_pattern(self):
         """Test pattern name matching"""
         test_result = {"content": "public void authenticate() {}"}
 
-        assert self.filter._match_name(test_result, "pattern", "auth*") == True
-        assert self.filter._match_name(test_result, "pattern", "get*") == False
-        assert self.filter._match_name(test_result, "pattern", "*cate") == True
+        assert self.filter._match_name(test_result, "pattern", "auth*")
+        assert not self.filter._match_name(test_result, "pattern", "get*")
+        assert self.filter._match_name(test_result, "pattern", "*cate")
 
     def test_match_params(self):
         """Test parameter count matching"""
         test_result = {"content": "public void method(String a, int b) {}"}
 
-        assert self.filter._match_params(test_result, "exact", "2") == True
-        assert self.filter._match_params(test_result, "exact", "1") == False
-        assert self.filter._match_params(test_result, "exact", "invalid") == False
+        assert self.filter._match_params(test_result, "exact", "2")
+        assert not self.filter._match_params(test_result, "exact", "1")
+        assert not self.filter._match_params(test_result, "exact", "invalid")
 
     def test_match_modifier(self):
         """Test modifier matching"""

@@ -3,8 +3,8 @@
 Integration tests for security module with MCP server.
 """
 
-import os
 import tempfile
+from pathlib import Path
 
 import pytest
 
@@ -19,14 +19,14 @@ class TestSecurityMCPIntegration:
     def setup_method(self):
         """Set up test fixtures."""
         self.temp_dir = tempfile.mkdtemp()
-        self.project_root = os.path.join(self.temp_dir, "secure_project")
-        os.makedirs(self.project_root, exist_ok=True)
+        self.project_root = str(Path(self.temp_dir) / "secure_project")
+        Path(self.project_root).mkdir(exist_ok=True)
 
         # Create test file structure
-        self.src_dir = os.path.join(self.project_root, "src")
-        os.makedirs(self.src_dir, exist_ok=True)
+        self.src_dir = str(Path(self.project_root) / "src")
+        Path(self.src_dir).mkdir(exist_ok=True)
 
-        self.test_file = os.path.join(self.src_dir, "main.py")
+        self.test_file = str(Path(self.src_dir) / "main.py")
         with open(self.test_file, "w") as f:
             f.write("print('Hello, World!')")
 
@@ -205,13 +205,13 @@ class TestSecurityMCPIntegration:
         validator = SecurityValidator(self.project_root)
 
         # Create file outside project
-        outside_file = os.path.join(self.temp_dir, "outside.py")
+        outside_file = str(Path(self.temp_dir) / "outside.py")
         with open(outside_file, "w") as f:
             f.write("print('Outside project')")
 
         # Test boundary enforcement
         test_cases = [
-            (os.path.join("src", "main.py"), True),  # Inside project
+            (str(Path("src") / "main.py"), True),  # Inside project
             ("../outside.py", False),  # Outside project
             (outside_file, False),  # Absolute path outside
         ]

@@ -162,7 +162,7 @@ class TestMCPQueryToolHelpers:
 
         summary = self.query_tool._format_summary(sample_results, "methods", "java")
 
-        assert summary["success"] == True
+        assert summary["success"]
         assert summary["query_type"] == "methods"
         assert summary["language"] == "java"
         assert summary["total_count"] == 3

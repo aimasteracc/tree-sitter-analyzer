@@ -6,8 +6,8 @@ This script demonstrates the enhanced security features implemented in Phase 1
 of the tree-sitter-analyzer security improvements.
 """
 
-import os
 import tempfile
+from pathlib import Path
 
 from tree_sitter_analyzer.exceptions import SecurityError
 from tree_sitter_analyzer.security import (
@@ -54,27 +54,28 @@ def demo_project_boundary_control():
 
     with tempfile.TemporaryDirectory() as temp_dir:
         # Create project structure
-        project_root = os.path.join(temp_dir, "project")
-        os.makedirs(project_root, exist_ok=True)
+        temp_path = Path(temp_dir)
+        project_root = temp_path / "project"
+        project_root.mkdir(exist_ok=True)
 
-        src_dir = os.path.join(project_root, "src")
-        os.makedirs(src_dir, exist_ok=True)
+        src_dir = project_root / "src"
+        src_dir.mkdir(exist_ok=True)
 
         # Create test files
-        project_file = os.path.join(src_dir, "main.py")
+        project_file = src_dir / "main.py"
         with open(project_file, "w") as f:
             f.write("print('Hello from project')")
 
-        outside_file = os.path.join(temp_dir, "outside.py")
+        outside_file = temp_path / "outside.py"
         with open(outside_file, "w") as f:
             f.write("print('Hello from outside')")
 
         # Initialize boundary manager
-        boundary_manager = ProjectBoundaryManager(project_root)
+        boundary_manager = ProjectBoundaryManager(str(project_root))
 
         test_files = [
-            (project_file, "File inside project"),
-            (outside_file, "File outside project"),
+            (str(project_file), "File inside project"),
+            (str(outside_file), "File outside project"),
             ("/etc/passwd", "System file"),
         ]
 
@@ -187,10 +188,11 @@ def demo_comprehensive_security():
 
     with tempfile.TemporaryDirectory() as temp_dir:
         # Setup
-        project_root = os.path.join(temp_dir, "secure_project")
-        os.makedirs(project_root, exist_ok=True)
+        temp_path = Path(temp_dir)
+        project_root = temp_path / "secure_project"
+        project_root.mkdir(exist_ok=True)
 
-        validator = SecurityValidator(project_root)
+        validator = SecurityValidator(str(project_root))
 
         # Simulate a real-world scenario
         scenarios = [
@@ -225,7 +227,7 @@ def demo_comprehensive_security():
 
             # Validate file path
             file_valid, file_error = validator.validate_file_path(
-                scenario["file_path"], project_root
+                scenario["file_path"], str(project_root)
             )
             print(f"    File Path: {'✅ SAFE' if file_valid else '❌ BLOCKED'}")
             if file_error:

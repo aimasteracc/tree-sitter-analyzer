@@ -3,8 +3,8 @@
 Integration tests for security module.
 """
 
-import os
 import tempfile
+from pathlib import Path
 
 import pytest
 
@@ -22,14 +22,14 @@ class TestSecurityIntegration:
     def setup_method(self):
         """Set up test fixtures."""
         self.temp_dir = tempfile.mkdtemp()
-        self.project_root = os.path.join(self.temp_dir, "project")
-        os.makedirs(self.project_root, exist_ok=True)
+        self.project_root = str(Path(self.temp_dir) / "project")
+        Path(self.project_root).mkdir(exist_ok=True)
 
         # Create test file structure
-        self.src_dir = os.path.join(self.project_root, "src")
-        os.makedirs(self.src_dir, exist_ok=True)
+        self.src_dir = str(Path(self.project_root) / "src")
+        Path(self.src_dir).mkdir(exist_ok=True)
 
-        self.test_file = os.path.join(self.src_dir, "main.py")
+        self.test_file = str(Path(self.src_dir) / "main.py")
         with open(self.test_file, "w") as f:
             f.write("print('Hello, World!')")
 
@@ -80,7 +80,7 @@ class TestSecurityIntegration:
         assert is_valid
 
         # Act & Assert - File outside boundaries
-        outside_file = os.path.join(self.temp_dir, "outside.txt")
+        outside_file = str(Path(self.temp_dir) / "outside.txt")
         with open(outside_file, "w") as f:
             f.write("outside content")
 
@@ -133,12 +133,12 @@ class TestSecurityIntegration:
         boundary_manager = ProjectBoundaryManager(self.project_root)
 
         # Add additional allowed directory
-        extra_dir = os.path.join(self.temp_dir, "extra")
-        os.makedirs(extra_dir, exist_ok=True)
+        extra_dir = str(Path(self.temp_dir) / "extra")
+        Path(extra_dir).mkdir(exist_ok=True)
         boundary_manager.add_allowed_directory(extra_dir)
 
         # Create file in extra directory
-        extra_file = os.path.join(extra_dir, "extra.txt")
+        extra_file = str(Path(extra_dir) / "extra.txt")
         with open(extra_file, "w") as f:
             f.write("extra content")
 
@@ -147,7 +147,7 @@ class TestSecurityIntegration:
         assert boundary_manager.is_within_project(extra_file)  # Extra directory
 
         # File outside both directories should be rejected
-        outside_file = os.path.join(self.temp_dir, "outside.txt")
+        outside_file = str(Path(self.temp_dir) / "outside.txt")
         with open(outside_file, "w") as f:
             f.write("outside content")
 
@@ -247,7 +247,7 @@ class TestSecurityIntegration:
         assert boundary_manager.is_symlink_safe(self.test_file) in (True,)
 
         # Test nonexistent file (should be safe)
-        nonexistent = os.path.join(self.project_root, "nonexistent.txt")
+        nonexistent = str(Path(self.project_root) / "nonexistent.txt")
         assert boundary_manager.is_symlink_safe(nonexistent) in (True,)
 
         # Test directory (should be safe)
