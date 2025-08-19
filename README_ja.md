@@ -2,8 +2,8 @@
 
 [![Pythonバージョン](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![ライセンス](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![テスト](https://img.shields.io/badge/tests-1587%20passed-brightgreen.svg)](#品質保証)
-[![カバレッジ](https://img.shields.io/badge/coverage-74.54%25-green.svg)](#品質保証)
+[![テスト](https://img.shields.io/badge/tests-1504%20passed-brightgreen.svg)](#品質保証)
+[![カバレッジ](https://img.shields.io/badge/coverage-74.34%25-green.svg)](#品質保証)
 [![品質](https://img.shields.io/badge/quality-enterprise%20grade-blue.svg)](#品質保証)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
 [![バージョン](https://img.shields.io/badge/version-0.9.9-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
