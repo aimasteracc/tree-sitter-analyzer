@@ -228,7 +228,13 @@ class TestResolvePathFunction(unittest.TestCase):
         relative_path = "test_file.txt"
         resolved = resolve_path(relative_path, self.temp_dir)
         expected = str(Path(self.temp_dir) / relative_path)
-        self.assertEqual(resolved, str(Path(expected).resolve()))
+
+        # Use normalize_path_for_comparison to handle platform-specific differences
+        normalized_resolved = normalize_path_for_comparison(resolved)
+        normalized_expected = normalize_path_for_comparison(
+            str(Path(expected).resolve())
+        )
+        self.assertEqual(normalized_resolved, normalized_expected)
 
     def test_resolve_path_without_project_root(self):
         """Test resolve_path function without project root"""
