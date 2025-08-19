@@ -185,11 +185,13 @@ uv run python -m tree_sitter_analyzer examples/BigService.java --query-key metho
 uv run python -m tree_sitter_analyzer examples/BigService.java --query-key methods --filter "name=~auth*"
 ```
 
-### 练习3：比较不同文件
+### 练习3：分析不同的Java文件
 
 ```bash
 # 分析多个文件
-uv run python -m tree_sitter_analyzer examples/BigService.java examples/Sample.java --table=full
+uv run python -m tree_sitter_analyzer examples/Sample.java --table=full
+uv run python -m tree_sitter_analyzer examples/BigService.java --table=full
+
 ```
 
 ## ✅ 第五步：验证学习成果（10分钟）

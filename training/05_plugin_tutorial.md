@@ -415,14 +415,30 @@ fn main() {
 # 1. 重新安装项目（包含新插件）
 uv sync --extra popular --extra mcp
 
-# 2. 测试Rust插件
+# 2. 创建测试文件
+echo 'pub struct User {
+    pub name: String,
+    pub email: String,
+}
+
+impl User {
+    pub fn new(name: String, email: String) -> Self {
+        User { name, email }
+    }
+    
+    pub fn get_name(&self) -> &str {
+        &self.name
+    }
+}' > examples/rust_example.rs
+
+# 3. 测试Rust插件
 uv run python -m tree_sitter_analyzer examples/rust_example.rs --table=full
 
-# 3. 测试不同输出格式
+# 4. 测试不同输出格式
 uv run python -m tree_sitter_analyzer examples/rust_example.rs --summary
 uv run python -m tree_sitter_analyzer examples/rust_example.rs --structure
 
-# 4. 测试查询功能
+# 5. 测试查询功能
 uv run python -m tree_sitter_analyzer examples/rust_example.rs --query-key structs
 uv run python -m tree_sitter_analyzer examples/rust_example.rs --query-key functions
 ```

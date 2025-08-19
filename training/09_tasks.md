@@ -171,7 +171,7 @@ uv run python -m tree_sitter_analyzer examples/BigService.java --advanced
 **调试命令**：
 ```bash
 # 启用调试模式
-uv run python -m tree_sitter_analyzer examples/BigService.java --table=full --debug
+uv run python -m tree_sitter_analyzer examples/BigService.java --table=full
 
 # 查看详细日志
 export TREE_SITTER_ANALYZER_DEBUG=1
@@ -205,7 +205,8 @@ uv run python -m tree_sitter_analyzer examples/BigService.java --table=full
 **性能测试命令**：
 ```bash
 # 性能分析
-uv run python -m tree_sitter_analyzer examples/BigService.java --profile
+# 性能分析（使用time命令）
+time uv run python -m tree_sitter_analyzer examples/BigService.java --table=full
 
 # 缓存测试
 time uv run python -m tree_sitter_analyzer examples/BigService.java --table=full
@@ -255,7 +256,7 @@ uv run python -m tree_sitter_analyzer examples/BigService.java --query-key metho
 uv run python -m tree_sitter_analyzer examples/BigService.java --query-key methods --filter "params=0,public=true"
 
 # 查找有多个参数的方法
-uv run python -m tree_sitter_analyzer examples/BigService.java --query-key methods --filter "params>2"
+uv run python -m tree_sitter_analyzer examples/BigService.java --query-key methods --filter "params=3"
 ```
 
 **提交要求**：
@@ -321,13 +322,19 @@ uv run python -m tree_sitter_analyzer examples/BigService.java --partial-read --
 **批量处理示例**：
 ```bash
 # 分析所有Java文件
-uv run python -m tree_sitter_analyzer examples/*.java --table=full
+for file in examples/*.java; do
+    uv run python -m tree_sitter_analyzer "$file" --table=full
+done
 
 # 分析所有Python文件
-uv run python -m tree_sitter_analyzer examples/*.py --summary
+for file in examples/*.py; do
+    uv run python -m tree_sitter_analyzer "$file" --summary
+done
 
 # 分析混合语言文件
-uv run python -m tree_sitter_analyzer examples/*.{java,py,js} --structure
+for file in examples/*.{java,py,js}; do
+    uv run python -m tree_sitter_analyzer "$file" --structure
+done
 ```
 
 **提交要求**：
