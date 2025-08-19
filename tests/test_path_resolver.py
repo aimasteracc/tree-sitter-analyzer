@@ -18,6 +18,18 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 
+def normalize_path_for_comparison(path_str):
+    """
+    Normalize path for comparison, handling macOS /var vs /private/var differences.
+    """
+    path = Path(path_str).resolve()
+    # On macOS, /var is a symlink to /private/var
+    # Convert /private/var to /var for consistent comparison
+    if sys.platform == "darwin" and str(path).startswith("/private/var/"):
+        return str(path).replace("/private/var/", "/var/")
+    return str(path)
+
+
 class TestPathResolver(unittest.TestCase):
     """Test cases for PathResolver class"""
 
@@ -46,7 +58,9 @@ class TestPathResolver(unittest.TestCase):
     def test_init_with_project_root(self):
         """Test PathResolver initialization with project root"""
         resolver = PathResolver(self.project_root)
-        self.assertEqual(resolver.project_root, str(Path(self.project_root).resolve()))
+        expected = normalize_path_for_comparison(self.project_root)
+        actual = normalize_path_for_comparison(resolver.project_root)
+        self.assertEqual(actual, expected)
 
     def test_init_without_project_root(self):
         """Test PathResolver initialization without project root"""
@@ -57,14 +71,18 @@ class TestPathResolver(unittest.TestCase):
         """Test resolving absolute paths"""
         absolute_path = str(Path(self.test_file).resolve())
         resolved = self.resolver.resolve(absolute_path)
-        self.assertEqual(resolved, str(Path(absolute_path).resolve()))
+        expected = normalize_path_for_comparison(absolute_path)
+        actual = normalize_path_for_comparison(resolved)
+        self.assertEqual(actual, expected)
 
     def test_resolve_relative_path_with_project_root(self):
         """Test resolving relative paths with project root"""
         relative_path = "test_file.txt"
         resolved = self.resolver.resolve(relative_path)
         expected = str(Path(self.project_root) / relative_path)
-        self.assertEqual(resolved, str(Path(expected).resolve()))
+        expected_normalized = normalize_path_for_comparison(expected)
+        actual_normalized = normalize_path_for_comparison(resolved)
+        self.assertEqual(actual_normalized, expected_normalized)
 
     def test_resolve_relative_path_without_project_root(self):
         """Test resolving relative paths without project root"""
@@ -72,14 +90,18 @@ class TestPathResolver(unittest.TestCase):
         relative_path = "test_file.txt"
         resolved = resolver.resolve(relative_path)
         expected = str(Path(relative_path).resolve())
-        self.assertEqual(resolved, str(Path(expected).resolve()))
+        expected_normalized = normalize_path_for_comparison(expected)
+        actual_normalized = normalize_path_for_comparison(resolved)
+        self.assertEqual(actual_normalized, expected_normalized)
 
     def test_resolve_nested_relative_path(self):
         """Test resolving nested relative paths"""
         nested_path = "subdir/test_file.txt"
         resolved = self.resolver.resolve(nested_path)
         expected = str(Path(self.project_root) / nested_path)
-        self.assertEqual(resolved, str(Path(expected).resolve()))
+        expected_normalized = normalize_path_for_comparison(expected)
+        actual_normalized = normalize_path_for_comparison(resolved)
+        self.assertEqual(actual_normalized, expected_normalized)
 
     def test_resolve_empty_path(self):
         """Test resolving empty path raises ValueError"""
@@ -219,7 +241,9 @@ class TestResolvePathFunction(unittest.TestCase):
         """Test resolve_path function with absolute path"""
         absolute_path = str(Path(self.test_file).resolve())
         resolved = resolve_path(absolute_path, self.temp_dir)
-        self.assertEqual(resolved, str(Path(absolute_path).resolve()))
+        expected = normalize_path_for_comparison(absolute_path)
+        actual = normalize_path_for_comparison(resolved)
+        self.assertEqual(actual, expected)
 
 
 if __name__ == "__main__":
