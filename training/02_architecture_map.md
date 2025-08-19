@@ -94,6 +94,272 @@ graph TB
 4. **⚡ 性能优先**：增量解析和缓存机制
 5. **🛡️ 安全边界**：严格的文件路径验证
 
+## 📁 完整项目结构
+
+### 项目根目录
+
+```
+tree-sitter-analyzer/
+├── 📁 tree_sitter_analyzer/          # 核心包目录
+├── 📁 examples/                      # 示例文件
+├── 📁 tests/                         # 测试套件
+├── 📁 training/                      # 教程文档
+├── 📁 docs/                          # API文档
+├── 📁 scripts/                       # 构建和发布脚本
+├── 📁 .github/                       # GitHub配置
+├── 📁 htmlcov/                       # 覆盖率报告
+├── 📁 dist/                          # 发布包
+├── 📄 pyproject.toml                 # 项目配置
+├── 📄 uv.lock                        # 依赖锁定文件
+├── 📄 README.md                      # 项目说明
+├── 📄 CHANGELOG.md                   # 变更日志
+├── 📄 CONTRIBUTING.md                # 贡献指南
+├── 📄 CODE_STYLE_GUIDE.md            # 代码风格指南
+├── 📄 AI_COLLABORATION_GUIDE.md      # AI协作指南
+├── 📄 LLM_CODING_GUIDELINES.md       # LLM编码指南
+├── 📄 MCP_SETUP_DEVELOPERS.md        # MCP开发者设置
+├── 📄 MCP_SETUP_USERS.md             # MCP用户设置
+├── 📄 PROJECT_ROOT_CONFIG.md         # 项目根配置
+├── 📄 DEPLOYMENT_GUIDE.md            # 部署指南
+├── 📄 PYPI_RELEASE_GUIDE.md          # PyPI发布指南
+├── 📄 LANGUAGE_GUIDELINES.md         # 语言指南
+├── 📄 GITFLOW.md                     # Git工作流
+├── 📄 pytest.ini                     # Pytest配置
+├── 📄 .pre-commit-config.yaml        # 预提交配置
+├── 📄 .gitignore                     # Git忽略文件
+├── 📄 check_quality.py               # 质量检查脚本
+├── 📄 llm_code_checker.py            # LLM代码检查器
+├── 📄 start_mcp_server.py            # MCP服务器启动脚本
+├── 📄 build_standalone.py            # 独立构建脚本
+├── 📄 upload_to_pypi.py              # PyPI上传脚本
+└── 📄 upload_interactive.py          # 交互式上传脚本
+```
+
+### 核心包结构
+
+```
+tree_sitter_analyzer/
+├── 📄 __init__.py                    # 包初始化
+├── 📄 __main__.py                    # 模块入口点
+├── 📄 cli_main.py                    # CLI主入口
+├── 📄 api.py                         # API接口
+├── 📄 models.py                      # 数据模型
+├── 📄 exceptions.py                  # 自定义异常
+├── 📄 utils.py                       # 通用工具
+├── 📄 table_formatter.py             # 表格格式化器
+├── 📄 output_manager.py              # 输出管理器
+├── 📄 file_handler.py                # 文件处理器
+├── 📄 encoding_utils.py              # 编码工具
+├── 📄 language_detector.py           # 语言检测器
+├── 📄 language_loader.py             # 语言加载器
+├── 📄 query_loader.py                # 查询加载器
+├── 📄 project_detector.py            # 项目检测器
+│
+├── 📁 core/                          # 核心引擎
+│   ├── 📄 __init__.py
+│   ├── 📄 engine.py                  # 主引擎
+│   ├── 📄 analysis_engine.py         # 分析引擎
+│   ├── 📄 parser.py                  # 解析器
+│   ├── 📄 query.py                   # 查询执行器
+│   ├── 📄 query_service.py           # 查询服务
+│   ├── 📄 query_filter.py            # 查询过滤器
+│   └── 📄 cache_service.py           # 缓存服务
+│
+├── 📁 cli/                           # 命令行界面
+│   ├── 📄 __init__.py
+│   ├── 📄 __main__.py
+│   ├── 📄 info_commands.py           # 信息命令
+│   └── 📁 commands/                  # 命令实现
+│       ├── 📄 __init__.py
+│       ├── 📄 base_command.py        # 基础命令
+│       ├── 📄 default_command.py     # 默认命令
+│       ├── 📄 table_command.py       # 表格命令
+│       ├── 📄 summary_command.py     # 摘要命令
+│       ├── 📄 structure_command.py   # 结构命令
+│       ├── 📄 advanced_command.py    # 高级命令
+│       ├── 📄 query_command.py       # 查询命令
+│       └── 📄 partial_read_command.py # 部分读取命令
+│
+├── 📁 mcp/                           # MCP服务
+│   ├── 📄 __init__.py
+│   ├── 📄 server.py                  # MCP服务器
+│   ├── 📁 tools/                     # MCP工具
+│   │   ├── 📄 __init__.py
+│   │   ├── 📄 base_tool.py           # 基础工具
+│   │   ├── 📄 analyze_scale_tool.py  # 规模分析工具
+│   │   ├── 📄 analyze_scale_tool_cli_compatible.py # CLI兼容工具
+│   │   ├── 📄 universal_analyze_tool.py # 通用分析工具
+│   │   ├── 📄 read_partial_tool.py   # 部分读取工具
+│   │   ├── 📄 table_format_tool.py   # 表格格式化工具
+│   │   └── 📄 query_tool.py          # 查询工具
+│   ├── 📁 resources/                 # MCP资源
+│   │   ├── 📄 __init__.py
+│   │   ├── 📄 code_file_resource.py  # 代码文件资源
+│   │   └── 📄 project_stats_resource.py # 项目统计资源
+│   └── 📁 utils/                     # MCP工具
+│       ├── 📄 __init__.py
+│       ├── 📄 error_handler.py       # 错误处理器
+│       └── 📄 path_resolver.py       # 路径解析器
+│
+├── 📁 languages/                     # 语言插件
+│   ├── 📄 __init__.py
+│   ├── 📄 java_plugin.py             # Java插件
+│   ├── 📄 python_plugin.py           # Python插件
+│   └── 📄 javascript_plugin.py       # JavaScript插件
+│
+├── 📁 queries/                       # 查询库
+│   ├── 📄 __init__.py
+│   ├── 📄 java.py                    # Java查询
+│   ├── 📄 python.py                  # Python查询
+│   ├── 📄 javascript.py              # JavaScript查询
+│   └── 📄 typescript.py              # TypeScript查询
+│
+├── 📁 formatters/                    # 格式化器
+│   ├── 📄 __init__.py
+│   ├── 📄 base_formatter.py          # 基础格式化器
+│   ├── 📄 formatter_factory.py       # 格式化器工厂
+│   ├── 📄 java_formatter.py          # Java格式化器
+│   └── 📄 python_formatter.py        # Python格式化器
+│
+├── 📁 interfaces/                    # 接口适配器
+│   ├── 📄 __init__.py
+│   ├── 📄 cli.py                     # CLI接口
+│   ├── 📄 cli_adapter.py             # CLI适配器
+│   ├── 📄 mcp_server.py              # MCP服务器接口
+│   └── 📄 mcp_adapter.py             # MCP适配器
+│
+├── 📁 plugins/                       # 插件系统
+│   ├── 📄 __init__.py
+│   ├── 📄 base.py                    # 插件基类
+│   └── 📄 manager.py                 # 插件管理器
+│
+├── 📁 security/                      # 安全模块
+│   ├── 📄 __init__.py
+│   ├── 📄 boundary_manager.py        # 边界管理器
+│   ├── 📄 regex_checker.py           # 正则检查器
+│   └── 📄 validator.py               # 验证器
+│
+└── 📁 validation/                    # 验证规则
+    └── 📁 rules/                     # 验证规则
+```
+
+### 测试结构
+
+```
+tests/
+├── 📄 __init__.py
+├── 📄 conftest.py                    # Pytest配置
+├── 📄 test_api.py                    # API测试
+├── 📄 test_cli.py                    # CLI测试
+├── 📄 test_cli_comprehensive.py      # CLI综合测试
+├── 📄 test_cli_query_filter_integration.py # 查询过滤集成测试
+├── 📄 test_engine.py                 # 引擎测试
+├── 📄 test_exceptions.py             # 异常测试
+├── 📄 test_utils.py                  # 工具测试
+├── 📄 test_utils_extended.py         # 工具扩展测试
+├── 📄 test_encoding_utils.py         # 编码工具测试
+├── 📄 test_encoding_cache.py         # 编码缓存测试
+├── 📄 test_language_detector.py      # 语言检测测试
+├── 📄 test_language_detector_extended.py # 语言检测扩展测试
+├── 📄 test_language_loader.py        # 语言加载测试
+├── 📄 test_query_loader.py           # 查询加载测试
+├── 📄 test_table_formatter.py        # 表格格式化测试
+├── 📄 test_output_manager.py         # 输出管理测试
+├── 📄 test_file_handler.py           # 文件处理测试
+├── 📄 test_project_detector.py       # 项目检测测试
+├── 📄 test_startup_script.py         # 启动脚本测试
+├── 📄 test_quality_checker.py        # 质量检查测试
+├── 📄 test_llm_code_checker.py       # LLM代码检查测试
+│
+├── 📁 test_core/                     # 核心测试
+│   ├── 📄 __init__.py
+│   ├── 📄 test_analysis_engine.py    # 分析引擎测试
+│   ├── 📄 test_cache_service.py      # 缓存服务测试
+│   ├── 📄 test_engine.py             # 引擎测试
+│   ├── 📄 test_parser.py             # 解析器测试
+│   ├── 📄 test_query.py              # 查询测试
+│   ├── 📄 test_query_service.py      # 查询服务测试
+│   └── 📄 test_query_filter.py       # 查询过滤测试
+│
+├── 📁 test_interfaces/               # 接口测试
+│   ├── 📄 __init__.py
+│   ├── 📄 test_cli_adapter.py        # CLI适配器测试
+│   ├── 📄 test_mcp_adapter.py        # MCP适配器测试
+│   ├── 📄 test_cli.py                # CLI接口测试
+│   └── 📄 test_mcp_server.py         # MCP服务器测试
+│
+├── 📁 test_languages/                # 语言测试
+│   ├── 📄 __init__.py
+│   ├── 📄 test_java_plugin.py        # Java插件测试
+│   └── 📄 test_python_plugin.py      # Python插件测试
+│
+├── 📁 test_queries/                  # 查询测试
+│   ├── 📄 test_java.py               # Java查询测试
+│   ├── 📄 test_python.py             # Python查询测试
+│   └── 📄 test_javascript.py         # JavaScript查询测试
+│
+├── 📁 test_mcp/                      # MCP测试
+│   ├── 📄 __init__.py
+│   ├── 📄 test_server.py             # 服务器测试
+│   ├── 📄 test_integration.py        # 集成测试
+│   ├── 📁 test_tools/                # 工具测试
+│   │   ├── 📄 __init__.py
+│   │   ├── 📄 test_analyze_scale_tool.py # 规模分析工具测试
+│   │   ├── 📄 test_read_partial_tool.py # 部分读取工具测试
+│   │   └── 📄 test_table_format_tool.py # 表格格式化工具测试
+│   └── 📁 test_resources/            # 资源测试
+│       ├── 📄 __init__.py
+│       ├── 📄 test_code_file_resource.py # 代码文件资源测试
+│       ├── 📄 test_project_stats_resource.py # 项目统计资源测试
+│       └── 📄 test_resource_integration.py # 资源集成测试
+│
+└── 📁 test_security/                 # 安全测试
+    ├── 📄 __init__.py
+    ├── 📄 test_boundary_manager.py   # 边界管理器测试
+    ├── 📄 test_regex_checker.py      # 正则检查器测试
+    ├── 📄 test_validator.py          # 验证器测试
+    ├── 📄 test_integration.py        # 安全集成测试
+    └── 📄 test_mcp_integration.py    # MCP安全集成测试
+```
+
+### 示例文件
+
+```
+examples/
+├── 📄 BigService.java                # Java服务示例
+├── 📄 BigService.json                # Java服务JSON输出
+├── 📄 BigService.summary.json        # Java服务摘要
+├── 📄 Sample.java                    # Java示例
+├── 📄 MultiClass.java                # 多类Java示例
+├── 📄 JavaDocTest.java               # Java文档测试
+├── 📄 sample.py                      # Python示例
+├── 📄 calculate_token_comparison.py  # 令牌比较示例
+├── 📄 security_demo.py               # 安全演示
+└── 📄 security_integration_demo.py   # 安全集成演示
+```
+
+### 文档结构
+
+```
+docs/
+└── 📄 api.md                         # API文档
+
+training/                              # 教程文档
+├── 📄 README.md                      # 教程总览
+├── 📄 01_onboarding.md               # 快速上手
+├── 📄 02_architecture_map.md         # 架构解析
+├── 📄 03_cli_cheatsheet.md           # CLI速查
+├── 📄 04_mcp_cheatsheet.md           # MCP集成
+├── 📄 05_plugin_tutorial.md          # 插件开发
+├── 📄 06_quality_workflow.md         # 质量工作流
+├── 📄 07_troubleshooting.md          # 故障排除
+├── 📄 08_prompt_library.md           # 提示词库
+├── 📄 09_tasks.md                    # 实战任务
+├── 📄 10_glossary.md                 # 术语表
+├── 📄 11_takeover_plan.md            # 接管计划
+└── 📄 IMPROVEMENT_SUMMARY.md         # 改善总结
+```
+
 ## 🔄 数据流深度分析
 
 ### 3.1 CLI数据流
@@ -358,19 +624,26 @@ class ParallelProcessor:
 ### 练习1：追踪调用链路
 
 ```bash
-# 使用调试模式运行
-uv run python -m tree_sitter_analyzer examples/BigService.java --table=full --debug
+# 运行基本分析命令
+uv run python -m tree_sitter_analyzer examples/BigService.java --table=full
 
-# 观察输出中的调用链路信息
+# 观察输出中的结构信息
+uv run python -m tree_sitter_analyzer examples/BigService.java --structure
+
+# 查看详细帮助了解可用选项
+uv run python -m tree_sitter_analyzer -h
 ```
 
 ### 练习2：分析性能
 
 ```bash
-# 使用性能分析
-uv run python -m tree_sitter_analyzer examples/BigService.java --profile
+# 使用不同输出格式比较性能
+time uv run python -m tree_sitter_analyzer examples/BigService.java --table=full
+time uv run python -m tree_sitter_analyzer examples/BigService.java --table=compact
+time uv run python -m tree_sitter_analyzer examples/BigService.java --summary
 
-# 查看性能报告
+# 使用部分读取处理大文件
+uv run python -m tree_sitter_analyzer examples/BigService.java --partial-read --start-line 1 --end-line 50
 ```
 
 ### 练习3：扩展功能
