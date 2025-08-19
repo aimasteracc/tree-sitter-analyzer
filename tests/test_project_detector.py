@@ -23,17 +23,52 @@ def normalize_path_for_comparison(path_str):
     Normalize path for comparison, handling platform-specific differences.
     """
     path = Path(path_str).resolve()
+
     # On Windows, handle short path names (8.3 format)
     if sys.platform == "win32":
         try:
-            # Try to get the long path name
-            long_path = os.path.abspath(str(path))
-            return str(Path(long_path).resolve())
+            # Convert to absolute path first
+            abs_path = os.path.abspath(str(path))
+
+            # Try to get the long path name using Windows API if available
+            try:
+                import ctypes
+                from ctypes import wintypes
+
+                # Get the long path name using Windows API
+                kernel32 = ctypes.windll.kernel32
+                GetLongPathNameW = kernel32.GetLongPathNameW
+                GetLongPathNameW.argtypes = [
+                    wintypes.LPCWSTR,
+                    wintypes.LPWSTR,
+                    wintypes.DWORD,
+                ]
+                GetLongPathNameW.restype = wintypes.DWORD
+
+                # Convert to Windows path format
+                windows_path = str(abs_path).replace("/", "\\")
+
+                # Get buffer size needed
+                size = GetLongPathNameW(windows_path, None, 0)
+                if size > 0:
+                    buffer = ctypes.create_unicode_buffer(size)
+                    if GetLongPathNameW(windows_path, buffer, size) > 0:
+                        return str(Path(buffer.value).resolve())
+            except (ImportError, OSError, AttributeError):
+                # Fallback to basic normalization
+                pass
+
+            # Fallback: try to resolve any remaining short path components
+            resolved_path = Path(abs_path).resolve()
+            return str(resolved_path)
+
         except (OSError, ValueError):
             return str(path)
+
     # On macOS, handle /var vs /private/var differences
     elif sys.platform == "darwin" and str(path).startswith("/private/var/"):
         return str(path).replace("/private/var/", "/var/")
+
     return str(path)
 
 
