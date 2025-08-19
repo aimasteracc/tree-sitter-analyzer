@@ -3,7 +3,7 @@
 [![Pythonバージョン](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![ライセンス](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![テスト](https://img.shields.io/badge/tests-1504%20passed-brightgreen.svg)](#品質保証)
-[![カバレッジ](https://img.shields.io/badge/coverage-74.34%25-green.svg)](#品質保証)
+[![カバレッジ](https://img.shields.io/badge/coverage-74.44%25-green.svg)](#品質保証)
 [![品質](https://img.shields.io/badge/quality-enterprise%20grade-blue.svg)](#品質保証)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
 [![バージョン](https://img.shields.io/badge/version-1.0.0-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
@@ -421,17 +421,17 @@ Tree-sitter Analyzerは自動的にプロジェクト境界を検出・保護：
 ## 🏆 品質保証
 
 ### 📊 **品質メトリクス**
-- **1,358テスト** - 100%合格率 ✅
-- **74.54%コードカバレッジ** - 業界最高レベル
+- **1,504テスト** - 100%合格率 ✅
+- **74.44%コードカバレッジ** - 業界最高レベル
 - **ゼロテスト失敗** - 完全なCI/CD対応
 - **クロスプラットフォーム対応** - Windows、macOS、Linux
 
-### ⚡ **最新の品質成果（v0.9.9）**
-- ✅ **統一パス解決システム** - すべてのMCPツール用の中央化PathResolver
-- ✅ **クロスプラットフォーム互換性** - Windowsパス区切り文字の問題を修正
-- ✅ **MCPツール強化** - すべてのツールでFileNotFoundErrorを排除
-- ✅ **包括的テストカバレッジ** - 1358テスト、74.54%カバレッジ
-- ✅ **多言語ドキュメンテーション** - 中英日三言語の完全更新
+### ⚡ **最新の品質成果（v1.0.0）**
+- ✅ **クロスプラットフォームパス互換性** - Windows短パス名とmacOSシンボリックリンクの違いを修正
+- ✅ **Windows環境** - Windows APIを使用した堅牢なパス正規化を実装
+- ✅ **macOS環境** - `/var`と`/private/var`シンボリックリンクの違いを修正
+- ✅ **包括的テストカバレッジ** - 1504テスト、74.44%カバレッジ
+- ✅ **GitFlow実装** - 開発/リリースブランチの専門的なブランチ戦略
 
 ### ⚙️ **テスト実行**
 ```bash
