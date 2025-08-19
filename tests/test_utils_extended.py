@@ -4,9 +4,9 @@ Extended tests for utils module to improve test coverage.
 """
 
 import logging
-import os
 import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 from tree_sitter_analyzer.utils import (
@@ -28,7 +28,7 @@ class TestUtilsExtended(unittest.TestCase):
     def setUp(self):
         """Set up test fixtures."""
         self.temp_dir = tempfile.mkdtemp()
-        self.log_file = os.path.join(self.temp_dir, "test.log")
+        self.log_file = str(Path(self.temp_dir) / "test.log")
 
     def tearDown(self):
         """Clean up test fixtures."""

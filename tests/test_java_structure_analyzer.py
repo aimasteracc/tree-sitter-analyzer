@@ -7,7 +7,6 @@ Java構造情報抽出機能（--structureオプション）に対する
 """
 
 import json
-import os
 import sys
 import tempfile
 from io import StringIO
@@ -361,7 +360,7 @@ def _extract_json_from_cli_output(output):
 
 def test_cli_structure_option_with_sample_file(mocker, sample_java_path):
     """CLIの--structureオプションでSample.javaを解析するテスト"""
-    if not os.path.exists(sample_java_path):
+    if not Path(sample_java_path).exists():
         pytest.skip(f"サンプルファイル {sample_java_path} が見つかりません")
 
     mocker.patch.object(sys, "argv", ["cli", sample_java_path, "--structure"])
@@ -396,7 +395,7 @@ def test_cli_structure_option_json_format(mocker, simple_java_code):
         temp_path = f.name
 
     try:
-        temp_dir = os.path.dirname(temp_path)
+        temp_dir = str(Path(temp_path).parent)
         mocker.patch.object(
             sys,
             "argv",
@@ -435,8 +434,9 @@ def test_cli_structure_option_json_format(mocker, simple_java_code):
         assert "analysis_metadata" in json_output
 
     finally:
-        if os.path.exists(temp_path):
-            os.unlink(temp_path)
+        temp_file = Path(temp_path)
+        if temp_file.exists():
+            temp_file.unlink()
 
 
 def test_analyze_structure_method_unit_test(analyzer, simple_java_code):
@@ -498,8 +498,9 @@ def test_analyze_structure_method_unit_test(analyzer, simple_java_code):
         assert "timestamp" in metadata
 
     finally:
-        if os.path.exists(temp_path):
-            os.unlink(temp_path)
+        temp_file = Path(temp_path)
+        if temp_file.exists():
+            temp_file.unlink()
 
 
 def test_empty_java_file(analyzer):
@@ -525,8 +526,9 @@ def test_empty_java_file(analyzer):
         assert len(result["fields"]) == 0
 
     finally:
-        if os.path.exists(temp_path):
-            os.unlink(temp_path)
+        temp_file = Path(temp_path)
+        if temp_file.exists():
+            temp_file.unlink()
 
 
 @pytest.mark.skipif(
@@ -786,8 +788,9 @@ enum Status {
             print(f"✅ Found {len(annotations)} annotations")
 
     finally:
-        if os.path.exists(temp_path):
-            os.unlink(temp_path)
+        temp_file = Path(temp_path)
+        if temp_file.exists():
+            temp_file.unlink()
 
 
 def test_output_schema_validation(analyzer, simple_java_code):
@@ -930,8 +933,9 @@ def test_output_schema_validation(analyzer, simple_java_code):
             assert "end" in annotation["line_range"]
 
     finally:
-        if os.path.exists(temp_path):
-            os.unlink(temp_path)
+        temp_file = Path(temp_path)
+        if temp_file.exists():
+            temp_file.unlink()
 
 
 def test_nonexistent_file_handling(analyzer):
@@ -952,7 +956,7 @@ def test_cli_structure_option_text_format(mocker, simple_java_code):
         temp_path = f.name
 
     try:
-        temp_dir = os.path.dirname(temp_path)
+        temp_dir = str(Path(temp_path).parent)
         mocker.patch.object(
             sys,
             "argv",
@@ -983,5 +987,6 @@ def test_cli_structure_option_text_format(mocker, simple_java_code):
         assert "Fields:" in output
 
     finally:
-        if os.path.exists(temp_path):
-            os.unlink(temp_path)
+        temp_file = Path(temp_path)
+        if temp_file.exists():
+            temp_file.unlink()

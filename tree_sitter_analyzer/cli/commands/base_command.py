@@ -54,9 +54,9 @@ class BaseCommand(ABC):
             output_error(f"Invalid file path: {error_msg}")
             return False
 
-        import os
+        from pathlib import Path
 
-        if not os.path.exists(self.args.file_path):
+        if not Path(self.args.file_path).exists():
             output_error("Invalid file path: file does not exist")
             return False
 

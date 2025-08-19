@@ -2,11 +2,11 @@
 
 [![Pythonバージョン](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![ライセンス](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![テスト](https://img.shields.io/badge/tests-1358%20passed-brightgreen.svg)](#品質保証)
-[![カバレッジ](https://img.shields.io/badge/coverage-74.54%25-green.svg)](#品質保証)
+[![テスト](https://img.shields.io/badge/tests-1504%20passed-brightgreen.svg)](#品質保証)
+[![カバレッジ](https://img.shields.io/badge/coverage-74.34%25-green.svg)](#品質保証)
 [![品質](https://img.shields.io/badge/quality-enterprise%20grade-blue.svg)](#品質保証)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
-[![バージョン](https://img.shields.io/badge/version-0.9.8-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
+[![バージョン](https://img.shields.io/badge/version-0.9.9-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
 ## 🚀 LLMトークン制限を突破し、AIにあらゆるサイズのコードファイルを理解させる
@@ -426,10 +426,11 @@ Tree-sitter Analyzerは自動的にプロジェクト境界を検出・保護：
 - **ゼロテスト失敗** - 完全なCI/CD対応
 - **クロスプラットフォーム対応** - Windows、macOS、Linux
 
-### ⚡ **最新の品質成果（v0.9.6）**
-- ✅ **スマートクエリフィルタリングシステム** - 62の新しいテストすべて合格
-- ✅ **統合アーキテクチャ設計** - QueryServiceによるコード重複の排除
-- ✅ **CIテスト修正** - すべてのプラットフォームでテスト安定化
+### ⚡ **最新の品質成果（v0.9.9）**
+- ✅ **統一パス解決システム** - すべてのMCPツール用の中央化PathResolver
+- ✅ **クロスプラットフォーム互換性** - Windowsパス区切り文字の問題を修正
+- ✅ **MCPツール強化** - すべてのツールでFileNotFoundErrorを排除
+- ✅ **包括的テストカバレッジ** - 1358テスト、74.54%カバレッジ
 - ✅ **多言語ドキュメンテーション** - 中英日三言語の完全更新
 
 ### ⚙️ **テスト実行**

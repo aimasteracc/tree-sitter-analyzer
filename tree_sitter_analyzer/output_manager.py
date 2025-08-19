@@ -120,9 +120,13 @@ class OutputManager:
         """Output supported extensions"""
         if not self.quiet:
             print("Supported file extensions:")
-            for i in range(0, len(extensions), 10):
-                chunk = extensions[i : i + 10]
-                print(f"  {' '.join(chunk)}")
+        # Use more efficient chunking
+        from itertools import islice
+
+        chunk_size = 10
+        for i in range(0, len(extensions), chunk_size):
+            chunk = list(islice(extensions, i, i + chunk_size))
+            print(f"  {' '.join(chunk)}")
             print(f"Total {len(extensions)} extensions supported")
 
     def output_json(self, data: Any) -> None:

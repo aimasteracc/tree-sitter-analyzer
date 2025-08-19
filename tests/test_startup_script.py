@@ -10,13 +10,14 @@ import asyncio
 import logging
 import os
 import sys
+from pathlib import Path
 from unittest.mock import Mock, patch
 
 import pytest
 
 # Import the startup script functions
 # Note: We need to be careful about imports since start_mcp_server.py is a script
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 
 class TestStartupScriptFunctions:

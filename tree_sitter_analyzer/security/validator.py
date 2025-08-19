@@ -6,8 +6,8 @@ Provides unified security validation framework inspired by code-index-mcp's
 ValidationHelper but enhanced for tree-sitter analyzer's requirements.
 """
 
-import os
 import re
+from pathlib import Path
 
 from ..exceptions import SecurityError
 from ..utils import log_debug, log_warning
@@ -75,11 +75,18 @@ class SecurityValidator:
                 return False, "File path contains null bytes"
 
             # Layer 3: Windows drive letter check (only on non-Windows systems)
-            if len(file_path) > 1 and file_path[1] == ":" and os.name != "nt":
+            # Check if we're on Windows by checking for drive letter support
+            import platform
+
+            if (
+                len(file_path) > 1
+                and file_path[1] == ":"
+                and platform.system() != "Windows"
+            ):
                 return False, "Windows drive letters are not allowed on this system"
 
             # Layer 4: Absolute path check (cross-platform)
-            if os.path.isabs(file_path) or file_path.startswith(("/", "\\")):
+            if Path(file_path).is_absolute() or file_path.startswith(("/", "\\")):
                 # If project boundaries are configured, enforce them strictly
                 if self.boundary_manager and self.boundary_manager.project_root:
                     if not self.boundary_manager.is_within_project(file_path):
@@ -91,14 +98,17 @@ class SecurityValidator:
                     # paths under system temp folder only (safe sandbox)
                     import tempfile
 
-                    temp_dir = os.path.realpath(tempfile.gettempdir())
-                    real_path = os.path.realpath(file_path)
-                    if real_path.startswith(temp_dir + os.sep) or real_path == temp_dir:
+                    temp_dir = Path(tempfile.gettempdir()).resolve()
+                    real_path = Path(file_path).resolve()
+                    try:
+                        real_path.relative_to(temp_dir)
                         return True, ""
+                    except ValueError:
+                        pass
                     return False, "Absolute file paths are not allowed"
 
             # Layer 5: Path normalization and traversal check
-            norm_path = os.path.normpath(file_path)
+            norm_path = str(Path(file_path))
             if "..\\" in norm_path or "../" in norm_path or norm_path.startswith(".."):
                 log_warning(f"Path traversal attempt detected: {file_path}")
                 return False, "Directory traversal not allowed"
@@ -106,7 +116,7 @@ class SecurityValidator:
             # Layer 6: Project boundary validation
             if self.boundary_manager and base_path:
                 if not self.boundary_manager.is_within_project(
-                    os.path.join(base_path, norm_path)
+                    str(Path(base_path) / norm_path)
                 ):
                     return (
                         False,
@@ -115,8 +125,8 @@ class SecurityValidator:
 
             # Layer 7: Symbolic link check (if file exists)
             if base_path:
-                full_path = os.path.join(base_path, norm_path)
-                if os.path.exists(full_path) and os.path.islink(full_path):
+                full_path = Path(base_path) / norm_path
+                if full_path.exists() and full_path.is_symlink():
                     log_warning(f"Symbolic link detected: {full_path}")
                     return False, "Symbolic links are not allowed"
 
@@ -148,10 +158,11 @@ class SecurityValidator:
 
             # Check if path exists and is directory
             if must_exist:
-                if not os.path.exists(dir_path):
+                dir_path_obj = Path(dir_path)
+                if not dir_path_obj.exists():
                     return False, f"Directory does not exist: {dir_path}"
 
-                if not os.path.isdir(dir_path):
+                if not dir_path_obj.is_dir():
                     return False, f"Path is not a directory: {dir_path}"
 
             log_debug(f"Directory path validation passed: {dir_path}")

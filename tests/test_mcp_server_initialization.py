@@ -8,8 +8,8 @@ of the MCP server, including the fixes we recently implemented.
 
 import asyncio
 import logging
-import os
 import tempfile
+from pathlib import Path
 from unittest.mock import AsyncMock, Mock
 
 import pytest
@@ -199,7 +199,7 @@ class TestMCPServerIntegration:
         """Test basic server creation and functionality."""
         with tempfile.TemporaryDirectory() as temp_dir:
             # Create test file
-            test_file = os.path.join(temp_dir, "test.py")
+            test_file = str(Path(temp_dir) / "test.py")
             with open(test_file, "w") as f:
                 f.write("def hello(): pass")
 
@@ -211,9 +211,11 @@ class TestMCPServerIntegration:
             # Components should be functional
             if server.security_validator.boundary_manager:
                 # Normalize realpath to handle Windows short/long path variations in CI
-                expected = os.path.realpath(temp_dir)
-                actual = os.path.realpath(
-                    server.security_validator.boundary_manager.project_root
+                expected = str(Path(temp_dir).resolve())
+                actual = str(
+                    Path(
+                        server.security_validator.boundary_manager.project_root
+                    ).resolve()
                 )
                 assert expected == actual
 

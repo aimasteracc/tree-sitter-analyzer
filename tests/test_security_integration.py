@@ -6,8 +6,8 @@ Tests to verify that security features are properly integrated
 across all components of the tree-sitter-analyzer system.
 """
 
-import os
 import tempfile
+from pathlib import Path
 
 import pytest
 
@@ -32,7 +32,7 @@ class TestSecurityIntegration:
         UnifiedAnalysisEngine._instance = None
 
         self.temp_dir = tempfile.mkdtemp()
-        self.test_file = os.path.join(self.temp_dir, "test.py")
+        self.test_file = str(Path(self.temp_dir) / "test.py")
 
         # Create a test file
         with open(self.test_file, "w") as f:
@@ -58,7 +58,7 @@ class TestClass:
     async def test_analysis_engine_security_integration(self):
         """Test that analysis engine properly validates file paths."""
         # Get parent directory of temp_dir to use as project root
-        project_root = os.path.dirname(self.temp_dir)
+        project_root = str(Path(self.temp_dir).parent)
         engine = get_analysis_engine(project_root)
 
         # Valid file should work
@@ -82,7 +82,7 @@ class TestClass:
         UnifiedAnalysisEngine._instance = None
 
         # Get parent directory of temp_dir to use as project root
-        project_root = os.path.dirname(self.temp_dir)
+        project_root = str(Path(self.temp_dir).parent)
 
         # Test TableFormatTool
         table_tool = TableFormatTool(project_root)
@@ -113,7 +113,7 @@ class TestClass:
     @pytest.mark.asyncio
     async def test_read_partial_tool_security(self):
         """Test ReadPartialTool security validation."""
-        project_root = os.path.dirname(self.temp_dir)
+        project_root = str(Path(self.temp_dir).parent)
         read_tool = ReadPartialTool(project_root)
 
         # Valid file should work
@@ -138,7 +138,7 @@ class TestClass:
 
         UnifiedAnalysisEngine._instance = None
 
-        project_root = os.path.dirname(self.temp_dir)
+        project_root = str(Path(self.temp_dir).parent)
         scale_tool = AnalyzeScaleTool(project_root)
 
         # Valid file should work
@@ -219,7 +219,7 @@ class TestClass:
     def test_security_validator_consistency(self):
         """Test that all components use consistent security validation."""
         # All components should use the same SecurityValidator
-        project_root = os.path.dirname(self.temp_dir)
+        project_root = str(Path(self.temp_dir).parent)
         engine = get_analysis_engine(project_root)
         table_tool = TableFormatTool(project_root)
         analyze_tool = UniversalAnalyzeTool(project_root)
@@ -265,7 +265,7 @@ class TestClass:
         """Test that security validation doesn't significantly impact performance."""
         import time
 
-        project_root = os.path.dirname(self.temp_dir)
+        project_root = str(Path(self.temp_dir).parent)
         engine = get_analysis_engine(project_root)
 
         # Measure time with security validation
@@ -304,7 +304,7 @@ class TestClass:
 
     def test_error_handling_security(self):
         """Test that error messages don't leak sensitive information."""
-        project_root = os.path.dirname(self.temp_dir)
+        project_root = str(Path(self.temp_dir).parent)
         validator = SecurityValidator(project_root)
 
         # Test with various malicious inputs

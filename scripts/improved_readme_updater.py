@@ -86,7 +86,7 @@ class ImprovedReadmeUpdater:
         except (subprocess.TimeoutExpired, subprocess.SubprocessError) as e:
             self.logger.warning(f"Could not get test stats: {e}")
             # Use fallback values
-            stats.update({"test_count": 1358, "coverage": 74.54})
+            stats.update({"test_count": 1504, "coverage": 74.34})
 
         return stats
 

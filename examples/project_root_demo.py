@@ -7,8 +7,8 @@ across CLI and MCP interfaces.
 """
 
 import asyncio
-import os
 import tempfile
+from pathlib import Path
 
 from tree_sitter_analyzer.core.analysis_engine import get_analysis_engine
 from tree_sitter_analyzer.mcp.tools.table_format_tool import TableFormatTool
@@ -24,16 +24,16 @@ async def main():
     print("=" * 70)
 
     # Create a mock project structure
-    temp_dir = tempfile.mkdtemp()
-    project_root = os.path.join(temp_dir, "demo_project")
+    temp_dir = Path(tempfile.mkdtemp())
+    project_root = temp_dir / "demo_project"
 
     # Create project structure
-    os.makedirs(project_root)
-    os.makedirs(os.path.join(project_root, "src"))
-    os.makedirs(os.path.join(project_root, "tests"))
+    project_root.mkdir()
+    (project_root / "src").mkdir()
+    (project_root / "tests").mkdir()
 
     # Create project markers
-    with open(os.path.join(project_root, "pyproject.toml"), "w") as f:
+    with open(project_root / "pyproject.toml", "w") as f:
         f.write(
             """
 [tool.poetry]
@@ -46,13 +46,13 @@ python = "^3.8"
 """
         )
 
-    with open(os.path.join(project_root, "README.md"), "w") as f:
+    with open(project_root / "README.md", "w") as f:
         f.write(
             "# Demo Project\n\nThis is a demo project for testing project root detection."
         )
 
     # Create source files
-    src_file = os.path.join(project_root, "src", "main.py")
+    src_file = project_root / "src" / "main.py"
     with open(src_file, "w") as f:
         f.write(
             """
@@ -78,7 +78,7 @@ class Calculator:
 """
         )
 
-    test_file = os.path.join(project_root, "tests", "test_main.py")
+    test_file = project_root / "tests" / "test_main.py"
     with open(test_file, "w") as f:
         f.write(
             """
@@ -115,15 +115,19 @@ class TestFibonacci(unittest.TestCase):
     detector = ProjectRootDetector()
 
     # Test detection from source file
-    detected_from_src = detector.detect_from_file(src_file)
+    detected_from_src = detector.detect_from_file(str(src_file))
     print(f"✅ Detection from src file: {detected_from_src}")
     print(f"   Expected: {project_root}")
-    print(f"   Match: {'✅ YES' if detected_from_src == project_root else '❌ NO'}")
+    print(
+        f"   Match: {'✅ YES' if detected_from_src == str(project_root) else '❌ NO'}"
+    )
 
     # Test detection from test file
-    detected_from_test = detector.detect_from_file(test_file)
+    detected_from_test = detector.detect_from_file(str(test_file))
     print(f"✅ Detection from test file: {detected_from_test}")
-    print(f"   Match: {'✅ YES' if detected_from_test == project_root else '❌ NO'}")
+    print(
+        f"   Match: {'✅ YES' if detected_from_test == str(project_root) else '❌ NO'}"
+    )
 
     print()
 
@@ -132,16 +136,16 @@ class TestFibonacci(unittest.TestCase):
     print("-" * 50)
 
     # Test with file path only
-    unified_result1 = detect_project_root(src_file)
+    unified_result1 = detect_project_root(str(src_file))
     print(f"📍 Auto-detection from file: {unified_result1}")
 
     # Test with explicit root
-    explicit_root = os.path.join(temp_dir, "custom_root")
-    os.makedirs(explicit_root)
-    unified_result2 = detect_project_root(src_file, explicit_root)
+    explicit_root = temp_dir / "custom_root"
+    explicit_root.mkdir()
+    unified_result2 = detect_project_root(str(src_file), str(explicit_root))
     print(f"📍 With explicit root: {unified_result2}")
     print(
-        f"   Uses explicit: {'✅ YES' if unified_result2 == os.path.abspath(explicit_root) else '❌ NO'}"
+        f"   Uses explicit: {'✅ YES' if unified_result2 == str(explicit_root.resolve()) else '❌ NO'}"
     )
 
     print()
@@ -156,7 +160,7 @@ class TestFibonacci(unittest.TestCase):
     print(f"🔧 Engine with auto-detected root: {engine1_root}")
 
     # Test with explicit project root
-    engine2 = get_analysis_engine(explicit_root)
+    engine2 = get_analysis_engine(str(explicit_root))
     engine2_root = getattr(engine2, "_project_root", "None")
     print(f"🔧 Engine with explicit root: {engine2_root}")
 
@@ -179,7 +183,7 @@ class TestFibonacci(unittest.TestCase):
     print(f"🛠️ MCP tool with auto-detected root: {tool1_root}")
 
     # Test MCP tool with explicit project root
-    mcp_tool2 = TableFormatTool(explicit_root)
+    mcp_tool2 = TableFormatTool(str(explicit_root))
     tool2_root = (
         mcp_tool2.security_validator.boundary_manager.project_root
         if mcp_tool2.security_validator.boundary_manager
@@ -189,7 +193,7 @@ class TestFibonacci(unittest.TestCase):
 
     # Test actual analysis
     try:
-        result = await mcp_tool1.execute({"file_path": src_file})
+        result = await mcp_tool1.execute({"file_path": str(src_file)})
         print(
             f"✅ Analysis successful: Found {len(result.get('elements', []))} elements"
         )
@@ -203,17 +207,17 @@ class TestFibonacci(unittest.TestCase):
     print("-" * 50)
 
     # Test file within project
-    is_valid1, msg1 = mcp_tool1.security_validator.validate_file_path(src_file)
+    is_valid1, msg1 = mcp_tool1.security_validator.validate_file_path(str(src_file))
     print(
         f"🔒 File within project: {'✅ VALID' if is_valid1 else '❌ INVALID'} - {msg1}"
     )
 
     # Test file outside project
-    outside_file = os.path.join(temp_dir, "outside.py")
+    outside_file = temp_dir / "outside.py"
     with open(outside_file, "w") as f:
         f.write("print('outside')")
 
-    is_valid2, msg2 = mcp_tool1.security_validator.validate_file_path(outside_file)
+    is_valid2, msg2 = mcp_tool1.security_validator.validate_file_path(str(outside_file))
     print(
         f"🔒 File outside project: {'✅ VALID' if is_valid2 else '❌ INVALID'} - {msg2}"
     )
@@ -262,7 +266,7 @@ class TestFibonacci(unittest.TestCase):
     # Cleanup
     import shutil
 
-    shutil.rmtree(temp_dir, ignore_errors=True)
+    shutil.rmtree(str(temp_dir), ignore_errors=True)
 
     print("🎉 Project Root Detection Demo Complete!")
     print("=" * 70)

@@ -6,7 +6,6 @@ Provides strict project boundary control to prevent access to files
 outside the designated project directory.
 """
 
-import os
 from pathlib import Path
 
 from ..exceptions import SecurityError
@@ -40,14 +39,15 @@ class ProjectBoundaryManager:
         if not project_root:
             raise SecurityError("Project root cannot be empty")
 
-        if not os.path.exists(project_root):
+        project_path = Path(project_root)
+        if not project_path.exists():
             raise SecurityError(f"Project root does not exist: {project_root}")
 
-        if not os.path.isdir(project_root):
+        if not project_path.is_dir():
             raise SecurityError(f"Project root is not a directory: {project_root}")
 
         # Store real path to prevent symlink attacks
-        self.project_root = os.path.realpath(project_root)
+        self.project_root = str(project_path.resolve())
         self.allowed_directories: set[str] = {self.project_root}
 
         log_debug(f"ProjectBoundaryManager initialized with root: {self.project_root}")
@@ -65,13 +65,14 @@ class ProjectBoundaryManager:
         if not directory:
             raise SecurityError("Directory cannot be empty")
 
-        if not os.path.exists(directory):
+        dir_path = Path(directory)
+        if not dir_path.exists():
             raise SecurityError(f"Directory does not exist: {directory}")
 
-        if not os.path.isdir(directory):
+        if not dir_path.is_dir():
             raise SecurityError(f"Path is not a directory: {directory}")
 
-        real_dir = os.path.realpath(directory)
+        real_dir = str(dir_path.resolve())
         self.allowed_directories.add(real_dir)
 
         log_info(f"Added allowed directory: {real_dir}")
@@ -92,16 +93,18 @@ class ProjectBoundaryManager:
                 return False
 
             # Resolve real path to handle symlinks
-            real_path = os.path.realpath(file_path)
+            real_path = str(Path(file_path).resolve())
 
             # Check against all allowed directories
             for allowed_dir in self.allowed_directories:
-                if (
-                    real_path.startswith(allowed_dir + os.sep)
-                    or real_path == allowed_dir
-                ):
+                # Use pathlib to check if path is within allowed directory
+                try:
+                    Path(real_path).relative_to(Path(allowed_dir))
                     log_debug(f"File path within boundaries: {file_path}")
                     return True
+                except ValueError:
+                    # Path is not within this allowed directory, continue checking
+                    continue
 
             log_warning(f"File path outside boundaries: {file_path} -> {real_path}")
             return False
@@ -124,8 +127,14 @@ class ProjectBoundaryManager:
             return None
 
         try:
-            real_path = os.path.realpath(file_path)
-            rel_path = os.path.relpath(real_path, self.project_root)
+            real_path = Path(file_path).resolve()
+            try:
+                rel_path = real_path.relative_to(Path(self.project_root))
+                rel_path = str(rel_path)
+            except ValueError:
+                # Path is not relative to project root
+                log_warning(f"Path not relative to project root: {file_path}")
+                return None
 
             # Ensure relative path doesn't start with ..
             if rel_path.startswith(".."):
@@ -150,17 +159,18 @@ class ProjectBoundaryManager:
         """
         try:
             # Handle relative paths from project root
-            if not os.path.isabs(file_path):
-                full_path = os.path.join(self.project_root, file_path)
+            file_path_obj = Path(file_path)
+            if not file_path_obj.is_absolute():
+                full_path = Path(self.project_root) / file_path
             else:
-                full_path = file_path
+                full_path = file_path_obj
 
             # Check boundaries
-            if not self.is_within_project(full_path):
+            if not self.is_within_project(str(full_path)):
                 return None
 
             # Return real path
-            return os.path.realpath(full_path)
+            return str(full_path.resolve())
 
         except Exception as e:
             log_warning(f"Path validation error: {e}")
@@ -186,28 +196,27 @@ class ProjectBoundaryManager:
             True if path is safe from symlink attacks
         """
         try:
-            if not os.path.exists(file_path):
+            file_path_obj = Path(file_path)
+            if not file_path_obj.exists():
                 return True  # Non-existent files are safe
 
             # If the fully resolved path is within project boundaries, we treat it as safe.
             # This makes the check tolerant to system-level symlinks like
             # /var -> /private/var on macOS runners.
-            resolved = os.path.realpath(file_path)
+            resolved = str(file_path_obj.resolve())
             if self.is_within_project(resolved):
                 return True
 
             # Otherwise, inspect each path component symlink to ensure no hop jumps outside
             # the allowed directories.
-            path_parts = Path(file_path).parts
-            current_path = ""
+            path_parts = file_path_obj.parts
+            current_path = Path()
 
             for part in path_parts:
-                current_path = (
-                    os.path.join(current_path, part) if current_path else part
-                )
+                current_path = current_path / part if current_path.parts else Path(part)
 
-                if os.path.islink(current_path):
-                    target = os.path.realpath(current_path)
+                if current_path.is_symlink():
+                    target = str(current_path.resolve())
                     if not self.is_within_project(target):
                         log_warning(
                             f"Unsafe symlink detected: {current_path} -> {target}"

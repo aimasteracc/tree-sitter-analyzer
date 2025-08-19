@@ -3,8 +3,8 @@
 Tests for ProjectBoundaryManager class.
 """
 
-import os
 import tempfile
+from pathlib import Path
 
 import pytest
 
@@ -21,10 +21,10 @@ class TestProjectBoundaryManager:
         self.manager = ProjectBoundaryManager(self.temp_dir)
 
         # Create test directory structure
-        self.test_subdir = os.path.join(self.temp_dir, "src")
-        os.makedirs(self.test_subdir, exist_ok=True)
+        self.test_subdir = str(Path(self.temp_dir) / "src")
+        Path(self.test_subdir).mkdir(parents=True, exist_ok=True)
 
-        self.test_file = os.path.join(self.test_subdir, "test.py")
+        self.test_file = str(Path(self.test_subdir) / "test.py")
         with open(self.test_file, "w") as f:
             f.write("# test file")
 
@@ -38,8 +38,8 @@ class TestProjectBoundaryManager:
     def test_init_success(self):
         """Test successful initialization."""
         # Assert
-        assert self.manager.project_root == os.path.realpath(self.temp_dir)
-        assert os.path.realpath(self.temp_dir) in self.manager.allowed_directories
+        assert self.manager.project_root == str(Path(self.temp_dir).resolve())
+        assert str(Path(self.temp_dir).resolve()) in self.manager.allowed_directories
 
     @pytest.mark.unit
     def test_init_empty_root(self):
@@ -100,10 +100,10 @@ class TestProjectBoundaryManager:
             self.manager.add_allowed_directory(new_dir)
 
             # Assert
-            assert os.path.realpath(new_dir) in self.manager.allowed_directories
+            assert str(Path(new_dir).resolve()) in self.manager.allowed_directories
 
             # Test file in new directory is allowed
-            test_file = os.path.join(new_dir, "test.txt")
+            test_file = str(Path(new_dir) / "test.txt")
             with open(test_file, "w") as f:
                 f.write("test")
 
@@ -131,7 +131,7 @@ class TestProjectBoundaryManager:
 
         # Assert
         assert rel_path is not None
-        assert rel_path == os.path.join("src", "test.py")
+        assert rel_path == str(Path("src") / "test.py")
 
     @pytest.mark.unit
     def test_get_relative_path_outside(self):
@@ -149,14 +149,14 @@ class TestProjectBoundaryManager:
     def test_validate_and_resolve_path_success(self):
         """Test validating and resolving path within boundaries."""
         # Arrange
-        relative_path = os.path.join("src", "test.py")
+        relative_path = str(Path("src") / "test.py")
 
         # Act
         resolved = self.manager.validate_and_resolve_path(relative_path)
 
         # Assert
         assert resolved is not None
-        assert resolved == os.path.realpath(self.test_file)
+        assert resolved == str(Path(self.test_file).resolve())
 
     @pytest.mark.unit
     def test_validate_and_resolve_path_outside(self):
@@ -178,7 +178,7 @@ class TestProjectBoundaryManager:
 
         # Assert
         assert isinstance(directories, set)
-        assert os.path.realpath(self.temp_dir) in directories
+        assert str(Path(self.temp_dir).resolve()) in directories
 
     @pytest.mark.unit
     def test_is_symlink_safe_no_symlinks(self):
@@ -198,7 +198,7 @@ class TestProjectBoundaryManager:
     def test_is_symlink_safe_nonexistent(self):
         """Test symlink safety check for nonexistent file."""
         # Arrange
-        nonexistent = os.path.join(self.temp_dir, "nonexistent.txt")
+        nonexistent = str(Path(self.temp_dir) / "nonexistent.txt")
 
         # Act
         is_safe = self.manager.is_symlink_safe(nonexistent)
@@ -226,9 +226,9 @@ class TestProjectBoundaryManager:
         # On Windows the temp directory may have different short/long path
         # representations in CI (e.g., C:\Users\runneradmin vs C:\Users\RUNNER~1),
         # so we only assert that at least one of the known forms appears.
-        normalized = os.path.realpath(self.temp_dir)
+        normalized = str(Path(self.temp_dir).resolve())
         assert (
             self.temp_dir in repr_repr
             or normalized in repr_repr
-            or os.path.basename(normalized) in repr_repr
+            or Path(normalized).name in repr_repr
         )

@@ -31,9 +31,9 @@ class PartialReadCommand(BaseCommand):
             output_error("File path not specified.")
             return False
 
-        import os
+        from pathlib import Path
 
-        if not os.path.exists(self.args.file_path):
+        if not Path(self.args.file_path).exists():
             from ...output_manager import output_error
 
             output_error(f"File not found: {self.args.file_path}")

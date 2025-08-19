@@ -5,7 +5,7 @@ File Handler Module
 This module provides file reading functionality with encoding detection and fallback.
 """
 
-import os
+from pathlib import Path
 
 from .encoding_utils import read_file_safe
 from .utils import log_error, log_info, log_warning
@@ -21,7 +21,7 @@ def detect_language_from_extension(file_path: str) -> str:
     Returns:
         Language name or 'unknown' if not recognized
     """
-    extension = os.path.splitext(file_path)[1].lower()
+    extension = Path(file_path).suffix.lower()
 
     extension_map = {
         ".java": "java",
@@ -56,7 +56,8 @@ def read_file_with_fallback(file_path: str) -> bytes | None:
         File content as bytes, or None if file doesn't exist
     """
     # Check file existence first
-    if not os.path.exists(file_path):
+    file_obj = Path(file_path)
+    if not file_obj.exists():
         log_error(f"File does not exist: {file_path}")
         return None
 
@@ -93,7 +94,8 @@ def read_file_partial(
         Selected content string, or None on error
     """
     # Check file existence
-    if not os.path.exists(file_path):
+    file_obj = Path(file_path)
+    if not file_obj.exists():
         log_error(f"File does not exist: {file_path}")
         return None
 

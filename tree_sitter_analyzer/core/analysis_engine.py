@@ -395,9 +395,9 @@ class UnifiedAnalysisEngine:
             Detected language name
         """
         # 簡易的な拡張子ベース検出
-        import os
+        from pathlib import Path
 
-        _, ext = os.path.splitext(file_path)
+        ext = Path(file_path).suffix
 
         language_map = {
             ".java": "java",

@@ -7,6 +7,7 @@ Provides logging, debugging, and common utility functions.
 
 import atexit
 import logging
+import os
 import sys
 from functools import wraps
 from typing import Any
@@ -17,8 +18,6 @@ def setup_logger(
     name: str = "tree_sitter_analyzer", level: int = logging.WARNING
 ) -> logging.Logger:
     """Setup unified logger for the project"""
-    import os
-
     # Get log level from environment variable
     env_level = os.environ.get("LOG_LEVEL", "").upper()
     if env_level == "DEBUG":

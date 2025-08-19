@@ -6,8 +6,8 @@ This module provides comprehensive tests for the TableFormatTool class,
 covering both successful operations and error handling scenarios.
 """
 
-import os
 import tempfile
+from pathlib import Path
 
 import pytest
 
@@ -23,7 +23,7 @@ class TestTableFormatTool:
 
         # Create a temporary test file
         self.temp_dir = tempfile.mkdtemp()
-        self.test_file_path = os.path.join(self.temp_dir, "test.java")
+        self.test_file_path = str(Path(self.temp_dir) / "test.java")
 
         # Simple Java content for testing
         self.test_java_content = """
@@ -46,9 +46,10 @@ public class TestClass {
     def teardown_method(self):
         """Clean up test fixtures after each test method."""
         # Clean up temporary files
-        if os.path.exists(self.test_file_path):
-            os.remove(self.test_file_path)
-        os.rmdir(self.temp_dir)
+        test_file = Path(self.test_file_path)
+        if test_file.exists():
+            test_file.unlink()
+        Path(self.temp_dir).rmdir()
 
     def test_init(self):
         """Test TableFormatTool initialization."""

@@ -5,13 +5,12 @@ CLI Query Filter Integration Tests
 Tests for CLI query filtering functionality using real files.
 """
 
-import os
 import tempfile
+from pathlib import Path
 
 import pytest
 
 from tree_sitter_analyzer.cli.commands.query_command import QueryCommand
-from tree_sitter_analyzer.security import SecurityValidator
 
 
 class TestCLIQueryFilterIntegration:
@@ -66,8 +65,9 @@ public class TestClass {
 
     def teardown_method(self):
         """Clean up test fixtures"""
-        if os.path.exists(self.temp_file.name):
-            os.unlink(self.temp_file.name)
+        temp_file = Path(self.temp_file.name)
+        if temp_file.exists():
+            temp_file.unlink()
 
     @pytest.mark.asyncio
     async def test_cli_query_with_name_filter(self):
@@ -78,7 +78,6 @@ public class TestClass {
         args.filter = "name=main"
 
         # Create command and execute
-        security_validator = SecurityValidator()
         command = QueryCommand(args)
 
         results = await command.execute_query("java", "methods", "methods")
@@ -95,7 +94,6 @@ public class TestClass {
         args.query_key = "methods"
         args.filter = "name=~process*"
 
-        security_validator = SecurityValidator()
         command = QueryCommand(args)
 
         results = await command.execute_query("java", "methods", "methods")
@@ -112,7 +110,6 @@ public class TestClass {
         args.query_key = "methods"
         args.filter = "params=0"
 
-        security_validator = SecurityValidator()
         command = QueryCommand(args)
 
         results = await command.execute_query("java", "methods", "methods")
@@ -122,15 +119,9 @@ public class TestClass {
         assert len(results) >= 2
 
         # Verify all results have no parameters
-        for result in results:
-            param_count = result["content"].count(",") + (
-                1
-                if "(" in result["content"]
-                and ")" in result["content"]
-                and result["content"].split("(")[1].split(")")[0].strip()
-                else 0
-            )
+        for _result in results:
             # This is a simplified check - the actual filtering logic is more sophisticated
+            pass
 
     @pytest.mark.asyncio
     async def test_cli_query_with_modifier_filter(self):
@@ -139,7 +130,6 @@ public class TestClass {
         args.query_key = "methods"
         args.filter = "static=true"
 
-        security_validator = SecurityValidator()
         command = QueryCommand(args)
 
         results = await command.execute_query("java", "methods", "methods")
@@ -157,7 +147,6 @@ public class TestClass {
         args.query_key = "methods"
         args.filter = "public=true,params=2"
 
-        security_validator = SecurityValidator()
         command = QueryCommand(args)
 
         results = await command.execute_query("java", "methods", "methods")
@@ -175,7 +164,6 @@ public class TestClass {
         args.query_key = "methods"
         args.filter = "name=nonexistent"
 
-        security_validator = SecurityValidator()
         command = QueryCommand(args)
 
         results = await command.execute_query("java", "methods", "methods")
@@ -191,7 +179,6 @@ public class TestClass {
         args.query_string = "(method_declaration) @method"
         args.filter = "name=~auth*"
 
-        security_validator = SecurityValidator()
         command = QueryCommand(args)
 
         results = await command.execute_query(
@@ -210,7 +197,6 @@ public class TestClass {
         args.query_key = "methods"
         args.filter = None
 
-        security_validator = SecurityValidator()
         command = QueryCommand(args)
 
         results = await command.execute_query("java", "methods", "methods")
@@ -264,8 +250,9 @@ public class EdgeCaseClass {
 
     def teardown_method(self):
         """Clean up test fixtures"""
-        if os.path.exists(self.temp_file.name):
-            os.unlink(self.temp_file.name)
+        temp_file = Path(self.temp_file.name)
+        if temp_file.exists():
+            temp_file.unlink()
 
     @pytest.mark.asyncio
     async def test_filter_overloaded_methods_by_params(self):
@@ -281,7 +268,6 @@ public class EdgeCaseClass {
             },
         )()
 
-        security_validator = SecurityValidator()
         command = QueryCommand(args)
 
         results = await command.execute_query("java", "methods", "methods")
@@ -309,7 +295,6 @@ public class EdgeCaseClass {
             },
         )()
 
-        security_validator = SecurityValidator()
         command = QueryCommand(args)
 
         results = await command.execute_query("java", "methods", "methods")
@@ -333,7 +318,6 @@ public class EdgeCaseClass {
             },
         )()
 
-        security_validator = SecurityValidator()
         command = QueryCommand(args)
 
         results = await command.execute_query("java", "methods", "methods")

@@ -7,8 +7,8 @@ to improve overall test coverage and test edge cases.
 """
 
 import asyncio
-import os
 import tempfile
+from pathlib import Path
 
 import pytest
 
@@ -35,7 +35,7 @@ class TestUniversalAnalyzeToolEdgeCases:
     async def test_execute_with_empty_file(self, tool, temp_dir):
         """Test executing analysis on an empty file."""
         # Create empty file
-        empty_file = os.path.join(temp_dir, "empty.py")
+        empty_file = str(Path(temp_dir) / "empty.py")
         with open(empty_file, "w") as f:
             f.write("")
 
@@ -54,7 +54,7 @@ class TestUniversalAnalyzeToolEdgeCases:
     async def test_execute_with_binary_file(self, tool, temp_dir):
         """Test executing analysis on a binary file."""
         # Create binary file
-        binary_file = os.path.join(temp_dir, "binary.bin")
+        binary_file = str(Path(temp_dir) / "binary.bin")
         with open(binary_file, "wb") as f:
             f.write(b"\x00\x01\x02\x03\x04\x05")
 
@@ -73,7 +73,7 @@ class TestUniversalAnalyzeToolEdgeCases:
     async def test_execute_with_large_file(self, tool, temp_dir):
         """Test executing analysis on a large file."""
         # Create large file
-        large_file = os.path.join(temp_dir, "large.py")
+        large_file = str(Path(temp_dir) / "large.py")
         large_content = "# Large Python file\n" + "def function_{}(): pass\n" * 1000
 
         with open(large_file, "w") as f:
@@ -101,7 +101,7 @@ class TestUniversalAnalyzeToolEdgeCases:
         ]
 
         for filename, code in malformed_samples:
-            file_path = os.path.join(temp_dir, filename)
+            file_path = str(Path(temp_dir) / filename)
             with open(file_path, "w") as f:
                 f.write(code)
 
@@ -119,7 +119,7 @@ class TestUniversalAnalyzeToolEdgeCases:
     @pytest.mark.asyncio
     async def test_execute_with_unicode_content(self, tool, temp_dir):
         """Test executing analysis on files with Unicode content."""
-        unicode_file = os.path.join(temp_dir, "unicode.py")
+        unicode_file = str(Path(temp_dir) / "unicode.py")
         unicode_content = """
 # Unicode test file: 测试文件
 def 函数名():
@@ -269,7 +269,7 @@ class TestUniversalAnalyzeToolPerformance:
         # Create multiple test files
         test_files = []
         for i in range(5):
-            file_path = os.path.join(temp_dir, f"test_{i}.py")
+            file_path = str(Path(temp_dir) / f"test_{i}.py")
             with open(file_path, "w") as f:
                 f.write(f"def function_{i}(): pass\nclass Class_{i}: pass")
             test_files.append(file_path)
@@ -294,7 +294,7 @@ class TestUniversalAnalyzeToolPerformance:
         import gc
 
         # Create test file
-        test_file = os.path.join(temp_dir, "test.py")
+        test_file = str(Path(temp_dir) / "test.py")
         with open(test_file, "w") as f:
             f.write("def test_function(): pass\nclass TestClass: pass")
 
@@ -320,7 +320,7 @@ class TestUniversalAnalyzeToolPerformance:
     async def test_analysis_with_timeout_scenarios(self, tool, temp_dir):
         """Test analysis with potential timeout scenarios."""
         # Create a complex file that might take time to analyze
-        complex_file = os.path.join(temp_dir, "complex.py")
+        complex_file = str(Path(temp_dir) / "complex.py")
         complex_content = """
 # Complex Python file with nested structures
 """ + "\n".join(
@@ -362,7 +362,7 @@ class TestUniversalAnalyzeToolIntegration:
     @pytest.mark.asyncio
     async def test_tool_with_realistic_python_file(self, tool, temp_dir):
         """Test tool with realistic Python file."""
-        python_file = os.path.join(temp_dir, "realistic.py")
+        python_file = str(Path(temp_dir) / "realistic.py")
         python_content = """
 #!/usr/bin/env python3
 '''
@@ -414,7 +414,7 @@ if __name__ == "__main__":
     @pytest.mark.asyncio
     async def test_tool_with_realistic_java_file(self, tool, temp_dir):
         """Test tool with realistic Java file."""
-        java_file = os.path.join(temp_dir, "Calculator.java")
+        java_file = str(Path(temp_dir) / "Calculator.java")
         java_content = """
 package com.example;
 
