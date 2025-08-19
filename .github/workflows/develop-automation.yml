@@ -20,6 +20,10 @@ on:
 env:
   PYTHON_VERSION: "3.11"
 
+permissions:
+  contents: write
+  pull-requests: write
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -84,6 +88,7 @@ jobs:
         env:
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+        continue-on-error: true
 
   update-readme:
     needs: test
@@ -118,11 +123,13 @@ jobs:
           git add README.md README_zh.md README_ja.md scripts/improved_readme_updater.py
           git diff --quiet && git diff --staged --quiet || git commit -m "docs: Auto-update README statistics from develop branch"
           git push
+        continue-on-error: true
 
   create-release-pr:
     needs: [test, build-and-deploy, update-readme]
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/develop'
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
         with:
