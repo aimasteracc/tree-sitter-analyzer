@@ -144,6 +144,11 @@ full = [
     "tree-sitter-analyzer[all-languages,mcp,dev,test]",
 ]
 
+# All dependencies (alias for full)
+all = [
+    "tree-sitter-analyzer[all-languages,mcp,dev,test]",
+]
+
 [project.scripts]
 # Main CLI entry point
 tree-sitter-analyzer = "tree_sitter_analyzer.cli_main:main"
