@@ -123,8 +123,8 @@ class ProjectStatsResource:
 
         self._project_path = project_path
 
-        # Initialize analyzers with the project path
-        self._advanced_analyzer = get_analysis_engine()
+        # Note: analysis_engine is already initialized in __init__
+        # No need to reinitialize here
 
         logger.debug(f"Set project path to: {project_path}")
 
@@ -336,15 +336,26 @@ class ProjectStatsResource:
 
                     # Use appropriate analyzer based on language
                     if language == "java":
-                        # Use advanced analyzer for Java
-                        # 使用 await 调用异步方法
-                        file_analysis = await self._advanced_analyzer.analyze_file(
+                        # Use analysis engine for Java
+                        file_analysis = await self.analysis_engine.analyze_file(
                             str(file_path)
                         )
                         if file_analysis and hasattr(file_analysis, "methods"):
+                            # Extract complexity from methods if available
                             complexity = sum(
                                 method.complexity_score or 0
                                 for method in file_analysis.methods
+                            )
+                        elif file_analysis and hasattr(file_analysis, "elements"):
+                            # Extract complexity from elements for new architecture
+                            methods = [
+                                e
+                                for e in file_analysis.elements
+                                if hasattr(e, "complexity_score")
+                            ]
+                            complexity = sum(
+                                getattr(method, "complexity_score", 0) or 0
+                                for method in methods
                             )
                         else:
                             complexity = 0
