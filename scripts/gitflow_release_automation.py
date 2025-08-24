@@ -14,7 +14,7 @@ Usage:
 """
 
 import argparse
-import subprocess
+import subprocess  # nosec B404
 import sys
 import time
 from pathlib import Path
@@ -31,8 +31,8 @@ class GitFlowReleaseAutomation:
     ) -> subprocess.CompletedProcess:
         """Run a git command and return the result"""
         try:
-            print(f"🔄 Running: {' '.join(command)}")
-            result = subprocess.run(
+            print(f"Running: {' '.join(command)}")
+            result = subprocess.run(  # nosec B603
                 command,
                 cwd=self.project_root,
                 capture_output=True,
@@ -40,12 +40,12 @@ class GitFlowReleaseAutomation:
                 check=check,
             )
             if result.stdout.strip():
-                print(f"✅ Output: {result.stdout.strip()}")
+                print(f"Output: {result.stdout.strip()}")
             if result.stderr.strip():
-                print(f"⚠️  Warnings: {result.stderr.strip()}")
+                print(f"Warnings: {result.stderr.strip()}")
             return result
         except subprocess.CalledProcessError as e:
-            print(f"❌ Command failed: {' '.join(command)}")
+            print(f"Command failed: {' '.join(command)}")
             print(f"Error: {e}")
             if check:
                 sys.exit(1)
@@ -53,20 +53,20 @@ class GitFlowReleaseAutomation:
 
     def check_prerequisites(self) -> bool:
         """Check if all prerequisites are met"""
-        print("🔍 Checking prerequisites...")
+        print("Checking prerequisites...")
 
         # Check if we're on develop branch
         current_branch = self.run_command(
             ["git", "branch", "--show-current"]
         ).stdout.strip()
         if current_branch != "develop":
-            print(f"❌ Must be on 'develop' branch, currently on '{current_branch}'")
+            print(f"Must be on 'develop' branch, currently on '{current_branch}'")
             return False
 
         # Check if working directory is clean
         status = self.run_command(["git", "status", "--porcelain"]).stdout.strip()
         if status:
-            print("❌ Working directory has uncommitted changes")
+            print("Working directory has uncommitted changes")
             print("Please commit or stash changes before proceeding")
             return False
 
@@ -78,32 +78,32 @@ class GitFlowReleaseAutomation:
         ).stdout.strip()
 
         if local_commit != remote_commit:
-            print("❌ Local develop is not up to date with remote")
+            print("Local develop is not up to date with remote")
             print("Please run: git pull origin develop")
             return False
 
-        print("✅ All prerequisites met!")
+        print("All prerequisites met!")
         return True
 
     def sync_readme_statistics(self) -> bool:
         """Sync README statistics to ensure consistency"""
-        print("📊 Syncing README statistics...")
+        print("Syncing README statistics...")
 
         try:
             # Run the README updater script
-            subprocess.run(
+            subprocess.run(  # nosec B603, B607
                 ["uv", "run", "python", "scripts/improved_readme_updater.py"],
                 cwd=self.project_root,
                 capture_output=True,
                 text=True,
                 check=True,
             )
-            print("✅ README statistics updated successfully")
+            print("README statistics updated successfully")
 
             # Check if there are changes
             status = self.run_command(["git", "status", "--porcelain"]).stdout.strip()
             if status:
-                print("📝 README files have been updated, committing changes...")
+                print("README files have been updated, committing changes...")
                 self.run_command(
                     ["git", "add", "README.md", "README_zh.md", "README_ja.md"]
                 )
@@ -116,36 +116,36 @@ class GitFlowReleaseAutomation:
                     ]
                 )
                 self.run_command(["git", "push", "origin", "develop"])
-                print("✅ README updates committed and pushed")
+                print("README updates committed and pushed")
             else:
-                print("ℹ️  No README changes needed")
+                print("No README changes needed")
 
             return True
         except subprocess.CalledProcessError as e:
-            print(f"❌ Failed to update README statistics: {e}")
+            print(f"Failed to update README statistics: {e}")
             return False
 
     def run_tests(self) -> bool:
         """Run tests to ensure quality"""
-        print("🧪 Running tests to ensure quality...")
+        print("Running tests to ensure quality...")
 
         try:
-            subprocess.run(
+            subprocess.run(  # nosec B603, B607
                 ["uv", "run", "pytest", "tests/", "-v"],
                 cwd=self.project_root,
                 capture_output=True,
                 text=True,
                 check=True,
             )
-            print("✅ All tests passed!")
+            print("All tests passed!")
             return True
         except subprocess.CalledProcessError as e:
-            print(f"❌ Tests failed: {e}")
+            print(f"Tests failed: {e}")
             return False
 
     def create_release_branch(self) -> bool:
         """Create and prepare release branch"""
-        print(f"🚀 Creating release branch: {self.release_branch}")
+        print(f"Creating release branch: {self.release_branch}")
 
         try:
             # Create release branch
@@ -153,38 +153,44 @@ class GitFlowReleaseAutomation:
 
             # Update version in pyproject.toml
             pyproject_path = self.project_root / "pyproject.toml"
-            content = pyproject_path.read_text()
+            try:
+                content = pyproject_path.read_text(encoding="utf-8")
+            except UnicodeDecodeError:
+                content = pyproject_path.read_text(encoding="latin-1")
 
             # Extract current version
             import re
 
             version_match = re.search(r'version = "([^"]+)"', content)
             if not version_match:
-                print("❌ Could not find version in pyproject.toml")
+                print("Could not find version in pyproject.toml")
                 return False
 
             current_version = version_match.group(1)
             new_version = self.version.lstrip("v")
 
             if current_version == new_version:
-                print(f"ℹ️  Version already set to {new_version}")
+                print(f"Version already set to {new_version}")
             else:
                 # Update version
                 content = content.replace(
                     f'version = "{current_version}"', f'version = "{new_version}"'
                 )
-                pyproject_path.write_text(content)
-                print(f"✅ Updated version from {current_version} to {new_version}")
+                pyproject_path.write_text(content, encoding="utf-8")
+                print(f"Updated version from {current_version} to {new_version}")
 
             # Update CHANGELOG.md
             changelog_path = self.project_root / "CHANGELOG.md"
             if changelog_path.exists():
-                changelog_content = changelog_path.read_text()
+                try:
+                    changelog_content = changelog_path.read_text(encoding="utf-8")
+                except UnicodeDecodeError:
+                    changelog_content = changelog_path.read_text(encoding="latin-1")
 
                 # Add new version entry
                 new_entry = f"""## [{new_version}] - {time.strftime('%Y-%m-%d')}
 
-### 🚀 Release: {self.version}
+### Release: {self.version}
 
 - Automated release using GitFlow best practices
 - All tests passing
@@ -198,8 +204,8 @@ class GitFlowReleaseAutomation:
                 # Insert after the first line
                 lines = changelog_content.split("\n")
                 lines.insert(1, new_entry)
-                changelog_path.write_text("\n".join(lines))
-                print("✅ Updated CHANGELOG.md")
+                changelog_path.write_text("\n".join(lines), encoding="utf-8")
+                print("Updated CHANGELOG.md")
 
             # Commit changes
             self.run_command(["git", "add", "pyproject.toml", "CHANGELOG.md"])
@@ -207,46 +213,46 @@ class GitFlowReleaseAutomation:
                 ["git", "commit", "-m", f"chore: Prepare release {self.version}"]
             )
 
-            print(f"✅ Release branch {self.release_branch} created and prepared")
+            print(f"Release branch {self.release_branch} created and prepared")
             return True
 
         except Exception as e:
-            print(f"❌ Failed to create release branch: {e}")
+            print(f"Failed to create release branch: {e}")
             return False
 
     def push_release_branch(self) -> bool:
         """Push release branch to trigger CI/CD"""
-        print(f"📤 Pushing release branch {self.release_branch}...")
+        print(f"Pushing release branch {self.release_branch}...")
 
         try:
             self.run_command(["git", "push", "origin", self.release_branch])
-            print(f"✅ Release branch {self.release_branch} pushed successfully")
-            print("🔄 CI/CD pipeline will now start automatically")
+            print(f"Release branch {self.release_branch} pushed successfully")
+            print("CI/CD pipeline will now start automatically")
             return True
         except Exception as e:
-            print(f"❌ Failed to push release branch: {e}")
+            print(f"Failed to push release branch: {e}")
             return False
 
     def wait_for_ci_completion(self) -> bool:
         """Wait for CI/CD completion and provide status"""
-        print("⏳ Waiting for CI/CD completion...")
-        print("🔗 Check GitHub Actions status:")
+        print("Waiting for CI/CD completion...")
+        print("Check GitHub Actions status:")
         print("   https://github.com/aimasteracc/tree-sitter-analyzer/actions")
-        print("\n📋 CI/CD Jobs to monitor:")
+        print("\nCI/CD Jobs to monitor:")
         print("   1. test - Should complete successfully")
         print("   2. build-and-deploy - Should complete successfully")
         print("   3. create-main-pr - Should complete successfully")
 
-        print("\n⏰ Please wait for all jobs to complete...")
+        print("\nPlease wait for all jobs to complete...")
         print("   You can check the status in the GitHub Actions tab")
 
         return True
 
     def complete_release(self) -> bool:
         """Complete the release process after CI/CD success"""
-        print("🎯 Completing release process...")
+        print("Completing release process...")
 
-        print("\n📋 Manual steps to complete:")
+        print("\nManual steps to complete:")
         print("1. Wait for CI/CD to complete successfully")
         print("2. Review the created PR to main branch")
         print("3. Merge the PR to main")
@@ -273,9 +279,9 @@ class GitFlowReleaseAutomation:
 
     def execute_full_workflow(self) -> bool:
         """Execute the complete GitFlow release workflow"""
-        print("🚀 Starting GitFlow Release Automation")
-        print(f"📦 Version: {self.version}")
-        print(f"🌿 Release Branch: {self.release_branch}")
+        print("Starting GitFlow Release Automation")
+        print(f"Version: {self.version}")
+        print(f"Release Branch: {self.release_branch}")
         print("=" * 60)
 
         try:
@@ -308,8 +314,8 @@ class GitFlowReleaseAutomation:
                 return False
 
             print("=" * 60)
-            print("🎉 GitFlow Release Automation completed successfully!")
-            print("📋 Next steps:")
+            print("GitFlow Release Automation completed successfully!")
+            print("Next steps:")
             print("   1. Monitor CI/CD progress in GitHub Actions")
             print("   2. Review and merge the created PR")
             print("   3. Complete the manual merge steps")
@@ -317,7 +323,7 @@ class GitFlowReleaseAutomation:
             return True
 
         except Exception as e:
-            print(f"❌ Workflow failed: {e}")
+            print(f"Workflow failed: {e}")
             return False
 
 
