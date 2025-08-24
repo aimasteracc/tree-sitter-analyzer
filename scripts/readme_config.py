@@ -26,6 +26,15 @@ class ReadmeConfig:
     # File paths
     readme_files = {"zh": "README_zh.md", "en": "README.md", "ja": "README_ja.md"}
 
+    # Tolerance ranges for statistics updates (avoid unnecessary updates for minor differences)
+    tolerance_ranges = {
+        "test_count": 0,  # Test count must be exact - no tolerance
+        "coverage": 0.05,  # Coverage tolerance: 0.05% (e.g., 74.43% vs 74.4% won't trigger update)
+        "bigservice_lines": 0,  # Line count must be exact - no tolerance
+        "bigservice_methods": 0,  # Method count must be exact - no tolerance
+        "bigservice_fields": 0,  # Field count must be exact - no tolerance
+    }
+
     # Statistics patterns to update
     statistics = [
         StatisticPattern(
