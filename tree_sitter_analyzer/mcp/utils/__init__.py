@@ -30,12 +30,12 @@ from .error_handler import (
 from .path_resolver import PathResolver, resolve_path
 
 # Module metadata
-__version__ = "2.0.0"
+__version__ = "1.1.0"
 __author__ = "Tree-Sitter Analyzer Team"
 
 # MCP Utils capabilities
 MCP_UTILS_CAPABILITIES = {
-    "version": "2.0.0",
+    "version": "1.1.0",
     "features": [
         "Comprehensive Error Handling",
         "Unified Core Services Integration",
