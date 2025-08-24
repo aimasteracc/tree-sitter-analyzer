@@ -19,7 +19,6 @@ from .code_file_resource import CodeFileResource
 from .project_stats_resource import ProjectStatsResource
 
 # Resource metadata
-__version__ = "1.1.0"
 __author__ = "Tree-Sitter Analyzer Team"
 
 # MCP Resource capabilities

@@ -6,4 +6,4 @@ This package contains tests for all MCP resources including
 code file resources and code statistics resources.
 """
 
-__version__ = "1.0.0"
+__version__ = "1.1.1"

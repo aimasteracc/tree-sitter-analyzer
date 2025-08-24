@@ -8,8 +8,6 @@ through the Model Context Protocol.
 
 from typing import Any
 
-__version__ = "1.1.0"
-
 # Tool registry for easy access
 AVAILABLE_TOOLS: dict[str, dict[str, Any]] = {
     "analyze_code_scale": {
