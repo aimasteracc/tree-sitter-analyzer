@@ -371,12 +371,13 @@ class ImprovedReadmeUpdater:
         if coverage_badge_match:
             file_coverage = float(coverage_badge_match.group(1))
             actual_coverage = stats.get("coverage")
-            if (
-                actual_coverage and abs(file_coverage - actual_coverage) > 0.1
-            ):  # Allow small rounding differences
-                issues.append(
-                    f"Coverage mismatch in {filename}: file shows {file_coverage:.2f}%, actual is {actual_coverage:.2f}%"
-                )
+            if actual_coverage:
+                # Use the same tolerance as the update logic
+                tolerance = self.config.tolerance_ranges.get("coverage", 0.1)
+                if abs(file_coverage - actual_coverage) > tolerance:
+                    issues.append(
+                        f"Coverage mismatch in {filename}: file shows {file_coverage:.2f}%, actual is {actual_coverage:.2f}% (tolerance: {tolerance})"
+                    )
 
         # Check BigService statistics
         bigservice_patterns = {
