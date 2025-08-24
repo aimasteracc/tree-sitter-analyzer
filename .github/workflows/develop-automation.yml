@@ -6,11 +6,6 @@ on:
       - develop
   workflow_dispatch:
     inputs:
-      deploy_to_pypi:
-        description: 'Deploy to PyPI'
-        required: false
-        default: true
-        type: boolean
       update_readme:
         description: 'Update README statistics'
         required: false
@@ -56,10 +51,9 @@ jobs:
           flags: unittests
           name: codecov-umbrella
 
-  build-and-deploy:
+  build:
     needs: test
     runs-on: ubuntu-latest
-    if: github.event.inputs.deploy_to_pypi != 'false'
     steps:
       - uses: actions/checkout@v4
 
@@ -82,13 +76,12 @@ jobs:
       - name: Check package
         run: uv run twine check dist/*
 
-      - name: Deploy to PyPI
-        if: github.ref == 'refs/heads/develop'
-        run: uv run twine upload dist/*
-        env:
-          TWINE_USERNAME: __token__
-          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
-        continue-on-error: true
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: package-dist
+          path: dist/
+          retention-days: 1
 
   update-readme:
     needs: test
@@ -126,7 +119,7 @@ jobs:
         continue-on-error: true
 
   create-release-pr:
-    needs: [test, build-and-deploy, update-readme]
+    needs: [test, build, update-readme]
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/develop'
     continue-on-error: true
@@ -148,7 +141,7 @@ jobs:
             This PR was automatically created from the develop branch after successful:
 
             - ✅ All tests passed
-            - ✅ PyPI deployment completed
+            - ✅ Package built successfully
             - ✅ README statistics updated
 
             ### 📊 Quality Metrics
