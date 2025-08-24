@@ -151,58 +151,135 @@ class ImprovedReadmeUpdater:
 
         return stats
 
+    def _should_update_statistic(
+        self, stat_name: str, current_value: Any, new_value: Any
+    ) -> bool:
+        """
+        Check if a statistic should be updated based on tolerance range
+
+        Args:
+            stat_name: Name of the statistic
+            current_value: Current value in the document
+            new_value: New actual value
+
+        Returns:
+            True if update is needed, False if within tolerance
+        """
+        if stat_name not in self.config.tolerance_ranges:
+            return current_value != new_value
+
+        tolerance = self.config.tolerance_ranges[stat_name]
+
+        # Handle different data types
+        if isinstance(current_value, int | float) and isinstance(
+            new_value, int | float
+        ):
+            return abs(current_value - new_value) > tolerance
+        else:
+            return current_value != new_value
+
+    def _update_statistic_patterns(
+        self, content: str, stats: dict[str, Any]
+    ) -> tuple[str, bool]:
+        """
+        Update statistic patterns in content with tolerance checking
+
+        Args:
+            content: File content to update
+            stats: Current statistics
+
+        Returns:
+            Tuple of (updated_content, changes_made)
+        """
+        changes_made = False
+
+        for stat_config in self.config.statistics:
+            stat_name = stat_config.name
+            if stat_name not in stats:
+                continue
+
+            new_value = stats[stat_name]
+
+            for pattern in stat_config.patterns:
+                # Extract current value from content
+                match = re.search(pattern, content)
+                if match:
+                    current_value = self._extract_value_from_match(match, pattern)
+
+                    # Check if update is needed based on tolerance
+                    if self._should_update_statistic(
+                        stat_name, current_value, new_value
+                    ):
+                        # Format the new value
+                        if stat_name == "coverage":
+                            formatted_value = f"{new_value:.2f}"
+                        else:
+                            formatted_value = str(new_value)
+
+                        # Update the content
+                        if stat_name == "coverage":
+                            # Handle coverage patterns with different formats
+                            for coverage_pattern in stat_config.patterns:
+                                if "%25" in coverage_pattern:  # Badge format
+                                    new_content = re.sub(
+                                        coverage_pattern,
+                                        f"coverage-{formatted_value}%25",
+                                        content,
+                                    )
+                                else:  # Text format
+                                    new_content = re.sub(
+                                        coverage_pattern,
+                                        f"coverage: {formatted_value}%",
+                                        content,
+                                    )
+                                if new_content != content:
+                                    content = new_content
+                                    changes_made = True
+                        else:
+                            # Handle other statistics
+                            new_content = re.sub(pattern, str(new_value), content)
+                            if new_content != content:
+                                content = new_content
+                                changes_made = True
+
+                        self.logger.debug(
+                            f"Updated {stat_name}: {current_value} -> {new_value} "
+                            f"(tolerance: {self.config.tolerance_ranges.get(stat_name, 'none')})"
+                        )
+                    else:
+                        self.logger.debug(
+                            f"Skipped {stat_name} update: {current_value} vs {new_value} "
+                            f"(within tolerance: {self.config.tolerance_ranges.get(stat_name, 'none')})"
+                        )
+
+        return content, changes_made
+
+    def _extract_value_from_match(self, match: re.Match, pattern: str) -> Any:
+        """Extract numeric value from regex match"""
+        try:
+            if "coverage" in pattern:
+                # Extract coverage percentage
+                if "%25" in pattern:  # Badge format
+                    return float(match.group(1)) if match.groups() else 0.0
+                else:  # Text format
+                    return float(match.group(1)) if match.groups() else 0.0
+            else:
+                # Extract integer values
+                return int(match.group(1)) if match.groups() else 0
+        except (ValueError, IndexError):
+            return 0
+
     def update_readme_file(self, file_path: Path, stats: dict[str, Any]) -> bool:
-        """Update a specific README file with improved pattern matching"""
+        """Update a specific README file with improved pattern matching and tolerance checking"""
         try:
             with open(file_path, encoding="utf-8") as f:
-                original_content = f.read()
+                content = f.read()
 
-            content = original_content
             changes_made = False
 
-            # Apply each statistic pattern
-            for stat_config in self.config.statistics:
-                stat_value = stats.get(stat_config.name)
-                if stat_value is None:
-                    continue
-
-                # Try each pattern for this statistic
-                for pattern in stat_config.patterns:
-                    if re.search(pattern, content):
-                        if stat_config.name == "coverage":
-                            new_content = re.sub(
-                                pattern, f"coverage-{stat_value:.2f}%25", content
-                            )
-                        elif stat_config.name == "test_count":
-                            # Only update badge patterns, not text content
-                            if "tests-" in pattern and "%20passed" in pattern:
-                                new_content = re.sub(
-                                    pattern, f"tests-{stat_value}%20passed", content
-                                )
-                            else:
-                                new_content = content
-                        else:
-                            # For other stats, replace the number
-                            # Fix lambda closure issue by creating a closure
-                            def create_replacer(value):
-                                def replacer(m):
-                                    return m.group(0).replace(
-                                        m.group(1) if m.groups() else str(value),
-                                        str(value),
-                                    )
-
-                                return replacer
-
-                            new_content = re.sub(
-                                pattern, create_replacer(stat_value), content
-                            )
-
-                        if new_content != content:
-                            content = new_content
-                            changes_made = True
-                            self.logger.debug(
-                                f"Updated {stat_config.name} in {file_path.name}"
-                            )
+            # Update statistic patterns with tolerance checking
+            content, stat_changes = self._update_statistic_patterns(content, stats)
+            changes_made = changes_made or stat_changes
 
             # Update JSON examples
             json_patterns = {
