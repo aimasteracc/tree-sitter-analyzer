@@ -1,0 +1,13 @@
+# Pre-commit hooks configuration
+# This file defines additional hooks beyond the standard ones
+
+# Version consistency check
+- id: check-version-consistency
+  name: Check version consistency across all files
+  entry: python scripts/sync_version.py --check
+  language: python
+  files: ^(pyproject\.toml|tree_sitter_analyzer/.*/__init__\.py)$
+  pass_filenames: false
+  always_run: true
+  stages: [commit, push]
+  description: "Ensure version numbers are consistent across all __init__.py files"

@@ -15,7 +15,7 @@ try:
     __version__ = main_version
 except ImportError:
     # Fallback version if main package not available
-    __version__ = "1.1.0"
+    __version__ = "1.1.1"
 
 __author__ = "Tree-sitter Analyzer Team"
 

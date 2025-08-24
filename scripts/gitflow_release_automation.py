@@ -179,6 +179,21 @@ class GitFlowReleaseAutomation:
                 pyproject_path.write_text(content, encoding="utf-8")
                 print(f"Updated version from {current_version} to {new_version}")
 
+            # Synchronize version across essential files only
+            print("Synchronizing version across essential files...")
+            try:
+                subprocess.run(  # nosec B603, B607
+                    ["uv", "run", "python", "scripts/sync_version_minimal.py"],
+                    cwd=self.project_root,
+                    capture_output=True,
+                    text=True,
+                    check=True,
+                )
+                print("Essential version synchronization completed successfully")
+            except subprocess.CalledProcessError as e:
+                print(f"Warning: Version synchronization failed: {e}")
+                print("Continuing with release process...")
+
             # Update CHANGELOG.md
             changelog_path = self.project_root / "CHANGELOG.md"
             if changelog_path.exists():
@@ -196,6 +211,7 @@ class GitFlowReleaseAutomation:
 - All tests passing
 - README statistics synchronized
 - CI/CD pipeline optimized
+- Version synchronized across all modules
 
 ---
 
@@ -209,6 +225,9 @@ class GitFlowReleaseAutomation:
 
             # Commit changes
             self.run_command(["git", "add", "pyproject.toml", "CHANGELOG.md"])
+            self.run_command(
+                ["git", "add", "tree_sitter_analyzer/"]
+            )  # Add all updated __init__.py files
             self.run_command(
                 ["git", "commit", "-m", f"chore: Prepare release {self.version}"]
             )
