@@ -30,7 +30,6 @@ from .error_handler import (
 from .path_resolver import PathResolver, resolve_path
 
 # Module metadata
-__version__ = "1.1.0"
 __author__ = "Tree-Sitter Analyzer Team"
 
 # MCP Utils capabilities

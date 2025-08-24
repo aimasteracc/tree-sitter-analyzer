@@ -1,16 +1,17 @@
 # Changelog
-## [1.1.0] - 2025-08-24
 
-### Release: v1.1.0
+## [1.1.1] - 2025-08-24
 
-- Automated release using GitFlow best practices
-- All tests passing
-- README statistics synchronized
-- CI/CD pipeline optimized
+### Release: v1.1.1
+
+- Fixed duplicate version release issue
+- Cleaned up CHANGELOG.md
+- Enhanced GitFlow automation scripts
+- Improved encoding handling in automation scripts
+- Implemented minimal version management (only essential files)
+- Removed unnecessary version information from submodules
 
 ---
-
-
 
 ## [1.1.0] - 2025-08-24
 
