@@ -2,8 +2,8 @@
 
 [![Python版本](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![许可证](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![测试](https://img.shields.io/badge/tests-1504%20passed-brightgreen.svg)](#质量保证)
-[![覆盖率](https://img.shields.io/badge/coverage-74.37%25-green.svg)](#质量保证)
+[![测试](https://img.shields.io/badge/1504-brightgreen.svg)](#质量保证)
+[![覆盖率](https://img.shields.io/badge/coverage-74.30%25-green.svg)](#质量保证)
 [![质量](https://img.shields.io/badge/quality-enterprise%20grade-blue.svg)](#质量保证)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
 [![版本](https://img.shields.io/badge/version-1.0.0-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
@@ -431,7 +431,7 @@ Tree-sitter Analyzer自动检测和保护项目边界：
 - ✅ **Windows环境** - 使用Windows API实现稳健的路径标准化
 - ✅ **macOS环境** - 修复`/var`与`/private/var`符号链接差异
 - ✅ **全面测试覆盖** - 1504个测试，74.44%覆盖率
-- ✅ **GitFlow实现** - 专业的开发/发布分支策略
+- ✅ **GitFlow实现** - 专业的开发/发布分支策略。详见[GitFlow文档](GITFLOW_zh.md)。
 
 ### ⚙️ **运行测试**
 ```bash
