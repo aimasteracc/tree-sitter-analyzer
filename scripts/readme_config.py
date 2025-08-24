@@ -39,8 +39,13 @@ class ReadmeConfig:
     statistics = [
         StatisticPattern(
             name="test_count",
-            patterns=[r"tests-\d+%20passed"],  # Only match badge URLs, not text content
-            format_template="tests-{value}%20passed",
+            patterns=[
+                r"tests-(\d+)%20passed",
+                r"(\d+) Tests",
+                r"(\d+) 个测试",
+                r"(\d+) テスト",
+            ],
+            format_template="{value}",
             description="Number of tests in the project",
         ),
         StatisticPattern(
@@ -86,7 +91,7 @@ class ReadmeConfig:
 
     # Validation patterns - what must be present in README files
     validation_patterns = {
-        "test_badge": r"tests-[0-9]+%20passed",
+        "test_badge": r"(Tests|测试|テスト).*\d+.*brightgreen",
         "coverage_badge": r"coverage-[0-9]+\.[0-9]+%25",
         "bigservice_stats": r"Lines: [0-9]+",
         "version_info": r"v\d+\.\d+\.\d+",

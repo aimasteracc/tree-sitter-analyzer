@@ -2,6 +2,41 @@
 
 This document describes the GitFlow branch strategy implemented for the tree-sitter-analyzer project.
 
+## GitFlow Diagram
+
+```mermaid
+gitGraph
+    commit id: "Initial commit"
+    branch develop
+    commit id: "dev-1"
+    
+    branch feature/my-feature
+    commit id: "feat-1"
+    commit id: "feat-2"
+    
+    checkout develop
+    merge feature/my-feature id: "merge-feat"
+    
+    branch release/v1.0.0
+    commit id: "release-prep"
+    
+    checkout main
+    merge release/v1.0.0 tag: "v1.0.0"
+    
+    checkout develop
+    merge release/v1.0.0
+    
+    checkout main
+    branch hotfix/critical-fix
+    commit id: "fix-bug"
+    
+    checkout main
+    merge hotfix/critical-fix tag: "v1.0.1"
+    
+    checkout develop
+    merge hotfix/critical-fix
+```
+
 ## Branch Structure
 
 ### Main Branches

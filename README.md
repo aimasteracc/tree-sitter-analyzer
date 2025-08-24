@@ -2,8 +2,8 @@
 
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-1504%20passed-brightgreen.svg)](#quality-assurance)
-[![Coverage](https://img.shields.io/badge/coverage-74.37%25-green.svg)](#quality-assurance)
+[![Tests](https://img.shields.io/badge/1504-brightgreen.svg)](#quality-assurance)
+[![Coverage](https://img.shields.io/badge/coverage-74.44%25-green.svg)](#quality-assurance)
 [![Quality](https://img.shields.io/badge/quality-enterprise%20grade-blue.svg)](#quality-assurance)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
 [![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
@@ -421,7 +421,7 @@ Tree-sitter Analyzer automatically detects and protects project boundaries:
 ## 🏆 Quality Assurance
 
 ### 📊 **Quality Metrics**
-- **1,504 Tests** - 100% pass rate ✅
+- **1,1504** - 100% pass rate ✅
 - **74.44% Code Coverage** - Industry-leading level
 - **Zero Test Failures** - Complete CI/CD ready
 - **Cross-platform Compatible** - Windows, macOS, Linux
@@ -431,7 +431,7 @@ Tree-sitter Analyzer automatically detects and protects project boundaries:
 - ✅ **Windows Environment** - Implemented robust path normalization using Windows API
 - ✅ **macOS Environment** - Fixed `/var` vs `/private/var` symlink differences
 - ✅ **Comprehensive Test Coverage** - 74.44% coverage with 1504 tests
-- ✅ **GitFlow Implementation** - Professional branching strategy with develop/release branches
+- ✅ **GitFlow Implementation** - Professional branching strategy with develop/release branches. See [GitFlow Documentation](GITFLOW.md) for details.
 
 ### ⚙️ **Running Tests**
 ```bash
