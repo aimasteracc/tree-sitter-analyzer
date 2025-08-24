@@ -1,5 +1,45 @@
 # Changelog
 
+## [1.1.0] - 2025-08-24
+
+### 🚀 Major Release: GitFlow CI/CD Restructuring & Enhanced Automation
+
+#### 🔧 GitFlow CI/CD Restructuring
+- **Develop Branch Automation**: Removed PyPI deployment from develop branch, now only runs tests, builds, and README updates
+- **Release Branch Workflow**: Created dedicated `.github/workflows/release-automation.yml` for PyPI deployment on release branches
+- **Hotfix Branch Workflow**: Created dedicated `.github/workflows/hotfix-automation.yml` for emergency PyPI deployments
+- **GitFlow Compliance**: CI/CD now follows proper GitFlow strategy: develop → release → main → PyPI deployment
+
+#### 🛠️ New CI/CD Workflows
+
+##### Release Automation (`release/v*` branches)
+- **Automated Testing**: Full test suite execution with coverage reporting
+- **Package Building**: Automated package building and validation
+- **PyPI Deployment**: Automatic deployment to PyPI after successful tests
+- **Main Branch PR**: Creates automatic PR to main branch after deployment
+
+##### Hotfix Automation (`hotfix/*` branches)
+- **Critical Bug Fixes**: Dedicated workflow for production-critical fixes
+- **Rapid Deployment**: Fast-track PyPI deployment for urgent fixes
+- **Main Branch PR**: Automatic PR creation to main branch
+
+#### 🎯 GitFlow Helper Script
+- **Automated Operations**: `scripts/gitflow_helper.py` for streamlined GitFlow operations
+- **Branch Management**: Commands for feature, release, and hotfix branch operations
+- **Developer Experience**: Simplified GitFlow workflow following
+
+#### 🧪 Quality Improvements
+- **README Statistics**: Enhanced tolerance ranges for coverage updates (0.1% tolerance)
+- **Precision Control**: Coverage rounded to 1 decimal place to prevent unnecessary updates
+- **Validation Consistency**: Unified tolerance logic between update and validation processes
+
+#### 📚 Documentation Updates
+- **GitFlow Guidelines**: Enhanced `GITFLOW_zh.md` with CI/CD integration details
+- **Workflow Documentation**: Comprehensive documentation for all CI/CD workflows
+- **Developer Guidelines**: Clear instructions for GitFlow operations
+
+---
+
 ## [1.0.0] - 2025-08-19
 
 ### 🎉 Major Release: CI Test Failures Resolution & GitFlow Implementation
