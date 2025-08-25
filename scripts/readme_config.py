@@ -29,10 +29,11 @@ class ReadmeConfig:
     # Tolerance ranges for statistics updates (avoid unnecessary updates for minor differences)
     tolerance_ranges = {
         "test_count": 0,  # Test count must be exact - no tolerance
-        "coverage": 0.5,  # Coverage tolerance: 0.5% to avoid CI failures due to minor variations
+        "coverage": 1.0,  # Coverage tolerance: 1.0% to handle environment differences (Windows/Linux, Python versions)
         "bigservice_lines": 0,  # Line count must be exact - no tolerance
         "bigservice_methods": 0,  # Method count must be exact - no tolerance
         "bigservice_fields": 0,  # Field count must be exact - no tolerance
+        "version_in_content": 0,  # Version must be exact - no tolerance
     }
 
     # Statistics patterns to update
@@ -86,6 +87,17 @@ class ReadmeConfig:
             ],
             format_template="{value}",
             description="Fields in BigService.java example",
+        ),
+        StatisticPattern(
+            name="version_in_content",
+            patterns=[
+                r"Latest Quality Achievements \(v(\d+\.\d+\.\d+)\)",
+                r"最新质量成就（v(\d+\.\d+\.\d+)）",
+                r"最新の品質成果（v(\d+\.\d+\.\d+)）",
+                r"version-(\d+\.\d+\.\d+)-blue\.svg",
+            ],
+            format_template="{value}",
+            description="Version numbers in README content",
         ),
     ]
 
