@@ -292,7 +292,7 @@ pytest tests/ -v
 pytest tests/test_mcp_tools.py -v
 
 # Run with coverage
-pytest tests/ --cov=tree_sitter_analyzer
+uv run pytest tests/ --cov=tree_sitter_analyzer --cov-report=term-missing
 ```
 
 ### Integration Tests

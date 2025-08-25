@@ -3,7 +3,7 @@
 [![Pythonバージョン](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![ライセンス](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![テスト](https://img.shields.io/badge/1504-brightgreen.svg)](#品質保証)
-[![カバレッジ](https://img.shields.io/badge/coverage-74.30%25-green.svg)](#品質保証)
+[![カバレッジ](https://img.shields.io/badge/coverage-74.40%25-green.svg)](#品質保証)
 [![品質](https://img.shields.io/badge/quality-enterprise%20grade-blue.svg)](#品質保証)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
 [![バージョン](https://img.shields.io/badge/version-1.1.0-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
@@ -439,7 +439,7 @@ Tree-sitter Analyzerは自動的にプロジェクト境界を検出・保護：
 uv run pytest tests/ -v
 
 # カバレッジレポート生成
-uv run pytest tests/ --cov=tree_sitter_analyzer --cov-report=html
+uv run pytest tests/ --cov=tree_sitter_analyzer --cov-report=html --cov-report=term-missing
 
 # 特定のテストを実行
 uv run pytest tests/test_mcp_server_initialization.py -v

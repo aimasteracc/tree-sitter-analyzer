@@ -27,7 +27,7 @@ uv run python -c "import tree_sitter_analyzer; print('Setup OK')"
 uv run pytest tests/ -v
 
 # Run with coverage
-uv run pytest tests/ --cov=tree_sitter_analyzer
+uv run pytest tests/ --cov=tree_sitter_analyzer --cov-report=term-missing
 
 # Run specific test file
 uv run pytest tests/test_mcp_tools.py -v
