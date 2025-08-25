@@ -558,7 +558,7 @@ uv run mypy tree_sitter_analyzer/
 uv run pytest tests/ -v
 
 # 5. Check coverage
-uv run pytest tests/ --cov=tree_sitter_analyzer --cov-report=html
+uv run pytest tests/ --cov=tree_sitter_analyzer --cov-report=html --cov-report=term-missing
 
 # 6. Security scan
 uv run bandit -r tree_sitter_analyzer/

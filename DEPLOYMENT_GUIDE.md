@@ -166,7 +166,7 @@ Before each release:
 2. **Quality Checks**
    - [ ] Run full test suite: `uv run pytest tests/ -v`
    - [ ] Check code quality: `uv run python check_quality.py`
-   - [ ] Verify coverage: `uv run pytest tests/ --cov=tree_sitter_analyzer`
+   - [ ] Verify coverage: `uv run pytest tests/ --cov=tree_sitter_analyzer --cov-report=term-missing`
 
 3. **Build and Test**
    - [ ] Test build: `uv build`

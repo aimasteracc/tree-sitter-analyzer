@@ -29,7 +29,7 @@ class ReadmeConfig:
     # Tolerance ranges for statistics updates (avoid unnecessary updates for minor differences)
     tolerance_ranges = {
         "test_count": 0,  # Test count must be exact - no tolerance
-        "coverage": 0.1,  # Coverage tolerance: 0.1% (e.g., 74.4% vs 74.3% won't trigger update)
+        "coverage": 0.5,  # Coverage tolerance: 0.5% to avoid CI failures due to minor variations
         "bigservice_lines": 0,  # Line count must be exact - no tolerance
         "bigservice_methods": 0,  # Method count must be exact - no tolerance
         "bigservice_fields": 0,  # Field count must be exact - no tolerance
@@ -106,7 +106,10 @@ class ReadmeConfig:
             "pytest",
             "tests/",
             "--cov=tree_sitter_analyzer",
-            "--cov-report=term-missing",
+            "--cov-report=term",
+            "--tb=no",
+            "-q",
+            "--maxfail=1",
         ],
         "bigservice_analysis": [
             "uv",

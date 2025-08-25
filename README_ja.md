@@ -439,7 +439,7 @@ Tree-sitter Analyzerは自動的にプロジェクト境界を検出・保護：
 uv run pytest tests/ -v
 
 # カバレッジレポート生成
-uv run pytest tests/ --cov=tree_sitter_analyzer --cov-report=html
+uv run pytest tests/ --cov=tree_sitter_analyzer --cov-report=html --cov-report=term-missing
 
 # 特定のテストを実行
 uv run pytest tests/test_mcp_server_initialization.py -v
