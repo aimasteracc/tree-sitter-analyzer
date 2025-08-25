@@ -439,7 +439,7 @@ Tree-sitter Analyzer自动检测和保护项目边界：
 uv run pytest tests/ -v
 
 # 生成覆盖率报告
-uv run pytest tests/ --cov=tree_sitter_analyzer --cov-report=html
+uv run pytest tests/ --cov=tree_sitter_analyzer --cov-report=html --cov-report=term-missing
 
 # 运行特定测试
 uv run pytest tests/test_mcp_server_initialization.py -v
