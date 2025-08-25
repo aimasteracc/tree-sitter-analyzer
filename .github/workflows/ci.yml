@@ -68,7 +68,7 @@ jobs:
     - name: Run tests with coverage
       if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.11'
       run: |
-        uv run pytest tests/ -v --tb=short --maxfail=5 --cov=tree_sitter_analyzer --cov-report=xml
+        uv run pytest tests/ -v --tb=short --maxfail=5 --cov=tree_sitter_analyzer --cov-report=xml --cov-report=term-missing
 
     - name: Run tests (no coverage)
       if: matrix.os != 'ubuntu-latest' || matrix.python-version != '3.11'

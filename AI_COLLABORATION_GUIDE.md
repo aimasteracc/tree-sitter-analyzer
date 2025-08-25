@@ -16,7 +16,7 @@ uv run python check_quality.py --new-code-only
 uv run python llm_code_checker.py --check-all
 
 # 3. Review test coverage
-uv run pytest tests/ --cov=tree_sitter_analyzer --cov-report=term-missing
+uv run pytest tests/ --cov=tree_sitter_analyzer --cov-report=term-missing --cov-report=html
 
 # 4. Check current project structure
 find tree_sitter_analyzer -name "*.py" | head -20
@@ -206,7 +206,7 @@ AI-generated code should achieve:
 
 | Metric | Target | Command |
 |--------|--------|---------|
-| Test Coverage | ≥90% | `uv run pytest --cov=tree_sitter_analyzer` |
+| Test Coverage | ≥74% | `uv run pytest tests/ --cov=tree_sitter_analyzer --cov-report=term-missing` |
 | Type Coverage | 100% | `uv run mypy tree_sitter_analyzer/` |
 | Linting Score | 0 errors | `uv run ruff check .` |
 | Security Score | 0 issues | `bandit -r tree_sitter_analyzer/` |

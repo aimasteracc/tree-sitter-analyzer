@@ -3,7 +3,7 @@
 [![Python版本](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![许可证](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![测试](https://img.shields.io/badge/1504-brightgreen.svg)](#质量保证)
-[![覆盖率](https://img.shields.io/badge/coverage-74.30%25-green.svg)](#质量保证)
+[![覆盖率](https://img.shields.io/badge/coverage-74.40%25-green.svg)](#质量保证)
 [![质量](https://img.shields.io/badge/quality-enterprise%20grade-blue.svg)](#质量保证)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
 [![版本](https://img.shields.io/badge/version-1.1.0-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
@@ -439,7 +439,7 @@ Tree-sitter Analyzer自动检测和保护项目边界：
 uv run pytest tests/ -v
 
 # 生成覆盖率报告
-uv run pytest tests/ --cov=tree_sitter_analyzer --cov-report=html
+uv run pytest tests/ --cov=tree_sitter_analyzer --cov-report=html --cov-report=term-missing
 
 # 运行特定测试
 uv run pytest tests/test_mcp_server_initialization.py -v
