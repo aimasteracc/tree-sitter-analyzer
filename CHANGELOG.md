@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.1.2] - 2025-08-24
+
+### Release: v1.1.2
+
+#### 🔧 Coverage Calculation Unification
+- **Standardized coverage commands**: Unified pytest coverage commands across all documentation and CI workflows
+- **Increased tolerance**: Set coverage tolerance to 0.5% to prevent CI failures from minor variations
+- **Simplified configuration**: Streamlined coverage command in readme_config.py to avoid timeouts
+- **Consistent reporting**: All environments now use `--cov-report=term-missing` for consistent output
+
+#### 🧹 Branch Management
+- **Cleaned up merged branches**: Removed obsolete feature and release branches following GitFlow best practices
+- **Branch consistency**: Ensured all local branches align with GitFlow strategy
+- **Documentation alignment**: Updated workflows to match current branch structure
+
+#### 📚 Documentation Updates
+- **Updated all README files**: Consistent coverage commands in README.md, README_zh.md, README_ja.md
+- **CI workflow improvements**: Enhanced GitHub Actions workflows for better reliability
+- **Developer guides**: Updated CONTRIBUTING.md, DEPLOYMENT_GUIDE.md, and MCP_SETUP_DEVELOPERS.md
+
+---
+
 ## [1.1.1] - 2025-08-24
 
 ### Release: v1.1.1
