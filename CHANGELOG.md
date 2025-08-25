@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.1.3] - 2025-08-25
+
+### Release: v1.1.3
+
+#### 🔧 CI/CD Fixes
+- **Fixed README badge validation**: Updated test badges to use `tests-1504%20passed` format for CI compatibility
+- **Resolved PyPI deployment conflict**: Version 1.1.2 was already deployed, incremented to 1.1.3
+- **Enhanced badge consistency**: Standardized test count badges across all README files
+- **Improved CI reliability**: Fixed validation patterns in GitHub Actions workflows
+
+#### 🛠️ Coverage System Improvements
+- **Root cause analysis**: Identified and documented environment-specific coverage differences
+- **Conservative rounding**: Implemented floor-based rounding for cross-environment consistency
+- **Increased tolerance**: Set coverage tolerance to 1.0% to handle OS and Python version differences
+- **Environment documentation**: Added detailed explanation of coverage calculation variations
+
+---
+
 ## [1.1.2] - 2025-08-24
 
 ### Release: v1.1.2
