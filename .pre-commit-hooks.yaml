@@ -4,10 +4,10 @@
 # Version consistency check
 - id: check-version-consistency
   name: Check version consistency across all files
-  entry: python scripts/sync_version.py --check
-  language: python
-  files: ^(pyproject\.toml|tree_sitter_analyzer/.*/__init__\.py)$
+  entry: uv run python scripts/sync_version.py --check
+  language: system
+  files: ^(pyproject\.toml|README.*\.md)$
   pass_filenames: false
   always_run: true
   stages: [commit, push]
-  description: "Ensure version numbers are consistent across all __init__.py files"
+  description: "Ensure version numbers are consistent across pyproject.toml and README files"
