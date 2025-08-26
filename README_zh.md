@@ -2,8 +2,8 @@
 
 [![Python版本](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![许可证](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![测试](https://img.shields.io/badge/1514-brightgreen.svg)](#质量保证)
-[![覆盖率](https://img.shields.io/badge/coverage-74.10%25-green.svg)](#质量保证)
+[![测试](https://img.shields.io/badge/tests-1514%20passed-brightgreen.svg)](#质量保证)
+[![覆盖率](https://img.shields.io/badge/coverage-74.24%25-green.svg)](#质量保证)
 [![质量](https://img.shields.io/badge/quality-enterprise%20grade-blue.svg)](#质量保证)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
 [![版本](https://img.shields.io/badge/version-1.2.0-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
@@ -561,8 +561,8 @@ Tree-sitter Analyzer自动检测和保护项目边界：
 ## 🏆 质量保证
 
 ### 📊 **质量指标**
-- **1,504个测试** - 100%通过率 ✅
-- **74.30%代码覆盖率** - 行业领先水平
+- **1,514个测试** - 100%通过率 ✅
+- **74.24%代码覆盖率** - 行业领先水平
 - **零测试失败** - 完全CI/CD就绪
 - **跨平台兼容** - Windows、macOS、Linux
 
@@ -570,7 +570,7 @@ Tree-sitter Analyzer自动检测和保护项目边界：
 - ✅ **跨平台路径兼容性** - 修复Windows短路径名称和macOS符号链接差异
 - ✅ **Windows环境** - 使用Windows API实现稳健的路径标准化
 - ✅ **macOS环境** - 修复`/var`与`/private/var`符号链接差异
-- ✅ **全面测试覆盖** - 1504个测试，74.30%覆盖率
+- ✅ **全面测试覆盖** - 1514个测试，74.24%覆盖率
 - ✅ **GitFlow实现** - 专业的开发/发布分支策略。详见[GitFlow文档](GITFLOW_zh.md)。
 
 ### ⚙️ **运行测试**
