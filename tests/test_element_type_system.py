@@ -188,7 +188,7 @@ public class SampleClass {
 
         output = mock_stdout.getvalue()
 
-        # Parse method and field counts from table output
+        # Parse method and field counts from table output - look for Total Methods and Total Fields in Class Info section
         lines = output.split("\n")
         method_count = 0
         field_count = 0
@@ -208,16 +208,16 @@ public class SampleClass {
 
             if in_class_info and "Total Methods" in line:
                 parts = line.split("|")
-                if len(parts) >= 2:
+                if len(parts) >= 3:
                     try:
-                        method_count = int(parts[1].strip())
+                        method_count = int(parts[2].strip())
                     except ValueError:
                         pass
             elif in_class_info and "Total Fields" in line:
                 parts = line.split("|")
-                if len(parts) >= 2:
+                if len(parts) >= 3:
                     try:
-                        field_count = int(parts[1].strip())
+                        field_count = int(parts[2].strip())
                     except ValueError:
                         pass
 
@@ -310,7 +310,7 @@ public class SampleClass {
 
         table_output = mock_stdout.getvalue()
 
-        # Parse table output - look for "Total Methods" and "Total Fields" in Class Info section
+        # Parse table output - look for Total Methods and Total Fields in Class Info section
         table_counts = {}
         in_class_info = False
 
@@ -328,16 +328,16 @@ public class SampleClass {
 
             if in_class_info and "Total Methods" in line:
                 parts = line.split("|")
-                if len(parts) >= 2:
+                if len(parts) >= 3:
                     try:
-                        table_counts["methods"] = int(parts[1].strip())
+                        table_counts["methods"] = int(parts[2].strip())
                     except ValueError:
                         pass
             elif in_class_info and "Total Fields" in line:
                 parts = line.split("|")
-                if len(parts) >= 2:
+                if len(parts) >= 3:
                     try:
-                        table_counts["fields"] = int(parts[1].strip())
+                        table_counts["fields"] = int(parts[2].strip())
                     except ValueError:
                         pass
 
