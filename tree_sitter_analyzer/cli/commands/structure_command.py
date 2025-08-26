@@ -7,6 +7,14 @@ Handles structure analysis functionality with appropriate Japanese output.
 
 from typing import TYPE_CHECKING
 
+from ...constants import (
+    ELEMENT_TYPE_CLASS,
+    ELEMENT_TYPE_FUNCTION,
+    ELEMENT_TYPE_IMPORT,
+    ELEMENT_TYPE_PACKAGE,
+    ELEMENT_TYPE_VARIABLE,
+    is_element_of_type,
+)
 from ...output_manager import output_data, output_json, output_section
 from .base_command import BaseCommand
 
@@ -43,19 +51,29 @@ class StructureCommand(BaseCommand):
 
         # Extract elements by type
         classes = [
-            e for e in analysis_result.elements if e.__class__.__name__ == "Class"
+            e
+            for e in analysis_result.elements
+            if is_element_of_type(e, ELEMENT_TYPE_CLASS)
         ]
         methods = [
-            e for e in analysis_result.elements if e.__class__.__name__ == "Function"
+            e
+            for e in analysis_result.elements
+            if is_element_of_type(e, ELEMENT_TYPE_FUNCTION)
         ]
         fields = [
-            e for e in analysis_result.elements if e.__class__.__name__ == "Variable"
+            e
+            for e in analysis_result.elements
+            if is_element_of_type(e, ELEMENT_TYPE_VARIABLE)
         ]
         imports = [
-            e for e in analysis_result.elements if e.__class__.__name__ == "Import"
+            e
+            for e in analysis_result.elements
+            if is_element_of_type(e, ELEMENT_TYPE_IMPORT)
         ]
         packages = [
-            e for e in analysis_result.elements if e.__class__.__name__ == "Package"
+            e
+            for e in analysis_result.elements
+            if is_element_of_type(e, ELEMENT_TYPE_PACKAGE)
         ]
 
         return {

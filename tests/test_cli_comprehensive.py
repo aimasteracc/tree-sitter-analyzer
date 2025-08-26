@@ -118,6 +118,69 @@ class TestCLIAdvancedOptions:
         output = mock_stdout.getvalue()
         assert len(output) > 0
 
+        # Verify specific content - should show correct element counts
+        assert "Classes: 1" in output
+        assert (
+            "Methods: 2" in output
+        )  # Sample file has 2 methods (constructor + getField1)
+        assert "Fields: 1" in output  # Sample file has 1 field
+        assert "Imports: 1" in output  # Sample file has 1 import
+
+    def test_advanced_option_text_output_strict(self, monkeypatch, sample_java_file):
+        """Test --advanced option with strict content validation"""
+        sample_dir = str(Path(sample_java_file).parent)
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            [
+                "cli",
+                sample_java_file,
+                "--advanced",
+                "--output-format",
+                "text",
+                "--project-root",
+                sample_dir,
+            ],
+        )
+        mock_stdout = StringIO()
+        monkeypatch.setattr("sys.stdout", mock_stdout)
+
+        try:
+            main()
+        except SystemExit:
+            pass
+
+        output = mock_stdout.getvalue()
+
+        # Parse the output to extract element counts
+        lines = output.split("\n")
+        element_counts = {}
+
+        for line in lines:
+            line = line.strip()
+            if line.startswith('"Classes: '):
+                element_counts["classes"] = int(line.split(": ")[1].rstrip('"'))
+            elif line.startswith('"Methods: '):
+                element_counts["methods"] = int(line.split(": ")[1].rstrip('"'))
+            elif line.startswith('"Fields: '):
+                element_counts["fields"] = int(line.split(": ")[1].rstrip('"'))
+            elif line.startswith('"Imports: '):
+                element_counts["imports"] = int(line.split(": ")[1].rstrip('"'))
+
+        # Verify expected counts for the sample file
+        assert (
+            element_counts.get("classes", 0) == 1
+        ), f"Expected 1 class, got {element_counts.get('classes', 0)}"
+        assert (
+            element_counts.get("methods", 0) == 2
+        ), f"Expected 2 methods, got {element_counts.get('methods', 0)}"
+        assert (
+            element_counts.get("fields", 0) == 1
+        ), f"Expected 1 field, got {element_counts.get('fields', 0)}"
+        assert (
+            element_counts.get("imports", 0) == 1
+        ), f"Expected 1 import, got {element_counts.get('imports', 0)}"
+
     def test_advanced_option_analysis_failure(self, monkeypatch, sample_java_file):
         """Test --advanced option when analysis fails"""
         sample_dir = str(Path(sample_java_file).parent)
@@ -454,6 +517,58 @@ class TestCLITableOption:
 
         output = mock_stdout.getvalue()
         assert len(output) > 0
+
+        # Verify table contains expected content
+        assert "Total Methods" in output
+        assert "Total Fields" in output
+        assert "Public Methods" in output or "Methods" in output
+
+    def test_table_option_full_strict(self, monkeypatch, sample_java_file):
+        """Test --table option with strict content validation"""
+        sample_dir = str(Path(sample_java_file).parent)
+
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            ["cli", sample_java_file, "--table", "full", "--project-root", sample_dir],
+        )
+        mock_stdout = StringIO()
+        monkeypatch.setattr("sys.stdout", mock_stdout)
+
+        try:
+            main()
+        except SystemExit:
+            pass
+
+        output = mock_stdout.getvalue()
+
+        # Parse the output to extract method and field counts
+        lines = output.split("\n")
+        method_count = 0
+        field_count = 0
+
+        for line in lines:
+            line = line.strip()
+            if "Total Methods" in line:
+                # Extract number from "Total Methods | 3"
+                parts = line.split("|")
+                if len(parts) >= 2:
+                    try:
+                        method_count = int(parts[1].strip())
+                    except ValueError:
+                        pass
+            elif "Total Fields" in line:
+                # Extract number from "Total Fields | 2"
+                parts = line.split("|")
+                if len(parts) >= 2:
+                    try:
+                        field_count = int(parts[1].strip())
+                    except ValueError:
+                        pass
+
+        # Verify expected counts for the sample file
+        assert method_count == 2, f"Expected 2 methods in table, got {method_count}"
+        assert field_count == 1, f"Expected 1 field in table, got {field_count}"
 
     def test_table_option_compact(self, monkeypatch, sample_java_file):
         """Test --table option with compact format"""

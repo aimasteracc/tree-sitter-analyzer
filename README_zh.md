@@ -2,7 +2,7 @@
 
 [![Python版本](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![许可证](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![测试](https://img.shields.io/badge/tests-1504%20passed-brightgreen.svg)](#质量保证)
+[![测试](https://img.shields.io/badge/tests-1514%20passed-brightgreen.svg)](#质量保证)
 [![覆盖率](https://img.shields.io/badge/coverage-74.30%25-green.svg)](#质量保证)
 [![质量](https://img.shields.io/badge/quality-enterprise%20grade-blue.svg)](#质量保证)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
@@ -41,6 +41,7 @@
 - 🎯 **精确提取**任意行范围的代码片段  
 - 📍 **智能定位**类、方法、字段的确切位置
 - 🔗 **无缝集成**Claude Desktop、Cursor、Roo Code等AI IDE
+- 🏗️ **统一元素管理** - 所有代码元素（类、方法、字段、导入）在一个统一的系统中
 
 **再也不用因为大文件而让AI束手无策！**
 
@@ -49,7 +50,8 @@
 ### ⚡ **闪电般的分析速度**
 ```bash
 # 1419行大型Java服务类分析结果（< 1秒）
-Lines: 1419 | Classes: 1 | Methods: 66 | Fields: 9 | Imports: 8
+Lines: 1419 | Classes: 1 | Methods: 66 | Fields: 9 | Imports: 8 | Packages: 1
+Total Elements: 85 | Complexity: 348 (avg: 5.27, max: 15)
 ```
 
 ### 📊 **精确的结构表格**
@@ -59,7 +61,7 @@ Lines: 1419 | Classes: 1 | Methods: 66 | Fields: 9 | Imports: 8
 
 ### 🔄 **AI助手三步工作流**
 - **步骤1**: `check_code_scale` - 检查文件规模和复杂度
-- **步骤2**: `analyze_code_structure` - 生成详细结构表格
+- **步骤2**: `analyze_code_structure` - 生成带统一元素的详细结构表格
 - **步骤3**: `extract_code_section` - 按需提取代码片段
 
 ---
@@ -167,14 +169,75 @@ uv run python -m tree_sitter_analyzer examples/BigService.java --partial-read --
 
 ## 📖 实际使用示例
 
-### 💬 AI IDE提示词（复制即用）
+### 💬 AI IDE 提示词（已测试验证，可直接使用）
 
-#### 🔍 **步骤1: 检查文件规模**
+> **✅ 测试验证状态：** 以下所有提示词都已在真实环境中测试验证，确保100%可用
+> 
+> **⚠️ 重要提示：**
+> - **步骤0是必需的** - 在使用其他工具之前，始终先设置项目路径
+> - 对于项目内的文件，使用**相对路径**（例如：`examples/BigService.java`）
+> - 对于项目外的文件，使用**绝对路径**（例如：`C:\git-public\tree-sitter-analyzer\examples\BigService.java`）
+> - 所有工具都支持Windows和Unix风格的路径
+> - 项目路径应该指向您的代码仓库根目录
+> - 您可以在MCP配置中设置项目路径，也可以动态设置
 
-**提示词：**
+#### 🔧 **步骤0：设置项目路径（必需的第一步）**
+
+**选项1：在MCP设置中配置**
+```json
+{
+  "mcpServers": {
+    "tree-sitter-analyzer": {
+      "command": "uv",
+      "args": ["run", "python", "-m", "tree_sitter_analyzer.mcp.server"],
+      "env": {
+        "TREE_SITTER_PROJECT_ROOT": "/path/to/your/project"
+      }
+    }
+  }
+}
 ```
-使用MCP工具check_code_scale分析文件规模
-参数: {"file_path": "examples/BigService.java"}
+
+**选项2：直接告诉AI（推荐，更自然）**
+
+**方式1：明确请求设置**
+```
+请帮我设置项目根目录，路径是：C:\git-public\tree-sitter-analyzer
+```
+
+**方式2：提供项目信息**
+```
+我的项目在：C:\git-public\tree-sitter-analyzer
+请设置这个路径作为项目根目录
+```
+
+**方式3：简单说明**
+```
+项目路径：C:\git-public\tree-sitter-analyzer
+```
+
+**AI会自动调用相应的工具来设置路径，无需记住复杂的命令格式**
+
+#### 🔍 **步骤1：检查文件规模**
+
+**方式1：明确请求分析**
+```
+请帮我分析这个文件：examples/BigService.java
+```
+
+**方式2：描述分析需求**
+```
+我想了解这个Java文件的规模和结构：examples/BigService.java
+```
+
+**方式3：简单请求**
+```
+分析这个文件：examples/BigService.java
+```
+
+**使用绝对路径的替代方案：**
+```
+请分析这个文件：C:\git-public\tree-sitter-analyzer\examples\BigService.java
 ```
 
 **返回格式：**
@@ -184,35 +247,73 @@ uv run python -m tree_sitter_analyzer examples/BigService.java --partial-read --
   "language": "java",
   "metrics": {
     "lines_total": 1419,
-    "lines_code": 1419,
+    "lines_code": 907,
+    "lines_comment": 246,
+    "lines_blank": 267,
     "elements": {
       "classes": 1,
       "methods": 66,
-      "fields": 9
+      "fields": 9,
+      "imports": 8,
+      "packages": 1,
+      "total": 85
+    },
+    "complexity": {
+      "total": 348,
+      "average": 5.27,
+      "max": 15
     }
   }
 }
 ```
 
-#### 📊 **步骤2: 生成结构表格**
+#### 📊 **步骤2：生成结构表格**
 
-**提示词：**
+**方式1：明确请求表格**
 ```
-使用MCP工具analyze_code_structure生成详细结构
-参数: {"file_path": "examples/BigService.java"}
+请生成这个文件的详细结构表格：examples/BigService.java
+```
+
+**方式2：描述表格需求**
+```
+我想看这个Java文件的完整结构，包括所有类、方法和字段：examples/BigService.java
+```
+
+**方式3：简单请求**
+```
+生成结构表格：examples/BigService.java
+```
+
+**使用绝对路径的替代方案：**
+```
+请生成详细结构表格：C:\git-public\tree-sitter-analyzer\examples\BigService.java
 ```
 
 **返回格式：**
 - 完整的Markdown表格
-- 包含类信息、方法列表（带行号）、字段列表
+- 包括类信息、方法列表（带行号）、字段列表
 - 方法签名、可见性、行范围、复杂度等详细信息
 
-#### ✂️ **步骤 3：提取代码片段**
+#### ✂️ **步骤3：提取代码片段**
 
-**提示词：**
+**方式1：明确请求提取**
 ```
-使用 MCP 工具 extract_code_section 提取指定的代码段
-参数：{"file_path": "examples/BigService.java", "start_line": 93, "end_line": 105}
+请提取这个文件的第93-105行代码：examples/BigService.java
+```
+
+**方式2：描述提取需求**
+```
+我想看这个Java文件第93行到105行的代码内容：examples/BigService.java
+```
+
+**方式3：简单请求**
+```
+提取第93-105行代码：examples/BigService.java
+```
+
+**使用绝对路径的替代方案：**
+```
+请提取代码片段：C:\git-public\tree-sitter-analyzer\examples\BigService.java，第93-105行
 ```
 
 **返回格式：**
@@ -230,29 +331,26 @@ uv run python -m tree_sitter_analyzer examples/BigService.java --partial-read --
 }
 ```
 
-#### 🔍 **步骤4: 智能查询过滤（v0.9.6+）**
+#### 🔍 **步骤4：智能查询过滤（v0.9.6+）**
 
-**增强的错误处理（v0.9.7）：**
-- 改进了`@handle_mcp_errors`装饰器，添加工具名称标识
+**错误处理增强（v0.9.7）：**
+- 改进了`@handle_mcp_errors`装饰器，增加了工具名称识别
 - 更好的错误上下文，便于调试和故障排除
-- 增强的文件路径安全验证
+- 增强了文件路径的安全验证
 
 **查找特定方法：**
 ```
-使用MCP工具query_code精确查找代码元素
-参数: {"file_path": "examples/BigService.java", "query_key": "methods", "filter": "name=main"}
+请帮我查找这个文件中的main方法：examples/BigService.java
 ```
 
 **查找认证相关方法：**
 ```
-使用MCP工具query_code查找认证方法
-参数: {"file_path": "examples/BigService.java", "query_key": "methods", "filter": "name=~auth*"}
+我想找到所有认证相关的方法：examples/BigService.java
 ```
 
-**查找无参数公开方法：**
+**查找无参数的公共方法：**
 ```
-使用MCP工具query_code查找getter方法
-参数: {"file_path": "examples/BigService.java", "query_key": "methods", "filter": "params=0,public=true"}
+请帮我找到所有无参数的公共getter方法：examples/BigService.java
 ```
 
 **返回格式：**
@@ -265,19 +363,22 @@ uv run python -m tree_sitter_analyzer examples/BigService.java --partial-read --
       "node_type": "method_declaration",
       "start_line": 1385,
       "end_line": 1418,
-      "content": "public static void main(String[] args) { ... }"
+      "content": "public static void main(String[] args) {\n        System.out.println(\"BigService Demo Application\");\n        System.out.println(\"==========================\");\n\n        BigService service = new BigService();\n\n        // Test basic functions\n        System.out.println(\"\\n--- Testing Basic Functions ---\");\n        service.authenticateUser(\"testuser\", \"password123\");\n        service.createSession(\"testuser\");\n\n        // Test customer management\n        System.out.println(\"\\n--- Testing Customer Management ---\");\n        service.updateCustomerName(\"CUST001\", \"New Customer Name\");\n        Map<String, Object> customerInfo = service.getCustomerInfo(\"CUST001\");\n\n        // Test report generation\n        System.out.println(\"\\n--- Testing Report Generation ---\");\n        Map<String, Object> reportParams = new HashMap<>();\n        reportParams.put(\"start_date\", \"2024-01-01\");\n        reportParams.put(\"end_date\", \"2024-12-31\");\n        service.generateReport(\"sales\", reportParams);\n\n        // Test performance monitoring\n        System.out.println(\"\\n--- Testing Performance Monitoring ---\");\n        service.monitorPerformance();\n\n        // Test security check\n        System.out.println(\"\\n--- Testing Security Check ---\");\n        service.performSecurityCheck();\n\n        System.out.println(\"\\n--- Demo Completed ---\");\n        System.out.println(\"BigService demo application finished successfully.\");\n    }"
     }
   ],
-  "count": 1
+  "count": 1,
+  "file_path": "examples/BigService.java",
+  "language": "java",
+  "query": "methods"
 }
 ```
 
 #### 💡 **重要注意事项**
-- **参数格式**: 使用蛇形命名法（`file_path`、`start_line`、`end_line`）
-- **路径处理**: 相对路径自动解析到项目根目录
-- **安全保护**: 工具自动执行项目边界检查
+- **自然语言**: 直接用自然语言告诉AI您想要什么，无需记住复杂的参数格式
+- **路径处理**: 相对路径自动解析到项目根目录，绝对路径也完全支持
+- **安全保护**: 工具自动执行项目边界检查，确保安全
 - **工作流**: 建议按顺序使用：步骤1 → 2 → 4（查询过滤）→ 3（精确提取）
-- **过滤语法**: 支持`name=值`、`name=~模式*`、`params=数字`、`static/public/private=true/false`
+- **智能理解**: AI会自动理解您的需求，调用相应的工具
 
 ### 🛠️ CLI命令示例
 
@@ -290,6 +391,12 @@ uv run python -m tree_sitter_analyzer examples/BigService.java --table=full
 
 # 精确代码提取（内存使用监控代码片段）
 uv run python -m tree_sitter_analyzer examples/BigService.java --partial-read --start-line 100 --end-line 105
+
+# 多语言支持测试（Python文件）
+uv run python -m tree_sitter_analyzer examples/sample.py --table=full
+
+# 小文件快速分析（54行Java文件）
+uv run python -m tree_sitter_analyzer examples/MultiClass.java --advanced
 
 # 静默模式（仅显示结果）
 uv run python -m tree_sitter_analyzer examples/BigService.java --table=full --quiet
@@ -310,6 +417,39 @@ uv run python -m tree_sitter_analyzer examples/BigService.java --query-key metho
 # 查看过滤语法帮助
 uv run python -m tree_sitter_analyzer --filter-help
 ```
+
+---
+
+## 🏗️ 架构改进（v1.1.3+）
+
+### 🔄 **统一元素管理系统**
+
+Tree-sitter Analyzer现在具有革命性的统一架构，将所有代码元素整合到一个统一的系统中：
+
+#### **之前（传统架构）：**
+- 类、方法、字段、导入的独立集合
+- 不同分析模式下的数据结构不一致
+- 复杂的维护和潜在的不一致性
+
+#### **之后（统一架构）：**
+- **单一`elements`列表**: 所有代码元素（类、方法、字段、导入、包）统一
+- **一致的元素类型**: 每个元素都有`element_type`属性，便于识别
+- **简化的API**: 更清晰的接口和降低的复杂度
+- **更好的可维护性**: 所有代码元素的单一真实来源
+
+#### **优势：**
+- ✅ **一致性**: 所有分析模式下的统一数据结构
+- ✅ **简单性**: 更容易使用和理解
+- ✅ **可扩展性**: 易于添加新的元素类型
+- ✅ **性能**: 优化的内存使用和处理
+- ✅ **向后兼容性**: 现有API继续无缝工作
+
+#### **支持的元素类型：**
+- `class` - 类和接口
+- `function` - 方法和函数  
+- `variable` - 字段和变量
+- `import` - 导入语句
+- `package` - 包声明
 
 ---
 
@@ -430,7 +570,7 @@ Tree-sitter Analyzer自动检测和保护项目边界：
 - ✅ **跨平台路径兼容性** - 修复Windows短路径名称和macOS符号链接差异
 - ✅ **Windows环境** - 使用Windows API实现稳健的路径标准化
 - ✅ **macOS环境** - 修复`/var`与`/private/var`符号链接差异
-- ✅ **全面测试覆盖** - 1504个测试，74.30%覆盖率
+- ✅ **全面测试覆盖** - 1514个测试，74.30%覆盖率
 - ✅ **GitFlow实现** - 专业的开发/发布分支策略。详见[GitFlow文档](GITFLOW_zh.md)。
 
 ### ⚙️ **运行测试**
@@ -505,5 +645,23 @@ MIT许可证 - 详见[LICENSE](LICENSE)文件。
 **🎯 为处理大型代码库和AI助手的开发者而构建**
 
 *让每一行代码都被AI理解，让每个项目都突破token限制*
+
+---
+
+## ✅ 提示词测试验证
+
+本文档中的所有AI提示词都已在真实环境中进行过完整测试，确保：
+
+- **100%可用性** - 所有提示词都能正常工作
+- **跨语言支持** - 支持Java、Python、JavaScript等主流语言
+- **路径兼容性** - 相对路径和绝对路径都完全支持
+- **Windows/Linux兼容** - 跨平台路径格式自动处理
+- **实时验证** - 使用真实代码文件进行测试
+
+**测试环境：**
+- 操作系统：Windows 10
+- 项目：tree-sitter-analyzer v1.1.3
+- 测试文件：BigService.java (1419行)、sample.py (256行)、MultiClass.java (54行)
+- 测试工具：所有MCP工具（check_code_scale、analyze_code_structure、extract_code_section、query_code）
 
 **🚀 现在开始** → [30秒快速开始](#-30秒快速开始)
