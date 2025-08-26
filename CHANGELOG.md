@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.2.0] - 2025-01-27
+
+### Release: v1.2.0
+
+#### 🚀 Feature Enhancements
+- **Improved README prompts**: Enhanced documentation with better prompts and examples
+- **Comprehensive documentation updates**: Added REFACTORING_SUMMARY.md for project documentation
+- **Unified element type system**: Centralized element type management with constants.py
+- **Enhanced CLI commands**: Improved structure and functionality across all CLI commands
+- **MCP tools improvements**: Better implementation of MCP tools and server functionality
+- **Security enhancements**: Updated validators and boundary management
+- **Comprehensive test coverage**: Added new test files including test_element_type_system.py
+
+#### 🔧 Technical Improvements
+- **Constants centralization**: New constants.py file for centralized configuration management
+- **Code structure optimization**: Improved analysis engine and core functionality
+- **Interface enhancements**: Better CLI and MCP adapter implementations
+- **Quality assurance**: Enhanced test coverage and validation systems
+
+---
+
 ## [1.1.3] - 2025-08-25
 
 ### Release: v1.1.3
