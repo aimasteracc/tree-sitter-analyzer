@@ -8,20 +8,9 @@
 
 ### 🔧 **核心工具（保留）**
 
-#### 1. `improved_readme_updater.py` - README统计同步工具
-- **用途**: 自动同步所有README文件中的测试数量、覆盖率等统计信息
-- **何时使用**: 
-  - 发布新版本前
-  - 测试数量发生变化后
-  - 需要手动同步README时
-- **命令**: `uv run python scripts/improved_readme_updater.py`
 
-#### 2. `readme_config.py` - README配置管理
-- **用途**: 管理README更新的配置和模板
-- **何时使用**: 需要修改README更新策略时
-- **注意**: 这是配置文件，不是执行脚本
 
-#### 3. `sync_version_minimal.py` - 版本同步工具
+#### 1. `sync_version_minimal.py` - 版本同步工具
 - **用途**: 同步核心文件中的版本号（pyproject.toml → __init__.py）
 - **何时使用**: 
   - 发布新版本前
@@ -30,14 +19,14 @@
 
 ### 🚀 **GitFlow自动化（保留）**
 
-#### 4. `gitflow_release_automation.py` - GitFlow发布自动化
+#### 2. `gitflow_release_automation.py` - GitFlow发布自动化
 - **用途**: 完整的GitFlow发布流程自动化
 - **何时使用**: 
   - 从develop分支创建release分支
   - 自动化发布流程
 - **命令**: `uv run python scripts/gitflow_release_automation.py --version v1.1.2`
 
-#### 5. `gitflow_helper.py` - GitFlow辅助工具
+#### 3. `gitflow_helper.py` - GitFlow辅助工具
 - **用途**: GitFlow工作流的辅助功能
 - **何时使用**: 需要GitFlow相关辅助操作时
 
@@ -46,7 +35,7 @@
 - `quick_fix_v1_1_1.py` - 特定版本脚本，不应该存在
 - `version_1_1_2_release_prep.py` - 特定版本脚本，不应该存在
 - `sync_version.py` - 与sync_version_minimal.py重复
-- `quick_fix_readme.py` - 与improved_readme_updater.py重复
+
 - `automated_release.py` - 与gitflow_release_automation.py重复
 
 ## 🎯 **最佳实践**
@@ -72,12 +61,7 @@
 
 ### 发布新版本时：
 
-1. **同步README统计**:
-   ```bash
-   uv run python scripts/improved_readme_updater.py
-   ```
-
-2. **同步版本号**:
+1. **同步版本号**:
    ```bash
    uv run python scripts/sync_version_minimal.py
    ```
