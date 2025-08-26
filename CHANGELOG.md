@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.2.1] - 2025-01-27
+
+### Release: v1.2.1
+
+#### 🚀 Development Efficiency Improvements
+- **Removed README statistics check**: Eliminated time-consuming README statistics validation to improve development efficiency
+- **Simplified CI/CD pipeline**: Streamlined GitHub Actions workflows by removing unnecessary README checks
+- **Reduced manual intervention**: No more manual fixes for README statistics mismatches
+- **Focused development**: Concentrate on core functionality rather than statistics maintenance
+
+#### 🔧 Technical Improvements
+- **GitHub Actions cleanup**: Removed `readme-check-improved.yml` workflow
+- **Pre-commit hooks optimization**: Removed README statistics validation hooks
+- **Script cleanup**: Deleted `improved_readme_updater.py` and `readme_config.py`
+- **Workflow simplification**: Updated `develop-automation.yml` to remove README update steps
+
+#### 📚 Documentation Updates
+- **Updated scripts documentation**: Removed references to deleted README update scripts
+- **Streamlined workflow docs**: Updated automation workflow documentation
+- **Maintained core functionality**: Preserved essential GitFlow and version management scripts
+
+---
+
 ## [1.2.0] - 2025-01-27
 
 ### Release: v1.2.0
