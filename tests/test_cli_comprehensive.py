@@ -546,23 +546,31 @@ class TestCLITableOption:
         lines = output.split("\n")
         method_count = 0
         field_count = 0
+        in_class_info = False
 
         for line in lines:
             line = line.strip()
-            if "Total Methods" in line:
-                # Extract number from "Total Methods | 3"
+            # Look for Total Methods and Total Fields in Class Info section
+            if "## Class Info" in line:
+                in_class_info = True
+                continue
+            elif line.startswith("## ") and in_class_info:
+                # We've moved to another section
+                in_class_info = False
+                continue
+
+            if in_class_info and "Total Methods" in line:
                 parts = line.split("|")
-                if len(parts) >= 2:
+                if len(parts) >= 3:
                     try:
-                        method_count = int(parts[1].strip())
+                        method_count = int(parts[2].strip())
                     except ValueError:
                         pass
-            elif "Total Fields" in line:
-                # Extract number from "Total Fields | 2"
+            elif in_class_info and "Total Fields" in line:
                 parts = line.split("|")
-                if len(parts) >= 2:
+                if len(parts) >= 3:
                     try:
-                        field_count = int(parts[1].strip())
+                        field_count = int(parts[2].strip())
                     except ValueError:
                         pass
 
