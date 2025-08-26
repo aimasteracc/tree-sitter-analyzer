@@ -200,12 +200,6 @@ class AnalysisEngine:
                 success=True,
                 error_message=None,
                 analysis_time=0.0,
-                # Initialize empty collections for now
-                classes=[],
-                methods=[],
-                fields=[],
-                imports=[],
-                annotations=[],
                 package=None,
             )
 
@@ -458,12 +452,6 @@ class AnalysisEngine:
             source_code="",
             error_message=error,
             analysis_time=0.0,
-            # Initialize empty collections
-            classes=[],
-            methods=[],
-            fields=[],
-            imports=[],
-            annotations=[],
             package=None,
         )
 

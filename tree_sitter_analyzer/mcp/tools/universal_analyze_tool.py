@@ -3,25 +3,32 @@
 Universal Analyze Tool for MCP
 
 This tool provides universal code analysis capabilities through the MCP protocol,
-supporting multiple languages with both basic and detailed analysis options.
+supporting multiple programming languages with automatic language detection.
 """
 
 from pathlib import Path
 from typing import Any
 
+from ...constants import (
+    ELEMENT_TYPE_CLASS,
+    ELEMENT_TYPE_FUNCTION,
+    ELEMENT_TYPE_IMPORT,
+    ELEMENT_TYPE_PACKAGE,
+    ELEMENT_TYPE_VARIABLE,
+    is_element_of_type,
+)
 from ...core.analysis_engine import AnalysisRequest, get_analysis_engine
 from ...language_detector import detect_language_from_file, is_language_supported
-from ...security import SecurityValidator
+from ...mcp.utils import get_performance_monitor
 from ...utils import setup_logger
-from ..utils import get_performance_monitor
 from ..utils.error_handler import handle_mcp_errors
-from ..utils.path_resolver import PathResolver
+from .base_tool import BaseMCPTool
 
 # Set up logging
 logger = setup_logger(__name__)
 
 
-class UniversalAnalyzeTool:
+class UniversalAnalyzeTool(BaseMCPTool):
     """
     Universal MCP Tool for code analysis across multiple languages.
 
@@ -31,11 +38,20 @@ class UniversalAnalyzeTool:
 
     def __init__(self, project_root: str | None = None) -> None:
         """Initialize the universal analyze tool."""
-        self.project_root = project_root
+        super().__init__(project_root)
         self.analysis_engine = get_analysis_engine(project_root)
-        self.security_validator = SecurityValidator(project_root)
-        self.path_resolver = PathResolver(project_root)
         logger.info("UniversalAnalyzeTool initialized with security validation")
+
+    def set_project_path(self, project_path: str) -> None:
+        """
+        Update the project path for all components.
+
+        Args:
+            project_path: New project root directory
+        """
+        super().set_project_path(project_path)
+        self.analysis_engine = get_analysis_engine(project_path)
+        logger.info(f"UniversalAnalyzeTool project path updated to: {project_path}")
 
     def get_tool_definition(self) -> dict[str, Any]:
         """
@@ -304,31 +320,75 @@ class UniversalAnalyzeTool:
                         [
                             e
                             for e in analysis_result.elements
-                            if e.__class__.__name__ == "Class"
+                            if is_element_of_type(e, ELEMENT_TYPE_CLASS)
                         ]
                     ),
                     "methods": len(
                         [
                             e
                             for e in analysis_result.elements
-                            if e.__class__.__name__ == "Function"
+                            if is_element_of_type(e, ELEMENT_TYPE_FUNCTION)
                         ]
                     ),
                     "fields": len(
                         [
                             e
                             for e in analysis_result.elements
-                            if e.__class__.__name__ == "Variable"
+                            if is_element_of_type(e, ELEMENT_TYPE_VARIABLE)
                         ]
                     ),
                     "imports": len(
                         [
                             e
                             for e in analysis_result.elements
-                            if e.__class__.__name__ == "Import"
+                            if is_element_of_type(e, ELEMENT_TYPE_IMPORT)
                         ]
                     ),
                     "annotations": len(getattr(analysis_result, "annotations", [])),
+                    "packages": len(
+                        [
+                            e
+                            for e in analysis_result.elements
+                            if is_element_of_type(e, ELEMENT_TYPE_PACKAGE)
+                        ]
+                    ),
+                    "total": (
+                        len(
+                            [
+                                e
+                                for e in analysis_result.elements
+                                if is_element_of_type(e, ELEMENT_TYPE_CLASS)
+                            ]
+                        )
+                        + len(
+                            [
+                                e
+                                for e in analysis_result.elements
+                                if is_element_of_type(e, ELEMENT_TYPE_FUNCTION)
+                            ]
+                        )
+                        + len(
+                            [
+                                e
+                                for e in analysis_result.elements
+                                if is_element_of_type(e, ELEMENT_TYPE_VARIABLE)
+                            ]
+                        )
+                        + len(
+                            [
+                                e
+                                for e in analysis_result.elements
+                                if is_element_of_type(e, ELEMENT_TYPE_IMPORT)
+                            ]
+                        )
+                        + len(
+                            [
+                                e
+                                for e in analysis_result.elements
+                                if is_element_of_type(e, ELEMENT_TYPE_PACKAGE)
+                            ]
+                        )
+                    ),
                 },
             }
         }
@@ -339,7 +399,9 @@ class UniversalAnalyzeTool:
 
         # Add complexity metrics
         methods = [
-            e for e in analysis_result.elements if e.__class__.__name__ == "Function"
+            e
+            for e in analysis_result.elements
+            if is_element_of_type(e, ELEMENT_TYPE_FUNCTION)
         ]
         total_complexity = sum(
             getattr(method, "complexity_score", 0) or 0 for method in methods
@@ -347,7 +409,7 @@ class UniversalAnalyzeTool:
 
         basic["metrics"]["complexity"] = {
             "total": total_complexity,
-            "average": (total_complexity / len(methods) if methods else 0),
+            "average": round(total_complexity / len(methods) if methods else 0, 2),
             "max": max(
                 (getattr(method, "complexity_score", 0) or 0 for method in methods),
                 default=0,
@@ -372,7 +434,7 @@ class UniversalAnalyzeTool:
                     for cls in [
                         e
                         for e in analysis_result.elements
-                        if e.__class__.__name__ == "Class"
+                        if is_element_of_type(e, ELEMENT_TYPE_CLASS)
                     ]
                 ],
                 "methods": [
@@ -384,7 +446,7 @@ class UniversalAnalyzeTool:
                     for method in [
                         e
                         for e in analysis_result.elements
-                        if e.__class__.__name__ == "Function"
+                        if is_element_of_type(e, ELEMENT_TYPE_FUNCTION)
                     ]
                 ],
                 "fields": [
@@ -396,7 +458,7 @@ class UniversalAnalyzeTool:
                     for field in [
                         e
                         for e in analysis_result.elements
-                        if e.__class__.__name__ == "Variable"
+                        if is_element_of_type(e, ELEMENT_TYPE_VARIABLE)
                     ]
                 ],
                 "imports": [
@@ -408,7 +470,7 @@ class UniversalAnalyzeTool:
                     for imp in [
                         e
                         for e in analysis_result.elements
-                        if e.__class__.__name__ == "Import"
+                        if is_element_of_type(e, ELEMENT_TYPE_IMPORT)
                     ]
                 ],
                 "annotations": [
@@ -446,16 +508,34 @@ class UniversalAnalyzeTool:
                 "lines_blank": 0,  # Not available in universal analyzer
                 "elements": {
                     "classes": len(
-                        [e for e in elements if e.get("__class__", "") == "Class"]
+                        [
+                            e
+                            for e in elements
+                            if hasattr(e, "element_type") and e.element_type == "class"
+                        ]
                     ),
                     "methods": len(
-                        [e for e in elements if e.get("__class__", "") == "Function"]
+                        [
+                            e
+                            for e in elements
+                            if hasattr(e, "element_type")
+                            and e.element_type == "function"
+                        ]
                     ),
                     "fields": len(
-                        [e for e in elements if e.get("__class__", "") == "Variable"]
+                        [
+                            e
+                            for e in elements
+                            if hasattr(e, "element_type")
+                            and e.element_type == "variable"
+                        ]
                     ),
                     "imports": len(
-                        [e for e in elements if e.get("__class__", "") == "Import"]
+                        [
+                            e
+                            for e in elements
+                            if hasattr(e, "element_type") and e.element_type == "import"
+                        ]
                     ),
                     "annotations": 0,  # Not available in universal analyzer
                 },

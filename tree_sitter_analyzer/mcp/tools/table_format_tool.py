@@ -9,19 +9,26 @@ converting analysis results into structured table formats for better readability
 from pathlib import Path
 from typing import Any
 
+from ...constants import (
+    ELEMENT_TYPE_CLASS,
+    ELEMENT_TYPE_FUNCTION,
+    ELEMENT_TYPE_IMPORT,
+    ELEMENT_TYPE_PACKAGE,
+    ELEMENT_TYPE_VARIABLE,
+    is_element_of_type,
+)
 from ...core.analysis_engine import AnalysisRequest, get_analysis_engine
 from ...language_detector import detect_language_from_file
-from ...security import SecurityValidator
 from ...table_formatter import TableFormatter
 from ...utils import setup_logger
 from ..utils import get_performance_monitor
-from ..utils.path_resolver import PathResolver
+from .base_tool import BaseMCPTool
 
 # Set up logging
 logger = setup_logger(__name__)
 
 
-class TableFormatTool:
+class TableFormatTool(BaseMCPTool):
     """
     MCP Tool for code structure analysis and table formatting.
 
@@ -31,11 +38,20 @@ class TableFormatTool:
 
     def __init__(self, project_root: str = None) -> None:
         """Initialize the table format tool."""
-        self.project_root = project_root
+        super().__init__(project_root)
         self.analysis_engine = get_analysis_engine(project_root)
-        self.security_validator = SecurityValidator(project_root)
-        self.path_resolver = PathResolver(project_root)
         self.logger = logger
+
+    def set_project_path(self, project_path: str) -> None:
+        """
+        Update the project path for all components.
+
+        Args:
+            project_path: New project root directory
+        """
+        super().set_project_path(project_path)
+        self.analysis_engine = get_analysis_engine(project_path)
+        logger.info(f"TableFormatTool project path updated to: {project_path}")
 
     def get_tool_schema(self) -> dict[str, Any]:
         """
@@ -178,11 +194,21 @@ class TableFormatTool:
     def _convert_analysis_result_to_dict(self, result: Any) -> dict[str, Any]:
         """Convert AnalysisResult to dictionary format expected by TableFormatter"""
         # Extract elements by type
-        classes = [e for e in result.elements if e.__class__.__name__ == "Class"]
-        methods = [e for e in result.elements if e.__class__.__name__ == "Function"]
-        fields = [e for e in result.elements if e.__class__.__name__ == "Variable"]
-        imports = [e for e in result.elements if e.__class__.__name__ == "Import"]
-        packages = [e for e in result.elements if e.__class__.__name__ == "Package"]
+        classes = [
+            e for e in result.elements if is_element_of_type(e, ELEMENT_TYPE_CLASS)
+        ]
+        methods = [
+            e for e in result.elements if is_element_of_type(e, ELEMENT_TYPE_FUNCTION)
+        ]
+        fields = [
+            e for e in result.elements if is_element_of_type(e, ELEMENT_TYPE_VARIABLE)
+        ]
+        imports = [
+            e for e in result.elements if is_element_of_type(e, ELEMENT_TYPE_IMPORT)
+        ]
+        packages = [
+            e for e in result.elements if is_element_of_type(e, ELEMENT_TYPE_PACKAGE)
+        ]
 
         # Convert package to expected format
         package_info = None

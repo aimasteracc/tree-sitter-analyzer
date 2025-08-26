@@ -76,11 +76,7 @@ class TestUnifiedAnalysisEngine:
         expected_result = AnalysisResult(
             file_path="test.java",
             package=None,
-            imports=[],
-            classes=[],
-            methods=[],
-            fields=[],
-            annotations=[],
+            elements=[],
             analysis_time=0.0,
             success=True,
             error_message=None,

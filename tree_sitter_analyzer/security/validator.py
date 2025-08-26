@@ -36,9 +36,22 @@ class SecurityValidator:
         Args:
             project_root: Optional project root directory for boundary checks
         """
-        self.boundary_manager = (
-            ProjectBoundaryManager(project_root) if project_root else None
-        )
+        # Ensure project_root is properly resolved if provided
+        if project_root:
+            try:
+                resolved_root = str(Path(project_root).resolve())
+                self.boundary_manager = ProjectBoundaryManager(resolved_root)
+                log_debug(
+                    f"SecurityValidator initialized with resolved project_root: {resolved_root}"
+                )
+            except Exception as e:
+                log_warning(
+                    f"Failed to initialize ProjectBoundaryManager with {project_root}: {e}"
+                )
+                self.boundary_manager = None
+        else:
+            self.boundary_manager = None
+
         self.regex_checker = RegexSafetyChecker()
 
         log_debug(f"SecurityValidator initialized with project_root: {project_root}")

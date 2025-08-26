@@ -8,6 +8,14 @@ Handles table format output generation.
 import sys
 from typing import Any
 
+from ...constants import (
+    ELEMENT_TYPE_CLASS,
+    ELEMENT_TYPE_FUNCTION,
+    ELEMENT_TYPE_IMPORT,
+    ELEMENT_TYPE_PACKAGE,
+    ELEMENT_TYPE_VARIABLE,
+    get_element_type,
+)
 from ...output_manager import output_error
 from ...table_formatter import create_table_formatter
 from .base_command import BaseCommand
@@ -58,18 +66,18 @@ class TableCommand(BaseCommand):
         # Process each element
         for i, element in enumerate(analysis_result.elements):
             try:
-                element_type = getattr(element, "__class__", type(element)).__name__
+                element_type = get_element_type(element)
                 element_name = getattr(element, "name", None)
 
-                if element_type == "Package":
+                if element_type == ELEMENT_TYPE_PACKAGE:
                     package_name = str(element_name)
-                elif element_type == "Class":
+                elif element_type == ELEMENT_TYPE_CLASS:
                     classes.append(self._convert_class_element(element, i))
-                elif element_type == "Function":
+                elif element_type == ELEMENT_TYPE_FUNCTION:
                     methods.append(self._convert_function_element(element, language))
-                elif element_type == "Variable":
+                elif element_type == ELEMENT_TYPE_VARIABLE:
                     fields.append(self._convert_variable_element(element, language))
-                elif element_type == "Import":
+                elif element_type == ELEMENT_TYPE_IMPORT:
                     imports.append(self._convert_import_element(element))
 
             except Exception as element_error:

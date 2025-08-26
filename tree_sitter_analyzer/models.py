@@ -11,6 +11,16 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+from .constants import (
+    ELEMENT_TYPE_ANNOTATION,
+    ELEMENT_TYPE_CLASS,
+    ELEMENT_TYPE_FUNCTION,
+    ELEMENT_TYPE_IMPORT,
+    ELEMENT_TYPE_PACKAGE,
+    ELEMENT_TYPE_VARIABLE,
+    is_element_of_type,
+)
+
 if TYPE_CHECKING:
     pass
 
@@ -276,45 +286,64 @@ class AnalysisResult:
     )  # Query results for new architecture
     source_code: str = ""  # Source code for new architecture
     package: JavaPackage | None = None
-    imports: list[JavaImport] = field(default_factory=list)
-    classes: list[JavaClass] = field(default_factory=list)
-    methods: list[JavaMethod] = field(default_factory=list)
-    fields: list[JavaField] = field(default_factory=list)
-    annotations: list[JavaAnnotation] = field(default_factory=list)
+    # Legacy fields removed - use elements list instead
+    # imports: list[JavaImport] = field(default_factory=list)
+    # classes: list[JavaClass] = field(default_factory=list)
+    # methods: list[JavaMethod] = field(default_factory=list)
+    # fields: list[JavaField] = field(default_factory=list)
+    # annotations: list[JavaAnnotation] = field(default_factory=list)
     analysis_time: float = 0.0
     success: bool = True
     error_message: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        """Convert analysis result to dictionary for serialization"""
+        """Convert analysis result to dictionary for serialization using unified elements"""
+        # Use unified elements list for consistent data structure
+        elements = self.elements or []
+
+        # Extract elements by type from unified list using constants
+        classes = [e for e in elements if is_element_of_type(e, ELEMENT_TYPE_CLASS)]
+        methods = [e for e in elements if is_element_of_type(e, ELEMENT_TYPE_FUNCTION)]
+        fields = [e for e in elements if is_element_of_type(e, ELEMENT_TYPE_VARIABLE)]
+        imports = [e for e in elements if is_element_of_type(e, ELEMENT_TYPE_IMPORT)]
+        packages = [e for e in elements if is_element_of_type(e, ELEMENT_TYPE_PACKAGE)]
+
         return {
             "file_path": self.file_path,
             "line_count": self.line_count,
-            "package": {"name": self.package.name} if self.package else None,
+            "package": {"name": packages[0].name} if packages else None,
             "imports": [
                 {
                     "name": imp.name,
-                    "is_static": imp.is_static,
-                    "is_wildcard": imp.is_wildcard,
+                    "is_static": getattr(imp, "is_static", False),
+                    "is_wildcard": getattr(imp, "is_wildcard", False),
                 }
-                for imp in self.imports
+                for imp in imports
             ],
             "classes": [
-                {"name": cls.name, "type": cls.class_type, "package": cls.package_name}
-                for cls in self.classes
+                {
+                    "name": cls.name,
+                    "type": getattr(cls, "class_type", "class"),
+                    "package": getattr(cls, "package_name", None),
+                }
+                for cls in classes
             ],
             "methods": [
                 {
                     "name": method.name,
-                    "return_type": method.return_type,
-                    "parameters": method.parameters,
+                    "return_type": getattr(method, "return_type", None),
+                    "parameters": getattr(method, "parameters", []),
                 }
-                for method in self.methods
+                for method in methods
             ],
             "fields": [
-                {"name": field.name, "type": field.field_type} for field in self.fields
+                {"name": field.name, "type": getattr(field, "field_type", None)}
+                for field in fields
             ],
-            "annotations": [{"name": ann.name} for ann in self.annotations],
+            "annotations": [
+                {"name": getattr(ann, "name", str(ann))}
+                for ann in getattr(self, "annotations", [])
+            ],
             "analysis_time": self.analysis_time,
             "success": self.success,
             "error_message": self.error_message,
@@ -322,40 +351,56 @@ class AnalysisResult:
 
     def to_summary_dict(self, types: list[str] | None = None) -> dict[str, Any]:
         """
-        Return analysis summary as a dictionary.
+        Return analysis summary as a dictionary using unified elements.
         Only include specified element types (e.g., 'classes', 'methods', 'fields').
         """
         if types is None:
             types = ["classes", "methods"]  # default
 
         summary: dict[str, Any] = {"file_path": self.file_path, "summary_elements": []}
+        elements = self.elements or []
 
-        all_elements: dict[str, list[Any]] = {
-            "imports": self.imports,
-            "classes": self.classes,
-            "methods": self.methods,
-            "fields": self.fields,
-            "annotations": self.annotations,
+        # Map type names to element_type constants
+        type_mapping = {
+            "imports": ELEMENT_TYPE_IMPORT,
+            "classes": ELEMENT_TYPE_CLASS,
+            "methods": ELEMENT_TYPE_FUNCTION,
+            "fields": ELEMENT_TYPE_VARIABLE,
+            "annotations": ELEMENT_TYPE_ANNOTATION,
         }
 
-        for type_name, elements in all_elements.items():
+        for type_name, element_type in type_mapping.items():
             if "all" in types or type_name in types:
-                for element in elements:
+                type_elements = [
+                    e for e in elements if is_element_of_type(e, element_type)
+                ]
+                for element in type_elements:
                     # Call each element model's to_summary_item()
                     summary["summary_elements"].append(element.to_summary_item())
 
         return summary
 
     def get_summary(self) -> dict[str, Any]:
-        """Get analysis summary statistics"""
+        """Get analysis summary statistics using unified elements"""
+        elements = self.elements or []
+
+        # Count elements by type from unified list using constants
+        classes = [e for e in elements if is_element_of_type(e, ELEMENT_TYPE_CLASS)]
+        methods = [e for e in elements if is_element_of_type(e, ELEMENT_TYPE_FUNCTION)]
+        fields = [e for e in elements if is_element_of_type(e, ELEMENT_TYPE_VARIABLE)]
+        imports = [e for e in elements if is_element_of_type(e, ELEMENT_TYPE_IMPORT)]
+        annotations = [
+            e for e in elements if is_element_of_type(e, ELEMENT_TYPE_ANNOTATION)
+        ]
+
         return {
             "file_path": self.file_path,
             "line_count": self.line_count,
-            "class_count": len(self.classes),
-            "method_count": len(self.methods),
-            "field_count": len(self.fields),
-            "import_count": len(self.imports),
-            "annotation_count": len(self.annotations),
+            "class_count": len(classes),
+            "method_count": len(methods),
+            "field_count": len(fields),
+            "import_count": len(imports),
+            "annotation_count": len(annotations),
             "success": self.success,
             "analysis_time": self.analysis_time,
         }
@@ -400,7 +445,11 @@ class AnalysisResult:
                             "end": safe_get_attr(imp, "end_line", 0),
                         },
                     }
-                    for imp in self.imports
+                    for imp in [
+                        e
+                        for e in (self.elements or [])
+                        if is_element_of_type(e, ELEMENT_TYPE_IMPORT)
+                    ]
                 ],
                 "classes": [
                     {
@@ -412,7 +461,11 @@ class AnalysisResult:
                             "end": safe_get_attr(cls, "end_line", 0),
                         },
                     }
-                    for cls in self.classes
+                    for cls in [
+                        e
+                        for e in (self.elements or [])
+                        if is_element_of_type(e, ELEMENT_TYPE_CLASS)
+                    ]
                 ],
                 "methods": [
                     {
@@ -424,7 +477,11 @@ class AnalysisResult:
                             "end": safe_get_attr(method, "end_line", 0),
                         },
                     }
-                    for method in self.methods
+                    for method in [
+                        e
+                        for e in (self.elements or [])
+                        if is_element_of_type(e, ELEMENT_TYPE_FUNCTION)
+                    ]
                 ],
                 "fields": [
                     {
@@ -435,7 +492,11 @@ class AnalysisResult:
                             "end": safe_get_attr(field, "end_line", 0),
                         },
                     }
-                    for field in self.fields
+                    for field in [
+                        e
+                        for e in (self.elements or [])
+                        if is_element_of_type(e, ELEMENT_TYPE_VARIABLE)
+                    ]
                 ],
                 "annotations": [
                     {
@@ -445,16 +506,50 @@ class AnalysisResult:
                             "end": safe_get_attr(ann, "end_line", 0),
                         },
                     }
-                    for ann in self.annotations
+                    for ann in [
+                        e
+                        for e in (self.elements or [])
+                        if is_element_of_type(e, ELEMENT_TYPE_ANNOTATION)
+                    ]
                 ],
             },
             "metadata": {
                 "line_count": self.line_count,
-                "class_count": len(self.classes),
-                "method_count": len(self.methods),
-                "field_count": len(self.fields),
-                "import_count": len(self.imports),
-                "annotation_count": len(self.annotations),
+                "class_count": len(
+                    [
+                        e
+                        for e in (self.elements or [])
+                        if is_element_of_type(e, ELEMENT_TYPE_CLASS)
+                    ]
+                ),
+                "method_count": len(
+                    [
+                        e
+                        for e in (self.elements or [])
+                        if is_element_of_type(e, ELEMENT_TYPE_FUNCTION)
+                    ]
+                ),
+                "field_count": len(
+                    [
+                        e
+                        for e in (self.elements or [])
+                        if is_element_of_type(e, ELEMENT_TYPE_VARIABLE)
+                    ]
+                ),
+                "import_count": len(
+                    [
+                        e
+                        for e in (self.elements or [])
+                        if is_element_of_type(e, ELEMENT_TYPE_IMPORT)
+                    ]
+                ),
+                "annotation_count": len(
+                    [
+                        e
+                        for e in (self.elements or [])
+                        if is_element_of_type(e, ELEMENT_TYPE_ANNOTATION)
+                    ]
+                ),
                 "analysis_time": self.analysis_time,
                 "success": self.success,
                 "error_message": self.error_message,

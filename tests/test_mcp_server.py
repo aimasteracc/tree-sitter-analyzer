@@ -167,11 +167,22 @@ class TestAnalyzeCodeScale:
 
         # Mock the analysis engine and file operations
         mock_result = Mock()
+        # Create mock elements with proper structure
+        mock_class = Mock()
+        mock_class.element_type = "class"
+        mock_class.name = "TestClass"
+
+        mock_function = Mock()
+        mock_function.element_type = "function"
+        mock_function.name = "test_method"
+        mock_function.complexity_score = 1  # Add complexity_score
+
+        mock_result.elements = [mock_class, mock_function]
         mock_result.success = True
         mock_result.to_dict.return_value = {
             "elements": [
-                {"__class__": "Class", "name": "TestClass"},
-                {"__class__": "Function", "name": "test_method"},
+                {"element_type": "class", "name": "TestClass"},
+                {"element_type": "function", "name": "test_method"},
             ],
             "line_count": 50,
         }

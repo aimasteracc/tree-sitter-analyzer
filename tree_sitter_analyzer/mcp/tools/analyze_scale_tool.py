@@ -11,17 +11,23 @@ import re
 from pathlib import Path
 from typing import Any
 
+from ...constants import (
+    ELEMENT_TYPE_CLASS,
+    ELEMENT_TYPE_FUNCTION,
+    ELEMENT_TYPE_IMPORT,
+    ELEMENT_TYPE_VARIABLE,
+    is_element_of_type,
+)
 from ...core.analysis_engine import AnalysisRequest, get_analysis_engine
 from ...language_detector import detect_language_from_file
-from ...security import SecurityValidator
 from ...utils import setup_logger
-from ..utils.path_resolver import PathResolver
+from .base_tool import BaseMCPTool
 
 # Set up logging
 logger = setup_logger(__name__)
 
 
-class AnalyzeScaleTool:
+class AnalyzeScaleTool(BaseMCPTool):
     """
     MCP Tool for analyzing code scale and complexity metrics.
 
@@ -33,11 +39,20 @@ class AnalyzeScaleTool:
     def __init__(self, project_root: str = None) -> None:
         """Initialize the analyze scale tool."""
         # Use unified analysis engine instead of deprecated AdvancedAnalyzer
-        self.project_root = project_root
+        super().__init__(project_root)
         self.analysis_engine = get_analysis_engine(project_root)
-        self.security_validator = SecurityValidator(project_root)
-        self.path_resolver = PathResolver(project_root)
         logger.info("AnalyzeScaleTool initialized with security validation")
+
+    def set_project_path(self, project_path: str) -> None:
+        """
+        Update the project path for all components.
+
+        Args:
+            project_path: New project root directory
+        """
+        super().set_project_path(project_path)
+        self.analysis_engine = get_analysis_engine(project_path)
+        logger.info(f"AnalyzeScaleTool project path updated to: {project_path}")
 
     def _calculate_file_metrics(self, file_path: str) -> dict[str, Any]:
         """
@@ -123,7 +138,9 @@ class AnalyzeScaleTool:
 
         # Extract class information with position from unified analysis engine
         classes = [
-            e for e in analysis_result.elements if e.__class__.__name__ == "Class"
+            e
+            for e in analysis_result.elements
+            if is_element_of_type(e, ELEMENT_TYPE_CLASS)
         ]
         for cls in classes:
             class_info = {
@@ -141,7 +158,9 @@ class AnalyzeScaleTool:
 
         # Extract method information with position and complexity from unified analysis engine
         methods = [
-            e for e in analysis_result.elements if e.__class__.__name__ == "Function"
+            e
+            for e in analysis_result.elements
+            if is_element_of_type(e, ELEMENT_TYPE_FUNCTION)
         ]
         for method in methods:
             method_info = {
@@ -174,7 +193,9 @@ class AnalyzeScaleTool:
         # Extract field information with position
         # Extract field information from unified analysis engine
         fields = [
-            e for e in analysis_result.elements if e.__class__.__name__ == "Variable"
+            e
+            for e in analysis_result.elements
+            if is_element_of_type(e, ELEMENT_TYPE_VARIABLE)
         ]
         for field in fields:
             field_info = {
@@ -192,7 +213,9 @@ class AnalyzeScaleTool:
         # Extract import information
         # Extract import information from unified analysis engine
         imports = [
-            e for e in analysis_result.elements if e.__class__.__name__ == "Import"
+            e
+            for e in analysis_result.elements
+            if is_element_of_type(e, ELEMENT_TYPE_IMPORT)
         ]
         for imp in imports:
             import_info = {
@@ -459,7 +482,7 @@ class AnalyzeScaleTool:
                                 for e in (
                                     analysis_result.elements if analysis_result else []
                                 )
-                                if e.__class__.__name__ == "Class"
+                                if is_element_of_type(e, ELEMENT_TYPE_CLASS)
                             ]
                         ),
                         "methods": len(
@@ -468,7 +491,7 @@ class AnalyzeScaleTool:
                                 for e in (
                                     analysis_result.elements if analysis_result else []
                                 )
-                                if e.__class__.__name__ == "Function"
+                                if is_element_of_type(e, ELEMENT_TYPE_FUNCTION)
                             ]
                         ),
                         "fields": len(
@@ -477,7 +500,7 @@ class AnalyzeScaleTool:
                                 for e in (
                                     analysis_result.elements if analysis_result else []
                                 )
-                                if e.__class__.__name__ == "Variable"
+                                if is_element_of_type(e, ELEMENT_TYPE_VARIABLE)
                             ]
                         ),
                         "imports": len(
@@ -486,7 +509,7 @@ class AnalyzeScaleTool:
                                 for e in (
                                     analysis_result.elements if analysis_result else []
                                 )
-                                if e.__class__.__name__ == "Import"
+                                if is_element_of_type(e, ELEMENT_TYPE_IMPORT)
                             ]
                         ),
                         "annotations": len(
@@ -530,7 +553,7 @@ class AnalyzeScaleTool:
                                 for e in (
                                     analysis_result.elements if analysis_result else []
                                 )
-                                if e.__class__.__name__ == "Class"
+                                if is_element_of_type(e, ELEMENT_TYPE_CLASS)
                             ]
                         ],
                         "methods": [
@@ -558,7 +581,7 @@ class AnalyzeScaleTool:
                                 for e in (
                                     analysis_result.elements if analysis_result else []
                                 )
-                                if e.__class__.__name__ == "Function"
+                                if is_element_of_type(e, ELEMENT_TYPE_FUNCTION)
                             ]
                         ],
                         "fields": [
@@ -580,7 +603,7 @@ class AnalyzeScaleTool:
                                 for e in (
                                     analysis_result.elements if analysis_result else []
                                 )
-                                if e.__class__.__name__ == "Variable"
+                                if is_element_of_type(e, ELEMENT_TYPE_VARIABLE)
                             ]
                         ],
                     }
@@ -590,14 +613,14 @@ class AnalyzeScaleTool:
                     [
                         e
                         for e in (analysis_result.elements if analysis_result else [])
-                        if e.__class__.__name__ == "Class"
+                        if is_element_of_type(e, ELEMENT_TYPE_CLASS)
                     ]
                 )
                 methods_count = len(
                     [
                         e
                         for e in (analysis_result.elements if analysis_result else [])
-                        if e.__class__.__name__ == "Function"
+                        if is_element_of_type(e, ELEMENT_TYPE_FUNCTION)
                     ]
                 )
 
