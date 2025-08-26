@@ -39,18 +39,38 @@ class ProjectBoundaryManager:
         if not project_root:
             raise SecurityError("Project root cannot be empty")
 
-        project_path = Path(project_root)
-        if not project_path.exists():
-            raise SecurityError(f"Project root does not exist: {project_root}")
+        try:
+            project_path = Path(project_root)
 
-        if not project_path.is_dir():
-            raise SecurityError(f"Project root is not a directory: {project_root}")
+            # Handle both string and Path objects
+            if isinstance(project_root, str):
+                project_path = Path(project_root)
+            elif isinstance(project_root, Path):
+                project_path = project_root
+            else:
+                raise SecurityError(f"Invalid project root type: {type(project_root)}")
 
-        # Store real path to prevent symlink attacks
-        self.project_root = str(project_path.resolve())
-        self.allowed_directories: set[str] = {self.project_root}
+            # Ensure the path exists and is a directory
+            if not project_path.exists():
+                raise SecurityError(f"Project root does not exist: {project_root}")
 
-        log_debug(f"ProjectBoundaryManager initialized with root: {self.project_root}")
+            if not project_path.is_dir():
+                raise SecurityError(f"Project root is not a directory: {project_root}")
+
+            # Store real path to prevent symlink attacks
+            self.project_root = str(project_path.resolve())
+            self.allowed_directories: set[str] = {self.project_root}
+
+            log_debug(
+                f"ProjectBoundaryManager initialized with root: {self.project_root}"
+            )
+
+        except Exception as e:
+            if isinstance(e, SecurityError):
+                raise
+            raise SecurityError(
+                f"Failed to initialize ProjectBoundaryManager: {e}"
+            ) from e
 
     def add_allowed_directory(self, directory: str) -> None:
         """

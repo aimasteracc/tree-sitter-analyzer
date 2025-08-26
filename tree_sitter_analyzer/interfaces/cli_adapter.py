@@ -150,32 +150,51 @@ class CLIAdapter:
         result = self.analyze_file(file_path, **kwargs)
 
         # 構造情報を辞書形式に変換
+        # Use unified elements system
+        from ..constants import (
+            ELEMENT_TYPE_ANNOTATION,
+            ELEMENT_TYPE_CLASS,
+            ELEMENT_TYPE_FUNCTION,
+            ELEMENT_TYPE_IMPORT,
+            ELEMENT_TYPE_VARIABLE,
+            is_element_of_type,
+        )
+
+        elements = result.elements or []
+
+        # Extract elements by type from unified list
+        imports = [e for e in elements if is_element_of_type(e, ELEMENT_TYPE_IMPORT)]
+        classes = [e for e in elements if is_element_of_type(e, ELEMENT_TYPE_CLASS)]
+        methods = [e for e in elements if is_element_of_type(e, ELEMENT_TYPE_FUNCTION)]
+        fields = [e for e in elements if is_element_of_type(e, ELEMENT_TYPE_VARIABLE)]
+        annotations = [
+            e for e in elements if is_element_of_type(e, ELEMENT_TYPE_ANNOTATION)
+        ]
+
         return {
             "file_path": result.file_path,
             "language": result.language,
             "package": result.package,
             "imports": [
-                {"name": imp.name, "type": str(type(imp).__name__)}
-                for imp in result.imports
+                {"name": imp.name, "type": str(type(imp).__name__)} for imp in imports
             ],
             "classes": [
-                {"name": cls.name, "type": str(type(cls).__name__)}
-                for cls in result.classes
+                {"name": cls.name, "type": str(type(cls).__name__)} for cls in classes
             ],
             "methods": [
                 {"name": method.name, "type": str(type(method).__name__)}
-                for method in result.methods
+                for method in methods
             ],
             "fields": [
                 {"name": field.name, "type": str(type(field).__name__)}
-                for field in result.fields
+                for field in fields
             ],
             "annotations": [
                 {
                     "name": getattr(ann, "name", str(ann)),
                     "type": str(type(ann).__name__),
                 }
-                for ann in getattr(result, "annotations", [])
+                for ann in annotations
             ],
             "analysis_time": result.analysis_time,
             "elements": [
@@ -215,11 +234,7 @@ class CLIAdapter:
                 error_result = AnalysisResult(
                     file_path=file_path,
                     package=None,
-                    imports=[],
-                    classes=[],
-                    methods=[],
-                    fields=[],
-                    annotations=[],
+                    elements=[],
                     analysis_time=0.0,
                     success=False,
                     error_message=str(e),

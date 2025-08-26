@@ -67,32 +67,53 @@ class MCPAdapter:
     ) -> dict[str, Any]:
         """Get file structure asynchronously."""
         result = await self.analyze_file_async(file_path, **kwargs)
+        # Use unified elements system
+        from ..constants import (
+            ELEMENT_TYPE_ANNOTATION,
+            ELEMENT_TYPE_CLASS,
+            ELEMENT_TYPE_FUNCTION,
+            ELEMENT_TYPE_IMPORT,
+            ELEMENT_TYPE_VARIABLE,
+            is_element_of_type,
+        )
+
+        elements = result.elements or []
+
+        # Extract elements by type from unified list
+        imports = [e for e in elements if is_element_of_type(e, ELEMENT_TYPE_IMPORT)]
+        classes = [e for e in elements if is_element_of_type(e, ELEMENT_TYPE_CLASS)]
+        methods = [e for e in elements if is_element_of_type(e, ELEMENT_TYPE_FUNCTION)]
+        fields = [e for e in elements if is_element_of_type(e, ELEMENT_TYPE_VARIABLE)]
+        annotations = [
+            e for e in elements if is_element_of_type(e, ELEMENT_TYPE_ANNOTATION)
+        ]
+
         return {
             "file_path": result.file_path,
             "language": result.language,
             "structure": {
                 "classes": [
                     {"name": cls.name, "type": str(type(cls).__name__)}
-                    for cls in result.classes
+                    for cls in classes
                 ],
                 "methods": [
                     {"name": method.name, "type": str(type(method).__name__)}
-                    for method in result.methods
+                    for method in methods
                 ],
                 "fields": [
                     {"name": field.name, "type": str(type(field).__name__)}
-                    for field in result.fields
+                    for field in fields
                 ],
                 "imports": [
                     {"name": imp.name, "type": str(type(imp).__name__)}
-                    for imp in result.imports
+                    for imp in imports
                 ],
                 "annotations": [
                     {
                         "name": getattr(ann, "name", str(ann)),
                         "type": str(type(ann).__name__),
                     }
-                    for ann in getattr(result, "annotations", [])
+                    for ann in annotations
                 ],
             },
             "metadata": {
@@ -100,11 +121,11 @@ class MCPAdapter:
                 "success": result.success,
                 "error_message": result.error_message,
                 "package": result.package,
-                "class_count": len(result.classes),
-                "method_count": len(result.methods),
-                "field_count": len(result.fields),
-                "import_count": len(result.imports),
-                "annotation_count": len(result.annotations),
+                "class_count": len(classes),
+                "method_count": len(methods),
+                "field_count": len(fields),
+                "import_count": len(imports),
+                "annotation_count": len(annotations),
             },
         }
 
@@ -130,11 +151,6 @@ class MCPAdapter:
                     query_results={},
                     source_code="",
                     package=None,
-                    imports=[],
-                    classes=[],
-                    methods=[],
-                    fields=[],
-                    annotations=[],
                     analysis_time=0.0,
                     success=False,
                     error_message=str(e),

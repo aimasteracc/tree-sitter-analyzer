@@ -56,19 +56,29 @@ def analyzer():
 
                 # レガシー構造形式に変換
                 classes = [
-                    e for e in result.elements if e.__class__.__name__ == "Class"
+                    e
+                    for e in result.elements
+                    if hasattr(e, "element_type") and e.element_type == "class"
                 ]
                 methods = [
-                    e for e in result.elements if e.__class__.__name__ == "Function"
+                    e
+                    for e in result.elements
+                    if hasattr(e, "element_type") and e.element_type == "function"
                 ]
                 fields = [
-                    e for e in result.elements if e.__class__.__name__ == "Variable"
+                    e
+                    for e in result.elements
+                    if hasattr(e, "element_type") and e.element_type == "variable"
                 ]
                 imports = [
-                    e for e in result.elements if e.__class__.__name__ == "Import"
+                    e
+                    for e in result.elements
+                    if hasattr(e, "element_type") and e.element_type == "import"
                 ]
                 packages = [
-                    e for e in result.elements if e.__class__.__name__ == "Package"
+                    e
+                    for e in result.elements
+                    if hasattr(e, "element_type") and e.element_type == "package"
                 ]
 
                 # パッケージ情報の安全な処理

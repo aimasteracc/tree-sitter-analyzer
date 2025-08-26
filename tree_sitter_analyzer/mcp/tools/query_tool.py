@@ -11,22 +11,30 @@ from typing import Any
 
 from ...core.query_service import QueryService
 from ...language_detector import detect_language_from_file
-from ...security import SecurityValidator
 from ..utils.error_handler import handle_mcp_errors
-from ..utils.path_resolver import PathResolver
+from .base_tool import BaseMCPTool
 
 logger = logging.getLogger(__name__)
 
 
-class QueryTool:
+class QueryTool(BaseMCPTool):
     """MCP query tool providing tree-sitter query functionality"""
 
     def __init__(self, project_root: str | None = None) -> None:
         """Initialize query tool"""
-        self.project_root = project_root
+        super().__init__(project_root)
         self.query_service = QueryService(project_root)
-        self.security_validator = SecurityValidator(project_root)
-        self.path_resolver = PathResolver(project_root)
+
+    def set_project_path(self, project_path: str) -> None:
+        """
+        Update the project path for all components.
+
+        Args:
+            project_path: New project root directory
+        """
+        super().set_project_path(project_path)
+        self.query_service = QueryService(project_path)
+        logger.info(f"QueryTool project path updated to: {project_path}")
 
     def get_tool_definition(self) -> dict[str, Any]:
         """
@@ -248,3 +256,62 @@ class QueryTool:
             List of available query keys
         """
         return self.query_service.get_available_queries(language)
+
+    def validate_arguments(self, arguments: dict[str, Any]) -> bool:
+        """
+        Validate tool arguments.
+
+        Args:
+            arguments: Arguments to validate
+
+        Returns:
+            True if arguments are valid
+
+        Raises:
+            ValueError: If arguments are invalid
+        """
+        # Check required fields
+        if "file_path" not in arguments:
+            raise ValueError("file_path is required")
+
+        # Validate file_path
+        file_path = arguments["file_path"]
+        if not isinstance(file_path, str):
+            raise ValueError("file_path must be a string")
+        if not file_path.strip():
+            raise ValueError("file_path cannot be empty")
+
+        # Check that either query_key or query_string is provided
+        query_key = arguments.get("query_key")
+        query_string = arguments.get("query_string")
+
+        if not query_key and not query_string:
+            raise ValueError("Either query_key or query_string must be provided")
+
+        # Validate query_key if provided
+        if query_key and not isinstance(query_key, str):
+            raise ValueError("query_key must be a string")
+
+        # Validate query_string if provided
+        if query_string and not isinstance(query_string, str):
+            raise ValueError("query_string must be a string")
+
+        # Validate optional fields
+        if "language" in arguments:
+            language = arguments["language"]
+            if not isinstance(language, str):
+                raise ValueError("language must be a string")
+
+        if "filter" in arguments:
+            filter_expr = arguments["filter"]
+            if not isinstance(filter_expr, str):
+                raise ValueError("filter must be a string")
+
+        if "output_format" in arguments:
+            output_format = arguments["output_format"]
+            if not isinstance(output_format, str):
+                raise ValueError("output_format must be a string")
+            if output_format not in ["json", "summary"]:
+                raise ValueError("output_format must be one of: json, summary")
+
+        return True
