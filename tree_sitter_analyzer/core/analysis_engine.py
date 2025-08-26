@@ -560,11 +560,6 @@ class MockLanguagePlugin:
             source_code="// Mock source code",  # 新しいアーキテクチャ用
             language=self.language,  # 言語を設定
             package=None,
-            imports=[],
-            classes=[],
-            methods=[],
-            fields=[],
-            annotations=[],
             analysis_time=0.1,
             success=True,
             error_message=None,

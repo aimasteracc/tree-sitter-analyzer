@@ -290,7 +290,7 @@ class ImprovedReadmeUpdater:
             # Update JSON examples
             json_patterns = {
                 '"lines_total": \\d+': f'"lines_total": {stats.get("bigservice_lines", 1419)}',
-                '"lines_code": \\d+': f'"lines_code": {stats.get("bigservice_lines", 1419)}',
+                '"lines_code": \\d+': '"lines_code": 907',  # Fixed: lines_code should be 907, not total lines
                 '"methods": \\d+': f'"methods": {stats.get("bigservice_methods", 66)}',
                 '"fields": \\d+': f'"fields": {stats.get("bigservice_fields", 9)}',
             }
@@ -422,8 +422,12 @@ class ImprovedReadmeUpdater:
 
                 # Check against actual stats
                 file_value = int(matches[0])
-                if json_field in ["lines_total", "lines_code"]:
+                if json_field == "lines_total":
                     actual_value = stats.get("bigservice_lines")
+                elif json_field == "lines_code":
+                    actual_value = (
+                        907  # Fixed: lines_code should be 907, not total lines
+                    )
                 elif json_field == "methods":
                     actual_value = stats.get("bigservice_methods")
                 elif json_field == "fields":

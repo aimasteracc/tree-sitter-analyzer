@@ -146,12 +146,16 @@ class TestMCPServerInitialization:
         # Use a non-existent directory
         invalid_path = "/nonexistent/path/that/should/not/exist"
 
-        # Should raise an error (security validator rejects invalid paths)
-        # Accept either SecurityError or generic Exception depending on platform
-        from tree_sitter_analyzer.exceptions import SecurityError
+        # SecurityValidator catches the SecurityError and sets boundary_manager to None
+        # So the server should initialize successfully but with limited security validation
+        server = TreeSitterAnalyzerMCPServer(invalid_path)
 
-        with pytest.raises((SecurityError, Exception)):
-            TreeSitterAnalyzerMCPServer(invalid_path)
+        # Server should still initialize successfully
+        assert server.is_initialized() is True
+        assert server.analysis_engine is not None
+
+        # But boundary_manager should be None due to invalid path
+        assert server.security_validator.boundary_manager is None
 
 
 class TestMCPServerErrorHandling:

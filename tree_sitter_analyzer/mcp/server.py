@@ -45,13 +45,21 @@ except ImportError:
         pass
 
 
+from ..constants import (
+    ELEMENT_TYPE_CLASS,
+    ELEMENT_TYPE_FUNCTION,
+    ELEMENT_TYPE_IMPORT,
+    ELEMENT_TYPE_PACKAGE,
+    ELEMENT_TYPE_VARIABLE,
+    is_element_of_type,
+)
 from ..core.analysis_engine import get_analysis_engine
 from ..project_detector import detect_project_root
 from ..security import SecurityValidator
 from ..utils import setup_logger
 from . import MCP_INFO
 from .resources import CodeFileResource, ProjectStatsResource
-from .tools.base_tool import MCPTool
+from .tools.analyze_scale_tool import AnalyzeScaleTool
 from .tools.query_tool import QueryTool
 from .tools.read_partial_tool import ReadPartialTool
 from .tools.table_format_tool import TableFormatTool
@@ -81,12 +89,10 @@ class TreeSitterAnalyzerMCPServer:
 
         # Initialize MCP tools with security validation (four core tools)
         self.query_tool = QueryTool(project_root)  # query_code
-        self.read_partial_tool: MCPTool = ReadPartialTool(
-            project_root
-        )  # extract_code_section
-        self.table_format_tool: MCPTool = TableFormatTool(
-            project_root
-        )  # analyze_code_structure
+        self.read_partial_tool = ReadPartialTool(project_root)  # extract_code_section
+        self.table_format_tool = TableFormatTool(project_root)  # analyze_code_structure
+        self.analyze_scale_tool = AnalyzeScaleTool(project_root)  # check_code_scale
+
         # Optional universal tool to satisfy initialization tests
         try:
             from .tools.universal_analyze_tool import UniversalAnalyzeTool
@@ -186,53 +192,189 @@ class TreeSitterAnalyzerMCPServer:
             )
             raise RuntimeError(f"Failed to analyze file: {file_path} - {error_msg}")
 
-        # Convert to dictionary format
-        result_dict = analysis_result.to_dict()
+        # Get element counts from the unified elements list
+        elements = analysis_result.elements or []
 
-        # Format result to match test expectations
-        elements = result_dict.get("elements", [])
+        # Count elements by type using the new unified system
+        classes_count = len(
+            [e for e in elements if is_element_of_type(e, ELEMENT_TYPE_CLASS)]
+        )
+        methods_count = len(
+            [e for e in elements if is_element_of_type(e, ELEMENT_TYPE_FUNCTION)]
+        )
+        fields_count = len(
+            [e for e in elements if is_element_of_type(e, ELEMENT_TYPE_VARIABLE)]
+        )
+        imports_count = len(
+            [e for e in elements if is_element_of_type(e, ELEMENT_TYPE_IMPORT)]
+        )
+        packages_count = len(
+            [e for e in elements if is_element_of_type(e, ELEMENT_TYPE_PACKAGE)]
+        )
+        total_elements = (
+            classes_count
+            + methods_count
+            + fields_count
+            + imports_count
+            + packages_count
+        )
 
-        # Count elements by type
-        classes_count = len([e for e in elements if e.get("__class__") == "Class"])
-        methods_count = len([e for e in elements if e.get("__class__") == "Function"])
-        fields_count = len([e for e in elements if e.get("__class__") == "Variable"])
-        imports_count = len([e for e in elements if e.get("__class__") == "Import"])
+        # Calculate accurate file metrics including comments and blank lines
+        file_metrics = self._calculate_file_metrics(resolved_path, language)
+        lines_code = file_metrics["code_lines"]
+        lines_comment = file_metrics["comment_lines"]
+        lines_blank = file_metrics["blank_lines"]
 
         result = {
             "file_path": file_path,
             "language": language,
             "metrics": {
-                "lines_total": result_dict.get("line_count", 0),
-                "lines_code": result_dict.get("line_count", 0),  # Approximation
-                "lines_comment": 0,  # Not available in basic analysis
-                "lines_blank": 0,  # Not available in basic analysis
+                "lines_total": analysis_result.line_count,
+                "lines_code": lines_code,
+                "lines_comment": lines_comment,
+                "lines_blank": lines_blank,
                 "elements": {
                     "classes": classes_count,
                     "methods": methods_count,
                     "fields": fields_count,
                     "imports": imports_count,
-                    "total": len(elements),
+                    "packages": packages_count,
+                    "total": total_elements,
                 },
             },
         }
 
         if include_complexity:
             # Add complexity metrics if available
-            methods = [e for e in elements if e.get("__class__") == "Function"]
+            methods = [
+                e for e in elements if is_element_of_type(e, ELEMENT_TYPE_FUNCTION)
+            ]
             if methods:
-                complexities = [e.get("complexity_score", 0) for e in methods]
+                complexities = [getattr(m, "complexity_score", 0) for m in methods]
                 result["metrics"]["complexity"] = {
                     "total": sum(complexities),
-                    "average": (
-                        sum(complexities) / len(complexities) if complexities else 0
+                    "average": round(
+                        sum(complexities) / len(complexities) if complexities else 0, 2
                     ),
                     "max": max(complexities) if complexities else 0,
                 }
 
         if include_details:
-            result["detailed_elements"] = elements
+            # Convert elements to serializable format
+            detailed_elements = []
+            for elem in elements:
+                if hasattr(elem, "__dict__"):
+                    detailed_elements.append(elem.__dict__)
+                else:
+                    detailed_elements.append(str(elem))
+            result["detailed_elements"] = detailed_elements
 
         return result
+
+    def _calculate_file_metrics(self, file_path: str, language: str) -> dict[str, Any]:
+        """
+        Calculate accurate file metrics including line counts, comments, and blank lines.
+
+        Args:
+            file_path: Path to the file to analyze
+            language: Programming language
+
+        Returns:
+            Dictionary containing file metrics
+        """
+        try:
+            with open(file_path, encoding="utf-8") as f:
+                content = f.read()
+
+            lines = content.split("\n")
+            total_lines = len(lines)
+
+            # Remove empty line at the end if file ends with newline
+            if lines and not lines[-1]:
+                total_lines -= 1
+
+            # Count different types of lines
+            code_lines = 0
+            comment_lines = 0
+            blank_lines = 0
+            in_multiline_comment = False
+
+            for line in lines:
+                stripped = line.strip()
+
+                # Check for blank lines first
+                if not stripped:
+                    blank_lines += 1
+                    continue
+
+                # Check if we're in a multi-line comment
+                if in_multiline_comment:
+                    comment_lines += 1
+                    # Check if this line ends the multi-line comment
+                    if "*/" in stripped:
+                        in_multiline_comment = False
+                    continue
+
+                # Check for multi-line comment start
+                if stripped.startswith("/**") or stripped.startswith("/*"):
+                    comment_lines += 1
+                    # Check if this line also ends the comment
+                    if "*/" not in stripped:
+                        in_multiline_comment = True
+                    continue
+
+                # Check for single-line comments
+                if stripped.startswith("//"):
+                    comment_lines += 1
+                    continue
+
+                # Check for JavaDoc continuation lines (lines starting with * but not */)
+                if stripped.startswith("*") and not stripped.startswith("*/"):
+                    comment_lines += 1
+                    continue
+
+                # Check for other comment types based on language
+                if language == "python" and stripped.startswith("#"):
+                    comment_lines += 1
+                    continue
+                elif language == "sql" and stripped.startswith("--"):
+                    comment_lines += 1
+                    continue
+                elif language in ["html", "xml"] and stripped.startswith("<!--"):
+                    comment_lines += 1
+                    if "-->" not in stripped:
+                        in_multiline_comment = True
+                    continue
+                elif in_multiline_comment and "-->" in stripped:
+                    comment_lines += 1
+                    in_multiline_comment = False
+                    continue
+
+                # If not a comment, it's code
+                code_lines += 1
+
+            # Ensure the sum equals total_lines (handle any rounding errors)
+            calculated_total = code_lines + comment_lines + blank_lines
+            if calculated_total != total_lines:
+                # Adjust code_lines to match total
+                code_lines = total_lines - comment_lines - blank_lines
+                # Ensure code_lines is not negative
+                code_lines = max(0, code_lines)
+
+            return {
+                "total_lines": total_lines,
+                "code_lines": code_lines,
+                "comment_lines": comment_lines,
+                "blank_lines": blank_lines,
+            }
+        except Exception as e:
+            logger.error(f"Error calculating file metrics for {file_path}: {e}")
+            return {
+                "total_lines": 0,
+                "code_lines": 0,
+                "comment_lines": 0,
+                "blank_lines": 0,
+            }
 
     def create_server(self) -> Server:
         """
@@ -359,14 +501,8 @@ class TreeSitterAnalyzerMCPServer:
                     if "file_path" not in arguments:
                         raise ValueError("file_path parameter is required")
 
-                    # Add default values for optional parameters
-                    full_args = {
-                        "file_path": arguments["file_path"],
-                        "language": arguments.get("language"),
-                        "include_complexity": arguments.get("include_complexity", True),
-                        "include_details": arguments.get("include_details", False),
-                    }
-                    result = await self._analyze_code_scale(full_args)
+                    # Use the original _analyze_code_scale method for backward compatibility
+                    result = await self._analyze_code_scale(arguments)
 
                 elif name == "analyze_code_structure":
                     if "file_path" not in arguments:
@@ -504,12 +640,28 @@ class TreeSitterAnalyzerMCPServer:
 
     def set_project_path(self, project_path: str) -> None:
         """
-        Set the project path for statistics resource
+        Set the project path for all components
 
         Args:
             project_path: Path to the project directory
         """
+        # Update project stats resource
         self.project_stats_resource.set_project_path(project_path)
+
+        # Update all MCP tools (all inherit from BaseMCPTool)
+        self.query_tool.set_project_path(project_path)
+        self.read_partial_tool.set_project_path(project_path)
+        self.table_format_tool.set_project_path(project_path)
+        self.analyze_scale_tool.set_project_path(project_path)
+
+        # Update universal tool if available
+        if hasattr(self, "universal_analyze_tool") and self.universal_analyze_tool:
+            self.universal_analyze_tool.set_project_path(project_path)
+
+        # Update analysis engine and security validator
+        self.analysis_engine = get_analysis_engine(project_path)
+        self.security_validator = SecurityValidator(project_path)
+
         try:
             logger.info(f"Set project path to: {project_path}")
         except (ValueError, OSError):

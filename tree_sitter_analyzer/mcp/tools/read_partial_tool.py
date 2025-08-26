@@ -11,15 +11,14 @@ from pathlib import Path
 from typing import Any
 
 from ...file_handler import read_file_partial
-from ...security import SecurityValidator
 from ...utils import setup_logger
-from ..utils.path_resolver import PathResolver
+from .base_tool import BaseMCPTool
 
 # Set up logging
 logger = setup_logger(__name__)
 
 
-class ReadPartialTool:
+class ReadPartialTool(BaseMCPTool):
     """
     MCP Tool for reading partial content from code files.
 
@@ -29,9 +28,7 @@ class ReadPartialTool:
 
     def __init__(self, project_root: str = None) -> None:
         """Initialize the read partial tool."""
-        self.security_validator = SecurityValidator(project_root)
-        self.project_root = project_root
-        self.path_resolver = PathResolver(project_root)
+        super().__init__(project_root)
         logger.info("ReadPartialTool initialized with security validation")
 
     def get_tool_schema(self) -> dict[str, Any]:
