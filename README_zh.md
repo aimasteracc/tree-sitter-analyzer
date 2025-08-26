@@ -3,10 +3,10 @@
 [![Python版本](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![许可证](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![测试](https://img.shields.io/badge/tests-1514%20passed-brightgreen.svg)](#质量保证)
-[![覆盖率](https://img.shields.io/badge/coverage-74.24%25-green.svg)](#质量保证)
+[![覆盖率](https://img.shields.io/badge/coverage-74.10%25-green.svg)](#质量保证)
 [![质量](https://img.shields.io/badge/quality-enterprise%20grade-blue.svg)](#质量保证)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
-[![版本](https://img.shields.io/badge/version-1.2.0-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
+[![版本](https://img.shields.io/badge/version-1.2.1-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
 ## 🚀 突破LLM token限制，让AI理解任意大小的代码文件
@@ -566,7 +566,7 @@ Tree-sitter Analyzer自动检测和保护项目边界：
 - **零测试失败** - 完全CI/CD就绪
 - **跨平台兼容** - Windows、macOS、Linux
 
-### ⚡ **最新质量成就（v1.2.0）**
+### ⚡ **最新质量成就（v1.2.1）**
 - ✅ **跨平台路径兼容性** - 修复Windows短路径名称和macOS符号链接差异
 - ✅ **Windows环境** - 使用Windows API实现稳健的路径标准化
 - ✅ **macOS环境** - 修复`/var`与`/private/var`符号链接差异
