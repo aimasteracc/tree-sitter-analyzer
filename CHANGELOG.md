@@ -1,5 +1,31 @@
 # Changelog
 
+## [1.2.2] - 2025-08-27
+
+### Release: v1.2.2
+
+#### 🐛 Documentation Fix
+
+##### 📅 Date Corrections
+- **Fixed incorrect dates** in CHANGELOG.md for recent releases
+- **v1.2.1**: Corrected from `2025-01-27` to `2025-08-27`
+- **v1.2.0**: Corrected from `2025-01-27` to `2025-08-26`
+
+#### 🔧 What was fixed
+- CHANGELOG.md contained incorrect dates (showing January instead of August)
+- This affected the accuracy of project release history
+- All dates now correctly reflect actual release dates
+
+#### 📋 Files changed
+- `CHANGELOG.md` - Date corrections for v1.2.1 and v1.2.0
+
+#### 🚀 Impact
+- Improved documentation accuracy
+- Better project history tracking
+- Enhanced user experience with correct release information
+
+---
+
 ## [1.2.1] - 2025-08-27
 
 ### Release: v1.2.1
