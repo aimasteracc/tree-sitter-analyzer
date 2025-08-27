@@ -150,7 +150,7 @@ class JavaElementExtractor(ElementExtractor):
     def extract_imports(
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[Import]:
-        """Extract Java import statements"""
+        """Extract Java import statements with enhanced robustness"""
         self.source_code = source_code
         self.content_lines = source_code.split("\n")
 
@@ -172,7 +172,71 @@ class JavaElementExtractor(ElementExtractor):
                 # After package and imports come class declarations, so stop
                 break
 
+        # Fallback: if no imports found via tree-sitter, try regex-based extraction
+        if not imports and "import" in source_code:
+            log_debug("No imports found via tree-sitter, trying regex fallback")
+            fallback_imports = self._extract_imports_fallback(source_code)
+            imports.extend(fallback_imports)
+
         log_debug(f"Extracted {len(imports)} imports")
+        return imports
+
+    def _extract_imports_fallback(self, source_code: str) -> list[Import]:
+        """Fallback import extraction using regex when tree-sitter fails"""
+        imports = []
+        lines = source_code.split("\n")
+        
+        for line_num, line in enumerate(lines, 1):
+            line = line.strip()
+            if line.startswith("import ") and line.endswith(";"):
+                # Extract import statement
+                import_content = line[:-1]  # Remove semicolon
+                
+                if "static" in import_content:
+                    # Static import
+                    static_match = re.search(r"import\s+static\s+([\w.]+)", import_content)
+                    if static_match:
+                        import_name = static_match.group(1)
+                        if import_content.endswith(".*"):
+                            import_name = import_name.replace(".*", "")
+                            parts = import_name.split(".")
+                            if len(parts) > 1:
+                                import_name = ".".join(parts[:-1])
+                        
+                        imports.append(Import(
+                            name=import_name,
+                            start_line=line_num,
+                            end_line=line_num,
+                            raw_text=line,
+                            language="java",
+                            module_name=import_name,
+                            is_static=True,
+                            is_wildcard=import_content.endswith(".*"),
+                            import_statement=import_content,
+                        ))
+                else:
+                    # Normal import
+                    normal_match = re.search(r"import\s+([\w.]+)", import_content)
+                    if normal_match:
+                        import_name = normal_match.group(1)
+                        if import_content.endswith(".*"):
+                            if import_name.endswith(".*"):
+                                import_name = import_name[:-2]
+                            elif import_name.endswith("."):
+                                import_name = import_name[:-1]
+                        
+                        imports.append(Import(
+                            name=import_name,
+                            start_line=line_num,
+                            end_line=line_num,
+                            raw_text=line,
+                            language="java",
+                            module_name=import_name,
+                            is_static=False,
+                            is_wildcard=import_content.endswith(".*"),
+                            import_statement=import_content,
+                        ))
+        
         return imports
 
     def extract_packages(
