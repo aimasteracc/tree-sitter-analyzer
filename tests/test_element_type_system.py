@@ -150,7 +150,6 @@ public class SampleClass {
                 element_counts["imports"] = int(line.split(": ")[1].rstrip('"'))
 
         # Verify expected counts for the sample file
-        # Note: Import count may vary due to environment differences in tree-sitter parsing
         assert (
             element_counts.get("classes", 0) == 1
         ), f"Expected 1 class, got {element_counts.get('classes', 0)}"
@@ -160,9 +159,9 @@ public class SampleClass {
         assert (
             element_counts.get("fields", 0) == 2
         ), f"Expected 2 fields, got {element_counts.get('fields', 0)}"
-        # Import count can be 0 or 1 depending on environment - both are valid
-        import_count = element_counts.get("imports", 0)
-        assert import_count in [0, 1], f"Expected 0 or 1 imports, got {import_count}"
+        assert (
+            element_counts.get("imports", 0) == 1
+        ), f"Expected 1 import, got {element_counts.get('imports', 0)}"
 
     def test_table_command_element_counts(self, monkeypatch, sample_java_file):
         """Test that table command shows correct element counts"""
@@ -420,3 +419,5 @@ public class EmptyClass {
         assert (
             element_counts.get("imports", 0) == 0
         ), "Empty class should have 0 imports"
+
+
