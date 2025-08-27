@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.2.3] - 2025-08-27
+
+### Release: v1.2.3
+
+#### 🐛 Java Import Parsing Fix
+- **Robust fallback mechanism**: Added regex-based import extraction when tree-sitter parsing fails
+- **CI environment compatibility**: Resolved import count assertion failures across different CI environments
+- **Cross-platform stability**: Enhanced Java parser robustness for Windows, macOS, and Linux
+
+#### 🔧 Technical Improvements
+- **Fallback import extraction**: Implemented backup parsing method for Java import statements
+- **Environment handling**: Better handling of tree-sitter version differences in CI environments
+- **Error recovery**: Improved error handling and recovery in Java element extraction
+- **GitFlow process correction**: Standardized release process documentation and workflow
+
+#### 📚 Documentation Updates
+- **Multi-language support**: Updated version numbers across all language variants (English, Japanese, Chinese)
+- **Process documentation**: Corrected and standardized GitFlow release process
+- **Version consistency**: Synchronized version numbers across all project files
+
+---
+
 ## [1.2.2] - 2025-08-27
 
 ### Release: v1.2.2
