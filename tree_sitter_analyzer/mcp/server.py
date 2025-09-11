@@ -63,6 +63,9 @@ from .tools.analyze_scale_tool import AnalyzeScaleTool
 from .tools.query_tool import QueryTool
 from .tools.read_partial_tool import ReadPartialTool
 from .tools.table_format_tool import TableFormatTool
+from .tools.list_files_tool import ListFilesTool
+from .tools.search_content_tool import SearchContentTool
+from .tools.find_and_grep_tool import FindAndGrepTool
 
 # Set up logging
 logger = setup_logger(__name__)
@@ -87,11 +90,15 @@ class TreeSitterAnalyzerMCPServer:
         self.security_validator = SecurityValidator(project_root)
         # Use unified analysis engine instead of deprecated AdvancedAnalyzer
 
-        # Initialize MCP tools with security validation (four core tools)
+        # Initialize MCP tools with security validation (core tools + fd/rg tools)
         self.query_tool = QueryTool(project_root)  # query_code
         self.read_partial_tool = ReadPartialTool(project_root)  # extract_code_section
         self.table_format_tool = TableFormatTool(project_root)  # analyze_code_structure
         self.analyze_scale_tool = AnalyzeScaleTool(project_root)  # check_code_scale
+        # New fd/rg tools
+        self.list_files_tool = ListFilesTool(project_root)  # list_files
+        self.search_content_tool = SearchContentTool(project_root)  # search_content
+        self.find_and_grep_tool = FindAndGrepTool(project_root)  # find_and_grep
 
         # Optional universal tool to satisfy initialization tests
         try:
@@ -466,6 +473,9 @@ class TreeSitterAnalyzerMCPServer:
                     },
                 ),
                 Tool(**self.query_tool.get_tool_definition()),
+                Tool(**self.list_files_tool.get_tool_definition()),
+                Tool(**self.search_content_tool.get_tool_definition()),
+                Tool(**self.find_and_grep_tool.get_tool_definition()),
             ]
 
             logger.info(f"Returning {len(tools)} tools: {[t.name for t in tools]}")
@@ -544,6 +554,15 @@ class TreeSitterAnalyzerMCPServer:
 
                 elif name == "query_code":
                     result = await self.query_tool.execute(arguments)
+
+                elif name == "list_files":
+                    result = await self.list_files_tool.execute(arguments)
+
+                elif name == "search_content":
+                    result = await self.search_content_tool.execute(arguments)
+
+                elif name == "find_and_grep":
+                    result = await self.find_and_grep_tool.execute(arguments)
 
                 else:
                     raise ValueError(f"Unknown tool: {name}")
@@ -653,6 +672,9 @@ class TreeSitterAnalyzerMCPServer:
         self.read_partial_tool.set_project_path(project_path)
         self.table_format_tool.set_project_path(project_path)
         self.analyze_scale_tool.set_project_path(project_path)
+        self.list_files_tool.set_project_path(project_path)
+        self.search_content_tool.set_project_path(project_path)
+        self.find_and_grep_tool.set_project_path(project_path)
 
         # Update universal tool if available
         if hasattr(self, "universal_analyze_tool") and self.universal_analyze_tool:
