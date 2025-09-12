@@ -53,6 +53,11 @@ class SearchContentTool(BaseMCPTool):
                         "default": False,
                         "description": "Return only match counts per file instead of full match details",
                     },
+                    "summary_only": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "Return a summarized view of results to reduce context size",
+                    },
                 },
                 "required": ["query"],
                 "anyOf": [

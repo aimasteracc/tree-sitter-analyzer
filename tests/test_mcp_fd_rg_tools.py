@@ -435,3 +435,69 @@ def test_build_rg_command_with_count_only():
     assert "--count-matches" not in cmd
     assert "test" in cmd
     assert "/test" in cmd
+
+
+@pytest.mark.unit
+def test_summarize_search_results():
+    """Test summarizing search results for context reduction."""
+    from tree_sitter_analyzer.mcp.tools.fd_rg_utils import summarize_search_results
+    
+    # Mock search results
+    matches = [
+        {"file": "file1.py", "line_number": 10, "line": "import os"},
+        {"file": "file1.py", "line_number": 20, "line": "import sys"},
+        {"file": "file1.py", "line_number": 30, "line": "import json"},
+        {"file": "file2.py", "line_number": 5, "line": "import re"},
+        {"file": "file2.py", "line_number": 15, "line": "import time"},
+        {"file": "file3.py", "line_number": 1, "line": "import logging"},
+    ]
+    
+    summary = summarize_search_results(matches, max_files=2, max_total_lines=4)
+    
+    assert summary["total_matches"] == 6
+    assert summary["total_files"] == 3
+    assert summary["truncated"] is True  # 3 files > max_files=2
+    assert len(summary["top_files"]) == 2
+    
+    # file1.py should be first (3 matches)
+    assert summary["top_files"][0]["file"] == "file1.py"
+    assert summary["top_files"][0]["match_count"] == 3
+    assert len(summary["top_files"][0]["sample_lines"]) == 3
+    
+    # file2.py should be second (2 matches)
+    assert summary["top_files"][1]["file"] == "file2.py"
+    assert summary["top_files"][1]["match_count"] == 2
+    assert len(summary["top_files"][1]["sample_lines"]) == 1  # limited by max_total_lines
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_list_files_count_only(monkeypatch, tmp_path):
+    """Test list_files tool with count_only option."""
+    tool = ListFilesTool(str(tmp_path))
+    
+    # Mock fd output
+    mock_fd_output = b"""file1.py
+file2.py
+file3.py
+file4.py
+file5.py
+"""
+    
+    async def fake_run(cmd, input_data=None, timeout_ms=None):
+        return 0, mock_fd_output, b""
+    
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture", fake_run
+    )
+    
+    result = await tool.execute({
+        "roots": [str(tmp_path)],
+        "count_only": True
+    })
+    
+    assert result["success"] is True
+    assert result["count_only"] is True
+    assert result["total_count"] == 5
+    assert "results" not in result  # No detailed results in count_only mode
+    assert "elapsed_ms" in result

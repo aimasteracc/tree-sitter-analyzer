@@ -68,6 +68,11 @@ class FindAndGrepTool(BaseMCPTool):
                         "default": False,
                         "description": "Return only match counts per file instead of full match details",
                     },
+                    "summary_only": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "Return a summarized view of results to reduce context size",
+                    },
                 },
                 "required": ["roots", "query"],
                 "additionalProperties": False,
@@ -243,7 +248,7 @@ class FindAndGrepTool(BaseMCPTool):
             # Parse count-only output
             count_data = fd_rg_utils.parse_rg_count_output(rg_out)
             total_matches = count_data.pop("__total__", 0)
-
+            
             return {
                 "success": True,
                 "count_only": True,
@@ -263,14 +268,29 @@ class FindAndGrepTool(BaseMCPTool):
             if truncated_rg:
                 matches = matches[: fd_rg_utils.MAX_RESULTS_HARD_CAP]
 
-            return {
-                "success": True,
-                "results": matches,
-                "count": len(matches),
-                "meta": {
-                    "searched_file_count": searched_file_count,
-                    "truncated": (truncated_fd or truncated_rg),
-                    "fd_elapsed_ms": fd_elapsed_ms,
-                    "rg_elapsed_ms": rg_elapsed_ms,
-                },
-            }
+            # Check if summary_only mode is requested
+            if arguments.get("summary_only", False):
+                summary = fd_rg_utils.summarize_search_results(matches)
+                return {
+                    "success": True,
+                    "summary_only": True,
+                    "summary": summary,
+                    "meta": {
+                        "searched_file_count": searched_file_count,
+                        "truncated": (truncated_fd or truncated_rg),
+                        "fd_elapsed_ms": fd_elapsed_ms,
+                        "rg_elapsed_ms": rg_elapsed_ms,
+                    },
+                }
+            else:
+                return {
+                    "success": True,
+                    "results": matches,
+                    "count": len(matches),
+                    "meta": {
+                        "searched_file_count": searched_file_count,
+                        "truncated": (truncated_fd or truncated_rg),
+                        "fd_elapsed_ms": fd_elapsed_ms,
+                        "rg_elapsed_ms": rg_elapsed_ms,
+                    },
+                }
