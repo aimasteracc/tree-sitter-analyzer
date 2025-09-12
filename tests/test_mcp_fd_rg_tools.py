@@ -808,7 +808,16 @@ async def test_list_files_with_pattern_and_no_pattern(monkeypatch, tmp_path):
     captured_commands.clear()
     await tool.execute({"roots": [str(tmp_path)]})
     assert "." in captured_commands[0]
-    assert str(tmp_path) in captured_commands[0]
+
+    # On macOS, PathResolver normalizes /private/var/ to /var/ for consistency
+    # So we need to check for the normalized path in the command
+    import os
+
+    expected_path = str(tmp_path)
+    if os.name == "posix" and expected_path.startswith("/private/var/"):
+        expected_path = expected_path.replace("/private/var/", "/var/", 1)
+
+    assert expected_path in captured_commands[0]
 
 
 @pytest.mark.unit
