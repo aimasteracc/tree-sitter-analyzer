@@ -48,6 +48,11 @@ class SearchContentTool(BaseMCPTool):
                     "encoding": {"type": "string"},
                     "max_count": {"type": "integer"},
                     "timeout_ms": {"type": "integer"},
+                    "count_only_matches": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "Return only match counts per file instead of full match details",
+                    },
                 },
                 "required": ["query"],
                 "anyOf": [
