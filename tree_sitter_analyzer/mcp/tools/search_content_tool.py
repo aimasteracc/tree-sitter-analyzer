@@ -117,6 +117,8 @@ class SearchContentTool(BaseMCPTool):
             "follow_symlinks",
             "hidden",
             "no_ignore",
+            "count_only_matches",
+            "summary_only",
         ]:
             if key in arguments and not isinstance(arguments[key], bool):
                 raise ValueError(f"{key} must be a boolean")
@@ -161,6 +163,10 @@ class SearchContentTool(BaseMCPTool):
             # Use parent directories as roots for compatibility
             roots = list(parent_dirs)
 
+        # Check for count-only mode
+        count_only_matches = bool(arguments.get("count_only_matches", False))
+        summary_only = bool(arguments.get("summary_only", False))
+
         # Roots mode
         cmd = fd_rg_utils.build_rg_command(
             query=arguments["query"],
@@ -181,6 +187,7 @@ class SearchContentTool(BaseMCPTool):
             timeout_ms=timeout_ms,
             roots=roots,
             files_from=None,
+            count_only_matches=count_only_matches,
         )
 
         started = time.time()
@@ -191,10 +198,34 @@ class SearchContentTool(BaseMCPTool):
             message = err.decode("utf-8", errors="replace").strip() or "ripgrep failed"
             return {"success": False, "error": message, "returncode": rc}
 
+        # Handle count-only mode
+        if count_only_matches:
+            file_counts = fd_rg_utils.parse_rg_count_output(out)
+            total_matches = file_counts.pop("__total__", 0)
+            return {
+                "success": True,
+                "count_only": True,
+                "total_matches": total_matches,
+                "file_counts": file_counts,
+                "elapsed_ms": elapsed_ms,
+            }
+
+        # Handle normal mode
         matches = fd_rg_utils.parse_rg_json_lines_to_matches(out)
         truncated = len(matches) >= fd_rg_utils.MAX_RESULTS_HARD_CAP
         if truncated:
             matches = matches[: fd_rg_utils.MAX_RESULTS_HARD_CAP]
+
+        # Handle summary mode
+        if summary_only:
+            summary = fd_rg_utils.summarize_search_results(matches)
+            return {
+                "success": True,
+                "count": len(matches),
+                "truncated": truncated,
+                "elapsed_ms": elapsed_ms,
+                "summary": summary,
+            }
 
         return {
             "success": True,
