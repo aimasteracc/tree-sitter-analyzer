@@ -60,6 +60,11 @@ class ListFilesTool(BaseMCPTool):
                     "full_path_match": {"type": "boolean"},
                     "absolute": {"type": "boolean"},
                     "limit": {"type": "integer"},
+                    "count_only": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "Return only the total count of files instead of file details",
+                    },
                 },
                 "required": ["roots"],
                 "additionalProperties": False,
@@ -163,6 +168,25 @@ class ListFilesTool(BaseMCPTool):
             for line in out.decode("utf-8", errors="replace").splitlines()
             if line.strip()
         ]
+        
+        # Check if count_only mode is requested
+        if arguments.get("count_only", False):
+            total_count = len(lines)
+            # Apply hard cap for counting as well
+            if total_count > fd_rg_utils.MAX_RESULTS_HARD_CAP:
+                total_count = fd_rg_utils.MAX_RESULTS_HARD_CAP
+                truncated = True
+            else:
+                truncated = False
+                
+            return {
+                "success": True,
+                "count_only": True,
+                "total_count": total_count,
+                "truncated": truncated,
+                "elapsed_ms": elapsed_ms,
+            }
+
         # Truncate defensively even if fd didn't
         truncated = False
         if len(lines) > fd_rg_utils.MAX_RESULTS_HARD_CAP:

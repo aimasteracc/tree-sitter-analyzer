@@ -314,6 +314,79 @@ def parse_rg_json_lines_to_matches(stdout_bytes: bytes) -> list[dict[str, Any]]:
     return results
 
 
+def summarize_search_results(
+    matches: list[dict[str, Any]], max_files: int = 10, max_total_lines: int = 50
+) -> dict[str, Any]:
+    """Summarize search results to reduce context size while preserving key information."""
+    if not matches:
+        return {
+            "total_matches": 0,
+            "total_files": 0,
+            "summary": "No matches found",
+            "top_files": [],
+        }
+    
+    # Group matches by file
+    file_groups: dict[str, list[dict[str, Any]]] = {}
+    for match in matches:
+        file_path = match.get("file", "unknown")
+        if file_path not in file_groups:
+            file_groups[file_path] = []
+        file_groups[file_path].append(match)
+    
+    # Sort files by match count (descending)
+    sorted_files = sorted(
+        file_groups.items(),
+        key=lambda x: len(x[1]),
+        reverse=True
+    )
+    
+    # Create summary
+    total_matches = len(matches)
+    total_files = len(file_groups)
+    
+    # Top files with match counts
+    top_files = []
+    remaining_lines = max_total_lines
+    
+    for file_path, file_matches in sorted_files[:max_files]:
+        match_count = len(file_matches)
+        
+        # Include a few sample lines from this file
+        sample_lines = []
+        lines_to_include = min(3, remaining_lines, len(file_matches))
+        
+        for i, match in enumerate(file_matches[:lines_to_include]):
+            line_num = match.get("line_number", "?")
+            line_text = match.get("line", "").strip()
+            if line_text:
+                sample_lines.append(f"L{line_num}: {line_text[:80]}...")
+                remaining_lines -= 1
+        
+        top_files.append({
+            "file": file_path,
+            "match_count": match_count,
+            "sample_lines": sample_lines,
+        })
+        
+        if remaining_lines <= 0:
+            break
+    
+    # Create summary text
+    if total_files <= max_files:
+        summary = f"Found {total_matches} matches in {total_files} files"
+    else:
+        summary = f"Found {total_matches} matches in {total_files} files (showing top {len(top_files)})"
+    
+    return {
+        "total_matches": total_matches,
+        "total_files": total_files,
+        "summary": summary,
+        "top_files": top_files,
+        "truncated": total_files > max_files,
+    }
+
+
 def parse_rg_count_output(stdout_bytes: bytes) -> dict[str, int]:
     """Parse ripgrep --count-matches output and return file->count mapping."""
     results: dict[str, int] = {}
