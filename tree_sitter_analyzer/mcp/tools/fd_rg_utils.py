@@ -189,15 +189,27 @@ def build_rg_command(
     timeout_ms: int | None,
     roots: list[str] | None,
     files_from: str | None,
+    count_only_matches: bool = False,
 ) -> list[str]:
     """Build ripgrep command with JSON output and options."""
-    cmd: list[str] = [
-        "rg",
-        "--json",
-        "--no-heading",
-        "--color",
-        "never",
-    ]
+    if count_only_matches:
+        # Use --count-matches for count-only mode (no JSON output)
+        cmd: list[str] = [
+            "rg",
+            "--count-matches",
+            "--no-heading",
+            "--color",
+            "never",
+        ]
+    else:
+        # Use --json for full match details
+        cmd: list[str] = [
+            "rg",
+            "--json",
+            "--no-heading",
+            "--color",
+            "never",
+        ]
 
     # Case sensitivity
     if case == "smart":
@@ -299,6 +311,32 @@ def parse_rg_json_lines_to_matches(stdout_bytes: bytes) -> list[dict[str, Any]]:
                 "submatches": submatches,
             }
         )
+    return results
+
+
+def parse_rg_count_output(stdout_bytes: bytes) -> dict[str, int]:
+    """Parse ripgrep --count-matches output and return file->count mapping."""
+    results: dict[str, int] = {}
+    total_matches = 0
+
+    for line in stdout_bytes.decode("utf-8", errors="replace").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+
+        # Format: "file_path:count"
+        if ":" in line:
+            file_path, count_str = line.rsplit(":", 1)
+            try:
+                count = int(count_str)
+                results[file_path] = count
+                total_matches += count
+            except ValueError:
+                # Skip lines that don't have valid count format
+                continue
+
+    # Add total count as special key
+    results["__total__"] = total_matches
     return results
 
 

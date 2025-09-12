@@ -63,6 +63,11 @@ class FindAndGrepTool(BaseMCPTool):
                     "encoding": {"type": "string"},
                     "max_count": {"type": "integer"},
                     "timeout_ms": {"type": "integer"},
+                    "count_only_matches": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "Return only match counts per file instead of full match details",
+                    },
                 },
                 "required": ["roots", "query"],
                 "additionalProperties": False,
@@ -218,6 +223,7 @@ class FindAndGrepTool(BaseMCPTool):
             timeout_ms=arguments.get("timeout_ms"),
             roots=rg_roots,
             files_from=None,
+            count_only_matches=bool(arguments.get("count_only_matches", False)),
         )
 
         rg_started = time.time()
@@ -233,19 +239,38 @@ class FindAndGrepTool(BaseMCPTool):
                 "returncode": rg_rc,
             }
 
-        matches = fd_rg_utils.parse_rg_json_lines_to_matches(rg_out)
-        truncated_rg = len(matches) >= fd_rg_utils.MAX_RESULTS_HARD_CAP
-        if truncated_rg:
-            matches = matches[: fd_rg_utils.MAX_RESULTS_HARD_CAP]
+        if arguments.get("count_only_matches", False):
+            # Parse count-only output
+            count_data = fd_rg_utils.parse_rg_count_output(rg_out)
+            total_matches = count_data.pop("__total__", 0)
 
-        return {
-            "success": True,
-            "results": matches,
-            "count": len(matches),
-            "meta": {
-                "searched_file_count": searched_file_count,
-                "truncated": (truncated_fd or truncated_rg),
-                "fd_elapsed_ms": fd_elapsed_ms,
-                "rg_elapsed_ms": rg_elapsed_ms,
-            },
-        }
+            return {
+                "success": True,
+                "count_only": True,
+                "total_matches": total_matches,
+                "file_counts": count_data,
+                "meta": {
+                    "searched_file_count": searched_file_count,
+                    "truncated": truncated_fd,
+                    "fd_elapsed_ms": fd_elapsed_ms,
+                    "rg_elapsed_ms": rg_elapsed_ms,
+                },
+            }
+        else:
+            # Parse full match details
+            matches = fd_rg_utils.parse_rg_json_lines_to_matches(rg_out)
+            truncated_rg = len(matches) >= fd_rg_utils.MAX_RESULTS_HARD_CAP
+            if truncated_rg:
+                matches = matches[: fd_rg_utils.MAX_RESULTS_HARD_CAP]
+
+            return {
+                "success": True,
+                "results": matches,
+                "count": len(matches),
+                "meta": {
+                    "searched_file_count": searched_file_count,
+                    "truncated": (truncated_fd or truncated_rg),
+                    "fd_elapsed_ms": fd_elapsed_ms,
+                    "rg_elapsed_ms": rg_elapsed_ms,
+                },
+            }

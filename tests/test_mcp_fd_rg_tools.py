@@ -268,3 +268,170 @@ async def test_find_and_grep_multiline_case_insensitive(monkeypatch, tmp_path):
     assert result["success"] is True
     assert result["count"] == 1
     assert result["results"][0]["line_number"] == 1
+
+
+@pytest.mark.unit
+def test_parse_rg_count_output():
+    """Test parsing ripgrep --count-matches output."""
+    from tree_sitter_analyzer.mcp.tools.fd_rg_utils import parse_rg_count_output
+
+    # Mock count output
+    count_output = b"""file1.py:5
+file2.py:3
+file3.py:0
+file4.py:12
+"""
+
+    result = parse_rg_count_output(count_output)
+
+    assert result["file1.py"] == 5
+    assert result["file2.py"] == 3
+    assert result["file3.py"] == 0
+    assert result["file4.py"] == 12
+    assert result["__total__"] == 20  # 5 + 3 + 0 + 12
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_search_content_count_only_matches(monkeypatch, tmp_path):
+    """Test search_content tool with count_only_matches option."""
+    tool = SearchContentTool(str(tmp_path))
+
+    # Mock count output
+    mock_count_output = b"""file1.py:5
+file2.py:3
+file4.py:12
+"""
+
+    async def fake_run(cmd, input_data=None, timeout_ms=None):
+        # Verify --count-matches is in command
+        assert "--count-matches" in cmd
+        return 0, mock_count_output, b""
+
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture", fake_run
+    )
+
+    result = await tool.execute(
+        {"roots": [str(tmp_path)], "query": "import", "count_only_matches": True}
+    )
+
+    assert result["success"] is True
+    assert result["count_only"] is True
+    assert result["total_matches"] == 20
+    assert result["file_counts"]["file1.py"] == 5
+    assert result["file_counts"]["file2.py"] == 3
+    assert result["file_counts"]["file4.py"] == 12
+    assert "elapsed_ms" in result
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_find_and_grep_count_only_matches(monkeypatch, tmp_path):
+    """Test find_and_grep tool with count_only_matches option."""
+    tool = FindAndGrepTool(str(tmp_path))
+
+    # Mock fd output (file list)
+    mock_fd_output = b"""file1.py
+file2.py
+file4.py
+"""
+
+    # Mock rg count output
+    mock_rg_count_output = b"""file1.py:5
+file2.py:3
+file4.py:12
+"""
+
+    call_count = 0
+
+    async def fake_run(cmd, input_data=None, timeout_ms=None):
+        nonlocal call_count
+        call_count += 1
+
+        if call_count == 1:  # fd command
+            assert "fd" in cmd[0]
+            return 0, mock_fd_output, b""
+        else:  # rg command
+            assert "--count-matches" in cmd
+            return 0, mock_rg_count_output, b""
+
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture", fake_run
+    )
+
+    result = await tool.execute(
+        {"roots": [str(tmp_path)], "query": "import", "count_only_matches": True}
+    )
+
+    assert result["success"] is True
+    assert result["count_only"] is True
+    assert result["total_matches"] == 20
+    assert result["file_counts"]["file1.py"] == 5
+    assert result["file_counts"]["file2.py"] == 3
+    assert result["file_counts"]["file4.py"] == 12
+    assert result["meta"]["searched_file_count"] == 3
+    assert "fd_elapsed_ms" in result["meta"]
+    assert "rg_elapsed_ms" in result["meta"]
+
+
+@pytest.mark.unit
+def test_build_rg_command_with_count_only():
+    """Test building ripgrep command with count_only_matches option."""
+    from tree_sitter_analyzer.mcp.tools.fd_rg_utils import build_rg_command
+
+    # Test with count_only_matches=True
+    cmd = build_rg_command(
+        query="test",
+        case="smart",
+        fixed_strings=False,
+        word=False,
+        multiline=False,
+        include_globs=None,
+        exclude_globs=None,
+        follow_symlinks=False,
+        hidden=False,
+        no_ignore=False,
+        max_filesize=None,
+        context_before=None,
+        context_after=None,
+        encoding=None,
+        max_count=None,
+        timeout_ms=None,
+        roots=["/test"],
+        files_from=None,
+        count_only_matches=True,
+    )
+
+    assert "--count-matches" in cmd
+    assert "--json" not in cmd
+    assert "test" in cmd
+    assert "/test" in cmd
+
+    # Test with count_only_matches=False (default)
+    cmd = build_rg_command(
+        query="test",
+        case="smart",
+        fixed_strings=False,
+        word=False,
+        multiline=False,
+        include_globs=None,
+        exclude_globs=None,
+        follow_symlinks=False,
+        hidden=False,
+        no_ignore=False,
+        max_filesize=None,
+        context_before=None,
+        context_after=None,
+        encoding=None,
+        max_count=None,
+        timeout_ms=None,
+        roots=["/test"],
+        files_from=None,
+        count_only_matches=False,
+    )
+
+    assert "--json" in cmd
+    assert "--count-matches" not in cmd
+    assert "test" in cmd
+    assert "/test" in cmd
