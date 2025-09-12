@@ -148,10 +148,13 @@ def build_fd_command(
         cmd += ["--max-results", str(limit)]
 
     # Pattern goes before roots if present
+    # If no pattern is specified, use '.' to match all files
     if pattern:
         cmd.append(pattern)
+    else:
+        cmd.append(".")
 
-    # Append roots
+    # Append roots - these are search directories, not patterns
     if roots:
         cmd += roots
 
@@ -325,7 +328,7 @@ def summarize_search_results(
             "summary": "No matches found",
             "top_files": [],
         }
-    
+
     # Group matches by file
     file_groups: dict[str, list[dict[str, Any]]] = {}
     for match in matches:
@@ -333,51 +336,49 @@ def summarize_search_results(
         if file_path not in file_groups:
             file_groups[file_path] = []
         file_groups[file_path].append(match)
-    
+
     # Sort files by match count (descending)
-    sorted_files = sorted(
-        file_groups.items(),
-        key=lambda x: len(x[1]),
-        reverse=True
-    )
-    
+    sorted_files = sorted(file_groups.items(), key=lambda x: len(x[1]), reverse=True)
+
     # Create summary
     total_matches = len(matches)
     total_files = len(file_groups)
-    
+
     # Top files with match counts
     top_files = []
     remaining_lines = max_total_lines
-    
+
     for file_path, file_matches in sorted_files[:max_files]:
         match_count = len(file_matches)
-        
+
         # Include a few sample lines from this file
         sample_lines = []
         lines_to_include = min(3, remaining_lines, len(file_matches))
-        
-        for i, match in enumerate(file_matches[:lines_to_include]):
+
+        for _i, match in enumerate(file_matches[:lines_to_include]):
             line_num = match.get("line_number", "?")
             line_text = match.get("line", "").strip()
             if line_text:
                 sample_lines.append(f"L{line_num}: {line_text[:80]}...")
                 remaining_lines -= 1
-        
-        top_files.append({
-            "file": file_path,
-            "match_count": match_count,
-            "sample_lines": sample_lines,
-        })
-        
+
+        top_files.append(
+            {
+                "file": file_path,
+                "match_count": match_count,
+                "sample_lines": sample_lines,
+            }
+        )
+
         if remaining_lines <= 0:
             break
-    
+
     # Create summary text
     if total_files <= max_files:
         summary = f"Found {total_matches} matches in {total_files} files"
     else:
         summary = f"Found {total_matches} matches in {total_files} files (showing top {len(top_files)})"
-    
+
     return {
         "total_matches": total_matches,
         "total_files": total_files,
