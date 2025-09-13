@@ -98,7 +98,7 @@ async def test_search_content_exec_files_list(monkeypatch, tmp_path):
     result = await tool.execute({"files": [str(f1)], "query": "hello"})
     assert result["success"] is True
     assert result["count"] == 1
-    assert result["results"][0]["line_number"] == 1
+    assert result["results"][0]["line"] == 1  # Updated field name
 
 
 @pytest.mark.unit
@@ -267,7 +267,7 @@ async def test_find_and_grep_multiline_case_insensitive(monkeypatch, tmp_path):
     )
     assert result["success"] is True
     assert result["count"] == 1
-    assert result["results"][0]["line_number"] == 1
+    assert result["results"][0]["line"] == 1
 
 
 @pytest.mark.unit
@@ -444,12 +444,12 @@ def test_summarize_search_results():
 
     # Mock search results
     matches = [
-        {"file": "file1.py", "line_number": 10, "line": "import os"},
-        {"file": "file1.py", "line_number": 20, "line": "import sys"},
-        {"file": "file1.py", "line_number": 30, "line": "import json"},
-        {"file": "file2.py", "line_number": 5, "line": "import re"},
-        {"file": "file2.py", "line_number": 15, "line": "import time"},
-        {"file": "file3.py", "line_number": 1, "line": "import logging"},
+        {"file": "file1.py", "line": 10, "text": "import os"},
+        {"file": "file1.py", "line": 20, "text": "import sys"},
+        {"file": "file1.py", "line": 30, "text": "import json"},
+        {"file": "file2.py", "line": 5, "text": "import re"},
+        {"file": "file2.py", "line": 15, "text": "import time"},
+        {"file": "file3.py", "line": 1, "text": "import logging"},
     ]
 
     summary = summarize_search_results(matches, max_files=2, max_total_lines=4)
@@ -592,6 +592,60 @@ async def test_search_content_error_handling(monkeypatch, tmp_path):
     assert result["success"] is False
     assert result["error"] == "rg: invalid regex"
     assert result["returncode"] == 2
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_find_and_grep_optimize_paths(monkeypatch, tmp_path):
+    """Test FindAndGrepTool with path optimization enabled."""
+    tool = FindAndGrepTool(str(tmp_path))
+
+    # Create test files with long paths
+    long_path = tmp_path / "very" / "long" / "nested" / "directory"
+    long_path.mkdir(parents=True)
+    f1 = long_path / "test.txt"
+    f1.write_text("hello world\n", encoding="utf-8")
+
+    # Mock fd output (file discovery)
+    fd_output = str(f1).encode()
+
+    # Mock ripgrep JSON output
+    rg_json = {
+        "type": "match",
+        "data": {
+            "path": {"text": str(f1)},
+            "lines": {"text": "hello world\n"},
+            "line_number": 1,
+            "submatches": [{"match": {"text": "hello"}, "start": 0, "end": 5}],
+        },
+    }
+
+    async def fake_run(cmd, input_data=None, timeout_ms=None):
+        if cmd and cmd[0] == "fd":
+            return 0, fd_output, b""
+        elif cmd and cmd[0] == "rg":
+            out = (json.dumps(rg_json) + "\n").encode()
+            return 0, out, b""
+        return 1, b"", b"Unknown command"
+
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture", fake_run
+    )
+
+    # Test with path optimization enabled
+    result = await tool.execute(
+        {"roots": [str(tmp_path)], "query": "hello", "optimize_paths": True}
+    )
+
+    assert result["success"] is True
+    assert result["count"] == 1
+
+    # The optimized path should be shorter than the original
+    original_path = str(f1)
+    optimized_path = result["results"][0]["file"]
+    assert len(optimized_path) <= len(original_path)
+    # Should not contain abs_path field
+    assert "abs_path" not in result["results"][0]
 
 
 @pytest.mark.unit
@@ -774,7 +828,7 @@ def test_summarize_search_results_edge_cases():
     assert summary["top_files"] == []
 
     # Test single match
-    matches = [{"file": "test.py", "line_number": 1, "line": "import os"}]
+    matches = [{"file": "test.py", "line": 1, "text": "import os"}]
     summary = summarize_search_results(matches, max_files=10, max_total_lines=10)
     assert summary["total_matches"] == 1
     assert summary["total_files"] == 1
@@ -818,6 +872,164 @@ async def test_list_files_with_pattern_and_no_pattern(monkeypatch, tmp_path):
         expected_path = expected_path.replace("/private/var/", "/var/", 1)
 
     assert expected_path in captured_commands[0]
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_search_content_optimize_paths(monkeypatch, tmp_path):
+    """Test SearchContentTool with path optimization enabled."""
+    tool = SearchContentTool(str(tmp_path))
+
+    # Create test files with long paths
+    long_path = tmp_path / "very" / "long" / "path" / "structure"
+    long_path.mkdir(parents=True)
+    f1 = long_path / "file1.txt"
+    f1.write_text("hello world\n", encoding="utf-8")
+
+    # Mock ripgrep JSON output with long absolute paths
+    rg_json = {
+        "type": "match",
+        "data": {
+            "path": {"text": str(f1)},
+            "lines": {"text": "hello world\n"},
+            "line_number": 1,
+            "submatches": [{"match": {"text": "hello"}, "start": 0, "end": 5}],
+        },
+    }
+
+    async def fake_run(cmd, input_data=None, timeout_ms=None):
+        if cmd and cmd[0] == "rg":
+            out = (json.dumps(rg_json) + "\n").encode()
+            return 0, out, b""
+        return 0, str(f1).encode(), b""
+
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture", fake_run
+    )
+
+    # Test with path optimization enabled
+    result = await tool.execute(
+        {"files": [str(f1)], "query": "hello", "optimize_paths": True}
+    )
+
+    assert result["success"] is True
+    assert result["count"] == 1
+
+    # The optimized path should be shorter than the original
+    original_path = str(f1)
+    optimized_path = result["results"][0]["file"]
+    assert len(optimized_path) <= len(original_path)
+    # Should not contain abs_path field
+    assert "abs_path" not in result["results"][0]
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_search_content_group_by_file(monkeypatch, tmp_path):
+    """Test SearchContentTool with file grouping enabled."""
+    tool = SearchContentTool(str(tmp_path))
+
+    # Create test file
+    test_file = tmp_path / "test.py"
+    test_file.write_text("hello world\nhello ai\nhello python\n", encoding="utf-8")
+
+    # Mock multiple ripgrep JSON matches from the same file
+    rg_events = [
+        {
+            "type": "match",
+            "data": {
+                "path": {"text": str(test_file)},
+                "lines": {"text": "hello world\n"},
+                "line_number": 1,
+                "submatches": [{"match": {"text": "hello"}, "start": 0, "end": 5}],
+            },
+        },
+        {
+            "type": "match",
+            "data": {
+                "path": {"text": str(test_file)},
+                "lines": {"text": "hello ai\n"},
+                "line_number": 2,
+                "submatches": [{"match": {"text": "hello"}, "start": 0, "end": 5}],
+            },
+        },
+        {
+            "type": "match",
+            "data": {
+                "path": {"text": str(test_file)},
+                "lines": {"text": "hello python\n"},
+                "line_number": 3,
+                "submatches": [{"match": {"text": "hello"}, "start": 0, "end": 5}],
+            },
+        },
+    ]
+
+    async def fake_run(cmd, input_data=None, timeout_ms=None):
+        if cmd and cmd[0] == "rg":
+            import json
+
+            output_lines = []
+            for event in rg_events:
+                output_lines.append(json.dumps(event))
+            out = "\n".join(output_lines).encode()
+            return 0, out, b""
+        return 0, str(test_file).encode(), b""
+
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture", fake_run
+    )
+
+    # Test with file grouping enabled
+    result = await tool.execute(
+        {"files": [str(test_file)], "query": "hello", "group_by_file": True}
+    )
+
+    assert result["success"] is True
+    assert result["count"] == 3
+    assert "files" in result
+    assert len(result["files"]) == 1  # Only one file
+
+    file_result = result["files"][0]
+    assert file_result["file"] == str(test_file)
+    assert len(file_result["matches"]) == 3  # Three matches in the file
+
+    # Verify match structure
+    for i, match in enumerate(file_result["matches"], 1):
+        assert match["line"] == i
+        assert "hello" in match["text"]
+        assert match["positions"] == [[0, 5]]
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_search_content_total_only(monkeypatch, tmp_path):
+    """Test SearchContentTool with total_only mode for maximum token efficiency."""
+    tool = SearchContentTool(str(tmp_path))
+
+    # Create test file
+    test_file = tmp_path / "test.py"
+    test_file.write_text("hello world\nhello ai\nhello python\n", encoding="utf-8")
+
+    # Mock ripgrep count output (simulating --count-matches)
+    count_output = f"{test_file}:3\n".encode()
+
+    async def fake_run(cmd, input_data=None, timeout_ms=None):
+        if cmd and cmd[0] == "rg" and "--count-matches" in cmd:
+            return 0, count_output, b""
+        return 0, str(test_file).encode(), b""
+
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture", fake_run
+    )
+
+    # Test with total_only enabled
+    result = await tool.execute(
+        {"files": [str(test_file)], "query": "hello", "total_only": True}
+    )
+
+    # Should return just the number
+    assert result == 3
+    assert isinstance(result, int)
 
 
 @pytest.mark.unit
