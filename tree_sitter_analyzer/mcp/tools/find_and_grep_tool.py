@@ -21,57 +21,170 @@ class FindAndGrepTool(BaseMCPTool):
     def get_tool_definition(self) -> dict[str, Any]:
         return {
             "name": "find_and_grep",
-            "description": "Run fd to select files then ripgrep to search contents; returns matches with meta",
+            "description": "Two-stage search: first use fd to find files matching criteria, then use ripgrep to search content within those files. Combines file filtering with content search for precise results.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
-                    # fd side
-                    "roots": {"type": "array", "items": {"type": "string"}},
-                    "pattern": {"type": "string"},
-                    "glob": {"type": "boolean", "default": False},
-                    "types": {"type": "array", "items": {"type": "string"}},
-                    "extensions": {"type": "array", "items": {"type": "string"}},
-                    "exclude": {"type": "array", "items": {"type": "string"}},
-                    "depth": {"type": "integer"},
-                    "follow_symlinks": {"type": "boolean"},
-                    "hidden": {"type": "boolean"},
-                    "no_ignore": {"type": "boolean"},
-                    "size": {"type": "array", "items": {"type": "string"}},
-                    "changed_within": {"type": "string"},
-                    "changed_before": {"type": "string"},
-                    "full_path_match": {"type": "boolean"},
-                    "file_limit": {"type": "integer"},
+                    # === FILE DISCOVERY STAGE (fd parameters) ===
+                    "roots": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Directory paths to search in. Must be within project boundaries. Example: ['.', 'src/', 'tests/']",
+                    },
+                    "pattern": {
+                        "type": "string",
+                        "description": "[FILE STAGE] Filename pattern to match. Use with 'glob' for shell patterns. Example: '*.py', 'test_*', 'main.js'",
+                    },
+                    "glob": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "[FILE STAGE] Treat filename pattern as glob instead of regex. True for '*.py', False for '.*\\.py$'",
+                    },
+                    "types": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "[FILE STAGE] File types to include. 'f'=files, 'd'=directories, 'l'=symlinks, 'x'=executable, 'e'=empty",
+                    },
+                    "extensions": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "[FILE STAGE] File extensions to include (without dots). Example: ['py', 'js'] for Python and JavaScript files",
+                    },
+                    "exclude": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "[FILE STAGE] File patterns to exclude. Example: ['*.tmp', '__pycache__'] to skip temporary files",
+                    },
+                    "depth": {
+                        "type": "integer",
+                        "description": "[FILE STAGE] Maximum directory depth to search. 1=current level only, 2=one level deep, etc.",
+                    },
+                    "follow_symlinks": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "[FILE STAGE] Follow symbolic links. False=safer, True=may cause loops",
+                    },
+                    "hidden": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "[FILE STAGE] Include hidden files/directories (starting with dot). False=skip .git, .env",
+                    },
+                    "no_ignore": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "[FILE STAGE] Ignore .gitignore files. False=respect ignore rules, True=search everything",
+                    },
+                    "size": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "[FILE STAGE] File size filters. Format: '+10M'=larger than 10MB, '-1K'=smaller than 1KB. Units: B, K, M, G",
+                    },
+                    "changed_within": {
+                        "type": "string",
+                        "description": "[FILE STAGE] Files modified within timeframe. Format: '1d'=1 day, '2h'=2 hours, '30m'=30 minutes",
+                    },
+                    "changed_before": {
+                        "type": "string",
+                        "description": "[FILE STAGE] Files modified before timeframe. Same format as changed_within",
+                    },
+                    "full_path_match": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "[FILE STAGE] Match pattern against full path instead of just filename",
+                    },
+                    "file_limit": {
+                        "type": "integer",
+                        "description": "[FILE STAGE] Maximum number of files to find before content search. Default 2000, prevents overwhelming searches",
+                    },
                     "sort": {
                         "type": "string",
                         "enum": ["path", "mtime", "size"],
+                        "description": "[FILE STAGE] Sort found files by: 'path'=alphabetical, 'mtime'=modification time, 'size'=file size",
                     },
-                    # rg side
-                    "query": {"type": "string"},
+                    # === CONTENT SEARCH STAGE (ripgrep parameters) ===
+                    "query": {
+                        "type": "string",
+                        "description": "[CONTENT STAGE] Text pattern to search for in the found files. Can be literal text or regex",
+                    },
                     "case": {
                         "type": "string",
                         "enum": ["smart", "insensitive", "sensitive"],
                         "default": "smart",
+                        "description": "[CONTENT STAGE] Case sensitivity. 'smart'=case-insensitive unless uppercase present, 'insensitive'=ignore case, 'sensitive'=exact case",
                     },
-                    "fixed_strings": {"type": "boolean", "default": False},
-                    "word": {"type": "boolean", "default": False},
-                    "multiline": {"type": "boolean", "default": False},
-                    "include_globs": {"type": "array", "items": {"type": "string"}},
-                    "exclude_globs": {"type": "array", "items": {"type": "string"}},
-                    "max_filesize": {"type": "string"},
-                    "context_before": {"type": "integer"},
-                    "context_after": {"type": "integer"},
-                    "encoding": {"type": "string"},
-                    "max_count": {"type": "integer"},
-                    "timeout_ms": {"type": "integer"},
+                    "fixed_strings": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "[CONTENT STAGE] Treat query as literal string instead of regex. True for exact text, False for patterns",
+                    },
+                    "word": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "[CONTENT STAGE] Match whole words only. True finds 'test' but not 'testing'",
+                    },
+                    "multiline": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "[CONTENT STAGE] Allow patterns to match across multiple lines. Useful for multi-line code blocks",
+                    },
+                    "include_globs": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "[CONTENT STAGE] Additional file patterns to include in content search. Example: ['*.py', '*.js']",
+                    },
+                    "exclude_globs": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "[CONTENT STAGE] File patterns to exclude from content search. Example: ['*.log', '__pycache__/*']",
+                    },
+                    "max_filesize": {
+                        "type": "string",
+                        "description": "[CONTENT STAGE] Maximum file size to search content. Format: '10M'=10MB, '500K'=500KB",
+                    },
+                    "context_before": {
+                        "type": "integer",
+                        "description": "[CONTENT STAGE] Lines to show before each match for context. Example: 3 shows 3 lines before",
+                    },
+                    "context_after": {
+                        "type": "integer",
+                        "description": "[CONTENT STAGE] Lines to show after each match for context. Example: 3 shows 3 lines after",
+                    },
+                    "encoding": {
+                        "type": "string",
+                        "description": "[CONTENT STAGE] Text encoding for files. Default auto-detect. Example: 'utf-8', 'latin1'",
+                    },
+                    "max_count": {
+                        "type": "integer",
+                        "description": "[CONTENT STAGE] Maximum matches per file. Prevents overwhelming output from files with many matches",
+                    },
+                    "timeout_ms": {
+                        "type": "integer",
+                        "description": "[CONTENT STAGE] Search timeout in milliseconds. Example: 5000 for 5 second timeout",
+                    },
                     "count_only_matches": {
                         "type": "boolean",
                         "default": False,
-                        "description": "Return only match counts per file instead of full match details",
+                        "description": "Return only match counts per file instead of full match details. Faster for statistics",
                     },
                     "summary_only": {
                         "type": "boolean",
                         "default": False,
-                        "description": "Return a summarized view of results to reduce context size",
+                        "description": "Return condensed summary of results. Shows top files and sample matches to reduce context size",
+                    },
+                    "optimize_paths": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "Optimize file paths in results by removing common prefixes and shortening long paths. Saves tokens in output",
+                    },
+                    "group_by_file": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "Group results by file to eliminate file path duplication when multiple matches exist in the same file. Significantly reduces tokens",
+                    },
+                    "total_only": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "Return only the total match count as a number. Most token-efficient option for count queries. Takes priority over all other formats",
                     },
                 },
                 "required": ["roots", "query"],
@@ -228,7 +341,8 @@ class FindAndGrepTool(BaseMCPTool):
             timeout_ms=arguments.get("timeout_ms"),
             roots=rg_roots,
             files_from=None,
-            count_only_matches=bool(arguments.get("count_only_matches", False)),
+            count_only_matches=bool(arguments.get("count_only_matches", False))
+            or bool(arguments.get("total_only", False)),
         )
 
         rg_started = time.time()
@@ -244,11 +358,18 @@ class FindAndGrepTool(BaseMCPTool):
                 "returncode": rg_rc,
             }
 
+        # Handle total-only mode (highest priority for count queries)
+        if arguments.get("total_only", False):
+            # Parse count output and return only the total
+            count_data = fd_rg_utils.parse_rg_count_output(rg_out)
+            total_matches = count_data.pop("__total__", 0)
+            return total_matches
+
         if arguments.get("count_only_matches", False):
             # Parse count-only output
             count_data = fd_rg_utils.parse_rg_count_output(rg_out)
             total_matches = count_data.pop("__total__", 0)
-            
+
             return {
                 "success": True,
                 "count_only": True,
@@ -267,6 +388,23 @@ class FindAndGrepTool(BaseMCPTool):
             truncated_rg = len(matches) >= fd_rg_utils.MAX_RESULTS_HARD_CAP
             if truncated_rg:
                 matches = matches[: fd_rg_utils.MAX_RESULTS_HARD_CAP]
+
+            # Apply path optimization if requested
+            optimize_paths = arguments.get("optimize_paths", False)
+            if optimize_paths and matches:
+                matches = fd_rg_utils.optimize_match_paths(matches)
+
+            # Apply file grouping if requested (takes priority over other formats)
+            group_by_file = arguments.get("group_by_file", False)
+            if group_by_file and matches:
+                grouped_result = fd_rg_utils.group_matches_by_file(matches)
+                grouped_result["meta"] = {
+                    "searched_file_count": searched_file_count,
+                    "truncated": (truncated_fd or truncated_rg),
+                    "fd_elapsed_ms": fd_elapsed_ms,
+                    "rg_elapsed_ms": rg_elapsed_ms,
+                }
+                return grouped_result
 
             # Check if summary_only mode is requested
             if arguments.get("summary_only", False):
