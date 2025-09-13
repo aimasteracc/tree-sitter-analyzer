@@ -22,48 +22,89 @@ class ListFilesTool(BaseMCPTool):
     def get_tool_definition(self) -> dict[str, Any]:
         return {
             "name": "list_files",
-            "description": "List files/directories using fd with glob/regex filters and safety limits",
+            "description": "List files and directories using fd with advanced filtering options. Supports glob patterns, file types, size filters, and more. Returns file paths with metadata or just counts.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
                     "roots": {
                         "type": "array",
                         "items": {"type": "string"},
-                        "description": "Search roots (must be within project boundary)",
+                        "description": "Directory paths to search in. Must be within project boundaries for security. Example: ['.', 'src/', '/path/to/dir']",
                     },
-                    "pattern": {"type": "string"},
-                    "glob": {"type": "boolean", "default": False},
+                    "pattern": {
+                        "type": "string",
+                        "description": "Search pattern for file/directory names. Use with 'glob' for shell patterns or regex. Example: '*.py', 'test_*', 'main.js'",
+                    },
+                    "glob": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "Treat pattern as glob (shell wildcard) instead of regex. True for '*.py', False for '.*\\.py$'",
+                    },
                     "types": {
                         "type": "array",
                         "items": {"type": "string"},
-                        "description": "fd -t values (f,d,l,x,e)",
+                        "description": "File types to include. Values: 'f'=files, 'd'=directories, 'l'=symlinks, 'x'=executable, 'e'=empty. Example: ['f'] for files only",
                     },
                     "extensions": {
                         "type": "array",
                         "items": {"type": "string"},
+                        "description": "File extensions to include (without dots). Example: ['py', 'js', 'md'] for Python, JavaScript, and Markdown files",
                     },
                     "exclude": {
                         "type": "array",
                         "items": {"type": "string"},
+                        "description": "Patterns to exclude from results. Example: ['*.tmp', '__pycache__', 'node_modules'] to skip temporary and cache files",
                     },
-                    "depth": {"type": "integer"},
-                    "follow_symlinks": {"type": "boolean"},
-                    "hidden": {"type": "boolean"},
-                    "no_ignore": {"type": "boolean"},
+                    "depth": {
+                        "type": "integer",
+                        "description": "Maximum directory depth to search. 1=current level only, 2=one level deep, etc. Useful to avoid deep recursion",
+                    },
+                    "follow_symlinks": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "Follow symbolic links during search. False=skip symlinks (safer), True=follow them (may cause loops)",
+                    },
+                    "hidden": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "Include hidden files/directories (starting with dot). False=skip .git, .env, True=include all",
+                    },
+                    "no_ignore": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "Ignore .gitignore and similar files. False=respect ignore files, True=search everything",
+                    },
                     "size": {
                         "type": "array",
                         "items": {"type": "string"},
-                        "description": "fd -S size filters like +10M",
+                        "description": "File size filters. Format: '+10M'=larger than 10MB, '-1K'=smaller than 1KB, '100B'=exactly 100 bytes. Units: B, K, M, G",
                     },
-                    "changed_within": {"type": "string"},
-                    "changed_before": {"type": "string"},
-                    "full_path_match": {"type": "boolean"},
-                    "absolute": {"type": "boolean"},
-                    "limit": {"type": "integer"},
+                    "changed_within": {
+                        "type": "string",
+                        "description": "Files modified within timeframe. Format: '1d'=1 day, '2h'=2 hours, '30m'=30 minutes, '1w'=1 week",
+                    },
+                    "changed_before": {
+                        "type": "string",
+                        "description": "Files modified before timeframe. Same format as changed_within. Useful for finding old files",
+                    },
+                    "full_path_match": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "Match pattern against full path instead of just filename. True for 'src/main.py', False for 'main.py'",
+                    },
+                    "absolute": {
+                        "type": "boolean",
+                        "default": True,
+                        "description": "Return absolute paths. True='/full/path/file.py', False='./file.py'. Absolute paths are more reliable",
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Maximum number of results to return. Default 2000, max 10000. Use to prevent overwhelming output",
+                    },
                     "count_only": {
                         "type": "boolean",
                         "default": False,
-                        "description": "Return only the total count of files instead of file details",
+                        "description": "Return only the total count of matching files instead of file details. Useful for quick statistics",
                     },
                 },
                 "required": ["roots"],
@@ -168,7 +209,7 @@ class ListFilesTool(BaseMCPTool):
             for line in out.decode("utf-8", errors="replace").splitlines()
             if line.strip()
         ]
-        
+
         # Check if count_only mode is requested
         if arguments.get("count_only", False):
             total_count = len(lines)
@@ -178,7 +219,7 @@ class ListFilesTool(BaseMCPTool):
                 truncated = True
             else:
                 truncated = False
-                
+
             return {
                 "success": True,
                 "count_only": True,
