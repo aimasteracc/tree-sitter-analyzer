@@ -120,6 +120,21 @@ class SearchContentTool(BaseMCPTool):
                         "default": False,
                         "description": "Return a condensed summary of results to reduce context size. Shows top files and sample matches",
                     },
+                    "optimize_paths": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "Optimize file paths in results by removing common prefixes and shortening long paths. Saves tokens in output",
+                    },
+                    "group_by_file": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "Group results by file to eliminate file path duplication when multiple matches exist in the same file. Significantly reduces tokens",
+                    },
+                    "total_only": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "Return only the total match count as a number. Most token-efficient option for count queries. Takes priority over all other formats",
+                    },
                 },
                 "required": ["query"],
                 "anyOf": [
@@ -225,8 +240,11 @@ class SearchContentTool(BaseMCPTool):
             # Use parent directories as roots for compatibility
             roots = list(parent_dirs)
 
-        # Check for count-only mode
-        count_only_matches = bool(arguments.get("count_only_matches", False))
+        # Check for count-only mode (total_only also requires count mode)
+        total_only = bool(arguments.get("total_only", False))
+        count_only_matches = (
+            bool(arguments.get("count_only_matches", False)) or total_only
+        )
         summary_only = bool(arguments.get("summary_only", False))
 
         # Roots mode
@@ -260,6 +278,14 @@ class SearchContentTool(BaseMCPTool):
             message = err.decode("utf-8", errors="replace").strip() or "ripgrep failed"
             return {"success": False, "error": message, "returncode": rc}
 
+        # Handle total-only mode (highest priority for count queries)
+        total_only = arguments.get("total_only", False)
+        if total_only:
+            # Parse count output and return only the total
+            file_counts = fd_rg_utils.parse_rg_count_output(out)
+            total_matches = file_counts.pop("__total__", 0)
+            return total_matches
+
         # Handle count-only mode
         if count_only_matches:
             file_counts = fd_rg_utils.parse_rg_count_output(out)
@@ -277,6 +303,16 @@ class SearchContentTool(BaseMCPTool):
         truncated = len(matches) >= fd_rg_utils.MAX_RESULTS_HARD_CAP
         if truncated:
             matches = matches[: fd_rg_utils.MAX_RESULTS_HARD_CAP]
+
+        # Apply path optimization if requested
+        optimize_paths = arguments.get("optimize_paths", False)
+        if optimize_paths and matches:
+            matches = fd_rg_utils.optimize_match_paths(matches)
+
+        # Apply file grouping if requested (takes priority over other formats)
+        group_by_file = arguments.get("group_by_file", False)
+        if group_by_file and matches:
+            return fd_rg_utils.group_matches_by_file(matches)
 
         # Handle summary mode
         if summary_only:

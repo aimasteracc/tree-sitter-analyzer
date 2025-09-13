@@ -171,6 +171,21 @@ class FindAndGrepTool(BaseMCPTool):
                         "default": False,
                         "description": "Return condensed summary of results. Shows top files and sample matches to reduce context size",
                     },
+                    "optimize_paths": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "Optimize file paths in results by removing common prefixes and shortening long paths. Saves tokens in output",
+                    },
+                    "group_by_file": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "Group results by file to eliminate file path duplication when multiple matches exist in the same file. Significantly reduces tokens",
+                    },
+                    "total_only": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": "Return only the total match count as a number. Most token-efficient option for count queries. Takes priority over all other formats",
+                    },
                 },
                 "required": ["roots", "query"],
                 "additionalProperties": False,
@@ -326,7 +341,8 @@ class FindAndGrepTool(BaseMCPTool):
             timeout_ms=arguments.get("timeout_ms"),
             roots=rg_roots,
             files_from=None,
-            count_only_matches=bool(arguments.get("count_only_matches", False)),
+            count_only_matches=bool(arguments.get("count_only_matches", False))
+            or bool(arguments.get("total_only", False)),
         )
 
         rg_started = time.time()
@@ -341,6 +357,13 @@ class FindAndGrepTool(BaseMCPTool):
                 ),
                 "returncode": rg_rc,
             }
+
+        # Handle total-only mode (highest priority for count queries)
+        if arguments.get("total_only", False):
+            # Parse count output and return only the total
+            count_data = fd_rg_utils.parse_rg_count_output(rg_out)
+            total_matches = count_data.pop("__total__", 0)
+            return total_matches
 
         if arguments.get("count_only_matches", False):
             # Parse count-only output
@@ -365,6 +388,23 @@ class FindAndGrepTool(BaseMCPTool):
             truncated_rg = len(matches) >= fd_rg_utils.MAX_RESULTS_HARD_CAP
             if truncated_rg:
                 matches = matches[: fd_rg_utils.MAX_RESULTS_HARD_CAP]
+
+            # Apply path optimization if requested
+            optimize_paths = arguments.get("optimize_paths", False)
+            if optimize_paths and matches:
+                matches = fd_rg_utils.optimize_match_paths(matches)
+
+            # Apply file grouping if requested (takes priority over other formats)
+            group_by_file = arguments.get("group_by_file", False)
+            if group_by_file and matches:
+                grouped_result = fd_rg_utils.group_matches_by_file(matches)
+                grouped_result["meta"] = {
+                    "searched_file_count": searched_file_count,
+                    "truncated": (truncated_fd or truncated_rg),
+                    "fd_elapsed_ms": fd_elapsed_ms,
+                    "rg_elapsed_ms": rg_elapsed_ms,
+                }
+                return grouped_result
 
             # Check if summary_only mode is requested
             if arguments.get("summary_only", False):
