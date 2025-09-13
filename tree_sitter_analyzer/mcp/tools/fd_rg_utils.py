@@ -296,25 +296,109 @@ def parse_rg_json_lines_to_matches(stdout_bytes: bytes) -> list[dict[str, Any]]:
         line_number = data.get("line_number")
         line_text = (data.get("lines", {}) or {}).get("text")
         submatches_raw = data.get("submatches", []) or []
-        submatches: list[dict[str, Any]] = []
+        # Normalize line content to reduce token usage
+        normalized_line = " ".join(line_text.split()) if line_text else ""
+
+        # Simplify submatches - remove redundant match text, keep only positions
+        simplified_matches = []
         for sm in submatches_raw:
-            submatches.append(
-                {
-                    "start": sm.get("start"),
-                    "end": sm.get("end"),
-                    "match": ((sm.get("match") or {}).get("text")),
-                }
-            )
+            start = sm.get("start")
+            end = sm.get("end")
+            if start is not None and end is not None:
+                simplified_matches.append([start, end])
+
         results.append(
             {
                 "file": path_text,
-                "abs_path": str(Path(path_text).resolve()) if path_text else None,
-                "line_number": line_number,
-                "line": line_text,
-                "submatches": submatches,
+                "line": line_number,  # Shortened field name
+                "text": normalized_line,  # Normalized content
+                "matches": simplified_matches,  # Simplified match positions
             }
         )
     return results
+
+
+def group_matches_by_file(matches: list[dict[str, Any]]) -> dict[str, Any]:
+    """Group matches by file to eliminate file path duplication."""
+    if not matches:
+        return {"success": True, "count": 0, "files": []}
+
+    # Group matches by file
+    file_groups: dict[str, list[dict[str, Any]]] = {}
+    total_matches = 0
+
+    for match in matches:
+        file_path = match.get("file", "unknown")
+        if file_path not in file_groups:
+            file_groups[file_path] = []
+
+        # Create match entry without file path
+        match_entry = {
+            "line": match.get("line", match.get("line_number", "?")),
+            "text": match.get("text", match.get("line", "")),
+            "positions": match.get("matches", match.get("submatches", [])),
+        }
+        file_groups[file_path].append(match_entry)
+        total_matches += 1
+
+    # Convert to grouped structure
+    files = []
+    for file_path, file_matches in file_groups.items():
+        files.append({"file": file_path, "matches": file_matches})
+
+    return {"success": True, "count": total_matches, "files": files}
+
+
+def optimize_match_paths(matches: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Optimize file paths in match results to reduce token consumption."""
+    if not matches:
+        return matches
+
+    # Find common prefix among all file paths
+    file_paths = [match.get("file", "") for match in matches if match.get("file")]
+    common_prefix = ""
+    if len(file_paths) > 1:
+        import os
+
+        try:
+            common_prefix = os.path.commonpath(file_paths)
+        except (ValueError, TypeError):
+            common_prefix = ""
+
+    # Optimize each match
+    optimized_matches = []
+    for match in matches:
+        optimized_match = match.copy()
+        file_path = match.get("file")
+        if file_path:
+            optimized_match["file"] = _optimize_file_path(file_path, common_prefix)
+        optimized_matches.append(optimized_match)
+
+    return optimized_matches
+
+
+def _optimize_file_path(file_path: str, common_prefix: str = "") -> str:
+    """Optimize file path for token efficiency by removing common prefixes and shortening."""
+    if not file_path:
+        return file_path
+
+    # Remove common prefix if provided
+    if common_prefix and file_path.startswith(common_prefix):
+        optimized = file_path[len(common_prefix) :].lstrip("/\\")
+        if optimized:
+            return optimized
+
+    # For very long paths, show only the last few components
+    from pathlib import Path
+
+    path_obj = Path(file_path)
+    parts = path_obj.parts
+
+    if len(parts) > 4:
+        # Show first part + ... + last 3 parts
+        return str(Path(parts[0]) / "..." / Path(*parts[-3:]))
+
+    return file_path
 
 
 def summarize_search_results(
@@ -329,13 +413,22 @@ def summarize_search_results(
             "top_files": [],
         }
 
-    # Group matches by file
+    # Group matches by file and find common prefix for optimization
     file_groups: dict[str, list[dict[str, Any]]] = {}
+    all_file_paths = []
     for match in matches:
         file_path = match.get("file", "unknown")
+        all_file_paths.append(file_path)
         if file_path not in file_groups:
             file_groups[file_path] = []
         file_groups[file_path].append(match)
+
+    # Find common prefix to optimize paths
+    common_prefix = ""
+    if len(all_file_paths) > 1:
+        import os
+
+        common_prefix = os.path.commonpath(all_file_paths) if all_file_paths else ""
 
     # Sort files by match count (descending)
     sorted_files = sorted(file_groups.items(), key=lambda x: len(x[1]), reverse=True)
@@ -356,15 +449,26 @@ def summarize_search_results(
         lines_to_include = min(3, remaining_lines, len(file_matches))
 
         for _i, match in enumerate(file_matches[:lines_to_include]):
-            line_num = match.get("line_number", "?")
-            line_text = match.get("line", "").strip()
+            line_num = match.get(
+                "line", match.get("line_number", "?")
+            )  # Support both old and new format
+            line_text = match.get(
+                "text", match.get("line", "")
+            ).strip()  # Support both old and new format
             if line_text:
-                sample_lines.append(f"L{line_num}: {line_text[:80]}...")
+                # Truncate long lines and remove extra whitespace to save tokens
+                truncated_line = " ".join(line_text.split())[:60]
+                if len(line_text) > 60:
+                    truncated_line += "..."
+                sample_lines.append(f"L{line_num}: {truncated_line}")
                 remaining_lines -= 1
+
+        # Optimize file path for token efficiency
+        optimized_path = _optimize_file_path(file_path, common_prefix)
 
         top_files.append(
             {
-                "file": file_path,
+                "file": optimized_path,
                 "match_count": match_count,
                 "sample_lines": sample_lines,
             }
