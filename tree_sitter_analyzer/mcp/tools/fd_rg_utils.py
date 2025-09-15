@@ -518,6 +518,28 @@ def parse_rg_count_output(stdout_bytes: bytes) -> dict[str, int]:
     return results
 
 
+def extract_file_list_from_count_data(count_data: dict[str, int]) -> list[str]:
+    """Extract file list from count data, excluding the special __total__ key."""
+    return [file_path for file_path in count_data.keys() if file_path != "__total__"]
+
+
+def create_file_summary_from_count_data(count_data: dict[str, int]) -> dict[str, Any]:
+    """Create a file summary structure from count data."""
+    file_list = extract_file_list_from_count_data(count_data)
+    total_matches = count_data.get("__total__", 0)
+
+    return {
+        "success": True,
+        "total_matches": total_matches,
+        "file_count": len(file_list),
+        "files": [
+            {"file": file_path, "match_count": count_data[file_path]}
+            for file_path in file_list
+        ],
+        "derived_from_count": True,  # 标识这是从count数据推导的
+    }
+
+
 @dataclass
 class TempFileList:
     path: str

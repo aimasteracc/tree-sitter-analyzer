@@ -7,6 +7,7 @@ Search content in files under roots or an explicit file list using ripgrep --jso
 
 from __future__ import annotations
 
+import logging
 import time
 from pathlib import Path
 from typing import Any
@@ -16,6 +17,8 @@ from ..utils.gitignore_detector import get_default_detector
 from ..utils.search_cache import get_default_cache
 from . import fd_rg_utils
 from .base_tool import BaseMCPTool
+
+logger = logging.getLogger(__name__)
 
 
 class SearchContentTool(BaseMCPTool):
@@ -224,8 +227,50 @@ class SearchContentTool(BaseMCPTool):
                     raise ValueError(f"{key} must be an array of strings")
         return True
 
+    def _determine_requested_format(self, arguments: dict[str, Any]) -> str:
+        """Determine the requested output format based on arguments."""
+        if arguments.get("total_only", False):
+            return "total_only"
+        elif arguments.get("count_only_matches", False):
+            return "count_only"
+        elif arguments.get("summary_only", False):
+            return "summary"
+        elif arguments.get("group_by_file", False):
+            return "group_by_file"
+        else:
+            return "normal"
+
+    def _create_count_only_cache_key(
+        self, total_only_cache_key: str, arguments: dict[str, Any]
+    ) -> str | None:
+        """
+        Create a count_only_matches cache key from a total_only cache key.
+
+        This enables cross-format caching where total_only results can serve
+        future count_only_matches queries.
+        """
+        if not self.cache:
+            return None
+
+        # Create modified arguments with count_only_matches instead of total_only
+        count_only_args = arguments.copy()
+        count_only_args.pop("total_only", None)
+        count_only_args["count_only_matches"] = True
+
+        # Generate cache key for count_only_matches version
+        cache_params = {
+            k: v
+            for k, v in count_only_args.items()
+            if k not in ["query", "roots", "files"]
+        }
+
+        roots = arguments.get("roots", [])
+        return self.cache.create_cache_key(
+            query=arguments["query"], roots=roots, **cache_params
+        )
+
     @handle_mcp_errors("search_content")
-    async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
+    async def execute(self, arguments: dict[str, Any]) -> dict[str, Any] | int:
         self.validate_arguments(arguments)
 
         roots = arguments.get("roots")
@@ -247,7 +292,12 @@ class SearchContentTool(BaseMCPTool):
             cache_key = self.cache.create_cache_key(
                 query=arguments["query"], roots=roots or [], **cache_params
             )
-            cached_result = self.cache.get(cache_key)
+
+            # Try smart cross-format caching first
+            requested_format = self._determine_requested_format(arguments)
+            cached_result = self.cache.get_compatible_result(
+                cache_key, requested_format
+            )
             if cached_result is not None:
                 # Add cache hit indicator to result
                 if isinstance(cached_result, dict):
@@ -294,9 +344,7 @@ class SearchContentTool(BaseMCPTool):
             if should_ignore:
                 no_ignore = True
                 # Log the auto-detection for debugging
-                import logging
-
-                logger = logging.getLogger(__name__)
+                # Logger already defined at module level
                 detection_info = detector.get_detection_info(
                     original_roots, self.project_root
                 )
@@ -340,11 +388,35 @@ class SearchContentTool(BaseMCPTool):
         if total_only:
             # Parse count output and return only the total
             file_counts = fd_rg_utils.parse_rg_count_output(out)
-            total_matches = file_counts.pop("__total__", 0)
+            total_matches = file_counts.get("__total__", 0)
 
-            # Cache the result
+            # Cache the FULL count data for future cross-format optimization
+            # This allows count_only_matches queries to be served from this cache
             if self.cache and cache_key:
+                # Cache both the simple total and the detailed count structure
                 self.cache.set(cache_key, total_matches)
+
+                # Also cache the equivalent count_only_matches result for cross-format optimization
+                count_only_cache_key = self._create_count_only_cache_key(
+                    cache_key, arguments
+                )
+                if count_only_cache_key:
+                    # Create a copy of file_counts without __total__ for the detailed result
+                    file_counts_copy = {
+                        k: v for k, v in file_counts.items() if k != "__total__"
+                    }
+                    detailed_count_result = {
+                        "success": True,
+                        "count_only": True,
+                        "total_matches": total_matches,
+                        "file_counts": file_counts_copy,  # Keep the file-level data (without __total__)
+                        "elapsed_ms": elapsed_ms,
+                        "derived_from_total_only": True,  # Mark as derived
+                    }
+                    self.cache.set(count_only_cache_key, detailed_count_result)
+                    logger.debug(
+                        "Cross-cached total_only result as count_only_matches for future optimization"
+                    )
 
             return total_matches
 

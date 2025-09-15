@@ -43,7 +43,7 @@ class SearchCache:
         """Check if a cache entry is expired"""
         return time.time() - timestamp > self.ttl_seconds
 
-    def _cleanup_expired(self):
+    def _cleanup_expired(self) -> None:
         """Remove expired entries (should be called with lock held)"""
         current_time = time.time()
         expired_keys = [
@@ -59,7 +59,7 @@ class SearchCache:
         if expired_keys:
             logger.debug(f"Cleaned up {len(expired_keys)} expired cache entries")
 
-    def get(self, cache_key: str) -> dict[str, Any] | None:
+    def get(self, cache_key: str) -> Any:
         """
         Get cached result if valid.
 
@@ -87,7 +87,87 @@ class SearchCache:
             self._misses += 1
             return None
 
-    def set(self, cache_key: str, data: dict[str, Any]):
+    def get_compatible_result(self, cache_key: str, requested_format: str) -> Any:
+        """
+        Get cached result and try to derive compatible formats.
+
+        This enables smart cross-format caching where count results can be used
+        to derive file lists without additional searches.
+
+        Args:
+            cache_key: The cache key
+            requested_format: The format being requested ('file_list', 'summary', etc.)
+
+        Returns:
+            Compatible cached data if derivable, None otherwise
+        """
+        # First try direct cache hit
+        direct_result = self.get(cache_key)
+        if direct_result is not None:
+            return direct_result
+
+        # Try to find compatible cached results
+        # Look for count_only results that can derive file lists
+        if requested_format in ["file_list", "summary", "files_only"]:
+            # Look for a count_only version of the same search
+            count_key = self._derive_count_key_from_cache_key(cache_key)
+            if count_key and count_key != cache_key:
+                count_result = self.get(count_key)
+                if count_result and self._can_derive_file_list(count_result):
+                    logger.debug(f"Deriving {requested_format} from cached count data")
+                    return self._derive_file_list_result(count_result, requested_format)
+
+        return None
+
+    def _derive_count_key_from_cache_key(self, cache_key: str) -> str | None:
+        """Try to derive what the count_only cache key would be for this search."""
+        # Simple heuristic: replace summary_only with count_only_matches
+        if "summary_only" in cache_key:
+            return cache_key.replace(
+                "'summary_only': True", "'count_only_matches': True"
+            )
+        elif "count_only_matches" not in cache_key:
+            # Add count_only_matches parameter
+            return cache_key.replace("}", ", 'count_only_matches': True}")
+        return None
+
+    def _can_derive_file_list(self, count_result: dict[str, Any]) -> bool:
+        """Check if a count result contains file count data that can derive file lists."""
+        return (
+            isinstance(count_result, dict)
+            and "file_counts" in count_result
+            and isinstance(count_result["file_counts"], dict)
+        )
+
+    def _derive_file_list_result(
+        self, count_result: dict[str, Any], requested_format: str
+    ) -> dict[str, Any]:
+        """Derive file list result from count data."""
+        try:
+            from ..tools import fd_rg_utils  # Import here to avoid circular imports
+
+            file_counts = count_result.get("file_counts", {})
+            if requested_format == "summary":
+                derived_result = fd_rg_utils.create_file_summary_from_count_data(
+                    file_counts
+                )
+                derived_result["cache_derived"] = True  # Mark as derived from cache
+                return derived_result
+            elif requested_format in ["file_list", "files_only"]:
+                file_list = fd_rg_utils.extract_file_list_from_count_data(file_counts)
+                return {
+                    "success": True,
+                    "files": file_list,
+                    "file_count": len(file_list),
+                    "total_matches": file_counts.get("__total__", 0),
+                    "cache_derived": True,  # Mark as derived from cache
+                }
+        except ImportError:
+            logger.warning("Could not import fd_rg_utils for cache derivation")
+
+        return count_result
+
+    def set(self, cache_key: str, data: dict[str, Any] | Any) -> None:
         """
         Set cached result.
 
@@ -116,7 +196,7 @@ class SearchCache:
             self._access_times[cache_key] = current_time
             logger.debug(f"Cached result for key: {cache_key[:50]}...")
 
-    def clear(self):
+    def clear(self) -> None:
         """Clear all cached results"""
         with self._lock:
             self.cache.clear()
@@ -149,7 +229,7 @@ class SearchCache:
                 ),
             }
 
-    def create_cache_key(self, query: str, roots: list[str], **params) -> str:
+    def create_cache_key(self, query: str, roots: list[str], **params: Any) -> str:
         """
         Create a deterministic cache key for search parameters.
 
@@ -217,13 +297,13 @@ def get_default_cache() -> SearchCache:
     return _default_cache
 
 
-def configure_cache(max_size: int = 1000, ttl_seconds: int = 3600):
+def configure_cache(max_size: int = 1000, ttl_seconds: int = 3600) -> None:
     """Configure the default search cache"""
     global _default_cache
     _default_cache = SearchCache(max_size, ttl_seconds)
 
 
-def clear_cache():
+def clear_cache() -> None:
     """Clear the default search cache"""
     cache = get_default_cache()
     cache.clear()
