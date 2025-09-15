@@ -38,7 +38,7 @@
 想像してください：1419行以上のJavaサービスクラスがあり、ClaudeやChatGPTがトークン制限のために分析できません。今、Tree-sitter AnalyzerはAIアシスタントを可能にします：
 
 - ⚡ **3秒で完全なコード構造概要を取得**
-- 🎯 **任意の行範囲のコードスニペットを正確に抽出**  
+- 🎯 **任意の行範囲のコードスニペットを正確に抽出**
 - 📍 **クラス、メソッド、フィールドの正確な位置をスマートに特定**
 - 🔗 **Claude Desktop、Cursor、Roo CodeなどのAI IDEとシームレスに統合**
 - 🏗️ **統一要素管理** - すべてのコード要素（クラス、メソッド、フィールド、インポート）を一つの統一されたシステムで
@@ -105,7 +105,7 @@ powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | ie
 
 設定ファイルに以下を追加：
 - **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
-- **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`  
+- **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
 - **Linux**: `~/.config/claude/claude_desktop_config.json`
 
 **基本設定（推奨）：**
@@ -192,11 +192,11 @@ uv run python -m tree_sitter_analyzer examples/BigService.java --partial-read --
 ### 💬 AI IDE プロンプト（SMART分析ワークフロー）
 
 > **✅ テスト検証状況：** 以下のすべてのプロンプトは実際の環境でテスト・検証されており、100%の可用性を保証
-> 
+>
 > **🎯 SMART分析ワークフロー：**
 > - **S** - セットアップ (set_project_path)
 > - **M** - マップ (精密パターンマッチング)
-> - **A** - 分析 (analyze_code_structure) 
+> - **A** - 分析 (analyze_code_structure)
 > - **R** - 取得 (extract_code_section)
 > - **T** - 追跡 (必要時のみ)
 >
@@ -535,7 +535,7 @@ Tree-sitter Analyzerは今、すべてのコード要素を統一されたシス
 
 #### **サポートされている要素タイプ：**
 - `class` - クラスとインターフェース
-- `function` - メソッドと関数  
+- `function` - メソッドと関数
 - `variable` - フィールドと変数
 - `import` - インポート文
 - `package` - パッケージ宣言
@@ -560,7 +560,7 @@ Tree-sitter Analyzerは今、すべてのコード要素を統一されたシス
 ### 🔍 **高度なクエリフィルタリング**
 強力なコード要素クエリとフィルタリングシステム：
 - **完全一致**: `--filter "name=main"` 特定のメソッドを検索
-- **パターンマッチング**: `--filter "name=~auth*"` 認証関連メソッドを検索  
+- **パターンマッチング**: `--filter "name=~auth*"` 認証関連メソッドを検索
 - **パラメーターフィルタリング**: `--filter "params=2"` 特定のパラメーター数のメソッドを検索
 - **修飾子フィルタリング**: `--filter "static=true,public=true"` 静的パブリックメソッドを検索
 - **複合条件**: `--filter "name=~get*,params=0,public=true"` 複数の条件を組み合わせ
@@ -569,7 +569,7 @@ Tree-sitter Analyzerは今、すべてのコード要素を統一されたシス
 ### 🔗 **AIアシスタント統合**
 MCPプロトコルを通じた深い統合：
 - Claude Desktop
-- Cursor IDE  
+- Cursor IDE
 - Roo Code
 - その他のMCPサポートAIツール
 
