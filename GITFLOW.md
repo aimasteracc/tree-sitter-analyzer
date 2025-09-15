@@ -108,7 +108,11 @@ For manual releases:
 
 3. **Update documentation**:
    ```bash
-   uv run python scripts/improved_readme_updater.py
+   # Update README.md with new version, test counts, and coverage
+   # Update README_zh.md and README_ja.md translations
+   # Update CHANGELOG.md with release details
+   # Update version references throughout documentation
+   # Note: scripts/improved_readme_updater.py may not exist, do manual updates
    ```
 
 4. **Commit changes**:
@@ -153,9 +157,20 @@ For manual releases:
 3. **Update version** for hotfix:
    ```bash
    # Update pyproject.toml version (e.g., 1.0.0 -> 1.0.1)
+   # Update server_version in pyproject.toml
+   # Sync version to __init__.py
+   uv run python scripts/sync_version_minimal.py
    ```
 
-4. **Merge to main and develop**:
+4. **Update documentation**:
+   ```bash
+   # Update CHANGELOG.md with hotfix details
+   # Update README.md with new version, test counts, and coverage
+   # Update README_zh.md and README_ja.md translations
+   # Update version references throughout documentation
+   ```
+
+5. **Merge to main and develop**:
    ```bash
    git checkout main
    git merge hotfix/critical-bug-fix
@@ -167,7 +182,7 @@ For manual releases:
    git push origin develop
    ```
 
-5. **Delete hotfix branch**:
+6. **Delete hotfix branch**:
    ```bash
    git branch -d hotfix/critical-bug-fix
    git push origin --delete hotfix/critical-bug-fix

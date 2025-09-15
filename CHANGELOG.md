@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.3.2] - 2025-09-16
+
+### Fixed
+- **🐛 Critical Cache Format Compatibility Bug**: Fixed a severe bug in the smart caching system where `get_compatible_result` was returning wrong format cached data
+- **Format Validation**: Added `_is_format_compatible` method to prevent `total_only` integer results from being returned for detailed query requests
+- **User Impact**: Resolved the issue where users requesting detailed results after `total_only` queries received integers instead of proper structured data
+- **Backward Compatibility**: Maintained compatibility for dict results with unknown formats while preventing primitive data return bugs
+
+### Technical Details
+- **Root Cause**: Direct cache hit was returning cached results without format validation
+- **Solution**: Implemented format compatibility checking before returning cached data
+- **Test Coverage**: Added comprehensive test suite with 6 test cases covering format compatibility scenarios
+- **Bug Discovery**: Issue was identified through real-world usage documented in `roo_task_sep-16-2025_1-18-38-am.md`
+
+This hotfix ensures MCP tools return correctly formatted data and prevents cache format mismatches that could break AI-assisted development workflows.
+
 ## [1.3.1] - 2025-01-15
 
 ### Added
