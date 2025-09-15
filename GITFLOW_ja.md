@@ -9,30 +9,30 @@ gitGraph
     commit id: "Initial commit"
     branch develop
     commit id: "dev-1"
-    
+
     branch feature/my-feature
     commit id: "feat-1"
     commit id: "feat-2"
-    
+
     checkout develop
     merge feature/my-feature id: "merge-feat"
-    
+
     branch release/v1.0.0
     commit id: "release-prep"
-    
+
     checkout main
     merge release/v1.0.0 tag: "v1.0.0"
-    
+
     checkout develop
     merge release/v1.0.0
-    
+
     checkout main
     branch hotfix/critical-fix
     commit id: "fix-bug"
-    
+
     checkout main
     merge hotfix/critical-fix tag: "v1.0.1"
-    
+
     checkout develop
     merge hotfix/critical-fix
 ```
@@ -82,6 +82,22 @@ gitGraph
     git checkout -b release/v1.0.0 develop
     ```
 2.  **リリース準備**: バージョン番号の更新、ドキュメントの生成など。
+    ```bash
+    # pyproject.toml のバージョン番号を更新
+    # server_version を更新
+    # __init__.py にバージョン番号を同期
+    uv run python scripts/sync_version_minimal.py
+
+    # ドキュメントの更新：
+    # - README.md のバージョン番号、テスト数、カバレッジを更新
+    # - バージョンバッジ、テストバッジ、カバレッジバッジを更新
+    # - "最新の品質成果"セクションのバージョン参照を更新
+    # - テスト環境セクションのバージョン参照を更新
+    # - ドキュメント全体の他のバージョン言及を更新
+    # - README_zh.md と README_ja.md の翻訳版を更新
+    # - ワークフローに変更があった場合、GITFLOW_zh.md と GITFLOW_ja.md を更新
+    # - CHANGELOG.md にリリース詳細を更新
+    ```
 3.  **準備完了後、`main` と `develop` にマージ**:
     ```bash
     # mainブランチに切り替えてマージ
@@ -104,7 +120,24 @@ gitGraph
     git checkout -b hotfix/critical-bug-fix main
     ```
 2.  **バグを修正**し、コミットします。
-3.  **修正完了後、`main` と `develop` にマージ**:
+3.  **バージョンとドキュメントの更新**:
+    ```bash
+    # pyproject.toml のバージョン番号を更新 (例: 1.0.0 -> 1.0.1)
+    # server_version を更新
+    # __init__.py にバージョン番号を同期
+    uv run python scripts/sync_version_minimal.py
+
+    # ドキュメントの更新：
+    # - CHANGELOG.md にホットフィックス詳細を更新
+    # - README.md のバージョン番号、テスト数、カバレッジを更新
+    # - バージョンバッジ、テストバッジ、カバレッジバッジを更新
+    # - "最新の品質成果"セクションのバージョン参照を更新
+    # - テスト環境セクションのバージョン参照を更新
+    # - ドキュメント全体の他のバージョン言及を更新
+    # - README_zh.md と README_ja.md の翻訳版を更新
+    # - ワークフローに変更があった場合、GITFLOW_zh.md と GITFLOW_ja.md を更新
+    ```
+4.  **修正完了後、`main` と `develop` にマージ**:
     ```bash
     # mainブランチに切り替えてマージ
     git checkout main
@@ -117,7 +150,7 @@ gitGraph
     git merge hotfix/critical-bug-fix
     git push origin develop
     ```
-4.  **`hotfix` ブランチを削除**します。
+5.  **`hotfix` ブランチを削除**します。
 
 ---
 

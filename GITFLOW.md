@@ -9,30 +9,30 @@ gitGraph
     commit id: "Initial commit"
     branch develop
     commit id: "dev-1"
-    
+
     branch feature/my-feature
     commit id: "feat-1"
     commit id: "feat-2"
-    
+
     checkout develop
     merge feature/my-feature id: "merge-feat"
-    
+
     branch release/v1.0.0
     commit id: "release-prep"
-    
+
     checkout main
     merge release/v1.0.0 tag: "v1.0.0"
-    
+
     checkout develop
     merge release/v1.0.0
-    
+
     checkout main
     branch hotfix/critical-fix
     commit id: "fix-bug"
-    
+
     checkout main
     merge hotfix/critical-fix tag: "v1.0.1"
-    
+
     checkout develop
     merge hotfix/critical-fix
 ```
@@ -108,10 +108,17 @@ For manual releases:
 
 3. **Update documentation**:
    ```bash
-   # Update README.md with new version, test counts, and coverage
-   # Update README_zh.md and README_ja.md translations
+   # Update README.md with new version, test counts, and coverage:
+   #   - Version badges ([![Version](https://img.shields.io/badge/version-X.X.X-blue.svg)])
+   #   - Test count badges ([![Tests](https://img.shields.io/badge/tests-XXXX%20passed-brightgreen.svg)])
+   #   - Coverage badges ([![Coverage](https://img.shields.io/badge/coverage-XX.XX%25-green.svg)])
+   #   - "Latest Quality Achievements" section version references
+   #   - Test environment section version references
+   #   - All other version mentions throughout the document
+   # Update README_zh.md and README_ja.md translations with same changes
+   # Update GITFLOW_zh.md and GITFLOW_ja.md if workflow changes were made
    # Update CHANGELOG.md with release details
-   # Update version references throughout documentation
+   # Update version references throughout all documentation files
    # Note: scripts/improved_readme_updater.py may not exist, do manual updates
    ```
 
@@ -127,7 +134,7 @@ For manual releases:
    git merge release/v1.0.0
    git tag -a v1.0.0 -m "Release v1.0.0"
    git push origin main --tags
-   
+
    git checkout develop
    git merge release/v1.0.0
    git push origin develop
@@ -165,9 +172,16 @@ For manual releases:
 4. **Update documentation**:
    ```bash
    # Update CHANGELOG.md with hotfix details
-   # Update README.md with new version, test counts, and coverage
-   # Update README_zh.md and README_ja.md translations
-   # Update version references throughout documentation
+   # Update README.md with new version, test counts, and coverage:
+   #   - Version badges ([![Version](https://img.shields.io/badge/version-X.X.X-blue.svg)])
+   #   - Test count badges ([![Tests](https://img.shields.io/badge/tests-XXXX%20passed-brightgreen.svg)])
+   #   - Coverage badges ([![Coverage](https://img.shields.io/badge/coverage-XX.XX%25-green.svg)])
+   #   - "Latest Quality Achievements" section version references
+   #   - Test environment section version references
+   #   - All other version mentions throughout the document
+   # Update README_zh.md and README_ja.md translations with same changes
+   # Update GITFLOW_zh.md and GITFLOW_ja.md if workflow changes were made
+   # Update version references throughout all documentation files
    ```
 
 5. **Merge to main and develop**:
@@ -176,7 +190,7 @@ For manual releases:
    git merge hotfix/critical-bug-fix
    git tag -a v1.0.1 -m "Hotfix v1.0.1"
    git push origin main --tags
-   
+
    git checkout develop
    git merge hotfix/critical-bug-fix
    git push origin develop
