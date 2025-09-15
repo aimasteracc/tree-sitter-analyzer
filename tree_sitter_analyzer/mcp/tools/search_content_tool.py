@@ -12,12 +12,27 @@ from pathlib import Path
 from typing import Any
 
 from ..utils.error_handler import handle_mcp_errors
+from ..utils.gitignore_detector import get_default_detector
+from ..utils.search_cache import get_default_cache
 from . import fd_rg_utils
 from .base_tool import BaseMCPTool
 
 
 class SearchContentTool(BaseMCPTool):
     """MCP tool that wraps ripgrep to search content with safety limits."""
+
+    def __init__(
+        self, project_root: str | None = None, enable_cache: bool = True
+    ) -> None:
+        """
+        Initialize the search content tool.
+
+        Args:
+            project_root: Optional project root directory
+            enable_cache: Whether to enable search result caching (default: True)
+        """
+        super().__init__(project_root)
+        self.cache = get_default_cache() if enable_cache else None
 
     def get_tool_definition(self) -> dict[str, Any]:
         return {
@@ -220,6 +235,26 @@ class SearchContentTool(BaseMCPTool):
         if files:
             files = self._validate_files(files)
 
+        # Check cache if enabled
+        cache_key = None
+        if self.cache:
+            # Create cache key with relevant parameters (excluding 'query' and 'roots' from kwargs)
+            cache_params = {
+                k: v
+                for k, v in arguments.items()
+                if k not in ["query", "roots", "files"]
+            }
+            cache_key = self.cache.create_cache_key(
+                query=arguments["query"], roots=roots or [], **cache_params
+            )
+            cached_result = self.cache.get(cache_key)
+            if cached_result is not None:
+                # Add cache hit indicator to result
+                if isinstance(cached_result, dict):
+                    cached_result = cached_result.copy()
+                    cached_result["cache_hit"] = True
+                return cached_result
+
         # Clamp counts to safety limits
         max_count = fd_rg_utils.clamp_int(
             arguments.get("max_count"),
@@ -247,6 +282,28 @@ class SearchContentTool(BaseMCPTool):
         )
         summary_only = bool(arguments.get("summary_only", False))
 
+        # Smart .gitignore detection
+        no_ignore = bool(arguments.get("no_ignore", False))
+        if not no_ignore and roots:  # Only for roots mode, not files mode
+            # Auto-detect if we should use --no-ignore
+            detector = get_default_detector()
+            original_roots = arguments.get("roots", [])
+            should_ignore = detector.should_use_no_ignore(
+                original_roots, self.project_root
+            )
+            if should_ignore:
+                no_ignore = True
+                # Log the auto-detection for debugging
+                import logging
+
+                logger = logging.getLogger(__name__)
+                detection_info = detector.get_detection_info(
+                    original_roots, self.project_root
+                )
+                logger.info(
+                    f"Auto-enabled --no-ignore due to .gitignore interference: {detection_info['reason']}"
+                )
+
         # Roots mode
         cmd = fd_rg_utils.build_rg_command(
             query=arguments["query"],
@@ -258,7 +315,7 @@ class SearchContentTool(BaseMCPTool):
             exclude_globs=arguments.get("exclude_globs"),
             follow_symlinks=bool(arguments.get("follow_symlinks", False)),
             hidden=bool(arguments.get("hidden", False)),
-            no_ignore=bool(arguments.get("no_ignore", False)),
+            no_ignore=no_ignore,  # Use the potentially auto-detected value
             max_filesize=arguments.get("max_filesize"),
             context_before=arguments.get("context_before"),
             context_after=arguments.get("context_after"),
@@ -284,19 +341,30 @@ class SearchContentTool(BaseMCPTool):
             # Parse count output and return only the total
             file_counts = fd_rg_utils.parse_rg_count_output(out)
             total_matches = file_counts.pop("__total__", 0)
+
+            # Cache the result
+            if self.cache and cache_key:
+                self.cache.set(cache_key, total_matches)
+
             return total_matches
 
         # Handle count-only mode
         if count_only_matches:
             file_counts = fd_rg_utils.parse_rg_count_output(out)
             total_matches = file_counts.pop("__total__", 0)
-            return {
+            result = {
                 "success": True,
                 "count_only": True,
                 "total_matches": total_matches,
                 "file_counts": file_counts,
                 "elapsed_ms": elapsed_ms,
             }
+
+            # Cache the result
+            if self.cache and cache_key:
+                self.cache.set(cache_key, result)
+
+            return result
 
         # Handle normal mode
         matches = fd_rg_utils.parse_rg_json_lines_to_matches(out)
@@ -312,12 +380,18 @@ class SearchContentTool(BaseMCPTool):
         # Apply file grouping if requested (takes priority over other formats)
         group_by_file = arguments.get("group_by_file", False)
         if group_by_file and matches:
-            return fd_rg_utils.group_matches_by_file(matches)
+            result = fd_rg_utils.group_matches_by_file(matches)
+
+            # Cache the result
+            if self.cache and cache_key:
+                self.cache.set(cache_key, result)
+
+            return result
 
         # Handle summary mode
         if summary_only:
             summary = fd_rg_utils.summarize_search_results(matches)
-            return {
+            result = {
                 "success": True,
                 "count": len(matches),
                 "truncated": truncated,
@@ -325,10 +399,22 @@ class SearchContentTool(BaseMCPTool):
                 "summary": summary,
             }
 
-        return {
+            # Cache the result
+            if self.cache and cache_key:
+                self.cache.set(cache_key, result)
+
+            return result
+
+        result = {
             "success": True,
             "count": len(matches),
             "truncated": truncated,
             "elapsed_ms": elapsed_ms,
             "results": matches,
         }
+
+        # Cache the result
+        if self.cache and cache_key:
+            self.cache.set(cache_key, result)
+
+        return result

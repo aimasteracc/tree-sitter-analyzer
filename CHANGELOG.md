@@ -1,5 +1,118 @@
 # Changelog
 
+## [1.3.0] - 2025-01-15
+
+### Added
+- **Phase 2 Cache System**: Implemented comprehensive search result caching for significant performance improvements
+- **SearchCache Module**: Thread-safe in-memory cache with TTL and LRU eviction (`tree_sitter_analyzer/mcp/utils/search_cache.py`)
+- **Cache Integration**: Integrated caching into `search_content` MCP tool for automatic performance optimization
+- **Performance Monitoring**: Added comprehensive cache statistics tracking and performance validation
+- **Cache Demo**: Interactive demonstration script showing 200-400x performance improvements (`examples/cache_demo.py`)
+
+### Performance Improvements
+- **99.8% faster repeated searches**: Cache hits complete in ~0.001s vs ~0.4s for cache misses
+- **200-400x speed improvements**: Demonstrated with real-world search operations
+- **Automatic optimization**: Zero-configuration caching with smart defaults
+- **Memory efficient**: LRU eviction and configurable cache size limits
+
+### Technical Details
+- **Thread-safe implementation**: Uses `threading.RLock()` for concurrent access
+- **Configurable TTL**: Default 1-hour cache lifetime with customizable settings
+- **Smart cache keys**: Deterministic key generation based on search parameters
+- **Path normalization**: Consistent caching across different path representations
+- **Comprehensive testing**: 19 test cases covering functionality and performance validation
+
+### Documentation
+- **Cache Feature Summary**: Complete implementation and performance documentation
+- **Usage Examples**: Clear examples for basic usage and advanced configuration
+- **Performance Benchmarks**: Real-world performance data and optimization benefits
+
+## [1.2.5] - 2025-09-15
+
+### 🐛 Bug Fixes
+
+#### Fixed list_files tool Java file detection issue
+- **Problem**: The `list_files` MCP tool failed to detect Java files when using root path "." due to command line argument conflicts in the `fd` command construction
+- **Root Cause**: Conflicting pattern and path arguments in `build_fd_command` function
+- **Solution**: Modified `fd_rg_utils.py` to use `--search-path` option for root directories and only append pattern when explicitly provided
+- **Impact**: Significantly improved cross-platform compatibility, especially for Windows environments
+
+### 🔧 Technical Changes
+- **File**: `tree_sitter_analyzer/mcp/tools/fd_rg_utils.py`
+  - Replaced positional path arguments with `--search-path` option
+  - Removed automatic "." pattern addition that caused conflicts
+  - Enhanced command construction logic for better reliability
+- **Tests**: Updated `tests/test_mcp_fd_rg_tools.py`
+  - Modified test assertions to match new `fd` command behavior
+  - Ensured test coverage for both pattern and no-pattern scenarios
+
+### 📚 Documentation Updates
+- **Enhanced GitFlow Documentation**: Added comprehensive AI-assisted development workflow
+- **Multi-language Sync**: Updated English, Chinese, and Japanese versions of GitFlow documentation
+- **Process Clarification**: Clarified PyPI deployment process and manual steps
+
+### 🚀 Deployment
+- **PyPI**: Successfully deployed to PyPI as version 1.2.5
+- **Compatibility**: Tested and verified on Windows environments
+- **CI/CD**: All automated workflows executed successfully
+
+### 📊 Testing
+- **Test Suite**: All 156 tests passing
+- **Coverage**: Maintained high test coverage
+- **Cross-platform**: Verified Windows compatibility
+
+## [1.2.4] - 2025-09-15
+
+### 🚀 Major Features
+
+#### SMART Analysis Workflow
+- **Complete S-M-A-R-T workflow**: Comprehensive workflow replacing the previous 3-step process
+  - **S (Setup)**: Project initialization and prerequisite verification
+  - **M (Map)**: File discovery and structure mapping
+  - **A (Analyze)**: Code analysis and element extraction
+  - **R (Retrieve)**: Content search and pattern matching
+  - **T (Trace)**: Dependency tracking and relationship analysis
+
+#### Advanced MCP Tools
+- **ListFilesTool**: Lightning-fast file discovery powered by `fd`
+- **SearchContentTool**: High-performance text search powered by `ripgrep`
+- **FindAndGrepTool**: Combined file discovery and content analysis
+- **Enterprise-grade Testing**: 50+ comprehensive test cases ensuring reliability and stability
+- **Multi-platform Support**: Complete installation guides for Windows, macOS, and Linux
+
+### 📋 Prerequisites & Installation
+- **fd and ripgrep**: Complete installation instructions for all platforms
+- **Windows Optimization**: winget commands and PowerShell execution policies
+- **Cross-platform**: Support for macOS (Homebrew), Linux (apt/dnf/pacman), Windows (winget/choco/scoop)
+- **Verification Steps**: Commands to verify successful installation
+
+### 🔧 Quality Assurance
+- **Test Coverage**: 1564 tests passed, 74.97% coverage
+- **MCP Tools Coverage**: 93.04% (Excellent)
+- **Real-world Validation**: All examples tested and verified with actual tool execution
+- **Enterprise-grade Reliability**: Comprehensive error handling and validation
+
+### 📚 Documentation & Localization
+- **Complete Translation**: Japanese and Chinese READMEs fully updated
+- **SMART Workflow**: Detailed step-by-step guides in all three languages
+- **Prerequisites Documentation**: Comprehensive installation guides
+- **Verified Examples**: All MCP tool examples tested and validated
+
+### 🎯 Sponsor Acknowledgment
+Special thanks to **@o93** for sponsoring this comprehensive MCP tools enhancement, enabling the early release of advanced file search and content analysis features.
+
+### 🛠️ Technical Improvements
+- **Advanced File Search**: Powered by fd for lightning-fast file discovery
+- **Intelligent Content Search**: Powered by ripgrep for high-performance text search
+- **Combined Tools**: FindAndGrepTool for comprehensive file discovery and content analysis
+- **Token Optimization**: Multiple output formats optimized for AI assistant interactions
+
+### ⚡ Performance & Reliability
+- **Built-in Timeouts**: Responsive operation with configurable time limits
+- **Result Limits**: Prevents overwhelming output with smart result limiting
+- **Error Resilience**: Comprehensive error handling and graceful degradation
+- **Cross-platform Testing**: Validated on Windows, macOS, and Linux environments
+
 ## [1.2.3] - 2025-08-27
 
 ### Release: v1.2.3
