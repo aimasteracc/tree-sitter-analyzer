@@ -927,7 +927,7 @@ async def test_search_content_optimize_paths(monkeypatch, tmp_path):
 @pytest.mark.asyncio
 async def test_search_content_group_by_file(monkeypatch, tmp_path):
     """Test SearchContentTool with file grouping enabled."""
-    tool = SearchContentTool(str(tmp_path))
+    tool = SearchContentTool(str(tmp_path), enable_cache=False)
 
     # Create test file
     test_file = tmp_path / "test.py"
@@ -1004,7 +1004,7 @@ async def test_search_content_group_by_file(monkeypatch, tmp_path):
 @pytest.mark.asyncio
 async def test_search_content_total_only(monkeypatch, tmp_path):
     """Test SearchContentTool with total_only mode for maximum token efficiency."""
-    tool = SearchContentTool(str(tmp_path))
+    tool = SearchContentTool(str(tmp_path), enable_cache=False)
 
     # Create test file
     test_file = tmp_path / "test.py"
