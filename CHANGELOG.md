@@ -1,6 +1,6 @@
 # Changelog
 
-## [1.4.0] - 2025-01-15
+## [1.3.1] - 2025-01-15
 
 ### Added
 - **🧠 Intelligent Cross-Format Cache Optimization**: Revolutionary smart caching system that eliminates duplicate searches across different result formats
