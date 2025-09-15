@@ -346,7 +346,9 @@ class FindAndGrepTool(BaseMCPTool):
         )
 
         rg_started = time.time()
-        rg_rc, rg_out, rg_err = await fd_rg_utils.run_command_capture(rg_cmd)
+        rg_rc, rg_out, rg_err = await fd_rg_utils.run_command_capture(
+            rg_cmd, timeout_ms=arguments.get("timeout_ms")
+        )
         rg_elapsed_ms = int((time.time() - rg_started) * 1000)
 
         if rg_rc not in (0, 1):
