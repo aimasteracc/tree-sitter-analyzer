@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.3.3] - 2025-01-15
+
+### Fixed
+- **🔍 MCP Search Tools Gitignore Detection**: Added missing gitignore auto-detection to `find_and_grep_tool` for consistent behavior with other MCP tools
+- **⚙️ FD Command Pattern Handling**: Fixed fd command construction when no pattern is specified to prevent absolute paths being interpreted as patterns
+- **🛠️ List Files Tool Error**: Resolved fd command errors in `list_files_tool` by ensuring '.' pattern is used when no explicit pattern provided
+- **🧪 Test Coverage**: Updated test cases to reflect corrected fd command pattern handling behavior
+
+### Technical Details
+- **Root Cause**: Missing gitignore auto-detection in `find_and_grep_tool` and incorrect fd command pattern handling in `fd_rg_utils.py`
+- **Solution**: Implemented gitignore detector integration and ensured default '.' pattern is always provided to fd command
+- **Impact**: Fixes search failures in projects with `.gitignore` 'code/*' patterns and resolves fd command errors with absolute path interpretation
+- **Affected Tools**: `find_and_grep_tool`, `list_files_tool`, and `search_content_tool` consistency
+
+This hotfix ensures MCP search tools work correctly across different project configurations and .gitignore patterns.
+
 ## [1.3.2] - 2025-09-16
 
 ### Fixed
@@ -548,7 +564,7 @@ Special thanks to **@o93** for sponsoring this comprehensive MCP tools enhanceme
 
 ##### Test Coverage
 - **QueryService Tests**: 13 comprehensive unit tests
-- **QueryFilter Tests**: 29 detailed filtering tests  
+- **QueryFilter Tests**: 29 detailed filtering tests
 - **CLI Integration Tests**: 11 real-world usage scenarios
 - **MCP Tool Tests**: 9 tool definition and functionality tests
 
@@ -1410,7 +1426,7 @@ If you're using the MCP server, update your tool calls:
 **After:**
 ```json
 {
-  "tool": "analyze_code_structure", 
+  "tool": "analyze_code_structure",
   "arguments": { ... }
 }
 ```

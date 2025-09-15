@@ -148,7 +148,7 @@ def build_fd_command(
         cmd += ["--max-results", str(limit)]
 
     # Pattern goes before roots if present
-    # If no pattern is specified, use '.' to match all files
+    # If no pattern is specified, use '.' to match all files (required to prevent roots being interpreted as pattern)
     if pattern:
         cmd.append(pattern)
     else:
