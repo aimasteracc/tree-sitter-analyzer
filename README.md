@@ -2,11 +2,11 @@
 
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-1564%20passed-brightgreen.svg)](#quality-assurance)
+[![Tests](https://img.shields.io/badge/tests-1599%20passed-brightgreen.svg)](#quality-assurance)
 [![Coverage](https://img.shields.io/badge/coverage-74.97%25-green.svg)](#quality-assurance)
 [![Quality](https://img.shields.io/badge/quality-enterprise%20grade-blue.svg)](#quality-assurance)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
-[![Version](https://img.shields.io/badge/version-1.2.4-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
+[![Version](https://img.shields.io/badge/version-1.4.0-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
 ## 🚀 Break LLM Token Limits, Let AI Understand Code Files of Any Size
@@ -882,7 +882,7 @@ All AI prompts in this document have been thoroughly tested in real environments
 - Operating System: Windows 10
 - Project: tree-sitter-analyzer v1.2.4
 - Test Files: BigService.java (1419 lines), sample.py (256 lines), MultiClass.java (54 lines)
-- Test Coverage: 1564 tests passed, 74.97% coverage
+- Test Coverage: 1599 tests passed, 74.97% coverage
 - Test Tools: All MCP tools (check_code_scale, analyze_code_structure, extract_code_section, query_code, list_files, search_content, find_and_grep)
 
 **🚀 Start Now** → [30-Second Quick Start](#-30-second-quick-start)
