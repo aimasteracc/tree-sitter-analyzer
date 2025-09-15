@@ -6,7 +6,7 @@
 [![覆盖率](https://img.shields.io/badge/coverage-74.38%25-green.svg)](#质量保证)
 [![质量](https://img.shields.io/badge/quality-enterprise%20grade-blue.svg)](#质量保证)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
-[![版本](https://img.shields.io/badge/version-1.3.3-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
+[![版本](https://img.shields.io/badge/version-1.3.4-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
 ## 🚀 突破LLM token限制，让AI理解任意大小的代码文件
@@ -747,7 +747,7 @@ Tree-sitter Analyzer自动检测和保护项目边界：
 - **零测试失败** - 完全CI/CD就绪
 - **跨平台兼容** - Windows、macOS、Linux
 
-### ⚡ **最新质量成就（v1.3.3）**
+### ⚡ **最新质量成就（v1.3.4）**
 - ✅ **跨平台路径兼容性** - 修复Windows短路径名称和macOS符号链接差异
 - ✅ **Windows环境** - 使用Windows API实现稳健的路径标准化
 - ✅ **macOS环境** - 修复`/var`与`/private/var`符号链接差异
@@ -867,7 +867,7 @@ MIT许可证 - 详见[LICENSE](LICENSE)文件。
 
 **测试环境：**
 - 操作系统：Windows 10
-- 项目：tree-sitter-analyzer v1.3.3
+- 项目：tree-sitter-analyzer v1.3.4
 - 测试文件：BigService.java (1419行)、sample.py (256行)、MultiClass.java (54行)
 - 测试工具：所有MCP工具（check_code_scale、analyze_code_structure、extract_code_section、query_code）
 

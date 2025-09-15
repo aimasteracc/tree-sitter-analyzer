@@ -6,7 +6,7 @@
 [![Coverage](https://img.shields.io/badge/coverage-74.38%25-green.svg)](#quality-assurance)
 [![Quality](https://img.shields.io/badge/quality-enterprise%20grade-blue.svg)](#quality-assurance)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
-[![Version](https://img.shields.io/badge/version-1.3.3-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
+[![Version](https://img.shields.io/badge/version-1.3.4-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
 ## 🚀 Break LLM Token Limits, Let AI Understand Code Files of Any Size
@@ -759,7 +759,7 @@ Tree-sitter Analyzer automatically detects and protects project boundaries:
 - **Zero test failures** - Fully CI/CD ready
 - **Cross-platform compatibility** - Windows, macOS, Linux
 
-### ⚡ **Latest Quality Achievements (v1.3.3)**
+### ⚡ **Latest Quality Achievements (v1.3.4)**
 - ✅ **Cross-platform path compatibility** - Fixed Windows short path names and macOS symbolic link differences
 - ✅ **Windows environment** - Implemented robust path normalization using Windows API
 - ✅ **macOS environment** - Fixed `/var` vs `/private/var` symbolic link differences
@@ -880,7 +880,7 @@ All AI prompts in this document have been thoroughly tested in real environments
 
 **Test Environment:**
 - Operating System: Windows 10
-- Project: tree-sitter-analyzer v1.3.3
+- Project: tree-sitter-analyzer v1.3.4
 - Test Files: BigService.java (1419 lines), sample.py (256 lines), MultiClass.java (54 lines)
 - Test Coverage: 1605 tests passed, 74.38% coverage
 - Test Tools: All MCP tools (check_code_scale, analyze_code_structure, extract_code_section, query_code, list_files, search_content, find_and_grep)
