@@ -1065,3 +1065,741 @@ async def test_search_content_with_files_parameter(monkeypatch, tmp_path):
     assert result["success"] is True
     assert result["count"] == 1
     assert result["results"][0]["file"] == str(test_file)
+
+
+# ============================================================================
+# COMPREHENSIVE TEST ENHANCEMENTS
+# ============================================================================
+
+# --- ListFilesTool Enhanced Tests ---
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_list_files_with_size_filters(monkeypatch, tmp_path):
+    """Test ListFilesTool with size filter parameters."""
+    tool = ListFilesTool(str(tmp_path))
+
+    # Create test files
+    small_file = tmp_path / "small.txt"
+    small_file.write_text("small", encoding="utf-8")
+    large_file = tmp_path / "large.txt"
+    large_file.write_text("x" * 1000, encoding="utf-8")
+
+    async def fake_run(cmd, input_data=None, timeout_ms=None):
+        # Verify size filters are in command
+        assert "-S" in cmd
+        assert "+500B" in cmd
+        return 0, f"{large_file}\n".encode(), b""
+
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture", fake_run
+    )
+
+    result = await tool.execute({"roots": [str(tmp_path)], "size": ["+500B"]})
+
+    assert result["success"] is True
+    assert result["count"] == 1
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_list_files_with_time_filters(monkeypatch, tmp_path):
+    """Test ListFilesTool with time-based filters."""
+    tool = ListFilesTool(str(tmp_path))
+
+    async def fake_run(cmd, input_data=None, timeout_ms=None):
+        # Verify time filters are in command
+        assert "--changed-within" in cmd
+        assert "1d" in cmd
+        assert "--changed-before" in cmd
+        assert "1w" in cmd
+        return 0, b"test.txt\n", b""
+
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture", fake_run
+    )
+
+    result = await tool.execute(
+        {"roots": [str(tmp_path)], "changed_within": "1d", "changed_before": "1w"}
+    )
+
+    assert result["success"] is True
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_list_files_with_types_and_extensions(monkeypatch, tmp_path):
+    """Test ListFilesTool with file type and extension filters."""
+    tool = ListFilesTool(str(tmp_path))
+
+    async def fake_run(cmd, input_data=None, timeout_ms=None):
+        # Verify type and extension filters
+        assert "-t" in cmd and "f" in cmd  # files only
+        assert "-e" in cmd and "py" in cmd  # Python extension
+        return 0, b"test.py\nscript.py\n", b""
+
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture", fake_run
+    )
+
+    result = await tool.execute(
+        {"roots": [str(tmp_path)], "types": ["f"], "extensions": ["py"]}
+    )
+
+    assert result["success"] is True
+    assert result["count"] == 2
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_list_files_with_depth_and_symlinks(monkeypatch, tmp_path):
+    """Test ListFilesTool with depth limit and symlink following."""
+    tool = ListFilesTool(str(tmp_path))
+
+    async def fake_run(cmd, input_data=None, timeout_ms=None):
+        # Verify depth and symlink options
+        assert "-d" in cmd and "2" in cmd  # max depth 2
+        assert "-L" in cmd  # follow symlinks
+        assert "-H" in cmd  # include hidden
+        return 0, b"file1.txt\n.hidden\n", b""
+
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture", fake_run
+    )
+
+    result = await tool.execute(
+        {"roots": [str(tmp_path)], "depth": 2, "follow_symlinks": True, "hidden": True}
+    )
+
+    assert result["success"] is True
+    assert result["count"] == 2
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_list_files_with_full_path_match(monkeypatch, tmp_path):
+    """Test ListFilesTool with full path matching."""
+    tool = ListFilesTool(str(tmp_path))
+
+    async def fake_run(cmd, input_data=None, timeout_ms=None):
+        # Verify full path match option
+        assert "-p" in cmd  # full path match
+        return 0, b"src/main.py\n", b""
+
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture", fake_run
+    )
+
+    result = await tool.execute(
+        {"roots": [str(tmp_path)], "pattern": "src/main.py", "full_path_match": True}
+    )
+
+    assert result["success"] is True
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_list_files_metadata_fields(monkeypatch, tmp_path):
+    """Test ListFilesTool returns correct metadata fields."""
+    tool = ListFilesTool(str(tmp_path))
+
+    # Create test file with known properties
+    test_file = tmp_path / "test.py"
+    test_file.write_text("print('hello')", encoding="utf-8")
+
+    async def fake_run(cmd, input_data=None, timeout_ms=None):
+        return 0, f"{test_file}\n".encode(), b""
+
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture", fake_run
+    )
+
+    result = await tool.execute({"roots": [str(tmp_path)]})
+
+    assert result["success"] is True
+    assert "elapsed_ms" in result
+    assert "truncated" in result
+    assert len(result["results"]) == 1
+
+    file_result = result["results"][0]
+    assert "path" in file_result
+    assert "is_dir" in file_result
+    assert "size_bytes" in file_result
+    assert "mtime" in file_result
+    assert "ext" in file_result
+    assert file_result["ext"] == "py"
+    assert file_result["is_dir"] is False
+
+
+# --- SearchContentTool Enhanced Tests ---
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_search_content_with_context_lines(monkeypatch, tmp_path):
+    """Test SearchContentTool with context before/after parameters."""
+    tool = SearchContentTool(str(tmp_path))
+
+    async def fake_run(cmd, input_data=None, timeout_ms=None):
+        # Verify context options are in command
+        assert "-B" in cmd and "2" in cmd  # before context
+        assert "-A" in cmd and "3" in cmd  # after context
+        return (
+            0,
+            b'{"type":"match","data":{"path":{"text":"test.py"},"lines":{"text":"match"},"line_number":1,"submatches":[]}}\n',
+            b"",
+        )
+
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture", fake_run
+    )
+
+    result = await tool.execute(
+        {
+            "roots": [str(tmp_path)],
+            "query": "test",
+            "context_before": 2,
+            "context_after": 3,
+        }
+    )
+
+    assert result["success"] is True
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_search_content_with_encoding_and_filesize(monkeypatch, tmp_path):
+    """Test SearchContentTool with encoding and max filesize parameters."""
+    tool = SearchContentTool(str(tmp_path))
+
+    async def fake_run(cmd, input_data=None, timeout_ms=None):
+        # Verify encoding and filesize options
+        assert "--encoding" in cmd and "latin1" in cmd  # encoding
+        assert "--max-filesize" in cmd and "5M" in cmd  # max filesize
+        return (
+            0,
+            b'{"type":"match","data":{"path":{"text":"test.py"},"lines":{"text":"match"},"line_number":1,"submatches":[]}}\n',
+            b"",
+        )
+
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture", fake_run
+    )
+
+    result = await tool.execute(
+        {
+            "roots": [str(tmp_path)],
+            "query": "test",
+            "encoding": "latin1",
+            "max_filesize": "5M",
+        }
+    )
+
+    assert result["success"] is True
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_search_content_with_word_and_fixed_strings(monkeypatch, tmp_path):
+    """Test SearchContentTool with word boundary and fixed string matching."""
+    tool = SearchContentTool(str(tmp_path))
+
+    async def fake_run(cmd, input_data=None, timeout_ms=None):
+        # Verify word and fixed string options
+        assert "-w" in cmd  # word boundary
+        assert "-F" in cmd  # fixed strings
+        return (
+            0,
+            b'{"type":"match","data":{"path":{"text":"test.py"},"lines":{"text":"test"},"line_number":1,"submatches":[]}}\n',
+            b"",
+        )
+
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture", fake_run
+    )
+
+    result = await tool.execute(
+        {"roots": [str(tmp_path)], "query": "test", "word": True, "fixed_strings": True}
+    )
+
+    assert result["success"] is True
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_search_content_case_sensitivity_modes(monkeypatch, tmp_path):
+    """Test SearchContentTool with different case sensitivity modes."""
+    tool = SearchContentTool(str(tmp_path))
+
+    test_cases = [
+        ("smart", ["-S"]),  # smart case
+        ("insensitive", ["-i"]),  # case insensitive
+        ("sensitive", []),  # case sensitive (default)
+    ]
+
+    for case_mode, expected_flags in test_cases:
+        captured_cmd = []
+
+        def make_fake_run(cmd_list):
+            async def fake_run(cmd, input_data=None, timeout_ms=None):
+                cmd_list.extend(cmd)
+                return (
+                    0,
+                    b'{"type":"match","data":{"path":{"text":"test.py"},"lines":{"text":"Test"},"line_number":1,"submatches":[]}}\n',
+                    b"",
+                )
+
+            return fake_run
+
+        monkeypatch.setattr(
+            "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture",
+            make_fake_run(captured_cmd),
+        )
+
+        result = await tool.execute(
+            {"roots": [str(tmp_path)], "query": "Test", "case": case_mode}
+        )
+
+        assert result["success"] is True
+        for flag in expected_flags:
+            assert flag in captured_cmd
+        captured_cmd.clear()
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_search_content_with_timeout_and_max_count(monkeypatch, tmp_path):
+    """Test SearchContentTool with timeout and max count limits."""
+    tool = SearchContentTool(str(tmp_path))
+
+    captured_timeout = None
+
+    async def fake_run(cmd, input_data=None, timeout_ms=None):
+        nonlocal captured_timeout
+        captured_timeout = timeout_ms
+        # Verify max count option
+        assert "-m" in cmd and "10" in cmd
+        return (
+            0,
+            b'{"type":"match","data":{"path":{"text":"test.py"},"lines":{"text":"match"},"line_number":1,"submatches":[]}}\n',
+            b"",
+        )
+
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture", fake_run
+    )
+
+    result = await tool.execute(
+        {"roots": [str(tmp_path)], "query": "test", "timeout_ms": 3000, "max_count": 10}
+    )
+
+    assert result["success"] is True
+    # Verify timeout was passed correctly
+    assert captured_timeout == 3000
+
+
+# --- FindAndGrepTool Enhanced Tests ---
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_find_and_grep_file_discovery_parameters(monkeypatch, tmp_path):
+    """Test FindAndGrepTool with comprehensive file discovery parameters."""
+    tool = FindAndGrepTool(str(tmp_path))
+
+    call_count = 0
+
+    async def fake_run(cmd, input_data=None, timeout_ms=None):
+        nonlocal call_count
+        call_count += 1
+
+        if call_count == 1:  # fd command
+            # Verify fd parameters
+            assert "fd" in cmd[0]
+            assert "-t" in cmd and "f" in cmd  # file type
+            assert "-e" in cmd and "py" in cmd  # extension
+            assert "-E" in cmd and "*.tmp" in cmd  # exclude
+            assert "-d" in cmd and "3" in cmd  # depth
+            assert "-L" in cmd  # follow symlinks
+            assert "-H" in cmd  # hidden files
+            assert "-S" in cmd and "+1K" in cmd  # size filter
+            return 0, b"test.py\n", b""
+        else:  # rg command
+            return (
+                0,
+                b'{"type":"match","data":{"path":{"text":"test.py"},"lines":{"text":"import"},"line_number":1,"submatches":[]}}\n',
+                b"",
+            )
+
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture", fake_run
+    )
+
+    result = await tool.execute(
+        {
+            "roots": [str(tmp_path)],
+            "query": "import",
+            "types": ["f"],
+            "extensions": ["py"],
+            "exclude": ["*.tmp"],
+            "depth": 3,
+            "follow_symlinks": True,
+            "hidden": True,
+            "size": ["+1K"],
+        }
+    )
+
+    assert result["success"] is True
+    assert call_count == 2
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_find_and_grep_content_search_parameters(monkeypatch, tmp_path):
+    """Test FindAndGrepTool with comprehensive content search parameters."""
+    tool = FindAndGrepTool(str(tmp_path))
+
+    call_count = 0
+
+    async def fake_run(cmd, input_data=None, timeout_ms=None):
+        nonlocal call_count
+        call_count += 1
+
+        if call_count == 1:  # fd command
+            return 0, b"test.py\n", b""
+        else:  # rg command
+            # Verify rg parameters
+            assert "rg" in cmd[0]
+            assert "-i" in cmd  # case insensitive
+            assert "-F" in cmd  # fixed strings
+            assert "-w" in cmd  # word boundary
+            assert "--multiline" in cmd  # multiline (uses --multiline not -U)
+            assert "--max-filesize" in cmd and "10M" in cmd
+            assert "-B" in cmd and "2" in cmd  # context before
+            assert "-A" in cmd and "3" in cmd  # context after
+            return (
+                0,
+                b'{"type":"match","data":{"path":{"text":"test.py"},"lines":{"text":"TEST"},"line_number":1,"submatches":[]}}\n',
+                b"",
+            )
+
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture", fake_run
+    )
+
+    result = await tool.execute(
+        {
+            "roots": [str(tmp_path)],
+            "query": "TEST",
+            "case": "insensitive",
+            "fixed_strings": True,
+            "word": True,
+            "multiline": True,
+            "max_filesize": "10M",
+            "context_before": 2,
+            "context_after": 3,
+        }
+    )
+
+    assert result["success"] is True
+    assert call_count == 2
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_find_and_grep_with_file_sorting(monkeypatch, tmp_path):
+    """Test FindAndGrepTool with file sorting options."""
+    tool = FindAndGrepTool(str(tmp_path))
+
+    # Create test files with different properties
+    file1 = tmp_path / "a.py"
+    file2 = tmp_path / "b.py"
+    file1.write_text("small", encoding="utf-8")
+    file2.write_text("larger content", encoding="utf-8")
+
+    call_count = 0
+
+    async def fake_run(cmd, input_data=None, timeout_ms=None):
+        nonlocal call_count
+        call_count += 1
+
+        if call_count == 1:  # fd command
+            # Return files in unsorted order
+            return 0, f"{file2}\n{file1}\n".encode(), b""
+        else:  # rg command
+            rg_json = {
+                "type": "match",
+                "data": {
+                    "path": {"text": str(file1)},
+                    "lines": {"text": "small"},
+                    "line_number": 1,
+                    "submatches": [],
+                },
+            }
+            return 0, (json.dumps(rg_json) + "\n").encode(), b""
+
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture", fake_run
+    )
+
+    # Test path sorting
+    result = await tool.execute(
+        {"roots": [str(tmp_path)], "query": "small", "sort": "path"}
+    )
+
+    assert result["success"] is True
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_find_and_grep_summary_only_mode(monkeypatch, tmp_path):
+    """Test FindAndGrepTool with summary_only output format."""
+    tool = FindAndGrepTool(str(tmp_path))
+
+    call_count = 0
+
+    async def fake_run(cmd, input_data=None, timeout_ms=None):
+        nonlocal call_count
+        call_count += 1
+
+        if call_count == 1:  # fd command
+            return 0, b"file1.py\nfile2.py\n", b""
+        else:  # rg command
+            # Multiple matches for summary
+            matches = [
+                '{"type":"match","data":{"path":{"text":"file1.py"},"lines":{"text":"import os"},"line_number":1,"submatches":[]}}',
+                '{"type":"match","data":{"path":{"text":"file1.py"},"lines":{"text":"import sys"},"line_number":2,"submatches":[]}}',
+                '{"type":"match","data":{"path":{"text":"file2.py"},"lines":{"text":"import json"},"line_number":1,"submatches":[]}}',
+            ]
+            return 0, "\n".join(matches).encode(), b""
+
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture", fake_run
+    )
+
+    result = await tool.execute(
+        {"roots": [str(tmp_path)], "query": "import", "summary_only": True}
+    )
+
+    assert result["success"] is True
+    assert result["summary_only"] is True
+    assert "summary" in result
+    assert "meta" in result
+    assert result["meta"]["searched_file_count"] == 2
+
+
+# --- Error Handling and Edge Cases ---
+
+
+@pytest.mark.unit
+def test_list_files_validation_comprehensive(tmp_path):
+    """Test comprehensive parameter validation for ListFilesTool."""
+    tool = ListFilesTool(str(tmp_path))
+
+    # Test all invalid parameter types
+    invalid_cases = [
+        ({"roots": "not_a_list"}, "roots must be an array"),
+        ({"roots": [str(tmp_path)], "glob": "true"}, "glob must be a boolean"),
+        ({"roots": [str(tmp_path)], "depth": "5"}, "depth must be an integer"),
+        ({"roots": [str(tmp_path)], "limit": "100"}, "limit must be an integer"),
+        (
+            {"roots": [str(tmp_path)], "extensions": ["py", 123]},
+            "extensions must be an array of strings",
+        ),
+        (
+            {"roots": [str(tmp_path)], "types": [1, 2]},
+            "types must be an array of strings",
+        ),
+        (
+            {"roots": [str(tmp_path)], "exclude": "*.tmp"},
+            "exclude must be an array of strings",
+        ),
+        (
+            {"roots": [str(tmp_path)], "size": "large"},
+            "size must be an array of strings",
+        ),
+        (
+            {"roots": [str(tmp_path)], "follow_symlinks": "yes"},
+            "follow_symlinks must be a boolean",
+        ),
+        ({"roots": [str(tmp_path)], "hidden": 1}, "hidden must be a boolean"),
+        (
+            {"roots": [str(tmp_path)], "no_ignore": "false"},
+            "no_ignore must be a boolean",
+        ),
+        (
+            {"roots": [str(tmp_path)], "full_path_match": "true"},
+            "full_path_match must be a boolean",
+        ),
+        ({"roots": [str(tmp_path)], "absolute": 0}, "absolute must be a boolean"),
+        ({"roots": [str(tmp_path)], "pattern": 123}, "pattern must be a string"),
+        (
+            {"roots": [str(tmp_path)], "changed_within": 30},
+            "changed_within must be a string",
+        ),
+        (
+            {"roots": [str(tmp_path)], "changed_before": []},
+            "changed_before must be a string",
+        ),
+    ]
+
+    for invalid_args, expected_error in invalid_cases:
+        with pytest.raises(ValueError, match=expected_error):
+            tool.validate_arguments(invalid_args)
+
+
+@pytest.mark.unit
+def test_search_content_validation_comprehensive(tmp_path):
+    """Test comprehensive parameter validation for SearchContentTool."""
+    tool = SearchContentTool(str(tmp_path))
+
+    # Test all invalid parameter types
+    invalid_cases = [
+        ({"query": "test"}, "Either roots or files must be provided"),
+        ({"roots": [str(tmp_path)]}, "query is required"),
+        ({"roots": [str(tmp_path)], "query": ""}, "query is required"),
+        (
+            {"roots": [str(tmp_path)], "query": "test", "case": 123},
+            "case must be a string",
+        ),
+        (
+            {"roots": [str(tmp_path)], "query": "test", "encoding": []},
+            "encoding must be a string",
+        ),
+        (
+            {"roots": [str(tmp_path)], "query": "test", "max_filesize": 100},
+            "max_filesize must be a string",
+        ),
+        (
+            {"roots": [str(tmp_path)], "query": "test", "fixed_strings": "true"},
+            "fixed_strings must be a boolean",
+        ),
+        (
+            {"roots": [str(tmp_path)], "query": "test", "word": 1},
+            "word must be a boolean",
+        ),
+        (
+            {"roots": [str(tmp_path)], "query": "test", "multiline": "false"},
+            "multiline must be a boolean",
+        ),
+        (
+            {"roots": [str(tmp_path)], "query": "test", "context_before": "2"},
+            "context_before must be an integer",
+        ),
+        (
+            {"roots": [str(tmp_path)], "query": "test", "context_after": 2.5},
+            "context_after must be an integer",
+        ),
+        (
+            {"roots": [str(tmp_path)], "query": "test", "max_count": "10"},
+            "max_count must be an integer",
+        ),
+        (
+            {"roots": [str(tmp_path)], "query": "test", "timeout_ms": "5000"},
+            "timeout_ms must be an integer",
+        ),
+        (
+            {"roots": [str(tmp_path)], "query": "test", "include_globs": "*.py"},
+            "include_globs must be an array of strings",
+        ),
+        (
+            {"roots": [str(tmp_path)], "query": "test", "exclude_globs": [1, 2]},
+            "exclude_globs must be an array of strings",
+        ),
+    ]
+
+    for invalid_args, expected_error in invalid_cases:
+        with pytest.raises(ValueError, match=expected_error):
+            tool.validate_arguments(invalid_args)
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_tools_timeout_handling(monkeypatch, tmp_path):
+    """Test timeout handling for all tools."""
+    tools = [
+        ListFilesTool(str(tmp_path)),
+        SearchContentTool(str(tmp_path)),
+        FindAndGrepTool(str(tmp_path)),
+    ]
+
+    async def fake_timeout_run(cmd, input_data=None, timeout_ms=None):
+        # Simulate timeout
+        return 124, b"", b"Timeout after 1000 ms"
+
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture",
+        fake_timeout_run,
+    )
+
+    test_args = [
+        {"roots": [str(tmp_path)]},  # ListFilesTool
+        {"roots": [str(tmp_path)], "query": "test"},  # SearchContentTool
+        {"roots": [str(tmp_path)], "query": "test"},  # FindAndGrepTool
+    ]
+
+    for tool, args in zip(tools, test_args, strict=False):
+        result = await tool.execute(args)
+        assert result["success"] is False
+        assert result["returncode"] == 124
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_tools_with_empty_results(monkeypatch, tmp_path):
+    """Test all tools with empty results."""
+    tools = [
+        (ListFilesTool(str(tmp_path)), {"roots": [str(tmp_path)]}),
+        (
+            SearchContentTool(str(tmp_path)),
+            {"roots": [str(tmp_path)], "query": "nonexistent"},
+        ),
+        (
+            FindAndGrepTool(str(tmp_path)),
+            {"roots": [str(tmp_path)], "query": "nonexistent"},
+        ),
+    ]
+
+    async def fake_empty_run(cmd, input_data=None, timeout_ms=None):
+        return 0, b"", b""  # Empty results
+
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture", fake_empty_run
+    )
+
+    for tool, args in tools:
+        result = await tool.execute(args)
+        assert result["success"] is True
+        if "count" in result:
+            assert result["count"] == 0
+        if "results" in result:
+            assert len(result["results"]) == 0
+
+
+@pytest.mark.unit
+def test_fd_rg_utils_edge_cases():
+    """Test edge cases in fd_rg_utils functions."""
+    from tree_sitter_analyzer.mcp.tools.fd_rg_utils import (
+        clamp_int,
+        normalize_max_filesize,
+        parse_size_to_bytes,
+    )
+
+    # Test clamp_int edge cases
+    assert clamp_int(None, 100, 1000) == 100
+    assert clamp_int(-50, 100, 1000) == 0
+    assert clamp_int(2000, 100, 1000) == 1000
+    assert clamp_int("invalid", 100, 1000) == 100
+
+    # Test parse_size_to_bytes edge cases
+    assert parse_size_to_bytes("") is None
+    assert parse_size_to_bytes("invalid") is None
+    assert parse_size_to_bytes("10.5K") == 10752
+    assert parse_size_to_bytes("2.5M") == 2621440
+    assert parse_size_to_bytes("1G") == 1073741824
+
+    # Test normalize_max_filesize edge cases
+    assert normalize_max_filesize(None) == "10M"
+    assert normalize_max_filesize("500M") == "200M"  # Clamped to hard cap
+    assert normalize_max_filesize("5M") == "5M"  # Within limits
