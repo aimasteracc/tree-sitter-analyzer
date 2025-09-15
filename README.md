@@ -105,7 +105,7 @@ powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | ie
 
 Add the following to your configuration file:
 - **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
-- **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`  
+- **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
 - **Linux**: `~/.config/claude/claude_desktop_config.json`
 
 **Basic Configuration (Recommended):**
@@ -192,11 +192,11 @@ uv run python -m tree_sitter_analyzer examples/BigService.java --partial-read --
 ### 💬 AI IDE Prompts (SMART Analysis Workflow)
 
 > **✅ Test Verification Status:** All prompts below have been tested and verified in real environments, ensuring 100% availability
-> 
+>
 > **🎯 SMART Analysis Workflow:**
 > - **S** - Setup project (set_project_path)
 > - **M** - Map target files (precision pattern matching)
-> - **A** - Analyze core structure (analyze_code_structure) 
+> - **A** - Analyze core structure (analyze_code_structure)
 > - **R** - Retrieve essential code (extract_code_section)
 > - **T** - Trace dependencies (when needed)
 >
@@ -547,7 +547,7 @@ Tree-sitter Analyzer now features a revolutionary unified architecture that inte
 
 #### **Supported Element Types:**
 - `class` - Classes and interfaces
-- `function` - Methods and functions  
+- `function` - Methods and functions
 - `variable` - Fields and variables
 - `import` - Import statements
 - `package` - Package declarations
@@ -572,7 +572,7 @@ Get insights without reading complete files:
 ### 🔍 **Advanced Query Filtering**
 Powerful code element query and filtering system:
 - **Exact matching**: `--filter "name=main"` to find specific methods
-- **Pattern matching**: `--filter "name=~auth*"` to find authentication-related methods  
+- **Pattern matching**: `--filter "name=~auth*"` to find authentication-related methods
 - **Parameter filtering**: `--filter "params=2"` to find methods with specific parameter counts
 - **Modifier filtering**: `--filter "static=true,public=true"` to find static public methods
 - **Compound conditions**: `--filter "name=~get*,params=0,public=true"` to combine multiple conditions
@@ -581,7 +581,7 @@ Powerful code element query and filtering system:
 ### 🔗 **AI Assistant Integration**
 Deep integration through MCP protocol:
 - Claude Desktop
-- Cursor IDE  
+- Cursor IDE
 - Roo Code
 - Other MCP-compatible AI tools
 

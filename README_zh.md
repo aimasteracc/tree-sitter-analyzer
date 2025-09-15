@@ -38,7 +38,7 @@
 想象一下：你有一个1400多行的Java服务类，Claude或ChatGPT因为token限制无法分析。现在，Tree-sitter Analyzer让AI助手能够：
 
 - ⚡ **3秒获得完整代码结构概览**
-- 🎯 **精确提取**任意行范围的代码片段  
+- 🎯 **精确提取**任意行范围的代码片段
 - 📍 **智能定位**类、方法、字段的确切位置
 - 🔗 **无缝集成**Claude Desktop、Cursor、Roo Code等AI IDE
 - 🏗️ **统一元素管理** - 所有代码元素（类、方法、字段、导入）在一个统一的系统中
@@ -105,7 +105,7 @@ powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | ie
 
 将以下内容添加到您的配置文件：
 - **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
-- **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`  
+- **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
 - **Linux**: `~/.config/claude/claude_desktop_config.json`
 
 **基础配置（推荐）：**
@@ -192,11 +192,11 @@ uv run python -m tree_sitter_analyzer examples/BigService.java --partial-read --
 ### 💬 AI IDE 提示词（SMART分析工作流程）
 
 > **✅ 测试验证状态：** 以下所有提示词都已在真实环境中测试验证，确保100%可用
-> 
+>
 > **🎯 SMART分析工作流程：**
 > - **S** - 设置项目 (set_project_path)
 > - **M** - 映射目标文件 (精确模式匹配)
-> - **A** - 分析核心结构 (analyze_code_structure) 
+> - **A** - 分析核心结构 (analyze_code_structure)
 > - **R** - 检索关键代码 (extract_code_section)
 > - **T** - 追踪依赖关系 (需要时)
 >
@@ -535,7 +535,7 @@ Tree-sitter Analyzer现在具有革命性的统一架构，将所有代码元素
 
 #### **支持的元素类型：**
 - `class` - 类和接口
-- `function` - 方法和函数  
+- `function` - 方法和函数
 - `variable` - 字段和变量
 - `import` - 导入语句
 - `package` - 包声明
@@ -560,7 +560,7 @@ Tree-sitter Analyzer现在具有革命性的统一架构，将所有代码元素
 ### 🔍 **高级查询过滤**
 强大的代码元素查询和过滤系统：
 - **精确匹配**: `--filter "name=main"` 查找特定方法
-- **模式匹配**: `--filter "name=~auth*"` 查找认证相关方法  
+- **模式匹配**: `--filter "name=~auth*"` 查找认证相关方法
 - **参数过滤**: `--filter "params=2"` 查找特定参数数量的方法
 - **修饰符过滤**: `--filter "static=true,public=true"` 查找静态公开方法
 - **复合条件**: `--filter "name=~get*,params=0,public=true"` 组合多个条件
@@ -569,7 +569,7 @@ Tree-sitter Analyzer现在具有革命性的统一架构，将所有代码元素
 ### 🔗 **AI助手集成**
 通过MCP协议深度集成：
 - Claude Desktop
-- Cursor IDE  
+- Cursor IDE
 - Roo Code
 - 其他支持MCP的AI工具
 
