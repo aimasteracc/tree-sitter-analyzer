@@ -2,11 +2,11 @@
 
 [![Pythonバージョン](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![ライセンス](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![テスト](https://img.shields.io/badge/tests-1514%20passed-brightgreen.svg)](#品質保証)
-[![カバレッジ](https://img.shields.io/badge/coverage-74.10%25-green.svg)](#品質保証)
+[![テスト](https://img.shields.io/badge/tests-1564%20passed-brightgreen.svg)](#品質保証)
+[![カバレッジ](https://img.shields.io/badge/coverage-74.97%25-green.svg)](#品質保証)
 [![品質](https://img.shields.io/badge/quality-enterprise%20grade-blue.svg)](#品質保証)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
-[![バージョン](https://img.shields.io/badge/version-1.2.3-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
+[![バージョン](https://img.shields.io/badge/version-1.2.4-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
 ## 🚀 LLMトークン制限を突破し、AIにあらゆるサイズのコードファイルを理解させる
@@ -59,10 +59,12 @@ Total Elements: 85 | Complexity: 348 (avg: 5.27, max: 15)
 |----------|--------|--------|--------|------------|--------------|
 | BigService | class | public | 17-1419 | 66 | 9 |
 
-### 🔄 **AIアシスタント3ステップワークフロー**
-- **ステップ1**: `check_code_scale` - ファイルの規模と複雑さをチェック
-- **ステップ2**: `analyze_code_structure` - 統一要素を含む詳細な構造テーブルを生成
-- **ステップ3**: `extract_code_section` - オンデマンドでコードセクションを抽出
+### 🔄 **AIアシスタントSMARTワークフロー**
+- **S**: `set_project_path` - プロジェクトルートディレクトリの設定
+- **M**: `list_files`, `search_content`, `find_and_grep` - 精密なターゲットファイルマッピング
+- **A**: `analyze_code_structure` - 統一要素によるコア構造分析
+- **R**: `extract_code_section` - オンデマンドでの重要コード取得
+- **T**: 高度な依存関係追跡（必要時のみ）
 
 ---
 
@@ -70,13 +72,31 @@ Total Elements: 85 | Complexity: 348 (avg: 5.27, max: 15)
 
 ### 🤖 AIユーザー（Claude Desktop、Cursorなど）
 
+**📋 0. 前提条件（高度なMCPツール用）**
+高度なファイル検索・コンテンツ解析機能を使用するには、まずこれらのツールをインストールしてください：
+```bash
+# fdとripgrepをインストール（詳細な手順は前提条件セクションを参照）
+# macOS
+brew install fd ripgrep
+
+# Windows（wingetを使用 - 推奨）
+winget install sharkdp.fd BurntSushi.ripgrep.MSVC
+
+# Windows（その他の方法）
+# choco install fd ripgrep
+# scoop install fd ripgrep
+
+# Ubuntu/Debian
+sudo apt install fd-find ripgrep
+```
+
 **📦 1. ワンクリックインストール**
 ```bash
 # macOS/Linux
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
 # Windows PowerShell
-powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
 ```
 
 **⚙️ 2. AIクライアントの設定**
@@ -169,19 +189,25 @@ uv run python -m tree_sitter_analyzer examples/BigService.java --partial-read --
 
 ## 📖 実際の使用例
 
-### 💬 AI IDE プロンプト（テスト済み・検証済み、すぐに使用可能）
+### 💬 AI IDE プロンプト（SMART分析ワークフロー）
 
 > **✅ テスト検証状況：** 以下のすべてのプロンプトは実際の環境でテスト・検証されており、100%の可用性を保証
 > 
+> **🎯 SMART分析ワークフロー：**
+> - **S** - セットアップ (set_project_path)
+> - **M** - マップ (精密パターンマッチング)
+> - **A** - 分析 (analyze_code_structure) 
+> - **R** - 取得 (extract_code_section)
+> - **T** - 追跡 (必要時のみ)
+>
 > **⚠️ 重要な注意事項：**
-> - **ステップ0は必須** - 他のツールを使用する前に、必ずプロジェクトパスを設定してください
+> - 最適な結果を得るためにSMARTワークフローの順序に従ってください
 > - プロジェクト内のファイルには**相対パス**を使用（例：`examples/BigService.java`）
 > - プロジェクト外のファイルには**絶対パス**を使用（例：`C:\git-public\tree-sitter-analyzer\examples\BigService.java`）
 > - すべてのツールはWindowsとUnixスタイルのパスをサポート
 > - プロジェクトパスはコードリポジトリのルートディレクトリを指す必要があります
-> - MCP設定でプロジェクトパスを設定するか、動的に設定できます
 
-#### 🔧 **ステップ0：プロジェクトパスの設定（最初に必須）**
+#### 🔧 **S - セットアップ（最初に必須）**
 
 **オプション1：MCP設定で構成**
 ```json
@@ -218,7 +244,68 @@ uv run python -m tree_sitter_analyzer examples/BigService.java --partial-read --
 
 **AIは自動的に適切なツールを呼び出してパスを設定します、複雑なコマンド形式を覚える必要はありません**
 
-#### 🔍 **ステップ1：ファイル規模をチェック**
+#### 🗺️ **M - マップターゲットファイル（精密パターンマッチング）**
+
+> **📋 前提条件：** このステップには`fd`と`ripgrep`ツールのインストールが必要です。インストール手順については[前提条件](#前提条件)セクションを参照してください。
+
+**スマートファイル発見：**
+```
+プロジェクト内のすべてのPythonファイルを検索
+```
+
+```
+10KB以上のすべてのJavaファイルをリスト
+```
+
+```
+プロジェクト内の設定ファイル（*.json, *.yaml, *.toml）を検索
+```
+
+**インテリジェントコンテンツ検索：**
+```
+すべてのPythonファイルで"def authenticate"をコンテキスト付きで検索
+```
+
+```
+ソースファイル内のすべてのTODOコメントを検索
+```
+
+```
+すべてのファイルで"class.*Service"パターンを大文字小文字を区別せずに検索
+```
+
+**組み合わせ発見・検索：**
+```
+すべてのPythonファイルを検索し、"async def"関数を探す
+```
+
+```
+すべてのソースファイルで"class.*Service"を検索
+```
+
+**戻り値形式：**
+```json
+{
+  "success": true,
+  "results": [
+    {
+      "file": "tree_sitter_analyzer/core/query_service.py",
+      "line": 20,
+      "text": "class QueryService:",
+      "matches": [[0, 18]]
+    }
+  ],
+  "count": 25,
+  "meta": {
+    "searched_file_count": 256,
+    "truncated": false,
+    "fd_elapsed_ms": 225,
+    "rg_elapsed_ms": 2969
+  }
+}
+```
+
+#### 🔍 **A - コア構造分析**
 
 **方法1：明確な分析要求**
 ```
@@ -267,7 +354,7 @@ uv run python -m tree_sitter_analyzer examples/BigService.java --partial-read --
 }
 ```
 
-#### 📊 **ステップ2：構造テーブル生成**
+#### 📊 **R - 重要コード取得**
 
 **方法1：明確なテーブル要求**
 ```
@@ -294,7 +381,7 @@ uv run python -m tree_sitter_analyzer examples/BigService.java --partial-read --
 - クラス情報、メソッドリスト（行番号付き）、フィールドリストを含む
 - メソッドシグネチャ、可視性、行範囲、複雑さなどの詳細情報
 
-#### ✂️ **ステップ3：コードスニペットの抽出**
+#### ✂️ **精密コード抽出**
 
 **方法1：明確な抽出要求**
 ```
@@ -331,7 +418,7 @@ uv run python -m tree_sitter_analyzer examples/BigService.java --partial-read --
 }
 ```
 
-#### 🔍 **ステップ4：スマートクエリフィルタリング（v0.9.6+）**
+#### 🔗 **T - 依存関係追跡（高度分析）**
 
 **エラーハンドリングの強化（v0.9.7）：**
 - ツール名識別を追加した`@handle_mcp_errors`デコレータの改善
@@ -373,12 +460,14 @@ uv run python -m tree_sitter_analyzer examples/BigService.java --partial-read --
 }
 ```
 
-#### 💡 **重要な注意事項**
+#### 💡 **SMARTワークフローベストプラクティス**
 - **自然言語**: 複雑なパラメーター形式を覚える必要はなく、自然言語でAIに直接伝える
-- **パス処理**: 相対パスは自動的にプロジェクトルートに解決、絶対パスも完全にサポート
+- **順次フロー**: 最適な分析結果を得るためにS→M→A→R→Tの順序に従う
+- **パス処理**: プロジェクトパス設定後、相対パスは自動的にプロジェクトルートに解決
 - **セキュリティ保護**: ツールは自動的にプロジェクト境界チェックを実行して安全を確保
-- **ワークフロー**: 順序通りの使用を推奨：ステップ1 → 2 → 4（クエリフィルタリング）→ 3（正確な抽出）
 - **スマート理解**: AIは自動的にあなたのニーズを理解し、適切なツールを呼び出します
+- **パフォーマンス**: すべてのMCPツールは速度最適化され、内蔵タイムアウトと結果制限あり
+- **依存関係追跡**: コード要素間の複雑な関係を理解する必要がある場合のみTステップを使用
 
 ### 🛠️ CLIコマンド例
 
@@ -483,6 +572,98 @@ MCPプロトコルを通じた深い統合：
 - Cursor IDE  
 - Roo Code
 - その他のMCPサポートAIツール
+
+### 🔍 **高度なファイル検索・コンテンツ解析 (v1.2.4+)**
+fdとripgrepを活用した強力なファイル発見・コンテンツ検索機能：
+
+#### **📋 前提条件**
+高度なMCPツール（ListFilesTool、SearchContentTool、FindAndGrepTool）を使用するには、以下のコマンドラインツールをインストールする必要があります：
+
+**fd（高速ファイルファインダー）のインストール：**
+```bash
+# macOS（Homebrewを使用）
+brew install fd
+
+# Windows（wingetを使用 - 推奨）
+winget install sharkdp.fd
+
+# Windows（Chocolateyを使用）
+choco install fd
+
+# Windows（Scoopを使用）
+scoop install fd
+
+# Ubuntu/Debian
+sudo apt install fd-find
+
+# CentOS/RHEL/Fedora
+sudo dnf install fd-find
+
+# Arch Linux
+sudo pacman -S fd
+```
+
+**ripgrep（高速テキスト検索）のインストール：**
+```bash
+# macOS（Homebrewを使用）
+brew install ripgrep
+
+# Windows（wingetを使用 - 推奨）
+winget install BurntSushi.ripgrep.MSVC
+
+# Windows（Chocolateyを使用）
+choco install ripgrep
+
+# Windows（Scoopを使用）
+scoop install ripgrep
+
+# Ubuntu/Debian
+sudo apt install ripgrep
+
+# CentOS/RHEL/Fedora
+sudo dnf install ripgrep
+
+# Arch Linux
+sudo pacman -S ripgrep
+```
+
+**インストール確認：**
+```bash
+# fdのインストール確認
+fd --version
+
+# ripgrepのインストール確認
+rg --version
+```
+
+> **⚠️ 重要：** これらのツールがインストールされていない場合、高度なMCPファイル検索・コンテンツ解析機能は動作しません。基本的なMCPツール（analyze_code_structure、extract_code_sectionなど）は正常に動作し続けます。
+
+#### **🗂️ ListFilesTool - スマートファイル発見**
+- **高度なフィルタリング**: ファイルタイプ、サイズ、更新時刻、拡張子ベースのフィルタリング
+- **パターンマッチング**: 柔軟なファイル発見のためのGlobパターンと正規表現サポート
+- **メタデータ強化**: ファイルサイズ、更新時刻、ディレクトリステータス、拡張子情報
+- **パフォーマンス最適化**: 高速ファイルシステム探索のためのfdベース
+
+#### **🔎 SearchContentTool - インテリジェントコンテンツ検索**
+- **正規表現・リテラル検索**: 大文字小文字の区別制御を含む柔軟なパターンマッチング
+- **コンテキスト対応結果**: より良い理解のための前後コンテキスト行の設定可能
+- **複数出力形式**: 標準結果、カウントのみ、サマリー、ファイル別グループ化
+- **エンコーディングサポート**: 異なるテキストエンコーディングのファイル処理
+- **パフォーマンス制限**: レスポンシブ動作のための組み込みタイムアウトと結果制限
+
+#### **🎯 FindAndGrepTool - 統合発見・検索**
+- **2段階ワークフロー**: まずfdでファイルを発見、次にripgrepでコンテンツを検索
+- **包括的フィルタリング**: ファイル発見フィルターとコンテンツ検索パターンの組み合わせ
+- **高度なオプション**: 複数行パターン、単語境界、固定文字列、大文字小文字制御
+- **豊富なメタデータ**: ファイル発見タイミング、検索タイミング、結果統計
+- **トークン最適化**: AIトークン使用量を最小化するパス最適化と結果グループ化
+
+#### **✨ 主な利点:**
+- 🚀 **エンタープライズグレードの信頼性**: 安定性を保証する50+の包括的テストケース
+- 🎯 **トークン効率**: AIアシスタントの相互作用に最適化された複数の出力形式
+- 🔧 **高度に設定可能**: 精密制御のための広範なパラメーターサポート
+- 📊 **パフォーマンス監視**: 組み込みタイミングと結果統計
+- 🛡️ **エラー耐性**: 包括的なエラーハンドリングと検証
 
 ### 🌍 **多言語サポート**
 - **Java** - フルサポート、Spring、JPAフレームワークを含む
@@ -622,6 +803,32 @@ uv run python llm_code_checker.py path/to/new_file.py
 - **[プロジェクトルート設定](PROJECT_ROOT_CONFIG.md)** - 完全な設定リファレンス
 - **[APIドキュメント](docs/api.md)** - 詳細なAPIリファレンス
 - **[貢献ガイド](CONTRIBUTING.md)** - 貢献方法
+
+---
+
+## 💝 スポンサー・謝辞
+
+このプロジェクトを可能にしてくださるスポンサーの皆様に感謝いたします：
+
+### 🌟 **特別感謝**
+
+**[@o93](https://github.com/o93)** - *主要スポンサー・サポーター*
+- 🚀 **MCPツール強化**: 包括的なMCP fd/ripgrepツール開発をスポンサー
+- 🧪 **テストインフラ**: エンタープライズグレードのテストカバレッジ（50+の包括的テストケース）を実現
+- 🔧 **品質保証**: バグ修正とパフォーマンス改善をサポート
+- 💡 **イノベーション支援**: 高度なファイル検索・コンテンツ解析機能の早期リリースを可能に
+
+*「@o93様の寛大なサポートのおかげで、AIアシスタントがコードベースと相互作用する方法を革命化する強力なMCPツールを提供することができました。このスポンサーシップにより、ListFilesTool、SearchContentTool、FindAndGrepToolの包括的なテストカバレッジでの開発が直接実現されました。」*
+
+### 🤝 **スポンサーになる**
+
+あなたのサポートは以下の活動に役立ちます：
+- 🔬 新機能・ツールの開発
+- 🧪 包括的なテストカバレッジの維持
+- 📚 より良いドキュメントの作成
+- 🚀 開発サイクルの加速
+
+**[💖 このプロジェクトをスポンサー](https://github.com/sponsors/aimasteracc)** して、開発者コミュニティのための素晴らしいツールの構築を継続できるよう支援してください！
 
 ---
 
