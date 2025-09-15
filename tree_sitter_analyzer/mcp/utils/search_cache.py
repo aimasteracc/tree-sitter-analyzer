@@ -101,12 +101,14 @@ class SearchCache:
         Returns:
             Compatible cached data if derivable, None otherwise
         """
-        # First try direct cache hit
+        # First try direct cache hit - but only if the format matches
         direct_result = self.get(cache_key)
         if direct_result is not None:
-            return direct_result
+            # Check if the cached result matches the requested format
+            if self._is_format_compatible(direct_result, requested_format):
+                return direct_result
 
-        # Try to find compatible cached results
+        # Try to find compatible cached results for derivation
         # Look for count_only results that can derive file lists
         if requested_format in ["file_list", "summary", "files_only"]:
             # Look for a count_only version of the same search
@@ -118,6 +120,38 @@ class SearchCache:
                     return self._derive_file_list_result(count_result, requested_format)
 
         return None
+
+    def _is_format_compatible(self, cached_result: Any, requested_format: str) -> bool:
+        """
+        Check if a cached result is compatible with the requested format.
+
+        This prevents returning wrong format data (e.g., returning integer total
+        when detailed results are requested).
+        """
+        if requested_format == "total_only":
+            # total_only expects a simple integer
+            return isinstance(cached_result, int)
+        elif requested_format == "count_only":
+            # count_only expects a dict with file_counts
+            return isinstance(cached_result, dict) and (
+                "file_counts" in cached_result or "count_only" in cached_result
+            )
+        elif requested_format in ["summary", "file_list", "files_only"]:
+            # These formats expect dict results with specific structures
+            return isinstance(cached_result, dict) and cached_result.get(
+                "success", False
+            )
+        elif requested_format in ["normal", "group_by_file"]:
+            # Normal format expects dict with matches, files, or results data
+            return isinstance(cached_result, dict) and (
+                "matches" in cached_result
+                or "files" in cached_result
+                or "results" in cached_result
+            )
+        else:
+            # For unknown formats or test scenarios, allow dict results but not primitives
+            # This maintains backward compatibility while preventing the integer bug
+            return isinstance(cached_result, dict)
 
     def _derive_count_key_from_cache_key(self, cache_key: str) -> str | None:
         """Try to derive what the count_only cache key would be for this search."""
