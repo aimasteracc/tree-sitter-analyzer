@@ -271,7 +271,7 @@ class SearchContentTool(BaseMCPTool):
         )
 
         started = time.time()
-        rc, out, err = await fd_rg_utils.run_command_capture(cmd)
+        rc, out, err = await fd_rg_utils.run_command_capture(cmd, timeout_ms=timeout_ms)
         elapsed_ms = int((time.time() - started) * 1000)
 
         if rc not in (0, 1):
