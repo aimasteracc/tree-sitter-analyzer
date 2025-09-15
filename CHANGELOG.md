@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.3.4] - 2025-01-15
+
+### Fixed
+- **📚 Documentation Updates**: Updated all README files (English, Chinese, Japanese) with correct version numbers and statistics
+- **🔄 GitFlow Process**: Completed proper hotfix workflow with documentation updates before merging
+
+### Technical Details
+- **Documentation Consistency**: Ensured all README files reflect the correct version (1.3.4) and test statistics
+- **GitFlow Compliance**: Followed proper hotfix branch workflow with complete documentation updates
+- **Multi-language Support**: Updated version references across all language variants of documentation
+
+This release completes the documentation updates that should have been included in the hotfix workflow before merging to main and develop branches.
+
 ## [1.3.3] - 2025-01-15
 
 ### Fixed

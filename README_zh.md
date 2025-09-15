@@ -6,7 +6,7 @@
 [![覆盖率](https://img.shields.io/badge/coverage-74.36%25-green.svg)](#质量保证)
 [![质量](https://img.shields.io/badge/quality-enterprise%20grade-blue.svg)](#质量保证)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
-[![版本](https://img.shields.io/badge/version-1.3.2-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
+[![版本](https://img.shields.io/badge/version-1.3.4-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
 ## 🚀 突破LLM token限制，让AI理解任意大小的代码文件
@@ -38,7 +38,7 @@
 想象一下：你有一个1400多行的Java服务类，Claude或ChatGPT因为token限制无法分析。现在，Tree-sitter Analyzer让AI助手能够：
 
 - ⚡ **3秒获得完整代码结构概览**
-- 🎯 **精确提取**任意行范围的代码片段  
+- 🎯 **精确提取**任意行范围的代码片段
 - 📍 **智能定位**类、方法、字段的确切位置
 - 🔗 **无缝集成**Claude Desktop、Cursor、Roo Code等AI IDE
 - 🏗️ **统一元素管理** - 所有代码元素（类、方法、字段、导入）在一个统一的系统中
@@ -105,7 +105,7 @@ powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | ie
 
 将以下内容添加到您的配置文件：
 - **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
-- **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`  
+- **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
 - **Linux**: `~/.config/claude/claude_desktop_config.json`
 
 **基础配置（推荐）：**
@@ -192,11 +192,11 @@ uv run python -m tree_sitter_analyzer examples/BigService.java --partial-read --
 ### 💬 AI IDE 提示词（SMART分析工作流程）
 
 > **✅ 测试验证状态：** 以下所有提示词都已在真实环境中测试验证，确保100%可用
-> 
+>
 > **🎯 SMART分析工作流程：**
 > - **S** - 设置项目 (set_project_path)
 > - **M** - 映射目标文件 (精确模式匹配)
-> - **A** - 分析核心结构 (analyze_code_structure) 
+> - **A** - 分析核心结构 (analyze_code_structure)
 > - **R** - 检索关键代码 (extract_code_section)
 > - **T** - 追踪依赖关系 (需要时)
 >
@@ -535,7 +535,7 @@ Tree-sitter Analyzer现在具有革命性的统一架构，将所有代码元素
 
 #### **支持的元素类型：**
 - `class` - 类和接口
-- `function` - 方法和函数  
+- `function` - 方法和函数
 - `variable` - 字段和变量
 - `import` - 导入语句
 - `package` - 包声明
@@ -560,7 +560,7 @@ Tree-sitter Analyzer现在具有革命性的统一架构，将所有代码元素
 ### 🔍 **高级查询过滤**
 强大的代码元素查询和过滤系统：
 - **精确匹配**: `--filter "name=main"` 查找特定方法
-- **模式匹配**: `--filter "name=~auth*"` 查找认证相关方法  
+- **模式匹配**: `--filter "name=~auth*"` 查找认证相关方法
 - **参数过滤**: `--filter "params=2"` 查找特定参数数量的方法
 - **修饰符过滤**: `--filter "static=true,public=true"` 查找静态公开方法
 - **复合条件**: `--filter "name=~get*,params=0,public=true"` 组合多个条件
@@ -569,7 +569,7 @@ Tree-sitter Analyzer现在具有革命性的统一架构，将所有代码元素
 ### 🔗 **AI助手集成**
 通过MCP协议深度集成：
 - Claude Desktop
-- Cursor IDE  
+- Cursor IDE
 - Roo Code
 - 其他支持MCP的AI工具
 
@@ -747,7 +747,7 @@ Tree-sitter Analyzer自动检测和保护项目边界：
 - **零测试失败** - 完全CI/CD就绪
 - **跨平台兼容** - Windows、macOS、Linux
 
-### ⚡ **最新质量成就（v1.3.2）**
+### ⚡ **最新质量成就（v1.3.4）**
 - ✅ **跨平台路径兼容性** - 修复Windows短路径名称和macOS符号链接差异
 - ✅ **Windows环境** - 使用Windows API实现稳健的路径标准化
 - ✅ **macOS环境** - 修复`/var`与`/private/var`符号链接差异
@@ -867,7 +867,7 @@ MIT许可证 - 详见[LICENSE](LICENSE)文件。
 
 **测试环境：**
 - 操作系统：Windows 10
-- 项目：tree-sitter-analyzer v1.3.2
+- 项目：tree-sitter-analyzer v1.3.4
 - 测试文件：BigService.java (1419行)、sample.py (256行)、MultiClass.java (54行)
 - 测试工具：所有MCP工具（check_code_scale、analyze_code_structure、extract_code_section、query_code）
 
