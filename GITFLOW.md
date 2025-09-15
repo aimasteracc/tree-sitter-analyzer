@@ -204,14 +204,75 @@ For manual releases:
 
 ## Automation Features
 
-### Develop Branch Automation
+### Develop Branch Automation (`develop-automation.yml`)
 
 When code is pushed to `develop`, the following happens automatically:
 
-1. **Test Execution**: All tests are run to ensure quality
-2. **PyPI Deployment**: Package is built and deployed to PyPI
-3. **README Update**: Statistics are automatically updated
-4. **PR Creation**: Pull request is created to main branch
+1. **Test Job**:
+   - Run full test suite with pytest
+   - Generate coverage reports
+   - Upload coverage to Codecov
+
+2. **Build Job**:
+   - Build Python package with `python -m build`
+   - Validate package with `twine check`
+   - Upload build artifacts (retained for 1 day)
+
+3. **Create Release PR Job**:
+   - Automatically create PR from develop to main
+   - Include quality metrics and test results
+   - Set up for production deployment
+
+**Important**: PyPI deployment is **NOT** triggered by develop branch pushes.
+
+### Release Branch Automation (`release-automation.yml`)
+
+When code is pushed to `release/v*` branches, the following happens automatically:
+
+1. **Test Job**:
+   - Run full test suite with pytest
+   - Generate coverage reports
+   - Upload coverage to Codecov
+
+2. **Build and Deploy Job**:
+   - Build Python package
+   - Validate package with `twine check`
+   - **Deploy to PyPI** using `twine upload`
+
+3. **Create Main PR Job**:
+   - Create PR to main branch after successful PyPI deployment
+   - Include release details and deployment confirmation
+
+### Hotfix Branch Automation (`hotfix-automation.yml`)
+
+When code is pushed to `hotfix/*` branches, the following happens automatically:
+
+1. **Test Job**:
+   - Run full test suite with pytest
+   - Generate coverage reports
+
+2. **Build and Deploy Job**:
+   - Build Python package
+   - Validate package with `twine check`
+   - **Deploy to PyPI** using `twine upload`
+
+3. **Create Main PR Job**:
+   - Create PR to main branch after successful PyPI deployment
+   - Mark as critical hotfix ready for immediate production
+
+### CI Workflow (`ci.yml`)
+
+Runs on all branches (`main`, `develop`, `hotfix/*`, `feature/*`, `release/*`) and PRs:
+
+1. **Quality Check Job**:
+   - Multi-Python version testing (3.10, 3.11, 3.12, 3.13)
+   - Code quality checks with `check_quality.py`
+
+2. **Test Matrix Job**:
+   - Cross-platform testing (Ubuntu, Windows, macOS)
+   - Multi-Python version compatibility testing
+
+**PyPI Deployment Strategy**: Only `release/*` and `hotfix/*` branches automatically deploy to PyPI, ensuring controlled and tested releases reach production.
 
 ### Main Branch Protection
 

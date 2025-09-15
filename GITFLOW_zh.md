@@ -152,6 +152,74 @@ gitGraph
     ```
 5.  **删除 `hotfix` 分支**。
 
+## 自动化流程
+
+### Develop 分支自动化 (`develop-automation.yml`)
+当代码推送到 `develop` 分支时，自动执行：
+
+1. **测试作业**：
+   - 使用pytest运行完整测试套件
+   - 生成覆盖率报告
+   - 上传覆盖率到Codecov
+
+2. **构建作业**：
+   - 使用 `python -m build` 构建Python包
+   - 使用 `twine check` 验证包
+   - 上传构建产物（保留1天）
+
+3. **创建发布PR作业**：
+   - 自动创建从develop到main的PR
+   - 包含质量指标和测试结果
+   - 为生产部署做好准备
+
+**重要**：develop分支推送**不会**触发PyPI部署。
+
+### Release 分支自动化 (`release-automation.yml`)
+当代码推送到 `release/v*` 分支时，自动执行：
+
+1. **测试作业**：
+   - 使用pytest运行完整测试套件
+   - 生成覆盖率报告
+   - 上传覆盖率到Codecov
+
+2. **构建和部署作业**：
+   - 构建Python包
+   - 使用 `twine check` 验证包
+   - **使用 `twine upload` 部署到PyPI**
+
+3. **创建Main PR作业**：
+   - PyPI部署成功后创建到main分支的PR
+   - 包含发布详情和部署确认
+
+### Hotfix 分支自动化 (`hotfix-automation.yml`)
+当代码推送到 `hotfix/*` 分支时，自动执行：
+
+1. **测试作业**：
+   - 使用pytest运行完整测试套件
+   - 生成覆盖率报告
+
+2. **构建和部署作业**：
+   - 构建Python包
+   - 使用 `twine check` 验证包
+   - **使用 `twine upload` 部署到PyPI**
+
+3. **创建Main PR作业**：
+   - PyPI部署成功后创建到main分支的PR
+   - 标记为关键热修复，准备立即投入生产
+
+### CI 工作流 (`ci.yml`)
+在所有分支（`main`、`develop`、`hotfix/*`、`feature/*`、`release/*`）和PR上运行：
+
+1. **质量检查作业**：
+   - 多Python版本测试（3.10、3.11、3.12、3.13）
+   - 使用 `check_quality.py` 进行代码质量检查
+
+2. **测试矩阵作业**：
+   - 跨平台测试（Ubuntu、Windows、macOS）
+   - 多Python版本兼容性测试
+
+**PyPI部署策略**：只有 `release/*` 和 `hotfix/*` 分支自动部署到PyPI，确保受控且经过测试的版本到达生产环境。
+
 ---
 
 *此中文说明旨在帮助理解 `GITFLOW.md` 中的核心概念。更详细的自动化流程、质量检查和 CI/CD 集成信息，请参阅原始的 [GITFLOW.md](GITFLOW.md) 文件。*
