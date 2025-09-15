@@ -9,30 +9,30 @@ gitGraph
     commit id: "Initial commit"
     branch develop
     commit id: "dev-1"
-    
+
     branch feature/my-feature
     commit id: "feat-1"
     commit id: "feat-2"
-    
+
     checkout develop
     merge feature/my-feature id: "merge-feat"
-    
+
     branch release/v1.0.0
     commit id: "release-prep"
-    
+
     checkout main
     merge release/v1.0.0 tag: "v1.0.0"
-    
+
     checkout develop
     merge release/v1.0.0
-    
+
     checkout main
     branch hotfix/critical-fix
     commit id: "fix-bug"
-    
+
     checkout main
     merge hotfix/critical-fix tag: "v1.0.1"
-    
+
     checkout develop
     merge hotfix/critical-fix
 ```
@@ -82,6 +82,22 @@ gitGraph
     git checkout -b release/v1.0.0 develop
     ```
 2.  **准备发布**: 更新版本号、生成文档等。
+    ```bash
+    # 更新 pyproject.toml 中的版本号
+    # 更新 server_version
+    # 同步版本号到 __init__.py
+    uv run python scripts/sync_version_minimal.py
+
+    # 更新文档：
+    # - 更新 README.md 中的版本号、测试数量和覆盖率
+    # - 更新版本徽章、测试徽章、覆盖率徽章
+    # - 更新"最新质量成就"部分的版本引用
+    # - 更新测试环境部分的版本引用
+    # - 更新文档中的所有其他版本引用
+    # - 更新 README_zh.md 和 README_ja.md 翻译版本
+    # - 如有工作流更改，更新 GITFLOW_zh.md 和 GITFLOW_ja.md
+    # - 更新 CHANGELOG.md 发布详情
+    ```
 3.  **完成准备后，合并到 `main` 和 `develop`**:
     ```bash
     # 切换到 main 分支并合并
@@ -104,7 +120,24 @@ gitGraph
     git checkout -b hotfix/critical-bug-fix main
     ```
 2.  **修复 Bug** 并提交。
-3.  **完成修复后，合并到 `main` 和 `develop`**:
+3.  **更新版本和文档**:
+    ```bash
+    # 更新 pyproject.toml 版本号 (例如: 1.0.0 -> 1.0.1)
+    # 更新 server_version
+    # 同步版本号到 __init__.py
+    uv run python scripts/sync_version_minimal.py
+
+    # 更新文档：
+    # - 更新 CHANGELOG.md 添加 hotfix 详情
+    # - 更新 README.md 中的版本号、测试数量和覆盖率
+    # - 更新版本徽章、测试徽章、覆盖率徽章
+    # - 更新"最新质量成就"部分的版本引用
+    # - 更新测试环境部分的版本引用
+    # - 更新文档中的所有其他版本引用
+    # - 更新 README_zh.md 和 README_ja.md 翻译版本
+    # - 如有工作流更改，更新 GITFLOW_zh.md 和 GITFLOW_ja.md
+    ```
+4.  **完成修复后，合并到 `main` 和 `develop`**:
     ```bash
     # 切换到 main 分支并合并
     git checkout main
@@ -117,7 +150,7 @@ gitGraph
     git merge hotfix/critical-bug-fix
     git push origin develop
     ```
-4.  **删除 `hotfix` 分支**。
+5.  **删除 `hotfix` 分支**。
 
 ---
 
