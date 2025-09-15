@@ -2,11 +2,11 @@
 
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-1514%20passed-brightgreen.svg)](#quality-assurance)
-[![Coverage](https://img.shields.io/badge/coverage-74.10%25-green.svg)](#quality-assurance)
+[![Tests](https://img.shields.io/badge/tests-1564%20passed-brightgreen.svg)](#quality-assurance)
+[![Coverage](https://img.shields.io/badge/coverage-74.97%25-green.svg)](#quality-assurance)
 [![Quality](https://img.shields.io/badge/quality-enterprise%20grade-blue.svg)](#quality-assurance)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
-[![Version](https://img.shields.io/badge/version-1.2.3-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
+[![Version](https://img.shields.io/badge/version-1.2.4-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
 ## 🚀 Break LLM Token Limits, Let AI Understand Code Files of Any Size
@@ -59,10 +59,12 @@ Total Elements: 85 | Complexity: 348 (avg: 5.27, max: 15)
 |------------|------|------------|------------|--------------|-------------|
 | BigService | class | public | 17-1419 | 66 | 9 |
 
-### 🔄 **AI Assistant Three-Step Workflow**
-- **Step 1**: `check_code_scale` - Check file size and complexity
-- **Step 2**: `analyze_code_structure` - Generate detailed structure table with unified elements
-- **Step 3**: `extract_code_section` - Extract code snippets on demand
+### 🔄 **AI Assistant SMART Workflow**
+- **S**: `set_project_path` - Setup project root directory
+- **M**: `list_files`, `search_content`, `find_and_grep` - Map target files with precision
+- **A**: `analyze_code_structure` - Analyze core structure with unified elements
+- **R**: `extract_code_section` - Retrieve essential code snippets on demand
+- **T**: Advanced dependency tracing (when needed)
 
 ---
 
@@ -70,13 +72,31 @@ Total Elements: 85 | Complexity: 348 (avg: 5.27, max: 15)
 
 ### 🤖 AI Users (Claude Desktop, Cursor, etc.)
 
+**📋 0. Prerequisites (for Advanced MCP Tools)**
+For advanced file search and content analysis features, install these tools first:
+```bash
+# Install fd and ripgrep (see Prerequisites section for detailed instructions)
+# macOS
+brew install fd ripgrep
+
+# Windows (using winget - recommended)
+winget install sharkdp.fd BurntSushi.ripgrep.MSVC
+
+# Windows (alternative methods)
+# choco install fd ripgrep
+# scoop install fd ripgrep
+
+# Ubuntu/Debian
+sudo apt install fd-find ripgrep
+```
+
 **📦 1. One-click Installation**
 ```bash
 # macOS/Linux
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
 # Windows PowerShell
-powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
 ```
 
 **⚙️ 2. AI Client Configuration**
@@ -169,19 +189,25 @@ uv run python -m tree_sitter_analyzer examples/BigService.java --partial-read --
 
 ## 📖 Practical Usage Examples
 
-### 💬 AI IDE Prompts (Tested and Verified, Ready to Use)
+### 💬 AI IDE Prompts (SMART Analysis Workflow)
 
 > **✅ Test Verification Status:** All prompts below have been tested and verified in real environments, ensuring 100% availability
 > 
+> **🎯 SMART Analysis Workflow:**
+> - **S** - Setup project (set_project_path)
+> - **M** - Map target files (precision pattern matching)
+> - **A** - Analyze core structure (analyze_code_structure) 
+> - **R** - Retrieve essential code (extract_code_section)
+> - **T** - Trace dependencies (when needed)
+>
 > **⚠️ Important Notes:**
-> - **Step 0 is required** - Always set project path before using other tools
+> - Follow SMART workflow sequence for optimal results
 > - For files within the project, use **relative paths** (e.g., `examples/BigService.java`)
 > - For files outside the project, use **absolute paths** (e.g., `C:\git-public\tree-sitter-analyzer\examples\BigService.java`)
 > - All tools support both Windows and Unix style paths
 > - Project path should point to your code repository root directory
-> - You can set project path in MCP configuration or set it dynamically
 
-#### 🔧 **Step 0: Set Project Path (Required First Step)**
+#### 🔧 **S - Setup Project (Required First Step)**
 
 **Option 1: Configure in MCP Settings**
 ```json
@@ -223,7 +249,68 @@ Project path: C:\git-public\tree-sitter-analyzer
 - Example: `examples/BigService.java` instead of full paths
 - Once project path is successfully set, all subsequent analysis commands will automatically use this root directory
 
-#### 🔍 **Step 1: Check File Size**
+#### 🗺️ **M - Map Target Files (Precision Pattern Matching)**
+
+> **📋 Prerequisites:** This step requires `fd` and `ripgrep` tools to be installed. See [Prerequisites](#prerequisites) section for installation instructions.
+
+**Smart File Discovery:**
+```
+Find all Python files in the project
+```
+
+```
+List all Java files larger than 10KB
+```
+
+```
+Find configuration files (*.json, *.yaml, *.toml) in the project
+```
+
+**Intelligent Content Search:**
+```
+Search for "def authenticate" in all Python files with context
+```
+
+```
+Find all TODO comments in source files
+```
+
+```
+Search for "class.*Service" patterns in all files, case insensitive
+```
+
+**Combined Discovery & Search:**
+```
+Find all Python files and search for "async def" functions
+```
+
+```
+Search for "class.*Service" in all source files
+```
+
+**Return Format:**
+```json
+{
+  "success": true,
+  "results": [
+    {
+      "file": "tree_sitter_analyzer/core/query_service.py",
+      "line": 20,
+      "text": "class QueryService:",
+      "matches": [[0, 18]]
+    }
+  ],
+  "count": 25,
+  "meta": {
+    "searched_file_count": 256,
+    "truncated": false,
+    "fd_elapsed_ms": 225,
+    "rg_elapsed_ms": 2969
+  }
+}
+```
+
+#### 🔍 **A - Analyze Core Structure**
 
 **Method 1: Explicit Analysis Request**
 ```
@@ -274,7 +361,7 @@ Please analyze this file: C:\git-public\tree-sitter-analyzer\examples\BigService
 }
 ```
 
-#### 📊 **Step 2: Generate Structure Table**
+#### 📊 **R - Retrieve Essential Code**
 
 **Method 1: Explicit Table Request**
 ```
@@ -303,7 +390,7 @@ Please generate a detailed structure table: C:\git-public\tree-sitter-analyzer\e
 - Including class information, method list (with line numbers), field list
 - Method signatures, visibility, line ranges, complexity, and other detailed information
 
-#### ✂️ **Step 3: Extract Code Snippets**
+#### ✂️ **Precise Code Extraction**
 
 **Method 1: Explicit Extraction Request**
 ```
@@ -342,7 +429,7 @@ Please extract code snippet: C:\git-public\tree-sitter-analyzer\examples\BigServ
 }
 ```
 
-#### 🔍 **Step 4: Smart Query Filtering (v0.9.6+)**
+#### 🔗 **T - Trace Dependencies (Advanced Analysis)**
 
 **Error Handling Enhancement (v0.9.7):**
 - Improved `@handle_mcp_errors` decorator with tool name recognition
@@ -384,13 +471,15 @@ Please help me find all public getter methods with no parameters: examples/BigSe
 }
 ```
 
-#### 💡 **Important Notes**
+
+#### 💡 **SMART Workflow Best Practices**
 - **Natural Language**: Tell AI directly in natural language what you want, no need to remember complex parameter formats
-- **Path Processing**: After setting project path, relative paths automatically resolve to project root directory, absolute paths also fully supported
+- **Sequential Flow**: Follow S→M→A→R→T sequence for optimal analysis results
+- **Path Processing**: After setting project path, relative paths automatically resolve to project root directory
 - **Security Protection**: Tool automatically performs project boundary checks to ensure security
-- **Workflow**: Recommended to use in order: Step 0 (set path) → Step 1 → 2 → 4 (query filter) → 3 (precise extraction)
 - **Smart Understanding**: AI automatically understands your needs and calls appropriate tools
-- **Project Path**: Once project path is set, all subsequent operations automatically use that root directory
+- **Performance**: All MCP tools are optimized for speed with built-in timeouts and result limits
+- **Dependency Tracing**: Use T step only when you need to understand complex relationships between code elements
 
 ### 🛠️ CLI Command Examples
 
@@ -495,6 +584,98 @@ Deep integration through MCP protocol:
 - Cursor IDE  
 - Roo Code
 - Other MCP-compatible AI tools
+
+### 🔍 **Advanced File Search & Content Analysis (v1.2.4+)**
+Powerful file discovery and content search capabilities powered by fd and ripgrep:
+
+#### **📋 Prerequisites**
+To use the advanced MCP tools (ListFilesTool, SearchContentTool, FindAndGrepTool), you need to install the following command-line tools:
+
+**Install fd (fast file finder):**
+```bash
+# macOS (using Homebrew)
+brew install fd
+
+# Windows (using winget - recommended)
+winget install sharkdp.fd
+
+# Windows (using Chocolatey)
+choco install fd
+
+# Windows (using Scoop)
+scoop install fd
+
+# Ubuntu/Debian
+sudo apt install fd-find
+
+# CentOS/RHEL/Fedora
+sudo dnf install fd-find
+
+# Arch Linux
+sudo pacman -S fd
+```
+
+**Install ripgrep (fast text search):**
+```bash
+# macOS (using Homebrew)
+brew install ripgrep
+
+# Windows (using winget - recommended)
+winget install BurntSushi.ripgrep.MSVC
+
+# Windows (using Chocolatey)
+choco install ripgrep
+
+# Windows (using Scoop)
+scoop install ripgrep
+
+# Ubuntu/Debian
+sudo apt install ripgrep
+
+# CentOS/RHEL/Fedora
+sudo dnf install ripgrep
+
+# Arch Linux
+sudo pacman -S ripgrep
+```
+
+**Verify Installation:**
+```bash
+# Check fd installation
+fd --version
+
+# Check ripgrep installation
+rg --version
+```
+
+> **⚠️ Important:** Without these tools installed, the advanced MCP file search and content analysis features will not work. The basic MCP tools (analyze_code_structure, extract_code_section, etc.) will continue to work normally.
+
+#### **🗂️ ListFilesTool - Smart File Discovery**
+- **Advanced filtering**: File type, size, modification time, extension-based filtering
+- **Pattern matching**: Glob patterns and regex support for flexible file discovery
+- **Metadata enrichment**: File size, modification time, directory status, and extension information
+- **Performance optimized**: Built on fd for lightning-fast file system traversal
+
+#### **🔎 SearchContentTool - Intelligent Content Search**
+- **Regex & literal search**: Flexible pattern matching with case sensitivity controls
+- **Context-aware results**: Configurable before/after context lines for better understanding
+- **Multiple output formats**: Standard results, count-only, summary, and grouped by file
+- **Encoding support**: Handle files with different text encodings
+- **Performance limits**: Built-in timeout and result limits for responsive operation
+
+#### **🎯 FindAndGrepTool - Combined Discovery & Search**
+- **Two-stage workflow**: First discover files with fd, then search content with ripgrep
+- **Comprehensive filtering**: Combine file discovery filters with content search patterns
+- **Advanced options**: Multiline patterns, word boundaries, fixed strings, and case controls
+- **Rich metadata**: File discovery timing, search timing, and result statistics
+- **Token optimization**: Path optimization and result grouping to minimize AI token usage
+
+#### **✨ Key Benefits:**
+- 🚀 **Enterprise-grade reliability**: 50+ comprehensive test cases ensuring stability
+- 🎯 **Token-efficient**: Multiple output formats optimized for AI assistant interactions
+- 🔧 **Highly configurable**: Extensive parameter support for precise control
+- 📊 **Performance monitoring**: Built-in timing and result statistics
+- 🛡️ **Error resilient**: Comprehensive error handling and validation
 
 ### 🌍 **Multi-language Support**
 - **Java** - Full support, including Spring, JPA frameworks
@@ -601,6 +782,7 @@ uv run pytest tests/test_mcp_server_initialization.py -v
 - **Language detector**: 98.41% (Excellent)
 - **CLI main entry**: 94.36% (Excellent)
 - **Query filtering system**: 96.06% (Excellent)
+- **MCP fd/rg tools**: 93.04% (Excellent) - *New in v1.2.4*
 - **Query service**: 86.25% (Good)
 - **Error handling**: 82.76% (Good)
 
@@ -638,6 +820,32 @@ uv run python llm_code_checker.py path/to/new_file.py
 
 ---
 
+## 💝 Sponsors & Acknowledgments
+
+We are grateful to our sponsors who make this project possible:
+
+### 🌟 **Special Thanks**
+
+**[@o93](https://github.com/o93)** - *Primary Sponsor & Supporter*
+- 🚀 **MCP Tools Enhancement**: Sponsored the comprehensive MCP fd/ripgrep tools development
+- 🧪 **Testing Infrastructure**: Enabled enterprise-grade test coverage (50+ comprehensive test cases)
+- 🔧 **Quality Assurance**: Supported bug fixes and performance improvements
+- 💡 **Innovation Support**: Made early release of advanced file search and content analysis features possible
+
+*"Thanks to @o93's generous support, we were able to deliver powerful MCP tools that revolutionize how AI assistants interact with codebases. This sponsorship directly enabled the development of ListFilesTool, SearchContentTool, and FindAndGrepTool with comprehensive test coverage."*
+
+### 🤝 **Become a Sponsor**
+
+Your support helps us:
+- 🔬 Develop new features and tools
+- 🧪 Maintain comprehensive test coverage
+- 📚 Create better documentation
+- 🚀 Accelerate development cycles
+
+**[💖 Sponsor this project](https://github.com/sponsors/aimasteracc)** to help us continue building amazing tools for the developer community!
+
+---
+
 ## 🤝 Contributing
 
 We welcome all forms of contributions! Please see [Contributing Guide](CONTRIBUTING.md) for details.
@@ -672,8 +880,9 @@ All AI prompts in this document have been thoroughly tested in real environments
 
 **Test Environment:**
 - Operating System: Windows 10
-- Project: tree-sitter-analyzer v1.2.0
+- Project: tree-sitter-analyzer v1.2.4
 - Test Files: BigService.java (1419 lines), sample.py (256 lines), MultiClass.java (54 lines)
-- Test Tools: All MCP tools (check_code_scale, analyze_code_structure, extract_code_section, query_code)
+- Test Coverage: 1564 tests passed, 74.97% coverage
+- Test Tools: All MCP tools (check_code_scale, analyze_code_structure, extract_code_section, query_code, list_files, search_content, find_and_grep)
 
 **🚀 Start Now** → [30-Second Quick Start](#-30-second-quick-start)
