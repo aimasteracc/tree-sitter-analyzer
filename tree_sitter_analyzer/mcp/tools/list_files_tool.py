@@ -7,13 +7,17 @@ Safely list files/directories based on name patterns and constraints, using fd.
 
 from __future__ import annotations
 
+import logging
 import time
 from pathlib import Path
 from typing import Any
 
 from ..utils.error_handler import handle_mcp_errors
+from ..utils.gitignore_detector import get_default_detector
 from . import fd_rg_utils
 from .base_tool import BaseMCPTool
+
+logger = logging.getLogger(__name__)
 
 
 class ListFilesTool(BaseMCPTool):
@@ -176,6 +180,25 @@ class ListFilesTool(BaseMCPTool):
             fd_rg_utils.MAX_RESULTS_HARD_CAP,
         )
 
+        # Smart .gitignore detection
+        no_ignore = bool(arguments.get("no_ignore", False))
+        if not no_ignore:
+            # Auto-detect if we should use --no-ignore
+            detector = get_default_detector()
+            original_roots = arguments.get("roots", [])
+            should_ignore = detector.should_use_no_ignore(
+                original_roots, self.project_root
+            )
+            if should_ignore:
+                no_ignore = True
+                # Log the auto-detection for debugging
+                detection_info = detector.get_detection_info(
+                    original_roots, self.project_root
+                )
+                logger.info(
+                    f"Auto-enabled --no-ignore due to .gitignore interference: {detection_info['reason']}"
+                )
+
         cmd = fd_rg_utils.build_fd_command(
             pattern=arguments.get("pattern"),
             glob=bool(arguments.get("glob", False)),
@@ -185,7 +208,7 @@ class ListFilesTool(BaseMCPTool):
             depth=arguments.get("depth"),
             follow_symlinks=bool(arguments.get("follow_symlinks", False)),
             hidden=bool(arguments.get("hidden", False)),
-            no_ignore=bool(arguments.get("no_ignore", False)),
+            no_ignore=no_ignore,  # Use the potentially auto-detected value
             size=arguments.get("size"),
             changed_within=arguments.get("changed_within"),
             changed_before=arguments.get("changed_before"),
