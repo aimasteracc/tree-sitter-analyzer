@@ -147,16 +147,15 @@ def build_fd_command(
     if limit is not None:
         cmd += ["--max-results", str(limit)]
 
-    # Pattern goes before roots if present
-    # If no pattern is specified, use '.' to match all files
+    # Add search paths using --search-path option for better reliability
+    # This avoids conflicts between pattern and path arguments
+    if roots:
+        for root in roots:
+            cmd += ["--search-path", root]
+
+    # Pattern goes last if specified
     if pattern:
         cmd.append(pattern)
-    else:
-        cmd.append(".")
-
-    # Append roots - these are search directories, not patterns
-    if roots:
-        cmd += roots
 
     return cmd
 

@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.2.5] - 2025-09-15
+
+### Fixed
+- Fixed MCP list_files tool failing to detect Java files in specific directories
+- Resolved fd command parameter ordering issue in Windows environment
+- Improved --search-path parameter usage for better cross-platform compatibility
+
+### Technical Details
+- Modified `build_fd_command` in `fd_rg_utils.py` to use `--search-path` instead of positional arguments
+- Eliminated automatic `"."` pattern injection that caused command conflicts
+- Enhanced Windows environment compatibility for file discovery operations
+
+### Documentation Updates
+- Updated GitFlow documentation with comprehensive AI-assisted development workflow
+- Added complete bug fix and release automation procedures
+- Synchronized multi-language documentation (English, Chinese, Japanese)
+- Corrected PyPI deployment flow documentation to match actual GitHub Actions workflows
+
 ## [1.2.3] - 2025-08-27
 
 ### Release: v1.2.3

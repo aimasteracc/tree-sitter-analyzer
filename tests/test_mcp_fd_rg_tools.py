@@ -747,7 +747,7 @@ def test_build_fd_command():
     assert "*.py" in cmd
     assert "/test" in cmd
 
-    # Test command without pattern (should use '.')
+    # Test command without pattern (should use --search-path)
     cmd = build_fd_command(
         pattern=None,
         glob=False,
@@ -767,7 +767,7 @@ def test_build_fd_command():
         roots=["/test"],
     )
 
-    assert "." in cmd  # default pattern
+    assert "--search-path" in cmd  # uses --search-path instead of default pattern
     assert "-t" in cmd and "f" in cmd  # type
     assert "-e" in cmd and "py" in cmd  # extension
     assert "-E" in cmd and "__pycache__" in cmd  # exclude
@@ -858,10 +858,10 @@ async def test_list_files_with_pattern_and_no_pattern(monkeypatch, tmp_path):
     await tool.execute({"roots": [str(tmp_path)], "pattern": "*.py", "glob": True})
     assert "*.py" in captured_commands[0]
 
-    # Test without pattern (should use '.')
+    # Test without pattern (should use --search-path)
     captured_commands.clear()
     await tool.execute({"roots": [str(tmp_path)]})
-    assert "." in captured_commands[0]
+    assert "--search-path" in captured_commands[0]
 
     # On macOS, PathResolver normalizes /private/var/ to /var/ for consistency
     # So we need to check for the normalized path in the command
