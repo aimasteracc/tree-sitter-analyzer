@@ -22,7 +22,12 @@ class TestCachePerformanceValidation:
     def test_directory(self):
         """Path to the test directory - using project examples directory"""
         project_root = Path(__file__).parent.parent
-        return str(project_root / "examples")
+        examples_dir = project_root / "examples"
+        if examples_dir.exists():
+            return str(examples_dir)
+        else:
+            # Fallback to current directory if examples doesn't exist
+            return str(project_root)
 
     @pytest.fixture
     def tool_with_cache(self, test_directory):

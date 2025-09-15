@@ -19,6 +19,14 @@ from tree_sitter_analyzer.mcp.utils.search_cache import (
 )
 
 
+@pytest.fixture(autouse=True)
+def clear_cache_between_tests():
+    """Clear cache before each test to avoid interference"""
+    clear_cache()
+    yield
+    clear_cache()
+
+
 class TestSearchCache:
     """Test cases for the SearchCache class"""
 
