@@ -419,5 +419,3 @@ public class EmptyClass {
         assert (
             element_counts.get("imports", 0) == 0
         ), "Empty class should have 0 imports"
-
-

@@ -2,11 +2,11 @@
 
 [![Python版本](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![许可证](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![测试](https://img.shields.io/badge/tests-1514%20passed-brightgreen.svg)](#质量保证)
-[![覆盖率](https://img.shields.io/badge/coverage-74.10%25-green.svg)](#质量保证)
+[![测试](https://img.shields.io/badge/tests-1564%20passed-brightgreen.svg)](#质量保证)
+[![覆盖率](https://img.shields.io/badge/coverage-74.97%25-green.svg)](#质量保证)
 [![质量](https://img.shields.io/badge/quality-enterprise%20grade-blue.svg)](#质量保证)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
-[![版本](https://img.shields.io/badge/version-1.2.3-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
+[![版本](https://img.shields.io/badge/version-1.2.4-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
 ## 🚀 突破LLM token限制，让AI理解任意大小的代码文件
@@ -59,10 +59,12 @@ Total Elements: 85 | Complexity: 348 (avg: 5.27, max: 15)
 |------|------|--------|--------|---------|--------|
 | BigService | class | public | 17-1419 | 66 | 9 |
 
-### 🔄 **AI助手三步工作流**
-- **步骤1**: `check_code_scale` - 检查文件规模和复杂度
-- **步骤2**: `analyze_code_structure` - 生成带统一元素的详细结构表格
-- **步骤3**: `extract_code_section` - 按需提取代码片段
+### 🔄 **AI助手SMART工作流程**
+- **S**: `set_project_path` - 设置项目根目录
+- **M**: `list_files`, `search_content`, `find_and_grep` - 精确映射目标文件
+- **A**: `analyze_code_structure` - 分析核心结构与统一元素
+- **R**: `extract_code_section` - 按需检索关键代码片段
+- **T**: 高级依赖追踪（需要时）
 
 ---
 
@@ -70,13 +72,31 @@ Total Elements: 85 | Complexity: 348 (avg: 5.27, max: 15)
 
 ### 🤖 AI用户（Claude Desktop、Cursor等）
 
+**📋 0. 前提要求（高级MCP工具）**
+要使用高级文件搜索和内容分析功能，请先安装这些工具：
+```bash
+# 安装fd和ripgrep（详细说明请参阅前提要求部分）
+# macOS
+brew install fd ripgrep
+
+# Windows（使用winget - 推荐）
+winget install sharkdp.fd BurntSushi.ripgrep.MSVC
+
+# Windows（其他方式）
+# choco install fd ripgrep
+# scoop install fd ripgrep
+
+# Ubuntu/Debian
+sudo apt install fd-find ripgrep
+```
+
 **📦 1. 一键安装**
 ```bash
 # macOS/Linux
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
 # Windows PowerShell
-powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
 ```
 
 **⚙️ 2. 配置AI客户端**
@@ -169,19 +189,25 @@ uv run python -m tree_sitter_analyzer examples/BigService.java --partial-read --
 
 ## 📖 实际使用示例
 
-### 💬 AI IDE 提示词（已测试验证，可直接使用）
+### 💬 AI IDE 提示词（SMART分析工作流程）
 
 > **✅ 测试验证状态：** 以下所有提示词都已在真实环境中测试验证，确保100%可用
 > 
+> **🎯 SMART分析工作流程：**
+> - **S** - 设置项目 (set_project_path)
+> - **M** - 映射目标文件 (精确模式匹配)
+> - **A** - 分析核心结构 (analyze_code_structure) 
+> - **R** - 检索关键代码 (extract_code_section)
+> - **T** - 追踪依赖关系 (需要时)
+>
 > **⚠️ 重要提示：**
-> - **步骤0是必需的** - 在使用其他工具之前，始终先设置项目路径
+> - 遵循SMART工作流程顺序以获得最佳结果
 > - 对于项目内的文件，使用**相对路径**（例如：`examples/BigService.java`）
 > - 对于项目外的文件，使用**绝对路径**（例如：`C:\git-public\tree-sitter-analyzer\examples\BigService.java`）
 > - 所有工具都支持Windows和Unix风格的路径
 > - 项目路径应该指向您的代码仓库根目录
-> - 您可以在MCP配置中设置项目路径，也可以动态设置
 
-#### 🔧 **步骤0：设置项目路径（必需的第一步）**
+#### 🔧 **S - 设置项目（必需的第一步）**
 
 **选项1：在MCP设置中配置**
 ```json
@@ -218,7 +244,68 @@ uv run python -m tree_sitter_analyzer examples/BigService.java --partial-read --
 
 **AI会自动调用相应的工具来设置路径，无需记住复杂的命令格式**
 
-#### 🔍 **步骤1：检查文件规模**
+#### 🗺️ **M - 映射目标文件（精确模式匹配）**
+
+> **📋 前提要求：** 此步骤需要安装`fd`和`ripgrep`工具。请参阅[前提要求](#前提要求)部分的安装说明。
+
+**智能文件发现：**
+```
+查找项目中的所有Python文件
+```
+
+```
+列出大于10KB的所有Java文件
+```
+
+```
+查找项目中的配置文件（*.json, *.yaml, *.toml）
+```
+
+**智能内容搜索：**
+```
+在所有Python文件中搜索"def authenticate"并显示上下文
+```
+
+```
+在源文件中查找所有TODO注释
+```
+
+```
+在所有文件中搜索"class.*Service"模式，不区分大小写
+```
+
+**组合发现与搜索：**
+```
+查找所有Python文件并搜索"async def"函数
+```
+
+```
+在所有源文件中搜索"class.*Service"
+```
+
+**返回格式：**
+```json
+{
+  "success": true,
+  "results": [
+    {
+      "file": "tree_sitter_analyzer/core/query_service.py",
+      "line": 20,
+      "text": "class QueryService:",
+      "matches": [[0, 18]]
+    }
+  ],
+  "count": 25,
+  "meta": {
+    "searched_file_count": 256,
+    "truncated": false,
+    "fd_elapsed_ms": 225,
+    "rg_elapsed_ms": 2969
+  }
+}
+```
+
+#### 🔍 **A - 分析核心结构**
 
 **方式1：明确请求分析**
 ```
@@ -267,7 +354,7 @@ uv run python -m tree_sitter_analyzer examples/BigService.java --partial-read --
 }
 ```
 
-#### 📊 **步骤2：生成结构表格**
+#### 📊 **R - 检索关键代码**
 
 **方式1：明确请求表格**
 ```
@@ -294,7 +381,7 @@ uv run python -m tree_sitter_analyzer examples/BigService.java --partial-read --
 - 包括类信息、方法列表（带行号）、字段列表
 - 方法签名、可见性、行范围、复杂度等详细信息
 
-#### ✂️ **步骤3：提取代码片段**
+#### ✂️ **精确代码提取**
 
 **方式1：明确请求提取**
 ```
@@ -331,7 +418,7 @@ uv run python -m tree_sitter_analyzer examples/BigService.java --partial-read --
 }
 ```
 
-#### 🔍 **步骤4：智能查询过滤（v0.9.6+）**
+#### 🔗 **T - 追踪依赖关系（高级分析）**
 
 **错误处理增强（v0.9.7）：**
 - 改进了`@handle_mcp_errors`装饰器，增加了工具名称识别
@@ -373,12 +460,14 @@ uv run python -m tree_sitter_analyzer examples/BigService.java --partial-read --
 }
 ```
 
-#### 💡 **重要注意事项**
+#### 💡 **SMART工作流程最佳实践**
 - **自然语言**: 直接用自然语言告诉AI您想要什么，无需记住复杂的参数格式
-- **路径处理**: 相对路径自动解析到项目根目录，绝对路径也完全支持
+- **顺序流程**: 遵循S→M→A→R→T顺序以获得最佳分析结果
+- **路径处理**: 设置项目路径后，相对路径自动解析到项目根目录
 - **安全保护**: 工具自动执行项目边界检查，确保安全
-- **工作流**: 建议按顺序使用：步骤1 → 2 → 4（查询过滤）→ 3（精确提取）
 - **智能理解**: AI会自动理解您的需求，调用相应的工具
+- **性能优化**: 所有MCP工具都经过速度优化，内置超时和结果限制
+- **依赖追踪**: 仅在需要理解代码元素间复杂关系时使用T步骤
 
 ### 🛠️ CLI命令示例
 
@@ -483,6 +572,98 @@ Tree-sitter Analyzer现在具有革命性的统一架构，将所有代码元素
 - Cursor IDE  
 - Roo Code
 - 其他支持MCP的AI工具
+
+### 🔍 **高级文件搜索与内容分析 (v1.2.4+)**
+基于fd和ripgrep的强大文件发现和内容搜索功能：
+
+#### **📋 前提要求**
+要使用高级MCP工具（ListFilesTool、SearchContentTool、FindAndGrepTool），您需要安装以下命令行工具：
+
+**安装fd（快速文件查找器）：**
+```bash
+# macOS（使用Homebrew）
+brew install fd
+
+# Windows（使用winget - 推荐）
+winget install sharkdp.fd
+
+# Windows（使用Chocolatey）
+choco install fd
+
+# Windows（使用Scoop）
+scoop install fd
+
+# Ubuntu/Debian
+sudo apt install fd-find
+
+# CentOS/RHEL/Fedora
+sudo dnf install fd-find
+
+# Arch Linux
+sudo pacman -S fd
+```
+
+**安装ripgrep（快速文本搜索）：**
+```bash
+# macOS（使用Homebrew）
+brew install ripgrep
+
+# Windows（使用winget - 推荐）
+winget install BurntSushi.ripgrep.MSVC
+
+# Windows（使用Chocolatey）
+choco install ripgrep
+
+# Windows（使用Scoop）
+scoop install ripgrep
+
+# Ubuntu/Debian
+sudo apt install ripgrep
+
+# CentOS/RHEL/Fedora
+sudo dnf install ripgrep
+
+# Arch Linux
+sudo pacman -S ripgrep
+```
+
+**验证安装：**
+```bash
+# 检查fd安装
+fd --version
+
+# 检查ripgrep安装
+rg --version
+```
+
+> **⚠️ 重要提示：** 如果没有安装这些工具，高级MCP文件搜索和内容分析功能将无法工作。基本MCP工具（analyze_code_structure、extract_code_section等）将继续正常工作。
+
+#### **🗂️ ListFilesTool - 智能文件发现**
+- **高级过滤**: 文件类型、大小、修改时间、扩展名过滤
+- **模式匹配**: 灵活文件发现的Glob模式和正则表达式支持
+- **元数据丰富**: 文件大小、修改时间、目录状态和扩展名信息
+- **性能优化**: 基于fd的闪电般快速文件系统遍历
+
+#### **🔎 SearchContentTool - 智能内容搜索**
+- **正则表达式和字面搜索**: 包含大小写敏感控制的灵活模式匹配
+- **上下文感知结果**: 可配置的前后上下文行以便更好理解
+- **多种输出格式**: 标准结果、仅计数、摘要和按文件分组
+- **编码支持**: 处理不同文本编码的文件
+- **性能限制**: 内置超时和结果限制以确保响应性操作
+
+#### **🎯 FindAndGrepTool - 组合发现与搜索**
+- **两阶段工作流**: 首先用fd发现文件，然后用ripgrep搜索内容
+- **全面过滤**: 结合文件发现过滤器和内容搜索模式
+- **高级选项**: 多行模式、单词边界、固定字符串和大小写控制
+- **丰富元数据**: 文件发现计时、搜索计时和结果统计
+- **Token优化**: 路径优化和结果分组以最小化AI token使用
+
+#### **✨ 主要优势:**
+- 🚀 **企业级可靠性**: 50+全面测试用例确保稳定性
+- 🎯 **Token高效**: 为AI助手交互优化的多种输出格式
+- 🔧 **高度可配置**: 精确控制的广泛参数支持
+- 📊 **性能监控**: 内置计时和结果统计
+- 🛡️ **错误弹性**: 全面的错误处理和验证
 
 ### 🌍 **多语言支持**
 - **Java** - 完整支持，包括Spring、JPA框架
@@ -623,6 +804,32 @@ uv run python llm_code_checker.py path/to/new_file.py
 - **[API文档](docs/api.md)** - 详细API参考
 - **[贡献指南](CONTRIBUTING.md)** - 如何贡献
  - **[接管与训练指南](training/README.md)** - 为新成员/维护者准备的系统上手资料
+
+---
+
+## 💝 赞助商与致谢
+
+我们感谢使这个项目成为可能的赞助商们：
+
+### 🌟 **特别感谢**
+
+**[@o93](https://github.com/o93)** - *主要赞助商与支持者*
+- 🚀 **MCP工具增强**: 赞助了全面的MCP fd/ripgrep工具开发
+- 🧪 **测试基础设施**: 实现了企业级测试覆盖率（50+全面测试用例）
+- 🔧 **质量保证**: 支持了bug修复和性能改进
+- 💡 **创新支持**: 使高级文件搜索和内容分析功能得以早期发布
+
+*"感谢@o93的慷慨支持，我们能够提供革命性的强大MCP工具，改变了AI助手与代码库交互的方式。这项赞助直接促成了ListFilesTool、SearchContentTool和FindAndGrepTool的全面测试覆盖开发。"*
+
+### 🤝 **成为赞助商**
+
+您的支持帮助我们：
+- 🔬 开发新功能和工具
+- 🧪 维护全面的测试覆盖率
+- 📚 创建更好的文档
+- 🚀 加速开发周期
+
+**[💖 赞助这个项目](https://github.com/sponsors/aimasteracc)** 帮助我们继续为开发者社区构建出色的工具！
 
 ---
 
