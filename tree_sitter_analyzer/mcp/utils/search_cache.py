@@ -98,7 +98,8 @@ class SearchCache:
         with self._lock:
             self._cleanup_expired()
 
-            if len(self.cache) >= self.max_size:
+            # If cache is full and this is a new key, remove LRU entry
+            if len(self.cache) >= self.max_size and cache_key not in self.cache:
                 # Remove least recently used entry
                 if self._access_times:
                     lru_key = min(
