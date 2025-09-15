@@ -103,23 +103,32 @@ class TestSearchCacheLogic:
 
     def test_cache_lru_eviction(self):
         """Test LRU eviction when cache is full"""
-        cache = SearchCache(max_size=2, ttl_seconds=300)
+        cache = SearchCache(
+            max_size=2, ttl_seconds=3600
+        )  # 1 hour TTL to avoid expiration issues
 
         # Fill cache to capacity
         cache.set("key1", {"data": "value1"})
         cache.set("key2", {"data": "value2"})
 
+        # Small delay to ensure different timestamps
+        time.sleep(0.01)
+
         # Access key1 to make it more recently used
-        cache.get("key1")
+        result1 = cache.get("key1")
+        assert result1 is not None  # Ensure the get was successful
+
+        # Small delay to ensure different timestamps
+        time.sleep(0.01)
 
         # Add third item - should evict key2 (least recently used)
         cache.set("key3", {"data": "value3"})
 
-        # key1 should still be there
+        # key1 should still be there (more recently accessed)
         assert cache.get("key1") is not None
-        # key2 should be evicted
+        # key2 should be evicted (least recently used)
         assert cache.get("key2") is None
-        # key3 should be there
+        # key3 should be there (just added)
         assert cache.get("key3") is not None
 
         stats = cache.get_stats()

@@ -91,14 +91,21 @@ class TestSearchCache:
 
     def test_cache_lru_eviction(self):
         """Test LRU (Least Recently Used) eviction"""
-        cache = SearchCache(max_size=2)  # Small cache for testing
+        cache = SearchCache(max_size=2, ttl_seconds=3600)  # Small cache with long TTL
 
         # Fill cache to capacity
         cache.set("key1", {"data": "value1"})
         cache.set("key2", {"data": "value2"})
 
+        # Small delay to ensure different timestamps
+        time.sleep(0.01)
+
         # Access key1 to make it more recently used
-        cache.get("key1")
+        result1 = cache.get("key1")
+        assert result1 is not None  # Ensure the get was successful
+
+        # Small delay to ensure different timestamps
+        time.sleep(0.01)
 
         # Add third item, should evict key2 (least recently used)
         cache.set("key3", {"data": "value3"})
