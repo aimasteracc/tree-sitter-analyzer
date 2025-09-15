@@ -225,6 +225,40 @@ uv run python scripts/automated_release.py
 
 ## Best Practices
 
+### Line Ending Configuration
+
+To prevent mixed line ending errors in pre-commit hooks:
+
+1. **Ensure `.gitattributes` exists** with proper configuration:
+   ```
+   * text=auto
+   *.py text eol=lf
+   *.md text eol=lf
+   *.yml text eol=lf
+   *.toml text eol=lf
+   ```
+
+2. **Configure Git locally**:
+   ```bash
+   git config core.autocrlf input
+   ```
+
+3. **Configure your editor** (VS Code example in `.vscode/settings.json`):
+   ```json
+   {
+     "files.eol": "\n",
+     "files.insertFinalNewline": true,
+     "files.trimTrailingWhitespace": true
+   }
+   ```
+
+4. **If you encounter mixed line ending errors**:
+   ```bash
+   # Re-normalize all files
+   git rm --cached -r . && git reset --hard HEAD
+   git add . && git commit -m "Normalize line endings"
+   ```
+
 ### Commit Messages
 
 Use conventional commit format:
