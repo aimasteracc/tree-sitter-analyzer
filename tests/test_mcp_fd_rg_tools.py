@@ -2081,6 +2081,16 @@ async def test_fd_07_and_bad_pattern_simulation(tmp_path, monkeypatch):
     """Test AND search with bad pattern - simulates fd's test_and_bad_pattern."""
     tool = FindAndGrepTool(str(tmp_path))
 
+    async def fake_run(cmd, cwd=None, timeout=None, timeout_ms=None):
+        # Simulate fd command failing with invalid regex
+        if "[invalid" in " ".join(cmd):
+            return 1, b"", b"error: Invalid regular expression"
+        return 0, b"", b""
+
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture", fake_run
+    )
+
     # Test with invalid regex pattern
     result = await tool.execute(
         {
@@ -4614,6 +4624,16 @@ async def test_fd_69_invalid_regex_handling(tmp_path, monkeypatch):
 
     tool = ListFilesTool(str(tmp_path))
 
+    async def fake_run(cmd, cwd=None, timeout=None, timeout_ms=None):
+        # Simulate fd command failing with invalid regex
+        if "[invalid_regex" in " ".join(cmd):
+            return 1, b"", b"error: Invalid regular expression"
+        return 0, b"", b""
+
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture", fake_run
+    )
+
     # Test with potentially invalid regex
     result = await tool.execute(
         {"roots": [str(tmp_path)], "pattern": "[invalid_regex"}  # Invalid regex
@@ -5278,6 +5298,14 @@ async def test_fd_87_single_and_multithreaded_execution(tmp_path, monkeypatch):
 async def test_fd_88_number_parsing_errors(tmp_path, monkeypatch):
     """Test number parsing errors - corresponds to fd's test_number_parsing_errors."""
     tool = ListFilesTool(str(tmp_path))
+
+    async def fake_run(cmd, cwd=None, timeout=None, timeout_ms=None):
+        # Simulate fd command with various scenarios
+        return 0, b"", b""
+
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture", fake_run
+    )
 
     # Test invalid depth value (should be handled gracefully)
     result1 = await tool.execute(
