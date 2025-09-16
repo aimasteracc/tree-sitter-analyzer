@@ -108,6 +108,10 @@ For manual releases:
 
 3. **Update documentation**:
    ```bash
+   # Get current test count and coverage statistics:
+   # Test count: uv run python -m pytest --collect-only -q | findstr /C:"collected"
+   # Coverage: uv run python -m pytest --cov=tree_sitter_analyzer --cov-report=term-missing --cov-report=json -x -q | findstr "TOTAL"
+
    # Update README.md with new version, test counts, and coverage:
    #   - Version badges ([![Version](https://img.shields.io/badge/version-X.X.X-blue.svg)])
    #   - Test count badges ([![Tests](https://img.shields.io/badge/tests-XXXX%20passed-brightgreen.svg)])
@@ -171,6 +175,10 @@ For manual releases:
 
 4. **Update documentation**:
    ```bash
+   # Get current test count and coverage statistics:
+   # Test count: uv run python -m pytest --collect-only -q | findstr /C:"collected"
+   # Coverage: uv run python -m pytest --cov=tree_sitter_analyzer --cov-report=term-missing --cov-report=json -x -q | findstr "TOTAL"
+
    # Update CHANGELOG.md with hotfix details
    # Update README.md with new version, test counts, and coverage:
    #   - Version badges ([![Version](https://img.shields.io/badge/version-X.X.X-blue.svg)])

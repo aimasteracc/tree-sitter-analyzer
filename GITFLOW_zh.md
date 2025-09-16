@@ -88,6 +88,10 @@ gitGraph
     # 同步版本号到 __init__.py
     uv run python scripts/sync_version_minimal.py
 
+    # 获取当前测试数量和覆盖率统计：
+    # 测试数量: uv run python -m pytest --collect-only -q | findstr /C:"collected"
+    # 覆盖率: uv run python -m pytest --cov=tree_sitter_analyzer --cov-report=term-missing --cov-report=json -x -q | findstr "TOTAL"
+
     # 更新文档：
     # - 更新 README.md 中的版本号、测试数量和覆盖率
     # - 更新版本徽章、测试徽章、覆盖率徽章
@@ -126,6 +130,10 @@ gitGraph
     # 更新 server_version
     # 同步版本号到 __init__.py
     uv run python scripts/sync_version_minimal.py
+
+    # 获取当前测试数量和覆盖率统计：
+    # 测试数量: uv run python -m pytest --collect-only -q | findstr /C:"collected"
+    # 覆盖率: uv run python -m pytest --cov=tree_sitter_analyzer --cov-report=term-missing --cov-report=json -x -q | findstr "TOTAL"
 
     # 更新文档：
     # - 更新 CHANGELOG.md 添加 hotfix 详情
