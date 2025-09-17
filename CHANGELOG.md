@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.3.6] - 2025-09-17
+
+### Fixed
+- **🔧 CI/CD Cross-Platform Compatibility**: Resolved CI test failures across multiple platforms and environments
+- **🍎 macOS Path Resolution**: Fixed symbolic link path handling in test assertions for macOS compatibility
+- **🎯 Code Quality**: Addressed Black formatting inconsistencies and Ruff linting issues across different environments
+- **⚙️ Test Logic**: Improved test parameter validation and file verification logic in MCP tools
+
+### Technical Details
+- **Root Cause**: Multiple CI failures due to environment-specific differences in path handling, code formatting, and test logic
+- **Solutions Implemented**:
+  - Fixed `max_count` parameter clamping logic in `SearchContentTool`
+  - Added comprehensive file/roots validation in `validate_arguments` methods
+  - Resolved `Path` import scope issues in `FindAndGrepTool`
+  - Implemented robust macOS symbolic link path resolution in test assertions
+  - Fixed Black formatting consistency issues in `scripts/sync_version.py`
+- **Impact**: All CI tests now pass consistently across Ubuntu, Windows, and macOS platforms
+- **Test Statistics**: 1794 tests, 74.77% coverage
+
+This release ensures robust cross-platform compatibility and resolves all CI/CD pipeline issues that were blocking the development workflow.
+
 ## [1.3.4] - 2025-01-15
 
 ### Fixed
