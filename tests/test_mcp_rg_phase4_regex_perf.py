@@ -2,8 +2,8 @@ import json
 
 import pytest
 
-from tree_sitter_analyzer.mcp.tools.search_content_tool import SearchContentTool
 from tree_sitter_analyzer.mcp.tools import fd_rg_utils
+from tree_sitter_analyzer.mcp.tools.search_content_tool import SearchContentTool
 
 
 @pytest.mark.unit
@@ -42,17 +42,20 @@ async def test_rg_45_large_output_truncation(monkeypatch, tmp_path):
 
     # Create more than MAX_RESULTS_HARD_CAP events to ensure truncation
     def jline(idx: int):
-        return json.dumps(
-            {
-                "type": "match",
-                "data": {
-                    "path": {"text": f"/f{idx}.txt"},
-                    "lines": {"text": "x\n"},
-                    "line_number": 1,
-                    "submatches": [],
-                },
-            }
-        ).encode() + b"\n"
+        return (
+            json.dumps(
+                {
+                    "type": "match",
+                    "data": {
+                        "path": {"text": f"/f{idx}.txt"},
+                        "lines": {"text": "x\n"},
+                        "line_number": 1,
+                        "submatches": [],
+                    },
+                }
+            ).encode()
+            + b"\n"
+        )
 
     out = b"".join(jline(i) for i in range(fd_rg_utils.MAX_RESULTS_HARD_CAP + 5))
 
@@ -105,17 +108,20 @@ async def test_rg_46_word_mode_does_not_match_substrings(monkeypatch, tmp_path):
 async def test_rg_47_fixed_strings_escapes_regex(monkeypatch, tmp_path):
     tool = SearchContentTool(str(tmp_path))
 
-    evt = json.dumps(
-        {
-            "type": "match",
-            "data": {
-                "path": {"text": "/f.txt"},
-                "lines": {"text": "a+b?\n"},
-                "line_number": 1,
-                "submatches": [],
-            },
-        }
-    ).encode() + b"\n"
+    evt = (
+        json.dumps(
+            {
+                "type": "match",
+                "data": {
+                    "path": {"text": "/f.txt"},
+                    "lines": {"text": "a+b?\n"},
+                    "line_number": 1,
+                    "submatches": [],
+                },
+            }
+        ).encode()
+        + b"\n"
+    )
 
     async def fake_run(cmd, input_data=None, timeout_ms=None):
         assert "-F" in cmd
@@ -125,7 +131,9 @@ async def test_rg_47_fixed_strings_escapes_regex(monkeypatch, tmp_path):
         "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture", fake_run
     )
 
-    res = await tool.execute({"roots": [str(tmp_path)], "query": "a+b?", "fixed_strings": True})
+    res = await tool.execute(
+        {"roots": [str(tmp_path)], "query": "a+b?", "fixed_strings": True}
+    )
     assert res["success"] is True
 
 
@@ -134,7 +142,9 @@ async def test_rg_47_fixed_strings_escapes_regex(monkeypatch, tmp_path):
 async def test_rg_48_encoding_invalid_is_string_validated(tmp_path):
     tool = SearchContentTool(str(tmp_path))
     with pytest.raises(ValueError):
-        tool.validate_arguments({"roots": [str(tmp_path)], "query": "x", "encoding": 123})
+        tool.validate_arguments(
+            {"roots": [str(tmp_path)], "query": "x", "encoding": 123}
+        )
 
 
 @pytest.mark.unit
@@ -142,9 +152,13 @@ async def test_rg_48_encoding_invalid_is_string_validated(tmp_path):
 async def test_rg_49_include_exclude_not_strings(tmp_path):
     tool = SearchContentTool(str(tmp_path))
     with pytest.raises(ValueError):
-        tool.validate_arguments({"roots": [str(tmp_path)], "query": "x", "include_globs": [1, 2]})
+        tool.validate_arguments(
+            {"roots": [str(tmp_path)], "query": "x", "include_globs": [1, 2]}
+        )
     with pytest.raises(ValueError):
-        tool.validate_arguments({"roots": [str(tmp_path)], "query": "x", "exclude_globs": [object()]})
+        tool.validate_arguments(
+            {"roots": [str(tmp_path)], "query": "x", "exclude_globs": [object()]}
+        )
 
 
 @pytest.mark.unit
@@ -160,7 +174,9 @@ async def test_rg_50_count_parsing_robust_to_bad_lines(monkeypatch, tmp_path):
         "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture", fake_run
     )
 
-    res = await tool.execute({"roots": [str(tmp_path)], "query": "x", "count_only_matches": True})
+    res = await tool.execute(
+        {"roots": [str(tmp_path)], "query": "x", "count_only_matches": True}
+    )
     assert res["success"] is True
     assert res["total_matches"] == 10  # 3 + 7
     assert "file.py" in res["file_counts"] and "file3.py" in res["file_counts"]
@@ -172,17 +188,20 @@ async def test_rg_51_group_by_file_structure(monkeypatch, tmp_path):
     tool = SearchContentTool(str(tmp_path))
 
     def jline(path: str, line: int):
-        return json.dumps(
-            {
-                "type": "match",
-                "data": {
-                    "path": {"text": path},
-                    "lines": {"text": "x\n"},
-                    "line_number": line,
-                    "submatches": [],
-                },
-            }
-        ).encode() + b"\n"
+        return (
+            json.dumps(
+                {
+                    "type": "match",
+                    "data": {
+                        "path": {"text": path},
+                        "lines": {"text": "x\n"},
+                        "line_number": line,
+                        "submatches": [],
+                    },
+                }
+            ).encode()
+            + b"\n"
+        )
 
     out = jline("/f1.txt", 1) + jline("/f1.txt", 2) + jline("/f2.txt", 1)
 
@@ -193,7 +212,9 @@ async def test_rg_51_group_by_file_structure(monkeypatch, tmp_path):
         "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture", fake_run
     )
 
-    res = await tool.execute({"roots": [str(tmp_path)], "query": "x", "group_by_file": True})
+    res = await tool.execute(
+        {"roots": [str(tmp_path)], "query": "x", "group_by_file": True}
+    )
     assert res["success"] is True
     assert res["count"] == 3
     assert len(res["files"]) == 2
@@ -205,17 +226,20 @@ async def test_rg_52_summary_counts_consistent(monkeypatch, tmp_path):
     tool = SearchContentTool(str(tmp_path))
 
     def jline(path: str):
-        return json.dumps(
-            {
-                "type": "match",
-                "data": {
-                    "path": {"text": path},
-                    "lines": {"text": "x\n"},
-                    "line_number": 1,
-                    "submatches": [],
-                },
-            }
-        ).encode() + b"\n"
+        return (
+            json.dumps(
+                {
+                    "type": "match",
+                    "data": {
+                        "path": {"text": path},
+                        "lines": {"text": "x\n"},
+                        "line_number": 1,
+                        "submatches": [],
+                    },
+                }
+            ).encode()
+            + b"\n"
+        )
 
     out = jline("/f1.txt") + jline("/f2.txt") + jline("/f2.txt")
 
@@ -226,7 +250,9 @@ async def test_rg_52_summary_counts_consistent(monkeypatch, tmp_path):
         "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture", fake_run
     )
 
-    res = await tool.execute({"roots": [str(tmp_path)], "query": "x", "summary_only": True})
+    res = await tool.execute(
+        {"roots": [str(tmp_path)], "query": "x", "summary_only": True}
+    )
     assert res["success"] is True
     assert res["summary"]["total_matches"] == 3
     assert res["summary"]["total_files"] == 2
@@ -239,17 +265,20 @@ async def test_rg_53_files_mode_uses_parent_dirs(monkeypatch, tmp_path):
     f = tmp_path / "a.txt"
     f.write_text("x\n", encoding="utf-8")
 
-    evt = json.dumps(
-        {
-            "type": "match",
-            "data": {
-                "path": {"text": str(f)},
-                "lines": {"text": "x\n"},
-                "line_number": 1,
-                "submatches": [],
-            },
-        }
-    ).encode() + b"\n"
+    evt = (
+        json.dumps(
+            {
+                "type": "match",
+                "data": {
+                    "path": {"text": str(f)},
+                    "lines": {"text": "x\n"},
+                    "line_number": 1,
+                    "submatches": [],
+                },
+            }
+        ).encode()
+        + b"\n"
+    )
 
     async def fake_run(cmd, input_data=None, timeout_ms=None):
         assert str(f.parent) in cmd
@@ -268,17 +297,20 @@ async def test_rg_53_files_mode_uses_parent_dirs(monkeypatch, tmp_path):
 async def test_rg_54_no_json_non_match_events(monkeypatch, tmp_path):
     tool = SearchContentTool(str(tmp_path))
     non = json.dumps({"type": "begin", "data": {}}).encode() + b"\n"
-    match = json.dumps(
-        {
-            "type": "match",
-            "data": {
-                "path": {"text": "/f.txt"},
-                "lines": {"text": "x\n"},
-                "line_number": 1,
-                "submatches": [],
-            },
-        }
-    ).encode() + b"\n"
+    match = (
+        json.dumps(
+            {
+                "type": "match",
+                "data": {
+                    "path": {"text": "/f.txt"},
+                    "lines": {"text": "x\n"},
+                    "line_number": 1,
+                    "submatches": [],
+                },
+            }
+        ).encode()
+        + b"\n"
+    )
     out = non + match
 
     async def fake_run(cmd, input_data=None, timeout_ms=None):
@@ -297,17 +329,20 @@ async def test_rg_54_no_json_non_match_events(monkeypatch, tmp_path):
 async def test_rg_55_hidden_files_not_included_by_default(monkeypatch, tmp_path):
     tool = SearchContentTool(str(tmp_path))
 
-    evt = json.dumps(
-        {
-            "type": "match",
-            "data": {
-                "path": {"text": "/.hidden/file.txt"},
-                "lines": {"text": "x\n"},
-                "line_number": 1,
-                "submatches": [],
-            },
-        }
-    ).encode() + b"\n"
+    evt = (
+        json.dumps(
+            {
+                "type": "match",
+                "data": {
+                    "path": {"text": "/.hidden/file.txt"},
+                    "lines": {"text": "x\n"},
+                    "line_number": 1,
+                    "submatches": [],
+                },
+            }
+        ).encode()
+        + b"\n"
+    )
 
     async def fake_run(cmd, input_data=None, timeout_ms=None):
         # Unless hidden=True, we don't guarantee inclusion; this test just ensures success
@@ -319,4 +354,3 @@ async def test_rg_55_hidden_files_not_included_by_default(monkeypatch, tmp_path)
 
     res = await tool.execute({"roots": [str(tmp_path)], "query": "x"})
     assert res["success"] is True
-

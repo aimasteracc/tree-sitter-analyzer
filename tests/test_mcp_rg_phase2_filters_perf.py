@@ -2,8 +2,8 @@ import json
 
 import pytest
 
-from tree_sitter_analyzer.mcp.tools.search_content_tool import SearchContentTool
 from tree_sitter_analyzer.mcp.tools import fd_rg_utils
+from tree_sitter_analyzer.mcp.tools.search_content_tool import SearchContentTool
 from tree_sitter_analyzer.mcp.utils.search_cache import clear_cache
 
 
@@ -247,7 +247,9 @@ async def test_rg_19_total_only_caches_and_derives_count(monkeypatch, tmp_path):
         "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture", fake_run
     )
 
-    total = await tool.execute({"roots": [str(tmp_path)], "query": "x", "total_only": True})
+    total = await tool.execute(
+        {"roots": [str(tmp_path)], "query": "x", "total_only": True}
+    )
     assert isinstance(total, int) and total == 5
 
     # Now request count_only for same params; should be served from cache
@@ -268,19 +270,24 @@ async def test_rg_20_summary_only(monkeypatch, tmp_path):
     f2 = tmp_path / "b.py"
 
     def jline(path: str, line: str, line_no: int):
-        return json.dumps(
-            {
-                "type": "match",
-                "data": {
-                    "path": {"text": path},
-                    "lines": {"text": line},
-                    "line_number": line_no,
-                    "submatches": [],
-                },
-            }
-        ).encode() + b"\n"
+        return (
+            json.dumps(
+                {
+                    "type": "match",
+                    "data": {
+                        "path": {"text": path},
+                        "lines": {"text": line},
+                        "line_number": line_no,
+                        "submatches": [],
+                    },
+                }
+            ).encode()
+            + b"\n"
+        )
 
-    out = b"".join([jline(str(f1), "import os\n", 1), jline(str(f2), "import sys\n", 1)])
+    out = b"".join(
+        [jline(str(f1), "import os\n", 1), jline(str(f2), "import sys\n", 1)]
+    )
 
     async def fake_run(cmd, input_data=None, timeout_ms=None):
         return 0, out, b""
@@ -338,17 +345,20 @@ async def test_rg_22_optimize_paths(monkeypatch, tmp_path):
     f1.write_text("print(1)\n", encoding="utf-8")
 
     def jline(path: str):
-        return json.dumps(
-            {
-                "type": "match",
-                "data": {
-                    "path": {"text": path},
-                    "lines": {"text": "print(1)\n"},
-                    "line_number": 1,
-                    "submatches": [],
-                },
-            }
-        ).encode() + b"\n"
+        return (
+            json.dumps(
+                {
+                    "type": "match",
+                    "data": {
+                        "path": {"text": path},
+                        "lines": {"text": "print(1)\n"},
+                        "line_number": 1,
+                        "submatches": [],
+                    },
+                }
+            ).encode()
+            + b"\n"
+        )
 
     out = jline(str(f1)) + jline(str(f1))
 
@@ -409,7 +419,9 @@ def test_rg_24_globs_with_flags_combined(tmp_path):
     )
     assert "-L" in cmd and "-H" in cmd and "-u" in cmd
     assert any(cmd[i] == "-g" and cmd[i + 1] == "*.py" for i in range(len(cmd) - 1))
-    assert any(cmd[i] == "-g" and cmd[i + 1] == "!*_test.py" for i in range(len(cmd) - 1))
+    assert any(
+        cmd[i] == "-g" and cmd[i + 1] == "!*_test.py" for i in range(len(cmd) - 1)
+    )
 
 
 @pytest.mark.unit
@@ -420,17 +432,20 @@ async def test_rg_25_json_parser_ignores_non_match(monkeypatch, tmp_path):
     f.write_text("x\n", encoding="utf-8")
 
     begin_evt = json.dumps({"type": "begin", "data": {}}).encode() + b"\n"
-    match_evt = json.dumps(
-        {
-            "type": "match",
-            "data": {
-                "path": {"text": str(f)},
-                "lines": {"text": "x\n"},
-                "line_number": 1,
-                "submatches": [],
-            },
-        }
-    ).encode() + b"\n"
+    match_evt = (
+        json.dumps(
+            {
+                "type": "match",
+                "data": {
+                    "path": {"text": str(f)},
+                    "lines": {"text": "x\n"},
+                    "line_number": 1,
+                    "submatches": [],
+                },
+            }
+        ).encode()
+        + b"\n"
+    )
     out = begin_evt + match_evt
 
     async def fake_run(cmd, input_data=None, timeout_ms=None):
@@ -443,4 +458,3 @@ async def test_rg_25_json_parser_ignores_non_match(monkeypatch, tmp_path):
     res = await tool.execute({"roots": [str(tmp_path)], "query": "x"})
     assert res["success"] is True
     assert res["count"] == 1
-

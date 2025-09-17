@@ -2,8 +2,8 @@ import json
 
 import pytest
 
-from tree_sitter_analyzer.mcp.tools.search_content_tool import SearchContentTool
 from tree_sitter_analyzer.mcp.tools.find_and_grep_tool import FindAndGrepTool
+from tree_sitter_analyzer.mcp.tools.search_content_tool import SearchContentTool
 
 
 @pytest.mark.unit
@@ -206,7 +206,9 @@ async def test_rg_33_find_and_grep_total_only(monkeypatch, tmp_path):
         "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture", fake_run
     )
 
-    total = await tool.execute({"roots": [str(tmp_path)], "query": "x", "total_only": True})
+    total = await tool.execute(
+        {"roots": [str(tmp_path)], "query": "x", "total_only": True}
+    )
     assert isinstance(total, int) and total == 7
 
 
@@ -310,7 +312,9 @@ async def test_rg_38_files_validation(tmp_path):
 
     # Nonexistent file should raise
     with pytest.raises(ValueError):
-        tool.validate_arguments({"files": [str(tmp_path / "missing.txt")], "query": "x"})
+        tool.validate_arguments(
+            {"files": [str(tmp_path / "missing.txt")], "query": "x"}
+        )
 
 
 @pytest.mark.unit
@@ -339,17 +343,20 @@ async def test_rg_40_parse_multiple_json_events(monkeypatch, tmp_path):
     f.write_text("x\n", encoding="utf-8")
 
     def j(path: str, line_no: int):
-        return json.dumps(
-            {
-                "type": "match",
-                "data": {
-                    "path": {"text": path},
-                    "lines": {"text": "x\n"},
-                    "line_number": line_no,
-                    "submatches": [],
-                },
-            }
-        ).encode() + b"\n"
+        return (
+            json.dumps(
+                {
+                    "type": "match",
+                    "data": {
+                        "path": {"text": path},
+                        "lines": {"text": "x\n"},
+                        "line_number": line_no,
+                        "submatches": [],
+                    },
+                }
+            ).encode()
+            + b"\n"
+        )
 
     out = j(str(f), 1) + j(str(f), 2) + j(str(f), 3)
 
@@ -372,17 +379,20 @@ async def test_rg_41_match_text_normalized(monkeypatch, tmp_path):
     f = tmp_path / "a.txt"
     f.write_text("x\n", encoding="utf-8")
 
-    evt = json.dumps(
-        {
-            "type": "match",
-            "data": {
-                "path": {"text": str(f)},
-                "lines": {"text": "a   b\t c\n"},
-                "line_number": 1,
-                "submatches": [],
-            },
-        }
-    ).encode() + b"\n"
+    evt = (
+        json.dumps(
+            {
+                "type": "match",
+                "data": {
+                    "path": {"text": str(f)},
+                    "lines": {"text": "a   b\t c\n"},
+                    "line_number": 1,
+                    "submatches": [],
+                },
+            }
+        ).encode()
+        + b"\n"
+    )
 
     async def fake_run(cmd, input_data=None, timeout_ms=None):
         return 0, evt, b""
@@ -410,9 +420,7 @@ async def test_rg_42_find_and_grep_sort_by_path(monkeypatch, tmp_path):
         "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture", fake_run
     )
 
-    res = await tool.execute(
-        {"roots": [str(tmp_path)], "query": "x", "sort": "path"}
-    )
+    res = await tool.execute({"roots": [str(tmp_path)], "query": "x", "sort": "path"})
     assert res["success"] is True
     assert res["meta"]["searched_file_count"] == 2
 
@@ -436,9 +444,6 @@ async def test_rg_43_find_and_grep_sort_by_size(monkeypatch, tmp_path):
         "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture", fake_run
     )
 
-    res = await tool.execute(
-        {"roots": [str(tmp_path)], "query": "x", "sort": "size"}
-    )
+    res = await tool.execute({"roots": [str(tmp_path)], "query": "x", "sort": "size"})
     assert res["success"] is True
     assert res["meta"]["searched_file_count"] == 2
-

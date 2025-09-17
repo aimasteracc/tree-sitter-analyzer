@@ -1,10 +1,9 @@
 import json
-from pathlib import Path
 
 import pytest
 
-from tree_sitter_analyzer.mcp.tools.search_content_tool import SearchContentTool
 from tree_sitter_analyzer.mcp.tools import fd_rg_utils
+from tree_sitter_analyzer.mcp.tools.search_content_tool import SearchContentTool
 
 
 @pytest.mark.unit
@@ -239,7 +238,9 @@ def test_rg_08_build_cmd_hidden_and_no_ignore(tmp_path):
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_rg_09_search_content_exec_roots_basic_match_parsing(monkeypatch, tmp_path):
+async def test_rg_09_search_content_exec_roots_basic_match_parsing(
+    monkeypatch, tmp_path
+):
     tool = SearchContentTool(str(tmp_path))
     f = tmp_path / "a.txt"
     f.write_text("hello world\n", encoding="utf-8")
@@ -250,9 +251,7 @@ async def test_rg_09_search_content_exec_roots_basic_match_parsing(monkeypatch, 
             "path": {"text": str(f)},
             "lines": {"text": "hello world\n"},
             "line_number": 1,
-            "submatches": [
-                {"match": {"text": "hello"}, "start": 0, "end": 5}
-            ],
+            "submatches": [{"match": {"text": "hello"}, "start": 0, "end": 5}],
         },
     }
 
@@ -275,7 +274,9 @@ async def test_rg_09_search_content_exec_roots_basic_match_parsing(monkeypatch, 
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_rg_10_search_content_exec_files_list_uses_parent_dirs(monkeypatch, tmp_path):
+async def test_rg_10_search_content_exec_files_list_uses_parent_dirs(
+    monkeypatch, tmp_path
+):
     tool = SearchContentTool(str(tmp_path))
     f = tmp_path / "b.txt"
     f.write_text("abc\n", encoding="utf-8")
@@ -286,9 +287,7 @@ async def test_rg_10_search_content_exec_files_list_uses_parent_dirs(monkeypatch
             "path": {"text": str(f)},
             "lines": {"text": "abc\n"},
             "line_number": 1,
-            "submatches": [
-                {"match": {"text": "a"}, "start": 0, "end": 1}
-            ],
+            "submatches": [{"match": {"text": "a"}, "start": 0, "end": 1}],
         },
     }
 
@@ -308,4 +307,3 @@ async def test_rg_10_search_content_exec_files_list_uses_parent_dirs(monkeypatch
     assert result["success"] is True
     assert result["count"] == 1
     assert result["results"][0]["file"] == str(f)
-

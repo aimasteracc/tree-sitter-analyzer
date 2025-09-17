@@ -2,8 +2,8 @@ import json
 
 import pytest
 
-from tree_sitter_analyzer.mcp.tools.search_content_tool import SearchContentTool
 from tree_sitter_analyzer.mcp.tools.find_and_grep_tool import FindAndGrepTool
+from tree_sitter_analyzer.mcp.tools.search_content_tool import SearchContentTool
 
 
 @pytest.mark.unit
@@ -14,17 +14,20 @@ async def test_rg_81_find_and_grep_hidden_and_globs(monkeypatch, tmp_path):
     f.parent.mkdir(exist_ok=True)
     f.write_text("todo\n", encoding="utf-8")
 
-    evt = json.dumps(
-        {
-            "type": "match",
-            "data": {
-                "path": {"text": str(f)},
-                "lines": {"text": "todo\n"},
-                "line_number": 1,
-                "submatches": [],
-            },
-        }
-    ).encode() + b"\n"
+    evt = (
+        json.dumps(
+            {
+                "type": "match",
+                "data": {
+                    "path": {"text": str(f)},
+                    "lines": {"text": "todo\n"},
+                    "line_number": 1,
+                    "submatches": [],
+                },
+            }
+        ).encode()
+        + b"\n"
+    )
 
     async def fake_run(cmd, input_data=None, timeout_ms=None):
         if cmd[0] == "fd":
@@ -143,7 +146,12 @@ async def test_rg_86_find_and_grep_context_passthrough(monkeypatch, tmp_path):
     )
 
     res = await tool.execute(
-        {"roots": [str(tmp_path)], "query": "x", "context_before": 1, "context_after": 1}
+        {
+            "roots": [str(tmp_path)],
+            "query": "x",
+            "context_before": 1,
+            "context_after": 1,
+        }
     )
     assert res["success"] is True
 
@@ -213,7 +221,9 @@ async def test_rg_89_find_and_grep_meta_truncated(monkeypatch, tmp_path):
         "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture", fake_run
     )
 
-    res = await tool.execute({"roots": [str(tmp_path)], "query": "x", "file_limit": 100})
+    res = await tool.execute(
+        {"roots": [str(tmp_path)], "query": "x", "file_limit": 100}
+    )
     assert res["success"] is True
     assert res["meta"]["truncated"] is True
 
@@ -223,17 +233,20 @@ async def test_rg_89_find_and_grep_meta_truncated(monkeypatch, tmp_path):
 async def test_rg_90_search_content_group_by_file_then_summary(monkeypatch, tmp_path):
     tool = SearchContentTool(str(tmp_path))
 
-    evt = json.dumps(
-        {
-            "type": "match",
-            "data": {
-                "path": {"text": "/a.txt"},
-                "lines": {"text": "x\n"},
-                "line_number": 1,
-                "submatches": [],
-            },
-        }
-    ).encode() + b"\n"
+    evt = (
+        json.dumps(
+            {
+                "type": "match",
+                "data": {
+                    "path": {"text": "/a.txt"},
+                    "lines": {"text": "x\n"},
+                    "line_number": 1,
+                    "submatches": [],
+                },
+            }
+        ).encode()
+        + b"\n"
+    )
 
     async def fake_run(cmd, input_data=None, timeout_ms=None):
         return 0, evt, b""
@@ -244,7 +257,12 @@ async def test_rg_90_search_content_group_by_file_then_summary(monkeypatch, tmp_
 
     # group_by_file should take precedence, ignoring summary_only
     res = await tool.execute(
-        {"roots": [str(tmp_path)], "query": "x", "group_by_file": True, "summary_only": True}
+        {
+            "roots": [str(tmp_path)],
+            "query": "x",
+            "group_by_file": True,
+            "summary_only": True,
+        }
     )
     assert "files" in res and "summary" not in res
 
@@ -253,17 +271,20 @@ async def test_rg_90_search_content_group_by_file_then_summary(monkeypatch, tmp_
 @pytest.mark.asyncio
 async def test_rg_91_search_content_total_only_then_normal_cache(monkeypatch, tmp_path):
     tool = SearchContentTool(str(tmp_path))
-    evt = json.dumps(
-        {
-            "type": "match",
-            "data": {
-                "path": {"text": "/a.txt"},
-                "lines": {"text": "x\n"},
-                "line_number": 1,
-                "submatches": [],
-            },
-        }
-    ).encode() + b"\n"
+    evt = (
+        json.dumps(
+            {
+                "type": "match",
+                "data": {
+                    "path": {"text": "/a.txt"},
+                    "lines": {"text": "x\n"},
+                    "line_number": 1,
+                    "submatches": [],
+                },
+            }
+        ).encode()
+        + b"\n"
+    )
 
     # First call: total_only
     async def fake_run_total(cmd, input_data=None, timeout_ms=None):
@@ -273,7 +294,9 @@ async def test_rg_91_search_content_total_only_then_normal_cache(monkeypatch, tm
         "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture", fake_run_total
     )
 
-    total = await tool.execute({"roots": [str(tmp_path)], "query": "x", "total_only": True})
+    total = await tool.execute(
+        {"roots": [str(tmp_path)], "query": "x", "total_only": True}
+    )
     assert total == 1
 
     # Second call: normal; allow subprocess call, but ensure it still succeeds
@@ -281,7 +304,8 @@ async def test_rg_91_search_content_total_only_then_normal_cache(monkeypatch, tm
         return 0, evt, b""
 
     monkeypatch.setattr(
-        "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture", fake_run_normal
+        "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture",
+        fake_run_normal,
     )
 
     res = await tool.execute({"roots": [str(tmp_path)], "query": "x"})
@@ -343,6 +367,7 @@ async def test_rg_95_total_only_returns_int_find_and_grep(monkeypatch, tmp_path)
         "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture", fake_run
     )
 
-    total = await tool.execute({"roots": [str(tmp_path)], "query": "x", "total_only": True})
+    total = await tool.execute(
+        {"roots": [str(tmp_path)], "query": "x", "total_only": True}
+    )
     assert isinstance(total, int) and total == 9
-

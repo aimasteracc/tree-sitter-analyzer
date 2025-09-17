@@ -2,9 +2,8 @@ import json
 
 import pytest
 
-from tree_sitter_analyzer.mcp.tools.search_content_tool import SearchContentTool
-from tree_sitter_analyzer.mcp.tools.find_and_grep_tool import FindAndGrepTool
 from tree_sitter_analyzer.mcp.tools import fd_rg_utils
+from tree_sitter_analyzer.mcp.tools.find_and_grep_tool import FindAndGrepTool
 
 
 @pytest.mark.unit
@@ -30,7 +29,9 @@ async def test_rg_56_find_and_grep_with_globs_and_exclude(monkeypatch, tmp_path)
         if cmd[0] == "fd":
             return 0, f"{f1}\n{f2}\n".encode(), b""
         # ensure -g '!*_test.py' present
-        assert any(cmd[i] == "-g" and cmd[i + 1] == "!*_test.py" for i in range(len(cmd) - 1))
+        assert any(
+            cmd[i] == "-g" and cmd[i + 1] == "!*_test.py" for i in range(len(cmd) - 1)
+        )
         return 0, (json.dumps(rg_json) + "\n").encode(), b""
 
     monkeypatch.setattr(
@@ -169,7 +170,9 @@ async def test_rg_61_find_and_grep_size_and_changed(monkeypatch, tmp_path):
     async def fake_run(cmd, input_data=None, timeout_ms=None):
         if cmd[0] == "fd":
             # -S and --changed-within should be present
-            assert any(cmd[i] == "-S" and cmd[i + 1] == "+10M" for i in range(len(cmd) - 1))
+            assert any(
+                cmd[i] == "-S" and cmd[i + 1] == "+10M" for i in range(len(cmd) - 1)
+            )
             assert any(cmd[i] == "--changed-within" for i in range(len(cmd)))
             return 0, b"/a.py\n", b""
         return 0, b"", b""
@@ -217,17 +220,20 @@ async def test_rg_63_find_and_grep_grouped_summary(monkeypatch, tmp_path):
     f = tmp_path / "a.txt"
     f.write_text("x\n", encoding="utf-8")
 
-    evt = json.dumps(
-        {
-            "type": "match",
-            "data": {
-                "path": {"text": str(f)},
-                "lines": {"text": "x\n"},
-                "line_number": 1,
-                "submatches": [],
-            },
-        }
-    ).encode() + b"\n"
+    evt = (
+        json.dumps(
+            {
+                "type": "match",
+                "data": {
+                    "path": {"text": str(f)},
+                    "lines": {"text": "x\n"},
+                    "line_number": 1,
+                    "submatches": [],
+                },
+            }
+        ).encode()
+        + b"\n"
+    )
 
     async def fake_run(cmd, input_data=None, timeout_ms=None):
         if cmd[0] == "fd":
@@ -298,5 +304,6 @@ def test_rg_65_build_fd_command_roots_and_pattern(tmp_path):
     )
     # Sanity assertions
     assert cmd[0] == "fd" and "--glob" in cmd and "-e" in cmd and "-E" in cmd
-    assert any(cmd[i] == "--max-results" and cmd[i + 1] == "100" for i in range(len(cmd) - 1))
-
+    assert any(
+        cmd[i] == "--max-results" and cmd[i + 1] == "100" for i in range(len(cmd) - 1)
+    )
