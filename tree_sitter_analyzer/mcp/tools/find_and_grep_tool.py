@@ -8,6 +8,7 @@ First narrow files with fd, then search contents with ripgrep, with caps & meta.
 from __future__ import annotations
 
 import logging
+import pathlib
 import time
 from typing import Any
 
@@ -303,17 +304,19 @@ class FindAndGrepTool(BaseMCPTool):
                 if sort_mode == "path":
                     files.sort()
                 elif sort_mode == "mtime":
-                    files.sort(
-                        key=lambda p: (
-                            Path(p).stat().st_mtime if Path(p).exists() else 0
-                        ),
-                        reverse=True,
-                    )
+
+                    def get_mtime(p):
+                        path_obj = pathlib.Path(p)
+                        return path_obj.stat().st_mtime if path_obj.exists() else 0
+
+                    files.sort(key=get_mtime, reverse=True)
                 elif sort_mode == "size":
-                    files.sort(
-                        key=lambda p: Path(p).stat().st_size if Path(p).exists() else 0,
-                        reverse=True,
-                    )
+
+                    def get_size(p):
+                        path_obj = pathlib.Path(p)
+                        return path_obj.stat().st_size if path_obj.exists() else 0
+
+                    files.sort(key=get_size, reverse=True)
             except (OSError, ValueError):  # nosec B110
                 pass
 
@@ -424,6 +427,12 @@ class FindAndGrepTool(BaseMCPTool):
             group_by_file = arguments.get("group_by_file", False)
             if group_by_file and matches:
                 grouped_result = fd_rg_utils.group_matches_by_file(matches)
+
+                # If summary_only is also requested, add summary to grouped result
+                if arguments.get("summary_only", False):
+                    summary = fd_rg_utils.summarize_search_results(matches)
+                    grouped_result["summary"] = summary
+
                 grouped_result["meta"] = {
                     "searched_file_count": searched_file_count,
                     "truncated": (truncated_fd or truncated_rg),

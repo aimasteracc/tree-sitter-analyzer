@@ -225,6 +225,13 @@ class SearchContentTool(BaseMCPTool):
                 v = arguments[key]
                 if not isinstance(v, list) or not all(isinstance(x, str) for x in v):
                     raise ValueError(f"{key} must be an array of strings")
+
+        # Validate roots and files if provided
+        if "roots" in arguments:
+            self._validate_roots(arguments["roots"])
+        if "files" in arguments:
+            self._validate_files(arguments["files"])
+
         return True
 
     def _determine_requested_format(self, arguments: dict[str, Any]) -> str:
@@ -309,7 +316,7 @@ class SearchContentTool(BaseMCPTool):
         max_count = fd_rg_utils.clamp_int(
             arguments.get("max_count"),
             fd_rg_utils.DEFAULT_RESULTS_LIMIT,
-            fd_rg_utils.MAX_RESULTS_HARD_CAP,
+            fd_rg_utils.DEFAULT_RESULTS_LIMIT,
         )
         timeout_ms = arguments.get("timeout_ms")
 
