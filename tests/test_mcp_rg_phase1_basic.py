@@ -295,7 +295,11 @@ async def test_rg_10_search_content_exec_files_list_uses_parent_dirs(
 
     async def fake_run(cmd, input_data=None, timeout_ms=None):
         # Ensure parent directory of file is used as a root in the command
-        assert parent_dir in cmd
+        # Handle both symbolic link and real paths on macOS
+        import os
+
+        real_parent_dir = os.path.realpath(parent_dir)
+        assert parent_dir in cmd or real_parent_dir in cmd
         out = (json.dumps(rg_json) + "\n").encode()
         return 0, out, b""
 

@@ -281,7 +281,12 @@ async def test_rg_53_files_mode_uses_parent_dirs(monkeypatch, tmp_path):
     )
 
     async def fake_run(cmd, input_data=None, timeout_ms=None):
-        assert str(f.parent) in cmd
+        # Handle both symbolic link and real paths on macOS
+        import os
+
+        parent_path = str(f.parent)
+        real_parent_path = os.path.realpath(parent_path)
+        assert parent_path in cmd or real_parent_path in cmd
         return 0, evt, b""
 
     monkeypatch.setattr(
