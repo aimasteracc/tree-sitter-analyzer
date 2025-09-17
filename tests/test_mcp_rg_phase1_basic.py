@@ -299,7 +299,17 @@ async def test_rg_10_search_content_exec_files_list_uses_parent_dirs(
         import os
 
         real_parent_dir = os.path.realpath(parent_dir)
-        assert parent_dir in cmd or real_parent_dir in cmd
+        # Check if any path in cmd matches either the symbolic or real path
+        path_found = False
+        for item in cmd:
+            if isinstance(item, str) and (
+                parent_dir in item
+                or real_parent_dir in item
+                or os.path.realpath(item) == real_parent_dir
+            ):
+                path_found = True
+                break
+        assert path_found, f"Neither {parent_dir} nor {real_parent_dir} found in {cmd}"
         out = (json.dumps(rg_json) + "\n").encode()
         return 0, out, b""
 

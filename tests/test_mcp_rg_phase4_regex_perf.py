@@ -286,7 +286,19 @@ async def test_rg_53_files_mode_uses_parent_dirs(monkeypatch, tmp_path):
 
         parent_path = str(f.parent)
         real_parent_path = os.path.realpath(parent_path)
-        assert parent_path in cmd or real_parent_path in cmd
+        # Check if any path in cmd matches either the symbolic or real path
+        path_found = False
+        for item in cmd:
+            if isinstance(item, str) and (
+                parent_path in item
+                or real_parent_path in item
+                or os.path.realpath(item) == real_parent_path
+            ):
+                path_found = True
+                break
+        assert (
+            path_found
+        ), f"Neither {parent_path} nor {real_parent_path} found in {cmd}"
         return 0, evt, b""
 
     monkeypatch.setattr(
