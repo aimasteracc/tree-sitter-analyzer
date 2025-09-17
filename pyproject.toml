@@ -157,6 +157,9 @@ tree-sitter-analyzer-mcp = "tree_sitter_analyzer.mcp.server:main_sync"
 # Legacy aliases for backward compatibility
 code-analyzer = "tree_sitter_analyzer.cli_main:main"
 java-analyzer = "tree_sitter_analyzer.cli_main:main"
+list-files = "tree_sitter_analyzer.cli.commands.list_files_cli:main"
+search-content = "tree_sitter_analyzer.cli.commands.search_content_cli:main"
+find-and-grep = "tree_sitter_analyzer.cli.commands.find_and_grep_cli:main"
 
 [project.entry-points."tree_sitter_analyzer.plugins"]
 # Core language plugins (automatically discovered)
