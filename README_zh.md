@@ -2,11 +2,11 @@
 
 [![Python版本](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![许可证](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![测试](https://img.shields.io/badge/tests-1699%20passed-brightgreen.svg)](#质量保证)
-[![覆盖率](https://img.shields.io/badge/coverage-74.77%25-green.svg)](#质量保证)
+[![测试](https://img.shields.io/badge/tests-1797%20passed-brightgreen.svg)](#质量保证)
+[![覆盖率](https://img.shields.io/badge/coverage-74.46%25-green.svg)](#质量保证)
 [![质量](https://img.shields.io/badge/quality-enterprise%20grade-blue.svg)](#质量保证)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
-[![版本](https://img.shields.io/badge/version-1.3.7-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
+[![版本](https://img.shields.io/badge/version-1.3.8-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
 ## 🚀 突破LLM token限制，让AI理解任意大小的代码文件
@@ -65,6 +65,64 @@ Total Elements: 85 | Complexity: 348 (avg: 5.27, max: 15)
 - **A**: `analyze_code_structure` - 分析核心结构与统一元素
 - **R**: `extract_code_section` - 按需检索关键代码片段
 - **T**: 高级依赖追踪（需要时）
+
+---
+
+## 🆕 新增CLI命令 (v1.3.8+)
+
+### 🔧 **文件系统操作专用CLI工具**
+
+Tree-sitter Analyzer 现在提供专用的CLI命令，包装强大的MCP工具进行文件系统操作：
+
+#### 📁 **`list-files`** - 使用fd进行文件发现
+```bash
+# 列出当前目录中的所有Java文件
+list-files . --extensions java
+
+# 查找特定命名模式的测试文件
+list-files src --pattern "test_*" --extensions java --types f
+
+# 查找最近一周修改的大文件
+list-files . --types f --size "+1k" --changed-within "1week"
+
+# 查找特定命名模式的服务类
+list-files src --pattern "*Service*" --extensions java --output-format json
+```
+
+#### 🔍 **`search-content`** - 使用ripgrep进行内容搜索
+```bash
+# 在Java文件中搜索类定义
+search-content --roots . --query "class.*extends" --include-globs "*.java"
+
+# 查找TODO注释并显示上下文
+search-content --roots src --query "TODO|FIXME" --context-before 2 --context-after 2
+
+# 在特定文件中搜索，不区分大小写
+search-content --files file1.java file2.java --query "public.*method" --case insensitive
+```
+
+#### 🎯 **`find-and-grep`** - 两阶段搜索 (fd → ripgrep)
+```bash
+# 先查找Java文件，然后搜索Spring注解
+find-and-grep --roots . --query "@SpringBootApplication" --extensions java
+
+# 组合文件过滤和内容搜索，带限制
+find-and-grep --roots src --query "import.*spring" --extensions java --file-limit 10 --max-count 5
+
+# 高级搜索，多个过滤器
+find-and-grep --roots . --query "public.*static.*void" --extensions java --types f --size "+500" --output-format json
+```
+
+### 🛡️ **安全与安全特性**
+- **项目边界检测**：所有命令自动检测并尊重项目边界
+- **输入验证**：全面的参数验证和清理
+- **错误处理**：优雅的错误处理，提供信息丰富的消息
+- **资源限制**：内置限制以防止资源耗尽
+
+### 📊 **输出格式**
+- **JSON**：结构化输出，用于程序化处理
+- **Text**：人类可读的输出，用于终端使用
+- **Quiet模式**：抑制非必要输出，用于脚本编写
 
 ---
 
@@ -505,6 +563,25 @@ uv run python -m tree_sitter_analyzer examples/BigService.java --query-key metho
 
 # 查看过滤语法帮助
 uv run python -m tree_sitter_analyzer --filter-help
+
+# 🆕 新增CLI命令 (v1.3.8+)
+# 使用fd功能列出文件
+list-files . --extensions java --output-format json
+
+# 使用ripgrep功能搜索内容
+search-content --roots . --query "class.*extends" --include-globs "*.java" --output-format text
+
+# 两阶段搜索：先找文件，再搜索内容
+find-and-grep --roots . --query "public.*method" --extensions java --output-format json
+
+# 高级文件过滤
+list-files . --types f --size "+1k" --changed-within "1week" --hidden --output-format text
+
+# 带上下文的内容搜索
+search-content --roots src --query "TODO|FIXME" --context-before 2 --context-after 2 --output-format json
+
+# 组合文件搜索和内容搜索，带限制
+find-and-grep --roots . --query "import.*spring" --extensions java --file-limit 10 --max-count 5 --output-format text
 ```
 
 ---

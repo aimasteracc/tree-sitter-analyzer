@@ -1,5 +1,31 @@
 # Changelog
 
+## [1.3.8] - 2025-01-18
+
+### Added
+- **🆕 New CLI Commands**: Added standalone CLI wrappers for MCP FD/RG tools
+  - `list-files`: CLI wrapper for `ListFilesTool` (fd functionality)
+  - `search-content`: CLI wrapper for `SearchContentTool` (ripgrep functionality)
+  - `find-and-grep`: CLI wrapper for `FindAndGrepTool` (fd → ripgrep composition)
+- **🔧 CLI Integration**: All new CLI commands are registered as independent entry points in `pyproject.toml`
+- **📋 Comprehensive Testing**: Added extensive CLI functionality testing with 1797 tests and 74.46% coverage
+
+### Enhanced
+- **🎯 CLI Functionality**: Improved CLI interface with better error handling and output formatting
+- **🛡️ Security**: All CLI commands inherit MCP tool security boundaries and project root detection
+- **📊 Quality Metrics**: Maintained high test coverage and code quality standards
+
+### Technical Details
+- **Architecture**: New CLI commands use adapter pattern to wrap MCP tools
+- **Entry Points**: Registered in `[project.scripts]` section of `pyproject.toml`
+- **Safety**: All commands include project boundary validation and error handling
+- **Files Added**:
+  - `tree_sitter_analyzer/cli/commands/list_files_cli.py`
+  - `tree_sitter_analyzer/cli/commands/search_content_cli.py`
+  - `tree_sitter_analyzer/cli/commands/find_and_grep_cli.py`
+
+This release provides users with direct access to powerful file system operations through dedicated CLI tools while maintaining the security and reliability of the MCP architecture.
+
 ## [1.3.7] - 2025-01-15
 
 ### Fixed
