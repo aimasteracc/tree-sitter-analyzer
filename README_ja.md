@@ -77,40 +77,40 @@ Tree-sitter Analyzer は、強力なMCPツールをラップしてファイル�
 #### 📁 **`list-files`** - fdによるファイル発見
 ```bash
 # 現在のディレクトリ内のすべてのJavaファイルをリスト表示
-list-files . --extensions java
+uv run list-files . --extensions java
 
 # 特定の命名パターンのテストファイルを検索
-list-files src --pattern "test_*" --extensions java --types f
+uv run list-files src --pattern "test_*" --extensions java --types f
 
 # 過去1週間に変更された大きなファイルを検索
-list-files . --types f --size "+1k" --changed-within "1week"
+uv run list-files . --types f --size "+1k" --changed-within "1week"
 
 # 特定の命名パターンのサービスクラスを検索
-list-files src --pattern "*Service*" --extensions java --output-format json
+uv run list-files src --pattern "*Service*" --extensions java --output-format json
 ```
 
 #### 🔍 **`search-content`** - ripgrepによるコンテンツ検索
 ```bash
 # Javaファイル内でクラス定義を検索
-search-content --roots . --query "class.*extends" --include-globs "*.java"
+uv run search-content --roots . --query "class.*extends" --include-globs "*.java"
 
 # TODOコメントを検索し、コンテキストを表示
-search-content --roots src --query "TODO|FIXME" --context-before 2 --context-after 2
+uv run search-content --roots src --query "TODO|FIXME" --context-before 2 --context-after 2
 
 # 特定のファイル内で大文字小文字を区別しない検索
-search-content --files file1.java file2.java --query "public.*method" --case insensitive
+uv run search-content --files file1.java file2.java --query "public.*method" --case insensitive
 ```
 
 #### 🎯 **`find-and-grep`** - 2段階検索 (fd → ripgrep)
 ```bash
 # まずJavaファイルを検索し、次にSpringアノテーションを検索
-find-and-grep --roots . --query "@SpringBootApplication" --extensions java
+uv run find-and-grep --roots . --query "@SpringBootApplication" --extensions java
 
 # ファイルフィルタリングとコンテンツ検索を組み合わせ、制限付き
-find-and-grep --roots src --query "import.*spring" --extensions java --file-limit 10 --max-count 5
+uv run find-and-grep --roots src --query "import.*spring" --extensions java --file-limit 10 --max-count 5
 
 # 複数のフィルターを使用した高度な検索
-find-and-grep --roots . --query "public.*static.*void" --extensions java --types f --size "+500" --output-format json
+uv run find-and-grep --roots . --query "public.*static.*void" --extensions java --types f --size "+500" --output-format json
 ```
 
 ### 🛡️ **セキュリティ・安全機能**
@@ -566,22 +566,22 @@ uv run python -m tree_sitter_analyzer --filter-help
 
 # 🆕 新CLIコマンド (v1.3.8+)
 # fd機能を使用したファイルリスト表示
-list-files . --extensions java --output-format json
+uv run list-files . --extensions java --output-format json
 
 # ripgrep機能を使用したコンテンツ検索
-search-content --roots . --query "class.*extends" --include-globs "*.java" --output-format text
+uv run search-content --roots . --query "class.*extends" --include-globs "*.java" --output-format text
 
 # 2段階検索：まずファイルを検索し、次にコンテンツを検索
-find-and-grep --roots . --query "public.*method" --extensions java --output-format json
+uv run find-and-grep --roots . --query "public.*method" --extensions java --output-format json
 
 # 高度なファイルフィルタリング
-list-files . --types f --size "+1k" --changed-within "1week" --hidden --output-format text
+uv run list-files . --types f --size "+1k" --changed-within "1week" --hidden --output-format text
 
 # コンテキスト付きコンテンツ検索
-search-content --roots src --query "TODO|FIXME" --context-before 2 --context-after 2 --output-format json
+uv run search-content --roots src --query "TODO|FIXME" --context-before 2 --context-after 2 --output-format json
 
 # ファイル検索とコンテンツ検索の組み合わせ、制限付き
-find-and-grep --roots . --query "import.*spring" --extensions java --file-limit 10 --max-count 5 --output-format text
+uv run find-and-grep --roots . --query "import.*spring" --extensions java --file-limit 10 --max-count 5 --output-format text
 ```
 
 ---

@@ -77,40 +77,40 @@ Tree-sitter Analyzer 现在提供专用的CLI命令，包装强大的MCP工具�
 #### 📁 **`list-files`** - 使用fd进行文件发现
 ```bash
 # 列出当前目录中的所有Java文件
-list-files . --extensions java
+uv run list-files . --extensions java
 
 # 查找特定命名模式的测试文件
-list-files src --pattern "test_*" --extensions java --types f
+uv run list-files src --pattern "test_*" --extensions java --types f
 
 # 查找最近一周修改的大文件
-list-files . --types f --size "+1k" --changed-within "1week"
+uv run list-files . --types f --size "+1k" --changed-within "1week"
 
 # 查找特定命名模式的服务类
-list-files src --pattern "*Service*" --extensions java --output-format json
+uv run list-files src --pattern "*Service*" --extensions java --output-format json
 ```
 
 #### 🔍 **`search-content`** - 使用ripgrep进行内容搜索
 ```bash
 # 在Java文件中搜索类定义
-search-content --roots . --query "class.*extends" --include-globs "*.java"
+uv run search-content --roots . --query "class.*extends" --include-globs "*.java"
 
 # 查找TODO注释并显示上下文
-search-content --roots src --query "TODO|FIXME" --context-before 2 --context-after 2
+uv run search-content --roots src --query "TODO|FIXME" --context-before 2 --context-after 2
 
 # 在特定文件中搜索，不区分大小写
-search-content --files file1.java file2.java --query "public.*method" --case insensitive
+uv run search-content --files file1.java file2.java --query "public.*method" --case insensitive
 ```
 
 #### 🎯 **`find-and-grep`** - 两阶段搜索 (fd → ripgrep)
 ```bash
 # 先查找Java文件，然后搜索Spring注解
-find-and-grep --roots . --query "@SpringBootApplication" --extensions java
+uv run find-and-grep --roots . --query "@SpringBootApplication" --extensions java
 
 # 组合文件过滤和内容搜索，带限制
-find-and-grep --roots src --query "import.*spring" --extensions java --file-limit 10 --max-count 5
+uv run find-and-grep --roots src --query "import.*spring" --extensions java --file-limit 10 --max-count 5
 
 # 高级搜索，多个过滤器
-find-and-grep --roots . --query "public.*static.*void" --extensions java --types f --size "+500" --output-format json
+uv run find-and-grep --roots . --query "public.*static.*void" --extensions java --types f --size "+500" --output-format json
 ```
 
 ### 🛡️ **安全与安全特性**
@@ -566,22 +566,22 @@ uv run python -m tree_sitter_analyzer --filter-help
 
 # 🆕 新增CLI命令 (v1.3.8+)
 # 使用fd功能列出文件
-list-files . --extensions java --output-format json
+uv run list-files . --extensions java --output-format json
 
 # 使用ripgrep功能搜索内容
-search-content --roots . --query "class.*extends" --include-globs "*.java" --output-format text
+uv run search-content --roots . --query "class.*extends" --include-globs "*.java" --output-format text
 
 # 两阶段搜索：先找文件，再搜索内容
-find-and-grep --roots . --query "public.*method" --extensions java --output-format json
+uv run find-and-grep --roots . --query "public.*method" --extensions java --output-format json
 
 # 高级文件过滤
-list-files . --types f --size "+1k" --changed-within "1week" --hidden --output-format text
+uv run list-files . --types f --size "+1k" --changed-within "1week" --hidden --output-format text
 
 # 带上下文的内容搜索
-search-content --roots src --query "TODO|FIXME" --context-before 2 --context-after 2 --output-format json
+uv run search-content --roots src --query "TODO|FIXME" --context-before 2 --context-after 2 --output-format json
 
 # 组合文件搜索和内容搜索，带限制
-find-and-grep --roots . --query "import.*spring" --extensions java --file-limit 10 --max-count 5 --output-format text
+uv run find-and-grep --roots . --query "import.*spring" --extensions java --file-limit 10 --max-count 5 --output-format text
 ```
 
 ---

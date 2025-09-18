@@ -74,43 +74,50 @@ Total Elements: 85 | Complexity: 348 (avg: 5.27, max: 15)
 
 Tree-sitter Analyzer now provides dedicated CLI commands that wrap powerful MCP tools for file system operations:
 
+> **💡 Usage Note**: In development environments, use `uv run` prefix to execute CLI commands:
+> - `uv run list-files` instead of `list-files`
+> - `uv run search-content` instead of `search-content`  
+> - `uv run find-and-grep` instead of `find-and-grep`
+> 
+> After installing from PyPI, these commands will be available directly in your PATH.
+
 #### 📁 **`list-files`** - File Discovery with fd
 ```bash
 # List all Java files in current directory
-list-files . --extensions java
+uv run list-files . --extensions java
 
 # Find test files with specific naming patterns
-list-files src --pattern "test_*" --extensions java --types f
+uv run list-files src --pattern "test_*" --extensions java --types f
 
 # Find large files modified in the last week
-list-files . --types f --size "+1k" --changed-within "1week"
+uv run list-files . --types f --size "+1k" --changed-within "1week"
 
 # Find service classes with specific naming patterns
-list-files src --pattern "*Service*" --extensions java --output-format json
+uv run list-files src --pattern "*Service*" --extensions java --output-format json
 ```
 
 #### 🔍 **`search-content`** - Content Search with ripgrep
 ```bash
 # Search for class definitions in Java files
-search-content --roots . --query "class.*extends" --include-globs "*.java"
+uv run search-content --roots . --query "class.*extends" --include-globs "*.java"
 
 # Find TODO comments with context
-search-content --roots src --query "TODO|FIXME" --context-before 2 --context-after 2
+uv run search-content --roots src --query "TODO|FIXME" --context-before 2 --context-after 2
 
 # Search in specific files with case-insensitive matching
-search-content --files file1.java file2.java --query "public.*method" --case insensitive
+uv run search-content --files file1.java file2.java --query "public.*method" --case insensitive
 ```
 
 #### 🎯 **`find-and-grep`** - Two-Stage Search (fd → ripgrep)
 ```bash
 # Find Java files first, then search for Spring annotations
-find-and-grep --roots . --query "@SpringBootApplication" --extensions java
+uv run find-and-grep --roots . --query "@SpringBootApplication" --extensions java
 
 # Combined file filtering and content search with limits
-find-and-grep --roots src --query "import.*spring" --extensions java --file-limit 10 --max-count 5
+uv run find-and-grep --roots src --query "import.*spring" --extensions java --file-limit 10 --max-count 5
 
 # Advanced search with multiple filters
-find-and-grep --roots . --query "public.*static.*void" --extensions java --types f --size "+500" --output-format json
+uv run find-and-grep --roots . --query "public.*static.*void" --extensions java --types f --size "+500" --output-format json
 ```
 
 ### 🛡️ **Security & Safety Features**
@@ -578,22 +585,22 @@ uv run python -m tree_sitter_analyzer --filter-help
 
 # 🆕 New CLI Commands (v1.3.8+)
 # File listing with fd functionality
-list-files . --extensions java --output-format json
+uv run list-files . --extensions java --output-format json
 
 # Content search with ripgrep functionality
-search-content --roots . --query "class.*extends" --include-globs "*.java" --output-format text
+uv run search-content --roots . --query "class.*extends" --include-globs "*.java" --output-format text
 
 # Two-stage search: find files first, then search content
-find-and-grep --roots . --query "public.*method" --extensions java --output-format json
+uv run find-and-grep --roots . --query "public.*method" --extensions java --output-format json
 
 # Advanced file filtering
-list-files . --types f --size "+1k" --changed-within "1week" --hidden --output-format text
+uv run list-files . --types f --size "+1k" --changed-within "1week" --hidden --output-format text
 
 # Content search with context
-search-content --roots src --query "TODO|FIXME" --context-before 2 --context-after 2 --output-format json
+uv run search-content --roots src --query "TODO|FIXME" --context-before 2 --context-after 2 --output-format json
 
 # Combined file and content search with limits
-find-and-grep --roots . --query "import.*spring" --extensions java --file-limit 10 --max-count 5 --output-format text
+uv run find-and-grep --roots . --query "import.*spring" --extensions java --file-limit 10 --max-count 5 --output-format text
 ```
 
 ---
