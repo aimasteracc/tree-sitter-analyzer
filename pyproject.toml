@@ -52,54 +52,54 @@ dependencies = [
     "tree-sitter==0.24.0",
     "chardet>=5.0.0",
     "cachetools>=5.0.0",
-    "tree-sitter-java>=0.23.5",
-    "tree-sitter-cpp>=0.23.4",
-    "tree-sitter-python>=0.23.6",
+    "tree-sitter-java>=0.23.5,<0.25.0",
+    "tree-sitter-cpp>=0.23.4,<0.25.0",
+    "tree-sitter-python>=0.23.6,<0.25.0",
     "mcp>=1.12.3",
-    "tree-sitter-javascript>=0.23.1",
+    "tree-sitter-javascript>=0.23.1,<0.25.0",
 ]
 
 [project.optional-dependencies]
 # Core language support - install specific languages as needed
-java = ["tree-sitter-java>=0.23.5"]
+java = ["tree-sitter-java>=0.23.5,<0.25.0"]
 javascript = [
-    "tree-sitter-javascript>=0.23.1",
+    "tree-sitter-javascript>=0.23.1,<0.25.0",
 ]
-typescript = ["tree-sitter-typescript>=0.20.0"]
+typescript = ["tree-sitter-typescript>=0.20.0,<0.25.0"]
 python = [
-    "tree-sitter-python>=0.23.0",
+    "tree-sitter-python>=0.23.0,<0.25.0",
 ]
-c = ["tree-sitter-c>=0.20.0"]
-cpp = ["tree-sitter-cpp>=0.23.4"]
-rust = ["tree-sitter-rust>=0.20.0"]
-go = ["tree-sitter-go>=0.20.0"]
+c = ["tree-sitter-c>=0.20.0,<0.25.0"]
+cpp = ["tree-sitter-cpp>=0.23.4,<0.25.0"]
+rust = ["tree-sitter-rust>=0.20.0,<0.25.0"]
+go = ["tree-sitter-go>=0.20.0,<0.25.0"]
 
 # Language bundles for convenience
 web = [
-    "tree-sitter-javascript>=0.23.1",
-    "tree-sitter-typescript>=0.20.0"
+    "tree-sitter-javascript>=0.23.1,<0.25.0",
+    "tree-sitter-typescript>=0.20.0,<0.25.0"
 ]
 systems = [
-    "tree-sitter-c>=0.20.0",
-    "tree-sitter-cpp>=0.23.4",
-    "tree-sitter-rust>=0.20.0",
-    "tree-sitter-go>=0.20.0"
+    "tree-sitter-c>=0.20.0,<0.25.0",
+    "tree-sitter-cpp>=0.23.4,<0.25.0",
+    "tree-sitter-rust>=0.20.0,<0.25.0",
+    "tree-sitter-go>=0.20.0,<0.25.0"
 ]
 popular = [
-    "tree-sitter-java>=0.23.5",
-    "tree-sitter-python>=0.23.0",
-    "tree-sitter-javascript>=0.23.1",
-    "tree-sitter-typescript>=0.20.0"
+    "tree-sitter-java>=0.23.5,<0.25.0",
+    "tree-sitter-python>=0.23.0,<0.25.0",
+    "tree-sitter-javascript>=0.23.1,<0.25.0",
+    "tree-sitter-typescript>=0.20.0,<0.25.0"
 ]
 all-languages = [
-    "tree-sitter-java>=0.23.5",
-    "tree-sitter-javascript>=0.23.1",
-    "tree-sitter-typescript>=0.20.0",
-    "tree-sitter-python>=0.23.0",
-    "tree-sitter-c>=0.20.0",
-    "tree-sitter-cpp>=0.23.4",
-    "tree-sitter-rust>=0.20.0",
-    "tree-sitter-go>=0.20.0",
+    "tree-sitter-java>=0.23.5,<0.25.0",
+    "tree-sitter-javascript>=0.23.1,<0.25.0",
+    "tree-sitter-typescript>=0.20.0,<0.25.0",
+    "tree-sitter-python>=0.23.0,<0.25.0",
+    "tree-sitter-c>=0.20.0,<0.25.0",
+    "tree-sitter-cpp>=0.23.4,<0.25.0",
+    "tree-sitter-rust>=0.20.0,<0.25.0",
+    "tree-sitter-go>=0.20.0,<0.25.0",
 ]
 
 # MCP server support
