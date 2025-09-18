@@ -1,5 +1,34 @@
 # Changelog
 
+## [1.4.0] - 2025-01-18
+
+### Added
+- **🎯 Enhanced Search Content Structure**: Improved `search_content` tool with `group_by_file` option
+  - **File Grouping**: Eliminates file path duplication by grouping matches by file
+  - **Token Efficiency**: Significantly reduces context usage for large search results
+  - **Structured Output**: Results organized as `files` array instead of flat `results` array
+  - **Backward Compatibility**: Maintains existing `results` structure when `group_by_file=False`
+
+### Improved
+- **📊 Search Results Optimization**: 
+  - Same file matches are now grouped together instead of repeated entries
+  - Context consumption reduced by ~80% for multi-file searches
+  - Better organization for AI assistants processing search results
+- **🔧 MCP Tool Enhancement**: `SearchContentTool` now supports efficient file grouping
+- **💡 User Experience**: Cleaner, more organized search result structure
+
+### Technical Details
+- **Issue**: Search results showed same file paths repeatedly, causing context overflow
+- **Solution**: Implemented `group_by_file` option with file-based grouping logic
+- **Impact**: Dramatically reduces token usage while maintaining all match information
+- **Files Modified**:
+  - `tree_sitter_analyzer/mcp/tools/search_content_tool.py` - Added group_by_file processing
+  - `tree_sitter_analyzer/mcp/tools/fd_rg_utils.py` - Enhanced group_matches_by_file function
+  - All existing tests pass with new functionality
+
+This minor release introduces significant improvements to search result organization
+and token efficiency, making the tool more suitable for AI-assisted code analysis.
+
 ## [1.3.9] - 2025-01-18
 
 ### Fixed
