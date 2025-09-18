@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.3.7] - 2025-01-15
+
+### Fixed
+- **🔍 Search Content Files Parameter Bug**: Fixed critical issue where `search_content` tool with `files` parameter would search all files in parent directory instead of only specified files
+- **🎯 File Filtering**: Added glob pattern filtering to restrict search scope to exactly the files specified in the `files` parameter
+- **🛡️ Special Character Handling**: Properly escape special characters in filenames for glob pattern matching
+
+### Technical Details
+- **Root Cause**: When using `files` parameter, the tool was extracting parent directories as search roots but not filtering the search to only the specified files
+- **Solution**: Added file-specific glob patterns to `include_globs` parameter to restrict ripgrep search scope
+- **Impact**: `search_content` tool now correctly searches only the files specified in the `files` parameter
+- **Files Modified**: `tree_sitter_analyzer/mcp/tools/search_content_tool.py`
+
+This hotfix resolves a critical bug that was causing incorrect search results when using the `files` parameter in the `search_content` tool.
+
 ## [1.3.6] - 2025-09-17
 
 ### Fixed

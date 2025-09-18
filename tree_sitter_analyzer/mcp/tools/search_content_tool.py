@@ -322,15 +322,29 @@ class SearchContentTool(BaseMCPTool):
 
         # Note: --files-from is not supported in this ripgrep version
         # For files mode, we'll search in the parent directories of the files
+        # and use glob patterns to restrict search to specific files
         if files:
             # Extract unique parent directories from file paths
             parent_dirs = set()
+            file_globs = []
             for file_path in files:
                 resolved = self.path_resolver.resolve(file_path)
-                parent_dirs.add(str(Path(resolved).parent))
+                parent_dir = str(Path(resolved).parent)
+                parent_dirs.add(parent_dir)
+
+                # Create glob pattern for this specific file
+                file_name = Path(resolved).name
+                # Escape special characters in filename for glob pattern
+                escaped_name = file_name.replace("[", "[[]").replace("]", "[]]")
+                file_globs.append(escaped_name)
 
             # Use parent directories as roots for compatibility
             roots = list(parent_dirs)
+
+            # Add file-specific glob patterns to include_globs
+            if not arguments.get("include_globs"):
+                arguments["include_globs"] = []
+            arguments["include_globs"].extend(file_globs)
 
         # Check for count-only mode (total_only also requires count mode)
         total_only = bool(arguments.get("total_only", False))
