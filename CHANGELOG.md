@@ -1,5 +1,25 @@
 # Changelog
 
+## [1.3.9] - 2025-01-18
+
+### Fixed
+- **📚 Documentation Fix**: Fixed CLI command examples in all README versions (EN, ZH, JA)
+- **🔧 Usage Instructions**: Added `uv run` prefix to all CLI command examples for development environment
+- **💡 User Experience**: Added clear usage notes explaining when to use `uv run` vs direct commands
+- **🌐 Multi-language Support**: Updated English, Chinese, and Japanese documentation consistently
+
+### Technical Details
+- **Issue**: Users couldn't run CLI commands directly without `uv run` prefix in development
+- **Solution**: Updated all command examples to include `uv run` prefix
+- **Impact**: Eliminates user confusion and provides clear usage instructions
+- **Files Modified**:
+  - `README.md` - English documentation
+  - `README_zh.md` - Chinese documentation
+  - `README_ja.md` - Japanese documentation
+
+This patch release resolves documentation inconsistencies and improves user experience
+by providing clear, working examples for CLI command usage in development environments.
+
 ## [1.3.8] - 2025-01-18
 
 ### Added
