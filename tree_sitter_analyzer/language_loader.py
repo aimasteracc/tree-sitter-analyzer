@@ -130,10 +130,16 @@ class LanguageLoader:
                 else:
                     return None
 
-            # Language オブジェクト作成（最適化：一度だけ作成）
-            tree_sitter_language = tree_sitter.Language(language_func())
-            self._loaded_languages[language] = tree_sitter_language
-            return tree_sitter_language
+            # Language オブジェクト作成（互換性対応）
+            caps_or_lang = language_func()
+            try:
+                tree_sitter_language = tree_sitter.Language(caps_or_lang)
+            except Exception:
+                # 一部のパッケージは既に Language オブジェクトを返すため、そのまま使用
+                tree_sitter_language = caps_or_lang  # type: ignore[assignment]
+
+            self._loaded_languages[language] = tree_sitter_language  # type: ignore[assignment]
+            return tree_sitter_language  # type: ignore[return-value]
 
         except (ImportError, AttributeError, Exception) as e:
             log_warning(f"Failed to load language '{language}': {e}")
@@ -155,8 +161,23 @@ class LanguageLoader:
             return None
 
         try:
-            parser = tree_sitter.Parser(tree_sitter_language)
-            # パーサーをキャッシュ（最適化）
+            # Prefer constructor with language for environments that require it
+            try:
+                parser = tree_sitter.Parser(tree_sitter_language)
+            except Exception:
+                # Fallback to no-arg constructor with setter for newer APIs
+                parser = tree_sitter.Parser()
+                if hasattr(parser, "set_language"):
+                    parser.set_language(tree_sitter_language)
+                elif hasattr(parser, "language"):
+                    try:
+                        setattr(parser, "language", tree_sitter_language)
+                    except Exception as inner_e:  # noqa: F841
+                        raise
+                else:
+                    raise RuntimeError("Unsupported Parser API: no way to set language")
+
+            # Cache and return
             self._parser_cache[language] = parser
             return parser
         except Exception as e:
