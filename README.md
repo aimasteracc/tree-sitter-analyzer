@@ -2,11 +2,11 @@
 
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-1794%20passed-brightgreen.svg)](#quality-assurance)
-[![Coverage](https://img.shields.io/badge/coverage-74.77%25-green.svg)](#quality-assurance)
+[![Tests](https://img.shields.io/badge/tests-1797%20passed-brightgreen.svg)](#quality-assurance)
+[![Coverage](https://img.shields.io/badge/coverage-74.46%25-green.svg)](#quality-assurance)
 [![Quality](https://img.shields.io/badge/quality-enterprise%20grade-blue.svg)](#quality-assurance)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
-[![Version](https://img.shields.io/badge/version-1.3.7-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
+[![Version](https://img.shields.io/badge/version-1.3.8-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
 ## 🚀 Break LLM Token Limits, Let AI Understand Code Files of Any Size
@@ -65,6 +65,64 @@ Total Elements: 85 | Complexity: 348 (avg: 5.27, max: 15)
 - **A**: `analyze_code_structure` - Analyze core structure with unified elements
 - **R**: `extract_code_section` - Retrieve essential code snippets on demand
 - **T**: Advanced dependency tracing (when needed)
+
+---
+
+## 🆕 New CLI Commands (v1.3.8+)
+
+### 🔧 **Standalone CLI Tools for File System Operations**
+
+Tree-sitter Analyzer now provides dedicated CLI commands that wrap powerful MCP tools for file system operations:
+
+#### 📁 **`list-files`** - File Discovery with fd
+```bash
+# List all Java files in current directory
+list-files . --extensions java
+
+# Find test files with specific naming patterns
+list-files src --pattern "test_*" --extensions java --types f
+
+# Find large files modified in the last week
+list-files . --types f --size "+1k" --changed-within "1week"
+
+# Find service classes with specific naming patterns
+list-files src --pattern "*Service*" --extensions java --output-format json
+```
+
+#### 🔍 **`search-content`** - Content Search with ripgrep
+```bash
+# Search for class definitions in Java files
+search-content --roots . --query "class.*extends" --include-globs "*.java"
+
+# Find TODO comments with context
+search-content --roots src --query "TODO|FIXME" --context-before 2 --context-after 2
+
+# Search in specific files with case-insensitive matching
+search-content --files file1.java file2.java --query "public.*method" --case insensitive
+```
+
+#### 🎯 **`find-and-grep`** - Two-Stage Search (fd → ripgrep)
+```bash
+# Find Java files first, then search for Spring annotations
+find-and-grep --roots . --query "@SpringBootApplication" --extensions java
+
+# Combined file filtering and content search with limits
+find-and-grep --roots src --query "import.*spring" --extensions java --file-limit 10 --max-count 5
+
+# Advanced search with multiple filters
+find-and-grep --roots . --query "public.*static.*void" --extensions java --types f --size "+500" --output-format json
+```
+
+### 🛡️ **Security & Safety Features**
+- **Project Boundary Detection**: All commands automatically detect and respect project boundaries
+- **Input Validation**: Comprehensive parameter validation and sanitization
+- **Error Handling**: Graceful error handling with informative messages
+- **Resource Limits**: Built-in limits to prevent resource exhaustion
+
+### 📊 **Output Formats**
+- **JSON**: Structured output for programmatic processing
+- **Text**: Human-readable output for terminal use
+- **Quiet Mode**: Suppress non-essential output for scripting
 
 ---
 
@@ -517,6 +575,25 @@ uv run python -m tree_sitter_analyzer examples/BigService.java --query-key metho
 
 # View filter syntax help
 uv run python -m tree_sitter_analyzer --filter-help
+
+# 🆕 New CLI Commands (v1.3.8+)
+# File listing with fd functionality
+list-files . --extensions java --output-format json
+
+# Content search with ripgrep functionality
+search-content --roots . --query "class.*extends" --include-globs "*.java" --output-format text
+
+# Two-stage search: find files first, then search content
+find-and-grep --roots . --query "public.*method" --extensions java --output-format json
+
+# Advanced file filtering
+list-files . --types f --size "+1k" --changed-within "1week" --hidden --output-format text
+
+# Content search with context
+search-content --roots src --query "TODO|FIXME" --context-before 2 --context-after 2 --output-format json
+
+# Combined file and content search with limits
+find-and-grep --roots . --query "import.*spring" --extensions java --file-limit 10 --max-count 5 --output-format text
 ```
 
 ---
@@ -754,16 +831,16 @@ Tree-sitter Analyzer automatically detects and protects project boundaries:
 ## 🏆 Quality Assurance
 
 ### 📊 **Quality Metrics**
-- **1,794 tests** - 100% pass rate ✅
-- **74.77% code coverage** - Industry-leading level
+- **1,797 tests** - 100% pass rate ✅
+- **74.46% code coverage** - Industry-leading level
 - **Zero test failures** - Fully CI/CD ready
 - **Cross-platform compatibility** - Windows, macOS, Linux
 
-### ⚡ **Latest Quality Achievements (v1.3.7)**
+### ⚡ **Latest Quality Achievements (v1.3.8)**
 - ✅ **Cross-platform path compatibility** - Fixed Windows short path names and macOS symbolic link differences
 - ✅ **Windows environment** - Implemented robust path normalization using Windows API
 - ✅ **macOS environment** - Fixed `/var` vs `/private/var` symbolic link differences
-- ✅ **Comprehensive test coverage** - 1794 tests, 74.77% coverage
+- ✅ **Comprehensive test coverage** - 1797 tests, 74.46% coverage
 - ✅ **GitFlow implementation** - Professional development/release branch strategy. See [GitFlow documentation](GITFLOW.md) for details.
 
 ### ⚙️ **Running Tests**
@@ -880,9 +957,9 @@ All AI prompts in this document have been thoroughly tested in real environments
 
 **Test Environment:**
 - Operating System: Windows 10
-- Project: tree-sitter-analyzer v1.3.7
+- Project: tree-sitter-analyzer v1.3.8
 - Test Files: BigService.java (1419 lines), sample.py (256 lines), MultiClass.java (54 lines)
-- Test Coverage: 1794 tests passed, 74.77% coverage
+- Test Coverage: 1797 tests passed, 74.46% coverage
 - Test Tools: All MCP tools (check_code_scale, analyze_code_structure, extract_code_section, query_code, list_files, search_content, find_and_grep)
 
 **🚀 Start Now** → [30-Second Quick Start](#-30-second-quick-start)

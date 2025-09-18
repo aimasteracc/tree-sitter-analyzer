@@ -2,11 +2,11 @@
 
 [![Pythonバージョン](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![ライセンス](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![テスト](https://img.shields.io/badge/tests-1699%20passed-brightgreen.svg)](#品質保証)
-[![カバレッジ](https://img.shields.io/badge/coverage-74.77%25-green.svg)](#品質保証)
+[![テスト](https://img.shields.io/badge/tests-1797%20passed-brightgreen.svg)](#品質保証)
+[![カバレッジ](https://img.shields.io/badge/coverage-74.46%25-green.svg)](#品質保証)
 [![品質](https://img.shields.io/badge/quality-enterprise%20grade-blue.svg)](#品質保証)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
-[![バージョン](https://img.shields.io/badge/version-1.3.7-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
+[![バージョン](https://img.shields.io/badge/version-1.3.8-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
 ## 🚀 LLMトークン制限を突破し、AIにあらゆるサイズのコードファイルを理解させる
@@ -65,6 +65,64 @@ Total Elements: 85 | Complexity: 348 (avg: 5.27, max: 15)
 - **A**: `analyze_code_structure` - 統一要素によるコア構造分析
 - **R**: `extract_code_section` - オンデマンドでの重要コード取得
 - **T**: 高度な依存関係追跡（必要時のみ）
+
+---
+
+## 🆕 新CLIコマンド (v1.3.8+)
+
+### 🔧 **ファイルシステム操作専用CLIツール**
+
+Tree-sitter Analyzer は、強力なMCPツールをラップしてファイルシステム操作を行う専用CLIコマンドを提供します：
+
+#### 📁 **`list-files`** - fdによるファイル発見
+```bash
+# 現在のディレクトリ内のすべてのJavaファイルをリスト表示
+list-files . --extensions java
+
+# 特定の命名パターンのテストファイルを検索
+list-files src --pattern "test_*" --extensions java --types f
+
+# 過去1週間に変更された大きなファイルを検索
+list-files . --types f --size "+1k" --changed-within "1week"
+
+# 特定の命名パターンのサービスクラスを検索
+list-files src --pattern "*Service*" --extensions java --output-format json
+```
+
+#### 🔍 **`search-content`** - ripgrepによるコンテンツ検索
+```bash
+# Javaファイル内でクラス定義を検索
+search-content --roots . --query "class.*extends" --include-globs "*.java"
+
+# TODOコメントを検索し、コンテキストを表示
+search-content --roots src --query "TODO|FIXME" --context-before 2 --context-after 2
+
+# 特定のファイル内で大文字小文字を区別しない検索
+search-content --files file1.java file2.java --query "public.*method" --case insensitive
+```
+
+#### 🎯 **`find-and-grep`** - 2段階検索 (fd → ripgrep)
+```bash
+# まずJavaファイルを検索し、次にSpringアノテーションを検索
+find-and-grep --roots . --query "@SpringBootApplication" --extensions java
+
+# ファイルフィルタリングとコンテンツ検索を組み合わせ、制限付き
+find-and-grep --roots src --query "import.*spring" --extensions java --file-limit 10 --max-count 5
+
+# 複数のフィルターを使用した高度な検索
+find-and-grep --roots . --query "public.*static.*void" --extensions java --types f --size "+500" --output-format json
+```
+
+### 🛡️ **セキュリティ・安全機能**
+- **プロジェクト境界検出**：すべてのコマンドが自動的にプロジェクト境界を検出し、尊重します
+- **入力検証**：包括的なパラメータ検証とサニタイゼーション
+- **エラーハンドリング**：情報豊富なメッセージによる優雅なエラーハンドリング
+- **リソース制限**：リソース枯渇を防ぐための組み込み制限
+
+### 📊 **出力形式**
+- **JSON**：プログラム処理用の構造化出力
+- **Text**：ターミナル使用用の人間が読める出力
+- **Quietモード**：スクリプト用の非必須出力を抑制
 
 ---
 
@@ -505,6 +563,25 @@ uv run python -m tree_sitter_analyzer examples/BigService.java --query-key metho
 
 # フィルター構文ヘルプを表示
 uv run python -m tree_sitter_analyzer --filter-help
+
+# 🆕 新CLIコマンド (v1.3.8+)
+# fd機能を使用したファイルリスト表示
+list-files . --extensions java --output-format json
+
+# ripgrep機能を使用したコンテンツ検索
+search-content --roots . --query "class.*extends" --include-globs "*.java" --output-format text
+
+# 2段階検索：まずファイルを検索し、次にコンテンツを検索
+find-and-grep --roots . --query "public.*method" --extensions java --output-format json
+
+# 高度なファイルフィルタリング
+list-files . --types f --size "+1k" --changed-within "1week" --hidden --output-format text
+
+# コンテキスト付きコンテンツ検索
+search-content --roots src --query "TODO|FIXME" --context-before 2 --context-after 2 --output-format json
+
+# ファイル検索とコンテンツ検索の組み合わせ、制限付き
+find-and-grep --roots . --query "import.*spring" --extensions java --file-limit 10 --max-count 5 --output-format text
 ```
 
 ---
