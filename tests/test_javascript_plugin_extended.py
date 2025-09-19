@@ -452,7 +452,7 @@ class TestJavaScriptPluginExtended:
         assert ".js" in plugin.file_extensions
         assert ".mjs" in plugin.file_extensions
         assert ".jsx" in plugin.file_extensions
-        assert plugin.get_file_extensions() == [".js", ".mjs", ".jsx"]
+        assert plugin.get_file_extensions() == [".js", ".mjs", ".jsx", ".es6", ".es"]
 
     def test_create_extractor(self):
         """Test extractor creation"""
