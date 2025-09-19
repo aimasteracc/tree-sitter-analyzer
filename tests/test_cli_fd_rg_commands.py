@@ -45,7 +45,7 @@ def test_list_files_cli_basic(monkeypatch, tmp_path):
         pass
 
     out = stdout.getvalue()
-    assert "\"success\": true" in out.lower()
+    assert '"success": true' in out.lower()
 
 
 @pytest.mark.unit
@@ -134,6 +134,5 @@ def test_find_and_grep_cli_count_only(monkeypatch, tmp_path):
         pass
 
     out = stdout.getvalue().lower()
-    assert "\"count_only\": true" in out
-    assert "\"total_matches\": 10" in out
-
+    assert '"count_only": true' in out
+    assert '"total_matches": 10' in out

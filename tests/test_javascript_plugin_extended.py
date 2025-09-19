@@ -35,9 +35,11 @@ class TestJavaScriptElementExtractorExtended:
         # Set up source code for the extractor
         source_code = "function testFunc(a) { return a; }"
         extractor.source_code = source_code
+        extractor.content_lines = [source_code]
 
         # Mock node structure for function declaration
         mock_node = mocker.MagicMock()
+        mock_node.type = "function_declaration"
         mock_node.start_point = (0, 0)
         mock_node.end_point = (0, len(source_code))
         mock_node.start_byte = 0
@@ -48,6 +50,7 @@ class TestJavaScriptElementExtractorExtended:
         mock_identifier.type = "identifier"
         mock_identifier.start_byte = 9
         mock_identifier.end_byte = 17
+        mock_identifier.text = b"testFunc"
 
         # Mock formal parameters - "a" is at position 18-19
         mock_params = mocker.MagicMock()
@@ -56,9 +59,24 @@ class TestJavaScriptElementExtractorExtended:
         mock_param_child.type = "identifier"
         mock_param_child.start_byte = 18
         mock_param_child.end_byte = 19
+        mock_param_child.text = b"a"
         mock_params.children = [mock_param_child]
 
         mock_node.children = [mock_identifier, mock_params]
+
+        # Mock the _get_node_text_optimized method to return proper values
+        def mock_get_text(node):
+            if node == mock_node:
+                return source_code
+            elif node == mock_identifier:
+                return "testFunc"
+            elif node == mock_param_child:
+                return "a"
+            elif node == mock_params:
+                return "(a)"
+            return ""
+
+        mocker.patch.object(extractor, '_get_node_text_optimized', side_effect=mock_get_text)
 
         function = extractor._extract_function_optimized(mock_node)
 
