@@ -171,11 +171,11 @@ class LanguageLoader:
                     parser.set_language(tree_sitter_language)
                 elif hasattr(parser, "language"):
                     try:
-                        setattr(parser, "language", tree_sitter_language)
+                        parser.language = tree_sitter_language
                     except Exception as inner_e:  # noqa: F841
                         raise
                 else:
-                    raise RuntimeError("Unsupported Parser API: no way to set language")
+                    raise RuntimeError("Unsupported Parser API: no way to set language") from None
 
             # Cache and return
             self._parser_cache[language] = parser
