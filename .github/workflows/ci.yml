@@ -27,6 +27,25 @@ jobs:
     - name: Set up Python ${{ matrix.python-version }}
       run: uv python install ${{ matrix.python-version }}
 
+    - name: Install fd and ripgrep (Ubuntu)
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y fd-find ripgrep
+        sudo ln -sf $(command -v fdfind) /usr/local/bin/fd
+
+    - name: Install fd and ripgrep (macOS)
+      if: matrix.os == 'macos-13'
+      run: |
+        brew update
+        brew install fd ripgrep
+
+    - name: Install fd and ripgrep (Windows)
+      if: matrix.os == 'windows-latest'
+      shell: powershell
+      run: |
+        choco install -y fd ripgrep
+
     - name: Install dependencies
       run: |
         uv sync --extra full
@@ -109,6 +128,7 @@ jobs:
 
     - name: Run security checks
       run: |
+        uv pip install bandit safety
         uv run bandit -r tree_sitter_analyzer/ -f json -o bandit-report.json || true
         uv run safety check --json || true
 
