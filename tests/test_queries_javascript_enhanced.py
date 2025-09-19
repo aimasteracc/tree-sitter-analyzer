@@ -71,7 +71,7 @@ class TestEnhancedJavaScriptQueries:
             description = JAVASCRIPT_QUERY_DESCRIPTIONS[query_name]
             assert isinstance(description, str)
             assert len(description) > 0
-            assert "extract" in description.lower()
+            assert "search" in description.lower()
 
     def test_get_javascript_query_valid(self) -> None:
         """Test getting valid JavaScript queries"""
