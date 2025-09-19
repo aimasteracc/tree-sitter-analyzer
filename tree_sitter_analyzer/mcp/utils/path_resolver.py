@@ -52,7 +52,7 @@ def _normalize_path_cross_platform(path_str: str) -> str:
             from ctypes import wintypes
 
             # GetLongPathNameW function
-            _GetLongPathNameW = ctypes.windll.kernel32.GetLongPathNameW
+            _GetLongPathNameW = ctypes.windll.kernel32.GetLongPathNameW  # type: ignore[attr-defined]
             _GetLongPathNameW.argtypes = [
                 wintypes.LPCWSTR,
                 wintypes.LPWSTR,
