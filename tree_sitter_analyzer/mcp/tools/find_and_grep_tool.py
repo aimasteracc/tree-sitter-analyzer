@@ -335,15 +335,28 @@ class FindAndGrepTool(BaseMCPTool):
             }
 
         # rg step on files list
-        # Note: --files-from is not supported, so we'll use parent directories as roots
+        # Create specific file globs to limit search to only the files found by fd
         from pathlib import Path
 
         parent_dirs = set()
-        for file_path in files:
-            parent_dirs.add(str(Path(file_path).parent))
+        file_globs = []
 
-        # Use parent directories as roots for compatibility
+        for file_path in files:
+            parent_dir = str(Path(file_path).parent)
+            parent_dirs.add(parent_dir)
+
+            # Create a specific glob pattern for this exact file
+            file_name = Path(file_path).name
+            # Escape special characters in filename for glob pattern
+            escaped_name = file_name.replace("[", "[[]").replace("]", "[]]")
+            file_globs.append(escaped_name)
+
+        # Use parent directories as roots but limit to specific files via globs
         rg_roots = list(parent_dirs)
+
+        # Combine user-provided include_globs with our file-specific globs
+        combined_include_globs = arguments.get("include_globs", []) or []
+        combined_include_globs.extend(file_globs)
 
         rg_cmd = fd_rg_utils.build_rg_command(
             query=arguments["query"],
@@ -351,7 +364,7 @@ class FindAndGrepTool(BaseMCPTool):
             fixed_strings=bool(arguments.get("fixed_strings", False)),
             word=bool(arguments.get("word", False)),
             multiline=bool(arguments.get("multiline", False)),
-            include_globs=arguments.get("include_globs"),
+            include_globs=combined_include_globs,
             exclude_globs=arguments.get("exclude_globs"),
             follow_symlinks=bool(arguments.get("follow_symlinks", False)),
             hidden=bool(arguments.get("hidden", False)),
