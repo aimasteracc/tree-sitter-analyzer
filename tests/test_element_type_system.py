@@ -349,11 +349,11 @@ public class SampleClass {
         print(f"DEBUG: Parsed table counts: {table_counts}")
 
         # Verify consistency
-        assert (
-            advanced_counts.get("methods", 0) == table_counts.get("methods", 0)
+        assert advanced_counts.get("methods", 0) == table_counts.get(
+            "methods", 0
         ), f"Method count mismatch: advanced={advanced_counts.get('methods', 0)}, table={table_counts.get('methods', 0)}"
-        assert (
-            advanced_counts.get("fields", 0) == table_counts.get("fields", 0)
+        assert advanced_counts.get("fields", 0) == table_counts.get(
+            "fields", 0
         ), f"Field count mismatch: advanced={advanced_counts.get('fields', 0)}, table={table_counts.get('fields', 0)}"
 
 
