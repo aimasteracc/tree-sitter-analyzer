@@ -30,7 +30,7 @@ def extractor():
 class TestJavaScriptElementExtractorExtended:
     """Extended tests for JavaScript element extractor"""
 
-    def test_extract_function_info_with_valid_node(self, extractor, mocker):
+    def test_extract_function_optimized_with_valid_node(self, extractor, mocker):
         """Test function info extraction with valid node"""
         # Mock node structure for function declaration
         mock_node = mocker.MagicMock()
@@ -56,9 +56,7 @@ class TestJavaScriptElementExtractorExtended:
 
         mock_node.children = [mock_identifier, mock_params]
 
-        source_code = "function testFunc(a) { return a; }"
-
-        function = extractor._extract_function_info(mock_node, source_code)
+        function = extractor._extract_function_optimized(mock_node)
 
         assert function is not None
         assert isinstance(function, Function)
@@ -66,7 +64,7 @@ class TestJavaScriptElementExtractorExtended:
         assert function.parameters == ["a"]
         assert function.language == "javascript"
 
-    def test_extract_function_info_with_arrow_function(self, extractor, mocker):
+    def test_extract_function_optimized_with_arrow_function(self, extractor, mocker):
         """Test function info extraction with arrow function structure"""
         # Mock node structure for arrow function
         mock_node = mocker.MagicMock()
@@ -102,33 +100,31 @@ class TestJavaScriptElementExtractorExtended:
         mock_declarator.children = [mock_identifier, mock_arrow_func]
         mock_node.children = [mock_declarator]
 
-        source_code = "const myFunc = (x) => x * 2;"
-
-        function = extractor._extract_function_info(mock_node, source_code)
+        function = extractor._extract_function_optimized(mock_node)
 
         assert function is not None
         assert function.name == "myFunc"
         assert function.parameters == ["x"]
 
-    def test_extract_function_info_with_no_name(self, extractor, mocker):
+    def test_extract_function_optimized_with_no_name(self, extractor, mocker):
         """Test function info extraction with no name node"""
         mock_node = mocker.MagicMock()
         mock_node.children = []
 
-        function = extractor._extract_function_info(mock_node, "function() {}")
+        function = extractor._extract_function_optimized(mock_node)
 
         assert function is None
 
-    def test_extract_function_info_with_exception(self, extractor, mocker):
+    def test_extract_function_optimized_with_exception(self, extractor, mocker):
         """Test function info extraction with exception"""
         mock_node = mocker.MagicMock()
         mock_node.start_point = None  # This will cause exception
 
-        function = extractor._extract_function_info(mock_node, "test")
+        function = extractor._extract_function_optimized(mock_node)
 
         assert function is None
 
-    def test_extract_class_info_with_valid_node(self, extractor, mocker):
+    def test_extract_class_optimized_with_valid_node(self, extractor, mocker):
         """Test class info extraction with valid node"""
         mock_node = mocker.MagicMock()
         mock_node.start_point = (0, 0)
@@ -144,9 +140,7 @@ class TestJavaScriptElementExtractorExtended:
 
         mock_node.children = [mock_identifier]
 
-        source_code = "class MyClass { constructor() {} }"
-
-        cls = extractor._extract_class_info(mock_node, source_code)
+        cls = extractor._extract_class_optimized(mock_node)
 
         assert cls is not None
         assert isinstance(cls, Class)
@@ -154,21 +148,21 @@ class TestJavaScriptElementExtractorExtended:
         assert cls.class_type == "class"
         assert cls.language == "javascript"
 
-    def test_extract_class_info_with_no_name(self, extractor, mocker):
+    def test_extract_class_optimized_with_no_name(self, extractor, mocker):
         """Test class info extraction with no name node"""
         mock_node = mocker.MagicMock()
         mock_node.children = []
 
-        cls = extractor._extract_class_info(mock_node, "class {}")
+        cls = extractor._extract_class_optimized(mock_node, "class {}")
 
         assert cls is None
 
-    def test_extract_class_info_with_exception(self, extractor, mocker):
+    def test_extract_class_optimized_with_exception(self, extractor, mocker):
         """Test class info extraction with exception"""
         mock_node = mocker.MagicMock()
         mock_node.start_point = None  # This will cause exception
 
-        cls = extractor._extract_class_info(mock_node, "test")
+        cls = extractor._extract_class_optimized(mock_node, "test")
 
         assert cls is None
 
