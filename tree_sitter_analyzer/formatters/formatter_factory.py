@@ -5,6 +5,7 @@ Factory for creating language-specific table formatters.
 
 from .base_formatter import BaseTableFormatter
 from .java_formatter import JavaTableFormatter
+from .javascript_formatter import JavaScriptTableFormatter
 from .python_formatter import PythonTableFormatter
 
 
@@ -13,6 +14,8 @@ class TableFormatterFactory:
 
     _formatters: dict[str, type[BaseTableFormatter]] = {
         "java": JavaTableFormatter,
+        "javascript": JavaScriptTableFormatter,
+        "js": JavaScriptTableFormatter,  # Alias
         "python": PythonTableFormatter,
     }
 

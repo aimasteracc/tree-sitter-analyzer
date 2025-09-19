@@ -764,8 +764,104 @@ rg --version
 ### 🌍 **Multi-language Support**
 - **Java** - Full support, including Spring, JPA frameworks
 - **Python** - Full support, including type annotations, decorators
-- **JavaScript/TypeScript** - Full support, including ES6+ features
+- **JavaScript** - 🆕 **Enterprise-grade support**, including modern ES6+ features, React/Vue/Angular frameworks, JSX, async functions, generators, arrow functions, classes, module systems
+- **TypeScript** - Full support, including type annotations, interfaces
 - **C/C++, Rust, Go** - Basic support
+
+---
+
+## 🆕 JavaScript Enterprise Support (v1.4.1+)
+
+### 🚀 **Modern JavaScript Complete Support**
+
+Tree-sitter Analyzer now provides enterprise-level JavaScript support at the same level as Java, including:
+
+#### **📋 Core Language Features**
+- **Function Types**: Traditional functions, arrow functions, async functions, generator functions
+- **Class System**: ES6 classes, inheritance, static methods, getters/setters, constructors
+- **Variable Declarations**: var, let, const, destructuring assignment, template literals
+- **Module System**: ES6 import/export, CommonJS require/module.exports
+- **Modern Features**: Spread/rest operators, Promises, async/await
+
+#### **🎨 Framework & Ecosystem**
+- **React Support**: JSX syntax, component analysis, Hook recognition, lifecycle methods
+- **Vue.js Support**: Single-file components, template syntax, reactive data
+- **Angular Support**: Components, services, dependency injection pattern recognition
+- **Node.js Support**: Server-side patterns, Express routing, middleware
+
+#### **🔍 Advanced Analysis Capabilities**
+- **JSDoc Extraction**: Complete documentation comment parsing and type information
+- **Complexity Analysis**: Cyclomatic complexity calculation and code quality metrics
+- **Framework Detection**: Automatic recognition of React, Vue, Angular project types
+- **Export Analysis**: Module export mapping and dependency relationship tracking
+
+#### **💼 Enterprise Features**
+- **Table Formatting**: Dedicated JavaScript table formatter for clear code structure display
+- **Performance Optimization**: Caching mechanisms, iterative traversal, efficient large file handling
+- **Error Handling**: Robust exception handling and detailed error reporting
+- **Type Safety**: TypeScript-style type annotation support
+
+### 📊 **JavaScript Analysis Examples**
+
+```bash
+# Analyze modern JavaScript files
+uv run python -m tree_sitter_analyzer examples/ModernJavaScript.js --language javascript --advanced
+
+# Generate detailed structure tables
+uv run python -m tree_sitter_analyzer examples/ModernJavaScript.js --language javascript --table full
+
+# Analyze React components
+uv run python -m tree_sitter_analyzer examples/ReactComponent.jsx --language javascript --table full
+
+# Query specific function types
+uv run python -m tree_sitter_analyzer examples/ModernJavaScript.js --language javascript --query-key async_function
+```
+
+### 🎯 **Supported JavaScript Query Types**
+- `function_declaration` - Traditional function declarations
+- `arrow_function` - Arrow functions
+- `async_function` - Async functions
+- `generator_function` - Generator functions
+- `class_declaration` - Class declarations
+- `variable_declaration` - Variable declarations
+- `import_statement` - Import statements
+- `export_statement` - Export statements
+- `jsx_element` - JSX elements
+- `method_definition` - Method definitions
+
+### 🏗️ **AI Assistant JavaScript Workflow**
+
+```
+I want to analyze the structure of this JavaScript file: examples/ModernJavaScript.js
+```
+
+**Example Response Format:**
+```json
+{
+  "file_path": "examples/ModernJavaScript.js",
+  "language": "javascript",
+  "element_count": 24,
+  "elements": [
+    {
+      "name": "fetchUserData",
+      "type": "function",
+      "start_line": 208,
+      "end_line": 211,
+      "is_async": true,
+      "framework_type": "vanilla"
+    },
+    {
+      "name": "ModernComponent",
+      "type": "class",
+      "start_line": 31,
+      "end_line": 200,
+      "is_react_component": true,
+      "framework_type": "react"
+    }
+  ],
+  "success": true
+}
+```
 
 ---
 

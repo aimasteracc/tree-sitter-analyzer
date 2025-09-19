@@ -1649,6 +1649,9 @@ web = [
 dev = [
     { name = "build" },
     { name = "pre-commit" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "pytest-mock" },
     { name = "ruff" },
     { name = "twine" },
 ]
@@ -1723,6 +1726,9 @@ provides-extras = ["java", "javascript", "typescript", "python", "c", "cpp", "ru
 dev = [
     { name = "build", specifier = ">=1.2.2.post1" },
     { name = "pre-commit", specifier = ">=4.2.0" },
+    { name = "pytest", specifier = ">=8.4.1" },
+    { name = "pytest-asyncio", specifier = ">=1.1.0" },
+    { name = "pytest-mock", specifier = ">=3.14.1" },
     { name = "ruff", specifier = ">=0.5.0" },
     { name = "twine", specifier = ">=4.0.2" },
 ]

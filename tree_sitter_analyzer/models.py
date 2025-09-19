@@ -67,6 +67,11 @@ class Function(CodeElement):
     complexity_score: int = 1
     is_abstract: bool = False
     is_final: bool = False
+    # JavaScript-specific fields
+    is_generator: bool = False
+    is_arrow: bool = False
+    is_method: bool = False
+    framework_type: str | None = None
 
 
 @dataclass(frozen=False)
@@ -90,6 +95,10 @@ class Class(CodeElement):
     implements_interfaces: list[str] = field(
         default_factory=list
     )  # Alias for interfaces
+    # JavaScript-specific fields
+    is_react_component: bool = False
+    framework_type: str | None = None
+    is_exported: bool = False
 
 
 @dataclass(frozen=False)
