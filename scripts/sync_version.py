@@ -69,9 +69,7 @@ class VersionSynchronizer:
                     current_version = (
                         match
                         if isinstance(match, str)
-                        else match[0]
-                        if isinstance(match, tuple)
-                        else str(match)
+                        else match[0] if isinstance(match, tuple) else str(match)
                     )
                     if current_version != target_version:
                         print(
@@ -134,9 +132,7 @@ class VersionSynchronizer:
                     found_version = (
                         match
                         if isinstance(match, str)
-                        else match[0]
-                        if isinstance(match, tuple)
-                        else str(match)
+                        else match[0] if isinstance(match, tuple) else str(match)
                     )
                     if found_version != current_version:
                         print(

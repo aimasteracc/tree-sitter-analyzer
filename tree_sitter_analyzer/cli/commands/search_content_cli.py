@@ -50,7 +50,9 @@ def _build_parser() -> argparse.ArgumentParser:
     )
 
     # rg options
-    parser.add_argument("--case", choices=["smart", "insensitive", "sensitive"], default="smart")
+    parser.add_argument(
+        "--case", choices=["smart", "insensitive", "sensitive"], default="smart"
+    )
     parser.add_argument("--fixed-strings", action="store_true")
     parser.add_argument("--word", action="store_true")
     parser.add_argument("--multiline", action="store_true")
@@ -157,4 +159,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
