@@ -745,8 +745,104 @@ rg --version
 ### 🌍 **多语言支持**
 - **Java** - 完整支持，包括Spring、JPA框架
 - **Python** - 完整支持，包括类型注解、装饰器
-- **JavaScript/TypeScript** - 完整支持，包括ES6+特性
+- **JavaScript** - 🆕 **企业级支持**，包括现代ES6+特性、React/Vue/Angular框架、JSX、异步函数、生成器、箭头函数、类、模块系统
+- **TypeScript** - 完整支持，包括类型注解、接口
 - **C/C++、Rust、Go** - 基础支持
+
+---
+
+## 🆕 JavaScript企业级支持 (v1.4.1+)
+
+### 🚀 **现代JavaScript完整支持**
+
+Tree-sitter Analyzer现在为JavaScript提供与Java相同级别的企业级支持，包括：
+
+#### **📋 核心语言特性**
+- **函数类型**: 传统函数、箭头函数、异步函数、生成器函数
+- **类系统**: ES6类、继承、静态方法、getter/setter、构造器
+- **变量声明**: var、let、const、解构赋值、模板字面量
+- **模块系统**: ES6 import/export、CommonJS require/module.exports
+- **现代特性**: 扩展运算符、剩余参数、Promise、async/await
+
+#### **🎨 框架与生态系统**
+- **React支持**: JSX语法、组件分析、Hook识别、生命周期方法
+- **Vue.js支持**: 单文件组件、模板语法、响应式数据
+- **Angular支持**: 组件、服务、依赖注入模式识别
+- **Node.js支持**: 服务器端模式、Express路由、中间件
+
+#### **🔍 高级分析能力**
+- **JSDoc提取**: 完整的文档注释解析和类型信息
+- **复杂度分析**: 循环复杂度计算和代码质量指标
+- **框架检测**: 自动识别React、Vue、Angular项目类型
+- **导出分析**: 模块导出映射和依赖关系追踪
+
+#### **💼 企业级特性**
+- **表格格式化**: 专用JavaScript表格输出器，清晰展示代码结构
+- **性能优化**: 缓存机制、迭代遍历、大文件高效处理
+- **错误处理**: 健壮的异常处理和详细的错误报告
+- **类型安全**: TypeScript风格的类型注解支持
+
+### 📊 **JavaScript分析示例**
+
+```bash
+# 分析现代JavaScript文件
+uv run python -m tree_sitter_analyzer examples/ModernJavaScript.js --language javascript --advanced
+
+# 生成详细结构表格
+uv run python -m tree_sitter_analyzer examples/ModernJavaScript.js --language javascript --table full
+
+# 分析React组件
+uv run python -m tree_sitter_analyzer examples/ReactComponent.jsx --language javascript --table full
+
+# 查询特定函数类型
+uv run python -m tree_sitter_analyzer examples/ModernJavaScript.js --language javascript --query-key async_function
+```
+
+### 🎯 **支持的JavaScript查询类型**
+- `function_declaration` - 传统函数声明
+- `arrow_function` - 箭头函数
+- `async_function` - 异步函数
+- `generator_function` - 生成器函数
+- `class_declaration` - 类声明
+- `variable_declaration` - 变量声明
+- `import_statement` - 导入语句
+- `export_statement` - 导出语句
+- `jsx_element` - JSX元素
+- `method_definition` - 方法定义
+
+### 🏗️ **AI助手JavaScript工作流程**
+
+```
+我想分析这个JavaScript文件的结构：examples/ModernJavaScript.js
+```
+
+**返回格式示例：**
+```json
+{
+  "file_path": "examples/ModernJavaScript.js",
+  "language": "javascript",
+  "element_count": 24,
+  "elements": [
+    {
+      "name": "fetchUserData",
+      "type": "function",
+      "start_line": 208,
+      "end_line": 211,
+      "is_async": true,
+      "framework_type": "vanilla"
+    },
+    {
+      "name": "ModernComponent",
+      "type": "class",
+      "start_line": 31,
+      "end_line": 200,
+      "is_react_component": true,
+      "framework_type": "react"
+    }
+  ],
+  "success": true
+}
+```
 
 ---
 

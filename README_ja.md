@@ -745,8 +745,104 @@ rg --version
 ### 🌍 **多言語サポート**
 - **Java** - フルサポート、Spring、JPAフレームワークを含む
 - **Python** - 完全サポート、型注釈、デコレーターを含む
-- **JavaScript/TypeScript** - フルサポート、ES6+機能を含む
+- **JavaScript** - 🆕 **エンタープライズグレードサポート**、モダンES6+機能、React/Vue/Angularフレームワーク、JSX、非同期関数、ジェネレーター、アロー関数、クラス、モジュールシステムを含む
+- **TypeScript** - 完全サポート、型注釈、インターフェースを含む
 - **C/C++、Rust、Go** - 基本サポート
+
+---
+
+## 🆕 JavaScriptエンタープライズサポート (v1.4.1+)
+
+### 🚀 **モダンJavaScript完全サポート**
+
+Tree-sitter AnalyzerはJavaと同レベルのエンタープライズグレードJavaScriptサポートを提供します：
+
+#### **📋 コア言語機能**
+- **関数タイプ**: 従来の関数、アロー関数、非同期関数、ジェネレーター関数
+- **クラスシステム**: ES6クラス、継承、静的メソッド、getter/setter、コンストラクター
+- **変数宣言**: var、let、const、分割代入、テンプレートリテラル
+- **モジュールシステム**: ES6 import/export、CommonJS require/module.exports
+- **モダン機能**: スプレッド/レスト演算子、Promise、async/await
+
+#### **🎨 フレームワーク & エコシステム**
+- **Reactサポート**: JSX構文、コンポーネント分析、Hook認識、ライフサイクルメソッド
+- **Vue.jsサポート**: 単一ファイルコンポーネント、テンプレート構文、リアクティブデータ
+- **Angularサポート**: コンポーネント、サービス、依存性注入パターン認識
+- **Node.jsサポート**: サーバーサイドパターン、Expressルーティング、ミドルウェア
+
+#### **🔍 高度な分析機能**
+- **JSDoc抽出**: 完全なドキュメンテーションコメント解析と型情報
+- **複雑度分析**: 循環的複雑度計算とコード品質メトリクス
+- **フレームワーク検出**: React、Vue、Angularプロジェクトタイプの自動認識
+- **エクスポート分析**: モジュールエクスポートマッピングと依存関係追跡
+
+#### **💼 エンタープライズ機能**
+- **テーブルフォーマット**: 専用JavaScriptテーブルフォーマッターによる明確なコード構造表示
+- **パフォーマンス最適化**: キャッシュメカニズム、反復的トラバーサル、効率的な大ファイル処理
+- **エラーハンドリング**: 堅牢な例外処理と詳細なエラーレポート
+- **型安全性**: TypeScriptスタイルの型注釈サポート
+
+### 📊 **JavaScript分析例**
+
+```bash
+# モダンJavaScriptファイルの分析
+uv run python -m tree_sitter_analyzer examples/ModernJavaScript.js --language javascript --advanced
+
+# 詳細構造テーブルの生成
+uv run python -m tree_sitter_analyzer examples/ModernJavaScript.js --language javascript --table full
+
+# Reactコンポーネントの分析
+uv run python -m tree_sitter_analyzer examples/ReactComponent.jsx --language javascript --table full
+
+# 特定の関数タイプのクエリ
+uv run python -m tree_sitter_analyzer examples/ModernJavaScript.js --language javascript --query-key async_function
+```
+
+### 🎯 **サポートされるJavaScriptクエリタイプ**
+- `function_declaration` - 従来の関数宣言
+- `arrow_function` - アロー関数
+- `async_function` - 非同期関数
+- `generator_function` - ジェネレーター関数
+- `class_declaration` - クラス宣言
+- `variable_declaration` - 変数宣言
+- `import_statement` - インポート文
+- `export_statement` - エクスポート文
+- `jsx_element` - JSX要素
+- `method_definition` - メソッド定義
+
+### 🏗️ **AIアシスタントJavaScriptワークフロー**
+
+```
+このJavaScriptファイルの構造を分析したいです：examples/ModernJavaScript.js
+```
+
+**レスポンス形式例：**
+```json
+{
+  "file_path": "examples/ModernJavaScript.js",
+  "language": "javascript",
+  "element_count": 24,
+  "elements": [
+    {
+      "name": "fetchUserData",
+      "type": "function",
+      "start_line": 208,
+      "end_line": 211,
+      "is_async": true,
+      "framework_type": "vanilla"
+    },
+    {
+      "name": "ModernComponent",
+      "type": "class",
+      "start_line": 31,
+      "end_line": 200,
+      "is_react_component": true,
+      "framework_type": "react"
+    }
+  ],
+  "success": true
+}
+```
 
 ---
 

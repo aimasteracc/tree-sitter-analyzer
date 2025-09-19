@@ -94,8 +94,9 @@ def analyze_file(
 
         # Add elements if requested and available
         if include_elements and hasattr(analysis_result, "elements"):
-            result["elements"] = [
-                {
+            result["elements"] = []
+            for elem in analysis_result.elements:
+                elem_dict = {
                     "name": elem.name,
                     "type": type(elem).__name__.lower(),
                     "start_line": elem.start_line,
@@ -103,8 +104,57 @@ def analyze_file(
                     "raw_text": elem.raw_text,
                     "language": elem.language,
                 }
-                for elem in analysis_result.elements
-            ]
+
+                # Add type-specific fields
+                if hasattr(elem, "module_path"):
+                    elem_dict["module_path"] = elem.module_path
+                if hasattr(elem, "module_name"):
+                    elem_dict["module_name"] = elem.module_name
+                if hasattr(elem, "imported_names"):
+                    elem_dict["imported_names"] = elem.imported_names
+                if hasattr(elem, "variable_type"):
+                    elem_dict["variable_type"] = elem.variable_type
+                if hasattr(elem, "initializer"):
+                    elem_dict["initializer"] = elem.initializer
+                if hasattr(elem, "is_constant"):
+                    elem_dict["is_constant"] = elem.is_constant
+                if hasattr(elem, "parameters"):
+                    elem_dict["parameters"] = elem.parameters
+                if hasattr(elem, "return_type"):
+                    elem_dict["return_type"] = elem.return_type
+                if hasattr(elem, "is_async"):
+                    elem_dict["is_async"] = elem.is_async
+                if hasattr(elem, "is_static"):
+                    elem_dict["is_static"] = elem.is_static
+                if hasattr(elem, "is_constructor"):
+                    elem_dict["is_constructor"] = elem.is_constructor
+                if hasattr(elem, "is_method"):
+                    elem_dict["is_method"] = elem.is_method
+                if hasattr(elem, "complexity_score"):
+                    elem_dict["complexity_score"] = elem.complexity_score
+                if hasattr(elem, "superclass"):
+                    elem_dict["superclass"] = elem.superclass
+                if hasattr(elem, "class_type"):
+                    elem_dict["class_type"] = elem.class_type
+
+                # For methods, try to find the class name from context
+                if elem_dict.get("is_method") and elem_dict["type"] == "function":
+                    # Look for the class this method belongs to
+                    for other_elem in analysis_result.elements:
+                        if (
+                            hasattr(other_elem, "start_line")
+                            and hasattr(other_elem, "end_line")
+                            and type(other_elem).__name__.lower() == "class"
+                            and other_elem.start_line
+                            <= elem.start_line
+                            <= other_elem.end_line
+                        ):
+                            elem_dict["class_name"] = other_elem.name
+                            break
+                    else:
+                        elem_dict["class_name"] = None
+
+                result["elements"].append(elem_dict)
 
         # Add query results if requested and available
         if include_queries and hasattr(analysis_result, "query_results"):
@@ -185,8 +235,9 @@ def analyze_code(
 
         # Add elements if requested and available
         if include_elements and hasattr(analysis_result, "elements"):
-            result["elements"] = [
-                {
+            result["elements"] = []
+            for elem in analysis_result.elements:
+                elem_dict = {
                     "name": elem.name,
                     "type": type(elem).__name__.lower(),
                     "start_line": elem.start_line,
@@ -194,8 +245,57 @@ def analyze_code(
                     "raw_text": elem.raw_text,
                     "language": elem.language,
                 }
-                for elem in analysis_result.elements
-            ]
+
+                # Add type-specific fields
+                if hasattr(elem, "module_path"):
+                    elem_dict["module_path"] = elem.module_path
+                if hasattr(elem, "module_name"):
+                    elem_dict["module_name"] = elem.module_name
+                if hasattr(elem, "imported_names"):
+                    elem_dict["imported_names"] = elem.imported_names
+                if hasattr(elem, "variable_type"):
+                    elem_dict["variable_type"] = elem.variable_type
+                if hasattr(elem, "initializer"):
+                    elem_dict["initializer"] = elem.initializer
+                if hasattr(elem, "is_constant"):
+                    elem_dict["is_constant"] = elem.is_constant
+                if hasattr(elem, "parameters"):
+                    elem_dict["parameters"] = elem.parameters
+                if hasattr(elem, "return_type"):
+                    elem_dict["return_type"] = elem.return_type
+                if hasattr(elem, "is_async"):
+                    elem_dict["is_async"] = elem.is_async
+                if hasattr(elem, "is_static"):
+                    elem_dict["is_static"] = elem.is_static
+                if hasattr(elem, "is_constructor"):
+                    elem_dict["is_constructor"] = elem.is_constructor
+                if hasattr(elem, "is_method"):
+                    elem_dict["is_method"] = elem.is_method
+                if hasattr(elem, "complexity_score"):
+                    elem_dict["complexity_score"] = elem.complexity_score
+                if hasattr(elem, "superclass"):
+                    elem_dict["superclass"] = elem.superclass
+                if hasattr(elem, "class_type"):
+                    elem_dict["class_type"] = elem.class_type
+
+                # For methods, try to find the class name from context
+                if elem_dict.get("is_method") and elem_dict["type"] == "function":
+                    # Look for the class this method belongs to
+                    for other_elem in analysis_result.elements:
+                        if (
+                            hasattr(other_elem, "start_line")
+                            and hasattr(other_elem, "end_line")
+                            and type(other_elem).__name__.lower() == "class"
+                            and other_elem.start_line
+                            <= elem.start_line
+                            <= other_elem.end_line
+                        ):
+                            elem_dict["class_name"] = other_elem.name
+                            break
+                    else:
+                        elem_dict["class_name"] = None
+
+                result["elements"].append(elem_dict)
 
         # Add query results if requested and available
         if include_queries and hasattr(analysis_result, "query_results"):
