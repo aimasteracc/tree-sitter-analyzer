@@ -32,12 +32,16 @@ class TestJavaScriptElementExtractorExtended:
 
     def test_extract_function_optimized_with_valid_node(self, extractor, mocker):
         """Test function info extraction with valid node"""
+        # Set up source code for the extractor
+        source_code = "function testFunc(a) { return a; }"
+        extractor.source_code = source_code
+
         # Mock node structure for function declaration
         mock_node = mocker.MagicMock()
         mock_node.start_point = (0, 0)
-        mock_node.end_point = (3, 1)
+        mock_node.end_point = (0, len(source_code))
         mock_node.start_byte = 0
-        mock_node.end_byte = 34
+        mock_node.end_byte = len(source_code)
 
         # Mock identifier child for function name - "testFunc" is at position 9-17
         mock_identifier = mocker.MagicMock()
@@ -66,12 +70,16 @@ class TestJavaScriptElementExtractorExtended:
 
     def test_extract_function_optimized_with_arrow_function(self, extractor, mocker):
         """Test function info extraction with arrow function structure"""
+        # Set up source code for the extractor
+        source_code = "const myFunc = (x) => x * 2;"
+        extractor.source_code = source_code
+
         # Mock node structure for arrow function
         mock_node = mocker.MagicMock()
         mock_node.start_point = (0, 0)
-        mock_node.end_point = (1, 0)
+        mock_node.end_point = (0, len(source_code))
         mock_node.start_byte = 0
-        mock_node.end_byte = 29
+        mock_node.end_byte = len(source_code)
 
         # Mock variable declarator
         mock_declarator = mocker.MagicMock()
@@ -126,11 +134,15 @@ class TestJavaScriptElementExtractorExtended:
 
     def test_extract_class_optimized_with_valid_node(self, extractor, mocker):
         """Test class info extraction with valid node"""
+        # Set up source code for the extractor
+        source_code = "class MyClass { constructor() {} }"
+        extractor.source_code = source_code
+
         mock_node = mocker.MagicMock()
         mock_node.start_point = (0, 0)
-        mock_node.end_point = (5, 1)
+        mock_node.end_point = (0, len(source_code))
         mock_node.start_byte = 0
-        mock_node.end_byte = 34
+        mock_node.end_byte = len(source_code)
 
         # Mock identifier for class name - "MyClass" is at position 6-13
         mock_identifier = mocker.MagicMock()
@@ -153,7 +165,7 @@ class TestJavaScriptElementExtractorExtended:
         mock_node = mocker.MagicMock()
         mock_node.children = []
 
-        cls = extractor._extract_class_optimized(mock_node, "class {}")
+        cls = extractor._extract_class_optimized(mock_node)
 
         assert cls is None
 
@@ -162,7 +174,7 @@ class TestJavaScriptElementExtractorExtended:
         mock_node = mocker.MagicMock()
         mock_node.start_point = None  # This will cause exception
 
-        cls = extractor._extract_class_optimized(mock_node, "test")
+        cls = extractor._extract_class_optimized(mock_node)
 
         assert cls is None
 
