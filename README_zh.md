@@ -3,7 +3,7 @@
 [![Python版本](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![许可证](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![测试](https://img.shields.io/badge/tests-1797%20passed-brightgreen.svg)](#质量保证)
-[![覆盖率](https://img.shields.io/badge/coverage-74.43%25-green.svg)](#质量保证)
+[![覆盖率](https://img.shields.io/badge/coverage-74.45%25-green.svg)](#质量保证)
 [![质量](https://img.shields.io/badge/quality-enterprise%20grade-blue.svg)](#质量保证)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
 [![版本](https://img.shields.io/badge/version-1.4.0-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
@@ -819,16 +819,16 @@ Tree-sitter Analyzer自动检测和保护项目边界：
 ## 🏆 质量保证
 
 ### 📊 **质量指标**
-- **1,599个测试** - 100%通过率 ✅
-- **74.77%代码覆盖率** - 行业领先水平
+- **1,797个测试** - 100%通过率 ✅
+- **74.45%代码覆盖率** - 行业领先水平
 - **零测试失败** - 完全CI/CD就绪
 - **跨平台兼容** - Windows、macOS、Linux
 
-### ⚡ **最新质量成就（v1.3.7）**
+### ⚡ **最新质量成就（v1.4.1）**
 - ✅ **跨平台路径兼容性** - 修复Windows短路径名称和macOS符号链接差异
 - ✅ **Windows环境** - 使用Windows API实现稳健的路径标准化
 - ✅ **macOS环境** - 修复`/var`与`/private/var`符号链接差异
-- ✅ **全面测试覆盖** - 1794个测试，74.77%覆盖率
+- ✅ **全面测试覆盖** - 1794个测试，74.45%覆盖率
 - ✅ **GitFlow实现** - 专业的开发/发布分支策略。详见[GitFlow文档](GITFLOW_zh.md)。
 
 ### ⚙️ **运行测试**
@@ -944,7 +944,7 @@ MIT许可证 - 详见[LICENSE](LICENSE)文件。
 
 **测试环境：**
 - 操作系统：Windows 10
-- 项目：tree-sitter-analyzer v1.3.7
+- 项目：tree-sitter-analyzer v1.4.1
 - 测试文件：BigService.java (1419行)、sample.py (256行)、MultiClass.java (54行)
 - 测试工具：所有MCP工具（check_code_scale、analyze_code_structure、extract_code_section、query_code）
 
