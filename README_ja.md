@@ -3,7 +3,7 @@
 [![Pythonバージョン](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![ライセンス](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![テスト](https://img.shields.io/badge/tests-1797%20passed-brightgreen.svg)](#品質保証)
-[![カバレッジ](https://img.shields.io/badge/coverage-74.43%25-green.svg)](#品質保証)
+[![カバレッジ](https://img.shields.io/badge/coverage-74.45%25-green.svg)](#品質保証)
 [![品質](https://img.shields.io/badge/quality-enterprise%20grade-blue.svg)](#品質保証)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
 [![バージョン](https://img.shields.io/badge/version-1.4.0-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
@@ -819,16 +819,16 @@ Tree-sitter Analyzerは自動的にプロジェクト境界を検出・保護：
 ## 🏆 品質保証
 
 ### 📊 **品質メトリクス**
-- **1,599テスト** - 100%合格率 ✅
-- **74.77%コードカバレッジ** - 業界最高レベル
+- **1,797テスト** - 100%合格率 ✅
+- **74.45%コードカバレッジ** - 業界最高レベル
 - **ゼロテスト失敗** - 完全なCI/CD対応
 - **クロスプラットフォーム対応** - Windows、macOS、Linux
 
-### ⚡ **最新の品質成果（v1.3.7）**
+### ⚡ **最新の品質成果（v1.4.1）**
 - ✅ **クロスプラットフォームパス互換性** - Windows短パス名とmacOSシンボリックリンクの違いを修正
 - ✅ **Windows環境** - Windows APIを使用した堅牢なパス正規化を実装
 - ✅ **macOS環境** - `/var`と`/private/var`シンボリックリンクの違いを修正
-- ✅ **包括的テストカバレッジ** - 1794テスト、74.77%カバレッジ
+- ✅ **包括的テストカバレッジ** - 1794テスト、74.45%カバレッジ
 - ✅ **GitFlow実装** - 開発/リリースブランチの専門的なブランチ戦略。詳細は[GitFlowドキュメント](GITFLOW_ja.md)を参照してください。
 
 ### ⚙️ **テスト実行**

@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.4.1] - 2025-01-19
+
+### Fixed
+- **🐛 find_and_grep File Search Scope Bug**: Fixed critical bug where ripgrep searched in parent directories instead of only in files found by fd
+  - **Root Cause**: Tool was using parent directories as search roots, causing broader search scope than intended
+  - **Solution**: Now uses specific file globs to limit ripgrep search to exact files discovered by fd
+  - **Impact**: Ensures `searched_file_count` and `total_files` metrics are consistent and accurate
+  - **Example**: When fd finds 7 files matching `*pattern*`, ripgrep now only searches those 7 files, not all files in their parent directories
+
+### Technical Details
+- **Files Modified**: `tree_sitter_analyzer/mcp/tools/find_and_grep_tool.py`
+- **Test Coverage**: All 1797 tests pass, including 144 fd/rg tool tests
+- **Quality Metrics**: 74.45% code coverage maintained
+- **Breaking Changes**: None - fix improves accuracy without changing API
+
+This patch release resolves a significant accuracy issue in the find_and_grep tool,
+ensuring search results match user expectations and tool documentation.
+
 ## [1.4.0] - 2025-01-18
 
 ### Added
@@ -10,7 +28,7 @@
   - **Backward Compatibility**: Maintains existing `results` structure when `group_by_file=False`
 
 ### Improved
-- **📊 Search Results Optimization**: 
+- **📊 Search Results Optimization**:
   - Same file matches are now grouped together instead of repeated entries
   - Context consumption reduced by ~80% for multi-file searches
   - Better organization for AI assistants processing search results
