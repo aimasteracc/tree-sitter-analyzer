@@ -2,121 +2,101 @@
 """
 Python Language Plugin
 
-Provides Python-specific parsing and element extraction functionality.
-Migrated to the new plugin architecture with enhanced query integration.
+Enhanced Python-specific parsing and element extraction functionality.
+Provides comprehensive support for modern Python features including async/await,
+decorators, type hints, context managers, and framework-specific patterns.
+Equivalent to JavaScript plugin capabilities for consistent language support.
 """
 
-from typing import TYPE_CHECKING, Optional
+import re
+from typing import TYPE_CHECKING, Any, Optional
 
 if TYPE_CHECKING:
     import tree_sitter
 
-    from ..core.analysis_engine import AnalysisRequest
-    from ..models import AnalysisResult
+try:
+    import tree_sitter
 
-from ..models import Class, CodeElement, Function, Import, Variable
+    TREE_SITTER_AVAILABLE = True
+except ImportError:
+    TREE_SITTER_AVAILABLE = False
+
+from ..core.analysis_engine import AnalysisRequest
+from ..encoding_utils import extract_text_slice, safe_encode
+from ..language_loader import loader
+from ..models import AnalysisResult, Class, CodeElement, Function, Import, Variable
 from ..plugins.base import ElementExtractor, LanguagePlugin
-from ..utils import log_error, log_warning
+from ..utils import log_debug, log_error, log_warning
 
 
 class PythonElementExtractor(ElementExtractor):
-    """Python-specific element extractor with comprehensive analysis"""
+    """Enhanced Python-specific element extractor with comprehensive feature support"""
 
     def __init__(self) -> None:
         """Initialize the Python element extractor."""
         self.current_module: str = ""
         self.current_file: str = ""
         self.source_code: str = ""
+        self.content_lines: list[str] = []
         self.imports: list[str] = []
+        self.exports: list[dict[str, Any]] = []
+
+        # Performance optimization caches
+        self._node_text_cache: dict[int, str] = {}
+        self._processed_nodes: set[int] = set()
+        self._element_cache: dict[tuple[int, str], Any] = {}
+        self._file_encoding: str | None = None
+        self._docstring_cache: dict[int, str] = {}
+        self._complexity_cache: dict[int, int] = {}
+
+        # Python-specific tracking
+        self.is_module: bool = False
+        self.framework_type: str = ""  # django, flask, fastapi, etc.
+        self.python_version: str = "3.8"  # default
 
     def extract_functions(
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[Function]:
-        """Extract Python function definitions with comprehensive analysis"""
+        """Extract Python function definitions with comprehensive details"""
         self.source_code = source_code
+        self.content_lines = source_code.split("\n")
+        self._reset_caches()
+        self._detect_file_characteristics()
+
         functions: list[Function] = []
 
-        # Function definition queries
-        function_queries = [
-            # Regular function definitions
-            """
-            (function_definition
-                name: (identifier) @function.name
-                parameters: (parameters) @function.params
-                body: (block) @function.body) @function.definition
-            """,
-            # Async function definitions
-            """
-            (function_definition
-                "async"
-                name: (identifier) @async_function.name
-                parameters: (parameters) @async_function.params
-                body: (block) @async_function.body) @async_function.definition
-            """,
-        ]
+        # Use optimized traversal for multiple function types
+        extractors = {
+            "function_definition": self._extract_function_optimized,
+        }
 
-        try:
-            language = tree.language if hasattr(tree, "language") else None
-            if language:
-                for query_string in function_queries:
-                    query = language.query(query_string)
-                    captures = query.captures(tree.root_node)
+        self._traverse_and_extract_iterative(
+            tree.root_node, extractors, functions, "function"
+        )
 
-                    if isinstance(captures, dict):
-                        # Process regular functions
-                        function_nodes = captures.get("function.definition", [])
-                        for node in function_nodes:
-                            function = self._extract_detailed_function_info(
-                                node, source_code, is_async=False
-                            )
-                            if function:
-                                functions.append(function)
-
-                        # Process async functions
-                        async_nodes = captures.get("async_function.definition", [])
-                        for node in async_nodes:
-                            function = self._extract_detailed_function_info(
-                                node, source_code, is_async=True
-                            )
-                            if function:
-                                functions.append(function)
-
-        except Exception as e:
-            log_warning(f"Could not extract Python functions: {e}")
-
+        log_debug(f"Extracted {len(functions)} Python functions")
         return functions
 
     def extract_classes(
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[Class]:
-        """Extract Python class definitions with comprehensive analysis"""
+        """Extract Python class definitions with detailed information"""
         self.source_code = source_code
+        self.content_lines = source_code.split("\n")
+        self._reset_caches()
+
         classes: list[Class] = []
 
-        # Class definition query
-        query_string = """
-        (class_definition
-            name: (identifier) @class.name
-            superclasses: (argument_list)? @class.superclasses
-            body: (block) @class.body) @class.definition
-        """
+        # Extract class declarations
+        extractors = {
+            "class_definition": self._extract_class_optimized,
+        }
 
-        try:
-            language = tree.language if hasattr(tree, "language") else None
-            if language:
-                query = language.query(query_string)
-                captures = query.captures(tree.root_node)
+        self._traverse_and_extract_iterative(
+            tree.root_node, extractors, classes, "class"
+        )
 
-                if isinstance(captures, dict):
-                    class_nodes = captures.get("class.definition", [])
-                    for node in class_nodes:
-                        cls = self._extract_detailed_class_info(node, source_code)
-                        if cls:
-                            classes.append(cls)
-
-        except Exception as e:
-            log_warning(f"Could not extract Python classes: {e}")
-
+        log_debug(f"Extracted {len(classes)} Python classes")
         return classes
 
     def extract_variables(
@@ -151,6 +131,440 @@ class PythonElementExtractor(ElementExtractor):
             log_warning(f"Could not extract Python class attributes: {e}")
 
         return variables
+
+    def _reset_caches(self) -> None:
+        """Reset performance caches"""
+        self._node_text_cache.clear()
+        self._processed_nodes.clear()
+        self._element_cache.clear()
+        self._docstring_cache.clear()
+        self._complexity_cache.clear()
+
+    def _detect_file_characteristics(self) -> None:
+        """Detect Python file characteristics"""
+        # Check if it's a module
+        self.is_module = "import " in self.source_code or "from " in self.source_code
+
+        # Detect framework
+        if "django" in self.source_code.lower() or "from django" in self.source_code:
+            self.framework_type = "django"
+        elif "flask" in self.source_code.lower() or "from flask" in self.source_code:
+            self.framework_type = "flask"
+        elif "fastapi" in self.source_code.lower() or "from fastapi" in self.source_code:
+            self.framework_type = "fastapi"
+
+    def _traverse_and_extract_iterative(
+        self,
+        root_node: "tree_sitter.Node",
+        extractors: dict[str, Any],
+        results: list[Any],
+        element_type: str,
+    ) -> None:
+        """Iterative node traversal and extraction with caching"""
+        if not root_node:
+            return
+
+        target_node_types = set(extractors.keys())
+        container_node_types = {
+            "module",
+            "class_definition",
+            "function_definition",
+            "if_statement",
+            "for_statement",
+            "while_statement",
+            "with_statement",
+            "try_statement",
+            "block",
+        }
+
+        node_stack = [(root_node, 0)]
+        processed_nodes = 0
+        max_depth = 50
+
+        while node_stack:
+            current_node, depth = node_stack.pop()
+
+            if depth > max_depth:
+                log_warning(f"Maximum traversal depth ({max_depth}) exceeded")
+                continue
+
+            processed_nodes += 1
+            node_type = current_node.type
+
+            # Early termination for irrelevant nodes
+            if (
+                depth > 0
+                and node_type not in target_node_types
+                and node_type not in container_node_types
+            ):
+                continue
+
+            # Process target nodes
+            if node_type in target_node_types:
+                node_id = id(current_node)
+
+                if node_id in self._processed_nodes:
+                    continue
+
+                cache_key = (node_id, element_type)
+                if cache_key in self._element_cache:
+                    element = self._element_cache[cache_key]
+                    if element:
+                        if isinstance(element, list):
+                            results.extend(element)
+                        else:
+                            results.append(element)
+                    self._processed_nodes.add(node_id)
+                    continue
+
+                # Extract and cache
+                extractor = extractors.get(node_type)
+                if extractor:
+                    element = extractor(current_node)
+                    self._element_cache[cache_key] = element
+                    if element:
+                        if isinstance(element, list):
+                            results.extend(element)
+                        else:
+                            results.append(element)
+                    self._processed_nodes.add(node_id)
+
+            # Add children to stack
+            if current_node.children:
+                for child in reversed(current_node.children):
+                    node_stack.append((child, depth + 1))
+
+        log_debug(f"Iterative traversal processed {processed_nodes} nodes")
+
+    def _get_node_text_optimized(self, node: "tree_sitter.Node") -> str:
+        """Get node text with optimized caching"""
+        node_id = id(node)
+
+        if node_id in self._node_text_cache:
+            return self._node_text_cache[node_id]
+
+        try:
+            start_byte = node.start_byte
+            end_byte = node.end_byte
+
+            encoding = self._file_encoding or "utf-8"
+            content_bytes = safe_encode("\n".join(self.content_lines), encoding)
+            text = extract_text_slice(content_bytes, start_byte, end_byte, encoding)
+
+            self._node_text_cache[node_id] = text
+            return text
+        except Exception as e:
+            log_error(f"Error in _get_node_text_optimized: {e}")
+            # Fallback to simple text extraction
+            try:
+                start_point = node.start_point
+                end_point = node.end_point
+
+                if start_point[0] == end_point[0]:
+                    line = self.content_lines[start_point[0]]
+                    return line[start_point[1] : end_point[1]]
+                else:
+                    lines = []
+                    for i in range(start_point[0], end_point[0] + 1):
+                        if i < len(self.content_lines):
+                            line = self.content_lines[i]
+                            if i == start_point[0]:
+                                lines.append(line[start_point[1] :])
+                            elif i == end_point[0]:
+                                lines.append(line[: end_point[1]])
+                            else:
+                                lines.append(line)
+                    return "\n".join(lines)
+            except Exception as fallback_error:
+                log_error(f"Fallback text extraction also failed: {fallback_error}")
+                return ""
+
+    def _extract_function_optimized(self, node: "tree_sitter.Node") -> Function | None:
+        """Extract function information with detailed metadata"""
+        try:
+            start_line = node.start_point[0] + 1
+            end_line = node.end_point[0] + 1
+
+            # Extract function details
+            function_info = self._parse_function_signature_optimized(node)
+            if not function_info:
+                return None
+
+            name, parameters, is_async, decorators, return_type = function_info
+
+            # Extract docstring
+            docstring = self._extract_docstring_for_line(start_line)
+
+            # Calculate complexity
+            complexity_score = self._calculate_complexity_optimized(node)
+
+            # Extract raw text
+            start_line_idx = max(0, start_line - 1)
+            end_line_idx = min(len(self.content_lines), end_line)
+            raw_text = "\n".join(self.content_lines[start_line_idx:end_line_idx])
+
+            # Determine visibility (Python conventions)
+            visibility = "public"
+            if name.startswith("__") and name.endswith("__"):
+                visibility = "magic"  # Magic methods
+            elif name.startswith("_"):
+                visibility = "private"
+
+            return Function(
+                name=name,
+                start_line=start_line,
+                end_line=end_line,
+                raw_text=raw_text,
+                language="python",
+                parameters=parameters,
+                return_type=return_type or "Any",
+                is_async=is_async,
+                is_generator="yield" in raw_text,
+                docstring=docstring,
+                complexity_score=complexity_score,
+                modifiers=decorators,
+                is_static="staticmethod" in decorators,
+                is_private=visibility == "private",
+                is_public=visibility == "public",
+                # Python-specific properties
+                framework_type=self.framework_type,
+                is_property="property" in decorators,
+                is_classmethod="classmethod" in decorators,
+            )
+        except Exception as e:
+            log_error(f"Failed to extract function info: {e}")
+            import traceback
+
+            traceback.print_exc()
+            return None
+
+    def _parse_function_signature_optimized(
+        self, node: "tree_sitter.Node"
+    ) -> tuple[str, list[str], bool, list[str], str | None] | None:
+        """Parse function signature for Python functions"""
+        try:
+            name = None
+            parameters = []
+            is_async = False
+            decorators = []
+            return_type = None
+
+            # Check for async keyword
+            node_text = self._get_node_text_optimized(node)
+            is_async = node_text.strip().startswith("async def")
+
+            # Extract decorators from preceding siblings
+            if node.parent:
+                for sibling in node.parent.children:
+                    if sibling.type == "decorated_definition":
+                        for child in sibling.children:
+                            if child.type == "decorator":
+                                decorator_text = self._get_node_text_optimized(child)
+                                if decorator_text.startswith("@"):
+                                    decorator_text = decorator_text[1:].strip()
+                                decorators.append(decorator_text)
+
+            for child in node.children:
+                if child.type == "identifier":
+                    name = child.text.decode("utf8") if child.text else None
+                elif child.type == "parameters":
+                    parameters = self._extract_parameters_from_node_optimized(child)
+                elif child.type == "type":
+                    return_type = self._get_node_text_optimized(child)
+
+            return name or "", parameters, is_async, decorators, return_type
+        except Exception:
+            return None
+
+    def _extract_parameters_from_node_optimized(
+        self, params_node: "tree_sitter.Node"
+    ) -> list[str]:
+        """Extract function parameters with type hints"""
+        parameters = []
+
+        for child in params_node.children:
+            if child.type == "identifier":
+                param_name = self._get_node_text_optimized(child)
+                parameters.append(param_name)
+            elif child.type == "typed_parameter":
+                # Handle typed parameters
+                param_text = self._get_node_text_optimized(child)
+                parameters.append(param_text)
+            elif child.type == "default_parameter":
+                # Handle default parameters
+                param_text = self._get_node_text_optimized(child)
+                parameters.append(param_text)
+            elif child.type == "list_splat_pattern":
+                # Handle *args
+                param_text = self._get_node_text_optimized(child)
+                parameters.append(param_text)
+            elif child.type == "dictionary_splat_pattern":
+                # Handle **kwargs
+                param_text = self._get_node_text_optimized(child)
+                parameters.append(param_text)
+
+        return parameters
+
+    def _extract_docstring_for_line(self, target_line: int) -> str | None:
+        """Extract docstring for the specified line"""
+        if target_line in self._docstring_cache:
+            return self._docstring_cache[target_line]
+
+        try:
+            if not self.content_lines or target_line >= len(self.content_lines):
+                return None
+
+            # Look for docstring in the next few lines after function definition
+            for i in range(target_line, min(target_line + 5, len(self.content_lines))):
+                line = self.content_lines[i].strip()
+                if line.startswith('"""') or line.startswith("'''"):
+                    # Found docstring start
+                    quote_type = '"""' if line.startswith('"""') else "'''"
+                    docstring_lines = []
+
+                    # Single line docstring
+                    if line.count(quote_type) >= 2:
+                        docstring = line.replace(quote_type, "").strip()
+                        self._docstring_cache[target_line] = docstring
+                        return docstring
+
+                    # Multi-line docstring
+                    docstring_lines.append(line.replace(quote_type, ""))
+                    for j in range(i + 1, len(self.content_lines)):
+                        next_line = self.content_lines[j]
+                        if quote_type in next_line:
+                            docstring_lines.append(next_line.replace(quote_type, ""))
+                            break
+                        docstring_lines.append(next_line)
+
+                    docstring = "\n".join(docstring_lines).strip()
+                    self._docstring_cache[target_line] = docstring
+                    return docstring
+
+            self._docstring_cache[target_line] = None
+            return None
+
+        except Exception as e:
+            log_debug(f"Failed to extract docstring: {e}")
+            return None
+
+    def _calculate_complexity_optimized(self, node: "tree_sitter.Node") -> int:
+        """Calculate cyclomatic complexity efficiently"""
+        node_id = id(node)
+        if node_id in self._complexity_cache:
+            return self._complexity_cache[node_id]
+
+        complexity = 1
+        try:
+            node_text = self._get_node_text_optimized(node).lower()
+            keywords = [
+                "if",
+                "elif",
+                "while",
+                "for",
+                "except",
+                "and",
+                "or",
+                "with",
+                "match",
+                "case",
+            ]
+            for keyword in keywords:
+                complexity += node_text.count(f" {keyword} ") + node_text.count(f"\n{keyword} ")
+        except Exception as e:
+            log_debug(f"Failed to calculate complexity: {e}")
+
+        self._complexity_cache[node_id] = complexity
+        return complexity
+
+    def _extract_class_optimized(self, node: "tree_sitter.Node") -> Class | None:
+        """Extract class information with detailed metadata"""
+        try:
+            start_line = node.start_point[0] + 1
+            end_line = node.end_point[0] + 1
+
+            # Extract class name
+            class_name = None
+            superclasses = []
+            decorators = []
+
+            # Extract decorators from preceding siblings
+            if node.parent:
+                for sibling in node.parent.children:
+                    if sibling.type == "decorated_definition":
+                        for child in sibling.children:
+                            if child.type == "decorator":
+                                decorator_text = self._get_node_text_optimized(child)
+                                if decorator_text.startswith("@"):
+                                    decorator_text = decorator_text[1:].strip()
+                                decorators.append(decorator_text)
+
+            for child in node.children:
+                if child.type == "identifier":
+                    class_name = child.text.decode("utf8") if child.text else None
+                elif child.type == "argument_list":
+                    # Extract superclasses
+                    for grandchild in child.children:
+                        if grandchild.type == "identifier":
+                            superclass_name = self._get_node_text_optimized(grandchild)
+                            superclasses.append(superclass_name)
+
+            if not class_name:
+                return None
+
+            # Extract docstring
+            docstring = self._extract_docstring_for_line(start_line)
+
+            # Check if it's a framework-specific class
+            is_framework_class = self._is_framework_class(node, class_name)
+
+            # Extract raw text
+            raw_text = self._get_node_text_optimized(node)
+
+            # Generate fully qualified name
+            full_qualified_name = (
+                f"{self.current_module}.{class_name}" if self.current_module else class_name
+            )
+
+            return Class(
+                name=class_name,
+                start_line=start_line,
+                end_line=end_line,
+                raw_text=raw_text,
+                language="python",
+                class_type="class",
+                superclass=superclasses[0] if superclasses else None,
+                interfaces=superclasses[1:] if len(superclasses) > 1 else [],
+                docstring=docstring,
+                modifiers=decorators,
+                full_qualified_name=full_qualified_name,
+                package_name=self.current_module,
+                # Python-specific properties
+                framework_type=self.framework_type,
+                is_dataclass="dataclass" in decorators,
+                is_abstract="ABC" in superclasses or "abstractmethod" in raw_text,
+                is_exception=any("Exception" in sc or "Error" in sc for sc in superclasses),
+            )
+        except Exception as e:
+            log_debug(f"Failed to extract class info: {e}")
+            return None
+
+    def _is_framework_class(self, node: "tree_sitter.Node", class_name: str) -> bool:
+        """Check if class is a framework-specific class"""
+        if self.framework_type == "django":
+            # Check for Django model, view, form, etc.
+            node_text = self._get_node_text_optimized(node)
+            return any(
+                pattern in node_text
+                for pattern in ["Model", "View", "Form", "Serializer", "TestCase"]
+            )
+        elif self.framework_type == "flask":
+            # Check for Flask patterns
+            return "Flask" in self.source_code or "Blueprint" in self.source_code
+        elif self.framework_type == "fastapi":
+            # Check for FastAPI patterns
+            return "APIRouter" in self.source_code or "BaseModel" in self.source_code
+        return False
 
     def _extract_class_attributes(
         self, class_body_node: "tree_sitter.Node", source_code: str
@@ -626,7 +1040,24 @@ class PythonPlugin(LanguagePlugin):
 
     def get_supported_queries(self) -> list[str]:
         """Get list of supported query names for this language"""
-        return ["class", "function", "variable", "import"]
+        return [
+            "function",
+            "class",
+            "variable",
+            "import",
+            "async_function",
+            "method",
+            "decorator",
+            "exception",
+            "comprehension",
+            "lambda",
+            "context_manager",
+            "type_hint",
+            "docstring",
+            "django_model",
+            "flask_route",
+            "fastapi_endpoint",
+        ]
 
     def is_applicable(self, file_path: str) -> bool:
         """Check if this plugin is applicable for the given file"""
@@ -643,90 +1074,88 @@ class PythonPlugin(LanguagePlugin):
             "extensions": self.get_file_extensions(),
             "version": "2.0.0",
             "supported_queries": self.get_supported_queries(),
+            "features": [
+                "Async/await functions",
+                "Type hints support",
+                "Decorators",
+                "Context managers",
+                "Comprehensions",
+                "Lambda expressions",
+                "Exception handling",
+                "Docstring extraction",
+                "Django framework support",
+                "Flask framework support",
+                "FastAPI framework support",
+                "Dataclass support",
+                "Abstract class detection",
+                "Complexity analysis",
+            ],
         }
 
     async def analyze_file(
-        self, file_path: str, request: "AnalysisRequest"
-    ) -> "AnalysisResult":
-        """
-        Analyze a Python file and return analysis results.
+        self, file_path: str, request: AnalysisRequest
+    ) -> AnalysisResult:
+        """Analyze a Python file and return the analysis results."""
+        if not TREE_SITTER_AVAILABLE:
+            return AnalysisResult(
+                file_path=file_path,
+                language=self.get_language_name(),
+                success=False,
+                error_message="Tree-sitter library not available.",
+            )
 
-        Args:
-            file_path: Path to the Python file to analyze
-            request: Analysis request object
+        language = self.get_tree_sitter_language()
+        if not language:
+            return AnalysisResult(
+                file_path=file_path,
+                language=self.get_language_name(),
+                success=False,
+                error_message="Could not load Python language for parsing.",
+            )
 
-        Returns:
-            AnalysisResult object containing the analysis results
-        """
         try:
-            from ..core.parser import Parser
-            from ..models import AnalysisResult
-
-            # Read file content
             with open(file_path, encoding="utf-8") as f:
                 source_code = f.read()
 
-            # Parse the file
-            parser = Parser()
-            parse_result = parser.parse_code(source_code, "python")
+            parser = tree_sitter.Parser()
+            parser.language = language
+            tree = parser.parse(bytes(source_code, "utf8"))
 
-            if not parse_result.success:
-                return AnalysisResult(
-                    file_path=file_path,
-                    language="python",
-                    line_count=len(source_code.splitlines()),
-                    elements=[],
-                    node_count=0,
-                    query_results={},
-                    source_code=source_code,
-                    success=False,
-                    error_message=parse_result.error_message,
-                )
-
-            # Extract elements
             extractor = self.create_extractor()
-            if parse_result.tree:
-                functions = extractor.extract_functions(parse_result.tree, source_code)
-                classes = extractor.extract_classes(parse_result.tree, source_code)
-                variables = extractor.extract_variables(parse_result.tree, source_code)
-                imports = extractor.extract_imports(parse_result.tree, source_code)
-            else:
-                functions = []
-                classes = []
-                variables = []
-                imports = []
+            extractor.current_file = file_path  # Set current file for context
 
-            # Combine all elements
-            all_elements: list[CodeElement] = []
-            all_elements.extend(functions)
-            all_elements.extend(classes)
-            all_elements.extend(variables)
-            all_elements.extend(imports)
+            elements: list[CodeElement] = []
+
+            # Extract all element types
+            functions = extractor.extract_functions(tree, source_code)
+            classes = extractor.extract_classes(tree, source_code)
+            variables = extractor.extract_variables(tree, source_code)
+            imports = extractor.extract_imports(tree, source_code)
+
+            elements.extend(functions)
+            elements.extend(classes)
+            elements.extend(variables)
+            elements.extend(imports)
+
+            def count_nodes(node: "tree_sitter.Node") -> int:
+                count = 1
+                for child in node.children:
+                    count += count_nodes(child)
+                return count
 
             return AnalysisResult(
                 file_path=file_path,
-                language="python",
-                line_count=len(source_code.splitlines()),
-                elements=all_elements,
-                node_count=(
-                    parse_result.tree.root_node.child_count if parse_result.tree else 0
-                ),
-                query_results={},
-                source_code=source_code,
+                language=self.get_language_name(),
                 success=True,
-                error_message=None,
+                elements=elements,
+                line_count=len(source_code.splitlines()),
+                node_count=count_nodes(tree.root_node),
             )
-
         except Exception as e:
-            log_error(f"Failed to analyze Python file {file_path}: {e}")
+            log_error(f"Error analyzing Python file {file_path}: {e}")
             return AnalysisResult(
                 file_path=file_path,
-                language="python",
-                line_count=0,
-                elements=[],
-                node_count=0,
-                query_results={},
-                source_code="",
+                language=self.get_language_name(),
                 success=False,
                 error_message=str(e),
             )
