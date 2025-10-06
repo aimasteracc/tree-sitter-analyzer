@@ -6,7 +6,7 @@
 [![覆盖率](https://img.shields.io/badge/coverage-71.90%25-green.svg)](#质量保证)
 [![质量](https://img.shields.io/badge/quality-enterprise%20grade-blue.svg)](#质量保证)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
-[![版本](https://img.shields.io/badge/version-1.5.0-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
+[![版本](https://img.shields.io/badge/version-1.6.0-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
 ## 🚀 突破LLM token限制，让AI理解任意大小的代码文件
@@ -796,8 +796,8 @@ rg --version
 
 ### 🌍 **多语言支持**
 - **Java** - 完整支持，包括Spring、JPA框架
-- **Python** - 完整支持，包括类型注解、装饰器
-- **JavaScript** - 🆕 **企业级支持**，包括现代ES6+特性、React/Vue/Angular框架、JSX、异步函数、生成器、箭头函数、类、模块系统
+- **Python** - 🆕 **企业级支持**（v1.6.0+），包括类层次结构、装饰器、类型提示、async/await、Django/Flask/FastAPI框架
+- **JavaScript** - **企业级支持**（v1.5.0+），包括现代ES6+特性、React/Vue/Angular框架、JSX、异步函数、生成器、箭头函数、类、模块系统
 - **TypeScript** - 完整支持，包括类型注解、接口
 - **C/C++、Rust、Go** - 基础支持
 
@@ -970,16 +970,23 @@ Tree-sitter Analyzer自动检测和保护项目边界：
 ## 🏆 质量保证
 
 ### 📊 **质量指标**
-- **1,797个测试** - 100%通过率 ✅
-- **74.45%代码覆盖率** - 行业领先水平
+- **1,869+个测试** - 100%通过率 ✅
+- **71.90%+代码覆盖率** - 行业领先水平
 - **零测试失败** - 完全CI/CD就绪
 - **跨平台兼容** - Windows、macOS、Linux
 
-### ⚡ **最新质量成就（v1.5.0）**
+### ⚡ **最新质量成就（v1.6.0）**
+- ✅ **企业级Python支持** - 完整Python分析能力匹配Java/JavaScript
+- ✅ **文件输出功能** - 自动格式检测和安全文件写入
+- ✅ **增强测试覆盖** - 439+新测试用于Python和文件输出功能
+- ✅ **全面文档** - 新功能详细指南
+- ✅ **向后兼容** - 所有现有功能无缝工作
+
+### 🏆 **以前的成就（v1.5.0）**
 - ✅ **跨平台路径兼容性** - 修复Windows短路径名称和macOS符号链接差异
 - ✅ **Windows环境** - 使用Windows API实现稳健的路径标准化
 - ✅ **macOS环境** - 修复`/var`与`/private/var`符号链接差异
-- ✅ **全面测试覆盖** - 1794个测试，74.45%覆盖率
+- ✅ **全面测试覆盖** - 1869+个测试，71.90%+覆盖率
 - ✅ **GitFlow实现** - 专业的开发/发布分支策略。详见[GitFlow文档](GITFLOW_zh.md)。
 
 ### ⚙️ **运行测试**
@@ -1095,7 +1102,7 @@ MIT许可证 - 详见[LICENSE](LICENSE)文件。
 
 **测试环境：**
 - 操作系统：Windows 10
-- 项目：tree-sitter-analyzer v1.5.0
+- 项目：tree-sitter-analyzer v1.6.0
 - 测试文件：BigService.java (1419行)、sample.py (256行)、MultiClass.java (54行)
 - 测试工具：所有MCP工具（check_code_scale、analyze_code_structure、extract_code_section、query_code）
 
