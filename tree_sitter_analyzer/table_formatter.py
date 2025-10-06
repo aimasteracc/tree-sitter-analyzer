@@ -7,6 +7,7 @@ Provides table-formatted output for Java code analysis results.
 
 import csv
 import io
+import json
 from typing import Any
 
 
@@ -44,12 +45,14 @@ class TableFormatter:
             result = self._format_compact_table(structure_data)
         elif self.format_type == "csv":
             result = self._format_csv(structure_data)
+        elif self.format_type == "json":
+            result = self._format_json(structure_data)
         else:
             raise ValueError(f"Unsupported format type: {self.format_type}")
 
         # Finally convert to platform-specific newline characters
-        # Skip newline conversion for CSV format (newline control is handled within _format_csv)
-        if self.format_type == "csv":
+        # Skip newline conversion for CSV and JSON formats
+        if self.format_type in ["csv", "json"]:
             return result
 
         return self._convert_to_platform_newlines(result)
@@ -554,6 +557,27 @@ class TableFormatter:
         output.close()
 
         return csv_content
+
+    def _format_json(self, data: dict[str, Any]) -> str:
+        """JSON format"""
+        # Create a clean JSON structure with all the analysis data
+        json_data = {
+            "file_info": {
+                "file_path": data.get("file_path", ""),
+                "language": data.get("language", ""),
+                "package": data.get("package"),
+            },
+            "statistics": data.get("statistics", {}),
+            "elements": {
+                "classes": data.get("classes", []),
+                "methods": data.get("methods", []),
+                "fields": data.get("fields", []),
+                "imports": data.get("imports", []),
+            },
+        }
+
+        # Return formatted JSON with proper indentation
+        return json.dumps(json_data, indent=2, ensure_ascii=False)
 
     def _format_method_row(self, method: dict[str, Any]) -> str:
         """Format method row"""
