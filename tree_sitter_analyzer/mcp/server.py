@@ -430,7 +430,7 @@ class TreeSitterAnalyzerMCPServer:
                             "format_type": {
                                 "type": "string",
                                 "description": "Table format type",
-                                "enum": ["full", "compact", "csv"],
+                                "enum": ["full", "compact", "csv", "json"],
                                 "default": "full",
                             },
                             "language": {
