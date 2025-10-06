@@ -2,11 +2,11 @@
 
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-1869%20passed-brightgreen.svg)](#quality-assurance)
-[![Coverage](https://img.shields.io/badge/coverage-71.90%25-green.svg)](#quality-assurance)
+[![Tests](https://img.shields.io/badge/tests-1893%20passed-brightgreen.svg)](#quality-assurance)
+[![Coverage](https://img.shields.io/badge/coverage-71.48%25-green.svg)](#quality-assurance)
 [![Quality](https://img.shields.io/badge/quality-enterprise%20grade-blue.svg)](#quality-assurance)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
-[![Version](https://img.shields.io/badge/version-1.5.0-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
+[![Version](https://img.shields.io/badge/version-1.6.0-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
 ## 🚀 Break LLM Token Limits, Let AI Understand Code Files of Any Size
@@ -62,7 +62,7 @@ Total Elements: 85 | Complexity: 348 (avg: 5.27, max: 15)
 ### 🔄 **AI Assistant SMART Workflow**
 - **S**: `set_project_path` - Setup project root directory
 - **M**: `list_files`, `search_content`, `find_and_grep` - Map target files with precision
-- **A**: `analyze_code_structure` - Analyze core structure with unified elements
+- **A**: `analyze_code_structure` - Analyze core structure with unified elements (supports file output)
 - **R**: `extract_code_section` - Retrieve essential code snippets on demand
 - **T**: Advanced dependency tracing (when needed)
 
@@ -199,7 +199,8 @@ Add the following to your configuration file:
         "python", "-m", "tree_sitter_analyzer.mcp.server"
       ],
       "env": {
-        "TREE_SITTER_PROJECT_ROOT": "/absolute/path/to/your/project"
+        "TREE_SITTER_PROJECT_ROOT": "/absolute/path/to/your/project",
+        "TREE_SITTER_OUTPUT_PATH": "/absolute/path/to/output/directory"
       }
     }
   }
@@ -261,7 +262,7 @@ uv run python -m tree_sitter_analyzer examples/BigService.java --partial-read --
 > **🎯 SMART Analysis Workflow:**
 > - **S** - Setup project (set_project_path)
 > - **M** - Map target files (precision pattern matching)
-> - **A** - Analyze core structure (analyze_code_structure)
+> - **A** - Analyze core structure (analyze_code_structure with optional file output)
 > - **R** - Retrieve essential code (extract_code_section)
 > - **T** - Trace dependencies (when needed)
 >
@@ -282,7 +283,8 @@ uv run python -m tree_sitter_analyzer examples/BigService.java --partial-read --
       "command": "uv",
       "args": ["run", "python", "-m", "tree_sitter_analyzer.mcp.server"],
       "env": {
-        "TREE_SITTER_PROJECT_ROOT": "/path/to/your/project"
+        "TREE_SITTER_PROJECT_ROOT": "/path/to/your/project",
+        "TREE_SITTER_OUTPUT_PATH": "/path/to/output/directory"
       }
     }
   }
@@ -734,6 +736,56 @@ rg --version
 
 > **⚠️ Important:** Without these tools installed, the advanced MCP file search and content analysis features will not work. The basic MCP tools (analyze_code_structure, extract_code_section, etc.) will continue to work normally.
 
+### 📁 **File Output Support (v1.5.1+)**
+
+The `analyze_code_structure` tool now supports saving analysis results to files with automatic format detection:
+
+#### **🎯 Key Features:**
+- **Automatic Extension Detection**: Based on content type (JSON → `.json`, CSV → `.csv`, Markdown → `.md`, Text → `.txt`)
+- **Smart Output Path**: Uses `TREE_SITTER_OUTPUT_PATH` environment variable or project root as fallback
+- **Security Validation**: Ensures output files are written to safe, authorized locations
+- **Content Type Detection**: Automatically detects content format and applies appropriate file extension
+
+#### **📋 Usage Examples:**
+
+**Basic File Output:**
+```json
+{
+  "tool": "analyze_code_structure",
+  "arguments": {
+    "file_path": "src/BigService.java",
+    "output_file": "service_analysis"
+  }
+}
+```
+
+**With Format Control:**
+```json
+{
+  "tool": "analyze_code_structure", 
+  "arguments": {
+    "file_path": "src/BigService.java",
+    "format_type": "csv",
+    "output_file": "service_data"
+  }
+}
+```
+
+#### **🔧 Environment Configuration:**
+```json
+{
+  "env": {
+    "TREE_SITTER_PROJECT_ROOT": "/path/to/your/project",
+    "TREE_SITTER_OUTPUT_PATH": "/path/to/output/directory"
+  }
+}
+```
+
+**Output Path Priority:**
+1. `TREE_SITTER_OUTPUT_PATH` environment variable (highest priority)
+2. Project root directory (from `TREE_SITTER_PROJECT_ROOT` or auto-detected)
+3. Current working directory (fallback)
+
 #### **🗂️ ListFilesTool - Smart File Discovery**
 - **Advanced filtering**: File type, size, modification time, extension-based filtering
 - **Pattern matching**: Glob patterns and regex support for flexible file discovery
@@ -923,7 +975,10 @@ Tree-sitter Analyzer automatically detects and protects project boundaries:
     "tree-sitter-analyzer": {
       "command": "uv",
       "args": ["run", "--with", "tree-sitter-analyzer[mcp]", "python", "-m", "tree_sitter_analyzer.mcp.server"],
-      "env": {"TREE_SITTER_PROJECT_ROOT": "/path/to/your/project"}
+      "env": {
+        "TREE_SITTER_PROJECT_ROOT": "/path/to/your/project",
+        "TREE_SITTER_OUTPUT_PATH": "/path/to/output/directory"
+      }
     }
   }
 }
@@ -934,12 +989,12 @@ Tree-sitter Analyzer automatically detects and protects project boundaries:
 ## 🏆 Quality Assurance
 
 ### 📊 **Quality Metrics**
-- **1,797 tests** - 100% pass rate ✅
-- **74.45% code coverage** - Industry-leading level
+- **1,893 tests** - 100% pass rate ✅
+- **71.48% code coverage** - Industry-leading level
 - **Zero test failures** - Fully CI/CD ready
 - **Cross-platform compatibility** - Windows, macOS, Linux
 
-### ⚡ **Latest Quality Achievements (v1.5.0)**
+### ⚡ **Latest Quality Achievements (v1.6.0)**
 - ✅ **Cross-platform path compatibility** - Fixed Windows short path names and macOS symbolic link differences
 - ✅ **Windows environment** - Implemented robust path normalization using Windows API
 - ✅ **macOS environment** - Fixed `/var` vs `/private/var` symbolic link differences
@@ -1060,7 +1115,7 @@ All AI prompts in this document have been thoroughly tested in real environments
 
 **Test Environment:**
 - Operating System: Windows 10
-- Project: tree-sitter-analyzer v1.5.0
+- Project: tree-sitter-analyzer v1.6.0
 - Test Files: BigService.java (1419 lines), sample.py (256 lines), MultiClass.java (54 lines)
 - Test Coverage: 1797 tests passed, 74.45% coverage
 - Test Tools: All MCP tools (check_code_scale, analyze_code_structure, extract_code_section, query_code, list_files, search_content, find_and_grep)
