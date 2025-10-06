@@ -152,7 +152,9 @@ def create_argument_parser() -> argparse.ArgumentParser:
         help="Specify output format",
     )
     parser.add_argument(
-        "--table", choices=["full", "compact", "csv"], help="Output in table format"
+        "--table",
+        choices=["full", "compact", "csv", "json"],
+        help="Output in table format",
     )
     parser.add_argument(
         "--include-javadoc",

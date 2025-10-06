@@ -73,7 +73,7 @@ class TableFormatTool(BaseMCPTool):
                 "format_type": {
                     "type": "string",
                     "description": "Table format type",
-                    "enum": ["full", "compact", "csv"],
+                    "enum": ["full", "compact", "csv", "json"],
                     "default": "full",
                 },
                 "language": {
@@ -118,8 +118,8 @@ class TableFormatTool(BaseMCPTool):
             format_type = arguments["format_type"]
             if not isinstance(format_type, str):
                 raise ValueError("format_type must be a string")
-            if format_type not in ["full", "compact", "csv"]:
-                raise ValueError("format_type must be one of: full, compact, csv")
+            if format_type not in ["full", "compact", "csv", "json"]:
+                raise ValueError("format_type must be one of: full, compact, csv, json")
 
         # Validate language if provided
         if "language" in arguments:
@@ -300,6 +300,59 @@ class TableFormatTool(BaseMCPTool):
                 "total_lines": result.line_count,
             },
         }
+
+    def _write_output_file(
+        self, output_file: str, content: str, format_type: str
+    ) -> str:
+        """
+        Write output content to file with automatic extension detection.
+
+        Args:
+            output_file: Base filename for output
+            content: Content to write
+            format_type: Format type (full, compact, csv, json)
+
+        Returns:
+            Full path of the written file
+        """
+        from pathlib import Path
+
+        # Determine file extension based on format type
+        extension_map = {
+            "full": ".md",
+            "compact": ".md",
+            "csv": ".csv",
+            "json": ".json",
+        }
+
+        # Get the appropriate extension
+        extension = extension_map.get(format_type, ".txt")
+
+        # Add extension if not already present
+        if not output_file.endswith(extension):
+            output_file = output_file + extension
+
+        # Resolve output path relative to project root
+        output_path = self.path_resolver.resolve(output_file)
+
+        # Security validation for output path
+        is_valid, error_msg = self.security_validator.validate_file_path(output_path)
+        if not is_valid:
+            raise ValueError(f"Invalid output file path: {error_msg}")
+
+        # Ensure output directory exists
+        output_dir = Path(output_path).parent
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        # Write content to file
+        try:
+            with open(output_path, "w", encoding="utf-8") as f:
+                f.write(content)
+            self.logger.info(f"Output written to file: {output_path}")
+            return output_path
+        except Exception as e:
+            self.logger.error(f"Failed to write output file {output_path}: {e}")
+            raise RuntimeError(f"Failed to write output file: {e}") from e
 
     async def execute(self, args: dict[str, Any]) -> dict[str, Any]:
         """Execute code structure analysis tool."""
