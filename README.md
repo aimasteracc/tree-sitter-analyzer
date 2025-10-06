@@ -62,7 +62,7 @@ Total Elements: 85 | Complexity: 348 (avg: 5.27, max: 15)
 ### 🔄 **AI Assistant SMART Workflow**
 - **S**: `set_project_path` - Setup project root directory
 - **M**: `list_files`, `search_content`, `find_and_grep` - Map target files with precision
-- **A**: `analyze_code_structure` - Analyze core structure with unified elements
+- **A**: `analyze_code_structure` - Analyze core structure with unified elements (supports file output)
 - **R**: `extract_code_section` - Retrieve essential code snippets on demand
 - **T**: Advanced dependency tracing (when needed)
 
@@ -199,7 +199,8 @@ Add the following to your configuration file:
         "python", "-m", "tree_sitter_analyzer.mcp.server"
       ],
       "env": {
-        "TREE_SITTER_PROJECT_ROOT": "/absolute/path/to/your/project"
+        "TREE_SITTER_PROJECT_ROOT": "/absolute/path/to/your/project",
+        "TREE_SITTER_OUTPUT_PATH": "/absolute/path/to/output/directory"
       }
     }
   }
@@ -261,7 +262,7 @@ uv run python -m tree_sitter_analyzer examples/BigService.java --partial-read --
 > **🎯 SMART Analysis Workflow:**
 > - **S** - Setup project (set_project_path)
 > - **M** - Map target files (precision pattern matching)
-> - **A** - Analyze core structure (analyze_code_structure)
+> - **A** - Analyze core structure (analyze_code_structure with optional file output)
 > - **R** - Retrieve essential code (extract_code_section)
 > - **T** - Trace dependencies (when needed)
 >
@@ -282,7 +283,8 @@ uv run python -m tree_sitter_analyzer examples/BigService.java --partial-read --
       "command": "uv",
       "args": ["run", "python", "-m", "tree_sitter_analyzer.mcp.server"],
       "env": {
-        "TREE_SITTER_PROJECT_ROOT": "/path/to/your/project"
+        "TREE_SITTER_PROJECT_ROOT": "/path/to/your/project",
+        "TREE_SITTER_OUTPUT_PATH": "/path/to/output/directory"
       }
     }
   }
@@ -734,6 +736,56 @@ rg --version
 
 > **⚠️ Important:** Without these tools installed, the advanced MCP file search and content analysis features will not work. The basic MCP tools (analyze_code_structure, extract_code_section, etc.) will continue to work normally.
 
+### 📁 **File Output Support (v1.5.1+)**
+
+The `analyze_code_structure` tool now supports saving analysis results to files with automatic format detection:
+
+#### **🎯 Key Features:**
+- **Automatic Extension Detection**: Based on content type (JSON → `.json`, CSV → `.csv`, Markdown → `.md`, Text → `.txt`)
+- **Smart Output Path**: Uses `TREE_SITTER_OUTPUT_PATH` environment variable or project root as fallback
+- **Security Validation**: Ensures output files are written to safe, authorized locations
+- **Content Type Detection**: Automatically detects content format and applies appropriate file extension
+
+#### **📋 Usage Examples:**
+
+**Basic File Output:**
+```json
+{
+  "tool": "analyze_code_structure",
+  "arguments": {
+    "file_path": "src/BigService.java",
+    "output_file": "service_analysis"
+  }
+}
+```
+
+**With Format Control:**
+```json
+{
+  "tool": "analyze_code_structure", 
+  "arguments": {
+    "file_path": "src/BigService.java",
+    "format_type": "csv",
+    "output_file": "service_data"
+  }
+}
+```
+
+#### **🔧 Environment Configuration:**
+```json
+{
+  "env": {
+    "TREE_SITTER_PROJECT_ROOT": "/path/to/your/project",
+    "TREE_SITTER_OUTPUT_PATH": "/path/to/output/directory"
+  }
+}
+```
+
+**Output Path Priority:**
+1. `TREE_SITTER_OUTPUT_PATH` environment variable (highest priority)
+2. Project root directory (from `TREE_SITTER_PROJECT_ROOT` or auto-detected)
+3. Current working directory (fallback)
+
 #### **🗂️ ListFilesTool - Smart File Discovery**
 - **Advanced filtering**: File type, size, modification time, extension-based filtering
 - **Pattern matching**: Glob patterns and regex support for flexible file discovery
@@ -923,7 +975,10 @@ Tree-sitter Analyzer automatically detects and protects project boundaries:
     "tree-sitter-analyzer": {
       "command": "uv",
       "args": ["run", "--with", "tree-sitter-analyzer[mcp]", "python", "-m", "tree_sitter_analyzer.mcp.server"],
-      "env": {"TREE_SITTER_PROJECT_ROOT": "/path/to/your/project"}
+      "env": {
+        "TREE_SITTER_PROJECT_ROOT": "/path/to/your/project",
+        "TREE_SITTER_OUTPUT_PATH": "/path/to/output/directory"
+      }
     }
   }
 }
