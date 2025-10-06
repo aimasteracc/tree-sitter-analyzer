@@ -8,7 +8,6 @@ decorators, type hints, context managers, and framework-specific patterns.
 Equivalent to JavaScript plugin capabilities for consistent language support.
 """
 
-import re
 from typing import TYPE_CHECKING, Any, Optional
 
 if TYPE_CHECKING:
@@ -23,7 +22,6 @@ except ImportError:
 
 from ..core.analysis_engine import AnalysisRequest
 from ..encoding_utils import extract_text_slice, safe_encode
-from ..language_loader import loader
 from ..models import AnalysisResult, Class, CodeElement, Function, Import, Variable
 from ..plugins.base import ElementExtractor, LanguagePlugin
 from ..utils import log_debug, log_error, log_warning
@@ -58,8 +56,8 @@ class PythonElementExtractor(ElementExtractor):
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[Function]:
         """Extract Python function definitions with comprehensive details"""
-        self.source_code = source_code
-        self.content_lines = source_code.split("\n")
+        self.source_code = source_code or ""
+        self.content_lines = self.source_code.split("\n")
         self._reset_caches()
         self._detect_file_characteristics()
 
@@ -81,8 +79,8 @@ class PythonElementExtractor(ElementExtractor):
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[Class]:
         """Extract Python class definitions with detailed information"""
-        self.source_code = source_code
-        self.content_lines = source_code.split("\n")
+        self.source_code = source_code or ""
+        self.content_lines = self.source_code.split("\n")
         self._reset_caches()
 
         classes: list[Class] = []
@@ -150,7 +148,9 @@ class PythonElementExtractor(ElementExtractor):
             self.framework_type = "django"
         elif "flask" in self.source_code.lower() or "from flask" in self.source_code:
             self.framework_type = "flask"
-        elif "fastapi" in self.source_code.lower() or "from fastapi" in self.source_code:
+        elif (
+            "fastapi" in self.source_code.lower() or "from fastapi" in self.source_code
+        ):
             self.framework_type = "fastapi"
 
     def _traverse_and_extract_iterative(
@@ -324,6 +324,7 @@ class PythonElementExtractor(ElementExtractor):
                 complexity_score=complexity_score,
                 modifiers=decorators,
                 is_static="staticmethod" in decorators,
+                is_staticmethod="staticmethod" in decorators,
                 is_private=visibility == "private",
                 is_public=visibility == "public",
                 # Python-specific properties
@@ -470,7 +471,9 @@ class PythonElementExtractor(ElementExtractor):
                 "case",
             ]
             for keyword in keywords:
-                complexity += node_text.count(f" {keyword} ") + node_text.count(f"\n{keyword} ")
+                complexity += node_text.count(f" {keyword} ") + node_text.count(
+                    f"\n{keyword} "
+                )
         except Exception as e:
             log_debug(f"Failed to calculate complexity: {e}")
 
@@ -515,15 +518,14 @@ class PythonElementExtractor(ElementExtractor):
             # Extract docstring
             docstring = self._extract_docstring_for_line(start_line)
 
-            # Check if it's a framework-specific class
-            is_framework_class = self._is_framework_class(node, class_name)
-
             # Extract raw text
             raw_text = self._get_node_text_optimized(node)
 
             # Generate fully qualified name
             full_qualified_name = (
-                f"{self.current_module}.{class_name}" if self.current_module else class_name
+                f"{self.current_module}.{class_name}"
+                if self.current_module
+                else class_name
             )
 
             return Class(
@@ -543,7 +545,9 @@ class PythonElementExtractor(ElementExtractor):
                 framework_type=self.framework_type,
                 is_dataclass="dataclass" in decorators,
                 is_abstract="ABC" in superclasses or "abstractmethod" in raw_text,
-                is_exception=any("Exception" in sc or "Error" in sc for sc in superclasses),
+                is_exception=any(
+                    "Exception" in sc or "Error" in sc for sc in superclasses
+                ),
             )
         except Exception as e:
             log_debug(f"Failed to extract class info: {e}")
