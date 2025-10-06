@@ -1,5 +1,70 @@
 # Changelog
 
+## [1.6.0] - 2025-01-20
+
+### Added
+- **🐍 Enterprise-Grade Python Support**: Enhanced Python language support matching JavaScript capabilities
+  - **Advanced Analysis**: Class hierarchies, inheritance detection, decorators, and comprehensive method analysis
+  - **Type System Support**: Full support for type hints, annotations, async/await patterns
+  - **Framework Detection**: Django, Flask, FastAPI framework-specific analysis
+  - **Comprehensive Queries**: 20+ specialized query types for Python code elements
+  - **Python Formatter**: Dedicated table formatter with class-based organization
+
+- **📁 File Output Feature**: Analyze code structure with automatic file output support
+  - **Automatic Format Detection**: Smart extension detection based on content type
+  - **Multiple Output Formats**: JSON, CSV, Markdown, and Text formats
+  - **Configurable Output Path**: Environment variable or project root-based output
+  - **Security Validation**: Safe file writing with boundary checks
+  - **MCP Integration**: Seamless integration with analyze_code_structure tool
+
+- **📊 Enhanced Output Formats**: JSON output support for table formatting tools
+  - **Structured Data Export**: JSON format for programmatic processing
+  - **Flexible Format Selection**: Text, JSON, CSV, and Markdown output options
+  - **API Compatibility**: Consistent output format across CLI and MCP interfaces
+
+### Improved
+- **📊 Quality Metrics**:
+  - Enhanced Python plugin coverage and reliability
+  - Improved file output manager with comprehensive test suite (264 tests)
+  - Better error handling and validation across all components
+  
+- **🔧 Code Quality**: 
+  - Added dedicated test suites for file output functionality
+  - Enhanced Python formatter with better structure organization
+  - Improved MCP tool reliability and error reporting
+
+- **💡 Documentation**: 
+  - Added FILE_OUTPUT_FEATURE_SUMMARY.md with comprehensive examples
+  - Added PYTHON_SUPPORT_SUMMARY.md documenting Python capabilities
+  - Updated all README variants with new feature descriptions
+
+### Technical Details
+- **Files Modified**: 18 files with 2919 additions, 250 deletions
+- **New Test Suites**: 264 tests for file output manager, 175 tests for table format tool
+- **Test Coverage**: All tests pass with comprehensive coverage
+- **Breaking Changes**: None - all improvements are backward compatible
+
+### Example Usage
+
+**File Output Feature:**
+```json
+{
+  "tool": "analyze_code_structure",
+  "arguments": {
+    "file_path": "examples/BigService.java",
+    "format_type": "json",
+    "output_file": "analysis_report"
+  }
+}
+```
+
+**Enhanced Python Analysis:**
+```bash
+uv run python -m tree_sitter_analyzer examples/sample.py --table=full --language python
+```
+
+This minor release significantly enhances Python language support and introduces powerful file output capabilities, making the tool more versatile for both interactive and automated workflows.
+
 ## [1.5.0] - 2025-01-19
 
 ### Added

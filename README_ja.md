@@ -6,7 +6,7 @@
 [![カバレッジ](https://img.shields.io/badge/coverage-71.90%25-green.svg)](#品質保証)
 [![品質](https://img.shields.io/badge/quality-enterprise%20grade-blue.svg)](#品質保証)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
-[![バージョン](https://img.shields.io/badge/version-1.5.0-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
+[![バージョン](https://img.shields.io/badge/version-1.6.0-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
 ## 🚀 LLMトークン制限を突破し、AIにあらゆるサイズのコードファイルを理解させる
@@ -796,8 +796,8 @@ rg --version
 
 ### 🌍 **多言語サポート**
 - **Java** - フルサポート、Spring、JPAフレームワークを含む
-- **Python** - 完全サポート、型注釈、デコレーターを含む
-- **JavaScript** - 🆕 **エンタープライズグレードサポート**、モダンES6+機能、React/Vue/Angularフレームワーク、JSX、非同期関数、ジェネレーター、アロー関数、クラス、モジュールシステムを含む
+- **Python** - 🆕 **エンタープライズグレードサポート**（v1.6.0+）、クラス階層、デコレータ、型ヒント、async/await、Django/Flask/FastAPIフレームワークを含む
+- **JavaScript** - **エンタープライズグレードサポート**（v1.5.0+）、モダンES6+機能、React/Vue/Angularフレームワーク、JSX、非同期関数、ジェネレーター、アロー関数、クラス、モジュールシステムを含む
 - **TypeScript** - 完全サポート、型注釈、インターフェースを含む
 - **C/C++、Rust、Go** - 基本サポート
 
@@ -970,16 +970,23 @@ Tree-sitter Analyzerは自動的にプロジェクト境界を検出・保護：
 ## 🏆 品質保証
 
 ### 📊 **品質メトリクス**
-- **1,797テスト** - 100%合格率 ✅
-- **74.45%コードカバレッジ** - 業界最高レベル
+- **1,869+テスト** - 100%合格率 ✅
+- **71.90%+コードカバレッジ** - 業界最高レベル
 - **ゼロテスト失敗** - 完全なCI/CD対応
 - **クロスプラットフォーム対応** - Windows、macOS、Linux
 
-### ⚡ **最新の品質成果（v1.5.0）**
+### ⚡ **最新の品質成果（v1.6.0）**
+- ✅ **エンタープライズグレードPythonサポート** - Java/JavaScriptに匹敵する完全なPython分析機能
+- ✅ **ファイル出力機能** - 自動フォーマット検出と安全なファイル書き込み
+- ✅ **強化されたテストカバレッジ** - Pythonとファイル出力機能のための439+新しいテスト
+- ✅ **包括的ドキュメント** - 新機能の詳細ガイド
+- ✅ **下位互換性** - 既存のすべての機能がシームレスに動作
+
+### 🏆 **以前の成果（v1.5.0）**
 - ✅ **クロスプラットフォームパス互換性** - Windows短パス名とmacOSシンボリックリンクの違いを修正
 - ✅ **Windows環境** - Windows APIを使用した堅牢なパス正規化を実装
 - ✅ **macOS環境** - `/var`と`/private/var`シンボリックリンクの違いを修正
-- ✅ **包括的テストカバレッジ** - 1794テスト、74.45%カバレッジ
+- ✅ **包括的テストカバレッジ** - 1869+テスト、71.90%+カバレッジ
 - ✅ **GitFlow実装** - 開発/リリースブランチの専門的なブランチ戦略。詳細は[GitFlowドキュメント](GITFLOW_ja.md)を参照してください。
 
 ### ⚙️ **テスト実行**
@@ -1094,8 +1101,10 @@ MITライセンス - 詳細は[LICENSE](LICENSE)ファイルをご覧くださ�
 
 **テスト環境：**
 - オペレーティングシステム：Windows 10
-- プロジェクト：tree-sitter-analyzer v1.3.7
+- プロジェクト：tree-sitter-analyzer v1.6.0
 - テストファイル：BigService.java (1419行)、sample.py (256行)、MultiClass.java (54行)
-- テストツール：すべてのMCPツール（check_code_scale、analyze_code_structure、extract_code_section、query_code）
+- テストカバレッジ：1869+テスト合格、71.90%+カバレッジ
+- テストツール：すべてのMCPツール（check_code_scale、analyze_code_structure、extract_code_section、query_code、list_files、search_content、find_and_grep）
+- 新機能：ファイル出力サポート、強化されたPython分析
 
 **🚀 今すぐ始める** → [30秒クイックスタート](#-30秒クイックスタート)
