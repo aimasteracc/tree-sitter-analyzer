@@ -73,6 +73,7 @@ public class TestClass {
         assert "file_path" in props
         assert "format_type" in props
         assert "language" in props
+        assert "output_file" in props
 
         # Test format_type enum values
         format_type_prop = props["format_type"]
@@ -343,6 +344,168 @@ public class TestClass {
             assert result["format_type"] == format_type
             assert f"Mock {format_type} output" in result["table_output"]
 
+    @pytest.mark.asyncio
+    async def test_execute_with_file_output(self, mocker) -> None:
+        """Test execute with file output functionality."""
+        # Mock dependencies
+        mocker.patch("pathlib.Path.exists", return_value=True)
+        mocker.patch(
+            "tree_sitter_analyzer.language_detector.detect_language_from_file",
+            return_value="java",
+        )
+
+        # Mock performance monitor
+        mock_monitor = mocker.patch(
+            "tree_sitter_analyzer.mcp.utils.get_performance_monitor"
+        )
+        mock_context = mocker.MagicMock()
+        mock_monitor_instance = mocker.MagicMock()
+        mock_monitor_instance.measure_operation.return_value.__enter__ = (
+            mocker.MagicMock(return_value=mock_context)
+        )
+        mock_monitor_instance.measure_operation.return_value.__exit__ = (
+            mocker.MagicMock(return_value=None)
+        )
+        mock_monitor.return_value = mock_monitor_instance
+
+        # Mock structure data
+        mock_structure_data = self._create_mock_structure_data()
+
+        # Mock TableFormatter
+        mock_formatter_class = mocker.patch(
+            "tree_sitter_analyzer.mcp.tools.table_format_tool.TableFormatter"
+        )
+        mock_formatter = mocker.MagicMock()
+        table_output = "| Class | Methods | Lines |\n|-------|---------|-------|\n| TestClass | 2 | 10 |"
+        mock_formatter.format_structure.return_value = table_output
+        mock_formatter_class.return_value = mock_formatter
+
+        # Mock unified analysis engine
+        from unittest.mock import AsyncMock
+        mocker.patch.object(
+            self.tool.analysis_engine,
+            "analyze",
+            new_callable=AsyncMock,
+            return_value=mocker.MagicMock(),
+        )
+
+        # Mock the conversion method
+        mocker.patch.object(
+            self.tool,
+            "_convert_analysis_result_to_dict",
+            return_value=mock_structure_data,
+        )
+
+        # Mock file output manager
+        mock_save_path = "/tmp/test_analysis.md"
+        mocker.patch.object(
+            self.tool.file_output_manager,
+            "save_to_file",
+            return_value=mock_save_path
+        )
+
+        arguments = {
+            "file_path": self.test_file_path,
+            "format_type": "full",
+            "output_file": "test_analysis"
+        }
+
+        result = await self.tool.execute(arguments)
+
+        # Check basic result
+        assert result["file_path"] == self.test_file_path
+        assert result["format_type"] == "full"
+        assert "table_output" in result
+
+        # Check file output results
+        assert result["file_saved"] is True
+        assert result["output_file_path"] == mock_save_path
+        assert "file_save_error" not in result
+
+        # Verify file output manager was called correctly
+        self.tool.file_output_manager.save_to_file.assert_called_once_with(
+            content=table_output,
+            base_name="test_analysis"
+        )
+
+    @pytest.mark.asyncio
+    async def test_execute_file_output_error(self, mocker) -> None:
+        """Test execute with file output error handling."""
+        # Mock dependencies
+        mocker.patch("pathlib.Path.exists", return_value=True)
+        mocker.patch(
+            "tree_sitter_analyzer.language_detector.detect_language_from_file",
+            return_value="java",
+        )
+
+        # Mock performance monitor
+        mock_monitor = mocker.patch(
+            "tree_sitter_analyzer.mcp.utils.get_performance_monitor"
+        )
+        mock_context = mocker.MagicMock()
+        mock_monitor_instance = mocker.MagicMock()
+        mock_monitor_instance.measure_operation.return_value.__enter__ = (
+            mocker.MagicMock(return_value=mock_context)
+        )
+        mock_monitor_instance.measure_operation.return_value.__exit__ = (
+            mocker.MagicMock(return_value=None)
+        )
+        mock_monitor.return_value = mock_monitor_instance
+
+        # Mock structure data
+        mock_structure_data = self._create_mock_structure_data()
+
+        # Mock TableFormatter
+        mock_formatter_class = mocker.patch(
+            "tree_sitter_analyzer.mcp.tools.table_format_tool.TableFormatter"
+        )
+        mock_formatter = mocker.MagicMock()
+        table_output = "Mock table output"
+        mock_formatter.format_structure.return_value = table_output
+        mock_formatter_class.return_value = mock_formatter
+
+        # Mock unified analysis engine
+        from unittest.mock import AsyncMock
+        mocker.patch.object(
+            self.tool.analysis_engine,
+            "analyze",
+            new_callable=AsyncMock,
+            return_value=mocker.MagicMock(),
+        )
+
+        # Mock the conversion method
+        mocker.patch.object(
+            self.tool,
+            "_convert_analysis_result_to_dict",
+            return_value=mock_structure_data,
+        )
+
+        # Mock file output manager to raise an error
+        error_message = "Permission denied"
+        mocker.patch.object(
+            self.tool.file_output_manager,
+            "save_to_file",
+            side_effect=OSError(error_message)
+        )
+
+        arguments = {
+            "file_path": self.test_file_path,
+            "format_type": "full",
+            "output_file": "test_analysis"
+        }
+
+        result = await self.tool.execute(arguments)
+
+        # Check that analysis still succeeded but file save failed
+        assert result["file_path"] == self.test_file_path
+        assert result["format_type"] == "full"
+        assert "table_output" in result
+
+        # Check file output error handling
+        assert result["file_saved"] is False
+        assert result["file_save_error"] == error_message
+        assert "output_file_path" not in result
+
     def test_validate_arguments_success(self) -> None:
         """Test successful argument validation."""
         arguments = {
@@ -391,6 +554,18 @@ public class TestClass {
         arguments = {"file_path": "/path/to/file.java", "language": 123}
 
         with pytest.raises(ValueError, match="language must be a string"):
+            self.tool.validate_arguments(arguments)
+
+    def test_validate_arguments_invalid_output_file(self) -> None:
+        """Test validation with invalid output_file."""
+        # Test non-string output_file
+        arguments = {"file_path": "/path/to/file.java", "output_file": 123}
+        with pytest.raises(ValueError, match="output_file must be a string"):
+            self.tool.validate_arguments(arguments)
+
+        # Test empty output_file
+        arguments = {"file_path": "/path/to/file.java", "output_file": ""}
+        with pytest.raises(ValueError, match="output_file cannot be empty"):
             self.tool.validate_arguments(arguments)
 
     def _create_mock_structure_data(self) -> dict:
