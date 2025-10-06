@@ -72,6 +72,10 @@ class Function(CodeElement):
     is_arrow: bool = False
     is_method: bool = False
     framework_type: str | None = None
+    # Python-specific fields
+    is_property: bool = False
+    is_classmethod: bool = False
+    is_staticmethod: bool = False
 
 
 @dataclass(frozen=False)
@@ -99,6 +103,10 @@ class Class(CodeElement):
     is_react_component: bool = False
     framework_type: str | None = None
     is_exported: bool = False
+    # Python-specific fields
+    is_dataclass: bool = False
+    is_abstract: bool = False
+    is_exception: bool = False
 
 
 @dataclass(frozen=False)
