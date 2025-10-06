@@ -22,6 +22,7 @@ from ...language_detector import detect_language_from_file
 from ...table_formatter import TableFormatter
 from ...utils import setup_logger
 from ..utils import get_performance_monitor
+from ..utils.file_output_manager import FileOutputManager
 from .base_tool import BaseMCPTool
 
 # Set up logging
@@ -40,6 +41,7 @@ class TableFormatTool(BaseMCPTool):
         """Initialize the table format tool."""
         super().__init__(project_root)
         self.analysis_engine = get_analysis_engine(project_root)
+        self.file_output_manager = FileOutputManager(project_root)
         self.logger = logger
 
     def set_project_path(self, project_path: str) -> None:
@@ -51,6 +53,7 @@ class TableFormatTool(BaseMCPTool):
         """
         super().set_project_path(project_path)
         self.analysis_engine = get_analysis_engine(project_path)
+        self.file_output_manager.set_project_root(project_path)
         logger.info(f"TableFormatTool project path updated to: {project_path}")
 
     def get_tool_schema(self) -> dict[str, Any]:
@@ -129,6 +132,8 @@ class TableFormatTool(BaseMCPTool):
             output_file = arguments["output_file"]
             if not isinstance(output_file, str):
                 raise ValueError("output_file must be a string")
+            if not output_file.strip():
+                raise ValueError("output_file cannot be empty")
 
         return True
 
@@ -386,6 +391,12 @@ class TableFormatTool(BaseMCPTool):
                     language, max_length=50
                 )
 
+            # Sanitize output_file input
+            if output_file:
+                output_file = self.security_validator.sanitize_input(
+                    output_file, max_length=255
+                )
+
             # Validate file exists
             if not Path(resolved_path).exists():
                 # Tests expect FileNotFoundError here
@@ -451,11 +462,28 @@ class TableFormatTool(BaseMCPTool):
 
                 # Handle file output if requested
                 if output_file:
-                    output_path = self._write_output_file(
-                        output_file, table_output, format_type
-                    )
-                    result["output_file_path"] = output_path
-                    result["output_file_written"] = True
+                    try:
+                        # Generate base name from original file path if not provided
+                        if not output_file or output_file.strip() == "":
+                            base_name = Path(file_path).stem + "_analysis"
+                        else:
+                            base_name = output_file
+
+                        # Save to file with automatic extension detection
+                        saved_file_path = self.file_output_manager.save_to_file(
+                            content=table_output,
+                            base_name=base_name
+                        )
+                        
+                        result["output_file_path"] = saved_file_path
+                        result["file_saved"] = True
+                        
+                        self.logger.info(f"Analysis output saved to: {saved_file_path}")
+                        
+                    except Exception as e:
+                        self.logger.error(f"Failed to save output to file: {e}")
+                        result["file_save_error"] = str(e)
+                        result["file_saved"] = False
 
                 return result
 

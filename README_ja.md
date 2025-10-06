@@ -62,7 +62,7 @@ Total Elements: 85 | Complexity: 348 (avg: 5.27, max: 15)
 ### 🔄 **AIアシスタントSMARTワークフロー**
 - **S**: `set_project_path` - プロジェクトルートディレクトリの設定
 - **M**: `list_files`, `search_content`, `find_and_grep` - 精密なターゲットファイルマッピング
-- **A**: `analyze_code_structure` - 統一要素によるコア構造分析
+- **A**: `analyze_code_structure` - 統一要素によるコア構造分析（ファイル出力サポート）
 - **R**: `extract_code_section` - オンデマンドでの重要コード取得
 - **T**: 高度な依存関係追跡（必要時のみ）
 
@@ -192,7 +192,8 @@ powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | ie
         "python", "-m", "tree_sitter_analyzer.mcp.server"
       ],
       "env": {
-        "TREE_SITTER_PROJECT_ROOT": "/absolute/path/to/your/project"
+        "TREE_SITTER_PROJECT_ROOT": "/absolute/path/to/your/project",
+        "TREE_SITTER_OUTPUT_PATH": "/absolute/path/to/output/directory"
       }
     }
   }
@@ -254,7 +255,7 @@ uv run python -m tree_sitter_analyzer examples/BigService.java --partial-read --
 > **🎯 SMART分析ワークフロー：**
 > - **S** - セットアップ (set_project_path)
 > - **M** - マップ (精密パターンマッチング)
-> - **A** - 分析 (analyze_code_structure)
+> - **A** - 分析 (analyze_code_structure オプションファイル出力付き)
 > - **R** - 取得 (extract_code_section)
 > - **T** - 追跡 (必要時のみ)
 >
@@ -275,7 +276,8 @@ uv run python -m tree_sitter_analyzer examples/BigService.java --partial-read --
       "command": "uv",
       "args": ["run", "python", "-m", "tree_sitter_analyzer.mcp.server"],
       "env": {
-        "TREE_SITTER_PROJECT_ROOT": "/path/to/your/project"
+        "TREE_SITTER_PROJECT_ROOT": "/path/to/your/project",
+        "TREE_SITTER_OUTPUT_PATH": "/path/to/output/directory"
       }
     }
   }
@@ -715,6 +717,56 @@ rg --version
 
 > **⚠️ 重要：** これらのツールがインストールされていない場合、高度なMCPファイル検索・コンテンツ解析機能は動作しません。基本的なMCPツール（analyze_code_structure、extract_code_sectionなど）は正常に動作し続けます。
 
+### 📁 **ファイル出力サポート (v1.5.1+)**
+
+`analyze_code_structure` ツールは、自動フォーマット検出機能付きで分析結果をファイルに保存できるようになりました：
+
+#### **🎯 主要機能：**
+- **自動拡張子検出**: コンテンツタイプに基づく（JSON → `.json`、CSV → `.csv`、Markdown → `.md`、テキスト → `.txt`）
+- **スマート出力パス**: `TREE_SITTER_OUTPUT_PATH` 環境変数またはプロジェクトルートをフォールバックとして使用
+- **セキュリティ検証**: 出力ファイルが安全で認可された場所に書き込まれることを保証
+- **コンテンツタイプ検出**: コンテンツフォーマットを自動検出し、適切なファイル拡張子を適用
+
+#### **📋 使用例：**
+
+**基本ファイル出力：**
+```json
+{
+  "tool": "analyze_code_structure",
+  "arguments": {
+    "file_path": "src/BigService.java",
+    "output_file": "service_analysis"
+  }
+}
+```
+
+**フォーマット制御付き：**
+```json
+{
+  "tool": "analyze_code_structure", 
+  "arguments": {
+    "file_path": "src/BigService.java",
+    "format_type": "csv",
+    "output_file": "service_data"
+  }
+}
+```
+
+#### **🔧 環境設定：**
+```json
+{
+  "env": {
+    "TREE_SITTER_PROJECT_ROOT": "/path/to/your/project",
+    "TREE_SITTER_OUTPUT_PATH": "/path/to/output/directory"
+  }
+}
+```
+
+**出力パス優先順位：**
+1. `TREE_SITTER_OUTPUT_PATH` 環境変数（最高優先度）
+2. プロジェクトルートディレクトリ（`TREE_SITTER_PROJECT_ROOT` から、または自動検出）
+3. 現在の作業ディレクトリ（フォールバック）
+
 #### **🗂️ ListFilesTool - スマートファイル発見**
 - **高度なフィルタリング**: ファイルタイプ、サイズ、更新時刻、拡張子ベースのフィルタリング
 - **パターンマッチング**: 柔軟なファイル発見のためのGlobパターンと正規表現サポート
@@ -904,7 +956,10 @@ Tree-sitter Analyzerは自動的にプロジェクト境界を検出・保護：
     "tree-sitter-analyzer": {
       "command": "uv",
       "args": ["run", "--with", "tree-sitter-analyzer[mcp]", "python", "-m", "tree_sitter_analyzer.mcp.server"],
-      "env": {"TREE_SITTER_PROJECT_ROOT": "/path/to/your/project"}
+      "env": {
+        "TREE_SITTER_PROJECT_ROOT": "/path/to/your/project",
+        "TREE_SITTER_OUTPUT_PATH": "/path/to/output/directory"
+      }
     }
   }
 }
