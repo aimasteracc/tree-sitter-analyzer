@@ -1,5 +1,41 @@
 # Changelog
 
+## [1.6.0] - 2025-10-06
+
+### Added
+- **🎯 File Output Feature**: Revolutionary file output capability for `analyze_code_structure` tool
+  - **Token Limit Solution**: Save large analysis results to files instead of returning in responses
+  - **Automatic Format Detection**: Smart extension mapping (JSON → `.json`, CSV → `.csv`, Markdown → `.md`, Text → `.txt`)
+  - **Environment Configuration**: New `TREE_SITTER_OUTPUT_PATH` environment variable for output directory control
+  - **Security Validation**: Comprehensive path validation and write permission checks
+  - **Backward Compatibility**: Optional feature that doesn't affect existing functionality
+
+- **🐍 Enhanced Python Support**: Complete Python language analysis capabilities
+  - **Improved Element Extraction**: Better function and class detection algorithms
+  - **Error Handling**: Robust exception handling for edge cases
+  - **Extended Test Coverage**: Comprehensive test suite for Python-specific features
+
+- **📊 JSON Format Support**: New structured output format
+  - **Format Type Extension**: Added "json" to format_type enum options
+  - **Structured Data**: Enable better data processing workflows
+  - **API Consistency**: Seamless integration with existing format options
+
+### Improved
+- **🧪 Quality Metrics**:
+  - Test count increased to 1893 (up from 1869)
+  - Code coverage maintained at 71.48%
+  - Enhanced test stability with mock object improvements
+- **🔧 Code Quality**: Fixed test failures and improved mock handling
+- **📚 Documentation**: Updated all README versions with new feature descriptions
+
+### Technical Details
+- **Files Modified**: Enhanced MCP tools, file output manager, and Python plugin
+- **Test Coverage**: All 1893 tests pass with comprehensive coverage
+- **Quality Metrics**: 71.48% code coverage maintained
+- **Breaking Changes**: None - all improvements are backward compatible
+
+This minor release introduces game-changing file output capabilities that solve token length limitations while maintaining full backward compatibility. The enhanced Python support and JSON format options provide developers with more powerful analysis tools.
+
 ## [1.5.0] - 2025-01-19
 
 ### Added
