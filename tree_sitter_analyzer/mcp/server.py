@@ -419,14 +419,28 @@ class TreeSitterAnalyzerMCPServer:
                 ),
                 Tool(
                     name="analyze_code_structure",
-                    description="Analyze code structure and generate tables with line positions",
+                    description="Analyze code structure and generate tables with line positions, optionally save to file",
                     inputSchema={
                         "type": "object",
                         "properties": {
                             "file_path": {
                                 "type": "string",
                                 "description": "Path to the code file (relative to project root)",
-                            }
+                            },
+                            "format_type": {
+                                "type": "string",
+                                "description": "Table format type",
+                                "enum": ["full", "compact", "csv", "json"],
+                                "default": "full",
+                            },
+                            "language": {
+                                "type": "string",
+                                "description": "Programming language (optional, auto-detected if not specified)",
+                            },
+                            "output_file": {
+                                "type": "string",
+                                "description": "Optional filename to save output to file (extension auto-detected based on content)",
+                            },
                         },
                         "required": ["file_path"],
                         "additionalProperties": False,
@@ -522,6 +536,7 @@ class TreeSitterAnalyzerMCPServer:
                         "file_path": arguments["file_path"],
                         "format_type": arguments.get("format_type", "full"),
                         "language": arguments.get("language"),
+                        "output_file": arguments.get("output_file"),
                     }
                     result = await self.table_format_tool.execute(full_args)
 

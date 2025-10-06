@@ -2,11 +2,11 @@
 
 [![Python版本](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![许可证](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![测试](https://img.shields.io/badge/tests-1869%20passed-brightgreen.svg)](#质量保证)
-[![覆盖率](https://img.shields.io/badge/coverage-71.90%25-green.svg)](#质量保证)
+[![测试](https://img.shields.io/badge/tests-1893%20passed-brightgreen.svg)](#质量保证)
+[![覆盖率](https://img.shields.io/badge/coverage-71.48%25-green.svg)](#质量保证)
 [![质量](https://img.shields.io/badge/quality-enterprise%20grade-blue.svg)](#质量保证)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
-[![版本](https://img.shields.io/badge/version-1.5.0-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
+[![版本](https://img.shields.io/badge/version-1.6.0-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
 ## 🚀 突破LLM token限制，让AI理解任意大小的代码文件
@@ -62,7 +62,7 @@ Total Elements: 85 | Complexity: 348 (avg: 5.27, max: 15)
 ### 🔄 **AI助手SMART工作流程**
 - **S**: `set_project_path` - 设置项目根目录
 - **M**: `list_files`, `search_content`, `find_and_grep` - 精确映射目标文件
-- **A**: `analyze_code_structure` - 分析核心结构与统一元素
+- **A**: `analyze_code_structure` - 分析核心结构与统一元素（支持文件输出）
 - **R**: `extract_code_section` - 按需检索关键代码片段
 - **T**: 高级依赖追踪（需要时）
 
@@ -192,7 +192,8 @@ powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | ie
         "python", "-m", "tree_sitter_analyzer.mcp.server"
       ],
       "env": {
-        "TREE_SITTER_PROJECT_ROOT": "/absolute/path/to/your/project"
+        "TREE_SITTER_PROJECT_ROOT": "/absolute/path/to/your/project",
+        "TREE_SITTER_OUTPUT_PATH": "/absolute/path/to/output/directory"
       }
     }
   }
@@ -254,7 +255,7 @@ uv run python -m tree_sitter_analyzer examples/BigService.java --partial-read --
 > **🎯 SMART分析工作流程：**
 > - **S** - 设置项目 (set_project_path)
 > - **M** - 映射目标文件 (精确模式匹配)
-> - **A** - 分析核心结构 (analyze_code_structure)
+> - **A** - 分析核心结构 (analyze_code_structure 支持可选文件输出)
 > - **R** - 检索关键代码 (extract_code_section)
 > - **T** - 追踪依赖关系 (需要时)
 >
@@ -275,7 +276,8 @@ uv run python -m tree_sitter_analyzer examples/BigService.java --partial-read --
       "command": "uv",
       "args": ["run", "python", "-m", "tree_sitter_analyzer.mcp.server"],
       "env": {
-        "TREE_SITTER_PROJECT_ROOT": "/path/to/your/project"
+        "TREE_SITTER_PROJECT_ROOT": "/path/to/your/project",
+        "TREE_SITTER_OUTPUT_PATH": "/path/to/output/directory"
       }
     }
   }
@@ -715,6 +717,56 @@ rg --version
 
 > **⚠️ 重要提示：** 如果没有安装这些工具，高级MCP文件搜索和内容分析功能将无法工作。基本MCP工具（analyze_code_structure、extract_code_section等）将继续正常工作。
 
+### 📁 **文件输出支持 (v1.5.1+)**
+
+`analyze_code_structure` 工具现在支持将分析结果保存到文件，并具有自动格式检测功能：
+
+#### **🎯 主要特性：**
+- **自动扩展名检测**: 基于内容类型（JSON → `.json`，CSV → `.csv`，Markdown → `.md`，文本 → `.txt`）
+- **智能输出路径**: 使用 `TREE_SITTER_OUTPUT_PATH` 环境变量或项目根目录作为备选
+- **安全验证**: 确保输出文件写入到安全、授权的位置
+- **内容类型检测**: 自动检测内容格式并应用适当的文件扩展名
+
+#### **📋 使用示例：**
+
+**基本文件输出：**
+```json
+{
+  "tool": "analyze_code_structure",
+  "arguments": {
+    "file_path": "src/BigService.java",
+    "output_file": "service_analysis"
+  }
+}
+```
+
+**带格式控制：**
+```json
+{
+  "tool": "analyze_code_structure", 
+  "arguments": {
+    "file_path": "src/BigService.java",
+    "format_type": "csv",
+    "output_file": "service_data"
+  }
+}
+```
+
+#### **🔧 环境配置：**
+```json
+{
+  "env": {
+    "TREE_SITTER_PROJECT_ROOT": "/path/to/your/project",
+    "TREE_SITTER_OUTPUT_PATH": "/path/to/output/directory"
+  }
+}
+```
+
+**输出路径优先级：**
+1. `TREE_SITTER_OUTPUT_PATH` 环境变量（最高优先级）
+2. 项目根目录（来自 `TREE_SITTER_PROJECT_ROOT` 或自动检测）
+3. 当前工作目录（备选）
+
 #### **🗂️ ListFilesTool - 智能文件发现**
 - **高级过滤**: 文件类型、大小、修改时间、扩展名过滤
 - **模式匹配**: 灵活文件发现的Glob模式和正则表达式支持
@@ -904,7 +956,10 @@ Tree-sitter Analyzer自动检测和保护项目边界：
     "tree-sitter-analyzer": {
       "command": "uv",
       "args": ["run", "--with", "tree-sitter-analyzer[mcp]", "python", "-m", "tree_sitter_analyzer.mcp.server"],
-      "env": {"TREE_SITTER_PROJECT_ROOT": "/path/to/your/project"}
+      "env": {
+        "TREE_SITTER_PROJECT_ROOT": "/path/to/your/project",
+        "TREE_SITTER_OUTPUT_PATH": "/path/to/output/directory"
+      }
     }
   }
 }

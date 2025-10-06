@@ -126,6 +126,8 @@ if __name__ == "__main__":
         """Test function extraction when language is not available"""
         mock_tree = Mock()
         mock_tree.language = None
+        mock_tree.root_node = Mock()
+        mock_tree.root_node.children = []
 
         functions = extractor.extract_functions(mock_tree, "test code")
 
@@ -594,6 +596,8 @@ class TestPythonPluginErrorHandling:
         """Test function extraction with exception"""
         mock_tree = Mock()
         mock_tree.language = None  # This will cause the extraction to fail gracefully
+        mock_tree.root_node = Mock()
+        mock_tree.root_node.children = []
 
         functions = extractor.extract_functions(mock_tree, "test code")
 
@@ -607,6 +611,8 @@ class TestPythonPluginErrorHandling:
         """Test class extraction with exception"""
         mock_tree = Mock()
         mock_tree.language = None  # This will cause the extraction to fail gracefully
+        mock_tree.root_node = Mock()
+        mock_tree.root_node.children = []
 
         classes = extractor.extract_classes(mock_tree, "test code")
 
