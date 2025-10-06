@@ -77,7 +77,7 @@ public class TestClass {
 
         # Test format_type enum values
         format_type_prop = props["format_type"]
-        assert format_type_prop["enum"] == ["full", "compact", "csv"]
+        assert format_type_prop["enum"] == ["full", "compact", "csv", "json"]
         assert format_type_prop["default"] == "full"
 
     def test_get_tool_definition(self, mocker) -> None:
