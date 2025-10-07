@@ -73,6 +73,11 @@ class TestPluginManager:
         """Create a mock JavaScript plugin"""
         return MockLanguagePlugin("javascript", [".js", ".jsx"])
 
+    @pytest.fixture
+    def mock_typescript_plugin(self) -> MockLanguagePlugin:
+        """Create a mock TypeScript plugin"""
+        return MockLanguagePlugin("typescript", [".ts", ".tsx", ".d.ts"])
+
     def test_plugin_manager_initialization(self, plugin_manager: PluginManager) -> None:
         """Test PluginManager initialization"""
         assert plugin_manager is not None
@@ -228,34 +233,46 @@ class TestPluginManager:
         plugin_manager: PluginManager,
         mock_java_plugin: MockLanguagePlugin,
         mock_python_plugin: MockLanguagePlugin,
+        mock_javascript_plugin: MockLanguagePlugin,
+        mock_typescript_plugin: MockLanguagePlugin,
     ) -> None:
         """Test getting all registered plugins"""
         plugin_manager.register_plugin(mock_java_plugin)
         plugin_manager.register_plugin(mock_python_plugin)
+        plugin_manager.register_plugin(mock_javascript_plugin)
+        plugin_manager.register_plugin(mock_typescript_plugin)
 
         all_plugins = plugin_manager.get_all_plugins()
 
         assert isinstance(all_plugins, dict)
-        assert len(all_plugins) == 2
+        assert len(all_plugins) == 4
         assert "java" in all_plugins
         assert "python" in all_plugins
+        assert "javascript" in all_plugins
+        assert "typescript" in all_plugins
 
     def test_get_supported_languages(
         self,
         plugin_manager: PluginManager,
         mock_java_plugin: MockLanguagePlugin,
         mock_python_plugin: MockLanguagePlugin,
+        mock_javascript_plugin: MockLanguagePlugin,
+        mock_typescript_plugin: MockLanguagePlugin,
     ) -> None:
         """Test getting list of supported languages"""
         plugin_manager.register_plugin(mock_java_plugin)
         plugin_manager.register_plugin(mock_python_plugin)
+        plugin_manager.register_plugin(mock_javascript_plugin)
+        plugin_manager.register_plugin(mock_typescript_plugin)
 
         languages = plugin_manager.get_supported_languages()
 
         assert isinstance(languages, list)
-        assert len(languages) == 2
+        assert len(languages) == 4
         assert "java" in languages
         assert "python" in languages
+        assert "javascript" in languages
+        assert "typescript" in languages
 
     def test_reload_plugins(self, plugin_manager: PluginManager) -> None:
         """Test reloading plugins"""

@@ -4,11 +4,11 @@
 
 [![Pythonバージョン](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![ライセンス](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![テスト](https://img.shields.io/badge/tests-1893%20passed-brightgreen.svg)](#品質保証)
-[![カバレッジ](https://img.shields.io/badge/coverage-71.48%25-green.svg)](#品質保証)
+[![テスト](https://img.shields.io/badge/tests-2046%20passed-brightgreen.svg)](#品質保証)
+[![カバレッジ](https://img.shields.io/badge/coverage-69.67%25-green.svg)](#品質保証)
 [![品質](https://img.shields.io/badge/quality-enterprise%20grade-blue.svg)](#品質保証)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
-[![バージョン](https://img.shields.io/badge/version-1.6.1-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
+[![バージョン](https://img.shields.io/badge/version-1.6.2-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
 ## 🚀 AI時代のエンタープライズグレードコード解析ツール
@@ -59,12 +59,12 @@ Tree-sitter Analyzerは、AI時代のために設計されたエンタープラ�
 - **Java** - 完全サポート（1103行のプラグインコード、73%カバレッジ）、Spring、JPAフレームワークを含む
 - **Python** - 完全サポート（584行のプラグインコード、63%カバレッジ）、型アノテーション、デコレータを含む
 - **JavaScript** - エンタープライズグレードサポート（1445行のプラグインコード、68%カバレッジ）、ES6+、React/Vue/Angular、JSXを含む
-- **TypeScript** - クエリサポート（230行のクエリ定義、74%カバレッジ）、インターフェース、型、デコレータを含む
+- **TypeScript** - **完全サポート**（1553行のプラグインコード、29%カバレッジ）、インターフェース、型、デコレータ、TSX/JSX、フレームワーク検出を含む
 - **その他の言語** - C/C++、Rust、Goの基本サポート
 
 ### 🏆 本番環境対応
-- **1,893のテスト** - 100%合格率、エンタープライズグレードの品質保証
-- **71.48%カバレッジ** - 包括的なテストスイート
+- **2,046のテスト** - 100%合格率、エンタープライズグレードの品質保証
+- **69.67%カバレッジ** - 包括的なテストスイート
 - **クロスプラットフォームサポート** - Windows、macOS、Linuxとの完全な互換性
 - **継続的なメンテナンス** - アクティブな開発とコミュニティサポート
 
@@ -550,7 +550,7 @@ uv run python -m tree_sitter_analyzer --show-query-languages
 - **Java** - 完全サポート（1103行のプラグイン）、Spring、JPAフレームワークを含む
 - **Python** - 完全サポート（584行のプラグイン）、型アノテーション、デコレータを含む
 - **JavaScript** - エンタープライズグレードサポート（1445行のプラグイン）、ES6+、React/Vue/Angular、JSXを含む
-- **TypeScript** - クエリサポート（230行のクエリ）、インターフェース、型、デコレータを含む
+- **TypeScript** - **完全サポート**（1553行のプラグイン）、インターフェース、型、デコレータ、TSX/JSX、フレームワーク検出を含む
 - **C/C++、Rust、Go** - 基本サポート
 
 ### 📁 高度なファイル検索
@@ -575,7 +575,7 @@ fdとripgrepに基づく強力なファイル検出とコンテンツ検索：
 - **ゼロテスト失敗** - 本番環境対応
 - **クロスプラットフォームサポート** - Windows、macOS、Linux
 
-### ⚡ 最新の品質成果（v1.6.0）
+### ⚡ 最新の品質成果（v1.6.2）
 - ✅ **クロスプラットフォームパス互換性** - Windowsの短いパス名とmacOSのシンボリックリンクの違いを修正
 - ✅ **エンタープライズグレードの信頼性** - 50以上の包括的なテストケースで安定性を確保
 - ✅ **GitFlow実装** - プロフェッショナルな開発/リリースブランチ戦略
@@ -623,7 +623,7 @@ uv run pytest tests/test_mcp_server_initialization.py -v
 **検証環境：**
 - オペレーティングシステム：Windows 10、macOS、Linux
 - Pythonバージョン：3.10+
-- プロジェクトバージョン：tree-sitter-analyzer v1.6.0
+- プロジェクトバージョン：tree-sitter-analyzer v1.6.2
 - テストファイル：BigService.java（1419行）、sample.py（256行）、MultiClass.java（54行）
 
 ---
