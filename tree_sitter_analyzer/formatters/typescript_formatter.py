@@ -30,9 +30,12 @@ class TypeScriptTableFormatter(BaseTableFormatter):
             file_name.replace(".ts", "").replace(".tsx", "").replace(".d.ts", "")
         )
 
-        # Check if this is a module (has exports)
+        # Check if this is a module (has exports, classes, interfaces, or functions)
         exports = data.get("exports", [])
-        is_module = len(exports) > 0
+        classes = data.get("classes", [])
+        interfaces = data.get("interfaces", [])
+        functions = data.get("functions", [])
+        is_module = len(exports) > 0 or len(classes) > 0 or len(interfaces) > 0 or len(functions) > 0
         is_declaration_file = file_name.endswith(".d.ts")
         is_tsx = file_name.endswith(".tsx")
 
@@ -176,9 +179,10 @@ class TypeScriptTableFormatter(BaseTableFormatter):
 
                 # Count methods within the class
                 class_methods = [
-                    m for m in data.get("methods", [])
-                    if line_range.get("start", 0) <= m.get("line_range", {}).get("start", 0) <= line_range.get("end", 0)
-                    and not m.get("is_signature", False)
+                    m for m in data.get("functions", [])
+                    if (line_range.get("start", 0) <= m.get("line_range", {}).get("start", 0) <= line_range.get("end", 0)
+                        and m.get("is_method", False)
+                        and not m.get("is_signature", False))
                 ]
 
                 # Count properties (class fields)

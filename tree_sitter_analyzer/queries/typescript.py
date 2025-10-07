@@ -171,7 +171,7 @@ COMMENTS = """
 ALL_QUERIES = {
     "functions": {
         "query": FUNCTIONS,
-        "description": "Search all function declarations, expressions, and methods with type annotations",
+        "description": "Search all functions: declarations, expressions, and methods with type annotations",
     },
     "classes": {
         "query": CLASSES,
@@ -179,11 +179,11 @@ ALL_QUERIES = {
     },
     "interfaces": {
         "query": INTERFACES,
-        "description": "Search all interface declarations",
+        "description": "Search all interfaces declarations",
     },
     "type_aliases": {
         "query": TYPE_ALIASES,
-        "description": "Search all type alias declarations",
+        "description": "Search all type aliases declarations",
     },
     "enums": {"query": ENUMS, "description": "Search all enum declarations"},
     "variables": {

@@ -23,7 +23,7 @@ class LanguageDetector:
         ".js": "javascript",
         ".jsx": "jsx",
         ".ts": "typescript",
-        ".tsx": "tsx",
+        ".tsx": "typescript",  # TSX files are TypeScript with JSX
         ".mjs": "javascript",
         ".cjs": "javascript",
         # Python系
