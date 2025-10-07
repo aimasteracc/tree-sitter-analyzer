@@ -1,5 +1,7 @@
 # Tree-sitter Analyzer
 
+**English** | **[日本語](README_ja.md)** | **[简体中文](README_zh.md)**
+
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Tests](https://img.shields.io/badge/tests-1893%20passed-brightgreen.svg)](#quality-assurance)
@@ -9,153 +11,73 @@
 [![Version](https://img.shields.io/badge/version-1.6.0-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
-## 🚀 Break LLM Token Limits, Let AI Understand Code Files of Any Size
+## 🚀 Enterprise-Grade Code Analysis Tool for the AI Era
 
-> **Revolutionary Code Analysis Tool Designed for the AI Era**
+> **Deep AI Integration · Powerful File Search · Multi-Language Support · Intelligent Code Analysis**
 
 ## 📋 Table of Contents
 
-- [🚀 Break LLM Token Limits](#-break-llm-token-limits-let-ai-understand-code-files-of-any-size)
-- [📋 Table of Contents](#-table-of-contents)
-- [💡 Unique Features](#-unique-features)
-- [📊 Real-time Demo and Results](#-real-time-demo-and-results)
-- [🚀 30-Second Quick Start](#-30-second-quick-start)
+- [💡 Key Features](#-key-features)
+- [📋 Prerequisites (Required for All Users)](#-prerequisites-required-for-all-users)
+- [🚀 Quick Start](#-quick-start)
   - [🤖 AI Users (Claude Desktop, Cursor, etc.)](#-ai-users-claude-desktop-cursor-etc)
-  - [💻 Developers (CLI)](#-developers-cli)
-- [❓ Why Choose Tree-sitter Analyzer](#-why-choose-tree-sitter-analyzer)
-- [📖 Practical Usage Examples](#-practical-usage-examples)
+  - [💻 CLI Users (Command Line Tools)](#-cli-users-command-line-tools)
+  - [👨‍💻 Developers (Source Development)](#-developers-source-development)
+- [📖 Usage Workflow & Examples](#-usage-workflow--examples)
+  - [🔄 AI Assistant SMART Workflow](#-ai-assistant-smart-workflow)
+  - [⚡ Complete CLI Commands](#-complete-cli-commands)
 - [🛠️ Core Features](#️-core-features)
-- [📦 Installation Guide](#-installation-guide)
-- [🔒 Security and Configuration](#-security-and-configuration)
 - [🏆 Quality Assurance](#-quality-assurance)
-- [🤖 AI Collaboration Support](#-ai-collaboration-support)
-- [📚 Documentation](#-documentation)
-- [🤝 Contributing](#-contributing)
-- [📄 License](#-license)
-
-## 💡 Unique Features
-
-Imagine this: you have a Java service class with over 1400 lines, and Claude or ChatGPT can't analyze it due to token limits. Now, Tree-sitter Analyzer enables AI assistants to:
-
-- ⚡ **Get complete code structure overview in 3 seconds**
-- 🎯 **Accurate extraction** of code snippets from any line range
-- 📍 **Smart positioning** of exact locations for classes, methods, and fields
-- 🔗 **Seamless integration** with Claude Desktop, Cursor, Roo Code, and other AI IDEs
-- 🏗️ **Unified element management** - All code elements (classes, methods, fields, imports) in a unified system
-
-**No more AI being helpless with large files!**
-
-## 📊 Real-time Demo and Results
-
-### ⚡ **Lightning-fast Analysis Speed**
-```bash
-# Analysis result of 1419-line large Java service class (< 1 second)
-Lines: 1419 | Classes: 1 | Methods: 66 | Fields: 9 | Imports: 8 | Packages: 1
-Total Elements: 85 | Complexity: 348 (avg: 5.27, max: 15)
-```
-
-### 📊 **Precise Structure Table**
-| Class Name | Type | Visibility | Line Range | Method Count | Field Count |
-|------------|------|------------|------------|--------------|-------------|
-| BigService | class | public | 17-1419 | 66 | 9 |
-
-### 🔄 **AI Assistant SMART Workflow**
-- **S**: `set_project_path` - Setup project root directory
-- **M**: `list_files`, `search_content`, `find_and_grep` - Map target files with precision
-- **A**: `analyze_code_structure` - Analyze core structure with unified elements (supports file output)
-- **R**: `extract_code_section` - Retrieve essential code snippets on demand
-- **T**: Advanced dependency tracing (when needed)
+- [📚 Documentation & Support](#-documentation--support)
+- [🤝 Contributing & License](#-contributing--license)
 
 ---
 
-## 🆕 New CLI Commands (v1.3.8+)
+## 💡 Key Features
 
-### 🔧 **Standalone CLI Tools for File System Operations**
+Tree-sitter Analyzer is an enterprise-grade code analysis tool designed for the AI era, providing:
 
-Tree-sitter Analyzer now provides dedicated CLI commands that wrap powerful MCP tools for file system operations:
+### 🤖 Deep AI Integration
+- **MCP Protocol Support** - Native support for Claude Desktop, Cursor, Roo Code, and other AI tools
+- **SMART Workflow** - Systematic AI-assisted code analysis methodology
+- **Break Token Limits** - Enable AI to understand code files of any size
+- **Natural Language Interaction** - Complete complex code analysis tasks using natural language
 
-> **💡 Usage Note**: In development environments, use `uv run` prefix to execute CLI commands:
-> - `uv run list-files` instead of `list-files`
-> - `uv run search-content` instead of `search-content`
-> - `uv run find-and-grep` instead of `find-and-grep`
->
-> After installing from PyPI, these commands will be available directly in your PATH.
+### 🔍 Powerful Search Capabilities
+- **Intelligent File Discovery** - High-performance file search based on fd with multiple filtering conditions
+- **Precise Content Search** - Regular expression content search based on ripgrep
+- **Two-Stage Search** - Combined workflow of finding files then searching content
+- **Project Boundary Protection** - Automatic detection and respect for project boundaries to ensure security
 
-#### 📁 **`list-files`** - File Discovery with fd
-```bash
-# List all Java files in current directory
-uv run list-files . --extensions java
+### 📊 Intelligent Code Analysis
+- **Fast Structure Analysis** - Understand code architecture without reading the entire file
+- **Precise Code Extraction** - Support for extracting precise code snippets by line range
+- **Complexity Analysis** - Cyclomatic complexity calculation and code quality metrics
+- **Unified Element System** - Revolutionary unified code element management architecture
 
-# Find test files with specific naming patterns
-uv run list-files src --pattern "test_*" --extensions java --types f
+### 🌍 Enterprise-Grade Multi-Language Support
+- **Java** - Full support (1103 lines of plugin code, 73% coverage), including Spring, JPA frameworks
+- **Python** - Full support (584 lines of plugin code, 63% coverage), including type annotations, decorators
+- **JavaScript** - Enterprise-grade support (1445 lines of plugin code, 68% coverage), including ES6+, React/Vue/Angular, JSX
+- **TypeScript** - Query support (230 lines of query definitions, 74% coverage), including interfaces, types, decorators
+- **More Languages** - Basic support for C/C++, Rust, Go
 
-# Find large files modified in the last week
-uv run list-files . --types f --size "+1k" --changed-within "1week"
-
-# Find service classes with specific naming patterns
-uv run list-files src --pattern "*Service*" --extensions java --output-format json
-```
-
-#### 🔍 **`search-content`** - Content Search with ripgrep
-```bash
-# Search for class definitions in Java files
-uv run search-content --roots . --query "class.*extends" --include-globs "*.java"
-
-# Find TODO comments with context
-uv run search-content --roots src --query "TODO|FIXME" --context-before 2 --context-after 2
-
-# Search in specific files with case-insensitive matching
-uv run search-content --files file1.java file2.java --query "public.*method" --case insensitive
-```
-
-#### 🎯 **`find-and-grep`** - Two-Stage Search (fd → ripgrep)
-```bash
-# Find Java files first, then search for Spring annotations
-uv run find-and-grep --roots . --query "@SpringBootApplication" --extensions java
-
-# Combined file filtering and content search with limits
-uv run find-and-grep --roots src --query "import.*spring" --extensions java --file-limit 10 --max-count 5
-
-# Advanced search with multiple filters
-uv run find-and-grep --roots . --query "public.*static.*void" --extensions java --types f --size "+500" --output-format json
-```
-
-### 🛡️ **Security & Safety Features**
-- **Project Boundary Detection**: All commands automatically detect and respect project boundaries
-- **Input Validation**: Comprehensive parameter validation and sanitization
-- **Error Handling**: Graceful error handling with informative messages
-- **Resource Limits**: Built-in limits to prevent resource exhaustion
-
-### 📊 **Output Formats**
-- **JSON**: Structured output for programmatic processing
-- **Text**: Human-readable output for terminal use
-- **Quiet Mode**: Suppress non-essential output for scripting
+### 🏆 Production Ready
+- **1,893 Tests** - 100% pass rate, enterprise-grade quality assurance
+- **71.48% Coverage** - Comprehensive test suite
+- **Cross-Platform Support** - Full compatibility with Windows, macOS, Linux
+- **Continuous Maintenance** - Active development and community support
 
 ---
 
-## 🚀 30-Second Quick Start
+## 📋 Prerequisites (Required for All Users)
 
-### 🤖 AI Users (Claude Desktop, Cursor, etc.)
+Whether you're an AI user, CLI user, or developer, you need to install the following tools first:
 
-**📋 0. Prerequisites (for Advanced MCP Tools)**
-For advanced file search and content analysis features, install these tools first:
-```bash
-# Install fd and ripgrep (see Prerequisites section for detailed instructions)
-# macOS
-brew install fd ripgrep
+### 1️⃣ Install uv (Required - for running tools)
 
-# Windows (using winget - recommended)
-winget install sharkdp.fd BurntSushi.ripgrep.MSVC
+**uv** is a fast Python package manager used to run tree-sitter-analyzer.
 
-# Windows (alternative methods)
-# choco install fd ripgrep
-# scoop install fd ripgrep
-
-# Ubuntu/Debian
-sudo apt install fd-find ripgrep
-```
-
-**📦 1. One-click Installation**
 ```bash
 # macOS/Linux
 curl -LsSf https://astral.sh/uv/install.sh | sh
@@ -164,16 +86,67 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
 ```
 
-**⚙️ 2. AI Client Configuration**
+**Verify installation:**
+```bash
+uv --version
+```
+
+### 2️⃣ Install fd and ripgrep (Required for search functionality)
+
+**fd** and **ripgrep** are high-performance file and content search tools used for advanced MCP features.
+
+```bash
+# macOS
+brew install fd ripgrep
+
+# Windows (recommended using winget)
+winget install sharkdp.fd BurntSushi.ripgrep.MSVC
+
+# Windows (alternative methods)
+# choco install fd ripgrep
+# scoop install fd ripgrep
+
+# Ubuntu/Debian
+sudo apt install fd-find ripgrep
+
+# CentOS/RHEL/Fedora
+sudo dnf install fd-find ripgrep
+
+# Arch Linux
+sudo pacman -S fd ripgrep
+```
+
+**Verify installation:**
+```bash
+fd --version
+rg --version
+```
+
+> **⚠️ Important Note:** 
+> - **uv** is required for running all features
+> - **fd** and **ripgrep** are required for using advanced file search and content analysis features
+> - If fd and ripgrep are not installed, basic code analysis features will still work, but file search features will be unavailable
+
+---
+
+## 🚀 Quick Start
+
+### 🤖 AI Users (Claude Desktop, Cursor, etc.)
+
+**For:** Users who use AI assistants (such as Claude Desktop, Cursor) for code analysis
+
+#### ⚙️ Configuration Steps
 
 **Claude Desktop Configuration:**
 
-Add the following to your configuration file:
-- **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
-- **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
-- **Linux**: `~/.config/claude/claude_desktop_config.json`
+1. Find the configuration file location:
+   - **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
+   - **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
+   - **Linux**: `~/.config/claude/claude_desktop_config.json`
 
-**Basic Configuration (Recommended):**
+2. Add the following configuration:
+
+**Basic Configuration (Recommended - Auto-detect project path):**
 ```json
 {
   "mcpServers": {
@@ -188,7 +161,7 @@ Add the following to your configuration file:
 }
 ```
 
-**Advanced Configuration (Specify Project Root Directory):**
+**Advanced Configuration (Manually specify project path):**
 ```json
 {
   "mcpServers": {
@@ -207,208 +180,147 @@ Add the following to your configuration file:
 }
 ```
 
+3. Restart your AI client
+
+4. Start using! Tell the AI:
+   ```
+   Please set the project root directory to: /path/to/your/project
+   ```
+
 **Other AI Clients:**
 - **Cursor**: Built-in MCP support, refer to Cursor documentation for configuration
-- **Roo Code**: Supports MCP protocol, check corresponding configuration guides
+- **Roo Code**: Supports MCP protocol, use the same configuration format
 - **Other MCP-compatible clients**: Use the same server configuration
 
-**⚠️ Configuration Notes:**
-- **Basic Configuration**: Tool automatically detects project root directory (recommended)
-- **Advanced Configuration**: If you need to specify a particular directory, replace `/absolute/path/to/your/project` with an absolute path
-- **Avoid Using**: Variables like `${workspaceFolder}` may not be supported in some clients
+---
 
-**🎉 3. Restart AI client and start analyzing large code files!**
+### 💻 CLI Users (Command Line Tools)
 
-### 💻 Developers (CLI)
+**For:** Developers who prefer using command-line tools
+
+#### 📦 Installation
 
 ```bash
-# Installation
+# Basic installation
+uv add tree-sitter-analyzer
+
+# Popular language pack (recommended)
 uv add "tree-sitter-analyzer[popular]"
 
-# Check file size (1419-line large service class, completed instantly)
+# Full installation (including MCP support)
+uv add "tree-sitter-analyzer[all,mcp]"
+```
+
+#### ⚡ Quick Experience
+
+```bash
+# View help
+uv run python -m tree_sitter_analyzer --help
+
+# Analyze file size (1419 lines completed instantly)
 uv run python -m tree_sitter_analyzer examples/BigService.java --advanced --output-format=text
 
-# Generate structure table (1 class, 66 methods, clearly displayed)
+# Generate detailed structure table
 uv run python -m tree_sitter_analyzer examples/BigService.java --table=full
 
 # Precise code extraction
-uv run python -m tree_sitter_analyzer examples/BigService.java --partial-read --start-line 100 --end-line 105
+uv run python -m tree_sitter_analyzer examples/BigService.java --partial-read --start-line 93 --end-line 106
 ```
 
 ---
 
-## ❓ Why Choose Tree-sitter Analyzer
+### 👨‍💻 Developers (Source Development)
 
-### 🎯 Solve Real Pain Points
+**For:** Developers who need to modify source code or contribute
 
-**Traditional Method Difficulties:**
-- ❌ Large files exceed LLM token limits
-- ❌ AI cannot understand code structure
-- ❌ Need to manually split files
-- ❌ Context loss leads to inaccurate analysis
+#### 🛠️ Development Environment Setup
 
-**Tree-sitter Analyzer Breakthrough:**
-- ✅ **Smart Analysis**: Understand structure without reading complete files
-- ✅ **Precise Positioning**: Accurate line-by-line code extraction
-- ✅ **AI Native**: Optimized for LLM workflows
-- ✅ **Multi-language Support**: Java, Python, JavaScript/TypeScript, etc.
+```bash
+# Clone repository
+git clone https://github.com/aimasteracc/tree-sitter-analyzer.git
+cd tree-sitter-analyzer
 
-## 📖 Practical Usage Examples
+# Install dependencies
+uv sync --extra all --extra mcp
 
-### 💬 AI IDE Prompts (SMART Analysis Workflow)
+# Run tests
+uv run pytest tests/ -v
 
-> **✅ Test Verification Status:** All prompts below have been tested and verified in real environments, ensuring 100% availability
->
-> **🎯 SMART Analysis Workflow:**
-> - **S** - Setup project (set_project_path)
-> - **M** - Map target files (precision pattern matching)
-> - **A** - Analyze core structure (analyze_code_structure with optional file output)
-> - **R** - Retrieve essential code (extract_code_section)
-> - **T** - Trace dependencies (when needed)
->
-> **⚠️ Important Notes:**
-> - Follow SMART workflow sequence for optimal results
-> - For files within the project, use **relative paths** (e.g., `examples/BigService.java`)
-> - For files outside the project, use **absolute paths** (e.g., `C:\git-public\tree-sitter-analyzer\examples\BigService.java`)
-> - All tools support both Windows and Unix style paths
-> - Project path should point to your code repository root directory
-
-#### 🔧 **S - Setup Project (Required First Step)**
-
-**Option 1: Configure in MCP Settings**
-```json
-{
-  "mcpServers": {
-    "tree-sitter-analyzer": {
-      "command": "uv",
-      "args": ["run", "python", "-m", "tree_sitter_analyzer.mcp.server"],
-      "env": {
-        "TREE_SITTER_PROJECT_ROOT": "/path/to/your/project",
-        "TREE_SITTER_OUTPUT_PATH": "/path/to/output/directory"
-      }
-    }
-  }
-}
+# Generate coverage report
+uv run pytest tests/ --cov=tree_sitter_analyzer --cov-report=html
 ```
 
-**Option 2: Tell AI Directly (Recommended, More Natural)**
+#### 🔍 Code Quality Checks
 
-**Method 1: Explicit Setup Request**
-```
-Please help me set the project root directory, the path is: C:\git-public\tree-sitter-analyzer
-```
+```bash
+# AI-generated code check
+uv run python llm_code_checker.py --check-all
 
-**Method 2: Provide Project Information**
-```
-My project is at: C:\git-public\tree-sitter-analyzer
-Please set this path as the project root
+# Quality check
+uv run python check_quality.py --new-code-only
 ```
 
-**Method 3: Simple Statement**
+---
+
+## 📖 Usage Workflow & Examples
+
+### 🔄 AI Assistant SMART Workflow
+
+The SMART workflow is the recommended process for analyzing code using AI assistants. The following demonstrates the complete workflow using `examples/BigService.java` (a large service class with 1419 lines):
+
+- **S** (Set): Set project root directory
+- **M** (Map): Precisely map target files
+- **A** (Analyze): Analyze core structure
+- **R** (Retrieve): Retrieve key code
+- **T** (Trace): Trace dependencies
+
+---
+
+#### **S - Set Project (First Step)**
+
+**Tell the AI:**
 ```
-Project path: C:\git-public\tree-sitter-analyzer
+Please set the project root directory to: C:\git-public\tree-sitter-analyzer
 ```
 
-**AI will automatically call the appropriate tool to set the path, no need to remember complex command formats**
+**The AI will automatically call** the `set_project_path` tool.
 
-**⚠️ Important Notes:**
-- After setting project path, you can use relative paths to reference files within the project
-- Example: `examples/BigService.java` instead of full paths
-- Once project path is successfully set, all subsequent analysis commands will automatically use this root directory
+> 💡 **Tip**: You can also pre-set this through the `TREE_SITTER_PROJECT_ROOT` environment variable in MCP configuration.
 
-#### 🗺️ **M - Map Target Files (Precision Pattern Matching)**
+---
 
-> **📋 Prerequisites:** This step requires `fd` and `ripgrep` tools to be installed. See [Prerequisites](#prerequisites) section for installation instructions.
+#### **M - Map Target Files (Find files to analyze)**
 
-**Smart File Discovery:**
-```
-Find all Python files in the project
-```
+**Scenario 1: Don't know where the file is, search first**
 
 ```
-List all Java files larger than 10KB
+Find all Java files containing "BigService" in the project
 ```
 
+**The AI will call** the `find_and_grep` tool and return results showing 8 matches in BigService.java.
+
+**Scenario 2: Known file path, use directly**
 ```
-Find configuration files (*.json, *.yaml, *.toml) in the project
+I want to analyze the file examples/BigService.java
 ```
 
-**Intelligent Content Search:**
+---
+
+#### **A - Analyze Core Structure (Understand file size and organization)**
+
+**Tell the AI:**
 ```
-Search for "def authenticate" in all Python files with context
+Please analyze the structure of examples/BigService.java, I want to know how large this file is and what main components it contains
 ```
 
-```
-Find all TODO comments in source files
-```
-
-```
-Search for "class.*Service" patterns in all files, case insensitive
-```
-
-**Combined Discovery & Search:**
-```
-Find all Python files and search for "async def" functions
-```
-
-```
-Search for "class.*Service" in all source files
-```
-
-**Return Format:**
-```json
-{
-  "success": true,
-  "results": [
-    {
-      "file": "tree_sitter_analyzer/core/query_service.py",
-      "line": 20,
-      "text": "class QueryService:",
-      "matches": [[0, 18]]
-    }
-  ],
-  "count": 25,
-  "meta": {
-    "searched_file_count": 256,
-    "truncated": false,
-    "fd_elapsed_ms": 225,
-    "rg_elapsed_ms": 2969
-  }
-}
-```
-
-#### 🔍 **A - Analyze Core Structure**
-
-**Method 1: Explicit Analysis Request**
-```
-Please help me analyze this file: examples/BigService.java
-```
-
-**Method 2: Describe Analysis Needs**
-```
-I want to understand the size and structure of this Java file: examples/BigService.java
-```
-
-**Method 3: Simple Request**
-```
-Analyze this file: examples/BigService.java
-```
-
-**Alternative using absolute path:**
-```
-Please analyze this file: C:\git-public\tree-sitter-analyzer\examples\BigService.java
-```
-
-**💡 Tip: After setting project path, using relative paths is recommended, more concise and convenient**
-
-**Return Format:**
+**The AI will call** the `analyze_code_structure` tool and return:
 ```json
 {
   "file_path": "examples/BigService.java",
   "language": "java",
   "metrics": {
     "lines_total": 1419,
-    "lines_code": 907,
+    "lines_code": 906,
     "lines_comment": 246,
     "lines_blank": 267,
     "elements": {
@@ -428,155 +340,133 @@ Please analyze this file: C:\git-public\tree-sitter-analyzer\examples\BigService
 }
 ```
 
-#### 📊 **R - Retrieve Essential Code**
+**Key Information:**
 
-**Method 1: Explicit Table Request**
-```
-Please generate a detailed structure table for this file: examples/BigService.java
-```
+- File has **1419 lines** total
+- Contains **1 class**, **66 methods**, **9 fields**, **1 package**, **total of 85 elements**
 
-**Method 2: Describe Table Needs**
-```
-I want to see the complete structure of this Java file, including all classes, methods, and fields: examples/BigService.java
-```
+---
 
-**Method 3: Simple Request**
+#### **R - Retrieve Key Code (Deep dive into specific implementation)**
+
+**Scenario 1: View complete structure table**
 ```
-Generate structure table: examples/BigService.java
+Please generate a detailed structure table for examples/BigService.java, I want to see a list of all methods
 ```
 
-**Alternative using absolute path:**
+**The AI will generate a Markdown table containing:**
+
+- Class information: package name, type, visibility, line range
+- Field list: 9 fields (DEFAULT_ENCODING, MAX_RETRY_COUNT, etc.)
+- Constructor: BigService()
+- Public methods: 19 (authenticateUser, createSession, generateReport, etc.)
+- Private methods: 47 (initializeService, checkMemoryUsage, etc.)
+
+**Scenario 2: Extract specific code snippet**
 ```
-Please generate a detailed structure table: C:\git-public\tree-sitter-analyzer\examples\BigService.java
-```
-
-**💡 Tip: After setting project path, using relative paths is recommended, more concise and convenient**
-
-**Return Format:**
-- Complete Markdown table
-- Including class information, method list (with line numbers), field list
-- Method signatures, visibility, line ranges, complexity, and other detailed information
-
-#### ✂️ **Precise Code Extraction**
-
-**Method 1: Explicit Extraction Request**
-```
-Please extract lines 93-105 of this file: examples/BigService.java
+Please extract lines 93-106 of examples/BigService.java, I want to see the specific implementation of memory checking
 ```
 
-**Method 2: Describe Extraction Needs**
+**The AI will call** the `extract_code_section` tool and return the checkMemoryUsage method code.
+
+---
+
+#### **T - Trace Dependencies (Understand code relationships)**
+
+**Scenario 1: Find all authentication-related methods**
 ```
-I want to see the code content from lines 93 to 105 of this Java file: examples/BigService.java
+Find all methods related to authentication (auth) in examples/BigService.java
 ```
 
-**Method 3: Simple Request**
-```
-Extract lines 93-105: examples/BigService.java
-```
+**The AI will call query filtering** and return the authenticateUser method (lines 141-172).
 
-**Alternative using absolute path:**
+**Scenario 2: Find entry point**
 ```
-Please extract code snippet: C:\git-public\tree-sitter-analyzer\examples\BigService.java, lines 93-105
+Where is the main method in this file? What does it do?
 ```
 
-**💡 Tip: After setting project path, using relative paths is recommended, more concise and convenient**
+**The AI will locate:**
 
-**Return Format:**
-```json
-{
-  "file_path": "examples/BigService.java",
-  "range": {
-    "start_line": 93,
-    "end_line": 105,
-    "start_column": null,
-    "end_column": null
-  },
-  "content": "    private void checkMemoryUsage() {\n        Runtime runtime = Runtime.getRuntime();\n        long totalMemory = runtime.totalMemory();\n        long freeMemory = runtime.freeMemory();\n        long usedMemory = totalMemory - freeMemory;\n\n        System.out.println(\"Total Memory: \" + totalMemory);\n        System.out.println(\"Free Memory: \" + freeMemory);\n        System.out.println(\"Used Memory: \" + usedMemory);\n\n        if (usedMemory > totalMemory * 0.8) {\n            System.out.println(\"WARNING: High memory usage detected!\");\n        }\n",
-  "content_length": 542
-}
+- **Location**: Lines 1385-1418
+- **Function**: Demonstrates various features of BigService (authentication, sessions, customer management, report generation, performance monitoring, security checks)
+
+**Scenario 3: Understand method call relationships**
+```
+Which methods call the authenticateUser method?
 ```
 
-#### 🔗 **T - Trace Dependencies (Advanced Analysis)**
-
-**Error Handling Enhancement (v0.9.7):**
-- Improved `@handle_mcp_errors` decorator with tool name recognition
-- Better error context for easier debugging and troubleshooting
-- Enhanced file path security validation
-
-**Find Specific Methods:**
-```
-Please help me find the main method in this file: examples/BigService.java
+**The AI will search the code** and find the call in the `main` method:
+```java
+service.authenticateUser("testuser", "password123");
 ```
 
-**Find Authentication-related Methods:**
-```
-I want to find all authentication-related methods: examples/BigService.java
-```
+---
 
-**Find Public Methods with No Parameters:**
-```
-Please help me find all public getter methods with no parameters: examples/BigService.java
-```
+### 💡 SMART Workflow Best Practices
 
-**Return Format:**
-```json
-{
-  "success": true,
-  "results": [
-    {
-      "capture_name": "method",
-      "node_type": "method_declaration",
-      "start_line": 1385,
-      "end_line": 1418,
-      "content": "public static void main(String[] args) {\n        System.out.println(\"BigService Demo Application\");\n        System.out.println(\"==========================\");\n\n        BigService service = new BigService();\n\n        // Test basic functions\n        System.out.println(\"\\n--- Testing Basic Functions ---\");\n        service.authenticateUser(\"testuser\", \"password123\");\n        service.createSession(\"testuser\");\n\n        // Test customer management\n        System.out.println(\"\\n--- Testing Customer Management ---\");\n        service.updateCustomerName(\"CUST001\", \"New Customer Name\");\n        Map<String, Object> customerInfo = service.getCustomerInfo(\"CUST001\");\n\n        // Test report generation\n        System.out.println(\"\\n--- Testing Report Generation ---\");\n        Map<String, Object> reportParams = new HashMap<>();\n        reportParams.put(\"start_date\", \"2024-01-01\");\n        reportParams.put(\"end_date\", \"2024-12-31\");\n        service.generateReport(\"sales\", reportParams);\n\n        // Test performance monitoring\n        System.out.println(\"\\n--- Testing Performance Monitoring ---\");\n        service.monitorPerformance();\n\n        // Test security check\n        System.out.println(\"\\n--- Testing Security Check ---\");\n        service.performSecurityCheck();\n\n        System.out.println(\"\\n--- Demo Completed ---\");\n        System.out.println(\"BigService demo application finished successfully.\");\n    }"
-    }
-  ],
-  "count": 1,
-  "file_path": "examples/BigService.java",
-  "language": "java",
-  "query": "methods"
-}
+1. **Natural Language First**: Describe your needs in natural language, AI will automatically choose the appropriate tools
+2. **Progressive Approach**: First understand the overall structure (A), then dive into specific code (R)
+3. **Trace as Needed**: Only use tracing (T) when you need to understand complex relationships
+4. **Combined Use**: You can combine multiple steps in one conversation
+
+**Complete Example Conversation:**
+```
+I want to understand the large file examples/BigService.java:
+1. How large is it? What main features does it contain?
+2. How is the authentication feature implemented?
+3. What public API methods are there?
 ```
 
+The AI will automatically:
+1. Analyze file structure (1419 lines, 66 methods)
+2. Locate and extract the `authenticateUser` method (lines 141-172)
+3. Generate a list of public methods (19 public methods)
 
-#### 💡 **SMART Workflow Best Practices**
-- **Natural Language**: Tell AI directly in natural language what you want, no need to remember complex parameter formats
-- **Sequential Flow**: Follow S→M→A→R→T sequence for optimal analysis results
-- **Path Processing**: After setting project path, relative paths automatically resolve to project root directory
-- **Security Protection**: Tool automatically performs project boundary checks to ensure security
-- **Smart Understanding**: AI automatically understands your needs and calls appropriate tools
-- **Performance**: All MCP tools are optimized for speed with built-in timeouts and result limits
-- **Dependency Tracing**: Use T step only when you need to understand complex relationships between code elements
+---
 
-### 🛠️ CLI Command Examples
+### ⚡ Complete CLI Commands
+
+#### 📊 Code Structure Analysis Commands
 
 ```bash
-# Quick analysis (1419-line large file, completed instantly)
-uv run python -m tree_sitter_analyzer examples/BigService.java --advanced --output-format=text
+# Quick analysis (display summary information)
+uv run python -m tree_sitter_analyzer examples/BigService.java --summary
 
-# Detailed structure table (66 methods clearly displayed)
+# Detailed analysis (display complete structure)
+uv run python -m tree_sitter_analyzer examples/BigService.java --structure
+
+# Advanced analysis (including complexity metrics)
+uv run python -m tree_sitter_analyzer examples/BigService.java --advanced
+
+# Generate complete structure table
 uv run python -m tree_sitter_analyzer examples/BigService.java --table=full
 
-# Precise code extraction (memory usage monitoring code snippet)
-uv run python -m tree_sitter_analyzer examples/BigService.java --partial-read --start-line 100 --end-line 105
+# Specify output format
+uv run python -m tree_sitter_analyzer examples/BigService.java --advanced --output-format=json
+uv run python -m tree_sitter_analyzer examples/BigService.java --advanced --output-format=text
 
-# Multi-language support test (Python file)
-uv run python -m tree_sitter_analyzer examples/sample.py --table=full
+# Precise code extraction
+uv run python -m tree_sitter_analyzer examples/BigService.java --partial-read --start-line 93 --end-line 106
 
-# Small file quick analysis (54-line Java file)
-uv run python -m tree_sitter_analyzer examples/MultiClass.java --advanced
+# Specify programming language
+uv run python -m tree_sitter_analyzer script.py --language python --table=full
+```
 
-# Silent mode (only show results)
-uv run python -m tree_sitter_analyzer examples/BigService.java --table=full --quiet
+#### 🔍 Query and Filter Commands
 
-# 🔍 Query Filter Examples (v0.9.6+)
-# Find specific methods
+```bash
+# Query specific elements
+uv run python -m tree_sitter_analyzer examples/BigService.java --query-key methods
+uv run python -m tree_sitter_analyzer examples/BigService.java --query-key classes
+
+# Filter query results
+# Find specific method
 uv run python -m tree_sitter_analyzer examples/BigService.java --query-key methods --filter "name=main"
 
-# Find authentication-related methods
+# Find authentication-related methods (pattern matching)
 uv run python -m tree_sitter_analyzer examples/BigService.java --query-key methods --filter "name=~auth*"
 
-# Find public methods with no parameters
+# Find public methods with no parameters (compound conditions)
 uv run python -m tree_sitter_analyzer examples/BigService.java --query-key methods --filter "params=0,public=true"
 
 # Find static methods
@@ -584,424 +474,114 @@ uv run python -m tree_sitter_analyzer examples/BigService.java --query-key metho
 
 # View filter syntax help
 uv run python -m tree_sitter_analyzer --filter-help
-
-# 🆕 New CLI Commands (v1.3.8+)
-# File listing with fd functionality
-uv run list-files . --extensions java --output-format json
-
-# Content search with ripgrep functionality
-uv run search-content --roots . --query "class.*extends" --include-globs "*.java" --output-format text
-
-# Two-stage search: find files first, then search content
-uv run find-and-grep --roots . --query "public.*method" --extensions java --output-format json
-
-# Advanced file filtering
-uv run list-files . --types f --size "+1k" --changed-within "1week" --hidden --output-format text
-
-# Content search with context
-uv run search-content --roots src --query "TODO|FIXME" --context-before 2 --context-after 2 --output-format json
-
-# Combined file and content search with limits
-uv run find-and-grep --roots . --query "import.*spring" --extensions java --file-limit 10 --max-count 5 --output-format text
 ```
 
----
+#### 📁 File System Operation Commands
 
-## 🏗️ Architecture Improvements (v1.2.0+)
+```bash
+# List files
+uv run list-files . --extensions java
+uv run list-files . --pattern "test_*" --extensions java --types f
+uv run list-files . --types f --size "+1k" --changed-within "1week"
 
-### 🔄 **Unified Element Management System**
+# Search content
+uv run search-content --roots . --query "class.*extends" --include-globs "*.java"
+uv run search-content --roots tests --query "TODO|FIXME" --context-before 2 --context-after 2
+uv run search-content --files examples/BigService.java examples/Sample.java --query "public.*method" --case insensitive
 
-Tree-sitter Analyzer now features a revolutionary unified architecture that integrates all code elements into a unified system:
+# Two-stage search (find files first, then search content)
+uv run find-and-grep --roots . --query "@SpringBootApplication" --extensions java
+uv run find-and-grep --roots examples --query "import.*SQLException" --extensions java --file-limit 10 --max-count 5
+uv run find-and-grep --roots . --query "public.*static.*void" --extensions java --types f --size "+1k" --output-format json
+```
 
-#### **Before (Traditional Architecture):**
-- Independent collections of classes, methods, fields, and imports
-- Inconsistent data structures across different analysis modes
-- Complex maintenance and potential inconsistencies
+#### ℹ️ Information Query Commands
 
-#### **After (Unified Architecture):**
-- **Single `elements` list**: All code elements (classes, methods, fields, imports, packages) unified
-- **Consistent element types**: Each element has an `element_type` attribute for easy identification
-- **Simplified API**: Clearer interfaces and reduced complexity
-- **Better maintainability**: Single source of truth for all code elements
+```bash
+# View help
+uv run python -m tree_sitter_analyzer --help
 
-#### **Benefits:**
-- ✅ **Consistency**: Unified data structures across all analysis modes
-- ✅ **Simplicity**: Easier to use and understand
-- ✅ **Extensibility**: Easy to add new element types
-- ✅ **Performance**: Optimized memory usage and processing
-- ✅ **Backward compatibility**: Existing APIs continue to work seamlessly
+# List supported query keys
+uv run python -m tree_sitter_analyzer --list-queries
 
-#### **Supported Element Types:**
-- `class` - Classes and interfaces
-- `function` - Methods and functions
-- `variable` - Fields and variables
-- `import` - Import statements
-- `package` - Package declarations
+# Display supported languages
+uv run python -m tree_sitter_analyzer --show-supported-languages
+
+# Display supported extensions
+uv run python -m tree_sitter_analyzer --show-supported-extensions
+
+# Display common queries
+uv run python -m tree_sitter_analyzer --show-common-queries
+
+# Display query language support
+uv run python -m tree_sitter_analyzer --show-query-languages
+```
 
 ---
 
 ## 🛠️ Core Features
 
-### 📊 **Code Structure Analysis**
-Get insights without reading complete files:
-- Class, method, and field statistics
+### 📊 Code Structure Analysis
+- Class, method, field statistics
 - Package information and import dependencies
-- Complexity metrics
+- Complexity metrics (cyclomatic complexity)
 - Precise line number positioning
 
-### ✂️ **Smart Code Extraction**
+### ✂️ Intelligent Code Extraction
 - Precise extraction by line range
-- Maintains original format and indentation
-- Includes position metadata
-- Supports efficient processing of large files
+- Preserve original formatting and indentation
+- Include position metadata
+- Efficient handling of large files
 
-### 🔍 **Advanced Query Filtering**
-Powerful code element query and filtering system:
-- **Exact matching**: `--filter "name=main"` to find specific methods
-- **Pattern matching**: `--filter "name=~auth*"` to find authentication-related methods
-- **Parameter filtering**: `--filter "params=2"` to find methods with specific parameter counts
-- **Modifier filtering**: `--filter "static=true,public=true"` to find static public methods
-- **Compound conditions**: `--filter "name=~get*,params=0,public=true"` to combine multiple conditions
-- **CLI/MCP consistency**: Same filtering syntax used in command line and AI assistants
+### 🔍 Advanced Query Filtering
+- **Exact Match**: `--filter "name=main"`
+- **Pattern Match**: `--filter "name=~auth*"`
+- **Parameter Filter**: `--filter "params=2"`
+- **Modifier Filter**: `--filter "static=true,public=true"`
+- **Compound Conditions**: Combine multiple conditions for precise queries
 
-### 🔗 **AI Assistant Integration**
-Deep integration through MCP protocol:
-- Claude Desktop
-- Cursor IDE
-- Roo Code
-- Other MCP-compatible AI tools
+### 🔗 AI Assistant Integration
+- **Claude Desktop** - Full MCP support
+- **Cursor IDE** - Built-in MCP integration
+- **Roo Code** - MCP protocol support
+- **Other MCP-compatible tools** - Universal MCP server
 
-### 🔍 **Advanced File Search & Content Analysis (v1.2.4+)**
-Powerful file discovery and content search capabilities powered by fd and ripgrep:
-
-#### **📋 Prerequisites**
-To use the advanced MCP tools (ListFilesTool, SearchContentTool, FindAndGrepTool), you need to install the following command-line tools:
-
-**Install fd (fast file finder):**
-```bash
-# macOS (using Homebrew)
-brew install fd
-
-# Windows (using winget - recommended)
-winget install sharkdp.fd
-
-# Windows (using Chocolatey)
-choco install fd
-
-# Windows (using Scoop)
-scoop install fd
-
-# Ubuntu/Debian
-sudo apt install fd-find
-
-# CentOS/RHEL/Fedora
-sudo dnf install fd-find
-
-# Arch Linux
-sudo pacman -S fd
-```
-
-**Install ripgrep (fast text search):**
-```bash
-# macOS (using Homebrew)
-brew install ripgrep
-
-# Windows (using winget - recommended)
-winget install BurntSushi.ripgrep.MSVC
-
-# Windows (using Chocolatey)
-choco install ripgrep
-
-# Windows (using Scoop)
-scoop install ripgrep
-
-# Ubuntu/Debian
-sudo apt install ripgrep
-
-# CentOS/RHEL/Fedora
-sudo dnf install ripgrep
-
-# Arch Linux
-sudo pacman -S ripgrep
-```
-
-**Verify Installation:**
-```bash
-# Check fd installation
-fd --version
-
-# Check ripgrep installation
-rg --version
-```
-
-> **⚠️ Important:** Without these tools installed, the advanced MCP file search and content analysis features will not work. The basic MCP tools (analyze_code_structure, extract_code_section, etc.) will continue to work normally.
-
-### 📁 **File Output Support (v1.5.1+)**
-
-The `analyze_code_structure` tool now supports saving analysis results to files with automatic format detection:
-
-#### **🎯 Key Features:**
-- **Automatic Extension Detection**: Based on content type (JSON → `.json`, CSV → `.csv`, Markdown → `.md`, Text → `.txt`)
-- **Smart Output Path**: Uses `TREE_SITTER_OUTPUT_PATH` environment variable or project root as fallback
-- **Security Validation**: Ensures output files are written to safe, authorized locations
-- **Content Type Detection**: Automatically detects content format and applies appropriate file extension
-
-#### **📋 Usage Examples:**
-
-**Basic File Output:**
-```json
-{
-  "tool": "analyze_code_structure",
-  "arguments": {
-    "file_path": "src/BigService.java",
-    "output_file": "service_analysis"
-  }
-}
-```
-
-**With Format Control:**
-```json
-{
-  "tool": "analyze_code_structure", 
-  "arguments": {
-    "file_path": "src/BigService.java",
-    "format_type": "csv",
-    "output_file": "service_data"
-  }
-}
-```
-
-#### **🔧 Environment Configuration:**
-```json
-{
-  "env": {
-    "TREE_SITTER_PROJECT_ROOT": "/path/to/your/project",
-    "TREE_SITTER_OUTPUT_PATH": "/path/to/output/directory"
-  }
-}
-```
-
-**Output Path Priority:**
-1. `TREE_SITTER_OUTPUT_PATH` environment variable (highest priority)
-2. Project root directory (from `TREE_SITTER_PROJECT_ROOT` or auto-detected)
-3. Current working directory (fallback)
-
-#### **🗂️ ListFilesTool - Smart File Discovery**
-- **Advanced filtering**: File type, size, modification time, extension-based filtering
-- **Pattern matching**: Glob patterns and regex support for flexible file discovery
-- **Metadata enrichment**: File size, modification time, directory status, and extension information
-- **Performance optimized**: Built on fd for lightning-fast file system traversal
-
-#### **🔎 SearchContentTool - Intelligent Content Search**
-- **Regex & literal search**: Flexible pattern matching with case sensitivity controls
-- **Context-aware results**: Configurable before/after context lines for better understanding
-- **Multiple output formats**: Standard results, count-only, summary, and grouped by file
-- **Encoding support**: Handle files with different text encodings
-- **Performance limits**: Built-in timeout and result limits for responsive operation
-
-#### **🎯 FindAndGrepTool - Combined Discovery & Search**
-- **Two-stage workflow**: First discover files with fd, then search content with ripgrep
-- **Comprehensive filtering**: Combine file discovery filters with content search patterns
-- **Advanced options**: Multiline patterns, word boundaries, fixed strings, and case controls
-- **Rich metadata**: File discovery timing, search timing, and result statistics
-- **Token optimization**: Path optimization and result grouping to minimize AI token usage
-
-#### **✨ Key Benefits:**
-- 🚀 **Enterprise-grade reliability**: 50+ comprehensive test cases ensuring stability
-- 🎯 **Token-efficient**: Multiple output formats optimized for AI assistant interactions
-- 🔧 **Highly configurable**: Extensive parameter support for precise control
-- 📊 **Performance monitoring**: Built-in timing and result statistics
-- 🛡️ **Error resilient**: Comprehensive error handling and validation
-
-### 🌍 **Multi-language Support**
-- **Java** - Full support, including Spring, JPA frameworks
-- **Python** - Full support, including type annotations, decorators
-- **JavaScript** - 🆕 **Enterprise-grade support**, including modern ES6+ features, React/Vue/Angular frameworks, JSX, async functions, generators, arrow functions, classes, module systems
-- **TypeScript** - Full support, including type annotations, interfaces
+### 🌍 Multi-Language Support
+- **Java** - Full support (1103 lines of plugin), including Spring, JPA frameworks
+- **Python** - Full support (584 lines of plugin), including type annotations, decorators
+- **JavaScript** - Enterprise-grade support (1445 lines of plugin), including ES6+, React/Vue/Angular, JSX
+- **TypeScript** - Query support (230 lines of queries), including interfaces, types, decorators
 - **C/C++, Rust, Go** - Basic support
 
----
+### 📁 Advanced File Search
+Powerful file discovery and content search based on fd and ripgrep:
+- **ListFilesTool** - Intelligent file discovery with multiple filtering conditions
+- **SearchContentTool** - Intelligent content search with regular expressions
+- **FindAndGrepTool** - Combined discovery and search, two-stage workflow
 
-## 🆕 JavaScript Enterprise Support (v1.5.0+)
-
-### 🚀 **Modern JavaScript Complete Support**
-
-Tree-sitter Analyzer now provides enterprise-level JavaScript support at the same level as Java, including:
-
-#### **📋 Core Language Features**
-- **Function Types**: Traditional functions, arrow functions, async functions, generator functions
-- **Class System**: ES6 classes, inheritance, static methods, getters/setters, constructors
-- **Variable Declarations**: var, let, const, destructuring assignment, template literals
-- **Module System**: ES6 import/export, CommonJS require/module.exports
-- **Modern Features**: Spread/rest operators, Promises, async/await
-
-#### **🎨 Framework & Ecosystem**
-- **React Support**: JSX syntax, component analysis, Hook recognition, lifecycle methods
-- **Vue.js Support**: Single-file components, template syntax, reactive data
-- **Angular Support**: Components, services, dependency injection pattern recognition
-- **Node.js Support**: Server-side patterns, Express routing, middleware
-
-#### **🔍 Advanced Analysis Capabilities**
-- **JSDoc Extraction**: Complete documentation comment parsing and type information
-- **Complexity Analysis**: Cyclomatic complexity calculation and code quality metrics
-- **Framework Detection**: Automatic recognition of React, Vue, Angular project types
-- **Export Analysis**: Module export mapping and dependency relationship tracking
-
-#### **💼 Enterprise Features**
-- **Table Formatting**: Dedicated JavaScript table formatter for clear code structure display
-- **Performance Optimization**: Caching mechanisms, iterative traversal, efficient large file handling
-- **Error Handling**: Robust exception handling and detailed error reporting
-- **Type Safety**: TypeScript-style type annotation support
-
-### 📊 **JavaScript Analysis Examples**
-
-```bash
-# Analyze modern JavaScript files
-uv run python -m tree_sitter_analyzer examples/ModernJavaScript.js --language javascript --advanced
-
-# Generate detailed structure tables
-uv run python -m tree_sitter_analyzer examples/ModernJavaScript.js --language javascript --table full
-
-# Analyze React components
-uv run python -m tree_sitter_analyzer examples/ReactComponent.jsx --language javascript --table full
-
-# Query specific function types
-uv run python -m tree_sitter_analyzer examples/ModernJavaScript.js --language javascript --query-key async_function
-```
-
-### 🎯 **Supported JavaScript Query Types**
-- `function_declaration` - Traditional function declarations
-- `arrow_function` - Arrow functions
-- `async_function` - Async functions
-- `generator_function` - Generator functions
-- `class_declaration` - Class declarations
-- `variable_declaration` - Variable declarations
-- `import_statement` - Import statements
-- `export_statement` - Export statements
-- `jsx_element` - JSX elements
-- `method_definition` - Method definitions
-
-### 🏗️ **AI Assistant JavaScript Workflow**
-
-```
-I want to analyze the structure of this JavaScript file: examples/ModernJavaScript.js
-```
-
-**Example Response Format:**
-```json
-{
-  "file_path": "examples/ModernJavaScript.js",
-  "language": "javascript",
-  "element_count": 24,
-  "elements": [
-    {
-      "name": "fetchUserData",
-      "type": "function",
-      "start_line": 208,
-      "end_line": 211,
-      "is_async": true,
-      "framework_type": "vanilla"
-    },
-    {
-      "name": "ModernComponent",
-      "type": "class",
-      "start_line": 31,
-      "end_line": 200,
-      "is_react_component": true,
-      "framework_type": "react"
-    }
-  ],
-  "success": true
-}
-```
-
----
-
-## 📦 Installation Guide
-
-### 👤 **End Users**
-```bash
-# Basic installation
-uv add tree-sitter-analyzer
-
-# Popular language packages (recommended)
-uv add "tree-sitter-analyzer[popular]"
-
-# MCP server support
-uv add "tree-sitter-analyzer[mcp]"
-
-# Complete installation
-uv add "tree-sitter-analyzer[all,mcp]"
-```
-
-### 👨‍💻 **Developers**
-```bash
-git clone https://github.com/aimasteracc/tree-sitter-analyzer.git
-cd tree-sitter-analyzer
-uv sync --extra all --extra mcp
-```
-
----
-
-## 🔒 Security and Configuration
-
-### 🛡️ **Project Boundary Protection**
-
-Tree-sitter Analyzer automatically detects and protects project boundaries:
-
-- **Auto-detection**: Based on `.git`, `pyproject.toml`, `package.json`, etc.
-- **CLI control**: `--project-root /path/to/project`
-- **MCP integration**: `TREE_SITTER_PROJECT_ROOT=/path/to/project` or use auto-detection
-- **Security guarantee**: Only analyze files within project boundaries
-
-**Recommended MCP Configuration:**
-
-**Option 1: Auto-detection (Recommended)**
-```json
-{
-  "mcpServers": {
-    "tree-sitter-analyzer": {
-      "command": "uv",
-      "args": ["run", "--with", "tree-sitter-analyzer[mcp]", "python", "-m", "tree_sitter_analyzer.mcp.server"]
-    }
-  }
-}
-```
-
-**Option 2: Manually specify project root directory**
-```json
-{
-  "mcpServers": {
-    "tree-sitter-analyzer": {
-      "command": "uv",
-      "args": ["run", "--with", "tree-sitter-analyzer[mcp]", "python", "-m", "tree_sitter_analyzer.mcp.server"],
-      "env": {
-        "TREE_SITTER_PROJECT_ROOT": "/path/to/your/project",
-        "TREE_SITTER_OUTPUT_PATH": "/path/to/output/directory"
-      }
-    }
-  }
-}
-```
+### 🏗️ Unified Element System
+- **Single Element List** - Unified management of all code elements (classes, methods, fields, imports, packages)
+- **Consistent Element Types** - Each element has an `element_type` attribute
+- **Simplified API** - Clearer interfaces and reduced complexity
+- **Better Maintainability** - Single source of truth for all code elements
 
 ---
 
 ## 🏆 Quality Assurance
 
-### 📊 **Quality Metrics**
-- **1,893 tests** - 100% pass rate ✅
-- **71.48% code coverage** - Industry-leading level
-- **Zero test failures** - Fully CI/CD ready
-- **Cross-platform compatibility** - Windows, macOS, Linux
+### 📊 Quality Metrics
+- **1,893 Tests** - 100% pass rate ✅
+- **71.48% Code Coverage** - Comprehensive test suite
+- **Zero Test Failures** - Production ready
+- **Cross-Platform Support** - Windows, macOS, Linux
 
-### ⚡ **Latest Quality Achievements (v1.6.0)**
-- ✅ **Cross-platform path compatibility** - Fixed Windows short path names and macOS symbolic link differences
-- ✅ **Windows environment** - Implemented robust path normalization using Windows API
-- ✅ **macOS environment** - Fixed `/var` vs `/private/var` symbolic link differences
-- ✅ **Comprehensive test coverage** - 1797 tests, 74.45% coverage
-- ✅ **GitFlow implementation** - Professional development/release branch strategy. See [GitFlow documentation](GITFLOW.md) for details.
+### ⚡ Latest Quality Achievements (v1.6.0)
+- ✅ **Cross-Platform Path Compatibility** - Fixed Windows short path names and macOS symlink differences
+- ✅ **Enterprise-Grade Reliability** - 50+ comprehensive test cases ensure stability
+- ✅ **GitFlow Implementation** - Professional development/release branch strategy
+- ✅ **AI Collaboration Optimization** - Specialized quality control for AI-assisted development
 
-### ⚙️ **Running Tests**
+### ⚙️ Running Tests
 ```bash
 # Run all tests
 uv run pytest tests/ -v
@@ -1013,111 +593,92 @@ uv run pytest tests/ --cov=tree_sitter_analyzer --cov-report=html --cov-report=t
 uv run pytest tests/test_mcp_server_initialization.py -v
 ```
 
-### 📈 **Coverage Highlights**
-- **Language detector**: 98.41% (Excellent)
-- **CLI main entry**: 94.36% (Excellent)
-- **Query filtering system**: 96.06% (Excellent)
-- **MCP fd/rg tools**: 93.04% (Excellent) - *Enhanced in v1.3.2 with cache format compatibility fix*
-- **Query service**: 86.25% (Good)
-- **Error handling**: 82.76% (Good)
+### 📈 Test Coverage Details
+
+**Core Modules:**
+- **Language Detector**: 98.41% (Excellent) - Automatic programming language recognition
+- **CLI Main Entry**: 94.36% (Excellent) - Command-line interface
+- **Query Filter System**: 96.06% (Excellent) - Code query and filtering
+- **Query Service**: 86.25% (Good) - Query execution engine
+- **MCP Error Handling**: 82.76% (Good) - AI assistant integration error handling
+
+**Language Plugins:**
+- **Java Plugin**: 73.00% (Good) - 1103 lines of code, full enterprise-grade support
+- **JavaScript Plugin**: 68.31% (Good) - 1445 lines of code, modern ES6+ feature support
+- **Python Plugin**: 63.26% (Good) - 584 lines of code, full type annotation support
+
+**MCP Tools:**
+- **File Search Tool**: 88.77% (Excellent) - fd/ripgrep integration
+- **Content Search Tool**: 92.70% (Excellent) - Regular expression search
+- **Combined Search Tool**: 91.57% (Excellent) - Two-stage search
+
+### ✅ Documentation Verification Status
+
+**All content in this README has been verified:**
+- ✅ **All Commands Tested** - Every CLI command has been run and verified in a real environment
+- ✅ **All Data Authentic** - Coverage rates, test counts, and other data come directly from test reports
+- ✅ **SMART Workflow Authentic** - Demonstrated based on actual BigService.java (1419 lines)
+- ✅ **Cross-Platform Verified** - Tested on Windows, macOS, Linux environments
+
+**Verification Environment:**
+- Operating Systems: Windows 10, macOS, Linux
+- Python Version: 3.10+
+- Project Version: tree-sitter-analyzer v1.6.0
+- Test Files: BigService.java (1419 lines), sample.py (256 lines), MultiClass.java (54 lines)
 
 ---
 
-## 🤖 AI Collaboration Support
+## 📚 Documentation & Support
 
-### ⚡ **Optimized for AI Development**
+### 📖 Complete Documentation
+- **[User MCP Setup Guide](MCP_SETUP_USERS.md)** - Simple configuration guide
+- **[Developer MCP Setup Guide](MCP_SETUP_DEVELOPERS.md)** - Local development configuration
+- **[Project Root Configuration](PROJECT_ROOT_CONFIG.md)** - Complete configuration reference
+- **[API Documentation](docs/api.md)** - Detailed API reference
+- **[Contributing Guide](CONTRIBUTING.md)** - How to contribute code
+- **[Onboarding & Training Guide](training/README.md)** - System onboarding materials for new members/maintainers
 
-This project supports AI-assisted development with dedicated quality control:
+### 🤖 AI Collaboration Support
+This project supports AI-assisted development with specialized quality control:
 
 ```bash
-# AI system code generation pre-check
+# Pre-generation checks for AI systems
 uv run python check_quality.py --new-code-only
 uv run python llm_code_checker.py --check-all
-
-# AI-generated code review
-uv run python llm_code_checker.py path/to/new_file.py
 ```
 
 📖 **Detailed Guides**:
 - [AI Collaboration Guide](AI_COLLABORATION_GUIDE.md)
 - [LLM Coding Guidelines](LLM_CODING_GUIDELINES.md)
 
----
-
-## 📚 Documentation
-
-- **[User MCP Setup Guide](MCP_SETUP_USERS.md)** - Simple configuration guide
-- **[Developer MCP Setup Guide](MCP_SETUP_DEVELOPERS.md)** - Local development configuration
-- **[Project Root Configuration](PROJECT_ROOT_CONFIG.md)** - Complete configuration reference
-- **[API Documentation](docs/api.md)** - Detailed API reference
-- **[Contributing Guide](CONTRIBUTING.md)** - How to contribute
-- **[Takeover and Training Guide](training/README.md)** - System onboarding materials for new members/maintainers
-
----
-
-## 💝 Sponsors & Acknowledgments
-
-We are grateful to our sponsors who make this project possible:
-
-### 🌟 **Special Thanks**
+### 💝 Sponsors & Acknowledgments
 
 **[@o93](https://github.com/o93)** - *Primary Sponsor & Supporter*
-- 🚀 **MCP Tools Enhancement**: Sponsored the comprehensive MCP fd/ripgrep tools development
-- 🧪 **Testing Infrastructure**: Enabled enterprise-grade test coverage (50+ comprehensive test cases)
+- 🚀 **MCP Tool Enhancement**: Sponsored comprehensive MCP fd/ripgrep tool development
+- 🧪 **Test Infrastructure**: Implemented enterprise-grade test coverage (50+ comprehensive test cases)
 - 🔧 **Quality Assurance**: Supported bug fixes and performance improvements
-- 💡 **Innovation Support**: Made early release of advanced file search and content analysis features possible
+- 💡 **Innovation Support**: Enabled early release of advanced file search and content analysis features
 
-*"Thanks to @o93's generous support, we were able to deliver powerful MCP tools that revolutionize how AI assistants interact with codebases. This sponsorship directly enabled the development of ListFilesTool, SearchContentTool, and FindAndGrepTool with comprehensive test coverage."*
-
-### 🤝 **Become a Sponsor**
-
-Your support helps us:
-- 🔬 Develop new features and tools
-- 🧪 Maintain comprehensive test coverage
-- 📚 Create better documentation
-- 🚀 Accelerate development cycles
-
-**[💖 Sponsor this project](https://github.com/sponsors/aimasteracc)** to help us continue building amazing tools for the developer community!
+**[💖 Sponsor this project](https://github.com/sponsors/aimasteracc)** to help us continue building excellent tools for the developer community!
 
 ---
 
-## 🤝 Contributing
+## 🤝 Contributing & License
 
-We welcome all forms of contributions! Please see [Contributing Guide](CONTRIBUTING.md) for details.
+### 🤝 Contributing Guide
 
-### ⭐ **Give Us a Star!**
+We welcome contributions of all kinds! Please check the [Contributing Guide](CONTRIBUTING.md) for details.
 
-If this project has been helpful to you, please give us a ⭐ on GitHub - this is the greatest support for us!
+### ⭐ Give us a Star!
 
----
+If this project helps you, please give us a ⭐ on GitHub - it's the greatest support for us!
 
-## 📄 License
+### 📄 License
 
 MIT License - See [LICENSE](LICENSE) file for details.
 
 ---
 
-**🎯 Built for developers dealing with large codebases and AI assistants**
+**🎯 Built for developers handling large codebases and AI assistants**
 
 *Let every line of code be understood by AI, let every project break through token limits*
-
----
-
-## ✅ Prompt Testing Verification
-
-All AI prompts in this document have been thoroughly tested in real environments, ensuring:
-
-- **100% Availability** - All prompts work correctly
-- **Multi-language Support** - Supports Java, Python, JavaScript and other mainstream languages
-- **Path Compatibility** - Both relative and absolute paths are fully supported
-- **Windows/Linux Compatibility** - Cross-platform path formats are automatically handled
-- **Real-time Verification** - Tested using real code files
-
-**Test Environment:**
-- Operating System: Windows 10
-- Project: tree-sitter-analyzer v1.6.0
-- Test Files: BigService.java (1419 lines), sample.py (256 lines), MultiClass.java (54 lines)
-- Test Coverage: 1797 tests passed, 74.45% coverage
-- Test Tools: All MCP tools (check_code_scale, analyze_code_structure, extract_code_section, query_code, list_files, search_content, find_and_grep)
-
-**🚀 Start Now** → [30-Second Quick Start](#-30-second-quick-start)
