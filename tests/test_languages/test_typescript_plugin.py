@@ -426,7 +426,7 @@ class TestTypeScriptPlugin:
         """Test file analysis when tree-sitter is not available"""
         from tree_sitter_analyzer.core.analysis_engine import AnalysisRequest
         
-        request = AnalysisRequest()
+        request = AnalysisRequest(file_path="test.ts")
         result = await plugin.analyze_file("test.ts", request)
         
         assert result.success is False
@@ -438,7 +438,7 @@ class TestTypeScriptPlugin:
         from tree_sitter_analyzer.core.analysis_engine import AnalysisRequest
         
         mock_load_language.return_value = None
-        request = AnalysisRequest()
+        request = AnalysisRequest(file_path="test.ts")
         result = await plugin.analyze_file("test.ts", request)
         
         assert result.success is False
@@ -448,7 +448,7 @@ class TestTypeScriptPlugin:
         """Test file analysis with missing file"""
         from tree_sitter_analyzer.core.analysis_engine import AnalysisRequest
         
-        request = AnalysisRequest()
+        request = AnalysisRequest(file_path="nonexistent.ts")
         result = await plugin.analyze_file("nonexistent.ts", request)
         
         assert result.success is False

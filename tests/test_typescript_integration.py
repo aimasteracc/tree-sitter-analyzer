@@ -277,7 +277,7 @@ class UserService {
             with patch('tree_sitter.Parser', return_value=mock_parser):
                 from tree_sitter_analyzer.core.analysis_engine import AnalysisRequest
                 
-                request = AnalysisRequest()
+                request = AnalysisRequest(file_path=temp_file)
                 result = await plugin.analyze_file(temp_file, request)
                 
                 assert result.success is True

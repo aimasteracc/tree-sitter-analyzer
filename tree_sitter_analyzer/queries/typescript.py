@@ -210,7 +210,7 @@ ALL_QUERIES = {
 # Add common query aliases for cross-language compatibility
 ALL_QUERIES["methods"] = {
     "query": FUNCTIONS,
-    "description": "Search all method declarations (alias for functions)",
+    "description": "Search all methods declarations (alias for functions)",
 }
 
 # Add more specific function queries
@@ -318,7 +318,7 @@ ALL_QUERIES["type_import"] = {
     (import_clause) @import.clause
     source: (string) @import.source) @type_import
 """,
-    "description": "Search type-only imports",
+    "description": "Search type import statements",
 }
 
 # Add TypeScript-specific queries
@@ -477,7 +477,7 @@ ALL_QUERIES["readonly_property"] = {
     name: (_) @readonly.name
     type: (type_annotation)? @readonly.type) @readonly.property
 """,
-    "description": "Search readonly properties",
+    "description": "Search readonly property declarations",
 }
 
 ALL_QUERIES["optional_property"] = {
