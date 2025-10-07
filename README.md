@@ -8,7 +8,7 @@
 [![Coverage](https://img.shields.io/badge/coverage-71.48%25-green.svg)](#quality-assurance)
 [![Quality](https://img.shields.io/badge/quality-enterprise%20grade-blue.svg)](#quality-assurance)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
-[![Version](https://img.shields.io/badge/version-1.6.0-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
+[![Version](https://img.shields.io/badge/version-1.6.1-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
 ## 🚀 Enterprise-Grade Code Analysis Tool for the AI Era
@@ -140,9 +140,9 @@ rg --version
 **Claude Desktop Configuration:**
 
 1. Find the configuration file location:
-   - **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
-   - **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
-   - **Linux**: `~/.config/claude/claude_desktop_config.json`
+- **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
+- **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
+- **Linux**: `~/.config/claude/claude_desktop_config.json`
 
 2. Add the following configuration:
 
@@ -185,7 +185,7 @@ rg --version
 4. Start using! Tell the AI:
    ```
    Please set the project root directory to: /path/to/your/project
-   ```
+```
 
 **Other AI Clients:**
 - **Cursor**: Built-in MCP support, refer to Cursor documentation for configuration
