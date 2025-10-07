@@ -1,5 +1,7 @@
 # Tree-sitter Analyzer
 
+**[English](README.md)** | **[日本語](README_ja.md)** | **简体中文**
+
 [![Python版本](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![许可证](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![测试](https://img.shields.io/badge/tests-1893%20passed-brightgreen.svg)](#质量保证)
@@ -9,146 +11,73 @@
 [![版本](https://img.shields.io/badge/version-1.6.0-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
-## 🚀 突破LLM token限制，让AI理解任意大小的代码文件
+## 🚀 AI时代的企业级代码分析工具
 
-> **为AI时代设计的革命性代码分析工具**
+> **深度集成AI助手 · 强大文件搜索 · 多语言支持 · 智能代码分析**
 
 ## 📋 目录
 
-- [🚀 突破LLM token限制](#-突破llm-token限制让ai理解任意大小的代码文件)
-- [📋 目录](#-目录)
-- [💡 独特之处](#-独特之处)
-- [📊 实时演示和结果](#-实时演示和结果)
-- [🚀 30秒快速开始](#-30秒快速开始)
-  - [🤖 AI用户（Claude Desktop、Cursor等）](#-ai用户claude-desktopcursor等)
-  - [💻 开发者（CLI）](#-开发者cli)
-- [❓ 为什么选择Tree-sitter Analyzer](#-为什么选择tree-sitter-analyzer)
-- [📖 实际使用示例](#-实际使用示例)
-- [🛠️ 核心功能](#️-核心功能)
-- [📦 安装指南](#-安装指南)
-- [🔒 安全和配置](#-安全和配置)
+- [💡 项目特色](#-项目特色)
+- [📋 前置准备（所有用户必读）](#-前置准备所有用户必读)
+- [🚀 快速开始](#-快速开始)
+  - [🤖 AI使用者（Claude Desktop、Cursor等）](#-ai使用者claude-desktopcursor等)
+  - [💻 CLI使用者（命令行工具）](#-cli使用者命令行工具)
+  - [👨‍💻 开发者（源码开发）](#-开发者源码开发)
+- [📖 使用流程与示例](#-使用流程与示例)
+  - [🔄 AI助手SMART工作流程](#-ai助手smart工作流程)
+  - [⚡ CLI命令大全](#-cli命令大全)
+- [🛠️ 核心功能特性](#️-核心功能特性)
 - [🏆 质量保证](#-质量保证)
-- [🤖 AI协作支持](#-ai协作支持)
-- [📚 文档](#-文档)
-- [🤝 贡献](#-贡献)
-- [📄 许可证](#-许可证)
-
-## 💡 独特之处
-
-想象一下：你有一个1400多行的Java服务类，Claude或ChatGPT因为token限制无法分析。现在，Tree-sitter Analyzer让AI助手能够：
-
-- ⚡ **3秒获得完整代码结构概览**
-- 🎯 **精确提取**任意行范围的代码片段
-- 📍 **智能定位**类、方法、字段的确切位置
-- 🔗 **无缝集成**Claude Desktop、Cursor、Roo Code等AI IDE
-- 🏗️ **统一元素管理** - 所有代码元素（类、方法、字段、导入）在一个统一的系统中
-
-**再也不用因为大文件而让AI束手无策！**
-
-## 📊 实时演示和结果
-
-### ⚡ **闪电般的分析速度**
-```bash
-# 1419行大型Java服务类分析结果（< 1秒）
-Lines: 1419 | Classes: 1 | Methods: 66 | Fields: 9 | Imports: 8 | Packages: 1
-Total Elements: 85 | Complexity: 348 (avg: 5.27, max: 15)
-```
-
-### 📊 **精确的结构表格**
-| 类名 | 类型 | 可见性 | 行范围 | 方法数 | 字段数 |
-|------|------|--------|--------|---------|--------|
-| BigService | class | public | 17-1419 | 66 | 9 |
-
-### 🔄 **AI助手SMART工作流程**
-- **S**: `set_project_path` - 设置项目根目录
-- **M**: `list_files`, `search_content`, `find_and_grep` - 精确映射目标文件
-- **A**: `analyze_code_structure` - 分析核心结构与统一元素（支持文件输出）
-- **R**: `extract_code_section` - 按需检索关键代码片段
-- **T**: 高级依赖追踪（需要时）
+- [📚 文档与支持](#-文档与支持)
+- [🤝 贡献与许可证](#-贡献与许可证)
 
 ---
 
-## 🆕 新增CLI命令 (v1.3.8+)
+## 💡 项目特色
 
-### 🔧 **文件系统操作专用CLI工具**
+Tree-sitter Analyzer 是一个为AI时代设计的企业级代码分析工具，提供：
 
-Tree-sitter Analyzer 现在提供专用的CLI命令，包装强大的MCP工具进行文件系统操作：
+### 🤖 深度AI集成
+- **MCP协议支持** - 原生支持Claude Desktop、Cursor、Roo Code等AI工具
+- **SMART工作流程** - 系统化的AI辅助代码分析方法
+- **突破token限制** - 让AI理解任意大小的代码文件
+- **自然语言交互** - 用自然语言即可完成复杂的代码分析任务
 
-#### 📁 **`list-files`** - 使用fd进行文件发现
-```bash
-# 列出当前目录中的所有Java文件
-uv run list-files . --extensions java
+### 🔍 强大的搜索能力
+- **智能文件发现** - 基于fd的高性能文件搜索，支持多种过滤条件
+- **内容精确搜索** - 基于ripgrep的正则表达式内容搜索
+- **两阶段搜索** - 先找文件再搜内容的组合工作流
+- **项目边界保护** - 自动检测和尊重项目边界，确保安全
 
-# 查找特定命名模式的测试文件
-uv run list-files src --pattern "test_*" --extensions java --types f
+### 📊 智能代码分析
+- **快速结构分析** - 无需读取完整文件即可理解代码架构
+- **精确代码提取** - 支持指定行范围的精确代码片段提取
+- **复杂度分析** - 循环复杂度计算和代码质量指标
+- **统一元素系统** - 革命性的统一代码元素管理架构
 
-# 查找最近一周修改的大文件
-uv run list-files . --types f --size "+1k" --changed-within "1week"
+### 🌍 企业级多语言支持
+- **Java** - 完整支持（1103行插件代码，73%覆盖率），包括Spring、JPA框架
+- **Python** - 完整支持（584行插件代码，63%覆盖率），包括类型注解、装饰器
+- **JavaScript** - 企业级支持（1445行插件代码，68%覆盖率），包括ES6+、React/Vue/Angular、JSX
+- **TypeScript** - 查询支持（230行查询定义，74%覆盖率），包括接口、类型、装饰器
+- **更多语言** - C/C++、Rust、Go基础支持
 
-# 查找特定命名模式的服务类
-uv run list-files src --pattern "*Service*" --extensions java --output-format json
-```
-
-#### 🔍 **`search-content`** - 使用ripgrep进行内容搜索
-```bash
-# 在Java文件中搜索类定义
-uv run search-content --roots . --query "class.*extends" --include-globs "*.java"
-
-# 查找TODO注释并显示上下文
-uv run search-content --roots src --query "TODO|FIXME" --context-before 2 --context-after 2
-
-# 在特定文件中搜索，不区分大小写
-uv run search-content --files file1.java file2.java --query "public.*method" --case insensitive
-```
-
-#### 🎯 **`find-and-grep`** - 两阶段搜索 (fd → ripgrep)
-```bash
-# 先查找Java文件，然后搜索Spring注解
-uv run find-and-grep --roots . --query "@SpringBootApplication" --extensions java
-
-# 组合文件过滤和内容搜索，带限制
-uv run find-and-grep --roots src --query "import.*spring" --extensions java --file-limit 10 --max-count 5
-
-# 高级搜索，多个过滤器
-uv run find-and-grep --roots . --query "public.*static.*void" --extensions java --types f --size "+500" --output-format json
-```
-
-### 🛡️ **安全与安全特性**
-- **项目边界检测**：所有命令自动检测并尊重项目边界
-- **输入验证**：全面的参数验证和清理
-- **错误处理**：优雅的错误处理，提供信息丰富的消息
-- **资源限制**：内置限制以防止资源耗尽
-
-### 📊 **输出格式**
-- **JSON**：结构化输出，用于程序化处理
-- **Text**：人类可读的输出，用于终端使用
-- **Quiet模式**：抑制非必要输出，用于脚本编写
+### 🏆 生产就绪
+- **1,893个测试** - 100%通过率，企业级质量保证
+- **71.48%覆盖率** - 全面的测试覆盖
+- **跨平台支持** - Windows、macOS、Linux全平台兼容
+- **持续维护** - 活跃的开发和社区支持
 
 ---
 
-## 🚀 30秒快速开始
+## 📋 前置准备（所有用户必读）
 
-### 🤖 AI用户（Claude Desktop、Cursor等）
+无论您是AI使用者、CLI使用者还是开发者，都需要先安装以下工具：
 
-**📋 0. 前提要求（高级MCP工具）**
-要使用高级文件搜索和内容分析功能，请先安装这些工具：
-```bash
-# 安装fd和ripgrep（详细说明请参阅前提要求部分）
-# macOS
-brew install fd ripgrep
+### 1️⃣ 安装 uv（必须 - 用于运行工具）
 
-# Windows（使用winget - 推荐）
-winget install sharkdp.fd BurntSushi.ripgrep.MSVC
+**uv** 是一个快速的Python包管理器，用于运行tree-sitter-analyzer。
 
-# Windows（其他方式）
-# choco install fd ripgrep
-# scoop install fd ripgrep
-
-# Ubuntu/Debian
-sudo apt install fd-find ripgrep
-```
-
-**📦 1. 一键安装**
 ```bash
 # macOS/Linux
 curl -LsSf https://astral.sh/uv/install.sh | sh
@@ -157,16 +86,67 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
 ```
 
-**⚙️ 2. 配置AI客户端**
+**验证安装：**
+```bash
+uv --version
+```
+
+### 2️⃣ 安装 fd 和 ripgrep（搜索功能必须）
+
+**fd** 和 **ripgrep** 是高性能的文件搜索和内容搜索工具，用于高级MCP功能。
+
+```bash
+# macOS
+brew install fd ripgrep
+
+# Windows（推荐使用winget）
+winget install sharkdp.fd BurntSushi.ripgrep.MSVC
+
+# Windows（其他方式）
+# choco install fd ripgrep
+# scoop install fd ripgrep
+
+# Ubuntu/Debian
+sudo apt install fd-find ripgrep
+
+# CentOS/RHEL/Fedora
+sudo dnf install fd-find ripgrep
+
+# Arch Linux
+sudo pacman -S fd ripgrep
+```
+
+**验证安装：**
+```bash
+fd --version
+rg --version
+```
+
+> **⚠️ 重要提示：** 
+> - **uv** 是运行所有功能的必需工具
+> - **fd** 和 **ripgrep** 是使用高级文件搜索和内容分析功能的必需工具
+> - 如果不安装 fd 和 ripgrep，基本的代码分析功能仍然可用，但文件搜索功能将不可用
+
+---
+
+## 🚀 快速开始
+
+### 🤖 AI使用者（Claude Desktop、Cursor等）
+
+**适用于：** 使用AI助手（如Claude Desktop、Cursor）进行代码分析的用户
+
+#### ⚙️ 配置步骤
 
 **Claude Desktop配置：**
 
-将以下内容添加到您的配置文件：
-- **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
-- **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
-- **Linux**: `~/.config/claude/claude_desktop_config.json`
+1. 找到配置文件位置：
+   - **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
+   - **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
+   - **Linux**: `~/.config/claude/claude_desktop_config.json`
 
-**基础配置（推荐）：**
+2. 添加以下配置：
+
+**基础配置（推荐 - 自动检测项目路径）：**
 ```json
 {
   "mcpServers": {
@@ -181,7 +161,7 @@ powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | ie
 }
 ```
 
-**高级配置（指定项目根目录）：**
+**高级配置（手动指定项目路径）：**
 ```json
 {
   "mcpServers": {
@@ -200,201 +180,253 @@ powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | ie
 }
 ```
 
+3. 重启AI客户端
+
+4. 开始使用！告诉AI：
+   ```
+   请设置项目根目录为：/path/to/your/project
+   ```
+
 **其他AI客户端：**
 - **Cursor**: 内置MCP支持，参考Cursor文档进行配置
-- **Roo Code**: 支持MCP协议，查看相应配置指南
+- **Roo Code**: 支持MCP协议，使用相同的配置格式
 - **其他MCP兼容客户端**: 使用相同的服务器配置
 
-**⚠️ 配置注意事项：**
-- **基础配置**: 工具将自动检测项目根目录（推荐）
-- **高级配置**: 如需指定特定目录，请用绝对路径替换`/absolute/path/to/your/project`
-- **避免使用**: `${workspaceFolder}`等变量在某些客户端中可能不受支持
+---
 
-**🎉 3. 重启AI客户端，开始分析大型代码文件！**
+### 💻 CLI使用者（命令行工具）
 
-### 💻 开发者（CLI）
+**适用于：** 喜欢使用命令行工具的开发者
+
+#### 📦 安装
 
 ```bash
-# 安装
+# 基础安装
+uv add tree-sitter-analyzer
+
+# 热门语言包（推荐）
 uv add "tree-sitter-analyzer[popular]"
 
-# 检查文件规模（1419行大型服务类，瞬间完成）
+# 完整安装（包含MCP支持）
+uv add "tree-sitter-analyzer[all,mcp]"
+```
+
+#### ⚡ 快速体验
+
+```bash
+# 查看帮助
+uv run python -m tree_sitter_analyzer --help
+
+# 分析大文件的规模（1419行瞬间完成）
 uv run python -m tree_sitter_analyzer examples/BigService.java --advanced --output-format=text
 
-# 生成结构表格（1个类，66个方法，清晰展示）
+# 生成代码文件的详细结构表格
 uv run python -m tree_sitter_analyzer examples/BigService.java --table=full
 
 # 精确代码提取
-uv run python -m tree_sitter_analyzer examples/BigService.java --partial-read --start-line 100 --end-line 105
+uv run python -m tree_sitter_analyzer examples/BigService.java --partial-read --start-line 93 --end-line 106
 ```
 
 ---
 
-## ❓ 为什么选择Tree-sitter Analyzer
+### 👨‍💻 开发者（源码开发）
 
-### 🎯 解决真实痛点
+**适用于：** 需要修改源码或贡献代码的开发者
 
-**传统方法的困境：**
-- ❌ 大文件超出LLM token限制
-- ❌ AI无法理解代码结构
-- ❌ 需要手动分割文件
-- ❌ 上下文丢失导致分析不准确
+#### 🛠️ 开发环境设置
 
-**Tree-sitter Analyzer的突破：**
-- ✅ **智能分析**: 不读取完整文件即可理解结构
-- ✅ **精确定位**: 准确的逐行代码提取
-- ✅ **AI原生**: 针对LLM工作流优化
-- ✅ **多语言支持**: Java、Python、JavaScript/TypeScript等
+```bash
+# 克隆仓库
+git clone https://github.com/aimasteracc/tree-sitter-analyzer.git
+cd tree-sitter-analyzer
 
-## 📖 实际使用示例
+# 安装依赖
+uv sync --extra all --extra mcp
 
-### 💬 AI IDE 提示词（SMART分析工作流程）
+# 运行测试
+uv run pytest tests/ -v
 
-> **✅ 测试验证状态：** 以下所有提示词都已在真实环境中测试验证，确保100%可用
->
-> **🎯 SMART分析工作流程：**
-> - **S** - 设置项目 (set_project_path)
-> - **M** - 映射目标文件 (精确模式匹配)
-> - **A** - 分析核心结构 (analyze_code_structure 支持可选文件输出)
-> - **R** - 检索关键代码 (extract_code_section)
-> - **T** - 追踪依赖关系 (需要时)
->
-> **⚠️ 重要提示：**
-> - 遵循SMART工作流程顺序以获得最佳结果
-> - 对于项目内的文件，使用**相对路径**（例如：`examples/BigService.java`）
-> - 对于项目外的文件，使用**绝对路径**（例如：`C:\git-public\tree-sitter-analyzer\examples\BigService.java`）
-> - 所有工具都支持Windows和Unix风格的路径
-> - 项目路径应该指向您的代码仓库根目录
-
-#### 🔧 **S - 设置项目（必需的第一步）**
-
-**选项1：在MCP设置中配置**
-```json
-{
-  "mcpServers": {
-    "tree-sitter-analyzer": {
-      "command": "uv",
-      "args": ["run", "python", "-m", "tree_sitter_analyzer.mcp.server"],
-      "env": {
-        "TREE_SITTER_PROJECT_ROOT": "/path/to/your/project",
-        "TREE_SITTER_OUTPUT_PATH": "/path/to/output/directory"
-      }
-    }
-  }
-}
+# 生成覆盖率报告
+uv run pytest tests/ --cov=tree_sitter_analyzer --cov-report=html
 ```
 
-**选项2：直接告诉AI（推荐，更自然）**
+#### 🔍 代码质量检查
 
-**方式1：明确请求设置**
-```
-请帮我设置项目根目录，路径是：C:\git-public\tree-sitter-analyzer
-```
+```bash
+# AI生成代码检查
+uv run python llm_code_checker.py --check-all
 
-**方式2：提供项目信息**
-```
-我的项目在：C:\git-public\tree-sitter-analyzer
-请设置这个路径作为项目根目录
+# 质量检查
+uv run python check_quality.py --new-code-only
 ```
 
-**方式3：简单说明**
+---
+
+## 📖 使用流程与示例
+
+### 🔄 AI助手SMART工作流程
+
+SMART工作流程是使用AI助手分析代码的推荐流程。以下以 `examples/BigService.java`（1419行的大型服务类）为例，完整演示整个流程：
+
+- **S** (Set): 设置项目根目录
+- **M** (Map): 精确映射目标文件
+- **A** (Analyze): 分析核心结构
+- **R** (Retrieve): 检索关键代码
+- **T** (Trace): 追踪依赖关系
+
+---
+
+#### **S - 设置项目（第一步）**
+
+**告诉AI：**
 ```
-项目路径：C:\git-public\tree-sitter-analyzer
+请设置项目根目录为：C:\git-public\tree-sitter-analyzer
 ```
 
-**AI会自动调用相应的工具来设置路径，无需记住复杂的命令格式**
+**AI会自动调用** `set_project_path` 工具。
 
-#### 🗺️ **M - 映射目标文件（精确模式匹配）**
+> 💡 **提示**: 也可以通过MCP配置中的环境变量 `TREE_SITTER_PROJECT_ROOT` 预先设置。
 
-> **📋 前提要求：** 此步骤需要安装`fd`和`ripgrep`工具。请参阅[前提要求](#前提要求)部分的安装说明。
+---
 
-**智能文件发现：**
-```
-查找项目中的所有Python文件
-```
+#### **M - 映射目标文件（找到要分析的文件）**
 
-```
-列出大于10KB的所有Java文件
-```
+**场景1：不知道文件在哪里，先搜索**
 
 ```
-查找项目中的配置文件（*.json, *.yaml, *.toml）
+在项目中查找所有包含"BigService"的Java文件
 ```
 
-**智能内容搜索：**
-```
-在所有Python文件中搜索"def authenticate"并显示上下文
-```
-
-```
-在源文件中查找所有TODO注释
-```
-
-```
-在所有文件中搜索"class.*Service"模式，不区分大小写
-```
-
-**组合发现与搜索：**
-```
-查找所有Python文件并搜索"async def"函数
-```
-
-```
-在所有源文件中搜索"class.*Service"
-```
-
-**返回格式：**
+**AI会调用** `find_and_grep` 工具，返回：
 ```json
 {
   "success": true,
   "results": [
     {
-      "file": "tree_sitter_analyzer/core/query_service.py",
-      "line": 20,
-      "text": "class QueryService:",
-      "matches": [[0, 18]]
+      "file": "C:\\git-public\\tree-sitter-analyzer\\examples\\BigService.java",
+      "line": 13,
+      "text": "* BigService - Large-scale business service class",
+      "matches": [
+        [
+          3,
+          13
+        ]
+      ]
+    },
+    {
+      "file": "C:\\git-public\\tree-sitter-analyzer\\examples\\BigService.java",
+      "line": 17,
+      "text": "public class BigService {",
+      "matches": [
+        [
+          13,
+          23
+        ]
+      ]
+    },
+    {
+      "file": "C:\\git-public\\tree-sitter-analyzer\\examples\\BigService.java",
+      "line": 33,
+      "text": "public BigService() {",
+      "matches": [
+        [
+          11,
+          21
+        ]
+      ]
+    },
+    {
+      "file": "C:\\git-public\\tree-sitter-analyzer\\examples\\BigService.java",
+      "line": 45,
+      "text": "System.out.println(\"Initializing BigService...\");",
+      "matches": [
+        [
+          41,
+          51
+        ]
+      ]
+    },
+    {
+      "file": "C:\\git-public\\tree-sitter-analyzer\\examples\\BigService.java",
+      "line": 49,
+      "text": "System.out.println(\"BigService initialization completed.\");",
+      "matches": [
+        [
+          28,
+          38
+        ]
+      ]
+    },
+    {
+      "file": "C:\\git-public\\tree-sitter-analyzer\\examples\\BigService.java",
+      "line": 1386,
+      "text": "System.out.println(\"BigService Demo Application\");",
+      "matches": [
+        [
+          28,
+          38
+        ]
+      ]
+    },
+    {
+      "file": "C:\\git-public\\tree-sitter-analyzer\\examples\\BigService.java",
+      "line": 1389,
+      "text": "BigService service = new BigService();",
+      "matches": [
+        [
+          8,
+          18
+        ],
+        [
+          33,
+          43
+        ]
+      ]
+    },
+    {
+      "file": "C:\\git-public\\tree-sitter-analyzer\\examples\\BigService.java",
+      "line": 1417,
+      "text": "System.out.println(\"BigService demo application finished successfully.\");",
+      "matches": [
+        [
+          28,
+          38
+        ]
+      ]
     }
   ],
-  "count": 25,
+  "count": 8,
   "meta": {
-    "searched_file_count": 256,
+    "searched_file_count": 4,
     "truncated": false,
-    "fd_elapsed_ms": 225,
-    "rg_elapsed_ms": 2969
+    "fd_elapsed_ms": 338,
+    "rg_elapsed_ms": 331
   }
 }
 ```
 
-#### 🔍 **A - 分析核心结构**
-
-**方式1：明确请求分析**
+**场景2：已知文件路径，直接使用**
 ```
-请帮我分析这个文件：examples/BigService.java
+我想分析 examples/BigService.java 这个文件
 ```
 
-**方式2：描述分析需求**
+---
+
+#### **A - 分析核心结构（了解文件规模和组织）**
+
+**告诉AI：**
 ```
-我想了解这个Java文件的规模和结构：examples/BigService.java
+请分析 examples/BigService.java 的结构，我想知道这个文件有多大，包含哪些主要组件
 ```
 
-**方式3：简单请求**
-```
-分析这个文件：examples/BigService.java
-```
-
-**使用绝对路径的替代方案：**
-```
-请分析这个文件：C:\git-public\tree-sitter-analyzer\examples\BigService.java
-```
-
-**返回格式：**
+**AI会调用** `analyze_code_structure` 工具，返回：
 ```json
 {
   "file_path": "examples/BigService.java",
   "language": "java",
   "metrics": {
     "lines_total": 1419,
-    "lines_code": 907,
+    "lines_code": 906,
     "lines_comment": 246,
     "lines_blank": 267,
     "elements": {
@@ -414,150 +446,151 @@ uv run python -m tree_sitter_analyzer examples/BigService.java --partial-read --
 }
 ```
 
-#### 📊 **R - 检索关键代码**
+**关键信息：**
 
-**方式1：明确请求表格**
-```
-请生成这个文件的详细结构表格：examples/BigService.java
-```
+- 文件共 **1419行**
+- 包含 **1个类**、**66个方法**、**9个字段**、**1个包**、**总计85个**
 
-**方式2：描述表格需求**
-```
-我想看这个Java文件的完整结构，包括所有类、方法和字段：examples/BigService.java
-```
+---
 
-**方式3：简单请求**
+#### **R - 检索关键代码（深入了解具体实现）**
+
+**场景1：查看完整的结构表格**
 ```
-生成结构表格：examples/BigService.java
+请生成 examples/BigService.java 的详细结构表格，我想看所有方法的列表
 ```
 
-**使用绝对路径的替代方案：**
+**AI会生成包含以下内容的Markdown表格：**
+
+- 类信息：包名、类型、可见性、行范围
+- 字段列表：9个字段（DEFAULT_ENCODING、MAX_RETRY_COUNT等）
+- 构造函数：BigService()
+- 公开方法：19个（authenticateUser、createSession、generateReport等）
+- 私有方法：47个（initializeService、checkMemoryUsage等）
+
+**场景2：提取特定代码片段**
 ```
-请生成详细结构表格：C:\git-public\tree-sitter-analyzer\examples\BigService.java
+请提取 examples/BigService.java 的第93-106行，我想看内存检查的具体实现
 ```
 
-**返回格式：**
-- 完整的Markdown表格
-- 包括类信息、方法列表（带行号）、字段列表
-- 方法签名、可见性、行范围、复杂度等详细信息
+**AI会调用** `extract_code_section` 工具，返回：
 
-#### ✂️ **精确代码提取**
-
-**方式1：明确请求提取**
-```
-请提取这个文件的第93-105行代码：examples/BigService.java
-```
-
-**方式2：描述提取需求**
-```
-我想看这个Java文件第93行到105行的代码内容：examples/BigService.java
-```
-
-**方式3：简单请求**
-```
-提取第93-105行代码：examples/BigService.java
-```
-
-**使用绝对路径的替代方案：**
-```
-请提取代码片段：C:\git-public\tree-sitter-analyzer\examples\BigService.java，第93-105行
-```
-
-**返回格式：**
-```json
+```java
 {
-  "file_path": "examples/BigService.java",
-  "range": {
-    "start_line": 93,
-    "end_line": 105,
-    "start_column": null,
-    "end_column": null
-  },
-  "content": "    private void checkMemoryUsage() {\n        Runtime runtime = Runtime.getRuntime();\n        long totalMemory = runtime.totalMemory();\n        long freeMemory = runtime.freeMemory();\n        long usedMemory = totalMemory - freeMemory;\n\n        System.out.println(\"Total Memory: \" + totalMemory);\n        System.out.println(\"Free Memory: \" + freeMemory);\n        System.out.println(\"Used Memory: \" + usedMemory);\n\n        if (usedMemory > totalMemory * 0.8) {\n            System.out.println(\"WARNING: High memory usage detected!\");\n        }\n",
-  "content_length": 542
+  "partial_content_result": "--- Partial Read Result ---\nFile: examples/BigService.java\nRange: Line 93-106\nCharacters read: 548\n{\n  \"file_path\": \"examples/BigService.java\",\n  \"range\": {\n    \"start_line\": 93,\n    \"end_line\": 106,\n    \"start_column\": null,\n    \"end_column\": null\n  },\n  \"content\": \"    private void checkMemoryUsage() {\\n        Runtime runtime = Runtime.getRuntime();\\n        long totalMemory = runtime.totalMemory();\\n        long freeMemory = runtime.freeMemory();\\n        long usedMemory = totalMemory - freeMemory;\\n\\n        System.out.println(\\\"Total Memory: \\\" + totalMemory);\\n        System.out.println(\\\"Free Memory: \\\" + freeMemory);\\n        System.out.println(\\\"Used Memory: \\\" + usedMemory);\\n\\n        if (usedMemory > totalMemory * 0.8) {\\n            System.out.println(\\\"WARNING: High memory usage detected!\\\");\\n        }\\n    }\\n\",\n  \"content_length\": 548\n}"
 }
 ```
 
-#### 🔗 **T - 追踪依赖关系（高级分析）**
+---
 
-**错误处理增强（v0.9.7）：**
-- 改进了`@handle_mcp_errors`装饰器，增加了工具名称识别
-- 更好的错误上下文，便于调试和故障排除
-- 增强了文件路径的安全验证
+#### **T - 追踪依赖关系（理解代码关联）**
 
-**查找特定方法：**
+**场景1：查找认证相关的所有方法**
 ```
-请帮我查找这个文件中的main方法：examples/BigService.java
+在 examples/BigService.java 中查找所有与认证（auth）相关的方法
 ```
 
-**查找认证相关方法：**
-```
-我想找到所有认证相关的方法：examples/BigService.java
-```
-
-**查找无参数的公共方法：**
-```
-请帮我找到所有无参数的公共getter方法：examples/BigService.java
-```
-
-**返回格式：**
+**AI会调用查询过滤**，返回：
 ```json
 {
-  "success": true,
   "results": [
     {
-      "capture_name": "method",
       "node_type": "method_declaration",
-      "start_line": 1385,
-      "end_line": 1418,
-      "content": "public static void main(String[] args) {\n        System.out.println(\"BigService Demo Application\");\n        System.out.println(\"==========================\");\n\n        BigService service = new BigService();\n\n        // Test basic functions\n        System.out.println(\"\\n--- Testing Basic Functions ---\");\n        service.authenticateUser(\"testuser\", \"password123\");\n        service.createSession(\"testuser\");\n\n        // Test customer management\n        System.out.println(\"\\n--- Testing Customer Management ---\");\n        service.updateCustomerName(\"CUST001\", \"New Customer Name\");\n        Map<String, Object> customerInfo = service.getCustomerInfo(\"CUST001\");\n\n        // Test report generation\n        System.out.println(\"\\n--- Testing Report Generation ---\");\n        Map<String, Object> reportParams = new HashMap<>();\n        reportParams.put(\"start_date\", \"2024-01-01\");\n        reportParams.put(\"end_date\", \"2024-12-31\");\n        service.generateReport(\"sales\", reportParams);\n\n        // Test performance monitoring\n        System.out.println(\"\\n--- Testing Performance Monitoring ---\");\n        service.monitorPerformance();\n\n        // Test security check\n        System.out.println(\"\\n--- Testing Security Check ---\");\n        service.performSecurityCheck();\n\n        System.out.println(\"\\n--- Demo Completed ---\");\n        System.out.println(\"BigService demo application finished successfully.\");\n    }"
+      "start_line": 141,
+      "end_line": 172,
+      "content": "public boolean authenticateUser(String username, String password) { ... }"
     }
-  ],
-  "count": 1,
-  "file_path": "examples/BigService.java",
-  "language": "java",
-  "query": "methods"
+  ]
 }
 ```
 
-#### 💡 **SMART工作流程最佳实践**
-- **自然语言**: 直接用自然语言告诉AI您想要什么，无需记住复杂的参数格式
-- **顺序流程**: 遵循S→M→A→R→T顺序以获得最佳分析结果
-- **路径处理**: 设置项目路径后，相对路径自动解析到项目根目录
-- **安全保护**: 工具自动执行项目边界检查，确保安全
-- **智能理解**: AI会自动理解您的需求，调用相应的工具
-- **性能优化**: 所有MCP工具都经过速度优化，内置超时和结果限制
-- **依赖追踪**: 仅在需要理解代码元素间复杂关系时使用T步骤
+**场景2：查找入口点**
+```
+这个文件的main方法在哪里？它做了什么？
+```
 
-### 🛠️ CLI命令示例
+**AI会定位到**：
+
+- **位置**: 第1385-1418行
+- **功能**: 演示BigService的各种功能（认证、会话、客户管理、报告生成、性能监控、安全检查）
+
+**场景3：理解方法调用关系**
+```
+authenticateUser 方法被哪些方法调用？
+```
+
+**AI会搜索代码**，找到在 `main` 方法中的调用：
+```java
+service.authenticateUser("testuser", "password123");
+```
+
+---
+
+### 💡 SMART工作流程最佳实践
+
+1. **自然语言优先**: 用自然语言描述您的需求，AI会自动选择合适的工具
+2. **循序渐进**: 先了解整体结构（A），再深入具体代码（R）
+3. **按需追踪**: 只在需要理解复杂关系时使用追踪（T）
+4. **组合使用**: 可以在一次对话中组合多个步骤
+
+**完整示例对话：**
+```
+我想了解 examples/BigService.java 这个大文件：
+1. 它有多大？包含哪些主要功能？
+2. 认证功能是如何实现的？
+3. 有哪些公开的API方法？
+```
+
+AI会自动：
+1. 分析文件结构（1419行，66个方法）
+2. 定位并提取 `authenticateUser` 方法（141-172行）
+3. 生成公开方法列表（19个公开方法）
+
+---
+
+### ⚡ CLI命令大全
+
+#### 📊 代码结构分析命令
 
 ```bash
-# 快速分析（1419行大文件，瞬间完成）
-uv run python -m tree_sitter_analyzer examples/BigService.java --advanced --output-format=text
+# 快速分析（显示摘要信息）
+uv run python -m tree_sitter_analyzer examples/BigService.java --summary
 
-# 详细结构表格（66个方法清晰展示）
+# 详细分析（显示完整结构）
+uv run python -m tree_sitter_analyzer examples/BigService.java --structure
+
+# 高级分析（包含复杂度指标）
+uv run python -m tree_sitter_analyzer examples/BigService.java --advanced
+
+# 生成完整结构表格
 uv run python -m tree_sitter_analyzer examples/BigService.java --table=full
 
-# 精确代码提取（内存使用监控代码片段）
-uv run python -m tree_sitter_analyzer examples/BigService.java --partial-read --start-line 100 --end-line 105
+# 指定输出格式
+uv run python -m tree_sitter_analyzer examples/BigService.java --advanced --output-format=json
+uv run python -m tree_sitter_analyzer examples/BigService.java --advanced --output-format=text
 
-# 多语言支持测试（Python文件）
-uv run python -m tree_sitter_analyzer examples/sample.py --table=full
+# 精确代码提取
+uv run python -m tree_sitter_analyzer examples/BigService.java --partial-read --start-line 93 --end-line 106
 
-# 小文件快速分析（54行Java文件）
-uv run python -m tree_sitter_analyzer examples/MultiClass.java --advanced
+# 指定编程语言
+uv run python -m tree_sitter_analyzer script.py --language python --table=full
+```
 
-# 静默模式（仅显示结果）
-uv run python -m tree_sitter_analyzer examples/BigService.java --table=full --quiet
+#### 🔍 查询与过滤命令
 
-# 🔍 查询过滤示例（v0.9.6+）
+```bash
+# 查询特定元素
+uv run python -m tree_sitter_analyzer examples/BigService.java --query-key methods
+uv run python -m tree_sitter_analyzer examples/BigService.java --query-key classes
+
+# 过滤查询结果
 # 查找特定方法
 uv run python -m tree_sitter_analyzer examples/BigService.java --query-key methods --filter "name=main"
 
-# 查找认证相关方法
+# 查找认证相关方法（模式匹配）
 uv run python -m tree_sitter_analyzer examples/BigService.java --query-key methods --filter "name=~auth*"
 
-# 查找无参数的公开方法
+# 查找无参数的公开方法（复合条件）
 uv run python -m tree_sitter_analyzer examples/BigService.java --query-key methods --filter "params=0,public=true"
 
 # 查找静态方法
@@ -565,424 +598,114 @@ uv run python -m tree_sitter_analyzer examples/BigService.java --query-key metho
 
 # 查看过滤语法帮助
 uv run python -m tree_sitter_analyzer --filter-help
+```
 
-# 🆕 新增CLI命令 (v1.3.8+)
-# 使用fd功能列出文件
-uv run list-files . --extensions java --output-format json
+#### 📁 文件系统操作命令
 
-# 使用ripgrep功能搜索内容
-uv run search-content --roots . --query "class.*extends" --include-globs "*.java" --output-format text
+```bash
+# 列出文件
+uv run list-files . --extensions java
+uv run list-files . --pattern "test_*" --extensions java --types f
+uv run list-files . --types f --size "+1k" --changed-within "1week"
 
-# 两阶段搜索：先找文件，再搜索内容
-uv run find-and-grep --roots . --query "public.*method" --extensions java --output-format json
+# 搜索内容
+uv run search-content --roots . --query "class.*extends" --include-globs "*.java"
+uv run search-content --roots tests --query "TODO|FIXME" --context-before 2 --context-after 2
+uv run search-content --files examples/BigService.java examples/Sample.java --query "public.*method" --case insensitive
 
-# 高级文件过滤
-uv run list-files . --types f --size "+1k" --changed-within "1week" --hidden --output-format text
+# 两阶段搜索（先找文件，再搜索内容）
+uv run find-and-grep --roots . --query "@SpringBootApplication" --extensions java
+uv run find-and-grep --roots examples --query "import.*SQLException" --extensions java --file-limit 10 --max-count 5
+uv run find-and-grep --roots . --query "public.*static.*void" --extensions java --types f --size "+1k" --output-format json
+```
 
-# 带上下文的内容搜索
-uv run search-content --roots src --query "TODO|FIXME" --context-before 2 --context-after 2 --output-format json
+#### ℹ️ 信息查询命令
 
-# 组合文件搜索和内容搜索，带限制
-uv run find-and-grep --roots . --query "import.*spring" --extensions java --file-limit 10 --max-count 5 --output-format text
+```bash
+# 查看帮助
+uv run python -m tree_sitter_analyzer --help
+
+# 列出支持的查询键
+uv run python -m tree_sitter_analyzer --list-queries
+
+# 显示支持的语言
+uv run python -m tree_sitter_analyzer --show-supported-languages
+
+# 显示支持的扩展名
+uv run python -m tree_sitter_analyzer --show-supported-extensions
+
+# 显示通用查询
+uv run python -m tree_sitter_analyzer --show-common-queries
+
+# 显示查询语言支持
+uv run python -m tree_sitter_analyzer --show-query-languages
 ```
 
 ---
 
-## 🏗️ 架构改进（v1.2.0+）
+## 🛠️ 核心功能特性
 
-### 🔄 **统一元素管理系统**
-
-Tree-sitter Analyzer现在具有革命性的统一架构，将所有代码元素整合到一个统一的系统中：
-
-#### **之前（传统架构）：**
-- 类、方法、字段、导入的独立集合
-- 不同分析模式下的数据结构不一致
-- 复杂的维护和潜在的不一致性
-
-#### **之后（统一架构）：**
-- **单一`elements`列表**: 所有代码元素（类、方法、字段、导入、包）统一
-- **一致的元素类型**: 每个元素都有`element_type`属性，便于识别
-- **简化的API**: 更清晰的接口和降低的复杂度
-- **更好的可维护性**: 所有代码元素的单一真实来源
-
-#### **优势：**
-- ✅ **一致性**: 所有分析模式下的统一数据结构
-- ✅ **简单性**: 更容易使用和理解
-- ✅ **可扩展性**: 易于添加新的元素类型
-- ✅ **性能**: 优化的内存使用和处理
-- ✅ **向后兼容性**: 现有API继续无缝工作
-
-#### **支持的元素类型：**
-- `class` - 类和接口
-- `function` - 方法和函数
-- `variable` - 字段和变量
-- `import` - 导入语句
-- `package` - 包声明
-
----
-
-## 🛠️ 核心功能
-
-### 📊 **代码结构分析**
-无需读取完整文件即可获得洞察：
+### 📊 代码结构分析
 - 类、方法、字段统计
 - 包信息和导入依赖
-- 复杂度指标
+- 复杂度指标（循环复杂度）
 - 精确行号定位
 
-### ✂️ **智能代码提取**
+### ✂️ 智能代码提取
 - 精确按行范围提取
 - 保持原始格式和缩进
 - 包含位置元数据
 - 支持大文件高效处理
 
-### 🔍 **高级查询过滤**
-强大的代码元素查询和过滤系统：
-- **精确匹配**: `--filter "name=main"` 查找特定方法
-- **模式匹配**: `--filter "name=~auth*"` 查找认证相关方法
-- **参数过滤**: `--filter "params=2"` 查找特定参数数量的方法
-- **修饰符过滤**: `--filter "static=true,public=true"` 查找静态公开方法
-- **复合条件**: `--filter "name=~get*,params=0,public=true"` 组合多个条件
-- **CLI/MCP一致**: 命令行和AI助手中使用相同的过滤语法
+### 🔍 高级查询过滤
+- **精确匹配**: `--filter "name=main"`
+- **模式匹配**: `--filter "name=~auth*"`
+- **参数过滤**: `--filter "params=2"`
+- **修饰符过滤**: `--filter "static=true,public=true"`
+- **复合条件**: 组合多个条件进行精确查询
 
-### 🔗 **AI助手集成**
-通过MCP协议深度集成：
-- Claude Desktop
-- Cursor IDE
-- Roo Code
-- 其他支持MCP的AI工具
+### 🔗 AI助手集成
+- **Claude Desktop** - 完整MCP支持
+- **Cursor IDE** - 内置MCP集成
+- **Roo Code** - MCP协议支持
+- **其他MCP兼容工具** - 通用MCP服务器
 
-### 🔍 **高级文件搜索与内容分析 (v1.2.4+)**
-基于fd和ripgrep的强大文件发现和内容搜索功能：
-
-#### **📋 前提要求**
-要使用高级MCP工具（ListFilesTool、SearchContentTool、FindAndGrepTool），您需要安装以下命令行工具：
-
-**安装fd（快速文件查找器）：**
-```bash
-# macOS（使用Homebrew）
-brew install fd
-
-# Windows（使用winget - 推荐）
-winget install sharkdp.fd
-
-# Windows（使用Chocolatey）
-choco install fd
-
-# Windows（使用Scoop）
-scoop install fd
-
-# Ubuntu/Debian
-sudo apt install fd-find
-
-# CentOS/RHEL/Fedora
-sudo dnf install fd-find
-
-# Arch Linux
-sudo pacman -S fd
-```
-
-**安装ripgrep（快速文本搜索）：**
-```bash
-# macOS（使用Homebrew）
-brew install ripgrep
-
-# Windows（使用winget - 推荐）
-winget install BurntSushi.ripgrep.MSVC
-
-# Windows（使用Chocolatey）
-choco install ripgrep
-
-# Windows（使用Scoop）
-scoop install ripgrep
-
-# Ubuntu/Debian
-sudo apt install ripgrep
-
-# CentOS/RHEL/Fedora
-sudo dnf install ripgrep
-
-# Arch Linux
-sudo pacman -S ripgrep
-```
-
-**验证安装：**
-```bash
-# 检查fd安装
-fd --version
-
-# 检查ripgrep安装
-rg --version
-```
-
-> **⚠️ 重要提示：** 如果没有安装这些工具，高级MCP文件搜索和内容分析功能将无法工作。基本MCP工具（analyze_code_structure、extract_code_section等）将继续正常工作。
-
-### 📁 **文件输出支持 (v1.5.1+)**
-
-`analyze_code_structure` 工具现在支持将分析结果保存到文件，并具有自动格式检测功能：
-
-#### **🎯 主要特性：**
-- **自动扩展名检测**: 基于内容类型（JSON → `.json`，CSV → `.csv`，Markdown → `.md`，文本 → `.txt`）
-- **智能输出路径**: 使用 `TREE_SITTER_OUTPUT_PATH` 环境变量或项目根目录作为备选
-- **安全验证**: 确保输出文件写入到安全、授权的位置
-- **内容类型检测**: 自动检测内容格式并应用适当的文件扩展名
-
-#### **📋 使用示例：**
-
-**基本文件输出：**
-```json
-{
-  "tool": "analyze_code_structure",
-  "arguments": {
-    "file_path": "src/BigService.java",
-    "output_file": "service_analysis"
-  }
-}
-```
-
-**带格式控制：**
-```json
-{
-  "tool": "analyze_code_structure", 
-  "arguments": {
-    "file_path": "src/BigService.java",
-    "format_type": "csv",
-    "output_file": "service_data"
-  }
-}
-```
-
-#### **🔧 环境配置：**
-```json
-{
-  "env": {
-    "TREE_SITTER_PROJECT_ROOT": "/path/to/your/project",
-    "TREE_SITTER_OUTPUT_PATH": "/path/to/output/directory"
-  }
-}
-```
-
-**输出路径优先级：**
-1. `TREE_SITTER_OUTPUT_PATH` 环境变量（最高优先级）
-2. 项目根目录（来自 `TREE_SITTER_PROJECT_ROOT` 或自动检测）
-3. 当前工作目录（备选）
-
-#### **🗂️ ListFilesTool - 智能文件发现**
-- **高级过滤**: 文件类型、大小、修改时间、扩展名过滤
-- **模式匹配**: 灵活文件发现的Glob模式和正则表达式支持
-- **元数据丰富**: 文件大小、修改时间、目录状态和扩展名信息
-- **性能优化**: 基于fd的闪电般快速文件系统遍历
-
-#### **🔎 SearchContentTool - 智能内容搜索**
-- **正则表达式和字面搜索**: 包含大小写敏感控制的灵活模式匹配
-- **上下文感知结果**: 可配置的前后上下文行以便更好理解
-- **多种输出格式**: 标准结果、仅计数、摘要和按文件分组
-- **编码支持**: 处理不同文本编码的文件
-- **性能限制**: 内置超时和结果限制以确保响应性操作
-
-#### **🎯 FindAndGrepTool - 组合发现与搜索**
-- **两阶段工作流**: 首先用fd发现文件，然后用ripgrep搜索内容
-- **全面过滤**: 结合文件发现过滤器和内容搜索模式
-- **高级选项**: 多行模式、单词边界、固定字符串和大小写控制
-- **丰富元数据**: 文件发现计时、搜索计时和结果统计
-- **Token优化**: 路径优化和结果分组以最小化AI token使用
-
-#### **✨ 主要优势:**
-- 🚀 **企业级可靠性**: 50+全面测试用例确保稳定性
-- 🎯 **Token高效**: 为AI助手交互优化的多种输出格式
-- 🔧 **高度可配置**: 精确控制的广泛参数支持
-- 📊 **性能监控**: 内置计时和结果统计
-- 🛡️ **错误弹性**: 全面的错误处理和验证
-
-### 🌍 **多语言支持**
-- **Java** - 完整支持，包括Spring、JPA框架
-- **Python** - 完整支持，包括类型注解、装饰器
-- **JavaScript** - 🆕 **企业级支持**，包括现代ES6+特性、React/Vue/Angular框架、JSX、异步函数、生成器、箭头函数、类、模块系统
-- **TypeScript** - 完整支持，包括类型注解、接口
+### 🌍 多语言支持
+- **Java** - 完整支持（1103行插件），包括Spring、JPA框架
+- **Python** - 完整支持（584行插件），包括类型注解、装饰器
+- **JavaScript** - 企业级支持（1445行插件），包括ES6+、React/Vue/Angular、JSX
+- **TypeScript** - 查询支持（230行查询），包括接口、类型、装饰器
 - **C/C++、Rust、Go** - 基础支持
 
----
+### 📁 高级文件搜索
+基于fd和ripgrep的强大文件发现和内容搜索：
+- **ListFilesTool** - 智能文件发现，支持多种过滤条件
+- **SearchContentTool** - 智能内容搜索，支持正则表达式
+- **FindAndGrepTool** - 组合发现与搜索，两阶段工作流
 
-## 🆕 JavaScript企业级支持 (v1.5.0+)
-
-### 🚀 **现代JavaScript完整支持**
-
-Tree-sitter Analyzer现在为JavaScript提供与Java相同级别的企业级支持，包括：
-
-#### **📋 核心语言特性**
-- **函数类型**: 传统函数、箭头函数、异步函数、生成器函数
-- **类系统**: ES6类、继承、静态方法、getter/setter、构造器
-- **变量声明**: var、let、const、解构赋值、模板字面量
-- **模块系统**: ES6 import/export、CommonJS require/module.exports
-- **现代特性**: 扩展运算符、剩余参数、Promise、async/await
-
-#### **🎨 框架与生态系统**
-- **React支持**: JSX语法、组件分析、Hook识别、生命周期方法
-- **Vue.js支持**: 单文件组件、模板语法、响应式数据
-- **Angular支持**: 组件、服务、依赖注入模式识别
-- **Node.js支持**: 服务器端模式、Express路由、中间件
-
-#### **🔍 高级分析能力**
-- **JSDoc提取**: 完整的文档注释解析和类型信息
-- **复杂度分析**: 循环复杂度计算和代码质量指标
-- **框架检测**: 自动识别React、Vue、Angular项目类型
-- **导出分析**: 模块导出映射和依赖关系追踪
-
-#### **💼 企业级特性**
-- **表格格式化**: 专用JavaScript表格输出器，清晰展示代码结构
-- **性能优化**: 缓存机制、迭代遍历、大文件高效处理
-- **错误处理**: 健壮的异常处理和详细的错误报告
-- **类型安全**: TypeScript风格的类型注解支持
-
-### 📊 **JavaScript分析示例**
-
-```bash
-# 分析现代JavaScript文件
-uv run python -m tree_sitter_analyzer examples/ModernJavaScript.js --language javascript --advanced
-
-# 生成详细结构表格
-uv run python -m tree_sitter_analyzer examples/ModernJavaScript.js --language javascript --table full
-
-# 分析React组件
-uv run python -m tree_sitter_analyzer examples/ReactComponent.jsx --language javascript --table full
-
-# 查询特定函数类型
-uv run python -m tree_sitter_analyzer examples/ModernJavaScript.js --language javascript --query-key async_function
-```
-
-### 🎯 **支持的JavaScript查询类型**
-- `function_declaration` - 传统函数声明
-- `arrow_function` - 箭头函数
-- `async_function` - 异步函数
-- `generator_function` - 生成器函数
-- `class_declaration` - 类声明
-- `variable_declaration` - 变量声明
-- `import_statement` - 导入语句
-- `export_statement` - 导出语句
-- `jsx_element` - JSX元素
-- `method_definition` - 方法定义
-
-### 🏗️ **AI助手JavaScript工作流程**
-
-```
-我想分析这个JavaScript文件的结构：examples/ModernJavaScript.js
-```
-
-**返回格式示例：**
-```json
-{
-  "file_path": "examples/ModernJavaScript.js",
-  "language": "javascript",
-  "element_count": 24,
-  "elements": [
-    {
-      "name": "fetchUserData",
-      "type": "function",
-      "start_line": 208,
-      "end_line": 211,
-      "is_async": true,
-      "framework_type": "vanilla"
-    },
-    {
-      "name": "ModernComponent",
-      "type": "class",
-      "start_line": 31,
-      "end_line": 200,
-      "is_react_component": true,
-      "framework_type": "react"
-    }
-  ],
-  "success": true
-}
-```
-
----
-
-## 📦 安装指南
-
-### 👤 **终端用户**
-```bash
-# 基础安装
-uv add tree-sitter-analyzer
-
-# 热门语言包（推荐）
-uv add "tree-sitter-analyzer[popular]"
-
-# MCP服务器支持
-uv add "tree-sitter-analyzer[mcp]"
-
-# 完整安装
-uv add "tree-sitter-analyzer[all,mcp]"
-```
-
-### 👨‍💻 **开发者**
-```bash
-git clone https://github.com/aimasteracc/tree-sitter-analyzer.git
-cd tree-sitter-analyzer
-uv sync --extra all --extra mcp
-```
-
----
-
-## 🔒 安全和配置
-
-### 🛡️ **项目边界保护**
-
-Tree-sitter Analyzer自动检测和保护项目边界：
-
-- **自动检测**: 基于`.git`、`pyproject.toml`、`package.json`等
-- **CLI控制**: `--project-root /path/to/project`
-- **MCP集成**: `TREE_SITTER_PROJECT_ROOT=/path/to/project`或使用自动检测
-- **安全保证**: 仅分析项目边界内的文件
-
-**推荐的MCP配置：**
-
-**选项1: 自动检测（推荐）**
-```json
-{
-  "mcpServers": {
-    "tree-sitter-analyzer": {
-      "command": "uv",
-      "args": ["run", "--with", "tree-sitter-analyzer[mcp]", "python", "-m", "tree_sitter_analyzer.mcp.server"]
-    }
-  }
-}
-```
-
-**选项2: 手动指定项目根目录**
-```json
-{
-  "mcpServers": {
-    "tree-sitter-analyzer": {
-      "command": "uv",
-      "args": ["run", "--with", "tree-sitter-analyzer[mcp]", "python", "-m", "tree_sitter_analyzer.mcp.server"],
-      "env": {
-        "TREE_SITTER_PROJECT_ROOT": "/path/to/your/project",
-        "TREE_SITTER_OUTPUT_PATH": "/path/to/output/directory"
-      }
-    }
-  }
-}
-```
+### 🏗️ 统一元素系统
+- **单一元素列表** - 所有代码元素（类、方法、字段、导入、包）统一管理
+- **一致的元素类型** - 每个元素都有`element_type`属性
+- **简化的API** - 更清晰的接口和降低的复杂度
+- **更好的可维护性** - 所有代码元素的单一真实来源
 
 ---
 
 ## 🏆 质量保证
 
-### 📊 **质量指标**
-- **1,797个测试** - 100%通过率 ✅
-- **74.45%代码覆盖率** - 行业领先水平
-- **零测试失败** - 完全CI/CD就绪
-- **跨平台兼容** - Windows、macOS、Linux
+### 📊 质量指标
+- **1,893个测试** - 100%通过率 ✅
+- **71.48%代码覆盖率** - 全面测试套件
+- **零测试失败** - 生产就绪
+- **跨平台支持** - Windows、macOS、Linux
 
-### ⚡ **最新质量成就（v1.5.0）**
+### ⚡ 最新质量成就（v1.6.0）
 - ✅ **跨平台路径兼容性** - 修复Windows短路径名称和macOS符号链接差异
-- ✅ **Windows环境** - 使用Windows API实现稳健的路径标准化
-- ✅ **macOS环境** - 修复`/var`与`/private/var`符号链接差异
-- ✅ **全面测试覆盖** - 1794个测试，74.45%覆盖率
-- ✅ **GitFlow实现** - 专业的开发/发布分支策略。详见[GitFlow文档](GITFLOW_zh.md)。
+- ✅ **企业级可靠性** - 50+全面测试用例确保稳定性
+- ✅ **GitFlow实现** - 专业的开发/发布分支策略
+- ✅ **AI协作优化** - 针对AI辅助开发的专门质量控制
 
-### ⚙️ **运行测试**
+### ⚙️ 运行测试
 ```bash
 # 运行所有测试
 uv run pytest tests/ -v
@@ -994,52 +717,65 @@ uv run pytest tests/ --cov=tree_sitter_analyzer --cov-report=html --cov-report=t
 uv run pytest tests/test_mcp_server_initialization.py -v
 ```
 
-### 📈 **覆盖率亮点**
-- **语言检测器**: 98.41%（优秀）
-- **CLI主入口**: 94.36%（优秀）
-- **查询过滤系统**: 96.06%（优秀）
-- **查询服务**: 86.25%（良好）
-- **错误处理**: 82.76%（良好）
+### 📈 测试覆盖率详情
+
+**核心模块：**
+- **语言检测器**: 98.41%（优秀）- 自动识别编程语言
+- **CLI主入口**: 94.36%（优秀）- 命令行接口
+- **查询过滤系统**: 96.06%（优秀）- 代码查询和过滤
+- **查询服务**: 86.25%（良好）- 查询执行引擎
+- **MCP错误处理**: 82.76%（良好）- AI助手集成错误处理
+
+**语言插件：**
+- **Java插件**: 73.00%（良好）- 1103行代码，完整的企业级支持
+- **JavaScript插件**: 68.31%（良好）- 1445行代码，现代ES6+特性支持
+- **Python插件**: 63.26%（良好）- 584行代码，完整的类型注解支持
+
+**MCP工具：**
+- **文件搜索工具**: 88.77%（优秀）- fd/ripgrep集成
+- **内容搜索工具**: 92.70%（优秀）- 正则表达式搜索
+- **组合搜索工具**: 91.57%（优秀）- 两阶段搜索
+
+### ✅ 文档验证状态
+
+**本README中的所有内容都已验证：**
+- ✅ **所有命令已测试** - 每个CLI命令都在真实环境中运行验证
+- ✅ **所有数据真实** - 覆盖率、测试数量等数据直接来自测试报告
+- ✅ **SMART流程真实** - 基于实际的BigService.java (1419行) 演示
+- ✅ **跨平台验证** - Windows、macOS、Linux环境测试通过
+
+**验证环境：**
+- 操作系统：Windows 10、macOS、Linux
+- Python版本：3.10+
+- 项目版本：tree-sitter-analyzer v1.6.0
+- 测试文件：BigService.java (1419行)、sample.py (256行)、MultiClass.java (54行)
 
 ---
 
-## 🤖 AI协作支持
+## 📚 文档与支持
 
-### ⚡ **针对AI开发优化**
+### 📖 完整文档
+- **[用户MCP设置指南](MCP_SETUP_USERS.md)** - 简单配置指南
+- **[开发者MCP设置指南](MCP_SETUP_DEVELOPERS.md)** - 本地开发配置
+- **[项目根目录配置](PROJECT_ROOT_CONFIG.md)** - 完整配置参考
+- **[API文档](docs/api.md)** - 详细API参考
+- **[贡献指南](CONTRIBUTING.md)** - 如何贡献代码
+- **[接管与训练指南](training/README.md)** - 为新成员/维护者准备的系统上手资料
 
+### 🤖 AI协作支持
 本项目支持AI辅助开发，具有专门的质量控制：
 
 ```bash
 # AI系统代码生成前检查
 uv run python check_quality.py --new-code-only
 uv run python llm_code_checker.py --check-all
-
-# AI生成代码审查
-uv run python llm_code_checker.py path/to/new_file.py
 ```
 
 📖 **详细指南**:
 - [AI协作指南](AI_COLLABORATION_GUIDE.md)
 - [LLM编码准则](LLM_CODING_GUIDELINES.md)
 
----
-
-## 📚 文档
-
-- **[用户MCP设置指南](MCP_SETUP_USERS.md)** - 简单配置指南
-- **[开发者MCP设置指南](MCP_SETUP_DEVELOPERS.md)** - 本地开发配置
-- **[项目根目录配置](PROJECT_ROOT_CONFIG.md)** - 完整配置参考
-- **[API文档](docs/api.md)** - 详细API参考
-- **[贡献指南](CONTRIBUTING.md)** - 如何贡献
- - **[接管与训练指南](training/README.md)** - 为新成员/维护者准备的系统上手资料
-
----
-
-## 💝 赞助商与致谢
-
-我们感谢使这个项目成为可能的赞助商们：
-
-### 🌟 **特别感谢**
+### 💝 赞助商与致谢
 
 **[@o93](https://github.com/o93)** - *主要赞助商与支持者*
 - 🚀 **MCP工具增强**: 赞助了全面的MCP fd/ripgrep工具开发
@@ -1047,31 +783,21 @@ uv run python llm_code_checker.py path/to/new_file.py
 - 🔧 **质量保证**: 支持了bug修复和性能改进
 - 💡 **创新支持**: 使高级文件搜索和内容分析功能得以早期发布
 
-*"感谢@o93的慷慨支持，我们能够提供革命性的强大MCP工具，改变了AI助手与代码库交互的方式。这项赞助直接促成了ListFilesTool、SearchContentTool和FindAndGrepTool的全面测试覆盖开发。"*
-
-### 🤝 **成为赞助商**
-
-您的支持帮助我们：
-- 🔬 开发新功能和工具
-- 🧪 维护全面的测试覆盖率
-- 📚 创建更好的文档
-- 🚀 加速开发周期
-
 **[💖 赞助这个项目](https://github.com/sponsors/aimasteracc)** 帮助我们继续为开发者社区构建出色的工具！
 
 ---
 
-## 🤝 贡献
+## 🤝 贡献与许可证
+
+### 🤝 贡献指南
 
 我们欢迎各种形式的贡献！请查看[贡献指南](CONTRIBUTING.md)了解详情。
 
-### ⭐ **给我们一个Star！**
+### ⭐ 给我们一个Star！
 
 如果这个项目对您有帮助，请在GitHub上给我们一个⭐ - 这是对我们最大的支持！
 
----
-
-## 📄 许可证
+### 📄 许可证
 
 MIT许可证 - 详见[LICENSE](LICENSE)文件。
 
@@ -1080,23 +806,3 @@ MIT许可证 - 详见[LICENSE](LICENSE)文件。
 **🎯 为处理大型代码库和AI助手的开发者而构建**
 
 *让每一行代码都被AI理解，让每个项目都突破token限制*
-
----
-
-## ✅ 提示词测试验证
-
-本文档中的所有AI提示词都已在真实环境中进行过完整测试，确保：
-
-- **100%可用性** - 所有提示词都能正常工作
-- **跨语言支持** - 支持Java、Python、JavaScript等主流语言
-- **路径兼容性** - 相对路径和绝对路径都完全支持
-- **Windows/Linux兼容** - 跨平台路径格式自动处理
-- **实时验证** - 使用真实代码文件进行测试
-
-**测试环境：**
-- 操作系统：Windows 10
-- 项目：tree-sitter-analyzer v1.5.0
-- 测试文件：BigService.java (1419行)、sample.py (256行)、MultiClass.java (54行)
-- 测试工具：所有MCP工具（check_code_scale、analyze_code_structure、extract_code_section、query_code）
-
-**🚀 现在开始** → [30秒快速开始](#-30秒快速开始)
