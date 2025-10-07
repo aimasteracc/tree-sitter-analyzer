@@ -1,5 +1,43 @@
 # Changelog
 
+## [1.6.2] - 2025-10-07
+
+### Added
+- **🚀 Complete TypeScript Support**: Comprehensive TypeScript language analysis capabilities
+  - **TypeScript Plugin**: Full TypeScript language plugin implementation (`tree_sitter_analyzer/languages/typescript_plugin.py`)
+  - **Syntax Support**: Support for interfaces, type aliases, enums, generics, decorators, and all TypeScript features
+  - **TSX/JSX Support**: Complete React TypeScript component analysis
+  - **Framework Detection**: Automatic detection of React, Angular, Vue components
+  - **Type Annotations**: Full TypeScript type system support
+  - **TSDoc Extraction**: Automatic extraction of TypeScript documentation comments
+  - **Complexity Analysis**: TypeScript code complexity calculation
+
+- **📦 Dependency Configuration**: TypeScript-related dependencies fully configured
+  - **Optional Dependency**: `tree-sitter-typescript>=0.20.0,<0.25.0`
+  - **Dependency Groups**: Included in web, popular, all-languages dependency groups
+  - **Full Support**: Support for .ts, .tsx, .d.ts file extensions
+
+- **🧪 Test Coverage**: Complete TypeScript test suite
+  - **Comprehensive Tests**: Full TypeScript feature testing
+  - **Example Files**: Detailed TypeScript code examples provided
+  - **Integration Tests**: TypeScript plugin integration testing
+
+### Improved
+- **📊 Quality Metrics**:
+  - Test count increased to 2046 (up from 1893)
+  - Code coverage maintained at 69.67%
+  - All tests passing with improved system stability
+- **🔧 Code Quality**: Complete TypeScript support implementation and testing
+- **📚 Documentation**: Updated all related documentation and examples
+
+### Technical Details
+- **New Files**: Complete TypeScript plugin, queries, formatters implementation
+- **Test Coverage**: All 2046 tests passing with 69.67% coverage
+- **Quality Metrics**: Full TypeScript language support
+- **Breaking Changes**: None - all improvements are backward compatible
+
+This minor release introduces complete TypeScript support, providing developers with powerful TypeScript code analysis capabilities while maintaining full backward compatibility.
+
 ## [1.6.0] - 2025-10-06
 
 ### Added

@@ -4,11 +4,11 @@
 
 [![Python版本](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![许可证](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![测试](https://img.shields.io/badge/tests-1893%20passed-brightgreen.svg)](#质量保证)
-[![覆盖率](https://img.shields.io/badge/coverage-71.48%25-green.svg)](#质量保证)
+[![测试](https://img.shields.io/badge/tests-2046%20passed-brightgreen.svg)](#质量保证)
+[![覆盖率](https://img.shields.io/badge/coverage-69.67%25-green.svg)](#质量保证)
 [![质量](https://img.shields.io/badge/quality-enterprise%20grade-blue.svg)](#质量保证)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
-[![版本](https://img.shields.io/badge/version-1.6.1-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
+[![版本](https://img.shields.io/badge/version-1.6.2-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
 ## 🚀 AI时代的企业级代码分析工具
@@ -59,12 +59,12 @@ Tree-sitter Analyzer 是一个为AI时代设计的企业级代码分析工具，
 - **Java** - 完整支持（1103行插件代码，73%覆盖率），包括Spring、JPA框架
 - **Python** - 完整支持（584行插件代码，63%覆盖率），包括类型注解、装饰器
 - **JavaScript** - 企业级支持（1445行插件代码，68%覆盖率），包括ES6+、React/Vue/Angular、JSX
-- **TypeScript** - 查询支持（230行查询定义，74%覆盖率），包括接口、类型、装饰器
+- **TypeScript** - **完整支持**（1553行插件代码，29%覆盖率），包括接口、类型、装饰器、TSX/JSX、框架检测
 - **更多语言** - C/C++、Rust、Go基础支持
 
 ### 🏆 生产就绪
-- **1,893个测试** - 100%通过率，企业级质量保证
-- **71.48%覆盖率** - 全面的测试覆盖
+- **2,046个测试** - 100%通过率，企业级质量保证
+- **69.67%覆盖率** - 全面的测试覆盖
 - **跨平台支持** - Windows、macOS、Linux全平台兼容
 - **持续维护** - 活跃的开发和社区支持
 
@@ -674,7 +674,7 @@ uv run python -m tree_sitter_analyzer --show-query-languages
 - **Java** - 完整支持（1103行插件），包括Spring、JPA框架
 - **Python** - 完整支持（584行插件），包括类型注解、装饰器
 - **JavaScript** - 企业级支持（1445行插件），包括ES6+、React/Vue/Angular、JSX
-- **TypeScript** - 查询支持（230行查询），包括接口、类型、装饰器
+- **TypeScript** - **完整支持**（1553行插件），包括接口、类型、装饰器、TSX/JSX、框架检测
 - **C/C++、Rust、Go** - 基础支持
 
 ### 📁 高级文件搜索
@@ -699,7 +699,7 @@ uv run python -m tree_sitter_analyzer --show-query-languages
 - **零测试失败** - 生产就绪
 - **跨平台支持** - Windows、macOS、Linux
 
-### ⚡ 最新质量成就（v1.6.0）
+### ⚡ 最新质量成就（v1.6.2）
 - ✅ **跨平台路径兼容性** - 修复Windows短路径名称和macOS符号链接差异
 - ✅ **企业级可靠性** - 50+全面测试用例确保稳定性
 - ✅ **GitFlow实现** - 专业的开发/发布分支策略
@@ -747,7 +747,7 @@ uv run pytest tests/test_mcp_server_initialization.py -v
 **验证环境：**
 - 操作系统：Windows 10、macOS、Linux
 - Python版本：3.10+
-- 项目版本：tree-sitter-analyzer v1.6.0
+- 项目版本：tree-sitter-analyzer v1.6.2
 - 测试文件：BigService.java (1419行)、sample.py (256行)、MultiClass.java (54行)
 
 ---
