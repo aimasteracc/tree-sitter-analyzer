@@ -167,12 +167,16 @@ class TestTableFormatterFactory:
         assert isinstance(languages, list)
         assert "java" in languages
         assert "python" in languages
+        assert "javascript" in languages or "js" in languages
+        assert "typescript" in languages or "ts" in languages
 
     def test_is_language_supported(self):
         """Test checking if language is supported."""
         supported_languages = TableFormatterFactory.get_supported_languages()
         assert "java" in supported_languages
         assert "python" in supported_languages
+        assert "javascript" in supported_languages or "js" in supported_languages
+        assert "typescript" in supported_languages or "ts" in supported_languages
         assert "unsupported" not in supported_languages
 
 
