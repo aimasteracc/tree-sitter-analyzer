@@ -1,5 +1,12 @@
 # Technology Stack & Build System
 
+## Current Version & Statistics
+
+- **Version**: v1.6.1 (Latest stable release)
+- **Test Suite**: 1,893 tests with 71.48% code coverage
+- **MCP Tools**: 12 specialized tools for AI integration
+- **Build Status**: Beta (Development Status :: 4 - Beta)
+
 ## Build System & Package Management
 
 - **Primary**: `uv` (fast Python package manager) - used for all development and user installations
@@ -9,7 +16,7 @@
 ## Core Technology Stack
 
 ### Language & Runtime
-- **Python**: 3.10+ (required minimum)
+- **Python**: 3.10+ (required minimum, supports 3.10-3.13)
 - **Tree-sitter**: v0.24.0 (core parsing engine)
 - **Async Support**: `asyncio` for MCP server operations
 
@@ -56,10 +63,10 @@ uv sync --extra all --extra mcp
 
 ### Testing
 ```bash
-# Run all tests (1,358 tests)
+# Run all tests (1,893 tests)
 uv run pytest tests/ -v
 
-# Run with coverage report
+# Run with coverage report (71.48% coverage)
 uv run pytest tests/ --cov=tree_sitter_analyzer --cov-report=html
 
 # Run specific test categories
@@ -141,6 +148,22 @@ uv add "tree-sitter-analyzer[mcp]"
 uv add "tree-sitter-analyzer[all,mcp]"
 ```
 
+## MCP Tools Architecture
+
+### Available MCP Tools (12 tools)
+- `analyze_code_structure` - Code structure analysis with line positioning
+- `check_code_scale` - File size and complexity metrics
+- `extract_code_section` - Precise line-range code extraction
+- `query_code` - Tree-sitter query execution
+- `list_files` - Advanced file listing with fd integration
+- `search_content` - Content search with ripgrep integration
+- `find_and_grep` - Two-stage file finding and content search
+- `read_partial_tool` - Partial file reading
+- `table_format_tool` - Table formatting for analysis results
+- `universal_analyze_tool` - Universal code analysis
+- `set_project_path` - Project root configuration
+- `base_tool` - Base tool functionality
+
 ## Architecture Notes
 
 - **Plugin System**: Dynamic plugin architecture for language support
@@ -148,3 +171,4 @@ uv add "tree-sitter-analyzer[all,mcp]"
 - **Security**: Project boundary validation and input sanitization
 - **Performance**: Optimized for large file handling with minimal memory usage
 - **Cross-platform**: Windows, macOS, Linux compatibility
+- **AI Integration**: Native MCP protocol support for seamless AI assistant integration
