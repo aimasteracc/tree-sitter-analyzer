@@ -343,7 +343,7 @@ class UserService {
         # Test full format
         full_formatter = TableFormatterFactory.create_formatter("typescript", "full")
         full_result = full_formatter.format(sample_data)
-        assert "# TypeScript Script: test" in full_result
+        assert "# TypeScript Module: test" in full_result
         assert "## Classes" in full_result
         assert "## Functions" in full_result
         

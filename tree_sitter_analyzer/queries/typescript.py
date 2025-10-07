@@ -185,10 +185,10 @@ ALL_QUERIES = {
         "query": TYPE_ALIASES,
         "description": "Search all type aliases declarations",
     },
-    "enums": {"query": ENUMS, "description": "Search all enum declarations"},
+    "enums": {"query": ENUMS, "description": "Search all enums declarations"},
     "variables": {
         "query": VARIABLES,
-        "description": "Search all variable declarations with type annotations",
+        "description": "Search all variables declarations with type annotations",
     },
     "imports": {
         "query": IMPORTS,
@@ -198,7 +198,7 @@ ALL_QUERIES = {
     "decorators": {"query": DECORATORS, "description": "Search all decorators"},
     "generics": {
         "query": GENERICS,
-        "description": "Search all generic type parameters",
+        "description": "Search all generics type parameters",
     },
     "signatures": {
         "query": SIGNATURES,
