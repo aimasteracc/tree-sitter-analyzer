@@ -11,7 +11,9 @@ import pytest
 from tree_sitter_analyzer.formatters.base_formatter import BaseTableFormatter
 from tree_sitter_analyzer.formatters.formatter_factory import TableFormatterFactory
 from tree_sitter_analyzer.formatters.java_formatter import JavaTableFormatter
+from tree_sitter_analyzer.formatters.javascript_formatter import JavaScriptTableFormatter
 from tree_sitter_analyzer.formatters.python_formatter import PythonTableFormatter
+from tree_sitter_analyzer.formatters.typescript_formatter import TypeScriptTableFormatter
 
 
 class TestBaseTableFormatter:
@@ -100,6 +102,24 @@ class TestTableFormatterFactory:
         """Test creating formatter for Python language."""
         formatter = TableFormatterFactory.create_formatter("python")
         assert isinstance(formatter, PythonTableFormatter)
+
+    def test_create_formatter_for_javascript(self):
+        """Test creating formatter for JavaScript language."""
+        formatter = TableFormatterFactory.create_formatter("javascript")
+        assert isinstance(formatter, JavaScriptTableFormatter)
+        
+        # Test alias
+        formatter_alias = TableFormatterFactory.create_formatter("js")
+        assert isinstance(formatter_alias, JavaScriptTableFormatter)
+
+    def test_create_formatter_for_typescript(self):
+        """Test creating formatter for TypeScript language."""
+        formatter = TableFormatterFactory.create_formatter("typescript")
+        assert isinstance(formatter, TypeScriptTableFormatter)
+        
+        # Test alias
+        formatter_alias = TableFormatterFactory.create_formatter("ts")
+        assert isinstance(formatter_alias, TypeScriptTableFormatter)
 
     def test_create_formatter_case_insensitive(self):
         """Test that formatter factory is case insensitive."""
