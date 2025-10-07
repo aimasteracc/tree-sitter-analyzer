@@ -242,6 +242,7 @@ class TestTypeScriptIntegration:
 
     @patch('tree_sitter_analyzer.languages.typescript_plugin.TREE_SITTER_AVAILABLE', True)
     @patch('tree_sitter_analyzer.languages.typescript_plugin.loader.load_language')
+    @pytest.mark.asyncio
     async def test_typescript_plugin_analyze_file_mock(self, mock_load_language):
         """Test TypeScript plugin file analysis with mocked dependencies"""
         # Mock tree-sitter language and parser

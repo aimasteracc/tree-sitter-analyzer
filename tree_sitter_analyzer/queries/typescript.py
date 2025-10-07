@@ -573,7 +573,7 @@ ALL_QUERIES["predicate_type"] = {
     parameter_name: (identifier) @predicate.param
     type: (_) @predicate.type) @predicate.signature
 """,
-    "description": "Search type predicate signatures",
+    "description": "Search predicate type signatures",
 }
 
 ALL_QUERIES["asserts_type"] = {
@@ -622,7 +622,7 @@ ALL_QUERIES["jsx_self_closing"] = {
 (jsx_self_closing_element
     name: (_) @jsx.tag_name) @jsx.self_closing
 """,
-    "description": "Search self-closing JSX elements",
+    "description": "Search jsx self closing elements",
 }
 
 ALL_QUERIES["jsx_fragment"] = {
@@ -643,7 +643,7 @@ ALL_QUERIES["as_expression"] = {
     "query": """
 (as_expression) @as.assertion
 """,
-    "description": "Search 'as' type assertions",
+    "description": "Search as expression type assertions",
 }
 
 ALL_QUERIES["type_assertion"] = {
@@ -661,7 +661,7 @@ ALL_QUERIES["satisfies_expression"] = {
     expression: (_) @satisfies.expression
     type: (_) @satisfies.type) @satisfies.assertion
 """,
-    "description": "Search 'satisfies' expressions",
+    "description": "Search satisfies expression type checks",
 }
 
 ALL_QUERIES["non_null_expression"] = {
@@ -669,7 +669,7 @@ ALL_QUERIES["non_null_expression"] = {
 (non_null_expression
     expression: (_) @non_null.expression) @non_null.assertion
 """,
-    "description": "Search non-null assertions (!)",
+    "description": "Search non null expression assertions (!)",
 }
 
 ALL_QUERIES["optional_chain"] = {
@@ -722,14 +722,14 @@ ALL_QUERIES["regex_literal"] = {
     "query": """
 (regex) @regex.literal
 """,
-    "description": "Search regular expression literals",
+    "description": "Search regex literal patterns",
 }
 
 ALL_QUERIES["this_type"] = {
     "query": """
 (this_type) @this.type
 """,
-    "description": "Search 'this' type references",
+    "description": "Search this type references",
 }
 
 ALL_QUERIES["import_type"] = {
@@ -739,7 +739,7 @@ ALL_QUERIES["import_type"] = {
     (import_clause) @import_type.clause
     source: (string) @import_type.source) @import_type.statement
 """,
-    "description": "Search type-only import statements",
+    "description": "Search import type statements",
 }
 
 ALL_QUERIES["export_type"] = {
@@ -747,7 +747,7 @@ ALL_QUERIES["export_type"] = {
 (export_statement
     "type" @export_type.keyword) @export_type.statement
 """,
-    "description": "Search type-only export statements",
+    "description": "Search export type statements",
 }
 
 ALL_QUERIES["declare_statement"] = {
@@ -791,7 +791,7 @@ ALL_QUERIES["triple_slash_directive"] = {
 (comment) @directive.comment
 (#match? @directive.comment "^///\\s*<")
 """,
-    "description": "Search triple-slash directives",
+    "description": "Search triple slash directive comments",
 }
 
 ALL_QUERIES["readonly_modifier"] = {
