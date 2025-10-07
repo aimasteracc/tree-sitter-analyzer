@@ -572,7 +572,7 @@ IMPORTS = """
         (named_imports
             (import_specifier
                 name: (identifier) @import.name
-                alias: (identifier)? @import.alias))) @import.named
+                alias: (identifier)? @import.alias)))) @import.named
 
 (import_statement
     (import_clause

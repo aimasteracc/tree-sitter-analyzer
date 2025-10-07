@@ -358,8 +358,6 @@ class TypeScriptElementExtractor(ElementExtractor):
                 is_arrow=False,
                 is_method=False,
                 framework_type=self.framework_type,
-                generics=generics,
-                has_type_annotations=bool(return_type or any(":" in p for p in parameters)),
             )
         except Exception as e:
             log_error(f"Failed to extract function info: {e}")
@@ -430,7 +428,6 @@ class TypeScriptElementExtractor(ElementExtractor):
                 is_arrow=True,
                 is_method=False,
                 framework_type=self.framework_type,
-                has_type_annotations=bool(return_type or any(":" in p for p in parameters)),
             )
         except Exception as e:
             log_debug(f"Failed to extract arrow function info: {e}")
@@ -487,10 +484,6 @@ class TypeScriptElementExtractor(ElementExtractor):
                 is_method=True,
                 framework_type=self.framework_type,
                 visibility=visibility,
-                is_getter=is_getter,
-                is_setter=is_setter,
-                generics=generics,
-                has_type_annotations=bool(return_type or any(":" in p for p in parameters)),
             )
         except Exception as e:
             log_debug(f"Failed to extract method info: {e}")
@@ -548,8 +541,7 @@ class TypeScriptElementExtractor(ElementExtractor):
                 visibility=visibility,
                 is_getter=is_getter,
                 is_setter=is_setter,
-                generics=generics,
-                has_type_annotations=True,  # Signatures always have type annotations
+                # TypeScript-specific properties handled above
             )
         except Exception as e:
             log_debug(f"Failed to extract method signature info: {e}")
@@ -595,8 +587,7 @@ class TypeScriptElementExtractor(ElementExtractor):
                 is_arrow=False,
                 is_method=False,
                 framework_type=self.framework_type,
-                generics=generics,
-                has_type_annotations=bool(return_type or any(":" in p for p in parameters)),
+                # TypeScript-specific properties handled above
             )
         except Exception as e:
             log_debug(f"Failed to extract generator function info: {e}")
@@ -654,12 +645,11 @@ class TypeScriptElementExtractor(ElementExtractor):
                 interfaces=interfaces,
                 docstring=tsdoc,
                 # TypeScript-specific properties
-                is_component=is_component,
+                is_react_component=is_component,
                 framework_type=self.framework_type,
                 is_exported=self._is_exported_class(class_name),
                 is_abstract=is_abstract,
-                generics=generics,
-                has_type_annotations=True,
+                # TypeScript-specific properties handled above
             )
         except Exception as e:
             log_debug(f"Failed to extract class info: {e}")
@@ -709,8 +699,7 @@ class TypeScriptElementExtractor(ElementExtractor):
                 # TypeScript-specific properties
                 framework_type=self.framework_type,
                 is_exported=self._is_exported_class(interface_name),
-                generics=generics,
-                has_type_annotations=True,
+                # TypeScript-specific properties handled above
             )
         except Exception as e:
             log_debug(f"Failed to extract interface info: {e}")
@@ -752,8 +741,7 @@ class TypeScriptElementExtractor(ElementExtractor):
                 # TypeScript-specific properties
                 framework_type=self.framework_type,
                 is_exported=self._is_exported_class(type_name),
-                generics=generics,
-                has_type_annotations=True,
+                # TypeScript-specific properties handled above
             )
         except Exception as e:
             log_debug(f"Failed to extract type alias info: {e}")
@@ -792,7 +780,7 @@ class TypeScriptElementExtractor(ElementExtractor):
                 # TypeScript-specific properties
                 framework_type=self.framework_type,
                 is_exported=self._is_exported_class(enum_name),
-                has_type_annotations=True,
+                # TypeScript-specific properties handled above
             )
         except Exception as e:
             log_debug(f"Failed to extract enum info: {e}")
@@ -857,10 +845,7 @@ class TypeScriptElementExtractor(ElementExtractor):
                 is_static=is_static,
                 is_constant=False,  # Class properties are not const
                 # TypeScript-specific properties
-                declaration_kind="property",
-                framework_type=self.framework_type,
                 visibility=visibility,
-                has_type_annotation=bool(prop_type),
             )
         except Exception as e:
             log_debug(f"Failed to extract property info: {e}")
@@ -904,10 +889,7 @@ class TypeScriptElementExtractor(ElementExtractor):
                 variable_type=prop_type or "any",
                 is_constant=False,
                 # TypeScript-specific properties
-                declaration_kind="property_signature",
-                framework_type=self.framework_type,
-                is_optional=is_optional,
-                has_type_annotation=bool(prop_type),
+                visibility="public",  # Interface properties are always public
             )
         except Exception as e:
             log_debug(f"Failed to extract property signature info: {e}")
@@ -983,9 +965,7 @@ class TypeScriptElementExtractor(ElementExtractor):
                 docstring=tsdoc,
                 initializer=var_value,
                 # TypeScript-specific properties
-                declaration_kind=kind,
-                framework_type=self.framework_type,
-                has_type_annotation=bool(var_type),
+                visibility="public",  # Variables are typically public in TypeScript
             )
         except Exception as e:
             log_debug(f"Failed to parse variable declarator: {e}")
@@ -1158,9 +1138,6 @@ class TypeScriptElementExtractor(ElementExtractor):
                 module_path=module_path,
                 module_name=module_path,
                 imported_names=import_names,
-                # TypeScript-specific properties
-                is_type_import=is_type_import,
-                framework_type=self.framework_type,
             )
 
         except Exception as e:
