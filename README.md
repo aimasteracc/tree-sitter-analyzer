@@ -185,7 +185,7 @@ rg --version
 4. Start using! Tell the AI:
    ```
    Please set the project root directory to: /path/to/your/project
-```
+   ```
 
 **Other AI Clients:**
 - **Cursor**: Built-in MCP support, refer to Cursor documentation for configuration
