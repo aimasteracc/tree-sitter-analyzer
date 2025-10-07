@@ -487,7 +487,7 @@ ALL_QUERIES["optional_property"] = {
     "?" @optional_marker
     type: (type_annotation)? @optional.type) @optional.property
 """,
-    "description": "Search optional properties",
+    "description": "Search optional property declarations",
 }
 
 ALL_QUERIES["template_literal_type"] = {
