@@ -422,6 +422,7 @@ class TestTypeScriptPlugin:
         assert "TSX/JSX support" in features
 
     @patch('tree_sitter_analyzer.languages.typescript_plugin.TREE_SITTER_AVAILABLE', False)
+    @pytest.mark.asyncio
     async def test_analyze_file_no_tree_sitter(self, plugin):
         """Test file analysis when tree-sitter is not available"""
         from tree_sitter_analyzer.core.analysis_engine import AnalysisRequest
@@ -433,6 +434,7 @@ class TestTypeScriptPlugin:
         assert "Tree-sitter library not available" in result.error_message
 
     @patch('tree_sitter_analyzer.languages.typescript_plugin.loader.load_language')
+    @pytest.mark.asyncio
     async def test_analyze_file_no_language(self, mock_load_language, plugin):
         """Test file analysis when TypeScript language cannot be loaded"""
         from tree_sitter_analyzer.core.analysis_engine import AnalysisRequest
@@ -444,6 +446,7 @@ class TestTypeScriptPlugin:
         assert result.success is False
         assert "Could not load TypeScript language for parsing" in result.error_message
 
+    @pytest.mark.asyncio
     async def test_analyze_file_missing_file(self, plugin):
         """Test file analysis with missing file"""
         from tree_sitter_analyzer.core.analysis_engine import AnalysisRequest
