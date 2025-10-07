@@ -4,11 +4,11 @@
 
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-1893%20passed-brightgreen.svg)](#quality-assurance)
-[![Coverage](https://img.shields.io/badge/coverage-71.48%25-green.svg)](#quality-assurance)
+[![Tests](https://img.shields.io/badge/tests-2046%20passed-brightgreen.svg)](#quality-assurance)
+[![Coverage](https://img.shields.io/badge/coverage-69.67%25-green.svg)](#quality-assurance)
 [![Quality](https://img.shields.io/badge/quality-enterprise%20grade-blue.svg)](#quality-assurance)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
-[![Version](https://img.shields.io/badge/version-1.6.1-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
+[![Version](https://img.shields.io/badge/version-1.6.2-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
 ## 🚀 Enterprise-Grade Code Analysis Tool for the AI Era
@@ -59,12 +59,12 @@ Tree-sitter Analyzer is an enterprise-grade code analysis tool designed for the 
 - **Java** - Full support (1103 lines of plugin code, 73% coverage), including Spring, JPA frameworks
 - **Python** - Full support (584 lines of plugin code, 63% coverage), including type annotations, decorators
 - **JavaScript** - Enterprise-grade support (1445 lines of plugin code, 68% coverage), including ES6+, React/Vue/Angular, JSX
-- **TypeScript** - Query support (230 lines of query definitions, 74% coverage), including interfaces, types, decorators
+- **TypeScript** - **Complete support** (1553 lines of plugin code, 29% coverage), including interfaces, types, decorators, TSX/JSX, framework detection
 - **More Languages** - Basic support for C/C++, Rust, Go
 
 ### 🏆 Production Ready
-- **1,893 Tests** - 100% pass rate, enterprise-grade quality assurance
-- **71.48% Coverage** - Comprehensive test suite
+- **2,046 Tests** - 100% pass rate, enterprise-grade quality assurance
+- **69.67% Coverage** - Comprehensive test suite
 - **Cross-Platform Support** - Full compatibility with Windows, macOS, Linux
 - **Continuous Maintenance** - Active development and community support
 
@@ -185,7 +185,7 @@ rg --version
 4. Start using! Tell the AI:
    ```
    Please set the project root directory to: /path/to/your/project
-```
+   ```
 
 **Other AI Clients:**
 - **Cursor**: Built-in MCP support, refer to Cursor documentation for configuration
@@ -550,7 +550,7 @@ uv run python -m tree_sitter_analyzer --show-query-languages
 - **Java** - Full support (1103 lines of plugin), including Spring, JPA frameworks
 - **Python** - Full support (584 lines of plugin), including type annotations, decorators
 - **JavaScript** - Enterprise-grade support (1445 lines of plugin), including ES6+, React/Vue/Angular, JSX
-- **TypeScript** - Query support (230 lines of queries), including interfaces, types, decorators
+- **TypeScript** - **Complete support** (1553 lines of plugin), including interfaces, types, decorators, TSX/JSX, framework detection
 - **C/C++, Rust, Go** - Basic support
 
 ### 📁 Advanced File Search
@@ -623,7 +623,7 @@ uv run pytest tests/test_mcp_server_initialization.py -v
 **Verification Environment:**
 - Operating Systems: Windows 10, macOS, Linux
 - Python Version: 3.10+
-- Project Version: tree-sitter-analyzer v1.6.0
+- Project Version: tree-sitter-analyzer v1.6.2
 - Test Files: BigService.java (1419 lines), sample.py (256 lines), MultiClass.java (54 lines)
 
 ---

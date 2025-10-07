@@ -1,5 +1,12 @@
 # Project Structure & Organization
 
+## Current Project Status
+
+- **Version**: v1.6.1
+- **Test Suite**: 1,893 tests with 71.48% code coverage
+- **Package Size**: Extensible multi-language code analyzer framework
+- **Build Status**: Beta (Development Status :: 4 - Beta)
+
 ## Root Directory Layout
 
 ```
@@ -8,9 +15,11 @@ tree-sitter-analyzer/
 ├── .github/                        # GitHub workflows and templates
 ├── .kiro/                          # Kiro IDE configuration and steering
 ├── tree_sitter_analyzer/          # Main package source code
-├── tests/                          # Comprehensive test suite
+├── tests/                          # Comprehensive test suite (1,893 tests)
 ├── examples/                       # Sample files for testing and demos
 ├── docs/                           # Documentation
+├── training/                       # Training materials and guides
+├── scripts/                        # Automation and helper scripts
 ├── dist/                           # Build artifacts (generated)
 ├── .venv/                          # Virtual environment (generated)
 └── Configuration files (see below)
@@ -67,28 +76,46 @@ tree_sitter_analyzer/
 
 ### `mcp/` - Model Context Protocol
 - `server.py` - MCP server implementation
-- `tools.py` - MCP tool definitions
-- AI assistant integration
+- `tools/` - 12 specialized MCP tools for AI integration
+  - `analyze_scale_tool.py` - Code scale analysis
+  - `table_format_tool.py` - Table formatting
+  - `query_tool.py` - Tree-sitter query execution
+  - `search_content_tool.py` - Content search with ripgrep
+  - `list_files_tool.py` - File listing with fd
+  - `find_and_grep_tool.py` - Two-stage search
+  - `read_partial_tool.py` - Partial file reading
+  - `universal_analyze_tool.py` - Universal analysis
+  - `fd_rg_utils.py` - File discovery and search utilities
+  - `base_tool.py` - Base tool functionality
+- `resources/` - MCP resource providers
+- AI assistant integration via Model Context Protocol
 
 ### `security/` - Security Framework
 - `boundary_manager.py` - Project boundary validation
 - `validator.py` - Input validation and sanitization
 - `regex_checker.py` - Safe regex pattern validation
 
-## Test Structure (`tests/`)
+## Test Structure (`tests/`) - 1,893 Tests
 
 ```
 tests/
 ├── conftest.py                     # Pytest configuration and fixtures
-├── test_*.py                       # Unit tests (main level)
-├── test_core/                      # Core engine tests
+├── test_*.py                       # Unit tests (main level) - 80+ test files
 ├── test_interfaces/                # Interface adapter tests
 ├── test_languages/                 # Language plugin tests
-├── test_mcp/                       # MCP server tests
+├── test_mcp/                       # MCP server and tools tests
+│   ├── test_tools/                 # Individual MCP tool tests
+│   └── test_resources/             # MCP resource tests
 ├── test_plugins/                   # Plugin system tests
 ├── test_security/                  # Security framework tests
 └── __pycache__/                    # Compiled test files (generated)
 ```
+
+### Test Coverage Statistics
+- **Total Tests**: 1,893 tests
+- **Code Coverage**: 71.48%
+- **Test Categories**: Unit, Integration, MCP, Security, Performance
+- **Quality Gates**: Pre-commit hooks, automated testing, coverage reporting
 
 ## Configuration Files
 
@@ -188,10 +215,32 @@ from .utils import log_info
 - `.ruff_cache/` - Ruff linting cache
 - `__pycache__/` - Python bytecode cache
 
+## Training & Documentation Structure
+
+### `training/` Directory
+- `01_onboarding.md` - New developer onboarding
+- `02_architecture_map.md` - System architecture overview
+- `03_cli_cheatsheet.md` - CLI command reference
+- `04_mcp_cheatsheet.md` - MCP integration guide
+- `05_plugin_tutorial.md` - Plugin development tutorial
+- `06_quality_workflow.md` - Quality assurance workflow
+- `07_troubleshooting.md` - Common issues and solutions
+- `08_prompt_library.md` - AI prompt templates
+- `09_tasks.md` - Development tasks and examples
+- `10_glossary.md` - Technical terminology
+- `11_takeover_plan.md` - Project handover guide
+
+### `scripts/` Directory
+- `gitflow_helper.py` - Git workflow automation
+- `gitflow_release_automation.py` - Release process automation
+- `sync_version.py` - Version synchronization
+- `README.md` - Scripts documentation
+
 ## Development Workflow
 
 1. **Setup**: `uv sync --extra all --extra mcp`
 2. **Code**: Follow structure and naming conventions
-3. **Test**: Add tests in appropriate `test_*/` directories
+3. **Test**: Add tests in appropriate `test_*/` directories (maintain 71.48%+ coverage)
 4. **Quality**: Run `uv run python check_quality.py --new-code-only --fix`
 5. **Commit**: Pre-commit hooks ensure quality
+6. **Release**: Automated version management and PyPI deployment
