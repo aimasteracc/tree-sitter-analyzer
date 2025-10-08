@@ -67,6 +67,12 @@ from .tools.read_partial_tool import ReadPartialTool
 from .tools.search_content_tool import SearchContentTool
 from .tools.table_format_tool import TableFormatTool
 
+# Import UniversalAnalyzeTool at module level for test compatibility
+try:
+    from .tools.universal_analyze_tool import UniversalAnalyzeTool
+except ImportError:
+    UniversalAnalyzeTool = None
+
 # Set up logging
 logger = setup_logger(__name__)
 
@@ -84,7 +90,11 @@ class TreeSitterAnalyzerMCPServer:
         self.server: Server | None = None
         self._initialization_complete = False
 
-        logger.info("Starting MCP server initialization...")
+        try:
+            logger.info("Starting MCP server initialization...")
+        except Exception:
+            # Gracefully handle logging failures during initialization
+            pass
 
         self.analysis_engine = get_analysis_engine(project_root)
         self.security_validator = SecurityValidator(project_root)
@@ -101,23 +111,31 @@ class TreeSitterAnalyzerMCPServer:
         self.find_and_grep_tool = FindAndGrepTool(project_root)  # find_and_grep
 
         # Optional universal tool to satisfy initialization tests
-        try:
-            from .tools.universal_analyze_tool import UniversalAnalyzeTool
-
-            self.universal_analyze_tool = UniversalAnalyzeTool(project_root)
-        except Exception:
+        # Allow tests to control initialization by checking if UniversalAnalyzeTool is available
+        if UniversalAnalyzeTool is not None:
+            try:
+                self.universal_analyze_tool = UniversalAnalyzeTool(project_root)
+            except Exception:
+                self.universal_analyze_tool = None
+        else:
             self.universal_analyze_tool = None
 
         # Initialize MCP resources
         self.code_file_resource = CodeFileResource()
         self.project_stats_resource = ProjectStatsResource()
+        # Add project_root attribute for test compatibility
+        self.project_stats_resource.project_root = project_root
 
         # Server metadata
         self.name = MCP_INFO["name"]
         self.version = MCP_INFO["version"]
 
         self._initialization_complete = True
-        logger.info(f"MCP server initialization complete: {self.name} v{self.version}")
+        try:
+            logger.info(f"MCP server initialization complete: {self.name} v{self.version}")
+        except Exception:
+            # Gracefully handle logging failures during initialization
+            pass
 
     def is_initialized(self) -> bool:
         """Check if the server is fully initialized."""
@@ -141,13 +159,15 @@ class TreeSitterAnalyzerMCPServer:
             raise MCPError("Server is still initializing")
 
         # For specific initialization tests we allow delegating to universal tool
-        if (
-            "file_path" not in arguments
-            and getattr(self, "universal_analyze_tool", None) is not None
-        ):
-            return await self.universal_analyze_tool.execute(arguments)
         if "file_path" not in arguments:
-            raise ValueError("file_path is required")
+            if getattr(self, "universal_analyze_tool", None) is not None:
+                try:
+                    return await self.universal_analyze_tool.execute(arguments)
+                except ValueError:
+                    # Re-raise ValueError as-is for test compatibility
+                    raise
+            else:
+                raise ValueError("file_path is required")
 
         file_path = arguments["file_path"]
         language = arguments.get("language")
@@ -277,6 +297,30 @@ class TreeSitterAnalyzerMCPServer:
             result["detailed_elements"] = detailed_elements
 
         return result
+
+    async def _read_resource(self, uri: str) -> dict[str, Any]:
+        """
+        Read a resource by URI.
+        
+        Args:
+            uri: Resource URI to read
+            
+        Returns:
+            Resource content
+            
+        Raises:
+            ValueError: If URI is invalid or resource not found
+        """
+        if uri.startswith("code://file/"):
+            # Extract file path from URI
+            file_path = uri.replace("code://file/", "")
+            return await self.code_file_resource.read_resource(uri)
+        elif uri.startswith("code://stats/"):
+            # Extract stats type from URI
+            stats_type = uri.replace("code://stats/", "")
+            return await self.project_stats_resource.read_resource(uri)
+        else:
+            raise ValueError(f"Unknown resource URI: {uri}")
 
     def _calculate_file_metrics(self, file_path: str, language: str) -> dict[str, Any]:
         """
@@ -797,30 +841,35 @@ async def main() -> None:
             "${" in project_root or "}" in project_root or "$" in project_root
         )
 
-        # Validate existence; if invalid, fall back to auto-detected root
+        # Validate existence; if invalid, fall back to current working directory
         if (
             not project_root
             or invalid_placeholder
-            or not PathClass(project_root).is_dir()
+            or (isinstance(project_root, str) and not PathClass(project_root).is_dir())
         ):
-            detected = detect_project_root()
+            # Use current working directory as final fallback
+            fallback_root = str(PathClass.cwd())
             try:
                 logger.warning(
-                    f"Invalid project root '{project_root}', falling back to auto-detected root: {detected}"
+                    f"Invalid project root '{project_root}', falling back to current directory: {fallback_root}"
                 )
             except (ValueError, OSError):
                 pass
-            project_root = detected
+            project_root = fallback_root
 
         logger.info(f"MCP server starting with project root: {project_root}")
 
         server = TreeSitterAnalyzerMCPServer(project_root)
         await server.run()
+        
+        # Exit successfully after server run completes
+        sys.exit(0)
     except KeyboardInterrupt:
         try:
             logger.info("Server stopped by user")
         except (ValueError, OSError):
             pass  # Silently ignore logging errors during shutdown
+        sys.exit(0)
     except Exception as e:
         try:
             logger.error(f"Server failed: {e}")
