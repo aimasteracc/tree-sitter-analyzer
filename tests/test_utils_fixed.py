@@ -211,49 +211,49 @@ class TestLoggingFunctionsFixed:
 
     def test_log_info(self):
         """Test log_info function"""
-        with patch('tree_sitter_analyzer.utils.logger') as mock_logger:
+        with patch('tree_sitter_analyzer.utils.logger.info') as mock_logger:
             log_info("Test info message")
-            mock_logger.info.assert_called_once_with("Test info message")
+            mock_info.assert_called_once_with("Test info message")
 
     def test_log_info_with_args(self):
         """Test log_info with arguments"""
-        with patch('tree_sitter_analyzer.utils.logger') as mock_logger:
+        with patch('tree_sitter_analyzer.utils.logger.info') as mock_logger:
             log_info("Test %s message", "info")
-            mock_logger.info.assert_called_once_with("Test %s message", "info")
+            mock_info.assert_called_once_with("Test %s message", "info")
 
     def test_log_warning(self):
         """Test log_warning function"""
-        with patch('tree_sitter_analyzer.utils.logger') as mock_logger:
+        with patch('tree_sitter_analyzer.utils.logger.info') as mock_logger:
             log_warning("Test warning message")
-            mock_logger.warning.assert_called_once_with("Test warning message")
+            mock_warning.assert_called_once_with("Test warning message")
 
     def test_log_error(self):
         """Test log_error function"""
-        with patch('tree_sitter_analyzer.utils.logger') as mock_logger:
+        with patch('tree_sitter_analyzer.utils.logger.info') as mock_logger:
             log_error("Test error message")
-            mock_logger.error.assert_called_once_with("Test error message")
+            mock_error.assert_called_once_with("Test error message")
 
     def test_log_debug(self):
         """Test log_debug function"""
-        with patch('tree_sitter_analyzer.utils.logger') as mock_logger:
+        with patch('tree_sitter_analyzer.utils.logger.info') as mock_logger:
             log_debug("Test debug message")
-            mock_logger.debug.assert_called_once_with("Test debug message")
+            mock_debug.assert_called_once_with("Test debug message")
 
     def test_log_performance_with_details(self):
         """Test log_performance with details"""
-        with patch('tree_sitter_analyzer.utils.logger') as mock_logger:
+        with patch('tree_sitter_analyzer.utils.logger.info') as mock_logger:
             log_performance("Test operation", 1.5, {"files": 10, "lines": 100})
             mock_logger.info.assert_called_once()
 
     def test_log_performance_without_details(self):
         """Test log_performance without details"""
-        with patch('tree_sitter_analyzer.utils.logger') as mock_logger:
+        with patch('tree_sitter_analyzer.utils.logger.info') as mock_logger:
             log_performance("Test operation", 2.0)
             mock_logger.info.assert_called_once()
 
     def test_log_performance_with_none_details(self):
         """Test log_performance with None details"""
-        with patch('tree_sitter_analyzer.utils.logger') as mock_logger:
+        with patch('tree_sitter_analyzer.utils.logger.info') as mock_logger:
             log_performance("Test operation", 1.0, None)
             mock_logger.info.assert_called_once()
 
@@ -355,7 +355,7 @@ class TestIntegrationScenariosFixed:
 
     def test_all_logging_functions_work_together(self):
         """Test that all logging functions work together"""
-        with patch('tree_sitter_analyzer.utils.logger') as mock_logger:
+        with patch('tree_sitter_analyzer.utils.logger.info') as mock_logger:
             log_info("Info message")
             log_warning("Warning message")
             log_error("Error message")
@@ -371,7 +371,7 @@ class TestIntegrationScenariosFixed:
     def test_logging_with_safe_print_integration(self):
         """Test logging integration with safe_print"""
         with patch('builtins.print') as mock_print:
-            with patch('tree_sitter_analyzer.utils.logger') as mock_logger:
+            with patch('tree_sitter_analyzer.utils.logger.info') as mock_logger:
                 log_info("Log message")
                 safe_print("Print message")
                 
@@ -395,7 +395,7 @@ class TestIntegrationScenariosFixed:
             safe_print(special_chars)
             mock_print.assert_called()
         
-        with patch('tree_sitter_analyzer.utils.logger') as mock_logger:
+        with patch('tree_sitter_analyzer.utils.logger.info') as mock_logger:
             log_info(unicode_message)
             log_info(special_chars)
             mock_logger.info.assert_called()
@@ -408,7 +408,7 @@ class TestIntegrationScenariosFixed:
         with patch('builtins.print'):
             safe_print("")
         
-        with patch('tree_sitter_analyzer.utils.logger') as mock_logger:
+        with patch('tree_sitter_analyzer.utils.logger.info') as mock_logger:
             log_info("test")
             log_performance("test", 1.0)
             mock_logger.info.assert_called()
@@ -419,7 +419,7 @@ class TestIntegrationScenariosFixed:
         
         def log_worker(worker_id):
             for i in range(5):
-                with patch('tree_sitter_analyzer.utils.logger'):
+                with patch('tree_sitter_analyzer.utils.logger.info'):
                     log_info(f"Worker {worker_id} message {i}")
                 with patch('builtins.print'):
                     safe_print(f"Worker {worker_id} print {i}")
