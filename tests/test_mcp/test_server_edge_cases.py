@@ -411,27 +411,22 @@ class TestMCPServerToolHandlingEdgeCases:
         
         with patch('tree_sitter_analyzer.mcp.server.Server') as mock_server_class:
             mock_server = Mock()
+            # Set up the mock to capture the handler function when call_tool() is called as decorator
+            captured_handlers = {}
+            def capture_decorator(name):
+                def decorator(func):
+                    captured_handlers[name] = func
+                    return func
+                return decorator
+            
+            mock_server.call_tool.return_value = capture_decorator('call_tool')
             mock_server_class.return_value = mock_server
             
             server.create_server()
-            # Get the call_tool handler - check if call_args exists and has the right structure
-            if (mock_server.call_tool.call_args and
-                len(mock_server.call_tool.call_args[0]) > 0):
-                call_tool_handler = mock_server.call_tool.call_args[0][0]
-            elif mock_server.call_tool.called:
-                # If called but args structure is different, try to get from call_args_list
-                if mock_server.call_tool.call_args_list:
-                    for call_args in mock_server.call_tool.call_args_list:
-                        if call_args[0]:  # Check if there are positional args
-                            call_tool_handler = call_args[0][0]
-                            break
-                    else:
-                        pytest.skip("Mock server call_tool called but no handler found")
-                else:
-                    pytest.skip("Mock server call_tool called but no args recorded")
-            else:
-                # Skip test if mock wasn't called as expected
-                pytest.skip("Mock server call_tool not called as expected")
+            
+            # Get the captured handler
+            assert 'call_tool' in captured_handlers, "call_tool handler was not registered"
+            call_tool_handler = captured_handlers['call_tool']
             
             result = await call_tool_handler("check_code_scale", {"file_path": "test.py"})
             
