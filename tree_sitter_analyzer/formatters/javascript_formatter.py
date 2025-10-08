@@ -15,23 +15,57 @@ from .base_formatter import BaseTableFormatter
 class JavaScriptTableFormatter(BaseTableFormatter):
     """Table formatter specialized for JavaScript"""
 
-    def format(self, data: dict[str, Any]) -> str:
+    def format(self, data: dict[str, Any], format_type: str = None) -> str:
         """Format data using the configured format type"""
+        # Handle None data
+        if data is None:
+            return "# No data available\n"
+        
+        # Ensure data is a dictionary
+        if not isinstance(data, dict):
+            return f"# Invalid data type: {type(data)}\n"
+        
+        if format_type:
+            # Check for supported format types
+            supported_formats = ['full', 'compact', 'csv', 'json']
+            if format_type not in supported_formats:
+                raise ValueError(f"Unsupported format type: {format_type}. Supported formats: {supported_formats}")
+            
+            # Handle json format separately
+            if format_type == 'json':
+                return self._format_json(data)
+            
+            # Temporarily change format type for this call
+            original_format = self.format_type
+            self.format_type = format_type
+            result = self.format_structure(data)
+            self.format_type = original_format
+            return result
         return self.format_structure(data)
 
     def _format_full_table(self, data: dict[str, Any]) -> str:
         """Full table format for JavaScript"""
+        if data is None:
+            return "# No data available\n"
+        
+        if not isinstance(data, dict):
+            return f"# Invalid data type: {type(data)}\n"
+        
         lines = []
 
         # Header - JavaScript (module/file based)
         file_path = data.get("file_path", "Unknown")
-        file_name = file_path.split("/")[-1].split("\\")[-1]
+        if file_path is None:
+            file_path = "Unknown"
+        file_name = str(file_path).split("/")[-1].split("\\")[-1]
         module_name = (
             file_name.replace(".js", "").replace(".jsx", "").replace(".mjs", "")
         )
 
         # Check if this is a module (has exports)
         exports = data.get("exports", [])
+        if exports is None:
+            exports = []
         is_module = len(exports) > 0
 
         if is_module:
@@ -46,20 +80,30 @@ class JavaScriptTableFormatter(BaseTableFormatter):
             lines.append("## Imports")
             lines.append("```javascript")
             for imp in imports:
-                import_statement = imp.get("statement", "")
-                if not import_statement:
-                    # Construct import statement from parts
-                    source = imp.get("source", "")
-                    name = imp.get("name", "")
-                    if name and source:
-                        import_statement = f"import {name} from {source};"
+                if isinstance(imp, str):
+                    # Handle malformed data where import is a string
+                    import_statement = imp
+                elif isinstance(imp, dict):
+                    import_statement = imp.get("statement", "")
+                    if not import_statement:
+                        # Construct import statement from parts
+                        source = imp.get("source", "")
+                        name = imp.get("name", "")
+                        if name and source:
+                            import_statement = f"import {name} from {source};"
+                else:
+                    import_statement = str(imp)
                 lines.append(import_statement)
             lines.append("```")
             lines.append("")
 
         # Module Info
         stats = data.get("statistics", {})
+        if stats is None or not isinstance(stats, dict):
+            stats = {}
         classes = data.get("classes", [])
+        if classes is None:
+            classes = []
 
         lines.append("## Module Info")
         lines.append("| Property | Value |")
@@ -199,8 +243,12 @@ class JavaScriptTableFormatter(BaseTableFormatter):
 
             for export in exports:
                 export_type = self._get_export_type(export)
-                name = str(export.get("name", ""))
-                is_default = "✓" if export.get("is_default", False) else "-"
+                if isinstance(export, dict):
+                    name = str(export.get("name", ""))
+                    is_default = "✓" if export.get("is_default", False) else "-"
+                else:
+                    name = str(export)
+                    is_default = "-"
 
                 lines.append(f"| {export_type} | {name} | {is_default} |")
             lines.append("")
@@ -301,6 +349,11 @@ class JavaScriptTableFormatter(BaseTableFormatter):
         if not params:
             return "()"
 
+        # Handle malformed data where parameters might be a string
+        if isinstance(params, str):
+            # If parameters is a malformed string, return empty params
+            return "()"
+
         param_strs = []
         for param in params:
             if isinstance(param, dict):
@@ -323,6 +376,11 @@ class JavaScriptTableFormatter(BaseTableFormatter):
         """Create compact parameter list for JavaScript functions"""
         params = func.get("parameters", [])
         if not params:
+            return "()"
+
+        # Handle malformed data where parameters might be a string
+        if isinstance(params, str):
+            # If parameters is a malformed string, return empty params
             return "()"
 
         param_count = len(params)
@@ -401,7 +459,13 @@ class JavaScriptTableFormatter(BaseTableFormatter):
         value_str = str(value).strip()
 
         # Check for specific patterns
-        if (
+        if value_str == "undefined":
+            return "undefined"
+        elif value_str == "NaN":
+            return "number"  # NaN is a number type in JavaScript
+        elif value_str in ["Infinity", "-Infinity"]:
+            return "number"  # Infinity is a number type in JavaScript
+        elif (
             value_str.startswith('"')
             or value_str.startswith("'")
             or value_str.startswith("`")
@@ -415,7 +479,10 @@ class JavaScriptTableFormatter(BaseTableFormatter):
             return "array"
         elif value_str.startswith("{") and value_str.endswith("}"):
             return "object"
-        elif value_str.startswith("function") or "=>" in value_str:
+        elif (value_str.startswith("function") or
+              value_str.startswith("async function") or
+              value_str.startswith("new Function") or
+              "=>" in value_str):
             return "function"
         elif value_str.startswith("class"):
             return "class"
@@ -457,6 +524,8 @@ class JavaScriptTableFormatter(BaseTableFormatter):
 
     def _get_export_type(self, export: dict[str, Any]) -> str:
         """Get export type"""
+        if not isinstance(export, dict):
+            return "unknown"
         if export.get("is_default", False):
             return "default"
         elif export.get("is_named", False):
@@ -465,3 +534,34 @@ class JavaScriptTableFormatter(BaseTableFormatter):
             return "all"
         else:
             return "unknown"
+
+    def _get_function_signature(self, func: dict[str, Any]) -> str:
+        """Get function signature"""
+        name = str(func.get("name", ""))
+        params = self._create_full_params(func)
+        return_type = func.get("return_type", "")
+        if return_type:
+            return f"{name}{params} -> {return_type}"
+        return f"{name}{params}"
+
+    def _get_class_info(self, cls: dict[str, Any]) -> str:
+        """Get class information as formatted string"""
+        if cls is None:
+            return "Unknown (0 methods)"
+        
+        if not isinstance(cls, dict):
+            return f"{str(cls)} (0 methods)"
+        
+        name = str(cls.get("name", "Unknown"))
+        methods = cls.get("methods", [])
+        method_count = len(methods) if isinstance(methods, list) else 0
+        
+        return f"{name} ({method_count} methods)"
+
+    def _format_json(self, data: dict[str, Any]) -> str:
+        """Format data as JSON"""
+        import json
+        try:
+            return json.dumps(data, indent=2, ensure_ascii=False)
+        except (TypeError, ValueError) as e:
+            return f"# JSON serialization error: {e}\n"
