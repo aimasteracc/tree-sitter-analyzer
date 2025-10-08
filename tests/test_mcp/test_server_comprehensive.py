@@ -379,29 +379,23 @@ class TestTreeSitterAnalyzerMCPServerCreation:
         """Test tool listing functionality."""
         with patch('tree_sitter_analyzer.mcp.server.Server') as mock_server_class:
             mock_server = Mock()
+            # Set up the mock to capture the handler function when list_tools() is called as decorator
+            captured_handlers = {}
+            def capture_decorator(name):
+                def decorator(func):
+                    captured_handlers[name] = func
+                    return func
+                return decorator
+            
+            mock_server.list_tools.return_value = capture_decorator('list_tools')
             mock_server_class.return_value = mock_server
             
             server = TreeSitterAnalyzerMCPServer(temp_project_dir)
             server.create_server()
             
-            # Get the list_tools handler - check if call_args exists and has the right structure
-            if (mock_server.list_tools.call_args and
-                len(mock_server.list_tools.call_args[0]) > 0):
-                list_tools_handler = mock_server.list_tools.call_args[0][0]
-            elif mock_server.list_tools.called:
-                # If called but args structure is different, try to get from call_args_list
-                if mock_server.list_tools.call_args_list:
-                    for call_args in mock_server.list_tools.call_args_list:
-                        if call_args[0]:  # Check if there are positional args
-                            list_tools_handler = call_args[0][0]
-                            break
-                    else:
-                        pytest.skip("Mock server list_tools called but no handler found")
-                else:
-                    pytest.skip("Mock server list_tools called but no args recorded")
-            else:
-                # Skip test if mock wasn't called as expected
-                pytest.skip("Mock server list_tools not called as expected")
+            # Get the captured handler
+            assert 'list_tools' in captured_handlers, "list_tools handler was not registered"
+            list_tools_handler = captured_handlers['list_tools']
             tools = await list_tools_handler()
             
             assert len(tools) >= 8  # At least 8 tools
@@ -421,34 +415,23 @@ class TestTreeSitterAnalyzerMCPServerCreation:
         """Test resource listing functionality."""
         with patch('tree_sitter_analyzer.mcp.server.Server') as mock_server_class:
             mock_server = Mock()
+            # Set up the mock to capture the handler function when list_resources() is called as decorator
+            captured_handlers = {}
+            def capture_decorator(name):
+                def decorator(func):
+                    captured_handlers[name] = func
+                    return func
+                return decorator
+            
+            mock_server.list_resources.return_value = capture_decorator('list_resources')
             mock_server_class.return_value = mock_server
             
             server = TreeSitterAnalyzerMCPServer(temp_project_dir)
             server.create_server()
             
-            # Get the list_resources handler - check if call_args exists
-            if mock_server.list_resources.call_args:
-                # Get the list_resources handler - check if call_args exists and has the right structure
-                if (mock_server.list_resources.call_args and
-                    len(mock_server.list_resources.call_args[0]) > 0):
-                    list_resources_handler = mock_server.list_resources.call_args[0][0]
-                elif mock_server.list_resources.called:
-                    # If called but args structure is different, try to get from call_args_list
-                    if mock_server.list_resources.call_args_list:
-                        for call_args in mock_server.list_resources.call_args_list:
-                            if call_args[0]:  # Check if there are positional args
-                                list_resources_handler = call_args[0][0]
-                                break
-                        else:
-                            pytest.skip("Mock server list_resources called but no handler found")
-                    else:
-                        pytest.skip("Mock server list_resources called but no args recorded")
-                else:
-                    # Skip test if mock wasn't called as expected
-                    pytest.skip("Mock server list_resources not called as expected")
-            else:
-                # Skip test if mock wasn't called as expected
-                pytest.skip("Mock server list_resources not called as expected")
+            # Get the captured handler
+            assert 'list_resources' in captured_handlers, "list_resources handler was not registered"
+            list_resources_handler = captured_handlers['list_resources']
             resources = await list_resources_handler()
             
             assert len(resources) == 2
@@ -483,29 +466,22 @@ class TestTreeSitterAnalyzerMCPServerToolHandling:
         
         with patch('tree_sitter_analyzer.mcp.server.Server') as mock_server_class:
             mock_server = Mock()
+            # Set up the mock to capture the handler function when call_tool() is called as decorator
+            captured_handlers = {}
+            def capture_decorator(name):
+                def decorator(func):
+                    captured_handlers[name] = func
+                    return func
+                return decorator
+            
+            mock_server.call_tool.return_value = capture_decorator('call_tool')
             mock_server_class.return_value = mock_server
             
             server.create_server()
             
-            # Get the call_tool handler
-            # Get the call_tool handler - check if call_args exists and has the right structure
-            if (mock_server.call_tool.call_args and
-                len(mock_server.call_tool.call_args[0]) > 0):
-                call_tool_handler = mock_server.call_tool.call_args[0][0]
-            elif mock_server.call_tool.called:
-                # If called but args structure is different, try to get from call_args_list
-                if mock_server.call_tool.call_args_list:
-                    for call_args in mock_server.call_tool.call_args_list:
-                        if call_args[0]:  # Check if there are positional args
-                            call_tool_handler = call_args[0][0]
-                            break
-                    else:
-                        pytest.skip("Mock server call_tool called but no handler found")
-                else:
-                    pytest.skip("Mock server call_tool called but no args recorded")
-            else:
-                # Skip test if mock wasn't called as expected
-                pytest.skip("Mock server call_tool not called as expected")
+            # Get the captured handler
+            assert 'call_tool' in captured_handlers, "call_tool handler was not registered"
+            call_tool_handler = captured_handlers['call_tool']
             
             # Mock the _analyze_code_scale method
             server._analyze_code_scale = AsyncMock(return_value={"result": "success"})
@@ -527,27 +503,22 @@ class TestTreeSitterAnalyzerMCPServerToolHandling:
         
         with patch('tree_sitter_analyzer.mcp.server.Server') as mock_server_class:
             mock_server = Mock()
+            # Set up the mock to capture the handler function when call_tool() is called as decorator
+            captured_handlers = {}
+            def capture_decorator(name):
+                def decorator(func):
+                    captured_handlers[name] = func
+                    return func
+                return decorator
+            
+            mock_server.call_tool.return_value = capture_decorator('call_tool')
             mock_server_class.return_value = mock_server
             
             server.create_server()
-            # Get the call_tool handler - check if call_args exists and has the right structure
-            if (mock_server.call_tool.call_args and
-                len(mock_server.call_tool.call_args[0]) > 0):
-                call_tool_handler = mock_server.call_tool.call_args[0][0]
-            elif mock_server.call_tool.called:
-                # If called but args structure is different, try to get from call_args_list
-                if mock_server.call_tool.call_args_list:
-                    for call_args in mock_server.call_tool.call_args_list:
-                        if call_args[0]:  # Check if there are positional args
-                            call_tool_handler = call_args[0][0]
-                            break
-                    else:
-                        pytest.skip("Mock server call_tool called but no handler found")
-                else:
-                    pytest.skip("Mock server call_tool called but no args recorded")
-            else:
-                # Skip test if mock wasn't called as expected
-                pytest.skip("Mock server call_tool not called as expected")
+            
+            # Get the captured handler
+            assert 'call_tool' in captured_handlers, "call_tool handler was not registered"
+            call_tool_handler = captured_handlers['call_tool']
             
             arguments = {"file_path": "test.py", "format_type": "full"}
             result = await call_tool_handler("analyze_code_structure", arguments)
@@ -564,27 +535,22 @@ class TestTreeSitterAnalyzerMCPServerToolHandling:
         
         with patch('tree_sitter_analyzer.mcp.server.Server') as mock_server_class:
             mock_server = Mock()
+            # Set up the mock to capture the handler function when call_tool() is called as decorator
+            captured_handlers = {}
+            def capture_decorator(name):
+                def decorator(func):
+                    captured_handlers[name] = func
+                    return func
+                return decorator
+            
+            mock_server.call_tool.return_value = capture_decorator('call_tool')
             mock_server_class.return_value = mock_server
             
             server.create_server()
-            # Get the call_tool handler - check if call_args exists and has the right structure
-            if (mock_server.call_tool.call_args and
-                len(mock_server.call_tool.call_args[0]) > 0):
-                call_tool_handler = mock_server.call_tool.call_args[0][0]
-            elif mock_server.call_tool.called:
-                # If called but args structure is different, try to get from call_args_list
-                if mock_server.call_tool.call_args_list:
-                    for call_args in mock_server.call_tool.call_args_list:
-                        if call_args[0]:  # Check if there are positional args
-                            call_tool_handler = call_args[0][0]
-                            break
-                    else:
-                        pytest.skip("Mock server call_tool called but no handler found")
-                else:
-                    pytest.skip("Mock server call_tool called but no args recorded")
-            else:
-                # Skip test if mock wasn't called as expected
-                pytest.skip("Mock server call_tool not called as expected")
+            
+            # Get the captured handler
+            assert 'call_tool' in captured_handlers, "call_tool handler was not registered"
+            call_tool_handler = captured_handlers['call_tool']
             
             arguments = {"file_path": "test.py", "start_line": 1, "end_line": 10}
             result = await call_tool_handler("extract_code_section", arguments)
@@ -600,27 +566,22 @@ class TestTreeSitterAnalyzerMCPServerToolHandling:
         
         with patch('tree_sitter_analyzer.mcp.server.Server') as mock_server_class:
             mock_server = Mock()
+            # Set up the mock to capture the handler function when call_tool() is called as decorator
+            captured_handlers = {}
+            def capture_decorator(name):
+                def decorator(func):
+                    captured_handlers[name] = func
+                    return func
+                return decorator
+            
+            mock_server.call_tool.return_value = capture_decorator('call_tool')
             mock_server_class.return_value = mock_server
             
             server.create_server()
-            # Get the call_tool handler - check if call_args exists and has the right structure
-            if (mock_server.call_tool.call_args and
-                len(mock_server.call_tool.call_args[0]) > 0):
-                call_tool_handler = mock_server.call_tool.call_args[0][0]
-            elif mock_server.call_tool.called:
-                # If called but args structure is different, try to get from call_args_list
-                if mock_server.call_tool.call_args_list:
-                    for call_args in mock_server.call_tool.call_args_list:
-                        if call_args[0]:  # Check if there are positional args
-                            call_tool_handler = call_args[0][0]
-                            break
-                    else:
-                        pytest.skip("Mock server call_tool called but no handler found")
-                else:
-                    pytest.skip("Mock server call_tool called but no args recorded")
-            else:
-                # Skip test if mock wasn't called as expected
-                pytest.skip("Mock server call_tool not called as expected")
+            
+            # Get the captured handler
+            assert 'call_tool' in captured_handlers, "call_tool handler was not registered"
+            call_tool_handler = captured_handlers['call_tool']
             
             arguments = {"project_path": temp_project_dir}
             result = await call_tool_handler("set_project_path", arguments)
@@ -638,27 +599,22 @@ class TestTreeSitterAnalyzerMCPServerToolHandling:
         
         with patch('tree_sitter_analyzer.mcp.server.Server') as mock_server_class:
             mock_server = Mock()
+            # Set up the mock to capture the handler function when call_tool() is called as decorator
+            captured_handlers = {}
+            def capture_decorator(name):
+                def decorator(func):
+                    captured_handlers[name] = func
+                    return func
+                return decorator
+            
+            mock_server.call_tool.return_value = capture_decorator('call_tool')
             mock_server_class.return_value = mock_server
             
             server.create_server()
-            # Get the call_tool handler - check if call_args exists and has the right structure
-            if (mock_server.call_tool.call_args and
-                len(mock_server.call_tool.call_args[0]) > 0):
-                call_tool_handler = mock_server.call_tool.call_args[0][0]
-            elif mock_server.call_tool.called:
-                # If called but args structure is different, try to get from call_args_list
-                if mock_server.call_tool.call_args_list:
-                    for call_args in mock_server.call_tool.call_args_list:
-                        if call_args[0]:  # Check if there are positional args
-                            call_tool_handler = call_args[0][0]
-                            break
-                    else:
-                        pytest.skip("Mock server call_tool called but no handler found")
-                else:
-                    pytest.skip("Mock server call_tool called but no args recorded")
-            else:
-                # Skip test if mock wasn't called as expected
-                pytest.skip("Mock server call_tool not called as expected")
+            
+            # Get the captured handler
+            assert 'call_tool' in captured_handlers, "call_tool handler was not registered"
+            call_tool_handler = captured_handlers['call_tool']
             
             arguments = {}
             result = await call_tool_handler("unknown_tool", arguments)
@@ -678,30 +634,22 @@ class TestTreeSitterAnalyzerMCPServerToolHandling:
         with patch.object(server.security_validator, 'validate_file_path', return_value=(False, "Invalid path")):
             with patch('tree_sitter_analyzer.mcp.server.Server') as mock_server_class:
                 mock_server = Mock()
+                # Set up the mock to capture the handler function when call_tool() is called as decorator
+                captured_handlers = {}
+                def capture_decorator(name):
+                    def decorator(func):
+                        captured_handlers[name] = func
+                        return func
+                    return decorator
+                
+                mock_server.call_tool.return_value = capture_decorator('call_tool')
                 mock_server_class.return_value = mock_server
                 
                 server.create_server()
-                if mock_server.call_tool.call_args:
-                    # Get the call_tool handler - check if call_args exists and has the right structure
-                    if (mock_server.call_tool.call_args and
-                        len(mock_server.call_tool.call_args[0]) > 0):
-                        call_tool_handler = mock_server.call_tool.call_args[0][0]
-                    elif mock_server.call_tool.called:
-                        # If called but args structure is different, try to get from call_args_list
-                        if mock_server.call_tool.call_args_list:
-                            for call_args in mock_server.call_tool.call_args_list:
-                                if call_args[0]:  # Check if there are positional args
-                                    call_tool_handler = call_args[0][0]
-                                    break
-                            else:
-                                pytest.skip("Mock server call_tool called but no handler found")
-                        else:
-                            pytest.skip("Mock server call_tool called but no args recorded")
-                    else:
-                        # Skip test if mock wasn't called as expected
-                        pytest.skip("Mock server call_tool not called as expected")
-                else:
-                    pytest.skip("Mock server call_tool not called as expected")
+                
+                # Get the captured handler
+                assert 'call_tool' in captured_handlers, "call_tool handler was not registered"
+                call_tool_handler = captured_handlers['call_tool']
                 
                 arguments = {"file_path": "../../../etc/passwd"}
                 result = await call_tool_handler("check_code_scale", arguments)
