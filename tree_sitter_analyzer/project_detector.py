@@ -58,7 +58,6 @@ PROJECT_MARKERS = [
     "README.txt",
     "LICENSE",
     "CHANGELOG.md",
-    ".gitignore",
     ".dockerignore",
     "Dockerfile",
     "docker-compose.yml",
@@ -270,7 +269,7 @@ class ProjectRootDetector:
 
 def detect_project_root(
     file_path: str | None = None, explicit_root: str | None = None
-) -> str:
+) -> str | None:
     """
     Unified project root detection with priority handling.
 
@@ -278,14 +277,14 @@ def detect_project_root(
     1. explicit_root parameter (highest priority)
     2. Auto-detection from file_path
     3. Auto-detection from current working directory
-    4. Fallback to file directory or cwd
+    4. Return None if no markers found
 
     Args:
         file_path: Path to a file within the project
         explicit_root: Explicitly specified project root
 
     Returns:
-        Project root directory path
+        Project root directory path, or None if no markers found
     """
     detector = ProjectRootDetector()
 
@@ -311,10 +310,9 @@ def detect_project_root(
         logger.debug(f"Auto-detected project root from cwd: {detected_root}")
         return detected_root
 
-    # Priority 4: Fallback
-    fallback_root = detector.get_fallback_root(file_path)
-    logger.debug(f"Using fallback project root: {fallback_root}")
-    return fallback_root
+    # Priority 4: Return None if no markers found
+    logger.debug("No project markers found, returning None")
+    return None
 
 
 if __name__ == "__main__":

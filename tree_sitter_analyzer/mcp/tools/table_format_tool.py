@@ -84,6 +84,11 @@ class TableFormatTool(BaseMCPTool):
                     "type": "string",
                     "description": "Optional filename to save output to file (extension auto-detected based on content)",
                 },
+                "suppress_output": {
+                    "type": "boolean",
+                    "description": "When true and output_file is specified, suppress table_output in response to save tokens",
+                    "default": False,
+                },
             },
             "required": ["file_path"],
             "additionalProperties": False,
@@ -134,6 +139,12 @@ class TableFormatTool(BaseMCPTool):
                 raise ValueError("output_file must be a string")
             if not output_file.strip():
                 raise ValueError("output_file cannot be empty")
+
+        # Validate suppress_output if provided
+        if "suppress_output" in arguments:
+            suppress_output = arguments["suppress_output"]
+            if not isinstance(suppress_output, bool):
+                raise ValueError("suppress_output must be a boolean")
 
         return True
 
@@ -365,6 +376,7 @@ class TableFormatTool(BaseMCPTool):
             format_type = args.get("format_type", "full")
             language = args.get("language")
             output_file = args.get("output_file")
+            suppress_output = args.get("suppress_output", False)
 
             # Resolve file path using common path resolver
             resolved_path = self.path_resolver.resolve(file_path)
@@ -396,6 +408,10 @@ class TableFormatTool(BaseMCPTool):
                 output_file = self.security_validator.sanitize_input(
                     output_file, max_length=255
                 )
+
+            # Sanitize suppress_output input (boolean, no sanitization needed but validate type)
+            if suppress_output is not None and not isinstance(suppress_output, bool):
+                raise ValueError("suppress_output must be a boolean")
 
             # Validate file exists
             if not Path(resolved_path).exists():
@@ -452,13 +468,17 @@ class TableFormatTool(BaseMCPTool):
                         "total_lines": stats.get("total_lines", 0),
                     }
 
+                # Build result - conditionally include table_output based on suppress_output
                 result = {
-                    "table_output": table_output,
                     "format_type": format_type,
                     "file_path": file_path,
                     "language": language,
                     "metadata": metadata,
                 }
+
+                # Only include table_output if not suppressed or no output file specified
+                if not suppress_output or not output_file:
+                    result["table_output"] = table_output
 
                 # Handle file output if requested
                 if output_file:

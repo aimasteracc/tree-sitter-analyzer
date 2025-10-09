@@ -558,7 +558,8 @@ class JavaScriptElementExtractor(ElementExtractor):
                 elif child.type == "class_heritage":
                     # Extract extends clause
                     heritage_text = self._get_node_text_optimized(child)
-                    match = re.search(r"extends\s+(\w+)", heritage_text)
+                    # Support both simple names (Component) and dotted names (React.Component)
+                    match = re.search(r"extends\s+([\w.]+)", heritage_text)
                     if match:
                         superclass = match.group(1)
 
@@ -1217,6 +1218,20 @@ class JavaScriptElementExtractor(ElementExtractor):
         else:
             return "unknown"
 
+    def extract_elements(self, tree: "tree_sitter.Tree", source_code: str) -> list:
+        """Extract elements from source code using tree-sitter AST"""
+        elements = []
+        
+        try:
+            elements.extend(self.extract_functions(tree, source_code))
+            elements.extend(self.extract_classes(tree, source_code))
+            elements.extend(self.extract_variables(tree, source_code))
+            elements.extend(self.extract_imports(tree, source_code))
+        except Exception as e:
+            log_error(f"Failed to extract elements: {e}")
+        
+        return elements
+
     def _get_variable_kind(self, var_data: dict | str) -> str:
         """Get variable declaration kind from variable data or raw text"""
         if isinstance(var_data, dict):
@@ -1344,6 +1359,11 @@ class JavaScriptPlugin(LanguagePlugin):
     def __init__(self) -> None:
         self._extractor = JavaScriptElementExtractor()
         self._language: tree_sitter.Language | None = None
+        
+        # Legacy compatibility attributes for tests
+        self.language = "javascript"
+        self.extractor = self._extractor
+        self.supported_extensions = [".js", ".mjs", ".jsx", ".es6", ".es", ".cjs"]
 
     @property
     def language_name(self) -> str:
@@ -1495,3 +1515,25 @@ class JavaScriptPlugin(LanguagePlugin):
                 success=False,
                 error_message=str(e),
             )
+
+    def extract_elements(self, tree: "tree_sitter.Tree", source_code: str) -> dict:
+        """Extract elements from source code using tree-sitter AST"""
+        try:
+            if tree is None or not hasattr(tree, 'root_node') or tree.root_node is None:
+                return {"functions": [], "classes": [], "variables": [], "imports": [], "exports": []}
+            
+            functions = self._extractor.extract_functions(tree, source_code)
+            classes = self._extractor.extract_classes(tree, source_code)
+            variables = self._extractor.extract_variables(tree, source_code)
+            imports = self._extractor.extract_imports(tree, source_code)
+            
+            return {
+                "functions": functions,
+                "classes": classes,
+                "variables": variables,
+                "imports": imports,
+                "exports": []  # TODO: Implement exports extraction
+            }
+        except Exception as e:
+            log_error(f"Failed to extract elements: {e}")
+            return {"functions": [], "classes": [], "variables": [], "imports": [], "exports": []}
