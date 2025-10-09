@@ -59,6 +59,16 @@ class ProjectStatsResource:
         # Supported statistics types
         self._supported_stats_types = {"overview", "languages", "complexity", "files"}
 
+    @property
+    def project_root(self) -> str | None:
+        """Get the current project root path"""
+        return self._project_path
+
+    @project_root.setter
+    def project_root(self, value: str | None) -> None:
+        """Set the current project root path"""
+        self._project_path = value
+
     def get_resource_info(self) -> dict[str, Any]:
         """
         Get resource information for MCP registration

@@ -4,11 +4,11 @@
 
 [![Python版本](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![许可证](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![测试](https://img.shields.io/badge/tests-2046%20passed-brightgreen.svg)](#质量保证)
-[![覆盖率](https://img.shields.io/badge/coverage-69.67%25-green.svg)](#质量保证)
+[![测试](https://img.shields.io/badge/tests-2662%20passed-brightgreen.svg)](#质量保证)
+[![覆盖率](https://img.shields.io/badge/coverage-79.16%25-green.svg)](#质量保证)
 [![质量](https://img.shields.io/badge/quality-enterprise%20grade-blue.svg)](#质量保证)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
-[![版本](https://img.shields.io/badge/version-1.6.2-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
+[![版本](https://img.shields.io/badge/version-1.7.0-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
 ## 🚀 AI时代的企业级代码分析工具
@@ -56,15 +56,20 @@ Tree-sitter Analyzer 是一个为AI时代设计的企业级代码分析工具，
 - **统一元素系统** - 革命性的统一代码元素管理架构
 
 ### 🌍 企业级多语言支持
-- **Java** - 完整支持（1103行插件代码，73%覆盖率），包括Spring、JPA框架
-- **Python** - 完整支持（584行插件代码，63%覆盖率），包括类型注解、装饰器
-- **JavaScript** - 企业级支持（1445行插件代码，68%覆盖率），包括ES6+、React/Vue/Angular、JSX
-- **TypeScript** - **完整支持**（1553行插件代码，29%覆盖率），包括接口、类型、装饰器、TSX/JSX、框架检测
-- **更多语言** - C/C++、Rust、Go基础支持
+
+| 编程语言 | 支持级别 | 插件代码行数 | 测试覆盖率 | 主要特性 |
+|---------|---------|-------------|-----------|---------|
+| **Java** | 完整支持 | 1,333行 | 80.30% | Spring框架、JPA、企业级特性 |
+| **Python** | 完整支持 | 1,296行 | 82.84% | 类型注解、装饰器、现代Python特性 |
+| **JavaScript** | 完整支持 | 1,539行 | 76.74% | ES6+、React/Vue/Angular、JSX |
+| **TypeScript** | 完整支持 | 1,729行 | 72.82% | 接口、类型、装饰器、TSX/JSX、框架检测 |
+| **C/C++** | 基础支持 | - | - | 基本语法解析 |
+| **Rust** | 基础支持 | - | - | 基本语法解析 |
+| **Go** | 基础支持 | - | - | 基本语法解析 |
 
 ### 🏆 生产就绪
-- **2,046个测试** - 100%通过率，企业级质量保证
-- **69.67%覆盖率** - 全面的测试覆盖
+- **2,662个测试** - 100%通过率，企业级质量保证
+- **79.16%覆盖率** - 全面的测试覆盖
 - **跨平台支持** - Windows、macOS、Linux全平台兼容
 - **持续维护** - 活跃的开发和社区支持
 
@@ -95,26 +100,15 @@ uv --version
 
 **fd** 和 **ripgrep** 是高性能的文件搜索和内容搜索工具，用于高级MCP功能。
 
-```bash
-# macOS
-brew install fd ripgrep
-
-# Windows（推荐使用winget）
-winget install sharkdp.fd BurntSushi.ripgrep.MSVC
-
-# Windows（其他方式）
-# choco install fd ripgrep
-# scoop install fd ripgrep
-
-# Ubuntu/Debian
-sudo apt install fd-find ripgrep
-
-# CentOS/RHEL/Fedora
-sudo dnf install fd-find ripgrep
-
-# Arch Linux
-sudo pacman -S fd ripgrep
-```
+| 操作系统 | 包管理器 | 安装命令 | 备注 |
+|---------|---------|---------|------|
+| **macOS** | Homebrew | `brew install fd ripgrep` | 推荐方式 |
+| **Windows** | winget | `winget install sharkdp.fd BurntSushi.ripgrep.MSVC` | 推荐方式 |
+| | Chocolatey | `choco install fd ripgrep` | 替代方式 |
+| | Scoop | `scoop install fd ripgrep` | 替代方式 |
+| **Ubuntu/Debian** | apt | `sudo apt install fd-find ripgrep` | 官方仓库 |
+| **CentOS/RHEL/Fedora** | dnf | `sudo dnf install fd-find ripgrep` | 官方仓库 |
+| **Arch Linux** | pacman | `sudo pacman -S fd ripgrep` | 官方仓库 |
 
 **验证安装：**
 ```bash
@@ -297,113 +291,7 @@ SMART工作流程是使用AI助手分析代码的推荐流程。以下以 `examp
 在项目中查找所有包含"BigService"的Java文件
 ```
 
-**AI会调用** `find_and_grep` 工具，返回：
-```json
-{
-  "success": true,
-  "results": [
-    {
-      "file": "C:\\git-public\\tree-sitter-analyzer\\examples\\BigService.java",
-      "line": 13,
-      "text": "* BigService - Large-scale business service class",
-      "matches": [
-        [
-          3,
-          13
-        ]
-      ]
-    },
-    {
-      "file": "C:\\git-public\\tree-sitter-analyzer\\examples\\BigService.java",
-      "line": 17,
-      "text": "public class BigService {",
-      "matches": [
-        [
-          13,
-          23
-        ]
-      ]
-    },
-    {
-      "file": "C:\\git-public\\tree-sitter-analyzer\\examples\\BigService.java",
-      "line": 33,
-      "text": "public BigService() {",
-      "matches": [
-        [
-          11,
-          21
-        ]
-      ]
-    },
-    {
-      "file": "C:\\git-public\\tree-sitter-analyzer\\examples\\BigService.java",
-      "line": 45,
-      "text": "System.out.println(\"Initializing BigService...\");",
-      "matches": [
-        [
-          41,
-          51
-        ]
-      ]
-    },
-    {
-      "file": "C:\\git-public\\tree-sitter-analyzer\\examples\\BigService.java",
-      "line": 49,
-      "text": "System.out.println(\"BigService initialization completed.\");",
-      "matches": [
-        [
-          28,
-          38
-        ]
-      ]
-    },
-    {
-      "file": "C:\\git-public\\tree-sitter-analyzer\\examples\\BigService.java",
-      "line": 1386,
-      "text": "System.out.println(\"BigService Demo Application\");",
-      "matches": [
-        [
-          28,
-          38
-        ]
-      ]
-    },
-    {
-      "file": "C:\\git-public\\tree-sitter-analyzer\\examples\\BigService.java",
-      "line": 1389,
-      "text": "BigService service = new BigService();",
-      "matches": [
-        [
-          8,
-          18
-        ],
-        [
-          33,
-          43
-        ]
-      ]
-    },
-    {
-      "file": "C:\\git-public\\tree-sitter-analyzer\\examples\\BigService.java",
-      "line": 1417,
-      "text": "System.out.println(\"BigService demo application finished successfully.\");",
-      "matches": [
-        [
-          28,
-          38
-        ]
-      ]
-    }
-  ],
-  "count": 8,
-  "meta": {
-    "searched_file_count": 4,
-    "truncated": false,
-    "fd_elapsed_ms": 338,
-    "rg_elapsed_ms": 331
-  }
-}
-```
+**AI 将会调用** `find_and_grep` 工具，并返回显示在 BigService.java 中有 8 处匹配的结果。
 
 **场景2：已知文件路径，直接使用**
 ```
@@ -643,6 +531,34 @@ uv run python -m tree_sitter_analyzer --show-query-languages
 
 ---
 
+## 🤖 MCP工具完整列表
+
+Tree-sitter Analyzer提供了丰富的MCP工具集，专为AI助手设计：
+
+| 工具类别 | 工具名称 | 主要功能 | 核心特性 |
+|---------|---------|---------|---------|
+| **📊 代码分析** | `analyze_code_structure` | 分析代码结构和生成表格 | 🆕 suppress_output参数、多种格式(full/compact/csv/json)、自动语言检测 |
+| | `check_code_scale` | 快速分析代码文件规模 | 文件大小统计、行数统计、复杂度分析、性能指标 |
+| | `extract_code_section` | 精确提取代码片段 | 指定行范围提取、大文件高效处理、保持原始格式 |
+| **🔍 智能搜索** | `list_files` | 高性能文件发现 | 基于fd、glob模式、文件类型过滤、时间范围控制 |
+| | `search_content` | 正则表达式内容搜索 | 基于ripgrep、多种输出格式、上下文控制、编码处理 |
+| | `find_and_grep` | 两阶段搜索 | 先找文件再搜内容、组合fd+ripgrep、智能缓存优化 |
+| **🔧 高级查询** | `query_code` | tree-sitter查询 | 预定义查询键、自定义查询字符串、过滤表达式支持 |
+| **⚙️ 系统管理** | `set_project_path` | 设置项目根路径 | 安全边界控制、自动路径验证 |
+| **📁 资源访问** | 代码文件资源 | URI访问代码文件 | 通过URI标识访问文件内容 |
+| | 项目统计资源 | 访问项目统计数据 | 项目分析数据和统计信息 |
+
+### 🆕 v1.7.0新特性：suppress_output功能
+
+`analyze_code_structure`工具新增的`suppress_output`参数是一个革命性的token优化功能：
+
+- **问题解决**：当分析结果过大时，传统方式会返回完整的表格数据，消耗大量token
+- **智能优化**：设置`suppress_output=true`且指定`output_file`时，仅返回基本元数据
+- **效果显著**：可减少响应大小高达99%，大幅节省AI对话的token消耗
+- **使用场景**：特别适合大型代码文件的结构分析和批量处理场景
+
+---
+
 ## 🛠️ 核心功能特性
 
 ### 📊 代码结构分析
@@ -671,10 +587,10 @@ uv run python -m tree_sitter_analyzer --show-query-languages
 - **其他MCP兼容工具** - 通用MCP服务器
 
 ### 🌍 多语言支持
-- **Java** - 完整支持（1103行插件），包括Spring、JPA框架
-- **Python** - 完整支持（584行插件），包括类型注解、装饰器
-- **JavaScript** - 企业级支持（1445行插件），包括ES6+、React/Vue/Angular、JSX
-- **TypeScript** - **完整支持**（1553行插件），包括接口、类型、装饰器、TSX/JSX、框架检测
+- **Java** - 完整支持（1333行插件），包括Spring、JPA框架
+- **Python** - 完整支持（1296行插件），包括类型注解、装饰器
+- **JavaScript** - 企业级支持（1539行插件），包括ES6+、React/Vue/Angular、JSX
+- **TypeScript** - **完整支持**（1729行插件），包括接口、类型、装饰器、TSX/JSX、框架检测
 - **C/C++、Rust、Go** - 基础支持
 
 ### 📁 高级文件搜索
@@ -694,16 +610,18 @@ uv run python -m tree_sitter_analyzer --show-query-languages
 ## 🏆 质量保证
 
 ### 📊 质量指标
-- **1,893个测试** - 100%通过率 ✅
-- **71.48%代码覆盖率** - 全面测试套件
+- **2,662个测试** - 100%通过率 ✅
+- **79.16%代码覆盖率** - 全面测试套件
 - **零测试失败** - 生产就绪
 - **跨平台支持** - Windows、macOS、Linux
 
-### ⚡ 最新质量成就（v1.6.2）
+### ⚡ 最新质量成就（v1.7.0）
+- ✅ **Token节省功能** - 新增suppress_output参数，在文件输出时自动抑制表格输出，节省AI token消耗
+- ✅ **智能输出控制** - 当指定output_file且suppress_output=true时，自动优化响应大小
+- ✅ **企业级测试覆盖** - 新增356个测试用例，专门验证suppress_output功能
+- ✅ **MCP工具增强** - 完善的MCP服务器工具集，支持高级文件搜索和内容分析
 - ✅ **跨平台路径兼容性** - 修复Windows短路径名称和macOS符号链接差异
-- ✅ **企业级可靠性** - 50+全面测试用例确保稳定性
 - ✅ **GitFlow实现** - 专业的开发/发布分支策略
-- ✅ **AI协作优化** - 针对AI辅助开发的专门质量控制
 
 ### ⚙️ 运行测试
 ```bash
@@ -719,22 +637,19 @@ uv run pytest tests/test_mcp_server_initialization.py -v
 
 ### 📈 测试覆盖率详情
 
-**核心模块：**
-- **语言检测器**: 98.41%（优秀）- 自动识别编程语言
-- **CLI主入口**: 94.36%（优秀）- 命令行接口
-- **查询过滤系统**: 96.06%（优秀）- 代码查询和过滤
-- **查询服务**: 86.25%（良好）- 查询执行引擎
-- **MCP错误处理**: 82.76%（良好）- AI助手集成错误处理
-
-**语言插件：**
-- **Java插件**: 73.00%（良好）- 1103行代码，完整的企业级支持
-- **JavaScript插件**: 68.31%（良好）- 1445行代码，现代ES6+特性支持
-- **Python插件**: 63.26%（良好）- 584行代码，完整的类型注解支持
-
-**MCP工具：**
-- **文件搜索工具**: 88.77%（优秀）- fd/ripgrep集成
-- **内容搜索工具**: 92.70%（优秀）- 正则表达式搜索
-- **组合搜索工具**: 91.57%（优秀）- 两阶段搜索
+| 模块类别 | 模块名称 | 覆盖率 | 质量等级 | 主要功能 |
+|---------|---------|-------|---------|---------|
+| **🔧 核心模块** | 语言检测器 | 98.41% | 优秀 | 自动识别编程语言 |
+| | CLI主入口 | 94.36% | 优秀 | 命令行接口 |
+| | 查询过滤系统 | 96.06% | 优秀 | 代码查询和过滤 |
+| | 查询服务 | 86.25% | 良好 | 查询执行引擎 |
+| | MCP错误处理 | 82.76% | 良好 | AI助手集成错误处理 |
+| **🌍 语言插件** | Java插件 | 73.00% | 良好 | 1103行代码，完整的企业级支持 |
+| | JavaScript插件 | 68.31% | 良好 | 1445行代码，现代ES6+特性支持 |
+| | Python插件 | 63.26% | 良好 | 584行代码，完整的类型注解支持 |
+| **🤖 MCP工具** | 文件搜索工具 | 88.77% | 优秀 | fd/ripgrep集成 |
+| | 内容搜索工具 | 92.70% | 优秀 | 正则表达式搜索 |
+| | 组合搜索工具 | 91.57% | 优秀 | 两阶段搜索 |
 
 ### ✅ 文档验证状态
 
@@ -747,7 +662,7 @@ uv run pytest tests/test_mcp_server_initialization.py -v
 **验证环境：**
 - 操作系统：Windows 10、macOS、Linux
 - Python版本：3.10+
-- 项目版本：tree-sitter-analyzer v1.6.2
+- 项目版本：tree-sitter-analyzer v1.7.0
 - 测试文件：BigService.java (1419行)、sample.py (256行)、MultiClass.java (54行)
 
 ---
