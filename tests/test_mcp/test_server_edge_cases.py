@@ -344,12 +344,15 @@ class TestMCPServerToolHandlingEdgeCases:
         # Mock tools to fail
         server.table_format_tool = AsyncMock()
         server.table_format_tool.execute.side_effect = Exception("Tool failed")
+        server.table_format_tool.set_project_path = Mock()
         
         server.read_partial_tool = AsyncMock()
         server.read_partial_tool.execute.side_effect = RuntimeError("Read failed")
+        server.read_partial_tool.set_project_path = Mock()
         
         server.query_tool = AsyncMock()
         server.query_tool.execute.side_effect = ValueError("Query failed")
+        server.query_tool.set_project_path = Mock()
         
         return server
 
@@ -582,7 +585,18 @@ class TestMCPServerUtilityEdgeCases:
             with patch('sys.stdin'), patch('sys.stdout'), patch('sys.stderr'):
                 with pytest.raises(Exception, match="Async run failed"):
                     from tree_sitter_analyzer.mcp.server import main_sync
-                    main_sync()
+                    try:
+                        main_sync()
+                    except Exception:
+                        # Clean up any coroutine that might have been created
+                        if mock_run.call_args:
+                            args, kwargs = mock_run.call_args
+                            if args and hasattr(args[0], 'close'):
+                                try:
+                                    args[0].close()
+                                except:
+                                    pass
+                        raise
 
 
 class TestMCPServerLoggingEdgeCases:
