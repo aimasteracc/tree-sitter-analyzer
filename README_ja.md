@@ -4,11 +4,11 @@
 
 [![Pythonバージョン](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![ライセンス](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![テスト](https://img.shields.io/badge/tests-2662%20passed-brightgreen.svg)](#8--品質保証)
-[![カバレッジ](https://img.shields.io/badge/coverage-79.16%25-green.svg)](#8--品質保証)
+[![テスト](https://img.shields.io/badge/tests-2675%20passed-brightgreen.svg)](#8--品質保証)
+[![カバレッジ](https://img.shields.io/badge/coverage-78.85%25-green.svg)](#8--品質保証)
 [![品質](https://img.shields.io/badge/quality-enterprise%20grade-blue.svg)](#8--品質保証)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
-[![バージョン](https://img.shields.io/badge/version-1.7.1-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
+[![バージョン](https://img.shields.io/badge/version-1.7.2-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
 ## 🚀 AI時代のエンタープライズグレードコード解析ツール
@@ -57,8 +57,8 @@ Tree-sitter Analyzerは、AI時代のために設計されたエンタープラ�
 | **Go** | 基本サポート | 基本構文解析 |
 
 ### 🏆 本番環境対応
-- **2,662のテスト** - 100%合格率、エンタープライズグレードの品質保証
-- **79.16%カバレッジ** - 包括的なテストスイート
+- **2,675のテスト** - 100%合格率、エンタープライズグレードの品質保証
+- **78.85%カバレッジ** - 包括的なテストスイート
 - **クロスプラットフォームサポート** - Windows、macOS、Linuxとの完全な互換性
 - **継続的なメンテナンス** - アクティブな開発とコミュニティサポート
 
@@ -424,9 +424,19 @@ Tree-sitter AnalyzerはAIアシスタント向けに設計された豊富なMCP�
 | **📁 リソースアクセス** | コードファイルリソース | URIコードファイルアクセス | URI識別によるファイルコンテンツアクセス |
 | | プロジェクト統計リソース | プロジェクト統計データアクセス | プロジェクト解析データと統計情報 |
 
-### 🆕 v1.7.0新機能：suppress_output機能
+### 🆕 v1.7.2新機能：ファイル出力最適化機能
 
-`analyze_code_structure`ツールに新しく追加された`suppress_output`パラメータは、革命的なトークン最適化機能です：
+MCP検索ツールに新しく追加されたファイル出力最適化機能は、革命的なトークン節約ソリューションです：
+
+- **🎯 ファイル出力最適化**：`find_and_grep`、`list_files`、`search_content`ツールに`suppress_output`と`output_file`パラメータを新追加
+- **🔄 自動フォーマット検出**：コンテンツタイプに基づいてファイル形式（JSON/Markdown）を自動選択
+- **💾 大幅なトークン節約**：大型検索結果をファイルに保存する際、レスポンスサイズを最大99%削減
+- **📚 ROO規則ドキュメント**：tree-sitter-analyzer MCP最適化使用ガイドを新追加
+- **🔧 後方互換性**：オプション機能で、既存機能の使用に影響なし
+
+### 🆕 v1.7.0機能：suppress_output機能
+
+`analyze_code_structure`ツールの`suppress_output`パラメータ：
 
 - **問題解決**：解析結果が大きすぎる場合、従来の方式では完全なテーブルデータを返し、大量のトークンを消費
 - **インテリジェント最適化**：`suppress_output=true`かつ`output_file`指定時、基本メタデータのみを返却
@@ -547,16 +557,18 @@ uv run python -m tree_sitter_analyzer --show-query-languages
 ## 8. 🏆 品質保証
 
 ### 📊 品質メトリクス
-- **2,662のテスト** - 100%合格率 ✅
-- **79.16%コードカバレッジ** - 包括的なテストスイート
+- **2,675のテスト** - 100%合格率 ✅
+- **78.85%コードカバレッジ** - 包括的なテストスイート
 - **ゼロテスト失敗** - 本番環境対応
 - **クロスプラットフォームサポート** - Windows、macOS、Linux
 
-### ⚡ 最新の品質成果（v1.7.0）
-- ✅ **トークン節約機能** - 新しいsuppress_outputパラメータで、ファイル出力時にテーブル出力を自動抑制し、AIトークン消費を節約
-- ✅ **インテリジェント出力制御** - output_file指定時かつsuppress_output=trueの場合、レスポンスサイズを自動最適化
-- ✅ **エンタープライズグレードテストカバレッジ** - suppress_output機能の完全な検証を含む包括的なテストスイート
-- ✅ **MCPツール強化** - 高度なファイル検索とコンテンツ解析をサポートする完全なMCPサーバーツールセット
+### ⚡ 最新の品質成果（v1.7.2）
+- ✅ **ファイル出力最適化** - MCP検索ツールに`suppress_output`と`output_file`パラメータを新追加、大幅なトークン節約を実現
+- ✅ **インテリジェントフォーマット検出** - 最適なファイル形式（JSON/Markdown）を自動選択、ストレージと読み取りを最適化
+- ✅ **ROO規則ドキュメント** - tree-sitter-analyzer MCP最適化使用ガイドを新追加
+- ✅ **トークン管理強化** - 検索結果ファイル出力時にレスポンスサイズを最大99%削減
+- ✅ **エンタープライズグレードテストカバレッジ** - ファイル出力最適化機能の完全な検証を含む包括的なテストスイート
+- ✅ **MCPツール完善** - 高度なファイル検索とコンテンツ解析をサポートする完全なMCPサーバーツールセット
 - ✅ **クロスプラットフォームパス互換性** - Windowsの短いパス名とmacOSのシンボリックリンクの違いを修正
 - ✅ **GitFlow実装** - プロフェッショナルな開発/リリースブランチ戦略
 
@@ -599,7 +611,7 @@ uv run pytest tests/test_mcp_server_initialization.py -v
 **検証環境：**
 - オペレーティングシステム：Windows 10、macOS、Linux
 - Pythonバージョン：3.10+
-- プロジェクトバージョン：tree-sitter-analyzer v1.7.0
+- プロジェクトバージョン：tree-sitter-analyzer v1.7.2
 - テストファイル：BigService.java（1419行）、sample.py（256行）、MultiClass.java（54行）
 
 ---

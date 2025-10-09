@@ -4,11 +4,11 @@
 
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-2662%20passed-brightgreen.svg)](#quality-assurance)
-[![Coverage](https://img.shields.io/badge/coverage-79.16%25-green.svg)](#quality-assurance)
+[![Tests](https://img.shields.io/badge/tests-2675%20passed-brightgreen.svg)](#quality-assurance)
+[![Coverage](https://img.shields.io/badge/coverage-78.85%25-green.svg)](#quality-assurance)
 [![Quality](https://img.shields.io/badge/quality-enterprise%20grade-blue.svg)](#quality-assurance)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
-[![Version](https://img.shields.io/badge/version-1.7.1-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
+[![Version](https://img.shields.io/badge/version-1.7.2-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
 ## 🚀 Enterprise-Grade Code Analysis Tool for the AI Era
@@ -57,8 +57,8 @@ Tree-sitter Analyzer is an enterprise-grade code analysis tool designed for the 
 | **Go** | Basic Support | Basic syntax parsing |
 
 ### 🏆 Production Ready
-- **2,662 Tests** - 100% pass rate, enterprise-grade quality assurance
-- **79.16% Coverage** - Comprehensive test coverage
+- **2,675 Tests** - 100% pass rate, enterprise-grade quality assurance
+- **78.85% Coverage** - Comprehensive test coverage
 - **Cross-platform Support** - Compatible with Windows, macOS, Linux
 - **Continuous Maintenance** - Active development and community support
 
@@ -424,9 +424,19 @@ Tree-sitter Analyzer provides a rich set of MCP tools designed for AI assistants
 | **📁 Resource Access** | Code file resources | URI code file access | File content access via URI identification |
 | | Project statistics resources | Project statistics data access | Project analysis data and statistical information |
 
-### 🆕 v1.7.0 New Feature: suppress_output Function
+### 🆕 v1.7.2 New Feature: File Output Optimization
 
-The newly added `suppress_output` parameter in the `analyze_code_structure` tool is a revolutionary token optimization feature:
+MCP search tools' newly added file output optimization feature is a revolutionary token-saving solution:
+
+- **🎯 File Output Optimization**: `find_and_grep`, `list_files`, and `search_content` tools now include `suppress_output` and `output_file` parameters
+- **🔄 Automatic Format Detection**: Smart file format selection (JSON/Markdown) based on content type
+- **💾 Massive Token Savings**: Response size reduced by up to 99% when saving large search results to files
+- **📚 ROO Rules Documentation**: Added comprehensive tree-sitter-analyzer MCP optimization usage guide
+- **🔧 Backward Compatibility**: Optional feature that doesn't affect existing functionality
+
+### 🆕 v1.7.0 Feature: suppress_output Function
+
+The `suppress_output` parameter in the `analyze_code_structure` tool:
 
 - **Problem solved**: When analysis results are too large, traditional methods return complete table data, consuming massive tokens
 - **Intelligent optimization**: When `suppress_output=true` and `output_file` specified, only basic metadata is returned
@@ -547,16 +557,18 @@ uv run python -m tree_sitter_analyzer --show-query-languages
 ## 8. 🏆 Quality Assurance
 
 ### 📊 Quality Metrics
-- **2,662 tests** - 100% pass rate ✅
-- **79.16% code coverage** - Comprehensive test suite
+- **2,675 tests** - 100% pass rate ✅
+- **78.85% code coverage** - Comprehensive test suite
 - **Zero test failures** - Production ready
 - **Cross-platform support** - Windows, macOS, Linux
 
-### ⚡ Latest Quality Achievements (v1.7.0)
-- ✅ **Token saving feature** - New suppress_output parameter automatically suppresses table output when file output is specified, saving AI token consumption
-- ✅ **Intelligent output control** - Automatically optimizes response size when output_file is specified and suppress_output=true
-- ✅ **Enterprise-grade test coverage** - Comprehensive test suite including complete validation of suppress_output functionality
-- ✅ **MCP tool enhancement** - Complete MCP server tool set supporting advanced file search and content analysis
+### ⚡ Latest Quality Achievements (v1.7.2)
+- ✅ **File output optimization** - MCP search tools now include `suppress_output` and `output_file` parameters for massive token savings
+- ✅ **Intelligent format detection** - Automatic selection of optimal file formats (JSON/Markdown) for storage and reading optimization
+- ✅ **ROO rules documentation** - Added comprehensive tree-sitter-analyzer MCP optimization usage guide
+- ✅ **Enhanced token management** - Response size reduced by up to 99% when outputting search results to files
+- ✅ **Enterprise-grade test coverage** - Comprehensive test suite including complete validation of file output optimization features
+- ✅ **Complete MCP tools** - Complete MCP server tool set supporting advanced file search and content analysis
 - ✅ **Cross-platform path compatibility** - Fixed differences between Windows short path names and macOS symbolic links
 - ✅ **GitFlow implementation** - Professional development/release branch strategy
 
@@ -599,7 +611,7 @@ uv run pytest tests/test_mcp_server_initialization.py -v
 **Verification environment:**
 - Operating systems: Windows 10, macOS, Linux
 - Python version: 3.10+
-- Project version: tree-sitter-analyzer v1.7.0
+- Project version: tree-sitter-analyzer v1.7.2
 - Test files: BigService.java (1419 lines), sample.py (256 lines), MultiClass.java (54 lines)
 
 ---
