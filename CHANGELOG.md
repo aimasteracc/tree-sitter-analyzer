@@ -1,5 +1,46 @@
 # Changelog
 
+## [1.7.0] - 2025-10-09
+
+### Added
+- **🎯 suppress_output Feature**: Revolutionary token optimization feature for `analyze_code_structure` tool
+  - **Token Limit Solution**: New `suppress_output` parameter reduces response size by up to 99% when saving to files
+  - **Smart Output Control**: When `suppress_output=true` and `output_file` is specified, only essential metadata is returned
+  - **Backward Compatibility**: Optional feature that doesn't affect existing functionality
+  - **Performance Optimization**: Dramatically reduces context usage for large analysis results
+
+- **📊 Enhanced MCP Tools Documentation**: Comprehensive MCP tools reference and usage guide
+  - **Complete Tool List**: All 12 MCP tools documented with detailed descriptions
+  - **Usage Examples**: Practical examples for each tool with real-world scenarios
+  - **Parameter Reference**: Complete parameter documentation for all tools
+  - **Integration Guide**: Step-by-step setup instructions for AI assistants
+
+- **🌐 Multi-language Documentation Updates**: Synchronized documentation across all language versions
+  - **Chinese (README_zh.md)**: Updated with new statistics and MCP tools documentation
+  - **Japanese (README_ja.md)**: Complete translation with feature explanations
+  - **English (README.md)**: Enhanced with comprehensive MCP tools reference
+
+### Improved
+- **📊 Quality Metrics**:
+  - Test count increased to 2662 (up from 2046)
+  - Code coverage maintained at 79.16%
+  - All tests passing with improved system stability
+- **🔧 Code Quality**: Enhanced suppress_output feature implementation and testing
+- **📚 Documentation**: Updated all README versions with new statistics and comprehensive MCP tools documentation
+
+### Technical Details
+- **New Files**:
+  - `examples/suppress_output_demo.py` - Demonstration of suppress_output feature
+  - `tests/test_suppress_output_feature.py` - 356 comprehensive test cases
+- **Enhanced Files**:
+  - `tree_sitter_analyzer/mcp/tools/table_format_tool.py` - Added suppress_output functionality
+  - All README files updated with v1.7.0 statistics and MCP tools documentation
+- **Test Coverage**: All 2662 tests passing with 79.16% coverage
+- **Quality Metrics**: Enhanced suppress_output feature with comprehensive validation
+- **Breaking Changes**: None - all improvements are backward compatible
+
+This minor release introduces the game-changing suppress_output feature that solves token length limitations for large analysis results, along with comprehensive MCP tools documentation across all language versions.
+
 ## [1.6.2] - 2025-10-07
 
 ### Added
