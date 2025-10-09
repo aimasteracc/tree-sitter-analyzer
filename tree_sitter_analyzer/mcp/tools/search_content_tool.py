@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from ..utils.error_handler import handle_mcp_errors
+from ..utils.file_output_manager import FileOutputManager
 from ..utils.gitignore_detector import get_default_detector
 from ..utils.search_cache import get_default_cache
 from . import fd_rg_utils
@@ -36,6 +37,7 @@ class SearchContentTool(BaseMCPTool):
         """
         super().__init__(project_root)
         self.cache = get_default_cache() if enable_cache else None
+        self.file_output_manager = FileOutputManager(project_root)
 
     def get_tool_definition(self) -> dict[str, Any]:
         return {
@@ -152,6 +154,15 @@ class SearchContentTool(BaseMCPTool):
                         "type": "boolean",
                         "default": False,
                         "description": "Return only the total match count as a number. Most token-efficient option for count queries. Takes priority over all other formats",
+                    },
+                    "output_file": {
+                        "type": "string",
+                        "description": "Optional filename to save output to file (extension auto-detected based on content)",
+                    },
+                    "suppress_output": {
+                        "type": "boolean",
+                        "description": "When true and output_file is specified, suppress detailed output in response to save tokens",
+                        "default": False,
                     },
                 },
                 "required": ["query"],
@@ -312,12 +323,18 @@ class SearchContentTool(BaseMCPTool):
                     cached_result["cache_hit"] = True
                 return cached_result
 
-        # Clamp counts to safety limits
-        max_count = fd_rg_utils.clamp_int(
-            arguments.get("max_count"),
-            fd_rg_utils.DEFAULT_RESULTS_LIMIT,
-            fd_rg_utils.DEFAULT_RESULTS_LIMIT,
-        )
+        # Handle max_count parameter properly
+        # If user specifies max_count, use it directly (with reasonable upper limit)
+        # If not specified, use None to let ripgrep return all matches (subject to hard cap later)
+        max_count = arguments.get("max_count")
+        if max_count is not None:
+            # Clamp user-specified max_count to reasonable limits
+            # Use 1 as minimum default, but respect user's small values
+            max_count = fd_rg_utils.clamp_int(
+                max_count,
+                1,  # Minimum default value
+                fd_rg_utils.DEFAULT_RESULTS_LIMIT,  # Upper limit for safety
+            )
         timeout_ms = arguments.get("timeout_ms")
 
         # Note: --files-from is not supported in this ripgrep version
@@ -461,9 +478,18 @@ class SearchContentTool(BaseMCPTool):
 
         # Handle normal mode
         matches = fd_rg_utils.parse_rg_json_lines_to_matches(out)
-        truncated = len(matches) >= fd_rg_utils.MAX_RESULTS_HARD_CAP
-        if truncated:
-            matches = matches[: fd_rg_utils.MAX_RESULTS_HARD_CAP]
+        
+        # Apply user-specified max_count limit if provided
+        # Note: ripgrep's -m option limits matches per file, not total matches
+        # So we need to apply the total limit here in post-processing
+        user_max_count = arguments.get("max_count")
+        if user_max_count is not None and len(matches) > user_max_count:
+            matches = matches[:user_max_count]
+            truncated = True
+        else:
+            truncated = len(matches) >= fd_rg_utils.MAX_RESULTS_HARD_CAP
+            if truncated:
+                matches = matches[: fd_rg_utils.MAX_RESULTS_HARD_CAP]
 
         # Apply path optimization if requested
         optimize_paths = arguments.get("optimize_paths", False)
@@ -474,6 +500,54 @@ class SearchContentTool(BaseMCPTool):
         group_by_file = arguments.get("group_by_file", False)
         if group_by_file and matches:
             result = fd_rg_utils.group_matches_by_file(matches)
+
+            # Handle output suppression and file output for grouped results
+            output_file = arguments.get("output_file")
+            suppress_output = arguments.get("suppress_output", False)
+
+            # Handle file output if requested
+            if output_file:
+                try:
+                    # Save full result to file
+                    import json
+                    json_content = json.dumps(result, indent=2, ensure_ascii=False)
+                    file_path = self.file_output_manager.save_to_file(
+                        content=json_content,
+                        base_name=output_file
+                    )
+                    
+                    # If suppress_output is True, return minimal response
+                    if suppress_output:
+                        minimal_result = {
+                            "success": result.get("success", True),
+                            "count": result.get("count", 0),
+                            "output_file": output_file,
+                            "file_saved": f"Results saved to {file_path}"
+                        }
+                        # Cache the full result, not the minimal one
+                        if self.cache and cache_key:
+                            self.cache.set(cache_key, result)
+                        return minimal_result
+                    else:
+                        # Include file info in full response
+                        result["output_file"] = output_file
+                        result["file_saved"] = f"Results saved to {file_path}"
+                except Exception as e:
+                    logger.error(f"Failed to save output to file: {e}")
+                    result["file_save_error"] = str(e)
+                    result["file_saved"] = False
+            elif suppress_output:
+                # If suppress_output is True but no output_file, remove detailed results
+                minimal_result = {
+                    "success": result.get("success", True),
+                    "count": result.get("count", 0),
+                    "summary": result.get("summary", {}),
+                    "meta": result.get("meta", {})
+                }
+                # Cache the full result, not the minimal one
+                if self.cache and cache_key:
+                    self.cache.set(cache_key, result)
+                return minimal_result
 
             # Cache the result
             if self.cache and cache_key:
@@ -492,6 +566,54 @@ class SearchContentTool(BaseMCPTool):
                 "summary": summary,
             }
 
+            # Handle output suppression and file output for summary results
+            output_file = arguments.get("output_file")
+            suppress_output = arguments.get("suppress_output", False)
+
+            # Handle file output if requested
+            if output_file:
+                try:
+                    # Save full result to file
+                    import json
+                    json_content = json.dumps(result, indent=2, ensure_ascii=False)
+                    file_path = self.file_output_manager.save_to_file(
+                        content=json_content,
+                        base_name=output_file
+                    )
+                    
+                    # If suppress_output is True, return minimal response
+                    if suppress_output:
+                        minimal_result = {
+                            "success": result.get("success", True),
+                            "count": result.get("count", 0),
+                            "output_file": output_file,
+                            "file_saved": f"Results saved to {file_path}"
+                        }
+                        # Cache the full result, not the minimal one
+                        if self.cache and cache_key:
+                            self.cache.set(cache_key, result)
+                        return minimal_result
+                    else:
+                        # Include file info in full response
+                        result["output_file"] = output_file
+                        result["file_saved"] = f"Results saved to {file_path}"
+                except Exception as e:
+                    logger.error(f"Failed to save output to file: {e}")
+                    result["file_save_error"] = str(e)
+                    result["file_saved"] = False
+            elif suppress_output:
+                # If suppress_output is True but no output_file, remove detailed results
+                minimal_result = {
+                    "success": result.get("success", True),
+                    "count": result.get("count", 0),
+                    "summary": result.get("summary", {}),
+                    "elapsed_ms": result.get("elapsed_ms", 0)
+                }
+                # Cache the full result, not the minimal one
+                if self.cache and cache_key:
+                    self.cache.set(cache_key, result)
+                return minimal_result
+
             # Cache the result
             if self.cache and cache_key:
                 self.cache.set(cache_key, result)
@@ -503,8 +625,86 @@ class SearchContentTool(BaseMCPTool):
             "count": len(matches),
             "truncated": truncated,
             "elapsed_ms": elapsed_ms,
-            "results": matches,
         }
+
+        # Handle output suppression and file output
+        output_file = arguments.get("output_file")
+        suppress_output = arguments.get("suppress_output", False)
+
+        # Always add results to the base result for file saving
+        result["results"] = matches
+
+        # Handle file output if requested
+        if output_file:
+            try:
+                # Create detailed output for file
+                file_content = {
+                    "success": True,
+                    "count": len(matches),
+                    "truncated": truncated,
+                    "elapsed_ms": elapsed_ms,
+                    "results": matches,
+                    "summary": fd_rg_utils.summarize_search_results(matches),
+                    "grouped_by_file": fd_rg_utils.group_matches_by_file(matches)["files"] if matches else []
+                }
+
+                # Convert to JSON for file output
+                import json
+                json_content = json.dumps(file_content, indent=2, ensure_ascii=False)
+
+                # Save to file
+                saved_file_path = self.file_output_manager.save_to_file(
+                    content=json_content,
+                    base_name=output_file
+                )
+
+                result["output_file_path"] = saved_file_path
+                result["file_saved"] = True
+
+                logger.info(f"Search results saved to: {saved_file_path}")
+
+            except Exception as e:
+                logger.error(f"Failed to save output to file: {e}")
+                result["file_save_error"] = str(e)
+                result["file_saved"] = False
+
+        # Handle file output and suppression
+        output_file = arguments.get("output_file")
+        suppress_output = arguments.get("suppress_output", False)
+        
+        if output_file:
+            # Save full result to file
+            import json
+            json_content = json.dumps(result, indent=2, ensure_ascii=False)
+            file_path = self.file_output_manager.save_to_file(
+                content=json_content,
+                base_name=output_file
+            )
+            
+            # If suppress_output is True, return minimal response
+            if suppress_output:
+                minimal_result = {
+                    "success": result.get("success", True),
+                    "count": result.get("count", 0),
+                    "output_file": output_file,
+                    "file_saved": f"Results saved to {file_path}"
+                }
+                # Cache the full result, not the minimal one
+                if self.cache and cache_key:
+                    self.cache.set(cache_key, result)
+                return minimal_result
+            else:
+                # Include file info in full response
+                result["output_file"] = output_file
+                result["file_saved"] = f"Results saved to {file_path}"
+        elif suppress_output:
+            # If suppress_output is True but no output_file, remove results from response
+            result_copy = result.copy()
+            result_copy.pop("results", None)
+            # Cache the full result, not the minimal one
+            if self.cache and cache_key:
+                self.cache.set(cache_key, result)
+            return result_copy
 
         # Cache the result
         if self.cache and cache_key:
