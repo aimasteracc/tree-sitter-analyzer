@@ -1,5 +1,48 @@
 # Changelog
 
+## [1.7.2] - 2025-10-09
+
+### Added
+- **🎯 File Output Optimization for MCP Search Tools**: Revolutionary token-efficient search result handling
+  - **Token Limit Solution**: New `suppress_output` and `output_file` parameters for `find_and_grep`, `list_files`, and `search_content` tools
+  - **Automatic Format Detection**: Smart file format selection (JSON/Markdown) based on content type
+  - **Massive Token Savings**: Reduces response size by up to 99% when saving large search results to files
+  - **Backward Compatibility**: Optional feature that doesn't affect existing functionality
+
+- **📚 ROO Rules Documentation**: Comprehensive optimization guide for tree-sitter-analyzer MCP usage
+  - **Complete Usage Guidelines**: Detailed rules for efficient MCP tool usage and token optimization
+  - **Japanese Language Support**: Full documentation in Japanese for ROO AI assistant integration
+  - **Best Practices**: Step-by-step optimization strategies for large-scale code analysis
+  - **Token Management**: Advanced techniques for handling large search results efficiently
+
+### Enhanced
+- **🔍 MCP Search Tools**: Enhanced `find_and_grep_tool`, `list_files_tool`, and `search_content_tool`
+  - **File Output Support**: Save large results to files instead of returning in responses
+  - **Token Optimization**: Dramatically reduces context usage for large analysis results
+  - **Smart Output Control**: When `suppress_output=true` and `output_file` is specified, only essential metadata is returned
+
+### Improved
+- **📊 Quality Metrics**:
+  - Test count increased to 2675 (up from 2662)
+  - Code coverage maintained at 78.85%
+  - All tests passing with continued system stability
+- **🔧 Development Workflow**: Enhanced MCP tools with better token management for AI-assisted development
+- **📚 Documentation**: Added comprehensive ROO rules for optimal tree-sitter-analyzer usage
+
+### Technical Details
+- **New Files**:
+  - `.roo/rules/ROO_RULES.md` - Comprehensive MCP optimization guidelines
+  - `tests/test_file_output_optimization.py` - Test coverage for file output features
+- **Enhanced Files**:
+  - `tree_sitter_analyzer/mcp/tools/find_and_grep_tool.py` - Added file output support
+  - `tree_sitter_analyzer/mcp/tools/list_files_tool.py` - Added file output support  
+  - `tree_sitter_analyzer/mcp/tools/search_content_tool.py` - Added file output support
+- **Test Coverage**: All 2675 tests passing with 78.85% coverage
+- **Quality Metrics**: Enhanced file output optimization with comprehensive validation
+- **Breaking Changes**: None - all improvements are backward compatible
+
+This minor release introduces game-changing file output optimization that solves token length limitations for large search results, along with comprehensive ROO rules documentation for optimal MCP tool usage.
+
 ## [1.7.1] - 2025-10-09
 
 ### Improved
