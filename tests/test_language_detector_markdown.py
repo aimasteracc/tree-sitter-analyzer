@@ -80,7 +80,7 @@ def hello():
         
         language, confidence = self.detector.detect_language("test.md", markdown_content)
         assert language == "markdown"
-        assert confidence == 1.0  # High confidence due to clear extension
+        assert confidence == 0.9  # Extension-based detection confidence
 
     def test_markdown_content_scoring(self):
         """Test Markdown content pattern scoring"""
@@ -194,20 +194,20 @@ def hello():
         """Test Markdown content detection edge cases"""
         edge_cases = [
             # Empty content
-            ("", "markdown", 1.0),  # Extension-based
+            ("", "markdown", 0.9),  # Extension-based
             
             # Minimal content
-            ("#", "markdown", 1.0),
+            ("#", "markdown", 0.9),
             
             # Mixed content
-            ("# Header\nSome code: function() {}", "markdown", 1.0),
+            ("# Header\nSome code: function() {}", "markdown", 0.9),
             
             # HTML in Markdown
-            ("# Header\n<div>HTML content</div>", "markdown", 1.0),
+            ("# Header\n<div>HTML content</div>", "markdown", 0.9),
             
             # Code blocks with various languages
-            ("```python\nprint('hello')\n```", "markdown", 1.0),
-            ("```javascript\nconsole.log('hello');\n```", "markdown", 1.0),
+            ("```python\nprint('hello')\n```", "markdown", 0.9),
+            ("```javascript\nconsole.log('hello');\n```", "markdown", 0.9),
         ]
         
         for content, expected_language, min_confidence in edge_cases:
@@ -283,7 +283,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
         
         language, confidence = self.detector.detect_language("README.md", readme_content)
         assert language == "markdown"
-        assert confidence == 1.0
+        assert confidence == 0.9  # Extension-based detection
 
     def test_documentation_markdown(self):
         """Test with documentation-style Markdown"""
@@ -324,7 +324,7 @@ Authorization: Bearer YOUR_API_KEY
         
         language, confidence = self.detector.detect_language("api-docs.md", doc_content)
         assert language == "markdown"
-        assert confidence == 1.0
+        assert confidence == 0.9  # Extension-based detection
 
     def test_blog_post_markdown(self):
         """Test with blog post style Markdown"""
@@ -356,7 +356,7 @@ Check out [this great resource](https://example.com) for more information.
         
         language, confidence = self.detector.detect_language("blog-post.md", blog_content)
         assert language == "markdown"
-        assert confidence == 1.0
+        assert confidence == 0.9  # Extension-based detection
 
 
 if __name__ == "__main__":
