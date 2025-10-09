@@ -1,12 +1,39 @@
 #!/usr/bin/env python3
 """
-Base formatter for language-specific table formatting.
+Base formatter for language-specific formatting.
 """
 
 import csv
 import io
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import Any, Dict
+
+
+class BaseFormatter(ABC):
+    """Base class for language-specific formatters"""
+
+    def __init__(self):
+        pass
+
+    @abstractmethod
+    def format_summary(self, analysis_result: Dict[str, Any]) -> str:
+        """Format summary output"""
+        pass
+
+    @abstractmethod
+    def format_structure(self, analysis_result: Dict[str, Any]) -> str:
+        """Format structure analysis output"""
+        pass
+
+    @abstractmethod
+    def format_advanced(self, analysis_result: Dict[str, Any], output_format: str = "json") -> str:
+        """Format advanced analysis output"""
+        pass
+
+    @abstractmethod
+    def format_table(self, analysis_result: Dict[str, Any], table_type: str = "full") -> str:
+        """Format table output"""
+        pass
 
 
 class BaseTableFormatter(ABC):
