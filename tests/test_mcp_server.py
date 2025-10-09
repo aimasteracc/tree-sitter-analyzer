@@ -233,7 +233,9 @@ class TestMainFunction:
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         try:
-            loop.run_until_complete(main())
+            with pytest.raises(SystemExit) as exc_info:
+                loop.run_until_complete(main())
+            assert exc_info.value.code == 0
         finally:
             loop.close()
 

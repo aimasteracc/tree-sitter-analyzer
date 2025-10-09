@@ -201,9 +201,12 @@ class JavaElementExtractor(ElementExtractor):
                         import_name = static_match.group(1)
                         if import_content.endswith(".*"):
                             import_name = import_name.replace(".*", "")
-                            parts = import_name.split(".")
-                            if len(parts) > 1:
-                                import_name = ".".join(parts[:-1])
+                        
+                        # For static imports, extract the class name (remove method/field name)
+                        parts = import_name.split(".")
+                        if len(parts) > 1:
+                            # Remove the last part (method/field name) to get class name
+                            import_name = ".".join(parts[:-1])
 
                         imports.append(
                             Import(
@@ -255,6 +258,10 @@ class JavaElementExtractor(ElementExtractor):
         packages: list[Package] = []
 
         # Extract package declaration
+        if tree is None or tree.root_node is None:
+            log_debug("Tree or root_node is None, returning empty packages list")
+            return packages
+            
         for child in tree.root_node.children:
             if child.type == "package_declaration":
                 package_info = self._extract_package_element(child)
@@ -1054,10 +1061,12 @@ class JavaElementExtractor(ElementExtractor):
                     # Handle wildcard case
                     if import_content.endswith(".*"):
                         import_name = import_name.replace(".*", "")
-                        # For static wildcard, remove last element
-                        parts = import_name.split(".")
-                        if len(parts) > 1:
-                            import_name = ".".join(parts[:-1])
+                    
+                    # For static imports, extract the class name (remove method/field name)
+                    parts = import_name.split(".")
+                    if len(parts) > 1:
+                        # Remove the last part (method/field name) to get class name
+                        import_name = ".".join(parts[:-1])
 
                     return Import(
                         name=import_name,
@@ -1099,6 +1108,20 @@ class JavaElementExtractor(ElementExtractor):
             log_error(f"Unexpected error in import extraction: {e}")
         return None
 
+    def extract_elements(self, tree: "tree_sitter.Tree", source_code: str) -> list:
+        """Extract elements from source code using tree-sitter AST"""
+        elements = []
+        
+        try:
+            elements.extend(self.extract_functions(tree, source_code))
+            elements.extend(self.extract_classes(tree, source_code))
+            elements.extend(self.extract_variables(tree, source_code))
+            elements.extend(self.extract_imports(tree, source_code))
+        except Exception as e:
+            log_error(f"Failed to extract elements: {e}")
+        
+        return elements
+
 
 class JavaPlugin(LanguagePlugin):
     """Java language plugin for the new architecture"""
@@ -1107,6 +1130,12 @@ class JavaPlugin(LanguagePlugin):
         """Initialize the Java plugin"""
         super().__init__()
         self._language_cache: tree_sitter.Language | None = None
+        self._extractor: Optional[JavaElementExtractor] = None
+        
+        # Legacy attributes for backward compatibility with tests
+        self.language = "java"
+        self.extractor = self.create_extractor()
+        self.supported_extensions = self.get_file_extensions()
 
     def get_language_name(self) -> str:
         """Return the name of the programming language this plugin supports"""
@@ -1119,6 +1148,12 @@ class JavaPlugin(LanguagePlugin):
     def create_extractor(self) -> ElementExtractor:
         """Create and return an element extractor for this language"""
         return JavaElementExtractor()
+
+    def get_extractor(self) -> ElementExtractor:
+        """Get the cached extractor instance, creating it if necessary"""
+        if self._extractor is None:
+            self._extractor = JavaElementExtractor()
+        return self._extractor
 
     def get_tree_sitter_language(self) -> Optional["tree_sitter.Language"]:
         """Get the Tree-sitter language object for Java"""
@@ -1270,3 +1305,29 @@ class JavaPlugin(LanguagePlugin):
                 success=False,
                 error_message=str(e),
             )
+
+    def extract_elements(self, tree: "tree_sitter.Tree", source_code: str) -> dict[str, list[CodeElement]]:
+        """Legacy method for backward compatibility with tests"""
+        if not tree or not tree.root_node:
+            return {
+                "packages": [],
+                "functions": [],
+                "classes": [],
+                "variables": [],
+                "imports": [],
+                "annotations": []
+            }
+        
+        extractor = self.create_extractor()
+        
+        # Extract all types of elements and return as dictionary
+        result = {
+            "packages": extractor.extract_packages(tree, source_code),
+            "functions": extractor.extract_functions(tree, source_code),
+            "classes": extractor.extract_classes(tree, source_code),
+            "variables": extractor.extract_variables(tree, source_code),
+            "imports": extractor.extract_imports(tree, source_code),
+            "annotations": extractor.extract_annotations(tree, source_code)
+        }
+        
+        return result

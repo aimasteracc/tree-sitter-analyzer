@@ -9,7 +9,9 @@ import asyncio
 import gc
 import logging
 import os
+import tempfile
 import warnings
+from pathlib import Path
 
 import pytest
 
@@ -162,6 +164,42 @@ def cleanup_event_loops():
 #     warnings.filterwarnings("ignore", message=".*Enable tracemalloc.*", category=ResourceWarning)
 #
 #     yield
+
+
+@pytest.fixture
+def temp_project_dir():
+    """
+    Create a temporary project directory for testing.
+    
+    This fixture creates a temporary directory that can be used as a project root
+    for testing MCP server functionality and other components that require a
+    project directory structure.
+    """
+    # Create temporary directory
+    temp_dir = tempfile.mkdtemp()
+    temp_path = Path(temp_dir)
+    
+    yield str(temp_path)
+    
+    # Cleanup: Remove temporary directory and all its contents
+    try:
+        import shutil
+        shutil.rmtree(temp_path, ignore_errors=True)
+    except Exception:
+        # If cleanup fails, try alternative cleanup
+        try:
+            for item in temp_path.rglob('*'):
+                try:
+                    if item.is_file():
+                        item.unlink()
+                    elif item.is_dir():
+                        item.rmdir()
+                except Exception:
+                    pass
+            temp_path.rmdir()
+        except Exception:
+            # Final fallback - ignore cleanup errors
+            pass
 
 
 # pytest-asyncio configuration
