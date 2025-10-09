@@ -4,11 +4,11 @@
 
 [![Pythonバージョン](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![ライセンス](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![テスト](https://img.shields.io/badge/tests-2046%20passed-brightgreen.svg)](#品質保証)
-[![カバレッジ](https://img.shields.io/badge/coverage-69.67%25-green.svg)](#品質保証)
+[![テスト](https://img.shields.io/badge/tests-2662%20passed-brightgreen.svg)](#品質保証)
+[![カバレッジ](https://img.shields.io/badge/coverage-79.16%25-green.svg)](#品質保証)
 [![品質](https://img.shields.io/badge/quality-enterprise%20grade-blue.svg)](#品質保証)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
-[![バージョン](https://img.shields.io/badge/version-1.6.2-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
+[![バージョン](https://img.shields.io/badge/version-1.7.0-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
 ## 🚀 AI時代のエンタープライズグレードコード解析ツール
@@ -56,15 +56,15 @@ Tree-sitter Analyzerは、AI時代のために設計されたエンタープラ�
 - **統一要素システム** - 革新的な統一コード要素管理アーキテクチャ
 
 ### 🌍 エンタープライズグレードの多言語サポート
-- **Java** - 完全サポート（1103行のプラグインコード、73%カバレッジ）、Spring、JPAフレームワークを含む
-- **Python** - 完全サポート（584行のプラグインコード、63%カバレッジ）、型アノテーション、デコレータを含む
-- **JavaScript** - エンタープライズグレードサポート（1445行のプラグインコード、68%カバレッジ）、ES6+、React/Vue/Angular、JSXを含む
-- **TypeScript** - **完全サポート**（1553行のプラグインコード、29%カバレッジ）、インターフェース、型、デコレータ、TSX/JSX、フレームワーク検出を含む
+- **Java** - 完全サポート（1333行のプラグインコード、80.30%カバレッジ）、Spring、JPAフレームワークを含む
+- **Python** - 完全サポート（1296行のプラグインコード、82.84%カバレッジ）、型アノテーション、デコレータを含む
+- **JavaScript** - エンタープライズグレードサポート（1539行のプラグインコード、76.74%カバレッジ）、ES6+、React/Vue/Angular、JSXを含む
+- **TypeScript** - **完全サポート**（1729行のプラグインコード、72.82%カバレッジ）、インターフェース、型、デコレータ、TSX/JSX、フレームワーク検出を含む
 - **その他の言語** - C/C++、Rust、Goの基本サポート
 
 ### 🏆 本番環境対応
-- **2,046のテスト** - 100%合格率、エンタープライズグレードの品質保証
-- **69.67%カバレッジ** - 包括的なテストスイート
+- **2,662のテスト** - 100%合格率、エンタープライズグレードの品質保証
+- **79.16%カバレッジ** - 包括的なテストスイート
 - **クロスプラットフォームサポート** - Windows、macOS、Linuxとの完全な互換性
 - **継続的なメンテナンス** - アクティブな開発とコミュニティサポート
 
@@ -95,26 +95,15 @@ uv --version
 
 **fd**と**ripgrep**は、高度なMCP機能に使用される高性能なファイルおよびコンテンツ検索ツールです。
 
-```bash
-# macOS
-brew install fd ripgrep
-
-# Windows（wingetの使用を推奨）
-winget install sharkdp.fd BurntSushi.ripgrep.MSVC
-
-# Windows（その他の方法）
-# choco install fd ripgrep
-# scoop install fd ripgrep
-
-# Ubuntu/Debian
-sudo apt install fd-find ripgrep
-
-# CentOS/RHEL/Fedora
-sudo dnf install fd-find ripgrep
-
-# Arch Linux
-sudo pacman -S fd ripgrep
-```
+| オペレーティングシステム | パッケージマネージャー | インストールコマンド | 備考 |
+|------------------------|---------------------|-------------------|------|
+| **macOS** | Homebrew | `brew install fd ripgrep` | 推奨方法 |
+| **Windows** | winget | `winget install sharkdp.fd BurntSushi.ripgrep.MSVC` | 推奨方法 |
+| | Chocolatey | `choco install fd ripgrep` | 代替方法 |
+| | Scoop | `scoop install fd ripgrep` | 代替方法 |
+| **Ubuntu/Debian** | apt | `sudo apt install fd-find ripgrep` | 公式リポジトリ |
+| **CentOS/RHEL/Fedora** | dnf | `sudo dnf install fd-find ripgrep` | 公式リポジトリ |
+| **Arch Linux** | pacman | `sudo pacman -S fd ripgrep` | 公式リポジトリ |
 
 **インストールの確認：**
 ```bash
@@ -519,6 +508,34 @@ uv run python -m tree_sitter_analyzer --show-query-languages
 
 ---
 
+## 🤖 MCP完全ツールリスト
+
+Tree-sitter AnalyzerはAIアシスタント向けに設計された豊富なMCPツールセットを提供します：
+
+| ツールカテゴリ | ツール名 | 主要機能 | コア特性 |
+|-------------|---------|---------|---------|
+| **📊 コード解析** | `analyze_code_structure` | コード構造解析とテーブル生成 | 🆕 suppress_outputパラメータ、複数フォーマット(full/compact/csv/json)、自動言語検出 |
+| | `check_code_scale` | コードファイル規模の高速解析 | ファイルサイズ統計、行数統計、複雑度解析、パフォーマンス指標 |
+| | `extract_code_section` | 正確なコードセクション抽出 | 指定行範囲抽出、大ファイル効率処理、元フォーマット保持 |
+| **🔍 インテリジェント検索** | `list_files` | 高性能ファイル発見 | fdベース、globパターン、ファイルタイプフィルタ、時間範囲制御 |
+| | `search_content` | 正規表現コンテンツ検索 | ripgrepベース、複数出力フォーマット、コンテキスト制御、エンコーディング処理 |
+| | `find_and_grep` | 2段階検索 | ファイル発見→コンテンツ検索、fd+ripgrep組み合わせ、インテリジェントキャッシュ最適化 |
+| **🔧 高度なクエリ** | `query_code` | tree-sitterクエリ | 事前定義クエリキー、カスタムクエリ文字列、フィルタ式サポート |
+| **⚙️ システム管理** | `set_project_path` | プロジェクトルートパス設定 | セキュリティ境界制御、自動パス検証 |
+| **📁 リソースアクセス** | コードファイルリソース | URIコードファイルアクセス | URI識別によるファイルコンテンツアクセス |
+| | プロジェクト統計リソース | プロジェクト統計データアクセス | プロジェクト解析データと統計情報 |
+
+### 🆕 v1.7.0新機能：suppress_output機能
+
+`analyze_code_structure`ツールに新しく追加された`suppress_output`パラメータは、革命的なトークン最適化機能です：
+
+- **問題解決**：解析結果が大きすぎる場合、従来の方式では完全なテーブルデータを返し、大量のトークンを消費
+- **インテリジェント最適化**：`suppress_output=true`かつ`output_file`指定時、基本メタデータのみを返却
+- **顕著な効果**：レスポンスサイズを最大99%削減、AIダイアログのトークン消費を大幅節約
+- **使用シーン**：大型コードファイルの構造解析やバッチ処理シーンに特に適している
+
+---
+
 ## 🛠️ コア機能
 
 ### 📊 コード構造解析
@@ -547,11 +564,16 @@ uv run python -m tree_sitter_analyzer --show-query-languages
 - **その他のMCP互換ツール** - ユニバーサルMCPサーバー
 
 ### 🌍 多言語サポート
-- **Java** - 完全サポート（1103行のプラグイン）、Spring、JPAフレームワークを含む
-- **Python** - 完全サポート（584行のプラグイン）、型アノテーション、デコレータを含む
-- **JavaScript** - エンタープライズグレードサポート（1445行のプラグイン）、ES6+、React/Vue/Angular、JSXを含む
-- **TypeScript** - **完全サポート**（1553行のプラグイン）、インターフェース、型、デコレータ、TSX/JSX、フレームワーク検出を含む
-- **C/C++、Rust、Go** - 基本サポート
+
+| プログラミング言語 | サポートレベル | プラグインコード行数 | テストカバレッジ | 主要機能 |
+|------------------|---------------|-------------------|----------------|---------|
+| **Java** | 完全サポート | 1,333行 | 80.30% | Springフレームワーク、JPA、エンタープライズ機能 |
+| **Python** | 完全サポート | 1,296行 | 82.84% | 型アノテーション、デコレータ、モダンPython機能 |
+| **JavaScript** | 完全サポート | 1,539行 | 76.74% | ES6+、React/Vue/Angular、JSX |
+| **TypeScript** | 完全サポート | 1,729行 | 72.82% | インターフェース、型、デコレータ、TSX/JSX、フレームワーク検出 |
+| **C/C++** | 基本サポート | - | - | 基本構文解析 |
+| **Rust** | 基本サポート | - | - | 基本構文解析 |
+| **Go** | 基本サポート | - | - | 基本構文解析 |
 
 ### 📁 高度なファイル検索
 fdとripgrepに基づく強力なファイル検出とコンテンツ検索：
@@ -570,16 +592,18 @@ fdとripgrepに基づく強力なファイル検出とコンテンツ検索：
 ## 🏆 品質保証
 
 ### 📊 品質メトリクス
-- **1,893のテスト** - 100%合格率 ✅
-- **71.48%コードカバレッジ** - 包括的なテストスイート
+- **2,662のテスト** - 100%合格率 ✅
+- **79.16%コードカバレッジ** - 包括的なテストスイート
 - **ゼロテスト失敗** - 本番環境対応
 - **クロスプラットフォームサポート** - Windows、macOS、Linux
 
-### ⚡ 最新の品質成果（v1.6.2）
+### ⚡ 最新の品質成果（v1.7.0）
+- ✅ **トークン節約機能** - 新しいsuppress_outputパラメータで、ファイル出力時にテーブル出力を自動抑制し、AIトークン消費を節約
+- ✅ **インテリジェント出力制御** - output_file指定時かつsuppress_output=trueの場合、レスポンスサイズを自動最適化
+- ✅ **エンタープライズグレードテストカバレッジ** - suppress_output機能専用の356個の新しいテストケースを追加
+- ✅ **MCPツール強化** - 高度なファイル検索とコンテンツ解析をサポートする完全なMCPサーバーツールセット
 - ✅ **クロスプラットフォームパス互換性** - Windowsの短いパス名とmacOSのシンボリックリンクの違いを修正
-- ✅ **エンタープライズグレードの信頼性** - 50以上の包括的なテストケースで安定性を確保
 - ✅ **GitFlow実装** - プロフェッショナルな開発/リリースブランチ戦略
-- ✅ **AIコラボレーション最適化** - AI支援開発のための専門的な品質管理
 
 ### ⚙️ テストの実行
 ```bash
@@ -595,22 +619,19 @@ uv run pytest tests/test_mcp_server_initialization.py -v
 
 ### 📈 テストカバレッジの詳細
 
-**コアモジュール：**
-- **言語検出器**: 98.41%（優秀） - 自動プログラミング言語認識
-- **CLIメインエントリ**: 94.36%（優秀） - コマンドラインインターフェース
-- **クエリフィルタシステム**: 96.06%（優秀） - コードクエリとフィルタリング
-- **クエリサービス**: 86.25%（良好） - クエリ実行エンジン
-- **MCPエラー処理**: 82.76%（良好） - AIアシスタント統合エラー処理
-
-**言語プラグイン：**
-- **Javaプラグイン**: 73.00%（良好） - 1103行のコード、完全なエンタープライズグレードサポート
-- **JavaScriptプラグイン**: 68.31%（良好） - 1445行のコード、モダンなES6+機能サポート
-- **Pythonプラグイン**: 63.26%（良好） - 584行のコード、完全な型アノテーションサポート
-
-**MCPツール：**
-- **ファイル検索ツール**: 88.77%（優秀） - fd/ripgrep統合
-- **コンテンツ検索ツール**: 92.70%（優秀） - 正規表現検索
-- **組み合わせ検索ツール**: 91.57%（優秀） - 2段階検索
+| モジュールカテゴリ | モジュール名 | カバレッジ | 品質レベル | 主要機能 |
+|------------------|-------------|-----------|-----------|---------|
+| **🔧 コアモジュール** | 言語検出器 | 98.41% | 優秀 | 自動プログラミング言語認識 |
+| | CLIメインエントリ | 94.36% | 優秀 | コマンドラインインターフェース |
+| | クエリフィルタシステム | 96.06% | 優秀 | コードクエリとフィルタリング |
+| | クエリサービス | 86.25% | 良好 | クエリ実行エンジン |
+| | MCPエラー処理 | 82.76% | 良好 | AIアシスタント統合エラー処理 |
+| **🌍 言語プラグイン** | Javaプラグイン | 73.00% | 良好 | 1103行のコード、完全なエンタープライズグレードサポート |
+| | JavaScriptプラグイン | 68.31% | 良好 | 1445行のコード、モダンなES6+機能サポート |
+| | Pythonプラグイン | 63.26% | 良好 | 584行のコード、完全な型アノテーションサポート |
+| **🤖 MCPツール** | ファイル検索ツール | 88.77% | 優秀 | fd/ripgrep統合 |
+| | コンテンツ検索ツール | 92.70% | 優秀 | 正規表現検索 |
+| | 組み合わせ検索ツール | 91.57% | 優秀 | 2段階検索 |
 
 ### ✅ ドキュメント検証ステータス
 

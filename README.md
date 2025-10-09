@@ -4,11 +4,11 @@
 
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-2046%20passed-brightgreen.svg)](#quality-assurance)
-[![Coverage](https://img.shields.io/badge/coverage-69.67%25-green.svg)](#quality-assurance)
+[![Tests](https://img.shields.io/badge/tests-2662%20passed-brightgreen.svg)](#quality-assurance)
+[![Coverage](https://img.shields.io/badge/coverage-79.16%25-green.svg)](#quality-assurance)
 [![Quality](https://img.shields.io/badge/quality-enterprise%20grade-blue.svg)](#quality-assurance)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
-[![Version](https://img.shields.io/badge/version-1.6.2-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
+[![Version](https://img.shields.io/badge/version-1.7.0-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
 ## 🚀 Enterprise-Grade Code Analysis Tool for the AI Era
@@ -59,12 +59,12 @@ Tree-sitter Analyzer is an enterprise-grade code analysis tool designed for the 
 - **Java** - Full support (1103 lines of plugin code, 73% coverage), including Spring, JPA frameworks
 - **Python** - Full support (584 lines of plugin code, 63% coverage), including type annotations, decorators
 - **JavaScript** - Enterprise-grade support (1445 lines of plugin code, 68% coverage), including ES6+, React/Vue/Angular, JSX
-- **TypeScript** - **Complete support** (1553 lines of plugin code, 29% coverage), including interfaces, types, decorators, TSX/JSX, framework detection
+- **TypeScript** - **Complete support** (1729 lines of plugin code, 72.82% coverage), including interfaces, types, decorators, TSX/JSX, framework detection
 - **More Languages** - Basic support for C/C++, Rust, Go
 
 ### 🏆 Production Ready
-- **2,046 Tests** - 100% pass rate, enterprise-grade quality assurance
-- **69.67% Coverage** - Comprehensive test suite
+- **2,662 Tests** - 100% pass rate, enterprise-grade quality assurance
+- **79.16% Coverage** - Comprehensive test suite
 - **Cross-Platform Support** - Full compatibility with Windows, macOS, Linux
 - **Continuous Maintenance** - Active development and community support
 
@@ -95,26 +95,15 @@ uv --version
 
 **fd** and **ripgrep** are high-performance file and content search tools used for advanced MCP features.
 
-```bash
-# macOS
-brew install fd ripgrep
-
-# Windows (recommended using winget)
-winget install sharkdp.fd BurntSushi.ripgrep.MSVC
-
-# Windows (alternative methods)
-# choco install fd ripgrep
-# scoop install fd ripgrep
-
-# Ubuntu/Debian
-sudo apt install fd-find ripgrep
-
-# CentOS/RHEL/Fedora
-sudo dnf install fd-find ripgrep
-
-# Arch Linux
-sudo pacman -S fd ripgrep
-```
+| Operating System | Package Manager | Installation Command | Notes |
+|-----------------|-----------------|---------------------|-------|
+| **macOS** | Homebrew | `brew install fd ripgrep` | Recommended method |
+| **Windows** | winget | `winget install sharkdp.fd BurntSushi.ripgrep.MSVC` | Recommended method |
+| | Chocolatey | `choco install fd ripgrep` | Alternative method |
+| | Scoop | `scoop install fd ripgrep` | Alternative method |
+| **Ubuntu/Debian** | apt | `sudo apt install fd-find ripgrep` | Official repository |
+| **CentOS/RHEL/Fedora** | dnf | `sudo dnf install fd-find ripgrep` | Official repository |
+| **Arch Linux** | pacman | `sudo pacman -S fd ripgrep` | Official repository |
 
 **Verify installation:**
 ```bash
@@ -519,6 +508,34 @@ uv run python -m tree_sitter_analyzer --show-query-languages
 
 ---
 
+## 🤖 Complete MCP Tools List
+
+Tree-sitter Analyzer provides a rich set of MCP tools designed for AI assistants:
+
+| Tool Category | Tool Name | Primary Function | Core Features |
+|--------------|-----------|------------------|---------------|
+| **📊 Code Analysis** | `analyze_code_structure` | Analyze code structure and generate tables | 🆕 suppress_output parameter, multiple formats (full/compact/csv/json), automatic language detection |
+| | `check_code_scale` | Fast code file scale analysis | File size statistics, line count statistics, complexity analysis, performance metrics |
+| | `extract_code_section` | Precise code section extraction | Specified line range extraction, efficient large file processing, preserve original formatting |
+| **🔍 Intelligent Search** | `list_files` | High-performance file discovery | fd-based, glob patterns, file type filtering, time range control |
+| | `search_content` | Regular expression content search | ripgrep-based, multiple output formats, context control, encoding handling |
+| | `find_and_grep` | Two-stage search | Find files → search content, fd+ripgrep combination, intelligent caching optimization |
+| **🔧 Advanced Query** | `query_code` | tree-sitter queries | Predefined query keys, custom query strings, filter expression support |
+| **⚙️ System Management** | `set_project_path` | Set project root path | Security boundary control, automatic path validation |
+| **📁 Resource Access** | Code File Resources | URI code file access | Access file content through URI identification |
+| | Project Statistics Resources | Project statistics data access | Project analysis data and statistical information |
+
+### 🆕 v1.7.0 New Feature: suppress_output Functionality
+
+The newly added `suppress_output` parameter in the `analyze_code_structure` tool is a revolutionary token optimization feature:
+
+- **Problem Solved**: When analysis results are too large, traditional methods return complete table data, consuming massive tokens
+- **Intelligent Optimization**: When `suppress_output=true` and `output_file` is specified, only basic metadata is returned
+- **Significant Effect**: Can reduce response size by up to 99%, dramatically saving AI dialog token consumption
+- **Use Cases**: Particularly suitable for large code file structure analysis and batch processing scenarios
+
+---
+
 ## 🛠️ Core Features
 
 ### 📊 Code Structure Analysis
@@ -547,11 +564,16 @@ uv run python -m tree_sitter_analyzer --show-query-languages
 - **Other MCP-compatible tools** - Universal MCP server
 
 ### 🌍 Multi-Language Support
-- **Java** - Full support (1103 lines of plugin), including Spring, JPA frameworks
-- **Python** - Full support (584 lines of plugin), including type annotations, decorators
-- **JavaScript** - Enterprise-grade support (1445 lines of plugin), including ES6+, React/Vue/Angular, JSX
-- **TypeScript** - **Complete support** (1553 lines of plugin), including interfaces, types, decorators, TSX/JSX, framework detection
-- **C/C++, Rust, Go** - Basic support
+
+| Programming Language | Support Level | Plugin Code Lines | Test Coverage | Key Features |
+|---------------------|---------------|-------------------|---------------|--------------|
+| **Java** | Full Support | 1,103 lines | 73.00% | Spring framework, JPA, enterprise features |
+| **Python** | Full Support | 584 lines | 63.26% | Type annotations, decorators, modern Python features |
+| **JavaScript** | Full Support | 1,445 lines | 68.31% | ES6+, React/Vue/Angular, JSX |
+| **TypeScript** | Full Support | 1,729 lines | 72.82% | Interfaces, types, decorators, TSX/JSX, framework detection |
+| **C/C++** | Basic Support | - | - | Basic syntax parsing |
+| **Rust** | Basic Support | - | - | Basic syntax parsing |
+| **Go** | Basic Support | - | - | Basic syntax parsing |
 
 ### 📁 Advanced File Search
 Powerful file discovery and content search based on fd and ripgrep:
@@ -570,16 +592,18 @@ Powerful file discovery and content search based on fd and ripgrep:
 ## 🏆 Quality Assurance
 
 ### 📊 Quality Metrics
-- **1,893 Tests** - 100% pass rate ✅
-- **71.48% Code Coverage** - Comprehensive test suite
+- **2,662 Tests** - 100% pass rate ✅
+- **79.16% Code Coverage** - Comprehensive test suite
 - **Zero Test Failures** - Production ready
 - **Cross-Platform Support** - Windows, macOS, Linux
 
-### ⚡ Latest Quality Achievements (v1.6.0)
+### ⚡ Latest Quality Achievements (v1.7.0)
+- ✅ **Token Saving Feature** - New suppress_output parameter automatically suppresses table output when file output is specified, saving AI token consumption
+- ✅ **Intelligent Output Control** - Automatically optimize response size when output_file is specified and suppress_output=true
+- ✅ **Enterprise-Grade Test Coverage** - Added 356 new test cases specifically for suppress_output functionality
+- ✅ **MCP Tools Enhancement** - Complete MCP server toolset supporting advanced file search and content analysis
 - ✅ **Cross-Platform Path Compatibility** - Fixed Windows short path names and macOS symlink differences
-- ✅ **Enterprise-Grade Reliability** - 50+ comprehensive test cases ensure stability
 - ✅ **GitFlow Implementation** - Professional development/release branch strategy
-- ✅ **AI Collaboration Optimization** - Specialized quality control for AI-assisted development
 
 ### ⚙️ Running Tests
 ```bash
@@ -595,22 +619,19 @@ uv run pytest tests/test_mcp_server_initialization.py -v
 
 ### 📈 Test Coverage Details
 
-**Core Modules:**
-- **Language Detector**: 98.41% (Excellent) - Automatic programming language recognition
-- **CLI Main Entry**: 94.36% (Excellent) - Command-line interface
-- **Query Filter System**: 96.06% (Excellent) - Code query and filtering
-- **Query Service**: 86.25% (Good) - Query execution engine
-- **MCP Error Handling**: 82.76% (Good) - AI assistant integration error handling
-
-**Language Plugins:**
-- **Java Plugin**: 73.00% (Good) - 1103 lines of code, full enterprise-grade support
-- **JavaScript Plugin**: 68.31% (Good) - 1445 lines of code, modern ES6+ feature support
-- **Python Plugin**: 63.26% (Good) - 584 lines of code, full type annotation support
-
-**MCP Tools:**
-- **File Search Tool**: 88.77% (Excellent) - fd/ripgrep integration
-- **Content Search Tool**: 92.70% (Excellent) - Regular expression search
-- **Combined Search Tool**: 91.57% (Excellent) - Two-stage search
+| Module Category | Component | Coverage | Quality Level | Code Lines | Features |
+|-----------------|-----------|----------|---------------|------------|----------|
+| **Core Modules** | Language Detector | 98.41% | Excellent | - | Automatic programming language recognition |
+| | CLI Main Entry | 94.36% | Excellent | - | Command-line interface |
+| | Query Filter System | 96.06% | Excellent | - | Code query and filtering |
+| | Query Service | 86.25% | Good | - | Query execution engine |
+| | MCP Error Handling | 82.76% | Good | - | AI assistant integration error handling |
+| **Language Plugins** | Java Plugin | 80.30% | Excellent | 1333 | Full enterprise-grade support |
+| | JavaScript Plugin | 76.74% | Good | 1539 | Modern ES6+ feature support |
+| | Python Plugin | 82.84% | Excellent | 1296 | Full type annotation support |
+| **MCP Tools** | File Search Tool | 88.77% | Excellent | - | fd/ripgrep integration |
+| | Content Search Tool | 92.70% | Excellent | - | Regular expression search |
+| | Combined Search Tool | 91.57% | Excellent | - | Two-stage search |
 
 ### ✅ Documentation Verification Status
 
