@@ -485,6 +485,11 @@ class TreeSitterAnalyzerMCPServer:
                                 "type": "string",
                                 "description": "Optional filename to save output to file (extension auto-detected based on content)",
                             },
+                            "suppress_output": {
+                                "type": "boolean",
+                                "description": "When true and output_file is specified, suppress table_output in response to save tokens",
+                                "default": False,
+                            },
                         },
                         "required": ["file_path"],
                         "additionalProperties": False,
@@ -581,6 +586,7 @@ class TreeSitterAnalyzerMCPServer:
                         "format_type": arguments.get("format_type", "full"),
                         "language": arguments.get("language"),
                         "output_file": arguments.get("output_file"),
+                        "suppress_output": arguments.get("suppress_output", False),
                     }
                     result = await self.table_format_tool.execute(full_args)
 

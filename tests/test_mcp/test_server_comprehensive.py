@@ -456,6 +456,14 @@ class TestTreeSitterAnalyzerMCPServerToolHandling:
         server.search_content_tool = AsyncMock()
         server.find_and_grep_tool = AsyncMock()
         
+        # Mock set_project_path as synchronous methods to avoid warnings
+        server.table_format_tool.set_project_path = Mock()
+        server.read_partial_tool.set_project_path = Mock()
+        server.query_tool.set_project_path = Mock()
+        server.list_files_tool.set_project_path = Mock()
+        server.search_content_tool.set_project_path = Mock()
+        server.find_and_grep_tool.set_project_path = Mock()
+        
         return server
 
     @patch('tree_sitter_analyzer.mcp.server.MCP_AVAILABLE', True)
@@ -836,8 +844,18 @@ class TestMCPServerUtilities:
     def test_main_sync(self):
         """Test synchronous main function."""
         with patch('tree_sitter_analyzer.mcp.server.asyncio.run') as mock_run:
+            # Mock asyncio.run to prevent actual coroutine creation
+            mock_run.return_value = None
             main_sync()
             mock_run.assert_called_once()
+            # Verify that main() coroutine was passed to asyncio.run
+            args, kwargs = mock_run.call_args
+            assert len(args) == 1
+            # The argument should be a coroutine, but we don't await it in the test
+            import inspect
+            assert inspect.iscoroutine(args[0])
+            # Clean up the coroutine to prevent warning
+            args[0].close()
 
     @pytest.mark.asyncio
     async def test_main_exception_handling(self):
