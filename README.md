@@ -1,4 +1,4 @@
-# Tree-sitter Analyzer
+# 🌳 Tree-sitter Analyzer
 
 **English** | **[日本語](README_ja.md)** | **[简体中文](README_zh.md)**
 
@@ -13,66 +13,60 @@
 
 ## 🚀 Enterprise-Grade Code Analysis Tool for the AI Era
 
-> **Deep AI Integration · Powerful File Search · Multi-Language Support · Intelligent Code Analysis**
+> **Deep AI Integration · Powerful File Search · Multilingual Support · Intelligent Code Analysis**
 
 ## 📋 Table of Contents
 
-- [💡 Key Features](#-key-features)
-- [📋 Prerequisites (Required for All Users)](#-prerequisites-required-for-all-users)
-- [🚀 Quick Start](#-quick-start)
-  - [🤖 AI Users (Claude Desktop, Cursor, etc.)](#-ai-users-claude-desktop-cursor-etc)
-  - [💻 CLI Users (Command Line Tools)](#-cli-users-command-line-tools)
-  - [👨‍💻 Developers (Source Development)](#-developers-source-development)
-- [📖 Usage Workflow & Examples](#-usage-workflow--examples)
-  - [🔄 AI Assistant SMART Workflow](#-ai-assistant-smart-workflow)
-  - [⚡ Complete CLI Commands](#-complete-cli-commands)
-- [🛠️ Core Features](#️-core-features)
-- [🏆 Quality Assurance](#-quality-assurance)
-- [📚 Documentation & Support](#-documentation--support)
-- [🤝 Contributing & License](#-contributing--license)
+- [1. 💡 Project Features](#1--project-features)
+- [2. 📋 Prerequisites (Required for All Users)](#2--prerequisites-required-for-all-users)
+- [3. 🚀 Quick Start](#3--quick-start)
+  - [3.1 🤖 AI Users (Claude Desktop, Cursor, etc.)](#31--ai-users-claude-desktop-cursor-etc)
+  - [3.2 💻 CLI Users (Command Line Tools)](#32--cli-users-command-line-tools)
+  - [3.3 👨‍💻 Developers (Source Code Development)](#33--developers-source-code-development)
+- [4. 📖 Usage Workflow & Examples](#4--usage-workflow--examples)
+  - [4.1 🔄 AI Assistant SMART Workflow](#41--ai-assistant-smart-workflow)
+- [5. 🤖 Complete MCP Tool List](#5--complete-mcp-tool-list)
+- [6. ⚡ Complete CLI Commands](#6--complete-cli-commands)
+- [7. 🛠️ Core Features](#7-️-core-features)
+- [8. 🏆 Quality Assurance](#8--quality-assurance)
+- [9. 📚 Documentation & Support](#9--documentation--support)
+- [10. 🤝 Contributing & License](#10--contributing--license)
 
 ---
 
-## 💡 Key Features
+## 1. 💡 Project Features
 
 Tree-sitter Analyzer is an enterprise-grade code analysis tool designed for the AI era, providing:
 
-### 🤖 Deep AI Integration
-- **MCP Protocol Support** - Native support for Claude Desktop, Cursor, Roo Code, and other AI tools
-- **SMART Workflow** - Systematic AI-assisted code analysis methodology
-- **Break Token Limits** - Enable AI to understand code files of any size
-- **Natural Language Interaction** - Complete complex code analysis tasks using natural language
+| Feature Category | Key Capabilities | Core Benefits |
+|------------------|------------------|---------------|
+| **🤖 Deep AI Integration** | • MCP Protocol Support<br>• SMART Workflow<br>• Token Limitation Breaking<br>• Natural Language Interaction | Native support for Claude Desktop, Cursor, Roo Code<br>Systematic AI-assisted methodology<br>Handle code files of any size<br>Complex analysis via natural language |
+| **🔍 Powerful Search** | • Intelligent File Discovery<br>• Precise Content Search<br>• Two-Stage Search<br>• Project Boundary Protection | fd-based high-performance search<br>ripgrep regex content search<br>Combined file + content workflow<br>Automatic security boundaries |
+| **📊 Intelligent Analysis** | • Fast Structure Analysis<br>• Precise Code Extraction<br>• Complexity Analysis<br>• Unified Element System | Architecture understanding without full read<br>Line-range code snippet extraction<br>Cyclomatic complexity metrics<br>Revolutionary element management |
 
-### 🔍 Powerful Search Capabilities
-- **Intelligent File Discovery** - High-performance file search based on fd with multiple filtering conditions
-- **Precise Content Search** - Regular expression content search based on ripgrep
-- **Two-Stage Search** - Combined workflow of finding files then searching content
-- **Project Boundary Protection** - Automatic detection and respect for project boundaries to ensure security
+### 🌍 Enterprise Multi-language Support
 
-### 📊 Intelligent Code Analysis
-- **Fast Structure Analysis** - Understand code architecture without reading the entire file
-- **Precise Code Extraction** - Support for extracting precise code snippets by line range
-- **Complexity Analysis** - Cyclomatic complexity calculation and code quality metrics
-- **Unified Element System** - Revolutionary unified code element management architecture
-
-### 🌍 Enterprise-Grade Multi-Language Support
-- **Java** - Full support (1103 lines of plugin code, 73% coverage), including Spring, JPA frameworks
-- **Python** - Full support (584 lines of plugin code, 63% coverage), including type annotations, decorators
-- **JavaScript** - Enterprise-grade support (1445 lines of plugin code, 68% coverage), including ES6+, React/Vue/Angular, JSX
-- **TypeScript** - **Complete support** (1729 lines of plugin code, 72.82% coverage), including interfaces, types, decorators, TSX/JSX, framework detection
-- **More Languages** - Basic support for C/C++, Rust, Go
+| Programming Language | Support Level | Key Features |
+|---------------------|---------------|--------------|
+| **Java** | Complete Support | Spring framework, JPA, enterprise features |
+| **Python** | Complete Support | Type annotations, decorators, modern Python features |
+| **JavaScript** | Complete Support | ES6+, React/Vue/Angular, JSX |
+| **TypeScript** | Complete Support | Interfaces, types, decorators, TSX/JSX, framework detection |
+| **C/C++** | Basic Support | Basic syntax parsing |
+| **Rust** | Basic Support | Basic syntax parsing |
+| **Go** | Basic Support | Basic syntax parsing |
 
 ### 🏆 Production Ready
 - **2,662 Tests** - 100% pass rate, enterprise-grade quality assurance
-- **79.16% Coverage** - Comprehensive test suite
-- **Cross-Platform Support** - Full compatibility with Windows, macOS, Linux
+- **79.16% Coverage** - Comprehensive test coverage
+- **Cross-platform Support** - Compatible with Windows, macOS, Linux
 - **Continuous Maintenance** - Active development and community support
 
 ---
 
-## 📋 Prerequisites (Required for All Users)
+## 2. 📋 Prerequisites (Required for All Users)
 
-Whether you're an AI user, CLI user, or developer, you need to install the following tools first:
+Regardless of whether you are an AI user, CLI user, or developer, you need to install the following tools first:
 
 ### 1️⃣ Install uv (Required - for running tools)
 
@@ -93,14 +87,14 @@ uv --version
 
 ### 2️⃣ Install fd and ripgrep (Required for search functionality)
 
-**fd** and **ripgrep** are high-performance file and content search tools used for advanced MCP features.
+**fd** and **ripgrep** are high-performance file search and content search tools used for advanced MCP functionality.
 
 | Operating System | Package Manager | Installation Command | Notes |
-|-----------------|-----------------|---------------------|-------|
-| **macOS** | Homebrew | `brew install fd ripgrep` | Recommended method |
-| **Windows** | winget | `winget install sharkdp.fd BurntSushi.ripgrep.MSVC` | Recommended method |
-| | Chocolatey | `choco install fd ripgrep` | Alternative method |
-| | Scoop | `scoop install fd ripgrep` | Alternative method |
+|-----------------|----------------|---------------------|-------|
+| **macOS** | Homebrew | `brew install fd ripgrep` | Recommended |
+| **Windows** | winget | `winget install sharkdp.fd BurntSushi.ripgrep.MSVC` | Recommended |
+| | Chocolatey | `choco install fd ripgrep` | Alternative |
+| | Scoop | `scoop install fd ripgrep` | Alternative |
 | **Ubuntu/Debian** | apt | `sudo apt install fd-find ripgrep` | Official repository |
 | **CentOS/RHEL/Fedora** | dnf | `sudo dnf install fd-find ripgrep` | Official repository |
 | **Arch Linux** | pacman | `sudo pacman -S fd ripgrep` | Official repository |
@@ -112,15 +106,15 @@ rg --version
 ```
 
 > **⚠️ Important Note:** 
-> - **uv** is required for running all features
+> - **uv** is required for running all functionality
 > - **fd** and **ripgrep** are required for using advanced file search and content analysis features
-> - If fd and ripgrep are not installed, basic code analysis features will still work, but file search features will be unavailable
+> - If fd and ripgrep are not installed, basic code analysis functionality will still be available, but file search features will not work
 
 ---
 
-## 🚀 Quick Start
+## 3. 🚀 Quick Start
 
-### 🤖 AI Users (Claude Desktop, Cursor, etc.)
+### 3.1 🤖 AI Users (Claude Desktop, Cursor, etc.)
 
 **For:** Users who use AI assistants (such as Claude Desktop, Cursor) for code analysis
 
@@ -129,13 +123,13 @@ rg --version
 **Claude Desktop Configuration:**
 
 1. Find the configuration file location:
-- **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
-- **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
-- **Linux**: `~/.config/claude/claude_desktop_config.json`
+   - **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
+   - **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
+   - **Linux**: `~/.config/claude/claude_desktop_config.json`
 
 2. Add the following configuration:
 
-**Basic Configuration (Recommended - Auto-detect project path):**
+**Basic Configuration (Recommended - auto-detect project path):**
 ```json
 {
   "mcpServers": {
@@ -150,7 +144,7 @@ rg --version
 }
 ```
 
-**Advanced Configuration (Manually specify project path):**
+**Advanced Configuration (manually specify project path):**
 ```json
 {
   "mcpServers": {
@@ -169,7 +163,7 @@ rg --version
 }
 ```
 
-3. Restart your AI client
+3. Restart AI client
 
 4. Start using! Tell the AI:
    ```
@@ -183,9 +177,9 @@ rg --version
 
 ---
 
-### 💻 CLI Users (Command Line Tools)
+### 3.2 💻 CLI Users (Command Line Tools)
 
-**For:** Developers who prefer using command-line tools
+**For:** Developers who prefer using command line tools
 
 #### 📦 Installation
 
@@ -193,10 +187,10 @@ rg --version
 # Basic installation
 uv add tree-sitter-analyzer
 
-# Popular language pack (recommended)
+# Popular language packages (recommended)
 uv add "tree-sitter-analyzer[popular]"
 
-# Full installation (including MCP support)
+# Complete installation (including MCP support)
 uv add "tree-sitter-analyzer[all,mcp]"
 ```
 
@@ -206,10 +200,10 @@ uv add "tree-sitter-analyzer[all,mcp]"
 # View help
 uv run python -m tree_sitter_analyzer --help
 
-# Analyze file size (1419 lines completed instantly)
+# Analyze large file scale (1419 lines completed instantly)
 uv run python -m tree_sitter_analyzer examples/BigService.java --advanced --output-format=text
 
-# Generate detailed structure table
+# Generate detailed structure table for code files
 uv run python -m tree_sitter_analyzer examples/BigService.java --table=full
 
 # Precise code extraction
@@ -218,9 +212,9 @@ uv run python -m tree_sitter_analyzer examples/BigService.java --partial-read --
 
 ---
 
-### 👨‍💻 Developers (Source Development)
+### 3.3 👨‍💻 Developers (Source Code Development)
 
-**For:** Developers who need to modify source code or contribute
+**For:** Developers who need to modify source code or contribute code
 
 #### 🛠️ Development Environment Setup
 
@@ -242,20 +236,20 @@ uv run pytest tests/ --cov=tree_sitter_analyzer --cov-report=html
 #### 🔍 Code Quality Checks
 
 ```bash
-# AI-generated code check
+# AI-generated code checks
 uv run python llm_code_checker.py --check-all
 
-# Quality check
+# Quality checks
 uv run python check_quality.py --new-code-only
 ```
 
 ---
 
-## 📖 Usage Workflow & Examples
+## 4. 📖 Usage Workflow & Examples
 
-### 🔄 AI Assistant SMART Workflow
+### 4.1 🔄 AI Assistant SMART Workflow
 
-The SMART workflow is the recommended process for analyzing code using AI assistants. The following demonstrates the complete workflow using `examples/BigService.java` (a large service class with 1419 lines):
+The SMART workflow is the recommended process for analyzing code using AI assistants. The following demonstrates the complete process using `examples/BigService.java` (a large service class with 1419 lines):
 
 - **S** (Set): Set project root directory
 - **M** (Map): Precisely map target files
@@ -272,9 +266,9 @@ The SMART workflow is the recommended process for analyzing code using AI assist
 Please set the project root directory to: C:\git-public\tree-sitter-analyzer
 ```
 
-**The AI will automatically call** the `set_project_path` tool.
+**AI will automatically call** the `set_project_path` tool.
 
-> 💡 **Tip**: You can also pre-set this through the `TREE_SITTER_PROJECT_ROOT` environment variable in MCP configuration.
+> 💡 **Tip**: You can also pre-set this through the environment variable `TREE_SITTER_PROJECT_ROOT` in MCP configuration.
 
 ---
 
@@ -286,7 +280,7 @@ Please set the project root directory to: C:\git-public\tree-sitter-analyzer
 Find all Java files containing "BigService" in the project
 ```
 
-**The AI will call** the `find_and_grep` tool and return results showing 8 matches in BigService.java.
+**AI will call** the `find_and_grep` tool and return showing 8 matches in BigService.java.
 
 **Scenario 2: Known file path, use directly**
 ```
@@ -295,14 +289,14 @@ I want to analyze the file examples/BigService.java
 
 ---
 
-#### **A - Analyze Core Structure (Understand file size and organization)**
+#### **A - Analyze Core Structure (Understand file scale and organization)**
 
 **Tell the AI:**
 ```
-Please analyze the structure of examples/BigService.java, I want to know how large this file is and what main components it contains
+Please analyze the structure of examples/BigService.java, I want to know how big this file is and what main components it contains
 ```
 
-**The AI will call** the `analyze_code_structure` tool and return:
+**AI will call** the `analyze_code_structure` tool and return:
 ```json
 {
   "file_path": "examples/BigService.java",
@@ -332,18 +326,18 @@ Please analyze the structure of examples/BigService.java, I want to know how lar
 **Key Information:**
 
 - File has **1419 lines** total
-- Contains **1 class**, **66 methods**, **9 fields**, **1 package**, **total of 85 elements**
+- Contains **1 class**, **66 methods**, **9 fields**, **1 package**, **total 85 elements**
 
 ---
 
-#### **R - Retrieve Key Code (Deep dive into specific implementation)**
+#### **R - Retrieve Key Code (Deep understanding of specific implementations)**
 
 **Scenario 1: View complete structure table**
 ```
 Please generate a detailed structure table for examples/BigService.java, I want to see a list of all methods
 ```
 
-**The AI will generate a Markdown table containing:**
+**AI will generate a Markdown table containing:**
 
 - Class information: package name, type, visibility, line range
 - Field list: 9 fields (DEFAULT_ENCODING, MAX_RETRY_COUNT, etc.)
@@ -353,10 +347,10 @@ Please generate a detailed structure table for examples/BigService.java, I want 
 
 **Scenario 2: Extract specific code snippet**
 ```
-Please extract lines 93-106 of examples/BigService.java, I want to see the specific implementation of memory checking
+Please extract lines 93-106 from examples/BigService.java, I want to see the specific implementation of memory checking
 ```
 
-**The AI will call** the `extract_code_section` tool and return the checkMemoryUsage method code.
+**AI will call** the `extract_code_section` tool and return the code for the checkMemoryUsage method.
 
 ---
 
@@ -367,14 +361,14 @@ Please extract lines 93-106 of examples/BigService.java, I want to see the speci
 Find all methods related to authentication (auth) in examples/BigService.java
 ```
 
-**The AI will call query filtering** and return the authenticateUser method (lines 141-172).
+**AI will call query filtering** and return the authenticateUser method code (lines 141-172).
 
-**Scenario 2: Find entry point**
+**Scenario 2: Find entry points**
 ```
 Where is the main method in this file? What does it do?
 ```
 
-**The AI will locate:**
+**AI will locate:**
 
 - **Location**: Lines 1385-1418
 - **Function**: Demonstrates various features of BigService (authentication, sessions, customer management, report generation, performance monitoring, security checks)
@@ -384,7 +378,7 @@ Where is the main method in this file? What does it do?
 Which methods call the authenticateUser method?
 ```
 
-**The AI will search the code** and find the call in the `main` method:
+**AI will search the code** and find the call in the `main` method:
 ```java
 service.authenticateUser("testuser", "password123");
 ```
@@ -393,35 +387,63 @@ service.authenticateUser("testuser", "password123");
 
 ### 💡 SMART Workflow Best Practices
 
-1. **Natural Language First**: Describe your needs in natural language, AI will automatically choose the appropriate tools
-2. **Progressive Approach**: First understand the overall structure (A), then dive into specific code (R)
-3. **Trace as Needed**: Only use tracing (T) when you need to understand complex relationships
-4. **Combined Use**: You can combine multiple steps in one conversation
+1. **Natural language first**: Describe your needs in natural language, and AI will automatically select appropriate tools
+2. **Step-by-step approach**: First understand the overall structure (A), then dive into specific code (R)
+3. **Use tracking when needed**: Only use tracking (T) when you need to understand complex relationships
+4. **Combined usage**: You can combine multiple steps in one conversation
 
-**Complete Example Conversation:**
+**Complete example conversation:**
 ```
 I want to understand the large file examples/BigService.java:
-1. How large is it? What main features does it contain?
+1. How big is it? What main features does it contain?
 2. How is the authentication feature implemented?
-3. What public API methods are there?
+3. What public API methods are available?
 ```
 
-The AI will automatically:
+AI will automatically:
 1. Analyze file structure (1419 lines, 66 methods)
 2. Locate and extract the `authenticateUser` method (lines 141-172)
-3. Generate a list of public methods (19 public methods)
+3. Generate list of public methods (19 public methods)
 
 ---
 
-### ⚡ Complete CLI Commands
+## 5. 🤖 Complete MCP Tool List
+
+Tree-sitter Analyzer provides a rich set of MCP tools designed for AI assistants:
+
+| Tool Category | Tool Name | Main Function | Core Features |
+|-------------|---------|---------|---------|
+| **📊 Code Analysis** | `check_code_scale` | Fast code file scale analysis | File size statistics, line count statistics, complexity analysis, performance metrics |
+| | `analyze_code_structure` | Code structure analysis and table generation | 🆕 suppress_output parameter, multiple formats (full/compact/csv/json), automatic language detection |
+| | `extract_code_section` | Precise code section extraction | Specified line range extraction, large file efficient processing, original format preservation |
+| **🔍 Intelligent Search** | `list_files` | High-performance file discovery | fd-based, glob patterns, file type filters, time range control |
+| | `search_content` | Regex content search | ripgrep-based, multiple output formats, context control, encoding handling |
+| | `find_and_grep` | Two-stage search | File discovery → content search, fd+ripgrep combination, intelligent cache optimization |
+| **🔧 Advanced Queries** | `query_code` | tree-sitter queries | Predefined query keys, custom query strings, filter expression support |
+| **⚙️ System Management** | `set_project_path` | Project root path setting | Security boundary control, automatic path validation |
+| **📁 Resource Access** | Code file resources | URI code file access | File content access via URI identification |
+| | Project statistics resources | Project statistics data access | Project analysis data and statistical information |
+
+### 🆕 v1.7.0 New Feature: suppress_output Function
+
+The newly added `suppress_output` parameter in the `analyze_code_structure` tool is a revolutionary token optimization feature:
+
+- **Problem solved**: When analysis results are too large, traditional methods return complete table data, consuming massive tokens
+- **Intelligent optimization**: When `suppress_output=true` and `output_file` specified, only basic metadata is returned
+- **Significant effect**: Response size reduced by up to 99%, dramatically saving AI dialog token consumption
+- **Use cases**: Particularly suitable for large code file structure analysis and batch processing scenarios
+
+---
+
+## 6. ⚡ Complete CLI Commands
 
 #### 📊 Code Structure Analysis Commands
 
 ```bash
-# Quick analysis (display summary information)
+# Quick analysis (show summary information)
 uv run python -m tree_sitter_analyzer examples/BigService.java --summary
 
-# Detailed analysis (display complete structure)
+# Detailed analysis (show complete structure)
 uv run python -m tree_sitter_analyzer examples/BigService.java --structure
 
 # Advanced analysis (including complexity metrics)
@@ -449,7 +471,7 @@ uv run python -m tree_sitter_analyzer examples/BigService.java --query-key metho
 uv run python -m tree_sitter_analyzer examples/BigService.java --query-key classes
 
 # Filter query results
-# Find specific method
+# Find specific methods
 uv run python -m tree_sitter_analyzer examples/BigService.java --query-key methods --filter "name=main"
 
 # Find authentication-related methods (pattern matching)
@@ -478,7 +500,7 @@ uv run search-content --roots . --query "class.*extends" --include-globs "*.java
 uv run search-content --roots tests --query "TODO|FIXME" --context-before 2 --context-after 2
 uv run search-content --files examples/BigService.java examples/Sample.java --query "public.*method" --case insensitive
 
-# Two-stage search (find files first, then search content)
+# Two-stage search (first find files, then search content)
 uv run find-and-grep --roots . --query "@SpringBootApplication" --extensions java
 uv run find-and-grep --roots examples --query "import.*SQLException" --extensions java --file-limit 10 --max-count 5
 uv run find-and-grep --roots . --query "public.*static.*void" --extensions java --types f --size "+1k" --output-format json
@@ -487,123 +509,56 @@ uv run find-and-grep --roots . --query "public.*static.*void" --extensions java 
 #### ℹ️ Information Query Commands
 
 ```bash
-# View help
+# Show help
 uv run python -m tree_sitter_analyzer --help
 
 # List supported query keys
 uv run python -m tree_sitter_analyzer --list-queries
 
-# Display supported languages
+# Show supported languages
 uv run python -m tree_sitter_analyzer --show-supported-languages
 
-# Display supported extensions
+# Show supported extensions
 uv run python -m tree_sitter_analyzer --show-supported-extensions
 
-# Display common queries
+# Show common queries
 uv run python -m tree_sitter_analyzer --show-common-queries
 
-# Display query language support
+# Show query language support
 uv run python -m tree_sitter_analyzer --show-query-languages
 ```
 
 ---
 
-## 🤖 Complete MCP Tools List
+## 7. 🛠️ Core Features
 
-Tree-sitter Analyzer provides a rich set of MCP tools designed for AI assistants:
-
-| Tool Category | Tool Name | Primary Function | Core Features |
-|--------------|-----------|------------------|---------------|
-| **📊 Code Analysis** | `analyze_code_structure` | Analyze code structure and generate tables | 🆕 suppress_output parameter, multiple formats (full/compact/csv/json), automatic language detection |
-| | `check_code_scale` | Fast code file scale analysis | File size statistics, line count statistics, complexity analysis, performance metrics |
-| | `extract_code_section` | Precise code section extraction | Specified line range extraction, efficient large file processing, preserve original formatting |
-| **🔍 Intelligent Search** | `list_files` | High-performance file discovery | fd-based, glob patterns, file type filtering, time range control |
-| | `search_content` | Regular expression content search | ripgrep-based, multiple output formats, context control, encoding handling |
-| | `find_and_grep` | Two-stage search | Find files → search content, fd+ripgrep combination, intelligent caching optimization |
-| **🔧 Advanced Query** | `query_code` | tree-sitter queries | Predefined query keys, custom query strings, filter expression support |
-| **⚙️ System Management** | `set_project_path` | Set project root path | Security boundary control, automatic path validation |
-| **📁 Resource Access** | Code File Resources | URI code file access | Access file content through URI identification |
-| | Project Statistics Resources | Project statistics data access | Project analysis data and statistical information |
-
-### 🆕 v1.7.0 New Feature: suppress_output Functionality
-
-The newly added `suppress_output` parameter in the `analyze_code_structure` tool is a revolutionary token optimization feature:
-
-- **Problem Solved**: When analysis results are too large, traditional methods return complete table data, consuming massive tokens
-- **Intelligent Optimization**: When `suppress_output=true` and `output_file` is specified, only basic metadata is returned
-- **Significant Effect**: Can reduce response size by up to 99%, dramatically saving AI dialog token consumption
-- **Use Cases**: Particularly suitable for large code file structure analysis and batch processing scenarios
+| Feature Category | Feature Name | Core Capabilities | Technical Advantages |
+|------------------|--------------|-------------------|---------------------|
+| **📊 Code Structure Analysis** | Intelligent Parsing Engine | Class, method, and field statistics<br>Package information and import dependencies<br>Complexity metrics (cyclomatic complexity)<br>Precise line number positioning | Tree-sitter based high-precision parsing<br>Large enterprise codebase support<br>Real-time performance optimization |
+| **✂️ Intelligent Code Extraction** | Precision Extraction Tool | Precise extraction by line range<br>Preserves original formatting and indentation<br>Includes position metadata<br>Efficient processing of large files | Zero-loss format preservation<br>Memory-optimized algorithms<br>Streaming processing support |
+| **🔍 Advanced Query Filtering** | Multi-dimensional Filters | **Exact match**: `--filter "name=main"`<br>**Pattern match**: `--filter "name=~auth*"`<br>**Parameter filter**: `--filter "params=2"`<br>**Modifier filter**: `--filter "static=true,public=true"`<br>**Compound conditions**: Combine multiple conditions for precise queries | Flexible query syntax<br>High-performance indexing<br>Intelligent caching mechanisms |
+| **🔗 AI Assistant Integration** | MCP Protocol Support | **Claude Desktop** - Full MCP support<br>**Cursor IDE** - Built-in MCP integration<br>**Roo Code** - MCP protocol support<br>**Other MCP-compatible tools** - Universal MCP server | Standard MCP protocol<br>Plug-and-play design<br>Cross-platform compatibility |
+| **🌍 Multi-language Support** | Enterprise Language Engine | **Java** - Complete support, including Spring, JPA frameworks<br>**Python** - Complete support, including type annotations, decorators<br>**JavaScript** - Enterprise-grade support, including ES6+, React/Vue/Angular, JSX<br>**TypeScript** - **Complete support**, including interfaces, types, decorators, TSX/JSX, framework detection<br>**C/C++, Rust, Go** - Basic support | Framework-aware parsing<br>Syntax extension support<br>Continuous language updates |
+| **📁 Advanced File Search** | fd+ripgrep Integration | **ListFilesTool** - Intelligent file discovery with multiple filtering conditions<br>**SearchContentTool** - Intelligent content search using regular expressions<br>**FindAndGrepTool** - Combined discovery and search, two-stage workflow | Rust-based high-performance tools<br>Parallel processing capabilities<br>Intelligent cache optimization |
+| **🏗️ Unified Element System** | Revolutionary Architecture Design | **Single element list** - Unified management of all code elements (classes, methods, fields, imports, packages)<br>**Consistent element types** - Each element has an `element_type` attribute<br>**Simplified API** - Clearer interfaces and reduced complexity<br>**Better maintainability** - Single source of truth for all code elements | Unified data model<br>Type safety guarantees<br>Extensible design |
 
 ---
 
-## 🛠️ Core Features
-
-### 📊 Code Structure Analysis
-- Class, method, field statistics
-- Package information and import dependencies
-- Complexity metrics (cyclomatic complexity)
-- Precise line number positioning
-
-### ✂️ Intelligent Code Extraction
-- Precise extraction by line range
-- Preserve original formatting and indentation
-- Include position metadata
-- Efficient handling of large files
-
-### 🔍 Advanced Query Filtering
-- **Exact Match**: `--filter "name=main"`
-- **Pattern Match**: `--filter "name=~auth*"`
-- **Parameter Filter**: `--filter "params=2"`
-- **Modifier Filter**: `--filter "static=true,public=true"`
-- **Compound Conditions**: Combine multiple conditions for precise queries
-
-### 🔗 AI Assistant Integration
-- **Claude Desktop** - Full MCP support
-- **Cursor IDE** - Built-in MCP integration
-- **Roo Code** - MCP protocol support
-- **Other MCP-compatible tools** - Universal MCP server
-
-### 🌍 Multi-Language Support
-
-| Programming Language | Support Level | Plugin Code Lines | Test Coverage | Key Features |
-|---------------------|---------------|-------------------|---------------|--------------|
-| **Java** | Full Support | 1,103 lines | 73.00% | Spring framework, JPA, enterprise features |
-| **Python** | Full Support | 584 lines | 63.26% | Type annotations, decorators, modern Python features |
-| **JavaScript** | Full Support | 1,445 lines | 68.31% | ES6+, React/Vue/Angular, JSX |
-| **TypeScript** | Full Support | 1,729 lines | 72.82% | Interfaces, types, decorators, TSX/JSX, framework detection |
-| **C/C++** | Basic Support | - | - | Basic syntax parsing |
-| **Rust** | Basic Support | - | - | Basic syntax parsing |
-| **Go** | Basic Support | - | - | Basic syntax parsing |
-
-### 📁 Advanced File Search
-Powerful file discovery and content search based on fd and ripgrep:
-- **ListFilesTool** - Intelligent file discovery with multiple filtering conditions
-- **SearchContentTool** - Intelligent content search with regular expressions
-- **FindAndGrepTool** - Combined discovery and search, two-stage workflow
-
-### 🏗️ Unified Element System
-- **Single Element List** - Unified management of all code elements (classes, methods, fields, imports, packages)
-- **Consistent Element Types** - Each element has an `element_type` attribute
-- **Simplified API** - Clearer interfaces and reduced complexity
-- **Better Maintainability** - Single source of truth for all code elements
-
----
-
-## 🏆 Quality Assurance
+## 8. 🏆 Quality Assurance
 
 ### 📊 Quality Metrics
-- **2,662 Tests** - 100% pass rate ✅
-- **79.16% Code Coverage** - Comprehensive test suite
-- **Zero Test Failures** - Production ready
-- **Cross-Platform Support** - Windows, macOS, Linux
+- **2,662 tests** - 100% pass rate ✅
+- **79.16% code coverage** - Comprehensive test suite
+- **Zero test failures** - Production ready
+- **Cross-platform support** - Windows, macOS, Linux
 
 ### ⚡ Latest Quality Achievements (v1.7.0)
-- ✅ **Token Saving Feature** - New suppress_output parameter automatically suppresses table output when file output is specified, saving AI token consumption
-- ✅ **Intelligent Output Control** - Automatically optimize response size when output_file is specified and suppress_output=true
-- ✅ **Enterprise-Grade Test Coverage** - Added 356 new test cases specifically for suppress_output functionality
-- ✅ **MCP Tools Enhancement** - Complete MCP server toolset supporting advanced file search and content analysis
-- ✅ **Cross-Platform Path Compatibility** - Fixed Windows short path names and macOS symlink differences
-- ✅ **GitFlow Implementation** - Professional development/release branch strategy
+- ✅ **Token saving feature** - New suppress_output parameter automatically suppresses table output when file output is specified, saving AI token consumption
+- ✅ **Intelligent output control** - Automatically optimizes response size when output_file is specified and suppress_output=true
+- ✅ **Enterprise-grade test coverage** - Comprehensive test suite including complete validation of suppress_output functionality
+- ✅ **MCP tool enhancement** - Complete MCP server tool set supporting advanced file search and content analysis
+- ✅ **Cross-platform path compatibility** - Fixed differences between Windows short path names and macOS symbolic links
+- ✅ **GitFlow implementation** - Professional development/release branch strategy
 
 ### ⚙️ Running Tests
 ```bash
@@ -619,62 +574,62 @@ uv run pytest tests/test_mcp_server_initialization.py -v
 
 ### 📈 Test Coverage Details
 
-| Module Category | Component | Coverage | Quality Level | Code Lines | Features |
-|-----------------|-----------|----------|---------------|------------|----------|
-| **Core Modules** | Language Detector | 98.41% | Excellent | - | Automatic programming language recognition |
-| | CLI Main Entry | 94.36% | Excellent | - | Command-line interface |
-| | Query Filter System | 96.06% | Excellent | - | Code query and filtering |
-| | Query Service | 86.25% | Good | - | Query execution engine |
-| | MCP Error Handling | 82.76% | Good | - | AI assistant integration error handling |
-| **Language Plugins** | Java Plugin | 80.30% | Excellent | 1333 | Full enterprise-grade support |
-| | JavaScript Plugin | 76.74% | Good | 1539 | Modern ES6+ feature support |
-| | Python Plugin | 82.84% | Excellent | 1296 | Full type annotation support |
-| **MCP Tools** | File Search Tool | 88.77% | Excellent | - | fd/ripgrep integration |
-| | Content Search Tool | 92.70% | Excellent | - | Regular expression search |
-| | Combined Search Tool | 91.57% | Excellent | - | Two-stage search |
+| Module Category | Module Name | Coverage | Quality Level | Main Features |
+|------------------|-------------|-----------|---------------|---------------|
+| **🔧 Core Modules** | Language Detector | 98.41% | Excellent | Automatic programming language recognition |
+| | CLI Main Entry | 94.36% | Excellent | Command line interface |
+| | Query Filter System | 96.06% | Excellent | Code querying and filtering |
+| | Query Service | 86.25% | Good | Query execution engine |
+| | MCP Error Handling | 82.76% | Good | AI assistant integration error handling |
+| **🌍 Language Plugins** | Java Plugin | 80.30% | Excellent | Complete enterprise-grade support |
+| | JavaScript Plugin | 76.74% | Good | Modern ES6+ feature support |
+| | Python Plugin | 82.84% | Excellent | Complete type annotation support |
+| **🤖 MCP Tools** | File Search Tool | 88.77% | Excellent | fd/ripgrep integration |
+| | Content Search Tool | 92.70% | Excellent | Regular expression search |
+| | Combined Search Tool | 91.57% | Excellent | Two-stage search |
 
 ### ✅ Documentation Verification Status
 
 **All content in this README has been verified:**
-- ✅ **All Commands Tested** - Every CLI command has been run and verified in a real environment
-- ✅ **All Data Authentic** - Coverage rates, test counts, and other data come directly from test reports
-- ✅ **SMART Workflow Authentic** - Demonstrated based on actual BigService.java (1419 lines)
-- ✅ **Cross-Platform Verified** - Tested on Windows, macOS, Linux environments
+- ✅ **All commands tested** - All CLI commands have been executed and verified in real environments
+- ✅ **All data is real** - Data such as coverage rates and test counts are directly obtained from test reports
+- ✅ **SMART flow is real** - Demonstrated based on actual BigService.java (1419 lines)
+- ✅ **Cross-platform verified** - Tested on Windows, macOS, Linux environments
 
-**Verification Environment:**
-- Operating Systems: Windows 10, macOS, Linux
-- Python Version: 3.10+
-- Project Version: tree-sitter-analyzer v1.6.2
-- Test Files: BigService.java (1419 lines), sample.py (256 lines), MultiClass.java (54 lines)
+**Verification environment:**
+- Operating systems: Windows 10, macOS, Linux
+- Python version: 3.10+
+- Project version: tree-sitter-analyzer v1.7.0
+- Test files: BigService.java (1419 lines), sample.py (256 lines), MultiClass.java (54 lines)
 
 ---
 
-## 📚 Documentation & Support
+## 9. 📚 Documentation & Support
 
 ### 📖 Complete Documentation
-- **[User MCP Setup Guide](MCP_SETUP_USERS.md)** - Simple configuration guide
-- **[Developer MCP Setup Guide](MCP_SETUP_DEVELOPERS.md)** - Local development configuration
+- **[User MCP Setup Guide](MCP_SETUP_USERS.md)** - Simple setup guide
+- **[Developer MCP Setup Guide](MCP_SETUP_DEVELOPERS.md)** - Local development setup
 - **[Project Root Configuration](PROJECT_ROOT_CONFIG.md)** - Complete configuration reference
 - **[API Documentation](docs/api.md)** - Detailed API reference
 - **[Contributing Guide](CONTRIBUTING.md)** - How to contribute code
 - **[Onboarding & Training Guide](training/README.md)** - System onboarding materials for new members/maintainers
 
 ### 🤖 AI Collaboration Support
-This project supports AI-assisted development with specialized quality control:
+This project supports AI-assisted development with professional quality control:
 
 ```bash
-# Pre-generation checks for AI systems
+# AI system pre-generation checks
 uv run python check_quality.py --new-code-only
 uv run python llm_code_checker.py --check-all
 ```
 
-📖 **Detailed Guides**:
+📖 **Detailed guides**:
 - [AI Collaboration Guide](AI_COLLABORATION_GUIDE.md)
 - [LLM Coding Guidelines](LLM_CODING_GUIDELINES.md)
 
 ### 💝 Sponsors & Acknowledgments
 
-**[@o93](https://github.com/o93)** - *Primary Sponsor & Supporter*
+**[@o93](https://github.com/o93)** - *Lead Sponsor & Supporter*
 - 🚀 **MCP Tool Enhancement**: Sponsored comprehensive MCP fd/ripgrep tool development
 - 🧪 **Test Infrastructure**: Implemented enterprise-grade test coverage (50+ comprehensive test cases)
 - 🔧 **Quality Assurance**: Supported bug fixes and performance improvements
@@ -684,22 +639,22 @@ uv run python llm_code_checker.py --check-all
 
 ---
 
-## 🤝 Contributing & License
+## 10. 🤝 Contributing & License
 
 ### 🤝 Contributing Guide
 
-We welcome contributions of all kinds! Please check the [Contributing Guide](CONTRIBUTING.md) for details.
+We welcome all kinds of contributions! Please check our [Contributing Guide](CONTRIBUTING.md) for details.
 
-### ⭐ Give us a Star!
+### ⭐ Give us a star!
 
-If this project helps you, please give us a ⭐ on GitHub - it's the greatest support for us!
+If this project has been helpful to you, please give us a ⭐ on GitHub - that's the biggest support for us!
 
 ### 📄 License
 
-MIT License - See [LICENSE](LICENSE) file for details.
+MIT License - see the [LICENSE](LICENSE) file for details.
 
 ---
 
-**🎯 Built for developers handling large codebases and AI assistants**
+**🎯 Built for developers working with large codebases and AI assistants**
 
-*Let every line of code be understood by AI, let every project break through token limits*
+*Making every line of code understandable to AI, enabling every project to break through token limitations*

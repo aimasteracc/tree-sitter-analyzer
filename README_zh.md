@@ -1,4 +1,4 @@
-# Tree-sitter Analyzer
+# 🌳 Tree-sitter Analyzer
 
 **[English](README.md)** | **[日本語](README_ja.md)** | **简体中文**
 
@@ -17,55 +17,44 @@
 
 ## 📋 目录
 
-- [💡 项目特色](#-项目特色)
-- [📋 前置准备（所有用户必读）](#-前置准备所有用户必读)
-- [🚀 快速开始](#-快速开始)
-  - [🤖 AI使用者（Claude Desktop、Cursor等）](#-ai使用者claude-desktopcursor等)
-  - [💻 CLI使用者（命令行工具）](#-cli使用者命令行工具)
-  - [👨‍💻 开发者（源码开发）](#-开发者源码开发)
-- [📖 使用流程与示例](#-使用流程与示例)
-  - [🔄 AI助手SMART工作流程](#-ai助手smart工作流程)
-  - [⚡ CLI命令大全](#-cli命令大全)
-- [🛠️ 核心功能特性](#️-核心功能特性)
-- [🏆 质量保证](#-质量保证)
-- [📚 文档与支持](#-文档与支持)
-- [🤝 贡献与许可证](#-贡献与许可证)
+- [1. 💡 项目特色](#1--项目特色)
+- [2. 📋 前置准备（所有用户必读）](#2--前置准备所有用户必读)
+- [3. 🚀 快速开始](#3--快速开始)
+  - [3.1 🤖 AI使用者（Claude Desktop、Cursor等）](#31--ai使用者claude-desktopcursor等)
+  - [3.2 💻 CLI使用者（命令行工具）](#32--cli使用者命令行工具)
+  - [3.3 👨‍💻 开发者（源码开发）](#33--开发者源码开发)
+- [4. 📖 使用流程与示例](#4--使用流程与示例)
+  - [4.1 🔄 AI助手SMART工作流程](#41--ai助手smart工作流程)
+- [5. 🤖 MCP工具完整列表](#5--mcp工具完整列表)
+- [6. ⚡ CLI命令大全](#6--cli命令大全)
+- [7. 🛠️ 核心功能特性](#7-️-核心功能特性)
+- [8. 🏆 质量保证](#8--质量保证)
+- [9. 📚 文档与支持](#9--文档与支持)
+- [10. 🤝 贡献与许可证](#10--贡献与许可证)
 
 ---
 
-## 💡 项目特色
+## 1. 💡 项目特色
 
 Tree-sitter Analyzer 是一个为AI时代设计的企业级代码分析工具，提供：
 
-### 🤖 深度AI集成
-- **MCP协议支持** - 原生支持Claude Desktop、Cursor、Roo Code等AI工具
-- **SMART工作流程** - 系统化的AI辅助代码分析方法
-- **突破token限制** - 让AI理解任意大小的代码文件
-- **自然语言交互** - 用自然语言即可完成复杂的代码分析任务
-
-### 🔍 强大的搜索能力
-- **智能文件发现** - 基于fd的高性能文件搜索，支持多种过滤条件
-- **内容精确搜索** - 基于ripgrep的正则表达式内容搜索
-- **两阶段搜索** - 先找文件再搜内容的组合工作流
-- **项目边界保护** - 自动检测和尊重项目边界，确保安全
-
-### 📊 智能代码分析
-- **快速结构分析** - 无需读取完整文件即可理解代码架构
-- **精确代码提取** - 支持指定行范围的精确代码片段提取
-- **复杂度分析** - 循环复杂度计算和代码质量指标
-- **统一元素系统** - 革命性的统一代码元素管理架构
+| 功能类别 | 核心能力 | 主要优势 |
+|---------|---------|---------|
+| **🤖 深度AI集成** | • MCP协议支持<br>• SMART工作流程<br>• 突破token限制<br>• 自然语言交互 | 原生支持Claude Desktop、Cursor、Roo Code<br>系统化的AI辅助代码分析方法<br>让AI理解任意大小的代码文件<br>用自然语言完成复杂分析任务 |
+| **🔍 强大的搜索能力** | • 智能文件发现<br>• 内容精确搜索<br>• 两阶段搜索<br>• 项目边界保护 | 基于fd的高性能文件搜索<br>基于ripgrep的正则表达式搜索<br>先找文件再搜内容的组合工作流<br>自动检测和尊重项目边界 |
+| **📊 智能代码分析** | • 快速结构分析<br>• 精确代码提取<br>• 复杂度分析<br>• 统一元素系统 | 无需读取完整文件即可理解架构<br>支持指定行范围的代码片段提取<br>循环复杂度计算和质量指标<br>革命性的统一代码元素管理 |
 
 ### 🌍 企业级多语言支持
 
-| 编程语言 | 支持级别 | 插件代码行数 | 测试覆盖率 | 主要特性 |
-|---------|---------|-------------|-----------|---------|
-| **Java** | 完整支持 | 1,333行 | 80.30% | Spring框架、JPA、企业级特性 |
-| **Python** | 完整支持 | 1,296行 | 82.84% | 类型注解、装饰器、现代Python特性 |
-| **JavaScript** | 完整支持 | 1,539行 | 76.74% | ES6+、React/Vue/Angular、JSX |
-| **TypeScript** | 完整支持 | 1,729行 | 72.82% | 接口、类型、装饰器、TSX/JSX、框架检测 |
-| **C/C++** | 基础支持 | - | - | 基本语法解析 |
-| **Rust** | 基础支持 | - | - | 基本语法解析 |
-| **Go** | 基础支持 | - | - | 基本语法解析 |
+| 编程语言 | 支持级别 | 主要特性 |
+|---------|---------|---------|
+| **Java** | 完整支持 | Spring框架、JPA、企业级特性 |
+| **Python** | 完整支持 | 类型注解、装饰器、现代Python特性 |
+| **JavaScript** | 完整支持 | ES6+、React/Vue/Angular、JSX |
+| **TypeScript** | 完整支持 | 接口、类型、装饰器、TSX/JSX、框架检测 |
+| **C/C++** | 基础支持 | 基本语法解析 |
+| **Rust** | 基础支持 | 基本语法解析 |
+| **Go** | 基础支持 | 基本语法解析 |
 
 ### 🏆 生产就绪
 - **2,662个测试** - 100%通过率，企业级质量保证
@@ -75,7 +64,7 @@ Tree-sitter Analyzer 是一个为AI时代设计的企业级代码分析工具，
 
 ---
 
-## 📋 前置准备（所有用户必读）
+## 2. 📋 前置准备（所有用户必读）
 
 无论您是AI使用者、CLI使用者还是开发者，都需要先安装以下工具：
 
@@ -123,9 +112,9 @@ rg --version
 
 ---
 
-## 🚀 快速开始
+## 3. 🚀 快速开始
 
-### 🤖 AI使用者（Claude Desktop、Cursor等）
+### 3.1 🤖 AI使用者（Claude Desktop、Cursor等）
 
 **适用于：** 使用AI助手（如Claude Desktop、Cursor）进行代码分析的用户
 
@@ -188,7 +177,7 @@ rg --version
 
 ---
 
-### 💻 CLI使用者（命令行工具）
+### 3.2 💻 CLI使用者（命令行工具）
 
 **适用于：** 喜欢使用命令行工具的开发者
 
@@ -223,7 +212,7 @@ uv run python -m tree_sitter_analyzer examples/BigService.java --partial-read --
 
 ---
 
-### 👨‍💻 开发者（源码开发）
+### 3.3 👨‍💻 开发者（源码开发）
 
 **适用于：** 需要修改源码或贡献代码的开发者
 
@@ -256,9 +245,9 @@ uv run python check_quality.py --new-code-only
 
 ---
 
-## 📖 使用流程与示例
+## 4. 📖 使用流程与示例
 
-### 🔄 AI助手SMART工作流程
+### 4.1 🔄 AI助手SMART工作流程
 
 SMART工作流程是使用AI助手分析代码的推荐流程。以下以 `examples/BigService.java`（1419行的大型服务类）为例，完整演示整个流程：
 
@@ -361,13 +350,7 @@ SMART工作流程是使用AI助手分析代码的推荐流程。以下以 `examp
 请提取 examples/BigService.java 的第93-106行，我想看内存检查的具体实现
 ```
 
-**AI会调用** `extract_code_section` 工具，返回：
-
-```java
-{
-  "partial_content_result": "--- Partial Read Result ---\nFile: examples/BigService.java\nRange: Line 93-106\nCharacters read: 548\n{\n  \"file_path\": \"examples/BigService.java\",\n  \"range\": {\n    \"start_line\": 93,\n    \"end_line\": 106,\n    \"start_column\": null,\n    \"end_column\": null\n  },\n  \"content\": \"    private void checkMemoryUsage() {\\n        Runtime runtime = Runtime.getRuntime();\\n        long totalMemory = runtime.totalMemory();\\n        long freeMemory = runtime.freeMemory();\\n        long usedMemory = totalMemory - freeMemory;\\n\\n        System.out.println(\\\"Total Memory: \\\" + totalMemory);\\n        System.out.println(\\\"Free Memory: \\\" + freeMemory);\\n        System.out.println(\\\"Used Memory: \\\" + usedMemory);\\n\\n        if (usedMemory > totalMemory * 0.8) {\\n            System.out.println(\\\"WARNING: High memory usage detected!\\\");\\n        }\\n    }\\n\",\n  \"content_length\": 548\n}"
-}
-```
+**AI会调用** `extract_code_section` 工具，返回checkMemoryUsage方法的代码。
 
 ---
 
@@ -378,19 +361,7 @@ SMART工作流程是使用AI助手分析代码的推荐流程。以下以 `examp
 在 examples/BigService.java 中查找所有与认证（auth）相关的方法
 ```
 
-**AI会调用查询过滤**，返回：
-```json
-{
-  "results": [
-    {
-      "node_type": "method_declaration",
-      "start_line": 141,
-      "end_line": 172,
-      "content": "public boolean authenticateUser(String username, String password) { ... }"
-    }
-  ]
-}
-```
+**AI会调用查询过滤**，返回authenticateUser方法的（141-172行）代码。
 
 **场景2：查找入口点**
 ```
@@ -436,7 +407,35 @@ AI会自动：
 
 ---
 
-### ⚡ CLI命令大全
+## 5. 🤖 MCP工具完整列表
+
+Tree-sitter Analyzer提供了丰富的MCP工具集，专为AI助手设计：
+
+| 工具类别 | 工具名称 | 主要功能 | 核心特性 |
+|---------|---------|---------|---------|
+| **📊 代码分析** | `check_code_scale` | 快速分析代码文件规模 | 文件大小统计、行数统计、复杂度分析、性能指标 |
+| | `analyze_code_structure` | 分析代码结构和生成表格 | 🆕 suppress_output参数、多种格式(full/compact/csv/json)、自动语言检测 |
+| | `extract_code_section` | 精确提取代码片段 | 指定行范围提取、大文件高效处理、保持原始格式 |
+| **🔍 智能搜索** | `list_files` | 高性能文件发现 | 基于fd、glob模式、文件类型过滤、时间范围控制 |
+| | `search_content` | 正则表达式内容搜索 | 基于ripgrep、多种输出格式、上下文控制、编码处理 |
+| | `find_and_grep` | 两阶段搜索 | 先找文件再搜内容、组合fd+ripgrep、智能缓存优化 |
+| **🔧 高级查询** | `query_code` | tree-sitter查询 | 预定义查询键、自定义查询字符串、过滤表达式支持 |
+| **⚙️ 系统管理** | `set_project_path` | 设置项目根路径 | 安全边界控制、自动路径验证 |
+| **📁 资源访问** | 代码文件资源 | URI访问代码文件 | 通过URI标识访问文件内容 |
+| | 项目统计资源 | 访问项目统计数据 | 项目分析数据和统计信息 |
+
+### 🆕 v1.7.0新特性：suppress_output功能
+
+`analyze_code_structure`工具新增的`suppress_output`参数是一个革命性的token优化功能：
+
+- **问题解决**：当分析结果过大时，传统方式会返回完整的表格数据，消耗大量token
+- **智能优化**：设置`suppress_output=true`且指定`output_file`时，仅返回基本元数据
+- **效果显著**：可减少响应大小高达99%，大幅节省AI对话的token消耗
+- **使用场景**：特别适合大型代码文件的结构分析和批量处理场景
+
+---
+
+## 6. ⚡ CLI命令大全
 
 #### 📊 代码结构分析命令
 
@@ -531,83 +530,22 @@ uv run python -m tree_sitter_analyzer --show-query-languages
 
 ---
 
-## 🤖 MCP工具完整列表
 
-Tree-sitter Analyzer提供了丰富的MCP工具集，专为AI助手设计：
+## 7. 🛠️ 核心功能特性
 
-| 工具类别 | 工具名称 | 主要功能 | 核心特性 |
+| 功能类别 | 功能名称 | 核心特性 | 技术优势 |
 |---------|---------|---------|---------|
-| **📊 代码分析** | `analyze_code_structure` | 分析代码结构和生成表格 | 🆕 suppress_output参数、多种格式(full/compact/csv/json)、自动语言检测 |
-| | `check_code_scale` | 快速分析代码文件规模 | 文件大小统计、行数统计、复杂度分析、性能指标 |
-| | `extract_code_section` | 精确提取代码片段 | 指定行范围提取、大文件高效处理、保持原始格式 |
-| **🔍 智能搜索** | `list_files` | 高性能文件发现 | 基于fd、glob模式、文件类型过滤、时间范围控制 |
-| | `search_content` | 正则表达式内容搜索 | 基于ripgrep、多种输出格式、上下文控制、编码处理 |
-| | `find_and_grep` | 两阶段搜索 | 先找文件再搜内容、组合fd+ripgrep、智能缓存优化 |
-| **🔧 高级查询** | `query_code` | tree-sitter查询 | 预定义查询键、自定义查询字符串、过滤表达式支持 |
-| **⚙️ 系统管理** | `set_project_path` | 设置项目根路径 | 安全边界控制、自动路径验证 |
-| **📁 资源访问** | 代码文件资源 | URI访问代码文件 | 通过URI标识访问文件内容 |
-| | 项目统计资源 | 访问项目统计数据 | 项目分析数据和统计信息 |
-
-### 🆕 v1.7.0新特性：suppress_output功能
-
-`analyze_code_structure`工具新增的`suppress_output`参数是一个革命性的token优化功能：
-
-- **问题解决**：当分析结果过大时，传统方式会返回完整的表格数据，消耗大量token
-- **智能优化**：设置`suppress_output=true`且指定`output_file`时，仅返回基本元数据
-- **效果显著**：可减少响应大小高达99%，大幅节省AI对话的token消耗
-- **使用场景**：特别适合大型代码文件的结构分析和批量处理场景
+| **📊 代码结构分析** | 智能解析引擎 | 类、方法、字段统计<br>包信息和导入依赖<br>复杂度指标（循环复杂度）<br>精确行号定位 | 基于tree-sitter的高精度解析<br>支持大型企业级代码库<br>实时性能优化 |
+| **✂️ 智能代码提取** | 精确提取工具 | 精确按行范围提取<br>保持原始格式和缩进<br>包含位置元数据<br>支持大文件高效处理 | 零损失格式保持<br>内存优化算法<br>流式处理支持 |
+| **🔍 高级查询过滤** | 多维度过滤器 | **精确匹配**: `--filter "name=main"`<br>**模式匹配**: `--filter "name=~auth*"`<br>**参数过滤**: `--filter "params=2"`<br>**修饰符过滤**: `--filter "static=true,public=true"`<br>**复合条件**: 组合多个条件进行精确查询 | 灵活的查询语法<br>高性能索引<br>智能缓存机制 |
+| **🔗 AI助手集成** | MCP协议支持 | **Claude Desktop** - 完整MCP支持<br>**Cursor IDE** - 内置MCP集成<br>**Roo Code** - MCP协议支持<br>**其他MCP兼容工具** - 通用MCP服务器 | 标准MCP协议<br>即插即用设计<br>跨平台兼容 |
+| **🌍 多语言支持** | 企业级语言引擎 | **Java** - 完整支持，包括Spring、JPA框架<br>**Python** - 完整支持，包括类型注解、装饰器<br>**JavaScript** - 企业级支持，包括ES6+、React/Vue/Angular、JSX<br>**TypeScript** - **完整支持**，包括接口、类型、装饰器、TSX/JSX、框架检测<br>**C/C++、Rust、Go** - 基础支持 | 框架感知解析<br>语法扩展支持<br>持续语言更新 |
+| **📁 高级文件搜索** | fd+ripgrep集成 | **ListFilesTool** - 智能文件发现，支持多种过滤条件<br>**SearchContentTool** - 智能内容搜索，支持正则表达式<br>**FindAndGrepTool** - 组合发现与搜索，两阶段工作流 | 基于Rust的高性能工具<br>并行处理能力<br>智能缓存优化 |
+| **🏗️ 统一元素系统** | 革命性架构设计 | **单一元素列表** - 所有代码元素（类、方法、字段、导入、包）统一管理<br>**一致的元素类型** - 每个元素都有`element_type`属性<br>**简化的API** - 更清晰的接口和降低的复杂度<br>**更好的可维护性** - 所有代码元素的单一真实来源 | 统一数据模型<br>类型安全保证<br>扩展性设计 |
 
 ---
 
-## 🛠️ 核心功能特性
-
-### 📊 代码结构分析
-- 类、方法、字段统计
-- 包信息和导入依赖
-- 复杂度指标（循环复杂度）
-- 精确行号定位
-
-### ✂️ 智能代码提取
-- 精确按行范围提取
-- 保持原始格式和缩进
-- 包含位置元数据
-- 支持大文件高效处理
-
-### 🔍 高级查询过滤
-- **精确匹配**: `--filter "name=main"`
-- **模式匹配**: `--filter "name=~auth*"`
-- **参数过滤**: `--filter "params=2"`
-- **修饰符过滤**: `--filter "static=true,public=true"`
-- **复合条件**: 组合多个条件进行精确查询
-
-### 🔗 AI助手集成
-- **Claude Desktop** - 完整MCP支持
-- **Cursor IDE** - 内置MCP集成
-- **Roo Code** - MCP协议支持
-- **其他MCP兼容工具** - 通用MCP服务器
-
-### 🌍 多语言支持
-- **Java** - 完整支持（1333行插件），包括Spring、JPA框架
-- **Python** - 完整支持（1296行插件），包括类型注解、装饰器
-- **JavaScript** - 企业级支持（1539行插件），包括ES6+、React/Vue/Angular、JSX
-- **TypeScript** - **完整支持**（1729行插件），包括接口、类型、装饰器、TSX/JSX、框架检测
-- **C/C++、Rust、Go** - 基础支持
-
-### 📁 高级文件搜索
-基于fd和ripgrep的强大文件发现和内容搜索：
-- **ListFilesTool** - 智能文件发现，支持多种过滤条件
-- **SearchContentTool** - 智能内容搜索，支持正则表达式
-- **FindAndGrepTool** - 组合发现与搜索，两阶段工作流
-
-### 🏗️ 统一元素系统
-- **单一元素列表** - 所有代码元素（类、方法、字段、导入、包）统一管理
-- **一致的元素类型** - 每个元素都有`element_type`属性
-- **简化的API** - 更清晰的接口和降低的复杂度
-- **更好的可维护性** - 所有代码元素的单一真实来源
-
----
-
-## 🏆 质量保证
+## 8. 🏆 质量保证
 
 ### 📊 质量指标
 - **2,662个测试** - 100%通过率 ✅
@@ -618,7 +556,7 @@ Tree-sitter Analyzer提供了丰富的MCP工具集，专为AI助手设计：
 ### ⚡ 最新质量成就（v1.7.0）
 - ✅ **Token节省功能** - 新增suppress_output参数，在文件输出时自动抑制表格输出，节省AI token消耗
 - ✅ **智能输出控制** - 当指定output_file且suppress_output=true时，自动优化响应大小
-- ✅ **企业级测试覆盖** - 新增356个测试用例，专门验证suppress_output功能
+- ✅ **企业级测试覆盖** - 全面的测试套件，包含suppress_output功能的完整验证
 - ✅ **MCP工具增强** - 完善的MCP服务器工具集，支持高级文件搜索和内容分析
 - ✅ **跨平台路径兼容性** - 修复Windows短路径名称和macOS符号链接差异
 - ✅ **GitFlow实现** - 专业的开发/发布分支策略
@@ -644,9 +582,9 @@ uv run pytest tests/test_mcp_server_initialization.py -v
 | | 查询过滤系统 | 96.06% | 优秀 | 代码查询和过滤 |
 | | 查询服务 | 86.25% | 良好 | 查询执行引擎 |
 | | MCP错误处理 | 82.76% | 良好 | AI助手集成错误处理 |
-| **🌍 语言插件** | Java插件 | 73.00% | 良好 | 1103行代码，完整的企业级支持 |
-| | JavaScript插件 | 68.31% | 良好 | 1445行代码，现代ES6+特性支持 |
-| | Python插件 | 63.26% | 良好 | 584行代码，完整的类型注解支持 |
+| **🌍 语言插件** | Java插件 | 80.30% | 优秀 | 1,333行代码，完整的企业级支持 |
+| | JavaScript插件 | 76.74% | 良好 | 1,539行代码，现代ES6+特性支持 |
+| | Python插件 | 82.84% | 优秀 | 1,296行代码，完整的类型注解支持 |
 | **🤖 MCP工具** | 文件搜索工具 | 88.77% | 优秀 | fd/ripgrep集成 |
 | | 内容搜索工具 | 92.70% | 优秀 | 正则表达式搜索 |
 | | 组合搜索工具 | 91.57% | 优秀 | 两阶段搜索 |
@@ -667,7 +605,7 @@ uv run pytest tests/test_mcp_server_initialization.py -v
 
 ---
 
-## 📚 文档与支持
+## 9. 📚 文档与支持
 
 ### 📖 完整文档
 - **[用户MCP设置指南](MCP_SETUP_USERS.md)** - 简单配置指南
@@ -702,7 +640,7 @@ uv run python llm_code_checker.py --check-all
 
 ---
 
-## 🤝 贡献与许可证
+## 10. 🤝 贡献与许可证
 
 ### 🤝 贡献指南
 
