@@ -52,6 +52,7 @@ Tree-sitter Analyzer 是一个为AI时代设计的企业级代码分析工具，
 | **Python** | 完整支持 | 类型注解、装饰器、现代Python特性 |
 | **JavaScript** | 完整支持 | ES6+、React/Vue/Angular、JSX |
 | **TypeScript** | 完整支持 | 接口、类型、装饰器、TSX/JSX、框架检测 |
+| **Markdown** | 🆕 完整支持 | 标题、代码块、链接、图片、表格、任务列表、引用 |
 | **C/C++** | 基础支持 | 基本语法解析 |
 | **Rust** | 基础支持 | 基本语法解析 |
 | **Go** | 基础支持 | 基本语法解析 |
@@ -424,7 +425,18 @@ Tree-sitter Analyzer提供了丰富的MCP工具集，专为AI助手设计：
 | **📁 资源访问** | 代码文件资源 | URI访问代码文件 | 通过URI标识访问文件内容 |
 | | 项目统计资源 | 访问项目统计数据 | 项目分析数据和统计信息 |
 
-### 🆕 v1.7.2新特性：文件输出优化功能
+### 🆕 v1.7.3新特性：Markdown完整支持
+
+全新的Markdown语言支持，为文档分析和AI助手提供强大功能：
+
+- **📝 完整Markdown解析**：支持ATX标题、Setext标题、代码块、链接、图片、表格等所有主要元素
+- **🔍 智能元素提取**：自动识别和提取标题层级、代码语言、链接URL、图片信息等
+- **📊 结构化分析**：将Markdown文档转换为结构化数据，便于AI理解和处理
+- **🎯 任务列表支持**：完整支持GitHub风格的任务列表（复选框）
+- **🔧 查询系统集成**：支持所有现有的查询和过滤功能
+- **📁 多扩展名支持**：支持.md、.markdown、.mdown、.mkd、.mkdn、.mdx等格式
+
+### 🆕 v1.7.2特性：文件输出优化功能
 
 MCP搜索工具新增的文件输出优化功能是一个革命性的token节省解决方案：
 
@@ -549,7 +561,7 @@ uv run python -m tree_sitter_analyzer --show-query-languages
 | **✂️ 智能代码提取** | 精确提取工具 | 精确按行范围提取<br>保持原始格式和缩进<br>包含位置元数据<br>支持大文件高效处理 | 零损失格式保持<br>内存优化算法<br>流式处理支持 |
 | **🔍 高级查询过滤** | 多维度过滤器 | **精确匹配**: `--filter "name=main"`<br>**模式匹配**: `--filter "name=~auth*"`<br>**参数过滤**: `--filter "params=2"`<br>**修饰符过滤**: `--filter "static=true,public=true"`<br>**复合条件**: 组合多个条件进行精确查询 | 灵活的查询语法<br>高性能索引<br>智能缓存机制 |
 | **🔗 AI助手集成** | MCP协议支持 | **Claude Desktop** - 完整MCP支持<br>**Cursor IDE** - 内置MCP集成<br>**Roo Code** - MCP协议支持<br>**其他MCP兼容工具** - 通用MCP服务器 | 标准MCP协议<br>即插即用设计<br>跨平台兼容 |
-| **🌍 多语言支持** | 企业级语言引擎 | **Java** - 完整支持，包括Spring、JPA框架<br>**Python** - 完整支持，包括类型注解、装饰器<br>**JavaScript** - 企业级支持，包括ES6+、React/Vue/Angular、JSX<br>**TypeScript** - **完整支持**，包括接口、类型、装饰器、TSX/JSX、框架检测<br>**C/C++、Rust、Go** - 基础支持 | 框架感知解析<br>语法扩展支持<br>持续语言更新 |
+| **🌍 多语言支持** | 企业级语言引擎 | **Java** - 完整支持，包括Spring、JPA框架<br>**Python** - 完整支持，包括类型注解、装饰器<br>**JavaScript** - 企业级支持，包括ES6+、React/Vue/Angular、JSX<br>**TypeScript** - **完整支持**，包括接口、类型、装饰器、TSX/JSX、框架检测<br>**Markdown** - **🆕 完整支持**，包括标题、代码块、链接、图片、表格、任务列表、引用<br>**C/C++、Rust、Go** - 基础支持 | 框架感知解析<br>语法扩展支持<br>持续语言更新 |
 | **📁 高级文件搜索** | fd+ripgrep集成 | **ListFilesTool** - 智能文件发现，支持多种过滤条件<br>**SearchContentTool** - 智能内容搜索，支持正则表达式<br>**FindAndGrepTool** - 组合发现与搜索，两阶段工作流 | 基于Rust的高性能工具<br>并行处理能力<br>智能缓存优化 |
 | **🏗️ 统一元素系统** | 革命性架构设计 | **单一元素列表** - 所有代码元素（类、方法、字段、导入、包）统一管理<br>**一致的元素类型** - 每个元素都有`element_type`属性<br>**简化的API** - 更清晰的接口和降低的复杂度<br>**更好的可维护性** - 所有代码元素的单一真实来源 | 统一数据模型<br>类型安全保证<br>扩展性设计 |
 
@@ -563,7 +575,12 @@ uv run python -m tree_sitter_analyzer --show-query-languages
 - **零测试失败** - 生产就绪
 - **跨平台支持** - Windows、macOS、Linux
 
-### ⚡ 最新质量成就（v1.7.2）
+### ⚡ 最新质量成就（v1.7.3）
+- ✅ **🆕 Markdown完整支持** - 新增完整的Markdown语言插件，支持所有主要Markdown元素
+- ✅ **📝 文档分析增强** - 支持标题、代码块、链接、图片、表格、任务列表等元素的智能提取
+- ✅ **🔍 Markdown查询系统** - 17种预定义查询类型，支持别名和自定义查询
+- ✅ **🧪 90%测试覆盖率** - 包含598个测试用例的全面Markdown功能验证
+- ✅ **📊 结构化输出** - 将Markdown文档转换为结构化数据，便于AI处理
 - ✅ **文件输出优化** - MCP搜索工具新增`suppress_output`和`output_file`参数，大幅节省token消耗
 - ✅ **智能格式检测** - 自动选择最适合的文件格式（JSON/Markdown），优化存储和读取
 - ✅ **ROO规则文档** - 新增完整的tree-sitter-analyzer MCP优化使用指南

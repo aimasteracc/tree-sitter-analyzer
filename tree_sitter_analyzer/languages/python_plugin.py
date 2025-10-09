@@ -126,7 +126,8 @@ class PythonElementExtractor(ElementExtractor):
 
             language = tree.language if hasattr(tree, "language") else None
             if language:
-                query = language.query(class_query)
+                import tree_sitter
+                query = tree_sitter.Query(language, class_query)
                 captures = query.captures(tree.root_node)
 
                 if isinstance(captures, dict):
@@ -729,24 +730,81 @@ class PythonElementExtractor(ElementExtractor):
             language = tree.language if hasattr(tree, "language") else None
             if language:
                 for query_string in import_queries:
-                    query = language.query(query_string)
-                    captures = query.captures(tree.root_node)
+                    try:
+                        import tree_sitter
+                        query = tree_sitter.Query(language, query_string)
+                        captures = query.captures(tree.root_node)
 
-                    if isinstance(captures, dict):
-                        # Process different types of imports
-                        for key, nodes in captures.items():
-                            if key.endswith("statement"):
-                                import_type = key.split(".")[0]
-                                for node in nodes:
-                                    imp = self._extract_import_info(
-                                        node, source_code, import_type
-                                    )
-                                    if imp:
-                                        imports.append(imp)
+                        if isinstance(captures, dict):
+                            # Process different types of imports
+                            for key, nodes in captures.items():
+                                if key.endswith("statement"):
+                                    import_type = key.split(".")[0]
+                                    for node in nodes:
+                                        imp = self._extract_import_info(
+                                            node, source_code, import_type
+                                        )
+                                        if imp:
+                                            imports.append(imp)
+                    except Exception as query_error:
+                        # Fallback to manual extraction for tree-sitter 0.25.x compatibility
+                        log_warning(f"Query execution failed, using manual extraction: {query_error}")
+                        imports.extend(self._extract_imports_manual(tree.root_node, source_code))
+                        break
 
         except Exception as e:
             log_warning(f"Could not extract Python imports: {e}")
+            # Final fallback
+            imports.extend(self._extract_imports_manual(tree.root_node, source_code))
 
+        return imports
+
+    def _extract_imports_manual(self, root_node: "tree_sitter.Node", source_code: str) -> list[Import]:
+        """Manual import extraction for tree-sitter 0.25.x compatibility"""
+        imports = []
+        
+        def walk_tree(node):
+            if node.type in ["import_statement", "import_from_statement"]:
+                try:
+                    start_line = node.start_point[0] + 1
+                    end_line = node.end_point[0] + 1
+                    raw_text = source_code[node.start_byte:node.end_byte] if hasattr(node, 'start_byte') else ""
+                    
+                    # Extract module name from the import statement
+                    module_name = ""
+                    imported_names = []
+                    
+                    if node.type == "import_statement":
+                        # Simple import: import os, sys
+                        for child in node.children:
+                            if child.type == "dotted_name":
+                                module_name = source_code[child.start_byte:child.end_byte] if hasattr(child, 'start_byte') else ""
+                                imported_names.append(module_name)
+                    elif node.type == "import_from_statement":
+                        # From import: from os import path
+                        for child in node.children:
+                            if child.type == "dotted_name" and not module_name:
+                                module_name = source_code[child.start_byte:child.end_byte] if hasattr(child, 'start_byte') else ""
+                    
+                    if module_name or imported_names:
+                        import_obj = Import(
+                            name=module_name or imported_names[0] if imported_names else "unknown",
+                            start_line=start_line,
+                            end_line=end_line,
+                            raw_text=raw_text,
+                            module_name=module_name,
+                            imported_names=imported_names,
+                            element_type="import"
+                        )
+                        imports.append(import_obj)
+                except Exception as e:
+                    log_warning(f"Failed to extract import manually: {e}")
+            
+            # Recursively process children
+            for child in node.children:
+                walk_tree(child)
+        
+        walk_tree(root_node)
         return imports
 
     def _extract_detailed_function_info(
@@ -1272,7 +1330,8 @@ class PythonPlugin(LanguagePlugin):
             else:
                 return {"error": f"Unknown query: {query_name}"}
 
-            query = language.query(query_string)
+            import tree_sitter
+            query = tree_sitter.Query(language, query_string)
             captures = query.captures(tree.root_node)
             return {"captures": captures, "query": query_string}
 

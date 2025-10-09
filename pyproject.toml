@@ -49,7 +49,7 @@ classifiers = [
 
 # Core dependencies (minimal set for basic functionality)
 dependencies = [
-    "tree-sitter==0.24.0",
+    "tree-sitter>=0.25.0",
     "chardet>=5.0.0",
     "cachetools>=5.0.0",
     "tree-sitter-java>=0.23.5,<0.25.0",
@@ -57,6 +57,7 @@ dependencies = [
     "tree-sitter-python>=0.23.6,<0.25.0",
     "mcp>=1.12.3",
     "tree-sitter-javascript>=0.23.1,<0.25.0",
+    "tree-sitter-markdown>=0.3.1",
 ]
 
 [project.optional-dependencies]
@@ -75,6 +76,7 @@ c = ["tree-sitter-c>=0.20.0,<0.25.0"]
 cpp = ["tree-sitter-cpp>=0.23.4,<0.25.0"]
 rust = ["tree-sitter-rust>=0.20.0,<0.25.0"]
 go = ["tree-sitter-go>=0.20.0,<0.25.0"]
+markdown = ["tree-sitter-markdown>=0.3.1"]
 
 # Language bundles for convenience
 web = [
@@ -102,6 +104,7 @@ all-languages = [
     "tree-sitter-cpp>=0.23.4,<0.25.0",
     "tree-sitter-rust>=0.20.0,<0.25.0",
     "tree-sitter-go>=0.20.0,<0.25.0",
+    "tree-sitter-markdown>=0.3.1",
 ]
 
 # MCP server support
@@ -151,6 +154,7 @@ full = [
     "tree-sitter-cpp>=0.23.4,<0.25.0",
     "tree-sitter-rust>=0.20.0,<0.25.0",
     "tree-sitter-go>=0.20.0,<0.25.0",
+    "tree-sitter-markdown>=0.3.1",
     "mcp>=1.12.2",
     "anyio>=4.0.0",
     "httpx>=0.27.0,<1.0.0",
@@ -180,6 +184,7 @@ all = [
     "tree-sitter-cpp>=0.23.4,<0.25.0",
     "tree-sitter-rust>=0.20.0,<0.25.0",
     "tree-sitter-go>=0.20.0,<0.25.0",
+    "tree-sitter-markdown>=0.3.1",
     "mcp>=1.12.2",
     "anyio>=4.0.0",
     "httpx>=0.27.0,<1.0.0",
@@ -217,6 +222,7 @@ java = "tree_sitter_analyzer.languages.java_plugin:JavaPlugin"
 python = "tree_sitter_analyzer.languages.python_plugin:PythonPlugin"
 javascript = "tree_sitter_analyzer.languages.javascript_plugin:JavaScriptPlugin"
 typescript = "tree_sitter_analyzer.languages.typescript_plugin:TypeScriptPlugin"
+markdown = "tree_sitter_analyzer.languages.markdown_plugin:MarkdownPlugin"
 
 [project.urls]
 Homepage = "https://github.com/aimasteracc/tree-sitter-analyzer"
@@ -310,6 +316,7 @@ module = [
     "tree_sitter_python.*",
     "tree_sitter_javascript.*",
     "tree_sitter_cpp.*",
+    "tree_sitter_markdown.*",
 ]
 ignore_missing_imports = true
 

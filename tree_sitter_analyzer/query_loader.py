@@ -156,6 +156,7 @@ class QueryLoader:
             "cpp",
             "rust",
             "go",
+            "markdown",
         ]
 
         for language in known_languages:

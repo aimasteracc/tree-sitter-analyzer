@@ -59,6 +59,13 @@ class LanguageDetector:
         ".m": "objc",  # Ambiguous (MATLAB as well)
         ".dart": "dart",
         ".elm": "elm",
+        # Markdown系
+        ".md": "markdown",
+        ".markdown": "markdown",
+        ".mdown": "markdown",
+        ".mkd": "markdown",
+        ".mkdn": "markdown",
+        ".mdx": "markdown",
     }
 
     # Ambiguous extensions (map to multiple languages)
@@ -92,6 +99,7 @@ class LanguageDetector:
         "cpp",
         "rust",
         "go",
+        "markdown",
     }
 
     def __init__(self) -> None:
@@ -128,6 +136,13 @@ class LanguageDetector:
             ".r": ("r", 0.9),
             ".m": ("objectivec", 0.7),
             ".mm": ("objectivec", 0.8),
+            # Markdown extensions
+            ".md": ("markdown", 0.9),
+            ".markdown": ("markdown", 0.9),
+            ".mdown": ("markdown", 0.8),
+            ".mkd": ("markdown", 0.8),
+            ".mkdn": ("markdown", 0.8),
+            ".mdx": ("markdown", 0.7),  # MDX might be mixed with JSX
         }
 
         # Content-based detection patterns
@@ -169,6 +184,16 @@ class LanguageDetector:
                 (r"std::\w+", 0.2),
                 (r"class\s+\w+\s*{", 0.3),
             ],
+            "markdown": [
+                (r"^#{1,6}\s+", 0.4),  # ATX headers
+                (r"^\s*[-*+]\s+", 0.3),  # List items
+                (r"```[\w]*", 0.3),  # Fenced code blocks
+                (r"\[.*\]\(.*\)", 0.2),  # Links
+                (r"!\[.*\]\(.*\)", 0.2),  # Images
+                (r"^\s*>\s+", 0.2),  # Blockquotes
+                (r"^\s*\|.*\|", 0.2),  # Tables
+                (r"^[-=]{3,}$", 0.2),  # Setext headers or horizontal rules
+            ],
         }
 
         from .utils import log_debug, log_warning
@@ -195,6 +220,11 @@ class LanguageDetector:
         # Direct mapping by extension
         if extension in self.EXTENSION_MAPPING:
             language = self.EXTENSION_MAPPING[extension]
+
+            # Use confidence from extension_map if available
+            if extension in self.extension_map:
+                _, confidence = self.extension_map[extension]
+                return language, confidence
 
             # No ambiguity -> high confidence
             if extension not in self.AMBIGUOUS_EXTENSIONS:
