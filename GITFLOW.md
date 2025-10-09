@@ -144,7 +144,39 @@ For manual releases:
    git push origin develop
    ```
 
-6. **Delete release branch**:
+6. **Create GitHub Release**:
+   ```bash
+   # Create temporary release message file (avoid encoding and symbol errors)
+   cat > release_message.md << 'EOF'
+   ## v1.7.2 - File Output Optimization and ROO Rules Documentation
+
+   ### 🎯 New Features
+   - **File Output Optimization**: MCP search tools now include `suppress_output` and `output_file` parameters for massive token savings
+   - **Automatic Format Detection**: Smart file format selection (JSON/Markdown) based on content type
+   - **ROO Rules Documentation**: Added comprehensive tree-sitter-analyzer MCP optimization usage guide
+
+   ### 📊 Quality Metrics
+   - Test count: 2675 tests (100% passed)
+   - Code coverage: 78.85%
+   - New features: File output optimization, dramatically saving AI dialog token consumption
+
+   ### 🔧 Technical Improvements
+   - Response size reduced by up to 99% (when outputting large search results to files)
+   - Backward compatible, no impact on existing functionality usage
+   - Complete test coverage including file output optimization feature validation
+   EOF
+
+   # Use gh CLI to create release
+   gh release create v1.7.2 \
+       --title "Release v1.7.2: File Output Optimization and ROO Rules Documentation" \
+       --notes-file release_message.md \
+       --target main
+
+   # Delete temporary file
+   rm release_message.md
+   ```
+
+7. **Delete release branch**:
    ```bash
    git branch -d release/v1.0.0
    git push origin --delete release/v1.0.0
@@ -204,7 +236,36 @@ For manual releases:
    git push origin develop
    ```
 
-6. **Delete hotfix branch**:
+6. **Create GitHub Release**:
+   ```bash
+   # Create temporary hotfix release message file
+   cat > hotfix_release_message.md << 'EOF'
+   ## v1.0.1 - Critical Fix
+
+   ### 🐛 Fix Details
+   - Fixed critical production environment issue
+   - Improved system stability and security
+
+   ### 📊 Quality Metrics
+   - All tests passed
+   - Critical fix validation completed
+
+   ### ⚡ Deployment Notes
+   - This version is a critical fix, immediate deployment to production environment is recommended
+   - Passed complete test validation
+   EOF
+
+   # Use gh CLI to create hotfix release
+   gh release create v1.0.1 \
+       --title "Hotfix v1.0.1: Critical Production Fix" \
+       --notes-file hotfix_release_message.md \
+       --target main
+
+   # Delete temporary file
+   rm hotfix_release_message.md
+   ```
+
+7. **Delete hotfix branch**:
    ```bash
    git branch -d hotfix/critical-bug-fix
    git push origin --delete hotfix/critical-bug-fix

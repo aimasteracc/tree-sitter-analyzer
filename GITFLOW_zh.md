@@ -115,7 +115,38 @@ gitGraph
     git merge release/v1.0.0
     git push origin develop
     ```
-4.  **删除 `release` 分支**。
+4.  **创建GitHub Release**:
+    ```bash
+    # 创建临时的release消息文件（避免编码和符号错误）
+    cat > release_message.md << 'EOF'
+    ## v1.7.2 - 文件输出优化和ROO规则文档
+
+    ### 🎯 新增功能
+    - **文件输出优化**: MCP搜索工具新增`suppress_output`和`output_file`参数，大幅节省token消耗
+    - **自动格式检测**: 智能选择文件格式（JSON/Markdown），基于内容类型自动决定
+    - **ROO规则文档**: 新增完整的tree-sitter-analyzer MCP优化使用指南
+
+    ### 📊 质量指标
+    - 测试数量: 2675个测试（100%通过）
+    - 代码覆盖率: 78.85%
+    - 新增功能: 文件输出优化，大幅节省AI对话token消耗
+
+    ### 🔧 技术改进
+    - 响应大小减少高达99%（大型搜索结果文件输出时）
+    - 向后兼容，不影响现有功能使用
+    - 完整的测试覆盖，包含文件输出优化功能验证
+    EOF
+
+    # 使用gh CLI创建release
+    gh release create v1.7.2 \
+        --title "Release v1.7.2: File Output Optimization and ROO Rules Documentation" \
+        --notes-file release_message.md \
+        --target main
+
+    # 删除临时文件
+    rm release_message.md
+    ```
+5.  **删除 `release` 分支**。
 
 ### 3. 紧急修复 (Hotfix Process)
 
@@ -158,7 +189,35 @@ gitGraph
     git merge hotfix/critical-bug-fix
     git push origin develop
     ```
-5.  **删除 `hotfix` 分支**。
+5.  **创建GitHub Release**:
+    ```bash
+    # 创建临时的hotfix release消息文件
+    cat > hotfix_release_message.md << 'EOF'
+    ## v1.0.1 - 紧急修复
+
+    ### 🐛 修复内容
+    - 修复关键生产环境问题
+    - 提升系统稳定性和安全性
+
+    ### 📊 质量指标
+    - 所有测试通过
+    - 紧急修复验证完成
+
+    ### ⚡ 部署说明
+    - 此版本为紧急修复，建议立即部署到生产环境
+    - 已通过完整的测试验证
+    EOF
+
+    # 使用gh CLI创建hotfix release
+    gh release create v1.0.1 \
+        --title "Hotfix v1.0.1: Critical Production Fix" \
+        --notes-file hotfix_release_message.md \
+        --target main
+
+    # 删除临时文件
+    rm hotfix_release_message.md
+    ```
+6.  **删除 `hotfix` 分支**。
 
 ## 自动化流程
 
