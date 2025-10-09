@@ -216,6 +216,7 @@ find-and-grep = "tree_sitter_analyzer.cli.commands.find_and_grep_cli:main"
 java = "tree_sitter_analyzer.languages.java_plugin:JavaPlugin"
 python = "tree_sitter_analyzer.languages.python_plugin:PythonPlugin"
 javascript = "tree_sitter_analyzer.languages.javascript_plugin:JavaScriptPlugin"
+typescript = "tree_sitter_analyzer.languages.typescript_plugin:TypeScriptPlugin"
 
 [project.urls]
 Homepage = "https://github.com/aimasteracc/tree-sitter-analyzer"
