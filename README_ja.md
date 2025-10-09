@@ -4,11 +4,11 @@
 
 [![Pythonバージョン](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![ライセンス](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![テスト](https://img.shields.io/badge/tests-2829%20passed-brightgreen.svg)](#8--品質保証)
-[![カバレッジ](https://img.shields.io/badge/coverage-76.51%25-green.svg)](#8--品質保証)
+[![テスト](https://img.shields.io/badge/tests-2831%20passed-brightgreen.svg)](#8--品質保証)
+[![カバレッジ](https://img.shields.io/badge/coverage-79.19%25-green.svg)](#8--品質保証)
 [![品質](https://img.shields.io/badge/quality-enterprise%20grade-blue.svg)](#8--品質保証)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
-[![バージョン](https://img.shields.io/badge/version-1.7.3--dev-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
+[![バージョン](https://img.shields.io/badge/version-1.7.3-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
 ## 🚀 AI時代のエンタープライズグレードコード解析ツール
@@ -58,8 +58,8 @@ Tree-sitter Analyzerは、AI時代のために設計されたエンタープラ�
 | **Go** | 基本サポート | 基本構文解析 |
 
 ### 🏆 本番環境対応
-- **2,675のテスト** - 100%合格率、エンタープライズグレードの品質保証
-- **78.85%カバレッジ** - 包括的なテストスイート
+- **2,831のテスト** - 100%合格率、エンタープライズグレードの品質保証
+- **79.19%カバレッジ** - 包括的なテストスイート
 - **クロスプラットフォームサポート** - Windows、macOS、Linuxとの完全な互換性
 - **継続的なメンテナンス** - アクティブな開発とコミュニティサポート
 
@@ -569,18 +569,18 @@ uv run python -m tree_sitter_analyzer --show-query-languages
 ## 8. 🏆 品質保証
 
 ### 📊 品質メトリクス
-- **2,829のテスト** - 100%合格率 ✅
-- **76.51%コードカバレッジ** - 包括的なテストスイート
+- **2,831のテスト** - 100%合格率 ✅
+- **79.19%コードカバレッジ** - 包括的なテストスイート
 - **ゼロテスト失敗** - 本番環境対応
 - **クロスプラットフォームサポート** - Windows、macOS、Linux
 
-### ⚡ 最新の品質成果（v1.7.3-dev）
+### ⚡ 最新の品質成果（v1.7.3）
 - ✅ **🆕 Markdown完全サポート** - 新しい完全なMarkdown言語プラグインを追加、すべての主要Markdown要素をサポート
 - ✅ **📝 ドキュメント解析強化** - 見出し、コードブロック、リンク、画像、表、タスクリストなどの要素のインテリジェント抽出をサポート
 - ✅ **🔍 Markdownクエリシステム** - 17種類の事前定義クエリタイプ、エイリアスとカスタムクエリをサポート
 - ✅ **🧪 包括的なテスト検証** - 機能の安定性を確保するための広範なMarkdownテストケースを追加
 - ✅ **📊 構造化出力** - Markdownドキュメントを構造化データに変換し、AI処理を容易に
-- ✅ **🔧 テスト安定性の向上** - 28件のテストエラーを修正、全2829テストが100%合格
+- ✅ **🔧 テスト安定性の向上** - 28件のテストエラーを修正、全2831テストが100%合格
 - ✅ **ファイル出力最適化** - MCP検索ツールに`suppress_output`と`output_file`パラメータを新追加、大幅なトークン節約を実現
 - ✅ **インテリジェントフォーマット検出** - 最適なファイル形式（JSON/Markdown）を自動選択、ストレージと読み取りを最適化
 - ✅ **ROO規則ドキュメント** - tree-sitter-analyzer MCP最適化使用ガイドを新追加
