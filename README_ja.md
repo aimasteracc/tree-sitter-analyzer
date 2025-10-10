@@ -92,13 +92,13 @@ uv --version
 
 | オペレーティングシステム | パッケージマネージャー | インストールコマンド | 備考 |
 |------------------------|---------------------|-------------------|------|
-| **macOS** | Homebrew | `brew install fd ripgrep` | 推奨方法 |
-| **Windows** | winget | `winget install sharkdp.fd BurntSushi.ripgrep.MSVC` | 推奨方法 |
-| | Chocolatey | `choco install fd ripgrep` | 代替方法 |
-| | Scoop | `scoop install fd ripgrep` | 代替方法 |
-| **Ubuntu/Debian** | apt | `sudo apt install fd-find ripgrep` | 公式リポジトリ |
-| **CentOS/RHEL/Fedora** | dnf | `sudo dnf install fd-find ripgrep` | 公式リポジトリ |
-| **Arch Linux** | pacman | `sudo pacman -S fd ripgrep` | 公式リポジトリ |
+| **macOS** | Homebrew | `brew install fd@10.3.0 ripgrep@14.1.1` | 推奨方法 |
+| **Windows** | winget | `winget install sharkdp.fd --version 10.3.0` <br> `winget install BurntSushi.ripgrep.MSVC --version 14.1.1` | 推奨方法 |
+| | Chocolatey | `choco install fd --version 10.3.0` <br> `choco install ripgrep --version 14.1.1` | 代替方法 |
+| | Scoop | `scoop install fd@10.3.0 ripgrep@14.1.1` | 代替方法 |
+| **Ubuntu/Debian** | apt | `sudo apt install fd-find=10.3.0* ripgrep=14.1.1*` | 公式リポジトリ |
+| **CentOS/RHEL/Fedora** | dnf | `sudo dnf install fd-find-10.3.0 ripgrep-14.1.1` | 公式リポジトリ |
+| **Arch Linux** | pacman | `sudo pacman -S fd=10.3.0 ripgrep=14.1.1` | 公式リポジトリ |
 
 **インストールの確認：**
 ```bash
