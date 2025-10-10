@@ -196,6 +196,7 @@ class MarkdownElementExtractor(ElementExtractor):
         try:
             self._extract_inline_images(tree.root_node, images)
             self._extract_reference_images(tree.root_node, images)
+            self._extract_image_reference_definitions(tree.root_node, images)
         except Exception as e:
             log_debug(f"Error during image extraction: {e}")
             return []
@@ -805,6 +806,68 @@ class MarkdownElementExtractor(ElementExtractor):
                         
                 except Exception as e:
                     log_debug(f"Failed to extract reference image: {e}")
+
+    def _extract_image_reference_definitions(self, root_node: "tree_sitter.Node", images: list[MarkdownElement]) -> None:
+        """Extract image reference definitions"""
+        import re
+        
+        # First, collect all image references used in the document
+        image_refs_used = set()
+        for node in self._traverse_nodes(root_node):
+            if node.type == "inline":
+                try:
+                    raw_text = self._get_node_text_optimized(node)
+                    if not raw_text:
+                        continue
+                    
+                    # Find image references: ![alt][ref]
+                    ref_image_pattern = r'!\[([^\]]*)\]\[([^\]]*)\]'
+                    matches = re.finditer(ref_image_pattern, raw_text)
+                    
+                    for match in matches:
+                        ref = match.group(2) or ""
+                        if ref:
+                            image_refs_used.add(ref.lower())
+                            
+                except Exception as e:
+                    log_debug(f"Failed to scan for image references: {e}")
+        
+        # Now extract only reference definitions that are used by images
+        for node in self._traverse_nodes(root_node):
+            if node.type == "link_reference_definition":
+                try:
+                    start_line = node.start_point[0] + 1
+                    end_line = node.end_point[0] + 1
+                    raw_text = self._get_node_text_optimized(node)
+                    
+                    # Pattern: [label]: url "title"
+                    ref_pattern = r'^\[([^\]]+)\]:\s*([^\s]+)(?:\s+"([^"]*)")?'
+                    match = re.match(ref_pattern, raw_text.strip())
+                    
+                    if match:
+                        label = match.group(1) or ""
+                        url = match.group(2) or ""
+                        title = match.group(3) or ""
+                        
+                        # Only include if this reference is actually used by an image
+                        if label.lower() in image_refs_used:
+                            image_ref = MarkdownElement(
+                                name=f"Image Reference Definition: {label}",
+                                start_line=start_line,
+                                end_line=end_line,
+                                raw_text=raw_text,
+                                element_type="image_reference_definition",
+                                url=url,
+                                alt_text=label,
+                                title=title
+                            )
+                            # Add additional attributes for formatter
+                            image_ref.alt = label
+                            image_ref.type = "image_reference_definition"
+                            images.append(image_ref)
+                        
+                except Exception as e:
+                    log_debug(f"Failed to extract image reference definition: {e}")
 
     def _extract_link_reference_definitions(self, root_node: "tree_sitter.Node", references: list[MarkdownElement]) -> None:
         """Extract link reference definitions"""
