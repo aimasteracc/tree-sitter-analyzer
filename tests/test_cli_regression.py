@@ -459,7 +459,7 @@ class TestCLIRegression:
         # Verify expected counts
         assert len(summary["headers"]) == 28  # Comprehensive test file has many headers
         assert len(summary["links"]) >= 3  # Links in test file (3-6 depending on parser and format)
-        assert len(summary["images"]) >= 2  # Images in test file (2-3 depending on reference parsing)
+        assert len(summary["images"]) >= 4  # Images in test file
         assert len(summary["code_blocks"]) == 3  # Three code blocks
         assert len(summary["lists"]) == 6  # Six lists (including task lists)
 
@@ -485,7 +485,7 @@ class TestCLIRegression:
         stats = data["statistics"]
         assert stats["header_count"] == 28
         assert stats["link_count"] >= 3  # Link count varies by parsing method (3-5)
-        assert stats["image_count"] == 3
+        assert stats["image_count"] == 4
         assert stats["code_block_count"] == 3
         assert stats["list_count"] == 6
         assert stats["table_count"] == 1
@@ -514,7 +514,7 @@ class TestCLIRegression:
         assert metrics["header_count"] == 28
         assert metrics["max_header_level"] == 6
         assert metrics["link_count"] >= 3  # Link count varies (3-5 depending on parsing)
-        assert metrics["image_count"] == 3  # Three unique images
+        assert metrics["image_count"] == 4  # Four image elements
         assert metrics["code_block_count"] == 3
         assert metrics["list_count"] == 6
         assert metrics["table_count"] == 1

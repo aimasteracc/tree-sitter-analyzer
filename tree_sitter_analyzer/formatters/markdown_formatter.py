@@ -25,7 +25,7 @@ class MarkdownFormatter(BaseFormatter):
         # Count different types of Markdown elements
         headers = [e for e in elements if e.get("type") == "heading"]
         links = [e for e in elements if e.get("type") in ["link", "autolink", "reference_link"]]
-        images = [e for e in elements if e.get("type") in ["image", "reference_image"]]
+        images = [e for e in elements if e.get("type") in ["image", "reference_image", "image_reference_definition"]]
         code_blocks = [e for e in elements if e.get("type") == "code_block"]
         lists = [e for e in elements if e.get("type") in ["list", "task_list"]]
         
@@ -54,7 +54,7 @@ class MarkdownFormatter(BaseFormatter):
         # Organize elements by type
         headers = [e for e in elements if e.get("type") == "heading"]
         links = [e for e in elements if e.get("type") in ["link", "autolink", "reference_link"]]
-        images = [e for e in elements if e.get("type") in ["image", "reference_image"]]
+        images = [e for e in elements if e.get("type") in ["image", "reference_image", "image_reference_definition"]]
         code_blocks = [e for e in elements if e.get("type") == "code_block"]
         lists = [e for e in elements if e.get("type") in ["list", "task_list"]]
         tables = [e for e in elements if e.get("type") == "table"]
@@ -128,7 +128,7 @@ class MarkdownFormatter(BaseFormatter):
         # Calculate Markdown-specific metrics
         headers = [e for e in elements if e.get("type") == "heading"]
         links = [e for e in elements if e.get("type") in ["link", "autolink", "reference_link"]]
-        images = [e for e in elements if e.get("type") in ["image", "reference_image"]]
+        images = [e for e in elements if e.get("type") in ["image", "reference_image", "image_reference_definition"]]
         code_blocks = [e for e in elements if e.get("type") == "code_block"]
         lists = [e for e in elements if e.get("type") in ["list", "task_list"]]
         tables = [e for e in elements if e.get("type") == "table"]
@@ -229,7 +229,7 @@ class MarkdownFormatter(BaseFormatter):
             output.append("")
         
         # Images Section
-        images = [e for e in elements if e.get("type") in ["image", "reference_image"]]
+        images = [e for e in elements if e.get("type") in ["image", "reference_image", "image_reference_definition"]]
         if images:
             output.append("## Images\n")
             output.append("| Alt Text | URL | Line |")
