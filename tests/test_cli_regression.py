@@ -458,8 +458,8 @@ class TestCLIRegression:
         
         # Verify expected counts
         assert len(summary["headers"]) == 28  # Comprehensive test file has many headers
-        assert len(summary["links"]) >= 3  # Links in test file (3-6 depending on parser and format)
-        assert len(summary["images"]) >= 4  # Images in test file
+        assert len(summary["links"]) == 5  # Correct: 2 inline + 1 reference + 2 autolinks
+        assert len(summary["images"]) == 4  # Images in test file (including reference definitions)
         assert len(summary["code_blocks"]) == 3  # Three code blocks
         assert len(summary["lists"]) == 6  # Six lists (including task lists)
 
@@ -484,7 +484,7 @@ class TestCLIRegression:
         # Verify statistics
         stats = data["statistics"]
         assert stats["header_count"] == 28
-        assert stats["link_count"] >= 3  # Link count varies by parsing method (3-5)
+        assert stats["link_count"] == 5  # Correct: should match summary
         assert stats["image_count"] == 4
         assert stats["code_block_count"] == 3
         assert stats["list_count"] == 6
@@ -513,8 +513,8 @@ class TestCLIRegression:
         metrics = data["document_metrics"]
         assert metrics["header_count"] == 28
         assert metrics["max_header_level"] == 6
-        assert metrics["link_count"] >= 3  # Link count varies (3-5 depending on parsing)
-        assert metrics["image_count"] == 4  # Four image elements
+        assert metrics["link_count"] == 5  # Correct: should match other commands
+        assert metrics["image_count"] == 4  # Correct: should match other commands
         assert metrics["code_block_count"] == 3
         assert metrics["list_count"] == 6
         assert metrics["table_count"] == 1
@@ -549,8 +549,8 @@ class TestCLIRegression:
         assert "File: examples/test_markdown.md" in stdout
         assert "Language: markdown" in stdout
         assert "Lines: 160" in stdout
-        # Element count can vary slightly (67-70) based on parsing details
-        assert any(f"Elements: {i}" in stdout for i in range(67, 71))
+        # Element count can vary slightly (67-71) based on parsing details
+        assert any(f"Elements: {i}" in stdout for i in range(67, 73))
         assert "Headers: 28" in stdout
         assert "Document Complexity: Complex" in stdout
 

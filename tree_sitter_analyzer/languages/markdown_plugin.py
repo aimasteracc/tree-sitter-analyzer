@@ -169,9 +169,17 @@ class MarkdownElementExtractor(ElementExtractor):
             return links
 
         try:
+            # Track extracted links to prevent global duplicates (ensure reset)
+            self._extracted_links = set()
+            
             self._extract_inline_links(tree.root_node, links)
             self._extract_reference_links(tree.root_node, links)
             self._extract_autolinks(tree.root_node, links)
+            
+            # Clean up after extraction is complete
+            if hasattr(self, '_extracted_links'):
+                delattr(self, '_extracted_links')
+                
         except Exception as e:
             log_debug(f"Error during link extraction: {e}")
             return []
@@ -607,7 +615,7 @@ class MarkdownElementExtractor(ElementExtractor):
         """Extract inline links"""
         import re
         
-        # リンクは inline ノード内のテキストから正規表現で抽出
+        # Extract links from text within inline nodes using regular expressions
         for node in self._traverse_nodes(root_node):
             if node.type == "inline":
                 try:
@@ -615,7 +623,7 @@ class MarkdownElementExtractor(ElementExtractor):
                     if not raw_text:
                         continue
                     
-                    # インラインリンクのパターン: [text](url "title") (画像を除外)
+                    # Inline link pattern: [text](url "title") (excluding images)
                     inline_pattern = r'(?<!\!)\[([^\]]*)\]\(([^)]*?)(?:\s+"([^"]*)")?\)'
                     matches = re.finditer(inline_pattern, raw_text)
                     
@@ -624,7 +632,14 @@ class MarkdownElementExtractor(ElementExtractor):
                         url = match.group(2) or ""
                         title = match.group(3) or ""
                         
-                        # マッチした位置から行番号を計算
+                        # Global duplicate check: process same text and URL combination only once
+                        link_signature = f"{text}|{url}"
+                        if hasattr(self, '_extracted_links') and link_signature in self._extracted_links:
+                            continue
+                        
+                        if hasattr(self, '_extracted_links'):
+                            self._extracted_links.add(link_signature)
+                        
                         start_line = node.start_point[0] + 1
                         end_line = node.end_point[0] + 1
                         
@@ -649,7 +664,10 @@ class MarkdownElementExtractor(ElementExtractor):
         """Extract reference links"""
         import re
         
-        # 引用链接也需要从inline节点中提取
+        # Reference links also need to be extracted from inline nodes
+        # Track already processed reference links to avoid duplicates
+        processed_ref_links = set()
+        
         for node in self._traverse_nodes(root_node):
             if node.type == "inline":
                 try:
@@ -657,7 +675,7 @@ class MarkdownElementExtractor(ElementExtractor):
                     if not raw_text:
                         continue
                     
-                    # 引用链接的模式: [text][ref]
+                    # Reference link pattern: [text][ref]
                     ref_pattern = r'\[([^\]]*)\]\[([^\]]*)\]'
                     matches = re.finditer(ref_pattern, raw_text)
                     
@@ -665,11 +683,18 @@ class MarkdownElementExtractor(ElementExtractor):
                         text = match.group(1) or ""
                         ref = match.group(2) or ""
                         
-                        # 跳过图像引用 (以!开头)
+                        # Skip image references (starting with !)
                         if match.start() > 0 and raw_text[match.start()-1] == '!':
                             continue
                         
+                        # Duplicate check: process same text and reference combination only once
                         start_line = node.start_point[0] + 1
+                        ref_link_key = (text, ref, start_line)
+                        
+                        if ref_link_key in processed_ref_links:
+                            continue
+                        processed_ref_links.add(ref_link_key)
+                        
                         end_line = node.end_point[0] + 1
                         
                         link = MarkdownElement(
@@ -691,7 +716,7 @@ class MarkdownElementExtractor(ElementExtractor):
         """Extract autolinks"""
         import re
         
-        # オートリンクは inline ノード内のテキストから正規表現で抽出
+        # Extract autolinks from text within inline nodes using regular expressions
         for node in self._traverse_nodes(root_node):
             if node.type == "inline":
                 try:
@@ -699,14 +724,22 @@ class MarkdownElementExtractor(ElementExtractor):
                     if not raw_text:
                         continue
                     
-                    # オートリンクのパターン: <url> または <email>
+                    # Autolink pattern: <url> or <email>
                     autolink_pattern = r'<(https?://[^>]+|mailto:[^>]+|[^@\s]+@[^@\s]+\.[^@\s]+)>'
                     matches = re.finditer(autolink_pattern, raw_text)
                     
                     for match in matches:
                         url = match.group(1) or ""
+                        full_match = match.group(0)
                         
-                        # マッチした位置から行番号を計算
+                        # Global duplicate check: process same URL for autolinks only once
+                        autolink_signature = f"autolink|{url}"
+                        if hasattr(self, '_extracted_links') and autolink_signature in self._extracted_links:
+                            continue
+                        
+                        if hasattr(self, '_extracted_links'):
+                            self._extracted_links.add(autolink_signature)
+                        
                         start_line = node.start_point[0] + 1
                         end_line = node.end_point[0] + 1
                         
@@ -714,7 +747,7 @@ class MarkdownElementExtractor(ElementExtractor):
                             name=url or "Autolink",
                             start_line=start_line,
                             end_line=end_line,
-                            raw_text=match.group(0),
+                            raw_text=full_match,
                             element_type="autolink",
                             url=url
                         )
@@ -730,7 +763,7 @@ class MarkdownElementExtractor(ElementExtractor):
         """Extract inline images"""
         import re
         
-        # 画像は inline ノード内のテキストから正規表現で抽出
+        # Extract images from text within inline nodes using regular expressions
         for node in self._traverse_nodes(root_node):
             if node.type == "inline":
                 try:
@@ -738,7 +771,7 @@ class MarkdownElementExtractor(ElementExtractor):
                     if not raw_text:
                         continue
                     
-                    # インライン画像のパターン: ![alt](url "title")
+                    # Inline image pattern: ![alt](url "title")
                     image_pattern = r'!\[([^\]]*)\]\(([^)]*?)(?:\s+"([^"]*)")?\)'
                     matches = re.finditer(image_pattern, raw_text)
                     
@@ -747,7 +780,7 @@ class MarkdownElementExtractor(ElementExtractor):
                         url = match.group(2) or ""
                         title = match.group(3) or ""
                         
-                        # マッチした位置から行番号を計算
+                        # Calculate line number from matched position
                         start_line = node.start_point[0] + 1
                         end_line = node.end_point[0] + 1
                         
@@ -773,7 +806,7 @@ class MarkdownElementExtractor(ElementExtractor):
         """Extract reference images"""
         import re
         
-        # 引用图像也需要从inline节点中提取
+        # Reference images also need to be extracted from inline nodes
         for node in self._traverse_nodes(root_node):
             if node.type == "inline":
                 try:
@@ -781,7 +814,7 @@ class MarkdownElementExtractor(ElementExtractor):
                     if not raw_text:
                         continue
                     
-                    # 引用图像的模式: ![alt][ref]
+                    # Reference image pattern: ![alt][ref]
                     ref_image_pattern = r'!\[([^\]]*)\]\[([^\]]*)\]'
                     matches = re.finditer(ref_image_pattern, raw_text)
                     
@@ -811,6 +844,9 @@ class MarkdownElementExtractor(ElementExtractor):
         """Extract image reference definitions"""
         import re
         
+        # Extract all reference definitions that could be used for images
+        # We check if the URL points to an image file or if it's used by an image reference
+        
         # First, collect all image references used in the document
         image_refs_used = set()
         for node in self._traverse_nodes(root_node):
@@ -832,7 +868,7 @@ class MarkdownElementExtractor(ElementExtractor):
                 except Exception as e:
                     log_debug(f"Failed to scan for image references: {e}")
         
-        # Now extract only reference definitions that are used by images
+        # Now extract reference definitions that are used by images OR point to image files
         for node in self._traverse_nodes(root_node):
             if node.type == "link_reference_definition":
                 try:
@@ -849,8 +885,11 @@ class MarkdownElementExtractor(ElementExtractor):
                         url = match.group(2) or ""
                         title = match.group(3) or ""
                         
-                        # Only include if this reference is actually used by an image
-                        if label.lower() in image_refs_used:
+                        # Include if this reference is used by an image OR if URL looks like an image
+                        is_used_by_image = label.lower() in image_refs_used
+                        is_image_url = any(url.lower().endswith(ext) for ext in ['.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.bmp'])
+                        
+                        if is_used_by_image or is_image_url:
                             image_ref = MarkdownElement(
                                 name=f"Image Reference Definition: {label}",
                                 start_line=start_line,
@@ -1071,8 +1110,9 @@ class MarkdownElementExtractor(ElementExtractor):
                     if not raw_text:
                         continue
                     
-                    # Pattern for HTML tags
-                    html_pattern = r'<[^>]+>'
+                    # Pattern for HTML tags (excluding autolinks)
+                    # Exclude autolink patterns: <url> or <email>
+                    html_pattern = r'<(?!(?:https?://|mailto:|[^@\s]+@[^@\s]+\.[^@\s]+)[^>]*>)[^>]+>'
                     matches = re.finditer(html_pattern, raw_text)
                     
                     for match in matches:
@@ -1093,6 +1133,7 @@ class MarkdownElementExtractor(ElementExtractor):
                             element_type="html_inline"
                         )
                         html_element.type = "html_inline"
+                        html_element.name = tag_name  # Set name attribute for formatter
                         html_elements.append(html_element)
                         
                 except Exception as e:
@@ -1384,18 +1425,18 @@ class MarkdownPlugin(LanguagePlugin):
                 import tree_sitter
                 import tree_sitter_markdown as tsmarkdown
 
-                # 新しいバージョンのtree-sitter-markdownに対応
+                # Support for newer versions of tree-sitter-markdown
                 try:
-                    # 新しいAPI (0.3.1+)
+                    # New API (0.3.1+)
                     language_capsule = tsmarkdown.language()
                     self._language_cache = tree_sitter.Language(language_capsule)
                 except (AttributeError, TypeError):
-                    # 古いAPIまたは異なる形式の場合
+                    # For older API or different format
                     try:
-                        # 直接Languageオブジェクトを取得
+                        # Get Language object directly
                         self._language_cache = tsmarkdown.language()
                     except Exception:
-                        # 最後の手段：モジュールから直接取得
+                        # Last resort: get directly from module
                         if hasattr(tsmarkdown, 'LANGUAGE'):
                             self._language_cache = tree_sitter.Language(tsmarkdown.LANGUAGE)
                         else:
