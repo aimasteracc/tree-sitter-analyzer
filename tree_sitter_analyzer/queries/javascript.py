@@ -644,6 +644,26 @@ ALL_QUERIES["objects"] = {
 }
 ALL_QUERIES["comments"] = {"query": COMMENTS, "description": "Search all comments"}
 
+# Add missing method queries
+ALL_QUERIES["method"] = {
+    "query": """
+(method_definition
+    name: (property_identifier) @method_name
+    parameters: (formal_parameters) @parameters
+    body: (statement_block) @body) @method_definition
+""",
+    "description": "Search method definitions",
+}
+ALL_QUERIES["methods"] = {
+    "query": """
+(method_definition
+    name: (property_identifier) @method_name
+    parameters: (formal_parameters) @parameters
+    body: (statement_block) @body) @method_definition
+""",
+    "description": "Search method definitions",
+}
+
 
 def get_javascript_query(name: str) -> str:
     """

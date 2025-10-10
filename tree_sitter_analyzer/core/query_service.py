@@ -277,12 +277,22 @@ class QueryService:
             
             # JavaScript/TypeScript-specific queries
             elif language in ["javascript", "typescript"]:
-                if query_key == "function" and node.type in ["function_declaration", "function_expression", "arrow_function"]:
+                if query_key in ["function", "functions"] and node.type in ["function_declaration", "function_expression", "arrow_function", "method_definition"]:
                     captures.append((node, "function"))
-                elif query_key == "class" and node.type == "class_declaration":
+                elif query_key in ["class", "classes"] and node.type in ["class_declaration", "class_expression"]:
                     captures.append((node, "class"))
-                elif query_key == "method" and node.type == "method_definition":
+                elif query_key in ["method", "methods"] and node.type == "method_definition":
                     captures.append((node, "method"))
+                elif query_key in ["interface", "interfaces"] and node.type == "interface_declaration" and language == "typescript":
+                    captures.append((node, "interface"))
+                elif query_key in ["type", "types"] and node.type == "type_alias_declaration" and language == "typescript":
+                    captures.append((node, "type"))
+                elif query_key in ["variable", "variables"] and node.type in ["variable_declaration", "lexical_declaration"]:
+                    captures.append((node, "variable"))
+                elif query_key in ["import", "imports"] and node.type == "import_statement":
+                    captures.append((node, "import"))
+                elif query_key in ["export", "exports"] and node.type == "export_statement":
+                    captures.append((node, "export"))
             
             # Java-specific queries
             elif language == "java":

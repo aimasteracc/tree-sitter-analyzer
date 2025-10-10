@@ -213,6 +213,28 @@ ALL_QUERIES["methods"] = {
     "description": "Search all methods declarations (alias for functions)",
 }
 
+# Add singular form aliases
+ALL_QUERIES["function"] = {
+    "query": FUNCTIONS,
+    "description": "Search all functions (alias for functions)",
+}
+ALL_QUERIES["class"] = {
+    "query": CLASSES,
+    "description": "Search all classes (alias for classes)",
+}
+ALL_QUERIES["interface"] = {
+    "query": INTERFACES,
+    "description": "Search all interfaces (alias for interfaces)",
+}
+ALL_QUERIES["type"] = {
+    "query": TYPE_ALIASES,
+    "description": "Search all type aliases (alias for type_aliases)",
+}
+ALL_QUERIES["types"] = {
+    "query": TYPE_ALIASES,
+    "description": "Search all type aliases (alias for type_aliases)",
+}
+
 # Add more specific function queries
 ALL_QUERIES["function_declaration"] = {
     "query": """
