@@ -72,6 +72,10 @@ class MarkdownFormatter(BaseFormatter):
         # Robust counts to avoid undercount due to parser variance
         robust_counts = self._compute_robust_counts_from_file(file_path)
 
+        # Prefer robust counts only when they are non-zero; otherwise fallback to element counts
+        link_count_value = robust_counts.get("link_count", 0) or len(links)
+        image_count_value = robust_counts.get("image_count", 0) or len(images)
+
         structure = {
             "file_path": file_path,
             "language": "markdown",
@@ -119,9 +123,9 @@ class MarkdownFormatter(BaseFormatter):
             ],
             "statistics": {
                 "header_count": len(headers),
-                # Prefer robust counts derived from raw file to ensure consistency
-                "link_count": robust_counts.get("link_count", len(links)),
-                "image_count": robust_counts.get("image_count", len(images)),
+                # Prefer robust counts when available; else element-derived counts
+                "link_count": link_count_value,
+                "image_count": image_count_value,
                 "code_block_count": len(code_blocks),
                 "list_count": len(lists),
                 "table_count": len(tables),
@@ -163,6 +167,10 @@ class MarkdownFormatter(BaseFormatter):
         # Robust counts to avoid undercount due to parser variance
         robust_counts = self._compute_robust_counts_from_file(file_path)
 
+        # Prefer robust counts only when they are non-zero; otherwise fallback to element counts
+        link_count_value = robust_counts.get("link_count", 0) or len(links)
+        image_count_value = robust_counts.get("image_count", 0) or len(images)
+
         advanced_data = {
             "file_path": file_path,
             "language": "markdown",
@@ -174,11 +182,11 @@ class MarkdownFormatter(BaseFormatter):
                 "header_count": len(headers),
                 "max_header_level": max_header_level,
                 "avg_header_level": round(avg_header_level, 2),
-                # Prefer robust counts derived from raw file to ensure consistency
-                "link_count": robust_counts.get("link_count", len(links)),
+                # Prefer robust counts when available; else element-derived counts
+                "link_count": link_count_value,
                 "external_link_count": len(external_links),
                 "internal_link_count": len(internal_links),
-                "image_count": robust_counts.get("image_count", len(images)),
+                "image_count": image_count_value,
                 "code_block_count": len(code_blocks),
                 "total_code_lines": total_code_lines,
                 "list_count": len(lists),
