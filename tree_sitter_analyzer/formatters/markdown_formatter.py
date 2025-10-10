@@ -119,9 +119,9 @@ class MarkdownFormatter(BaseFormatter):
             ],
             "statistics": {
                 "header_count": len(headers),
-                # Use max between element-derived and file-derived to avoid undercount
-                "link_count": max(len(links), robust_counts.get("link_count", len(links))),
-                "image_count": max(len(images), robust_counts.get("image_count", len(images))),
+                # Prefer robust counts derived from raw file to ensure consistency
+                "link_count": robust_counts.get("link_count", len(links)),
+                "image_count": robust_counts.get("image_count", len(images)),
                 "code_block_count": len(code_blocks),
                 "list_count": len(lists),
                 "table_count": len(tables),
@@ -174,11 +174,11 @@ class MarkdownFormatter(BaseFormatter):
                 "header_count": len(headers),
                 "max_header_level": max_header_level,
                 "avg_header_level": round(avg_header_level, 2),
-                # Use max between element-derived and file-derived to avoid undercount
-                "link_count": max(len(links), robust_counts.get("link_count", len(links))),
+                # Prefer robust counts derived from raw file to ensure consistency
+                "link_count": robust_counts.get("link_count", len(links)),
                 "external_link_count": len(external_links),
                 "internal_link_count": len(internal_links),
-                "image_count": max(len(images), robust_counts.get("image_count", len(images))),
+                "image_count": robust_counts.get("image_count", len(images)),
                 "code_block_count": len(code_blocks),
                 "total_code_lines": total_code_lines,
                 "list_count": len(lists),
