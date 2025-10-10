@@ -491,8 +491,13 @@ public class Test {
                     result = await tool.execute(args)
                     
                     # Check consistent behavior for suppress_output
-                    assert "success" in result
-                    assert "count" in result or "content_length" in result
+                    # ReadPartialTool returns different structure, so check appropriately
+                    if isinstance(tool, ReadPartialTool):
+                        assert "file_path" in result
+                        assert "content_length" in result
+                    else:
+                        assert "success" in result
+                        assert "count" in result
                     
                     # All tools should have some form of file output indication
                     file_output_indicators = [

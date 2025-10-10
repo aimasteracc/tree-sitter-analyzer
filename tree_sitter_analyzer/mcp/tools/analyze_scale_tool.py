@@ -690,13 +690,13 @@ class AnalyzeScaleTool(BaseMCPTool):
 
     def get_tool_definition(self) -> dict[str, Any]:
         """
-        Get the MCP tool definition for analyze_code_scale.
+        Get the MCP tool definition for check_code_scale.
 
         Returns:
             Tool definition dictionary compatible with MCP server
         """
         return {
-            "name": "analyze_code_scale",
+            "name": "check_code_scale",
             "description": "Analyze code scale, complexity, and structure metrics with LLM-optimized guidance for efficient large file analysis and token-aware workflow recommendations",
             "inputSchema": self.get_tool_schema(),
         }
