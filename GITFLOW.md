@@ -102,7 +102,12 @@ The project recommends using automated release workflows, but the manual process
     # - If workflow changes exist, update GITFLOW_zh.md and GITFLOW_ja.md
     # - Update CHANGELOG.md release details
     ```
-3.  **After preparation completion, merge to `main` and `develop`**:
+3.  **Push `release` branch to remote to trigger PyPI release**:
+    ```bash
+    git checkout release/v1.0.0
+    git push origin release/v1.0.0
+    ```
+4.  **After PyPI release completion, merge to `main` and `develop`**:
     ```bash
     # Switch to main branch and merge
     git checkout main
@@ -115,7 +120,7 @@ The project recommends using automated release workflows, but the manual process
     git merge release/v1.0.0
     git push origin develop
     ```
-4.  **Create GitHub Release**:
+5.  **Create GitHub Release**:
     ```bash
     # Create temporary release message file (avoid encoding and symbol errors)
     cat > release_message.md << 'EOF'
@@ -146,18 +151,15 @@ The project recommends using automated release workflows, but the manual process
     # Delete temporary file
     rm release_message.md
     ```
-5.  **Push `release` branch to remote to trigger PyPI release**:
-    ```bash
-    git checkout release/v1.0.0
-    git push origin release/v1.0.0
-    ```
-6.  **After PyPI release completion, delete `release` branch**:
+6.  **Delete `release` branch**:
     ```bash
     # Delete local branch
     git branch -d release/v1.0.0
     # Delete remote branch
     git push origin --delete release/v1.0.0
     ```
+
+**Important Explanation**: This release workflow adopts a "PyPI-first" strategy, ensuring the package is successfully published before updating the main branch. This approach avoids the risk of code being published on GitHub but packages being unavailable on PyPI, providing a safer release process.
 
 ### 3. Hotfix Process
 
@@ -188,7 +190,13 @@ The project recommends using automated release workflows, but the manual process
     # - Update translated versions README_zh.md and README_ja.md
     # - If workflow changes exist, update GITFLOW_zh.md and GITFLOW_ja.md
     ```
-4.  **After fix completion, merge to `main` and `develop`**:
+4.  **Push `hotfix` branch to remote to trigger PyPI release**:
+    ```bash
+    git checkout hotfix/critical-bug-fix
+    git push origin hotfix/critical-bug-fix
+    ```
+
+5.  **After PyPI release completion, merge to `main` and `develop`**:
     ```bash
     # Switch to main branch and merge
     git checkout main
@@ -201,7 +209,7 @@ The project recommends using automated release workflows, but the manual process
     git merge hotfix/critical-bug-fix
     git push origin develop
     ```
-5.  **Create GitHub Release**: 
+6.  **Create GitHub Release**:
     ```bash
     # Create temporary hotfix release message file
     cat > hotfix_release_message.md << 'EOF'
@@ -229,20 +237,15 @@ The project recommends using automated release workflows, but the manual process
     # Delete temporary file
     rm hotfix_release_message.md
     ```
-
-6.  **Push `hotfix` branch to remote to trigger PyPI release**: 
-    ```bash
-    git checkout hotfix/critical-bug-fix
-    git push origin hotfix/critical-bug-fix
-    ```
-
-7.  **After PyPI release completion, delete `hotfix` branch**: 
+7.  **Delete `hotfix` branch**:
     ```bash
     # Delete local branch
     git branch -d hotfix/critical-bug-fix
     # Delete remote branch
     git push origin --delete hotfix/critical-bug-fix
     ```
+
+**Important Explanation**: This hotfix workflow also adopts the "PyPI-first" strategy, updating the main branch after successful package release to avoid the risk of emergency fix code being published but packages being unavailable.
 
 **Note**: According to the actual automated workflow, hotfix branches **do** automatically trigger PyPI releases. However, this may cause version conflicts, so it's recommended to ensure version numbers are correctly updated before using hotfix branches.
 
@@ -289,9 +292,8 @@ When code is pushed to `release/v*` branches, automatically executes:
 When code is pushed to `hotfix/*` branches, automatically executes:
 
 1. **Test Job**:
-   - Run complete test suite using pytest
-   - Generate coverage reports
-   - Upload coverage to Codecov
+   - Run complete test suite using pytest with detailed traceback and failure limits
+   - Generate coverage reports (XML and terminal formats)
 
 2. **Build and Deploy Job**:
    - Build Python package
@@ -302,7 +304,7 @@ When code is pushed to `hotfix/*` branches, automatically executes:
    - Create PR to main branch after successful PyPI deployment
    - Marked as critical hotfix, ready for immediate production
 
-**Important**: In practice, hotfix branches **do** automatically trigger PyPI deployment, same as release branches. This may cause version conflicts, so careful use of hotfix branches is recommended.
+**Important**: According to the actual automated workflow, hotfix branches **do** automatically trigger PyPI deployment, same as release branches. This may cause version conflicts, so careful use of hotfix branches is recommended.
 
 ### CI Workflow (`ci.yml`)
 Runs on all branches (`main`, `develop`, `hotfix/*`, `feature/*`, `release/*`) and PRs:

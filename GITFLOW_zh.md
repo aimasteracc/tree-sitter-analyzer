@@ -102,7 +102,19 @@ gitGraph
     # - 如有工作流更改，更新 GITFLOW_zh.md 和 GITFLOW_ja.md
     # - 更新 CHANGELOG.md 发布详情
     ```
-3.  **完成准备后，合并到 `main` 和 `develop`**:
+3.  **推送 `release` 分支到远程以触发 PyPI 发布**:
+    ```bash
+    git checkout release/v1.0.0
+    git push origin release/v1.0.0
+    ```
+4.  **等待 PyPI 发布完成并验证**:
+    ```bash
+    # 等待自动化工作流完成PyPI发布
+    # 可以通过GitHub Actions页面监控发布状态
+    # 验证PyPI包是否成功发布：
+    # pip install tree-sitter-analyzer==1.0.0 --dry-run
+    ```
+5.  **PyPI 发布成功后，合并到 `main` 和 `develop`**:
     ```bash
     # 切换到 main 分支并合并
     git checkout main
@@ -115,7 +127,7 @@ gitGraph
     git merge release/v1.0.0
     git push origin develop
     ```
-4.  **创建GitHub Release**:
+6.  **创建GitHub Release**:
     ```bash
     # 创建临时的release消息文件（避免编码和符号错误）
     cat > release_message.md << 'EOF'
@@ -146,18 +158,15 @@ gitGraph
     # 删除临时文件
     rm release_message.md
     ```
-5.  **推送 `release` 分支到远程以触发 PyPI 发布**:
-    ```bash
-    git checkout release/v1.0.0
-    git push origin release/v1.0.0
-    ```
-6.  **PyPI 发布完成后，删除 `release` 分支**:
+7.  **删除 `release` 分支**:
     ```bash
     # 删除本地分支
     git branch -d release/v1.0.0
     # 删除远程分支
     git push origin --delete release/v1.0.0
     ```
+
+**重要说明**: 此流程采用"PyPI优先"策略，确保包发布成功后再更新main分支，避免代码已发布但包不可用的风险。
 
 ### 3. 紧急修复 (Hotfix Process)
 
@@ -188,7 +197,19 @@ gitGraph
     # - 更新 README_zh.md 和 README_ja.md 翻译版本
     # - 如有工作流更改，更新 GITFLOW_zh.md 和 GITFLOW_ja.md
     ```
-4.  **完成修复后，合并到 `main` 和 `develop`**:
+4.  **推送 `hotfix` 分支到远程以触发 PyPI 发布**:
+    ```bash
+    git checkout hotfix/critical-bug-fix
+    git push origin hotfix/critical-bug-fix
+    ```
+5.  **等待 PyPI 发布完成并验证**:
+    ```bash
+    # 等待自动化工作流完成PyPI发布
+    # 可以通过GitHub Actions页面监控发布状态
+    # 验证PyPI包是否成功发布：
+    # pip install tree-sitter-analyzer==1.0.1 --dry-run
+    ```
+6.  **PyPI 发布成功后，合并到 `main` 和 `develop`**:
     ```bash
     # 切换到 main 分支并合并
     git checkout main
@@ -201,7 +222,7 @@ gitGraph
     git merge hotfix/critical-bug-fix
     git push origin develop
     ```
-5.  **创建GitHub Release**: 
+7.  **创建GitHub Release**:
     ```bash
     # 创建临时的hotfix release消息文件
     cat > hotfix_release_message.md << 'EOF'
@@ -229,20 +250,15 @@ gitGraph
     # 删除临时文件
     rm hotfix_release_message.md
     ```
-
-6.  **推送 `hotfix` 分支到远程以触发 PyPI 发布**: 
-    ```bash
-    git checkout hotfix/critical-bug-fix
-    git push origin hotfix/critical-bug-fix
-    ```
-
-7.  **PyPI 发布完成后，删除 `hotfix` 分支**: 
+8.  **删除 `hotfix` 分支**:
     ```bash
     # 删除本地分支
     git branch -d hotfix/critical-bug-fix
     # 删除远程分支
     git push origin --delete hotfix/critical-bug-fix
     ```
+
+**重要说明**: 此hotfix流程同样采用"PyPI优先"策略，确保包发布成功后再更新main分支，避免紧急修复代码已发布但包不可用的风险。
 
 **注意**: 根据实际的自动化工作流，hotfix分支**会**自动触发PyPI发布。但这可能导致版本冲突，建议在使用hotfix分支前确保版本号正确更新。
 

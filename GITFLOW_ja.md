@@ -102,7 +102,19 @@ gitGraph
     # - ワークフロー変更がある場合、GITFLOW_zh.md と GITFLOW_ja.md を更新
     # - CHANGELOG.md のリリース詳細を更新
     ```
-3.  **準備完了後、`main` と `develop` にマージ**:
+3.  **`release` ブランチをリモートにプッシュして PyPI リリースをトリガー**:
+    ```bash
+    git checkout release/v1.0.0
+    git push origin release/v1.0.0
+    ```
+4.  **PyPI リリース完了を待機・検証**:
+    ```bash
+    # 自動化ワークフローの PyPI リリース完了を待機
+    # GitHub Actions ページでリリース状況を監視可能
+    # PyPI パッケージが正常にリリースされたかを検証：
+    # pip install tree-sitter-analyzer==1.0.0 --dry-run
+    ```
+5.  **PyPI リリース成功後、`main` と `develop` にマージ**:
     ```bash
     # main ブランチに切り替えてマージ
     git checkout main
@@ -115,7 +127,7 @@ gitGraph
     git merge release/v1.0.0
     git push origin develop
     ```
-4.  **GitHub Release を作成**:
+6.  **GitHub Release を作成**:
     ```bash
     # 一時的なリリースメッセージファイルを作成（エンコーディングと記号エラーを回避）
     cat > release_message.md << 'EOF'
@@ -146,18 +158,15 @@ gitGraph
     # 一時ファイルを削除
     rm release_message.md
     ```
-5.  **`release` ブランチをリモートにプッシュして PyPI リリースをトリガー**:
-    ```bash
-    git checkout release/v1.0.0
-    git push origin release/v1.0.0
-    ```
-6.  **PyPI リリース完了後、`release` ブランチを削除**:
+7.  **`release` ブランチを削除**:
     ```bash
     # ローカルブランチを削除
     git branch -d release/v1.0.0
     # リモートブランチを削除
     git push origin --delete release/v1.0.0
     ```
+
+**重要説明**: このフローは「PyPI優先」戦略を採用し、パッケージリリース成功後にmainブランチを更新することで、コードは公開されているがパッケージが利用できないリスクを回避します。
 
 ### 3. ホットフィックスプロセス (Hotfix Process)
 
@@ -188,7 +197,19 @@ gitGraph
     # - README_zh.md と README_ja.md の翻訳版を更新
     # - ワークフロー変更がある場合、GITFLOW_zh.md と GITFLOW_ja.md を更新
     ```
-4.  **修正完了後、`main` と `develop` にマージ**:
+4.  **`hotfix` ブランチをリモートにプッシュして PyPI リリースをトリガー**:
+    ```bash
+    git checkout hotfix/critical-bug-fix
+    git push origin hotfix/critical-bug-fix
+    ```
+5.  **PyPI リリース完了を待機・検証**:
+    ```bash
+    # 自動化ワークフローの PyPI リリース完了を待機
+    # GitHub Actions ページでリリース状況を監視可能
+    # PyPI パッケージが正常にリリースされたかを検証：
+    # pip install tree-sitter-analyzer==1.0.1 --dry-run
+    ```
+6.  **PyPI リリース成功後、`main` と `develop` にマージ**:
     ```bash
     # main ブランチに切り替えてマージ
     git checkout main
@@ -201,7 +222,7 @@ gitGraph
     git merge hotfix/critical-bug-fix
     git push origin develop
     ```
-5.  **GitHub Release を作成**: 
+7.  **GitHub Release を作成**:
     ```bash
     # 一時的なホットフィックスリリースメッセージファイルを作成
     cat > hotfix_release_message.md << 'EOF'
@@ -229,20 +250,15 @@ gitGraph
     # 一時ファイルを削除
     rm hotfix_release_message.md
     ```
-
-6.  **`hotfix` ブランチをリモートにプッシュして PyPI リリースをトリガー**: 
-    ```bash
-    git checkout hotfix/critical-bug-fix
-    git push origin hotfix/critical-bug-fix
-    ```
-
-7.  **PyPI リリース完了後、`hotfix` ブランチを削除**: 
+8.  **`hotfix` ブランチを削除**:
     ```bash
     # ローカルブランチを削除
     git branch -d hotfix/critical-bug-fix
     # リモートブランチを削除
     git push origin --delete hotfix/critical-bug-fix
     ```
+
+**重要説明**: このhotfixフローも同様に「PyPI優先」戦略を採用し、パッケージリリース成功後にmainブランチを更新することで、緊急修正コードは公開されているがパッケージが利用できないリスクを回避します。
 
 **注意**: 実際の自動化ワークフローによると、hotfixブランチ**は**自動的にPyPIリリースをトリガーします。ただし、これはバージョン競合を引き起こす可能性があるため、hotfixブランチを使用する前にバージョン番号が正しく更新されていることを確認することを推奨します。
 
