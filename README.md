@@ -4,11 +4,11 @@
 
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-2831%20passed-brightgreen.svg)](#quality-assurance)
-[![Coverage](https://img.shields.io/badge/coverage-79.19%25-green.svg)](#quality-assurance)
+[![Tests](https://img.shields.io/badge/tests-2934%20passed-brightgreen.svg)](#quality-assurance)
+[![Coverage](https://img.shields.io/badge/coverage-80.09%25-green.svg)](#quality-assurance)
 [![Quality](https://img.shields.io/badge/quality-enterprise%20grade-blue.svg)](#quality-assurance)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
-[![Version](https://img.shields.io/badge/version-1.7.3-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
+[![Version](https://img.shields.io/badge/version-1.7.4-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
 ## 🚀 Enterprise-Grade Code Analysis Tool for the AI Era
@@ -58,8 +58,8 @@ Tree-sitter Analyzer is an enterprise-grade code analysis tool designed for the 
 | **Go** | Basic Support | Basic syntax parsing |
 
 ### 🏆 Production Ready
-- **2,831 Tests** - 100% pass rate, enterprise-grade quality assurance
-- **79.19% Coverage** - Comprehensive test coverage
+- **2,934 Tests** - 100% pass rate, enterprise-grade quality assurance
+- **80.09% Coverage** - Comprehensive test coverage
 - **Cross-platform Support** - Compatible with Windows, macOS, Linux
 - **Continuous Maintenance** - Active development and community support
 
@@ -569,18 +569,19 @@ uv run python -m tree_sitter_analyzer --show-query-languages
 ## 8. 🏆 Quality Assurance
 
 ### 📊 Quality Metrics
-- **2,831 tests** - 100% pass rate ✅
-- **79.19% code coverage** - Comprehensive test suite
+- **2,934 tests** - 100% pass rate ✅
+- **80.09% code coverage** - Comprehensive test suite
 - **Zero test failures** - Production ready
 - **Cross-platform support** - Windows, macOS, Linux
 
-### ⚡ Latest Quality Achievements (v1.7.3)
+### ⚡ Latest Quality Achievements (v1.7.4)
+- ✅ **📊 Enhanced Quality Metrics** - Test count increased to 2934 (up from 2831), coverage improved to 80.09%
+- ✅ **🔧 System Stability** - All tests passing with enhanced system stability and reliability
 - ✅ **🆕 Complete Markdown Support** - Added new complete Markdown language plugin supporting all major Markdown elements
 - ✅ **📝 Enhanced Document Analysis** - Support for intelligent extraction of headers, code blocks, links, images, tables, task lists
 - ✅ **🔍 Markdown Query System** - 17 predefined query types with alias and custom query support
 - ✅ **🧪 Comprehensive Test Validation** - Added extensive Markdown test cases ensuring feature stability
 - ✅ **📊 Structured Output** - Convert Markdown documents to structured data for easy AI processing
-- ✅ **🔧 Test Stability Improvement** - Fixed 28 test errors, all 2831 tests now passing 100%
 - ✅ **File output optimization** - MCP search tools now include `suppress_output` and `output_file` parameters for massive token savings
 - ✅ **Intelligent format detection** - Automatic selection of optimal file formats (JSON/Markdown) for storage and reading optimization
 - ✅ **ROO rules documentation** - Added comprehensive tree-sitter-analyzer MCP optimization usage guide
@@ -629,7 +630,7 @@ uv run pytest tests/test_mcp_server_initialization.py -v
 **Verification environment:**
 - Operating systems: Windows 10, macOS, Linux
 - Python version: 3.10+
-- Project version: tree-sitter-analyzer v1.7.2
+- Project version: tree-sitter-analyzer v1.7.4
 - Test files: BigService.java (1419 lines), sample.py (256 lines), MultiClass.java (54 lines)
 
 ---

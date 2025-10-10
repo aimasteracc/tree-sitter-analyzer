@@ -4,11 +4,11 @@
 
 [![Python版本](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![许可证](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![测试](https://img.shields.io/badge/tests-2831%20passed-brightgreen.svg)](#质量保证)
-[![覆盖率](https://img.shields.io/badge/coverage-79.19%25-green.svg)](#质量保证)
+[![测试](https://img.shields.io/badge/tests-2934%20passed-brightgreen.svg)](#质量保证)
+[![覆盖率](https://img.shields.io/badge/coverage-80.09%25-green.svg)](#质量保证)
 [![质量](https://img.shields.io/badge/quality-enterprise%20grade-blue.svg)](#质量保证)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
-[![版本](https://img.shields.io/badge/version-1.7.3-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
+[![版本](https://img.shields.io/badge/version-1.7.4-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
 ## 🚀 AI时代的企业级代码分析工具
@@ -58,8 +58,8 @@ Tree-sitter Analyzer 是一个为AI时代设计的企业级代码分析工具，
 | **Go** | 基础支持 | 基本语法解析 |
 
 ### 🏆 生产就绪
-- **2,831个测试** - 100%通过率，企业级质量保证
-- **79.19%覆盖率** - 全面的测试覆盖
+- **2,934个测试** - 100%通过率，企业级质量保证
+- **80.09%覆盖率** - 全面的测试覆盖
 - **跨平台支持** - Windows、macOS、Linux全平台兼容
 - **持续维护** - 活跃的开发和社区支持
 
@@ -570,18 +570,19 @@ uv run python -m tree_sitter_analyzer --show-query-languages
 ## 8. 🏆 质量保证
 
 ### 📊 质量指标
-- **2,831个测试** - 100%通过率 ✅
-- **79.19%代码覆盖率** - 全面测试套件
+- **2,934个测试** - 100%通过率 ✅
+- **80.09%代码覆盖率** - 全面测试套件
 - **零测试失败** - 生产就绪
 - **跨平台支持** - Windows、macOS、Linux
 
-### ⚡ 最新质量成就（v1.7.3）
+### ⚡ 最新质量成就（v1.7.4）
+- ✅ **📊 质量指标提升** - 测试数量增加到2934个（从2831个），覆盖率提升到80.09%
+- ✅ **🔧 系统稳定性** - 所有测试通过，系统稳定性和可靠性增强
 - ✅ **🆕 Markdown完整支持** - 新增完整的Markdown语言插件，支持所有主要Markdown元素
 - ✅ **📝 文档分析增强** - 支持标题、代码块、链接、图片、表格、任务列表等元素的智能提取
 - ✅ **🔍 Markdown查询系统** - 17种预定义查询类型，支持别名和自定义查询
 - ✅ **🧪 全面测试验证** - 新增大量Markdown相关测试用例，确保功能稳定性
 - ✅ **📊 结构化输出** - 将Markdown文档转换为结构化数据，便于AI处理
-- ✅ **🔧 测试稳定性提升** - 修复28个测试错误，所有2831个测试100%通过
 - ✅ **文件输出优化** - MCP搜索工具新增`suppress_output`和`output_file`参数，大幅节省token消耗
 - ✅ **智能格式检测** - 自动选择最适合的文件格式（JSON/Markdown），优化存储和读取
 - ✅ **ROO规则文档** - 新增完整的tree-sitter-analyzer MCP优化使用指南
@@ -630,7 +631,7 @@ uv run pytest tests/test_mcp_server_initialization.py -v
 **验证环境：**
 - 操作系统：Windows 10、macOS、Linux
 - Python版本：3.10+
-- 项目版本：tree-sitter-analyzer v1.7.2
+- 项目版本：tree-sitter-analyzer v1.7.4
 - 测试文件：BigService.java (1419行)、sample.py (256行)、MultiClass.java (54行)
 
 ---
