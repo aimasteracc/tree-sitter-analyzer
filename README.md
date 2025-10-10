@@ -92,13 +92,13 @@ uv --version
 
 | Operating System | Package Manager | Installation Command | Notes |
 |-----------------|----------------|---------------------|-------|
-| **macOS** | Homebrew | `brew install fd ripgrep` | Recommended |
-| **Windows** | winget | `winget install sharkdp.fd BurntSushi.ripgrep.MSVC` | Recommended |
-| | Chocolatey | `choco install fd ripgrep` | Alternative |
-| | Scoop | `scoop install fd ripgrep` | Alternative |
-| **Ubuntu/Debian** | apt | `sudo apt install fd-find ripgrep` | Official repository |
-| **CentOS/RHEL/Fedora** | dnf | `sudo dnf install fd-find ripgrep` | Official repository |
-| **Arch Linux** | pacman | `sudo pacman -S fd ripgrep` | Official repository |
+| **macOS** | Homebrew | `brew install fd@10.3.0 ripgrep@14.1.1` | Recommended |
+| **Windows** | winget | `winget install sharkdp.fd --version 10.3.0` <br> `winget install BurntSushi.ripgrep.MSVC --version 14.1.1` | Recommended |
+| | Chocolatey | `choco install fd --version 10.3.0` <br> `choco install ripgrep --version 14.1.1` | Alternative |
+| | Scoop | `scoop install fd@10.3.0 ripgrep@14.1.1` | Alternative |
+| **Ubuntu/Debian** | apt | `sudo apt install fd-find=10.3.0* ripgrep=14.1.1*` | Official repository |
+| **CentOS/RHEL/Fedora** | dnf | `sudo dnf install fd-find-10.3.0 ripgrep-14.1.1` | Official repository |
+| **Arch Linux** | pacman | `sudo pacman -S fd=10.3.0 ripgrep=14.1.1` | Official repository |
 
 **Verify installation:**
 ```bash
