@@ -25,7 +25,7 @@ class MarkdownFormatter(BaseFormatter):
         # Count different types of Markdown elements
         headers = [e for e in elements if e.get("type") == "heading"]
         links = [e for e in elements if e.get("type") in ["link", "autolink", "reference_link"]]
-        images = [e for e in elements if e.get("type") in ["image", "reference_image", "image_reference_definition"]]
+        images = self._collect_images(elements)
         code_blocks = [e for e in elements if e.get("type") == "code_block"]
         lists = [e for e in elements if e.get("type") in ["list", "task_list"]]
         
@@ -54,7 +54,7 @@ class MarkdownFormatter(BaseFormatter):
         # Organize elements by type
         headers = [e for e in elements if e.get("type") == "heading"]
         links = [e for e in elements if e.get("type") in ["link", "autolink", "reference_link"]]
-        images = [e for e in elements if e.get("type") in ["image", "reference_image", "image_reference_definition"]]
+        images = self._collect_images(elements)
         code_blocks = [e for e in elements if e.get("type") == "code_block"]
         lists = [e for e in elements if e.get("type") in ["list", "task_list"]]
         tables = [e for e in elements if e.get("type") == "table"]
@@ -128,7 +128,7 @@ class MarkdownFormatter(BaseFormatter):
         # Calculate Markdown-specific metrics
         headers = [e for e in elements if e.get("type") == "heading"]
         links = [e for e in elements if e.get("type") in ["link", "autolink", "reference_link"]]
-        images = [e for e in elements if e.get("type") in ["image", "reference_image", "image_reference_definition"]]
+        images = self._collect_images(elements)
         code_blocks = [e for e in elements if e.get("type") == "code_block"]
         lists = [e for e in elements if e.get("type") in ["list", "task_list"]]
         tables = [e for e in elements if e.get("type") == "table"]
@@ -229,7 +229,7 @@ class MarkdownFormatter(BaseFormatter):
             output.append("")
         
         # Images Section
-        images = [e for e in elements if e.get("type") in ["image", "reference_image", "image_reference_definition"]]
+        images = self._collect_images(elements)
         if images:
             output.append("## Images\n")
             output.append("| Alt Text | URL | Line |")
@@ -358,6 +358,51 @@ class MarkdownFormatter(BaseFormatter):
             output.append("")
         
         return "\n".join(output)
+
+    def _collect_images(self, elements: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Collect images including reference definitions that point to images.
+
+        Fallback: if no explicit image reference definitions are present, also
+        treat reference definitions with image-like URLs as images to keep
+        counts consistent across environments.
+        """
+        images: List[Dict[str, Any]] = [
+            e for e in elements
+            if e.get("type") in ["image", "reference_image", "image_reference_definition"]
+        ]
+
+        # Avoid duplicates if image reference definitions already exist
+        has_image_ref_defs = any(e.get("type") == "image_reference_definition" for e in elements)
+        if has_image_ref_defs:
+            return images
+
+        # Fallback: promote reference_definition with image-like URL
+        try:
+            import re
+            image_exts = (".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".bmp")
+            for e in elements:
+                if e.get("type") == "reference_definition":
+                    url = e.get("url") or ""
+                    alt = e.get("alt") or ""
+                    if not url:
+                        # Parse from raw content stored in name
+                        name_field = (e.get("name") or "").strip()
+                        m = re.match(r'^\[([^\]]+)\]:\s*([^\s]+)', name_field)
+                        if m:
+                            alt = alt or m.group(1)
+                            url = m.group(2)
+                    if url and any(url.lower().endswith(ext) for ext in image_exts):
+                        images.append({
+                            **e,
+                            "type": "image_reference_definition",
+                            "url": url,
+                            "alt": alt,
+                        })
+        except Exception:
+            # Be conservative on any error
+            return images
+
+        return images
 
     def _format_advanced_text(self, data: Dict[str, Any]) -> str:
         """Format advanced analysis in text format"""
