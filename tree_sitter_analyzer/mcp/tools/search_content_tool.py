@@ -42,7 +42,7 @@ class SearchContentTool(BaseMCPTool):
     def get_tool_definition(self) -> dict[str, Any]:
         return {
             "name": "search_content",
-            "description": "Search text content inside files using ripgrep. Supports regex patterns, case sensitivity, context lines, and various output formats. Can search in directories or specific files.",
+            "description": "Search text content inside files using ripgrep. Supports regex patterns, case sensitivity, context lines, and various output formats. Can search in directories or specific files with advanced token optimization (summary_only, group_by_file, total_only, suppress_output).",
             "inputSchema": {
                 "type": "object",
                 "properties": {

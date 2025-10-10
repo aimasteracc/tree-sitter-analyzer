@@ -688,28 +688,18 @@ class AnalyzeScaleTool(BaseMCPTool):
 
         return True
 
-    def get_tool_definition(self) -> Any:
+    def get_tool_definition(self) -> dict[str, Any]:
         """
         Get the MCP tool definition for analyze_code_scale.
 
         Returns:
-            Tool definition object compatible with MCP server
+            Tool definition dictionary compatible with MCP server
         """
-        try:
-            from mcp.types import Tool
-
-            return Tool(
-                name="analyze_code_scale",
-                description="Analyze code scale, complexity, and structure metrics with LLM-optimized guidance for efficient large file analysis",
-                inputSchema=self.get_tool_schema(),
-            )
-        except ImportError:
-            # Fallback for when MCP is not available
-            return {
-                "name": "analyze_code_scale",
-                "description": "Analyze code scale, complexity, and structure metrics with LLM-optimized guidance for efficient large file analysis",
-                "inputSchema": self.get_tool_schema(),
-            }
+        return {
+            "name": "analyze_code_scale",
+            "description": "Analyze code scale, complexity, and structure metrics with LLM-optimized guidance for efficient large file analysis and token-aware workflow recommendations",
+            "inputSchema": self.get_tool_schema(),
+        }
 
 
 # Tool instance for easy access

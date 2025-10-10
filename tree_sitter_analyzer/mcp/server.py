@@ -446,80 +446,9 @@ class TreeSitterAnalyzerMCPServer:
             logger.info("Client requesting tools list")
 
             tools = [
-                Tool(
-                    name="check_code_scale",
-                    description="Analyze code file size and complexity metrics",
-                    inputSchema={
-                        "type": "object",
-                        "properties": {
-                            "file_path": {
-                                "type": "string",
-                                "description": "Path to the code file (relative to project root)",
-                            }
-                        },
-                        "required": ["file_path"],
-                        "additionalProperties": False,
-                    },
-                ),
-                Tool(
-                    name="analyze_code_structure",
-                    description="Analyze code structure and generate tables with line positions, optionally save to file",
-                    inputSchema={
-                        "type": "object",
-                        "properties": {
-                            "file_path": {
-                                "type": "string",
-                                "description": "Path to the code file (relative to project root)",
-                            },
-                            "format_type": {
-                                "type": "string",
-                                "description": "Table format type",
-                                "enum": ["full", "compact", "csv", "json"],
-                                "default": "full",
-                            },
-                            "language": {
-                                "type": "string",
-                                "description": "Programming language (optional, auto-detected if not specified)",
-                            },
-                            "output_file": {
-                                "type": "string",
-                                "description": "Optional filename to save output to file (extension auto-detected based on content)",
-                            },
-                            "suppress_output": {
-                                "type": "boolean",
-                                "description": "When true and output_file is specified, suppress table_output in response to save tokens",
-                                "default": False,
-                            },
-                        },
-                        "required": ["file_path"],
-                        "additionalProperties": False,
-                    },
-                ),
-                Tool(
-                    name="extract_code_section",
-                    description="Extract a code section by line range",
-                    inputSchema={
-                        "type": "object",
-                        "properties": {
-                            "file_path": {
-                                "type": "string",
-                                "description": "Path to the code file (relative to project root)",
-                            },
-                            "start_line": {
-                                "type": "integer",
-                                "description": "Start line (1-based)",
-                                "minimum": 1,
-                            },
-                            "end_line": {
-                                "type": "integer",
-                                "description": "End line (optional, 1-based)",
-                                "minimum": 1,
-                            },
-                        },
-                        "required": ["file_path", "start_line"],
-                        "additionalProperties": False,
-                    },
-                ),
+                Tool(**self.analyze_scale_tool.get_tool_definition()),
+                Tool(**self.table_format_tool.get_tool_definition()),
+                Tool(**self.read_partial_tool.get_tool_definition()),
                 Tool(
                     name="set_project_path",
                     description="Set or override the project root path used for security boundaries",
@@ -603,6 +532,8 @@ class TreeSitterAnalyzerMCPServer:
                         "start_column": arguments.get("start_column"),
                         "end_column": arguments.get("end_column"),
                         "format": arguments.get("format", "text"),
+                        "output_file": arguments.get("output_file"),
+                        "suppress_output": arguments.get("suppress_output", False),
                     }
                     result = await self.read_partial_tool.execute(full_args)
 

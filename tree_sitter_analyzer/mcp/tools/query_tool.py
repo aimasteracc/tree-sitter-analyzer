@@ -49,7 +49,7 @@ class QueryTool(BaseMCPTool):
         """
         return {
             "name": "query_code",
-            "description": "Execute tree-sitter queries on code files to extract specific code elements",
+            "description": "Execute tree-sitter queries on code files to extract specific code elements with filtering, multiple output formats, and optional file saving with token optimization",
             "inputSchema": {
                 "type": "object",
                 "properties": {

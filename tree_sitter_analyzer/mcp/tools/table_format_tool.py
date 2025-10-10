@@ -511,28 +511,18 @@ class TableFormatTool(BaseMCPTool):
             self.logger.error(f"Error in code structure analysis tool: {e}")
             raise
 
-    def get_tool_definition(self) -> Any:
+    def get_tool_definition(self) -> dict[str, Any]:
         """
         Get the MCP tool definition for analyze_code_structure.
 
         Returns:
-            Tool definition object compatible with MCP server
+            Tool definition dictionary compatible with MCP server
         """
-        try:
-            from mcp.types import Tool
-
-            return Tool(
-                name="analyze_code_structure",
-                description="Analyze code structure and generate detailed overview tables (classes, methods, fields) for large files",
-                inputSchema=self.get_tool_schema(),
-            )
-        except ImportError:
-            # Fallback for when MCP is not available
-            return {
-                "name": "analyze_code_structure",
-                "description": "Analyze code structure and generate detailed overview tables (classes, methods, fields) for large files",
-                "inputSchema": self.get_tool_schema(),
-            }
+        return {
+            "name": "analyze_code_structure",
+            "description": "Analyze code structure and generate detailed overview tables (classes, methods, fields) with line positions for large files, optionally save to file",
+            "inputSchema": self.get_tool_schema(),
+        }
 
 
 # Tool instance for easy access

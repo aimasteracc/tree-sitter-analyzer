@@ -32,7 +32,7 @@ class FindAndGrepTool(BaseMCPTool):
     def get_tool_definition(self) -> dict[str, Any]:
         return {
             "name": "find_and_grep",
-            "description": "Two-stage search: first use fd to find files matching criteria, then use ripgrep to search content within those files. Combines file filtering with content search for precise results.",
+            "description": "Two-stage search: first use fd to find files matching criteria, then use ripgrep to search content within those files. Combines file filtering with content search for precise results with advanced token optimization (summary_only, group_by_file, total_only, suppress_output).",
             "inputSchema": {
                 "type": "object",
                 "properties": {

@@ -70,7 +70,7 @@ class ReadPartialTool(BaseMCPTool):
                 "format": {
                     "type": "string",
                     "description": "Output format for the content",
-                    "enum": ["text", "json"],
+                    "enum": ["text", "json", "raw"],
                     "default": "text",
                 },
                 "output_file": {
@@ -84,7 +84,6 @@ class ReadPartialTool(BaseMCPTool):
                 },
             },
             "required": ["file_path", "start_line"],
-            "additionalProperties": False,
         }
 
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -115,7 +114,7 @@ class ReadPartialTool(BaseMCPTool):
         end_column = arguments.get("end_column")
         output_file = arguments.get("output_file")
         suppress_output = arguments.get("suppress_output", False)
-        # output_format = arguments.get("format", "text")  # Not used currently
+        output_format = arguments.get("format", "text")
 
         # Resolve file path using common path resolver
         resolved_path = self.path_resolver.resolve(file_path)
@@ -224,9 +223,20 @@ class ReadPartialTool(BaseMCPTool):
                         else:
                             base_name = output_file
 
+                        # Determine what content to save based on format preference
+                        if output_format == "raw":
+                            # Save only the extracted code content (no metadata)
+                            content_to_save = content
+                        elif output_format == "json":
+                            # Save structured JSON data
+                            content_to_save = json_output
+                        else:  # format == "text" (default)
+                            # Save CLI-compatible format with headers
+                            content_to_save = cli_output
+                        
                         # Save to file with automatic extension detection
                         saved_file_path = self.file_output_manager.save_to_file(
-                            content=cli_output,
+                            content=content_to_save,
                             base_name=base_name
                         )
                         
@@ -334,8 +344,8 @@ class ReadPartialTool(BaseMCPTool):
             format_value = arguments["format"]
             if not isinstance(format_value, str):
                 raise ValueError("format must be a string")
-            if format_value not in ["text", "json"]:
-                raise ValueError("format must be 'text' or 'json'")
+            if format_value not in ["text", "json", "raw"]:
+                raise ValueError("format must be 'text', 'json', or 'raw'")
 
         # Validate output_file if provided
         if "output_file" in arguments:
@@ -353,28 +363,18 @@ class ReadPartialTool(BaseMCPTool):
 
         return True
 
-    def get_tool_definition(self) -> Any:
+    def get_tool_definition(self) -> dict[str, Any]:
         """
         Get the MCP tool definition for read_code_partial.
 
         Returns:
-            Tool definition object compatible with MCP server
+            Tool definition dictionary compatible with MCP server
         """
-        try:
-            from mcp.types import Tool
-
-            return Tool(
-                name="extract_code_section",
-                description="Extract specific code sections by line range (equivalent to CLI --partial-read option)",
-                inputSchema=self.get_tool_schema(),
-            )
-        except ImportError:
-            # Fallback for when MCP is not available
-            return {
-                "name": "extract_code_section",
-                "description": "Extract specific code sections by line range (equivalent to CLI --partial-read option)",
-                "inputSchema": self.get_tool_schema(),
-            }
+        return {
+            "name": "extract_code_section",
+            "description": "Extract specific code sections by line/column range with multiple output formats (text/json/raw), optionally save to file with token optimization",
+            "inputSchema": self.get_tool_schema(),
+        }
 
 
 # Tool instance for easy access
