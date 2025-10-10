@@ -549,7 +549,7 @@ if __name__ == "__main__":
         """Test that tool definition has correct structure"""
         definition = analyze_scale_tool.get_tool_definition()
         
-        assert definition["name"] == "analyze_code_scale"
+        assert definition["name"] == "check_code_scale"
         assert "description" in definition
         assert "inputSchema" in definition
         
