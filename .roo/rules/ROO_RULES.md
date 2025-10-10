@@ -54,8 +54,11 @@ use_mcp_tool:
 
 ##### コード読取用ツール
 - `analyze_code_structure`: 全体構造の把握
+  - `suppress_output + output_file`でトークン節約対応
 - `extract_code_section`: 特定行範囲の抽出
+  - `suppress_output + output_file`でトークン節約対応
 - `query_code`: 特定要素の検索（関数、クラス等）
+  - `suppress_output + output_file`でトークン節約対応
 
 ##### ファイル検索用ツール
 - `list_files`: ファイル一覧取得（fd使用）
@@ -812,6 +815,225 @@ use_mcp_tool:
     output_file: "controller_analysis.json"  # ファイル保存
 ```
 
+### 16. 新機能: コード読取ツールでのファイル出力最適化
+
+#### 16.1 対応ツール
+- [`extract_code_section`](tree_sitter_analyzer/mcp/tools/read_partial_tool.py): 特定行範囲の抽出
+- [`query_code`](tree_sitter_analyzer/mcp/tools/query_tool.py): tree-sitterクエリによる要素抽出
+
+#### 16.2 新パラメータ
+- `output_file`: 結果をファイルに保存（拡張子自動検出）
+- `suppress_output`: `output_file`指定時に詳細出力を抑制してトークン節約
+
+#### 16.3 推奨使用パターン
+
+##### 16.3.1 大きなコードセクションの抽出
+```markdown
+# 従来の問題: 大きなコードセクションでトークン消費
+use_mcp_tool:
+ server_name: tree-sitter-analyzer
+ tool_name: extract_code_section
+ arguments:
+   file_path: "src/large_file.py"
+   start_line: 100
+   end_line: 500
+   # → 大量のコード出力でトークン消費
+
+# 新しい解決策: ファイル出力でトークン節約
+use_mcp_tool:
+ server_name: tree-sitter-analyzer
+ tool_name: extract_code_section
+ arguments:
+   file_path: "src/large_file.py"
+   start_line: 100
+   end_line: 500
+   suppress_output: true
+   output_file: "code_section_extract"
+
+# 後で詳細を確認
+read_file:
+ path: "code_section_extract.txt"
+```
+
+##### 16.3.2 大量のクエリ結果の処理
+```markdown
+# 従来の問題: 大量のクエリ結果でトークン消費
+use_mcp_tool:
+ server_name: tree-sitter-analyzer
+ tool_name: query_code
+ arguments:
+   file_path: "src/complex_file.java"
+   query_key: "methods"
+   output_format: "json"
+   # → 大量のメソッド情報でトークン消費
+
+# 新しい解決策: ファイル出力でトークン節約
+use_mcp_tool:
+ server_name: tree-sitter-analyzer
+ tool_name: query_code
+ arguments:
+   file_path: "src/complex_file.java"
+   query_key: "methods"
+   output_format: "json"
+   suppress_output: true
+   output_file: "methods_analysis"
+
+# 後で詳細を確認
+read_file:
+ path: "methods_analysis.json"
+```
+
+##### 16.3.3 段階的コード解析戦略（更新版）
+```markdown
+# ステップ1: 全体構造把握（トークン節約）
+use_mcp_tool:
+ server_name: tree-sitter-analyzer
+ tool_name: analyze_code_structure
+ arguments:
+   file_path: "src/target_file.py"
+   format_type: "compact"
+   suppress_output: true
+   output_file: "structure_overview"
+
+# ステップ2: 特定要素の詳細抽出（トークン節約）
+use_mcp_tool:
+ server_name: tree-sitter-analyzer
+ tool_name: query_code
+ arguments:
+   file_path: "src/target_file.py"
+   query_key: "functions"
+   output_format: "summary"
+   suppress_output: true
+   output_file: "functions_summary"
+
+# ステップ3: 興味のある部分の詳細取得（トークン節約）
+use_mcp_tool:
+ server_name: tree-sitter-analyzer
+ tool_name: extract_code_section
+ arguments:
+   file_path: "src/target_file.py"
+   start_line: 45
+   end_line: 80
+   suppress_output: true
+   output_file: "detailed_section"
+
+# ステップ4: 結果の段階的確認
+read_file:
+ path: "structure_overview.md"
+read_file:
+ path: "functions_summary.json"
+read_file:
+ path: "detailed_section.txt"
+```
+
+#### 16.4 ファイル形式の自動選択
+- **extract_code_section**: テキスト形式（.txt）で保存
+- **query_code**: JSON形式（.json）で保存（output_format="json"の場合）
+- **query_code**: JSON形式（.json）で保存（output_format="summary"の場合）
+- 拡張子は内容に基づいて自動決定
+
+#### 16.5 実践的な使用例
+
+##### 16.5.1 大規模ファイルの段階的解析
+```markdown
+# ステップ1: ファイルサイズ確認
+use_mcp_tool:
+ server_name: tree-sitter-analyzer
+ tool_name: check_code_scale
+ arguments:
+   file_path: "src/huge_service.java"
+
+# ステップ2: 構造概要取得（大規模ファイル対応）
+use_mcp_tool:
+ server_name: tree-sitter-analyzer
+ tool_name: analyze_code_structure
+ arguments:
+   file_path: "src/huge_service.java"
+   format_type: "compact"
+   suppress_output: true
+   output_file: "huge_service_structure"
+
+# ステップ3: 特定メソッドの検索（トークン節約）
+use_mcp_tool:
+ server_name: tree-sitter-analyzer
+ tool_name: query_code
+ arguments:
+   file_path: "src/huge_service.java"
+   query_key: "methods"
+   filter: "name=~process*"
+   suppress_output: true
+   output_file: "process_methods"
+
+# ステップ4: 興味のあるメソッドの詳細抽出
+use_mcp_tool:
+ server_name: tree-sitter-analyzer
+ tool_name: extract_code_section
+ arguments:
+   file_path: "src/huge_service.java"
+   start_line: 150
+   end_line: 200
+   suppress_output: true
+   output_file: "target_method_detail"
+```
+
+##### 16.5.2 複数ファイルの効率的解析
+```markdown
+# 複数ファイルを順次解析（各ファイルでトークン節約）
+files=["controller.py", "service.py", "model.py"]
+
+for file in files:
+ # 構造解析
+ use_mcp_tool:
+   server_name: tree-sitter-analyzer
+   tool_name: analyze_code_structure
+   arguments:
+     file_path: f"src/{file}"
+     format_type: "compact"
+     suppress_output: true
+     output_file: f"{file}_structure"
+ 
+ # 関数抽出
+ use_mcp_tool:
+   server_name: tree-sitter-analyzer
+   tool_name: query_code
+   arguments:
+     file_path: f"src/{file}"
+     query_key: "functions"
+     output_format: "summary"
+     suppress_output: true
+     output_file: f"{file}_functions"
+
+# 結果の一括確認
+for file in files:
+ read_file:
+   path: f"{file}_structure.md"
+ read_file:
+   path: f"{file}_functions.json"
+```
+
+#### 16.6 トークン最適化のベストプラクティス
+
+##### 16.6.1 適切なツール選択
+```markdown
+# 用途別の最適なツール選択
+1. 全体構造把握: analyze_code_structure (suppress_output: true)
+2. 特定要素検索: query_code (suppress_output: true)
+3. 詳細コード確認: extract_code_section (suppress_output: true)
+4. 後続処理: read_file で保存されたファイルを読取
+```
+
+##### 16.6.2 段階的詳細化戦略
+```markdown
+# レベル1: 概要のみ（最小トークン）
+suppress_output: true + output_file
+
+# レベル2: 必要に応じて保存ファイル読取
+read_file: 保存されたファイル
+
+# レベル3: さらに詳細が必要な場合のみ追加抽出
+extract_code_section: 特定行範囲
+```
+
 ## まとめ
 
 ROOはtree-sitter-analyzer MCPツールを最大限活用し、効率的で安全なコード解析・編集を実現する。標準ツールよりもMCPツールを優先し、トークン効率化と構造化された解析を重視する。
@@ -824,3 +1046,4 @@ ROOはtree-sitter-analyzer MCPツールを最大限活用し、効率的で安�
 5. **セキュリティ重視**: プロジェクト境界内での安全な操作
 6. **日本語検索対策**: 汎用語での無制限検索を避け、段階的アプローチを採用
 7. **NEW: 検索最適化**: `find_and_grep`と`search_content`でのファイル出力機能活用
+8. **NEW: コード読取最適化**: `extract_code_section`と`query_code`でのファイル出力機能活用

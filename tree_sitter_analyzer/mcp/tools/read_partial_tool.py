@@ -12,6 +12,7 @@ from typing import Any
 
 from ...file_handler import read_file_partial
 from ...utils import setup_logger
+from ..utils.file_output_manager import FileOutputManager
 from .base_tool import BaseMCPTool
 
 # Set up logging
@@ -29,6 +30,7 @@ class ReadPartialTool(BaseMCPTool):
     def __init__(self, project_root: str = None) -> None:
         """Initialize the read partial tool."""
         super().__init__(project_root)
+        self.file_output_manager = FileOutputManager(project_root)
         logger.info("ReadPartialTool initialized with security validation")
 
     def get_tool_schema(self) -> dict[str, Any]:
@@ -71,6 +73,15 @@ class ReadPartialTool(BaseMCPTool):
                     "enum": ["text", "json"],
                     "default": "text",
                 },
+                "output_file": {
+                    "type": "string",
+                    "description": "Optional filename to save output to file (extension auto-detected based on content)",
+                },
+                "suppress_output": {
+                    "type": "boolean",
+                    "description": "When true and output_file is specified, suppress partial_content_result in response to save tokens",
+                    "default": False,
+                },
             },
             "required": ["file_path", "start_line"],
             "additionalProperties": False,
@@ -102,6 +113,8 @@ class ReadPartialTool(BaseMCPTool):
         end_line = arguments.get("end_line")
         start_column = arguments.get("start_column")
         end_column = arguments.get("end_column")
+        output_file = arguments.get("output_file")
+        suppress_output = arguments.get("suppress_output", False)
         # output_format = arguments.get("format", "text")  # Not used currently
 
         # Resolve file path using common path resolver
@@ -186,7 +199,48 @@ class ReadPartialTool(BaseMCPTool):
                     f"Successfully read {len(content)} characters from {file_path}"
                 )
 
-                return {"partial_content_result": cli_output}
+                # Build result - conditionally include partial_content_result based on suppress_output
+                result = {
+                    "file_path": file_path,
+                    "range": {
+                        "start_line": start_line,
+                        "end_line": end_line,
+                        "start_column": start_column,
+                        "end_column": end_column,
+                    },
+                    "content_length": len(content),
+                }
+
+                # Only include partial_content_result if not suppressed or no output file specified
+                if not suppress_output or not output_file:
+                    result["partial_content_result"] = cli_output
+
+                # Handle file output if requested
+                if output_file:
+                    try:
+                        # Generate base name from original file path if not provided
+                        if not output_file or output_file.strip() == "":
+                            base_name = Path(file_path).stem + "_extract"
+                        else:
+                            base_name = output_file
+
+                        # Save to file with automatic extension detection
+                        saved_file_path = self.file_output_manager.save_to_file(
+                            content=cli_output,
+                            base_name=base_name
+                        )
+                        
+                        result["output_file_path"] = saved_file_path
+                        result["file_saved"] = True
+                        
+                        logger.info(f"Extract output saved to: {saved_file_path}")
+                        
+                    except Exception as e:
+                        logger.error(f"Failed to save output to file: {e}")
+                        result["file_save_error"] = str(e)
+                        result["file_saved"] = False
+
+                return result
 
         except Exception as e:
             logger.error(f"Error reading partial content from {file_path}: {e}")
@@ -282,6 +336,20 @@ class ReadPartialTool(BaseMCPTool):
                 raise ValueError("format must be a string")
             if format_value not in ["text", "json"]:
                 raise ValueError("format must be 'text' or 'json'")
+
+        # Validate output_file if provided
+        if "output_file" in arguments:
+            output_file = arguments["output_file"]
+            if not isinstance(output_file, str):
+                raise ValueError("output_file must be a string")
+            if not output_file.strip():
+                raise ValueError("output_file cannot be empty")
+
+        # Validate suppress_output if provided
+        if "suppress_output" in arguments:
+            suppress_output = arguments["suppress_output"]
+            if not isinstance(suppress_output, bool):
+                raise ValueError("suppress_output must be a boolean")
 
         return True
 

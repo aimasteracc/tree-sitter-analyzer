@@ -7,11 +7,13 @@ Supports both predefined query keys and custom query strings.
 """
 
 import logging
+from pathlib import Path
 from typing import Any
 
 from ...core.query_service import QueryService
 from ...language_detector import detect_language_from_file
 from ..utils.error_handler import handle_mcp_errors
+from ..utils.file_output_manager import FileOutputManager
 from .base_tool import BaseMCPTool
 
 logger = logging.getLogger(__name__)
@@ -24,6 +26,7 @@ class QueryTool(BaseMCPTool):
         """Initialize query tool"""
         super().__init__(project_root)
         self.query_service = QueryService(project_root)
+        self.file_output_manager = FileOutputManager(project_root)
 
     def set_project_path(self, project_path: str) -> None:
         """
@@ -34,6 +37,7 @@ class QueryTool(BaseMCPTool):
         """
         super().set_project_path(project_path)
         self.query_service = QueryService(project_path)
+        self.file_output_manager.set_project_root(project_path)
         logger.info(f"QueryTool project path updated to: {project_path}")
 
     def get_tool_definition(self) -> dict[str, Any]:
@@ -74,6 +78,15 @@ class QueryTool(BaseMCPTool):
                         "enum": ["json", "summary"],
                         "default": "json",
                         "description": "Output format",
+                    },
+                    "output_file": {
+                        "type": "string",
+                        "description": "Optional filename to save output to file (extension auto-detected based on content)",
+                    },
+                    "suppress_output": {
+                        "type": "boolean",
+                        "description": "When true and output_file is specified, suppress detailed output in response to save tokens",
+                        "default": False,
                     },
                 },
                 "required": ["file_path"],
@@ -118,6 +131,8 @@ class QueryTool(BaseMCPTool):
         query_string = arguments.get("query_string")
         filter_expression = arguments.get("filter")
         output_format = arguments.get("output_format", "json")
+        output_file = arguments.get("output_file")
+        suppress_output = arguments.get("suppress_output", False)
 
         if not query_key and not query_string:
             raise ValueError("Either query_key or query_string must be provided")
@@ -148,9 +163,9 @@ class QueryTool(BaseMCPTool):
 
             # Format output
             if output_format == "summary":
-                return self._format_summary(results, query_key or "custom", language)
+                formatted_result = self._format_summary(results, query_key or "custom", language)
             else:
-                return {
+                formatted_result = {
                     "success": True,
                     "results": results,
                     "count": len(results),
@@ -158,6 +173,60 @@ class QueryTool(BaseMCPTool):
                     "language": language,
                     "query": query_key or query_string,
                 }
+
+            # Handle file output if requested
+            if output_file:
+                try:
+                    import json
+                    
+                    # Generate base name from original file path if not provided
+                    if not output_file or output_file.strip() == "":
+                        base_name = f"{Path(file_path).stem}_query_{query_key or 'custom'}"
+                    else:
+                        base_name = output_file
+
+                    # Convert result to JSON string for file output
+                    json_content = json.dumps(formatted_result, indent=2, ensure_ascii=False)
+
+                    # Save to file with automatic extension detection
+                    saved_file_path = self.file_output_manager.save_to_file(
+                        content=json_content,
+                        base_name=base_name
+                    )
+                    
+                    # Add file output info to result
+                    formatted_result["output_file_path"] = saved_file_path
+                    formatted_result["file_saved"] = True
+                    
+                    logger.info(f"Query output saved to: {saved_file_path}")
+                    
+                except Exception as e:
+                    logger.error(f"Failed to save output to file: {e}")
+                    formatted_result["file_save_error"] = str(e)
+                    formatted_result["file_saved"] = False
+
+            # Apply suppress_output logic
+            if suppress_output and output_file:
+                # Create minimal result when output is suppressed
+                minimal_result = {
+                    "success": formatted_result.get("success", True),
+                    "count": formatted_result.get("count", len(results)),
+                    "file_path": file_path,
+                    "language": language,
+                    "query": query_key or query_string,
+                }
+                
+                # Include file output info if present
+                if "output_file_path" in formatted_result:
+                    minimal_result["output_file_path"] = formatted_result["output_file_path"]
+                    minimal_result["file_saved"] = formatted_result["file_saved"]
+                if "file_save_error" in formatted_result:
+                    minimal_result["file_save_error"] = formatted_result["file_save_error"]
+                    minimal_result["file_saved"] = formatted_result["file_saved"]
+                
+                return minimal_result
+            else:
+                return formatted_result
 
         except Exception as e:
             logger.error(f"Query execution failed: {e}")
@@ -313,5 +382,19 @@ class QueryTool(BaseMCPTool):
                 raise ValueError("output_format must be a string")
             if output_format not in ["json", "summary"]:
                 raise ValueError("output_format must be one of: json, summary")
+
+        # Validate output_file if provided
+        if "output_file" in arguments:
+            output_file = arguments["output_file"]
+            if not isinstance(output_file, str):
+                raise ValueError("output_file must be a string")
+            if not output_file.strip():
+                raise ValueError("output_file cannot be empty")
+
+        # Validate suppress_output if provided
+        if "suppress_output" in arguments:
+            suppress_output = arguments["suppress_output"]
+            if not isinstance(suppress_output, bool):
+                raise ValueError("suppress_output must be a boolean")
 
         return True
