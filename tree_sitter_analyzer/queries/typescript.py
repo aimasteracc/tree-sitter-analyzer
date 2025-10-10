@@ -232,7 +232,7 @@ ALL_QUERIES["type"] = {
 }
 ALL_QUERIES["types"] = {
     "query": TYPE_ALIASES,
-    "description": "Search all type aliases (alias for type_aliases)",
+    "description": "Search all types (alias for type_aliases)",
 }
 
 # Add more specific function queries
