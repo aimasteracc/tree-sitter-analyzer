@@ -349,3 +349,42 @@ class LanguageInfoTool(BaseMCPTool):
             lines.append(f"  Patterns: {len(detector_info.get('patterns', []))} detection patterns")
         
         return "\n".join(lines)
+
+    def validate_arguments(self, arguments: dict[str, Any]) -> bool:
+        """
+        Validate tool arguments.
+
+        Args:
+            arguments: Arguments to validate
+
+        Returns:
+            True if arguments are valid
+
+        Raises:
+            ValueError: If arguments are invalid
+        """
+        # Validate info_type if provided
+        if "info_type" in arguments:
+            info_type = arguments["info_type"]
+            if not isinstance(info_type, str):
+                raise ValueError("info_type must be a string")
+            if info_type not in ["languages", "extensions", "plugins", "all"]:
+                raise ValueError("info_type must be one of: languages, extensions, plugins, all")
+
+        # Validate language if provided
+        if "language" in arguments:
+            language = arguments["language"]
+            if not isinstance(language, str):
+                raise ValueError("language must be a string")
+            if not language.strip():
+                raise ValueError("language cannot be empty")
+
+        # Validate format if provided
+        if "format" in arguments:
+            format_type = arguments["format"]
+            if not isinstance(format_type, str):
+                raise ValueError("format must be a string")
+            if format_type not in ["json", "text"]:
+                raise ValueError("format must be one of: json, text")
+
+        return True

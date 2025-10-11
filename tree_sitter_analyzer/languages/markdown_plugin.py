@@ -209,6 +209,17 @@ class MarkdownElementExtractor(ElementExtractor):
             log_debug(f"Error during image extraction: {e}")
             return []
 
+        # 重複除去: 同じalt_textとurlを持つ要素を除去
+        seen = set()
+        unique_images = []
+        for img in images:
+            key = (img.alt_text or "", img.url or "")
+            if key not in seen:
+                seen.add(key)
+                unique_images.append(img)
+
+        images = unique_images
+
         log_debug(f"Extracted {len(images)} Markdown images")
         return images
 

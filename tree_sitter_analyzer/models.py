@@ -128,10 +128,21 @@ class Variable(CodeElement):
     visibility: str = "private"
     element_type: str = "variable"
     initializer: str | None = None
+    value: str | None = None  # Add value field for HTML attributes
     # Java-specific fields for detailed analysis
     annotations: list[dict[str, Any]] = field(default_factory=list)
     is_final: bool = False
     field_type: str | None = None  # Alias for variable_type
+
+    @property
+    def var_type(self) -> str | None:
+        """Alias for variable_type for backward compatibility"""
+        return self.variable_type
+
+    @var_type.setter
+    def var_type(self, value: str | None) -> None:
+        """Setter for var_type alias"""
+        self.variable_type = value
 
 
 @dataclass(frozen=False)

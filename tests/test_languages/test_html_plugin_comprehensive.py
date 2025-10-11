@@ -5,7 +5,7 @@ comments, embedded scripts/styles, and HTML-specific features.
 """
 
 import pytest
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch, MagicMock, AsyncMock
 from tree_sitter_analyzer.languages.html_plugin import HTMLElementExtractor, HTMLLanguagePlugin
 from tree_sitter_analyzer.models import Function, Class, Variable, Import
 
@@ -687,9 +687,10 @@ class TestHTMLLanguagePlugin:
         mock_result = Mock(spec=AnalysisResult)
         mock_result.success = True
         mock_result.elements = []
+        mock_result.file_path = "test.html"  # Add missing file_path attribute
         
         with patch('tree_sitter_analyzer.languages.html_plugin.UnifiedAnalysisEngine') as mock_engine:
-            mock_engine_instance = Mock()
+            mock_engine_instance = AsyncMock()  # Use AsyncMock for async methods
             mock_engine_instance.analyze_file.return_value = mock_result
             mock_engine.return_value = mock_engine_instance
             
@@ -721,19 +722,39 @@ class TestHTMLLanguagePlugin:
         """Test HTML-specific metrics enhancement"""
         from tree_sitter_analyzer.models import AnalysisResult, CodeElement
         
-        # Create mock elements
-        mock_elements = [
-            Mock(spec=CodeElement, element_type="function", name="div"),
-            Mock(spec=CodeElement, element_type="function", name="p"),
-            Mock(spec=CodeElement, element_type="function", name="header"),
-            Mock(spec=CodeElement, element_type="function", name="form"),
-            Mock(spec=CodeElement, element_type="function", name="img"),
-            Mock(spec=CodeElement, element_type="variable", name="class"),
-            Mock(spec=CodeElement, element_type="variable", name="id"), 
-            Mock(spec=CodeElement, element_type="import", name="comment"),
-            Mock(spec=CodeElement, element_type="class", name="script_block"),
-            Mock(spec=CodeElement, element_type="class", name="style_block"),
-        ]
+        # Create mock elements with proper attribute configuration
+        mock_elements = []
+        
+        # HTML elements (functions)
+        for name in ["div", "p", "header", "form", "img"]:
+            mock_elem = Mock(spec=CodeElement)
+            mock_elem.element_type = "function"
+            mock_elem.name = name
+            mock_elements.append(mock_elem)
+        
+        # Attributes (variables)
+        for name in ["class", "id"]:
+            mock_elem = Mock(spec=CodeElement)
+            mock_elem.element_type = "variable"
+            mock_elem.name = name
+            mock_elements.append(mock_elem)
+        
+        # Comments (imports)
+        mock_elem = Mock(spec=CodeElement)
+        mock_elem.element_type = "import"
+        mock_elem.name = "comment"
+        mock_elements.append(mock_elem)
+        
+        # Embedded content (classes) - with script and style names
+        script_elem = Mock(spec=CodeElement)
+        script_elem.element_type = "class"
+        script_elem.name = "script_something"
+        mock_elements.append(script_elem)
+        
+        style_elem = Mock(spec=CodeElement)
+        style_elem.element_type = "class"
+        style_elem.name = "style_something"
+        mock_elements.append(style_elem)
         
         # Mock result with metrics
         mock_result = Mock(spec=AnalysisResult)

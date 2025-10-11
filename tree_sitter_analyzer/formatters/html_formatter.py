@@ -337,6 +337,18 @@ class HTMLTableFormatter(BaseTableFormatter):
         result.append("```")
         return "\n".join(result)
 
+    def _format_csv(self, data: dict[str, Any]) -> str:
+        """CSV format for HTML elements (delegates to _format_csv_table)"""
+        return self._format_csv_table(data)
+
+    def _format_json(self, data: dict[str, Any]) -> str:
+        """Format data as JSON"""
+        import json
+        try:
+            return json.dumps(data, indent=2, ensure_ascii=False)
+        except (TypeError, ValueError) as e:
+            return f"# JSON serialization error: {e}\n"
+
     # Helper methods for HTML-specific processing
     
     def _count_attributes(self, raw_text: str) -> int:
