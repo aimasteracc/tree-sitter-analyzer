@@ -37,6 +37,7 @@ class LanguageLoader:
         "rust": "tree_sitter_rust",
         "go": "tree_sitter_go",
         "markdown": "tree_sitter_markdown",
+        "html": "tree_sitter_html",
     }
 
     # TypeScript特別処理（TypeScriptとTSX）

@@ -53,6 +53,7 @@ Tree-sitter Analyzer is an enterprise-grade code analysis tool designed for the 
 | **JavaScript** | Complete Support | ES6+, React/Vue/Angular, JSX |
 | **TypeScript** | Complete Support | Interfaces, types, decorators, TSX/JSX, framework detection |
 | **Markdown** | 🆕 Complete Support | Headers, code blocks, links, images, tables, task lists, blockquotes |
+| **HTML** | 🆕 Complete Support | HTML5 semantic tags, attributes, embedded scripts, styles, comments |
 | **C/C++** | Basic Support | Basic syntax parsing |
 | **Rust** | Basic Support | Basic syntax parsing |
 | **Go** | Basic Support | Basic syntax parsing |
@@ -193,6 +194,9 @@ uv add "tree-sitter-analyzer[popular]"
 
 # Complete installation (including MCP support)
 uv add "tree-sitter-analyzer[all,mcp]"
+
+# Web development language package
+uv add "tree-sitter-analyzer[web]"
 ```
 
 #### ⚡ Quick Experience
@@ -206,6 +210,9 @@ uv run python -m tree_sitter_analyzer examples/BigService.java --advanced --outp
 
 # Generate detailed structure table for code files
 uv run python -m tree_sitter_analyzer examples/BigService.java --table=full
+
+# Analyze HTML file structure
+uv run python -m tree_sitter_analyzer examples/comprehensive_html.html --table=full
 
 # Precise code extraction
 uv run python -m tree_sitter_analyzer examples/BigService.java --partial-read --start-line 93 --end-line 106
@@ -560,7 +567,7 @@ uv run python -m tree_sitter_analyzer --show-query-languages
 | **✂️ Intelligent Code Extraction** | Precision Extraction Tool | Precise extraction by line range<br>Preserves original formatting and indentation<br>Includes position metadata<br>Efficient processing of large files | Zero-loss format preservation<br>Memory-optimized algorithms<br>Streaming processing support |
 | **🔍 Advanced Query Filtering** | Multi-dimensional Filters | **Exact match**: `--filter "name=main"`<br>**Pattern match**: `--filter "name=~auth*"`<br>**Parameter filter**: `--filter "params=2"`<br>**Modifier filter**: `--filter "static=true,public=true"`<br>**Compound conditions**: Combine multiple conditions for precise queries | Flexible query syntax<br>High-performance indexing<br>Intelligent caching mechanisms |
 | **🔗 AI Assistant Integration** | MCP Protocol Support | **Claude Desktop** - Full MCP support<br>**Cursor IDE** - Built-in MCP integration<br>**Roo Code** - MCP protocol support<br>**Other MCP-compatible tools** - Universal MCP server | Standard MCP protocol<br>Plug-and-play design<br>Cross-platform compatibility |
-| **🌍 Multi-language Support** | Enterprise Language Engine | **Java** - Complete support, including Spring, JPA frameworks<br>**Python** - Complete support, including type annotations, decorators<br>**JavaScript** - Enterprise-grade support, including ES6+, React/Vue/Angular, JSX<br>**TypeScript** - **Complete support**, including interfaces, types, decorators, TSX/JSX, framework detection<br>**Markdown** - **🆕 Complete support**, including headers, code blocks, links, images, tables, task lists, blockquotes<br>**C/C++, Rust, Go** - Basic support | Framework-aware parsing<br>Syntax extension support<br>Continuous language updates |
+| **🌍 Multi-language Support** | Enterprise Language Engine | **Java** - Complete support, including Spring, JPA frameworks<br>**Python** - Complete support, including type annotations, decorators<br>**JavaScript** - Enterprise-grade support, including ES6+, React/Vue/Angular, JSX<br>**TypeScript** - **Complete support**, including interfaces, types, decorators, TSX/JSX, framework detection<br>**Markdown** - **🆕 Complete support**, including headers, code blocks, links, images, tables, task lists, blockquotes<br>**HTML** - **🆕 Complete support**, including HTML5 semantic tags, attributes, embedded scripts, styles, comments<br>**C/C++, Rust, Go** - Basic support | Framework-aware parsing<br>Syntax extension support<br>Continuous language updates |
 | **📁 Advanced File Search** | fd+ripgrep Integration | **ListFilesTool** - Intelligent file discovery with multiple filtering conditions<br>**SearchContentTool** - Intelligent content search using regular expressions<br>**FindAndGrepTool** - Combined discovery and search, two-stage workflow | Rust-based high-performance tools<br>Parallel processing capabilities<br>Intelligent cache optimization |
 | **🏗️ Unified Element System** | Revolutionary Architecture Design | **Single element list** - Unified management of all code elements (classes, methods, fields, imports, packages)<br>**Consistent element types** - Each element has an `element_type` attribute<br>**Simplified API** - Clearer interfaces and reduced complexity<br>**Better maintainability** - Single source of truth for all code elements | Unified data model<br>Type safety guarantees<br>Extensible design |
 

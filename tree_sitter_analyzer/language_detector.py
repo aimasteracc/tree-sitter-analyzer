@@ -66,6 +66,12 @@ class LanguageDetector:
         ".mkd": "markdown",
         ".mkdn": "markdown",
         ".mdx": "markdown",
+        # HTML系
+        ".html": "html",
+        ".htm": "html",
+        ".xhtml": "html",
+        ".xml": "xml",
+        ".svg": "html",  # SVG is often handled like HTML
     }
 
     # Ambiguous extensions (map to multiple languages)
@@ -100,6 +106,7 @@ class LanguageDetector:
         "rust",
         "go",
         "markdown",
+        "html",
     }
 
     def __init__(self) -> None:
@@ -143,6 +150,12 @@ class LanguageDetector:
             ".mkd": ("markdown", 0.8),
             ".mkdn": ("markdown", 0.8),
             ".mdx": ("markdown", 0.7),  # MDX might be mixed with JSX
+            # HTML extensions
+            ".html": ("html", 0.9),
+            ".htm": ("html", 0.9),
+            ".xhtml": ("html", 0.8),
+            ".xml": ("xml", 0.7),  # XML can be similar to HTML
+            ".svg": ("html", 0.7),  # SVG handled as HTML
         }
 
         # Content-based detection patterns
@@ -193,6 +206,19 @@ class LanguageDetector:
                 (r"^\s*>\s+", 0.2),  # Blockquotes
                 (r"^\s*\|.*\|", 0.2),  # Tables
                 (r"^[-=]{3,}$", 0.2),  # Setext headers or horizontal rules
+            ],
+            "html": [
+                (r"<!DOCTYPE\s+html", 0.4),  # HTML5 doctype
+                (r"<html\b", 0.3),  # HTML root element
+                (r"<head\b", 0.2),  # Head element
+                (r"<body\b", 0.2),  # Body element
+                (r"<div\b", 0.2),  # Common div element
+                (r"<p\b", 0.2),  # Paragraph element
+                (r"<a\s+href=", 0.2),  # Links
+                (r"<img\s+src=", 0.2),  # Images
+                (r"<script\b", 0.2),  # Script elements
+                (r"<style\b", 0.2),  # Style elements
+                (r"<!--.*-->", 0.1),  # HTML comments
             ],
         }
 

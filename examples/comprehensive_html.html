@@ -1,0 +1,899 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="完整的HTML语法测试样本，覆盖所有HTML5特性">
+    <meta name="keywords" content="HTML5, 语法, 测试, 样本">
+    <meta name="author" content="Tree-sitter Analyzer">
+    <title>HTML语法完整测试样本</title>
+    
+    <!-- 内联CSS样式 -->
+    <style>
+        body {
+            font-family: 'Arial', 'Microsoft YaHei', sans-serif;
+            background-color: #f5f5f5;
+            margin: 0;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            padding: 30px;
+        }
+        
+        .header {
+            text-align: center;
+            border-bottom: 2px solid #007bff;
+            padding-bottom: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .navigation ul {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+        }
+        
+        .navigation li {
+            background: #007bff;
+            padding: 10px 20px;
+            border-radius: 5px;
+        }
+        
+        .navigation a {
+            color: white;
+            text-decoration: none;
+            font-weight: bold;
+        }
+        
+        .form-group {
+            margin-bottom: 15px;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        
+        .form-group input,
+        .form-group textarea,
+        .form-group select {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        
+        .button {
+            background-color: #28a745;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        
+        .button:hover {
+            background-color: #218838;
+        }
+        
+        .media-section {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin: 20px 0;
+        }
+        
+        .table-responsive {
+            overflow-x: auto;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+        
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        
+        th {
+            background-color: #f2f2f2;
+            font-weight: bold;
+        }
+        
+        .highlight {
+            background-color: yellow;
+        }
+        
+        .code-block {
+            background-color: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 4px;
+            padding: 15px;
+            margin: 15px 0;
+            font-family: 'Courier New', monospace;
+        }
+        
+        @media (max-width: 768px) {
+            .media-section {
+                grid-template-columns: 1fr;
+            }
+            
+            .navigation ul {
+                flex-direction: column;
+                align-items: center;
+            }
+        }
+    </style>
+    
+    <!-- 外部CSS引用 -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+</head>
+
+<body>
+    <!-- 页面容器 -->
+    <div class="container" id="main-container" data-theme="light" role="main">
+        
+        <!-- 页面头部 -->
+        <header class="header">
+            <h1>HTML5语法完整测试样本</h1>
+            <p class="subtitle">全面覆盖HTML5所有特性和元素的测试文档</p>
+            
+            <!-- 导航菜单 -->
+            <nav class="navigation" role="navigation" aria-label="主导航">
+                <ul>
+                    <li><a href="#basic-elements" aria-label="基础元素">基础元素</a></li>
+                    <li><a href="#forms" aria-label="表单元素">表单</a></li>
+                    <li><a href="#media" aria-label="媒体元素">媒体</a></li>
+                    <li><a href="#semantic" aria-label="语义元素">语义</a></li>
+                    <li><a href="#interactive" aria-label="交互元素">交互</a></li>
+                </ul>
+            </nav>
+        </header>
+
+        <!-- 主要内容区域 -->
+        <main>
+            
+            <!-- 基础文本元素部分 -->
+            <section id="basic-elements" class="content-section">
+                <h2>基础文本元素</h2>
+                
+                <!-- 标题层级 -->
+                <h1>一级标题 (H1)</h1>
+                <h2>二级标题 (H2)</h2>
+                <h3>三级标题 (H3)</h3>
+                <h4>四级标题 (H4)</h4>
+                <h5>五级标题 (H5)</h5>
+                <h6>六级标题 (H6)</h6>
+                
+                <!-- 段落和文本格式 -->
+                <p>这是一个普通段落。包含<strong>粗体文本</strong>、<em>斜体文本</em>、<u>下划线文本</u>、
+                <del>删除线文本</del>、<ins>插入文本</ins>、<mark class="highlight">高亮文本</mark>、
+                <small>小号文本</small>、<sup>上标</sup>、<sub>下标</sub>。</p>
+                
+                <p>这里是一个包含<a href="https://www.example.com" target="_blank" rel="noopener noreferrer" 
+                title="示例链接">外部链接</a>和<a href="#forms">内部锚点链接</a>的段落。</p>
+                
+                <!-- 引用和代码 -->
+                <blockquote cite="https://www.w3.org">
+                    <p>"Web标准的目标是创建一个通用的Web，任何人都可以访问，无论其硬件、软件、语言、文化、位置或物理或心理能力如何。"</p>
+                    <footer>— <cite>W3C使命宣言</cite></footer>
+                </blockquote>
+                
+                <p>内联代码示例：<code>document.getElementById('example')</code></p>
+                
+                <pre class="code-block"><code>// 这是一个代码块
+function greetUser(name) {
+    return `Hello, ${name}!`;
+}
+
+console.log(greetUser("World"));</code></pre>
+                
+                <!-- 列表 -->
+                <h3>列表示例</h3>
+                
+                <h4>无序列表</h4>
+                <ul>
+                    <li>第一项</li>
+                    <li>第二项
+                        <ul>
+                            <li>嵌套项目 1</li>
+                            <li>嵌套项目 2</li>
+                        </ul>
+                    </li>
+                    <li>第三项</li>
+                </ul>
+                
+                <h4>有序列表</h4>
+                <ol>
+                    <li>步骤一</li>
+                    <li>步骤二</li>
+                    <li>步骤三
+                        <ol type="a">
+                            <li>子步骤 a</li>
+                            <li>子步骤 b</li>
+                        </ol>
+                    </li>
+                </ol>
+                
+                <h4>定义列表</h4>
+                <dl>
+                    <dt>HTML</dt>
+                    <dd>超文本标记语言，用于创建网页结构</dd>
+                    <dt>CSS</dt>
+                    <dd>层叠样式表，用于网页样式设计</dd>
+                    <dt>JavaScript</dt>
+                    <dd>编程语言，用于网页交互功能</dd>
+                </dl>
+            </section>
+
+            <!-- 表单元素部分 -->
+            <section id="forms" class="content-section">
+                <h2>表单元素</h2>
+                
+                <form action="/submit" method="post" enctype="multipart/form-data" novalidate>
+                    <fieldset>
+                        <legend>用户信息</legend>
+                        
+                        <!-- 文本输入 -->
+                        <div class="form-group">
+                            <label for="username">用户名 (必填):</label>
+                            <input type="text" id="username" name="username" 
+                                   placeholder="请输入用户名" required minlength="3" maxlength="20"
+                                   pattern="[A-Za-z0-9]+" title="只能包含字母和数字">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="email">电子邮箱:</label>
+                            <input type="email" id="email" name="email" 
+                                   placeholder="user@example.com" required>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="password">密码:</label>
+                            <input type="password" id="password" name="password" 
+                                   placeholder="至少8位字符" required minlength="8">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="phone">手机号码:</label>
+                            <input type="tel" id="phone" name="phone" 
+                                   pattern="[0-9]{11}" placeholder="13800138000">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="website">个人网站:</label>
+                            <input type="url" id="website" name="website" 
+                                   placeholder="https://www.example.com">
+                        </div>
+                        
+                        <!-- 数字和范围输入 -->
+                        <div class="form-group">
+                            <label for="age">年龄:</label>
+                            <input type="number" id="age" name="age" 
+                                   min="1" max="120" step="1" value="25">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="salary">期望薪资范围:</label>
+                            <input type="range" id="salary" name="salary" 
+                                   min="3000" max="50000" step="1000" value="10000">
+                            <output for="salary">10000</output>
+                        </div>
+                        
+                        <!-- 日期时间输入 -->
+                        <div class="form-group">
+                            <label for="birth-date">出生日期:</label>
+                            <input type="date" id="birth-date" name="birth_date" 
+                                   min="1900-01-01" max="2024-12-31">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="meeting-time">会议时间:</label>
+                            <input type="datetime-local" id="meeting-time" name="meeting_time">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="work-time">工作时间:</label>
+                            <input type="time" id="work-time" name="work_time" value="09:00">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="work-week">工作周:</label>
+                            <input type="week" id="work-week" name="work_week">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="work-month">工作月份:</label>
+                            <input type="month" id="work-month" name="work_month">
+                        </div>
+                    </fieldset>
+                    
+                    <fieldset>
+                        <legend>选择和偏好</legend>
+                        
+                        <!-- 下拉选择 -->
+                        <div class="form-group">
+                            <label for="country">国家/地区:</label>
+                            <select id="country" name="country" required>
+                                <option value="">请选择国家</option>
+                                <option value="cn">中国</option>
+                                <option value="us">美国</option>
+                                <option value="jp">日本</option>
+                                <option value="uk">英国</option>
+                                <optgroup label="其他亚洲国家">
+                                    <option value="kr">韩国</option>
+                                    <option value="sg">新加坡</option>
+                                    <option value="th">泰国</option>
+                                </optgroup>
+                            </select>
+                        </div>
+                        
+                        <!-- 多选列表 -->
+                        <div class="form-group">
+                            <label for="skills">技能 (可多选):</label>
+                            <select id="skills" name="skills" multiple size="5">
+                                <option value="html">HTML</option>
+                                <option value="css">CSS</option>
+                                <option value="js" selected>JavaScript</option>
+                                <option value="python">Python</option>
+                                <option value="java">Java</option>
+                                <option value="react" selected>React</option>
+                                <option value="vue">Vue.js</option>
+                            </select>
+                        </div>
+                        
+                        <!-- 单选按钮 -->
+                        <div class="form-group">
+                            <fieldset>
+                                <legend>性别:</legend>
+                                <input type="radio" id="male" name="gender" value="male">
+                                <label for="male">男</label>
+                                
+                                <input type="radio" id="female" name="gender" value="female">
+                                <label for="female">女</label>
+                                
+                                <input type="radio" id="other" name="gender" value="other" checked>
+                                <label for="other">其他</label>
+                            </fieldset>
+                        </div>
+                        
+                        <!-- 复选框 -->
+                        <div class="form-group">
+                            <fieldset>
+                                <legend>兴趣爱好:</legend>
+                                <input type="checkbox" id="reading" name="hobbies" value="reading" checked>
+                                <label for="reading">阅读</label>
+                                
+                                <input type="checkbox" id="music" name="hobbies" value="music">
+                                <label for="music">音乐</label>
+                                
+                                <input type="checkbox" id="sports" name="hobbies" value="sports" checked>
+                                <label for="sports">运动</label>
+                                
+                                <input type="checkbox" id="travel" name="hobbies" value="travel">
+                                <label for="travel">旅行</label>
+                            </fieldset>
+                        </div>
+                        
+                        <!-- 文本区域 -->
+                        <div class="form-group">
+                            <label for="bio">个人简介:</label>
+                            <textarea id="bio" name="bio" rows="5" cols="50" 
+                                      placeholder="请简单介绍一下自己..." maxlength="500"></textarea>
+                        </div>
+                        
+                        <!-- 文件上传 -->
+                        <div class="form-group">
+                            <label for="avatar">头像上传:</label>
+                            <input type="file" id="avatar" name="avatar" 
+                                   accept="image/png,image/jpeg,image/gif" capture="camera">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="documents">文档上传 (多文件):</label>
+                            <input type="file" id="documents" name="documents" 
+                                   multiple accept=".pdf,.doc,.docx">
+                        </div>
+                        
+                        <!-- 颜色和搜索 -->
+                        <div class="form-group">
+                            <label for="theme-color">主题色彩:</label>
+                            <input type="color" id="theme-color" name="theme_color" value="#007bff">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="search-term">搜索:</label>
+                            <input type="search" id="search-term" name="search_term" 
+                                   placeholder="输入搜索关键词...">
+                        </div>
+                        
+                        <!-- 隐藏字段 -->
+                        <input type="hidden" name="form_token" value="abc123xyz789">
+                        <input type="hidden" name="form_version" value="2.1">
+                    </fieldset>
+                    
+                    <!-- 表单控制按钮 -->
+                    <div class="form-group">
+                        <button type="submit" class="button">提交表单</button>
+                        <button type="reset" class="button">重置表单</button>
+                        <button type="button" class="button" onclick="validateForm()">验证表单</button>
+                    </div>
+                </form>
+            </section>
+
+            <!-- 媒体元素部分 -->
+            <section id="media" class="content-section">
+                <h2>媒体元素</h2>
+                
+                <div class="media-section">
+                    <!-- 图片 -->
+                    <div>
+                        <h3>图片元素</h3>
+                        <figure>
+                            <img src="https://via.placeholder.com/400x300/007bff/ffffff?text=示例图片" 
+                                 alt="示例图片描述" 
+                                 title="这是一个示例图片"
+                                 width="400" height="300"
+                                 loading="lazy"
+                                 crossorigin="anonymous">
+                            <figcaption>图片说明：这是一个占位图片示例</figcaption>
+                        </figure>
+                        
+                        <!-- 响应式图片 -->
+                        <picture>
+                            <source media="(max-width: 768px)" 
+                                    srcset="https://via.placeholder.com/300x200/28a745/ffffff?text=手机版">
+                            <source media="(max-width: 1024px)" 
+                                    srcset="https://via.placeholder.com/600x400/ffc107/000000?text=平板版">
+                            <img src="https://via.placeholder.com/800x600/dc3545/ffffff?text=桌面版" 
+                                 alt="响应式图片">
+                        </picture>
+                        
+                        <!-- 图像映射 -->
+                        <map name="example-map">
+                            <area shape="rect" coords="0,0,100,100" href="#section1" alt="区域1">
+                            <area shape="circle" coords="150,50,40" href="#section2" alt="区域2">
+                            <area shape="poly" coords="200,0,250,50,200,100,150,50" href="#section3" alt="区域3">
+                        </map>
+                        <img src="https://via.placeholder.com/300x100/6f42c1/ffffff?text=可点击区域" 
+                             usemap="#example-map" alt="图像映射示例">
+                    </div>
+                    
+                    <!-- 音频和视频 -->
+                    <div>
+                        <h3>音频视频</h3>
+                        
+                        <h4>音频播放器</h4>
+                        <audio controls preload="metadata" crossorigin="anonymous">
+                            <source src="example-audio.mp3" type="audio/mpeg">
+                            <source src="example-audio.ogg" type="audio/ogg">
+                            <source src="example-audio.wav" type="audio/wav">
+                            您的浏览器不支持音频播放。
+                            <track kind="captions" src="audio-captions-zh.vtt" srclang="zh" label="中文字幕" default>
+                            <track kind="captions" src="audio-captions-en.vtt" srclang="en" label="English Subtitles">
+                        </audio>
+                        
+                        <h4>视频播放器</h4>
+                        <video width="400" height="300" controls preload="auto" 
+                               poster="https://via.placeholder.com/400x300/17a2b8/ffffff?text=视频封面"
+                               crossorigin="anonymous">
+                            <source src="example-video.mp4" type="video/mp4">
+                            <source src="example-video.webm" type="video/webm">
+                            <source src="example-video.ogv" type="video/ogg">
+                            您的浏览器不支持视频播放。
+                            <track kind="subtitles" src="video-subtitles-zh.vtt" srclang="zh" label="中文字幕" default>
+                            <track kind="subtitles" src="video-subtitles-en.vtt" srclang="en" label="English Subtitles">
+                            <track kind="chapters" src="video-chapters.vtt" srclang="zh" label="章节导航">
+                        </video>
+                        
+                        <!-- 嵌入内容 -->
+                        <h4>嵌入内容</h4>
+                        <embed src="example-document.pdf" type="application/pdf" width="400" height="300">
+                        
+                        <object data="example-flash.swf" type="application/x-shockwave-flash" 
+                                width="400" height="300">
+                            <param name="quality" value="high">
+                            <param name="wmode" value="transparent">
+                            Flash内容无法显示
+                        </object>
+                        
+                        <iframe src="https://www.example.com" 
+                                width="400" height="300" 
+                                title="外部网页嵌入"
+                                sandbox="allow-scripts allow-same-origin"
+                                loading="lazy"
+                                referrerpolicy="no-referrer">
+                            iframe不支持的浏览器内容
+                        </iframe>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 表格元素部分 -->
+            <section id="tables" class="content-section">
+                <h2>表格元素</h2>
+                
+                <div class="table-responsive">
+                    <table>
+                        <caption>员工信息统计表</caption>
+                        <colgroup>
+                            <col style="background-color: #f8f9fa;">
+                            <col span="2" style="background-color: #e9ecef;">
+                            <col style="background-color: #dee2e6;">
+                        </colgroup>
+                        <thead>
+                            <tr>
+                                <th scope="col" rowspan="2">姓名</th>
+                                <th scope="colgroup" colspan="2">联系方式</th>
+                                <th scope="col" rowspan="2">部门</th>
+                            </tr>
+                            <tr>
+                                <th scope="col">邮箱</th>
+                                <th scope="col">电话</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <th scope="row">张三</th>
+                                <td>zhangsan@example.com</td>
+                                <td>138-0001-0001</td>
+                                <td>技术部</td>
+                            </tr>
+                            <tr>
+                                <th scope="row">李四</th>
+                                <td>lisi@example.com</td>
+                                <td>138-0002-0002</td>
+                                <td>市场部</td>
+                            </tr>
+                            <tr>
+                                <th scope="row">王五</th>
+                                <td>wangwu@example.com</td>
+                                <td>138-0003-0003</td>
+                                <td>人事部</td>
+                            </tr>
+                        </tbody>
+                        <tfoot>
+                            <tr>
+                                <th scope="row" colspan="3">总计</th>
+                                <td>3人</td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            </section>
+
+            <!-- 语义化元素部分 -->
+            <section id="semantic" class="content-section">
+                <h2>语义化元素</h2>
+                
+                <!-- 文章结构 -->
+                <article>
+                    <header>
+                        <h3>技术文章标题</h3>
+                        <p>发布时间: <time datetime="2024-01-15T10:30:00+08:00" 
+                           title="2024年1月15日上午10:30">2024年1月15日</time></p>
+                        <address>
+                            作者: <a href="mailto:author@example.com">技术作者</a>
+                        </address>
+                    </header>
+                    
+                    <p>这是文章的主要内容段落。包含了各种语义化的HTML5元素示例。</p>
+                    
+                    <aside>
+                        <h4>相关信息</h4>
+                        <p>这是一个侧边栏内容，包含与主文章相关的补充信息。</p>
+                    </aside>
+                    
+                    <footer>
+                        <p>文章标签: 
+                            <span class="tag">HTML5</span>, 
+                            <span class="tag">语义化</span>, 
+                            <span class="tag">Web标准</span>
+                        </p>
+                    </footer>
+                </article>
+                
+                <!-- 详细信息展开 -->
+                <details open>
+                    <summary>点击展开/折叠详细信息</summary>
+                    <p>这里是详细信息的内容。用户可以通过点击summary来控制显示/隐藏这些内容。</p>
+                    <p>这个功能对于创建FAQ、折叠面板等非常有用。</p>
+                </details>
+                
+                <!-- 对话框 -->
+                <dialog id="example-dialog">
+                    <h3>对话框标题</h3>
+                    <p>这是一个模态对话框的内容。</p>
+                    <button type="button" onclick="closeDialog()">关闭</button>
+                </dialog>
+                
+                <!-- 数据列表 -->
+                <p>选择浏览器: 
+                    <input list="browsers" name="browser" placeholder="输入或选择浏览器">
+                    <datalist id="browsers">
+                        <option value="Chrome">
+                        <option value="Firefox">
+                        <option value="Safari">
+                        <option value="Edge">
+                        <option value="Opera">
+                    </datalist>
+                </p>
+                
+                <!-- 进度和计量 -->
+                <p>任务进度: <progress value="70" max="100">70%</progress></p>
+                <p>磁盘使用量: <meter value="0.7" min="0" max="1" optimum="0.5">70%</meter></p>
+                <p>电池电量: <meter value="80" min="0" max="100" low="20" high="80" optimum="90">80%</meter></p>
+                
+                <!-- 术语定义 -->
+                <p>
+                    <dfn id="html-def" title="HyperText Markup Language">HTML</dfn>
+                    是用于创建网页的标准标记语言。
+                </p>
+                
+                <!-- 键盘输入 -->
+                <p>使用快捷键 <kbd>Ctrl</kbd> + <kbd>S</kbd> 保存文件。</p>
+                
+                <!-- 计算机输出 -->
+                <p>命令执行结果: <samp>Process completed successfully</samp></p>
+                
+                <!-- 变量 -->
+                <p>在数学公式中，<var>x</var> 表示未知数。</p>
+                
+                <!-- 缩写 -->
+                <p><abbr title="World Wide Web Consortium">W3C</abbr>是万维网联盟的缩写。</p>
+                
+                <!-- 数据 -->
+                <p>2024年的销售数据显示增长了 <data value="15.2">15.2%</data>。</p>
+            </section>
+
+            <!-- 交互元素部分 -->
+            <section id="interactive" class="content-section">
+                <h2>交互元素</h2>
+                
+                <!-- 按钮组 -->
+                <div class="button-group">
+                    <button type="button" onclick="showAlert()">显示警告</button>
+                    <button type="button" onclick="changeColor()">改变颜色</button>
+                    <button type="button" onclick="toggleVisibility()">切换显示</button>
+                    <button type="button" onclick="openDialog()">打开对话框</button>
+                </div>
+                
+                <!-- 可编辑内容 -->
+                <div contenteditable="true" style="border: 1px solid #ccc; padding: 10px; margin: 10px 0;">
+                    这段文字是可编辑的。点击这里开始编辑内容。
+                </div>
+                
+                <!-- 拖放元素 -->
+                <div draggable="true" ondragstart="handleDragStart(event)" 
+                     style="background: #007bff; color: white; padding: 20px; margin: 10px 0; cursor: move;">
+                    这个元素可以拖拽
+                </div>
+                
+                <div ondrop="handleDrop(event)" ondragover="handleDragOver(event)"
+                     style="border: 2px dashed #ccc; padding: 40px; text-align: center; margin: 10px 0;">
+                    拖拽目标区域 - 将上面的元素拖到这里
+                </div>
+                
+                <!-- 工具提示 -->
+                <p>
+                    <span title="这是一个工具提示" style="text-decoration: underline dotted;">
+                        鼠标悬停在这里查看提示
+                    </span>
+                </p>
+                
+                <!-- 右键菜单 -->
+                <div contextmenu="custom-menu" 
+                     style="border: 1px solid #ccc; padding: 20px; margin: 10px 0;">
+                    右键点击这里查看自定义菜单
+                </div>
+                
+                <menu type="context" id="custom-menu">
+                    <menuitem label="复制" onclick="copyText()"></menuitem>
+                    <menuitem label="粘贴" onclick="pasteText()"></menuitem>
+                    <menuitem label="删除" onclick="deleteText()"></menuitem>
+                </menu>
+            </section>
+        </main>
+
+        <!-- 页面底部 -->
+        <footer>
+            <hr>
+            <p>&copy; 2024 Tree-sitter Analyzer HTML测试文档。保留所有权利。</p>
+            <p>
+                联系方式: 
+                <a href="mailto:info@example.com">info@example.com</a> | 
+                <a href="tel:+86-400-123-4567">400-123-4567</a>
+            </p>
+            
+            <!-- 版权和法律信息 -->
+            <small>
+                本文档仅用于测试目的。所有商标和版权归各自所有者所有。
+                <a href="/privacy">隐私政策</a> | 
+                <a href="/terms">使用条款</a>
+            </small>
+        </footer>
+    </div>
+
+    <!-- 内联JavaScript -->
+    <script>
+        // 表单验证函数
+        function validateForm() {
+            const username = document.getElementById('username').value;
+            const email = document.getElementById('email').value;
+            
+            if (!username) {
+                alert('请输入用户名');
+                return false;
+            }
+            
+            if (!email) {
+                alert('请输入电子邮箱');
+                return false;
+            }
+            
+            alert('表单验证通过！');
+            return true;
+        }
+        
+        // 交互功能函数
+        function showAlert() {
+            alert('这是一个JavaScript警告对话框');
+        }
+        
+        function changeColor() {
+            const colors = ['#007bff', '#28a745', '#ffc107', '#dc3545', '#6f42c1'];
+            const randomColor = colors[Math.floor(Math.random() * colors.length)];
+            document.body.style.backgroundColor = randomColor;
+        }
+        
+        function toggleVisibility() {
+            const element = document.querySelector('.media-section');
+            if (element.style.display === 'none') {
+                element.style.display = 'grid';
+            } else {
+                element.style.display = 'none';
+            }
+        }
+        
+        function openDialog() {
+            const dialog = document.getElementById('example-dialog');
+            if (dialog.showModal) {
+                dialog.showModal();
+            } else {
+                alert('您的浏览器不支持dialog元素');
+            }
+        }
+        
+        function closeDialog() {
+            const dialog = document.getElementById('example-dialog');
+            if (dialog.close) {
+                dialog.close();
+            }
+        }
+        
+        // 拖放功能
+        function handleDragStart(event) {
+            event.dataTransfer.setData('text/plain', event.target.innerText);
+            event.dataTransfer.effectAllowed = 'move';
+        }
+        
+        function handleDragOver(event) {
+            event.preventDefault();
+            event.dataTransfer.dropEffect = 'move';
+        }
+        
+        function handleDrop(event) {
+            event.preventDefault();
+            const data = event.dataTransfer.getData('text/plain');
+            event.target.innerText = '已放置: ' + data;
+            event.target.style.backgroundColor = '#d4edda';
+        }
+        
+        // 右键菜单功能
+        function copyText() {
+            alert('复制功能');
+        }
+        
+        function pasteText() {
+            alert('粘贴功能');
+        }
+        
+        function deleteText() {
+            alert('删除功能');
+        }
+        
+        // 范围输入更新
+        document.addEventListener('DOMContentLoaded', function() {
+            const salaryInput = document.getElementById('salary');
+            const salaryOutput = document.querySelector('output[for="salary"]');
+            
+            if (salaryInput && salaryOutput) {
+                salaryInput.addEventListener('input', function() {
+                    salaryOutput.textContent = this.value;
+                });
+            }
+            
+            // 平滑滚动
+            document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+                anchor.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    const target = document.querySelector(this.getAttribute('href'));
+                    if (target) {
+                        target.scrollIntoView({
+                            behavior: 'smooth',
+                            block: 'start'
+                        });
+                    }
+                });
+            });
+        });
+        
+        // 页面加载完成事件
+        window.addEventListener('load', function() {
+            console.log('HTML测试页面加载完成');
+            
+            // 添加一些动态内容
+            const dynamicContent = document.createElement('div');
+            dynamicContent.innerHTML = '<p><em>动态生成的内容已加载</em></p>';
+            dynamicContent.style.cssText = 'background: #f0f8f0; padding: 10px; margin: 10px 0; border-left: 4px solid #28a745;';
+            
+            const mainContent = document.querySelector('main');
+            if (mainContent) {
+                mainContent.appendChild(dynamicContent);
+            }
+        });
+    </script>
+    
+    <!-- 外部JavaScript引用 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js" 
+            integrity="sha512-894YE6QWD5I59HgZOGReFYm4dnWc1Qt5NtvYSaNcOP+u1T9qYdvdihz0PPSiiqn/+/3e7Jo4EaG7TubfWGUrMQ==" 
+            crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    
+    <!-- JSON-LD 结构化数据 -->
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "TechArticle",
+        "headline": "HTML5语法完整测试样本",
+        "description": "全面覆盖HTML5所有特性和元素的测试文档",
+        "author": {
+            "@type": "Person",
+            "name": "Tree-sitter Analyzer"
+        },
+        "datePublished": "2024-01-15",
+        "dateModified": "2024-01-15",
+        "publisher": {
+            "@type": "Organization",
+            "name": "Tree-sitter Analyzer Project"
+        }
+    }
+    </script>
+    
+    <!-- 注释：这是HTML文档的结尾 -->
+    <!-- 
+         多行注释示例：
+         这个HTML文档包含了HTML5的所有主要元素和特性
+         用于全面测试HTML解析器的功能
+         包括语义化标签、表单元素、媒体元素等
+    -->
+    
+</body>
+</html>
