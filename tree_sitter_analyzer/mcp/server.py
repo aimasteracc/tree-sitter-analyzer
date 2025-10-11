@@ -61,6 +61,7 @@ from . import MCP_INFO
 from .resources import CodeFileResource, ProjectStatsResource
 from .tools.analyze_scale_tool import AnalyzeScaleTool
 from .tools.find_and_grep_tool import FindAndGrepTool
+from .tools.language_info_tool import LanguageInfoTool
 from .tools.list_files_tool import ListFilesTool
 from .tools.query_tool import QueryTool
 from .tools.read_partial_tool import ReadPartialTool
@@ -105,6 +106,7 @@ class TreeSitterAnalyzerMCPServer:
         self.read_partial_tool = ReadPartialTool(project_root)  # extract_code_section
         self.table_format_tool = TableFormatTool(project_root)  # analyze_code_structure
         self.analyze_scale_tool = AnalyzeScaleTool(project_root)  # check_code_scale
+        self.language_info_tool = LanguageInfoTool(project_root)  # get_language_info
         # New fd/rg tools
         self.list_files_tool = ListFilesTool(project_root)  # list_files
         self.search_content_tool = SearchContentTool(project_root)  # search_content
@@ -465,6 +467,7 @@ class TreeSitterAnalyzerMCPServer:
                     },
                 ),
                 Tool(**self.query_tool.get_tool_definition()),
+                Tool(**self.language_info_tool.get_tool_definition()),
                 Tool(**self.list_files_tool.get_tool_definition()),
                 Tool(**self.search_content_tool.get_tool_definition()),
                 Tool(**self.find_and_grep_tool.get_tool_definition()),
@@ -550,6 +553,10 @@ class TreeSitterAnalyzerMCPServer:
 
                 elif name == "query_code":
                     result = await self.query_tool.execute(arguments)
+
+                elif name == "get_language_info":
+                    # Language info tool doesn't require file_path validation
+                    result = await self.language_info_tool.execute(arguments)
 
                 elif name == "list_files":
                     result = await self.list_files_tool.execute(arguments)
@@ -668,6 +675,7 @@ class TreeSitterAnalyzerMCPServer:
         self.read_partial_tool.set_project_path(project_path)
         self.table_format_tool.set_project_path(project_path)
         self.analyze_scale_tool.set_project_path(project_path)
+        self.language_info_tool.set_project_path(project_path)
         self.list_files_tool.set_project_path(project_path)
         self.search_content_tool.set_project_path(project_path)
         self.find_and_grep_tool.set_project_path(project_path)

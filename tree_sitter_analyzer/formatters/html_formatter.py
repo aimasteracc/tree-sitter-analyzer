@@ -431,7 +431,7 @@ class HTMLTableFormatter(BaseTableFormatter):
         if len(cleaned) <= max_length:
             return f'"{cleaned}"'
         
-        return f'"{cleaned[:max_length]}..."'
+        return f'"{cleaned[:max_length].rstrip()}..."'
 
     def _extract_comment_content(self, raw_text: str) -> str:
         """Extract content from HTML comment"""
