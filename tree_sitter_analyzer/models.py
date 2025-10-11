@@ -46,6 +46,14 @@ class CodeElement(ABC):
     language: str = "unknown"
     docstring: str | None = None  # JavaDoc/docstring for this element
 
+    def to_summary_item(self) -> dict[str, Any]:
+        """Return dictionary for summary item"""
+        return {
+            "name": self.name,
+            "type": getattr(self, "element_type", "unknown"),
+            "lines": {"start": self.start_line, "end": self.end_line},
+        }
+
 
 @dataclass(frozen=False)
 class Function(CodeElement):

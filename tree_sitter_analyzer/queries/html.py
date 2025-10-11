@@ -633,7 +633,8 @@ def get_html_query_categories() -> dict[str, list[str]]:
     Returns:
         Dictionary mapping category names to lists of query names
     """
-    return HTML_QUERY_CATEGORIES.copy()
+    import copy
+    return copy.deepcopy(HTML_QUERY_CATEGORIES)
 
 def search_html_queries(pattern: str) -> list[str]:
     """

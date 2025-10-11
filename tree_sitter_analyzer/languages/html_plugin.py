@@ -378,10 +378,8 @@ class HTMLElementExtractor(ElementExtractor):
                     is_async=False,
                     is_static=False,
                     visibility="public",
-                    complexity=0,  # HTML elements don't have complexity
+                    complexity_score=0,  # HTML elements don't have complexity
                     docstring="",
-                    decorators=[],
-                    signature=f"<{element['name']}>",
                 )
                 functions.append(func)
         
@@ -403,11 +401,7 @@ class HTMLElementExtractor(ElementExtractor):
                     raw_text=element["raw_text"],
                     language="html",
                     methods=[],
-                    fields=[],
-                    base_classes=[],
-                    is_abstract=False,
                     visibility="public",
-                    decorators=[],
                     docstring=f"{element['content_type'].upper()} embedded content",
                 )
                 classes.append(cls)
@@ -429,11 +423,8 @@ class HTMLElementExtractor(ElementExtractor):
                     end_line=element["end_line"],
                     raw_text=element["raw_text"],
                     language="html",
-                    var_type="string",  # HTML attributes are typically strings
-                    value=element.get("value", ""),
-                    is_constant=False,
+                    variable_type="string",  # HTML attributes are typically strings
                     visibility="public",
-                    scope="element",
                 )
                 variables.append(var)
         
@@ -456,8 +447,6 @@ class HTMLElementExtractor(ElementExtractor):
                     language="html",
                     module_name="",  # Comments don't have modules
                     imported_names=[element.get("content", "")],
-                    alias=None,
-                    is_from_import=False,
                 )
                 imports.append(imp)
         
@@ -534,9 +523,10 @@ class HTMLLanguagePlugin(LanguagePlugin):
             media_elements = sum(1 for e in html_elements if e.name.lower() in 
                                ["img", "video", "audio", "picture", "source", "track"])
             
-            # Update metrics
+            # Update metrics - create elements dict if it doesn't exist
             if hasattr(result, 'metrics') and result.metrics:
-                if not hasattr(result.metrics, 'elements'):
+                if not hasattr(result.metrics, 'elements') or result.metrics.elements is None:
+                    # Create empty elements dict if it doesn't exist
                     result.metrics.elements = {}
                 
                 result.metrics.elements.update({
@@ -550,6 +540,21 @@ class HTMLLanguagePlugin(LanguagePlugin):
                     "form_elements": form_elements,
                     "media_elements": media_elements,
                 })
+            else:
+                # Create metrics if not exist
+                from types import SimpleNamespace
+                result.metrics = SimpleNamespace()
+                result.metrics.elements = {
+                    "elements": len(html_elements),
+                    "attributes": len(attributes),
+                    "text_nodes": 0,
+                    "comments": len(comments),
+                    "scripts": sum(1 for e in embedded if "script" in e.name.lower()),
+                    "styles": sum(1 for e in embedded if "style" in e.name.lower()),
+                    "semantic_elements": semantic_elements,
+                    "form_elements": form_elements,
+                    "media_elements": media_elements,
+                }
             
         except Exception as e:
             log_debug(f"Failed to enhance HTML metrics: {e}")
