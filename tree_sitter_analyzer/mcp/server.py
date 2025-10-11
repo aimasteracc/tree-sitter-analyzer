@@ -554,6 +554,10 @@ class TreeSitterAnalyzerMCPServer:
                 elif name == "query_code":
                     result = await self.query_tool.execute(arguments)
 
+                elif name == "get_language_info":
+                    # Language info tool doesn't require file_path validation
+                    result = await self.language_info_tool.execute(arguments)
+
                 elif name == "list_files":
                     result = await self.list_files_tool.execute(arguments)
 
@@ -671,6 +675,7 @@ class TreeSitterAnalyzerMCPServer:
         self.read_partial_tool.set_project_path(project_path)
         self.table_format_tool.set_project_path(project_path)
         self.analyze_scale_tool.set_project_path(project_path)
+        self.language_info_tool.set_project_path(project_path)
         self.list_files_tool.set_project_path(project_path)
         self.search_content_tool.set_project_path(project_path)
         self.find_and_grep_tool.set_project_path(project_path)
