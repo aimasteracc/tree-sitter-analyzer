@@ -53,6 +53,7 @@ Tree-sitter Analyzerは、AI時代のために設計されたエンタープラ�
 | **JavaScript** | 完全サポート | ES6+、React/Vue/Angular、JSX |
 | **TypeScript** | 完全サポート | インターフェース、型、デコレータ、TSX/JSX、フレームワーク検出 |
 | **Markdown** | 🆕 完全サポート | 見出し、コードブロック、リンク、画像、表、タスクリスト、引用 |
+| **HTML** | 🆕 完全サポート | HTML5セマンティックタグ、属性、埋め込みスクリプト、スタイル、コメント |
 | **C/C++** | 基本サポート | 基本構文解析 |
 | **Rust** | 基本サポート | 基本構文解析 |
 | **Go** | 基本サポート | 基本構文解析 |
@@ -193,6 +194,9 @@ uv add "tree-sitter-analyzer[popular]"
 
 # 完全インストール（MCPサポートを含む）
 uv add "tree-sitter-analyzer[all,mcp]"
+
+# Web開発言語パック
+uv add "tree-sitter-analyzer[web]"
 ```
 
 #### ⚡ クイック体験
@@ -206,6 +210,9 @@ uv run python -m tree_sitter_analyzer examples/BigService.java --advanced --outp
 
 # 詳細な構造テーブルを生成
 uv run python -m tree_sitter_analyzer examples/BigService.java --table=full
+
+# HTMLファイル構造を解析
+uv run python -m tree_sitter_analyzer examples/comprehensive_html.html --table=full
 
 # 正確なコード抽出
 uv run python -m tree_sitter_analyzer examples/BigService.java --partial-read --start-line 93 --end-line 106
@@ -560,7 +567,7 @@ uv run python -m tree_sitter_analyzer --show-query-languages
 | **✂️ インテリジェントなコード抽出** | 精密抽出ツール | 行範囲による正確な抽出<br>元のフォーマットとインデントを保持<br>位置メタデータを含む<br>大きなファイルの効率的な処理 | ゼロロスフォーマット保持<br>メモリ最適化アルゴリズム<br>ストリーミング処理サポート |
 | **🔍 高度なクエリフィルタリング** | 多次元フィルター | **完全一致**: `--filter "name=main"`<br>**パターンマッチ**: `--filter "name=~auth*"`<br>**パラメータフィルタ**: `--filter "params=2"`<br>**修飾子フィルタ**: `--filter "static=true,public=true"`<br>**複合条件**: 正確なクエリのために複数の条件を組み合わせる | 柔軟なクエリ構文<br>高性能インデックス<br>インテリジェントキャッシュ機構 |
 | **🔗 AIアシスタント統合** | MCPプロトコルサポート | **Claude Desktop** - 完全なMCPサポート<br>**Cursor IDE** - 組み込みのMCP統合<br>**Roo Code** - MCPプロトコルサポート<br>**その他のMCP互換ツール** - ユニバーサルMCPサーバー | 標準MCPプロトコル<br>プラグアンドプレイ設計<br>クロスプラットフォーム互換性 |
-| **🌍 多言語サポート** | エンタープライズ言語エンジン | **Java** - 完全サポート、Spring、JPAフレームワークを含む<br>**Python** - 完全サポート、型アノテーション、デコレータを含む<br>**JavaScript** - 企業級サポート、ES6+、React/Vue/Angular、JSXを含む<br>**TypeScript** - **完全サポート**、インターフェース、型、デコレータ、TSX/JSX、フレームワーク検出を含む<br>**Markdown** - **🆕 完全サポート**、見出し、コードブロック、リンク、画像、表、タスクリスト、引用を含む<br>**C/C++、Rust、Go** - 基本サポート | フレームワーク認識解析<br>構文拡張サポート<br>継続的言語アップデート |
+| **🌍 多言語サポート** | エンタープライズ言語エンジン | **Java** - 完全サポート、Spring、JPAフレームワークを含む<br>**Python** - 完全サポート、型アノテーション、デコレータを含む<br>**JavaScript** - 企業級サポート、ES6+、React/Vue/Angular、JSXを含む<br>**TypeScript** - **完全サポート**、インターフェース、型、デコレータ、TSX/JSX、フレームワーク検出を含む<br>**Markdown** - **🆕 完全サポート**、見出し、コードブロック、リンク、画像、表、タスクリスト、引用を含む<br>**HTML** - **🆕 完全サポート**、HTML5セマンティックタグ、属性、埋め込みスクリプト、スタイル、コメントを含む<br>**C/C++、Rust、Go** - 基本サポート | フレームワーク認識解析<br>構文拡張サポート<br>継続的言語アップデート |
 | **📁 高度なファイル検索** | fd+ripgrep統合 | **ListFilesTool** - 複数のフィルタリング条件を持つインテリジェントなファイル検出<br>**SearchContentTool** - 正規表現を使用したインテリジェントなコンテンツ検索<br>**FindAndGrepTool** - 検出と検索の組み合わせ、2段階ワークフロー | Rustベースの高性能ツール<br>並列処理能力<br>インテリジェントキャッシュ最適化 |
 | **🏗️ 統一要素システム** | 革新的アーキテクチャ設計 | **単一要素リスト** - すべてのコード要素（クラス、メソッド、フィールド、インポート、パッケージ）の統一管理<br>**一貫した要素タイプ** - 各要素には`element_type`属性があります<br>**簡素化されたAPI** - より明確なインターフェースと複雑さの軽減<br>**より良い保守性** - すべてのコード要素の単一の真実の情報源 | 統一データモデル<br>型安全保証<br>拡張性設計 |
 

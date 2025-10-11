@@ -58,6 +58,7 @@ dependencies = [
     "mcp>=1.12.3",
     "tree-sitter-javascript>=0.23.1,<0.25.0",
     "tree-sitter-markdown>=0.3.1",
+    "tree-sitter-html>=0.20.3,<0.25.0",
 ]
 
 [project.optional-dependencies]
@@ -77,11 +78,13 @@ cpp = ["tree-sitter-cpp>=0.23.4,<0.25.0"]
 rust = ["tree-sitter-rust>=0.20.0,<0.25.0"]
 go = ["tree-sitter-go>=0.20.0,<0.25.0"]
 markdown = ["tree-sitter-markdown>=0.3.1"]
+html = ["tree-sitter-html>=0.20.3,<0.25.0"]
 
 # Language bundles for convenience
 web = [
     "tree-sitter-javascript>=0.23.1,<0.25.0",
-    "tree-sitter-typescript>=0.20.0,<0.25.0"
+    "tree-sitter-typescript>=0.20.0,<0.25.0",
+    "tree-sitter-html>=0.20.3,<0.25.0"
 ]
 systems = [
     "tree-sitter-c>=0.20.0,<0.25.0",
@@ -105,6 +108,7 @@ all-languages = [
     "tree-sitter-rust>=0.20.0,<0.25.0",
     "tree-sitter-go>=0.20.0,<0.25.0",
     "tree-sitter-markdown>=0.3.1",
+    "tree-sitter-html>=0.20.3,<0.25.0",
 ]
 
 # MCP server support
@@ -155,6 +159,7 @@ full = [
     "tree-sitter-rust>=0.20.0,<0.25.0",
     "tree-sitter-go>=0.20.0,<0.25.0",
     "tree-sitter-markdown>=0.3.1",
+    "tree-sitter-html>=0.20.3,<0.25.0",
     "mcp>=1.12.2",
     "anyio>=4.0.0",
     "httpx>=0.27.0,<1.0.0",
@@ -185,6 +190,7 @@ all = [
     "tree-sitter-rust>=0.20.0,<0.25.0",
     "tree-sitter-go>=0.20.0,<0.25.0",
     "tree-sitter-markdown>=0.3.1",
+    "tree-sitter-html>=0.20.3,<0.25.0",
     "mcp>=1.12.2",
     "anyio>=4.0.0",
     "httpx>=0.27.0,<1.0.0",
@@ -223,6 +229,7 @@ python = "tree_sitter_analyzer.languages.python_plugin:PythonPlugin"
 javascript = "tree_sitter_analyzer.languages.javascript_plugin:JavaScriptPlugin"
 typescript = "tree_sitter_analyzer.languages.typescript_plugin:TypeScriptPlugin"
 markdown = "tree_sitter_analyzer.languages.markdown_plugin:MarkdownPlugin"
+html = "tree_sitter_analyzer.languages.html_plugin:HTMLLanguagePlugin"
 
 [project.urls]
 Homepage = "https://github.com/aimasteracc/tree-sitter-analyzer"

@@ -53,6 +53,7 @@ Tree-sitter Analyzer 是一个为AI时代设计的企业级代码分析工具，
 | **JavaScript** | 完整支持 | ES6+、React/Vue/Angular、JSX |
 | **TypeScript** | 完整支持 | 接口、类型、装饰器、TSX/JSX、框架检测 |
 | **Markdown** | 🆕 完整支持 | 标题、代码块、链接、图片、表格、任务列表、引用 |
+| **HTML** | 🆕 完整支持 | HTML5语义标签、属性、嵌入脚本、样式、注释 |
 | **C/C++** | 基础支持 | 基本语法解析 |
 | **Rust** | 基础支持 | 基本语法解析 |
 | **Go** | 基础支持 | 基本语法解析 |
@@ -193,6 +194,9 @@ uv add "tree-sitter-analyzer[popular]"
 
 # 完整安装（包含MCP支持）
 uv add "tree-sitter-analyzer[all,mcp]"
+
+# Web开发语言包
+uv add "tree-sitter-analyzer[web]"
 ```
 
 #### ⚡ 快速体验
@@ -206,6 +210,9 @@ uv run python -m tree_sitter_analyzer examples/BigService.java --advanced --outp
 
 # 生成代码文件的详细结构表格
 uv run python -m tree_sitter_analyzer examples/BigService.java --table=full
+
+# 分析HTML文件结构
+uv run python -m tree_sitter_analyzer examples/comprehensive_html.html --table=full
 
 # 精确代码提取
 uv run python -m tree_sitter_analyzer examples/BigService.java --partial-read --start-line 93 --end-line 106
@@ -561,7 +568,7 @@ uv run python -m tree_sitter_analyzer --show-query-languages
 | **✂️ 智能代码提取** | 精确提取工具 | 精确按行范围提取<br>保持原始格式和缩进<br>包含位置元数据<br>支持大文件高效处理 | 零损失格式保持<br>内存优化算法<br>流式处理支持 |
 | **🔍 高级查询过滤** | 多维度过滤器 | **精确匹配**: `--filter "name=main"`<br>**模式匹配**: `--filter "name=~auth*"`<br>**参数过滤**: `--filter "params=2"`<br>**修饰符过滤**: `--filter "static=true,public=true"`<br>**复合条件**: 组合多个条件进行精确查询 | 灵活的查询语法<br>高性能索引<br>智能缓存机制 |
 | **🔗 AI助手集成** | MCP协议支持 | **Claude Desktop** - 完整MCP支持<br>**Cursor IDE** - 内置MCP集成<br>**Roo Code** - MCP协议支持<br>**其他MCP兼容工具** - 通用MCP服务器 | 标准MCP协议<br>即插即用设计<br>跨平台兼容 |
-| **🌍 多语言支持** | 企业级语言引擎 | **Java** - 完整支持，包括Spring、JPA框架<br>**Python** - 完整支持，包括类型注解、装饰器<br>**JavaScript** - 企业级支持，包括ES6+、React/Vue/Angular、JSX<br>**TypeScript** - **完整支持**，包括接口、类型、装饰器、TSX/JSX、框架检测<br>**Markdown** - **🆕 完整支持**，包括标题、代码块、链接、图片、表格、任务列表、引用<br>**C/C++、Rust、Go** - 基础支持 | 框架感知解析<br>语法扩展支持<br>持续语言更新 |
+| **🌍 多语言支持** | 企业级语言引擎 | **Java** - 完整支持，包括Spring、JPA框架<br>**Python** - 完整支持，包括类型注解、装饰器<br>**JavaScript** - 企业级支持，包括ES6+、React/Vue/Angular、JSX<br>**TypeScript** - **完整支持**，包括接口、类型、装饰器、TSX/JSX、框架检测<br>**Markdown** - **🆕 完整支持**，包括标题、代码块、链接、图片、表格、任务列表、引用<br>**HTML** - **🆕 完整支持**，包括HTML5语义标签、属性、嵌入脚本、样式、注释<br>**C/C++、Rust、Go** - 基础支持 | 框架感知解析<br>语法扩展支持<br>持续语言更新 |
 | **📁 高级文件搜索** | fd+ripgrep集成 | **ListFilesTool** - 智能文件发现，支持多种过滤条件<br>**SearchContentTool** - 智能内容搜索，支持正则表达式<br>**FindAndGrepTool** - 组合发现与搜索，两阶段工作流 | 基于Rust的高性能工具<br>并行处理能力<br>智能缓存优化 |
 | **🏗️ 统一元素系统** | 革命性架构设计 | **单一元素列表** - 所有代码元素（类、方法、字段、导入、包）统一管理<br>**一致的元素类型** - 每个元素都有`element_type`属性<br>**简化的API** - 更清晰的接口和降低的复杂度<br>**更好的可维护性** - 所有代码元素的单一真实来源 | 统一数据模型<br>类型安全保证<br>扩展性设计 |
 
