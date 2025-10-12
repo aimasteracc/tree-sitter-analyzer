@@ -169,7 +169,7 @@ public class SecureService {
         python_dir = project_root / "python" / "security"
         python_dir.mkdir(parents=True)
         
-        (python_dir / "validator.py").write_text("""
+        (python_dir / "validator.py").write_text(r"""
 import re
 import hashlib
 import secrets

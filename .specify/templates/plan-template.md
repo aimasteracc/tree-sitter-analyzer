@@ -31,7 +31,26 @@
 
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
 
-[Gates determined based on constitution file]
+**AI-First Architecture**:
+- [ ] MCPプロトコルサポートが含まれているか
+- [ ] 自然言語インターフェースが設計されているか
+- [ ] トークン制限を考慮した段階的出力制御があるか
+
+**多言語統一アーキテクチャ**:
+- [ ] サポート言語（.java, .js, .mjs, .jsx, .ts, .tsx, .py, .md）に対応しているか
+- [ ] Tree-sitterベースの統一要素システムを使用しているか
+
+**高性能検索・解析**:
+- [ ] fd/ripgrepベースの2段階検索を活用しているか
+- [ ] プロジェクト境界保護とセキュリティ制約が適用されているか
+
+**段階的解析戦略**:
+- [ ] check_code_scaleによる事前評価が含まれているか
+- [ ] ファイルサイズに応じた最適な解析戦略が選択されているか
+
+**品質保証・テスト駆動**:
+- [ ] 新機能にテストファーストアプローチが適用されているか
+- [ ] 後方互換性が考慮されているか
 
 ## Project Structure
 

@@ -26,7 +26,6 @@ from tree_sitter_analyzer.mcp.tools.query_tool import QueryTool
 from tree_sitter_analyzer.mcp.tools.list_files_tool import ListFilesTool
 from tree_sitter_analyzer.mcp.tools.search_content_tool import SearchContentTool
 from tree_sitter_analyzer.mcp.tools.find_and_grep_tool import FindAndGrepTool
-from tree_sitter_analyzer.mcp.tools.set_project_path_tool import SetProjectPathTool
 
 
 class TestPhase7EndToEnd:

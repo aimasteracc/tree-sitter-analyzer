@@ -1,10 +1,10 @@
-<!-- 
+<!--
 Sync Impact Report:
-Version change: [CONSTITUTION_VERSION] → 1.0.0
-Modified principles: Initial creation
-Added sections: All sections (initial creation)
+Version change: 1.0.0 → 1.0.1
+Modified principles: Updated test count from 2934 to 705 (current accurate count)
+Added sections: None
 Removed sections: None
-Templates requiring updates: ✅ All templates will be updated to align with new constitution
+Templates requiring updates: ✅ All templates remain aligned with constitution
 Follow-up TODOs: None - all placeholders resolved
 -->
 
@@ -33,7 +33,7 @@ fd（ファイル検索）とripgrep（コンテンツ検索）を活用した2�
 **根拠**: AIアシスタントのトークン制限内で効率的に動作するため、適応的なアプローチが必要である。
 
 ### V. 品質保証・テスト駆動
-2934個のテストによる包括的品質保証を維持し、すべての新機能はテストファーストで開発される。エンタープライズグレードの安定性を保証し、後方互換性を厳格に管理する。
+705個のテストによる包括的品質保証を維持し、すべての新機能はテストファーストで開発される。エンタープライズグレードの安定性を保証し、後方互換性を厳格に管理する。
 
 **根拠**: 企業環境での信頼性確保と継続的な品質向上のため、妥協のないテスト戦略が必要である。
 
@@ -77,4 +77,4 @@ fd（ファイル検索）とripgrep（コンテンツ検索）を活用した2�
 
 すべてのPR・レビューは憲法準拠を検証し、複雑性の導入には十分な正当化が必要である。日常的な開発ガイダンスについては`.roo/rules/rules.md`を参照する。
 
-**Version**: 1.0.0 | **Ratified**: 2025-10-12 | **Last Amended**: 2025-10-12
+**Version**: 1.0.1 | **Ratified**: 2025-10-12 | **Last Amended**: 2025-10-12
