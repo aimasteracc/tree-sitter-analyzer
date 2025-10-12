@@ -4,7 +4,7 @@
 
 [![Python版本](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![许可证](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![测试](https://img.shields.io/badge/tests-3080%20passed-brightgreen.svg)](#质量保证)
+[![测试](https://img.shields.io/badge/tests-3087%20passed-brightgreen.svg)](#质量保证)
 [![覆盖率](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer)
 [![质量](https://img.shields.io/badge/quality-enterprise%20grade-blue.svg)](#质量保证)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
@@ -60,7 +60,7 @@ Tree-sitter Analyzer 是一个为AI时代设计的企业级代码分析工具，
 | **Go** | 基础支持 | 基本语法解析 |
 
 ### 🏆 生产就绪
-- **3,080个测试** - 100%通过率，企业级质量保证
+- **3,087个测试** - 100%通过率，企业级质量保证
 - **高覆盖率** - 全面的测试覆盖
 - **跨平台支持** - Windows、macOS、Linux全平台兼容
 - **持续维护** - 活跃的开发和社区支持
@@ -572,13 +572,13 @@ uv run python -m tree_sitter_analyzer --show-query-languages
 ## 8. 🏆 质量保证
 
 ### 📊 质量指标
-- **3,080个测试** - 100%通过率 ✅
+- **3,087个测试** - 100%通过率 ✅
 - **高代码覆盖率** - 全面测试套件
 - **零测试失败** - 生产就绪
 - **跨平台支持** - Windows、macOS、Linux
 
 ### ⚡ 最新质量成就（v1.7.4）
-- ✅ **📊 质量指标提升** - 测试数量增加到3,080个，覆盖率保持高水平
+- ✅ **📊 质量指标提升** - 测试数量增加到3,087个，覆盖率保持高水平
 - ✅ **🔧 系统稳定性** - 所有测试通过，系统稳定性和可靠性增强
 - ✅ **🆕 Markdown完整支持** - 新增完整的Markdown语言插件，支持所有主要Markdown元素
 - ✅ **📝 文档分析增强** - 支持标题、代码块、链接、图片、表格、任务列表等元素的智能提取
