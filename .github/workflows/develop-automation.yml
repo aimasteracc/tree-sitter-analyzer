@@ -35,6 +35,15 @@ jobs:
         with:
           version: "latest"
 
+      - name: Install system dependencies
+        run: |
+          # Install fd and ripgrep for MCP tools
+          sudo apt-get update
+          sudo apt-get install -y fd-find ripgrep
+          # Create symlink for fd command (Ubuntu packages it as fdfind)
+          sudo ln -sf /usr/bin/fdfind /usr/bin/fd
+        shell: bash
+
       - name: Install dependencies
         run: uv sync --extra all --extra mcp
 

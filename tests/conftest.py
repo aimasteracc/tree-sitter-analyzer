@@ -202,5 +202,32 @@ def temp_project_dir():
             pass
 
 
+@pytest.fixture(autouse=True)
+def mock_fd_rg_commands(monkeypatch):
+    """
+    Mock fd and rg command availability for tests.
+    
+    This fixture ensures that tests don't fail due to missing external commands
+    by mocking the command availability checks to return True.
+    """
+    def mock_check_external_command(command: str) -> bool:
+        """Mock function that always returns True for fd/rg commands."""
+        return command in ["fd", "rg"]
+    
+    def mock_get_missing_commands() -> list[str]:
+        """Mock function that returns empty list (no missing commands)."""
+        return []
+    
+    # Mock the command checking functions
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.mcp.tools.fd_rg_utils.check_external_command",
+        mock_check_external_command
+    )
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.mcp.tools.fd_rg_utils.get_missing_commands",
+        mock_get_missing_commands
+    )
+
+
 # pytest-asyncio configuration
 pytest_plugins = ["pytest_asyncio"]

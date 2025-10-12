@@ -27,6 +27,15 @@ jobs:
     - name: Set up Python ${{ matrix.python-version }}
       run: uv python install ${{ matrix.python-version }}
 
+    - name: Install system dependencies
+      run: |
+        # Install fd and ripgrep for MCP tools
+        sudo apt-get update
+        sudo apt-get install -y fd-find ripgrep
+        # Create symlink for fd command (Ubuntu packages it as fdfind)
+        sudo ln -sf /usr/bin/fdfind /usr/bin/fd
+      shell: bash
+
     - name: Install dependencies
       run: |
         uv sync --all-extras
@@ -64,6 +73,30 @@ jobs:
 
     - name: Set up Python ${{ matrix.python-version }}
       run: uv python install ${{ matrix.python-version }}
+
+    - name: Install system dependencies (Linux)
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        # Install fd and ripgrep for MCP tools
+        sudo apt-get update
+        sudo apt-get install -y fd-find ripgrep
+        # Create symlink for fd command (Ubuntu packages it as fdfind)
+        sudo ln -sf /usr/bin/fdfind /usr/bin/fd
+      shell: bash
+
+    - name: Install system dependencies (macOS)
+      if: matrix.os == 'macos-13'
+      run: |
+        # Install fd and ripgrep for MCP tools
+        brew install fd ripgrep
+      shell: bash
+
+    - name: Install system dependencies (Windows)
+      if: matrix.os == 'windows-latest'
+      run: |
+        # Install fd and ripgrep for MCP tools
+        choco install fd ripgrep -y
+      shell: powershell
 
     - name: Install dependencies
       run: |
@@ -143,6 +176,15 @@ jobs:
     - name: Set up Python
       run: uv python install 3.11
 
+    - name: Install system dependencies
+      run: |
+        # Install fd and ripgrep for MCP tools
+        sudo apt-get update
+        sudo apt-get install -y fd-find ripgrep
+        # Create symlink for fd command (Ubuntu packages it as fdfind)
+        sudo ln -sf /usr/bin/fdfind /usr/bin/fd
+      shell: bash
+
     - name: Install dependencies
       run: |
         uv sync --all-extras
@@ -166,6 +208,15 @@ jobs:
 
     - name: Set up Python
       run: uv python install 3.11
+
+    - name: Install system dependencies
+      run: |
+        # Install fd and ripgrep for MCP tools
+        sudo apt-get update
+        sudo apt-get install -y fd-find ripgrep
+        # Create symlink for fd command (Ubuntu packages it as fdfind)
+        sudo ln -sf /usr/bin/fdfind /usr/bin/fd
+      shell: bash
 
     - name: Install dependencies
       run: |
@@ -196,6 +247,15 @@ jobs:
 
     - name: Set up Python
       run: uv python install 3.11
+
+    - name: Install system dependencies
+      run: |
+        # Install fd and ripgrep for MCP tools
+        sudo apt-get update
+        sudo apt-get install -y fd-find ripgrep
+        # Create symlink for fd command (Ubuntu packages it as fdfind)
+        sudo ln -sf /usr/bin/fdfind /usr/bin/fd
+      shell: bash
 
     - name: Install build dependencies
       run: |

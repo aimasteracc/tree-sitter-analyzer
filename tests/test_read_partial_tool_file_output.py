@@ -421,20 +421,22 @@ public class Sample {
         test_file = Path(temp_project_dir) / "sample.py"
         
         # Test start_line < 1
-        with pytest.raises(ValueError, match="start_line must be >= 1"):
-            await read_partial_tool.execute({
-                "file_path": str(test_file),
-                "start_line": 0,
-                "end_line": 5
-            })
+        result = await read_partial_tool.execute({
+            "file_path": str(test_file),
+            "start_line": 0,
+            "end_line": 5
+        })
+        assert result["success"] is False
+        assert "start_line must be >= 1" in result["error"]
         
         # Test end_line < start_line
-        with pytest.raises(ValueError, match="end_line must be >= start_line"):
-            await read_partial_tool.execute({
-                "file_path": str(test_file),
-                "start_line": 10,
-                "end_line": 5
-            })
+        result = await read_partial_tool.execute({
+            "file_path": str(test_file),
+            "start_line": 10,
+            "end_line": 5
+        })
+        assert result["success"] is False
+        assert "end_line must be >= start_line" in result["error"]
 
     @pytest.mark.asyncio
     async def test_invalid_column_ranges(self, read_partial_tool, temp_project_dir):
@@ -442,32 +444,35 @@ public class Sample {
         test_file = Path(temp_project_dir) / "sample.py"
         
         # Test negative start_column
-        with pytest.raises(ValueError, match="start_column must be >= 0"):
-            await read_partial_tool.execute({
-                "file_path": str(test_file),
-                "start_line": 1,
-                "start_column": -1
-            })
+        result = await read_partial_tool.execute({
+            "file_path": str(test_file),
+            "start_line": 1,
+            "start_column": -1
+        })
+        assert result["success"] is False
+        assert "start_column must be >= 0" in result["error"]
         
         # Test negative end_column
-        with pytest.raises(ValueError, match="end_column must be >= 0"):
-            await read_partial_tool.execute({
-                "file_path": str(test_file),
-                "start_line": 1,
-                "end_column": -1
-            })
+        result = await read_partial_tool.execute({
+            "file_path": str(test_file),
+            "start_line": 1,
+            "end_column": -1
+        })
+        assert result["success"] is False
+        assert "end_column must be >= 0" in result["error"]
 
     @pytest.mark.asyncio
     async def test_nonexistent_file(self, read_partial_tool, temp_project_dir):
         """Test handling of nonexistent file"""
         nonexistent_file = Path(temp_project_dir) / "nonexistent.py"
         
-        with pytest.raises(ValueError, match="file does not exist"):
-            await read_partial_tool.execute({
-                "file_path": str(nonexistent_file),
-                "start_line": 1,
-                "end_line": 5
-            })
+        result = await read_partial_tool.execute({
+            "file_path": str(nonexistent_file),
+            "start_line": 1,
+            "end_line": 5
+        })
+        assert result["success"] is False
+        assert "file does not exist" in result["error"]
 
     def test_tool_definition_includes_new_parameters(self, read_partial_tool):
         """Test that tool definition includes new parameters"""
