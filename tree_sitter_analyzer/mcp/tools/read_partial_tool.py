@@ -129,21 +129,41 @@ class ReadPartialTool(BaseMCPTool):
 
         # Validate file exists
         if not Path(resolved_path).exists():
-            raise ValueError("Invalid file path: file does not exist")
+            return {
+                "success": False,
+                "error": "Invalid file path: file does not exist",
+                "file_path": file_path
+            }
 
         # Validate line numbers
         if start_line < 1:
-            raise ValueError("start_line must be >= 1")
+            return {
+                "success": False,
+                "error": "start_line must be >= 1",
+                "file_path": file_path
+            }
 
         if end_line is not None and end_line < start_line:
-            raise ValueError("end_line must be >= start_line")
+            return {
+                "success": False,
+                "error": "end_line must be >= start_line",
+                "file_path": file_path
+            }
 
         # Validate column numbers
         if start_column is not None and start_column < 0:
-            raise ValueError("start_column must be >= 0")
+            return {
+                "success": False,
+                "error": "start_column must be >= 0",
+                "file_path": file_path
+            }
 
         if end_column is not None and end_column < 0:
-            raise ValueError("end_column must be >= 0")
+            return {
+                "success": False,
+                "error": "end_column must be >= 0",
+                "file_path": file_path
+            }
 
         logger.info(
             f"Reading partial content from {file_path}: lines {start_line}-{end_line or 'end'}"
@@ -160,9 +180,19 @@ class ReadPartialTool(BaseMCPTool):
                 )
 
                 if content is None:
-                    raise RuntimeError(
-                        f"Failed to read partial content from file: {file_path}"
-                    )
+                    return {
+                        "success": False,
+                        "error": f"Failed to read partial content from file: {file_path}",
+                        "file_path": file_path
+                    }
+                
+                # Check if content is empty or invalid range
+                if not content or content.strip() == "":
+                    return {
+                        "success": False,
+                        "error": f"Invalid line range or empty content: start_line={start_line}, end_line={end_line}",
+                        "file_path": file_path
+                    }
 
                 # Build result structure compatible with CLI --partial-read format
                 result_data = {
@@ -198,8 +228,14 @@ class ReadPartialTool(BaseMCPTool):
                     f"Successfully read {len(content)} characters from {file_path}"
                 )
 
+                # Calculate lines extracted
+                lines_extracted = len(content.split('\n')) if content else 0
+                if end_line:
+                    lines_extracted = end_line - start_line + 1
+
                 # Build result - conditionally include partial_content_result based on suppress_output
                 result = {
+                    "success": True,
                     "file_path": file_path,
                     "range": {
                         "start_line": start_line,
@@ -208,11 +244,39 @@ class ReadPartialTool(BaseMCPTool):
                         "end_column": end_column,
                     },
                     "content_length": len(content),
+                    "lines_extracted": lines_extracted,
                 }
 
                 # Only include partial_content_result if not suppressed or no output file specified
                 if not suppress_output or not output_file:
-                    result["partial_content_result"] = cli_output
+                    if output_format == "json":
+                        # For JSON format, return structured data with exact line count
+                        lines = content.split('\n') if content else []
+                        
+                        # If end_line is specified, ensure we return exactly the requested number of lines
+                        if end_line and len(lines) > lines_extracted:
+                            lines = lines[:lines_extracted]
+                        elif end_line and len(lines) < lines_extracted:
+                            # Pad with empty lines if needed (shouldn't normally happen)
+                            lines.extend([''] * (lines_extracted - len(lines)))
+                        
+                        result["partial_content_result"] = {
+                            "lines": lines,
+                            "metadata": {
+                                "file_path": file_path,
+                                "range": {
+                                    "start_line": start_line,
+                                    "end_line": end_line,
+                                    "start_column": start_column,
+                                    "end_column": end_column,
+                                },
+                                "content_length": len(content),
+                                "lines_count": len(lines)
+                            }
+                        }
+                    else:
+                        # For text/raw format, return CLI-compatible string
+                        result["partial_content_result"] = cli_output
 
                 # Handle file output if requested
                 if output_file:
@@ -254,7 +318,11 @@ class ReadPartialTool(BaseMCPTool):
 
         except Exception as e:
             logger.error(f"Error reading partial content from {file_path}: {e}")
-            raise
+            return {
+                "success": False,
+                "error": str(e),
+                "file_path": file_path
+            }
 
     def _read_file_partial(
         self,

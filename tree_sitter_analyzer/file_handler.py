@@ -8,7 +8,22 @@ This module provides file reading functionality with encoding detection and fall
 from pathlib import Path
 
 from .encoding_utils import read_file_safe
-from .utils import log_error, log_info, log_warning
+from .utils import setup_logger
+
+# Set up logger for this module
+logger = setup_logger(__name__)
+
+def log_error(message: str, *args, **kwargs) -> None:
+    """Log error message"""
+    logger.error(message, *args, **kwargs)
+
+def log_info(message: str, *args, **kwargs) -> None:
+    """Log info message"""
+    logger.info(message, *args, **kwargs)
+
+def log_warning(message: str, *args, **kwargs) -> None:
+    """Log warning message"""
+    logger.warning(message, *args, **kwargs)
 
 
 def detect_language_from_extension(file_path: str) -> str:
