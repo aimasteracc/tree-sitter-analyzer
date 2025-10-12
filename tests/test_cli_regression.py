@@ -485,7 +485,7 @@ class TestCLIRegression:
         stats = data["statistics"]
         assert stats["header_count"] == 28
         assert stats["link_count"] == 5  # Correct: should match summary
-        assert stats["image_count"] == 4
+        assert stats["image_count"] == 4  # Images in test file (including reference definitions)
         assert stats["code_block_count"] == 3
         assert stats["list_count"] == 6
         assert stats["table_count"] == 1
@@ -514,7 +514,7 @@ class TestCLIRegression:
         assert metrics["header_count"] == 28
         assert metrics["max_header_level"] == 6
         assert metrics["link_count"] == 5  # Correct: should match other commands
-        assert metrics["image_count"] == 4  # Correct: should match other commands
+        assert metrics["image_count"] == 4  # Images in test file (including reference definitions)
         assert metrics["code_block_count"] == 3
         assert metrics["list_count"] == 6
         assert metrics["table_count"] == 1
