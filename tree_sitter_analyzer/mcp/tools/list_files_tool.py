@@ -181,6 +181,15 @@ class ListFilesTool(BaseMCPTool):
 
     @handle_mcp_errors("list_files")
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        # Check if fd command is available
+        if not fd_rg_utils.check_external_command("fd"):
+            return {
+                "success": False,
+                "error": "fd command not found. Please install fd (https://github.com/sharkdp/fd) to use this tool.",
+                "count": 0,
+                "results": []
+            }
+        
         self.validate_arguments(arguments)
         roots = self._validate_roots(arguments["roots"])  # normalized absolutes
 

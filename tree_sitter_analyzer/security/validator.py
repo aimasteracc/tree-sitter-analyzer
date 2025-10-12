@@ -268,3 +268,30 @@ class SecurityValidator:
         except Exception as e:
             log_warning(f"Glob pattern validation error: {e}")
             return False, f"Validation error: {str(e)}"
+
+    def validate_path(self, path: str, base_path: str | None = None) -> tuple[bool, str]:
+        """
+        Alias for validate_file_path for backward compatibility.
+        
+        Args:
+            path: Path to validate
+            base_path: Optional base path for relative path validation
+            
+        Returns:
+            Tuple of (is_valid, error_message)
+        """
+        return self.validate_file_path(path, base_path)
+
+    def is_safe_path(self, path: str, base_path: str | None = None) -> bool:
+        """
+        Check if a path is safe (backward compatibility method).
+        
+        Args:
+            path: Path to check
+            base_path: Optional base path for relative path validation
+            
+        Returns:
+            True if path is safe, False otherwise
+        """
+        is_valid, _ = self.validate_file_path(path, base_path)
+        return is_valid

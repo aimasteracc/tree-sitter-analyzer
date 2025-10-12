@@ -69,10 +69,25 @@ tree_sitter_analyzer/
 - **エラーハンドリング**: 包括的な例外処理とログ記録
 - **MCP準拠**: 標準的なMCPパターンに従った実装
 
+### エラーハンドリング実装詳細 *(2025-10-12更新)*
+
+**ツール別エラーハンドリング実装**:
+- **extract_code_section** (`ReadPartialTool`):
+  - 存在しないファイル → `{"success": false, "error": "file does not exist"}`
+  - 例外を投げずに構造化レスポンスを返す
+- **list_files** (`ListFilesTool`):
+  - 存在しないディレクトリ → `ValueError` → `error_handler.py`で`AnalysisError`にラップ
+- **search_content** (`SearchContentTool`):
+  - 存在しないファイル → `ValueError` → `error_handler.py`で`AnalysisError`にラップ
+
+**エラーハンドラー統合**:
+- `error_handler.py`の`async_wrapper`が低レベル例外を`AnalysisError`にラップ
+- 統一されたエラーレスポンス形式を提供
+- 適切なログ記録とスタックトレース保持
+
 ### 🟡 改善が必要な点
 - **文書化**: API仕様書との統合が未完了
 - **テスト**: 統合テストの強化が必要
-- **標準化**: エラーレスポンス形式の統一化
 - **パフォーマンス**: 大規模ファイル対応の最適化
 
 ### 🔴 課題

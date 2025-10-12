@@ -472,6 +472,7 @@ class AnalyzeScaleTool(BaseMCPTool):
 
                 # Build enhanced result structure
                 result = {
+                    "success": True,
                     "file_path": file_path,
                     "language": language,
                     "file_metrics": file_metrics,

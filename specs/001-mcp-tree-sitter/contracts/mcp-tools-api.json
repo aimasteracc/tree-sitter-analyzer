@@ -350,6 +350,14 @@
       "CodeScaleResponse": {
         "type": "object",
         "properties": {
+          "success": {
+            "type": "boolean",
+            "description": "Indicates if the operation was successful"
+          },
+          "error": {
+            "type": "string",
+            "description": "Error message when success is false"
+          },
           "file_path": {
             "type": "string"
           },
@@ -378,7 +386,8 @@
             "type": "string",
             "description": "LLM-optimized analysis guidance"
           }
-        }
+        },
+        "required": ["success"]
       },
       "AnalyzeStructureRequest": {
         "type": "object",
@@ -412,6 +421,14 @@
       "StructureResponse": {
         "type": "object",
         "properties": {
+          "success": {
+            "type": "boolean",
+            "description": "Indicates if the operation was successful"
+          },
+          "error": {
+            "type": "string",
+            "description": "Error message when success is false"
+          },
           "file_path": {
             "type": "string"
           },
@@ -446,7 +463,8 @@
             "type": "string",
             "description": "Path to saved output file if requested"
           }
-        }
+        },
+        "required": ["success"]
       },
       "ExtractSectionRequest": {
         "type": "object",
@@ -496,6 +514,14 @@
       "ExtractResponse": {
         "type": "object",
         "properties": {
+          "success": {
+            "type": "boolean",
+            "description": "Indicates if the operation was successful"
+          },
+          "error": {
+            "type": "string",
+            "description": "Error message when success is false"
+          },
           "file_path": {
             "type": "string"
           },
@@ -527,7 +553,8 @@
             "type": "string",
             "description": "Path to saved output file if requested"
           }
-        }
+        },
+        "required": ["success"]
       },
       "QueryCodeRequest": {
         "type": "object",
@@ -573,6 +600,14 @@
       "QueryResponse": {
         "type": "object",
         "properties": {
+          "success": {
+            "type": "boolean",
+            "description": "Indicates if the operation was successful"
+          },
+          "error": {
+            "type": "string",
+            "description": "Error message when success is false"
+          },
           "file_path": {
             "type": "string"
           },
@@ -609,7 +644,8 @@
             "type": "string",
             "description": "Path to saved output file if requested"
           }
-        }
+        },
+        "required": ["success"]
       },
       "ListFilesRequest": {
         "type": "object",
@@ -672,7 +708,12 @@
         "type": "object",
         "properties": {
           "success": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Indicates if the operation was successful"
+          },
+          "error": {
+            "type": "string",
+            "description": "Error message when success is false"
           },
           "count": {
             "type": "integer"
@@ -706,7 +747,8 @@
               }
             }
           }
-        }
+        },
+        "required": ["success"]
       },
       "SearchContentRequest": {
         "type": "object",
@@ -764,7 +806,12 @@
         "type": "object",
         "properties": {
           "success": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Indicates if the operation was successful"
+          },
+          "error": {
+            "type": "string",
+            "description": "Error message when success is false"
           },
           "count": {
             "type": "integer"
@@ -801,7 +848,8 @@
               }
             }
           }
-        }
+        },
+        "required": ["success"]
       },
       "FindAndGrepRequest": {
         "allOf": [
@@ -826,6 +874,14 @@
       "SetProjectPathResponse": {
         "type": "object",
         "properties": {
+          "success": {
+            "type": "boolean",
+            "description": "Indicates if the operation was successful"
+          },
+          "error": {
+            "type": "string",
+            "description": "Error message when success is false"
+          },
           "status": {
             "type": "string",
             "enum": ["success"]
@@ -833,7 +889,8 @@
           "project_root": {
             "type": "string"
           }
-        }
+        },
+        "required": ["success"]
       },
       "ErrorResponse": {
         "type": "object",

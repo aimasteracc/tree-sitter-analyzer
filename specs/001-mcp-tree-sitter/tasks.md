@@ -126,7 +126,7 @@
 
 **成果**: 包括的セキュリティテストスイート、100%攻撃防御率達成
 
-### T010 - User Story 2 統合テスト ✅ **完了**
+### T010 - User Story 2 統合テスト ✅ **完了** *(2025-10-12更新)*
 **目的**: 高性能検索機能の完全テスト
 **ファイル**: `tests/mcp/test_user_story_2_integration.py`
 **作業内容**:
@@ -137,9 +137,16 @@
 - ✅ エラーハンドリング・ファイル出力・ワークフロー統合テスト
 - ✅ パフォーマンステスト（5秒以内完了確認）
 
-**成果**: 15/15テスト成功、User Story 2の全機能正常動作確認
+**エラーハンドリングテスト修正** *(2025-10-12)*:
+- ✅ `test_error_handling_invalid_paths`修正完了
+- ✅ `extract_code_section`: 存在しないファイル → `success: false`レスポンス検証
+- ✅ `list_files`: 存在しないディレクトリ → `AnalysisError`例外検証
+- ✅ `search_content`: 存在しないファイル → `AnalysisError`例外検証
+- ✅ 実装とテストの整合性確保、全15テスト成功
 
-**Checkpoint**: ✅ User Story 2の独立テスト完了確認
+**成果**: 15/15テスト成功、User Story 2の全機能正常動作確認、エラーハンドリング仕様明確化
+
+**Checkpoint**: ✅ User Story 2の独立テスト完了確認、エラーハンドリング実装詳細文書化
 
 ## Phase 4: User Story 3 - 精密コード抽出・クエリ実行
 

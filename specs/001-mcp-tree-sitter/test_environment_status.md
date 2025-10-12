@@ -92,8 +92,30 @@
 - **安定性**: 127テスト全て成功、信頼性の高い実装
 - **非同期対応**: asyncio テストが適切に実装
 
+#### User Story統合テスト (15テスト)
+✅ **test_user_story_2_integration.py**:
+- `test_extract_code_section_basic` - 基本的なコード抽出機能
+- `test_extract_code_section_json_format` - JSON形式出力
+- `test_list_files_basic_search` - 基本ファイル検索
+- `test_list_files_advanced_filtering` - 高度なフィルタリング
+- `test_list_files_count_only` - カウント専用モード
+- `test_search_content_basic` - 基本コンテンツ検索
+- `test_search_content_regex_pattern` - 正規表現パターン検索
+- `test_search_content_count_only` - カウント専用検索
+- `test_search_content_total_only` - 総数専用検索
+- `test_workflow_file_discovery_and_analysis` - ファイル発見・解析ワークフロー
+- `test_workflow_todo_analysis` - TODOコメント解析ワークフロー
+- `test_workflow_configuration_analysis` - 設定ファイル解析ワークフロー
+- `test_performance_large_search` - 大規模検索パフォーマンス
+- `test_error_handling_invalid_paths` - **修正済み**: 無効パスエラーハンドリング
+- `test_file_output_integration` - ファイル出力統合
+
+**エラーハンドリングテスト修正内容**:
+- `extract_code_section`: 存在しないファイルに対する`success: false`レスポンス検証
+- `list_files`: 存在しないディレクトリに対する`AnalysisError`例外検証
+- `search_content`: 存在しないファイルに対する`AnalysisError`例外検証
+
 ### 🟡 改善可能な点
-- **User Story テスト**: 仕様書のUser Story別テストが未実装
 - **セキュリティテスト**: プロジェクト境界保護の専用テスト強化
 - **パフォーマンステスト**: 大規模ファイル対応の詳細測定
 - **統合テスト**: 実際のMCPクライアントとの統合テスト

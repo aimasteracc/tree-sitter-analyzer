@@ -289,6 +289,15 @@ class SearchContentTool(BaseMCPTool):
 
     @handle_mcp_errors("search_content")
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any] | int:
+        # Check if rg command is available
+        if not fd_rg_utils.check_external_command("rg"):
+            return {
+                "success": False,
+                "error": "rg (ripgrep) command not found. Please install ripgrep (https://github.com/BurntSushi/ripgrep) to use this tool.",
+                "count": 0,
+                "results": []
+            }
+        
         self.validate_arguments(arguments)
 
         roots = arguments.get("roots")

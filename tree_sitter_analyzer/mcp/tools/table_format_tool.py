@@ -242,6 +242,7 @@ class TableFormatTool(BaseMCPTool):
             package_info = {"name": packages[0].name}
 
         return {
+            "success": True,
             "file_path": result.file_path,
             "language": result.language,
             "package": package_info,
@@ -470,6 +471,7 @@ class TableFormatTool(BaseMCPTool):
 
                 # Build result - conditionally include table_output based on suppress_output
                 result = {
+                    "success": True,
                     "format_type": format_type,
                     "file_path": file_path,
                     "language": language,

@@ -675,16 +675,14 @@ temp/
         from tree_sitter_analyzer.mcp.utils.error_handler import AnalysisError
         
         # extract_code_section: 存在しないファイル
-        try:
-            extract_result = await extract_tool.execute({
-                "file_path": "nonexistent/file.py",
-                "start_line": 1,
-                "end_line": 10
-            })
-            # エラーが発生した場合、適切にハンドリングされることを確認
-            assert False, "Expected ValueError for nonexistent file"
-        except ValueError as e:
-            assert "file does not exist" in str(e)
+        extract_result = await extract_tool.execute({
+            "file_path": "nonexistent/file.py",
+            "start_line": 1,
+            "end_line": 10
+        })
+        # エラーが適切にハンドリングされることを確認
+        assert extract_result["success"] is False
+        assert "file does not exist" in extract_result["error"]
         
         # list_files: 存在しないディレクトリ
         try:

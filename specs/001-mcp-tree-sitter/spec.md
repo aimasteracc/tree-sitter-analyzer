@@ -75,6 +75,21 @@ AI開発者（Claude Desktop、Cursor、Roo Codeユーザー）が、自然言�
 - ネットワーク切断やファイルシステムエラー時の適切なフォールバック処理
 - 同時実行される複数のMCPツール呼び出し時のリソース競合回避
 
+### Error Handling Specifications
+
+**ツール別エラーハンドリング動作**:
+
+- **extract_code_section**: 存在しないファイルに対して例外を投げず、`{"success": false, "error": "file does not exist"}`形式のレスポンスを返す
+- **list_files**: 存在しないディレクトリに対して`ValueError`を投げ、`error_handler.py`により`AnalysisError`にラップされる
+- **search_content**: 存在しないファイルに対して`ValueError`を投げ、`error_handler.py`により`AnalysisError`にラップされる
+- **analyze_code_structure**: ファイル解析エラー時は構造化されたエラーレスポンスを返す
+- **query_code**: 不正なクエリに対して詳細なエラーメッセージを含む`AnalysisError`を投げる
+
+**エラーレスポンス形式**:
+- 成功時: `{"success": true, ...}`
+- 失敗時: `{"success": false, "error": "詳細なエラーメッセージ", ...}`
+- 例外時: `AnalysisError`例外（内部`ValueError`等がラップされる）
+
 ## Requirements *(mandatory)*
 
 ### Functional Requirements

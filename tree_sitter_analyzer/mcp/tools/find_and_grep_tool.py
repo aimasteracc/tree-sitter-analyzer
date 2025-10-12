@@ -239,6 +239,16 @@ class FindAndGrepTool(BaseMCPTool):
 
     @handle_mcp_errors("find_and_grep")
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        # Check if both fd and rg commands are available
+        missing_commands = fd_rg_utils.get_missing_commands()
+        if missing_commands:
+            return {
+                "success": False,
+                "error": f"Required commands not found: {', '.join(missing_commands)}. Please install fd (https://github.com/sharkdp/fd) and ripgrep (https://github.com/BurntSushi/ripgrep) to use this tool.",
+                "count": 0,
+                "results": []
+            }
+        
         self.validate_arguments(arguments)
         roots = self._validate_roots(arguments["roots"])  # absolute validated
 

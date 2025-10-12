@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import shutil
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -25,6 +26,21 @@ RG_MAX_FILESIZE_HARD_CAP_BYTES = 200 * 1024 * 1024  # 200M
 
 DEFAULT_RG_TIMEOUT_MS = 4000
 RG_TIMEOUT_HARD_CAP_MS = 30000
+
+
+def check_external_command(command: str) -> bool:
+    """Check if an external command is available in the system PATH."""
+    return shutil.which(command) is not None
+
+
+def get_missing_commands() -> list[str]:
+    """Get list of missing external commands required by fd/rg tools."""
+    missing = []
+    if not check_external_command("fd"):
+        missing.append("fd")
+    if not check_external_command("rg"):
+        missing.append("rg")
+    return missing
 
 
 def clamp_int(value: int | None, default_value: int, hard_cap: int) -> int:
@@ -64,13 +80,22 @@ async def run_command_capture(
     Returns (returncode, stdout, stderr). On timeout, kills process and returns 124.
     Separated into a util for easy monkeypatching in tests.
     """
-    # Create process
-    proc = await asyncio.create_subprocess_exec(
-        *cmd,
-        stdin=asyncio.subprocess.PIPE if input_data is not None else None,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
+    # Check if command exists before attempting to run
+    if cmd and not check_external_command(cmd[0]):
+        error_msg = f"Command '{cmd[0]}' not found in PATH. Please install {cmd[0]} to use this functionality."
+        return 127, b"", error_msg.encode()
+    
+    try:
+        # Create process
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdin=asyncio.subprocess.PIPE if input_data is not None else None,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+    except FileNotFoundError as e:
+        error_msg = f"Command '{cmd[0]}' not found: {e}"
+        return 127, b"", error_msg.encode()
 
     # Compute timeout seconds
     timeout_s: float | None = None
