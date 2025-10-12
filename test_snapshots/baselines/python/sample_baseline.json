@@ -1,0 +1,46 @@
+{
+  "metadata": {
+    "test_name": "sample",
+    "file_path": "examples/sample.py",
+    "language": "python",
+    "timestamp": "2025-10-12T03:45:41.499Z",
+    "generator": "tree-sitter-analyzer-pypi_mcp",
+    "description": "Pythonサンプルファイルの解析テスト"
+  },
+  "outputs": {
+    "scale_analysis": {
+      "file_path": "examples/sample.py",
+      "language": "python",
+      "metrics": {
+        "lines_total": 256,
+        "lines_code": 162,
+        "lines_comment": 18,
+        "lines_blank": 76,
+        "elements": {
+          "classes": 3,
+          "methods": 18,
+          "fields": 0,
+          "imports": 4,
+          "packages": 0,
+          "total": 25
+        },
+        "complexity": {
+          "total": 40,
+          "average": 2.22,
+          "max": 7
+        }
+      }
+    }
+  },
+  "expected_elements": {
+    "classes": 3,
+    "methods": 18,
+    "imports": 4
+  },
+  "test_status": "baseline_generated",
+  "validation": {
+    "classes_match": true,
+    "methods_match": true,
+    "imports_match": true
+  }
+}

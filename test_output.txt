@@ -1,0 +1,14 @@
+# unknown.BigService
+
+## Package
+`unknown`
+
+## Class Info
+| Property | Value |
+|----------|-------|
+| Package | unknown |
+| Type | class |
+| Visibility | public |
+| Lines | 0-0 |
+| Total Methods | 65 |
+| Total Fields | 0 |

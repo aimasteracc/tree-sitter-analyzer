@@ -1,0 +1,136 @@
+{
+  "test_run_info": {
+    "timestamp": "2025-10-12T11:15:03.569965",
+    "baseline_dir": "test_snapshots\\baselines",
+    "current_dir": "test_snapshots\\current"
+  },
+  "results_by_language": {
+    "java": {
+      "test_cases": {
+        "BigService": {
+          "error": "スナップショットファイルが見つかりません",
+          "summary": {
+            "passed": false
+          }
+        },
+        "Sample": {
+          "error": "スナップショットファイルが見つかりません",
+          "summary": {
+            "passed": false
+          }
+        },
+        "MultiClass": {
+          "error": "スナップショットファイルが見つかりません",
+          "summary": {
+            "passed": false
+          }
+        },
+        "JavaDocTest": {
+          "error": "スナップショットファイルが見つかりません",
+          "summary": {
+            "passed": false
+          }
+        }
+      },
+      "summary": {
+        "total": 4,
+        "passed": 0,
+        "failed": 4
+      }
+    },
+    "python": {
+      "test_cases": {
+        "sample": {
+          "error": "スナップショットファイルが見つかりません",
+          "summary": {
+            "passed": false
+          }
+        },
+        "cache_demo": {
+          "error": "スナップショットファイルが見つかりません",
+          "summary": {
+            "passed": false
+          }
+        }
+      },
+      "summary": {
+        "total": 2,
+        "passed": 0,
+        "failed": 2
+      }
+    },
+    "javascript": {
+      "test_cases": {
+        "ModernJavaScript": {
+          "error": "スナップショットファイルが見つかりません",
+          "summary": {
+            "passed": false
+          }
+        }
+      },
+      "summary": {
+        "total": 1,
+        "passed": 0,
+        "failed": 1
+      }
+    },
+    "typescript": {
+      "test_cases": {
+        "ComprehensiveTypeScript": {
+          "error": "スナップショットファイルが見つかりません",
+          "summary": {
+            "passed": false
+          }
+        },
+        "TypeScriptDeclarations": {
+          "error": "スナップショットファイルが見つかりません",
+          "summary": {
+            "passed": false
+          }
+        }
+      },
+      "summary": {
+        "total": 2,
+        "passed": 0,
+        "failed": 2
+      }
+    },
+    "html": {
+      "test_cases": {
+        "comprehensive_html": {
+          "error": "スナップショットファイルが見つかりません",
+          "summary": {
+            "passed": false
+          }
+        }
+      },
+      "summary": {
+        "total": 1,
+        "passed": 0,
+        "failed": 1
+      }
+    },
+    "markdown": {
+      "test_cases": {
+        "test_markdown": {
+          "error": "スナップショットファイルが見つかりません",
+          "summary": {
+            "passed": false
+          }
+        }
+      },
+      "summary": {
+        "total": 1,
+        "passed": 0,
+        "failed": 1
+      }
+    }
+  },
+  "overall_summary": {
+    "total_tests": 0,
+    "passed": 0,
+    "failed": 11,
+    "critical_issues": 0,
+    "warnings": 0
+  }
+}

@@ -1,0 +1,118 @@
+{
+  "report_metadata": {
+    "title": "スナップショットテスト ベースライン生成レポート",
+    "timestamp": "2025-10-12T03:46:25.997Z",
+    "generator": "tree-sitter-analyzer-pypi_mcp",
+    "test_session_id": "baseline_001"
+  },
+  "summary": {
+    "total_test_cases": 6,
+    "successful_cases": 2,
+    "failed_cases": 4,
+    "success_rate": "33.3%",
+    "supported_languages": ["java", "python"],
+    "unsupported_languages": ["javascript", "typescript", "html", "markdown"]
+  },
+  "test_results": {
+    "successful": [
+      {
+        "language": "java",
+        "test_case": "BigService",
+        "file_path": "examples/BigService.java",
+        "status": "success",
+        "metrics": {
+          "lines_total": 1419,
+          "classes": 1,
+          "methods": 66,
+          "fields": 9,
+          "complexity_total": 348
+        },
+        "baseline_file": "test_snapshots/baselines/java/BigService_baseline.json"
+      },
+      {
+        "language": "python",
+        "test_case": "sample",
+        "file_path": "examples/sample.py",
+        "status": "success",
+        "metrics": {
+          "lines_total": 256,
+          "classes": 3,
+          "methods": 18,
+          "fields": 0,
+          "complexity_total": 40
+        },
+        "baseline_file": "test_snapshots/baselines/python/sample_baseline.json"
+      }
+    ],
+    "failed": [
+      {
+        "language": "javascript",
+        "test_case": "ModernJavaScript",
+        "file_path": "examples/ModernJavaScript.js",
+        "status": "failed",
+        "error": "Could not load JavaScript language for parsing",
+        "error_type": "language_not_supported"
+      },
+      {
+        "language": "typescript",
+        "test_case": "ComprehensiveTypeScript",
+        "file_path": "examples/ComprehensiveTypeScript.ts",
+        "status": "failed",
+        "error": "Could not load TypeScript language for parsing",
+        "error_type": "language_not_supported"
+      },
+      {
+        "language": "html",
+        "test_case": "comprehensive_html",
+        "file_path": "examples/comprehensive_html.html",
+        "status": "failed",
+        "error": "Invalid file path: Absolute file paths are not allowed",
+        "error_type": "path_validation_error"
+      },
+      {
+        "language": "markdown",
+        "test_case": "test_markdown",
+        "file_path": "examples/test_markdown.md",
+        "status": "not_tested",
+        "error": "Skipped due to previous failures",
+        "error_type": "test_skipped"
+      }
+    ]
+  },
+  "findings": {
+    "current_system_limitations": [
+      "PyPiパッケージではJavaScriptとTypeScriptの解析がサポートされていない",
+      "HTMLファイルのパス検証に問題がある",
+      "現在の実装では6言語中2言語のみが正常動作"
+    ],
+    "migration_implications": [
+      "新アーキテクチャでは全6言語のサポートが必要",
+      "JavaScript/TypeScript/HTML/Markdownの実装が優先課題",
+      "パス検証ロジックの改善が必要"
+    ],
+    "test_coverage": [
+      "Java: 完全テスト可能（大規模ファイル対応確認）",
+      "Python: 完全テスト可能（クラス・メソッド解析確認）",
+      "JavaScript/TypeScript/HTML/Markdown: テスト不可（実装不完全）"
+    ]
+  },
+  "recommendations": {
+    "immediate_actions": [
+      "現在動作するJava/Pythonのベースラインを活用",
+      "JavaScript/TypeScript/HTML/Markdownの実装状況を詳細調査",
+      "新アーキテクチャでの全言語サポート実装を優先"
+    ],
+    "migration_strategy": [
+      "Phase 1: Java/Pythonの新アーキテクチャ移行",
+      "Phase 2: JavaScript/TypeScript実装完成",
+      "Phase 3: HTML/Markdown実装完成",
+      "Phase 4: 全言語統合テスト"
+    ]
+  },
+  "next_steps": [
+    "現在の実装でJava/Pythonの詳細構造解析テスト実行",
+    "JavaScript/TypeScript/HTML/Markdownの実装状況調査",
+    "新アーキテクチャでの全言語サポート実装計画の詳細化",
+    "スナップショットテスト体制の段階的拡張"
+  ]
+}

@@ -198,12 +198,21 @@ class FileOutputManager:
         # Ensure output directory exists
         output_file.parent.mkdir(parents=True, exist_ok=True)
 
-        # Write content to file
+        # Write content to file with appropriate encoding for Windows
         try:
-            with open(output_file, "w", encoding="utf-8") as f:
+            # Detect content type for encoding selection
+            content_type = self.detect_content_type(content)
+            
+            # Use UTF-8 with BOM for CSV files on Windows for better Excel compatibility
+            if content_type == "csv" and os.name == "nt":
+                encoding = "utf-8-sig"
+            else:
+                encoding = "utf-8"
+            
+            with open(output_file, "w", encoding=encoding, newline='') as f:
                 f.write(content)
             
-            logger.info(f"Content saved to file: {output_file}")
+            logger.info(f"Content saved to file: {output_file} (encoding: {encoding})")
             return str(output_file)
 
         except OSError as e:

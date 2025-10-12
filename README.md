@@ -499,6 +499,11 @@ uv run python -m tree_sitter_analyzer script.py --language python --table=full
 uv run python -m tree_sitter_analyzer examples/BigService.java --query-key methods
 uv run python -m tree_sitter_analyzer examples/BigService.java --query-key classes
 
+# Query HTML elements
+uv run python -m tree_sitter_analyzer examples/comprehensive_html.html --query-key element
+uv run python -m tree_sitter_analyzer examples/comprehensive_html.html --query-key form_element
+uv run python -m tree_sitter_analyzer examples/comprehensive_html.html --query-key heading
+
 # Filter query results
 # Find specific methods
 uv run python -m tree_sitter_analyzer examples/BigService.java --query-key methods --filter "name=main"
@@ -644,15 +649,36 @@ uv run pytest tests/test_mcp_server_initialization.py -v
 
 ## 9. 📚 Documentation & Support
 
-### 📖 Complete Documentation
+### 🚀 Developer Documentation
+- **[Developer Guide](docs/DEVELOPER_GUIDE.md)** - 開発者向け統合ガイド
+- **[Project Structure](docs/PROJECT_STRUCTURE.md)** - プロジェクト構造詳細
+- **[Implementation Rules](docs/IMPLEMENTATION_RULES.md)** - 実装ルールとパターン
+- **[Architecture Decisions](docs/ARCHITECTURE_DECISIONS.md)** - アーキテクチャ決定記録
+
+### 🤖 AI Development Support
+- **[LLM Context Guide](docs/LLM_CONTEXT_GUIDE.md)** - LLM開発用コンテキストガイド
+- **[AI Collaboration Guide](AI_COLLABORATION_GUIDE.md)** - AI協作ガイド
+- **[LLM Coding Guidelines](LLM_CODING_GUIDELINES.md)** - LLM開発ガイドライン
+
+### 📖 Technical Documentation
+- **[API Documentation](docs/api.md)** - Detailed API reference
+- **[Snapshot Testing Guide](docs/SNAPSHOT_TESTING_GUIDE.md)** - スナップショットテストガイド
+- **[MCP fd/rg Design](docs/mcp_fd_rg_design.md)** - MCP fd/ripgrep設計
+
+### 🛠️ Setup & Configuration
 - **[User MCP Setup Guide](MCP_SETUP_USERS.md)** - Simple setup guide
 - **[Developer MCP Setup Guide](MCP_SETUP_DEVELOPERS.md)** - Local development setup
 - **[Project Root Configuration](PROJECT_ROOT_CONFIG.md)** - Complete configuration reference
-- **[API Documentation](docs/api.md)** - Detailed API reference
 - **[Contributing Guide](CONTRIBUTING.md)** - How to contribute code
-- **[Onboarding & Training Guide](training/README.md)** - System onboarding materials for new members/maintainers
 
-### 🤖 AI Collaboration Support
+### 📚 Training Materials
+- **[Onboarding & Training Guide](training/README.md)** - System onboarding materials for new members/maintainers
+- **[Architecture Map](training/02_architecture_map.md)** - アーキテクチャマップ
+- **[CLI Cheatsheet](training/03_cli_cheatsheet.md)** - CLIチートシート
+- **[MCP Cheatsheet](training/04_mcp_cheatsheet.md)** - MCPチートシート
+- **[Plugin Tutorial](training/05_plugin_tutorial.md)** - プラグインチュートリアル
+
+### 🤖 AI Development Quality Control
 This project supports AI-assisted development with professional quality control:
 
 ```bash
@@ -660,10 +686,6 @@ This project supports AI-assisted development with professional quality control:
 uv run python check_quality.py --new-code-only
 uv run python llm_code_checker.py --check-all
 ```
-
-📖 **Detailed guides**:
-- [AI Collaboration Guide](AI_COLLABORATION_GUIDE.md)
-- [LLM Coding Guidelines](LLM_CODING_GUIDELINES.md)
 
 ### 💝 Sponsors & Acknowledgments
 

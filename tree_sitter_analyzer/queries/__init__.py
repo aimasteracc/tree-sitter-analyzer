@@ -6,8 +6,10 @@ This package provides Tree-sitter queries for various programming languages.
 Each language has its own module with predefined queries for common code elements.
 
 Supported languages:
+- HTML
 - Java
 - JavaScript
+- Markdown
 - Python
 - TypeScript
 

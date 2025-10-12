@@ -1,0 +1,57 @@
+Index,Element Type,Name,Start Line,End Line,Attributes,Description
+1,structure,html,2,83,49,HTML root element
+2,structure,head,3,7,5,Document head
+3,metadata,meta,4,5,1,Metadata
+4,metadata,meta,5,6,4,Metadata
+5,metadata,title,6,6,0,Page title
+6,structure,body,8,82,43,Document body
+7,structure,header,9,18,3,Page header
+8,heading,h1,10,10,0,Level 1 heading
+9,structure,nav,11,17,3,Navigation
+10,list,ul,12,16,3,Unordered list
+11,list,li,13,13,1,List item
+12,interactive,a,13,13,1,Link
+13,list,li,14,14,1,List item
+14,interactive,a,14,14,1,Link
+15,list,li,15,15,1,List item
+16,interactive,a,15,15,1,Link
+17,structure,main,20,72,39,Main content
+18,structure,section,21,33,2,Section
+19,heading,h2,22,22,0,Level 2 heading
+20,text,p,23,23,0,Paragraph
+21,container,div,25,32,1,Generic container
+22,heading,h3,26,26,0,Level 3 heading
+23,list,ul,27,31,0,Unordered list
+24,list,li,28,28,0,List item
+25,list,li,29,29,0,List item
+26,list,li,30,30,0,List item
+27,structure,section,35,71,37,Section
+28,heading,h2,36,36,0,Level 2 heading
+29,form,form,37,70,36,Form
+30,container,div,38,41,6,Generic container
+31,form,label,39,39,1,Custom element
+32,form,input,40,41,4,Input field
+33,container,div,43,46,6,Generic container
+34,form,label,44,44,1,Custom element
+35,form,input,45,46,4,Input field
+36,container,div,48,51,6,Generic container
+37,form,label,49,49,1,Custom element
+38,form,input,50,51,4,Input field
+39,container,div,53,62,9,Generic container
+40,form,label,54,54,1,Custom element
+41,form,select,55,61,7,Custom element
+42,form,option,56,56,1,Custom element
+43,form,option,57,57,1,Custom element
+44,form,option,58,58,1,Custom element
+45,form,option,59,59,1,Custom element
+46,form,option,60,60,1,Custom element
+47,container,div,64,67,6,Generic container
+48,form,label,65,65,1,Custom element
+49,form,textarea,66,66,4,Custom element
+50,form,button,69,69,1,Button
+51,structure,footer,74,81,1,Page footer
+52,text,p,75,75,0,Paragraph
+53,container,div,76,80,1,Generic container
+54,text,p,77,77,0,Paragraph
+55,text,p,78,78,0,Paragraph
+56,text,p,79,79,0,Paragraph

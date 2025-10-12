@@ -1,0 +1,137 @@
+{
+  "comparison_rules": {
+    "strict_fields": [
+      "language",
+      "file_path",
+      "elements.classes",
+      "elements.methods",
+      "elements.fields",
+      "elements.functions",
+      "lines_total",
+      "lines_code"
+    ],
+    "tolerance_fields": {
+      "complexity.total": {
+        "type": "percentage",
+        "threshold": 5.0,
+        "description": "複雑度計算の5%以内の差異は許容"
+      },
+      "complexity.average": {
+        "type": "absolute",
+        "threshold": 0.1,
+        "description": "平均複雑度の0.1以内の差異は許容"
+      },
+      "execution_time": {
+        "type": "percentage",
+        "threshold": 50.0,
+        "description": "実行時間の50%以内の差異は許容"
+      }
+    },
+    "ignore_fields": [
+      "timestamp",
+      "memory_usage",
+      "cache_hit",
+      "debug_info",
+      "internal_metadata"
+    ],
+    "structural_validation": {
+      "required_keys": [
+        "language",
+        "file_path",
+        "metrics",
+        "elements"
+      ],
+      "element_structure": {
+        "classes": ["name", "start_line", "end_line"],
+        "methods": ["name", "start_line", "end_line", "class_name"],
+        "fields": ["name", "start_line", "type"],
+        "functions": ["name", "start_line", "end_line"]
+      }
+    },
+    "format_specific_rules": {
+      "json": {
+        "validate_schema": true,
+        "check_key_order": false,
+        "normalize_whitespace": true
+      },
+      "csv": {
+        "validate_headers": true,
+        "check_row_count": true,
+        "normalize_encoding": true
+      },
+      "summary": {
+        "check_totals": true,
+        "validate_percentages": true
+      }
+    },
+    "language_specific_rules": {
+      "java": {
+        "required_elements": ["classes", "methods"],
+        "optional_elements": ["fields", "imports", "packages"],
+        "validation_queries": ["class", "methods", "fields"]
+      },
+      "python": {
+        "required_elements": ["functions"],
+        "optional_elements": ["classes", "imports"],
+        "validation_queries": ["functions", "class", "imports"]
+      },
+      "javascript": {
+        "required_elements": ["functions"],
+        "optional_elements": ["classes", "variables", "exports"],
+        "validation_queries": ["functions", "class", "variables"]
+      },
+      "typescript": {
+        "required_elements": ["functions"],
+        "optional_elements": ["classes", "interfaces", "types"],
+        "validation_queries": ["functions", "class", "interfaces", "types"]
+      },
+      "html": {
+        "required_elements": ["elements"],
+        "optional_elements": ["forms", "links", "scripts"],
+        "validation_queries": ["elements", "forms", "links"]
+      },
+      "markdown": {
+        "required_elements": ["headings"],
+        "optional_elements": ["links", "code_blocks"],
+        "validation_queries": ["headings", "links", "code_blocks"]
+      }
+    },
+    "regression_detection": {
+      "critical_changes": [
+        "elements.classes",
+        "elements.methods",
+        "elements.functions"
+      ],
+      "warning_changes": [
+        "complexity.total",
+        "lines_code"
+      ],
+      "info_changes": [
+        "lines_comment",
+        "lines_blank"
+      ]
+    },
+    "diff_reporting": {
+      "show_added": true,
+      "show_removed": true,
+      "show_modified": true,
+      "group_by_type": true,
+      "include_context": true,
+      "max_diff_lines": 100
+    }
+  },
+  "validation_settings": {
+    "fail_on_critical": true,
+    "warn_on_missing_optional": true,
+    "strict_type_checking": true,
+    "validate_line_numbers": true,
+    "check_element_hierarchy": true
+  },
+  "reporting_settings": {
+    "generate_html_report": true,
+    "include_visual_diff": true,
+    "show_statistics": true,
+    "export_csv_summary": true,
+    "create_json_manifest": true
+  }
+}

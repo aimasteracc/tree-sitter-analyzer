@@ -711,8 +711,9 @@ class JavaElementExtractor(ElementExtractor):
                 if child.type == "formal_parameters":
                     for param in child.children:
                         if param.type == "formal_parameter":
-                            param_text = self._get_node_text_optimized(param)
-                            parameters.append(param_text)
+                            param_info = self._parse_parameter_optimized(param)
+                            if param_info:
+                                parameters.append(param_info)
 
             # Extract modifiers
             modifiers = self._extract_modifiers_optimized(node)
@@ -770,6 +771,36 @@ class JavaElementExtractor(ElementExtractor):
             return field_type, variable_names, modifiers
         except Exception:
             return None
+
+    def _parse_parameter_optimized(self, param_node: "tree_sitter.Node") -> dict[str, str] | None:
+        """Parse parameter node to extract type and name"""
+        try:
+            param_type = None
+            param_name = None
+            
+            for child in param_node.children:
+                if child.type in [
+                    "type_identifier",
+                    "primitive_type",
+                    "integral_type",
+                    "boolean_type",
+                    "floating_point_type",
+                    "array_type",
+                    "generic_type",
+                ]:
+                    param_type = self._get_node_text_optimized(child)
+                elif child.type == "identifier":
+                    param_name = self._get_node_text_optimized(child)
+            
+            if param_type and param_name:
+                return {"type": param_type, "name": param_name}
+            elif param_type:
+                return {"type": param_type, "name": "param"}
+            else:
+                return {"type": "Object", "name": "param"}
+                
+        except Exception:
+            return {"type": "Object", "name": "param"}
 
     def _extract_modifiers_optimized(self, node: "tree_sitter.Node") -> list[str]:
         """Extract modifiers efficiently (from AdvancedAnalyzer)"""
@@ -1172,7 +1203,7 @@ class JavaPlugin(LanguagePlugin):
 
     def get_supported_queries(self) -> list[str]:
         """Get list of supported query names for this language"""
-        return ["class", "method", "field", "import"]
+        return ["class", "method", "field", "import", "package"]
 
     def is_applicable(self, file_path: str) -> bool:
         """Check if this plugin is applicable for the given file"""

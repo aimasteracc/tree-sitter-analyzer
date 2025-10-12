@@ -233,14 +233,32 @@ class JavaTableFormatter(BaseTableFormatter):
     def _create_compact_signature(self, method: dict[str, Any]) -> str:
         """Create compact method signature for Java"""
         params = method.get("parameters", [])
-        param_types = [
-            self._shorten_type(p.get("type", "O") if isinstance(p, dict) else str(p))
-            for p in params
-        ]
-        params_str = ",".join(param_types)
+        param_types = []
+        
+        for p in params:
+            if isinstance(p, dict):
+                param_type = p.get("type")
+                if param_type:
+                    param_types.append(self._shorten_type(param_type))
+                else:
+                    param_types.append("O")
+            elif isinstance(p, str) and p.strip():
+                param_types.append(self._shorten_type(p))
+            else:
+                param_types.append("O")
+        
+        params_str = ",".join(param_types) if param_types else ""
         return_type = self._shorten_type(method.get("return_type", "void"))
 
-        return f"({params_str}):{return_type}"
+        # Add modifiers if present
+        modifiers = method.get("modifiers", [])
+        modifier_str = ""
+        if modifiers:
+            static_mods = [m for m in modifiers if m in ["static", "abstract", "final"]]
+            if static_mods:
+                modifier_str = f" [{','.join(static_mods)}]"
+
+        return f"({params_str}):{return_type}{modifier_str}"
 
     def _shorten_type(self, type_name: Any) -> str:
         """Shorten type name for Java tables"""
@@ -289,3 +307,36 @@ class JavaTableFormatter(BaseTableFormatter):
 
         result = type_mapping.get(type_name, type_name)
         return str(result)
+
+    def _create_full_signature(self, method: dict[str, Any]) -> str:
+        """Create full method signature for Java"""
+        params = method.get("parameters", [])
+        param_strs = []
+        
+        for param in params:
+            if isinstance(param, dict):
+                param_name = param.get("name", "param")
+                param_type = param.get("type", "Object")
+                if param_name and param_type:
+                    param_strs.append(f"{param_name}:{param_type}")
+                elif param_type:
+                    param_strs.append(f"param:{param_type}")
+                else:
+                    param_strs.append("param:Object")
+            elif isinstance(param, str) and param.strip():
+                param_strs.append(f"param:{param}")
+            else:
+                param_strs.append("param:Object")
+        
+        params_str = ",".join(param_strs) if param_strs else ""
+        return_type = method.get("return_type", "void")
+        
+        # Add modifiers if present
+        modifiers = method.get("modifiers", [])
+        modifier_str = ""
+        if modifiers:
+            static_mods = [m for m in modifiers if m in ["static", "abstract", "final", "synchronized"]]
+            if static_mods:
+                modifier_str = f" [{','.join(static_mods)}]"
+        
+        return f"({params_str}):{return_type}{modifier_str}"

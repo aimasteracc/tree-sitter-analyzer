@@ -1,0 +1,153 @@
+{
+  "snapshot_comparison_report": {
+    "test_execution_timestamp": "2025-10-12T03:48:00Z",
+    "comparison_summary": {
+      "total_test_cases": 6,
+      "successful_comparisons": 2,
+      "failed_comparisons": 4,
+      "success_rate": "33.3%",
+      "consistent_behavior": true
+    },
+    "detailed_comparison": {
+      "java": {
+        "test_file": "examples/BigService.java",
+        "baseline_status": "success",
+        "current_status": "success",
+        "comparison_result": "identical",
+        "baseline_metrics": {
+          "classes_count": 1,
+          "methods_count": 66,
+          "fields_count": 9,
+          "total_lines": 1419
+        },
+        "current_metrics": {
+          "classes_count": 1,
+          "methods_count": 66,
+          "fields_count": 9,
+          "total_lines": 1419
+        },
+        "differences": [],
+        "notes": "完全に一致。Javaサポートは安定している"
+      },
+      "python": {
+        "test_file": "examples/sample.py",
+        "baseline_status": "success",
+        "current_status": "success",
+        "comparison_result": "identical",
+        "baseline_metrics": {
+          "classes_count": 3,
+          "methods_count": 18,
+          "fields_count": 0,
+          "total_lines": 256
+        },
+        "current_metrics": {
+          "classes_count": 3,
+          "methods_count": 18,
+          "fields_count": 0,
+          "total_lines": 256
+        },
+        "differences": [],
+        "notes": "完全に一致。Pythonサポートは安定している"
+      },
+      "javascript": {
+        "test_file": "examples/ModernJavaScript.js",
+        "baseline_status": "failed",
+        "current_status": "failed",
+        "comparison_result": "consistent_failure",
+        "baseline_error": "Could not load language for parsing",
+        "current_metrics": {
+          "classes_count": 0,
+          "methods_count": 0,
+          "fields_count": 0,
+          "total_lines": 0
+        },
+        "differences": [],
+        "notes": "両システムで同じ問題が発生。JavaScriptパーサーの問題"
+      },
+      "typescript": {
+        "test_file": "examples/ComprehensiveTypeScript.ts",
+        "baseline_status": "failed",
+        "current_status": "failed",
+        "comparison_result": "consistent_failure",
+        "baseline_error": "Could not load language for parsing",
+        "current_metrics": {
+          "classes_count": 0,
+          "methods_count": 0,
+          "fields_count": 0,
+          "total_lines": 0
+        },
+        "differences": [],
+        "notes": "両システムで同じ問題が発生。TypeScriptパーサーの問題"
+      },
+      "html": {
+        "test_file": "examples/comprehensive_html.html",
+        "baseline_status": "failed",
+        "current_status": "failed",
+        "comparison_result": "consistent_failure",
+        "baseline_error": "Invalid file path: Absolute file paths are not allowed",
+        "current_metrics": {
+          "classes_count": 0,
+          "methods_count": 0,
+          "fields_count": 0,
+          "total_lines": 0
+        },
+        "differences": [],
+        "notes": "両システムで同じ問題が発生。HTMLパーサーの問題"
+      },
+      "markdown": {
+        "test_file": "examples/test_markdown.md",
+        "baseline_status": "failed",
+        "current_status": "not_tested",
+        "comparison_result": "baseline_only_failure",
+        "baseline_error": "Could not load language for parsing",
+        "current_metrics": "not_available",
+        "differences": [],
+        "notes": "ベースラインでのみテスト。Markdownパーサーの問題"
+      }
+    },
+    "key_findings": {
+      "working_languages": [
+        "java",
+        "python"
+      ],
+      "problematic_languages": [
+        "javascript",
+        "typescript", 
+        "html",
+        "markdown"
+      ],
+      "system_consistency": {
+        "description": "現在のローカルシステムとPyPiパッケージで一貫した動作",
+        "implication": "問題は両システム共通のアーキテクチャ設計に起因"
+      },
+      "architecture_issues": {
+        "language_loading_problems": "JavaScript/TypeScript/Markdownでパーサーロードエラー",
+        "path_handling_issues": "HTMLで絶対パス処理の問題",
+        "plugin_system_gaps": "言語プラグインシステムの不完全な実装"
+      }
+    },
+    "recommendations": {
+      "immediate_actions": [
+        "JavaScript/TypeScriptパーサーの修復",
+        "HTMLパス処理ロジックの修正",
+        "Markdownサポートの実装完了"
+      ],
+      "architectural_improvements": [
+        "統一された言語プラグインインターフェースの実装",
+        "パーサーロード機構の再設計",
+        "エラーハンドリングの改善"
+      ],
+      "testing_strategy": [
+        "スナップショットテストシステムの本格導入",
+        "言語別テストスイートの分離",
+        "継続的回帰検出の自動化"
+      ]
+    },
+    "migration_priority": {
+      "phase_1": "Java/Pythonの安定性維持",
+      "phase_2": "JavaScript/TypeScript/HTMLの修復",
+      "phase_3": "新アーキテクチャでの全言語統合",
+      "phase_4": "スナップショットテストの完全自動化"
+    }
+  }
+}

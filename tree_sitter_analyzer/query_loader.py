@@ -78,6 +78,9 @@ class QueryLoader:
                         attr_value = getattr(module, attr_name)
                         if isinstance(attr_value, str):
                             queries[attr_name] = attr_value
+                        elif isinstance(attr_value, dict) and attr_name.endswith("_QUERIES"):
+                            # For HTML_QUERIES and similar dictionaries, add individual queries
+                            queries.update(attr_value)
                         elif isinstance(attr_value, dict):
                             # Convert dict to string representation for queries
                             queries[attr_name] = str(attr_value)
@@ -156,6 +159,7 @@ class QueryLoader:
             "cpp",
             "rust",
             "go",
+            "html",
             "markdown",
         ]
 

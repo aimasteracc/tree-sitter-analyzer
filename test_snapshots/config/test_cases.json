@@ -1,0 +1,115 @@
+{
+  "test_cases": {
+    "java": [
+      {
+        "name": "BigService",
+        "file_path": "examples/BigService.java",
+        "description": "大規模Javaファイルの構造解析テスト",
+        "expected_elements": {
+          "classes": 1,
+          "methods": 66,
+          "fields": 9
+        },
+        "test_formats": ["json", "csv", "summary"],
+        "test_queries": ["class", "methods", "fields", "imports"]
+      },
+      {
+        "name": "Sample",
+        "file_path": "examples/Sample.java",
+        "description": "標準Javaファイルの解析テスト",
+        "test_formats": ["json", "csv"],
+        "test_queries": ["class", "methods", "fields"]
+      },
+      {
+        "name": "MultiClass",
+        "file_path": "examples/MultiClass.java",
+        "description": "複数クラスJavaファイルの解析テスト",
+        "test_formats": ["json"],
+        "test_queries": ["class", "methods"]
+      },
+      {
+        "name": "JavaDocTest",
+        "file_path": "examples/JavaDocTest.java",
+        "description": "JavaDoc付きファイルの解析テスト",
+        "test_formats": ["json"],
+        "test_queries": ["class", "methods", "javadoc"]
+      }
+    ],
+    "python": [
+      {
+        "name": "sample",
+        "file_path": "examples/sample.py",
+        "description": "Pythonサンプルファイルの解析テスト",
+        "test_formats": ["json", "csv"],
+        "test_queries": ["class", "functions", "imports"]
+      },
+      {
+        "name": "cache_demo",
+        "file_path": "examples/cache_demo.py",
+        "description": "Python機能デモファイルの解析テスト",
+        "test_formats": ["json"],
+        "test_queries": ["functions", "class", "imports"]
+      }
+    ],
+    "javascript": [
+      {
+        "name": "ModernJavaScript",
+        "file_path": "examples/ModernJavaScript.js",
+        "description": "モダンJavaScript機能の解析テスト",
+        "test_formats": ["json", "csv"],
+        "test_queries": ["functions", "class", "variables", "exports"]
+      }
+    ],
+    "typescript": [
+      {
+        "name": "ComprehensiveTypeScript",
+        "file_path": "examples/ComprehensiveTypeScript.ts",
+        "description": "TypeScript包括機能の解析テスト",
+        "test_formats": ["json", "csv"],
+        "test_queries": ["class", "functions", "interfaces", "types"]
+      },
+      {
+        "name": "TypeScriptDeclarations",
+        "file_path": "examples/TypeScriptDeclarations.d.ts",
+        "description": "TypeScript宣言ファイルの解析テスト",
+        "test_formats": ["json"],
+        "test_queries": ["interfaces", "types", "declarations"]
+      }
+    ],
+    "html": [
+      {
+        "name": "comprehensive_html",
+        "file_path": "examples/comprehensive_html.html",
+        "description": "HTML包括要素の解析テスト",
+        "test_formats": ["json", "csv"],
+        "test_queries": ["elements", "forms", "links", "scripts"]
+      }
+    ],
+    "markdown": [
+      {
+        "name": "test_markdown",
+        "file_path": "examples/test_markdown.md",
+        "description": "Markdownドキュメントの解析テスト",
+        "test_formats": ["json"],
+        "test_queries": ["headings", "links", "code_blocks"]
+      }
+    ]
+  },
+  "global_settings": {
+    "timeout_seconds": 30,
+    "max_file_size_mb": 10,
+    "encoding": "utf-8",
+    "comparison_precision": 0.001,
+    "ignore_fields": [
+      "timestamp",
+      "execution_time",
+      "memory_usage"
+    ]
+  },
+  "output_settings": {
+    "baseline_dir": "test_snapshots/baselines",
+    "current_dir": "test_snapshots/current",
+    "diff_dir": "test_snapshots/diffs",
+    "report_dir": "test_snapshots/reports"
+  }
+}

@@ -1,0 +1,231 @@
+name: Snapshot Regression Tests
+
+on:
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'tree_sitter_analyzer/**'
+      - 'tests/**'
+      - 'examples/**'
+      - 'pyproject.toml'
+      - '.github/workflows/snapshot-regression.yml'
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      generate_baseline:
+        description: 'Generate new baseline snapshots'
+        required: false
+        default: false
+        type: boolean
+
+env:
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  snapshot-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+    
+    - name: Install uv
+      uses: astral-sh/setup-uv@v2
+      with:
+        version: "latest"
+    
+    - name: Install dependencies
+      run: |
+        uv sync --all-extras
+        uv pip install pytest pytest-asyncio
+    
+    - name: Install PyPI package for baseline
+      run: |
+        uv pip install tree-sitter-analyzer[mcp]
+    
+    - name: Cache test snapshots
+      uses: actions/cache@v3
+      with:
+        path: test_snapshots/baselines
+        key: snapshots-baseline-${{ hashFiles('examples/**', 'test_snapshots/config/**') }}
+        restore-keys: |
+          snapshots-baseline-
+    
+    - name: Generate baseline snapshots
+      if: github.event.inputs.generate_baseline == 'true' || !hashFiles('test_snapshots/baselines/**')
+      run: |
+        uv run python scripts/generate_snapshots.py --mode baseline --verbose
+    
+    - name: Generate current implementation snapshots
+      run: |
+        uv run python scripts/generate_snapshots.py --mode current --verbose
+    
+    - name: Run snapshot regression tests
+      run: |
+        uv run pytest tests/test_snapshot_regression.py -v --tb=short -m "snapshot or regression"
+    
+    - name: Generate regression report
+      if: always()
+      run: |
+        uv run python tests/test_snapshot_regression.py
+    
+    - name: Upload snapshot artifacts
+      if: always()
+      uses: actions/upload-artifact@v3
+      with:
+        name: snapshot-test-results
+        path: |
+          test_snapshots/diffs/
+          test_snapshots/reports/
+        retention-days: 30
+    
+    - name: Upload baseline snapshots
+      if: github.event.inputs.generate_baseline == 'true'
+      uses: actions/upload-artifact@v3
+      with:
+        name: baseline-snapshots
+        path: test_snapshots/baselines/
+        retention-days: 90
+    
+    - name: Comment PR with results
+      if: github.event_name == 'pull_request' && always()
+      uses: actions/github-script@v6
+      with:
+        script: |
+          const fs = require('fs');
+          const path = require('path');
+          
+          try {
+            const summaryPath = 'test_snapshots/diffs/summary.json';
+            if (fs.existsSync(summaryPath)) {
+              const summary = JSON.parse(fs.readFileSync(summaryPath, 'utf8'));
+              
+              const body = `## 📊 スナップショット回帰テスト結果
+              
+              | 項目 | 値 |
+              |------|-----|
+              | 総テスト数 | ${summary.total_tests} |
+              | 成功 | ${summary.passed} ✅ |
+              | 失敗 | ${summary.failed} ❌ |
+              | 重要な問題 | ${summary.critical_issues} 🚨 |
+              | 警告 | ${summary.warnings} ⚠️ |
+              
+              ${summary.critical_issues > 0 ? '🚨 **重要な回帰が検出されました！詳細を確認してください。**' : ''}
+              ${summary.warnings > 0 ? '⚠️ 警告レベルの変更が検出されました。' : ''}
+              ${summary.critical_issues === 0 && summary.warnings === 0 ? '✅ 回帰は検出されませんでした。' : ''}
+              
+              詳細なレポートはArtifactsからダウンロードできます。
+              `;
+              
+              github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: body
+              });
+            }
+          } catch (error) {
+            console.log('Failed to post comment:', error);
+          }
+
+  baseline-update:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: snapshot-regression
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+    
+    - name: Install uv
+      uses: astral-sh/setup-uv@v2
+    
+    - name: Install dependencies
+      run: |
+        uv sync --all-extras
+        uv pip install tree-sitter-analyzer[mcp]
+    
+    - name: Update baseline snapshots
+      run: |
+        uv run python scripts/generate_snapshots.py --mode baseline --verbose
+    
+    - name: Commit updated baselines
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        git add test_snapshots/baselines/
+        if git diff --staged --quiet; then
+          echo "No changes to commit"
+        else
+          git commit -m "chore: update snapshot baselines [skip ci]"
+          git push
+        fi
+
+  performance-check:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+    
+    - name: Install uv
+      uses: actions/setup-uv@v3
+    
+    - name: Install dependencies
+      run: |
+        uv sync --all-extras
+    
+    - name: Run performance comparison
+      run: |
+        # 大きなファイルでのパフォーマンステスト
+        echo "=== Performance Test ==="
+        time uv run python -c "
+        from tree_sitter_analyzer.mcp.tools.analyze_scale_tool import AnalyzeScaleTool
+        tool = AnalyzeScaleTool()
+        result = tool.execute({'file_path': 'examples/BigService.java', 'include_complexity': True})
+        print(f'Elements found: {result.get(\"metrics\", {}).get(\"elements\", {}).get(\"total\", 0)}')
+        "
+    
+    - name: Memory usage check
+      run: |
+        # メモリ使用量チェック
+        uv run python -c "
+        import psutil
+        import os
+        from tree_sitter_analyzer.mcp.tools.table_format_tool import TableFormatTool
+        
+        process = psutil.Process(os.getpid())
+        initial_memory = process.memory_info().rss / 1024 / 1024
+        
+        tool = TableFormatTool()
+        result = tool.execute({'file_path': 'examples/BigService.java', 'format_type': 'json'})
+        
+        final_memory = process.memory_info().rss / 1024 / 1024
+        memory_increase = final_memory - initial_memory
+        
+        print(f'Memory usage: {initial_memory:.1f}MB -> {final_memory:.1f}MB (+{memory_increase:.1f}MB)')
+        
+        if memory_increase > 100:  # 100MB以上の増加は警告
+            print('WARNING: High memory usage detected')
+            exit(1)
+        "

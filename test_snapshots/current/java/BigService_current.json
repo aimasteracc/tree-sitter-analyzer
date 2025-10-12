@@ -1,0 +1,39 @@
+{
+  "metadata": {
+    "test_name": "BigService",
+    "file_path": "examples/BigService.java",
+    "language": "java",
+    "timestamp": "2025-10-12T11:19:30.614000",
+    "generator": "current_implementation"
+  },
+  "outputs": {
+    "analyze": {
+      "format_type": "json",
+      "file_path": "examples/BigService.java",
+      "language": "java",
+      "metadata": {
+        "classes_count": 1,
+        "methods_count": 66,
+        "fields_count": 9,
+        "total_lines": 1419
+      },
+      "statistics": {
+        "class_count": 1,
+        "method_count": 66,
+        "field_count": 9,
+        "import_count": 8,
+        "total_lines": 1419
+      }
+    },
+    "check_scale": {
+      "complexity_score": "high",
+      "file_size": "large",
+      "recommendation": "use_structured_analysis"
+    },
+    "query": {
+      "classes": 1,
+      "methods": 66,
+      "fields": 9
+    }
+  }
+}

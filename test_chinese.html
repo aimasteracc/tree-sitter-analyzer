@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>中文测试页面</title>
+</head>
+<body>
+    <header>
+        <h1>欢迎来到中文网站</h1>
+        <nav>
+            <ul>
+                <li><a href="#home">首页</a></li>
+                <li><a href="#about">关于我们</a></li>
+                <li><a href="#contact">联系方式</a></li>
+            </ul>
+        </nav>
+    </header>
+    
+    <main>
+        <section id="home">
+            <h2>主要内容</h2>
+            <p>这是一个包含中文内容的测试页面，用于验证字符编码是否正确处理。</p>
+            
+            <div class="产品展示">
+                <h3>产品列表</h3>
+                <ul>
+                    <li>产品一：智能手机</li>
+                    <li>产品二：平板电脑</li>
+                    <li>产品三：笔记本电脑</li>
+                </ul>
+            </div>
+        </section>
+        
+        <section id="form-section">
+            <h2>用户注册表单</h2>
+            <form action="/register" method="post">
+                <div class="表单组">
+                    <label for="姓名">姓名：</label>
+                    <input type="text" id="姓名" name="姓名" placeholder="请输入您的姓名" required>
+                </div>
+                
+                <div class="表单组">
+                    <label for="邮箱">邮箱地址：</label>
+                    <input type="email" id="邮箱" name="邮箱" placeholder="example@email.com" required>
+                </div>
+                
+                <div class="表单组">
+                    <label for="密码">密码：</label>
+                    <input type="password" id="密码" name="密码" placeholder="请输入密码" required>
+                </div>
+                
+                <div class="表单组">
+                    <label for="城市">所在城市：</label>
+                    <select id="城市" name="城市">
+                        <option value="">请选择城市</option>
+                        <option value="北京">北京</option>
+                        <option value="上海">上海</option>
+                        <option value="广州">广州</option>
+                        <option value="深圳">深圳</option>
+                    </select>
+                </div>
+                
+                <div class="表单组">
+                    <label for="备注">备注信息：</label>
+                    <textarea id="备注" name="备注" rows="4" placeholder="请输入备注信息"></textarea>
+                </div>
+                
+                <button type="submit">提交注册</button>
+            </form>
+        </section>
+    </main>
+    
+    <footer>
+        <p>&copy; 2024 中文测试网站. 版权所有.</p>
+        <div class="联系信息">
+            <p>联系电话：+86-123-4567-8900</p>
+            <p>邮箱：contact@example.com</p>
+            <p>地址：中国北京市朝阳区测试街道123号</p>
+        </div>
+    </footer>
+</body>
+</html>

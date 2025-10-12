@@ -1,0 +1,33 @@
+{
+  "tool": "search_content",
+  "timestamp": "2025-10-12T03:59:59.443Z",
+  "pypi_version": "1.7.4",
+  "query": "public",
+  "files": ["examples/BigService.java"],
+  "case": "insensitive",
+  "summary_only": true,
+  "results": {
+    "success": true,
+    "count": 21,
+    "truncated": false,
+    "elapsed_ms": 314,
+    "summary": {
+      "total_matches": 21,
+      "total_files": 1,
+      "summary": "Found 21 matches in 1 files",
+      "top_files": [
+        {
+          "file": "C:\\...\\tree-sitter-analyzer\\examples\\BigService.java",
+          "match_count": 21,
+          "sample_lines": [
+            "L17: public class BigService {",
+            "L33: public BigService() {",
+            "L141: public boolean authenticateUser(String username, String pass..."
+          ]
+        }
+      ],
+      "truncated": false
+    }
+  },
+  "execution_status": "success"
+}

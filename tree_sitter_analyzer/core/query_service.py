@@ -84,18 +84,27 @@ class QueryService:
             import tree_sitter
             captures = []
             
-            # Try to create and execute the query
+            # Try to create and execute the query using QueryCursor
             try:
                 ts_query = tree_sitter.Query(language_obj, query_string)
+                cursor = tree_sitter.QueryCursor(ts_query)
                 
-                # Try to execute the query
-                captures = ts_query.captures(tree.root_node)
+                # Execute the query - returns dict with capture names as keys
+                captures_dict = cursor.captures(tree.root_node)
                 
-                # If captures is empty or not in expected format, try manual fallback
-                if not captures or (isinstance(captures, list) and len(captures) == 0):
+                # Convert dict format to list of tuples for compatibility
+                captures = []
+                if isinstance(captures_dict, dict):
+                    for capture_name, nodes in captures_dict.items():
+                        for node in nodes:
+                            captures.append((node, capture_name))
+                
+                # If captures is empty, try manual fallback
+                if not captures:
                     captures = self._manual_query_execution(tree.root_node, query_key, language)
                     
             except (AttributeError, Exception) as e:
+                logger.warning(f"QueryCursor execution failed: {e}, trying manual fallback")
                 # If query creation or execution fails, use manual fallback
                 captures = self._manual_query_execution(tree.root_node, query_key, language)
 

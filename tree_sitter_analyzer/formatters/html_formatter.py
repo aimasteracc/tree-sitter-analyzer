@@ -1,19 +1,18 @@
 #!/usr/bin/env python3
 """
-HTML-specific table formatter.
+HTML Table Formatter
 
-Provides specialized formatting for HTML code analysis results,
-handling HTML elements, attributes, text content, and embedded scripts/styles.
-Designed to complement the HTML language plugin for comprehensive HTML analysis.
+Provides specialized table formatting for HTML files, focusing on document structure
+rather than programming constructs like classes and methods.
 """
 
-from typing import Any
-
+import json
+from typing import Dict, List, Any, Optional
 from .base_formatter import BaseTableFormatter
 
 
 class HTMLTableFormatter(BaseTableFormatter):
-    """Table formatter specialized for HTML"""
+    """Table formatter specialized for HTML documents"""
 
     def format(self, data: dict[str, Any], format_type: str = None) -> str:
         """Format data using the configured format type"""
@@ -43,316 +42,298 @@ class HTMLTableFormatter(BaseTableFormatter):
             return result
         return self.format_structure(data)
 
+    def format_structure(self, structure_data: dict[str, Any]) -> str:
+        """Format structure data with HTML-specific handling"""
+        # Handle None data
+        if structure_data is None:
+            return "# No data available\n"
+        
+        # Ensure data is a dictionary
+        if not isinstance(structure_data, dict):
+            return f"# Invalid data type: {type(structure_data)}\n"
+        
+        # Handle different format types
+        if self.format_type == "full":
+            result = self._format_full_table(structure_data)
+        elif self.format_type == "compact":
+            result = self._format_compact_table(structure_data)
+        elif self.format_type == "csv":
+            result = self._format_csv(structure_data)
+        elif self.format_type == "json":
+            result = self._format_json(structure_data)
+        else:
+            # Default to full format
+            result = self._format_full_table(structure_data)
+        
+        # Add newline if not present
+        if self.format_type == "csv":
+            return result  # CSV doesn't need extra newline
+        elif not result.endswith("\n"):
+            result += "\n"
+        
+        return result
+
     def _format_full_table(self, data: dict[str, Any]) -> str:
         """Full table format for HTML"""
         if data is None:
             return "# No data available\n"
         
-        result = []
+        file_path = data.get("file_path", "")
+        elements = data.get("elements", [])
         
-        # Add title
-        result.append("# HTML 文件结构分析")
-        result.append("")
+        # Get document title from title element or filename
+        title_elements = [e for e in elements if isinstance(e, dict) and e.get('name', '').lower() == 'title']
+        title = title_elements[0].get('raw_text', '').strip() if title_elements else file_path.split("/")[-1]
         
-        # File information section
-        result.append("## 📄 文件信息")
-        result.append("")
-        result.append("| 属性 | 值 |")
-        result.append("|------|-----|")
-        result.append(f"| 文件路径 | `{data.get('file_path', 'N/A')}` |")
-        result.append(f"| 语言类型 | `{data.get('language', 'html')}` |")
+        output = [f"# {title}\n"]
         
-        # Metrics section
-        metrics = data.get('metrics', {})
-        if metrics:
-            result.append("")
-            result.append("## 📊 代码度量")
-            result.append("")
-            result.append("| 度量项 | 数值 | 描述 |")
-            result.append("|--------|------|------|")
-            result.append(f"| 总行数 | {metrics.get('lines_total', 0)} | HTML文档总行数 |")
-            result.append(f"| 代码行数 | {metrics.get('lines_code', 0)} | 包含标签和内容的行数 |")
-            result.append(f"| 注释行数 | {metrics.get('lines_comment', 0)} | HTML注释行数 |")
-            result.append(f"| 空白行数 | {metrics.get('lines_blank', 0)} | 空行数量 |")
+        # Document Overview
+        output.append("## Document Overview\n")
+        output.append(f"| Property | Value |")
+        output.append(f"|----------|-------|")
+        output.append(f"| File | {file_path} |")
+        output.append(f"| Language | html |")
+        output.append(f"| Total Lines | {data.get('line_count', 0)} |")
+        output.append(f"| Total Elements | {len(elements)} |")
+        output.append("")
+        
+        # Organize elements by type
+        html_elements = [e for e in elements if isinstance(e, dict) and e.get('type') == "function"]
+        attributes = [e for e in elements if isinstance(e, dict) and e.get('type') == "variable"]
+        comments = [e for e in elements if isinstance(e, dict) and e.get('type') == "import"]
+        scripts = [e for e in elements if isinstance(e, dict) and e.get('type') == "class"]
+        
+        # Document Structure (HTML Elements organized by type)
+        if html_elements:
+            output.append("## Document Structure\n")
             
-            # Element counts
-            elements = metrics.get('elements', {})
-            if elements:
-                result.append("")
-                result.append("### 🏷️ 元素统计")
-                result.append("")
-                result.append("| 元素类型 | 数量 | 说明 |")
-                result.append("|----------|------|------|")
-                result.append(f"| HTML元素 | {elements.get('elements', 0)} | 所有HTML标签元素 |")
-                result.append(f"| 属性 | {elements.get('attributes', 0)} | HTML元素属性 |")
-                result.append(f"| 文本节点 | {elements.get('text_nodes', 0)} | 文本内容节点 |")
-                result.append(f"| 注释 | {elements.get('comments', 0)} | HTML注释 |")
-                result.append(f"| 脚本块 | {elements.get('scripts', 0)} | `<script>` 标签数量 |")
-                result.append(f"| 样式块 | {elements.get('styles', 0)} | `<style>` 标签数量 |")
-                result.append(f"| 总计 | {elements.get('total', 0)} | 所有元素总数 |")
-
-        # Elements section - organized by type
-        elements_list = data.get('elements', [])
-        if elements_list:
-            # Group elements by type
-            element_groups = {}
-            for element in elements_list:
-                element_type = element.get('element_type', 'unknown')
-                if element_type not in element_groups:
-                    element_groups[element_type] = []
-                element_groups[element_type].append(element)
+            # Group elements by type for better organization
+            structural_elements = ['html', 'head', 'body', 'header', 'footer', 'main', 'section', 'article', 'aside', 'nav']
+            content_elements = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'div', 'span']
+            form_elements = ['form', 'input', 'textarea', 'select', 'button', 'label']
+            media_elements = ['img', 'video', 'audio', 'picture', 'source']
+            list_elements = ['ul', 'ol', 'li', 'dl', 'dt', 'dd']
+            table_elements = ['table', 'thead', 'tbody', 'tr', 'th', 'td']
             
-            result.append("")
-            result.append("## 🏗️ HTML 结构详情")
-            
-            # HTML Elements (Functions)
-            if 'function' in element_groups:
-                result.append("")
-                result.append("### 🏷️ HTML 元素 (标签)")
-                result.append("")
-                result.append("| 序号 | 标签名 | 位置 | 属性数 | 描述 |")
-                result.append("|------|--------|------|--------|------|")
-                
-                for i, element in enumerate(element_groups['function'], 1):
-                    name = element.get('name', 'unnamed')
-                    start_line = element.get('start_line', 0)
-                    end_line = element.get('end_line', 0)
-                    
-                    # Extract HTML-specific information
+            # Show structural elements first
+            structural = [e for e in html_elements if isinstance(e, dict) and e.get('name', '').lower() in structural_elements]
+            if structural:
+                output.append("### Structural Elements\n")
+                output.append("| Element | Line | Attributes | Description |")
+                output.append("|---------|------|------------|-------------|")
+                for element in structural:
+                    name = element.get('name', '')
+                    line = element.get('start_line', '')
                     raw_text = element.get('raw_text', '')
-                    attr_count = self._count_attributes(raw_text)
+                    attr_count = self._count_attributes(element)
                     description = self._get_element_description(name, raw_text)
-                    
-                    result.append(f"| {i} | `<{name}>` | {start_line}-{end_line} | {attr_count} | {description} |")
+                    output.append(f"| `<{name}>` | {line} | {attr_count} | {description} |")
+                output.append("")
             
-            # HTML Attributes (Variables)
-            if 'variable' in element_groups:
-                result.append("")
-                result.append("### 🏷️ HTML 属性")
-                result.append("")
-                result.append("| 序号 | 属性名 | 位置 | 值 | 所属元素 |")
-                result.append("|------|--------|------|-----|----------|")
-                
-                for i, element in enumerate(element_groups['variable'], 1):
-                    name = element.get('name', 'unnamed')
-                    start_line = element.get('start_line', 0)
-                    end_line = element.get('end_line', 0)
-                    
-                    # Extract attribute value and parent element
+            # Show content elements
+            content = [e for e in html_elements if isinstance(e, dict) and e.get('name', '').lower() in content_elements]
+            if content:
+                output.append("### Content Elements\n")
+                output.append("| Element | Line | Attributes | Description |")
+                output.append("|---------|------|------------|-------------|")
+                for element in content:
+                    name = element.get('name', '')
+                    line = element.get('start_line', '')
                     raw_text = element.get('raw_text', '')
-                    attr_value = self._extract_attribute_value(raw_text)
-                    parent_element = self._find_parent_element(element, element_groups.get('function', []))
-                    
-                    result.append(f"| {i} | `{name}` | {start_line}-{end_line} | `{attr_value}` | {parent_element} |")
+                    attr_count = self._count_attributes(element)
+                    description = self._get_element_description(name, raw_text)
+                    output.append(f"| `<{name}>` | {line} | {attr_count} | {description} |")
+                output.append("")
             
-            # Text Content
-            text_elements = [e for e in elements_list if 'text' in e.get('name', '').lower()]
-            if text_elements:
-                result.append("")
-                result.append("### 📝 文本内容")
-                result.append("")
-                result.append("| 序号 | 位置 | 长度 | 预览 |")
-                result.append("|------|------|------|------|")
-                
-                for i, element in enumerate(text_elements, 1):
-                    start_line = element.get('start_line', 0)
-                    end_line = element.get('end_line', 0)
+            # Show form elements
+            forms = [e for e in html_elements if isinstance(e, dict) and e.get('name', '').lower() in form_elements]
+            if forms:
+                output.append("### Form Elements\n")
+                output.append("| Element | Line | Attributes | Description |")
+                output.append("|---------|------|------------|-------------|")
+                for element in forms:
+                    name = element.get('name', '')
+                    line = element.get('start_line', '')
                     raw_text = element.get('raw_text', '')
-                    preview = self._get_text_preview(raw_text)
-                    
-                    result.append(f"| {i} | {start_line}-{end_line} | {len(raw_text)} | {preview} |")
+                    attr_count = self._count_attributes(element)
+                    description = self._get_element_description(name, raw_text)
+                    output.append(f"| `<{name}>` | {line} | {attr_count} | {description} |")
+                output.append("")
             
-            # Comments (Imports)
-            if 'import' in element_groups:
-                result.append("")
-                result.append("### 💬 HTML 注释")
-                result.append("")
-                result.append("| 序号 | 位置 | 内容 |")
-                result.append("|------|------|------|")
-                
-                for i, element in enumerate(element_groups['import'], 1):
-                    start_line = element.get('start_line', 0)
-                    end_line = element.get('end_line', 0)
+            # Show other elements
+            all_categorized = structural_elements + content_elements + form_elements + media_elements + list_elements + table_elements
+            other = [e for e in html_elements if isinstance(e, dict) and e.get('name', '').lower() not in all_categorized]
+            if other:
+                output.append("### Other Elements\n")
+                output.append("| Element | Line | Attributes | Description |")
+                output.append("|---------|------|------------|-------------|")
+                for element in other:
+                    name = element.get('name', '')
+                    line = element.get('start_line', '')
                     raw_text = element.get('raw_text', '')
-                    comment_content = self._extract_comment_content(raw_text)
-                    
-                    result.append(f"| {i} | {start_line}-{end_line} | {comment_content} |")
-            
-            # Embedded Scripts/Styles (Classes)
-            if 'class' in element_groups:
-                result.append("")
-                result.append("### 📜 嵌入内容 (脚本/样式)")
-                result.append("")
-                result.append("| 序号 | 类型 | 位置 | 大小 | 描述 |")
-                result.append("|------|------|------|------|------|")
-                
-                for i, element in enumerate(element_groups['class'], 1):
-                    name = element.get('name', 'unnamed')
-                    start_line = element.get('start_line', 0)
-                    end_line = element.get('end_line', 0)
-                    raw_text = element.get('raw_text', '')
-                    
-                    content_type = 'JavaScript' if 'script' in name.lower() else 'CSS' if 'style' in name.lower() else '未知'
-                    content_size = len(raw_text)
-                    description = self._get_embedded_content_description(raw_text, content_type)
-                    
-                    result.append(f"| {i} | {content_type} | {start_line}-{end_line} | {content_size}字符 | {description} |")
-
-        # Analysis summary
-        if elements_list:
-            result.append("")
-            result.append("## 📋 分析摘要")
-            result.append("")
-            
-            # Element type distribution
-            type_counts = {}
-            for element in elements_list:
-                element_type = element.get('element_type', 'unknown')
-                type_counts[element_type] = type_counts.get(element_type, 0) + 1
-            
-            result.append("### 元素类型分布")
-            result.append("")
-            for element_type, count in type_counts.items():
-                type_name = self._get_element_type_name(element_type)
-                result.append(f"- **{type_name}**: {count}个")
-            
-            # HTML structure insights
-            result.append("")
-            result.append("### 结构特征")
-            result.append("")
-            
-            # Check for common HTML patterns
-            html_elements = element_groups.get('function', [])
-            semantic_count = sum(1 for e in html_elements if e.get('name', '').lower() in 
-                               ['header', 'footer', 'main', 'section', 'article', 'aside', 'nav'])
-            form_count = sum(1 for e in html_elements if e.get('name', '').lower() in 
-                           ['form', 'input', 'textarea', 'select', 'button'])
-            media_count = sum(1 for e in html_elements if e.get('name', '').lower() in 
-                            ['img', 'video', 'audio', 'picture', 'source'])
-            
-            if semantic_count > 0:
-                result.append(f"- 🏗️ **语义化结构**: 使用了{semantic_count}个语义化标签，结构清晰")
-            if form_count > 0:
-                result.append(f"- 📝 **交互表单**: 包含{form_count}个表单相关元素")
-            if media_count > 0:
-                result.append(f"- 🎬 **多媒体内容**: 包含{media_count}个媒体元素")
-            
-            # Check for accessibility features
-            attributes = element_groups.get('variable', [])
-            alt_attrs = sum(1 for a in attributes if a.get('name', '') == 'alt')
-            aria_attrs = sum(1 for a in attributes if a.get('name', '').startswith('aria-'))
-            role_attrs = sum(1 for a in attributes if a.get('name', '') == 'role')
-            
-            if alt_attrs > 0 or aria_attrs > 0 or role_attrs > 0:
-                result.append("")
-                result.append("### 无障碍特征")
-                result.append("")
-                if alt_attrs > 0:
-                    result.append(f"- ♿ **替代文本**: {alt_attrs}个alt属性")
-                if aria_attrs > 0:
-                    result.append(f"- ♿ **ARIA标签**: {aria_attrs}个ARIA属性")
-                if role_attrs > 0:
-                    result.append(f"- ♿ **角色定义**: {role_attrs}个role属性")
-
-        return "\n".join(result)
+                    attr_count = self._count_attributes(element)
+                    description = self._get_element_description(name, raw_text)
+                    output.append(f"| `<{name}>` | {line} | {attr_count} | {description} |")
+                output.append("")
+        
+        # Attributes Section
+        if attributes:
+            output.append("## Attributes\n")
+            output.append("| Attribute | Value | Line |")
+            output.append("|-----------|-------|------|")
+            for attr in attributes:
+                name = attr.get('name', '')
+                value = self._extract_attribute_value(attr.get('raw_text', ''))
+                line = attr.get('start_line', '')
+                output.append(f"| `{name}` | `{value}` | {line} |")
+            output.append("")
+        
+        # Comments Section
+        if comments:
+            output.append("## Comments\n")
+            output.append("| Content | Line |")
+            output.append("|---------|------|")
+            for comment in comments:
+                content = self._extract_comment_content(comment.get('raw_text', ''))
+                line = comment.get('start_line', '')
+                output.append(f"| {content} | {line} |")
+            output.append("")
+        
+        # Embedded Content Section
+        if scripts:
+            output.append("## Embedded Content\n")
+            output.append("| Type | Size | Line Range | Description |")
+            output.append("|------|------|------------|-------------|")
+            for script in scripts:
+                script_type = self._get_script_type(script.get('name', ''))
+                size = len(script.get('raw_text', ''))
+                start = script.get('start_line', '')
+                end = script.get('end_line', '')
+                range_str = f"{start}-{end}" if start and end else str(start)
+                description = self._get_embedded_content_description(script.get('raw_text', ''), script_type)
+                output.append(f"| {script_type} | {size} chars | {range_str} | {description} |")
+            output.append("")
+        
+        return "\n".join(output)
 
     def _format_compact_table(self, data: dict[str, Any]) -> str:
         """Compact table format for HTML"""
         if data is None:
             return "# No data available\n"
         
-        result = []
-        result.append("# HTML 结构概览")
-        result.append("")
+        file_path = data.get("file_path", "")
+        elements = data.get("elements", [])
         
-        # File and metrics info
-        metrics = data.get('metrics', {})
-        elements = metrics.get('elements', {})
+        # If no elements found, return appropriate message
+        if not elements:
+            return f"# HTML Analysis: {file_path.split('/')[-1]}\n\nINFO: No results found matching the query.\n"
         
-        result.append("| 项目 | 值 |")
-        result.append("|------|-----|")
-        result.append(f"| 文件 | `{data.get('file_path', 'N/A')}` |")
-        result.append(f"| 总行数 | {metrics.get('lines_total', 0)} |")
-        result.append(f"| HTML元素 | {elements.get('elements', 0)} |")
-        result.append(f"| 属性 | {elements.get('attributes', 0)} |")
-        result.append(f"| 注释 | {elements.get('comments', 0)} |")
+        output = [f"# HTML Analysis: {file_path.split('/')[-1]}\n"]
         
-        # Top-level elements
-        elements_list = data.get('elements', [])
-        html_elements = [e for e in elements_list if e.get('element_type') == 'function']
+        # For HTML, all elements are typically of type "function"
+        # So we use all elements instead of filtering by type
+        html_elements = elements
         
+        # Calculate total attributes
+        total_attributes = sum(self._count_attributes(element) for element in html_elements)
+        
+        # Summary table
+        output.append("## Summary")
+        output.append("| Type | Count |")
+        output.append("|------|-------|")
+        output.append(f"| Elements | {len(html_elements)} |")
+        output.append(f"| Attributes | {total_attributes} |")
+        output.append(f"| Comments | 0 |")
+        output.append(f"| Scripts/Styles | 0 |")
+        output.append("")
+        
+        # Elements (compact)
         if html_elements:
-            result.append("")
-            result.append("## 主要元素")
-            result.append("")
-            result.append("| 标签 | 位置 | 属性数 |")
-            result.append("|------|------|--------|")
-            
-            for element in html_elements[:10]:  # Show top 10
-                name = element.get('name', 'unnamed')
-                start_line = element.get('start_line', 0)
-                raw_text = element.get('raw_text', '')
-                attr_count = self._count_attributes(raw_text)
-                
-                result.append(f"| `<{name}>` | {start_line} | {attr_count} |")
-            
+            output.append("## Elements")
+            output.append("| Element | Line |")
+            output.append("|---------|------|")
+            for element in html_elements[:10]:  # Limit to first 10
+                name = element.get('name', '')
+                line = element.get('start_line', '')
+                output.append(f"| `<{name}>` | {line} |")
             if len(html_elements) > 10:
-                result.append(f"| ... | ... | ... |")
-                result.append(f"| *共{len(html_elements)}个元素* | | |")
+                output.append(f"| ... | ({len(html_elements) - 10} more) |")
+            output.append("")
         
-        return "\n".join(result)
-
-    def _format_csv_table(self, data: dict[str, Any]) -> str:
-        """CSV format for HTML elements"""
-        if data is None:
-            return "# No data available\n"
-        
-        result = []
-        result.append("# HTML 元素 CSV 格式")
-        result.append("")
-        result.append("```csv")
-        result.append("序号,元素类型,名称,开始行,结束行,属性数,描述")
-        
-        elements_list = data.get('elements', [])
-        for i, element in enumerate(elements_list, 1):
-            element_type = element.get('element_type', 'unknown')
-            name = element.get('name', 'unnamed')
-            start_line = element.get('start_line', 0)
-            end_line = element.get('end_line', 0)
-            
-            raw_text = element.get('raw_text', '')
-            if element_type == 'function':  # HTML elements
-                attr_count = self._count_attributes(raw_text)
-                description = self._get_element_description(name, raw_text)
-                result.append(f"{i},HTML元素,{name},{start_line},{end_line},{attr_count},{description}")
-            elif element_type == 'variable':  # Attributes
-                attr_value = self._extract_attribute_value(raw_text)
-                result.append(f"{i},属性,{name},{start_line},{end_line},0,值: {attr_value}")
-            elif element_type == 'import':  # Comments
-                comment_content = self._extract_comment_content(raw_text)
-                result.append(f"{i},注释,{name},{start_line},{end_line},0,{comment_content}")
-            else:
-                result.append(f"{i},{element_type},{name},{start_line},{end_line},0,其他")
-        
-        result.append("```")
-        return "\n".join(result)
-
-    def _format_csv(self, data: dict[str, Any]) -> str:
-        """CSV format for HTML elements (delegates to _format_csv_table)"""
-        return self._format_csv_table(data)
+        return "\n".join(output)
 
     def _format_json(self, data: dict[str, Any]) -> str:
-        """Format data as JSON"""
-        import json
-        try:
-            return json.dumps(data, indent=2, ensure_ascii=False)
-        except (TypeError, ValueError) as e:
-            return f"# JSON serialization error: {e}\n"
+        """JSON format for HTML"""
+        return json.dumps(data, indent=2, ensure_ascii=False)
+
+    def _format_csv(self, data: dict[str, Any]) -> str:
+        """CSV format specialized for HTML elements"""
+        import io
+        import csv
+        
+        output = io.StringIO()
+        writer = csv.writer(output, lineterminator="\n")
+
+        # Header for HTML elements (English)
+        writer.writerow([
+            "Index", "Element Type", "Name", "Start Line", "End Line", "Attributes", "Description"
+        ])
+
+        # Process HTML elements
+        elements = data.get("elements", [])
+        for i, element in enumerate(elements, 1):
+            if not isinstance(element, dict):
+                continue  # Skip non-dict elements
+            element_type = element.get("element_type", "")
+            name = element.get("name", "")
+            start_line = element.get("start_line", 0)
+            end_line = element.get("end_line", 0)
+            raw_text = element.get("raw_text", "")
+            
+            # Count attributes from element data
+            attr_count = self._count_attributes(element)
+            
+            # Get element description
+            description = self._get_element_description(name, raw_text)
+            
+            writer.writerow([
+                i,
+                element_type,
+                name,
+                start_line,
+                end_line,
+                attr_count,
+                self._clean_csv_text(description)
+            ])
+
+        csv_content = output.getvalue()
+        csv_content = csv_content.replace("\r\n", "\n").replace("\r", "\n")
+        csv_content = csv_content.rstrip("\n")
+        output.close()
+
+        return csv_content
+
+    def _format_csv_table(self, data: dict[str, Any]) -> str:
+        """Format CSV data as a markdown table with CSV block"""
+        csv_data = self._format_csv(data)
+        
+        result = "# HTML Elements CSV Format\n\n"
+        result += "```csv\n"
+        result += csv_data
+        result += "\n```\n"
+        
+        return result
 
     # Helper methods for HTML-specific processing
     
-    def _count_attributes(self, raw_text: str) -> int:
+    def _count_attributes(self, element: dict) -> int:
         """Count number of attributes in HTML element"""
+        # Use actual attributes array if available
+        if 'attributes' in element and isinstance(element['attributes'], list):
+            return len(element['attributes'])
+        
+        # Fallback to raw_text parsing
+        raw_text = element.get('raw_text', '')
         if not raw_text or '<' not in raw_text:
             return 0
         
@@ -362,46 +343,46 @@ class HTMLTableFormatter(BaseTableFormatter):
     def _get_element_description(self, tag_name: str, raw_text: str) -> str:
         """Get description for HTML element"""
         descriptions = {
-            'html': 'HTML根元素',
-            'head': '文档头部',
-            'body': '文档主体',
-            'title': '页面标题',
-            'meta': '元数据',
-            'link': '外部资源链接',
-            'script': 'JavaScript脚本',
-            'style': 'CSS样式',
-            'div': '通用容器',
-            'span': '内联容器',
-            'p': '段落',
-            'h1': '一级标题',
-            'h2': '二级标题',
-            'h3': '三级标题',
-            'h4': '四级标题',
-            'h5': '五级标题',
-            'h6': '六级标题',
-            'a': '链接',
-            'img': '图片',
-            'form': '表单',
-            'input': '输入框',
-            'button': '按钮',
-            'table': '表格',
-            'ul': '无序列表',
-            'ol': '有序列表',
-            'li': '列表项',
-            'header': '页面头部',
-            'footer': '页面底部',
-            'main': '主要内容',
-            'section': '章节',
-            'article': '文章',
-            'aside': '侧边栏',
-            'nav': '导航',
+            'html': 'HTML root element',
+            'head': 'Document head',
+            'body': 'Document body',
+            'title': 'Page title',
+            'meta': 'Metadata',
+            'link': 'External resource link',
+            'script': 'JavaScript script',
+            'style': 'CSS styles',
+            'div': 'Generic container',
+            'span': 'Inline container',
+            'p': 'Paragraph',
+            'h1': 'Level 1 heading',
+            'h2': 'Level 2 heading',
+            'h3': 'Level 3 heading',
+            'h4': 'Level 4 heading',
+            'h5': 'Level 5 heading',
+            'h6': 'Level 6 heading',
+            'a': 'Link',
+            'img': 'Image',
+            'form': 'Form',
+            'input': 'Input field',
+            'button': 'Button',
+            'table': 'Table',
+            'ul': 'Unordered list',
+            'ol': 'Ordered list',
+            'li': 'List item',
+            'header': 'Page header',
+            'footer': 'Page footer',
+            'main': 'Main content',
+            'section': 'Section',
+            'article': 'Article',
+            'aside': 'Sidebar',
+            'nav': 'Navigation',
         }
         
-        description = descriptions.get(tag_name.lower(), '自定义元素')
+        description = descriptions.get(tag_name.lower(), 'Custom element')
         
         # Add self-closing indicator
         if raw_text and raw_text.strip().endswith('/>'):
-            description += ' (自闭合)'
+            description += ' (self-closing)'
         
         return description
 
@@ -417,33 +398,6 @@ class HTMLTableFormatter(BaseTableFormatter):
             return match.group(1)
         
         return raw_text.split('=')[-1].strip(' "\'')
-
-    def _find_parent_element(self, attribute, html_elements) -> str:
-        """Find parent element for attribute"""
-        attr_line = attribute.get('start_line', 0)
-        
-        # Find element that contains this attribute
-        for element in html_elements:
-            elem_start = element.get('start_line', 0)
-            elem_end = element.get('end_line', 0)
-            
-            if elem_start <= attr_line <= elem_end:
-                return f"`<{element.get('name', 'unknown')}>`"
-        
-        return '未知元素'
-
-    def _get_text_preview(self, text: str, max_length: int = 50) -> str:
-        """Get preview of text content"""
-        if not text:
-            return '空'
-        
-        # Clean up whitespace
-        cleaned = ' '.join(text.split())
-        
-        if len(cleaned) <= max_length:
-            return f'"{cleaned}"'
-        
-        return f'"{cleaned[:max_length].rstrip()}..."'
 
     def _extract_comment_content(self, raw_text: str) -> str:
         """Extract content from HTML comment"""
@@ -462,38 +416,65 @@ class HTMLTableFormatter(BaseTableFormatter):
         
         return raw_text
 
+    def _get_script_type(self, name: str) -> str:
+        """Get type of embedded content"""
+        if 'script' in name.lower():
+            return 'JavaScript'
+        elif 'style' in name.lower():
+            return 'CSS'
+        else:
+            return 'Unknown'
+
     def _get_embedded_content_description(self, raw_text: str, content_type: str) -> str:
         """Get description for embedded script/style content"""
         if not raw_text:
-            return '空内容'
+            return 'Empty content'
         
         if content_type == 'JavaScript':
             if 'function' in raw_text:
                 func_count = raw_text.count('function')
-                return f'包含{func_count}个函数'
+                return f'Contains {func_count} function(s)'
             elif 'console.log' in raw_text:
-                return '调试代码'
+                return 'Debug code'
             elif 'addEventListener' in raw_text:
-                return '事件处理代码'
+                return 'Event handling code'
             else:
-                return 'JavaScript代码'
+                return 'JavaScript code'
         elif content_type == 'CSS':
             if '{' in raw_text:
                 rule_count = raw_text.count('{')
-                return f'包含{rule_count}个样式规则'
+                return f'Contains {rule_count} CSS rule(s)'
             else:
-                return 'CSS样式代码'
+                return 'CSS style code'
         
-        return f'{content_type}代码'
+        return f'{content_type} code'
 
-    def _get_element_type_name(self, element_type: str) -> str:
-        """Get Chinese name for element type"""
-        type_names = {
-            'function': 'HTML元素',
-            'variable': '属性',
-            'import': '注释',
-            'class': '嵌入内容',
-            'package': '文档信息',
-            'unknown': '未知'
-        }
-        return type_names.get(element_type, element_type)
+    def format_table(self, analysis_result: dict[str, Any], table_type: str = "full") -> str:
+        """Format table output for HTML files"""
+        # Handle None data
+        if analysis_result is None:
+            return "# No data available\n"
+        
+        # Ensure data is a dictionary
+        if not isinstance(analysis_result, dict):
+            return f"# Invalid data type: {type(analysis_result)}\n"
+        
+        # Check for supported table types
+        supported_types = ['full', 'compact', 'csv', 'json']
+        if table_type not in supported_types:
+            raise ValueError(f"Unsupported table type: {table_type}. Supported types: {supported_types}")
+        
+        # Handle json format separately
+        if table_type == 'json':
+            return self._format_json(analysis_result)
+        
+        # Temporarily change format type for this call
+        original_format = self.format_type
+        self.format_type = table_type
+        result = self.format_structure(analysis_result)
+        self.format_type = original_format
+        return result
+
+
+# For backward compatibility, create an alias
+HTMLFormatter = HTMLTableFormatter

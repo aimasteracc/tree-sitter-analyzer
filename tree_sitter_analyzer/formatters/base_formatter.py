@@ -87,9 +87,9 @@ class BaseTableFormatter(ABC):
         output = io.StringIO()
         writer = csv.writer(output, lineterminator="\n")
 
-        # Header
+        # Header (English)
         writer.writerow(
-            ["Type", "Name", "Signature", "Visibility", "Lines", "Complexity", "Doc"]
+            ["Type", "Name", "Signature", "Visibility", "Lines", "Complexity", "Documentation"]
         )
 
         # Fields
@@ -194,3 +194,136 @@ class BaseTableFormatter(ABC):
         cleaned = cleaned.replace('"', '""')
 
         return cleaned
+
+
+class GenericTableFormatter(BaseTableFormatter):
+    """Generic table formatter for unknown languages"""
+
+    def _format_full_table(self, data: dict[str, Any]) -> str:
+        """Full table format for generic languages"""
+        lines = []
+
+        # Header
+        file_path = data.get("file_path", "Unknown")
+        file_name = file_path.split("/")[-1].split("\\")[-1]
+        lines.append(f"# {file_name}")
+        lines.append("")
+
+        # Basic Info
+        stats = data.get("statistics") or {}
+        lines.append("## Info")
+        lines.append("| Property | Value |")
+        lines.append("|----------|-------|")
+        lines.append(f"| File | {file_name} |")
+        lines.append(f"| Elements | {stats.get('total_elements', 0)} |")
+        lines.append("")
+
+        # Methods/Functions (if any)
+        methods = data.get("methods", [])
+        if methods:
+            lines.append("## Methods/Functions")
+            lines.append("| Name | Signature | Lines | Complexity |")
+            lines.append("|------|-----------|-------|------------|")
+
+            for method in methods:
+                name = str(method.get("name", ""))
+                signature = self._create_generic_signature(method)
+                line_range = method.get("line_range", {})
+                lines_str = f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
+                complexity = method.get("complexity_score", 0)
+
+                lines.append(f"| {name} | {signature} | {lines_str} | {complexity} |")
+            lines.append("")
+
+        # Fields/Properties (if any)
+        fields = data.get("fields", [])
+        if fields:
+            lines.append("## Fields/Properties")
+            lines.append("| Name | Type | Lines |")
+            lines.append("|------|------|-------|")
+
+            for field in fields:
+                name = str(field.get("name", ""))
+                field_type = str(field.get("type", ""))
+                line_range = field.get("line_range", {})
+                lines_str = f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
+
+                lines.append(f"| {name} | {field_type} | {lines_str} |")
+            lines.append("")
+
+        # Trim trailing blank lines
+        while lines and lines[-1] == "":
+            lines.pop()
+
+        return "\n".join(lines)
+
+    def _format_compact_table(self, data: dict[str, Any]) -> str:
+        """Compact table format for generic languages"""
+        lines = []
+
+        # Header
+        file_path = data.get("file_path", "Unknown")
+        file_name = file_path.split("/")[-1].split("\\")[-1]
+        lines.append(f"# {file_name}")
+        lines.append("")
+
+        # Info
+        stats = data.get("statistics") or {}
+        lines.append("## Info")
+        lines.append("| Property | Value |")
+        lines.append("|----------|-------|")
+        lines.append(f"| File | {file_name} |")
+        lines.append(f"| Elements | {stats.get('total_elements', 0)} |")
+        lines.append("")
+
+        # Methods (compact)
+        methods = data.get("methods", [])
+        if methods:
+            lines.append("## Methods")
+            lines.append("| Method | Sig | L | Cx |")
+            lines.append("|--------|-----|---|----| ")
+
+            for method in methods:
+                name = str(method.get("name", ""))
+                signature = self._create_generic_compact_signature(method)
+                line_range = method.get("line_range", {})
+                lines_str = f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
+                complexity = method.get("complexity_score", 0)
+
+                lines.append(f"| {name} | {signature} | {lines_str} | {complexity} |")
+            lines.append("")
+
+        # Trim trailing blank lines
+        while lines and lines[-1] == "":
+            lines.pop()
+
+        return "\n".join(lines)
+
+    def _create_generic_signature(self, method: dict[str, Any]) -> str:
+        """Create generic method signature"""
+        params = method.get("parameters", [])
+        param_strs = []
+        
+        for param in params:
+            if isinstance(param, dict):
+                param_name = param.get("name", "param")
+                param_type = param.get("type", "any")
+                param_strs.append(f"{param_name}:{param_type}")
+            else:
+                param_strs.append(str(param))
+        
+        params_str = ", ".join(param_strs)
+        return_type = method.get("return_type", "any")
+        
+        return f"({params_str}):{return_type}"
+
+    def _create_generic_compact_signature(self, method: dict[str, Any]) -> str:
+        """Create compact generic method signature"""
+        params = method.get("parameters", [])
+        param_count = len(params) if params else 0
+        return_type = method.get("return_type", "any")
+        
+        if param_count == 0:
+            return f"():{return_type}"
+        else:
+            return f"({param_count} params):{return_type}"

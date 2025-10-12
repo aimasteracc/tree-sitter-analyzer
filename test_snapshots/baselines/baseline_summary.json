@@ -1,0 +1,92 @@
+{
+  "generation_info": {
+    "timestamp": "2025-10-12T11:15:53.239211",
+    "generator": "pypi_package",
+    "config_version": "1.0.0"
+  },
+  "test_cases": {
+    "html": [
+      {
+        "name": "comprehensive_html",
+        "file_path": "examples/comprehensive_html.html",
+        "timestamp": "2025-10-12T11:15:47.523084",
+        "outputs_count": 0
+      }
+    ],
+    "java": [
+      {
+        "name": "BigService",
+        "file_path": "examples/BigService.java",
+        "timestamp": "2025-10-12T11:15:22.181795",
+        "outputs_count": 0
+      },
+      {
+        "name": "JavaDocTest",
+        "file_path": "examples/JavaDocTest.java",
+        "timestamp": "2025-10-12T11:15:30.738316",
+        "outputs_count": 0
+      },
+      {
+        "name": "MultiClass",
+        "file_path": "examples/MultiClass.java",
+        "timestamp": "2025-10-12T11:15:28.822173",
+        "outputs_count": 0
+      },
+      {
+        "name": "Sample",
+        "file_path": "examples/Sample.java",
+        "timestamp": "2025-10-12T11:15:25.976640",
+        "outputs_count": 0
+      }
+    ],
+    "javascript": [
+      {
+        "name": "ModernJavaScript",
+        "file_path": "examples/ModernJavaScript.js",
+        "timestamp": "2025-10-12T11:15:38.551308",
+        "outputs_count": 0
+      }
+    ],
+    "markdown": [
+      {
+        "name": "test_markdown",
+        "file_path": "examples/test_markdown.md",
+        "timestamp": "2025-10-12T11:15:50.735758",
+        "outputs_count": 0
+      }
+    ],
+    "python": [
+      {
+        "name": "cache_demo",
+        "file_path": "examples/cache_demo.py",
+        "timestamp": "2025-10-12T11:15:36.118464",
+        "outputs_count": 0
+      },
+      {
+        "name": "sample",
+        "file_path": "examples/sample.py",
+        "timestamp": "2025-10-12T11:15:33.113847",
+        "outputs_count": 0
+      }
+    ],
+    "typescript": [
+      {
+        "name": "ComprehensiveTypeScript",
+        "file_path": "examples/ComprehensiveTypeScript.ts",
+        "timestamp": "2025-10-12T11:15:42.004947",
+        "outputs_count": 0
+      },
+      {
+        "name": "TypeScriptDeclarations",
+        "file_path": "examples/TypeScriptDeclarations.d.ts",
+        "timestamp": "2025-10-12T11:15:45.183185",
+        "outputs_count": 0
+      }
+    ]
+  },
+  "statistics": {
+    "total_files": 11,
+    "total_languages": 6,
+    "generation_time": 1760235353.2392213
+  }
+}

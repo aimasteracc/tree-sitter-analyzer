@@ -3,7 +3,8 @@
 Factory for creating language-specific table formatters.
 """
 
-from .base_formatter import BaseTableFormatter
+from .base_formatter import BaseTableFormatter, GenericTableFormatter
+from .html_formatter import HTMLTableFormatter
 from .java_formatter import JavaTableFormatter
 from .javascript_formatter import JavaScriptTableFormatter
 from .python_formatter import PythonTableFormatter
@@ -14,6 +15,7 @@ class TableFormatterFactory:
     """Factory for creating language-specific table formatters"""
 
     _formatters: dict[str, type[BaseTableFormatter]] = {
+        "html": HTMLTableFormatter,
         "java": JavaTableFormatter,
         "javascript": JavaScriptTableFormatter,
         "js": JavaScriptTableFormatter,  # Alias
@@ -39,8 +41,8 @@ class TableFormatterFactory:
         formatter_class = cls._formatters.get(language.lower())
 
         if formatter_class is None:
-            # Use Java formatter as default
-            formatter_class = JavaTableFormatter
+            # Use generic formatter instead of Java-specific formatter
+            formatter_class = GenericTableFormatter
 
         return formatter_class(format_type)
 

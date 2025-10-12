@@ -410,6 +410,11 @@ class UnifiedAnalysisEngine:
             ".cxx": "cpp",
             ".rs": "rust",
             ".go": "go",
+            ".html": "html",
+            ".htm": "html",
+            ".xhtml": "html",
+            ".md": "markdown",
+            ".markdown": "markdown",
         }
 
         detected = language_map.get(ext.lower(), "unknown")

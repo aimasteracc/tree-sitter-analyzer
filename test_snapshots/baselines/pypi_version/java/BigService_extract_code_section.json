@@ -1,0 +1,16 @@
+{
+  "tool": "extract_code_section",
+  "timestamp": "2025-10-12T04:00:21.813Z",
+  "pypi_version": "1.7.4",
+  "file_path": "examples/BigService.java",
+  "range": {
+    "start_line": 1,
+    "end_line": 50,
+    "start_column": null,
+    "end_column": null
+  },
+  "content_length": 1557,
+  "format": "text",
+  "execution_status": "success",
+  "sample_content": "package com.example.service;\n\nimport java.util.*;\nimport java.time.LocalDateTime;\nimport java.time.format.DateTimeFormatter;\nimport java.sql.Connection;\nimport java.sql.PreparedStatement;\nimport java.sql.ResultSet;\nimport java.sql.SQLException;\nimport javax.sql.DataSource;\n\n/**\n * BigService - Large-scale business service class\n * This class contains various business logic.\n * Contains approximately 1000 lines of code for demonstration purposes.\n */\npublic class BigService {\n\n    private static final String DEFAULT_ENCODING = \"UTF-8\";\n    private static final int MAX_RETRY_COUNT = 3;\n    private static final long TIMEOUT_MILLISECONDS = 30000;\n    private static final String DATE_FORMAT = \"yyyy-MM-dd HH:mm:ss\";\n\n    private DataSource dataSource;\n    private Map<String, Object> configurationCache;\n    private List<String> activeConnections;\n    private Set<String> validatedUsers;\n    private Queue<String> pendingOperations;\n\n    /**\n     * Constructor\n     */\n    public BigService() {\n        this.configurationCache = new HashMap<>();\n        this.activeConnections = new ArrayList<>();\n        this.validatedUsers = new HashSet<>();\n        this.pendingOperations = new LinkedList<>();\n        initializeService();\n    }\n\n    /**\n     * Service initialization\n     */\n    private void initializeService() {\n        System.out.println(\"Initializing BigService...\");\n        loadConfiguration();\n        setupDatabaseConnection();\n        validateSystemRequirements();\n        System.out.println(\"BigService initialization completed.\");\n    }"
+}

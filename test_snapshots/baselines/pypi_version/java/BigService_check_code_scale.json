@@ -1,0 +1,27 @@
+{
+  "tool": "check_code_scale",
+  "timestamp": "2025-10-12T03:59:26.041Z",
+  "pypi_version": "1.7.4",
+  "file_path": "examples/BigService.java",
+  "language": "java",
+  "metrics": {
+    "lines_total": 1419,
+    "lines_code": 906,
+    "lines_comment": 246,
+    "lines_blank": 267,
+    "elements": {
+      "classes": 1,
+      "methods": 66,
+      "fields": 9,
+      "imports": 8,
+      "packages": 1,
+      "total": 85
+    },
+    "complexity": {
+      "total": 348,
+      "average": 5.27,
+      "max": 15
+    }
+  },
+  "execution_status": "success"
+}

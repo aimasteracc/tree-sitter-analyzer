@@ -11,8 +11,10 @@ the tree-sitter-analyzer framework.
 import re
 from typing import TYPE_CHECKING, Any, Optional
 
+import tree_sitter
+
 if TYPE_CHECKING:
-    import tree_sitter
+    pass
 
 from ..encoding_utils import extract_text_slice, safe_encode
 from ..models import Class, CodeElement, Function, Import, Package, Variable
@@ -122,8 +124,12 @@ class HTMLElementExtractor(ElementExtractor):
                         break
             
             if start_tag:
+                # Determine appropriate element type based on HTML semantics
+                element_type = self._get_html_element_type(tag_name)
+                
                 element_info = {
-                    "type": "html_element",
+                    "type": element_type,
+                    "element_type": element_type,
                     "name": tag_name,
                     "start_line": node.start_point[0] + 1 if hasattr(node, "start_point") else 0,
                     "end_line": node.end_point[0] + 1 if hasattr(node, "end_point") else 0,
@@ -151,8 +157,12 @@ class HTMLElementExtractor(ElementExtractor):
                         tag_name = self._get_node_text(child)
                         break
             
+            # Determine appropriate element type based on HTML semantics
+            element_type = self._get_html_element_type(tag_name)
+            
             element_info = {
-                "type": "html_element",
+                "type": element_type,
+                "element_type": element_type,
                 "name": tag_name,
                 "start_line": node.start_point[0] + 1 if hasattr(node, "start_point") else 0,
                 "end_line": node.end_point[0] + 1 if hasattr(node, "end_point") else 0,
@@ -189,7 +199,8 @@ class HTMLElementExtractor(ElementExtractor):
                                         break
             
             attribute_info = {
-                "type": "html_attribute",
+                "type": "variable",
+                "element_type": "variable",
                 "name": attr_name,
                 "value": attr_value,
                 "start_line": node.start_point[0] + 1 if hasattr(node, "start_point") else 0,
@@ -214,7 +225,8 @@ class HTMLElementExtractor(ElementExtractor):
                 return
             
             text_info = {
-                "type": "text_content",
+                "type": "import",
+                "element_type": "import",
                 "name": f"text_{node.start_point[0]}_{node.start_point[1]}" if hasattr(node, "start_point") else "text",
                 "content": text_content,
                 "start_line": node.start_point[0] + 1 if hasattr(node, "start_point") else 0,
@@ -240,7 +252,8 @@ class HTMLElementExtractor(ElementExtractor):
                 content = comment_text[4:-3].strip()
             
             comment_info = {
-                "type": "html_comment",
+                "type": "import",
+                "element_type": "import",
                 "name": f"comment_{node.start_point[0]}_{node.start_point[1]}" if hasattr(node, "start_point") else "comment",
                 "content": content,
                 "start_line": node.start_point[0] + 1 if hasattr(node, "start_point") else 0,
@@ -261,7 +274,8 @@ class HTMLElementExtractor(ElementExtractor):
             doctype_text = self._get_node_text(node)
             
             doctype_info = {
-                "type": "html_doctype",
+                "type": "import",
+                "element_type": "import",
                 "name": "doctype",
                 "content": doctype_text,
                 "start_line": node.start_point[0] + 1 if hasattr(node, "start_point") else 0,
@@ -297,7 +311,8 @@ class HTMLElementExtractor(ElementExtractor):
             mapped_content_type = content_type_map.get(content_type, content_type)
 
             embedded_info = {
-                "type": f"html_{content_type}",
+                "type": "class",
+                "element_type": "class",
                 "name": f"{content_type}_block",
                 "content": content,
                 "start_line": node.start_point[0] + 1 if hasattr(node, "start_point") else 0,
@@ -346,8 +361,64 @@ class HTMLElementExtractor(ElementExtractor):
         
         return attributes
 
+    def _get_html_element_type(self, tag_name: str) -> str:
+        """Determine appropriate element type based on HTML semantics"""
+        tag_name = tag_name.lower()
+        
+        # Structure elements
+        if tag_name in ['html', 'head', 'body', 'header', 'footer', 'main', 'section', 'article', 'aside', 'nav']:
+            return "structure"
+        
+        # Container elements
+        elif tag_name in ['div', 'span', 'p', 'blockquote', 'pre']:
+            return "container"
+        
+        # Heading elements
+        elif tag_name in ['h1', 'h2', 'h3', 'h4', 'h5', 'h6']:
+            return "heading"
+        
+        # List elements
+        elif tag_name in ['ul', 'ol', 'li', 'dl', 'dt', 'dd']:
+            return "list"
+        
+        # Table elements
+        elif tag_name in ['table', 'thead', 'tbody', 'tfoot', 'tr', 'th', 'td', 'caption', 'colgroup', 'col']:
+            return "table"
+        
+        # Form elements
+        elif tag_name in ['form', 'input', 'textarea', 'select', 'option', 'button', 'label', 'fieldset', 'legend']:
+            return "form"
+        
+        # Media elements
+        elif tag_name in ['img', 'video', 'audio', 'source', 'track', 'canvas', 'svg']:
+            return "media"
+        
+        # Link elements
+        elif tag_name in ['a', 'link']:
+            return "link"
+        
+        # Script/Style elements
+        elif tag_name in ['script', 'style', 'noscript']:
+            return "script"
+        
+        # Meta elements
+        elif tag_name in ['meta', 'title', 'base']:
+            return "meta"
+        
+        # Text formatting elements
+        elif tag_name in ['strong', 'em', 'b', 'i', 'u', 'small', 'mark', 'del', 'ins', 'sub', 'sup']:
+            return "text"
+        
+        # Interactive elements
+        elif tag_name in ['details', 'summary', 'dialog']:
+            return "interactive"
+        
+        # Default fallback
+        else:
+            return "element"
+
     def _get_node_text(self, node: "tree_sitter.Node") -> str:
-        """Get text content of a tree-sitter node with caching"""
+        """Get text content of a tree-sitter node with caching and proper UTF-8 handling"""
         node_id = id(node)
         
         if node_id in self._node_text_cache:
@@ -358,21 +429,24 @@ class HTMLElementExtractor(ElementExtractor):
             if not hasattr(self, 'source_code') or self.source_code is None or self.source_code == "":
                 text = ""
             elif hasattr(node, "start_byte") and hasattr(node, "end_byte") and node.start_byte is not None and node.end_byte is not None:
-                # Ensure we have valid byte positions
-                source_bytes = self.source_code.encode('utf-8')
-                if node.start_byte >= 0 and node.end_byte >= node.start_byte and node.end_byte <= len(source_bytes):
-                    text = extract_text_slice(
-                        source_bytes,  # Pass bytes, not string
-                        node.start_byte,
-                        node.end_byte,
-                        self._file_encoding
-                    )
+                # Use proper UTF-8 byte handling for text extraction
+                if node.start_byte >= 0 and node.end_byte >= node.start_byte:
+                    try:
+                        # Convert source code to bytes for proper UTF-8 handling
+                        source_bytes = self.source_code.encode('utf-8')
+                        if node.end_byte <= len(source_bytes):
+                            # Extract bytes and decode properly
+                            text_bytes = source_bytes[node.start_byte:node.end_byte]
+                            text = text_bytes.decode('utf-8', errors='replace')
+                        else:
+                            # Fallback to string slicing if byte positions are invalid
+                            text = self.source_code[node.start_byte:node.end_byte] if node.end_byte <= len(self.source_code) else ""
+                    except (UnicodeDecodeError, UnicodeEncodeError) as e:
+                        log_debug(f"UTF-8 encoding/decoding error, using fallback: {e}")
+                        # Fallback to direct string slicing
+                        text = self.source_code[node.start_byte:node.end_byte] if node.end_byte <= len(self.source_code) else ""
                 else:
-                    # Fallback: try direct string slicing if byte positions are reasonable
-                    if node.start_byte >= 0 and node.end_byte >= node.start_byte and node.end_byte <= len(self.source_code):
-                        text = self.source_code[node.start_byte:node.end_byte]
-                    else:
-                        text = ""
+                    text = ""
             else:
                 text = ""
         except Exception as e:
@@ -392,7 +466,8 @@ class HTMLElementExtractor(ElementExtractor):
         functions = []
         
         for element in html_elements:
-            if element.get("type") == "html_element":
+            # HTML elements should be treated as functions regardless of their specific type
+            if element.get("node_type") == "element" or element.get("node_type") == "self_closing_tag":
                 func = Function(
                     name=element["name"],
                     start_line=element["start_line"],
@@ -419,7 +494,8 @@ class HTMLElementExtractor(ElementExtractor):
         classes = []
 
         for element in html_elements:
-            if element.get("type") in ["html_script", "html_style"]:
+            # Embedded scripts/styles should be treated as classes
+            if element.get("node_type") in ["script_element", "style_element"]:
                 # Map content type for consistency with tests
                 content_type_map = {
                     "style": "CSS",
@@ -450,7 +526,8 @@ class HTMLElementExtractor(ElementExtractor):
         variables = []
 
         for element in html_elements:
-            if element.get("type") == "html_attribute":
+            # HTML attributes should be treated as variables
+            if element.get("node_type") == "attribute":
                 var = Variable(
                     name=element["name"],
                     start_line=element["start_line"],
@@ -473,7 +550,8 @@ class HTMLElementExtractor(ElementExtractor):
         imports = []
         
         for element in html_elements:
-            if element.get("type") == "html_comment":
+            # Comments and text content should be treated as imports
+            if element.get("node_type") in ["comment", "text", "doctype"]:
                 imp = Import(
                     name=element["name"],
                     start_line=element["start_line"],
@@ -514,15 +592,49 @@ class HTMLLanguagePlugin(LanguagePlugin):
             AnalysisResult containing extracted HTML information
         """
         from ..models import AnalysisResult
+        from ..language_loader import load_language
 
         try:
-            # Use the unified analysis engine with HTML-specific processing
-            engine = UnifiedAnalysisEngine()
-            result = await engine.analyze_file(file_path)
+            # Read file content
+            with open(file_path, 'r', encoding='utf-8') as f:
+                source_code = f.read()
+            
+            # Get tree-sitter language
+            language = load_language("html")
+            if not language:
+                raise ValueError("HTML language not available in tree-sitter")
+            
+            # Parse with tree-sitter
+            parser = tree_sitter.Parser(language)
+            tree = parser.parse(bytes(source_code, "utf8"))
+            
+            # Extract elements using standard ElementExtractor interface
+            extractor = self.create_extractor()
+            
+            # Extract using standard interface methods
+            functions = extractor.extract_functions(tree, source_code)
+            classes = extractor.extract_classes(tree, source_code)
+            variables = extractor.extract_variables(tree, source_code)
+            imports = extractor.extract_imports(tree, source_code)
+            
+            # Combine all elements
+            elements = functions + classes + variables + imports
+            
+            # Create result
+            result = AnalysisResult(
+                file_path=file_path,
+                language=self.get_language_name(),
+                line_count=len(source_code.splitlines()),
+                elements=elements,
+                node_count=tree.root_node.child_count if tree.root_node else 0,
+                query_results={},
+                source_code=source_code,
+                success=True,
+                error_message=None,
+            )
             
             # Enhance result with HTML-specific metrics
-            if result.success:
-                self._enhance_html_metrics(result)
+            self._enhance_html_metrics(result)
             
             return result
             
@@ -544,10 +656,10 @@ class HTMLLanguagePlugin(LanguagePlugin):
         """Enhance analysis result with HTML-specific metrics"""
         try:
             # Count different types of HTML elements with safe attribute access
-            html_elements = [e for e in result.elements if getattr(e, 'element_type', None) == "function"]
-            attributes = [e for e in result.elements if getattr(e, 'element_type', None) == "variable"]
-            comments = [e for e in result.elements if getattr(e, 'element_type', None) == "import"]
-            embedded = [e for e in result.elements if getattr(e, 'element_type', None) == "class"]
+            html_elements = [e for e in result.elements if getattr(e, 'type', None) == "function"]
+            attributes = [e for e in result.elements if getattr(e, 'type', None) == "variable"]
+            comments = [e for e in result.elements if getattr(e, 'type', None) == "import"]
+            embedded = [e for e in result.elements if getattr(e, 'type', None) == "class"]
 
             # Count specific element types with safe attribute access
             semantic_elements = sum(1 for e in html_elements if getattr(e, 'name', '').lower() in

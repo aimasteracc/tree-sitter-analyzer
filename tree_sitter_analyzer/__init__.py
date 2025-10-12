@@ -75,6 +75,15 @@ from .utils import (
     safe_print,
 )
 
+# Debug utilities for Windows 11 compatibility
+from .debug_utils import (
+    DebugScriptManager,
+    execute_debug_code,
+    create_debug_script,
+    cleanup_debug_scripts,
+    get_debug_manager,
+)
+
 __all__ = [
     # Core Models (optimized)
     "JavaAnnotation",
@@ -109,6 +118,12 @@ __all__ = [
     "QuietMode",
     "safe_print",
     "log_performance",
+    # Debug utilities (Windows 11 compatibility)
+    "DebugScriptManager",
+    "execute_debug_code",
+    "create_debug_script",
+    "cleanup_debug_scripts",
+    "get_debug_manager",
     # Output Management
     "OutputManager",
     "set_output_mode",

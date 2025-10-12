@@ -1,0 +1,1464 @@
+{
+  "file_info": {
+    "file_path": "C:\\git-public\\tree-sitter-analyzer\\examples\\BigService.java",
+    "language": "java",
+    "package": {
+      "name": "com.example.service"
+    }
+  },
+  "statistics": {
+    "class_count": 1,
+    "method_count": 66,
+    "field_count": 9,
+    "import_count": 8,
+    "total_lines": 1419
+  },
+  "elements": {
+    "classes": [
+      {
+        "name": "BigService",
+        "line_range": {
+          "start": 17,
+          "end": 1419
+        },
+        "type": "class",
+        "visibility": "public",
+        "extends": null,
+        "implements": [],
+        "annotations": []
+      }
+    ],
+    "methods": [
+      {
+        "name": "BigService",
+        "line_range": {
+          "start": 33,
+          "end": 39
+        },
+        "return_type": "void",
+        "parameters": [],
+        "visibility": "public",
+        "is_static": false,
+        "is_constructor": true,
+        "complexity_score": 1,
+        "modifiers": [],
+        "annotations": []
+      },
+      {
+        "name": "initializeService",
+        "line_range": {
+          "start": 44,
+          "end": 50
+        },
+        "return_type": "void",
+        "parameters": [],
+        "visibility": "private",
+        "is_static": false,
+        "is_constructor": false,
+        "complexity_score": 1,
+        "modifiers": [],
+        "annotations": []
+      },
+      {
+        "name": "loadConfiguration",
+        "line_range": {
+          "start": 55,
+          "end": 65
+        },
+        "return_type": "void",
+        "parameters": [],
+        "visibility": "private",
+        "is_static": false,
+        "is_constructor": false,
+        "complexity_score": 4,
+        "modifiers": [],
+        "annotations": []
+      },
+      {
+        "name": "setupDatabaseConnection",
+        "line_range": {
+          "start": 70,
+          "end": 77
+        },
+        "return_type": "void",
+        "parameters": [],
+        "visibility": "private",
+        "is_static": false,
+        "is_constructor": false,
+        "complexity_score": 2,
+        "modifiers": [],
+        "annotations": []
+      },
+      {
+        "name": "validateSystemRequirements",
+        "line_range": {
+          "start": 82,
+          "end": 88
+        },
+        "return_type": "void",
+        "parameters": [],
+        "visibility": "private",
+        "is_static": false,
+        "is_constructor": false,
+        "complexity_score": 1,
+        "modifiers": [],
+        "annotations": []
+      },
+      {
+        "name": "checkMemoryUsage",
+        "line_range": {
+          "start": 93,
+          "end": 106
+        },
+        "return_type": "void",
+        "parameters": [],
+        "visibility": "private",
+        "is_static": false,
+        "is_constructor": false,
+        "complexity_score": 2,
+        "modifiers": [],
+        "annotations": []
+      },
+      {
+        "name": "checkDiskSpace",
+        "line_range": {
+          "start": 111,
+          "end": 117
+        },
+        "return_type": "void",
+        "parameters": [],
+        "visibility": "private",
+        "is_static": false,
+        "is_constructor": false,
+        "complexity_score": 2,
+        "modifiers": [],
+        "annotations": []
+      },
+      {
+        "name": "checkNetworkConnectivity",
+        "line_range": {
+          "start": 122,
+          "end": 136
+        },
+        "return_type": "void",
+        "parameters": [],
+        "visibility": "private",
+        "is_static": false,
+        "is_constructor": false,
+        "complexity_score": 3,
+        "modifiers": [],
+        "annotations": []
+      },
+      {
+        "name": "authenticateUser",
+        "line_range": {
+          "start": 141,
+          "end": 172
+        },
+        "return_type": "boolean",
+        "parameters": [
+          {
+            "name": "username",
+            "type": "String"
+          },
+          {
+            "name": "password",
+            "type": "String"
+          }
+        ],
+        "visibility": "public",
+        "is_static": false,
+        "is_constructor": false,
+        "complexity_score": 7,
+        "modifiers": [],
+        "annotations": []
+      },
+      {
+        "name": "createSession",
+        "line_range": {
+          "start": 177,
+          "end": 199
+        },
+        "return_type": "String",
+        "parameters": [
+          {
+            "name": "username",
+            "type": "String"
+          }
+        ],
+        "visibility": "public",
+        "is_static": false,
+        "is_constructor": false,
+        "complexity_score": 5,
+        "modifiers": [],
+        "annotations": []
+      },
+      {
+        "name": "validateData",
+        "line_range": {
+          "start": 204,
+          "end": 246
+        },
+        "return_type": "boolean",
+        "parameters": [
+          {
+            "name": "data",
+            "type": "Map<String, Object>"
+          }
+        ],
+        "visibility": "public",
+        "is_static": false,
+        "is_constructor": false,
+        "complexity_score": 14,
+        "modifiers": [],
+        "annotations": []
+      },
+      {
+        "name": "validateEmail",
+        "line_range": {
+          "start": 251,
+          "end": 254
+        },
+        "return_type": "boolean",
+        "parameters": [
+          {
+            "name": "email",
+            "type": "String"
+          }
+        ],
+        "visibility": "private",
+        "is_static": false,
+        "is_constructor": false,
+        "complexity_score": 1,
+        "modifiers": [],
+        "annotations": []
+      },
+      {
+        "name": "validatePhoneNumber",
+        "line_range": {
+          "start": 259,
+          "end": 262
+        },
+        "return_type": "boolean",
+        "parameters": [
+          {
+            "name": "phone",
+            "type": "String"
+          }
+        ],
+        "visibility": "private",
+        "is_static": false,
+        "is_constructor": false,
+        "complexity_score": 1,
+        "modifiers": [],
+        "annotations": []
+      },
+      {
+        "name": "validateDate",
+        "line_range": {
+          "start": 267,
+          "end": 275
+        },
+        "return_type": "boolean",
+        "parameters": [
+          {
+            "name": "date",
+            "type": "String"
+          }
+        ],
+        "visibility": "private",
+        "is_static": false,
+        "is_constructor": false,
+        "complexity_score": 4,
+        "modifiers": [],
+        "annotations": []
+      },
+      {
+        "name": "logOperation",
+        "line_range": {
+          "start": 280,
+          "end": 290
+        },
+        "return_type": "void",
+        "parameters": [
+          {
+            "name": "operation",
+            "type": "String"
+          },
+          {
+            "name": "details",
+            "type": "String"
+          }
+        ],
+        "visibility": "public",
+        "is_static": false,
+        "is_constructor": false,
+        "complexity_score": 6,
+        "modifiers": [],
+        "annotations": []
+      },
+      {
+        "name": "manageCache",
+        "line_range": {
+          "start": 295,
+          "end": 308
+        },
+        "return_type": "void",
+        "parameters": [
+          {
+            "name": "key",
+            "type": "String"
+          },
+          {
+            "name": "value",
+            "type": "Object"
+          }
+        ],
+        "visibility": "public",
+        "is_static": false,
+        "is_constructor": false,
+        "complexity_score": 4,
+        "modifiers": [],
+        "annotations": []
+      },
+      {
+        "name": "cleanupCache",
+        "line_range": {
+          "start": 313,
+          "end": 326
+        },
+        "return_type": "void",
+        "parameters": [],
+        "visibility": "private",
+        "is_static": false,
+        "is_constructor": false,
+        "complexity_score": 2,
+        "modifiers": [],
+        "annotations": []
+      },
+      {
+        "name": "updateCacheStatistics",
+        "line_range": {
+          "start": 331,
+          "end": 335
+        },
+        "return_type": "void",
+        "parameters": [],
+        "visibility": "private",
+        "is_static": false,
+        "is_constructor": false,
+        "complexity_score": 1,
+        "modifiers": [],
+        "annotations": []
+      },
+      {
+        "name": "calculateCacheHitRatio",
+        "line_range": {
+          "start": 340,
+          "end": 343
+        },
+        "return_type": "double",
+        "parameters": [],
+        "visibility": "private",
+        "is_static": false,
+        "is_constructor": false,
+        "complexity_score": 1,
+        "modifiers": [],
+        "annotations": []
+      },
+      {
+        "name": "performBackup",
+        "line_range": {
+          "start": 348,
+          "end": 367
+        },
+        "return_type": "void",
+        "parameters": [
+          {
+            "name": "backupType",
+            "type": "String"
+          }
+        ],
+        "visibility": "public",
+        "is_static": false,
+        "is_constructor": false,
+        "complexity_score": 12,
+        "modifiers": [],
+        "annotations": []
+      },
+      {
+        "name": "performFullBackup",
+        "line_range": {
+          "start": 372,
+          "end": 395
+        },
+        "return_type": "void",
+        "parameters": [],
+        "visibility": "private",
+        "is_static": false,
+        "is_constructor": false,
+        "complexity_score": 8,
+        "modifiers": [],
+        "annotations": []
+      },
+      {
+        "name": "performIncrementalBackup",
+        "line_range": {
+          "start": 400,
+          "end": 414
+        },
+        "return_type": "void",
+        "parameters": [],
+        "visibility": "private",
+        "is_static": false,
+        "is_constructor": false,
+        "complexity_score": 8,
+        "modifiers": [],
+        "annotations": []
+      },
+      {
+        "name": "performDifferentialBackup",
+        "line_range": {
+          "start": 419,
+          "end": 433
+        },
+        "return_type": "void",
+        "parameters": [],
+        "visibility": "private",
+        "is_static": false,
+        "is_constructor": false,
+        "complexity_score": 11,
+        "modifiers": [],
+        "annotations": []
+      },
+      {
+        "name": "generateReport",
+        "line_range": {
+          "start": 438,
+          "end": 471
+        },
+        "return_type": "void",
+        "parameters": [
+          {
+            "name": "reportType",
+            "type": "String"
+          },
+          {
+            "name": "parameters",
+            "type": "Map<String, Object>"
+          }
+        ],
+        "visibility": "public",
+        "is_static": false,
+        "is_constructor": false,
+        "complexity_score": 10,
+        "modifiers": [],
+        "annotations": []
+      },
+      {
+        "name": "prepareReportData",
+        "line_range": {
+          "start": 476,
+          "end": 490
+        },
+        "return_type": "void",
+        "parameters": [
+          {
+            "name": "reportType",
+            "type": "String"
+          },
+          {
+            "name": "parameters",
+            "type": "Map<String, Object>"
+          }
+        ],
+        "visibility": "private",
+        "is_static": false,
+        "is_constructor": false,
+        "complexity_score": 5,
+        "modifiers": [],
+        "annotations": []
+      },
+      {
+        "name": "generateSalesReport",
+        "line_range": {
+          "start": 495,
+          "end": 513
+        },
+        "return_type": "void",
+        "parameters": [
+          {
+            "name": "parameters",
+            "type": "Map<String, Object>"
+          }
+        ],
+        "visibility": "private",
+        "is_static": false,
+        "is_constructor": false,
+        "complexity_score": 7,
+        "modifiers": [],
+        "annotations": []
+      },
+      {
+        "name": "generatePerformanceReport",
+        "line_range": {
+          "start": 518,
+          "end": 534
+        },
+        "return_type": "void",
+        "parameters": [
+          {
+            "name": "parameters",
+            "type": "Map<String, Object>"
+          }
+        ],
+        "visibility": "private",
+        "is_static": false,
+        "is_constructor": false,
+        "complexity_score": 12,
+        "modifiers": [],
+        "annotations": []
+      },
+      {
+        "name": "generateUserActivityReport",
+        "line_range": {
+          "start": 539,
+          "end": 553
+        },
+        "return_type": "void",
+        "parameters": [
+          {
+            "name": "parameters",
+            "type": "Map<String, Object>"
+          }
+        ],
+        "visibility": "private",
+        "is_static": false,
+        "is_constructor": false,
+        "complexity_score": 4,
+        "modifiers": [],
+        "annotations": []
+      },
+      {
+        "name": "generateSystemHealthReport",
+        "line_range": {
+          "start": 558,
+          "end": 574
+        },
+        "return_type": "void",
+        "parameters": [
+          {
+            "name": "parameters",
+            "type": "Map<String, Object>"
+          }
+        ],
+        "visibility": "private",
+        "is_static": false,
+        "is_constructor": false,
+        "complexity_score": 5,
+        "modifiers": [],
+        "annotations": []
+      },
+      {
+        "name": "finalizeReport",
+        "line_range": {
+          "start": 579,
+          "end": 593
+        },
+        "return_type": "void",
+        "parameters": [
+          {
+            "name": "reportType",
+            "type": "String"
+          }
+        ],
+        "visibility": "private",
+        "is_static": false,
+        "is_constructor": false,
+        "complexity_score": 5,
+        "modifiers": [],
+        "annotations": []
+      },
+      {
+        "name": "updateCustomerName",
+        "line_range": {
+          "start": 601,
+          "end": 617
+        },
+        "return_type": "void",
+        "parameters": [
+          {
+            "name": "customerId",
+            "type": "String"
+          },
+          {
+            "name": "newName",
+            "type": "String"
+          }
+        ],
+        "visibility": "public",
+        "is_static": false,
+        "is_constructor": false,
+        "complexity_score": 4,
+        "modifiers": [],
+        "annotations": []
+      },
+      {
+        "name": "getCustomerInfo",
+        "line_range": {
+          "start": 622,
+          "end": 652
+        },
+        "return_type": "Map<String, Object>",
+        "parameters": [
+          {
+            "name": "customerId",
+            "type": "String"
+          }
+        ],
+        "visibility": "public",
+        "is_static": false,
+        "is_constructor": false,
+        "complexity_score": 9,
+        "modifiers": [],
+        "annotations": []
+      },
+      {
+        "name": "deleteCustomer",
+        "line_range": {
+          "start": 657,
+          "end": 691
+        },
+        "return_type": "boolean",
+        "parameters": [
+          {
+            "name": "customerId",
+            "type": "String"
+          }
+        ],
+        "visibility": "public",
+        "is_static": false,
+        "is_constructor": false,
+        "complexity_score": 9,
+        "modifiers": [],
+        "annotations": []
+      },
+      {
+        "name": "processOrder",
+        "line_range": {
+          "start": 696,
+          "end": 736
+        },
+        "return_type": "String",
+        "parameters": [
+          {
+            "name": "customerId",
+            "type": "String"
+          },
+          {
+            "name": "items",
+            "type": "List<String>"
+          },
+          {
+            "name": "totalAmount",
+            "type": "double"
+          }
+        ],
+        "visibility": "public",
+        "is_static": false,
+        "is_constructor": false,
+        "complexity_score": 11,
+        "modifiers": [],
+        "annotations": []
+      },
+      {
+        "name": "manageInventory",
+        "line_range": {
+          "start": 741,
+          "end": 773
+        },
+        "return_type": "void",
+        "parameters": [
+          {
+            "name": "action",
+            "type": "String"
+          },
+          {
+            "name": "itemId",
+            "type": "String"
+          },
+          {
+            "name": "quantity",
+            "type": "int"
+          }
+        ],
+        "visibility": "public",
+        "is_static": false,
+        "is_constructor": false,
+        "complexity_score": 10,
+        "modifiers": [],
+        "annotations": []
+      },
+      {
+        "name": "addInventory",
+        "line_range": {
+          "start": 778,
+          "end": 792
+        },
+        "return_type": "void",
+        "parameters": [
+          {
+            "name": "itemId",
+            "type": "String"
+          },
+          {
+            "name": "quantity",
+            "type": "int"
+          }
+        ],
+        "visibility": "private",
+        "is_static": false,
+        "is_constructor": false,
+        "complexity_score": 6,
+        "modifiers": [],
+        "annotations": []
+      },
+      {
+        "name": "removeInventory",
+        "line_range": {
+          "start": 797,
+          "end": 811
+        },
+        "return_type": "void",
+        "parameters": [
+          {
+            "name": "itemId",
+            "type": "String"
+          },
+          {
+            "name": "quantity",
+            "type": "int"
+          }
+        ],
+        "visibility": "private",
+        "is_static": false,
+        "is_constructor": false,
+        "complexity_score": 5,
+        "modifiers": [],
+        "annotations": []
+      },
+      {
+        "name": "updateInventory",
+        "line_range": {
+          "start": 816,
+          "end": 830
+        },
+        "return_type": "void",
+        "parameters": [
+          {
+            "name": "itemId",
+            "type": "String"
+          },
+          {
+            "name": "quantity",
+            "type": "int"
+          }
+        ],
+        "visibility": "private",
+        "is_static": false,
+        "is_constructor": false,
+        "complexity_score": 5,
+        "modifiers": [],
+        "annotations": []
+      },
+      {
+        "name": "checkInventory",
+        "line_range": {
+          "start": 835,
+          "end": 850
+        },
+        "return_type": "void",
+        "parameters": [
+          {
+            "name": "itemId",
+            "type": "String"
+          }
+        ],
+        "visibility": "private",
+        "is_static": false,
+        "is_constructor": false,
+        "complexity_score": 6,
+        "modifiers": [],
+        "annotations": []
+      },
+      {
+        "name": "sendNotification",
+        "line_range": {
+          "start": 855,
+          "end": 884
+        },
+        "return_type": "void",
+        "parameters": [
+          {
+            "name": "recipient",
+            "type": "String"
+          },
+          {
+            "name": "message",
+            "type": "String"
+          },
+          {
+            "name": "type",
+            "type": "String"
+          }
+        ],
+        "visibility": "public",
+        "is_static": false,
+        "is_constructor": false,
+        "complexity_score": 15,
+        "modifiers": [],
+        "annotations": []
+      },
+      {
+        "name": "shutdownSystem",
+        "line_range": {
+          "start": 889,
+          "end": 912
+        },
+        "return_type": "void",
+        "parameters": [],
+        "visibility": "public",
+        "is_static": false,
+        "is_constructor": false,
+        "complexity_score": 6,
+        "modifiers": [],
+        "annotations": []
+      },
+      {
+        "name": "savePendingOperations",
+        "line_range": {
+          "start": 917,
+          "end": 926
+        },
+        "return_type": "void",
+        "parameters": [],
+        "visibility": "private",
+        "is_static": false,
+        "is_constructor": false,
+        "complexity_score": 2,
+        "modifiers": [],
+        "annotations": []
+      },
+      {
+        "name": "closeDatabaseConnections",
+        "line_range": {
+          "start": 931,
+          "end": 940
+        },
+        "return_type": "void",
+        "parameters": [],
+        "visibility": "private",
+        "is_static": false,
+        "is_constructor": false,
+        "complexity_score": 2,
+        "modifiers": [],
+        "annotations": []
+      },
+      {
+        "name": "finalizeSystemLogs",
+        "line_range": {
+          "start": 945,
+          "end": 953
+        },
+        "return_type": "void",
+        "parameters": [],
+        "visibility": "private",
+        "is_static": false,
+        "is_constructor": false,
+        "complexity_score": 2,
+        "modifiers": [],
+        "annotations": []
+      },
+      {
+        "name": "handleError",
+        "line_range": {
+          "start": 958,
+          "end": 977
+        },
+        "return_type": "void",
+        "parameters": [
+          {
+            "name": "error",
+            "type": "Exception"
+          },
+          {
+            "name": "context",
+            "type": "String"
+          }
+        ],
+        "visibility": "public",
+        "is_static": false,
+        "is_constructor": false,
+        "complexity_score": 5,
+        "modifiers": [],
+        "annotations": []
+      },
+      {
+        "name": "handleDatabaseError",
+        "line_range": {
+          "start": 982,
+          "end": 996
+        },
+        "return_type": "void",
+        "parameters": [
+          {
+            "name": "error",
+            "type": "SQLException"
+          }
+        ],
+        "visibility": "private",
+        "is_static": false,
+        "is_constructor": false,
+        "complexity_score": 4,
+        "modifiers": [],
+        "annotations": []
+      },
+      {
+        "name": "handleValidationError",
+        "line_range": {
+          "start": 1001,
+          "end": 1009
+        },
+        "return_type": "void",
+        "parameters": [
+          {
+            "name": "error",
+            "type": "IllegalArgumentException"
+          }
+        ],
+        "visibility": "private",
+        "is_static": false,
+        "is_constructor": false,
+        "complexity_score": 2,
+        "modifiers": [],
+        "annotations": []
+      },
+      {
+        "name": "handleRuntimeError",
+        "line_range": {
+          "start": 1014,
+          "end": 1028
+        },
+        "return_type": "void",
+        "parameters": [
+          {
+            "name": "error",
+            "type": "RuntimeException"
+          }
+        ],
+        "visibility": "private",
+        "is_static": false,
+        "is_constructor": false,
+        "complexity_score": 5,
+        "modifiers": [],
+        "annotations": []
+      },
+      {
+        "name": "handleGenericError",
+        "line_range": {
+          "start": 1033,
+          "end": 1041
+        },
+        "return_type": "void",
+        "parameters": [
+          {
+            "name": "error",
+            "type": "Exception"
+          }
+        ],
+        "visibility": "private",
+        "is_static": false,
+        "is_constructor": false,
+        "complexity_score": 2,
+        "modifiers": [],
+        "annotations": []
+      },
+      {
+        "name": "monitorPerformance",
+        "line_range": {
+          "start": 1046,
+          "end": 1067
+        },
+        "return_type": "void",
+        "parameters": [],
+        "visibility": "public",
+        "is_static": false,
+        "is_constructor": false,
+        "complexity_score": 4,
+        "modifiers": [],
+        "annotations": []
+      },
+      {
+        "name": "monitorCpuUsage",
+        "line_range": {
+          "start": 1072,
+          "end": 1086
+        },
+        "return_type": "void",
+        "parameters": [],
+        "visibility": "private",
+        "is_static": false,
+        "is_constructor": false,
+        "complexity_score": 4,
+        "modifiers": [],
+        "annotations": []
+      },
+      {
+        "name": "monitorMemoryUsage",
+        "line_range": {
+          "start": 1091,
+          "end": 1112
+        },
+        "return_type": "void",
+        "parameters": [],
+        "visibility": "private",
+        "is_static": false,
+        "is_constructor": false,
+        "complexity_score": 4,
+        "modifiers": [],
+        "annotations": []
+      },
+      {
+        "name": "monitorDiskIO",
+        "line_range": {
+          "start": 1117,
+          "end": 1131
+        },
+        "return_type": "void",
+        "parameters": [],
+        "visibility": "private",
+        "is_static": false,
+        "is_constructor": false,
+        "complexity_score": 4,
+        "modifiers": [],
+        "annotations": []
+      },
+      {
+        "name": "monitorNetworkUsage",
+        "line_range": {
+          "start": 1136,
+          "end": 1150
+        },
+        "return_type": "void",
+        "parameters": [],
+        "visibility": "private",
+        "is_static": false,
+        "is_constructor": false,
+        "complexity_score": 4,
+        "modifiers": [],
+        "annotations": []
+      },
+      {
+        "name": "performSecurityCheck",
+        "line_range": {
+          "start": 1155,
+          "end": 1171
+        },
+        "return_type": "void",
+        "parameters": [],
+        "visibility": "public",
+        "is_static": false,
+        "is_constructor": false,
+        "complexity_score": 4,
+        "modifiers": [],
+        "annotations": []
+      },
+      {
+        "name": "checkAccessPermissions",
+        "line_range": {
+          "start": 1176,
+          "end": 1192
+        },
+        "return_type": "void",
+        "parameters": [],
+        "visibility": "private",
+        "is_static": false,
+        "is_constructor": false,
+        "complexity_score": 6,
+        "modifiers": [],
+        "annotations": []
+      },
+      {
+        "name": "validateSecuritySettings",
+        "line_range": {
+          "start": 1197,
+          "end": 1211
+        },
+        "return_type": "void",
+        "parameters": [],
+        "visibility": "private",
+        "is_static": false,
+        "is_constructor": false,
+        "complexity_score": 4,
+        "modifiers": [],
+        "annotations": []
+      },
+      {
+        "name": "performVulnerabilityScan",
+        "line_range": {
+          "start": 1216,
+          "end": 1230
+        },
+        "return_type": "void",
+        "parameters": [],
+        "visibility": "private",
+        "is_static": false,
+        "is_constructor": false,
+        "complexity_score": 8,
+        "modifiers": [],
+        "annotations": []
+      },
+      {
+        "name": "reviewSecurityLogs",
+        "line_range": {
+          "start": 1235,
+          "end": 1249
+        },
+        "return_type": "void",
+        "parameters": [],
+        "visibility": "private",
+        "is_static": false,
+        "is_constructor": false,
+        "complexity_score": 5,
+        "modifiers": [],
+        "annotations": []
+      },
+      {
+        "name": "synchronizeData",
+        "line_range": {
+          "start": 1254,
+          "end": 1283
+        },
+        "return_type": "void",
+        "parameters": [
+          {
+            "name": "sourceSystem",
+            "type": "String"
+          },
+          {
+            "name": "targetSystem",
+            "type": "String"
+          }
+        ],
+        "visibility": "public",
+        "is_static": false,
+        "is_constructor": false,
+        "complexity_score": 7,
+        "modifiers": [],
+        "annotations": []
+      },
+      {
+        "name": "prepareSynchronization",
+        "line_range": {
+          "start": 1288,
+          "end": 1302
+        },
+        "return_type": "void",
+        "parameters": [
+          {
+            "name": "sourceSystem",
+            "type": "String"
+          },
+          {
+            "name": "targetSystem",
+            "type": "String"
+          }
+        ],
+        "visibility": "private",
+        "is_static": false,
+        "is_constructor": false,
+        "complexity_score": 4,
+        "modifiers": [],
+        "annotations": []
+      },
+      {
+        "name": "extractData",
+        "line_range": {
+          "start": 1307,
+          "end": 1323
+        },
+        "return_type": "void",
+        "parameters": [
+          {
+            "name": "sourceSystem",
+            "type": "String"
+          }
+        ],
+        "visibility": "private",
+        "is_static": false,
+        "is_constructor": false,
+        "complexity_score": 5,
+        "modifiers": [],
+        "annotations": []
+      },
+      {
+        "name": "transformData",
+        "line_range": {
+          "start": 1328,
+          "end": 1342
+        },
+        "return_type": "void",
+        "parameters": [],
+        "visibility": "private",
+        "is_static": false,
+        "is_constructor": false,
+        "complexity_score": 9,
+        "modifiers": [],
+        "annotations": []
+      },
+      {
+        "name": "loadData",
+        "line_range": {
+          "start": 1347,
+          "end": 1361
+        },
+        "return_type": "void",
+        "parameters": [
+          {
+            "name": "targetSystem",
+            "type": "String"
+          }
+        ],
+        "visibility": "private",
+        "is_static": false,
+        "is_constructor": false,
+        "complexity_score": 4,
+        "modifiers": [],
+        "annotations": []
+      },
+      {
+        "name": "verifySynchronization",
+        "line_range": {
+          "start": 1366,
+          "end": 1380
+        },
+        "return_type": "void",
+        "parameters": [
+          {
+            "name": "sourceSystem",
+            "type": "String"
+          },
+          {
+            "name": "targetSystem",
+            "type": "String"
+          }
+        ],
+        "visibility": "private",
+        "is_static": false,
+        "is_constructor": false,
+        "complexity_score": 8,
+        "modifiers": [],
+        "annotations": []
+      },
+      {
+        "name": "main",
+        "line_range": {
+          "start": 1385,
+          "end": 1418
+        },
+        "return_type": "void",
+        "parameters": [
+          {
+            "name": "args",
+            "type": "String[]"
+          }
+        ],
+        "visibility": "public",
+        "is_static": true,
+        "is_constructor": false,
+        "complexity_score": 5,
+        "modifiers": [
+          "static"
+        ],
+        "annotations": []
+      }
+    ],
+    "fields": [
+      {
+        "name": "DEFAULT_ENCODING",
+        "type": "String",
+        "line_range": {
+          "start": 19,
+          "end": 19
+        },
+        "visibility": "private",
+        "modifiers": [
+          "private",
+          "static",
+          "final"
+        ],
+        "annotations": []
+      },
+      {
+        "name": "MAX_RETRY_COUNT",
+        "type": "int",
+        "line_range": {
+          "start": 20,
+          "end": 20
+        },
+        "visibility": "private",
+        "modifiers": [
+          "private",
+          "static",
+          "final"
+        ],
+        "annotations": []
+      },
+      {
+        "name": "TIMEOUT_MILLISECONDS",
+        "type": "long",
+        "line_range": {
+          "start": 21,
+          "end": 21
+        },
+        "visibility": "private",
+        "modifiers": [
+          "private",
+          "static",
+          "final"
+        ],
+        "annotations": []
+      },
+      {
+        "name": "DATE_FORMAT",
+        "type": "String",
+        "line_range": {
+          "start": 22,
+          "end": 22
+        },
+        "visibility": "private",
+        "modifiers": [
+          "private",
+          "static",
+          "final"
+        ],
+        "annotations": []
+      },
+      {
+        "name": "dataSource",
+        "type": "DataSource",
+        "line_range": {
+          "start": 24,
+          "end": 24
+        },
+        "visibility": "private",
+        "modifiers": [
+          "private"
+        ],
+        "annotations": []
+      },
+      {
+        "name": "configurationCache",
+        "type": "Map<String, Object>",
+        "line_range": {
+          "start": 25,
+          "end": 25
+        },
+        "visibility": "private",
+        "modifiers": [
+          "private"
+        ],
+        "annotations": []
+      },
+      {
+        "name": "activeConnections",
+        "type": "List<String>",
+        "line_range": {
+          "start": 26,
+          "end": 26
+        },
+        "visibility": "private",
+        "modifiers": [
+          "private"
+        ],
+        "annotations": []
+      },
+      {
+        "name": "validatedUsers",
+        "type": "Set<String>",
+        "line_range": {
+          "start": 27,
+          "end": 27
+        },
+        "visibility": "private",
+        "modifiers": [
+          "private"
+        ],
+        "annotations": []
+      },
+      {
+        "name": "pendingOperations",
+        "type": "Queue<String>",
+        "line_range": {
+          "start": 28,
+          "end": 28
+        },
+        "visibility": "private",
+        "modifiers": [
+          "private"
+        ],
+        "annotations": []
+      }
+    ],
+    "imports": [
+      {
+        "name": "java.util",
+        "statement": "java.util",
+        "is_static": false,
+        "is_wildcard": true
+      },
+      {
+        "name": "java.time.LocalDateTime",
+        "statement": "java.time.LocalDateTime",
+        "is_static": false,
+        "is_wildcard": false
+      },
+      {
+        "name": "java.time.format.DateTimeFormatter",
+        "statement": "java.time.format.DateTimeFormatter",
+        "is_static": false,
+        "is_wildcard": false
+      },
+      {
+        "name": "java.sql.Connection",
+        "statement": "java.sql.Connection",
+        "is_static": false,
+        "is_wildcard": false
+      },
+      {
+        "name": "java.sql.PreparedStatement",
+        "statement": "java.sql.PreparedStatement",
+        "is_static": false,
+        "is_wildcard": false
+      },
+      {
+        "name": "java.sql.ResultSet",
+        "statement": "java.sql.ResultSet",
+        "is_static": false,
+        "is_wildcard": false
+      },
+      {
+        "name": "java.sql.SQLException",
+        "statement": "java.sql.SQLException",
+        "is_static": false,
+        "is_wildcard": false
+      },
+      {
+        "name": "javax.sql.DataSource",
+        "statement": "javax.sql.DataSource",
+        "is_static": false,
+        "is_wildcard": false
+      }
+    ]
+  }
+}

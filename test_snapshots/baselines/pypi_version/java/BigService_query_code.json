@@ -1,0 +1,47 @@
+{
+  "tool": "query_code",
+  "timestamp": "2025-10-12T04:00:46.754Z",
+  "pypi_version": "1.7.4",
+  "file_path": "examples/BigService.java",
+  "query_key": "methods",
+  "output_format": "summary",
+  "results": {
+    "success": true,
+    "query_type": "methods",
+    "language": "java",
+    "total_count": 65,
+    "captures": {
+      "method": {
+        "count": 65,
+        "sample_methods": [
+          {
+            "name": "initializeService",
+            "line_range": "44-50",
+            "node_type": "method_declaration"
+          },
+          {
+            "name": "loadConfiguration",
+            "line_range": "55-65",
+            "node_type": "method_declaration"
+          },
+          {
+            "name": "setupDatabaseConnection",
+            "line_range": "70-77",
+            "node_type": "method_declaration"
+          },
+          {
+            "name": "validateSystemRequirements",
+            "line_range": "82-88",
+            "node_type": "method_declaration"
+          },
+          {
+            "name": "authenticateUser",
+            "line_range": "141-172",
+            "node_type": "method_declaration"
+          }
+        ]
+      }
+    }
+  },
+  "execution_status": "success"
+}

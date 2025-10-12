@@ -1,0 +1,28 @@
+{
+  "tool": "analyze_code_structure",
+  "timestamp": "2025-10-12T04:01:11.514Z",
+  "pypi_version": "1.7.4",
+  "file_path": "examples/sample.py",
+  "language": "python",
+  "metadata": {
+    "classes_count": 3,
+    "methods_count": 18,
+    "fields_count": 0,
+    "total_lines": 256
+  },
+  "summary": {
+    "file_info": {
+      "file_path": "C:\\git-public\\tree-sitter-analyzer\\examples\\sample.py",
+      "language": "python",
+      "package": null
+    },
+    "statistics": {
+      "class_count": 3,
+      "method_count": 18,
+      "field_count": 0,
+      "import_count": 4,
+      "total_lines": 256
+    }
+  },
+  "execution_status": "success"
+}

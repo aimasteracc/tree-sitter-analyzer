@@ -1,0 +1,36 @@
+{
+  "summary": {
+    "total_tests": 5,
+    "passed_tests": 1,
+    "success_rate": 20.0
+  },
+  "detailed_results": {
+    "java_signatures": {
+      "no_empty_params": false,
+      "has_static_modifiers": false,
+      "has_proper_signatures": true,
+      "no_generic_fallback": true
+    },
+    "java_package": {
+      "has_package_info": false,
+      "proper_format": true,
+      "no_errors": true
+    },
+    "html_queries": {
+      "heading": true,
+      "form_element": true,
+      "input_element": true,
+      "semantic_element": false,
+      "media_element": false
+    },
+    "language_isolation": {
+      "Java": true,
+      "HTML": false,
+      "Markdown": false
+    },
+    "encoding": {
+      "csv": true,
+      "json": true
+    }
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "metadata": {
+    "test_name": "TypeScriptDeclarations",
+    "file_path": "examples/TypeScriptDeclarations.d.ts",
+    "language": "typescript",
+    "timestamp": "2025-10-12T11:15:45.183185",
+    "generator": "pypi_package"
+  },
+  "outputs": {}
+}
