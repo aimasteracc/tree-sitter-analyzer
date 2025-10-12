@@ -5,7 +5,7 @@
 [![Pythonバージョン](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![ライセンス](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![テスト](https://img.shields.io/badge/tests-2934%20passed-brightgreen.svg)](#8--品質保証)
-[![カバレッジ](https://img.shields.io/badge/coverage-80.09%25-green.svg)](#8--品質保証)
+[![カバレッジ](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer)
 [![品質](https://img.shields.io/badge/quality-enterprise%20grade-blue.svg)](#8--品質保証)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
 [![バージョン](https://img.shields.io/badge/version-1.7.4-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
@@ -59,7 +59,7 @@ Tree-sitter Analyzerは、AI時代のために設計されたエンタープラ�
 
 ### 🏆 本番環境対応
 - **2,934のテスト** - 100%合格率、エンタープライズグレードの品質保証
-- **80.09%カバレッジ** - 包括的なテストスイート
+- **高カバレッジ** - 包括的なテストスイート
 - **クロスプラットフォームサポート** - Windows、macOS、Linuxとの完全な互換性
 - **継続的なメンテナンス** - アクティブな開発とコミュニティサポート
 
@@ -570,12 +570,12 @@ uv run python -m tree_sitter_analyzer --show-query-languages
 
 ### 📊 品質メトリクス
 - **2,934のテスト** - 100%合格率 ✅
-- **80.09%コードカバレッジ** - 包括的なテストスイート
+- **高コードカバレッジ** - 包括的なテストスイート
 - **ゼロテスト失敗** - 本番環境対応
 - **クロスプラットフォームサポート** - Windows、macOS、Linux
 
 ### ⚡ 最新の品質成果（v1.7.4）
-- ✅ **📊 品質メトリクス向上** - テスト数が2934個に増加（2831個から）、カバレッジが80.09%に向上
+- ✅ **📊 品質メトリクス向上** - テスト数が2,934個に増加、カバレッジも高水準を維持
 - ✅ **🔧 システム安定性** - すべてのテストが合格し、システムの安定性と信頼性が向上
 - ✅ **🆕 Markdown完全サポート** - 新しい完全なMarkdown言語プラグインを追加、すべての主要Markdown要素をサポート
 - ✅ **📝 ドキュメント解析強化** - 見出し、コードブロック、リンク、画像、表、タスクリストなどの要素のインテリジェント抽出をサポート
@@ -605,19 +605,15 @@ uv run pytest tests/test_mcp_server_initialization.py -v
 
 ### 📈 テストカバレッジの詳細
 
-| モジュールカテゴリ | モジュール名 | カバレッジ | 品質レベル | 主要機能 |
-|------------------|-------------|-----------|-----------|---------|
-| **🔧 コアモジュール** | 言語検出器 | 98.41% | 優秀 | 自動プログラミング言語認識 |
-| | CLIメインエントリ | 94.36% | 優秀 | コマンドラインインターフェース |
-| | クエリフィルタシステム | 96.06% | 優秀 | コードクエリとフィルタリング |
-| | クエリサービス | 86.25% | 良好 | クエリ実行エンジン |
-| | MCPエラー処理 | 82.76% | 良好 | AIアシスタント統合エラー処理 |
-| **🌍 言語プラグイン** | Javaプラグイン | 80.30% | 優秀 | 完全なエンタープライズグレードサポート |
-| | JavaScriptプラグイン | 76.74% | 良好 | モダンなES6+機能サポート |
-| | Pythonプラグイン | 82.84% | 優秀 | 完全な型アノテーションサポート |
-| **🤖 MCPツール** | ファイル検索ツール | 88.77% | 優秀 | fd/ripgrep統合 |
-| | コンテンツ検索ツール | 92.70% | 優秀 | 正規表現検索 |
-| | 組み合わせ検索ツール | 91.57% | 優秀 | 2段階検索 |
+プロジェクトは高品質なテストカバレッジを維持しています。詳細なモジュールカバレッジ情報については、以下をご覧ください：
+
+[![カバレッジ詳細](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer)
+
+**上記のバッジをクリックして確認できる内容：**
+- 📊 **モジュール別カバレッジ** - 各モジュールの詳細なカバレッジ統計
+- 📈 **カバレッジトレンド** - 履歴カバレッジ変化トレンド
+- 🔍 **未カバーコード行** - テストされていないコードの具体的な場所
+- 📋 **詳細レポート** - 完全なカバレッジ分析レポート
 
 ### ✅ ドキュメント検証ステータス
 
@@ -638,25 +634,21 @@ uv run pytest tests/test_mcp_server_initialization.py -v
 ## 9. 📚 ドキュメントとサポート
 
 ### 📖 完全なドキュメント
-- **[ユーザーMCPセットアップガイド](MCP_SETUP_USERS.md)** - シンプルな設定ガイド
-- **[開発者MCPセットアップガイド](MCP_SETUP_DEVELOPERS.md)** - ローカル開発設定
-- **[プロジェクトルート設定](PROJECT_ROOT_CONFIG.md)** - 完全な設定リファレンス
-- **[APIドキュメント](docs/api.md)** - 詳細なAPIリファレンス
-- **[貢献ガイド](CONTRIBUTING.md)** - コードの貢献方法
-- **[オンボーディング＆トレーニングガイド](training/README.md)** - 新しいメンバー/メンテナー向けのシステムオンボーディング資料
+本プロジェクトは完全なドキュメントサポートを提供しています：
+
+- **クイックスタートガイド** - 本READMEの[クイックスタート](#3--クイックスタート)部分を参照
+- **MCP設定ガイド** - [AIユーザー設定](#31--aiユーザーclaude-desktopcursorなど)部分を参照
+- **CLI使用ガイド** - [完全なCLIコマンド](#6--完全なcliコマンド)部分を参照
+- **コア機能説明** - [コア機能](#7-️-コア機能)部分を参照
 
 ### 🤖 AIコラボレーションサポート
-このプロジェクトは、専門的な品質管理を備えたAI支援開発をサポートしています：
+本プロジェクトは、専門的な品質管理を備えたAI支援開発をサポートしています：
 
 ```bash
-# AIシステムの事前生成チェック
+# AIシステムコード生成前チェック
 uv run python check_quality.py --new-code-only
 uv run python llm_code_checker.py --check-all
 ```
-
-📖 **詳細ガイド**:
-- [AIコラボレーションガイド](AI_COLLABORATION_GUIDE.md)
-- [LLMコーディングガイドライン](LLM_CODING_GUIDELINES.md)
 
 ### 💝 スポンサーと謝辞
 

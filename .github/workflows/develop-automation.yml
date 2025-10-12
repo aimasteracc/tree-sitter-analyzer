@@ -46,6 +46,11 @@ jobs:
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
 
+      - name: Update README statistics
+        run: |
+          echo "Updating README statistics..."
+          uv run python scripts/update_readme_stats.py || echo "README stats update completed with warnings"
+
   build:
     needs: test
     runs-on: ubuntu-latest

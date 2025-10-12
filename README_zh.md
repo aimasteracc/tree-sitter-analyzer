@@ -5,11 +5,12 @@
 [![Python版本](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![许可证](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![测试](https://img.shields.io/badge/tests-2934%20passed-brightgreen.svg)](#质量保证)
-[![覆盖率](https://img.shields.io/badge/coverage-80.09%25-green.svg)](#质量保证)
+[![覆盖率](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer)
 [![质量](https://img.shields.io/badge/quality-enterprise%20grade-blue.svg)](#质量保证)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
 [![版本](https://img.shields.io/badge/version-1.7.4-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
+[![zread](https://img.shields.io/badge/Ask_Zread-_.svg?style=flat&color=00b0aa&labelColor=000000&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB3aWR0aD0iMTYiIGhlaWdodD0iMTYiIHZpZXdCb3g9IjAgMCAxNiAxNiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTQuOTYxNTYgMS42MDAxSDIuMjQxNTZDMS44ODgxIDEuNjAwMSAxLjYwMTU2IDEuODg2NjQgMS42MDE1NiAyLjI0MDFWNC45NjAxQzEuNjAxNTYgNS4zMTM1NiAxLjg4ODEgNS42MDAxIDIuMjQxNTYgNS42MDAxSDQuOTYxNTZDNS4zMTUwMiA1LjYwMDEgNS42MDE1NiA1LjMxMzU2IDUuNjAxNTYgNC45NjAxVjIuMjQwMUM1LjYwMTU2IDEuODg2NjQgNS4zMTUwMiAxLjYwMDEgNC45NjE1NiAxLjYwMDFaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik00Ljk2MTU2IDEwLjM5OTlIMi4yNDE1NkMxLjg4ODEgMTAuMzk5OSAxLjYwMTU2IDEwLjY4NjQgMS42MDE1NiAxMS4wMzk5VjEzLjc1OTlDMS42MDE1NiAxNC4xMTM0IDEuODg4MSAxNC4zOTk5IDIuMjQxNTYgMTQuMzk5OUg0Ljk2MTU2QzUuMzE1MDIgMTQuMzk5OSA1LjYwMTU2IDE0LjExMzQgNS42MDE1NiAxMy43NTk5VjExLjAzOTlDNS42MDE1NiAxMC42ODY0IDUuMzE1MDIgMTAuMzk5OSA0Ljk2MTU2IDEwLjM5OTlaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik0xMy43NTg0IDEuNjAwMUgxMS4wMzg0QzEwLjY4NSAxLjYwMDEgMTAuMzk4NCAxLjg4NjY0IDEwLjM5ODQgMi4yNDAxVjQuOTYwMUMxMC4zOTg0IDUuMzEzNTYgMTAuNjg1IDUuNjAwMSAxMS4wMzg0IDUuNjAwMUgxMy43NTg0QzE0LjExMTkgNS42MDAxIDE0LjM5ODQgNS4zMTM1NiAxNC4zOTg0IDQuOTYwMVYyLjI0MDFDMTQuMzk4NCAxLjg4NjY0IDE0LjExMTkgMS42MDAxIDEzLjc1ODQgMS42MDAxWiIgZmlsbD0iI2ZmZiIvPgo8cGF0aCBkPSJNNCAxMkwxMiA0TDQgMTJaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik00IDEyTDEyIDQiIHN0cm9rZT0iI2ZmZiIgc3Ryb2tlLXdpZHRoPSIxLjUiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPgo8L3N2Zz4K&logoColor=ffffff)](https://zread.ai/aimasteracc/tree-sitter-analyzer)
 
 ## 🚀 AI时代的企业级代码分析工具
 
@@ -59,7 +60,7 @@ Tree-sitter Analyzer 是一个为AI时代设计的企业级代码分析工具，
 
 ### 🏆 生产就绪
 - **2,934个测试** - 100%通过率，企业级质量保证
-- **80.09%覆盖率** - 全面的测试覆盖
+- **高覆盖率** - 全面的测试覆盖
 - **跨平台支持** - Windows、macOS、Linux全平台兼容
 - **持续维护** - 活跃的开发和社区支持
 
@@ -571,12 +572,12 @@ uv run python -m tree_sitter_analyzer --show-query-languages
 
 ### 📊 质量指标
 - **2,934个测试** - 100%通过率 ✅
-- **80.09%代码覆盖率** - 全面测试套件
+- **高代码覆盖率** - 全面测试套件
 - **零测试失败** - 生产就绪
 - **跨平台支持** - Windows、macOS、Linux
 
 ### ⚡ 最新质量成就（v1.7.4）
-- ✅ **📊 质量指标提升** - 测试数量增加到2934个（从2831个），覆盖率提升到80.09%
+- ✅ **📊 质量指标提升** - 测试数量增加到2,934个，覆盖率保持高水平
 - ✅ **🔧 系统稳定性** - 所有测试通过，系统稳定性和可靠性增强
 - ✅ **🆕 Markdown完整支持** - 新增完整的Markdown语言插件，支持所有主要Markdown元素
 - ✅ **📝 文档分析增强** - 支持标题、代码块、链接、图片、表格、任务列表等元素的智能提取
@@ -606,19 +607,15 @@ uv run pytest tests/test_mcp_server_initialization.py -v
 
 ### 📈 测试覆盖率详情
 
-| 模块类别 | 模块名称 | 覆盖率 | 质量等级 | 主要功能 |
-|---------|---------|-------|---------|---------|
-| **🔧 核心模块** | 语言检测器 | 98.41% | 优秀 | 自动识别编程语言 |
-| | CLI主入口 | 94.36% | 优秀 | 命令行接口 |
-| | 查询过滤系统 | 96.06% | 优秀 | 代码查询和过滤 |
-| | 查询服务 | 86.25% | 良好 | 查询执行引擎 |
-| | MCP错误处理 | 82.76% | 良好 | AI助手集成错误处理 |
-| **🌍 语言插件** | Java插件 | 80.30% | 优秀 | 1,333行代码，完整的企业级支持 |
-| | JavaScript插件 | 76.74% | 良好 | 1,539行代码，现代ES6+特性支持 |
-| | Python插件 | 82.84% | 优秀 | 1,296行代码，完整的类型注解支持 |
-| **🤖 MCP工具** | 文件搜索工具 | 88.77% | 优秀 | fd/ripgrep集成 |
-| | 内容搜索工具 | 92.70% | 优秀 | 正则表达式搜索 |
-| | 组合搜索工具 | 91.57% | 优秀 | 两阶段搜索 |
+项目维护高质量的测试覆盖率，详细的模块覆盖率信息请查看：
+
+[![覆盖率详情](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer)
+
+**点击上方徽章查看：**
+- 📊 **模块别覆盖率** - 每个模块的详细覆盖率统计
+- 📈 **覆盖率趋势** - 历史覆盖率变化趋势
+- 🔍 **未覆盖代码行** - 具体的未测试代码位置
+- 📋 **详细报告** - 完整的覆盖率分析报告
 
 ### ✅ 文档验证状态
 
@@ -639,12 +636,12 @@ uv run pytest tests/test_mcp_server_initialization.py -v
 ## 9. 📚 文档与支持
 
 ### 📖 完整文档
-- **[用户MCP设置指南](MCP_SETUP_USERS.md)** - 简单配置指南
-- **[开发者MCP设置指南](MCP_SETUP_DEVELOPERS.md)** - 本地开发配置
-- **[项目根目录配置](PROJECT_ROOT_CONFIG.md)** - 完整配置参考
-- **[API文档](docs/api.md)** - 详细API参考
-- **[贡献指南](CONTRIBUTING.md)** - 如何贡献代码
-- **[接管与训练指南](training/README.md)** - 为新成员/维护者准备的系统上手资料
+本项目提供完整的文档支持，包括：
+
+- **快速开始指南** - 参见本README的[快速开始](#3--快速开始)部分
+- **MCP配置指南** - 参见[AI使用者配置](#31--ai使用者claude-desktopcursor等)部分
+- **CLI使用指南** - 参见[CLI命令大全](#6--cli命令大全)部分
+- **核心功能说明** - 参见[核心功能特性](#7-️-核心功能特性)部分
 
 ### 🤖 AI协作支持
 本项目支持AI辅助开发，具有专门的质量控制：
@@ -654,10 +651,6 @@ uv run pytest tests/test_mcp_server_initialization.py -v
 uv run python check_quality.py --new-code-only
 uv run python llm_code_checker.py --check-all
 ```
-
-📖 **详细指南**:
-- [AI协作指南](AI_COLLABORATION_GUIDE.md)
-- [LLM编码准则](LLM_CODING_GUIDELINES.md)
 
 ### 💝 赞助商与致谢
 
@@ -675,7 +668,13 @@ uv run python llm_code_checker.py --check-all
 
 ### 🤝 贡献指南
 
-我们欢迎各种形式的贡献！请查看[贡献指南](CONTRIBUTING.md)了解详情。
+我们欢迎各种形式的贡献！包括：
+
+- **🐛 Bug报告** - 发现问题请提交Issue
+- **💡 功能建议** - 新功能想法欢迎讨论
+- **📝 文档改进** - 帮助完善文档
+- **🔧 代码贡献** - 提交Pull Request
+- **🧪 测试用例** - 增加测试覆盖率
 
 ### ⭐ 给我们一个Star！
 

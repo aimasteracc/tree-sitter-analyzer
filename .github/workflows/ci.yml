@@ -117,6 +117,12 @@ jobs:
         files: ./coverage.xml
         fail_ci_if_error: false
 
+    - name: Update README statistics (on main/develop)
+      if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.11' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
+      run: |
+        echo "Updating README statistics..."
+        uv run python scripts/update_readme_stats.py || echo "README stats update completed with warnings"
+
     - name: Test CLI functionality
       run: |
         uv run python -m tree_sitter_analyzer examples/Sample.java --advanced --output-format=text --quiet || echo "CLI test completed with warnings"

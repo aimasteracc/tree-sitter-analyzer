@@ -5,7 +5,7 @@
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Tests](https://img.shields.io/badge/tests-2934%20passed-brightgreen.svg)](#quality-assurance)
-[![Coverage](https://img.shields.io/badge/coverage-80.09%25-green.svg)](#quality-assurance)
+[![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer)
 [![Quality](https://img.shields.io/badge/quality-enterprise%20grade-blue.svg)](#quality-assurance)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
 [![Version](https://img.shields.io/badge/version-1.7.4-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
@@ -59,7 +59,7 @@ Tree-sitter Analyzer is an enterprise-grade code analysis tool designed for the 
 
 ### 🏆 Production Ready
 - **2,934 Tests** - 100% pass rate, enterprise-grade quality assurance
-- **80.09% Coverage** - Comprehensive test coverage
+- **High Coverage** - Comprehensive test coverage
 - **Cross-platform Support** - Compatible with Windows, macOS, Linux
 - **Continuous Maintenance** - Active development and community support
 
@@ -570,12 +570,12 @@ uv run python -m tree_sitter_analyzer --show-query-languages
 
 ### 📊 Quality Metrics
 - **2,934 tests** - 100% pass rate ✅
-- **80.09% code coverage** - Comprehensive test suite
+- **High code coverage** - Comprehensive test suite
 - **Zero test failures** - Production ready
 - **Cross-platform support** - Windows, macOS, Linux
 
 ### ⚡ Latest Quality Achievements (v1.7.4)
-- ✅ **📊 Enhanced Quality Metrics** - Test count increased to 2934 (up from 2831), coverage improved to 80.09%
+- ✅ **📊 Enhanced Quality Metrics** - Test count increased to 2,934, coverage maintained at high levels
 - ✅ **🔧 System Stability** - All tests passing with enhanced system stability and reliability
 - ✅ **🆕 Complete Markdown Support** - Added new complete Markdown language plugin supporting all major Markdown elements
 - ✅ **📝 Enhanced Document Analysis** - Support for intelligent extraction of headers, code blocks, links, images, tables, task lists
@@ -605,19 +605,15 @@ uv run pytest tests/test_mcp_server_initialization.py -v
 
 ### 📈 Test Coverage Details
 
-| Module Category | Module Name | Coverage | Quality Level | Main Features |
-|------------------|-------------|-----------|---------------|---------------|
-| **🔧 Core Modules** | Language Detector | 98.41% | Excellent | Automatic programming language recognition |
-| | CLI Main Entry | 94.36% | Excellent | Command line interface |
-| | Query Filter System | 96.06% | Excellent | Code querying and filtering |
-| | Query Service | 86.25% | Good | Query execution engine |
-| | MCP Error Handling | 82.76% | Good | AI assistant integration error handling |
-| **🌍 Language Plugins** | Java Plugin | 80.30% | Excellent | Complete enterprise-grade support |
-| | JavaScript Plugin | 76.74% | Good | Modern ES6+ feature support |
-| | Python Plugin | 82.84% | Excellent | Complete type annotation support |
-| **🤖 MCP Tools** | File Search Tool | 88.77% | Excellent | fd/ripgrep integration |
-| | Content Search Tool | 92.70% | Excellent | Regular expression search |
-| | Combined Search Tool | 91.57% | Excellent | Two-stage search |
+The project maintains high-quality test coverage. For detailed module coverage information, please visit:
+
+[![Coverage Details](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer)
+
+**Click the badge above to view:**
+- 📊 **Module-by-Module Coverage** - Detailed coverage statistics for each module
+- 📈 **Coverage Trends** - Historical coverage change trends
+- 🔍 **Uncovered Code Lines** - Specific locations of untested code
+- 📋 **Detailed Reports** - Complete coverage analysis reports
 
 ### ✅ Documentation Verification Status
 
@@ -638,25 +634,21 @@ uv run pytest tests/test_mcp_server_initialization.py -v
 ## 9. 📚 Documentation & Support
 
 ### 📖 Complete Documentation
-- **[User MCP Setup Guide](MCP_SETUP_USERS.md)** - Simple setup guide
-- **[Developer MCP Setup Guide](MCP_SETUP_DEVELOPERS.md)** - Local development setup
-- **[Project Root Configuration](PROJECT_ROOT_CONFIG.md)** - Complete configuration reference
-- **[API Documentation](docs/api.md)** - Detailed API reference
-- **[Contributing Guide](CONTRIBUTING.md)** - How to contribute code
-- **[Onboarding & Training Guide](training/README.md)** - System onboarding materials for new members/maintainers
+This project provides complete documentation support, including:
+
+- **Quick Start Guide** - See the [Quick Start](#3--quick-start) section of this README
+- **MCP Configuration Guide** - See the [AI Users Configuration](#31--ai-users-claude-desktop-cursor-etc) section
+- **CLI Usage Guide** - See the [Complete CLI Commands](#6--complete-cli-commands) section
+- **Core Features Documentation** - See the [Core Features](#7-️-core-features) section
 
 ### 🤖 AI Collaboration Support
 This project supports AI-assisted development with professional quality control:
 
 ```bash
-# AI system pre-generation checks
+# AI system code generation pre-checks
 uv run python check_quality.py --new-code-only
 uv run python llm_code_checker.py --check-all
 ```
-
-📖 **Detailed guides**:
-- [AI Collaboration Guide](AI_COLLABORATION_GUIDE.md)
-- [LLM Coding Guidelines](LLM_CODING_GUIDELINES.md)
 
 ### 💝 Sponsors & Acknowledgments
 
