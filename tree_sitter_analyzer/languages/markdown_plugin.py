@@ -184,6 +184,17 @@ class MarkdownElementExtractor(ElementExtractor):
             log_debug(f"Error during link extraction: {e}")
             return []
 
+        # 重複除去: 同じtextとurlを持つ要素を除去
+        seen = set()
+        unique_links = []
+        for link in links:
+            key = (getattr(link, 'text', '') or "", getattr(link, 'url', '') or "")
+            if key not in seen:
+                seen.add(key)
+                unique_links.append(link)
+
+        links = unique_links
+
         log_debug(f"Extracted {len(links)} Markdown links")
         return links
 
