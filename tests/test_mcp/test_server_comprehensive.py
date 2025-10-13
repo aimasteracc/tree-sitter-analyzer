@@ -37,7 +37,7 @@ class TestTreeSitterAnalyzerMCPServerInitialization:
             "project_root",
             None,
         )
-        assert actual_project_root == temp_project_dir
+        assert actual_project_root == str(temp_project_dir)
         assert server.name == "tree-sitter-analyzer-mcp"
         assert server.version is not None
         assert hasattr(server, 'analysis_engine')
@@ -572,7 +572,14 @@ class TestTreeSitterAnalyzerMCPServerToolHandling:
         """Test set_project_path tool call."""
         server = mock_server_with_tools
         
-        with patch('tree_sitter_analyzer.mcp.server.Server') as mock_server_class:
+        with patch('tree_sitter_analyzer.mcp.server.Server') as mock_server_class, \
+             patch('tree_sitter_analyzer.mcp.server.TextContent') as mock_text_content:
+            
+            # Mock TextContent to return a simple object with text attribute
+            mock_text_content_instance = Mock()
+            mock_text_content_instance.text = ""
+            mock_text_content.return_value = mock_text_content_instance
+            
             mock_server = Mock()
             # Set up the mock to capture the handler function when call_tool() is called as decorator
             captured_handlers = {}
@@ -591,13 +598,17 @@ class TestTreeSitterAnalyzerMCPServerToolHandling:
             assert 'call_tool' in captured_handlers, "call_tool handler was not registered"
             call_tool_handler = captured_handlers['call_tool']
             
-            arguments = {"project_path": temp_project_dir}
+            arguments = {"project_path": str(temp_project_dir)}
             result = await call_tool_handler("set_project_path", arguments)
             
             assert len(result) == 1
-            response_data = json.loads(result[0].text)
+            # Since we're mocking TextContent, we need to check the call arguments
+            mock_text_content.assert_called_once()
+            call_args = mock_text_content.call_args
+            response_text = call_args[1]['text']  # Get the text argument
+            response_data = json.loads(response_text)
             assert response_data["status"] == "success"
-            assert response_data["project_root"] == temp_project_dir
+            assert response_data["project_root"] == str(temp_project_dir)
 
     @patch('tree_sitter_analyzer.mcp.server.MCP_AVAILABLE', True)
     @pytest.mark.asyncio

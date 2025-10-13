@@ -11,6 +11,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
+from . import __version__
 from .core.engine import AnalysisEngine
 from .utils import log_error
 
@@ -500,7 +501,7 @@ def get_framework_info() -> dict[str, Any]:
 
         return {
             "name": "tree-sitter-analyzer",
-            "version": "2.0.0",  # New architecture version
+            "version": __version__,
             "supported_languages": engine.get_supported_languages(),
             "total_languages": len(engine.get_supported_languages()),
             "plugin_info": {
@@ -521,7 +522,7 @@ def get_framework_info() -> dict[str, Any]:
         }
     except Exception as e:
         log_error(f"Failed to get framework info: {e}")
-        return {"name": "tree-sitter-analyzer", "version": "2.0.0", "error": str(e)}
+        return {"name": "tree-sitter-analyzer", "version": __version__, "error": str(e)}
 
 
 def execute_query(

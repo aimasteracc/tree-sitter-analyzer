@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from tree_sitter_analyzer import api
+from tree_sitter_analyzer import api, __version__
 
 
 class TestAPIFacade:
