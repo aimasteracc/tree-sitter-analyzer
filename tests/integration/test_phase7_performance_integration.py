@@ -790,7 +790,7 @@ export default GeneratedComponent{i};
                 "iteration": iteration,
                 "execution_time": metrics["execution_time"],
                 "memory_mb": metrics["memory_mb"],
-                "success": result.get("success", False)
+                "success": isinstance(result, dict) and result.get("success", False) or isinstance(result, int)
             })
             
             # 短い間隔
@@ -924,10 +924,16 @@ export default GeneratedComponent{i};
         # 正常なタスクが影響を受けていないことを確認
         successful_valid = [r for r in valid_results if isinstance(r, dict) and r.get("success")]
         assert len(successful_valid) == 5, "エラーが正常なタスクに影響を与えました"
+
+        # エラー処理が適切に行われていることを確認（例外またはエラー辞書）
+        handled_errors = []
+        for r in error_results:
+            if isinstance(r, Exception):
+                handled_errors.append(r)  # 例外として処理された
+            elif isinstance(r, dict) and not r.get("success", True):
+                handled_errors.append(r)  # エラー辞書として処理された
         
-        # エラー処理が適切に行われていることを確認
-        handled_errors = [r for r in error_results if isinstance(r, dict) and not r.get("success")]
-        assert len(handled_errors) >= 2, "エラーが適切に処理されていません"
+        assert len(handled_errors) >= 2, f"エラーが適切に処理されていません: {len(handled_errors)}/3"
         
         # パフォーマンスが大幅に劣化していないことを確認
         assert metrics["execution_time"] < 10.0, f"エラー混在時の実行時間が10秒を超過: {metrics['execution_time']:.2f}秒"

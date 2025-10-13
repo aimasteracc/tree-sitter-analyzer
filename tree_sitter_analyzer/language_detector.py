@@ -143,6 +143,10 @@ class LanguageDetector:
             ".mkd": ("markdown", 0.8),
             ".mkdn": ("markdown", 0.8),
             ".mdx": ("markdown", 0.7),  # MDX might be mixed with JSX
+            # JSON extensions
+            ".json": ("json", 0.9),
+            ".jsonc": ("json", 0.8),  # JSON with comments
+            ".json5": ("json", 0.8),  # JSON5 format
         }
 
         # Content-based detection patterns

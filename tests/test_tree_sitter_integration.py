@@ -392,11 +392,10 @@ def code_block():
         
         # Test with invalid query key
         file_path = self.test_files["python"]
-        results = await self.query_service.execute_query(
-            file_path, "python", query_key="invalid_query"
-        )
-        # Should handle gracefully (might return empty results or raise specific error)
-        assert results is not None or True  # Allow either empty results or exception
+        with pytest.raises(ValueError):
+            await self.query_service.execute_query(
+                file_path, "python", query_key="invalid_query"
+            )
 
     @pytest.mark.asyncio
     async def test_large_file_performance(self):
