@@ -7,7 +7,7 @@ Auto-generated from all feature plans. Last updated: 2025-10-12
 
 ## Project Structure
 ```
-src/
+tree_sitter_analyzer/
 tests/
 ```
 
