@@ -16,6 +16,15 @@ from tree_sitter_analyzer.mcp.utils.search_cache import SearchCache, clear_cache
 
 
 @pytest.fixture(autouse=True)
+def mock_external_commands(monkeypatch):
+    """Auto-mock external command availability checks for all tests in this module."""
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.mcp.tools.fd_rg_utils.check_external_command",
+        lambda cmd: True
+    )
+
+
+@pytest.fixture(autouse=True)
 def clear_cache_between_tests():
     """Clear cache before each test to avoid interference"""
     clear_cache()

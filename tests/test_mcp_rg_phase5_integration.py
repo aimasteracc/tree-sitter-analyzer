@@ -6,6 +6,15 @@ from tree_sitter_analyzer.mcp.tools import fd_rg_utils
 from tree_sitter_analyzer.mcp.tools.find_and_grep_tool import FindAndGrepTool
 
 
+@pytest.fixture(autouse=True)
+def mock_external_commands(monkeypatch):
+    """Auto-mock external command availability checks for all tests in this module."""
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.mcp.tools.fd_rg_utils.check_external_command",
+        lambda cmd: True
+    )
+
+
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_rg_56_find_and_grep_with_globs_and_exclude(monkeypatch, tmp_path):

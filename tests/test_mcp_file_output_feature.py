@@ -19,6 +19,15 @@ from tree_sitter_analyzer.mcp.tools.read_partial_tool import ReadPartialTool
 from tree_sitter_analyzer.mcp.tools.search_content_tool import SearchContentTool
 
 
+@pytest.fixture(autouse=True)
+def mock_external_commands(monkeypatch):
+    """Auto-mock external command availability checks for all tests in this module."""
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.mcp.tools.fd_rg_utils.check_external_command",
+        lambda cmd: True
+    )
+
+
 class TestFileOutputFeature:
     """Test file output functionality across MCP tools"""
 
