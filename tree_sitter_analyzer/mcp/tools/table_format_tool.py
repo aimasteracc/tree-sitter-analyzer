@@ -379,18 +379,26 @@ class TableFormatTool(BaseMCPTool):
             output_file = args.get("output_file")
             suppress_output = args.get("suppress_output", False)
 
-            # Resolve file path using common path resolver
-            resolved_path = self.path_resolver.resolve(file_path)
-
-            # Security validation
-            is_valid, error_msg = self.security_validator.validate_file_path(
-                resolved_path
-            )
+            # Security validation BEFORE path resolution to catch symlinks
+            is_valid, error_msg = self.security_validator.validate_file_path(file_path)
             if not is_valid:
                 self.logger.warning(
                     f"Security validation failed for file path: {file_path} - {error_msg}"
                 )
                 raise ValueError(f"Invalid file path: {error_msg}")
+
+            # Resolve file path using common path resolver
+            resolved_path = self.path_resolver.resolve(file_path)
+
+            # Additional security validation on resolved path
+            is_valid, error_msg = self.security_validator.validate_file_path(
+                resolved_path
+            )
+            if not is_valid:
+                self.logger.warning(
+                    f"Security validation failed for resolved path: {resolved_path} - {error_msg}"
+                )
+                raise ValueError(f"Invalid resolved path: {error_msg}")
 
             # Sanitize format_type input
             if format_type:

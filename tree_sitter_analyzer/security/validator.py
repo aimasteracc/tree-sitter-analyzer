@@ -136,16 +136,53 @@ class SecurityValidator:
                         "Access denied. File path must be within project directory",
                     )
 
-            # Layer 7: Symbolic link check (if file exists)
+            # Layer 7: Symbolic link and junction check (check both original and resolved paths)
             if base_path:
                 full_path = Path(base_path) / norm_path
             else:
                 # For absolute paths or when no base_path is provided
                 full_path = Path(file_path)
             
-            if full_path.exists() and full_path.is_symlink():
-                log_warning(f"Symbolic link detected: {full_path}")
-                return False, "Symbolic links are not allowed"
+            # Check if the original path is a symlink or junction
+            try:
+                if full_path.is_symlink():
+                    log_warning(f"Symbolic link detected: {full_path}")
+                    return False, "Symbolic links are not allowed"
+                
+                # Additional check for Windows junctions and reparse points
+                if self._is_junction_or_reparse_point(full_path):
+                    log_warning(f"Junction or reparse point detected: {full_path}")
+                    return False, "Junctions and reparse points are not allowed"
+                    
+            except (OSError, PermissionError):
+                # If we can't check symlink status due to permissions, be cautious
+                log_warning(f"Cannot verify symlink status for: {full_path}")
+                pass
+            
+            # Also check the original file_path directly for symlinks and junctions
+            try:
+                original_path = Path(file_path)
+                if original_path.is_symlink():
+                    log_warning(f"Symbolic link detected in original path: {original_path}")
+                    return False, "Symbolic links are not allowed"
+                
+                # Additional check for Windows junctions and reparse points
+                if self._is_junction_or_reparse_point(original_path):
+                    log_warning(f"Junction or reparse point detected in original path: {original_path}")
+                    return False, "Junctions and reparse points are not allowed"
+                    
+            except (OSError, PermissionError):
+                # If we can't check symlink status, continue with other checks
+                pass
+            
+            # Check parent directories for junctions (Windows-specific security measure)
+            try:
+                if self._has_junction_in_path(full_path):
+                    log_warning(f"Junction detected in path hierarchy: {full_path}")
+                    return False, "Paths containing junctions are not allowed"
+            except (OSError, PermissionError):
+                # If we can't check parent directories, continue
+                pass
 
             log_debug(f"File path validation passed: {file_path}")
             return True, ""
@@ -299,3 +336,76 @@ class SecurityValidator:
         """
         is_valid, _ = self.validate_file_path(path, base_path)
         return is_valid
+
+    def _is_junction_or_reparse_point(self, path: Path) -> bool:
+        """
+        Check if a path is a Windows junction or reparse point.
+        
+        Args:
+            path: Path to check
+            
+        Returns:
+            True if the path is a junction or reparse point
+        """
+        try:
+            import platform
+            if platform.system() != "Windows":
+                return False
+                
+            # On Windows, check for reparse points using stat
+            import stat
+            if path.exists():
+                path_stat = path.stat()
+                # Check if it has the reparse point attribute
+                if hasattr(stat, 'FILE_ATTRIBUTE_REPARSE_POINT'):
+                    return bool(path_stat.st_file_attributes & stat.FILE_ATTRIBUTE_REPARSE_POINT)
+                
+            # Alternative method using Windows API
+            try:
+                import ctypes
+                from ctypes import wintypes
+                
+                # GetFileAttributesW function
+                _GetFileAttributesW = ctypes.windll.kernel32.GetFileAttributesW
+                _GetFileAttributesW.argtypes = [wintypes.LPCWSTR]
+                _GetFileAttributesW.restype = wintypes.DWORD
+                
+                FILE_ATTRIBUTE_REPARSE_POINT = 0x400
+                INVALID_FILE_ATTRIBUTES = 0xFFFFFFFF
+                
+                attributes = _GetFileAttributesW(str(path))
+                if attributes != INVALID_FILE_ATTRIBUTES:
+                    return bool(attributes & FILE_ATTRIBUTE_REPARSE_POINT)
+                    
+            except (ImportError, AttributeError, OSError):
+                pass
+                
+        except Exception:
+            # If any error occurs, assume it's not a junction for safety
+            pass
+            
+        return False
+
+    def _has_junction_in_path(self, path: Path) -> bool:
+        """
+        Check if any parent directory in the path is a junction.
+        
+        Args:
+            path: Path to check
+            
+        Returns:
+            True if any parent directory is a junction
+        """
+        try:
+            current_path = path.resolve() if path.exists() else path
+            
+            # Check each parent directory
+            for parent in current_path.parents:
+                if self._is_junction_or_reparse_point(parent):
+                    return True
+                    
+        except Exception:
+            # If any error occurs, assume no junctions for safety
+            pass
+            
+        return False
