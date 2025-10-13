@@ -88,13 +88,13 @@ gitGraph
     # 同步版本号到 __init__.py
     uv run python scripts/sync_version_minimal.py
 
-    # 获取当前测试数量和覆盖率统计：
+    # 获取当前测试数量统计：
     # 测试数量: uv run python -m pytest --collect-only -q | findstr /C:"collected"
-    # 覆盖率: uv run python -m pytest --cov=tree_sitter_analyzer --cov-report=term-missing --cov-report=json -x -q | findstr "TOTAL"
+    # 注意：覆盖率使用Codecov自动徽章，无需手动更新
 
     # 更新文档：
-    # - 更新 README.md 中的版本号、测试数量和覆盖率
-    # - 更新版本徽章、测试徽章、覆盖率徽章
+    # - 更新 README.md 中的版本号和测试数量
+    # - 更新版本徽章、测试徽章（覆盖率徽章使用Codecov自动更新）
     # - 更新"最新质量成就"部分的版本引用
     # - 更新测试环境部分的版本引用
     # - 更新文档中的所有其他版本引用
@@ -183,14 +183,14 @@ gitGraph
     # 同步版本号到 __init__.py
     uv run python scripts/sync_version_minimal.py
 
-    # 获取当前测试数量和覆盖率统计：
+    # 获取当前测试数量统计：
     # 测试数量: uv run python -m pytest --collect-only -q | findstr /C:"collected"
-    # 覆盖率: uv run python -m pytest --cov=tree_sitter_analyzer --cov-report=term-missing --cov-report=json -x -q | findstr "TOTAL"
+    # 注意：覆盖率使用Codecov自动徽章，无需手动更新
 
     # 更新文档：
     # - 更新 CHANGELOG.md 添加 hotfix 详情
-    # - 更新 README.md 中的版本号、测试数量和覆盖率
-    # - 更新版本徽章、测试徽章、覆盖率徽章
+    # - 更新 README.md 中的版本号和测试数量
+    # - 更新版本徽章、测试徽章（覆盖率徽章使用Codecov自动更新）
     # - 更新"最新质量成就"部分的版本引用
     # - 更新测试环境部分的版本引用
     # - 更新文档中的所有其他版本引用

@@ -68,7 +68,7 @@ class TreeSitterAnalyzerMCPServer:
 
         self.server: Server | None = None
         self.name = "tree-sitter-analyzer"
-        self.version = "2.0.0"
+        self.version = "1.7.7"
 
         log_info(f"Initializing {self.name} v{self.version}")
 

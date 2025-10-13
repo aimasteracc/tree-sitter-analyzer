@@ -1833,7 +1833,7 @@ wheels = [
 
 [[package]]
 name = "tree-sitter-analyzer"
-version = "1.7.6"
+version = "1.7.7"
 source = { editable = "." }
 dependencies = [
     { name = "cachetools" },

@@ -88,13 +88,13 @@ gitGraph
     # __init__.py にバージョン番号を同期
     uv run python scripts/sync_version_minimal.py
 
-    # 現在のテスト数とカバレッジ統計を取得：
+    # 現在のテスト数統計を取得：
     # テスト数: uv run python -m pytest --collect-only -q | findstr /C:"collected"
-    # カバレッジ: uv run python -m pytest --cov=tree_sitter_analyzer --cov-report=term-missing --cov-report=json -x -q | findstr "TOTAL"
+    # 注意：カバレッジはCodecov自動バッジを使用、手動更新不要
 
     # ドキュメントを更新：
-    # - README.md のバージョン番号、テスト数、カバレッジを更新
-    # - バージョンバッジ、テストバッジ、カバレッジバッジを更新
+    # - README.md のバージョン番号とテスト数を更新
+    # - バージョンバッジ、テストバッジを更新（カバレッジバッジはCodecov自動更新）
     # - "最新品質成果"セクションのバージョン参照を更新
     # - テスト環境セクションのバージョン参照を更新
     # - ドキュメント内のその他すべてのバージョン参照を更新

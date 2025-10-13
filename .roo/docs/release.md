@@ -34,12 +34,12 @@ You **MUST** consider the user input before proceeding (if not empty).
    - `uv run python scripts/sync_version_minimal.py`実行
    - 品質指標取得:
      * テスト数: `uv run python -m pytest --collect-only -q | findstr /C:"collected"`
-     * カバレッジ: `uv run python -m pytest --cov=tree_sitter_analyzer --cov-report=term-missing --cov-report=json -x -q | findstr "TOTAL"`
+     * 注意：カバレッジはCodecov自動徽章を使用、手動更新不要
    - 文書更新:
-     * README.md (バージョン、テスト数、カバレッジ)
+     * README.md (バージョン、テスト数)
      * README_zh.md, README_ja.md
      * CHANGELOG.md
-     * バージョン徽章更新
+     * バージョン徽章、テスト徽章更新（カバレッジ徽章はCodecov自動更新）
 
 5. **Release分岐プッシュ**: PyPI自動発布トリガー
    ```bash

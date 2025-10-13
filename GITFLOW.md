@@ -88,13 +88,13 @@ The project recommends using automated release workflows, but the manual process
     # Sync version number to __init__.py
     uv run python scripts/sync_version_minimal.py
 
-    # Get current test count and coverage statistics:
+    # Get current test count statistics:
     # Test count: uv run python -m pytest --collect-only -q | findstr /C:"collected"
-    # Coverage: uv run python -m pytest --cov=tree_sitter_analyzer --cov-report=term-missing --cov-report=json -x -q | findstr "TOTAL"
+    # Note: Coverage uses Codecov automatic badge, no manual update needed
 
     # Update documentation:
-    # - Update version number, test count, and coverage in README.md
-    # - Update version badge, test badge, coverage badge
+    # - Update version number and test count in README.md
+    # - Update version badge, test badge (coverage badge auto-updated by Codecov)
     # - Update version references in "Latest Quality Achievements" section
     # - Update version references in test environment section
     # - Update all other version references in documentation
@@ -176,14 +176,14 @@ The project recommends using automated release workflows, but the manual process
     # Sync version number to __init__.py
     uv run python scripts/sync_version_minimal.py
 
-    # Get current test count and coverage statistics:
+    # Get current test count statistics:
     # Test count: uv run python -m pytest --collect-only -q | findstr /C:"collected"
-    # Coverage: uv run python -m pytest --cov=tree_sitter_analyzer --cov-report=term-missing --cov-report=json -x -q | findstr "TOTAL"
+    # Note: Coverage uses Codecov automatic badge, no manual update needed
 
     # Update documentation:
     # - Add hotfix details to CHANGELOG.md
-    # - Update version number, test count, and coverage in README.md
-    # - Update version badge, test badge, coverage badge
+    # - Update version number and test count in README.md
+    # - Update version badge, test badge (coverage badge auto-updated by Codecov)
     # - Update version references in "Latest Quality Achievements" section
     # - Update version references in test environment section
     # - Update all other version references in documentation
