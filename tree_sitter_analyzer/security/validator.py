@@ -139,9 +139,13 @@ class SecurityValidator:
             # Layer 7: Symbolic link check (if file exists)
             if base_path:
                 full_path = Path(base_path) / norm_path
-                if full_path.exists() and full_path.is_symlink():
-                    log_warning(f"Symbolic link detected: {full_path}")
-                    return False, "Symbolic links are not allowed"
+            else:
+                # For absolute paths or when no base_path is provided
+                full_path = Path(file_path)
+            
+            if full_path.exists() and full_path.is_symlink():
+                log_warning(f"Symbolic link detected: {full_path}")
+                return False, "Symbolic links are not allowed"
 
             log_debug(f"File path validation passed: {file_path}")
             return True, ""

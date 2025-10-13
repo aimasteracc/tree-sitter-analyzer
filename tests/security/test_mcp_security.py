@@ -243,6 +243,8 @@ class TestProjectBoundaryProtection:
     @pytest.mark.asyncio
     async def test_symlink_traversal_prevention(self, tmp_path):
         """シンボリックリンクトラバーサル防御テスト"""
+        import platform
+        
         # プロジェクトディレクトリ作成
         project_dir = tmp_path / "project"
         project_dir.mkdir()
@@ -253,28 +255,55 @@ class TestProjectBoundaryProtection:
         (external_dir / "secret.txt").write_text("secret data")
         
         # 悪意のあるシンボリックリンク作成（可能な場合）
+        symlink_path = project_dir / "malicious_link"
+        
+        # Windowsでは管理者権限が必要な場合があるため、より詳細なエラーハンドリング
         try:
-            symlink_path = project_dir / "malicious_link"
-            symlink_path.symlink_to(external_dir / "secret.txt")
+            if platform.system() == "Windows":
+                # Windowsでシンボリックリンクを作成
+                symlink_path.symlink_to(external_dir / "secret.txt")
+            else:
+                # Unix系でシンボリックリンクを作成
+                symlink_path.symlink_to(external_dir / "secret.txt")
+            
+            # シンボリックリンクが正常に作成されたことを確認
+            if not symlink_path.exists() or not symlink_path.is_symlink():
+                pytest.skip("シンボリックリンクの作成に失敗")
             
             tool = ReadPartialTool()
             
+            # セキュリティバリデーターがシンボリックリンクをブロックすることを確認
             try:
                 result = await tool.execute({
                     "file_path": str(symlink_path),
                     "start_line": 1,
                     "end_line": 10
                 })
+                
                 # 結果がエラーを示している場合は適切にブロックされた
                 if isinstance(result, dict) and not result.get("success", True):
-                    return  # 適切にブロックされた
-                # 成功した場合は失敗
+                    # エラーメッセージにシンボリックリンクに関する内容が含まれていることを確認
+                    error_msg = result.get("error", "").lower()
+                    if "symbolic" in error_msg or "symlink" in error_msg:
+                        return  # 適切にブロックされた
+                    else:
+                        pytest.fail(f"シンボリックリンクが検出されませんでした。エラー: {result.get('error', '')}")
+                
+                # 成功した場合は失敗（シンボリックリンクがブロックされるべき）
                 pytest.fail(f"Expected security block for symlink: {symlink_path}")
-            except (SecurityError, ValidationError, FileNotFoundError, ValueError):
-                return  # 期待される例外
-        except OSError:
+                
+            except (SecurityError, ValidationError, FileNotFoundError, ValueError) as e:
+                # 例外メッセージにシンボリックリンクに関する内容が含まれていることを確認
+                error_msg = str(e).lower()
+                if "symbolic" in error_msg or "symlink" in error_msg:
+                    return  # 期待される例外
+                else:
+                    # 他の理由での例外の場合は再発生
+                    raise
+                    
+        except (OSError, PermissionError, NotImplementedError) as e:
             # シンボリックリンク作成に失敗した場合はスキップ
-            pytest.skip("シンボリックリンク作成に失敗")
+            pytest.skip(f"シンボリックリンク作成に失敗: {e}")
     
     @pytest.mark.asyncio
     async def test_project_root_enforcement(self, safe_project_structure):
