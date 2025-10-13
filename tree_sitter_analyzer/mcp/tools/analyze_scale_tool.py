@@ -423,6 +423,12 @@ class AnalyzeScaleTool(BaseMCPTool):
                 # Calculate basic file metrics
                 file_metrics = self._calculate_file_metrics(resolved_file_path)
 
+                # Handle JSON files specially - they don't need structural analysis
+                if language == "json":
+                    return self._create_json_file_analysis(
+                        resolved_file_path, file_metrics, include_guidance
+                    )
+
                 # Use appropriate analyzer based on language
                 if language == "java":
                     # Use AdvancedAnalyzer for comprehensive analysis
@@ -688,6 +694,56 @@ class AnalyzeScaleTool(BaseMCPTool):
                 raise ValueError("include_guidance must be a boolean")
 
         return True
+
+    def _create_json_file_analysis(
+        self, file_path: str, file_metrics: dict[str, Any], include_guidance: bool
+    ) -> dict[str, Any]:
+        """
+        Create analysis result for JSON files.
+        
+        Args:
+            file_path: Path to the JSON file
+            file_metrics: Basic file metrics
+            include_guidance: Whether to include guidance
+            
+        Returns:
+            Analysis result for JSON file
+        """
+        result = {
+            "success": True,
+            "file_path": file_path,
+            "language": "json",
+            "file_size_bytes": file_metrics["file_size_bytes"],
+            "total_lines": file_metrics["total_lines"],
+            "non_empty_lines": file_metrics["total_lines"] - file_metrics["blank_lines"],
+            "estimated_tokens": file_metrics["estimated_tokens"],
+            "complexity_metrics": {
+                "total_elements": 0,
+                "max_depth": 0,
+                "avg_complexity": 0.0,
+            },
+            "structural_overview": {
+                "classes": [],
+                "methods": [],
+                "fields": [],
+            },
+            "scale_category": "small" if file_metrics["total_lines"] < 100 else "medium" if file_metrics["total_lines"] < 1000 else "large",
+            "analysis_recommendations": {
+                "suitable_for_full_analysis": file_metrics["total_lines"] < 1000,
+                "recommended_approach": "JSON files are configuration/data files - structural analysis not applicable",
+                "token_efficiency_notes": "JSON files can be read directly without tree-sitter parsing",
+            },
+        }
+        
+        if include_guidance:
+            result["llm_analysis_guidance"] = {
+                "file_characteristics": "JSON configuration/data file",
+                "recommended_workflow": "Direct file reading for content analysis",
+                "token_optimization": "Use simple file reading tools for JSON content",
+                "analysis_focus": "Data structure and configuration values",
+            }
+            
+        return result
 
     def get_tool_definition(self) -> dict[str, Any]:
         """

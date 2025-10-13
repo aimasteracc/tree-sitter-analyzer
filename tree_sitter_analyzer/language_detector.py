@@ -66,6 +66,10 @@ class LanguageDetector:
         ".mkd": "markdown",
         ".mkdn": "markdown",
         ".mdx": "markdown",
+        # JSON系
+        ".json": "json",
+        ".jsonc": "json",
+        ".json5": "json",
     }
 
     # Ambiguous extensions (map to multiple languages)
@@ -100,6 +104,7 @@ class LanguageDetector:
         "rust",
         "go",
         "markdown",
+        "json",
     }
 
     def __init__(self) -> None:
@@ -416,7 +421,9 @@ def detect_language_from_file(file_path: str) -> str:
     Returns:
         Detected language name
     """
-    return detector.detect_from_extension(file_path)
+    # Create a fresh instance to ensure latest configuration
+    fresh_detector = LanguageDetector()
+    return fresh_detector.detect_from_extension(file_path)
 
 
 def is_language_supported(language: str) -> bool:

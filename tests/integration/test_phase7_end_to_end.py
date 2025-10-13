@@ -26,6 +26,7 @@ from tree_sitter_analyzer.mcp.tools.query_tool import QueryTool
 from tree_sitter_analyzer.mcp.tools.list_files_tool import ListFilesTool
 from tree_sitter_analyzer.mcp.tools.search_content_tool import SearchContentTool
 from tree_sitter_analyzer.mcp.tools.find_and_grep_tool import FindAndGrepTool
+from tree_sitter_analyzer.mcp.utils.error_handler import AnalysisError
 
 
 class TestPhase7EndToEnd:
@@ -1123,6 +1124,9 @@ pytest
             # エラーが適切に処理されることを確認
             if isinstance(result, dict):
                 assert not result.get("success", True) or result.get("count", 0) == 0
+        except (ValueError, AnalysisError) as e:
+            # 存在しないディレクトリに対する適切なエラーが発生することを確認
+            assert "does not exist" in str(e) or "Invalid root" in str(e)
         except (ValueError, FileNotFoundError):
             # 例外が発生する場合も正常
             pass
