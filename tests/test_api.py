@@ -288,7 +288,7 @@ class TestClass:
         assert "name" in info
         assert info["name"] == "tree-sitter-analyzer"
         assert "version" in info
-        assert info["version"] == "2.0.0"
+        assert info["version"] == __version__
 
 
 class TestAPIFacadeErrorHandling:

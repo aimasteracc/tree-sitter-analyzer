@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
+from tree_sitter_analyzer import __version__
 from tree_sitter_analyzer.interfaces.mcp_server import (
     MCP_AVAILABLE,
     TreeSitterAnalyzerMCPServer,
@@ -37,9 +38,9 @@ class TestTreeSitterAnalyzerMCPServerInitialization:
 
         assert server.server is None
         assert server.name == "tree-sitter-analyzer"
-        assert server.version == "2.0.0"
+        assert server.version == __version__
         mock_log_info.assert_called_once_with(
-            "Initializing tree-sitter-analyzer v2.0.0"
+            f"Initializing tree-sitter-analyzer v{__version__}"
         )
 
     @patch("tree_sitter_analyzer.interfaces.mcp_server.MCP_AVAILABLE", False)
@@ -94,7 +95,7 @@ class TestServerProperties:
         server = TreeSitterAnalyzerMCPServer()
 
         assert server.name == "tree-sitter-analyzer"
-        assert server.version == "2.0.0"
+        assert server.version == __version__
         assert server.server is None
 
     @patch("tree_sitter_analyzer.interfaces.mcp_server.MCP_AVAILABLE", True)
@@ -194,7 +195,7 @@ class TestServerRunMethod:
             loop.close()
 
         mock_log_info.assert_any_call(
-            "Starting MCP server: tree-sitter-analyzer v2.0.0"
+            f"Starting MCP server: tree-sitter-analyzer v{__version__}"
         )
         mock_init_options.assert_called_once()
 
@@ -240,7 +241,7 @@ class TestLoggingIntegration:
         """Test that initialization logs correctly."""
         TreeSitterAnalyzerMCPServer()
         mock_log_info.assert_called_once_with(
-            "Initializing tree-sitter-analyzer v2.0.0"
+            f"Initializing tree-sitter-analyzer v{__version__}"
         )
 
     @patch("tree_sitter_analyzer.interfaces.mcp_server.MCP_AVAILABLE", True)
@@ -335,7 +336,7 @@ class TestServerConfiguration:
         mock_init_options.assert_called_once()
         call_args = mock_init_options.call_args[1]
         assert call_args["server_name"] == "tree-sitter-analyzer"
-        assert call_args["server_version"] == "2.0.0"
+        assert call_args["server_version"] == __version__
         assert "capabilities" in call_args
 
 
@@ -414,7 +415,7 @@ class TestIntegrationScenarios:
 
         # Verify all expected calls were made
         mock_server_class.assert_called_once_with("tree-sitter-analyzer")
-        mock_log_info.assert_any_call("Initializing tree-sitter-analyzer v2.0.0")
+        mock_log_info.assert_any_call(f"Initializing tree-sitter-analyzer v{__version__}")
         mock_log_info.assert_any_call("MCP server created successfully")
 
         # Verify decorators were registered

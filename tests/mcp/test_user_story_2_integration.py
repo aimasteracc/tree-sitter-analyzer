@@ -23,6 +23,9 @@ from tree_sitter_analyzer.mcp.tools.read_partial_tool import ReadPartialTool
 from tree_sitter_analyzer.mcp.tools.list_files_tool import ListFilesTool
 from tree_sitter_analyzer.mcp.tools.search_content_tool import SearchContentTool
 
+# Mark tests that require ripgrep
+pytestmark = pytest.mark.requires_ripgrep
+
 
 class TestUserStory2Integration:
     """User Story 2: 高度な解析ツール統合テスト"""
