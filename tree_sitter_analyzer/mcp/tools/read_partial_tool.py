@@ -117,23 +117,31 @@ class ReadPartialTool(BaseMCPTool):
         output_format = arguments.get("format", "text")
 
         # Security validation BEFORE path resolution to catch symlinks
-        is_valid, error_msg = self.security_validator.validate_file_path(file_path)
+        is_valid, error_msg = self.security_validator.validate_file_path(file_path, self.project_root)
         if not is_valid:
             logger.warning(
                 f"Security validation failed for file path: {file_path} - {error_msg}"
             )
-            raise ValueError(f"Invalid file path: {error_msg}")
+            return {
+                "success": False,
+                "error": f"Security validation failed: {error_msg}",
+                "file_path": file_path
+            }
 
         # Resolve file path using common path resolver
         resolved_path = self.path_resolver.resolve(file_path)
 
         # Additional security validation on resolved path
-        is_valid, error_msg = self.security_validator.validate_file_path(resolved_path)
+        is_valid, error_msg = self.security_validator.validate_file_path(resolved_path, self.project_root)
         if not is_valid:
             logger.warning(
                 f"Security validation failed for resolved path: {resolved_path} - {error_msg}"
             )
-            raise ValueError(f"Invalid resolved path: {error_msg}")
+            return {
+                "success": False,
+                "error": f"Security validation failed for resolved path: {error_msg}",
+                "file_path": file_path
+            }
 
         # Validate file exists
         if not Path(resolved_path).exists():

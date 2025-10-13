@@ -100,12 +100,13 @@ class SecurityValidator:
 
             # Layer 4: Absolute path check (cross-platform)
             if Path(file_path).is_absolute() or file_path.startswith(("/", "\\")):
+                log_debug(f"Processing absolute path: {file_path}")
                 # If project boundaries are configured, enforce them strictly
                 if self.boundary_manager and self.boundary_manager.project_root:
                     if not self.boundary_manager.is_within_project(file_path):
                         return False, "Absolute path must be within project directory"
-                    # Within project
-                    return True, ""
+                    # Within project - continue with symlink checks
+                    log_debug("Absolute path is within project, continuing with symlink checks")
                 else:
                     # In test/dev contexts without project boundaries, allow absolute
                     # paths under system temp folder only (safe sandbox)
@@ -113,12 +114,13 @@ class SecurityValidator:
 
                     temp_dir = Path(tempfile.gettempdir()).resolve()
                     real_path = Path(file_path).resolve()
+                    log_debug(f"Checking if {real_path} is under temp dir {temp_dir}")
                     try:
                         real_path.relative_to(temp_dir)
-                        return True, ""
+                        log_debug("Path is under temp directory, continuing with symlink checks")
+                        # Don't return here - continue with symlink checks
                     except ValueError:
-                        pass
-                    return False, "Absolute file paths are not allowed"
+                        return False, "Absolute file paths are not allowed"
 
             # Layer 5: Path normalization and traversal check
             norm_path = str(Path(file_path))
@@ -137,52 +139,68 @@ class SecurityValidator:
                     )
 
             # Layer 7: Symbolic link and junction check (check both original and resolved paths)
-            if base_path:
-                full_path = Path(base_path) / norm_path
-            else:
-                # For absolute paths or when no base_path is provided
-                full_path = Path(file_path)
-            
-            # Check if the original path is a symlink or junction
-            try:
-                if full_path.is_symlink():
-                    log_warning(f"Symbolic link detected: {full_path}")
-                    return False, "Symbolic links are not allowed"
-                
-                # Additional check for Windows junctions and reparse points
-                if self._is_junction_or_reparse_point(full_path):
-                    log_warning(f"Junction or reparse point detected: {full_path}")
-                    return False, "Junctions and reparse points are not allowed"
-                    
-            except (OSError, PermissionError):
-                # If we can't check symlink status due to permissions, be cautious
-                log_warning(f"Cannot verify symlink status for: {full_path}")
-                pass
-            
-            # Also check the original file_path directly for symlinks and junctions
+            # First check the original file_path directly for symlinks and junctions
             try:
                 original_path = Path(file_path)
-                if original_path.is_symlink():
+                log_debug(f"Checking symlink status for original path: {original_path}")
+                # Check for symlinks even if the file doesn't exist yet (broken symlinks)
+                is_symlink = original_path.is_symlink()
+                log_debug(f"original_path.is_symlink() = {is_symlink}")
+                if is_symlink:
                     log_warning(f"Symbolic link detected in original path: {original_path}")
                     return False, "Symbolic links are not allowed"
                 
-                # Additional check for Windows junctions and reparse points
-                if self._is_junction_or_reparse_point(original_path):
+                # Additional check for Windows junctions and reparse points (only if exists)
+                if original_path.exists() and self._is_junction_or_reparse_point(original_path):
                     log_warning(f"Junction or reparse point detected in original path: {original_path}")
                     return False, "Junctions and reparse points are not allowed"
                     
-            except (OSError, PermissionError):
+            except (OSError, PermissionError) as e:
                 # If we can't check symlink status, continue with other checks
+                log_debug(f"Exception checking symlink status: {e}")
                 pass
             
-            # Check parent directories for junctions (Windows-specific security measure)
-            try:
-                if self._has_junction_in_path(full_path):
-                    log_warning(f"Junction detected in path hierarchy: {full_path}")
-                    return False, "Paths containing junctions are not allowed"
-            except (OSError, PermissionError):
-                # If we can't check parent directories, continue
-                pass
+            # Then check the full path (base_path + norm_path) if base_path is provided
+            if base_path:
+                full_path = Path(base_path) / norm_path
+                
+                # Check if the full path is a symlink or junction
+                try:
+                    # Check for symlinks even if the file doesn't exist yet (broken symlinks)
+                    if full_path.is_symlink():
+                        log_warning(f"Symbolic link detected: {full_path}")
+                        return False, "Symbolic links are not allowed"
+                    
+                    # Additional check for Windows junctions and reparse points (only if exists)
+                    if full_path.exists() and self._is_junction_or_reparse_point(full_path):
+                        log_warning(f"Junction or reparse point detected: {full_path}")
+                        return False, "Junctions and reparse points are not allowed"
+                        
+                except (OSError, PermissionError):
+                    # If we can't check symlink status due to permissions, be cautious
+                    log_warning(f"Cannot verify symlink status for: {full_path}")
+                    pass
+                
+                # Check parent directories for junctions (Windows-specific security measure)
+                try:
+                    if self._has_junction_in_path(full_path):
+                        log_warning(f"Junction detected in path hierarchy: {full_path}")
+                        return False, "Paths containing junctions are not allowed"
+                except (OSError, PermissionError):
+                    # If we can't check parent directories, continue
+                    pass
+            else:
+                # For absolute paths or when no base_path is provided, use original_path
+                full_path = original_path
+                
+                # Check parent directories for junctions
+                try:
+                    if self._has_junction_in_path(full_path):
+                        log_warning(f"Junction detected in path hierarchy: {full_path}")
+                        return False, "Paths containing junctions are not allowed"
+                except (OSError, PermissionError):
+                    # If we can't check parent directories, continue
+                    pass
 
             log_debug(f"File path validation passed: {file_path}")
             return True, ""
