@@ -472,20 +472,20 @@ class Class_{i}:
     @pytest.mark.asyncio
     async def test_mcp_tool_argument_validation(self):
         """MCP引数バリデーションテスト"""
+        from tree_sitter_analyzer.mcp.utils.error_handler import AnalysisError
         tool = QueryTool(project_root=os.getcwd())
-        
+
         # 必須引数が不足している場合
-        result = await tool.execute({})
-        assert result["success"] is False
-        assert "error" in result
-        
+        with pytest.raises(AnalysisError) as excinfo:
+            await tool.execute({})
+        assert "file_path is required" in str(excinfo.value)
+
         # file_pathが不足している場合
-        result = await tool.execute({
-            "query_key": "function"
-        })
-        assert result["success"] is False
-        assert "error" in result
-        assert "file_path" in result["error"].lower()
+        with pytest.raises(AnalysisError) as excinfo:
+            await tool.execute({
+                "query_key": "function"
+            })
+        assert "file_path is required" in str(excinfo.value)
     
     @pytest.mark.asyncio
     async def test_mcp_tool_output_file_feature(self, sample_code_file):
