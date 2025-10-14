@@ -58,30 +58,20 @@ def analyze_file(
         include_complexity: Whether to include complexity metrics (backward compatibility)
 
     Returns:
-        Analysis results dictionary containing:
-        - success: Whether the analysis was successful
-        - file_info: Basic file information
-        - language_info: Detected/specified language information
-        - ast_info: Abstract syntax tree information
-        - query_results: Results from executed queries (if include_queries=True)
-        - elements: Extracted code elements (if include_elements=True)
-        - error: Error message (if success=False)
+        Analysis results dictionary
     """
     try:
         engine = get_engine()
 
         # Perform the analysis
         analysis_result = engine.analyze_file(file_path, language)
-
-        # Convert AnalysisResult to expected API format
+        
+        # Convert AnalysisResult to expected API format (same as analyze_code)
         result = {
             "success": analysis_result.success,
             "file_info": {
                 "path": str(file_path),
-                "exists": Path(file_path).exists(),
-                "size": (
-                    Path(file_path).stat().st_size if Path(file_path).exists() else 0
-                ),
+                "exists": True,
             },
             "language_info": {
                 "language": analysis_result.language,
@@ -177,21 +167,14 @@ def analyze_file(
     except FileNotFoundError as e:
         # Re-raise FileNotFoundError for tests that expect it
         raise e
-    except (ValueError, TypeError, OSError) as e:
-        # Handle specific expected errors
-        log_error(f"API analyze_file failed with {type(e).__name__}: {e}")
-        return {
-            "success": False,
-            "error": f"{type(e).__name__}: {str(e)}",
-            "file_info": {"path": str(file_path), "exists": Path(file_path).exists()},
-        }
     except Exception as e:
-        # Handle unexpected errors
-        log_error(f"API analyze_file failed with unexpected error: {e}")
+        log_error(f"API analyze_file failed: {e}")
         return {
             "success": False,
-            "error": f"Unexpected error: {str(e)}",
-            "file_info": {"path": str(file_path), "exists": Path(file_path).exists()},
+            "error": str(e),
+            "file_info": {"path": str(file_path), "exists": False},
+            "language_info": {"language": language or "unknown", "detected": False},
+            "ast_info": {"node_count": 0, "line_count": 0},
         }
 
 
@@ -378,7 +361,7 @@ def is_language_supported(language: str) -> bool:
         return False
 
 
-def detect_language(file_path: str | Path) -> str | None:
+def detect_language(file_path: str | Path) -> str:
     """
     Detect programming language from file path.
 
@@ -386,15 +369,25 @@ def detect_language(file_path: str | Path) -> str | None:
         file_path: Path to the file
 
     Returns:
-        Detected language name or None
+        Detected language name - 常に有効な文字列を返す
     """
     try:
+        # Handle invalid input
+        if not file_path:
+            return "unknown"
+            
         engine = get_engine()
         # Use language_detector instead of language_registry
-        return engine.language_detector.detect_from_extension(str(file_path))
+        result = engine.language_detector.detect_from_extension(str(file_path))
+        
+        # Ensure result is valid
+        if not result or result.strip() == "":
+            return "unknown"
+            
+        return result
     except Exception as e:
         log_error(f"Failed to detect language for {file_path}: {e}")
-        return None
+        return "unknown"
 
 
 def get_file_extensions(language: str) -> list[str]:

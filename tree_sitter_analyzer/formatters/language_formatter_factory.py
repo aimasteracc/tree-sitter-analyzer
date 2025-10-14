@@ -6,6 +6,7 @@ Factory for creating language-specific formatters for different output types.
 from typing import Dict, Type, Any
 from .base_formatter import BaseFormatter
 from .markdown_formatter import MarkdownFormatter
+from .html_formatter import HtmlFormatter
 
 
 class LanguageFormatterFactory:
@@ -14,6 +15,8 @@ class LanguageFormatterFactory:
     _formatters: Dict[str, Type[BaseFormatter]] = {
         "markdown": MarkdownFormatter,
         "md": MarkdownFormatter,  # Alias
+        "html": HtmlFormatter,
+        "css": HtmlFormatter,   # CSS files also use HTML formatter
     }
 
     @classmethod

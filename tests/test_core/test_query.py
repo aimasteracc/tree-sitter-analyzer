@@ -130,15 +130,17 @@ public class TestClass {
         """Test query string execution with invalid query"""
         invalid_query = "(invalid_syntax"
 
-        mock_language.query.side_effect = Exception("Invalid query syntax")
-        result = query_executor.execute_query_string(
-            mock_tree, mock_language, invalid_query, "test code"
-        )
+        # Mock TreeSitterQueryCompat to raise an exception
+        with patch("tree_sitter_analyzer.core.query.TreeSitterQueryCompat.safe_execute_query") as mock_safe_execute:
+            mock_safe_execute.side_effect = Exception("Invalid query syntax")
+            result = query_executor.execute_query_string(
+                mock_tree, mock_language, invalid_query, "test code"
+            )
 
-        assert isinstance(result, dict)
-        assert "error" in result
-        assert "Query execution failed" in result["error"]
-        assert result["captures"] == []
+            assert isinstance(result, dict)
+            assert "error" in result
+            assert "Query execution failed" in result["error"]
+            assert result["captures"] == []
 
     def test_process_captures_dict_format(self, query_executor: QueryExecutor) -> None:
         """Test processing captures in dictionary format"""

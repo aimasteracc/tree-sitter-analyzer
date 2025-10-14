@@ -4,6 +4,14 @@
 **Date**: 2025-10-12  
 **Phase**: 1 - Data Model Design
 
+## 関連仕様書
+
+- **[002-language-abstraction-spec.md](../002-language-abstraction-spec.md)**: `ILanguagePlugin` と `LanguagePluginFactory` による言語処理の抽象化。
+- **[003-html-css-support-spec.md](../003-html-css-support-spec.md)**: `MarkupElement` と `StyleElement` モデルの導入。
+- **[004-formatter-extension-spec.md](../004-formatter-extension-spec.md)**: `IFormatter` と `FormatterRegistry` によるフォーマッター拡張。
+
+---
+
 ## 概要
 
 Tree-sitter Analyzer MCPサーバーのデータモデルは、MCPプロトコル準拠のツールとリソースを統一的に管理し、AI統合環境での効率的なコード解析を実現する。

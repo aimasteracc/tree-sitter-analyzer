@@ -4,11 +4,11 @@
 
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-3087%20passed-brightgreen.svg)](#quality-assurance)
+[![Tests](https://img.shields.io/badge/tests-3342%20passed-brightgreen.svg)](#quality-assurance)
 [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer)
 [![Quality](https://img.shields.io/badge/quality-enterprise%20grade-blue.svg)](#quality-assurance)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
-[![Version](https://img.shields.io/badge/version-1.7.5-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
+[![Version](https://img.shields.io/badge/version-1.8.2-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
 [![zread](https://img.shields.io/badge/Ask_Zread-_.svg?style=flat&color=00b0aa&labelColor=000000&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB3aWR0aD0iMTYiIGhlaWdodD0iMTYiIHZpZXdCb3g9IjAgMCAxNiAxNiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTQuOTYxNTYgMS42MDAxSDIuMjQxNTZDMS44ODgxIDEuNjAwMSAxLjYwMTU2IDEuODg2NjQgMS42MDE1NiAyLjI0MDFWNC45NjAxQzEuNjAxNTYgNS4zMTM1NiAxLjg4ODEgNS42MDAxIDIuMjQxNTYgNS42MDAxSDQuOTYxNTZDNS4zMTUwMiA1LjYwMDEgNS42MDE1NiA1LjMxMzU2IDUuNjAxNTYgNC45NjAxVjIuMjQwMUM1LjYwMTU2IDEuODg2NjQgNS4zMTUwMiAxLjYwMDEgNC45NjE1NiAxLjYwMDFaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik00Ljk2MTU2IDEwLjM5OTlIMi4yNDE1NkMxLjg4ODEgMTAuMzk5OSAxLjYwMTU2IDEwLjY4NjQgMS42MDE1NiAxMS4wMzk5VjEzLjc1OTlDMS42MDE1NiAxNC4xMTM0IDEuODg4MSAxNC4zOTk5IDIuMjQxNTYgMTQuMzk5OUg0Ljk2MTU2QzUuMzE1MDIgMTQuMzk5OSA1LjYwMTU2IDE0LjExMzQgNS42MDE1NiAxMy43NTk5VjExLjAzOTlDNS42MDE1NiAxMC42ODY0IDUuMzE1MDIgMTAuMzk5OSA0Ljk2MTU2IDEwLjM5OTlaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik0xMy43NTg0IDEuNjAwMUgxMS4wMzg0QzEwLjY4NSAxLjYwMDEgMTAuMzk4NCAxLjg4NjY0IDEwLjM5ODQgMi4yNDAxVjQuOTYwMUMxMC4zOTg0IDUuMzEzNTYgMTAuNjg1IDUuNjAwMSAxMS4wMzg0IDUuNjAwMUgxMy43NTg0QzE0LjExMTkgNS42MDAxIDE0LjM5ODQgNS4zMTM1NiAxNC4zOTg0IDQuOTYwMVYyLjI0MDFDMTQuMzk4NCAxLjg4NjY0IDE0LjExMTkgMS42MDAxIDEzLjc1ODQgMS42MDAxWiIgZmlsbD0iI2ZmZiIvPgo8cGF0aCBkPSJNNCAxMkwxMiA0TDQgMTJaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik00IDEyTDEyIDQiIHN0cm9rZT0iI2ZmZiIgc3Ryb2tlLXdpZHRoPSIxLjUiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPgo8L3N2Zz4K&logoColor=ffffff)](https://zread.ai/aimasteracc/tree-sitter-analyzer)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
@@ -53,13 +53,15 @@ Tree-sitter Analyzer is an enterprise-grade code analysis tool designed for the 
 | **Python** | Complete Support | Type annotations, decorators, modern Python features |
 | **JavaScript** | Complete Support | ES6+, React/Vue/Angular, JSX |
 | **TypeScript** | Complete Support | Interfaces, types, decorators, TSX/JSX, framework detection |
-| **Markdown** | 🆕 Complete Support | Headers, code blocks, links, images, tables, task lists, blockquotes |
+| **HTML** | 🆕 Complete Support | DOM structure analysis, element classification, attribute extraction, hierarchical relationships |
+| **CSS** | 🆕 Complete Support | Selector analysis, property classification, style rule extraction, intelligent categorization |
+| **Markdown** | Complete Support | Headers, code blocks, links, images, tables, task lists, blockquotes |
 | **C/C++** | Basic Support | Basic syntax parsing |
 | **Rust** | Basic Support | Basic syntax parsing |
 | **Go** | Basic Support | Basic syntax parsing |
 
 ### 🏆 Production Ready
-- **3,087 Tests** - 100% pass rate, enterprise-grade quality assurance
+- **3,342 Tests** - 100% pass rate, enterprise-grade quality assurance
 - **High Coverage** - Comprehensive test coverage
 - **Cross-platform Support** - Compatible with Windows, macOS, Linux
 - **Continuous Maintenance** - Active development and community support
@@ -207,6 +209,11 @@ uv run python -m tree_sitter_analyzer examples/BigService.java --advanced --outp
 
 # Generate detailed structure table for code files
 uv run python -m tree_sitter_analyzer examples/BigService.java --table=full
+
+# 🆕 HTML/CSS analysis with new architecture
+uv run python -m tree_sitter_analyzer examples/comprehensive_sample.html --table=html --output-format=text
+uv run python -m tree_sitter_analyzer examples/comprehensive_sample.css --advanced --output-format=text
+uv run python -m tree_sitter_analyzer examples/comprehensive_sample.html --structure --language html
 
 # Precise code extraction
 uv run python -m tree_sitter_analyzer examples/BigService.java --partial-read --start-line 93 --end-line 106
@@ -407,6 +414,19 @@ AI will automatically:
 2. Locate and extract the `authenticateUser` method (lines 141-172)
 3. Generate list of public methods (19 public methods)
 
+**HTML/CSS Analysis Example:**
+```
+I want to analyze the HTML structure of index.html:
+1. What HTML elements are present and how are they organized?
+2. What CSS rules are defined and what properties do they set?
+3. How are the elements classified (structure, media, form)?
+```
+
+AI will automatically:
+1. Extract HTML elements with tag names, attributes, and classification
+2. Analyze CSS selectors and properties with intelligent categorization
+3. Generate structured tables showing DOM hierarchy and style rules
+
 ---
 
 ## 5. 🤖 Complete MCP Tool List
@@ -416,7 +436,7 @@ Tree-sitter Analyzer provides a rich set of MCP tools designed for AI assistants
 | Tool Category | Tool Name | Main Function | Core Features |
 |-------------|---------|---------|---------|
 | **📊 Code Analysis** | `check_code_scale` | Fast code file scale analysis | File size statistics, line count statistics, complexity analysis, performance metrics |
-| | `analyze_code_structure` | Code structure analysis and table generation | 🆕 suppress_output parameter, multiple formats (full/compact/csv/json), automatic language detection |
+| | `analyze_code_structure` | Code structure analysis and table generation | 🆕 suppress_output parameter, multiple formats (full/compact/csv/json/html), automatic language detection |
 | | `extract_code_section` | Precise code section extraction | Specified line range extraction, large file efficient processing, original format preservation |
 | **🔍 Intelligent Search** | `list_files` | High-performance file discovery | fd-based, glob patterns, file type filters, time range control |
 | | `search_content` | Regex content search | ripgrep-based, multiple output formats, context control, encoding handling |
@@ -426,7 +446,31 @@ Tree-sitter Analyzer provides a rich set of MCP tools designed for AI assistants
 | **📁 Resource Access** | Code file resources | URI code file access | File content access via URI identification |
 | | Project statistics resources | Project statistics data access | Project analysis data and statistical information |
 
-### 🆕 v1.7.3 New Feature: Complete Markdown Support
+### 🆕 v1.8.2 New Feature: CLI Security and Argument Validation Enhancement
+
+Comprehensive CLI security improvements and argument validation optimization:
+
+- **🔒 CLI Security Boundary Fix**: Fixed CLI mode security boundary errors, ensuring file access security
+- **✅ Proper CLI Argument Validation**: Implemented complete CLI argument validation system, preventing invalid parameter combinations
+- **🚫 Exclusive Parameter Control**: `--table` and `--query-key` parameters now properly implement exclusive control
+- **🔍 Enhanced Filter Support**: `--query-key` with `--filter` combination usage is fully supported
+- **⚠️ Clear Error Messages**: Provides detailed error information to help users use commands correctly
+- **🛡️ Enhanced Security Features**: Temporary directory access permission in test environments and project boundary protection
+- **📋 Improved User Experience**: More intuitive command-line interface and error handling
+
+### 🆕 v1.8.0 New Feature: HTML/CSS Language Support
+
+Revolutionary HTML and CSS analysis capabilities with specialized data models and formatting:
+
+- **🏗️ HTML DOM Analysis**: Complete HTML element extraction with tag names, attributes, and hierarchical structure
+- **🎨 CSS Rule Analysis**: Comprehensive CSS selector and property analysis with intelligent classification
+- **📊 Element Classification System**: Smart categorization of HTML elements (structure, heading, text, list, media, form, table, metadata) and CSS properties (layout, box_model, typography, background, transition, interactivity)
+- **🔧 Specialized Data Models**: New `MarkupElement` and `StyleElement` classes for precise web technology analysis
+- **📋 Enhanced Formatters**: New HTML formatter with structured table output for web development workflows
+- **🔄 Extensible Architecture**: Plugin-based system with `FormatterRegistry` for dynamic format management
+- **🆕 Dependencies**: Added `tree-sitter-html>=0.23.0,<0.25.0` and `tree-sitter-css>=0.23.0,<0.25.0` for native parsing support
+
+### 🆕 v1.7.3 Feature: Complete Markdown Support
 
 Brand new Markdown language support provides powerful capabilities for document analysis and AI assistants:
 
@@ -475,6 +519,12 @@ uv run python -m tree_sitter_analyzer examples/BigService.java --advanced
 # Generate complete structure table
 uv run python -m tree_sitter_analyzer examples/BigService.java --table=full
 
+# 🆕 HTML/CSS analysis with new architecture
+uv run python -m tree_sitter_analyzer examples/comprehensive_sample.html --table=full --output-format=text
+uv run python -m tree_sitter_analyzer examples/comprehensive_sample.css --table=full --output-format=text
+uv run python -m tree_sitter_analyzer examples/comprehensive_sample.html --advanced --output-format=text
+uv run python -m tree_sitter_analyzer examples/comprehensive_sample.css --advanced --output-format=text
+
 # Specify output format
 uv run python -m tree_sitter_analyzer examples/BigService.java --advanced --output-format=json
 uv run python -m tree_sitter_analyzer examples/BigService.java --advanced --output-format=text
@@ -493,6 +543,18 @@ uv run python -m tree_sitter_analyzer script.py --language python --table=full
 uv run python -m tree_sitter_analyzer examples/BigService.java --query-key methods
 uv run python -m tree_sitter_analyzer examples/BigService.java --query-key classes
 
+# 🆕 v1.8.2 Correct Usage Examples
+# Correct: Use --query-key with --filter combination
+uv run python -m tree_sitter_analyzer examples/BigService.java --query-key methods --filter "name=main"
+
+# Correct: Generate complete structure table
+uv run python -m tree_sitter_analyzer examples/BigService.java --table full
+
+# 🚫 v1.8.2 Incorrect Usage Examples (will show error)
+# Incorrect: Using --table and --query-key together (exclusive parameters)
+# uv run python -m tree_sitter_analyzer examples/BigService.java --table full --query-key methods
+# Error message: "--table and --query-key cannot be used together. Use --query-key with --filter instead."
+
 # Filter query results
 # Find specific methods
 uv run python -m tree_sitter_analyzer examples/BigService.java --query-key methods --filter "name=main"
@@ -508,6 +570,28 @@ uv run python -m tree_sitter_analyzer examples/BigService.java --query-key metho
 
 # View filter syntax help
 uv run python -m tree_sitter_analyzer --filter-help
+```
+
+#### 🔒 Security Features
+
+v1.8.2 enhanced security features ensure file access safety:
+
+```bash
+# ✅ Secure project boundary protection
+# Tools automatically detect and respect project boundaries, preventing access to sensitive files outside the project
+
+# ✅ Test environment temporary directory access
+# In test environments, allows access to temporary directories to support test cases
+
+# ✅ Proper CLI argument validation
+# System validates parameter combination validity, preventing invalid command execution
+
+# Example: Secure file analysis
+uv run python -m tree_sitter_analyzer examples/BigService.java --advanced
+# ✅ Allowed: File is within project directory
+
+# uv run python -m tree_sitter_analyzer /etc/passwd --advanced
+# ❌ Denied: File is outside project boundary (security protection)
 ```
 
 #### 📁 File System Operation Commands
@@ -561,7 +645,7 @@ uv run python -m tree_sitter_analyzer --show-query-languages
 | **✂️ Intelligent Code Extraction** | Precision Extraction Tool | Precise extraction by line range<br>Preserves original formatting and indentation<br>Includes position metadata<br>Efficient processing of large files | Zero-loss format preservation<br>Memory-optimized algorithms<br>Streaming processing support |
 | **🔍 Advanced Query Filtering** | Multi-dimensional Filters | **Exact match**: `--filter "name=main"`<br>**Pattern match**: `--filter "name=~auth*"`<br>**Parameter filter**: `--filter "params=2"`<br>**Modifier filter**: `--filter "static=true,public=true"`<br>**Compound conditions**: Combine multiple conditions for precise queries | Flexible query syntax<br>High-performance indexing<br>Intelligent caching mechanisms |
 | **🔗 AI Assistant Integration** | MCP Protocol Support | **Claude Desktop** - Full MCP support<br>**Cursor IDE** - Built-in MCP integration<br>**Roo Code** - MCP protocol support<br>**Other MCP-compatible tools** - Universal MCP server | Standard MCP protocol<br>Plug-and-play design<br>Cross-platform compatibility |
-| **🌍 Multi-language Support** | Enterprise Language Engine | **Java** - Complete support, including Spring, JPA frameworks<br>**Python** - Complete support, including type annotations, decorators<br>**JavaScript** - Enterprise-grade support, including ES6+, React/Vue/Angular, JSX<br>**TypeScript** - **Complete support**, including interfaces, types, decorators, TSX/JSX, framework detection<br>**Markdown** - **🆕 Complete support**, including headers, code blocks, links, images, tables, task lists, blockquotes<br>**C/C++, Rust, Go** - Basic support | Framework-aware parsing<br>Syntax extension support<br>Continuous language updates |
+| **🌍 Multi-language Support** | Enterprise Language Engine | **Java** - Complete support, including Spring, JPA frameworks<br>**Python** - Complete support, including type annotations, decorators<br>**JavaScript** - Enterprise-grade support, including ES6+, React/Vue/Angular, JSX<br>**TypeScript** - **Complete support**, including interfaces, types, decorators, TSX/JSX, framework detection<br>**HTML** - **🆕 Complete support**, including DOM structure, element classification, attribute extraction<br>**CSS** - **🆕 Complete support**, including selector analysis, property classification, style rules<br>**Markdown** - **Complete support**, including headers, code blocks, links, images, tables, task lists, blockquotes<br>**C/C++, Rust, Go** - Basic support | Framework-aware parsing<br>Syntax extension support<br>Continuous language updates |
 | **📁 Advanced File Search** | fd+ripgrep Integration | **ListFilesTool** - Intelligent file discovery with multiple filtering conditions<br>**SearchContentTool** - Intelligent content search using regular expressions<br>**FindAndGrepTool** - Combined discovery and search, two-stage workflow | Rust-based high-performance tools<br>Parallel processing capabilities<br>Intelligent cache optimization |
 | **🏗️ Unified Element System** | Revolutionary Architecture Design | **Single element list** - Unified management of all code elements (classes, methods, fields, imports, packages)<br>**Consistent element types** - Each element has an `element_type` attribute<br>**Simplified API** - Clearer interfaces and reduced complexity<br>**Better maintainability** - Single source of truth for all code elements | Unified data model<br>Type safety guarantees<br>Extensible design |
 
@@ -570,13 +654,23 @@ uv run python -m tree_sitter_analyzer --show-query-languages
 ## 8. 🏆 Quality Assurance
 
 ### 📊 Quality Metrics
-- **3,087 tests** - 100% pass rate ✅
+- **3,342 tests** - 100% pass rate ✅
 - **High code coverage** - Comprehensive test suite
 - **Zero test failures** - Production ready
 - **Cross-platform support** - Windows, macOS, Linux
 
-### ⚡ Latest Quality Achievements (v1.7.5)
-- ✅ **📊 Enhanced Quality Metrics** - Test count increased to 3,087 coverage maintained at high levels
+### ⚡ Latest Quality Achievements (v1.8.2)
+- ✅ **🔒 CLI Security Enhancement** - Fixed CLI mode security boundary errors, ensuring file access security
+- ✅ **✅ Argument Validation Improvement** - Implemented complete CLI argument validation system, preventing invalid parameter combinations
+- ✅ **🚫 Exclusive Parameter Control** - `--table` and `--query-key` parameters properly implement exclusive control
+- ✅ **🔍 Enhanced Filter Functionality** - `--query-key` with `--filter` combination usage fully supported
+- ✅ **⚠️ Error Message Optimization** - Provides clear and detailed error information, improving user experience
+- ✅ **🛡️ Project Boundary Protection** - Automatically detects and respects project boundaries, preventing access to sensitive files
+- ✅ **🧪 Test Environment Support** - Temporary directory access permission in test environments
+- ✅ **📋 User Experience Improvement** - More intuitive command-line interface and error handling mechanisms
+
+### ⚡ v1.7.5 Quality Achievements
+- ✅ **📊 Enhanced Quality Metrics** - Test count increased to 3,342 coverage maintained at high levels
 - ✅ **🔧 System Stability** - All tests passing with enhanced system stability and reliability
 - ✅ **🆕 Complete Markdown Support** - Added new complete Markdown language plugin supporting all major Markdown elements
 - ✅ **📝 Enhanced Document Analysis** - Support for intelligent extraction of headers, code blocks, links, images, tables, task lists
@@ -627,8 +721,9 @@ The project maintains high-quality test coverage. For detailed module coverage i
 **Verification environment:**
 - Operating systems: Windows 10, macOS, Linux
 - Python version: 3.10+
-- Project version: tree-sitter-analyzer v1.7.5
+- Project version: tree-sitter-analyzer v1.8.2
 - Test files: BigService.java (1419 lines), sample.py (256 lines), MultiClass.java (54 lines)
+- New verification: CLI argument validation, security boundary protection, exclusive parameter control
 
 ---
 

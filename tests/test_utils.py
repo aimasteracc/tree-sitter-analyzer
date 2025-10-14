@@ -267,15 +267,23 @@ def test_logging_context_enable_disable():
 def test_logging_context_level_change():
     """Test LoggingContext level change"""
     if LOGGING_CONTEXT_AVAILABLE:
-        original_level = logging.getLogger().level
+        # Use a specific logger for testing to avoid interference
+        test_logger = logging.getLogger("test_logging_context")
+        # Set an initial level to avoid NOTSET (0)
+        test_logger.setLevel(logging.INFO)
+        original_level = test_logger.level
 
-        with LoggingContext(enabled=True, level=logging.WARNING):
-            current_level = logging.getLogger().level
+        # Create LoggingContext that uses our test logger
+        context = LoggingContext(enabled=True, level=logging.WARNING)
+        context.target_logger = test_logger
+        
+        with context:
+            current_level = test_logger.level
             # Level should be changed to WARNING
             assert current_level == logging.WARNING
 
         # Level should be restored after context
-        restored_level = logging.getLogger().level
+        restored_level = test_logger.level
         assert restored_level == original_level
     else:
         pytest.skip("LoggingContext is not available")
@@ -284,19 +292,30 @@ def test_logging_context_level_change():
 def test_logging_context_nesting():
     """Test nested LoggingContext"""
     if LOGGING_CONTEXT_AVAILABLE:
-        original_level = logging.getLogger().level
+        # Use a specific logger for testing to avoid interference
+        test_logger = logging.getLogger("test_logging_context_nesting")
+        # Set an initial level to avoid NOTSET (0)
+        test_logger.setLevel(logging.INFO)
+        original_level = test_logger.level
 
-        with LoggingContext(enabled=True, level=logging.ERROR):
-            with LoggingContext(enabled=True, level=logging.DEBUG):
-                current_level = logging.getLogger().level
+        # Create LoggingContext instances that use our test logger
+        outer_context = LoggingContext(enabled=True, level=logging.ERROR)
+        outer_context.target_logger = test_logger
+        
+        inner_context = LoggingContext(enabled=True, level=logging.DEBUG)
+        inner_context.target_logger = test_logger
+
+        with outer_context:
+            with inner_context:
+                current_level = test_logger.level
                 assert current_level == logging.DEBUG
 
             # Should restore to ERROR level
-            middle_level = logging.getLogger().level
+            middle_level = test_logger.level
             assert middle_level == logging.ERROR
 
         # Should restore to original level
-        final_level = logging.getLogger().level
+        final_level = test_logger.level
         assert final_level == original_level
     else:
         pytest.skip("LoggingContext is not available")

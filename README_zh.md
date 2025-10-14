@@ -4,11 +4,11 @@
 
 [![Python版本](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![许可证](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![测试](https://img.shields.io/badge/tests-3087%20passed-brightgreen.svg)](#质量保证)
+[![测试](https://img.shields.io/badge/tests-3342%20passed-brightgreen.svg)](#质量保证)
 [![覆盖率](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer)
 [![质量](https://img.shields.io/badge/quality-enterprise%20grade-blue.svg)](#质量保证)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
-[![版本](https://img.shields.io/badge/version-1.7.4-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
+[![版本](https://img.shields.io/badge/version-1.8.2-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
 [![zread](https://img.shields.io/badge/Ask_Zread-_.svg?style=flat&color=00b0aa&labelColor=000000&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB3aWR0aD0iMTYiIGhlaWdodD0iMTYiIHZpZXdCb3g9IjAgMCAxNiAxNiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTQuOTYxNTYgMS42MDAxSDIuMjQxNTZDMS44ODgxIDEuNjAwMSAxLjYwMTU2IDEuODg2NjQgMS42MDE1NiAyLjI0MDFWNC45NjAxQzEuNjAxNTYgNS4zMTM1NiAxLjg4ODEgNS42MDAxIDIuMjQxNTYgNS42MDAxSDQuOTYxNTZDNS4zMTUwMiA1LjYwMDEgNS42MDE1NiA1LjMxMzU2IDUuNjAxNTYgNC45NjAxVjIuMjQwMUM1LjYwMTU2IDEuODg2NjQgNS4zMTUwMiAxLjYwMDEgNC45NjE1NiAxLjYwMDFaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik00Ljk2MTU2IDEwLjM5OTlIMi4yNDE1NkMxLjg4ODEgMTAuMzk5OSAxLjYwMTU2IDEwLjY4NjQgMS42MDE1NiAxMS4wMzk5VjEzLjc1OTlDMS42MDE1NiAxNC4xMTM0IDEuODg4MSAxNC4zOTk5IDIuMjQxNTYgMTQuMzk5OUg0Ljk2MTU2QzUuMzE1MDIgMTQuMzk5OSA1LjYwMTU2IDE0LjExMzQgNS42MDE1NiAxMy43NTk5VjExLjAzOTlDNS42MDE1NiAxMC42ODY0IDUuMzE1MDIgMTAuMzk5OSA0Ljk2MTU2IDEwLjM5OTlaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik0xMy43NTg0IDEuNjAwMUgxMS4wMzg0QzEwLjY4NSAxLjYwMDEgMTAuMzk4NCAxLjg4NjY0IDEwLjM5ODQgMi4yNDAxVjQuOTYwMUMxMC4zOTg0IDUuMzEzNTYgMTAuNjg1IDUuNjAwMSAxMS4wMzg0IDUuNjAwMUgxMy43NTg0QzE0LjExMTkgNS42MDAxIDE0LjM5ODQgNS4zMTM1NiAxNC4zOTg0IDQuOTYwMVYyLjI0MDFDMTQuMzk4NCAxLjg4NjY0IDE0LjExMTkgMS42MDAxIDEzLjc1ODQgMS42MDAxWiIgZmlsbD0iI2ZmZiIvPgo8cGF0aCBkPSJNNCAxMkwxMiA0TDQgMTJaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik00IDEyTDEyIDQiIHN0cm9rZT0iI2ZmZiIgc3Ryb2tlLXdpZHRoPSIxLjUiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPgo8L3N2Zz4K&logoColor=ffffff)](https://zread.ai/aimasteracc/tree-sitter-analyzer)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
@@ -54,13 +54,15 @@ Tree-sitter Analyzer 是一个为AI时代设计的企业级代码分析工具，
 | **Python** | 完整支持 | 类型注解、装饰器、现代Python特性 |
 | **JavaScript** | 完整支持 | ES6+、React/Vue/Angular、JSX |
 | **TypeScript** | 完整支持 | 接口、类型、装饰器、TSX/JSX、框架检测 |
-| **Markdown** | 🆕 完整支持 | 标题、代码块、链接、图片、表格、任务列表、引用 |
+| **HTML** | 🆕 完整支持 | DOM结构分析、元素分类、属性提取、层次关系 |
+| **CSS** | 🆕 完整支持 | 选择器分析、属性分类、样式规则提取、智能分类 |
+| **Markdown** | 完整支持 | 标题、代码块、链接、图片、表格、任务列表、引用 |
 | **C/C++** | 基础支持 | 基本语法解析 |
 | **Rust** | 基础支持 | 基本语法解析 |
 | **Go** | 基础支持 | 基本语法解析 |
 
 ### 🏆 生产就绪
-- **3,087个测试** - 100%通过率，企业级质量保证
+- **3,342个测试** - 100%通过率，企业级质量保证
 - **高覆盖率** - 全面的测试覆盖
 - **跨平台支持** - Windows、macOS、Linux全平台兼容
 - **持续维护** - 活跃的开发和社区支持
@@ -208,6 +210,11 @@ uv run python -m tree_sitter_analyzer examples/BigService.java --advanced --outp
 
 # 生成代码文件的详细结构表格
 uv run python -m tree_sitter_analyzer examples/BigService.java --table=full
+
+# 🆕 新架构HTML/CSS分析
+uv run python -m tree_sitter_analyzer examples/comprehensive_sample.html --table=html --output-format=text
+uv run python -m tree_sitter_analyzer examples/comprehensive_sample.css --advanced --output-format=text
+uv run python -m tree_sitter_analyzer examples/comprehensive_sample.html --structure --language html
 
 # 精确代码提取
 uv run python -m tree_sitter_analyzer examples/BigService.java --partial-read --start-line 93 --end-line 106
@@ -408,6 +415,19 @@ AI会自动：
 2. 定位并提取 `authenticateUser` 方法（141-172行）
 3. 生成公开方法列表（19个公开方法）
 
+**HTML/CSS分析示例：**
+```
+我想分析index.html的HTML结构：
+1. 存在哪些HTML元素，它们是如何组织的？
+2. 定义了哪些CSS规则，设置了哪些属性？
+3. 元素是如何分类的（结构、媒体、表单）？
+```
+
+AI会自动：
+1. 提取包含标签名、属性和分类的HTML元素
+2. 通过智能分类分析CSS选择器和属性
+3. 生成显示DOM层次结构和样式规则的结构化表格
+
 ---
 
 ## 5. 🤖 MCP工具完整列表
@@ -417,7 +437,7 @@ Tree-sitter Analyzer提供了丰富的MCP工具集，专为AI助手设计：
 | 工具类别 | 工具名称 | 主要功能 | 核心特性 |
 |---------|---------|---------|---------|
 | **📊 代码分析** | `check_code_scale` | 快速分析代码文件规模 | 文件大小统计、行数统计、复杂度分析、性能指标 |
-| | `analyze_code_structure` | 分析代码结构和生成表格 | 🆕 suppress_output参数、多种格式(full/compact/csv/json)、自动语言检测 |
+| | `analyze_code_structure` | 分析代码结构和生成表格 | 🆕 suppress_output参数、多种格式(full/compact/csv/json/html)、自动语言检测 |
 | | `extract_code_section` | 精确提取代码片段 | 指定行范围提取、大文件高效处理、保持原始格式 |
 | **🔍 智能搜索** | `list_files` | 高性能文件发现 | 基于fd、glob模式、文件类型过滤、时间范围控制 |
 | | `search_content` | 正则表达式内容搜索 | 基于ripgrep、多种输出格式、上下文控制、编码处理 |
@@ -427,7 +447,31 @@ Tree-sitter Analyzer提供了丰富的MCP工具集，专为AI助手设计：
 | **📁 资源访问** | 代码文件资源 | URI访问代码文件 | 通过URI标识访问文件内容 |
 | | 项目统计资源 | 访问项目统计数据 | 项目分析数据和统计信息 |
 
-### 🆕 v1.7.3新特性：Markdown完整支持
+### 🆕 v1.8.2新特性：CLI安全性和参数验证增强
+
+全面的CLI安全性改进和参数验证优化：
+
+- **🔒 CLI安全边界修复**：修复了CLI模式下的安全边界错误，确保文件访问的安全性
+- **✅ 正确的CLI参数验证**：实现了完整的CLI参数验证系统，防止无效参数组合
+- **🚫 排他参数控制**：`--table`和`--query-key`参数现在正确实现排他控制
+- **🔍 增强的过滤支持**：`--query-key`与`--filter`的组合使用得到完整支持
+- **⚠️ 清晰的错误消息**：提供详细的错误信息，帮助用户正确使用命令
+- **🛡️ 安全功能增强**：测试环境下的临时目录访问许可和项目边界保护
+- **📋 改进的用户体验**：更直观的命令行界面和错误处理
+
+### 🆕 v1.8.0新特性：HTML/CSS语言支持
+
+具有专用数据模型和格式化的革命性HTML和CSS分析功能：
+
+- **🏗️ HTML DOM分析**：包含标签名、属性和层次结构的完整HTML元素提取
+- **🎨 CSS规则分析**：通过智能分类进行CSS选择器和属性的全面分析
+- **📊 元素分类系统**：HTML元素（结构、标题、文本、列表、媒体、表单、表格、元数据）和CSS属性（布局、盒模型、排版、背景、过渡、交互性）的智能分类
+- **🔧 专用数据模型**：用于精确Web技术分析的新`MarkupElement`和`StyleElement`类
+- **📋 增强的格式化器**：具有结构化表格输出的新HTML格式化器，用于Web开发工作流
+- **🔄 可扩展架构**：具有`FormatterRegistry`的插件式系统，用于动态格式管理
+- **🆕 依赖关系**：添加了`tree-sitter-html>=0.23.0,<0.25.0`和`tree-sitter-css>=0.23.0,<0.25.0`以支持原生解析
+
+### 🆕 v1.7.3特性：Markdown完整支持
 
 全新的Markdown语言支持，为文档分析和AI助手提供强大功能：
 
@@ -476,6 +520,12 @@ uv run python -m tree_sitter_analyzer examples/BigService.java --advanced
 # 生成完整结构表格
 uv run python -m tree_sitter_analyzer examples/BigService.java --table=full
 
+# 🆕 新架构HTML/CSS分析
+uv run python -m tree_sitter_analyzer examples/comprehensive_sample.html --table=full --output-format=text
+uv run python -m tree_sitter_analyzer examples/comprehensive_sample.css --table=full --output-format=text
+uv run python -m tree_sitter_analyzer examples/comprehensive_sample.html --advanced --output-format=text
+uv run python -m tree_sitter_analyzer examples/comprehensive_sample.css --advanced --output-format=text
+
 # 指定输出格式
 uv run python -m tree_sitter_analyzer examples/BigService.java --advanced --output-format=json
 uv run python -m tree_sitter_analyzer examples/BigService.java --advanced --output-format=text
@@ -494,6 +544,18 @@ uv run python -m tree_sitter_analyzer script.py --language python --table=full
 uv run python -m tree_sitter_analyzer examples/BigService.java --query-key methods
 uv run python -m tree_sitter_analyzer examples/BigService.java --query-key classes
 
+# 🆕 v1.8.2 正确的使用方法
+# 正确：使用 --query-key 与 --filter 组合
+uv run python -m tree_sitter_analyzer examples/BigService.java --query-key methods --filter "name=main"
+
+# 正确：生成完整结构表格
+uv run python -m tree_sitter_analyzer examples/BigService.java --table full
+
+# 🚫 v1.8.2 错误的使用方法（会显示错误）
+# 错误：同时使用 --table 和 --query-key（排他参数）
+# uv run python -m tree_sitter_analyzer examples/BigService.java --table full --query-key methods
+# 错误信息: "--table and --query-key cannot be used together. Use --query-key with --filter instead."
+
 # 过滤查询结果
 # 查找特定方法
 uv run python -m tree_sitter_analyzer examples/BigService.java --query-key methods --filter "name=main"
@@ -509,6 +571,28 @@ uv run python -m tree_sitter_analyzer examples/BigService.java --query-key metho
 
 # 查看过滤语法帮助
 uv run python -m tree_sitter_analyzer --filter-help
+```
+
+#### 🔒 安全功能说明
+
+v1.8.2版本增强了安全功能，确保文件访问的安全性：
+
+```bash
+# ✅ 安全的项目边界保护
+# 工具会自动检测和尊重项目边界，防止访问项目外的敏感文件
+
+# ✅ 测试环境临时目录访问
+# 在测试环境下，允许访问临时目录以支持测试用例
+
+# ✅ 正确的CLI参数验证
+# 系统会验证参数组合的有效性，防止无效的命令执行
+
+# 示例：安全的文件分析
+uv run python -m tree_sitter_analyzer examples/BigService.java --advanced
+# ✅ 允许：文件在项目目录内
+
+# uv run python -m tree_sitter_analyzer /etc/passwd --advanced
+# ❌ 拒绝：文件在项目边界外（安全保护）
 ```
 
 #### 📁 文件系统操作命令
@@ -563,7 +647,7 @@ uv run python -m tree_sitter_analyzer --show-query-languages
 | **✂️ 智能代码提取** | 精确提取工具 | 精确按行范围提取<br>保持原始格式和缩进<br>包含位置元数据<br>支持大文件高效处理 | 零损失格式保持<br>内存优化算法<br>流式处理支持 |
 | **🔍 高级查询过滤** | 多维度过滤器 | **精确匹配**: `--filter "name=main"`<br>**模式匹配**: `--filter "name=~auth*"`<br>**参数过滤**: `--filter "params=2"`<br>**修饰符过滤**: `--filter "static=true,public=true"`<br>**复合条件**: 组合多个条件进行精确查询 | 灵活的查询语法<br>高性能索引<br>智能缓存机制 |
 | **🔗 AI助手集成** | MCP协议支持 | **Claude Desktop** - 完整MCP支持<br>**Cursor IDE** - 内置MCP集成<br>**Roo Code** - MCP协议支持<br>**其他MCP兼容工具** - 通用MCP服务器 | 标准MCP协议<br>即插即用设计<br>跨平台兼容 |
-| **🌍 多语言支持** | 企业级语言引擎 | **Java** - 完整支持，包括Spring、JPA框架<br>**Python** - 完整支持，包括类型注解、装饰器<br>**JavaScript** - 企业级支持，包括ES6+、React/Vue/Angular、JSX<br>**TypeScript** - **完整支持**，包括接口、类型、装饰器、TSX/JSX、框架检测<br>**Markdown** - **🆕 完整支持**，包括标题、代码块、链接、图片、表格、任务列表、引用<br>**C/C++、Rust、Go** - 基础支持 | 框架感知解析<br>语法扩展支持<br>持续语言更新 |
+| **🌍 多语言支持** | 企业级语言引擎 | **Java** - 完整支持，包括Spring、JPA框架<br>**Python** - 完整支持，包括类型注解、装饰器<br>**JavaScript** - 企业级支持，包括ES6+、React/Vue/Angular、JSX<br>**TypeScript** - **完整支持**，包括接口、类型、装饰器、TSX/JSX、框架检测<br>**HTML** - **🆕 完整支持**，包括DOM结构、元素分类、属性提取<br>**CSS** - **🆕 完整支持**，包括选择器分析、属性分类、样式规则<br>**Markdown** - **完整支持**，包括标题、代码块、链接、图片、表格、任务列表、引用<br>**C/C++、Rust、Go** - 基础支持 | 框架感知解析<br>语法扩展支持<br>持续语言更新 |
 | **📁 高级文件搜索** | fd+ripgrep集成 | **ListFilesTool** - 智能文件发现，支持多种过滤条件<br>**SearchContentTool** - 智能内容搜索，支持正则表达式<br>**FindAndGrepTool** - 组合发现与搜索，两阶段工作流 | 基于Rust的高性能工具<br>并行处理能力<br>智能缓存优化 |
 | **🏗️ 统一元素系统** | 革命性架构设计 | **单一元素列表** - 所有代码元素（类、方法、字段、导入、包）统一管理<br>**一致的元素类型** - 每个元素都有`element_type`属性<br>**简化的API** - 更清晰的接口和降低的复杂度<br>**更好的可维护性** - 所有代码元素的单一真实来源 | 统一数据模型<br>类型安全保证<br>扩展性设计 |
 
@@ -572,13 +656,28 @@ uv run python -m tree_sitter_analyzer --show-query-languages
 ## 8. 🏆 质量保证
 
 ### 📊 质量指标
-- **3,087个测试** - 100%通过率 ✅
+- **3,342个测试** - 100%通过率 ✅
 - **高代码覆盖率** - 全面测试套件
 - **零测试失败** - 生产就绪
 - **跨平台支持** - Windows、macOS、Linux
 
+<<<<<<< HEAD
 ### ⚡ 最新质量成就（v1.7.4）
 - ✅ **📊 质量指标提升** - 测试数量增加到3,087个，覆盖率保持高水平
+=======
+### ⚡ 最新质量成就（v1.8.2）
+- ✅ **🔒 CLI安全性增强** - 修复CLI模式下的安全边界错误，确保文件访问安全
+- ✅ **✅ 参数验证完善** - 实现完整的CLI参数验证系统，防止无效参数组合
+- ✅ **🚫 排他参数控制** - `--table`和`--query-key`参数正确实现排他控制
+- ✅ **🔍 过滤功能增强** - `--query-key`与`--filter`组合使用得到完整支持
+- ✅ **⚠️ 错误消息优化** - 提供清晰详细的错误信息，改善用户体验
+- ✅ **🛡️ 项目边界保护** - 自动检测和尊重项目边界，防止访问敏感文件
+- ✅ **🧪 测试环境支持** - 测试环境下的临时目录访问许可
+- ✅ **📋 用户体验改进** - 更直观的命令行界面和错误处理机制
+
+### ⚡ v1.7.4质量成就
+- ✅ **📊 质量指标提升** - 测试数量增加到3,342个，覆盖率保持高水平
+>>>>>>> release/v1.8.2
 - ✅ **🔧 系统稳定性** - 所有测试通过，系统稳定性和可靠性增强
 - ✅ **🆕 Markdown完整支持** - 新增完整的Markdown语言插件，支持所有主要Markdown元素
 - ✅ **📝 文档分析增强** - 支持标题、代码块、链接、图片、表格、任务列表等元素的智能提取
@@ -629,8 +728,9 @@ uv run pytest tests/test_mcp_server_initialization.py -v
 **验证环境：**
 - 操作系统：Windows 10、macOS、Linux
 - Python版本：3.10+
-- 项目版本：tree-sitter-analyzer v1.7.4
+- 项目版本：tree-sitter-analyzer v1.8.2
 - 测试文件：BigService.java (1419行)、sample.py (256行)、MultiClass.java (54行)
+- 新增验证：CLI参数验证、安全边界保护、排他参数控制
 
 ---
 

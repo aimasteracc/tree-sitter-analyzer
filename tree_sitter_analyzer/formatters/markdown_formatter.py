@@ -442,7 +442,7 @@ class MarkdownFormatter(BaseFormatter):
         """Format advanced analysis in text format"""
         output = ["--- Advanced Analysis Results ---"]
         
-        # Basic info
+        # Basic info - format with quotes to match expected output
         output.append(f'"File: {data["file_path"]}"')
         output.append(f'"Language: {data["language"]}"')
         output.append(f'"Lines: {data["line_count"]}"')

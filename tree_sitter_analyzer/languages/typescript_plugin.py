@@ -1727,3 +1727,132 @@ class TypeScriptPlugin(LanguagePlugin):
         all_elements.extend(extractor.extract_imports(tree, source_code))
         
         return all_elements
+
+    def execute_query_strategy(self, tree: "tree_sitter.Tree", source_code: str, query_key: str) -> list[CodeElement]:
+        """Execute TypeScript-specific query strategy based on query_key"""
+        if not tree or not source_code:
+            return []
+
+        # Initialize extractor with source code
+        self._extractor.source_code = source_code
+        self._extractor.content_lines = source_code.split("\n")
+        self._extractor._reset_caches()
+        self._extractor._detect_file_characteristics()
+
+        # Map query_key to appropriate extraction method
+        query_mapping = {
+            # Function-related queries
+            "function": lambda: self._extractor.extract_functions(tree, source_code),
+            "async_function": lambda: [f for f in self._extractor.extract_functions(tree, source_code) if getattr(f, 'is_async', False)],
+            "arrow_function": lambda: [f for f in self._extractor.extract_functions(tree, source_code) if getattr(f, 'is_arrow', False)],
+            "method": lambda: [f for f in self._extractor.extract_functions(tree, source_code) if getattr(f, 'is_method', False)],
+            "constructor": lambda: [f for f in self._extractor.extract_functions(tree, source_code) if getattr(f, 'is_constructor', False)],
+            "signature": lambda: [f for f in self._extractor.extract_functions(tree, source_code) if getattr(f, 'is_signature', False)],
+            
+            # Class-related queries
+            "class": lambda: self._extractor.extract_classes(tree, source_code),
+            "interface": lambda: [c for c in self._extractor.extract_classes(tree, source_code) if getattr(c, 'class_type', '') == 'interface'],
+            "type_alias": lambda: [c for c in self._extractor.extract_classes(tree, source_code) if getattr(c, 'class_type', '') == 'type'],
+            "enum": lambda: [c for c in self._extractor.extract_classes(tree, source_code) if getattr(c, 'class_type', '') == 'enum'],
+            
+            # Variable-related queries
+            "variable": lambda: self._extractor.extract_variables(tree, source_code),
+            
+            # Import/Export queries
+            "import": lambda: self._extractor.extract_imports(tree, source_code),
+            "export": lambda: [i for i in self._extractor.extract_imports(tree, source_code) if 'export' in getattr(i, 'raw_text', '')],
+            
+            # TypeScript-specific queries
+            "generic": lambda: [c for c in self._extractor.extract_classes(tree, source_code) if 'generics' in getattr(c, 'raw_text', '')],
+            "decorator": lambda: [f for f in self._extractor.extract_functions(tree, source_code) if '@' in getattr(f, 'raw_text', '')],
+            
+            # Framework-specific queries
+            "react_component": lambda: [c for c in self._extractor.extract_classes(tree, source_code) if getattr(c, 'is_react_component', False)],
+            "angular_component": lambda: [c for c in self._extractor.extract_classes(tree, source_code) if getattr(c, 'framework_type', '') == 'angular'],
+            "vue_component": lambda: [c for c in self._extractor.extract_classes(tree, source_code) if getattr(c, 'framework_type', '') == 'vue'],
+        }
+
+        # Execute the appropriate extraction method
+        if query_key in query_mapping:
+            try:
+                return query_mapping[query_key]()
+            except Exception as e:
+                log_error(f"Error executing TypeScript query '{query_key}': {e}")
+                return []
+        else:
+            log_warning(f"Unsupported TypeScript query key: {query_key}")
+            return []
+
+    def get_element_categories(self) -> dict[str, list[str]]:
+        """Get TypeScript element categories mapping query_key to node_types"""
+        return {
+            # Function-related categories
+            "function": [
+                "function_declaration",
+                "function_expression",
+                "arrow_function",
+                "generator_function_declaration"
+            ],
+            "async_function": [
+                "function_declaration",
+                "function_expression",
+                "arrow_function",
+                "method_definition"
+            ],
+            "arrow_function": ["arrow_function"],
+            "method": [
+                "method_definition",
+                "method_signature"
+            ],
+            "constructor": ["method_definition"],
+            "signature": ["method_signature"],
+            
+            # Class-related categories
+            "class": [
+                "class_declaration",
+                "abstract_class_declaration"
+            ],
+            "interface": ["interface_declaration"],
+            "type_alias": ["type_alias_declaration"],
+            "enum": ["enum_declaration"],
+            
+            # Variable-related categories
+            "variable": [
+                "variable_declaration",
+                "lexical_declaration",
+                "property_definition",
+                "property_signature"
+            ],
+            
+            # Import/Export categories
+            "import": ["import_statement"],
+            "export": [
+                "export_statement",
+                "export_declaration"
+            ],
+            
+            # TypeScript-specific categories
+            "generic": [
+                "type_parameters",
+                "type_parameter"
+            ],
+            "decorator": [
+                "decorator",
+                "decorator_call_expression"
+            ],
+            
+            # Framework-specific categories
+            "react_component": [
+                "class_declaration",
+                "function_declaration",
+                "arrow_function"
+            ],
+            "angular_component": [
+                "class_declaration",
+                "decorator"
+            ],
+            "vue_component": [
+                "class_declaration",
+                "function_declaration"
+            ]
+        }

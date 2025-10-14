@@ -25,6 +25,7 @@ from .cli.info_commands import (
 )
 from .output_manager import output_error, output_info, output_list
 from .query_loader import query_loader
+from .cli.argument_validator import CLIArgumentValidator
 
 
 class CLICommandFactory:
@@ -33,6 +34,14 @@ class CLICommandFactory:
     @staticmethod
     def create_command(args: argparse.Namespace) -> Any:
         """Create appropriate command based on arguments."""
+        
+        # Validate argument combinations first
+        validator = CLIArgumentValidator()
+        validation_error = validator.validate_arguments(args)
+        if validation_error:
+            output_error(validation_error)
+            output_info(validator.get_usage_examples())
+            return None
 
         # Information commands (no file analysis required)
         if args.list_queries:
@@ -62,6 +71,7 @@ class CLICommandFactory:
         if hasattr(args, "partial_read") and args.partial_read:
             return PartialReadCommand(args)
 
+        # Handle table command with or without query-key
         if hasattr(args, "table") and args.table:
             return TableCommand(args)
 
@@ -274,14 +284,18 @@ def main() -> None:
     if "--quiet" in sys.argv:
         os.environ["LOG_LEVEL"] = "ERROR"
     else:
-        # Set default log level to WARNING to reduce output
-        os.environ.setdefault("LOG_LEVEL", "WARNING")
+        # Set default log level to ERROR to prevent log output in CLI
+        os.environ["LOG_LEVEL"] = "ERROR"
 
     parser = create_argument_parser()
     args = parser.parse_args()
 
-    # Configure default logging levels to reduce output
+    # Configure all logging to ERROR level to prevent output contamination
+    logging.getLogger().setLevel(logging.ERROR)
+    logging.getLogger("tree_sitter_analyzer").setLevel(logging.ERROR)
     logging.getLogger("tree_sitter_analyzer.performance").setLevel(logging.ERROR)
+    logging.getLogger("tree_sitter_analyzer.plugins").setLevel(logging.ERROR)
+    logging.getLogger("tree_sitter_analyzer.plugins.manager").setLevel(logging.ERROR)
 
     # Configure logging for table output
     if hasattr(args, "table") and args.table:

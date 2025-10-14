@@ -5,6 +5,15 @@
 **Status**: Draft  
 **Input**: User description: "既存のMCPサーバー機能の包括的な仕様 - Tree-sitter Analyzerの全MCPツール（check_code_scale、analyze_code_structure、extract_code_section、query_code、list_files、search_content、find_and_grep、set_project_path）とリソース（code_file、project_stats）の統合仕様"
 
+## 関連仕様書
+
+- **[002-language-abstraction-spec.md](../002-language-abstraction-spec.md)**: 言語処理の抽象化と拡張性に関する仕様。
+- **[003-html-css-support-spec.md](../003-html-css-support-spec.md)**: HTML/CSSの特殊サポートに関する仕様。
+- **[004-formatter-extension-spec.md](../004-formatter-extension-spec.md)**: フォーマッター拡張に関する仕様。
+- **[005-implementation-plan.md](../005-implementation-plan.md)**: 実装計画とマイグレーション手順。
+
+---
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - AI統合コード解析 (Priority: P1)

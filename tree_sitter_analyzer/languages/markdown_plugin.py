@@ -24,6 +24,7 @@ from ..encoding_utils import extract_text_slice, safe_encode
 from ..models import AnalysisResult, CodeElement
 from ..plugins.base import ElementExtractor, LanguagePlugin
 from ..utils import log_debug, log_error, log_warning
+from ..utils.tree_sitter_compat import TreeSitterQueryCompat, get_node_text_safe
 
 
 class MarkdownElement(CodeElement):
@@ -1447,22 +1448,9 @@ class MarkdownPlugin(LanguagePlugin):
                 import tree_sitter
                 import tree_sitter_markdown as tsmarkdown
 
-                # Support for newer versions of tree-sitter-markdown
-                try:
-                    # New API (0.3.1+)
-                    language_capsule = tsmarkdown.language()
-                    self._language_cache = tree_sitter.Language(language_capsule)
-                except (AttributeError, TypeError):
-                    # For older API or different format
-                    try:
-                        # Get Language object directly
-                        self._language_cache = tsmarkdown.language()
-                    except Exception:
-                        # Last resort: get directly from module
-                        if hasattr(tsmarkdown, 'LANGUAGE'):
-                            self._language_cache = tree_sitter.Language(tsmarkdown.LANGUAGE)
-                        else:
-                            raise ImportError("Cannot access markdown language")
+                # Use modern tree-sitter-markdown API
+                language_capsule = tsmarkdown.language()
+                self._language_cache = tree_sitter.Language(language_capsule)
             except ImportError:
                 log_error("tree-sitter-markdown not available")
                 return None
@@ -1637,35 +1625,11 @@ class MarkdownPlugin(LanguagePlugin):
             except KeyError:
                 return {"error": f"Unknown query: {query_name}"}
 
-            # Use new tree-sitter 0.25.x API
-            query = tree_sitter.Query(language, query_string)
-            
-            # Execute query using the new API
-            # In tree-sitter 0.25.x, we need to use a different approach
-            matches = []
-            captures = []
-            
-            # Walk through the tree and find matches manually
-            def walk_tree(node):
-                # This is a simplified approach - in practice, you'd want to use
-                # the proper query execution method when it becomes available
-                if query_name == "headers" and node.type in ["atx_heading", "setext_heading"]:
-                    matches.append(node)
-                elif query_name == "code_blocks" and node.type in ["fenced_code_block", "indented_code_block"]:
-                    matches.append(node)
-                elif query_name == "links" and node.type in ["link", "autolink", "reference_link"]:
-                    matches.append(node)
-                
-                for child in node.children:
-                    walk_tree(child)
-            
-            walk_tree(tree.root_node)
-            
-            # Convert matches to capture format
-            for match in matches:
-                captures.append((match, query_name))
-            
-            return {"captures": captures, "query": query_string, "matches": len(matches)}
+            # Use tree-sitter API with modern handling
+            captures = TreeSitterQueryCompat.safe_execute_query(
+                language, query_string, tree.root_node, fallback_result=[]
+            )
+            return {"captures": captures, "query": query_string, "matches": len(captures)}
 
         except Exception as e:
             log_error(f"Query execution failed: {e}")
@@ -1693,3 +1657,259 @@ class MarkdownPlugin(LanguagePlugin):
             log_error(f"Failed to extract elements: {e}")
         
         return elements
+
+    def execute_query_strategy(self, tree: "tree_sitter.Tree", source_code: str, query_key: str) -> list[CodeElement]:
+        """Execute Markdown-specific query strategy based on query_key"""
+        if not tree or not source_code:
+            return []
+
+        # Initialize extractor with source code
+        self._extractor.source_code = source_code
+        self._extractor.content_lines = source_code.split("\n")
+        self._extractor._reset_caches()
+
+        # Map query_key to appropriate extraction method
+        query_mapping = {
+            # Header-related queries (mapped to functions)
+            "function": lambda: self._extractor.extract_headers(tree, source_code),
+            "headers": lambda: self._extractor.extract_headers(tree, source_code),
+            "heading": lambda: self._extractor.extract_headers(tree, source_code),
+            
+            # Code block-related queries (mapped to classes)
+            "class": lambda: self._extractor.extract_code_blocks(tree, source_code),
+            "code_blocks": lambda: self._extractor.extract_code_blocks(tree, source_code),
+            "code_block": lambda: self._extractor.extract_code_blocks(tree, source_code),
+            
+            # Link and image queries (mapped to variables)
+            "variable": lambda: self._extractor.extract_links(tree, source_code) + self._extractor.extract_images(tree, source_code),
+            "links": lambda: self._extractor.extract_links(tree, source_code),
+            "link": lambda: self._extractor.extract_links(tree, source_code),
+            "images": lambda: self._extractor.extract_images(tree, source_code),
+            "image": lambda: self._extractor.extract_images(tree, source_code),
+            
+            # Reference queries (mapped to imports)
+            "import": lambda: self._extractor.extract_references(tree, source_code),
+            "references": lambda: self._extractor.extract_references(tree, source_code),
+            "reference": lambda: self._extractor.extract_references(tree, source_code),
+            
+            # List and table queries
+            "lists": lambda: self._extractor.extract_lists(tree, source_code),
+            "list": lambda: self._extractor.extract_lists(tree, source_code),
+            "task_lists": lambda: [l for l in self._extractor.extract_lists(tree, source_code) if getattr(l, 'element_type', '') == 'task_list'],
+            "tables": lambda: self._extractor.extract_tables(tree, source_code),
+            "table": lambda: self._extractor.extract_tables(tree, source_code),
+            
+            # Content structure queries
+            "blockquotes": lambda: self._extractor.extract_blockquotes(tree, source_code),
+            "blockquote": lambda: self._extractor.extract_blockquotes(tree, source_code),
+            "horizontal_rules": lambda: self._extractor.extract_horizontal_rules(tree, source_code),
+            "horizontal_rule": lambda: self._extractor.extract_horizontal_rules(tree, source_code),
+            
+            # HTML and formatting queries
+            "html_blocks": lambda: self._extractor.extract_html_elements(tree, source_code),
+            "html_block": lambda: self._extractor.extract_html_elements(tree, source_code),
+            "html": lambda: self._extractor.extract_html_elements(tree, source_code),
+            "emphasis": lambda: self._extractor.extract_text_formatting(tree, source_code),
+            "formatting": lambda: self._extractor.extract_text_formatting(tree, source_code),
+            "text_formatting": lambda: self._extractor.extract_text_formatting(tree, source_code),
+            "inline_code": lambda: [f for f in self._extractor.extract_text_formatting(tree, source_code) if getattr(f, 'element_type', '') == 'inline_code'],
+            "strikethrough": lambda: [f for f in self._extractor.extract_text_formatting(tree, source_code) if getattr(f, 'element_type', '') == 'strikethrough'],
+            
+            # Footnote queries
+            "footnotes": lambda: self._extractor.extract_footnotes(tree, source_code),
+            "footnote": lambda: self._extractor.extract_footnotes(tree, source_code),
+            
+            # Comprehensive queries
+            "all_elements": lambda: self.extract_elements(tree, source_code),
+            "text_content": lambda: self._extractor.extract_headers(tree, source_code) + self._extractor.extract_text_formatting(tree, source_code),
+        }
+
+        # Execute the appropriate extraction method
+        if query_key in query_mapping:
+            try:
+                return query_mapping[query_key]()
+            except Exception as e:
+                log_error(f"Error executing Markdown query '{query_key}': {e}")
+                return []
+        else:
+            log_warning(f"Unsupported Markdown query key: {query_key}")
+            return []
+
+    def get_element_categories(self) -> dict[str, list[str]]:
+        """Get Markdown element categories mapping query_key to node_types"""
+        return {
+            # Header categories (function-like)
+            "function": [
+                "atx_heading",
+                "setext_heading"
+            ],
+            "headers": [
+                "atx_heading",
+                "setext_heading"
+            ],
+            "heading": [
+                "atx_heading",
+                "setext_heading"
+            ],
+            
+            # Code block categories (class-like)
+            "class": [
+                "fenced_code_block",
+                "indented_code_block"
+            ],
+            "code_blocks": [
+                "fenced_code_block",
+                "indented_code_block"
+            ],
+            "code_block": [
+                "fenced_code_block",
+                "indented_code_block"
+            ],
+            
+            # Link and image categories (variable-like)
+            "variable": [
+                "inline",  # Contains links and images
+                "link",
+                "autolink",
+                "reference_link",
+                "image"
+            ],
+            "links": [
+                "inline",  # Contains inline links
+                "link",
+                "autolink",
+                "reference_link"
+            ],
+            "link": [
+                "inline",
+                "link",
+                "autolink",
+                "reference_link"
+            ],
+            "images": [
+                "inline",  # Contains inline images
+                "image"
+            ],
+            "image": [
+                "inline",
+                "image"
+            ],
+            
+            # Reference categories (import-like)
+            "import": [
+                "link_reference_definition"
+            ],
+            "references": [
+                "link_reference_definition"
+            ],
+            "reference": [
+                "link_reference_definition"
+            ],
+            
+            # List categories
+            "lists": [
+                "list",
+                "list_item"
+            ],
+            "list": [
+                "list",
+                "list_item"
+            ],
+            "task_lists": [
+                "list",
+                "list_item"
+            ],
+            
+            # Table categories
+            "tables": [
+                "pipe_table",
+                "table"
+            ],
+            "table": [
+                "pipe_table",
+                "table"
+            ],
+            
+            # Content structure categories
+            "blockquotes": [
+                "block_quote"
+            ],
+            "blockquote": [
+                "block_quote"
+            ],
+            "horizontal_rules": [
+                "thematic_break"
+            ],
+            "horizontal_rule": [
+                "thematic_break"
+            ],
+            
+            # HTML categories
+            "html_blocks": [
+                "html_block",
+                "inline"  # Contains inline HTML
+            ],
+            "html_block": [
+                "html_block",
+                "inline"
+            ],
+            "html": [
+                "html_block",
+                "inline"
+            ],
+            
+            # Text formatting categories
+            "emphasis": [
+                "inline"  # Contains emphasis elements
+            ],
+            "formatting": [
+                "inline"
+            ],
+            "text_formatting": [
+                "inline"
+            ],
+            "inline_code": [
+                "inline"
+            ],
+            "strikethrough": [
+                "inline"
+            ],
+            
+            # Footnote categories
+            "footnotes": [
+                "inline",  # Contains footnote references
+                "paragraph"  # Contains footnote definitions
+            ],
+            "footnote": [
+                "inline",
+                "paragraph"
+            ],
+            
+            # Comprehensive categories
+            "all_elements": [
+                "atx_heading",
+                "setext_heading",
+                "fenced_code_block",
+                "indented_code_block",
+                "inline",
+                "link",
+                "autolink",
+                "reference_link",
+                "image",
+                "link_reference_definition",
+                "list",
+                "list_item",
+                "pipe_table",
+                "table",
+                "block_quote",
+                "thematic_break",
+                "html_block",
+                "paragraph"
+            ],
+            "text_content": [
+                "atx_heading",
+                "setext_heading",
+                "inline",
+                "paragraph"
+            ]
+        }
