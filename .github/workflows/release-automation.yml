@@ -34,21 +34,31 @@ jobs:
         with:
           version: "latest"
 
+      - name: Install system dependencies
+        run: |
+          # Install fd and ripgrep for MCP tools
+          sudo apt-get update
+          sudo apt-get install -y fd-find ripgrep
+          # Create symlink for fd command (Ubuntu packages it as fdfind)
+          sudo ln -sf /usr/bin/fdfind /usr/bin/fd
+        shell: bash
+
       - name: Install dependencies
         run: uv sync --extra all --extra mcp
 
       - name: Run tests
-        run: uv run pytest tests/ -v
+        run: uv run pytest tests/ -v --tb=short --cov=tree_sitter_analyzer --cov-report=xml --cov-report=term-missing
 
-      - name: Generate coverage report
-        run: uv run pytest tests/ --cov=tree_sitter_analyzer --cov-report=xml
 
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v3
+        uses: codecov/codecov-action@v5
         with:
-          file: ./coverage.xml
-          flags: unittests
-          name: codecov-umbrella
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+      - name: Update README statistics
+        run: |
+          echo "Updating README statistics for release..."
+          uv run python scripts/update_readme_stats.py || echo "README stats update completed with warnings"
 
   build-and-deploy:
     needs: test

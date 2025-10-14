@@ -7,11 +7,13 @@ Supports both predefined query keys and custom query strings.
 """
 
 import logging
+from pathlib import Path
 from typing import Any
 
 from ...core.query_service import QueryService
 from ...language_detector import detect_language_from_file
 from ..utils.error_handler import handle_mcp_errors
+from ..utils.file_output_manager import FileOutputManager
 from .base_tool import BaseMCPTool
 
 logger = logging.getLogger(__name__)
@@ -24,6 +26,7 @@ class QueryTool(BaseMCPTool):
         """Initialize query tool"""
         super().__init__(project_root)
         self.query_service = QueryService(project_root)
+        self.file_output_manager = FileOutputManager(project_root)
 
     def set_project_path(self, project_path: str) -> None:
         """
@@ -34,6 +37,7 @@ class QueryTool(BaseMCPTool):
         """
         super().set_project_path(project_path)
         self.query_service = QueryService(project_path)
+        self.file_output_manager.set_project_root(project_path)
         logger.info(f"QueryTool project path updated to: {project_path}")
 
     def get_tool_definition(self) -> dict[str, Any]:
@@ -45,7 +49,7 @@ class QueryTool(BaseMCPTool):
         """
         return {
             "name": "query_code",
-            "description": "Execute tree-sitter queries on code files to extract specific code elements",
+            "description": "Execute tree-sitter queries on code files to extract specific code elements with filtering, multiple output formats, and optional file saving with token optimization",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -75,6 +79,15 @@ class QueryTool(BaseMCPTool):
                         "default": "json",
                         "description": "Output format",
                     },
+                    "output_file": {
+                        "type": "string",
+                        "description": "Optional filename to save output to file (extension auto-detected based on content)",
+                    },
+                    "suppress_output": {
+                        "type": "boolean",
+                        "description": "When true and output_file is specified, suppress detailed output in response to save tokens",
+                        "default": False,
+                    },
                 },
                 "required": ["file_path"],
                 "anyOf": [
@@ -84,7 +97,6 @@ class QueryTool(BaseMCPTool):
             },
         }
 
-    @handle_mcp_errors("query_code")
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """
         Execute query tool
@@ -95,44 +107,78 @@ class QueryTool(BaseMCPTool):
         Returns:
             Query results
         """
-        # Validate input parameters
-        file_path = arguments.get("file_path")
-        if not file_path:
-            raise ValueError("file_path is required")
-
-        # Resolve file path to absolute path
-        resolved_file_path = self.path_resolver.resolve(file_path)
-        logger.info(f"Querying file: {file_path} (resolved to: {resolved_file_path})")
-
-        # Security validation using resolved path
-        is_valid, error_msg = self.security_validator.validate_file_path(
-            resolved_file_path
-        )
-        if not is_valid:
-            raise ValueError(
-                f"Invalid or unsafe file path: {error_msg or resolved_file_path}"
-            )
-
-        # Get query parameters
-        query_key = arguments.get("query_key")
-        query_string = arguments.get("query_string")
-        filter_expression = arguments.get("filter")
-        output_format = arguments.get("output_format", "json")
-
-        if not query_key and not query_string:
-            raise ValueError("Either query_key or query_string must be provided")
-
-        if query_key and query_string:
-            raise ValueError("Cannot provide both query_key and query_string")
-
-        # Detect language
-        language = arguments.get("language")
-        if not language:
-            language = detect_language_from_file(resolved_file_path)
-            if not language:
-                raise ValueError(f"Could not detect language for file: {file_path}")
-
         try:
+            # Validate input parameters - check for empty arguments first
+            if not arguments:
+                from ..utils.error_handler import AnalysisError
+                raise AnalysisError(
+                    "file_path is required",
+                    operation="query_code"
+                )
+                
+            file_path = arguments.get("file_path")
+            if not file_path:
+                from ..utils.error_handler import AnalysisError
+                raise AnalysisError(
+                    "file_path is required",
+                    operation="query_code"
+                )
+
+            # Check that either query_key or query_string is provided early
+            query_key = arguments.get("query_key")
+            query_string = arguments.get("query_string")
+            
+            if not query_key and not query_string:
+                from ..utils.error_handler import AnalysisError
+                raise AnalysisError(
+                    "Either query_key or query_string must be provided",
+                    operation="query_code"
+                )
+
+            # Security validation BEFORE path resolution to catch symlinks
+            is_valid, error_msg = self.security_validator.validate_file_path(file_path)
+            if not is_valid:
+                return {
+                    "success": False,
+                    "error": f"Invalid or unsafe file path: {error_msg or file_path}"
+                }
+
+            # Resolve file path to absolute path
+            resolved_file_path = self.path_resolver.resolve(file_path)
+            logger.info(f"Querying file: {file_path} (resolved to: {resolved_file_path})")
+
+            # Additional security validation on resolved path
+            is_valid, error_msg = self.security_validator.validate_file_path(
+                resolved_file_path
+            )
+            if not is_valid:
+                return {
+                    "success": False,
+                    "error": f"Invalid or unsafe resolved path: {error_msg or resolved_file_path}"
+                }
+
+            # Get query parameters (already validated above)
+            filter_expression = arguments.get("filter")
+            output_format = arguments.get("output_format", "json")
+            output_file = arguments.get("output_file")
+            suppress_output = arguments.get("suppress_output", False)
+
+            if query_key and query_string:
+                return {
+                    "success": False,
+                    "error": "Cannot provide both query_key and query_string"
+                }
+
+            # Detect language
+            language = arguments.get("language")
+            if not language:
+                language = detect_language_from_file(resolved_file_path)
+                if not language:
+                    return {
+                        "success": False,
+                        "error": f"Could not detect language for file: {file_path}"
+                    }
+
             # Execute query
             results = await self.query_service.execute_query(
                 resolved_file_path, language, query_key, query_string, filter_expression
@@ -148,9 +194,11 @@ class QueryTool(BaseMCPTool):
 
             # Format output
             if output_format == "summary":
-                return self._format_summary(results, query_key or "custom", language)
+                formatted_result = self._format_summary(
+                    results, query_key or "custom", language
+                )
             else:
-                return {
+                formatted_result = {
                     "success": True,
                     "results": results,
                     "count": len(results),
@@ -159,13 +207,79 @@ class QueryTool(BaseMCPTool):
                     "query": query_key or query_string,
                 }
 
+            # Handle file output if requested
+            if output_file:
+                try:
+                    import json
+
+                    # Generate base name from original file path if not provided
+                    if not output_file or output_file.strip() == "":
+                        base_name = (
+                            f"{Path(file_path).stem}_query_{query_key or 'custom'}"
+                        )
+                    else:
+                        base_name = output_file
+
+                    # Convert result to JSON string for file output
+                    json_content = json.dumps(
+                        formatted_result, indent=2, ensure_ascii=False
+                    )
+
+                    # Save to file with automatic extension detection
+                    saved_file_path = self.file_output_manager.save_to_file(
+                        content=json_content, base_name=base_name
+                    )
+
+                    # Add file output info to result
+                    formatted_result["output_file_path"] = saved_file_path
+                    formatted_result["file_saved"] = True
+
+                    logger.info(f"Query output saved to: {saved_file_path}")
+
+                except Exception as e:
+                    logger.error(f"Failed to save output to file: {e}")
+                    formatted_result["file_save_error"] = str(e)
+                    formatted_result["file_saved"] = False
+
+            # Apply suppress_output logic
+            if suppress_output and output_file:
+                # Create minimal result when output is suppressed
+                minimal_result = {
+                    "success": formatted_result.get("success", True),
+                    "count": formatted_result.get("count", len(results)),
+                    "file_path": file_path,
+                    "language": language,
+                    "query": query_key or query_string,
+                }
+
+                # Include file output info if present
+                if "output_file_path" in formatted_result:
+                    minimal_result["output_file_path"] = formatted_result[
+                        "output_file_path"
+                    ]
+                    minimal_result["file_saved"] = formatted_result["file_saved"]
+                if "file_save_error" in formatted_result:
+                    minimal_result["file_save_error"] = formatted_result[
+                        "file_save_error"
+                    ]
+                    minimal_result["file_saved"] = formatted_result["file_saved"]
+
+                return minimal_result
+            else:
+                return formatted_result
+
         except Exception as e:
+            from ..utils.error_handler import AnalysisError
+            # Re-raise AnalysisError to maintain proper error handling
+            if isinstance(e, AnalysisError):
+                raise
+            
             logger.error(f"Query execution failed: {e}")
             return {
                 "success": False,
                 "error": str(e),
-                "file_path": file_path,
-                "language": language,
+                "file_path": arguments.get("file_path", "unknown"),
+                "language": arguments.get("language", "unknown"),
             }
 
     def _format_summary(
@@ -183,7 +297,7 @@ class QueryTool(BaseMCPTool):
             Summary formatted results
         """
         # Group by capture name
-        by_capture = {}
+        by_capture: dict[str, list[dict[str, Any]]] = {}
         for result in results:
             capture_name = result["capture_name"]
             if capture_name not in by_capture:
@@ -191,7 +305,7 @@ class QueryTool(BaseMCPTool):
             by_capture[capture_name].append(result)
 
         # Create summary
-        summary = {
+        summary: dict[str, Any] = {
             "success": True,
             "query_type": query_type,
             "language": language,
@@ -233,6 +347,9 @@ class QueryTool(BaseMCPTool):
 
             # Match common declaration patterns
             patterns = [
+                # Markdown headers
+                r"^#{1,6}\s+(.+)$",  # Markdown headers (# Title, ## Subtitle, etc.)
+                # Programming language patterns
                 r"(?:public|private|protected)?\s*(?:static)?\s*(?:class|interface)\s+(\w+)",  # class/interface
                 r"(?:public|private|protected)?\s*(?:static)?\s*\w+\s+(\w+)\s*\(",  # method
                 r"(\w+)\s*\(",  # simple function call
@@ -241,7 +358,7 @@ class QueryTool(BaseMCPTool):
             for pattern in patterns:
                 match = re.search(pattern, first_line)
                 if match:
-                    return match.group(1)
+                    return match.group(1).strip()
 
         return "unnamed"
 
@@ -313,5 +430,19 @@ class QueryTool(BaseMCPTool):
                 raise ValueError("output_format must be a string")
             if output_format not in ["json", "summary"]:
                 raise ValueError("output_format must be one of: json, summary")
+
+        # Validate output_file if provided
+        if "output_file" in arguments:
+            output_file = arguments["output_file"]
+            if not isinstance(output_file, str):
+                raise ValueError("output_file must be a string")
+            if not output_file.strip():
+                raise ValueError("output_file cannot be empty")
+
+        # Validate suppress_output if provided
+        if "suppress_output" in arguments:
+            suppress_output = arguments["suppress_output"]
+            if not isinstance(suppress_output, bool):
+                raise ValueError("suppress_output must be a boolean")
 
         return True

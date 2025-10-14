@@ -12,6 +12,8 @@ import logging
 import sys
 from typing import Any
 
+from .. import __version__
+
 try:
     from mcp.server import Server
     from mcp.server.models import InitializationOptions
@@ -68,7 +70,7 @@ class TreeSitterAnalyzerMCPServer:
 
         self.server: Server | None = None
         self.name = "tree-sitter-analyzer"
-        self.version = "2.0.0"
+        self.version = __version__
 
         log_info(f"Initializing {self.name} v{self.version}")
 

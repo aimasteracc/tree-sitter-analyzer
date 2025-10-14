@@ -123,12 +123,15 @@ class TestClass:
         assert "error" not in result
 
         # Invalid path should be rejected
-        with pytest.raises(
-            Exception, match="Invalid file path|Directory traversal|Operation failed"
-        ):
-            await read_tool.execute(
-                {"file_path": "../../../etc/passwd", "start_line": 1}
-            )
+        result = await read_tool.execute(
+            {"file_path": "../../../etc/passwd", "start_line": 1}
+        )
+        # Should return error response instead of raising exception
+        assert isinstance(result, dict)
+        assert not result.get("success", True)
+        assert "error" in result
+        error_msg = result.get("error", "").lower()
+        assert any(keyword in error_msg for keyword in ["invalid file path", "directory traversal", "security validation failed"])
 
     @pytest.mark.asyncio
     async def test_analyze_scale_tool_security(self):

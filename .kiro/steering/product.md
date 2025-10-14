@@ -29,4 +29,11 @@ Tree-sitter Analyzer is a revolutionary code analysis tool designed specifically
 
 ## Current Version
 
-v0.9.4 - Latest stable release with comprehensive MCP support and enhanced security features.
+v1.6.1 - Latest stable release with comprehensive MCP support, enhanced security features, and expanded test coverage.
+
+## Latest Statistics
+
+- **Test Coverage**: 1,893 tests with 71.48% code coverage
+- **MCP Tools**: 12 specialized tools for AI assistant integration
+- **Language Support**: Full support for Java, Python, JavaScript/TypeScript; Basic support for C/C++, Rust, Go
+- **Performance**: Optimized for large file handling with multi-level caching

@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from ..utils.error_handler import handle_mcp_errors
+from ..utils.file_output_manager import FileOutputManager
 from ..utils.gitignore_detector import get_default_detector
 from . import fd_rg_utils
 from .base_tool import BaseMCPTool
@@ -26,7 +27,7 @@ class ListFilesTool(BaseMCPTool):
     def get_tool_definition(self) -> dict[str, Any]:
         return {
             "name": "list_files",
-            "description": "List files and directories using fd with advanced filtering options. Supports glob patterns, file types, size filters, and more. Returns file paths with metadata or just counts.",
+            "description": "List files and directories using fd with advanced filtering options. Supports glob patterns, file types, size filters, and more. Returns file paths with metadata or just counts, with optional file output and token optimization.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -110,6 +111,15 @@ class ListFilesTool(BaseMCPTool):
                         "default": False,
                         "description": "Return only the total count of matching files instead of file details. Useful for quick statistics",
                     },
+                    "output_file": {
+                        "type": "string",
+                        "description": "Optional filename to save output to file (extension auto-detected based on content)"
+                    },
+                    "suppress_output": {
+                        "type": "boolean",
+                        "description": "When true and output_file is specified, suppress detailed output in response to save tokens",
+                        "default": False
+                    },
                 },
                 "required": ["roots"],
                 "additionalProperties": False,
@@ -171,6 +181,15 @@ class ListFilesTool(BaseMCPTool):
 
     @handle_mcp_errors("list_files")
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        # Check if fd command is available
+        if not fd_rg_utils.check_external_command("fd"):
+            return {
+                "success": False,
+                "error": "fd command not found. Please install fd (https://github.com/sharkdp/fd) to use this tool.",
+                "count": 0,
+                "results": []
+            }
+        
         self.validate_arguments(arguments)
         roots = self._validate_roots(arguments["roots"])  # normalized absolutes
 
@@ -243,13 +262,59 @@ class ListFilesTool(BaseMCPTool):
             else:
                 truncated = False
 
-            return {
+            result = {
                 "success": True,
                 "count_only": True,
                 "total_count": total_count,
                 "truncated": truncated,
                 "elapsed_ms": elapsed_ms,
             }
+
+            # Handle file output for count_only mode
+            output_file = arguments.get("output_file")
+            suppress_output = arguments.get("suppress_output", False)
+            
+            if output_file:
+                file_manager = FileOutputManager(self.project_root)
+                file_content = {
+                    "count_only": True,
+                    "total_count": total_count,
+                    "truncated": truncated,
+                    "elapsed_ms": elapsed_ms,
+                    "query_info": {
+                        "roots": arguments.get("roots", []),
+                        "pattern": arguments.get("pattern"),
+                        "glob": arguments.get("glob", False),
+                        "types": arguments.get("types"),
+                        "extensions": arguments.get("extensions"),
+                        "exclude": arguments.get("exclude"),
+                        "limit": limit,
+                    }
+                }
+                
+                try:
+                    import json
+                    json_content = json.dumps(file_content, indent=2, ensure_ascii=False)
+                    saved_path = file_manager.save_to_file(
+                        content=json_content,
+                        base_name=output_file
+                    )
+                    result["output_file"] = saved_path
+                    
+                    if suppress_output:
+                        # Return minimal response to save tokens
+                        return {
+                            "success": True,
+                            "count_only": True,
+                            "total_count": total_count,
+                            "output_file": saved_path,
+                            "message": f"Count results saved to {saved_path}"
+                        }
+                except Exception as e:
+                    logger.warning(f"Failed to save output file: {e}")
+                    result["output_file_error"] = str(e)
+
+            return result
 
         # Truncate defensively even if fd didn't
         truncated = False
@@ -283,10 +348,64 @@ class ListFilesTool(BaseMCPTool):
             except (OSError, ValueError):  # nosec B112
                 continue
 
-        return {
+        result = {
             "success": True,
             "count": len(results),
             "truncated": truncated,
             "elapsed_ms": elapsed_ms,
             "results": results,
         }
+
+        # Handle file output for detailed results
+        output_file = arguments.get("output_file")
+        suppress_output = arguments.get("suppress_output", False)
+        
+        if output_file:
+            file_manager = FileOutputManager(self.project_root)
+            file_content = {
+                "count": len(results),
+                "truncated": truncated,
+                "elapsed_ms": elapsed_ms,
+                "results": results,
+                "query_info": {
+                    "roots": arguments.get("roots", []),
+                    "pattern": arguments.get("pattern"),
+                    "glob": arguments.get("glob", False),
+                    "types": arguments.get("types"),
+                    "extensions": arguments.get("extensions"),
+                    "exclude": arguments.get("exclude"),
+                    "depth": arguments.get("depth"),
+                    "follow_symlinks": arguments.get("follow_symlinks", False),
+                    "hidden": arguments.get("hidden", False),
+                    "no_ignore": no_ignore,
+                    "size": arguments.get("size"),
+                    "changed_within": arguments.get("changed_within"),
+                    "changed_before": arguments.get("changed_before"),
+                    "full_path_match": arguments.get("full_path_match", False),
+                    "absolute": arguments.get("absolute", True),
+                    "limit": limit,
+                }
+            }
+            
+            try:
+                import json
+                json_content = json.dumps(file_content, indent=2, ensure_ascii=False)
+                saved_path = file_manager.save_to_file(
+                    content=json_content,
+                    base_name=output_file
+                )
+                result["output_file"] = saved_path
+                
+                if suppress_output:
+                    # Return minimal response to save tokens
+                    return {
+                        "success": True,
+                        "count": len(results),
+                        "output_file": saved_path,
+                        "message": f"File list results saved to {saved_path}"
+                    }
+            except Exception as e:
+                logger.warning(f"Failed to save output file: {e}")
+                result["output_file_error"] = str(e)
+
+        return result

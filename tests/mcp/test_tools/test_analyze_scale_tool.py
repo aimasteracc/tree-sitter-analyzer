@@ -349,7 +349,7 @@ public class Test {
             assert "name" in definition
             assert "description" in definition
             assert "inputSchema" in definition
-            assert definition["name"] == "analyze_code_scale"
+            assert definition["name"] == "check_code_scale"
         else:
             # MCP Tool object
             assert definition.name == "analyze_code_scale"

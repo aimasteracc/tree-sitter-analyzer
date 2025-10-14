@@ -1,5 +1,403 @@
 # Changelog
 
+## [1.8.2] - 2025-10-14
+
+### Improved
+- **🔧 Development Workflow**: Routine maintenance release to publish the latest changes from the develop branch.
+- **📚 Documentation**: Aligned version numbers across documentation files.
+
+## [1.8.1] - 2025-10-14
+
+### 🔧 Fixed
+
+#### Critical Async/Await Inconsistency Resolution
+- **Critical**: Fixed async/await inconsistency in QueryService.execute_query()
+  - Resolved TypeError when QueryCommand and MCP QueryTool call execute_query()
+  - Added proper async keyword to method signature
+  - Implemented async file reading with run_in_executor
+- Improved error handling for async operations
+- Enhanced concurrent query execution support
+
+### 🆕 Added
+
+#### Async Infrastructure Enhancements
+- Async file reading with asyncio.run_in_executor for non-blocking I/O
+- Comprehensive async test suite (test_async_query_service.py)
+- CLI async integration tests (test_cli_async_integration.py)
+- Performance monitoring for async operations (test_async_performance.py)
+- Concurrent query execution capabilities
+
+### 🔧 Enhanced
+
+#### Code Quality & Type Safety
+- **Type Safety**: Complete type annotation improvements across core modules
+- **Code Style**: Unified code formatting with ruff and comprehensive style checks
+- **Error Handling**: Enhanced async operation error handling and recovery
+- **Performance**: <5% processing time increase, 3x+ concurrent throughput improvement
+
+### 📊 Technical Details
+
+#### Breaking Changes
+- **None**: All improvements are backward compatible
+- **Transparent**: Internal async implementation is transparent to end users
+- **Maintained**: All existing CLI commands and MCP tools work unchanged
+
+#### Performance Impact
+- **Processing Time**: <5% increase for single queries
+- **Memory Usage**: <10% increase in memory consumption
+- **Concurrent Throughput**: 3x+ improvement with concurrent execution
+- **Test Coverage**: Added 25+ new async-specific tests
+
+#### Migration Notes
+- No action required for existing users
+- All existing CLI commands and MCP tools work unchanged
+- Internal async implementation is transparent to end users
+
+#### Quality Assurance
+- **Type Checking**: 100% mypy compliance with zero type errors
+- **Code Style**: Complete ruff formatting and linting compliance
+- **Test Coverage**: All existing tests continue to pass
+- **Async Tests**: Comprehensive async-specific test coverage
+
+### 🎯 Impact
+
+#### For Developers
+- **Enhanced Performance**: Better responsiveness with async I/O operations
+- **Concurrent Execution**: Ability to run multiple queries simultaneously
+- **Improved Reliability**: Better error handling and recovery mechanisms
+
+#### For AI Assistants
+- **Seamless Integration**: No changes required for existing MCP tool usage
+- **Better Performance**: Faster response times for large file analysis
+- **Enhanced Stability**: More robust async operation handling
+
+#### For Enterprise Users
+- **Production Ready**: Enhanced stability and performance for production workloads
+- **Scalability**: Better handling of concurrent analysis requests
+- **Reliability**: Improved error handling and recovery mechanisms
+
+This release resolves critical async/await inconsistencies while maintaining full backward compatibility and significantly improving concurrent execution performance.
+
+## [1.8.0] - 2025-10-13
+
+### 🚀 Added
+
+#### Revolutionary HTML/CSS Language Support
+- **🆕 Complete HTML Analysis**: Full HTML DOM structure analysis with tag names, attributes, and hierarchical relationships
+- **🆕 Complete CSS Analysis**: Comprehensive CSS selector and property analysis with intelligent classification
+- **🆕 Specialized Data Models**: New `MarkupElement` and `StyleElement` classes for precise web technology analysis
+  - `MarkupElement`: HTML elements with tag_name, attributes, parent/children relationships, and element classification
+  - `StyleElement`: CSS rules with selector, properties, and intelligent property categorization
+- **🆕 Element Classification System**: Smart categorization system for better analysis
+  - HTML elements: structure, heading, text, list, media, form, table, metadata
+  - CSS properties: layout, box_model, typography, background, transition, interactivity
+
+#### Extensible Formatter Architecture
+- **🆕 FormatterRegistry**: Dynamic formatter management system using Registry pattern
+- **🆕 HTML Formatter**: Specialized formatter for HTML/CSS analysis results with structured table output
+- **🆕 Plugin-based Extension**: Easy addition of new formatters through `IFormatter` interface
+- **🆕 Enhanced Format Support**: Extended `analyze_code_structure` tool to support new `html` format type
+
+#### Advanced Plugin System
+- **🆕 Language Plugin Architecture**: Extensible plugin system for adding new language support
+- **🆕 HTML Plugin**: Complete HTML language plugin with tree-sitter integration
+- **🆕 CSS Plugin**: Complete CSS language plugin with property analysis
+- **🆕 Element Categories**: Plugin-based element categorization for better code understanding
+
+### 🔧 Enhanced
+
+#### Architecture Improvements
+- **Enhanced**: Unified element system now supports HTML and CSS elements alongside traditional code elements
+- **Enhanced**: `AnalysisResult` model extended to handle mixed element types (code, markup, style)
+- **Enhanced**: Better separation of concerns with specialized formatters and plugins
+- **Enhanced**: Improved extensibility through Strategy and Factory patterns
+
+#### MCP Tools Enhancement
+- **Enhanced**: `analyze_code_structure` tool now supports HTML format output
+- **Enhanced**: Better language detection for HTML and CSS files
+- **Enhanced**: Improved error handling for web technology analysis
+
+#### Developer Experience
+- **Enhanced**: Comprehensive test coverage for new HTML/CSS functionality
+- **Enhanced**: Better documentation and examples for web technology analysis
+- **Enhanced**: Improved CLI commands with HTML/CSS analysis examples
+
+### 📊 Technical Details
+
+#### New Files Added
+- `tree_sitter_analyzer/models.py`: Extended with `MarkupElement` and `StyleElement` classes
+- `tree_sitter_analyzer/formatters/formatter_registry.py`: Dynamic formatter management
+- `tree_sitter_analyzer/formatters/html_formatter.py`: Specialized HTML/CSS formatter
+- `tree_sitter_analyzer/plugins/base.py`: Enhanced plugin base classes
+- `tree_sitter_analyzer/languages/html_plugin.py`: Complete HTML language plugin
+- `tree_sitter_analyzer/languages/css_plugin.py`: Complete CSS language plugin
+
+#### Test Coverage
+- **Added**: Comprehensive test suite for new HTML/CSS functionality
+- **Added**: `tests/test_models_extended.py`: Extended data model testing
+- **Added**: `tests/test_formatter_registry.py`: Formatter registry testing
+- **Added**: `tests/test_html_formatter.py`: HTML formatter testing
+- **Added**: `tests/test_plugins_base.py`: Plugin system testing
+- **Added**: `tests/test_html_plugin.py`: HTML plugin testing
+- **Added**: Test data files: `tests/test_data/sample.html`, `tests/test_data/sample.css`
+
+#### Breaking Changes
+- **None**: All improvements are backward compatible
+- **Maintained**: Existing CLI and MCP functionality unchanged
+- **Extended**: New functionality is additive and optional
+
+### 🎯 Impact
+
+#### For Web Developers
+- **New Capability**: Analyze HTML structure and CSS rules with same precision as code analysis
+- **Better Understanding**: Intelligent classification of web elements and properties
+- **Enhanced Workflow**: Structured analysis output optimized for web development
+
+#### For AI Assistants
+- **Enhanced Integration**: Better understanding of web technologies through structured data models
+- **Improved Analysis**: More precise extraction of web component information
+- **Extended Capabilities**: Support for mixed HTML/CSS/JavaScript project analysis
+
+#### For Framework Development
+- **Extensible Foundation**: Easy addition of new language support through plugin system
+- **Flexible Formatting**: Dynamic formatter registration for custom output formats
+- **Maintainable Architecture**: Clean separation of concerns with specialized components
+
+### 📈 Quality Metrics
+- **Test Coverage**: All new functionality covered by comprehensive test suite
+- **Code Quality**: Maintains high standards with type safety and documentation
+- **Performance**: Efficient analysis with minimal overhead for new features
+- **Compatibility**: Full backward compatibility with existing functionality
+
+This major release establishes Tree-sitter Analyzer as a comprehensive analysis tool for modern web development, extending beyond traditional programming languages to support the full web technology stack.
+
+## [1.7.5] - 2025-10-12
+
+### Improved
+- **📊 Quality Metrics**:
+  - Test count maintained at 2934 tests (100% pass rate)
+  - Continued high code coverage and system stability
+  - Enterprise-grade quality assurance maintained
+- **🔧 Development Workflow**: Routine maintenance release following GitFlow best practices
+- **📚 Documentation**: Updated version references and maintained comprehensive documentation
+
+### Technical Details
+- **Test Coverage**: All 2934 tests passing with maintained high coverage
+- **Quality Metrics**: Stable test suite with consistent quality metrics
+- **Breaking Changes**: None - all improvements are backward compatible
+
+This maintenance release ensures continued stability and updates version references across the project.
+
+## [1.7.4] - 2025-10-10
+
+### Improved
+- **📊 Quality Metrics**:
+  - Test count increased to 2934 (up from 2831)
+  - Code coverage improved to 80.08% (up from 79.19%)
+  - All tests passing with enhanced system stability
+- **🔧 Development Workflow**: Continued improvements to development and release processes
+- **📚 Documentation**: Maintained comprehensive documentation and examples
+
+### Technical Details
+- **Test Coverage**: All 2934 tests passing with 80.08% coverage
+- **Quality Metrics**: Enhanced test suite with improved coverage
+- **Breaking Changes**: None - all improvements are backward compatible
+
+This minor release maintains the high quality standards while improving test coverage and system stability.
+
+## [1.7.3] - 2025-10-09
+
+### Added
+- **🆕 Complete Markdown Plugin Enhancement**: Comprehensive Markdown element extraction capabilities
+  - **5 New Element Types**: Added blockquotes, horizontal rules, HTML elements, text formatting, and footnotes
+  - **Enhanced Element Extraction**: New extraction methods for comprehensive Markdown analysis
+  - **Structured Analysis**: Convert Markdown documents to structured data for AI processing
+  - **Query System Integration**: Full integration with existing query and filtering functionality
+
+- **📝 New Markdown Extraction Methods**: Powerful new analysis capabilities
+  - `extract_blockquotes()`: Extract > quoted text blocks with proper attribution
+  - `extract_horizontal_rules()`: Extract ---, ***, ___ separators and dividers
+  - `extract_html_elements()`: Extract HTML blocks and inline tags within Markdown
+  - `extract_text_formatting()`: Extract **bold**, *italic*, `code`, ~~strikethrough~~ formatting
+  - `extract_footnotes()`: Extract [^1] references and definitions with linking
+
+- **🔧 Enhanced Tree-sitter Queries**: Extended query system for comprehensive parsing
+  - **New Footnotes Query**: Dedicated query for footnote references and definitions
+  - **Updated All Elements Query**: Enhanced query covering all 10 Markdown element types
+  - **Improved Pattern Matching**: Better recognition of complex Markdown structures
+
+### Enhanced
+- **📊 Markdown Formatter Improvements**: Enhanced table display for new element types
+  - **Comprehensive Element Display**: All 10 element types now displayed in structured tables
+  - **Better Formatting**: Improved readability and organization of Markdown analysis results
+  - **Consistent Output**: Unified formatting across all Markdown element types
+
+- **🧪 Test Suite Expansion**: Comprehensive test coverage for new functionality
+  - **67 New Test Cases**: Complete validation of all new Markdown features
+  - **Element-Specific Testing**: Dedicated tests for each new extraction method
+  - **Integration Testing**: Full validation of query system integration
+  - **Backward Compatibility**: Ensured all existing functionality remains intact
+
+### Improved
+- **📊 Quality Metrics**:
+  - Test count increased to 2831 (up from 2829)
+  - Code coverage improved to 79.19% (up from 76.51%)
+  - All tests passing with enhanced system stability
+  - CLI regression tests updated to reflect 47→69 elements (46% improvement)
+
+- **📚 Documentation**: Enhanced examples/test_markdown.md analysis coverage significantly
+- **🔧 Development Workflow**: Improved Markdown analysis capabilities for AI-assisted development
+- **🎯 Element Coverage**: Expanded from 5 to 10 Markdown element types for comprehensive analysis
+
+### Technical Details
+- **Enhanced Files**:
+  - `tree_sitter_analyzer/languages/markdown_plugin.py` - Added 5 new extraction methods
+  - `tree_sitter_analyzer/formatters/markdown_formatter.py` - Enhanced table formatting
+  - `tree_sitter_analyzer/queries/markdown.py` - Extended query definitions
+- **Test Coverage**: All 2831 tests passing with 79.19% coverage
+- **Quality Metrics**: Enhanced Markdown plugin with comprehensive validation
+- **Breaking Changes**: None - all improvements are backward compatible
+- **Element Count**: Increased from 47 to 69 elements in examples/test_markdown.md analysis
+
+This minor release introduces comprehensive Markdown analysis capabilities, making Tree-sitter Analyzer a powerful tool for document analysis and AI-assisted Markdown processing, while maintaining full backward compatibility.
+
+## [1.7.2] - 2025-10-09
+
+### Added
+- **🎯 File Output Optimization for MCP Search Tools**: Revolutionary token-efficient search result handling
+  - **Token Limit Solution**: New `suppress_output` and `output_file` parameters for `find_and_grep`, `list_files`, and `search_content` tools
+  - **Automatic Format Detection**: Smart file format selection (JSON/Markdown) based on content type
+  - **Massive Token Savings**: Reduces response size by up to 99% when saving large search results to files
+  - **Backward Compatibility**: Optional feature that doesn't affect existing functionality
+
+- **📚 ROO Rules Documentation**: Comprehensive optimization guide for tree-sitter-analyzer MCP usage
+  - **Complete Usage Guidelines**: Detailed rules for efficient MCP tool usage and token optimization
+  - **Japanese Language Support**: Full documentation in Japanese for ROO AI assistant integration
+  - **Best Practices**: Step-by-step optimization strategies for large-scale code analysis
+  - **Token Management**: Advanced techniques for handling large search results efficiently
+
+### Enhanced
+- **🔍 MCP Search Tools**: Enhanced `find_and_grep_tool`, `list_files_tool`, and `search_content_tool`
+  - **File Output Support**: Save large results to files instead of returning in responses
+  - **Token Optimization**: Dramatically reduces context usage for large analysis results
+  - **Smart Output Control**: When `suppress_output=true` and `output_file` is specified, only essential metadata is returned
+
+### Improved
+- **📊 Quality Metrics**:
+  - Test count increased to 2675 (up from 2662)
+  - Code coverage maintained at 78.85%
+  - All tests passing with continued system stability
+- **🔧 Development Workflow**: Enhanced MCP tools with better token management for AI-assisted development
+- **📚 Documentation**: Added comprehensive ROO rules for optimal tree-sitter-analyzer usage
+
+### Technical Details
+- **New Files**:
+  - `.roo/rules/ROO_RULES.md` - Comprehensive MCP optimization guidelines
+  - `tests/test_file_output_optimization.py` - Test coverage for file output features
+- **Enhanced Files**:
+  - `tree_sitter_analyzer/mcp/tools/find_and_grep_tool.py` - Added file output support
+  - `tree_sitter_analyzer/mcp/tools/list_files_tool.py` - Added file output support  
+  - `tree_sitter_analyzer/mcp/tools/search_content_tool.py` - Added file output support
+- **Test Coverage**: All 2675 tests passing with 78.85% coverage
+- **Quality Metrics**: Enhanced file output optimization with comprehensive validation
+- **Breaking Changes**: None - all improvements are backward compatible
+
+This minor release introduces game-changing file output optimization that solves token length limitations for large search results, along with comprehensive ROO rules documentation for optimal MCP tool usage.
+
+## [1.7.1] - 2025-10-09
+
+### Improved
+- **📊 Quality Metrics**:
+  - Test count maintained at 2662 tests
+  - Code coverage maintained at 79.16%
+  - All tests passing with continued system stability
+- **🔧 Version Management**: Updated version synchronization and release preparation
+- **📚 Documentation**: Updated all README versions with v1.7.1 version information
+
+### Technical
+- **🚀 Release Process**: Streamlined GitFlow release automation
+- **🔄 Version Sync**: Enhanced version synchronization across all project files
+- **📦 Build System**: Improved release preparation and packaging
+
+## [1.7.0] - 2025-10-09
+
+### Added
+- **🎯 suppress_output Feature**: Revolutionary token optimization feature for `analyze_code_structure` tool
+  - **Token Limit Solution**: New `suppress_output` parameter reduces response size by up to 99% when saving to files
+  - **Smart Output Control**: When `suppress_output=true` and `output_file` is specified, only essential metadata is returned
+  - **Backward Compatibility**: Optional feature that doesn't affect existing functionality
+  - **Performance Optimization**: Dramatically reduces context usage for large analysis results
+
+- **📊 Enhanced MCP Tools Documentation**: Comprehensive MCP tools reference and usage guide
+  - **Complete Tool List**: All 12 MCP tools documented with detailed descriptions
+  - **Usage Examples**: Practical examples for each tool with real-world scenarios
+  - **Parameter Reference**: Complete parameter documentation for all tools
+  - **Integration Guide**: Step-by-step setup instructions for AI assistants
+
+- **🌐 Multi-language Documentation Updates**: Synchronized documentation across all language versions
+  - **Chinese (README_zh.md)**: Updated with new statistics and MCP tools documentation
+  - **Japanese (README_ja.md)**: Complete translation with feature explanations
+  - **English (README.md)**: Enhanced with comprehensive MCP tools reference
+
+### Improved
+- **📊 Quality Metrics**:
+  - Test count increased to 2662 (up from 2046)
+  - Code coverage maintained at 79.16%
+  - All tests passing with improved system stability
+- **🔧 Code Quality**: Enhanced suppress_output feature implementation and testing
+- **📚 Documentation**: Updated all README versions with new statistics and comprehensive MCP tools documentation
+
+### Technical Details
+- **New Files**:
+  - `examples/suppress_output_demo.py` - Demonstration of suppress_output feature
+  - `tests/test_suppress_output_feature.py` - 356 comprehensive test cases
+- **Enhanced Files**:
+  - `tree_sitter_analyzer/mcp/tools/table_format_tool.py` - Added suppress_output functionality
+  - All README files updated with v1.7.0 statistics and MCP tools documentation
+- **Test Coverage**: All 2662 tests passing with 79.16% coverage
+- **Quality Metrics**: Enhanced suppress_output feature with comprehensive validation
+- **Breaking Changes**: None - all improvements are backward compatible
+
+This minor release introduces the game-changing suppress_output feature that solves token length limitations for large analysis results, along with comprehensive MCP tools documentation across all language versions.
+
+## [1.6.2] - 2025-10-07
+
+### Added
+- **🚀 Complete TypeScript Support**: Comprehensive TypeScript language analysis capabilities
+  - **TypeScript Plugin**: Full TypeScript language plugin implementation (`tree_sitter_analyzer/languages/typescript_plugin.py`)
+  - **Syntax Support**: Support for interfaces, type aliases, enums, generics, decorators, and all TypeScript features
+  - **TSX/JSX Support**: Complete React TypeScript component analysis
+  - **Framework Detection**: Automatic detection of React, Angular, Vue components
+  - **Type Annotations**: Full TypeScript type system support
+  - **TSDoc Extraction**: Automatic extraction of TypeScript documentation comments
+  - **Complexity Analysis**: TypeScript code complexity calculation
+
+- **📦 Dependency Configuration**: TypeScript-related dependencies fully configured
+  - **Optional Dependency**: `tree-sitter-typescript>=0.20.0,<0.25.0`
+  - **Dependency Groups**: Included in web, popular, all-languages dependency groups
+  - **Full Support**: Support for .ts, .tsx, .d.ts file extensions
+
+- **🧪 Test Coverage**: Complete TypeScript test suite
+  - **Comprehensive Tests**: Full TypeScript feature testing
+  - **Example Files**: Detailed TypeScript code examples provided
+  - **Integration Tests**: TypeScript plugin integration testing
+
+### Improved
+- **📊 Quality Metrics**:
+  - Test count increased to 2046 (up from 1893)
+  - Code coverage maintained at 69.67%
+  - All tests passing with improved system stability
+- **🔧 Code Quality**: Complete TypeScript support implementation and testing
+- **📚 Documentation**: Updated all related documentation and examples
+
+### Technical Details
+- **New Files**: Complete TypeScript plugin, queries, formatters implementation
+- **Test Coverage**: All 2046 tests passing with 69.67% coverage
+- **Quality Metrics**: Full TypeScript language support
+- **Breaking Changes**: None - all improvements are backward compatible
+
+This minor release introduces complete TypeScript support, providing developers with powerful TypeScript code analysis capabilities while maintaining full backward compatibility.
+
 ## [1.6.0] - 2025-10-06
 
 ### Added

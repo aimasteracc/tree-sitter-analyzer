@@ -304,8 +304,13 @@ class TestQueryService:
         mock_node.start_point = (10, 4)
         mock_node.end_point = (15, 8)
         mock_node.text = b"public void test() {}"
+        # Add byte-based attributes for get_node_text_safe
+        mock_node.start_byte = 0
+        mock_node.end_byte = 21
 
-        result = self.query_service._create_result_dict(mock_node, "method")
+        # Pass source_code parameter to _create_result_dict
+        source_code = "public void test() {}"
+        result = self.query_service._create_result_dict(mock_node, "method", source_code)
 
         assert result["capture_name"] == "method"
         assert result["node_type"] == "method_declaration"

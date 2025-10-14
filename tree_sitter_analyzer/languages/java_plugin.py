@@ -201,9 +201,12 @@ class JavaElementExtractor(ElementExtractor):
                         import_name = static_match.group(1)
                         if import_content.endswith(".*"):
                             import_name = import_name.replace(".*", "")
-                            parts = import_name.split(".")
-                            if len(parts) > 1:
-                                import_name = ".".join(parts[:-1])
+                        
+                        # For static imports, extract the class name (remove method/field name)
+                        parts = import_name.split(".")
+                        if len(parts) > 1:
+                            # Remove the last part (method/field name) to get class name
+                            import_name = ".".join(parts[:-1])
 
                         imports.append(
                             Import(
@@ -255,6 +258,10 @@ class JavaElementExtractor(ElementExtractor):
         packages: list[Package] = []
 
         # Extract package declaration
+        if tree is None or tree.root_node is None:
+            log_debug("Tree or root_node is None, returning empty packages list")
+            return packages
+            
         for child in tree.root_node.children:
             if child.type == "package_declaration":
                 package_info = self._extract_package_element(child)
@@ -1054,10 +1061,12 @@ class JavaElementExtractor(ElementExtractor):
                     # Handle wildcard case
                     if import_content.endswith(".*"):
                         import_name = import_name.replace(".*", "")
-                        # For static wildcard, remove last element
-                        parts = import_name.split(".")
-                        if len(parts) > 1:
-                            import_name = ".".join(parts[:-1])
+                    
+                    # For static imports, extract the class name (remove method/field name)
+                    parts = import_name.split(".")
+                    if len(parts) > 1:
+                        # Remove the last part (method/field name) to get class name
+                        import_name = ".".join(parts[:-1])
 
                     return Import(
                         name=import_name,
@@ -1099,6 +1108,20 @@ class JavaElementExtractor(ElementExtractor):
             log_error(f"Unexpected error in import extraction: {e}")
         return None
 
+    def extract_elements(self, tree: "tree_sitter.Tree", source_code: str) -> list:
+        """Extract elements from source code using tree-sitter AST"""
+        elements = []
+        
+        try:
+            elements.extend(self.extract_functions(tree, source_code))
+            elements.extend(self.extract_classes(tree, source_code))
+            elements.extend(self.extract_variables(tree, source_code))
+            elements.extend(self.extract_imports(tree, source_code))
+        except Exception as e:
+            log_error(f"Failed to extract elements: {e}")
+        
+        return elements
+
 
 class JavaPlugin(LanguagePlugin):
     """Java language plugin for the new architecture"""
@@ -1107,6 +1130,12 @@ class JavaPlugin(LanguagePlugin):
         """Initialize the Java plugin"""
         super().__init__()
         self._language_cache: tree_sitter.Language | None = None
+        self._extractor: Optional[JavaElementExtractor] = None
+        
+        # Legacy attributes for backward compatibility with tests
+        self.language = "java"
+        self.extractor = self.create_extractor()
+        self.supported_extensions = self.get_file_extensions()
 
     def get_language_name(self) -> str:
         """Return the name of the programming language this plugin supports"""
@@ -1119,6 +1148,12 @@ class JavaPlugin(LanguagePlugin):
     def create_extractor(self) -> ElementExtractor:
         """Create and return an element extractor for this language"""
         return JavaElementExtractor()
+
+    def get_extractor(self) -> ElementExtractor:
+        """Get the cached extractor instance, creating it if necessary"""
+        if self._extractor is None:
+            self._extractor = JavaElementExtractor()
+        return self._extractor
 
     def get_tree_sitter_language(self) -> Optional["tree_sitter.Language"]:
         """Get the Tree-sitter language object for Java"""
@@ -1154,6 +1189,122 @@ class JavaPlugin(LanguagePlugin):
             "extensions": self.get_file_extensions(),
             "version": "2.0.0",
             "supported_queries": self.get_supported_queries(),
+        }
+
+    def execute_query_strategy(self, tree: "tree_sitter.Tree", source_code: str, query_key: str) -> list[dict]:
+        """
+        Execute query strategy for Java language
+        
+        Args:
+            tree: Tree-sitter tree object
+            source_code: Source code string
+            query_key: Query key to execute
+            
+        Returns:
+            List of query results
+        """
+        # Use the extractor to get elements based on query_key
+        extractor = self.get_extractor()
+        
+        # Map query keys to extraction methods
+        if query_key in ["method", "methods", "function", "functions"]:
+            elements = extractor.extract_functions(tree, source_code)
+        elif query_key in ["class", "classes"]:
+            elements = extractor.extract_classes(tree, source_code)
+        elif query_key in ["field", "fields", "variable", "variables"]:
+            elements = extractor.extract_variables(tree, source_code)
+        elif query_key in ["import", "imports"]:
+            elements = extractor.extract_imports(tree, source_code)
+        elif query_key in ["package", "packages"]:
+            elements = extractor.extract_packages(tree, source_code)
+        elif query_key in ["annotation", "annotations"]:
+            elements = extractor.extract_annotations(tree, source_code)
+        else:
+            # For unknown query keys, return empty list
+            return []
+        
+        # Convert elements to query result format
+        results = []
+        for element in elements:
+            result = {
+                "capture_name": query_key,
+                "node_type": self._get_node_type_for_element(element),
+                "start_line": element.start_line,
+                "end_line": element.end_line,
+                "text": element.raw_text,
+                "name": element.name,
+            }
+            results.append(result)
+        
+        return results
+    
+    def _get_node_type_for_element(self, element) -> str:
+        """Get appropriate node type for element"""
+        from ..models import Function, Class, Variable, Import, Package
+        
+        if isinstance(element, Function):
+            return "method_declaration" if not element.is_constructor else "constructor_declaration"
+        elif isinstance(element, Class):
+            if element.class_type == "interface":
+                return "interface_declaration"
+            elif element.class_type == "enum":
+                return "enum_declaration"
+            else:
+                return "class_declaration"
+        elif isinstance(element, Variable):
+            return "field_declaration"
+        elif isinstance(element, Import):
+            return "import_declaration"
+        elif isinstance(element, Package):
+            return "package_declaration"
+        else:
+            return "unknown"
+
+    def get_element_categories(self) -> dict[str, list[str]]:
+        """
+        Get element categories mapping query keys to node types
+        
+        Returns:
+            Dictionary mapping query keys to lists of node types
+        """
+        return {
+            # Method-related queries
+            "method": ["method_declaration"],
+            "methods": ["method_declaration"],
+            "constructor": ["constructor_declaration"],
+            "constructors": ["constructor_declaration"],
+            
+            # Class-related queries
+            "class": ["class_declaration"],
+            "classes": ["class_declaration"],
+            "interface": ["interface_declaration"],
+            "interfaces": ["interface_declaration"],
+            "enum": ["enum_declaration"],
+            "enums": ["enum_declaration"],
+            
+            # Field-related queries
+            "field": ["field_declaration"],
+            "fields": ["field_declaration"],
+            
+            # Import-related queries
+            "import": ["import_declaration"],
+            "imports": ["import_declaration"],
+            
+            # Package-related queries
+            "package": ["package_declaration"],
+            "packages": ["package_declaration"],
+            
+            # Annotation-related queries
+            "annotation": ["annotation", "marker_annotation"],
+            "annotations": ["annotation", "marker_annotation"],
+            
+            # Generic queries
+            "all_elements": [
+                "method_declaration", "constructor_declaration",
+                "class_declaration", "interface_declaration", "enum_declaration",
+                "field_declaration", "import_declaration", "package_declaration",
+                "annotation", "marker_annotation"
+            ],
         }
 
     async def analyze_file(
@@ -1270,3 +1421,29 @@ class JavaPlugin(LanguagePlugin):
                 success=False,
                 error_message=str(e),
             )
+
+    def extract_elements(self, tree: "tree_sitter.Tree", source_code: str) -> dict[str, list[CodeElement]]:
+        """Legacy method for backward compatibility with tests"""
+        if not tree or not tree.root_node:
+            return {
+                "packages": [],
+                "functions": [],
+                "classes": [],
+                "variables": [],
+                "imports": [],
+                "annotations": []
+            }
+        
+        extractor = self.create_extractor()
+        
+        # Extract all types of elements and return as dictionary
+        result = {
+            "packages": extractor.extract_packages(tree, source_code),
+            "functions": extractor.extract_functions(tree, source_code),
+            "classes": extractor.extract_classes(tree, source_code),
+            "variables": extractor.extract_variables(tree, source_code),
+            "imports": extractor.extract_imports(tree, source_code),
+            "annotations": extractor.extract_annotations(tree, source_code)
+        }
+        
+        return result

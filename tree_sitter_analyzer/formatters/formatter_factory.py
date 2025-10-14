@@ -7,6 +7,7 @@ from .base_formatter import BaseTableFormatter
 from .java_formatter import JavaTableFormatter
 from .javascript_formatter import JavaScriptTableFormatter
 from .python_formatter import PythonTableFormatter
+from .typescript_formatter import TypeScriptTableFormatter
 
 
 class TableFormatterFactory:
@@ -17,6 +18,8 @@ class TableFormatterFactory:
         "javascript": JavaScriptTableFormatter,
         "js": JavaScriptTableFormatter,  # Alias
         "python": PythonTableFormatter,
+        "typescript": TypeScriptTableFormatter,
+        "ts": TypeScriptTableFormatter,  # Alias
     }
 
     @classmethod

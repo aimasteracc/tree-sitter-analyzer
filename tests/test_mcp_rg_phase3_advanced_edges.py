@@ -6,6 +6,15 @@ from tree_sitter_analyzer.mcp.tools.find_and_grep_tool import FindAndGrepTool
 from tree_sitter_analyzer.mcp.tools.search_content_tool import SearchContentTool
 
 
+@pytest.fixture(autouse=True)
+def mock_external_commands(monkeypatch):
+    """Auto-mock external command availability checks for all tests in this module."""
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.mcp.tools.fd_rg_utils.check_external_command",
+        lambda cmd: True
+    )
+
+
 @pytest.mark.unit
 def test_rg_26_build_count_only_mode(tmp_path):
     from tree_sitter_analyzer.mcp.tools import fd_rg_utils

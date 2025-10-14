@@ -572,7 +572,7 @@ IMPORTS = """
         (named_imports
             (import_specifier
                 name: (identifier) @import.name
-                alias: (identifier)? @import.alias))) @import.named
+                alias: (identifier)? @import.alias)))) @import.named
 
 (import_statement
     (import_clause
@@ -643,6 +643,26 @@ ALL_QUERIES["objects"] = {
     "description": "Search object literals and property definitions",
 }
 ALL_QUERIES["comments"] = {"query": COMMENTS, "description": "Search all comments"}
+
+# Add missing method queries
+ALL_QUERIES["method"] = {
+    "query": """
+(method_definition
+    name: (property_identifier) @method_name
+    parameters: (formal_parameters) @parameters
+    body: (statement_block) @body) @method_definition
+""",
+    "description": "Search method definitions",
+}
+ALL_QUERIES["methods"] = {
+    "query": """
+(method_definition
+    name: (property_identifier) @method_name
+    parameters: (formal_parameters) @parameters
+    body: (statement_block) @body) @method_definition
+""",
+    "description": "Search method definitions",
+}
 
 
 def get_javascript_query(name: str) -> str:

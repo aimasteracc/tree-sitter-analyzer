@@ -18,6 +18,7 @@ from ...constants import (
     is_element_of_type,
 )
 from ...core.analysis_engine import AnalysisRequest, get_analysis_engine
+from ...formatters.formatter_registry import FormatterRegistry
 from ...language_detector import detect_language_from_file
 from ...table_formatter import TableFormatter
 from ...utils import setup_logger
@@ -73,7 +74,7 @@ class TableFormatTool(BaseMCPTool):
                 "format_type": {
                     "type": "string",
                     "description": "Table format type",
-                    "enum": ["full", "compact", "csv", "json"],
+                    "enum": list(set(FormatterRegistry.get_available_formats() + ["full", "compact", "csv", "json"])),
                     "default": "full",
                 },
                 "language": {
@@ -83,6 +84,11 @@ class TableFormatTool(BaseMCPTool):
                 "output_file": {
                     "type": "string",
                     "description": "Optional filename to save output to file (extension auto-detected based on content)",
+                },
+                "suppress_output": {
+                    "type": "boolean",
+                    "description": "When true and output_file is specified, suppress table_output in response to save tokens",
+                    "default": False,
                 },
             },
             "required": ["file_path"],
@@ -118,8 +124,11 @@ class TableFormatTool(BaseMCPTool):
             format_type = arguments["format_type"]
             if not isinstance(format_type, str):
                 raise ValueError("format_type must be a string")
-            if format_type not in ["full", "compact", "csv", "json"]:
-                raise ValueError("format_type must be one of: full, compact, csv, json")
+            
+            # Check both new FormatterRegistry formats and legacy formats
+            available_formats = list(set(FormatterRegistry.get_available_formats() + ["full", "compact", "csv", "json"]))
+            if format_type not in available_formats:
+                raise ValueError(f"format_type must be one of: {', '.join(sorted(available_formats))}")
 
         # Validate language if provided
         if "language" in arguments:
@@ -134,6 +143,12 @@ class TableFormatTool(BaseMCPTool):
                 raise ValueError("output_file must be a string")
             if not output_file.strip():
                 raise ValueError("output_file cannot be empty")
+
+        # Validate suppress_output if provided
+        if "suppress_output" in arguments:
+            suppress_output = arguments["suppress_output"]
+            if not isinstance(suppress_output, bool):
+                raise ValueError("suppress_output must be a boolean")
 
         return True
 
@@ -231,6 +246,7 @@ class TableFormatTool(BaseMCPTool):
             package_info = {"name": packages[0].name}
 
         return {
+            "success": True,
             "file_path": result.file_path,
             "language": result.language,
             "package": package_info,
@@ -365,19 +381,28 @@ class TableFormatTool(BaseMCPTool):
             format_type = args.get("format_type", "full")
             language = args.get("language")
             output_file = args.get("output_file")
+            suppress_output = args.get("suppress_output", False)
 
-            # Resolve file path using common path resolver
-            resolved_path = self.path_resolver.resolve(file_path)
-
-            # Security validation
-            is_valid, error_msg = self.security_validator.validate_file_path(
-                resolved_path
-            )
+            # Security validation BEFORE path resolution to catch symlinks
+            is_valid, error_msg = self.security_validator.validate_file_path(file_path)
             if not is_valid:
                 self.logger.warning(
                     f"Security validation failed for file path: {file_path} - {error_msg}"
                 )
                 raise ValueError(f"Invalid file path: {error_msg}")
+
+            # Resolve file path using common path resolver
+            resolved_path = self.path_resolver.resolve(file_path)
+
+            # Additional security validation on resolved path
+            is_valid, error_msg = self.security_validator.validate_file_path(
+                resolved_path
+            )
+            if not is_valid:
+                self.logger.warning(
+                    f"Security validation failed for resolved path: {resolved_path} - {error_msg}"
+                )
+                raise ValueError(f"Invalid resolved path: {error_msg}")
 
             # Sanitize format_type input
             if format_type:
@@ -396,6 +421,10 @@ class TableFormatTool(BaseMCPTool):
                 output_file = self.security_validator.sanitize_input(
                     output_file, max_length=255
                 )
+
+            # Sanitize suppress_output input (boolean, no sanitization needed but validate type)
+            if suppress_output is not None and not isinstance(suppress_output, bool):
+                raise ValueError("suppress_output must be a boolean")
 
             # Validate file exists
             if not Path(resolved_path).exists():
@@ -423,14 +452,24 @@ class TableFormatTool(BaseMCPTool):
                         f"Failed to analyze structure for file: {file_path}"
                     )
 
-                # Create table formatter
-                formatter = TableFormatter(format_type)
-
-                # Convert AnalysisResult to dict format for TableFormatter
+                # Always convert analysis result to dict for metadata extraction
                 structure_dict = self._convert_analysis_result_to_dict(structure_result)
-
-                # Format table
-                table_output = formatter.format_structure(structure_dict)
+                
+                # Try to use new FormatterRegistry first, fallback to legacy TableFormatter
+                try:
+                    if FormatterRegistry.is_format_supported(format_type):
+                        # Use new FormatterRegistry
+                        formatter = FormatterRegistry.get_formatter(format_type)
+                        table_output = formatter.format(structure_result.elements)
+                    else:
+                        # Fallback to legacy TableFormatter for backward compatibility
+                        formatter = TableFormatter(format_type)
+                        table_output = formatter.format_structure(structure_dict)
+                except Exception as e:
+                    # If FormatterRegistry fails, fallback to legacy TableFormatter
+                    logger.warning(f"FormatterRegistry failed, using legacy formatter: {e}")
+                    formatter = TableFormatter(format_type)
+                    table_output = formatter.format_structure(structure_dict)
 
                 # Ensure output format matches CLI exactly
                 # Fix line ending differences: normalize to Unix-style LF (\n)
@@ -452,13 +491,18 @@ class TableFormatTool(BaseMCPTool):
                         "total_lines": stats.get("total_lines", 0),
                     }
 
+                # Build result - conditionally include table_output based on suppress_output
                 result = {
-                    "table_output": table_output,
+                    "success": True,
                     "format_type": format_type,
                     "file_path": file_path,
                     "language": language,
                     "metadata": metadata,
                 }
+
+                # Only include table_output if not suppressed or no output file specified
+                if not suppress_output or not output_file:
+                    result["table_output"] = table_output
 
                 # Handle file output if requested
                 if output_file:
@@ -491,28 +535,18 @@ class TableFormatTool(BaseMCPTool):
             self.logger.error(f"Error in code structure analysis tool: {e}")
             raise
 
-    def get_tool_definition(self) -> Any:
+    def get_tool_definition(self) -> dict[str, Any]:
         """
         Get the MCP tool definition for analyze_code_structure.
 
         Returns:
-            Tool definition object compatible with MCP server
+            Tool definition dictionary compatible with MCP server
         """
-        try:
-            from mcp.types import Tool
-
-            return Tool(
-                name="analyze_code_structure",
-                description="Analyze code structure and generate detailed overview tables (classes, methods, fields) for large files",
-                inputSchema=self.get_tool_schema(),
-            )
-        except ImportError:
-            # Fallback for when MCP is not available
-            return {
-                "name": "analyze_code_structure",
-                "description": "Analyze code structure and generate detailed overview tables (classes, methods, fields) for large files",
-                "inputSchema": self.get_tool_schema(),
-            }
+        return {
+            "name": "analyze_code_structure",
+            "description": "Analyze code structure and generate detailed overview tables (classes, methods, fields) with line positions for large files, optionally save to file",
+            "inputSchema": self.get_tool_schema(),
+        }
 
 
 # Tool instance for easy access

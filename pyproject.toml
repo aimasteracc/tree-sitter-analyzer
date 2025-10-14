@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "tree-sitter-analyzer"
-version = "1.6.0"
-description = "Extensible multi-language code analyzer framework using Tree-sitter with dynamic plugin architecture"
+version = "1.8.2"
+description = "AI-era enterprise-grade code analysis tool with comprehensive HTML/CSS support, dynamic plugin architecture, and MCP integration"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
@@ -22,6 +22,9 @@ keywords = [
     "parsing",
     "static-analysis",
     "multi-language",
+    "html",
+    "css",
+    "web-development",
     "mcp",
     "mcp-server",
     "model-context-protocol",
@@ -48,8 +51,9 @@ classifiers = [
 ]
 
 # Core dependencies (minimal set for basic functionality)
+# Includes HTML/CSS support for comprehensive web technology analysis
 dependencies = [
-    "tree-sitter==0.24.0",
+    "tree-sitter>=0.25.0",
     "chardet>=5.0.0",
     "cachetools>=5.0.0",
     "tree-sitter-java>=0.23.5,<0.25.0",
@@ -57,6 +61,11 @@ dependencies = [
     "tree-sitter-python>=0.23.6,<0.25.0",
     "mcp>=1.12.3",
     "tree-sitter-javascript>=0.23.1,<0.25.0",
+    "tree-sitter-markdown>=0.3.1",
+    "tree-sitter-html>=0.23.0,<0.25.0",  # HTML language support with MarkupElement data model
+    "tree-sitter-css>=0.23.0,<0.25.0",   # CSS language support with StyleElement data model
+    "psutil>=5.9.8",
+    "tree-sitter-typescript>=0.23.2",
 ]
 
 [project.optional-dependencies]
@@ -65,7 +74,9 @@ java = ["tree-sitter-java>=0.23.5,<0.25.0"]
 javascript = [
     "tree-sitter-javascript>=0.23.1,<0.25.0",
 ]
-typescript = ["tree-sitter-typescript>=0.20.0,<0.25.0"]
+typescript = [
+    "tree-sitter-typescript>=0.20.0,<0.25.0",
+]
 python = [
     "tree-sitter-python>=0.23.0,<0.25.0",
 ]
@@ -73,11 +84,16 @@ c = ["tree-sitter-c>=0.20.0,<0.25.0"]
 cpp = ["tree-sitter-cpp>=0.23.4,<0.25.0"]
 rust = ["tree-sitter-rust>=0.20.0,<0.25.0"]
 go = ["tree-sitter-go>=0.20.0,<0.25.0"]
+markdown = ["tree-sitter-markdown>=0.3.1"]
+html = ["tree-sitter-html>=0.23.0,<0.25.0"]  # HTML DOM analysis with element classification
+css = ["tree-sitter-css>=0.23.0,<0.25.0"]   # CSS selector and property analysis with specificity calculation
 
 # Language bundles for convenience
 web = [
     "tree-sitter-javascript>=0.23.1,<0.25.0",
-    "tree-sitter-typescript>=0.20.0,<0.25.0"
+    "tree-sitter-typescript>=0.20.0,<0.25.0",
+    "tree-sitter-html>=0.23.0,<0.25.0",      # Complete HTML5 support with semantic analysis
+    "tree-sitter-css>=0.23.0,<0.25.0"       # Complete CSS3 support with advanced property categorization
 ]
 systems = [
     "tree-sitter-c>=0.20.0,<0.25.0",
@@ -100,6 +116,9 @@ all-languages = [
     "tree-sitter-cpp>=0.23.4,<0.25.0",
     "tree-sitter-rust>=0.20.0,<0.25.0",
     "tree-sitter-go>=0.20.0,<0.25.0",
+    "tree-sitter-markdown>=0.3.1",
+    "tree-sitter-html>=0.23.0,<0.25.0",
+    "tree-sitter-css>=0.23.0,<0.25.0",
 ]
 
 # MCP server support
@@ -139,6 +158,24 @@ test = [
     "tree-sitter-cpp>=0.23.4",
 ]
 
+# Integration testing dependencies (Phase 7)
+integration = [
+    "pytest>=8.4.1",
+    "pytest-cov>=4.0.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-mock>=3.14.1",
+    "pytest-benchmark>=4.0.0",
+    "psutil>=5.9.8",
+    "memory-profiler>=0.61.0",
+    "tree-sitter-java>=0.23.5",
+    "tree-sitter-python>=0.23.0",
+    "tree-sitter-javascript>=0.23.1",
+    "tree-sitter-typescript>=0.20.0",
+    "tree-sitter-markdown>=0.3.1",
+    "mcp>=1.12.2",
+    "anyio>=4.0.0",
+]
+
 # Complete development environment
 full = [
     "tree-sitter-java>=0.23.5,<0.25.0",
@@ -149,6 +186,7 @@ full = [
     "tree-sitter-cpp>=0.23.4,<0.25.0",
     "tree-sitter-rust>=0.20.0,<0.25.0",
     "tree-sitter-go>=0.20.0,<0.25.0",
+    "tree-sitter-markdown>=0.3.1",
     "mcp>=1.12.2",
     "anyio>=4.0.0",
     "httpx>=0.27.0,<1.0.0",
@@ -178,6 +216,7 @@ all = [
     "tree-sitter-cpp>=0.23.4,<0.25.0",
     "tree-sitter-rust>=0.20.0,<0.25.0",
     "tree-sitter-go>=0.20.0,<0.25.0",
+    "tree-sitter-markdown>=0.3.1",
     "mcp>=1.12.2",
     "anyio>=4.0.0",
     "httpx>=0.27.0,<1.0.0",
@@ -214,6 +253,10 @@ find-and-grep = "tree_sitter_analyzer.cli.commands.find_and_grep_cli:main"
 java = "tree_sitter_analyzer.languages.java_plugin:JavaPlugin"
 python = "tree_sitter_analyzer.languages.python_plugin:PythonPlugin"
 javascript = "tree_sitter_analyzer.languages.javascript_plugin:JavaScriptPlugin"
+typescript = "tree_sitter_analyzer.languages.typescript_plugin:TypeScriptPlugin"
+markdown = "tree_sitter_analyzer.languages.markdown_plugin:MarkdownPlugin"
+html = "tree_sitter_analyzer.languages.html_plugin:HtmlPlugin"
+css = "tree_sitter_analyzer.languages.css_plugin:CssPlugin"
 
 [project.urls]
 Homepage = "https://github.com/aimasteracc/tree-sitter-analyzer"
@@ -307,6 +350,7 @@ module = [
     "tree_sitter_python.*",
     "tree_sitter_javascript.*",
     "tree_sitter_cpp.*",
+    "tree_sitter_markdown.*",
 ]
 ignore_missing_imports = true
 
@@ -315,8 +359,7 @@ testpaths = ["tests"]
 python_files = "test_*.py"
 python_classes = "Test*"
 python_functions = "test_*"
-asyncio_mode = "auto"
-asyncio_default_fixture_loop_scope = "function"
+asyncio_mode = "strict"
 addopts = [
     "--strict-markers",
     "--strict-config",
@@ -371,8 +414,8 @@ directory = "htmlcov"
 # MCP server configuration
 [tool.mcp]
 server_name = "tree-sitter-analyzer"
-server_version = "1.6.0"
-description = "Tree-sitter based code analysis MCP server with multi-language support"
+server_version = "1.8.2"
+description = "AI-era enterprise-grade code analysis MCP server with comprehensive HTML/CSS support and multi-language capabilities"
 capabilities = [
     "check_code_scale",
     "analyze_code_structure",
@@ -421,4 +464,5 @@ dev = [
     "isort>=5.13.0",
     "bandit>=1.7.0",
     "safety>=3.0.0",
+    "psutil>=5.9.8",
 ]

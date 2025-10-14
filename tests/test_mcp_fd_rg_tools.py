@@ -8,6 +8,15 @@ from tree_sitter_analyzer.mcp.tools.list_files_tool import ListFilesTool
 from tree_sitter_analyzer.mcp.tools.search_content_tool import SearchContentTool
 
 
+@pytest.fixture(autouse=True)
+def mock_external_commands(monkeypatch):
+    """Auto-mock external command availability checks for all tests in this module."""
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.mcp.tools.fd_rg_utils.check_external_command",
+        lambda cmd: True
+    )
+
+
 @pytest.mark.unit
 def test_list_files_validation_requires_roots(tmp_path):
     """Test that ListFilesTool validation fails when roots parameter is missing."""

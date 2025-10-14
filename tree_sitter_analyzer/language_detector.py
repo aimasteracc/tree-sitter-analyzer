@@ -23,7 +23,7 @@ class LanguageDetector:
         ".js": "javascript",
         ".jsx": "jsx",
         ".ts": "typescript",
-        ".tsx": "tsx",
+        ".tsx": "typescript",  # TSX files are TypeScript with JSX
         ".mjs": "javascript",
         ".cjs": "javascript",
         # Python系
@@ -59,6 +59,26 @@ class LanguageDetector:
         ".m": "objc",  # Ambiguous (MATLAB as well)
         ".dart": "dart",
         ".elm": "elm",
+        # Markdown系
+        ".md": "markdown",
+        ".markdown": "markdown",
+        ".mdown": "markdown",
+        ".mkd": "markdown",
+        ".mkdn": "markdown",
+        ".mdx": "markdown",
+        # HTML系
+        ".html": "html",
+        ".htm": "html",
+        ".xhtml": "html",
+        # CSS系
+        ".css": "css",
+        ".scss": "css",
+        ".sass": "css",
+        ".less": "css",
+        # JSON系
+        ".json": "json",
+        ".jsonc": "json",
+        ".json5": "json",
     }
 
     # Ambiguous extensions (map to multiple languages)
@@ -92,6 +112,10 @@ class LanguageDetector:
         "cpp",
         "rust",
         "go",
+        "markdown",
+        "html",
+        "css",
+        "json",
     }
 
     def __init__(self) -> None:
@@ -128,6 +152,26 @@ class LanguageDetector:
             ".r": ("r", 0.9),
             ".m": ("objectivec", 0.7),
             ".mm": ("objectivec", 0.8),
+            # Markdown extensions
+            ".md": ("markdown", 0.9),
+            ".markdown": ("markdown", 0.9),
+            ".mdown": ("markdown", 0.8),
+            ".mkd": ("markdown", 0.8),
+            ".mkdn": ("markdown", 0.8),
+            ".mdx": ("markdown", 0.7),  # MDX might be mixed with JSX
+            # HTML extensions
+            ".html": ("html", 0.9),
+            ".htm": ("html", 0.9),
+            ".xhtml": ("html", 0.8),
+            # CSS extensions
+            ".css": ("css", 0.9),
+            ".scss": ("css", 0.8),  # Sass/SCSS
+            ".sass": ("css", 0.8),  # Sass
+            ".less": ("css", 0.8),  # Less
+            # JSON extensions
+            ".json": ("json", 0.9),
+            ".jsonc": ("json", 0.8),  # JSON with comments
+            ".json5": ("json", 0.8),  # JSON5 format
         }
 
         # Content-based detection patterns
@@ -169,6 +213,36 @@ class LanguageDetector:
                 (r"std::\w+", 0.2),
                 (r"class\s+\w+\s*{", 0.3),
             ],
+            "markdown": [
+                (r"^#{1,6}\s+", 0.4),  # ATX headers
+                (r"^\s*[-*+]\s+", 0.3),  # List items
+                (r"```[\w]*", 0.3),  # Fenced code blocks
+                (r"\[.*\]\(.*\)", 0.2),  # Links
+                (r"!\[.*\]\(.*\)", 0.2),  # Images
+                (r"^\s*>\s+", 0.2),  # Blockquotes
+                (r"^\s*\|.*\|", 0.2),  # Tables
+                (r"^[-=]{3,}$", 0.2),  # Setext headers or horizontal rules
+            ],
+            "html": [
+                (r"<!DOCTYPE\s+html", 0.4),  # HTML5 doctype
+                (r"<html[^>]*>", 0.3),  # HTML tag
+                (r"<head[^>]*>", 0.3),  # Head tag
+                (r"<body[^>]*>", 0.3),  # Body tag
+                (r"<div[^>]*>", 0.2),  # Div tag
+                (r"<p[^>]*>", 0.2),  # Paragraph tag
+                (r"<a\s+href=", 0.2),  # Link tag with href
+                (r"<img\s+src=", 0.2),  # Image tag with src
+            ],
+            "css": [
+                (r"[.#][\w-]+\s*{", 0.4),  # CSS selectors
+                (r"@media\s+", 0.3),  # Media queries
+                (r"@import\s+", 0.3),  # Import statements
+                (r"@keyframes\s+", 0.3),  # Keyframes
+                (r":\s*[\w-]+\s*;", 0.2),  # Property declarations
+                (r"color\s*:", 0.2),  # Color property
+                (r"font-", 0.2),  # Font properties
+                (r"margin\s*:", 0.2),  # Margin property
+            ],
         }
 
         from .utils import log_debug, log_warning
@@ -187,14 +261,27 @@ class LanguageDetector:
             content: ファイルコンテンツ（任意、曖昧性解決用）
 
         Returns:
-            (言語名, 信頼度) のタプル
+            (言語名, 信頼度) のタプル - 常に有効な言語名を返す
         """
+        # Handle invalid input
+        if not file_path or not isinstance(file_path, str):
+            return "unknown", 0.0
+            
         path = Path(file_path)
         extension = path.suffix.lower()
 
         # Direct mapping by extension
         if extension in self.EXTENSION_MAPPING:
             language = self.EXTENSION_MAPPING[extension]
+            
+            # Ensure language is valid
+            if not language or language.strip() == "":
+                return "unknown", 0.0
+
+            # Use confidence from extension_map if available
+            if extension in self.extension_map:
+                _, confidence = self.extension_map[extension]
+                return language, confidence
 
             # No ambiguity -> high confidence
             if extension not in self.AMBIGUOUS_EXTENSIONS:
@@ -203,11 +290,14 @@ class LanguageDetector:
             # Resolve ambiguity using content
             if content:
                 refined_language = self._resolve_ambiguity(extension, content)
+                # Ensure refined language is valid
+                if not refined_language or refined_language.strip() == "":
+                    refined_language = "unknown"
                 return refined_language, 0.9 if refined_language != language else 0.7
             else:
                 return language, 0.7  # Lower confidence without content
 
-        # Unknown extension
+        # Unknown extension - always return "unknown" instead of None
         return "unknown", 0.0
 
     def detect_from_extension(self, file_path: str) -> str:
@@ -218,10 +308,22 @@ class LanguageDetector:
             file_path: File path
 
         Returns:
-            Detected language name
+            Detected language name - 常に有効な文字列を返す
         """
-        language, _ = self.detect_language(file_path)
-        return language
+        # Handle invalid input
+        if not file_path or not isinstance(file_path, str):
+            return "unknown"
+            
+        result = self.detect_language(file_path)
+        if isinstance(result, tuple):
+            language, _ = result
+            # Ensure language is valid
+            if not language or language.strip() == "":
+                return "unknown"
+            return language
+        else:
+            # Fallback for unexpected result format
+            return "unknown"
 
     def is_supported(self, language: str) -> bool:
         """
@@ -380,9 +482,21 @@ def detect_language_from_file(file_path: str) -> str:
         file_path: File path
 
     Returns:
-        Detected language name
+        Detected language name - 常に有効な文字列を返す
     """
-    return detector.detect_from_extension(file_path)
+    # Handle invalid input
+    if not file_path or not isinstance(file_path, str):
+        return "unknown"
+        
+    # Create a fresh instance to ensure latest configuration
+    fresh_detector = LanguageDetector()
+    result = fresh_detector.detect_from_extension(file_path)
+    
+    # Ensure result is valid
+    if not result or result.strip() == "":
+        return "unknown"
+    
+    return result
 
 
 def is_language_supported(language: str) -> bool:

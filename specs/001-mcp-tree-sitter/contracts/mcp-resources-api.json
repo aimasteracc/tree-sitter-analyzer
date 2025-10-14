@@ -1,0 +1,585 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Tree-sitter Analyzer MCP Resources API",
+    "description": "Model Context Protocol (MCP) resources for Tree-sitter based code analysis",
+    "version": "1.0.0",
+    "contact": {
+      "name": "Tree-sitter Analyzer",
+      "email": "aimasteracc@gmail.com"
+    },
+    "license": {
+      "name": "MIT",
+      "url": "https://opensource.org/licenses/MIT"
+    }
+  },
+  "servers": [
+    {
+      "url": "mcp://tree-sitter-analyzer",
+      "description": "MCP Server for Tree-sitter Analyzer"
+    }
+  ],
+  "paths": {
+    "/resources/code/file/{file_path}": {
+      "get": {
+        "summary": "Access code file content through URI-based identification",
+        "description": "Provides direct access to code file content with security boundary enforcement",
+        "operationId": "getCodeFile",
+        "parameters": [
+          {
+            "name": "file_path",
+            "in": "path",
+            "required": true,
+            "description": "Relative or absolute path to the code file",
+            "schema": {
+              "type": "string"
+            },
+            "example": "src/main.py"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Code file content",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodeFileResource"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/resources/code/stats/{stats_type}": {
+      "get": {
+        "summary": "Access project statistics and analysis data",
+        "description": "Provides access to various project statistics and analysis metrics",
+        "operationId": "getProjectStats",
+        "parameters": [
+          {
+            "name": "stats_type",
+            "in": "path",
+            "required": true,
+            "description": "Type of statistics to retrieve",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "overview",
+                "languages",
+                "file_sizes",
+                "complexity",
+                "structure"
+              ]
+            },
+            "example": "overview"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Project statistics",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectStatsResource"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "CodeFileResource": {
+        "type": "object",
+        "properties": {
+          "uri": {
+            "type": "string",
+            "description": "Resource URI",
+            "example": "code://file/src/main.py"
+          },
+          "name": {
+            "type": "string",
+            "description": "Display name for the resource",
+            "example": "src/main.py"
+          },
+          "description": {
+            "type": "string",
+            "description": "Human-readable description",
+            "example": "Python source file: src/main.py"
+          },
+          "mimeType": {
+            "type": "string",
+            "description": "MIME type of the content",
+            "example": "text/x-python"
+          },
+          "content": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": ["text"],
+                "description": "Content type"
+              },
+              "text": {
+                "type": "string",
+                "description": "File content as text"
+              }
+            },
+            "required": ["type", "text"]
+          },
+          "metadata": {
+            "type": "object",
+            "properties": {
+              "file_path": {
+                "type": "string",
+                "description": "Absolute file path"
+              },
+              "file_size": {
+                "type": "integer",
+                "description": "File size in bytes"
+              },
+              "language": {
+                "type": "string",
+                "description": "Detected programming language"
+              },
+              "encoding": {
+                "type": "string",
+                "description": "File encoding",
+                "default": "utf-8"
+              },
+              "line_count": {
+                "type": "integer",
+                "description": "Number of lines in the file"
+              },
+              "last_modified": {
+                "type": "string",
+                "format": "date-time",
+                "description": "Last modification timestamp"
+              }
+            }
+          }
+        },
+        "required": ["uri", "name", "content"]
+      },
+      "ProjectStatsResource": {
+        "type": "object",
+        "properties": {
+          "uri": {
+            "type": "string",
+            "description": "Resource URI",
+            "example": "code://stats/overview"
+          },
+          "name": {
+            "type": "string",
+            "description": "Display name for the resource",
+            "example": "Project Overview Statistics"
+          },
+          "description": {
+            "type": "string",
+            "description": "Human-readable description",
+            "example": "Comprehensive project statistics and metrics"
+          },
+          "mimeType": {
+            "type": "string",
+            "description": "MIME type of the content",
+            "example": "application/json"
+          },
+          "content": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": ["text"],
+                "description": "Content type"
+              },
+              "text": {
+                "type": "string",
+                "description": "Statistics data as JSON string"
+              }
+            },
+            "required": ["type", "text"]
+          },
+          "stats_data": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/OverviewStats"
+              },
+              {
+                "$ref": "#/components/schemas/LanguageStats"
+              },
+              {
+                "$ref": "#/components/schemas/FileSizeStats"
+              },
+              {
+                "$ref": "#/components/schemas/ComplexityStats"
+              },
+              {
+                "$ref": "#/components/schemas/StructureStats"
+              }
+            ]
+          }
+        },
+        "required": ["uri", "name", "content", "stats_data"]
+      },
+      "OverviewStats": {
+        "type": "object",
+        "properties": {
+          "stats_type": {
+            "type": "string",
+            "enum": ["overview"]
+          },
+          "project_root": {
+            "type": "string",
+            "description": "Project root directory"
+          },
+          "total_files": {
+            "type": "integer",
+            "description": "Total number of files"
+          },
+          "total_lines": {
+            "type": "integer",
+            "description": "Total lines of code"
+          },
+          "total_size_bytes": {
+            "type": "integer",
+            "description": "Total project size in bytes"
+          },
+          "supported_languages": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "List of detected supported languages"
+          },
+          "analysis_timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the analysis was performed"
+          }
+        },
+        "required": ["stats_type", "project_root", "total_files"]
+      },
+      "LanguageStats": {
+        "type": "object",
+        "properties": {
+          "stats_type": {
+            "type": "string",
+            "enum": ["languages"]
+          },
+          "language_distribution": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "file_count": {
+                  "type": "integer"
+                },
+                "line_count": {
+                  "type": "integer"
+                },
+                "size_bytes": {
+                  "type": "integer"
+                },
+                "percentage": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 100
+                }
+              }
+            },
+            "description": "Statistics per programming language"
+          },
+          "primary_language": {
+            "type": "string",
+            "description": "Most prevalent language in the project"
+          }
+        },
+        "required": ["stats_type", "language_distribution"]
+      },
+      "FileSizeStats": {
+        "type": "object",
+        "properties": {
+          "stats_type": {
+            "type": "string",
+            "enum": ["file_sizes"]
+          },
+          "size_distribution": {
+            "type": "object",
+            "properties": {
+              "small_files": {
+                "type": "object",
+                "properties": {
+                  "count": {
+                    "type": "integer"
+                  },
+                  "threshold": {
+                    "type": "string",
+                    "example": "< 1KB"
+                  }
+                }
+              },
+              "medium_files": {
+                "type": "object",
+                "properties": {
+                  "count": {
+                    "type": "integer"
+                  },
+                  "threshold": {
+                    "type": "string",
+                    "example": "1KB - 100KB"
+                  }
+                }
+              },
+              "large_files": {
+                "type": "object",
+                "properties": {
+                  "count": {
+                    "type": "integer"
+                  },
+                  "threshold": {
+                    "type": "string",
+                    "example": "> 100KB"
+                  }
+                }
+              }
+            }
+          },
+          "largest_files": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "size_bytes": {
+                  "type": "integer"
+                },
+                "language": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Top 10 largest files"
+          }
+        },
+        "required": ["stats_type", "size_distribution"]
+      },
+      "ComplexityStats": {
+        "type": "object",
+        "properties": {
+          "stats_type": {
+            "type": "string",
+            "enum": ["complexity"]
+          },
+          "average_complexity": {
+            "type": "number",
+            "description": "Average cyclomatic complexity across all files"
+          },
+          "complexity_distribution": {
+            "type": "object",
+            "properties": {
+              "low": {
+                "type": "integer",
+                "description": "Files with low complexity (< 10)"
+              },
+              "medium": {
+                "type": "integer",
+                "description": "Files with medium complexity (10-20)"
+              },
+              "high": {
+                "type": "integer",
+                "description": "Files with high complexity (> 20)"
+              }
+            }
+          },
+          "most_complex_files": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "complexity_score": {
+                  "type": "number"
+                },
+                "language": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Top 10 most complex files"
+          }
+        },
+        "required": ["stats_type", "average_complexity"]
+      },
+      "StructureStats": {
+        "type": "object",
+        "properties": {
+          "stats_type": {
+            "type": "string",
+            "enum": ["structure"]
+          },
+          "total_classes": {
+            "type": "integer",
+            "description": "Total number of classes across all files"
+          },
+          "total_methods": {
+            "type": "integer",
+            "description": "Total number of methods/functions"
+          },
+          "total_fields": {
+            "type": "integer",
+            "description": "Total number of fields/variables"
+          },
+          "structure_by_language": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "classes": {
+                  "type": "integer"
+                },
+                "methods": {
+                  "type": "integer"
+                },
+                "fields": {
+                  "type": "integer"
+                }
+              }
+            },
+            "description": "Structure statistics per language"
+          },
+          "largest_classes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "file_path": {
+                  "type": "string"
+                },
+                "method_count": {
+                  "type": "integer"
+                },
+                "field_count": {
+                  "type": "integer"
+                }
+              }
+            },
+            "description": "Top 10 largest classes by member count"
+          }
+        },
+        "required": ["stats_type", "total_classes", "total_methods"]
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "Error code"
+              },
+              "message": {
+                "type": "string",
+                "description": "Human-readable error message"
+              },
+              "details": {
+                "type": "object",
+                "description": "Additional error details"
+              }
+            },
+            "required": ["code", "message"]
+          }
+        }
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "Invalid request parameters",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "error": {
+                "code": "INVALID_STATS_TYPE",
+                "message": "Invalid statistics type requested",
+                "details": {
+                  "stats_type": "invalid_type",
+                  "valid_types": ["overview", "languages", "file_sizes", "complexity", "structure"]
+                }
+              }
+            }
+          }
+        }
+      },
+      "Forbidden": {
+        "description": "Access denied due to security constraints",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "error": {
+                "code": "ACCESS_DENIED",
+                "message": "File path is outside project boundary",
+                "details": {
+                  "path": "/invalid/path",
+                  "project_root": "/project"
+                }
+              }
+            }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "Requested resource not found",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "error": {
+                "code": "RESOURCE_NOT_FOUND",
+                "message": "The specified resource does not exist",
+                "details": {
+                  "uri": "code://file/nonexistent.py"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -558,7 +558,8 @@ class JavaScriptElementExtractor(ElementExtractor):
                 elif child.type == "class_heritage":
                     # Extract extends clause
                     heritage_text = self._get_node_text_optimized(child)
-                    match = re.search(r"extends\s+(\w+)", heritage_text)
+                    # Support both simple names (Component) and dotted names (React.Component)
+                    match = re.search(r"extends\s+([\w.]+)", heritage_text)
                     if match:
                         superclass = match.group(1)
 
@@ -1217,6 +1218,20 @@ class JavaScriptElementExtractor(ElementExtractor):
         else:
             return "unknown"
 
+    def extract_elements(self, tree: "tree_sitter.Tree", source_code: str) -> list:
+        """Extract elements from source code using tree-sitter AST"""
+        elements = []
+        
+        try:
+            elements.extend(self.extract_functions(tree, source_code))
+            elements.extend(self.extract_classes(tree, source_code))
+            elements.extend(self.extract_variables(tree, source_code))
+            elements.extend(self.extract_imports(tree, source_code))
+        except Exception as e:
+            log_error(f"Failed to extract elements: {e}")
+        
+        return elements
+
     def _get_variable_kind(self, var_data: dict | str) -> str:
         """Get variable declaration kind from variable data or raw text"""
         if isinstance(var_data, dict):
@@ -1344,6 +1359,11 @@ class JavaScriptPlugin(LanguagePlugin):
     def __init__(self) -> None:
         self._extractor = JavaScriptElementExtractor()
         self._language: tree_sitter.Language | None = None
+        
+        # Legacy compatibility attributes for tests
+        self.language = "javascript"
+        self.extractor = self._extractor
+        self.supported_extensions = [".js", ".mjs", ".jsx", ".es6", ".es", ".cjs"]
 
     @property
     def language_name(self) -> str:
@@ -1417,6 +1437,119 @@ class JavaScriptPlugin(LanguagePlugin):
                 "CommonJS support",
                 "JSDoc extraction",
                 "Complexity analysis",
+            ],
+        }
+
+    def execute_query_strategy(self, tree: "tree_sitter.Tree", source_code: str, query_key: str) -> list[dict]:
+        """
+        Execute query strategy for JavaScript language
+        
+        Args:
+            tree: Tree-sitter tree object
+            source_code: Source code string
+            query_key: Query key to execute
+            
+        Returns:
+            List of query results
+        """
+        # Use the extractor to get elements based on query_key
+        extractor = self.get_extractor()
+        
+        # Map query keys to extraction methods
+        if query_key in ["function", "functions", "async_function", "async_functions", "arrow_function", "arrow_functions", "method", "methods", "constructor", "constructors"]:
+            elements = extractor.extract_functions(tree, source_code)
+        elif query_key in ["class", "classes", "react_component", "react_components"]:
+            elements = extractor.extract_classes(tree, source_code)
+        elif query_key in ["variable", "variables"]:
+            elements = extractor.extract_variables(tree, source_code)
+        elif query_key in ["import", "imports"]:
+            elements = extractor.extract_imports(tree, source_code)
+        else:
+            # For unknown query keys, return empty list
+            return []
+        
+        # Convert elements to query result format
+        results = []
+        for element in elements:
+            result = {
+                "capture_name": query_key,
+                "node_type": self._get_node_type_for_element(element),
+                "start_line": element.start_line,
+                "end_line": element.end_line,
+                "text": element.raw_text,
+                "name": element.name,
+            }
+            results.append(result)
+        
+        return results
+    
+    def _get_node_type_for_element(self, element) -> str:
+        """Get appropriate node type for element"""
+        from ..models import Function, Class, Variable, Import
+        
+        if isinstance(element, Function):
+            if hasattr(element, 'is_arrow') and element.is_arrow:
+                return "arrow_function"
+            elif hasattr(element, 'is_method') and element.is_method:
+                return "method_definition"
+            else:
+                return "function_declaration"
+        elif isinstance(element, Class):
+            return "class_declaration"
+        elif isinstance(element, Variable):
+            return "variable_declaration"
+        elif isinstance(element, Import):
+            return "import_statement"
+        else:
+            return "unknown"
+
+    def get_element_categories(self) -> dict[str, list[str]]:
+        """
+        Get element categories mapping query keys to node types
+        
+        Returns:
+            Dictionary mapping query keys to lists of node types
+        """
+        return {
+            # Function-related queries
+            "function": ["function_declaration", "function_expression"],
+            "functions": ["function_declaration", "function_expression"],
+            "async_function": ["function_declaration", "function_expression"],
+            "async_functions": ["function_declaration", "function_expression"],
+            "arrow_function": ["arrow_function"],
+            "arrow_functions": ["arrow_function"],
+            "method": ["method_definition"],
+            "methods": ["method_definition"],
+            "constructor": ["method_definition"],
+            "constructors": ["method_definition"],
+            
+            # Class-related queries
+            "class": ["class_declaration", "class_expression"],
+            "classes": ["class_declaration", "class_expression"],
+            
+            # Variable-related queries
+            "variable": ["variable_declaration", "lexical_declaration"],
+            "variables": ["variable_declaration", "lexical_declaration"],
+            
+            # Import/Export-related queries
+            "import": ["import_statement"],
+            "imports": ["import_statement"],
+            "export": ["export_statement"],
+            "exports": ["export_statement"],
+            
+            # React-specific queries
+            "react_component": ["class_declaration", "function_declaration"],
+            "react_components": ["class_declaration", "function_declaration"],
+            "react_hook": ["function_declaration"],
+            "react_hooks": ["function_declaration"],
+            "jsx_element": ["jsx_element", "jsx_self_closing_element"],
+            "jsx_elements": ["jsx_element", "jsx_self_closing_element"],
+            
+            # Generic queries
+            "all_elements": [
+                "function_declaration", "function_expression", "arrow_function", "method_definition",
+                "class_declaration", "class_expression", "variable_declaration", "lexical_declaration",
+                "import_statement", "export_statement", "jsx_element", "jsx_self_closing_element"
             ],
         }
 
@@ -1495,3 +1628,25 @@ class JavaScriptPlugin(LanguagePlugin):
                 success=False,
                 error_message=str(e),
             )
+
+    def extract_elements(self, tree: "tree_sitter.Tree", source_code: str) -> dict:
+        """Extract elements from source code using tree-sitter AST"""
+        try:
+            if tree is None or not hasattr(tree, 'root_node') or tree.root_node is None:
+                return {"functions": [], "classes": [], "variables": [], "imports": [], "exports": []}
+            
+            functions = self._extractor.extract_functions(tree, source_code)
+            classes = self._extractor.extract_classes(tree, source_code)
+            variables = self._extractor.extract_variables(tree, source_code)
+            imports = self._extractor.extract_imports(tree, source_code)
+            
+            return {
+                "functions": functions,
+                "classes": classes,
+                "variables": variables,
+                "imports": imports,
+                "exports": []  # TODO: Implement exports extraction
+            }
+        except Exception as e:
+            log_error(f"Failed to extract elements: {e}")
+            return {"functions": [], "classes": [], "variables": [], "imports": [], "exports": []}

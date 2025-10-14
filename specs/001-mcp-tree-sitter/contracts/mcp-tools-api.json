@@ -1,0 +1,981 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Tree-sitter Analyzer MCP Tools API",
+    "description": "Model Context Protocol (MCP) tools for Tree-sitter based code analysis",
+    "version": "1.0.0",
+    "contact": {
+      "name": "Tree-sitter Analyzer",
+      "email": "aimasteracc@gmail.com"
+    },
+    "license": {
+      "name": "MIT",
+      "url": "https://opensource.org/licenses/MIT"
+    }
+  },
+  "servers": [
+    {
+      "url": "mcp://tree-sitter-analyzer",
+      "description": "MCP Server for Tree-sitter Analyzer"
+    }
+  ],
+  "paths": {
+    "/tools/check_code_scale": {
+      "post": {
+        "summary": "Analyze code scale and complexity metrics",
+        "description": "Evaluates file size, complexity, and provides LLM-optimized analysis guidance",
+        "operationId": "checkCodeScale",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CheckCodeScaleRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Code scale analysis results",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodeScaleResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/tools/analyze_code_structure": {
+      "post": {
+        "summary": "Generate detailed code structure tables",
+        "description": "Analyzes code structure and generates overview tables with line positions",
+        "operationId": "analyzeCodeStructure",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AnalyzeStructureRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Code structure analysis results",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StructureResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/tools/extract_code_section": {
+      "post": {
+        "summary": "Extract specific code sections by line/column range",
+        "description": "Extracts code sections with multiple output formats and optional file saving",
+        "operationId": "extractCodeSection",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExtractSectionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Extracted code section",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExtractResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/tools/query_code": {
+      "post": {
+        "summary": "Execute tree-sitter queries on code files",
+        "description": "Executes tree-sitter queries to extract specific code elements with filtering",
+        "operationId": "queryCode",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QueryCodeRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Query execution results",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueryResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/tools/list_files": {
+      "post": {
+        "summary": "List files and directories with advanced filtering",
+        "description": "Lists files using fd with glob patterns, file types, size filters, and more",
+        "operationId": "listFiles",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ListFilesRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "File listing results",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListFilesResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        }
+      }
+    },
+    "/tools/search_content": {
+      "post": {
+        "summary": "Search text content inside files using ripgrep",
+        "description": "Searches text content with regex patterns, case sensitivity, and context lines",
+        "operationId": "searchContent",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SearchContentRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Search results",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        }
+      }
+    },
+    "/tools/find_and_grep": {
+      "post": {
+        "summary": "Two-stage search: find files then search content",
+        "description": "Combines file filtering with content search for precise results",
+        "operationId": "findAndGrep",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FindAndGrepRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Combined search results",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        }
+      }
+    },
+    "/tools/set_project_path": {
+      "post": {
+        "summary": "Set or override the project root path",
+        "description": "Sets the project root path used for security boundaries",
+        "operationId": "setProjectPath",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetProjectPathRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Project path set successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetProjectPathResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "CheckCodeScaleRequest": {
+        "type": "object",
+        "required": ["file_path"],
+        "properties": {
+          "file_path": {
+            "type": "string",
+            "description": "Path to the code file to analyze"
+          },
+          "language": {
+            "type": "string",
+            "description": "Programming language (optional, auto-detected if not specified)"
+          },
+          "include_complexity": {
+            "type": "boolean",
+            "default": true,
+            "description": "Include complexity metrics in the analysis"
+          },
+          "include_details": {
+            "type": "boolean",
+            "default": false,
+            "description": "Include detailed element information"
+          },
+          "include_guidance": {
+            "type": "boolean",
+            "default": true,
+            "description": "Include LLM analysis guidance"
+          }
+        }
+      },
+      "CodeScaleResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "description": "Indicates if the operation was successful"
+          },
+          "error": {
+            "type": "string",
+            "description": "Error message when success is false"
+          },
+          "file_path": {
+            "type": "string"
+          },
+          "language": {
+            "type": "string"
+          },
+          "metrics": {
+            "type": "object",
+            "properties": {
+              "file_size_bytes": {
+                "type": "integer"
+              },
+              "line_count": {
+                "type": "integer"
+              },
+              "complexity_score": {
+                "type": "number"
+              }
+            }
+          },
+          "analysis_strategy": {
+            "type": "string",
+            "enum": ["direct_read", "structure_analysis", "partial_extraction"]
+          },
+          "guidance": {
+            "type": "string",
+            "description": "LLM-optimized analysis guidance"
+          }
+        },
+        "required": ["success"]
+      },
+      "AnalyzeStructureRequest": {
+        "type": "object",
+        "required": ["file_path"],
+        "properties": {
+          "file_path": {
+            "type": "string",
+            "description": "Path to the code file to analyze"
+          },
+          "format_type": {
+            "type": "string",
+            "enum": ["full", "compact", "csv", "json"],
+            "default": "full",
+            "description": "Table format type"
+          },
+          "language": {
+            "type": "string",
+            "description": "Programming language (optional, auto-detected if not specified)"
+          },
+          "output_file": {
+            "type": "string",
+            "description": "Optional filename to save output to file"
+          },
+          "suppress_output": {
+            "type": "boolean",
+            "default": false,
+            "description": "Suppress table_output in response to save tokens"
+          }
+        }
+      },
+      "StructureResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "description": "Indicates if the operation was successful"
+          },
+          "error": {
+            "type": "string",
+            "description": "Error message when success is false"
+          },
+          "file_path": {
+            "type": "string"
+          },
+          "language": {
+            "type": "string"
+          },
+          "format_type": {
+            "type": "string"
+          },
+          "metadata": {
+            "type": "object",
+            "properties": {
+              "classes_count": {
+                "type": "integer"
+              },
+              "methods_count": {
+                "type": "integer"
+              },
+              "fields_count": {
+                "type": "integer"
+              },
+              "total_lines": {
+                "type": "integer"
+              }
+            }
+          },
+          "table_output": {
+            "type": "string",
+            "description": "Formatted structure table (may be suppressed)"
+          },
+          "output_file": {
+            "type": "string",
+            "description": "Path to saved output file if requested"
+          }
+        },
+        "required": ["success"]
+      },
+      "ExtractSectionRequest": {
+        "type": "object",
+        "required": ["file_path", "start_line"],
+        "properties": {
+          "file_path": {
+            "type": "string",
+            "description": "Path to the code file to read"
+          },
+          "start_line": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Starting line number (1-based)"
+          },
+          "end_line": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Ending line number (1-based, optional)"
+          },
+          "start_column": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Starting column number (0-based, optional)"
+          },
+          "end_column": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Ending column number (0-based, optional)"
+          },
+          "format": {
+            "type": "string",
+            "enum": ["text", "json", "raw"],
+            "default": "text",
+            "description": "Output format for the content"
+          },
+          "output_file": {
+            "type": "string",
+            "description": "Optional filename to save output to file"
+          },
+          "suppress_output": {
+            "type": "boolean",
+            "default": false,
+            "description": "Suppress partial_content_result in response to save tokens"
+          }
+        }
+      },
+      "ExtractResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "description": "Indicates if the operation was successful"
+          },
+          "error": {
+            "type": "string",
+            "description": "Error message when success is false"
+          },
+          "file_path": {
+            "type": "string"
+          },
+          "range": {
+            "type": "object",
+            "properties": {
+              "start_line": {
+                "type": "integer"
+              },
+              "end_line": {
+                "type": "integer"
+              },
+              "start_column": {
+                "type": "integer"
+              },
+              "end_column": {
+                "type": "integer"
+              }
+            }
+          },
+          "content_length": {
+            "type": "integer"
+          },
+          "partial_content_result": {
+            "type": "string",
+            "description": "Extracted content (may be suppressed)"
+          },
+          "output_file": {
+            "type": "string",
+            "description": "Path to saved output file if requested"
+          }
+        },
+        "required": ["success"]
+      },
+      "QueryCodeRequest": {
+        "type": "object",
+        "required": ["file_path"],
+        "properties": {
+          "file_path": {
+            "type": "string",
+            "description": "Path to the code file to query"
+          },
+          "language": {
+            "type": "string",
+            "description": "Programming language (optional, auto-detected if not provided)"
+          },
+          "query_key": {
+            "type": "string",
+            "description": "Predefined query key (e.g., 'methods', 'class', 'functions')"
+          },
+          "query_string": {
+            "type": "string",
+            "description": "Custom tree-sitter query string"
+          },
+          "filter": {
+            "type": "string",
+            "description": "Filter expression to refine results"
+          },
+          "output_format": {
+            "type": "string",
+            "enum": ["json", "summary"],
+            "default": "json",
+            "description": "Output format"
+          },
+          "output_file": {
+            "type": "string",
+            "description": "Optional filename to save output to file"
+          },
+          "suppress_output": {
+            "type": "boolean",
+            "default": false,
+            "description": "Suppress detailed output in response to save tokens"
+          }
+        }
+      },
+      "QueryResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "description": "Indicates if the operation was successful"
+          },
+          "error": {
+            "type": "string",
+            "description": "Error message when success is false"
+          },
+          "file_path": {
+            "type": "string"
+          },
+          "language": {
+            "type": "string"
+          },
+          "query_type": {
+            "type": "string"
+          },
+          "results": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "element_type": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "start_line": {
+                  "type": "integer"
+                },
+                "end_line": {
+                  "type": "integer"
+                },
+                "metadata": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "output_file": {
+            "type": "string",
+            "description": "Path to saved output file if requested"
+          }
+        },
+        "required": ["success"]
+      },
+      "ListFilesRequest": {
+        "type": "object",
+        "required": ["roots"],
+        "properties": {
+          "roots": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Directory paths to search in"
+          },
+          "pattern": {
+            "type": "string",
+            "description": "Search pattern for file/directory names"
+          },
+          "glob": {
+            "type": "boolean",
+            "default": false,
+            "description": "Treat pattern as glob instead of regex"
+          },
+          "types": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": ["f", "d", "l", "x", "e"]
+            },
+            "description": "File types to include"
+          },
+          "extensions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "File extensions to include (without dots)"
+          },
+          "exclude": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Patterns to exclude from results"
+          },
+          "depth": {
+            "type": "integer",
+            "description": "Maximum directory depth to search"
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Maximum number of results to return"
+          },
+          "count_only": {
+            "type": "boolean",
+            "default": false,
+            "description": "Return only the total count of matching files"
+          }
+        }
+      },
+      "ListFilesResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "description": "Indicates if the operation was successful"
+          },
+          "error": {
+            "type": "string",
+            "description": "Error message when success is false"
+          },
+          "count": {
+            "type": "integer"
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "elapsed_ms": {
+            "type": "integer"
+          },
+          "results": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "is_dir": {
+                  "type": "boolean"
+                },
+                "size_bytes": {
+                  "type": "integer"
+                },
+                "mtime": {
+                  "type": "integer"
+                },
+                "ext": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "required": ["success"]
+      },
+      "SearchContentRequest": {
+        "type": "object",
+        "required": ["query"],
+        "properties": {
+          "roots": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Directory paths to search in recursively"
+          },
+          "files": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Specific file paths to search in"
+          },
+          "query": {
+            "type": "string",
+            "description": "Text pattern to search for"
+          },
+          "case": {
+            "type": "string",
+            "enum": ["smart", "insensitive", "sensitive"],
+            "default": "smart",
+            "description": "Case sensitivity mode"
+          },
+          "fixed_strings": {
+            "type": "boolean",
+            "default": false,
+            "description": "Treat query as literal string instead of regex"
+          },
+          "context_before": {
+            "type": "integer",
+            "description": "Number of lines to show before each match"
+          },
+          "context_after": {
+            "type": "integer",
+            "description": "Number of lines to show after each match"
+          },
+          "max_count": {
+            "type": "integer",
+            "description": "Maximum number of matches per file"
+          },
+          "total_only": {
+            "type": "boolean",
+            "default": false,
+            "description": "Return only the total match count"
+          }
+        }
+      },
+      "SearchResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "description": "Indicates if the operation was successful"
+          },
+          "error": {
+            "type": "string",
+            "description": "Error message when success is false"
+          },
+          "count": {
+            "type": "integer"
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "elapsed_ms": {
+            "type": "integer"
+          },
+          "results": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "file": {
+                  "type": "string"
+                },
+                "line": {
+                  "type": "integer"
+                },
+                "text": {
+                  "type": "string"
+                },
+                "matches": {
+                  "type": "array",
+                  "items": {
+                    "type": "array",
+                    "items": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "required": ["success"]
+      },
+      "FindAndGrepRequest": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/ListFilesRequest"
+          },
+          {
+            "$ref": "#/components/schemas/SearchContentRequest"
+          }
+        ]
+      },
+      "SetProjectPathRequest": {
+        "type": "object",
+        "required": ["project_path"],
+        "properties": {
+          "project_path": {
+            "type": "string",
+            "description": "Absolute path to the project root"
+          }
+        }
+      },
+      "SetProjectPathResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "description": "Indicates if the operation was successful"
+          },
+          "error": {
+            "type": "string",
+            "description": "Error message when success is false"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["success"]
+          },
+          "project_root": {
+            "type": "string"
+          }
+        },
+        "required": ["success"]
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "Error code"
+              },
+              "message": {
+                "type": "string",
+                "description": "Human-readable error message"
+              },
+              "details": {
+                "type": "object",
+                "description": "Additional error details"
+              }
+            },
+            "required": ["code", "message"]
+          }
+        }
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "Invalid request parameters",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "error": {
+                "code": "INVALID_PARAMETER",
+                "message": "file_path parameter is required",
+                "details": {
+                  "parameter": "file_path",
+                  "provided": null
+                }
+              }
+            }
+          }
+        }
+      },
+      "Forbidden": {
+        "description": "Access denied due to security constraints",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "error": {
+                "code": "ACCESS_DENIED",
+                "message": "File path is outside project boundary",
+                "details": {
+                  "path": "/invalid/path",
+                  "project_root": "/project"
+                }
+              }
+            }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "Requested resource not found",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "error": {
+                "code": "FILE_NOT_FOUND",
+                "message": "The specified file does not exist",
+                "details": {
+                  "path": "/nonexistent/file.py"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

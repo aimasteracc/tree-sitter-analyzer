@@ -13,6 +13,7 @@ import time
 from typing import Any
 
 from ..utils.error_handler import handle_mcp_errors
+from ..utils.file_output_manager import FileOutputManager
 from ..utils.gitignore_detector import get_default_detector
 from . import fd_rg_utils
 from .base_tool import BaseMCPTool
@@ -23,10 +24,15 @@ logger = logging.getLogger(__name__)
 class FindAndGrepTool(BaseMCPTool):
     """MCP tool that composes fd and ripgrep with safety limits and metadata."""
 
+    def __init__(self, project_root: str | None = None) -> None:
+        """Initialize the find and grep tool."""
+        super().__init__(project_root)
+        self.file_output_manager = FileOutputManager(project_root)
+
     def get_tool_definition(self) -> dict[str, Any]:
         return {
             "name": "find_and_grep",
-            "description": "Two-stage search: first use fd to find files matching criteria, then use ripgrep to search content within those files. Combines file filtering with content search for precise results.",
+            "description": "Two-stage search: first use fd to find files matching criteria, then use ripgrep to search content within those files. Combines file filtering with content search for precise results with advanced token optimization (summary_only, group_by_file, total_only, suppress_output).",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -191,6 +197,15 @@ class FindAndGrepTool(BaseMCPTool):
                         "default": False,
                         "description": "Return only the total match count as a number. Most token-efficient option for count queries. Takes priority over all other formats",
                     },
+                    "output_file": {
+                        "type": "string",
+                        "description": "Optional filename to save output to file (extension auto-detected based on content)",
+                    },
+                    "suppress_output": {
+                        "type": "boolean",
+                        "description": "When true and output_file is specified, suppress detailed output in response to save tokens",
+                        "default": False,
+                    },
                 },
                 "required": ["roots", "query"],
                 "additionalProperties": False,
@@ -224,6 +239,16 @@ class FindAndGrepTool(BaseMCPTool):
 
     @handle_mcp_errors("find_and_grep")
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        # Check if both fd and rg commands are available
+        missing_commands = fd_rg_utils.get_missing_commands()
+        if missing_commands:
+            return {
+                "success": False,
+                "error": f"Required commands not found: {', '.join(missing_commands)}. Please install fd (https://github.com/sharkdp/fd) and ripgrep (https://github.com/BurntSushi/ripgrep) to use this tool.",
+                "count": 0,
+                "results": []
+            }
+        
         self.validate_arguments(arguments)
         roots = self._validate_roots(arguments["roots"])  # absolute validated
 
@@ -373,11 +398,7 @@ class FindAndGrepTool(BaseMCPTool):
             context_before=arguments.get("context_before"),
             context_after=arguments.get("context_after"),
             encoding=arguments.get("encoding"),
-            max_count=fd_rg_utils.clamp_int(
-                arguments.get("max_count"),
-                fd_rg_utils.DEFAULT_RESULTS_LIMIT,
-                fd_rg_utils.MAX_RESULTS_HARD_CAP,
-            ),
+            max_count=arguments.get("max_count"),
             timeout_ms=arguments.get("timeout_ms"),
             roots=rg_roots,
             files_from=None,
@@ -427,9 +448,18 @@ class FindAndGrepTool(BaseMCPTool):
         else:
             # Parse full match details
             matches = fd_rg_utils.parse_rg_json_lines_to_matches(rg_out)
-            truncated_rg = len(matches) >= fd_rg_utils.MAX_RESULTS_HARD_CAP
-            if truncated_rg:
-                matches = matches[: fd_rg_utils.MAX_RESULTS_HARD_CAP]
+            
+            # Apply user-specified max_count limit if provided
+            # Note: ripgrep's -m option limits matches per file, not total matches
+            # So we need to apply the total limit here in post-processing
+            user_max_count = arguments.get("max_count")
+            if user_max_count is not None and len(matches) > user_max_count:
+                matches = matches[:user_max_count]
+                truncated_rg = True
+            else:
+                truncated_rg = len(matches) >= fd_rg_utils.MAX_RESULTS_HARD_CAP
+                if truncated_rg:
+                    matches = matches[: fd_rg_utils.MAX_RESULTS_HARD_CAP]
 
             # Apply path optimization if requested
             optimize_paths = arguments.get("optimize_paths", False)
@@ -452,12 +482,55 @@ class FindAndGrepTool(BaseMCPTool):
                     "fd_elapsed_ms": fd_elapsed_ms,
                     "rg_elapsed_ms": rg_elapsed_ms,
                 }
+
+                # Handle output suppression and file output for grouped results
+                output_file = arguments.get("output_file")
+                suppress_output = arguments.get("suppress_output", False)
+
+                # Handle file output if requested
+                if output_file:
+                    try:
+                        # Save full result to file
+                        import json
+                        json_content = json.dumps(grouped_result, indent=2, ensure_ascii=False)
+                        file_path = self.file_output_manager.save_to_file(
+                            content=json_content,
+                            base_name=output_file
+                        )
+                        
+                        # If suppress_output is True, return minimal response
+                        if suppress_output:
+                            minimal_result = {
+                                "success": grouped_result.get("success", True),
+                                "count": grouped_result.get("count", 0),
+                                "output_file": output_file,
+                                "file_saved": f"Results saved to {file_path}"
+                            }
+                            return minimal_result
+                        else:
+                            # Include file info in full response
+                            grouped_result["output_file"] = output_file
+                            grouped_result["file_saved"] = f"Results saved to {file_path}"
+                    except Exception as e:
+                        logger.error(f"Failed to save output to file: {e}")
+                        grouped_result["file_save_error"] = str(e)
+                        grouped_result["file_saved"] = False
+                elif suppress_output:
+                    # If suppress_output is True but no output_file, remove detailed results
+                    minimal_result = {
+                        "success": grouped_result.get("success", True),
+                        "count": grouped_result.get("count", 0),
+                        "summary": grouped_result.get("summary", {}),
+                        "meta": grouped_result.get("meta", {})
+                    }
+                    return minimal_result
+
                 return grouped_result
 
             # Check if summary_only mode is requested
             if arguments.get("summary_only", False):
                 summary = fd_rg_utils.summarize_search_results(matches)
-                return {
+                result = {
                     "success": True,
                     "summary_only": True,
                     "summary": summary,
@@ -468,10 +541,53 @@ class FindAndGrepTool(BaseMCPTool):
                         "rg_elapsed_ms": rg_elapsed_ms,
                     },
                 }
+
+                # Handle output suppression and file output for summary results
+                output_file = arguments.get("output_file")
+                suppress_output = arguments.get("suppress_output", False)
+
+                # Handle file output if requested
+                if output_file:
+                    try:
+                        # Save full result to file
+                        import json
+                        json_content = json.dumps(result, indent=2, ensure_ascii=False)
+                        file_path = self.file_output_manager.save_to_file(
+                            content=json_content,
+                            base_name=output_file
+                        )
+                        
+                        # If suppress_output is True, return minimal response
+                        if suppress_output:
+                            minimal_result = {
+                                "success": result.get("success", True),
+                                "count": len(matches),
+                                "output_file": output_file,
+                                "file_saved": f"Results saved to {file_path}"
+                            }
+                            return minimal_result
+                        else:
+                            # Include file info in full response
+                            result["output_file"] = output_file
+                            result["file_saved"] = f"Results saved to {file_path}"
+                    except Exception as e:
+                        logger.error(f"Failed to save output to file: {e}")
+                        result["file_save_error"] = str(e)
+                        result["file_saved"] = False
+                elif suppress_output:
+                    # If suppress_output is True but no output_file, remove detailed results
+                    minimal_result = {
+                        "success": result.get("success", True),
+                        "count": len(matches),
+                        "summary": result.get("summary", {}),
+                        "meta": result.get("meta", {})
+                    }
+                    return minimal_result
+
+                return result
             else:
-                return {
+                result = {
                     "success": True,
-                    "results": matches,
                     "count": len(matches),
                     "meta": {
                         "searched_file_count": searched_file_count,
@@ -480,3 +596,70 @@ class FindAndGrepTool(BaseMCPTool):
                         "rg_elapsed_ms": rg_elapsed_ms,
                     },
                 }
+
+                # Handle output suppression and file output
+                output_file = arguments.get("output_file")
+                suppress_output = arguments.get("suppress_output", False)
+
+                # Add results to response unless suppressed
+                if not suppress_output or not output_file:
+                    result["results"] = matches
+
+                # Handle file output if requested
+                if output_file:
+                    try:
+                        # Create detailed output for file
+                        file_content = {
+                            "success": True,
+                            "results": matches,
+                            "count": len(matches),
+                            "files": fd_rg_utils.group_matches_by_file(matches)["files"] if matches else [],
+                            "summary": fd_rg_utils.summarize_search_results(matches),
+                            "meta": result["meta"]
+                        }
+
+                        # Convert to JSON for file output
+                        # Save full result to file using FileOutputManager
+                        import json
+                        json_content = json.dumps(file_content, indent=2, ensure_ascii=False)
+                        file_path = self.file_output_manager.save_to_file(
+                            content=json_content,
+                            base_name=output_file
+                        )
+                        
+                        # Check if suppress_output is enabled
+                        suppress_output = arguments.get("suppress_output", False)
+                        if suppress_output:
+                            # Return minimal response to save tokens
+                            minimal_result = {
+                                "success": result.get("success", True),
+                                "count": result.get("count", 0),
+                                "output_file": output_file,
+                                "file_saved": f"Results saved to {file_path}"
+                            }
+                            return minimal_result
+                        else:
+                            # Include file info in full response
+                            result["output_file"] = output_file
+                            result["file_saved"] = f"Results saved to {file_path}"
+
+                        logger.info(f"Search results saved to: {file_path}")
+
+                    except Exception as e:
+                        logger.error(f"Failed to save output to file: {e}")
+                        result["file_save_error"] = str(e)
+                        result["file_saved"] = False
+                else:
+                    # Handle suppress_output without file output
+                    suppress_output = arguments.get("suppress_output", False)
+                    if suppress_output:
+                        # Return minimal response without detailed match results
+                        minimal_result = {
+                            "success": result.get("success", True),
+                            "count": result.get("count", 0),
+                            "summary": result.get("summary", {}),
+                            "meta": result.get("meta", {})
+                        }
+                        return minimal_result
+
+                return result

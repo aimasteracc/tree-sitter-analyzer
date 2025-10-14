@@ -1,168 +1,117 @@
 #!/usr/bin/env python3
 """
-Global test configuration for tree-sitter-analyzer
-
-Controls warnings and logs during test execution to ensure clean output.
+Global test configuration and fixtures.
 """
 
-import asyncio
-import gc
-import logging
-import os
-import warnings
-
+import shutil
 import pytest
+from pathlib import Path
 
 
-@pytest.fixture(autouse=True)
-def configure_logging():
-    """
-    Automatic application of test logging configuration
-
-    Adjusts log levels before all test execution and
-    suppresses unnecessary log output.
-    """
-    # Main logger configuration
-    root_logger = logging.getLogger()
-    original_level = root_logger.level
-    root_logger.setLevel(logging.ERROR)
-
-    # Application-specific logger configuration
-    app_logger = logging.getLogger("tree_sitter_analyzer")
-    app_original_level = app_logger.level
-    app_logger.setLevel(logging.ERROR)
-
-    # Performance logger configuration
-    perf_logger = logging.getLogger("tree_sitter_analyzer.performance")
-    perf_original_level = perf_logger.level
-    perf_logger.setLevel(logging.ERROR)
-
-    yield
-
-    # Restore levels after test
-    root_logger.setLevel(original_level)
-    app_logger.setLevel(app_original_level)
-    perf_logger.setLevel(perf_original_level)
+def pytest_configure(config):
+    """Configure pytest with custom markers."""
+    config.addinivalue_line(
+        "markers", "requires_ripgrep: mark test as requiring ripgrep (rg) command"
+    )
+    config.addinivalue_line(
+        "markers", "requires_fd: mark test as requiring fd command"
+    )
+    config.addinivalue_line(
+        "markers", "integration: mark test as integration test"
+    )
+    config.addinivalue_line(
+        "markers", "performance: mark test as performance test"
+    )
 
 
-@pytest.fixture(autouse=True)
-def cleanup_event_loops():
-    """
-    Root solution for Event loop ResourceWarning
-
-    Properly cleanup unclosed event loops after tests
-    """
-    yield
-
-    # Explicit event loop cleanup
-    try:
-        # Get current event loop and close it
-        try:
-            loop = asyncio.get_running_loop()
-            if loop and not loop.is_closed():
-                # Cancel running tasks
-                pending_tasks = [
-                    task for task in asyncio.all_tasks(loop) if not task.done()
-                ]
-                for task in pending_tasks:
-                    task.cancel()
-
-                # Wait for task completion
-                if pending_tasks:
-                    loop.run_until_complete(
-                        asyncio.gather(*pending_tasks, return_exceptions=True)
-                    )
-        except RuntimeError:
-            # Ignore if event loop is not running
-            pass
-
-        # Get and close all event loops
-        try:
-            # Get existing loop (don't create new one)
-            try:
-                # Python 3.12+ support: suppress warnings to avoid DeprecationWarning
-                with warnings.catch_warnings():
-                    warnings.simplefilter("ignore", DeprecationWarning)
-                    try:
-                        loop = asyncio.get_event_loop_policy().get_event_loop()
-                    except RuntimeError:
-                        # If event loop doesn't exist
-                        loop = None
-                if loop and not loop.is_closed():
-                    # Cancel all incomplete tasks
-                    pending = [
-                        task for task in asyncio.all_tasks(loop) if not task.done()
-                    ]
-                    for task in pending:
-                        task.cancel()
-
-                    # Cleanup tasks
-                    if pending:
-                        loop.run_until_complete(
-                            asyncio.gather(*pending, return_exceptions=True)
-                        )
-
-                    # Explicitly close loop
-                    loop.close()
-            except (RuntimeError, AttributeError):
-                pass
-
-            # Reset event loop policy
-            try:
-                if (
-                    hasattr(asyncio, "WindowsProactorEventLoopPolicy")
-                    and os.name == "nt"
-                ):
-                    asyncio.set_event_loop_policy(
-                        asyncio.WindowsProactorEventLoopPolicy()
-                    )
-                else:
-                    asyncio.set_event_loop_policy(asyncio.DefaultEventLoopPolicy())
-                asyncio.set_event_loop(None)
-            except Exception:
-                pass
-
-        except Exception:
-            # Continue even if error occurs
-            pass
-
-        # Force garbage collection
-        gc.collect()
-
-    except Exception:
-        # Ignore cleanup errors (prioritize test continuation)
-        pass
+def pytest_collection_modifyitems(config, items):
+    """Modify test collection to skip tests based on missing dependencies."""
+    # Check for external dependencies
+    has_ripgrep = shutil.which("rg") is not None
+    has_fd = shutil.which("fd") is not None
+    
+    skip_ripgrep = pytest.mark.skip(reason="ripgrep (rg) not available")
+    skip_fd = pytest.mark.skip(reason="fd not available")
+    
+    for item in items:
+        # Skip tests that require ripgrep if not available
+        if "requires_ripgrep" in item.keywords and not has_ripgrep:
+            item.add_marker(skip_ripgrep)
+        
+        # Skip tests that require fd if not available
+        if "requires_fd" in item.keywords and not has_fd:
+            item.add_marker(skip_fd)
 
 
-# Disabled warning suppression - let's fix the root causes instead
-# @pytest.fixture(autouse=True)
-# def suppress_warnings():
-#     """
-#     Warning suppression configuration
-#
-#     Suppresses unnecessary warnings during test execution.
-#     """
-#     # Suppress various warnings
-#     warnings.filterwarnings("ignore", category=DeprecationWarning)
-#     warnings.filterwarnings("ignore", category=PendingDeprecationWarning)
-#     warnings.filterwarnings("ignore", category=FutureWarning)
-#     warnings.filterwarnings("ignore", category=UserWarning)
-#     warnings.filterwarnings("ignore", category=ResourceWarning)
-#
-#     # pytest-specific warnings
-#     try:
-#         import pytest
-#         warnings.filterwarnings("ignore", category=pytest.PytestMockWarning)
-#         warnings.filterwarnings("ignore", category=pytest.PytestRemovedIn9Warning)
-#     except (ImportError, AttributeError):
-#         pass
-#
-#     # asyncio-specific warnings
-#     warnings.filterwarnings("ignore", message=".*unclosed event loop.*", category=ResourceWarning)
-#     warnings.filterwarnings("ignore", message=".*Enable tracemalloc.*", category=ResourceWarning)
-#
-#     yield
+@pytest.fixture(scope="session")
+def has_external_tools():
+    """Check availability of external tools."""
+    return {
+        "ripgrep": shutil.which("rg") is not None,
+        "fd": shutil.which("fd") is not None,
+    }
 
 
-# pytest-asyncio configuration
-pytest_plugins = ["pytest_asyncio"]
+@pytest.fixture(scope="session")
+def test_data_dir():
+    """Get test data directory."""
+    return Path(__file__).parent / "test_data"
+
+
+@pytest.fixture
+def temp_project_dir(tmp_path):
+    """Create a temporary project directory with sample files."""
+    # Create sample Python files
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "__init__.py").write_text("")
+    (tmp_path / "src" / "main.py").write_text("""
+import os
+import sys
+
+def main():
+    print("Hello, World!")
+    return 0
+
+if __name__ == "__main__":
+    sys.exit(main())
+""")
+    
+    # Create sample Java files
+    (tmp_path / "java").mkdir()
+    (tmp_path / "java" / "Main.java").write_text("""
+public class Main {
+    public static void main(String[] args) {
+        System.out.println("Hello, World!");
+    }
+}
+""")
+    
+    # Create sample JavaScript files
+    (tmp_path / "js").mkdir()
+    (tmp_path / "js" / "index.js").write_text("""
+const express = require('express');
+const app = express();
+
+app.get('/', (req, res) => {
+    res.send('Hello, World!');
+});
+
+app.listen(3000, () => {
+    console.log('Server running on port 3000');
+});
+""")
+    
+    # Create README
+    (tmp_path / "README.md").write_text("""
+# Test Project
+
+This is a test project for tree-sitter-analyzer.
+
+## Features
+
+- Python support
+- Java support  
+- JavaScript support
+""")
+    
+    return tmp_path

@@ -27,6 +27,15 @@ jobs:
     - name: Set up Python ${{ matrix.python-version }}
       run: uv python install ${{ matrix.python-version }}
 
+    - name: Install system dependencies
+      run: |
+        # Install fd and ripgrep for MCP tools
+        sudo apt-get update
+        sudo apt-get install -y fd-find ripgrep
+        # Create symlink for fd command (Ubuntu packages it as fdfind)
+        sudo ln -sf /usr/bin/fdfind /usr/bin/fd
+      shell: bash
+
     - name: Install dependencies
       run: |
         uv sync --all-extras
@@ -65,6 +74,30 @@ jobs:
     - name: Set up Python ${{ matrix.python-version }}
       run: uv python install ${{ matrix.python-version }}
 
+    - name: Install system dependencies (Linux)
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        # Install fd and ripgrep for MCP tools
+        sudo apt-get update
+        sudo apt-get install -y fd-find ripgrep
+        # Create symlink for fd command (Ubuntu packages it as fdfind)
+        sudo ln -sf /usr/bin/fdfind /usr/bin/fd
+      shell: bash
+
+    - name: Install system dependencies (macOS)
+      if: matrix.os == 'macos-13'
+      run: |
+        # Install fd and ripgrep for MCP tools
+        brew install fd ripgrep
+      shell: bash
+
+    - name: Install system dependencies (Windows)
+      if: matrix.os == 'windows-latest'
+      run: |
+        # Install fd and ripgrep for MCP tools
+        choco install fd ripgrep -y
+      shell: powershell
+
     - name: Install dependencies
       run: |
         uv sync --all-extras
@@ -94,7 +127,11 @@ jobs:
     - name: Run tests with coverage
       if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.11'
       run: |
-        uv run pytest tests/ -v --tb=short --maxfail=10 --cov=tree_sitter_analyzer --cov-report=xml --cov-report=term-missing || echo "Some tests failed but continuing CI"
+        # Add markers for external dependencies
+        uv run pytest tests/ -v --tb=short --maxfail=10 \
+          --cov=tree_sitter_analyzer --cov-report=xml --cov-report=term-missing \
+          -m "not requires_ripgrep or not requires_fd" \
+          || echo "Some tests failed but continuing CI"
       shell: bash
 
     - name: Run tests (no coverage)
@@ -102,20 +139,31 @@ jobs:
       run: |
         if [ "${{ matrix.os }}" = "windows-latest" ]; then
           # Run a subset of tests on Windows to avoid platform-specific issues
-          uv run pytest tests/test_api.py tests/test_core/ tests/test_formatters_comprehensive.py -v --tb=short --maxfail=5 || echo "Some Windows tests failed but continuing CI"
+          uv run pytest tests/test_api.py tests/test_core/ tests/test_formatters_comprehensive.py \
+            -v --tb=short --maxfail=5 \
+            -m "not requires_ripgrep or not requires_fd" \
+            || echo "Some Windows tests failed but continuing CI"
         else
-          uv run pytest tests/ -v --tb=short --maxfail=10 || echo "Some tests failed but continuing CI"
+          uv run pytest tests/ -v --tb=short --maxfail=10 \
+            -m "not requires_ripgrep or not requires_fd" \
+            || echo "Some tests failed but continuing CI"
         fi
       shell: bash
 
     - name: Upload coverage to Codecov (only on 3.11 Linux)
       if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.11'
-      uses: codecov/codecov-action@v4
+      uses: codecov/codecov-action@v5
       env:
         CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
       with:
         files: ./coverage.xml
         fail_ci_if_error: false
+
+    - name: Update README statistics (on main/develop)
+      if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.11' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
+      run: |
+        echo "Updating README statistics..."
+        uv run python scripts/update_readme_stats.py || echo "README stats update completed with warnings"
 
     - name: Test CLI functionality
       run: |
@@ -136,6 +184,15 @@ jobs:
 
     - name: Set up Python
       run: uv python install 3.11
+
+    - name: Install system dependencies
+      run: |
+        # Install fd and ripgrep for MCP tools
+        sudo apt-get update
+        sudo apt-get install -y fd-find ripgrep
+        # Create symlink for fd command (Ubuntu packages it as fdfind)
+        sudo ln -sf /usr/bin/fdfind /usr/bin/fd
+      shell: bash
 
     - name: Install dependencies
       run: |
@@ -160,6 +217,15 @@ jobs:
 
     - name: Set up Python
       run: uv python install 3.11
+
+    - name: Install system dependencies
+      run: |
+        # Install fd and ripgrep for MCP tools
+        sudo apt-get update
+        sudo apt-get install -y fd-find ripgrep
+        # Create symlink for fd command (Ubuntu packages it as fdfind)
+        sudo ln -sf /usr/bin/fdfind /usr/bin/fd
+      shell: bash
 
     - name: Install dependencies
       run: |
@@ -190,6 +256,15 @@ jobs:
 
     - name: Set up Python
       run: uv python install 3.11
+
+    - name: Install system dependencies
+      run: |
+        # Install fd and ripgrep for MCP tools
+        sudo apt-get update
+        sudo apt-get install -y fd-find ripgrep
+        # Create symlink for fd command (Ubuntu packages it as fdfind)
+        sudo ln -sf /usr/bin/fdfind /usr/bin/fd
+      shell: bash
 
     - name: Install build dependencies
       run: |
