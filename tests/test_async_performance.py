@@ -356,7 +356,8 @@ class File_{i}_Class_{j}:
     @pytest.mark.asyncio
     async def test_mcp_tool_performance(self, medium_python_file):
         """MCPツールのパフォーマンステスト"""
-        tool = QueryTool()
+        import os
+        tool = QueryTool(project_root=os.getcwd())
         
         start_time = time.time()
         

@@ -243,6 +243,10 @@ class QueryExecutor:
                     # Handle tuple format from modern API
                     if isinstance(capture, tuple) and len(capture) == 2:
                         node, name = capture
+                    # Handle dictionary format (legacy API compatibility)
+                    elif isinstance(capture, dict) and "node" in capture and "name" in capture:
+                        node = capture["node"]
+                        name = capture["name"]
                     else:
                         logger.warning(f"Unexpected capture format: {type(capture)}")
                         continue
