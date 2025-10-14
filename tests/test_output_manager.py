@@ -163,13 +163,17 @@ class TestOutputManager:
     def test_quiet_mode(self, monkeypatch):
         """Test quiet mode suppresses output"""
         mock_stdout = StringIO()
+        mock_stderr = StringIO()
         monkeypatch.setattr("sys.stdout", mock_stdout)
+        monkeypatch.setattr("sys.stderr", mock_stderr)
         manager = OutputManager(quiet=True)
         manager.output_info("This should not appear")
         manager.output_warning("This warning should not appear")
         manager.output_success("This success should not appear")
-        output = mock_stdout.getvalue()
-        assert output == ""
+        stdout_output = mock_stdout.getvalue()
+        stderr_output = mock_stderr.getvalue()
+        assert stdout_output == ""
+        assert stderr_output == ""
 
     def test_json_output_mode(self, monkeypatch):
         """Test JSON output mode"""

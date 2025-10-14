@@ -582,7 +582,8 @@ class TestClass:
                     
                     # Mock TreeSitterQueryCompat.safe_execute_query
                     with patch('tree_sitter_analyzer.core.query_service.TreeSitterQueryCompat.safe_execute_query') as mock_execute:
-                        # Mock multiple function nodes with correct byte positions
+                        # Mock multiple function nodes with correct byte positions based on actual content
+                        # test_content positions: "function1" is at byte 5-14, "method1" is at byte 58-65
                         mock_node1 = Mock()
                         mock_node1.type = "function_definition"
                         mock_node1.start_point = (1, 0)
@@ -594,8 +595,8 @@ class TestClass:
                         mock_node2.type = "function_definition"
                         mock_node2.start_point = (5, 4)
                         mock_node2.end_point = (6, 0)
-                        mock_node2.start_byte = 44  # "method1" starts at position 44
-                        mock_node2.end_byte = 51    # "method1" ends at position 51
+                        mock_node2.start_byte = 58  # "method1" starts at position 58
+                        mock_node2.end_byte = 65    # "method1" ends at position 65
                         
                         mock_execute.return_value = [
                             (mock_node1, "function"),

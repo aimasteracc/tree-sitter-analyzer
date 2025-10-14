@@ -299,19 +299,19 @@ class QueryService:
             if not isinstance(node_type, str):
                 node_type = str(node_type)
             
-            # Generic node type matching
-            if query_key == "function" and "function" in node_type:
-                captures.append((node, "function"))
-            elif query_key == "class" and "class" in node_type:
-                captures.append((node, "class"))
-            elif query_key == "method" and "method" in node_type:
-                captures.append((node, "method"))
-            elif query_key == "variable" and "variable" in node_type:
-                captures.append((node, "variable"))
-            elif query_key == "import" and "import" in node_type:
-                captures.append((node, "import"))
-            elif query_key == "headers" and "heading" in node_type:
-                captures.append((node, "headers"))
+            # Generic node type matching (support both singular and plural forms)
+            if query_key in ("function", "functions") and "function" in node_type:
+                captures.append((node, query_key))
+            elif query_key in ("class", "classes") and "class" in node_type:
+                captures.append((node, query_key))
+            elif query_key in ("method", "methods") and "method" in node_type:
+                captures.append((node, query_key))
+            elif query_key in ("variable", "variables") and "variable" in node_type:
+                captures.append((node, query_key))
+            elif query_key in ("import", "imports") and "import" in node_type:
+                captures.append((node, query_key))
+            elif query_key in ("header", "headers") and "heading" in node_type:
+                captures.append((node, query_key))
 
             # Recursively process children
             children = getattr(node, "children", [])

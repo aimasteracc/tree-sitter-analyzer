@@ -97,7 +97,6 @@ class QueryTool(BaseMCPTool):
             },
         }
 
-    @handle_mcp_errors("query_code")
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """
         Execute query tool
@@ -108,51 +107,67 @@ class QueryTool(BaseMCPTool):
         Returns:
             Query results
         """
-        # Validate input parameters
-        file_path = arguments.get("file_path")
-        if not file_path:
-            raise ValueError("file_path is required")
-
-        # Security validation BEFORE path resolution to catch symlinks
-        is_valid, error_msg = self.security_validator.validate_file_path(file_path)
-        if not is_valid:
-            raise ValueError(f"Invalid or unsafe file path: {error_msg or file_path}")
-
-        # Resolve file path to absolute path
-        resolved_file_path = self.path_resolver.resolve(file_path)
-        logger.info(f"Querying file: {file_path} (resolved to: {resolved_file_path})")
-
-        # Additional security validation on resolved path
-        is_valid, error_msg = self.security_validator.validate_file_path(
-            resolved_file_path
-        )
-        if not is_valid:
-            raise ValueError(
-                f"Invalid or unsafe resolved path: {error_msg or resolved_file_path}"
-            )
-
-        # Get query parameters
-        query_key = arguments.get("query_key")
-        query_string = arguments.get("query_string")
-        filter_expression = arguments.get("filter")
-        output_format = arguments.get("output_format", "json")
-        output_file = arguments.get("output_file")
-        suppress_output = arguments.get("suppress_output", False)
-
-        if not query_key and not query_string:
-            raise ValueError("Either query_key or query_string must be provided")
-
-        if query_key and query_string:
-            raise ValueError("Cannot provide both query_key and query_string")
-
-        # Detect language
-        language = arguments.get("language")
-        if not language:
-            language = detect_language_from_file(resolved_file_path)
-            if not language:
-                raise ValueError(f"Could not detect language for file: {file_path}")
-
         try:
+            # Validate input parameters
+            file_path = arguments.get("file_path")
+            if not file_path:
+                return {
+                    "success": False,
+                    "error": "Operation failed: file_path is required"
+                }
+
+            # Security validation BEFORE path resolution to catch symlinks
+            is_valid, error_msg = self.security_validator.validate_file_path(file_path)
+            if not is_valid:
+                return {
+                    "success": False,
+                    "error": f"Invalid or unsafe file path: {error_msg or file_path}"
+                }
+
+            # Resolve file path to absolute path
+            resolved_file_path = self.path_resolver.resolve(file_path)
+            logger.info(f"Querying file: {file_path} (resolved to: {resolved_file_path})")
+
+            # Additional security validation on resolved path
+            is_valid, error_msg = self.security_validator.validate_file_path(
+                resolved_file_path
+            )
+            if not is_valid:
+                return {
+                    "success": False,
+                    "error": f"Invalid or unsafe resolved path: {error_msg or resolved_file_path}"
+                }
+
+            # Get query parameters
+            query_key = arguments.get("query_key")
+            query_string = arguments.get("query_string")
+            filter_expression = arguments.get("filter")
+            output_format = arguments.get("output_format", "json")
+            output_file = arguments.get("output_file")
+            suppress_output = arguments.get("suppress_output", False)
+
+            if not query_key and not query_string:
+                return {
+                    "success": False,
+                    "error": "Either query_key or query_string must be provided"
+                }
+
+            if query_key and query_string:
+                return {
+                    "success": False,
+                    "error": "Cannot provide both query_key and query_string"
+                }
+
+            # Detect language
+            language = arguments.get("language")
+            if not language:
+                language = detect_language_from_file(resolved_file_path)
+                if not language:
+                    return {
+                        "success": False,
+                        "error": f"Could not detect language for file: {file_path}"
+                    }
+
             # Execute query
             results = await self.query_service.execute_query(
                 resolved_file_path, language, query_key, query_string, filter_expression
@@ -247,8 +262,8 @@ class QueryTool(BaseMCPTool):
             return {
                 "success": False,
                 "error": str(e),
-                "file_path": file_path,
-                "language": language,
+                "file_path": arguments.get("file_path", "unknown"),
+                "language": arguments.get("language", "unknown"),
             }
 
     def _format_summary(
