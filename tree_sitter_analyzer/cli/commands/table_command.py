@@ -16,7 +16,7 @@ from ...constants import (
     ELEMENT_TYPE_VARIABLE,
     get_element_type,
 )
-from ...output_manager import output_error
+from ...output_manager import output_error, output_info
 from ...table_formatter import create_table_formatter
 from ...formatters.language_formatter_factory import create_language_formatter
 from .base_command import BaseCommand
@@ -25,10 +25,14 @@ from .base_command import BaseCommand
 class TableCommand(BaseCommand):
     """Command for generating table format output."""
 
+    def __init__(self, args):
+        """Initialize the table command."""
+        super().__init__(args)
+
     async def execute_async(self, language: str) -> int:
         """Execute table format generation."""
         try:
-            # Perform analysis
+            # Perform standard analysis
             analysis_result = await self.analyze_file(language)
             if not analysis_result:
                 return 1
@@ -63,6 +67,7 @@ class TableCommand(BaseCommand):
         except Exception as e:
             output_error(f"An error occurred during table format analysis: {e}")
             return 1
+
 
     def _convert_to_formatter_format(self, analysis_result: Any) -> dict[str, Any]:
         """Convert AnalysisResult to format expected by formatters."""

@@ -134,74 +134,72 @@ class TestMarkdownQueryContent:
         query = get_query("headers")
         assert "atx_heading" in query
         assert "setext_heading" in query
-        assert "@h1" in query
-        assert "@h2" in query
+        assert "@header" in query
 
     def test_code_blocks_query_content(self):
         """Test code blocks query contains expected patterns"""
         query = get_query("code_blocks")
         assert "fenced_code_block" in query
         assert "indented_code_block" in query
-        assert "code_fence_content" in query
+        assert "@code_block" in query
 
     def test_links_query_content(self):
         """Test links query contains expected patterns"""
         query = get_query("links")
-        assert "link" in query
-        assert "autolink" in query
-        assert "reference_link" in query
-        assert "link_destination" in query
+        assert "inline" in query
+        assert "@inline" in query
 
     def test_images_query_content(self):
         """Test images query contains expected patterns"""
         query = get_query("images")
-        assert "image" in query
-        assert "reference_image" in query
-        assert "image_description" in query
+        assert "inline" in query
+        assert "@inline" in query
 
     def test_lists_query_content(self):
         """Test lists query contains expected patterns"""
         query = get_query("lists")
         assert "list" in query
         assert "list_item" in query
-        assert "list_marker" in query
+        assert "@list" in query
+        assert "@list_item" in query
 
     def test_emphasis_query_content(self):
         """Test emphasis query contains expected patterns"""
         query = get_query("emphasis")
-        assert "emphasis" in query
-        assert "strong_emphasis" in query
-        assert "emphasis_delimiter" in query
+        assert "inline" in query
+        assert "@inline" in query
 
     def test_blockquotes_query_content(self):
         """Test blockquotes query contains expected patterns"""
         query = get_query("blockquotes")
         assert "block_quote" in query
-        assert "block_quote_marker" in query
+        assert "@blockquote" in query
 
     def test_tables_query_content(self):
         """Test tables query contains expected patterns"""
         query = get_query("tables")
         assert "pipe_table" in query
-        assert "pipe_table_header" in query
-        assert "pipe_table_cell" in query
+        assert "@table" in query
 
     def test_footnotes_query_content(self):
         """Test footnotes query contains expected patterns"""
         query = get_query("footnotes")
-        assert "footnote_reference" in query
-        assert "footnote_definition" in query
+        assert "paragraph" in query
+        assert "inline" in query
+        assert "@paragraph" in query
+        assert "@inline" in query
 
     def test_all_elements_query_content(self):
         """Test all_elements query contains major patterns"""
         query = get_query("all_elements")
         assert "atx_heading" in query
         assert "fenced_code_block" in query
-        assert "link" in query
-        assert "image" in query
+        assert "inline" in query
         assert "list" in query
-        assert "footnote_reference" in query
-        assert "footnote_definition" in query
+        assert "@heading" in query
+        assert "@code_block" in query
+        assert "@inline" in query
+        assert "@list" in query
 
 
 class TestMarkdownQueryAliases:

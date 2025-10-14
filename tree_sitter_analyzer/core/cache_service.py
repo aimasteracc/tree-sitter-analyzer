@@ -225,7 +225,10 @@ class CacheService:
             for key in self._stats:
                 self._stats[key] = 0
 
-            log_info("All caches cleared")
+            # Only log if not in quiet mode (check log level)
+            import logging
+            if logging.getLogger("tree_sitter_analyzer").level <= logging.INFO:
+                log_info("All caches cleared")
 
     def size(self) -> int:
         """
@@ -315,7 +318,14 @@ class CacheService:
     def __del__(self) -> None:
         """デストラクタ - リソースクリーンアップ"""
         try:
-            self.clear()
-            log_debug("CacheService destroyed and cleaned up")
-        except Exception as e:
-            log_error(f"Error during CacheService cleanup: {e}")
+            # Only clear if not in shutdown mode
+            import sys
+            if sys.meta_path is not None:  # Check if Python is not shutting down
+                # Clear caches without logging to avoid shutdown issues
+                with self._lock:
+                    self._l1_cache.clear()
+                    self._l2_cache.clear()
+                    self._l3_cache.clear()
+        except Exception:
+            # Silently ignore all errors during shutdown to prevent ImportError
+            pass

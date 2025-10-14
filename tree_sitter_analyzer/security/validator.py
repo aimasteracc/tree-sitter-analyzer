@@ -88,55 +88,25 @@ class SecurityValidator:
                 return False, "File path contains null bytes"
 
             # Layer 3: Windows drive letter check (only on non-Windows systems)
-            # Check if we're on Windows by checking for drive letter support
-            import platform
+            is_valid, error = self._validate_windows_drive_letter(file_path)
+            if not is_valid:
+                return False, error
 
-            if (
-                len(file_path) > 1
-                and file_path[1] == ":"
-                and platform.system() != "Windows"
-            ):
-                return False, "Windows drive letters are not allowed on this system"
-
-            # Layer 4: Absolute path check (cross-platform)
+            # Layer 4: Absolute path security validation
             if Path(file_path).is_absolute() or file_path.startswith(("/", "\\")):
-                log_debug(f"Processing absolute path: {file_path}")
-                # If project boundaries are configured, enforce them strictly
-                if self.boundary_manager and self.boundary_manager.project_root:
-                    if not self.boundary_manager.is_within_project(file_path):
-                        return False, "Absolute path must be within project directory"
-                    # Within project - continue with symlink checks
-                    log_debug("Absolute path is within project, continuing with symlink checks")
-                else:
-                    # In test/dev contexts without project boundaries, allow absolute
-                    # paths under system temp folder only (safe sandbox)
-                    import tempfile
-
-                    temp_dir = Path(tempfile.gettempdir()).resolve()
-                    real_path = Path(file_path).resolve()
-                    log_debug(f"Checking if {real_path} is under temp dir {temp_dir}")
-                    try:
-                        real_path.relative_to(temp_dir)
-                        log_debug("Path is under temp directory, continuing with symlink checks")
-                        # Don't return here - continue with symlink checks
-                    except ValueError:
-                        return False, "Absolute file paths are not allowed"
+                is_valid, error = self._validate_absolute_path(file_path)
+                if not is_valid:
+                    return False, error
 
             # Layer 5: Path normalization and traversal check
-            norm_path = str(Path(file_path))
-            if "..\\" in norm_path or "../" in norm_path or norm_path.startswith(".."):
-                log_warning(f"Path traversal attempt detected: {file_path}")
-                return False, "Directory traversal not allowed"
+            is_valid, error = self._validate_path_traversal(file_path)
+            if not is_valid:
+                return False, error
 
             # Layer 6: Project boundary validation
-            if self.boundary_manager and base_path:
-                if not self.boundary_manager.is_within_project(
-                    str(Path(base_path) / norm_path)
-                ):
-                    return (
-                        False,
-                        "Access denied. File path must be within project directory",
-                    )
+            is_valid, error = self._validate_project_boundary(file_path, base_path)
+            if not is_valid:
+                return False, error
 
             # Layer 7: Symbolic link and junction check (check both original and resolved paths)
             # First check the original file_path directly for symlinks and junctions
@@ -160,8 +130,9 @@ class SecurityValidator:
                 log_debug(f"Exception checking symlink status: {e}")
                 pass
             
-            # Then check the full path (base_path + norm_path) if base_path is provided
+            # Then check the full path (base_path + file_path) if base_path is provided
             if base_path:
+                norm_path = str(Path(file_path))
                 full_path = Path(base_path) / norm_path
                 
                 # Check if the full path is a symlink or junction
@@ -427,3 +398,126 @@ class SecurityValidator:
             pass
             
         return False
+
+    def _validate_windows_drive_letter(self, file_path: str) -> tuple[bool, str]:
+        """
+        Validate Windows drive letter on non-Windows systems.
+        
+        Args:
+            file_path: File path to validate
+            
+        Returns:
+            Tuple of (is_valid, error_message)
+        """
+        import platform
+        
+        if (
+            len(file_path) > 1
+            and file_path[1] == ":"
+            and platform.system() != "Windows"
+        ):
+            return False, f"Windows drive letters are not allowed on {platform.system()} system"
+        
+        return True, ""
+
+    def _validate_absolute_path(self, file_path: str) -> tuple[bool, str]:
+        """
+        Validate absolute path with project boundary and test environment checks.
+        
+        Args:
+            file_path: Absolute file path to validate
+            
+        Returns:
+            Tuple of (is_valid, error_message)
+        """
+        log_debug(f"Processing absolute path: {file_path}")
+        
+        # Check project boundaries first (highest priority)
+        if self.boundary_manager and self.boundary_manager.project_root:
+            if not self.boundary_manager.is_within_project(file_path):
+                return False, "Absolute path must be within project directory"
+            log_debug("Absolute path is within project boundaries")
+            return True, ""
+        
+        # If no project boundaries, check test environment allowances
+        is_test_allowed, error = self._check_test_environment_access(file_path)
+        if not is_test_allowed:
+            return False, error
+            
+        log_debug("Absolute path allowed in test environment")
+        return True, ""
+
+    def _check_test_environment_access(self, file_path: str) -> tuple[bool, str]:
+        """
+        Check if absolute path access is allowed in test/development environment.
+        
+        This method allows access to system temporary directories when no project
+        boundaries are configured, which is common in test environments.
+        
+        Args:
+            file_path: File path to check
+            
+        Returns:
+            Tuple of (is_allowed, error_message)
+        """
+        import tempfile
+        
+        try:
+            temp_dir = Path(tempfile.gettempdir()).resolve()
+            real_path = Path(file_path).resolve()
+            
+            log_debug(f"Checking test environment access: {real_path} under {temp_dir}")
+            
+            # Allow access under system temp directory (safe sandbox)
+            real_path.relative_to(temp_dir)
+            log_debug("Path is under system temp directory - allowed in test environment")
+            return True, ""
+            
+        except ValueError:
+            return False, "Absolute file paths are not allowed"
+
+    def _validate_path_traversal(self, file_path: str) -> tuple[bool, str]:
+        """
+        Validate file path for directory traversal attempts.
+        
+        Args:
+            file_path: File path to validate
+            
+        Returns:
+            Tuple of (is_valid, error_message)
+        """
+        norm_path = str(Path(file_path))
+        
+        # Check for various path traversal patterns
+        traversal_patterns = ["..\\" , "../", ".."]
+        
+        if any(pattern in norm_path for pattern in traversal_patterns[:2]) or norm_path.startswith(traversal_patterns[2]):
+            log_warning(f"Path traversal attempt detected: {file_path} -> {norm_path}")
+            return False, "Directory traversal not allowed"
+            
+        return True, ""
+
+    def _validate_project_boundary(self, file_path: str, base_path: str | None) -> tuple[bool, str]:
+        """
+        Validate file path against project boundaries when base_path is provided.
+        
+        Args:
+            file_path: File path to validate
+            base_path: Base path for relative path validation
+            
+        Returns:
+            Tuple of (is_valid, error_message)
+        """
+        if not (self.boundary_manager and base_path):
+            return True, ""
+            
+        norm_path = str(Path(file_path))
+        full_path = str(Path(base_path) / norm_path)
+        
+        if not self.boundary_manager.is_within_project(full_path):
+            return (
+                False,
+                "Access denied. File path must be within project directory"
+            )
+            
+        return True, ""

@@ -8,7 +8,7 @@
 [![覆盖率](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer)
 [![质量](https://img.shields.io/badge/quality-enterprise%20grade-blue.svg)](#质量保证)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
-[![版本](https://img.shields.io/badge/version-1.8.0-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
+[![版本](https://img.shields.io/badge/version-1.8.2-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
 [![zread](https://img.shields.io/badge/Ask_Zread-_.svg?style=flat&color=00b0aa&labelColor=000000&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB3aWR0aD0iMTYiIGhlaWdodD0iMTYiIHZpZXdCb3g9IjAgMCAxNiAxNiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTQuOTYxNTYgMS42MDAxSDIuMjQxNTZDMS44ODgxIDEuNjAwMSAxLjYwMTU2IDEuODg2NjQgMS42MDE1NiAyLjI0MDFWNC45NjAxQzEuNjAxNTYgNS4zMTM1NiAxLjg4ODEgNS42MDAxIDIuMjQxNTYgNS42MDAxSDQuOTYxNTZDNS4zMTUwMiA1LjYwMDEgNS42MDE1NiA1LjMxMzU2IDUuNjAxNTYgNC45NjAxVjIuMjQwMUM1LjYwMTU2IDEuODg2NjQgNS4zMTUwMiAxLjYwMDEgNC45NjE1NiAxLjYwMDFaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik00Ljk2MTU2IDEwLjM5OTlIMi4yNDE1NkMxLjg4ODEgMTAuMzk5OSAxLjYwMTU2IDEwLjY4NjQgMS42MDE1NiAxMS4wMzk5VjEzLjc1OTlDMS42MDE1NiAxNC4xMTM0IDEuODg4MSAxNC4zOTk5IDIuMjQxNTYgMTQuMzk5OUg0Ljk2MTU2QzUuMzE1MDIgMTQuMzk5OSA1LjYwMTU2IDE0LjExMzQgNS42MDE1NiAxMy43NTk5VjExLjAzOTlDNS42MDE1NiAxMC42ODY0IDUuMzE1MDIgMTAuMzk5OSA0Ljk2MTU2IDEwLjM5OTlaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik0xMy43NTg0IDEuNjAwMUgxMS4wMzg0QzEwLjY4NSAxLjYwMDEgMTAuMzk4NCAxLjg4NjY0IDEwLjM5ODQgMi4yNDAxVjQuOTYwMUMxMC4zOTg0IDUuMzEzNTYgMTAuNjg1IDUuNjAwMSAxMS4wMzg0IDUuNjAwMUgxMy43NTg0QzE0LjExMTkgNS42MDAxIDE0LjM5ODQgNS4zMTM1NiAxNC4zOTg0IDQuOTYwMVYyLjI0MDFDMTQuMzk4NCAxLjg4NjY0IDE0LjExMTkgMS42MDAxIDEzLjc1ODQgMS42MDAxWiIgZmlsbD0iI2ZmZiIvPgo8cGF0aCBkPSJNNCAxMkwxMiA0TDQgMTJaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik00IDEyTDEyIDQiIHN0cm9rZT0iI2ZmZiIgc3Ryb2tlLXdpZHRoPSIxLjUiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPgo8L3N2Zz4K&logoColor=ffffff)](https://zread.ai/aimasteracc/tree-sitter-analyzer)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
@@ -447,6 +447,18 @@ Tree-sitter Analyzer提供了丰富的MCP工具集，专为AI助手设计：
 | **📁 资源访问** | 代码文件资源 | URI访问代码文件 | 通过URI标识访问文件内容 |
 | | 项目统计资源 | 访问项目统计数据 | 项目分析数据和统计信息 |
 
+### 🆕 v1.8.2新特性：CLI安全性和参数验证增强
+
+全面的CLI安全性改进和参数验证优化：
+
+- **🔒 CLI安全边界修复**：修复了CLI模式下的安全边界错误，确保文件访问的安全性
+- **✅ 正确的CLI参数验证**：实现了完整的CLI参数验证系统，防止无效参数组合
+- **🚫 排他参数控制**：`--table`和`--query-key`参数现在正确实现排他控制
+- **🔍 增强的过滤支持**：`--query-key`与`--filter`的组合使用得到完整支持
+- **⚠️ 清晰的错误消息**：提供详细的错误信息，帮助用户正确使用命令
+- **🛡️ 安全功能增强**：测试环境下的临时目录访问许可和项目边界保护
+- **📋 改进的用户体验**：更直观的命令行界面和错误处理
+
 ### 🆕 v1.8.0新特性：HTML/CSS语言支持
 
 具有专用数据模型和格式化的革命性HTML和CSS分析功能：
@@ -509,9 +521,10 @@ uv run python -m tree_sitter_analyzer examples/BigService.java --advanced
 uv run python -m tree_sitter_analyzer examples/BigService.java --table=full
 
 # 🆕 新架构HTML/CSS分析
-uv run python -m tree_sitter_analyzer examples/comprehensive_sample.html --table=html --output-format=text
-uv run python -m tree_sitter_analyzer examples/comprehensive_sample.css --advanced --output-format=json
-uv run python -m tree_sitter_analyzer examples/comprehensive_sample.html --structure --language html
+uv run python -m tree_sitter_analyzer examples/comprehensive_sample.html --table=full --output-format=text
+uv run python -m tree_sitter_analyzer examples/comprehensive_sample.css --table=full --output-format=text
+uv run python -m tree_sitter_analyzer examples/comprehensive_sample.html --advanced --output-format=text
+uv run python -m tree_sitter_analyzer examples/comprehensive_sample.css --advanced --output-format=text
 
 # 指定输出格式
 uv run python -m tree_sitter_analyzer examples/BigService.java --advanced --output-format=json
@@ -531,6 +544,18 @@ uv run python -m tree_sitter_analyzer script.py --language python --table=full
 uv run python -m tree_sitter_analyzer examples/BigService.java --query-key methods
 uv run python -m tree_sitter_analyzer examples/BigService.java --query-key classes
 
+# 🆕 v1.8.2 正确的使用方法
+# 正确：使用 --query-key 与 --filter 组合
+uv run python -m tree_sitter_analyzer examples/BigService.java --query-key methods --filter "name=main"
+
+# 正确：生成完整结构表格
+uv run python -m tree_sitter_analyzer examples/BigService.java --table full
+
+# 🚫 v1.8.2 错误的使用方法（会显示错误）
+# 错误：同时使用 --table 和 --query-key（排他参数）
+# uv run python -m tree_sitter_analyzer examples/BigService.java --table full --query-key methods
+# 错误信息: "--table and --query-key cannot be used together. Use --query-key with --filter instead."
+
 # 过滤查询结果
 # 查找特定方法
 uv run python -m tree_sitter_analyzer examples/BigService.java --query-key methods --filter "name=main"
@@ -546,6 +571,28 @@ uv run python -m tree_sitter_analyzer examples/BigService.java --query-key metho
 
 # 查看过滤语法帮助
 uv run python -m tree_sitter_analyzer --filter-help
+```
+
+#### 🔒 安全功能说明
+
+v1.8.2版本增强了安全功能，确保文件访问的安全性：
+
+```bash
+# ✅ 安全的项目边界保护
+# 工具会自动检测和尊重项目边界，防止访问项目外的敏感文件
+
+# ✅ 测试环境临时目录访问
+# 在测试环境下，允许访问临时目录以支持测试用例
+
+# ✅ 正确的CLI参数验证
+# 系统会验证参数组合的有效性，防止无效的命令执行
+
+# 示例：安全的文件分析
+uv run python -m tree_sitter_analyzer examples/BigService.java --advanced
+# ✅ 允许：文件在项目目录内
+
+# uv run python -m tree_sitter_analyzer /etc/passwd --advanced
+# ❌ 拒绝：文件在项目边界外（安全保护）
 ```
 
 #### 📁 文件系统操作命令
@@ -614,7 +661,17 @@ uv run python -m tree_sitter_analyzer --show-query-languages
 - **零测试失败** - 生产就绪
 - **跨平台支持** - Windows、macOS、Linux
 
-### ⚡ 最新质量成就（v1.7.4）
+### ⚡ 最新质量成就（v1.8.2）
+- ✅ **🔒 CLI安全性增强** - 修复CLI模式下的安全边界错误，确保文件访问安全
+- ✅ **✅ 参数验证完善** - 实现完整的CLI参数验证系统，防止无效参数组合
+- ✅ **🚫 排他参数控制** - `--table`和`--query-key`参数正确实现排他控制
+- ✅ **🔍 过滤功能增强** - `--query-key`与`--filter`组合使用得到完整支持
+- ✅ **⚠️ 错误消息优化** - 提供清晰详细的错误信息，改善用户体验
+- ✅ **🛡️ 项目边界保护** - 自动检测和尊重项目边界，防止访问敏感文件
+- ✅ **🧪 测试环境支持** - 测试环境下的临时目录访问许可
+- ✅ **📋 用户体验改进** - 更直观的命令行界面和错误处理机制
+
+### ⚡ v1.7.4质量成就
 - ✅ **📊 质量指标提升** - 测试数量增加到3,263个，覆盖率保持高水平
 - ✅ **🔧 系统稳定性** - 所有测试通过，系统稳定性和可靠性增强
 - ✅ **🆕 Markdown完整支持** - 新增完整的Markdown语言插件，支持所有主要Markdown元素
@@ -666,8 +723,9 @@ uv run pytest tests/test_mcp_server_initialization.py -v
 **验证环境：**
 - 操作系统：Windows 10、macOS、Linux
 - Python版本：3.10+
-- 项目版本：tree-sitter-analyzer v1.7.4
+- 项目版本：tree-sitter-analyzer v1.8.2
 - 测试文件：BigService.java (1419行)、sample.py (256行)、MultiClass.java (54行)
+- 新增验证：CLI参数验证、安全边界保护、排他参数控制
 
 ---
 

@@ -8,7 +8,7 @@
 [![カバレッジ](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer)
 [![品質](https://img.shields.io/badge/quality-enterprise%20grade-blue.svg)](#8--品質保証)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
-[![バージョン](https://img.shields.io/badge/version-1.8.0-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
+[![バージョン](https://img.shields.io/badge/version-1.8.2-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
 [![zread](https://img.shields.io/badge/Ask_Zread-_.svg?style=flat&color=00b0aa&labelColor=000000&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB3aWR0aD0iMTYiIGhlaWdodD0iMTYiIHZpZXdCb3g9IjAgMCAxNiAxNiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTQuOTYxNTYgMS42MDAxSDIuMjQxNTZDMS44ODgxIDEuNjAwMSAxLjYwMTU2IDEuODg2NjQgMS42MDE1NiAyLjI0MDFWNC45NjAxQzEuNjAxNTYgNS4zMTM1NiAxLjg4ODEgNS42MDAxIDIuMjQxNTYgNS42MDAxSDQuOTYxNTZDNS4zMTUwMiA1LjYwMDEgNS42MDE1NiA1LjMxMzU2IDUuNjAxNTYgNC45NjAxVjIuMjQwMUM1LjYwMTU2IDEuODg2NjQgNS4zMTUwMiAxLjYwMDEgNC45NjE1NiAxLjYwMDFaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik00Ljk2MTU2IDEwLjM5OTlIMi4yNDE1NkMxLjg4ODEgMTAuMzk5OSAxLjYwMTU2IDEwLjY4NjQgMS42MDE1NiAxMS4wMzk5VjEzLjc1OTlDMS42MDE1NiAxNC4xMTM0IDEuODg4MSAxNC4zOTk5IDIuMjQxNTYgMTQuMzk5OUg0Ljk2MTU2QzUuMzE1MDIgMTQuMzk5OSA1LjYwMTU2IDE0LjExMzQgNS42MDE1NiAxMy43NTk5VjExLjAzOTlDNS42MDE1NiAxMC42ODY0IDUuMzE1MDIgMTAuMzk5OSA0Ljk2MTU2IDEwLjM5OTlaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik0xMy43NTg0IDEuNjAwMUgxMS4wMzg0QzEwLjY4NSAxLjYwMDEgMTAuMzk4NCAxLjg4NjY0IDEwLjM5ODQgMi4yNDAxVjQuOTYwMUMxMC4zOTg0IDUuMzEzNTYgMTAuNjg1IDUuNjAwMSAxMS4wMzg0IDUuNjAwMUgxMy43NTg0QzE0LjExMTkgNS42MDAxIDE0LjM5ODQgNS4zMTM1NiAxNC4zOTg0IDQuOTYwMVYyLjI0MDFDMTQuMzk4NCAxLjg4NjY0IDE0LjExMTkgMS42MDAxIDEzLjc1ODQgMS42MDAxWiIgZmlsbD0iI2ZmZiIvPgo8cGF0aCBkPSJNNCAxMkwxMiA0TDQgMTJaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik00IDEyTDEyIDQiIHN0cm9rZT0iI2ZmZiIgc3Ryb2tlLXdpZHRoPSIxLjUiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPgo8L3N2Zz4K&logoColor=ffffff)](https://zread.ai/aimasteracc/tree-sitter-analyzer)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
@@ -446,6 +446,18 @@ Tree-sitter AnalyzerはAIアシスタント向けに設計された豊富なMCP�
 | **📁 リソースアクセス** | コードファイルリソース | URIコードファイルアクセス | URI識別によるファイルコンテンツアクセス |
 | | プロジェクト統計リソース | プロジェクト統計データアクセス | プロジェクト解析データと統計情報 |
 
+### 🆕 v1.8.2新機能：CLIセキュリティと引数検証の強化
+
+包括的なCLIセキュリティ改善と引数検証の最適化：
+
+- **🔒 CLIセキュリティ境界の修正**：CLIモードでのセキュリティ境界エラーを修正し、ファイルアクセスの安全性を確保
+- **✅ 正しいCLI引数検証**：完全なCLI引数検証システムを実装し、無効な引数の組み合わせを防止
+- **🚫 排他引数制御**：[`--table`](README_ja.md:508)と[`--query-key`](README_ja.md:530)引数が正しく排他制御を実装
+- **🔍 強化されたフィルタサポート**：[`--query-key`](README_ja.md:530)と[`--filter`](README_ja.md:534)の組み合わせ使用が完全にサポート
+- **⚠️ 明確なエラーメッセージ**：詳細なエラー情報を提供し、ユーザーが正しくコマンドを使用できるよう支援
+- **🛡️ セキュリティ機能の強化**：テスト環境での一時ディレクトリアクセス許可とプロジェクト境界保護
+- **📋 改善されたユーザーエクスペリエンス**：より直感的なコマンドラインインターフェースとエラー処理
+
 ### 🆕 v1.8.0新機能：HTML/CSS言語サポート
 
 専用データモデルとフォーマッティングによる革新的なHTMLとCSS解析機能：
@@ -508,9 +520,10 @@ uv run python -m tree_sitter_analyzer examples/BigService.java --advanced
 uv run python -m tree_sitter_analyzer examples/BigService.java --table=full
 
 # 🆕 新しいアーキテクチャでHTML/CSS解析
-uv run python -m tree_sitter_analyzer examples/comprehensive_sample.html --table=html --output-format=text
-uv run python -m tree_sitter_analyzer examples/comprehensive_sample.css --advanced --output-format=json
-uv run python -m tree_sitter_analyzer examples/comprehensive_sample.html --structure --language html
+uv run python -m tree_sitter_analyzer examples/comprehensive_sample.html --table=full --output-format=text
+uv run python -m tree_sitter_analyzer examples/comprehensive_sample.css --table=full --output-format=text
+uv run python -m tree_sitter_analyzer examples/comprehensive_sample.html --advanced --output-format=text
+uv run python -m tree_sitter_analyzer examples/comprehensive_sample.css --advanced --output-format=text
 
 # 出力形式を指定
 uv run python -m tree_sitter_analyzer examples/BigService.java --advanced --output-format=json
@@ -530,6 +543,18 @@ uv run python -m tree_sitter_analyzer script.py --language python --table=full
 uv run python -m tree_sitter_analyzer examples/BigService.java --query-key methods
 uv run python -m tree_sitter_analyzer examples/BigService.java --query-key classes
 
+# 🆕 v1.8.2 正しい使用方法
+# 正しい：--query-keyと--filterの組み合わせ
+uv run python -m tree_sitter_analyzer examples/BigService.java --query-key methods --filter "name=main"
+
+# 正しい：完全な構造テーブルの生成
+uv run python -m tree_sitter_analyzer examples/BigService.java --table full
+
+# 🚫 v1.8.2 間違った使用方法（エラーが表示される）
+# 間違った：--tableと--query-keyの同時使用（排他引数）
+# uv run python -m tree_sitter_analyzer examples/BigService.java --table full --query-key methods
+# エラーメッセージ: "--table and --query-key cannot be used together. Use --query-key with --filter instead."
+
 # クエリ結果をフィルタ
 # 特定のメソッドを検索
 uv run python -m tree_sitter_analyzer examples/BigService.java --query-key methods --filter "name=main"
@@ -545,6 +570,28 @@ uv run python -m tree_sitter_analyzer examples/BigService.java --query-key metho
 
 # フィルタ構文のヘルプを表示
 uv run python -m tree_sitter_analyzer --filter-help
+```
+
+#### 🔒 セキュリティ機能の説明
+
+v1.8.2版本でセキュリティ機能が強化され、ファイルアクセスの安全性が確保されています：
+
+```bash
+# ✅ 安全なプロジェクト境界保護
+# ツールは自動的にプロジェクト境界を検出し、尊重することで、プロジェクト外の機密ファイルへのアクセスを防止
+
+# ✅ テスト環境での一時ディレクトリアクセス
+# テスト環境では、テストケースをサポートするために一時ディレクトリへのアクセスが許可
+
+# ✅ 正しいCLI引数検証
+# システムは引数の組み合わせの有効性を検証し、無効なコマンドの実行を防止
+
+# 例：安全なファイル解析
+uv run python -m tree_sitter_analyzer examples/BigService.java --advanced
+# ✅ 許可：ファイルがプロジェクトディレクトリ内にある
+
+# uv run python -m tree_sitter_analyzer /etc/passwd --advanced
+# ❌ 拒否：ファイルがプロジェクト境界外にある（セキュリティ保護）
 ```
 
 #### 📁 ファイルシステム操作コマンド
@@ -612,7 +659,17 @@ uv run python -m tree_sitter_analyzer --show-query-languages
 - **ゼロテスト失敗** - 本番環境対応
 - **クロスプラットフォームサポート** - Windows、macOS、Linux
 
-### ⚡ 最新の品質成果（v1.7.4）
+### ⚡ 最新の品質成果（v1.8.2）
+- ✅ **🔒 CLIセキュリティの強化** - CLIモードでのセキュリティ境界エラーを修正し、ファイルアクセスの安全性を確保
+- ✅ **✅ 引数検証の完善** - 完全なCLI引数検証システムを実装し、無効な引数の組み合わせを防止
+- ✅ **🚫 排他引数制御** - [`--table`](README_ja.md:521)と[`--query-key`](README_ja.md:543)引数が正しく排他制御を実装
+- ✅ **🔍 フィルタ機能の強化** - [`--query-key`](README_ja.md:543)と[`--filter`](README_ja.md:560)の組み合わせ使用が完全にサポート
+- ✅ **⚠️ エラーメッセージの最適化** - 明確で詳細なエラー情報を提供し、ユーザーエクスペリエンスを改善
+- ✅ **🛡️ プロジェクト境界保護** - 自動的にプロジェクト境界を検出し、尊重することで機密ファイルへのアクセスを防止
+- ✅ **🧪 テスト環境サポート** - テスト環境での一時ディレクトリアクセス許可
+- ✅ **📋 ユーザーエクスペリエンスの改善** - より直感的なコマンドラインインターフェースとエラー処理メカニズム
+
+### ⚡ v1.7.4の品質成果
 - ✅ **📊 品質メトリクス向上** - テスト数が3,263個に増加、カバレッジも高水準を維持
 - ✅ **🔧 システム安定性** - すべてのテストが合格し、システムの安定性と信頼性が向上
 - ✅ **🆕 Markdown完全サポート** - 新しい完全なMarkdown言語プラグインを追加、すべての主要Markdown要素をサポート
@@ -664,8 +721,9 @@ uv run pytest tests/test_mcp_server_initialization.py -v
 **検証環境：**
 - オペレーティングシステム：Windows 10、macOS、Linux
 - Pythonバージョン：3.10+
-- プロジェクトバージョン：tree-sitter-analyzer v1.7.4
+- プロジェクトバージョン：tree-sitter-analyzer v1.8.2
 - テストファイル：BigService.java（1419行）、sample.py（256行）、MultiClass.java（54行）
+- 新規検証：CLI引数検証、セキュリティ境界保護、排他引数制御
 
 ---
 

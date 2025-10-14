@@ -64,7 +64,11 @@ class PluginManager:
                 log_debug(f"Skipping duplicate plugin for language: {language}")
 
         final_plugins = list(unique_plugins.values())
-        log_info(f"Successfully loaded {len(final_plugins)} plugins")
+        # Only log if not in CLI mode (check if we're in quiet mode)
+        import os
+        log_level = os.environ.get("LOG_LEVEL", "WARNING")
+        if log_level != "ERROR":
+            log_info(f"Successfully loaded {len(final_plugins)} plugins")
         return final_plugins
 
     def _load_from_entry_points(self) -> list[LanguagePlugin]:

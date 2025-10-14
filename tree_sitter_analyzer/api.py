@@ -42,7 +42,7 @@ def analyze_file(
     include_details: bool = False,  # Add for backward compatibility
     include_queries: bool = True,
     include_complexity: bool = False,  # Add for backward compatibility
-):
+) -> dict[str, Any]:
     """
     Analyze a source code file.
 
@@ -58,40 +58,124 @@ def analyze_file(
         include_complexity: Whether to include complexity metrics (backward compatibility)
 
     Returns:
-        AnalysisResult object containing analysis results
+        Analysis results dictionary
     """
     try:
         engine = get_engine()
 
-        # Perform the analysis and return the AnalysisResult directly
+        # Perform the analysis
         analysis_result = engine.analyze_file(file_path, language)
         
-        # Ensure the result has the expected attributes for backward compatibility
-        if not hasattr(analysis_result, 'elements'):
-            analysis_result.elements = []
-        
-        return analysis_result
+        # Convert AnalysisResult to expected API format (same as analyze_code)
+        result = {
+            "success": analysis_result.success,
+            "file_info": {
+                "path": str(file_path),
+                "exists": True,
+            },
+            "language_info": {
+                "language": analysis_result.language,
+                "detected": language is None,  # True if language was auto-detected
+            },
+            "ast_info": {
+                "node_count": analysis_result.node_count,
+                "line_count": analysis_result.line_count,
+            },
+        }
+
+        # Add elements if requested and available
+        if include_elements and hasattr(analysis_result, "elements"):
+            result["elements"] = []
+            for elem in analysis_result.elements:
+                elem_dict = {
+                    "name": elem.name,
+                    "type": type(elem).__name__.lower(),
+                    "start_line": elem.start_line,
+                    "end_line": elem.end_line,
+                    "raw_text": elem.raw_text,
+                    "language": elem.language,
+                }
+
+                # Add type-specific fields
+                if hasattr(elem, "module_path"):
+                    elem_dict["module_path"] = elem.module_path
+                if hasattr(elem, "module_name"):
+                    elem_dict["module_name"] = elem.module_name
+                if hasattr(elem, "imported_names"):
+                    elem_dict["imported_names"] = elem.imported_names
+                if hasattr(elem, "variable_type"):
+                    elem_dict["variable_type"] = elem.variable_type
+                if hasattr(elem, "initializer"):
+                    elem_dict["initializer"] = elem.initializer
+                if hasattr(elem, "is_constant"):
+                    elem_dict["is_constant"] = elem.is_constant
+                if hasattr(elem, "parameters"):
+                    elem_dict["parameters"] = elem.parameters
+                if hasattr(elem, "return_type"):
+                    elem_dict["return_type"] = elem.return_type
+                if hasattr(elem, "is_async"):
+                    elem_dict["is_async"] = elem.is_async
+                if hasattr(elem, "is_static"):
+                    elem_dict["is_static"] = elem.is_static
+                if hasattr(elem, "is_constructor"):
+                    elem_dict["is_constructor"] = elem.is_constructor
+                if hasattr(elem, "is_method"):
+                    elem_dict["is_method"] = elem.is_method
+                if hasattr(elem, "complexity_score"):
+                    elem_dict["complexity_score"] = elem.complexity_score
+                if hasattr(elem, "superclass"):
+                    elem_dict["superclass"] = elem.superclass
+                if hasattr(elem, "class_type"):
+                    elem_dict["class_type"] = elem.class_type
+
+                # For methods, try to find the class name from context
+                if elem_dict.get("is_method") and elem_dict["type"] == "function":
+                    # Look for the class this method belongs to
+                    for other_elem in analysis_result.elements:
+                        if (
+                            hasattr(other_elem, "start_line")
+                            and hasattr(other_elem, "end_line")
+                            and type(other_elem).__name__.lower() == "class"
+                            and other_elem.start_line
+                            <= elem.start_line
+                            <= other_elem.end_line
+                        ):
+                            elem_dict["class_name"] = other_elem.name
+                            break
+                    else:
+                        elem_dict["class_name"] = None
+
+                result["elements"].append(elem_dict)
+
+        # Add query results if requested and available
+        if include_queries and hasattr(analysis_result, "query_results"):
+            result["query_results"] = analysis_result.query_results
+
+        # Add error message if analysis failed
+        if not analysis_result.success and analysis_result.error_message:
+            result["error"] = analysis_result.error_message
+
+        # Filter results based on options
+        if not include_elements and "elements" in result:
+            del result["elements"]
+
+        if not include_queries and "query_results" in result:
+            del result["query_results"]
+
+        return result
 
     except FileNotFoundError as e:
         # Re-raise FileNotFoundError for tests that expect it
         raise e
     except Exception as e:
-        # Handle errors by creating a minimal AnalysisResult-like object
-        from .models import AnalysisResult
-        
-        # Create a failed analysis result
-        failed_result = AnalysisResult(
-            success=False,
-            language=language or "unknown",
-            file_path=str(file_path),
-            elements=[],
-            node_count=0,
-            line_count=0,
-            error_message=str(e)
-        )
-        
         log_error(f"API analyze_file failed: {e}")
-        return failed_result
+        return {
+            "success": False,
+            "error": str(e),
+            "file_info": {"path": str(file_path), "exists": False},
+            "language_info": {"language": language or "unknown", "detected": False},
+            "ast_info": {"node_count": 0, "line_count": 0},
+        }
 
 
 def analyze_code(

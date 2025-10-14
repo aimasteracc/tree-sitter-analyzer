@@ -2002,7 +2002,7 @@ wheels = [
 
 [[package]]
 name = "tree-sitter-analyzer"
-version = "1.7.7"
+version = "1.8.1"
 source = { editable = "." }
 dependencies = [
     { name = "cachetools" },
@@ -2197,6 +2197,7 @@ dev = [
     { name = "isort" },
     { name = "mypy" },
     { name = "pre-commit" },
+    { name = "psutil" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "pytest-cov" },
@@ -2357,6 +2358,7 @@ dev = [
     { name = "isort", specifier = ">=5.13.0" },
     { name = "mypy", specifier = ">=1.17.0" },
     { name = "pre-commit", specifier = ">=4.2.0" },
+    { name = "psutil", specifier = ">=5.9.8" },
     { name = "pytest", specifier = ">=8.4.1" },
     { name = "pytest-asyncio", specifier = ">=1.1.0" },
     { name = "pytest-cov", specifier = ">=4.0.0" },

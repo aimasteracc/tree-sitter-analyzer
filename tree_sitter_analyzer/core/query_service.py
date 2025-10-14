@@ -6,6 +6,7 @@ Unified query service for both CLI and MCP interfaces to avoid code duplication.
 Provides core tree-sitter query functionality including predefined and custom queries.
 """
 
+import asyncio
 import logging
 from typing import Any
 
@@ -30,7 +31,7 @@ class QueryService:
         self.plugin_manager = PluginManager()
         self.plugin_manager.load_plugins()
 
-    def execute_query(
+    async def execute_query(
         self,
         file_path: str,
         language: str,
@@ -64,7 +65,7 @@ class QueryService:
 
         try:
             # Read file content
-            content, encoding = read_file_safe(file_path)
+            content, encoding = await self._read_file_async(file_path)
 
             # Parse file
             parse_result = self.parser.parse_code(content, language, file_path)
@@ -87,17 +88,23 @@ class QueryService:
             # Execute tree-sitter query using modern API
             try:
                 captures = TreeSitterQueryCompat.safe_execute_query(
-                    language_obj, query_string, tree.root_node, fallback_result=[]
+                    language_obj, query_string or "", tree.root_node, fallback_result=[]
                 )
-                
+
                 # If captures is empty, use plugin fallback
                 if not captures:
-                    captures = self._execute_plugin_query(tree.root_node, query_key, language, content)
-                    
+                    captures = self._execute_plugin_query(
+                        tree.root_node, query_key, language, content
+                    )
+
             except Exception as e:
-                logger.debug(f"Tree-sitter query execution failed, using plugin fallback: {e}")
+                logger.debug(
+                    f"Tree-sitter query execution failed, using plugin fallback: {e}"
+                )
                 # If query creation or execution fails, use plugin fallback
-                captures = self._execute_plugin_query(tree.root_node, query_key, language, content)
+                captures = self._execute_plugin_query(
+                    tree.root_node, query_key, language, content
+                )
 
             # Process capture results
             results = []
@@ -106,14 +113,15 @@ class QueryService:
                 for capture in captures:
                     if isinstance(capture, tuple) and len(capture) == 2:
                         node, name = capture
-                        results.append(self._create_result_dict(node, name))
-            else:
-                # If captures is not in expected format, use plugin fallback
-                plugin_captures = self._execute_plugin_query(tree.root_node, query_key, language, content)
-                for capture in plugin_captures:
-                    if isinstance(capture, tuple) and len(capture) == 2:
-                        node, name = capture
-                        results.append(self._create_result_dict(node, name))
+                        results.append(self._create_result_dict(node, name, content))
+            # Note: This else block is unreachable due to the logic above, but kept for safety
+            # else:
+            #     # If captures is not in expected format, use plugin fallback
+            #     plugin_captures = self._execute_plugin_query(tree.root_node, query_key, language, content)
+            #     for capture in plugin_captures:
+            #         if isinstance(capture, tuple) and len(capture) == 2:
+            #             node, name = capture
+            #             results.append(self._create_result_dict(node, name, content))
 
             # Apply filters
             if filter_expression and results:
@@ -125,20 +133,23 @@ class QueryService:
             logger.error(f"Query execution failed: {e}")
             raise
 
-    def _create_result_dict(self, node: Any, capture_name: str) -> dict[str, Any]:
+    def _create_result_dict(
+        self, node: Any, capture_name: str, source_code: str = ""
+    ) -> dict[str, Any]:
         """
         Create result dictionary from tree-sitter node
 
         Args:
             node: tree-sitter node
             capture_name: capture name
+            source_code: source code content for text extraction
 
         Returns:
             Result dictionary
         """
-        # Use safe text extraction
-        content = get_node_text_safe(node, "")  # We don't have source_code here, so pass empty string
-        
+        # Use safe text extraction with source code
+        content = get_node_text_safe(node, source_code)
+
         return {
             "capture_name": capture_name,
             "node_type": node.type if hasattr(node, "type") else "unknown",
@@ -177,112 +188,150 @@ class QueryService:
         except Exception:
             return None
 
-    def _execute_plugin_query(self, root_node: Any, query_key: str | None, language: str, source_code: str) -> list[tuple[Any, str]]:
+    def _execute_plugin_query(
+        self, root_node: Any, query_key: str | None, language: str, source_code: str
+    ) -> list[tuple[Any, str]]:
         """
         Execute query using plugin-based dynamic dispatch
-        
+
         Args:
             root_node: Root node of the parsed tree
             query_key: Query key to execute (can be None for custom queries)
             language: Programming language
             source_code: Source code content
-            
+
         Returns:
             List of (node, capture_name) tuples
         """
         captures = []
-        
+
         # Try to get plugin for the language
         plugin = self.plugin_manager.get_plugin(language)
         if not plugin:
             logger.warning(f"No plugin found for language: {language}")
             return self._fallback_query_execution(root_node, query_key)
-        
+
         # Use plugin's execute_query_strategy method
         try:
             # Create a mock tree object for plugin compatibility
             class MockTree:
-                def __init__(self, root_node):
+                def __init__(self, root_node: Any) -> None:
                     self.root_node = root_node
-            
-            mock_tree = MockTree(root_node)
-            
+
             # Execute plugin query strategy
-            elements = plugin.execute_query_strategy(mock_tree, source_code, query_key or "function")
-            
+            elements = plugin.execute_query_strategy(
+                source_code, query_key or "function"
+            )
+
             # Convert elements to captures format
-            for element in elements:
-                if hasattr(element, 'start_line') and hasattr(element, 'end_line'):
-                    # Create a mock node for compatibility
-                    class MockNode:
-                        def __init__(self, element):
-                            self.type = getattr(element, 'element_type', query_key or 'unknown')
-                            self.start_point = (getattr(element, 'start_line', 1) - 1, 0)
-                            self.end_point = (getattr(element, 'end_line', 1) - 1, 0)
-                            self.text = getattr(element, 'raw_text', '').encode('utf-8')
-                    
-                    mock_node = MockNode(element)
-                    captures.append((mock_node, query_key or 'element'))
-            
+            if elements:
+                for element in elements:
+                    if hasattr(element, "start_line") and hasattr(element, "end_line"):
+                        # Create a mock node for compatibility
+                        class MockNode:
+                            def __init__(self, element: Any) -> None:
+                                self.type = getattr(
+                                    element, "element_type", query_key or "unknown"
+                                )
+                                self.start_point = (
+                                    getattr(element, "start_line", 1) - 1,
+                                    0,
+                                )
+                                self.end_point = (
+                                    getattr(element, "end_line", 1) - 1,
+                                    0,
+                                )
+                                self.text = getattr(element, "raw_text", "").encode(
+                                    "utf-8"
+                                )
+
+                        mock_node = MockNode(element)
+                        captures.append((mock_node, query_key or "element"))
+
             return captures
-            
+
         except Exception as e:
             logger.debug(f"Plugin query strategy failed: {e}")
-        
+
         # Fallback: Use plugin's element categories for tree traversal
         try:
             element_categories = plugin.get_element_categories()
             if element_categories and query_key and query_key in element_categories:
                 node_types = element_categories[query_key]
-                
-                def walk_tree(node):
+
+                def walk_tree(node: Any) -> None:
                     """Walk the tree and find matching nodes using plugin categories"""
                     if node.type in node_types:
                         captures.append((node, query_key))
-                    
+
                     # Recursively process children
                     for child in node.children:
                         walk_tree(child)
-                
+
                 walk_tree(root_node)
                 return captures
-                
+
         except Exception as e:
             logger.debug(f"Plugin element categories failed: {e}")
-        
+
         # Final fallback
         return self._fallback_query_execution(root_node, query_key)
-    
-    def _fallback_query_execution(self, root_node: Any, query_key: str | None) -> list[tuple[Any, str]]:
+
+    def _fallback_query_execution(
+        self, root_node: Any, query_key: str | None
+    ) -> list[tuple[Any, str]]:
         """
         Basic fallback query execution for unsupported languages
-        
+
         Args:
             root_node: Root node of the parsed tree
             query_key: Query key to execute
-            
+
         Returns:
             List of (node, capture_name) tuples
         """
         captures = []
-        
-        def walk_tree_basic(node):
+
+        def walk_tree_basic(node: Any) -> None:
             """Basic tree walking for unsupported languages"""
-            # Generic node type matching
-            if query_key == "function" and "function" in node.type:
-                captures.append((node, "function"))
-            elif query_key == "class" and "class" in node.type:
-                captures.append((node, "class"))
-            elif query_key == "method" and "method" in node.type:
-                captures.append((node, "method"))
-            elif query_key == "variable" and "variable" in node.type:
-                captures.append((node, "variable"))
-            elif query_key == "import" and "import" in node.type:
-                captures.append((node, "import"))
+            # Get node type safely
+            node_type = getattr(node, "type", "")
+            if not isinstance(node_type, str):
+                node_type = str(node_type)
             
+            # Generic node type matching
+            if query_key == "function" and "function" in node_type:
+                captures.append((node, "function"))
+            elif query_key == "class" and "class" in node_type:
+                captures.append((node, "class"))
+            elif query_key == "method" and "method" in node_type:
+                captures.append((node, "method"))
+            elif query_key == "variable" and "variable" in node_type:
+                captures.append((node, "variable"))
+            elif query_key == "import" and "import" in node_type:
+                captures.append((node, "import"))
+            elif query_key == "headers" and "heading" in node_type:
+                captures.append((node, "headers"))
+
             # Recursively process children
-            for child in node.children:
+            children = getattr(node, "children", [])
+            for child in children:
                 walk_tree_basic(child)
-        
+
         walk_tree_basic(root_node)
         return captures
+
+    async def _read_file_async(self, file_path: str) -> tuple[str, str]:
+        """
+        非同期ファイル読み込み
+
+        Args:
+            file_path: ファイルパス
+
+        Returns:
+            tuple[str, str]: (content, encoding)
+        """
+        # CPU集約的でない単純なファイル読み込みなので、
+        # run_in_executorを使用して非同期化
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, read_file_safe, file_path)

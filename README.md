@@ -8,7 +8,7 @@
 [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer)
 [![Quality](https://img.shields.io/badge/quality-enterprise%20grade-blue.svg)](#quality-assurance)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
-[![Version](https://img.shields.io/badge/version-1.8.0-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
+[![Version](https://img.shields.io/badge/version-1.8.2-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
 [![zread](https://img.shields.io/badge/Ask_Zread-_.svg?style=flat&color=00b0aa&labelColor=000000&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB3aWR0aD0iMTYiIGhlaWdodD0iMTYiIHZpZXdCb3g9IjAgMCAxNiAxNiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTQuOTYxNTYgMS42MDAxSDIuMjQxNTZDMS44ODgxIDEuNjAwMSAxLjYwMTU2IDEuODg2NjQgMS42MDE1NiAyLjI0MDFWNC45NjAxQzEuNjAxNTYgNS4zMTM1NiAxLjg4ODEgNS42MDAxIDIuMjQxNTYgNS42MDAxSDQuOTYxNTZDNS4zMTUwMiA1LjYwMDEgNS42MDE1NiA1LjMxMzU2IDUuNjAxNTYgNC45NjAxVjIuMjQwMUM1LjYwMTU2IDEuODg2NjQgNS4zMTUwMiAxLjYwMDEgNC45NjE1NiAxLjYwMDFaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik00Ljk2MTU2IDEwLjM5OTlIMi4yNDE1NkMxLjg4ODEgMTAuMzk5OSAxLjYwMTU2IDEwLjY4NjQgMS42MDE1NiAxMS4wMzk5VjEzLjc1OTlDMS42MDE1NiAxNC4xMTM0IDEuODg4MSAxNC4zOTk5IDIuMjQxNTYgMTQuMzk5OUg0Ljk2MTU2QzUuMzE1MDIgMTQuMzk5OSA1LjYwMTU2IDE0LjExMzQgNS42MDE1NiAxMy43NTk5VjExLjAzOTlDNS42MDE1NiAxMC42ODY0IDUuMzE1MDIgMTAuMzk5OSA0Ljk2MTU2IDEwLjM5OTlaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik0xMy43NTg0IDEuNjAwMUgxMS4wMzg0QzEwLjY4NSAxLjYwMDEgMTAuMzk4NCAxLjg4NjY0IDEwLjM5ODQgMi4yNDAxVjQuOTYwMUMxMC4zOTg0IDUuMzEzNTYgMTAuNjg1IDUuNjAwMSAxMS4wMzg0IDUuNjAwMUgxMy43NTg0QzE0LjExMTkgNS42MDAxIDE0LjM5ODQgNS4zMTM1NiAxNC4zOTg0IDQuOTYwMVYyLjI0MDFDMTQuMzk4NCAxLjg4NjY0IDE0LjExMTkgMS42MDAxIDEzLjc1ODQgMS42MDAxWiIgZmlsbD0iI2ZmZiIvPgo8cGF0aCBkPSJNNCAxMkwxMiA0TDQgMTJaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik00IDEyTDEyIDQiIHN0cm9rZT0iI2ZmZiIgc3Ryb2tlLXdpZHRoPSIxLjUiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPgo8L3N2Zz4K&logoColor=ffffff)](https://zread.ai/aimasteracc/tree-sitter-analyzer)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
@@ -446,6 +446,18 @@ Tree-sitter Analyzer provides a rich set of MCP tools designed for AI assistants
 | **📁 Resource Access** | Code file resources | URI code file access | File content access via URI identification |
 | | Project statistics resources | Project statistics data access | Project analysis data and statistical information |
 
+### 🆕 v1.8.2 New Feature: CLI Security and Argument Validation Enhancement
+
+Comprehensive CLI security improvements and argument validation optimization:
+
+- **🔒 CLI Security Boundary Fix**: Fixed CLI mode security boundary errors, ensuring file access security
+- **✅ Proper CLI Argument Validation**: Implemented complete CLI argument validation system, preventing invalid parameter combinations
+- **🚫 Exclusive Parameter Control**: `--table` and `--query-key` parameters now properly implement exclusive control
+- **🔍 Enhanced Filter Support**: `--query-key` with `--filter` combination usage is fully supported
+- **⚠️ Clear Error Messages**: Provides detailed error information to help users use commands correctly
+- **🛡️ Enhanced Security Features**: Temporary directory access permission in test environments and project boundary protection
+- **📋 Improved User Experience**: More intuitive command-line interface and error handling
+
 ### 🆕 v1.8.0 New Feature: HTML/CSS Language Support
 
 Revolutionary HTML and CSS analysis capabilities with specialized data models and formatting:
@@ -508,9 +520,10 @@ uv run python -m tree_sitter_analyzer examples/BigService.java --advanced
 uv run python -m tree_sitter_analyzer examples/BigService.java --table=full
 
 # 🆕 HTML/CSS analysis with new architecture
-uv run python -m tree_sitter_analyzer examples/comprehensive_sample.html --table=html --output-format=text
-uv run python -m tree_sitter_analyzer examples/comprehensive_sample.css --advanced --output-format=json
-uv run python -m tree_sitter_analyzer examples/comprehensive_sample.html --structure --language html
+uv run python -m tree_sitter_analyzer examples/comprehensive_sample.html --table=full --output-format=text
+uv run python -m tree_sitter_analyzer examples/comprehensive_sample.css --table=full --output-format=text
+uv run python -m tree_sitter_analyzer examples/comprehensive_sample.html --advanced --output-format=text
+uv run python -m tree_sitter_analyzer examples/comprehensive_sample.css --advanced --output-format=text
 
 # Specify output format
 uv run python -m tree_sitter_analyzer examples/BigService.java --advanced --output-format=json
@@ -530,6 +543,18 @@ uv run python -m tree_sitter_analyzer script.py --language python --table=full
 uv run python -m tree_sitter_analyzer examples/BigService.java --query-key methods
 uv run python -m tree_sitter_analyzer examples/BigService.java --query-key classes
 
+# 🆕 v1.8.2 Correct Usage Examples
+# Correct: Use --query-key with --filter combination
+uv run python -m tree_sitter_analyzer examples/BigService.java --query-key methods --filter "name=main"
+
+# Correct: Generate complete structure table
+uv run python -m tree_sitter_analyzer examples/BigService.java --table full
+
+# 🚫 v1.8.2 Incorrect Usage Examples (will show error)
+# Incorrect: Using --table and --query-key together (exclusive parameters)
+# uv run python -m tree_sitter_analyzer examples/BigService.java --table full --query-key methods
+# Error message: "--table and --query-key cannot be used together. Use --query-key with --filter instead."
+
 # Filter query results
 # Find specific methods
 uv run python -m tree_sitter_analyzer examples/BigService.java --query-key methods --filter "name=main"
@@ -545,6 +570,28 @@ uv run python -m tree_sitter_analyzer examples/BigService.java --query-key metho
 
 # View filter syntax help
 uv run python -m tree_sitter_analyzer --filter-help
+```
+
+#### 🔒 Security Features
+
+v1.8.2 enhanced security features ensure file access safety:
+
+```bash
+# ✅ Secure project boundary protection
+# Tools automatically detect and respect project boundaries, preventing access to sensitive files outside the project
+
+# ✅ Test environment temporary directory access
+# In test environments, allows access to temporary directories to support test cases
+
+# ✅ Proper CLI argument validation
+# System validates parameter combination validity, preventing invalid command execution
+
+# Example: Secure file analysis
+uv run python -m tree_sitter_analyzer examples/BigService.java --advanced
+# ✅ Allowed: File is within project directory
+
+# uv run python -m tree_sitter_analyzer /etc/passwd --advanced
+# ❌ Denied: File is outside project boundary (security protection)
 ```
 
 #### 📁 File System Operation Commands
@@ -612,7 +659,17 @@ uv run python -m tree_sitter_analyzer --show-query-languages
 - **Zero test failures** - Production ready
 - **Cross-platform support** - Windows, macOS, Linux
 
-### ⚡ Latest Quality Achievements (v1.7.5)
+### ⚡ Latest Quality Achievements (v1.8.2)
+- ✅ **🔒 CLI Security Enhancement** - Fixed CLI mode security boundary errors, ensuring file access security
+- ✅ **✅ Argument Validation Improvement** - Implemented complete CLI argument validation system, preventing invalid parameter combinations
+- ✅ **🚫 Exclusive Parameter Control** - `--table` and `--query-key` parameters properly implement exclusive control
+- ✅ **🔍 Enhanced Filter Functionality** - `--query-key` with `--filter` combination usage fully supported
+- ✅ **⚠️ Error Message Optimization** - Provides clear and detailed error information, improving user experience
+- ✅ **🛡️ Project Boundary Protection** - Automatically detects and respects project boundaries, preventing access to sensitive files
+- ✅ **🧪 Test Environment Support** - Temporary directory access permission in test environments
+- ✅ **📋 User Experience Improvement** - More intuitive command-line interface and error handling mechanisms
+
+### ⚡ v1.7.5 Quality Achievements
 - ✅ **📊 Enhanced Quality Metrics** - Test count increased to 3,263 coverage maintained at high levels
 - ✅ **🔧 System Stability** - All tests passing with enhanced system stability and reliability
 - ✅ **🆕 Complete Markdown Support** - Added new complete Markdown language plugin supporting all major Markdown elements
@@ -664,8 +721,9 @@ The project maintains high-quality test coverage. For detailed module coverage i
 **Verification environment:**
 - Operating systems: Windows 10, macOS, Linux
 - Python version: 3.10+
-- Project version: tree-sitter-analyzer v1.7.5
+- Project version: tree-sitter-analyzer v1.8.2
 - Test files: BigService.java (1419 lines), sample.py (256 lines), MultiClass.java (54 lines)
+- New verification: CLI argument validation, security boundary protection, exclusive parameter control
 
 ---
 

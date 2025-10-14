@@ -11,9 +11,10 @@ from typing import Any
 
 from ..models import CodeElement, MarkupElement, StyleElement
 from .formatter_registry import IFormatter
+from .base_formatter import BaseFormatter
 
 
-class HtmlFormatter(IFormatter):
+class HtmlFormatter(BaseFormatter, IFormatter):
     """HTML-specific formatter for MarkupElement and StyleElement"""
 
     @staticmethod
@@ -29,10 +30,27 @@ class HtmlFormatter(IFormatter):
         lines.append("# HTML Structure Analysis")
         lines.append("")
 
-        # Separate MarkupElements and StyleElements
-        markup_elements = [e for e in elements if isinstance(e, MarkupElement)]
-        style_elements = [e for e in elements if isinstance(e, StyleElement)]
-        other_elements = [e for e in elements if not isinstance(e, (MarkupElement, StyleElement))]
+        # Handle both CodeElement objects and dictionaries
+        markup_elements = []
+        style_elements = []
+        other_elements = []
+        
+        for e in elements:
+            if isinstance(e, MarkupElement):
+                markup_elements.append(e)
+            elif isinstance(e, StyleElement):
+                style_elements.append(e)
+            elif isinstance(e, dict):
+                # Convert dictionary to appropriate element type based on content
+                element_type = e.get('type', e.get('element_type', 'unknown'))
+                if 'tag_name' in e or element_type in ['tag', 'element', 'markup']:
+                    markup_elements.append(self._dict_to_markup_element(e))
+                elif 'selector' in e or element_type in ['rule', 'style']:
+                    style_elements.append(self._dict_to_style_element(e))
+                else:
+                    other_elements.append(e)
+            else:
+                other_elements.append(e)
 
         # Format markup elements
         if markup_elements:
@@ -47,6 +65,55 @@ class HtmlFormatter(IFormatter):
             lines.extend(self._format_other_elements(other_elements))
 
         return "\n".join(lines)
+
+    def format_summary(self, analysis_result: dict[str, Any]) -> str:
+        """Format summary output for HTML elements"""
+        elements = analysis_result.get("elements", [])
+        if not elements:
+            return "No HTML elements found."
+        
+        markup_count = sum(1 for e in elements if isinstance(e, MarkupElement))
+        style_count = sum(1 for e in elements if isinstance(e, StyleElement))
+        other_count = len(elements) - markup_count - style_count
+        
+        lines = []
+        lines.append("# HTML Analysis Summary")
+        lines.append("")
+        lines.append(f"**Total Elements:** {len(elements)}")
+        lines.append(f"- Markup Elements: {markup_count}")
+        lines.append(f"- Style Elements: {style_count}")
+        lines.append(f"- Other Elements: {other_count}")
+        
+        return "\n".join(lines)
+
+    def format_structure(self, analysis_result: dict[str, Any]) -> str:
+        """Format structure analysis output"""
+        elements = analysis_result.get("elements", [])
+        return self.format(elements)
+
+    def format_advanced(self, analysis_result: dict[str, Any], output_format: str = "json") -> str:
+        """Format advanced analysis output"""
+        elements = analysis_result.get("elements", [])
+        
+        if output_format == "json":
+            formatter = HtmlJsonFormatter()
+            return formatter.format(elements)
+        else:
+            return self.format(elements)
+
+    def format_table(self, analysis_result: dict[str, Any], table_type: str = "full") -> str:
+        """Format table output"""
+        elements = analysis_result.get("elements", [])
+        
+        if table_type == "compact":
+            formatter = HtmlCompactFormatter()
+            return formatter.format(elements)
+        elif table_type == "json":
+            formatter = HtmlJsonFormatter()
+            return formatter.format(elements)
+        else:
+            # Default to full format (including "html" and "full")
+            return self.format(elements)
 
     def _format_markup_elements(self, elements: list[MarkupElement]) -> list[str]:
         """Format MarkupElement list with hierarchy"""
@@ -169,7 +236,7 @@ class HtmlFormatter(IFormatter):
 
         return lines
 
-    def _format_other_elements(self, elements: list[CodeElement]) -> list[str]:
+    def _format_other_elements(self, elements: list) -> list[str]:
         """Format other code elements"""
         lines = []
         lines.append("## Other Elements")
@@ -178,15 +245,56 @@ class HtmlFormatter(IFormatter):
         lines.append("|------|------|-------|----------|")
 
         for element in elements:
-            element_type = getattr(element, "element_type", "unknown")
-            name = element.name
-            lines_str = f"{element.start_line}-{element.end_line}"
-            language = element.language
-
+            if isinstance(element, dict):
+                element_type = element.get("element_type", element.get("type", "unknown"))
+                name = element.get("name", "unknown")
+                start_line = element.get("start_line", 0)
+                end_line = element.get("end_line", 0)
+                language = element.get("language", "unknown")
+            else:
+                element_type = getattr(element, "element_type", "unknown")
+                name = getattr(element, "name", "unknown")
+                start_line = getattr(element, "start_line", 0)
+                end_line = getattr(element, "end_line", 0)
+                language = getattr(element, "language", "unknown")
+            
+            lines_str = f"{start_line}-{end_line}"
             lines.append(f"| {element_type} | {name} | {lines_str} | {language} |")
 
         lines.append("")
         return lines
+
+    def _dict_to_markup_element(self, data: dict):
+        """Convert dictionary to MarkupElement-like object"""
+        # Create a mock MarkupElement-like object
+        class MockMarkupElement:
+            def __init__(self, data):
+                self.name = data.get('name', 'unknown')
+                self.tag_name = data.get('tag_name', data.get('name', 'unknown'))
+                self.element_class = data.get('element_class', 'unknown')
+                self.start_line = data.get('start_line', 0)
+                self.end_line = data.get('end_line', 0)
+                self.attributes = data.get('attributes', {})
+                self.children = []
+                self.parent = None
+                self.language = data.get('language', 'html')
+        
+        return MockMarkupElement(data)
+
+    def _dict_to_style_element(self, data: dict):
+        """Convert dictionary to StyleElement-like object"""
+        # Create a mock StyleElement-like object
+        class MockStyleElement:
+            def __init__(self, data):
+                self.name = data.get('name', 'unknown')
+                self.selector = data.get('selector', data.get('name', 'unknown'))
+                self.element_class = data.get('element_class', 'unknown')
+                self.start_line = data.get('start_line', 0)
+                self.end_line = data.get('end_line', 0)
+                self.properties = data.get('properties', {})
+                self.language = data.get('language', 'css')
+        
+        return MockStyleElement(data)
 
 
 class HtmlJsonFormatter(IFormatter):
@@ -212,6 +320,15 @@ class HtmlJsonFormatter(IFormatter):
                 result["html_analysis"]["markup_elements"].append(self._markup_to_dict(element))
             elif isinstance(element, StyleElement):
                 result["html_analysis"]["style_elements"].append(self._style_to_dict(element))
+            elif isinstance(element, dict):
+                # Handle dictionary format
+                element_type = element.get("element_type", element.get("type", "unknown"))
+                if "tag_name" in element or element_type in ['tag', 'element', 'markup']:
+                    result["html_analysis"]["markup_elements"].append(element)
+                elif "selector" in element or element_type in ['rule', 'style']:
+                    result["html_analysis"]["style_elements"].append(element)
+                else:
+                    result["html_analysis"]["other_elements"].append(element)
             else:
                 result["html_analysis"]["other_elements"].append(self._element_to_dict(element))
 
@@ -288,14 +405,45 @@ class HtmlCompactFormatter(IFormatter):
                     info += f" #{element.attributes['id']}"
                 if element.attributes.get("class"):
                     info += f" .{element.attributes['class']}"
+                name = element.name
+                start_line = element.start_line
+                end_line = element.end_line
             elif isinstance(element, StyleElement):
                 symbol = "🎨"
                 info = element.selector
+                name = element.name
+                start_line = element.start_line
+                end_line = element.end_line
+            elif isinstance(element, dict):
+                # Handle dictionary format
+                element_type = element.get("element_type", element.get("type", "unknown"))
+                name = element.get("name", "unknown")
+                start_line = element.get("start_line", 0)
+                end_line = element.get("end_line", 0)
+                
+                if "tag_name" in element or element_type in ['tag', 'element', 'markup']:
+                    symbol = "🏷️"
+                    tag_name = element.get("tag_name", name)
+                    info = f"<{tag_name}>"
+                    attributes = element.get("attributes", {})
+                    if attributes.get("id"):
+                        info += f" #{attributes['id']}"
+                    if attributes.get("class"):
+                        info += f" .{attributes['class']}"
+                elif "selector" in element or element_type in ['rule', 'style']:
+                    symbol = "🎨"
+                    info = element.get("selector", name)
+                else:
+                    symbol = "📄"
+                    info = element_type
             else:
                 symbol = "📄"
                 info = getattr(element, "element_type", "unknown")
+                name = getattr(element, "name", "unknown")
+                start_line = getattr(element, "start_line", 0)
+                end_line = getattr(element, "end_line", 0)
 
-            lines.append(f"{symbol} {element.name} {info} [{element.start_line}-{element.end_line}]")
+            lines.append(f"{symbol} {name} {info} [{start_line}-{end_line}]")
 
         return "\n".join(lines)
 
