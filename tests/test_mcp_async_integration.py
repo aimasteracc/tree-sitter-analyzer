@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """MCP async integration tests"""
 
+import os
 import pytest
 import asyncio
 import tempfile
@@ -115,7 +116,7 @@ class Class_{i}:
     @pytest.mark.asyncio
     async def test_query_tool_basic_execution(self, sample_code_file):
         """QueryToolの基本実行テスト"""
-        tool = QueryTool()
+        tool = QueryTool(project_root=os.getcwd())
         
         result = await tool.execute({
             "file_path": sample_code_file,
@@ -135,7 +136,7 @@ class Class_{i}:
     @pytest.mark.asyncio
     async def test_query_tool_class_execution(self, sample_code_file):
         """QueryToolのクラスクエリ実行テスト"""
-        tool = QueryTool()
+        tool = QueryTool(project_root=os.getcwd())
         
         result = await tool.execute({
             "file_path": sample_code_file,
@@ -155,7 +156,7 @@ class Class_{i}:
     @pytest.mark.asyncio
     async def test_query_tool_javascript_execution(self, sample_javascript_file):
         """QueryToolのJavaScript実行テスト"""
-        tool = QueryTool()
+        tool = QueryTool(project_root=os.getcwd())
         
         result = await tool.execute({
             "file_path": sample_javascript_file,
@@ -170,7 +171,7 @@ class Class_{i}:
     @pytest.mark.asyncio
     async def test_query_tool_output_formats(self, sample_code_file):
         """出力フォーマットのテスト"""
-        tool = QueryTool()
+        tool = QueryTool(project_root=os.getcwd())
         
         # JSON format
         json_result = await tool.execute({
@@ -195,7 +196,7 @@ class Class_{i}:
     @pytest.mark.asyncio
     async def test_query_tool_custom_query_string(self, sample_code_file):
         """カスタムクエリ文字列のテスト"""
-        tool = QueryTool()
+        tool = QueryTool(project_root=os.getcwd())
         
         result = await tool.execute({
             "file_path": sample_code_file,
@@ -210,7 +211,7 @@ class Class_{i}:
     @pytest.mark.asyncio
     async def test_query_tool_filter_expression(self, sample_code_file):
         """フィルター式のテスト"""
-        tool = QueryTool()
+        tool = QueryTool(project_root=os.getcwd())
         
         # フィルター式を使用してクエリ実行
         result = await tool.execute({
@@ -233,7 +234,7 @@ class Class_{i}:
     @pytest.mark.asyncio
     async def test_query_tool_language_auto_detection(self, sample_code_file):
         """言語自動検出のテスト"""
-        tool = QueryTool()
+        tool = QueryTool(project_root=os.getcwd())
         
         # 言語を指定せずに実行
         result = await tool.execute({
@@ -248,7 +249,7 @@ class Class_{i}:
     @pytest.mark.asyncio
     async def test_query_tool_error_handling_nonexistent_file(self):
         """エラーハンドリング: 存在しないファイル"""
-        tool = QueryTool()
+        tool = QueryTool(project_root=os.getcwd())
         
         result = await tool.execute({
             "file_path": "nonexistent_file.py",
@@ -262,7 +263,7 @@ class Class_{i}:
     @pytest.mark.asyncio
     async def test_query_tool_error_handling_invalid_language(self, sample_code_file):
         """エラーハンドリング: 無効な言語"""
-        tool = QueryTool()
+        tool = QueryTool(project_root=os.getcwd())
         
         result = await tool.execute({
             "file_path": sample_code_file,
@@ -278,7 +279,7 @@ class Class_{i}:
     @pytest.mark.asyncio
     async def test_query_tool_error_handling_invalid_query_key(self, sample_code_file):
         """エラーハンドリング: 無効なクエリキー"""
-        tool = QueryTool()
+        tool = QueryTool(project_root=os.getcwd())
         
         result = await tool.execute({
             "file_path": sample_code_file,
@@ -296,7 +297,7 @@ class Class_{i}:
     @pytest.mark.asyncio
     async def test_query_tool_error_handling_malformed_query_string(self, sample_code_file):
         """エラーハンドリング: 不正なクエリ文字列"""
-        tool = QueryTool()
+        tool = QueryTool(project_root=os.getcwd())
         
         result = await tool.execute({
             "file_path": sample_code_file,
@@ -311,7 +312,7 @@ class Class_{i}:
     @pytest.mark.asyncio
     async def test_concurrent_mcp_execution(self, sample_code_file):
         """並行MCP実行テスト"""
-        tool = QueryTool()
+        tool = QueryTool(project_root=os.getcwd())
         
         tasks = [
             tool.execute({
@@ -349,7 +350,7 @@ class Class_{i}:
     @pytest.mark.asyncio
     async def test_multiple_languages_concurrent(self, sample_code_file, sample_javascript_file):
         """複数言語の並行処理テスト"""
-        tool = QueryTool()
+        tool = QueryTool(project_root=os.getcwd())
         
         tasks = [
             tool.execute({
@@ -381,7 +382,7 @@ class Class_{i}:
     @pytest.mark.asyncio
     async def test_large_file_mcp_processing(self, large_code_file):
         """大きなファイルのMCP処理テスト"""
-        tool = QueryTool()
+        tool = QueryTool(project_root=os.getcwd())
         
         result = await tool.execute({
             "file_path": large_code_file,
@@ -398,7 +399,7 @@ class Class_{i}:
         """MCPパフォーマンスベースラインテスト"""
         import time
         
-        tool = QueryTool()
+        tool = QueryTool(project_root=os.getcwd())
         
         start_time = time.time()
         
@@ -421,7 +422,7 @@ class Class_{i}:
     @pytest.mark.asyncio
     async def test_stress_concurrent_mcp_execution(self, sample_code_file):
         """ストレステスト: 大量の並行MCP実行"""
-        tool = QueryTool()
+        tool = QueryTool(project_root=os.getcwd())
         
         # 10個の並行タスクを実行
         tasks = [
@@ -449,7 +450,7 @@ class Class_{i}:
     @pytest.mark.asyncio
     async def test_mcp_tool_argument_validation(self):
         """MCP引数バリデーションテスト"""
-        tool = QueryTool()
+        tool = QueryTool(project_root=os.getcwd())
         
         # 必須引数が不足している場合
         result = await tool.execute({})
@@ -467,7 +468,7 @@ class Class_{i}:
     @pytest.mark.asyncio
     async def test_mcp_tool_output_file_feature(self, sample_code_file):
         """MCP出力ファイル機能のテスト"""
-        tool = QueryTool()
+        tool = QueryTool(project_root=os.getcwd())
         
         output_file = "test_mcp_output.json"
         
@@ -507,7 +508,7 @@ class Class_{i}:
     @pytest.mark.asyncio
     async def test_mcp_tool_suppress_output_feature(self, sample_code_file):
         """MCP出力抑制機能のテスト"""
-        tool = QueryTool()
+        tool = QueryTool(project_root=os.getcwd())
         
         output_file = "test_mcp_suppress_output.json"
         

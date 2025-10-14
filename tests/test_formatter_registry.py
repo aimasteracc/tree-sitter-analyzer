@@ -220,6 +220,10 @@ class TestFormatterRegistry:
 
     def test_formatter_override_warning(self, caplog):
         """Test warning when overriding existing formatter"""
+        import logging
+        
+        # Set logging level to capture warnings
+        caplog.set_level(logging.WARNING)
         
         class Formatter1(IFormatter):
             @staticmethod
