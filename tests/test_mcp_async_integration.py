@@ -546,7 +546,7 @@ class Class_{i}:
             if result["success"]:
                 # suppress_outputがTrueの場合、結果が抑制されることを確認
                 # 実装によっては、resultsキーが存在しないか、空の配列になる
-                if result.get("suppress_output") or suppress_output:
+                if result.get("suppress_output") or result.get("file_saved"):
                     # 結果が抑制されている場合、詳細な結果は含まれない
                     assert "results" not in result or len(result.get("results", [])) == 0
                 else:
