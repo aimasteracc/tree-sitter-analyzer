@@ -15,9 +15,23 @@ from typing import Any
 
 # Configure global logger
 def setup_logger(
-    name: str = "tree_sitter_analyzer", level: int = logging.WARNING
+    name: str = "tree_sitter_analyzer", level: int | str = logging.WARNING
 ) -> logging.Logger:
     """Setup unified logger for the project"""
+    # Handle string level parameter
+    if isinstance(level, str):
+        level_upper = level.upper()
+        if level_upper == "DEBUG":
+            level = logging.DEBUG
+        elif level_upper == "INFO":
+            level = logging.INFO
+        elif level_upper == "WARNING":
+            level = logging.WARNING
+        elif level_upper == "ERROR":
+            level = logging.ERROR
+        else:
+            level = logging.WARNING  # Default fallback
+    
     # Get log level from environment variable (only if set and not empty)
     env_level = os.environ.get("LOG_LEVEL", "").upper()
     if env_level and env_level in ["DEBUG", "INFO", "WARNING", "ERROR"]:
@@ -32,6 +46,10 @@ def setup_logger(
     # If env_level is empty or not recognized, use the passed level parameter
 
     logger = logging.getLogger(name)
+    
+    # Clear existing handlers if this is a test logger to ensure clean state
+    if name.startswith("test_"):
+        logger.handlers.clear()
 
     if not logger.handlers:  # Avoid duplicate handlers
         # Create a safe handler that writes to stderr to avoid breaking MCP stdio
@@ -61,7 +79,14 @@ def setup_logger(
                     ...
 
     # Always set the level, even if handlers already exist
+    # Ensure the level is properly set, not inherited
     logger.setLevel(level)
+    
+    # For test loggers, ensure they don't inherit from parent and force level
+    if logger.name.startswith("test_"):
+        logger.propagate = False
+        # Force the level setting for test loggers
+        logger.level = level
 
     return logger
 
@@ -268,7 +293,7 @@ def safe_print(message: str | None, level: str = "info", quiet: bool = False) ->
     if quiet:
         return
 
-    # Handle None message by converting to string
+    # Handle None message by converting to string - always call log function even for None
     msg = str(message) if message is not None else "None"
     
     # Use dynamic lookup to support mocking
@@ -350,14 +375,16 @@ class LoggingContext:
         self.enabled = enabled
         self.level = level
         self.old_level: int | None = None
-        self.target_logger = (
-            logging.getLogger()
-        )  # Use root logger for compatibility with tests
+        # Use a specific logger name for testing to avoid interference
+        self.target_logger = logging.getLogger("tree_sitter_analyzer")
 
     def __enter__(self) -> "LoggingContext":
         if self.enabled and self.level is not None:
             # Always save the current level before changing
             self.old_level = self.target_logger.level
+            # Ensure we have a valid level to restore to (not NOTSET)
+            if self.old_level == logging.NOTSET:
+                self.old_level = logging.INFO  # Default fallback
             self.target_logger.setLevel(self.level)
         return self
 

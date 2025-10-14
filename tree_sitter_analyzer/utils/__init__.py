@@ -17,16 +17,12 @@ def _import_logging_functions():
     import importlib.util
     import os
     
-    # Import the parent utils module directly
-    if 'tree_sitter_analyzer.utils' in sys.modules:
-        utils_module = sys.modules['tree_sitter_analyzer.utils']
-    else:
-        # Import the utils.py file from the parent directory
-        parent_dir = os.path.dirname(os.path.dirname(__file__))
-        utils_path = os.path.join(parent_dir, 'utils.py')
-        spec = importlib.util.spec_from_file_location("utils", utils_path)
-        utils_module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(utils_module)
+    # Import the utils.py file from the parent directory
+    parent_dir = os.path.dirname(os.path.dirname(__file__))
+    utils_path = os.path.join(parent_dir, 'utils.py')
+    spec = importlib.util.spec_from_file_location("tree_sitter_analyzer_utils", utils_path)
+    utils_module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(utils_module)
     
     return (
         utils_module.setup_logger,
@@ -49,7 +45,14 @@ except Exception:
     # Fallback logging functions if import fails
     def setup_logger(name="tree_sitter_analyzer", level=30):
         import logging
-        return logging.getLogger(name)
+        logger = logging.getLogger(name)
+        if not logger.handlers:
+            handler = logging.StreamHandler()
+            formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+            handler.setFormatter(formatter)
+            logger.addHandler(handler)
+        logger.setLevel(level)
+        return logger
     def log_debug(msg, *args, **kwargs):
         pass
     def log_error(msg, *args, **kwargs):
