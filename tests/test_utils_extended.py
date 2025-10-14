@@ -6,6 +6,7 @@ Extended tests for utils module to improve test coverage.
 import logging
 import tempfile
 import unittest
+import unittest.mock
 from pathlib import Path
 from unittest.mock import patch
 
@@ -101,13 +102,25 @@ class TestUtilsExtended(unittest.TestCase):
 
     def test_safe_print_with_none_message(self):
         """Test safe print functions with None message."""
-        with patch("tree_sitter_analyzer.utils.log_info") as mock_info:
+        # Patch the log_info in safe_print's globals since it's dynamically loaded
+        original_log_info = safe_print.__globals__['log_info']
+        original_log_error = safe_print.__globals__['log_error']
+        
+        mock_info = unittest.mock.MagicMock()
+        mock_error = unittest.mock.MagicMock()
+        
+        try:
+            safe_print.__globals__['log_info'] = mock_info
             safe_print(None, level="info")
             mock_info.assert_called_once()
-
-        with patch("tree_sitter_analyzer.utils.log_error") as mock_error:
+            
+            safe_print.__globals__['log_error'] = mock_error
             safe_print(None, level="error")
             mock_error.assert_called_once()
+        finally:
+            # Restore originals
+            safe_print.__globals__['log_info'] = original_log_info
+            safe_print.__globals__['log_error'] = original_log_error
 
     def test_safe_print_with_invalid_level(self):
         """Test safe print with invalid level."""

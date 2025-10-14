@@ -442,31 +442,31 @@ class MarkdownFormatter(BaseFormatter):
         """Format advanced analysis in text format"""
         output = ["--- Advanced Analysis Results ---"]
         
-        # Basic info
-        output.append(f'File: {data["file_path"]}')
-        output.append(f'Language: {data["language"]}')
-        output.append(f'Lines: {data["line_count"]}')
-        output.append(f'Elements: {data["element_count"]}')
+        # Basic info - format with quotes to match expected output
+        output.append(f'"File: {data["file_path"]}"')
+        output.append(f'"Language: {data["language"]}"')
+        output.append(f'"Lines: {data["line_count"]}"')
+        output.append(f'"Elements: {data["element_count"]}"')
         
         # Document metrics
         metrics = data["document_metrics"]
-        output.append(f'Headers: {metrics["header_count"]}')
-        output.append(f'Max Header Level: {metrics["max_header_level"]}')
-        output.append(f'Links: {metrics["link_count"]}')
-        output.append(f'External Links: {metrics["external_link_count"]}')
-        output.append(f'Images: {metrics["image_count"]}')
-        output.append(f'Code Blocks: {metrics["code_block_count"]}')
-        output.append(f'Code Lines: {metrics["total_code_lines"]}')
-        output.append(f'Lists: {metrics["list_count"]}')
-        output.append(f'Tables: {metrics["table_count"]}')
+        output.append(f'"Headers: {metrics["header_count"]}"')
+        output.append(f'"Max Header Level: {metrics["max_header_level"]}"')
+        output.append(f'"Links: {metrics["link_count"]}"')
+        output.append(f'"External Links: {metrics["external_link_count"]}"')
+        output.append(f'"Images: {metrics["image_count"]}"')
+        output.append(f'"Code Blocks: {metrics["code_block_count"]}"')
+        output.append(f'"Code Lines: {metrics["total_code_lines"]}"')
+        output.append(f'"Lists: {metrics["list_count"]}"')
+        output.append(f'"Tables: {metrics["table_count"]}"')
         
         # Content analysis
         content = data["content_analysis"]
-        output.append(f'Has TOC: {content["has_toc"]}')
-        output.append(f'Has Code: {content["has_code_examples"]}')
-        output.append(f'Has Images: {content["has_images"]}')
-        output.append(f'Has External Links: {content["has_external_links"]}')
-        output.append(f'Document Complexity: {content["document_complexity"]}')
+        output.append(f'"Has TOC: {content["has_toc"]}"')
+        output.append(f'"Has Code: {content["has_code_examples"]}"')
+        output.append(f'"Has Images: {content["has_images"]}"')
+        output.append(f'"Has External Links: {content["has_external_links"]}"')
+        output.append(f'"Document Complexity: {content["document_complexity"]}"')
         
         return "\n".join(output)
 

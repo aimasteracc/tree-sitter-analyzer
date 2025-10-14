@@ -108,12 +108,30 @@ class QueryTool(BaseMCPTool):
             Query results
         """
         try:
-            # Validate input parameters
+            # Validate input parameters - check for empty arguments first
+            if not arguments:
+                from ..utils.error_handler import AnalysisError
+                raise AnalysisError(
+                    "file_path is required",
+                    operation="query_code"
+                )
+                
             file_path = arguments.get("file_path")
             if not file_path:
                 from ..utils.error_handler import AnalysisError
                 raise AnalysisError(
                     "file_path is required",
+                    operation="query_code"
+                )
+
+            # Check that either query_key or query_string is provided early
+            query_key = arguments.get("query_key")
+            query_string = arguments.get("query_string")
+            
+            if not query_key and not query_string:
+                from ..utils.error_handler import AnalysisError
+                raise AnalysisError(
+                    "Either query_key or query_string must be provided",
                     operation="query_code"
                 )
 
@@ -139,20 +157,11 @@ class QueryTool(BaseMCPTool):
                     "error": f"Invalid or unsafe resolved path: {error_msg or resolved_file_path}"
                 }
 
-            # Get query parameters
-            query_key = arguments.get("query_key")
-            query_string = arguments.get("query_string")
+            # Get query parameters (already validated above)
             filter_expression = arguments.get("filter")
             output_format = arguments.get("output_format", "json")
             output_file = arguments.get("output_file")
             suppress_output = arguments.get("suppress_output", False)
-
-            if not query_key and not query_string:
-                from ..utils.error_handler import AnalysisError
-                raise AnalysisError(
-                    "Either query_key or query_string must be provided",
-                    operation="query_code"
-                )
 
             if query_key and query_string:
                 return {
@@ -260,6 +269,11 @@ class QueryTool(BaseMCPTool):
                 return formatted_result
 
         except Exception as e:
+            from ..utils.error_handler import AnalysisError
+            # Re-raise AnalysisError to maintain proper error handling
+            if isinstance(e, AnalysisError):
+                raise
+            
             logger.error(f"Query execution failed: {e}")
             return {
                 "success": False,
