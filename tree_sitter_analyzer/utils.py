@@ -58,7 +58,8 @@ def setup_logger(
                 except Exception:
                     ...
 
-        logger.setLevel(level)
+    # Always set the level, even if handlers already exist
+    logger.setLevel(level)
 
     return logger
 
