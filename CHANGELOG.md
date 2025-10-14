@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.8.2] - 2025-10-14
+
+### Improved
+- **🔧 Development Workflow**: Routine maintenance release to publish the latest changes from the develop branch.
+- **📚 Documentation**: Aligned version numbers across documentation files.
+
 ## [1.8.1] - 2025-10-14
 
 ### 🔧 Fixed
