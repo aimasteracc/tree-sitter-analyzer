@@ -111,10 +111,11 @@ class QueryTool(BaseMCPTool):
             # Validate input parameters
             file_path = arguments.get("file_path")
             if not file_path:
-                return {
-                    "success": False,
-                    "error": "Operation failed: file_path is required"
-                }
+                from ..utils.error_handler import AnalysisError
+                raise AnalysisError(
+                    "file_path is required",
+                    operation="query_code"
+                )
 
             # Security validation BEFORE path resolution to catch symlinks
             is_valid, error_msg = self.security_validator.validate_file_path(file_path)

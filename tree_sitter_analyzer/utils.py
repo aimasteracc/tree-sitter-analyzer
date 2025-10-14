@@ -20,14 +20,15 @@ def setup_logger(
     """Setup unified logger for the project"""
     # Get log level from environment variable (only if set and not empty)
     env_level = os.environ.get("LOG_LEVEL", "").upper()
-    if env_level == "DEBUG":
-        level = logging.DEBUG
-    elif env_level == "INFO":
-        level = logging.INFO
-    elif env_level == "WARNING":
-        level = logging.WARNING
-    elif env_level == "ERROR":
-        level = logging.ERROR
+    if env_level and env_level in ["DEBUG", "INFO", "WARNING", "ERROR"]:
+        if env_level == "DEBUG":
+            level = logging.DEBUG
+        elif env_level == "INFO":
+            level = logging.INFO
+        elif env_level == "WARNING":
+            level = logging.WARNING
+        elif env_level == "ERROR":
+            level = logging.ERROR
     # If env_level is empty or not recognized, use the passed level parameter
 
     logger = logging.getLogger(name)
@@ -267,16 +268,21 @@ def safe_print(message: str | None, level: str = "info", quiet: bool = False) ->
     if quiet:
         return
 
-    level_map = {
-        "info": log_info,
-        "warning": log_warning,
-        "error": log_error,
-        "debug": log_debug,
-    }
-
-    log_func = level_map.get(level.lower(), log_info)
     # Handle None message by converting to string
-    log_func(str(message) if message is not None else "None")
+    msg = str(message) if message is not None else "None"
+    
+    # Use dynamic lookup to support mocking
+    level_lower = level.lower()
+    if level_lower == "info":
+        log_info(msg)
+    elif level_lower == "warning":
+        log_warning(msg)
+    elif level_lower == "error":
+        log_error(msg)
+    elif level_lower == "debug":
+        log_debug(msg)
+    else:
+        log_info(msg)  # Default to info
 
 
 def create_performance_logger(name: str) -> logging.Logger:
@@ -350,10 +356,12 @@ class LoggingContext:
 
     def __enter__(self) -> "LoggingContext":
         if self.enabled and self.level is not None:
+            # Always save the current level before changing
             self.old_level = self.target_logger.level
             self.target_logger.setLevel(self.level)
         return self
 
     def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         if self.enabled and self.old_level is not None:
+            # Always restore the saved level
             self.target_logger.setLevel(self.old_level)

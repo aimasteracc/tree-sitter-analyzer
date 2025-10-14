@@ -440,7 +440,7 @@ class MarkdownFormatter(BaseFormatter):
 
     def _format_advanced_text(self, data: Dict[str, Any]) -> str:
         """Format advanced analysis in text format"""
-        output = ["Advanced Analysis Results"]
+        output = ["--- Advanced Analysis Results ---"]
         
         # Basic info
         output.append(f'File: {data["file_path"]}')
