@@ -269,6 +269,8 @@ def test_logging_context_level_change():
     if LOGGING_CONTEXT_AVAILABLE:
         # Use a specific logger for testing to avoid interference
         test_logger = logging.getLogger("test_logging_context")
+        # Set an initial level to avoid NOTSET (0)
+        test_logger.setLevel(logging.INFO)
         original_level = test_logger.level
 
         # Create LoggingContext that uses our test logger
@@ -292,6 +294,8 @@ def test_logging_context_nesting():
     if LOGGING_CONTEXT_AVAILABLE:
         # Use a specific logger for testing to avoid interference
         test_logger = logging.getLogger("test_logging_context_nesting")
+        # Set an initial level to avoid NOTSET (0)
+        test_logger.setLevel(logging.INFO)
         original_level = test_logger.level
 
         # Create LoggingContext instances that use our test logger
