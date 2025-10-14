@@ -147,10 +147,11 @@ class QueryTool(BaseMCPTool):
             suppress_output = arguments.get("suppress_output", False)
 
             if not query_key and not query_string:
-                return {
-                    "success": False,
-                    "error": "Either query_key or query_string must be provided"
-                }
+                from ..utils.error_handler import AnalysisError
+                raise AnalysisError(
+                    "Either query_key or query_string must be provided",
+                    operation="query_code"
+                )
 
             if query_key and query_string:
                 return {

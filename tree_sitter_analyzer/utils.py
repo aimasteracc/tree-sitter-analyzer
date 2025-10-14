@@ -18,7 +18,7 @@ def setup_logger(
     name: str = "tree_sitter_analyzer", level: int = logging.WARNING
 ) -> logging.Logger:
     """Setup unified logger for the project"""
-    # Get log level from environment variable
+    # Get log level from environment variable (only if set and not empty)
     env_level = os.environ.get("LOG_LEVEL", "").upper()
     if env_level == "DEBUG":
         level = logging.DEBUG
@@ -28,6 +28,7 @@ def setup_logger(
         level = logging.WARNING
     elif env_level == "ERROR":
         level = logging.ERROR
+    # If env_level is empty or not recognized, use the passed level parameter
 
     logger = logging.getLogger(name)
 
@@ -261,7 +262,7 @@ class QuietMode:
             logger.setLevel(self.old_level)
 
 
-def safe_print(message: str, level: str = "info", quiet: bool = False) -> None:
+def safe_print(message: str | None, level: str = "info", quiet: bool = False) -> None:
     """Safe print function that can be controlled"""
     if quiet:
         return
@@ -274,7 +275,8 @@ def safe_print(message: str, level: str = "info", quiet: bool = False) -> None:
     }
 
     log_func = level_map.get(level.lower(), log_info)
-    log_func(message)
+    # Handle None message by converting to string
+    log_func(str(message) if message is not None else "None")
 
 
 def create_performance_logger(name: str) -> logging.Logger:

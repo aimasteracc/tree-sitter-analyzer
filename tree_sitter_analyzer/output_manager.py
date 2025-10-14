@@ -28,7 +28,7 @@ class OutputManager:
         """Output warning message"""
         if not self.quiet:
             print(f"WARNING: {message}", file=sys.stderr)
-        log_warning(message)
+            log_warning(message)
 
     def error(self, message: str) -> None:
         """Output error message"""
