@@ -62,21 +62,23 @@ def another_function():
 """
         ]
         
-        for i, content in enumerate(contents):
-            with tempfile.NamedTemporaryFile(mode='w', suffix=f'_test_{i}.py', delete=False) as f:
-                f.write(content)
-                files.append(f.name)
-        
-        yield files
-        
-        for file_path in files:
-            Path(file_path).unlink(missing_ok=True)
+        try:
+            for i, content in enumerate(contents):
+                test_file = Path(f"test_sample_{i}.py")
+                test_file.write_text(content)
+                files.append(str(test_file))
+            
+            yield files
+        finally:
+            for file_path in files:
+                Path(file_path).unlink(missing_ok=True)
     
     @pytest.fixture
     def sample_javascript_file(self):
         """JavaScriptテストファイル"""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.js', delete=False) as f:
-            f.write("""
+        test_file = Path("test_sample.js")
+        try:
+            test_file.write_text("""
 function testFunction() {
     return 42;
 }
@@ -101,8 +103,9 @@ async function asyncFunction() {
     });
 }
 """)
-            yield f.name
-        Path(f.name).unlink(missing_ok=True)
+            yield str(test_file)
+        finally:
+            test_file.unlink(missing_ok=True)
     
     def test_basic_cli_execution_python(self, sample_files):
         """基本的なPython CLIクエリ実行テスト"""
@@ -341,10 +344,12 @@ async function asyncFunction() {
     def test_large_file_cli_processing(self):
         """大きなファイルのCLI処理テスト"""
         # 大きなファイルを作成
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
+        large_file = Path("test_large_cli.py")
+        try:
+            content = ""
             # 100個の関数を持つファイルを生成
             for i in range(100):
-                f.write(f"""
+                content += f"""
 def function_{i}():
     '''Function {i} for testing'''
     return {i}
@@ -352,20 +357,19 @@ def function_{i}():
 class Class_{i}:
     def method_{i}(self):
         return {i}
-""")
-            large_file = f.name
-        
-        try:
+"""
+            large_file.write_text(content)
+            
             result = subprocess.run([
                 sys.executable, "-m", "tree_sitter_analyzer",
-                "--query-key", "function", large_file
+                "--query-key", "function", str(large_file)
             ], capture_output=True, text=True, timeout=60)  # 大きなファイルなので60秒のタイムアウト
             
             assert result.returncode == 0, f"Large file CLI processing failed with stderr: {result.stderr}"
             assert len(result.stdout) > 0, "No output from large file CLI processing"
             
         finally:
-            Path(large_file).unlink(missing_ok=True)
+            large_file.unlink(missing_ok=True)
     
     def test_cli_performance_baseline(self, sample_files):
         """CLIパフォーマンスベースラインテスト"""

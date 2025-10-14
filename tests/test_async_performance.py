@@ -20,8 +20,11 @@ class TestAsyncPerformance:
     @pytest.fixture
     def small_python_file(self):
         """小さなPythonファイル"""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
-            f.write("""
+        # Create file in current directory to avoid security restrictions
+        import os
+        test_file = Path("test_small_file.py")
+        try:
+            test_file.write_text("""
 def small_function():
     return "small"
 
@@ -29,16 +32,20 @@ class SmallClass:
     def method(self):
         pass
 """)
-            yield f.name
-        Path(f.name).unlink(missing_ok=True)
+            yield str(test_file)
+        finally:
+            test_file.unlink(missing_ok=True)
     
     @pytest.fixture
     def medium_python_file(self):
         """中程度のPythonファイル"""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
+        # Create file in current directory to avoid security restrictions
+        test_file = Path("test_medium_file.py")
+        try:
+            content = ""
             # 50個の関数とクラスを持つファイルを生成
             for i in range(50):
-                f.write(f"""
+                content += f"""
 def function_{i}():
     '''Function {i} for testing'''
     x = {i}
@@ -56,17 +63,22 @@ class Class_{i}:
     
     def calculate_{i}(self, x, y):
         return x + y + self.value
-""")
-            yield f.name
-        Path(f.name).unlink(missing_ok=True)
+"""
+            test_file.write_text(content)
+            yield str(test_file)
+        finally:
+            test_file.unlink(missing_ok=True)
     
     @pytest.fixture
     def large_python_file(self):
         """大きなPythonファイル"""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
+        # Create file in current directory to avoid security restrictions
+        test_file = Path("test_large_file.py")
+        try:
+            content = ""
             # 200個の関数とクラスを持つファイルを生成
             for i in range(200):
-                f.write(f"""
+                content += f"""
 def function_{i}():
     '''Function {i} for performance testing'''
     result = 0
@@ -92,31 +104,36 @@ class Class_{i}:
     @property
     def property_{i}(self):
         return self.value * 2
-""")
-            yield f.name
-        Path(f.name).unlink(missing_ok=True)
+"""
+            test_file.write_text(content)
+            yield str(test_file)
+        finally:
+            test_file.unlink(missing_ok=True)
     
     @pytest.fixture
     def multiple_files(self):
         """複数のテストファイル"""
         files = []
-        for i in range(5):
-            with tempfile.NamedTemporaryFile(mode='w', suffix=f'_multi_{i}.py', delete=False) as f:
+        try:
+            for i in range(5):
+                test_file = Path(f"test_multi_{i}.py")
+                content = ""
                 for j in range(20):
-                    f.write(f"""
+                    content += f"""
 def file_{i}_function_{j}():
     return {i} * {j}
 
 class File_{i}_Class_{j}:
     def method(self):
         return {i} + {j}
-""")
-                files.append(f.name)
-        
-        yield files
-        
-        for file_path in files:
-            Path(file_path).unlink(missing_ok=True)
+"""
+                test_file.write_text(content)
+                files.append(str(test_file))
+            
+            yield files
+        finally:
+            for file_path in files:
+                Path(file_path).unlink(missing_ok=True)
     
     @pytest.mark.asyncio
     async def test_performance_baseline_small_file(self, small_python_file):
