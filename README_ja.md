@@ -4,7 +4,7 @@
 
 [![Pythonバージョン](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![ライセンス](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![テスト](https://img.shields.io/badge/tests-3087%20passed-brightgreen.svg)](#8--品質保証)
+[![テスト](https://img.shields.io/badge/tests-3263%20passed-brightgreen.svg)](#8--品質保証)
 [![カバレッジ](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer)
 [![品質](https://img.shields.io/badge/quality-enterprise%20grade-blue.svg)](#8--品質保証)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
@@ -61,7 +61,7 @@ Tree-sitter Analyzerは、AI時代のために設計されたエンタープラ�
 | **Go** | 基本サポート | 基本構文解析 |
 
 ### 🏆 本番環境対応
-- **3,087のテスト** - 100%合格率、エンタープライズグレードの品質保証
+- **3,263のテスト** - 100%合格率、エンタープライズグレードの品質保証
 - **高カバレッジ** - 包括的なテストスイート
 - **クロスプラットフォームサポート** - Windows、macOS、Linuxとの完全な互換性
 - **継続的なメンテナンス** - アクティブな開発とコミュニティサポート
@@ -607,13 +607,13 @@ uv run python -m tree_sitter_analyzer --show-query-languages
 ## 8. 🏆 品質保証
 
 ### 📊 品質メトリクス
-- **3,087のテスト** - 100%合格率 ✅
+- **3,263のテスト** - 100%合格率 ✅
 - **高コードカバレッジ** - 包括的なテストスイート
 - **ゼロテスト失敗** - 本番環境対応
 - **クロスプラットフォームサポート** - Windows、macOS、Linux
 
 ### ⚡ 最新の品質成果（v1.7.4）
-- ✅ **📊 品質メトリクス向上** - テスト数が3,087個に増加、カバレッジも高水準を維持
+- ✅ **📊 品質メトリクス向上** - テスト数が3,263個に増加、カバレッジも高水準を維持
 - ✅ **🔧 システム安定性** - すべてのテストが合格し、システムの安定性と信頼性が向上
 - ✅ **🆕 Markdown完全サポート** - 新しい完全なMarkdown言語プラグインを追加、すべての主要Markdown要素をサポート
 - ✅ **📝 ドキュメント解析強化** - 見出し、コードブロック、リンク、画像、表、タスクリストなどの要素のインテリジェント抽出をサポート
