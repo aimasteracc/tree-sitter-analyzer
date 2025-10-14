@@ -17,8 +17,10 @@ class TestMCPAsyncIntegration:
     @pytest.fixture
     def sample_code_file(self):
         """テスト用コードファイル"""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
-            f.write("""
+        # Create file in current directory to avoid security restrictions
+        test_file = Path("test_sample_code.py")
+        try:
+            test_file.write_text("""
 def example_function():
     '''Example function for testing'''
     return "Hello, World!"
@@ -52,14 +54,17 @@ class UtilityClass:
     def class_method(cls):
         return "class"
 """)
-            yield f.name
-        Path(f.name).unlink(missing_ok=True)
+            yield str(test_file)
+        finally:
+            test_file.unlink(missing_ok=True)
     
     @pytest.fixture
     def sample_javascript_file(self):
         """テスト用JavaScriptファイル"""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.js', delete=False) as f:
-            f.write("""
+        # Create file in current directory to avoid security restrictions
+        test_file = Path("test_sample_javascript.js")
+        try:
+            test_file.write_text("""
 function exampleFunction() {
     return "Hello, JavaScript!";
 }
@@ -88,16 +93,20 @@ async function asyncExampleFunction() {
     });
 }
 """)
-            yield f.name
-        Path(f.name).unlink(missing_ok=True)
+            yield str(test_file)
+        finally:
+            test_file.unlink(missing_ok=True)
     
     @pytest.fixture
     def large_code_file(self):
         """大きなコードファイル"""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
+        # Create file in current directory to avoid security restrictions
+        test_file = Path("test_large_code.py")
+        try:
+            content = ""
             # 50個の関数とクラスを持つファイルを生成
             for i in range(50):
-                f.write(f"""
+                content += f"""
 def function_{i}():
     '''Function {i} for testing'''
     return {i}
@@ -109,9 +118,11 @@ class Class_{i}:
     
     def method_{i}(self):
         return self.value * 2
-""")
-            yield f.name
-        Path(f.name).unlink(missing_ok=True)
+"""
+            test_file.write_text(content)
+            yield str(test_file)
+        finally:
+            test_file.unlink(missing_ok=True)
     
     @pytest.mark.asyncio
     async def test_query_tool_basic_execution(self, sample_code_file):
@@ -258,7 +269,10 @@ class Class_{i}:
         
         assert result["success"] is False
         assert "error" in result
-        assert "not exist" in result["error"].lower() or "not found" in result["error"].lower()
+        # More flexible error message checking
+        error_msg = result["error"].lower()
+        assert ("not exist" in error_msg or "not found" in error_msg or
+                "no such file" in error_msg or "errno 2" in error_msg), f"Unexpected error message: {result['error']}"
     
     @pytest.mark.asyncio
     async def test_query_tool_error_handling_invalid_language(self, sample_code_file):

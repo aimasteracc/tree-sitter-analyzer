@@ -222,8 +222,9 @@ class TestFormatterRegistry:
         """Test warning when overriding existing formatter"""
         import logging
         
-        # Set logging level to capture warnings
-        caplog.set_level(logging.WARNING)
+        # Set logging level to capture warnings for the specific logger
+        logger = logging.getLogger('tree_sitter_analyzer.formatters.formatter_registry')
+        caplog.set_level(logging.WARNING, logger=logger.name)
         
         class Formatter1(IFormatter):
             @staticmethod
@@ -242,10 +243,18 @@ class TestFormatterRegistry:
                 return "output2"
 
         FormatterRegistry.register_formatter(Formatter1)
+        
+        # Clear any existing logs
+        caplog.clear()
+        
+        # This should trigger the warning
         FormatterRegistry.register_formatter(Formatter2)
         
         # Check that warning was logged
-        assert "Overriding existing formatter" in caplog.text
+        warning_found = any("Overriding existing formatter" in record.message
+                          for record in caplog.records
+                          if record.levelno >= logging.WARNING)
+        assert warning_found, f"Warning not found in logs. Captured records: {[r.message for r in caplog.records]}"
 
 
 class TestBuiltinFormatters:
