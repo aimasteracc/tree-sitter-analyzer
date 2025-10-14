@@ -1191,6 +1191,122 @@ class JavaPlugin(LanguagePlugin):
             "supported_queries": self.get_supported_queries(),
         }
 
+    def execute_query_strategy(self, tree: "tree_sitter.Tree", source_code: str, query_key: str) -> list[dict]:
+        """
+        Execute query strategy for Java language
+        
+        Args:
+            tree: Tree-sitter tree object
+            source_code: Source code string
+            query_key: Query key to execute
+            
+        Returns:
+            List of query results
+        """
+        # Use the extractor to get elements based on query_key
+        extractor = self.get_extractor()
+        
+        # Map query keys to extraction methods
+        if query_key in ["method", "methods", "function", "functions"]:
+            elements = extractor.extract_functions(tree, source_code)
+        elif query_key in ["class", "classes"]:
+            elements = extractor.extract_classes(tree, source_code)
+        elif query_key in ["field", "fields", "variable", "variables"]:
+            elements = extractor.extract_variables(tree, source_code)
+        elif query_key in ["import", "imports"]:
+            elements = extractor.extract_imports(tree, source_code)
+        elif query_key in ["package", "packages"]:
+            elements = extractor.extract_packages(tree, source_code)
+        elif query_key in ["annotation", "annotations"]:
+            elements = extractor.extract_annotations(tree, source_code)
+        else:
+            # For unknown query keys, return empty list
+            return []
+        
+        # Convert elements to query result format
+        results = []
+        for element in elements:
+            result = {
+                "capture_name": query_key,
+                "node_type": self._get_node_type_for_element(element),
+                "start_line": element.start_line,
+                "end_line": element.end_line,
+                "text": element.raw_text,
+                "name": element.name,
+            }
+            results.append(result)
+        
+        return results
+    
+    def _get_node_type_for_element(self, element) -> str:
+        """Get appropriate node type for element"""
+        from ..models import Function, Class, Variable, Import, Package
+        
+        if isinstance(element, Function):
+            return "method_declaration" if not element.is_constructor else "constructor_declaration"
+        elif isinstance(element, Class):
+            if element.class_type == "interface":
+                return "interface_declaration"
+            elif element.class_type == "enum":
+                return "enum_declaration"
+            else:
+                return "class_declaration"
+        elif isinstance(element, Variable):
+            return "field_declaration"
+        elif isinstance(element, Import):
+            return "import_declaration"
+        elif isinstance(element, Package):
+            return "package_declaration"
+        else:
+            return "unknown"
+
+    def get_element_categories(self) -> dict[str, list[str]]:
+        """
+        Get element categories mapping query keys to node types
+        
+        Returns:
+            Dictionary mapping query keys to lists of node types
+        """
+        return {
+            # Method-related queries
+            "method": ["method_declaration"],
+            "methods": ["method_declaration"],
+            "constructor": ["constructor_declaration"],
+            "constructors": ["constructor_declaration"],
+            
+            # Class-related queries
+            "class": ["class_declaration"],
+            "classes": ["class_declaration"],
+            "interface": ["interface_declaration"],
+            "interfaces": ["interface_declaration"],
+            "enum": ["enum_declaration"],
+            "enums": ["enum_declaration"],
+            
+            # Field-related queries
+            "field": ["field_declaration"],
+            "fields": ["field_declaration"],
+            
+            # Import-related queries
+            "import": ["import_declaration"],
+            "imports": ["import_declaration"],
+            
+            # Package-related queries
+            "package": ["package_declaration"],
+            "packages": ["package_declaration"],
+            
+            # Annotation-related queries
+            "annotation": ["annotation", "marker_annotation"],
+            "annotations": ["annotation", "marker_annotation"],
+            
+            # Generic queries
+            "all_elements": [
+                "method_declaration", "constructor_declaration",
+                "class_declaration", "interface_declaration", "enum_declaration",
+                "field_declaration", "import_declaration", "package_declaration",
+                "annotation", "marker_annotation"
+            ],
+        }
+
     async def analyze_file(
         self, file_path: str, request: "AnalysisRequest"
     ) -> "AnalysisResult":

@@ -55,6 +55,13 @@ class QueryLoader:
 
     def load_language_queries(self, language: str) -> dict:
         """Load queries for a specific language with optimized caching."""
+        # Handle None or empty language - return empty dict without warning
+        if not language or language == "None" or language.strip() == "":
+            return {}
+            
+        # Normalize language name
+        language = language.strip().lower()
+            
         if language in self._failed_languages:
             return {}
 
@@ -87,9 +94,7 @@ class QueryLoader:
             return queries
 
         except ImportError:
-            log_warning(
-                f"No dynamic query module for '{language}', using predefined queries."
-            )
+            # Silently handle missing query modules - no warnings needed
             self._loaded_queries[language] = queries
             return queries
         except Exception as e:
@@ -100,6 +105,10 @@ class QueryLoader:
 
     def get_query(self, language: str, query_name: str) -> str | None:
         """Get a specific query for a language with optimized lookup."""
+        # Handle invalid language early
+        if not language or language == "None" or language.strip() == "":
+            return None
+            
         queries = self.load_language_queries(language)
 
         if query_name in queries:
@@ -128,6 +137,10 @@ class QueryLoader:
 
     def list_queries_for_language(self, language: str) -> list[str]:
         """List all available queries for a language."""
+        # Handle invalid language early
+        if not language or language == "None" or language.strip() == "":
+            return []
+            
         queries = self.load_language_queries(language)
         return list(queries.keys())
 

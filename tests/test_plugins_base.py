@@ -64,6 +64,55 @@ class TestLanguagePlugin:
         assert info["class_name"] == "DefaultLanguagePlugin"
         assert "module" in info
 
+    def test_get_supported_element_types(self) -> None:
+        """Test get_supported_element_types method"""
+        plugin = DefaultLanguagePlugin()
+        types = plugin.get_supported_element_types()
+        
+        assert isinstance(types, list)
+        assert "function" in types
+        assert "class" in types
+        assert "variable" in types
+        assert "import" in types
+
+    def test_get_queries(self) -> None:
+        """Test get_queries method"""
+        plugin = DefaultLanguagePlugin()
+        queries = plugin.get_queries()
+        
+        assert isinstance(queries, dict)
+        # Default plugin returns empty queries
+        assert len(queries) == 0
+
+    def test_execute_query_strategy(self) -> None:
+        """Test execute_query_strategy method"""
+        plugin = DefaultLanguagePlugin()
+        
+        # Default plugin returns None for any query
+        result = plugin.execute_query_strategy("methods", "generic")
+        assert result is None
+        
+        result = plugin.execute_query_strategy(None, "generic")
+        assert result is None
+
+    def test_get_formatter_map(self) -> None:
+        """Test get_formatter_map method"""
+        plugin = DefaultLanguagePlugin()
+        formatter_map = plugin.get_formatter_map()
+        
+        assert isinstance(formatter_map, dict)
+        # Default plugin returns empty formatter map
+        assert len(formatter_map) == 0
+
+    def test_get_element_categories(self) -> None:
+        """Test get_element_categories method"""
+        plugin = DefaultLanguagePlugin()
+        categories = plugin.get_element_categories()
+        
+        assert isinstance(categories, dict)
+        # Default plugin returns empty categories
+        assert len(categories) == 0
+
 
 class TestElementExtractor:
     """Test ElementExtractor abstract base class"""

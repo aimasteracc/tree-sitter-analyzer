@@ -25,6 +25,7 @@ from ..encoding_utils import extract_text_slice, safe_encode
 from ..models import AnalysisResult, Class, CodeElement, Function, Import, Variable
 from ..plugins.base import ElementExtractor, LanguagePlugin
 from ..utils import log_debug, log_error, log_warning
+from ..utils.tree_sitter_compat import TreeSitterQueryCompat, get_node_text_safe
 
 
 class PythonElementExtractor(ElementExtractor):
@@ -118,7 +119,7 @@ class PythonElementExtractor(ElementExtractor):
 
         # Only extract class-level attributes, not function-level variables
         try:
-            # Find class declarations
+            # Find class declarations using compatible API
             class_query = """
             (class_definition
                 body: (block) @class.body) @class.definition
@@ -126,18 +127,23 @@ class PythonElementExtractor(ElementExtractor):
 
             language = tree.language if hasattr(tree, "language") else None
             if language:
-                import tree_sitter
-                query = tree_sitter.Query(language, class_query)
-                captures = query.captures(tree.root_node)
-
-                if isinstance(captures, dict):
-                    class_bodies = captures.get("class.body", [])
-
-                    # For each class body, extract attribute assignments
-                    for class_body in class_bodies:
-                        variables.extend(
-                            self._extract_class_attributes(class_body, source_code)
-                        )
+                try:
+                    captures = TreeSitterQueryCompat.safe_execute_query(
+                        language, class_query, tree.root_node, fallback_result=[]
+                    )
+                    class_bodies = []
+                    for node, capture_name in captures:
+                        if capture_name == "class.body":
+                            class_bodies.append(node)
+                except Exception as e:
+                    log_debug(f"Could not extract Python class attributes using query: {e}")
+                    class_bodies = []
+                
+                # For each class body, extract attribute assignments
+                for class_body in class_bodies:
+                    variables.extend(
+                        self._extract_class_attributes(class_body, source_code)
+                    )
 
         except Exception as e:
             log_warning(f"Could not extract Python class attributes: {e}")
@@ -731,24 +737,30 @@ class PythonElementExtractor(ElementExtractor):
             if language:
                 for query_string in import_queries:
                     try:
-                        import tree_sitter
-                        query = tree_sitter.Query(language, query_string)
-                        captures = query.captures(tree.root_node)
-
-                        if isinstance(captures, dict):
-                            # Process different types of imports
-                            for key, nodes in captures.items():
-                                if key.endswith("statement"):
-                                    import_type = key.split(".")[0]
-                                    for node in nodes:
-                                        imp = self._extract_import_info(
-                                            node, source_code, import_type
-                                        )
-                                        if imp:
-                                            imports.append(imp)
+                        captures = TreeSitterQueryCompat.safe_execute_query(
+                            language, query_string, tree.root_node, fallback_result=[]
+                        )
+                        
+                        # Group captures by name
+                        captures_dict = {}
+                        for node, capture_name in captures:
+                            if capture_name not in captures_dict:
+                                captures_dict[capture_name] = []
+                            captures_dict[capture_name].append(node)
+                        
+                        # Process different types of imports
+                        for key, nodes in captures_dict.items():
+                            if key.endswith("statement"):
+                                import_type = key.split(".")[0]
+                                for node in nodes:
+                                    imp = self._extract_import_info(
+                                        node, source_code, import_type
+                                    )
+                                    if imp:
+                                        imports.append(imp)
                     except Exception as query_error:
-                        # Fallback to manual extraction for tree-sitter 0.25.x compatibility
-                        log_warning(f"Query execution failed, using manual extraction: {query_error}")
+                        # Fallback to manual extraction for tree-sitter compatibility
+                        log_debug(f"Query execution failed, using manual extraction: {query_error}")
                         imports.extend(self._extract_imports_manual(tree.root_node, source_code))
                         break
 
@@ -1247,6 +1259,137 @@ class PythonPlugin(LanguagePlugin):
             ],
         }
 
+    def execute_query_strategy(self, tree: "tree_sitter.Tree", source_code: str, query_key: str) -> list[dict]:
+        """
+        Execute query strategy for Python language
+        
+        Args:
+            tree: Tree-sitter tree object
+            source_code: Source code string
+            query_key: Query key to execute
+            
+        Returns:
+            List of query results
+        """
+        # Use the extractor to get elements based on query_key
+        extractor = self.get_extractor()
+        
+        # Map query keys to extraction methods
+        if query_key in ["function", "functions", "method", "methods"]:
+            elements = extractor.extract_functions(tree, source_code)
+        elif query_key in ["class", "classes"]:
+            elements = extractor.extract_classes(tree, source_code)
+        elif query_key in ["variable", "variables"]:
+            elements = extractor.extract_variables(tree, source_code)
+        elif query_key in ["import", "imports", "from_import", "from_imports"]:
+            elements = extractor.extract_imports(tree, source_code)
+        else:
+            # For unknown query keys, return empty list
+            return []
+        
+        # Convert elements to query result format
+        results = []
+        for element in elements:
+            result = {
+                "capture_name": query_key,
+                "node_type": self._get_node_type_for_element(element),
+                "start_line": element.start_line,
+                "end_line": element.end_line,
+                "text": element.raw_text,
+                "name": element.name,
+            }
+            results.append(result)
+        
+        return results
+    
+    def _get_node_type_for_element(self, element) -> str:
+        """Get appropriate node type for element"""
+        from ..models import Function, Class, Variable, Import
+        
+        if isinstance(element, Function):
+            return "function_definition"
+        elif isinstance(element, Class):
+            return "class_definition"
+        elif isinstance(element, Variable):
+            return "assignment"
+        elif isinstance(element, Import):
+            return "import_statement"
+        else:
+            return "unknown"
+
+    def get_element_categories(self) -> dict[str, list[str]]:
+        """
+        Get element categories mapping query keys to node types
+        
+        Returns:
+            Dictionary mapping query keys to lists of node types
+        """
+        return {
+            # Function-related queries
+            "function": ["function_definition"],
+            "functions": ["function_definition"],
+            "async_function": ["function_definition"],
+            "async_functions": ["function_definition"],
+            "method": ["function_definition"],
+            "methods": ["function_definition"],
+            "lambda": ["lambda"],
+            "lambdas": ["lambda"],
+            
+            # Class-related queries
+            "class": ["class_definition"],
+            "classes": ["class_definition"],
+            
+            # Import-related queries
+            "import": ["import_statement", "import_from_statement"],
+            "imports": ["import_statement", "import_from_statement"],
+            "from_import": ["import_from_statement"],
+            "from_imports": ["import_from_statement"],
+            
+            # Variable-related queries
+            "variable": ["assignment"],
+            "variables": ["assignment"],
+            
+            # Decorator-related queries
+            "decorator": ["decorator"],
+            "decorators": ["decorator"],
+            
+            # Exception-related queries
+            "exception": ["raise_statement", "except_clause"],
+            "exceptions": ["raise_statement", "except_clause"],
+            
+            # Comprehension-related queries
+            "comprehension": ["list_comprehension", "set_comprehension", "dictionary_comprehension", "generator_expression"],
+            "comprehensions": ["list_comprehension", "set_comprehension", "dictionary_comprehension", "generator_expression"],
+            
+            # Context manager queries
+            "context_manager": ["with_statement"],
+            "context_managers": ["with_statement"],
+            
+            # Type hint queries
+            "type_hint": ["type"],
+            "type_hints": ["type"],
+            
+            # Docstring queries
+            "docstring": ["string"],
+            "docstrings": ["string"],
+            
+            # Framework-specific queries
+            "django_model": ["class_definition"],
+            "django_models": ["class_definition"],
+            "flask_route": ["decorator"],
+            "flask_routes": ["decorator"],
+            "fastapi_endpoint": ["function_definition"],
+            "fastapi_endpoints": ["function_definition"],
+            
+            # Generic queries
+            "all_elements": [
+                "function_definition", "class_definition", "import_statement", "import_from_statement",
+                "assignment", "decorator", "raise_statement", "except_clause",
+                "list_comprehension", "set_comprehension", "dictionary_comprehension", "generator_expression",
+                "with_statement", "type", "string", "lambda"
+            ],
+        }
+
     async def analyze_file(
         self, file_path: str, request: AnalysisRequest
     ) -> AnalysisResult:
@@ -1330,9 +1473,9 @@ class PythonPlugin(LanguagePlugin):
             else:
                 return {"error": f"Unknown query: {query_name}"}
 
-            import tree_sitter
-            query = tree_sitter.Query(language, query_string)
-            captures = query.captures(tree.root_node)
+            captures = TreeSitterQueryCompat.safe_execute_query(
+                language, query_string, tree.root_node, fallback_result=[]
+            )
             return {"captures": captures, "query": query_string}
 
         except Exception as e:

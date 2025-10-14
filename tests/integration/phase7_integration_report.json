@@ -1,0 +1,196 @@
+{
+  "timestamp": 1760372402.2843378,
+  "total_duration": 4.5664732456207275,
+  "test_results": [
+    {
+      "category": "end_to_end",
+      "test_name": "test_enterprise_scale_project_analysis",
+      "success": true,
+      "duration": 0.10959172248840332,
+      "details": {},
+      "timestamp": 1760372397.8281655
+    },
+    {
+      "category": "end_to_end",
+      "test_name": "test_real_world_development_workflow",
+      "success": true,
+      "duration": 0.10944509506225586,
+      "details": {},
+      "timestamp": 1760372397.93775
+    },
+    {
+      "category": "end_to_end",
+      "test_name": "test_multi_language_comprehensive_analysis",
+      "success": true,
+      "duration": 0.10792088508605957,
+      "details": {},
+      "timestamp": 1760372398.0459435
+    },
+    {
+      "category": "end_to_end",
+      "test_name": "test_performance_under_enterprise_load",
+      "success": true,
+      "duration": 0.10944414138793945,
+      "details": {},
+      "timestamp": 1760372398.1555357
+    },
+    {
+      "category": "end_to_end",
+      "test_name": "test_security_compliance_validation",
+      "success": true,
+      "duration": 0.11078047752380371,
+      "details": {},
+      "timestamp": 1760372398.266423
+    },
+    {
+      "category": "performance",
+      "test_name": "test_large_scale_file_analysis_performance",
+      "success": true,
+      "duration": 0.21433568000793457,
+      "details": {},
+      "timestamp": 1760372398.4867866
+    },
+    {
+      "category": "performance",
+      "test_name": "test_concurrent_search_performance",
+      "success": true,
+      "duration": 0.21509647369384766,
+      "details": {},
+      "timestamp": 1760372398.702062
+    },
+    {
+      "category": "performance",
+      "test_name": "test_memory_efficiency_under_load",
+      "success": true,
+      "duration": 0.20196771621704102,
+      "details": {},
+      "timestamp": 1760372398.904236
+    },
+    {
+      "category": "performance",
+      "test_name": "test_scalability_limits",
+      "success": true,
+      "duration": 0.20480823516845703,
+      "details": {},
+      "timestamp": 1760372399.1091835
+    },
+    {
+      "category": "performance",
+      "test_name": "test_sustained_load_performance",
+      "success": true,
+      "duration": 0.20287442207336426,
+      "details": {},
+      "timestamp": 1760372399.3121681
+    },
+    {
+      "category": "performance",
+      "test_name": "test_resource_cleanup_efficiency",
+      "success": true,
+      "duration": 0.20322489738464355,
+      "details": {},
+      "timestamp": 1760372399.5155497
+    },
+    {
+      "category": "performance",
+      "test_name": "test_error_recovery_performance",
+      "success": true,
+      "duration": 0.20252132415771484,
+      "details": {},
+      "timestamp": 1760372399.718209
+    },
+    {
+      "category": "security",
+      "test_name": "test_path_traversal_protection_comprehensive",
+      "success": true,
+      "duration": 0.16205406188964844,
+      "details": {},
+      "timestamp": 1760372399.887475
+    },
+    {
+      "category": "security",
+      "test_name": "test_malicious_query_protection",
+      "success": true,
+      "duration": 0.15687918663024902,
+      "details": {},
+      "timestamp": 1760372400.0444636
+    },
+    {
+      "category": "security",
+      "test_name": "test_unicode_normalization_attacks",
+      "success": true,
+      "duration": 0.15694713592529297,
+      "details": {},
+      "timestamp": 1760372400.2016034
+    },
+    {
+      "category": "security",
+      "test_name": "test_sensitive_data_exposure_prevention",
+      "success": true,
+      "duration": 0.15546178817749023,
+      "details": {},
+      "timestamp": 1760372400.3572042
+    },
+    {
+      "category": "security",
+      "test_name": "test_concurrent_security_stress",
+      "success": true,
+      "duration": 0.15424847602844238,
+      "details": {},
+      "timestamp": 1760372400.5115416
+    },
+    {
+      "category": "security",
+      "test_name": "test_security_policy_consistency",
+      "success": true,
+      "duration": 0.15620970726013184,
+      "details": {},
+      "timestamp": 1760372400.6679354
+    },
+    {
+      "category": "security",
+      "test_name": "test_information_leakage_prevention",
+      "success": true,
+      "duration": 0.15741181373596191,
+      "details": {},
+      "timestamp": 1760372400.8255033
+    },
+    {
+      "category": "security",
+      "test_name": "test_security_under_load",
+      "success": true,
+      "duration": 0.15562176704406738,
+      "details": {},
+      "timestamp": 1760372400.981503
+    },
+    {
+      "category": "security",
+      "test_name": "test_comprehensive_security_validation",
+      "success": true,
+      "duration": 0.15453886985778809,
+      "details": {},
+      "timestamp": 1760372401.1361947
+    },
+    {
+      "category": "compatibility",
+      "test_name": "integration_compatibility",
+      "success": true,
+      "duration": 0.3718273639678955,
+      "details": {},
+      "timestamp": 1760372401.5139923
+    },
+    {
+      "category": "enterprise",
+      "test_name": "enterprise_readiness",
+      "success": true,
+      "duration": 0.7609403133392334,
+      "details": {},
+      "timestamp": 1760372402.2800481
+    }
+  ],
+  "summary": {
+    "total_tests": 23,
+    "passed": 23,
+    "failed": 0,
+    "success_rate": 100.0
+  }
+}

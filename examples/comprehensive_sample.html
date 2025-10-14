@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="HTML5包括的サンプル - Tree-sitter Analyzerのテスト用">
+    <meta name="keywords" content="HTML5, サンプル, テスト, tree-sitter">
+    <meta name="author" content="Tree-sitter Analyzer Team">
+    <title>HTML5 包括的サンプル | Tree-sitter Analyzer</title>
+    <link rel="stylesheet" href="comprehensive_sample.css">
+    <link rel="icon" type="image/x-icon" href="/favicon.ico">
+    <style>
+        /* 内部CSS */
+        .highlight {
+            background-color: yellow;
+            font-weight: bold;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+    </style>
+</head>
+<body>
+    <!-- ヘッダーセクション -->
+    <header class="main-header">
+        <nav class="navigation" role="navigation" aria-label="メインナビゲーション">
+            <div class="nav-brand">
+                <h1><a href="#home">Tree-sitter Analyzer</a></h1>
+            </div>
+            <ul class="nav-menu">
+                <li><a href="#about" class="nav-link">概要</a></li>
+                <li><a href="#features" class="nav-link">機能</a></li>
+                <li><a href="#examples" class="nav-link">例</a></li>
+                <li><a href="#contact" class="nav-link">お問い合わせ</a></li>
+            </ul>
+            <button class="menu-toggle" aria-label="メニュー切り替え">
+                <span></span>
+                <span></span>
+                <span></span>
+            </button>
+        </nav>
+    </header>
+
+    <!-- メインコンテンツ -->
+    <main class="main-content">
+        <!-- ヒーローセクション -->
+        <section id="home" class="hero-section">
+            <div class="container">
+                <h1 class="hero-title">HTML5 包括的サンプル</h1>
+                <p class="hero-subtitle">Tree-sitter Analyzerによる<mark class="highlight">HTML解析</mark>のテスト</p>
+                <div class="hero-actions">
+                    <button class="btn btn-primary" onclick="showAlert()">開始する</button>
+                    <a href="#features" class="btn btn-secondary">詳細を見る</a>
+                </div>
+            </div>
+        </section>
+
+        <!-- 概要セクション -->
+        <section id="about" class="about-section">
+            <div class="container">
+                <header>
+                    <h2>概要</h2>
+                    <p class="section-subtitle">HTML5の全主要要素を含むサンプル</p>
+                </header>
+                
+                <article class="about-content">
+                    <h3>このサンプルについて</h3>
+                    <p>このHTMLファイルは、<strong>Tree-sitter Analyzer</strong>のHTML解析機能をテストするために作成されました。</p>
+                    <p>以下の要素が含まれています：</p>
+                    
+                    <details>
+                        <summary>含まれる要素の詳細</summary>
+                        <ul>
+                            <li><em>セマンティック要素</em>（header, nav, main, section, article, aside, footer）</li>
+                            <li><strong>テキスト要素</strong>（h1-h6, p, span, div）</li>
+                            <li><code>インライン要素</code>（a, strong, em, mark, code）</li>
+                            <li>リスト要素（ul, ol, li, dl, dt, dd）</li>
+                            <li>フォーム要素（form, input, textarea, select, button）</li>
+                            <li>メディア要素（img, video, audio, picture, source）</li>
+                            <li>テーブル要素（table, thead, tbody, tr, th, td）</li>
+                        </ul>
+                    </details>
+                    
+                    <blockquote cite="https://developer.mozilla.org/ja/docs/Web/HTML">
+                        <p>HTML（HyperText Markup Language）は、ウェブページを作成するために使用される標準的なマークアップ言語です。</p>
+                        <footer>— <cite>MDN Web Docs</cite></footer>
+                    </blockquote>
+                </article>
+            </div>
+        </section>
+
+        <!-- 機能セクション -->
+        <section id="features" class="features-section">
+            <div class="container">
+                <h2>主要機能</h2>
+                
+                <!-- グリッドレイアウト -->
+                <div class="features-grid">
+                    <div class="feature-card">
+                        <h3>🔍 高精度解析</h3>
+                        <p>Tree-sitterによる正確なHTML構造解析</p>
+                    </div>
+                    <div class="feature-card">
+                        <h3>📊 要素分類</h3>
+                        <p>HTML要素の自動分類とカテゴライゼーション</p>
+                    </div>
+                    <div class="feature-card">
+                        <h3>🏗️ 階層構造</h3>
+                        <p>DOM階層の完全な把握と可視化</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- フォームセクション -->
+        <section id="contact" class="form-section">
+            <div class="container">
+                <h2>お問い合わせフォーム</h2>
+                
+                <form class="contact-form" action="/submit" method="post" enctype="multipart/form-data">
+                    <fieldset>
+                        <legend>基本情報</legend>
+                        
+                        <div class="form-group">
+                            <label for="name">お名前 <span class="required">*</span></label>
+                            <input type="text" id="name" name="name" required placeholder="山田太郎">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="email">メールアドレス <span class="required">*</span></label>
+                            <input type="email" id="email" name="email" required placeholder="example@email.com">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="phone">電話番号</label>
+                            <input type="tel" id="phone" name="phone" pattern="[0-9]{3}-[0-9]{4}-[0-9]{4}" placeholder="090-1234-5678">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="birthdate">生年月日</label>
+                            <input type="date" id="birthdate" name="birthdate">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="website">ウェブサイト</label>
+                            <input type="url" id="website" name="website" placeholder="https://example.com">
+                        </div>
+                    </fieldset>
+                    
+                    <fieldset>
+                        <legend>詳細情報</legend>
+                        
+                        <div class="form-group">
+                            <label for="category">カテゴリ</label>
+                            <select id="category" name="category">
+                                <option value="">選択してください</option>
+                                <optgroup label="技術関連">
+                                    <option value="bug">バグ報告</option>
+                                    <option value="feature">機能要望</option>
+                                    <option value="support">技術サポート</option>
+                                </optgroup>
+                                <optgroup label="その他">
+                                    <option value="general">一般的な質問</option>
+                                    <option value="feedback">フィードバック</option>
+                                </optgroup>
+                            </select>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="priority">優先度</label>
+                            <div class="radio-group">
+                                <input type="radio" id="low" name="priority" value="low">
+                                <label for="low">低</label>
+                                
+                                <input type="radio" id="medium" name="priority" value="medium" checked>
+                                <label for="medium">中</label>
+                                
+                                <input type="radio" id="high" name="priority" value="high">
+                                <label for="high">高</label>
+                            </div>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="features">興味のある機能（複数選択可）</label>
+                            <div class="checkbox-group">
+                                <input type="checkbox" id="html-analysis" name="features" value="html">
+                                <label for="html-analysis">HTML解析</label>
+                                
+                                <input type="checkbox" id="css-analysis" name="features" value="css">
+                                <label for="css-analysis">CSS解析</label>
+                                
+                                <input type="checkbox" id="js-analysis" name="features" value="javascript">
+                                <label for="js-analysis">JavaScript解析</label>
+                                
+                                <input type="checkbox" id="mcp-integration" name="features" value="mcp">
+                                <label for="mcp-integration">MCP統合</label>
+                            </div>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="message">メッセージ</label>
+                            <textarea id="message" name="message" rows="5" placeholder="ご質問やご要望をお聞かせください..."></textarea>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="attachment">添付ファイル</label>
+                            <input type="file" id="attachment" name="attachment" accept=".txt,.pdf,.doc,.docx">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="experience">経験レベル</label>
+                            <input type="range" id="experience" name="experience" min="1" max="10" value="5">
+                            <output for="experience">5</output>
+                        </div>
+                    </fieldset>
+                    
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary">送信</button>
+                        <button type="reset" class="btn btn-secondary">リセット</button>
+                    </div>
+                </form>
+            </div>
+        </section>
+
+        <!-- メディアセクション -->
+        <section id="media" class="media-section">
+            <div class="container">
+                <h2>メディア要素</h2>
+                
+                <div class="media-grid">
+                    <!-- 画像 -->
+                    <figure class="media-item">
+                        <picture>
+                            <source media="(min-width: 800px)" srcset="large-image.webp" type="image/webp">
+                            <source media="(min-width: 400px)" srcset="medium-image.webp" type="image/webp">
+                            <img src="small-image.jpg" alt="Tree-sitter Analyzerのロゴ" loading="lazy">
+                        </picture>
+                        <figcaption>Tree-sitter Analyzerのロゴ</figcaption>
+                    </figure>
+                    
+                    <!-- 動画 -->
+                    <figure class="media-item">
+                        <video controls width="400" height="300" poster="video-poster.jpg">
+                            <source src="demo-video.mp4" type="video/mp4">
+                            <source src="demo-video.webm" type="video/webm">
+                            <track kind="subtitles" src="subtitles-ja.vtt" srclang="ja" label="日本語">
+                            <track kind="subtitles" src="subtitles-en.vtt" srclang="en" label="English">
+                            <p>お使いのブラウザは動画タグをサポートしていません。</p>
+                        </video>
+                        <figcaption>デモンストレーション動画</figcaption>
+                    </figure>
+                    
+                    <!-- 音声 -->
+                    <figure class="media-item">
+                        <audio controls>
+                            <source src="demo-audio.mp3" type="audio/mpeg">
+                            <source src="demo-audio.ogg" type="audio/ogg">
+                            <p>お使いのブラウザは音声タグをサポートしていません。</p>
+                        </audio>
+                        <figcaption>音声ガイド</figcaption>
+                    </figure>
+                </div>
+            </div>
+        </section>
+
+        <!-- テーブルセクション -->
+        <section id="data" class="table-section">
+            <div class="container">
+                <h2>データテーブル</h2>
+                
+                <table class="data-table">
+                    <caption>HTML要素の分類表</caption>
+                    <thead>
+                        <tr>
+                            <th scope="col">カテゴリ</th>
+                            <th scope="col">要素名</th>
+                            <th scope="col">説明</th>
+                            <th scope="col">使用頻度</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <th scope="row" rowspan="3">構造要素</th>
+                            <td><code>header</code></td>
+                            <td>ページやセクションのヘッダー</td>
+                            <td class="frequency high">高</td>
+                        </tr>
+                        <tr>
+                            <td><code>main</code></td>
+                            <td>メインコンテンツ</td>
+                            <td class="frequency high">高</td>
+                        </tr>
+                        <tr>
+                            <td><code>footer</code></td>
+                            <td>ページやセクションのフッター</td>
+                            <td class="frequency high">高</td>
+                        </tr>
+                        <tr>
+                            <th scope="row" rowspan="2">テキスト要素</th>
+                            <td><code>h1-h6</code></td>
+                            <td>見出し要素</td>
+                            <td class="frequency high">高</td>
+                        </tr>
+                        <tr>
+                            <td><code>p</code></td>
+                            <td>段落要素</td>
+                            <td class="frequency high">高</td>
+                        </tr>
+                        <tr>
+                            <th scope="row" rowspan="2">フォーム要素</th>
+                            <td><code>input</code></td>
+                            <td>入力フィールド</td>
+                            <td class="frequency medium">中</td>
+                        </tr>
+                        <tr>
+                            <td><code>button</code></td>
+                            <td>ボタン要素</td>
+                            <td class="frequency medium">中</td>
+                        </tr>
+                    </tbody>
+                    <tfoot>
+                        <tr>
+                            <td colspan="4">
+                                <small>※ 使用頻度は一般的なWebサイトでの使用状況に基づく</small>
+                            </td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </section>
+
+        <!-- リストセクション -->
+        <section id="lists" class="lists-section">
+            <div class="container">
+                <h2>リスト要素</h2>
+                
+                <div class="lists-grid">
+                    <!-- 順序なしリスト -->
+                    <div class="list-item">
+                        <h3>機能一覧</h3>
+                        <ul>
+                            <li>HTML解析
+                                <ul>
+                                    <li>要素抽出</li>
+                                    <li>属性解析</li>
+                                    <li>階層構造分析</li>
+                                </ul>
+                            </li>
+                            <li>CSS解析
+                                <ul>
+                                    <li>セレクタ解析</li>
+                                    <li>プロパティ分類</li>
+                                    <li>スタイルルール抽出</li>
+                                </ul>
+                            </li>
+                            <li>MCP統合</li>
+                        </ul>
+                    </div>
+                    
+                    <!-- 順序ありリスト -->
+                    <div class="list-item">
+                        <h3>セットアップ手順</h3>
+                        <ol>
+                            <li>依存関係のインストール
+                                <ol type="a">
+                                    <li>uvのインストール</li>
+                                    <li>fdとripgrepのインストール</li>
+                                </ol>
+                            </li>
+                            <li>パッケージのインストール</li>
+                            <li>設定ファイルの作成</li>
+                            <li>テストの実行</li>
+                        </ol>
+                    </div>
+                    
+                    <!-- 定義リスト -->
+                    <div class="list-item">
+                        <h3>用語集</h3>
+                        <dl>
+                            <dt>Tree-sitter</dt>
+                            <dd>プログラミング言語のパーサージェネレーター</dd>
+                            
+                            <dt>MCP (Model Context Protocol)</dt>
+                            <dd>AIモデルとアプリケーション間の通信プロトコル</dd>
+                            
+                            <dt>DOM (Document Object Model)</dt>
+                            <dd>HTMLやXML文書の構造を表現するためのAPI</dd>
+                            
+                            <dt>CSS (Cascading Style Sheets)</dt>
+                            <dd>Webページのスタイルを定義するためのスタイルシート言語</dd>
+                        </dl>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- サイドバー -->
+    <aside class="sidebar">
+        <div class="widget">
+            <h3>関連リンク</h3>
+            <nav>
+                <ul>
+                    <li><a href="https://github.com/aimasteracc/tree-sitter-analyzer" target="_blank" rel="noopener">GitHub リポジトリ</a></li>
+                    <li><a href="https://pypi.org/project/tree-sitter-analyzer/" target="_blank" rel="noopener">PyPI パッケージ</a></li>
+                    <li><a href="https://tree-sitter.github.io/tree-sitter/" target="_blank" rel="noopener">Tree-sitter 公式サイト</a></li>
+                </ul>
+            </nav>
+        </div>
+        
+        <div class="widget">
+            <h3>最新情報</h3>
+            <div class="news-item">
+                <time datetime="2025-10-13">2025年10月13日</time>
+                <p>HTML/CSS言語サポートを追加しました</p>
+            </div>
+        </div>
+    </aside>
+
+    <!-- フッター -->
+    <footer class="main-footer">
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-section">
+                    <h4>Tree-sitter Analyzer</h4>
+                    <p>AI時代のエンタープライズグレードコード解析ツール</p>
+                    <address>
+                        <p>Email: <a href="mailto:contact@example.com">contact@example.com</a></p>
+                    </address>
+                </div>
+                
+                <div class="footer-section">
+                    <h4>ドキュメント</h4>
+                    <ul>
+                        <li><a href="#getting-started">はじめに</a></li>
+                        <li><a href="#api-reference">API リファレンス</a></li>
+                        <li><a href="#examples">使用例</a></li>
+                    </ul>
+                </div>
+                
+                <div class="footer-section">
+                    <h4>コミュニティ</h4>
+                    <ul>
+                        <li><a href="#discussions">ディスカッション</a></li>
+                        <li><a href="#issues">イシュー</a></li>
+                        <li><a href="#contributing">貢献</a></li>
+                    </ul>
+                </div>
+            </div>
+            
+            <div class="footer-bottom">
+                <p>&copy; 2025 Tree-sitter Analyzer Team. All rights reserved.</p>
+                <p>
+                    <small>
+                        このサンプルは <abbr title="HyperText Markup Language version 5">HTML5</abbr> で作成されています。
+                        <a href="#top">ページトップへ</a>
+                    </small>
+                </p>
+            </div>
+        </div>
+    </footer>
+
+    <!-- JavaScript -->
+    <script>
+        // 基本的なJavaScript機能
+        function showAlert() {
+            alert('Tree-sitter Analyzerへようこそ！');
+        }
+        
+        // メニュートグル
+        document.querySelector('.menu-toggle').addEventListener('click', function() {
+            document.querySelector('.nav-menu').classList.toggle('active');
+        });
+        
+        // 経験レベルスライダー
+        const experienceSlider = document.getElementById('experience');
+        const experienceOutput = document.querySelector('output[for="experience"]');
+        
+        experienceSlider.addEventListener('input', function() {
+            experienceOutput.textContent = this.value;
+        });
+        
+        // フォーム送信処理
+        document.querySelector('.contact-form').addEventListener('submit', function(e) {
+            e.preventDefault();
+            console.log('フォームが送信されました');
+            alert('フォームの送信をシミュレートしました（実際には送信されません）');
+        });
+        
+        // スムーススクロール
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({
+                        behavior: 'smooth'
+                    });
+                }
+            });
+        });
+    </script>
+    
+    <!-- 構造化データ -->
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "Tree-sitter Analyzer",
+        "description": "AI時代のエンタープライズグレードコード解析ツール",
+        "applicationCategory": "DeveloperApplication",
+        "operatingSystem": "Windows, macOS, Linux",
+        "programmingLanguage": "Python",
+        "author": {
+            "@type": "Organization",
+            "name": "Tree-sitter Analyzer Team"
+        }
+    }
+    </script>
+</body>
+</html>

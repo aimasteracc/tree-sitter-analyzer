@@ -1,5 +1,98 @@
 # Changelog
 
+## [1.8.0] - 2025-10-13
+
+### 🚀 Added
+
+#### Revolutionary HTML/CSS Language Support
+- **🆕 Complete HTML Analysis**: Full HTML DOM structure analysis with tag names, attributes, and hierarchical relationships
+- **🆕 Complete CSS Analysis**: Comprehensive CSS selector and property analysis with intelligent classification
+- **🆕 Specialized Data Models**: New `MarkupElement` and `StyleElement` classes for precise web technology analysis
+  - `MarkupElement`: HTML elements with tag_name, attributes, parent/children relationships, and element classification
+  - `StyleElement`: CSS rules with selector, properties, and intelligent property categorization
+- **🆕 Element Classification System**: Smart categorization system for better analysis
+  - HTML elements: structure, heading, text, list, media, form, table, metadata
+  - CSS properties: layout, box_model, typography, background, transition, interactivity
+
+#### Extensible Formatter Architecture
+- **🆕 FormatterRegistry**: Dynamic formatter management system using Registry pattern
+- **🆕 HTML Formatter**: Specialized formatter for HTML/CSS analysis results with structured table output
+- **🆕 Plugin-based Extension**: Easy addition of new formatters through `IFormatter` interface
+- **🆕 Enhanced Format Support**: Extended `analyze_code_structure` tool to support new `html` format type
+
+#### Advanced Plugin System
+- **🆕 Language Plugin Architecture**: Extensible plugin system for adding new language support
+- **🆕 HTML Plugin**: Complete HTML language plugin with tree-sitter integration
+- **🆕 CSS Plugin**: Complete CSS language plugin with property analysis
+- **🆕 Element Categories**: Plugin-based element categorization for better code understanding
+
+### 🔧 Enhanced
+
+#### Architecture Improvements
+- **Enhanced**: Unified element system now supports HTML and CSS elements alongside traditional code elements
+- **Enhanced**: `AnalysisResult` model extended to handle mixed element types (code, markup, style)
+- **Enhanced**: Better separation of concerns with specialized formatters and plugins
+- **Enhanced**: Improved extensibility through Strategy and Factory patterns
+
+#### MCP Tools Enhancement
+- **Enhanced**: `analyze_code_structure` tool now supports HTML format output
+- **Enhanced**: Better language detection for HTML and CSS files
+- **Enhanced**: Improved error handling for web technology analysis
+
+#### Developer Experience
+- **Enhanced**: Comprehensive test coverage for new HTML/CSS functionality
+- **Enhanced**: Better documentation and examples for web technology analysis
+- **Enhanced**: Improved CLI commands with HTML/CSS analysis examples
+
+### 📊 Technical Details
+
+#### New Files Added
+- `tree_sitter_analyzer/models.py`: Extended with `MarkupElement` and `StyleElement` classes
+- `tree_sitter_analyzer/formatters/formatter_registry.py`: Dynamic formatter management
+- `tree_sitter_analyzer/formatters/html_formatter.py`: Specialized HTML/CSS formatter
+- `tree_sitter_analyzer/plugins/base.py`: Enhanced plugin base classes
+- `tree_sitter_analyzer/languages/html_plugin.py`: Complete HTML language plugin
+- `tree_sitter_analyzer/languages/css_plugin.py`: Complete CSS language plugin
+
+#### Test Coverage
+- **Added**: Comprehensive test suite for new HTML/CSS functionality
+- **Added**: `tests/test_models_extended.py`: Extended data model testing
+- **Added**: `tests/test_formatter_registry.py`: Formatter registry testing
+- **Added**: `tests/test_html_formatter.py`: HTML formatter testing
+- **Added**: `tests/test_plugins_base.py`: Plugin system testing
+- **Added**: `tests/test_html_plugin.py`: HTML plugin testing
+- **Added**: Test data files: `tests/test_data/sample.html`, `tests/test_data/sample.css`
+
+#### Breaking Changes
+- **None**: All improvements are backward compatible
+- **Maintained**: Existing CLI and MCP functionality unchanged
+- **Extended**: New functionality is additive and optional
+
+### 🎯 Impact
+
+#### For Web Developers
+- **New Capability**: Analyze HTML structure and CSS rules with same precision as code analysis
+- **Better Understanding**: Intelligent classification of web elements and properties
+- **Enhanced Workflow**: Structured analysis output optimized for web development
+
+#### For AI Assistants
+- **Enhanced Integration**: Better understanding of web technologies through structured data models
+- **Improved Analysis**: More precise extraction of web component information
+- **Extended Capabilities**: Support for mixed HTML/CSS/JavaScript project analysis
+
+#### For Framework Development
+- **Extensible Foundation**: Easy addition of new language support through plugin system
+- **Flexible Formatting**: Dynamic formatter registration for custom output formats
+- **Maintainable Architecture**: Clean separation of concerns with specialized components
+
+### 📈 Quality Metrics
+- **Test Coverage**: All new functionality covered by comprehensive test suite
+- **Code Quality**: Maintains high standards with type safety and documentation
+- **Performance**: Efficient analysis with minimal overhead for new features
+- **Compatibility**: Full backward compatibility with existing functionality
+
+This major release establishes Tree-sitter Analyzer as a comprehensive analysis tool for modern web development, extending beyond traditional programming languages to support the full web technology stack.
+
 ## [1.7.5] - 2025-10-12
 
 ### Improved

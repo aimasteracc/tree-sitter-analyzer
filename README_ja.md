@@ -8,7 +8,7 @@
 [![カバレッジ](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer)
 [![品質](https://img.shields.io/badge/quality-enterprise%20grade-blue.svg)](#8--品質保証)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
-[![バージョン](https://img.shields.io/badge/version-1.7.5-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
+[![バージョン](https://img.shields.io/badge/version-1.8.0-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
 [![zread](https://img.shields.io/badge/Ask_Zread-_.svg?style=flat&color=00b0aa&labelColor=000000&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB3aWR0aD0iMTYiIGhlaWdodD0iMTYiIHZpZXdCb3g9IjAgMCAxNiAxNiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTQuOTYxNTYgMS42MDAxSDIuMjQxNTZDMS44ODgxIDEuNjAwMSAxLjYwMTU2IDEuODg2NjQgMS42MDE1NiAyLjI0MDFWNC45NjAxQzEuNjAxNTYgNS4zMTM1NiAxLjg4ODEgNS42MDAxIDIuMjQxNTYgNS42MDAxSDQuOTYxNTZDNS4zMTUwMiA1LjYwMDEgNS42MDE1NiA1LjMxMzU2IDUuNjAxNTYgNC45NjAxVjIuMjQwMUM1LjYwMTU2IDEuODg2NjQgNS4zMTUwMiAxLjYwMDEgNC45NjE1NiAxLjYwMDFaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik00Ljk2MTU2IDEwLjM5OTlIMi4yNDE1NkMxLjg4ODEgMTAuMzk5OSAxLjYwMTU2IDEwLjY4NjQgMS42MDE1NiAxMS4wMzk5VjEzLjc1OTlDMS42MDE1NiAxNC4xMTM0IDEuODg4MSAxNC4zOTk5IDIuMjQxNTYgMTQuMzk5OUg0Ljk2MTU2QzUuMzE1MDIgMTQuMzk5OSA1LjYwMTU2IDE0LjExMzQgNS42MDE1NiAxMy43NTk5VjExLjAzOTlDNS42MDE1NiAxMC42ODY0IDUuMzE1MDIgMTAuMzk5OSA0Ljk2MTU2IDEwLjM5OTlaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik0xMy43NTg0IDEuNjAwMUgxMS4wMzg0QzEwLjY4NSAxLjYwMDEgMTAuMzk4NCAxLjg4NjY0IDEwLjM5ODQgMi4yNDAxVjQuOTYwMUMxMC4zOTg0IDUuMzEzNTYgMTAuNjg1IDUuNjAwMSAxMS4wMzg0IDUuNjAwMUgxMy43NTg0QzE0LjExMTkgNS42MDAxIDE0LjM5ODQgNS4zMTM1NiAxNC4zOTg0IDQuOTYwMVYyLjI0MDFDMTQuMzk4NCAxLjg4NjY0IDE0LjExMTkgMS42MDAxIDEzLjc1ODQgMS42MDAxWiIgZmlsbD0iI2ZmZiIvPgo8cGF0aCBkPSJNNCAxMkwxMiA0TDQgMTJaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik00IDEyTDEyIDQiIHN0cm9rZT0iI2ZmZiIgc3Ryb2tlLXdpZHRoPSIxLjUiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPgo8L3N2Zz4K&logoColor=ffffff)](https://zread.ai/aimasteracc/tree-sitter-analyzer)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
@@ -53,7 +53,9 @@ Tree-sitter Analyzerは、AI時代のために設計されたエンタープラ�
 | **Python** | 完全サポート | 型アノテーション、デコレータ、モダンPython機能 |
 | **JavaScript** | 完全サポート | ES6+、React/Vue/Angular、JSX |
 | **TypeScript** | 完全サポート | インターフェース、型、デコレータ、TSX/JSX、フレームワーク検出 |
-| **Markdown** | 🆕 完全サポート | 見出し、コードブロック、リンク、画像、表、タスクリスト、引用 |
+| **HTML** | 🆕 完全サポート | DOM構造解析、要素分類、属性抽出、階層関係 |
+| **CSS** | 🆕 完全サポート | セレクタ解析、プロパティ分類、スタイルルール抽出、インテリジェント分類 |
+| **Markdown** | 完全サポート | 見出し、コードブロック、リンク、画像、表、タスクリスト、引用 |
 | **C/C++** | 基本サポート | 基本構文解析 |
 | **Rust** | 基本サポート | 基本構文解析 |
 | **Go** | 基本サポート | 基本構文解析 |
@@ -207,6 +209,11 @@ uv run python -m tree_sitter_analyzer examples/BigService.java --advanced --outp
 
 # 詳細な構造テーブルを生成
 uv run python -m tree_sitter_analyzer examples/BigService.java --table=full
+
+# 🆕 新しいアーキテクチャでHTML/CSS解析
+uv run python -m tree_sitter_analyzer examples/comprehensive_sample.html --table=html --output-format=text
+uv run python -m tree_sitter_analyzer examples/comprehensive_sample.css --advanced --output-format=text
+uv run python -m tree_sitter_analyzer examples/comprehensive_sample.html --structure --language html
 
 # 正確なコード抽出
 uv run python -m tree_sitter_analyzer examples/BigService.java --partial-read --start-line 93 --end-line 106
@@ -407,6 +414,19 @@ AIは自動的に：
 2. `authenticateUser`メソッドを特定して抽出（141-172行目）
 3. パブリックメソッドのリストを生成（19のパブリックメソッド）
 
+**HTML/CSS解析例：**
+```
+index.htmlのHTML構造を解析したい：
+1. どのようなHTML要素が存在し、どのように構成されていますか？
+2. どのようなCSSルールが定義され、どのようなプロパティが設定されていますか？
+3. 要素はどのように分類されていますか（構造、メディア、フォーム）？
+```
+
+AIは自動的に：
+1. タグ名、属性、分類を含むHTML要素を抽出
+2. インテリジェントな分類でCSSセレクタとプロパティを解析
+3. DOM階層とスタイルルールを示す構造化テーブルを生成
+
 ---
 
 ## 5. 🤖 MCP完全ツールリスト
@@ -426,7 +446,19 @@ Tree-sitter AnalyzerはAIアシスタント向けに設計された豊富なMCP�
 | **📁 リソースアクセス** | コードファイルリソース | URIコードファイルアクセス | URI識別によるファイルコンテンツアクセス |
 | | プロジェクト統計リソース | プロジェクト統計データアクセス | プロジェクト解析データと統計情報 |
 
-### 🆕 v1.7.3新機能：Markdown完全サポート
+### 🆕 v1.8.0新機能：HTML/CSS言語サポート
+
+専用データモデルとフォーマッティングによる革新的なHTMLとCSS解析機能：
+
+- **🏗️ HTML DOM解析**：タグ名、属性、階層構造を含む完全なHTML要素抽出
+- **🎨 CSSルール解析**：インテリジェントな分類によるCSSセレクタとプロパティの包括的解析
+- **📊 要素分類システム**：HTML要素（構造、見出し、テキスト、リスト、メディア、フォーム、テーブル、メタデータ）とCSSプロパティ（レイアウト、ボックスモデル、タイポグラフィ、背景、トランジション、インタラクティビティ）のスマート分類
+- **🔧 専用データモデル**：正確なWeb技術解析のための新しい`MarkupElement`と`StyleElement`クラス
+- **📋 強化されたフォーマッター**：Web開発ワークフロー用の構造化テーブル出力を持つ新しいHTMLフォーマッター
+- **🔄 拡張可能なアーキテクチャ**：動的フォーマット管理のための`FormatterRegistry`を持つプラグインベースシステム
+- **🆕 依存関係**：ネイティブ解析サポートのための`tree-sitter-html>=0.23.0,<0.25.0`と`tree-sitter-css>=0.23.0,<0.25.0`を追加
+
+### 🆕 v1.7.3機能：Markdown完全サポート
 
 全く新しいMarkdown言語サポートにより、ドキュメント解析とAIアシスタントに強力な機能を提供：
 
@@ -474,6 +506,11 @@ uv run python -m tree_sitter_analyzer examples/BigService.java --advanced
 
 # 完全な構造テーブルを生成
 uv run python -m tree_sitter_analyzer examples/BigService.java --table=full
+
+# 🆕 新しいアーキテクチャでHTML/CSS解析
+uv run python -m tree_sitter_analyzer examples/comprehensive_sample.html --table=html --output-format=text
+uv run python -m tree_sitter_analyzer examples/comprehensive_sample.css --advanced --output-format=json
+uv run python -m tree_sitter_analyzer examples/comprehensive_sample.html --structure --language html
 
 # 出力形式を指定
 uv run python -m tree_sitter_analyzer examples/BigService.java --advanced --output-format=json
@@ -561,7 +598,7 @@ uv run python -m tree_sitter_analyzer --show-query-languages
 | **✂️ インテリジェントなコード抽出** | 精密抽出ツール | 行範囲による正確な抽出<br>元のフォーマットとインデントを保持<br>位置メタデータを含む<br>大きなファイルの効率的な処理 | ゼロロスフォーマット保持<br>メモリ最適化アルゴリズム<br>ストリーミング処理サポート |
 | **🔍 高度なクエリフィルタリング** | 多次元フィルター | **完全一致**: `--filter "name=main"`<br>**パターンマッチ**: `--filter "name=~auth*"`<br>**パラメータフィルタ**: `--filter "params=2"`<br>**修飾子フィルタ**: `--filter "static=true,public=true"`<br>**複合条件**: 正確なクエリのために複数の条件を組み合わせる | 柔軟なクエリ構文<br>高性能インデックス<br>インテリジェントキャッシュ機構 |
 | **🔗 AIアシスタント統合** | MCPプロトコルサポート | **Claude Desktop** - 完全なMCPサポート<br>**Cursor IDE** - 組み込みのMCP統合<br>**Roo Code** - MCPプロトコルサポート<br>**その他のMCP互換ツール** - ユニバーサルMCPサーバー | 標準MCPプロトコル<br>プラグアンドプレイ設計<br>クロスプラットフォーム互換性 |
-| **🌍 多言語サポート** | エンタープライズ言語エンジン | **Java** - 完全サポート、Spring、JPAフレームワークを含む<br>**Python** - 完全サポート、型アノテーション、デコレータを含む<br>**JavaScript** - 企業級サポート、ES6+、React/Vue/Angular、JSXを含む<br>**TypeScript** - **完全サポート**、インターフェース、型、デコレータ、TSX/JSX、フレームワーク検出を含む<br>**Markdown** - **🆕 完全サポート**、見出し、コードブロック、リンク、画像、表、タスクリスト、引用を含む<br>**C/C++、Rust、Go** - 基本サポート | フレームワーク認識解析<br>構文拡張サポート<br>継続的言語アップデート |
+| **🌍 多言語サポート** | エンタープライズ言語エンジン | **Java** - 完全サポート、Spring、JPAフレームワークを含む<br>**Python** - 完全サポート、型アノテーション、デコレータを含む<br>**JavaScript** - 企業級サポート、ES6+、React/Vue/Angular、JSXを含む<br>**TypeScript** - **完全サポート**、インターフェース、型、デコレータ、TSX/JSX、フレームワーク検出を含む<br>**HTML** - **🆕 完全サポート**、DOM構造、要素分類、属性抽出を含む<br>**CSS** - **🆕 完全サポート**、セレクタ解析、プロパティ分類、スタイルルールを含む<br>**Markdown** - **完全サポート**、見出し、コードブロック、リンク、画像、表、タスクリスト、引用を含む<br>**C/C++、Rust、Go** - 基本サポート | フレームワーク認識解析<br>構文拡張サポート<br>継続的言語アップデート |
 | **📁 高度なファイル検索** | fd+ripgrep統合 | **ListFilesTool** - 複数のフィルタリング条件を持つインテリジェントなファイル検出<br>**SearchContentTool** - 正規表現を使用したインテリジェントなコンテンツ検索<br>**FindAndGrepTool** - 検出と検索の組み合わせ、2段階ワークフロー | Rustベースの高性能ツール<br>並列処理能力<br>インテリジェントキャッシュ最適化 |
 | **🏗️ 統一要素システム** | 革新的アーキテクチャ設計 | **単一要素リスト** - すべてのコード要素（クラス、メソッド、フィールド、インポート、パッケージ）の統一管理<br>**一貫した要素タイプ** - 各要素には`element_type`属性があります<br>**簡素化されたAPI** - より明確なインターフェースと複雑さの軽減<br>**より良い保守性** - すべてのコード要素の単一の真実の情報源 | 統一データモデル<br>型安全保証<br>拡張性設計 |
 

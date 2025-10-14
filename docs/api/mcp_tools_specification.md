@@ -47,7 +47,7 @@ Tree-sitter Analyzer MCPサーバーは、AI統合コード解析のための8�
     "language": {
       "type": "string",
       "description": "プログラミング言語（自動検出可能）",
-      "enum": ["java", "javascript", "typescript", "python", "markdown"]
+      "enum": ["java", "javascript", "typescript", "python", "markdown", "html", "css"]
     },
     "include_complexity": {
       "type": "boolean",
@@ -132,7 +132,7 @@ Tree-sitter Analyzer MCPサーバーは、AI統合コード解析のための8�
     "format_type": {
       "type": "string",
       "description": "出力フォーマット",
-      "enum": ["full", "compact", "csv", "json"],
+      "enum": ["full", "compact", "csv", "json", "html"],
       "default": "full"
     },
     "language": {
@@ -355,8 +355,27 @@ Tree-sitter Analyzer MCPサーバーは、AI統合コード解析のための8�
 }
 ```
 
-**Performance**: < 3秒  
-**Languages**: Java, JavaScript, TypeScript, Python, Markdown
+**Performance**: < 3秒
+**Languages**: Java, JavaScript, TypeScript, Python, Markdown, HTML, CSS
+
+#### HTML/CSS Language Support
+
+**HTML Analysis Features**:
+- DOM構造解析とHTML要素の階層関係抽出
+- 要素分類システム（structure, heading, text, list, media, form, table, metadata）
+- 属性解析とセマンティック要素の識別
+- `MarkupElement`データモデルによる正確な表現
+
+**CSS Analysis Features**:
+- CSSセレクタとプロパティの包括的解析
+- プロパティ分類システム（layout, box_model, typography, background, transition, interactivity）
+- CSS変数（カスタムプロパティ）とメディアクエリの解析
+- `StyleElement`データモデルによる構造化表現
+
+**New Format Type**: `html`
+- HTML/CSS専用の構造化テーブル出力
+- Web開発ワークフローに最適化されたフォーマット
+- `HtmlFormatter`による専用フォーマッティング
 
 ### 5. list_files
 
@@ -1193,6 +1212,17 @@ mcp_servers:
 - 統一されたエラーハンドリング
 - セキュリティ境界保護
 - トークン最適化機能
+- HTML/CSS言語サポート
+  - 完全なHTML DOM構造解析
+  - CSS セレクタとプロパティの包括的解析
+  - 要素分類システム（HTML: 8カテゴリ、CSS: 6カテゴリ）
+  - 新しい`html`フォーマットタイプ
+- FormatterRegistry拡張システム
+  - 動的フォーマッター管理
+  - プラグインベースの拡張可能アーキテクチャ
+- 新しいデータモデル（MarkupElement, StyleElement）
+  - HTML要素の階層関係とセマンティック情報
+  - CSSルールの構造化表現
 
 ## Support & Documentation
 

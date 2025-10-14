@@ -13,6 +13,7 @@ from typing import Any
 from tree_sitter import Language, Node, Tree
 
 from ..query_loader import get_query_loader
+from ..utils.tree_sitter_compat import TreeSitterQueryCompat, get_node_text_safe
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -69,18 +70,33 @@ class QueryExecutor:
                     "Language is None", query_name=query_name
                 )
 
-            # Get the query string
-            language_name = language.name if hasattr(language, "name") else "unknown"
+            # Get the query string with robust language name handling
+            language_name = None
+            if language:
+                # Try multiple ways to get language name
+                language_name = getattr(language, "name", None)
+                if not language_name:
+                    language_name = getattr(language, "_name", None)
+                if not language_name:
+                    language_name = str(language).split('.')[-1] if hasattr(language, '__class__') else None
+            
+            # Ensure we have a valid language name
+            if not language_name or language_name.strip() == "" or language_name == "None":
+                language_name = "unknown"
+            else:
+                language_name = language_name.strip().lower()
+            
             query_string = self._query_loader.get_query(language_name, query_name)
             if query_string is None:
                 return self._create_error_result(
                     f"Query '{query_name}' not found", query_name=query_name
                 )
 
-            # Create and execute the query
+            # Create and execute the query using modern API
             try:
-                query = language.query(query_string)
-                captures = query.captures(tree.root_node)
+                captures = TreeSitterQueryCompat.safe_execute_query(
+                    language, query_string, tree.root_node, fallback_result=[]
+                )
 
                 # Process captures
                 try:
@@ -146,10 +162,11 @@ class QueryExecutor:
             if language is None:
                 return self._create_error_result("Language is None")  # type: ignore[unreachable]
 
-            # Create and execute the query
+            # Create and execute the query using modern API
             try:
-                query = language.query(query_string)
-                captures = query.captures(tree.root_node)
+                captures = TreeSitterQueryCompat.safe_execute_query(
+                    language, query_string, tree.root_node, fallback_result=[]
+                )
 
                 # Process captures
                 try:
@@ -223,13 +240,8 @@ class QueryExecutor:
         try:
             for capture in captures:
                 try:
-                    # Handle both dictionary and tuple formats
-                    if isinstance(capture, dict):
-                        # New Tree-sitter API format
-                        node = capture.get("node")
-                        name = capture.get("name", "unknown")
-                    elif isinstance(capture, tuple) and len(capture) == 2:
-                        # Old Tree-sitter API format
+                    # Handle tuple format from modern API
+                    if isinstance(capture, tuple) and len(capture) == 2:
                         node, name = capture
                     else:
                         logger.warning(f"Unexpected capture format: {type(capture)}")
@@ -265,13 +277,8 @@ class QueryExecutor:
             Dictionary containing node information
         """
         try:
-            # Extract node text
-            node_text = ""
-            if hasattr(node, "text") and node.text:
-                try:
-                    node_text = node.text.decode("utf-8", errors="replace")
-                except Exception:
-                    node_text = str(node.text)
+            # Extract node text using safe utility
+            node_text = get_node_text_safe(node, source_code)
 
             return {
                 "capture_name": capture_name,

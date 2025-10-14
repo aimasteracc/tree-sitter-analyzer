@@ -156,7 +156,7 @@ class QueryTool(BaseMCPTool):
 
         try:
             # Execute query
-            results = await self.query_service.execute_query(
+            results = self.query_service.execute_query(
                 resolved_file_path, language, query_key, query_string, filter_expression
             )
 

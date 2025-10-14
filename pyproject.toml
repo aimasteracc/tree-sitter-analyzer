@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "tree-sitter-analyzer"
-version = "1.7.7"
-description = "Extensible multi-language code analyzer framework using Tree-sitter with dynamic plugin architecture"
+version = "1.8.0"
+description = "AI-era enterprise-grade code analysis tool with comprehensive HTML/CSS support, dynamic plugin architecture, and MCP integration"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
@@ -22,6 +22,9 @@ keywords = [
     "parsing",
     "static-analysis",
     "multi-language",
+    "html",
+    "css",
+    "web-development",
     "mcp",
     "mcp-server",
     "model-context-protocol",
@@ -48,6 +51,7 @@ classifiers = [
 ]
 
 # Core dependencies (minimal set for basic functionality)
+# Includes HTML/CSS support for comprehensive web technology analysis
 dependencies = [
     "tree-sitter>=0.25.0",
     "chardet>=5.0.0",
@@ -58,7 +62,10 @@ dependencies = [
     "mcp>=1.12.3",
     "tree-sitter-javascript>=0.23.1,<0.25.0",
     "tree-sitter-markdown>=0.3.1",
+    "tree-sitter-html>=0.23.0,<0.25.0",  # HTML language support with MarkupElement data model
+    "tree-sitter-css>=0.23.0,<0.25.0",   # CSS language support with StyleElement data model
     "psutil>=5.9.8",
+    "tree-sitter-typescript>=0.23.2",
 ]
 
 [project.optional-dependencies]
@@ -78,11 +85,15 @@ cpp = ["tree-sitter-cpp>=0.23.4,<0.25.0"]
 rust = ["tree-sitter-rust>=0.20.0,<0.25.0"]
 go = ["tree-sitter-go>=0.20.0,<0.25.0"]
 markdown = ["tree-sitter-markdown>=0.3.1"]
+html = ["tree-sitter-html>=0.23.0,<0.25.0"]  # HTML DOM analysis with element classification
+css = ["tree-sitter-css>=0.23.0,<0.25.0"]   # CSS selector and property analysis with specificity calculation
 
 # Language bundles for convenience
 web = [
     "tree-sitter-javascript>=0.23.1,<0.25.0",
-    "tree-sitter-typescript>=0.20.0,<0.25.0"
+    "tree-sitter-typescript>=0.20.0,<0.25.0",
+    "tree-sitter-html>=0.23.0,<0.25.0",      # Complete HTML5 support with semantic analysis
+    "tree-sitter-css>=0.23.0,<0.25.0"       # Complete CSS3 support with advanced property categorization
 ]
 systems = [
     "tree-sitter-c>=0.20.0,<0.25.0",
@@ -106,6 +117,8 @@ all-languages = [
     "tree-sitter-rust>=0.20.0,<0.25.0",
     "tree-sitter-go>=0.20.0,<0.25.0",
     "tree-sitter-markdown>=0.3.1",
+    "tree-sitter-html>=0.23.0,<0.25.0",
+    "tree-sitter-css>=0.23.0,<0.25.0",
 ]
 
 # MCP server support
@@ -242,6 +255,8 @@ python = "tree_sitter_analyzer.languages.python_plugin:PythonPlugin"
 javascript = "tree_sitter_analyzer.languages.javascript_plugin:JavaScriptPlugin"
 typescript = "tree_sitter_analyzer.languages.typescript_plugin:TypeScriptPlugin"
 markdown = "tree_sitter_analyzer.languages.markdown_plugin:MarkdownPlugin"
+html = "tree_sitter_analyzer.languages.html_plugin:HtmlPlugin"
+css = "tree_sitter_analyzer.languages.css_plugin:CssPlugin"
 
 [project.urls]
 Homepage = "https://github.com/aimasteracc/tree-sitter-analyzer"
@@ -399,8 +414,8 @@ directory = "htmlcov"
 # MCP server configuration
 [tool.mcp]
 server_name = "tree-sitter-analyzer"
-server_version = "1.7.4"
-description = "Tree-sitter based code analysis MCP server with multi-language support"
+server_version = "1.8.0"
+description = "AI-era enterprise-grade code analysis MCP server with comprehensive HTML/CSS support and multi-language capabilities"
 capabilities = [
     "check_code_scale",
     "analyze_code_structure",
