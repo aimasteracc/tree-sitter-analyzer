@@ -671,7 +671,6 @@ uv run python -m tree_sitter_analyzer --show-query-languages
 - ✅ **🧪 测试环境支持** - 测试环境下的临时目录访问许可
 - ✅ **📋 用户体验改进** - 更直观的命令行界面和错误处理机制
 
-
 ### ⚙️ 运行测试
 ```bash
 # 运行所有测试
