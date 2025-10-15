@@ -669,22 +669,6 @@ uv run python -m tree_sitter_analyzer --show-query-languages
 - ✅ **🧪 Test Environment Support** - Temporary directory access permission in test environments
 - ✅ **📋 User Experience Improvement** - More intuitive command-line interface and error handling mechanisms
 
-### ⚡ v1.7.5 Quality Achievements
-- ✅ **📊 Enhanced Quality Metrics** - Test count increased to 3,342 coverage maintained at high levels
-- ✅ **🔧 System Stability** - All tests passing with enhanced system stability and reliability
-- ✅ **🆕 Complete Markdown Support** - Added new complete Markdown language plugin supporting all major Markdown elements
-- ✅ **📝 Enhanced Document Analysis** - Support for intelligent extraction of headers, code blocks, links, images, tables, task lists
-- ✅ **🔍 Markdown Query System** - 17 predefined query types with alias and custom query support
-- ✅ **🧪 Comprehensive Test Validation** - Added extensive Markdown test cases ensuring feature stability
-- ✅ **📊 Structured Output** - Convert Markdown documents to structured data for easy AI processing
-- ✅ **File output optimization** - MCP search tools now include `suppress_output` and `output_file` parameters for massive token savings
-- ✅ **Intelligent format detection** - Automatic selection of optimal file formats (JSON/Markdown) for storage and reading optimization
-- ✅ **ROO rules documentation** - Added comprehensive tree-sitter-analyzer MCP optimization usage guide
-- ✅ **Enhanced token management** - Response size reduced by up to 99% when outputting search results to files
-- ✅ **Enterprise-grade test coverage** - Comprehensive test suite including complete validation of file output optimization features
-- ✅ **Complete MCP tools** - Complete MCP server tool set supporting advanced file search and content analysis
-- ✅ **Cross-platform path compatibility** - Fixed differences between Windows short path names and macOS symbolic links
-- ✅ **GitFlow implementation** - Professional development/release branch strategy
 
 ### ⚙️ Running Tests
 ```bash
