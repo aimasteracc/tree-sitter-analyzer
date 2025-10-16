@@ -484,15 +484,5 @@ class HtmlCompactFormatter(IFormatter):
         return "\n".join(lines)
 
 
-# Register HTML formatters
-def register_html_formatters() -> None:
-    """Register HTML-specific formatters"""
-    from .formatter_registry import FormatterRegistry
-
-    FormatterRegistry.register_formatter(HtmlFormatter)
-    FormatterRegistry.register_formatter(HtmlJsonFormatter)
-    FormatterRegistry.register_formatter(HtmlCompactFormatter)
-
-
-# Auto-register when module is imported
-register_html_formatters()
+# HTML formatters are registered via formatter_registry.py
+# to avoid duplicate registration warnings
