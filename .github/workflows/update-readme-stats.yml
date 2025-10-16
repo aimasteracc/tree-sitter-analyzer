@@ -108,7 +108,15 @@ jobs:
       - name: Commit and push changes
         if: steps.changes.outputs.has_changes == 'true'
         run: |
+          # Add README files and uv.lock if it was modified during dependency sync
           git add README*.md
+          if git diff --quiet HEAD -- uv.lock; then
+            echo "uv.lock unchanged, not adding to commit"
+          else
+            echo "uv.lock was modified during dependency sync, adding to commit"
+            git add uv.lock
+          fi
+          
           git commit -m "chore: Update README statistics (tests: ${{ steps.test_count.outputs.test_count }})"
           
           # Push changes
