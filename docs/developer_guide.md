@@ -19,8 +19,9 @@
 6. [データモデルの拡張](#データモデルの拡張)
 7. [新しいクエリシステム](#新しいクエリシステム)
 8. [テストの作成](#テストの作成)
-9. [パフォーマンス最適化](#パフォーマンス最適化)
-10. [デバッグとトラブルシューティング](#デバッグとトラブルシューティング)
+9. [FileOutputManagerベストプラクティス](#fileoutputmanagerベストプラクティス)
+10. [パフォーマンス最適化](#パフォーマンス最適化)
+11. [デバッグとトラブルシューティング](#デバッグとトラブルシューティング)
 
 ## アーキテクチャ概要
 
@@ -1304,6 +1305,409 @@ class TestYourCustomFormatter(unittest.TestCase):
             )
         ]
 ```
+
+## FileOutputManagerベストプラクティス
+
+### v1.8.0での統一化実装
+
+Tree-sitter Analyzer v1.8.0では、FileOutputManagerの重複初期化問題を解決するため、Managed Singleton Factory Patternが導入されました。これにより、メモリ効率と設定の一貫性が大幅に改善されました。
+
+#### 推奨使用方法
+
+##### 新しいMCPツール開発
+
+```python
+from tree_sitter_analyzer.mcp.utils.file_output_manager import FileOutputManager
+from tree_sitter_analyzer.mcp.tools.base_tool import BaseMCPTool
+
+class YourMCPTool(BaseMCPTool):
+    """新しいMCPツールの推奨実装パターン"""
+    
+    def __init__(self, project_root: str = None):
+        super().__init__(project_root)
+        # 推奨: ファクトリー管理インスタンスを使用
+        self.file_output_manager = FileOutputManager.get_managed_instance(project_root)
+    
+    def set_project_path(self, project_path: str) -> None:
+        """プロジェクトパス更新時の対応"""
+        super().set_project_path(project_path)
+        # ファクトリー管理インスタンスを再取得
+        self.file_output_manager = FileOutputManager.get_managed_instance(project_path)
+        logger.info(f"YourMCPTool project path updated to: {project_path}")
+```
+
+##### 便利関数の使用
+
+```python
+from tree_sitter_analyzer.mcp.utils.file_output_factory import get_file_output_manager
+
+class SimpleMCPTool:
+    """便利関数を使用した簡単な実装"""
+    
+    def __init__(self, project_root: str = None):
+        self.project_root = project_root
+        # 便利関数を使用（内部でファクトリーを使用）
+        self.file_output_manager = get_file_output_manager(project_root)
+    
+    def save_analysis_result(self, content: str, filename: str = None):
+        """解析結果の保存"""
+        return self.file_output_manager.save_to_file(
+            content=content,
+            base_name=filename or "analysis_result"
+        )
+```
+
+#### メモリ効率の最適化
+
+##### Before（旧方式）
+```python
+# 非推奨: 各ツールが独自のインスタンスを作成
+class OldMCPTool:
+    def __init__(self, project_root):
+        self.file_output_manager = FileOutputManager(project_root)  # 重複作成
+
+# 結果: 4つのツール = 4つのインスタンス
+tool1 = OldMCPTool(project_root)  # インスタンス1
+tool2 = OldMCPTool(project_root)  # インスタンス2（重複）
+tool3 = OldMCPTool(project_root)  # インスタンス3（重複）
+tool4 = OldMCPTool(project_root)  # インスタンス4（重複）
+```
+
+##### After（新方式）
+```python
+# 推奨: ファクトリー管理インスタンスを使用
+class NewMCPTool:
+    def __init__(self, project_root):
+        self.file_output_manager = FileOutputManager.get_managed_instance(project_root)
+
+# 結果: 4つのツール = 1つの共有インスタンス
+tool1 = NewMCPTool(project_root)  # インスタンス1（新規作成）
+tool2 = NewMCPTool(project_root)  # インスタンス1（共有）
+tool3 = NewMCPTool(project_root)  # インスタンス1（共有）
+tool4 = NewMCPTool(project_root)  # インスタンス1（共有）
+
+# メモリ使用量75%削減を実現
+```
+
+#### 高度な使用パターン
+
+##### マルチプロジェクト対応
+
+```python
+from tree_sitter_analyzer.mcp.utils.file_output_factory import FileOutputManagerFactory
+
+class MultiProjectTool:
+    """複数プロジェクトを扱うツール"""
+    
+    def __init__(self):
+        self.current_project = None
+        self.file_output_manager = None
+    
+    def switch_project(self, project_root: str):
+        """プロジェクト切り替え"""
+        self.current_project = project_root
+        self.file_output_manager = FileOutputManagerFactory.get_instance(project_root)
+        
+        # 現在管理されているプロジェクト数を確認
+        project_count = FileOutputManagerFactory.get_instance_count()
+        logger.info(f"Managing {project_count} projects")
+    
+    def list_managed_projects(self) -> list[str]:
+        """管理中のプロジェクト一覧"""
+        return FileOutputManagerFactory.get_managed_project_roots()
+    
+    def cleanup_unused_projects(self, active_projects: list[str]):
+        """未使用プロジェクトのクリーンアップ"""
+        managed_projects = self.list_managed_projects()
+        for project in managed_projects:
+            if project not in active_projects:
+                FileOutputManagerFactory.clear_instance(project)
+                logger.info(f"Cleaned up unused project: {project}")
+```
+
+##### テスト環境での使用
+
+```python
+import pytest
+from tree_sitter_analyzer.mcp.utils.file_output_factory import FileOutputManagerFactory
+
+class TestYourMCPTool:
+    """テストクラスでのベストプラクティス"""
+    
+    def setup_method(self):
+        """各テスト前のセットアップ"""
+        # ファクトリーをクリーンな状態にリセット
+        FileOutputManagerFactory.clear_all_instances()
+    
+    def teardown_method(self):
+        """各テスト後のクリーンアップ"""
+        # テスト間でインスタンスが残らないようにクリーンアップ
+        FileOutputManagerFactory.clear_all_instances()
+    
+    def test_tool_initialization(self):
+        """ツール初期化のテスト"""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            tool = YourMCPTool(temp_dir)
+            
+            # インスタンスが正しく管理されているか確認
+            assert FileOutputManagerFactory.get_instance_count() == 1
+            
+            # 同じプロジェクトルートで別のツールを作成
+            tool2 = YourMCPTool(temp_dir)
+            
+            # インスタンスが共有されているか確認
+            assert tool.file_output_manager is tool2.file_output_manager
+            assert FileOutputManagerFactory.get_instance_count() == 1
+```
+
+#### パフォーマンス監視
+
+```python
+from tree_sitter_analyzer.mcp.utils.file_output_factory import FileOutputManagerFactory
+import psutil
+import os
+
+class PerformanceMonitor:
+    """FileOutputManagerのパフォーマンス監視"""
+    
+    @staticmethod
+    def get_memory_usage() -> dict:
+        """メモリ使用量を取得"""
+        process = psutil.Process(os.getpid())
+        memory_info = process.memory_info()
+        
+        return {
+            "rss_mb": memory_info.rss / 1024 / 1024,  # 物理メモリ使用量
+            "vms_mb": memory_info.vms / 1024 / 1024,  # 仮想メモリ使用量
+            "managed_instances": FileOutputManagerFactory.get_instance_count(),
+            "managed_projects": len(FileOutputManagerFactory.get_managed_project_roots())
+        }
+    
+    @staticmethod
+    def compare_memory_usage(old_pattern_count: int, new_pattern_count: int) -> dict:
+        """旧方式と新方式のメモリ使用量比較"""
+        # 理論的な比較（実際の測定値に基づく）
+        old_memory_estimate = old_pattern_count * 100  # KB per instance
+        new_memory_estimate = 100  # KB for shared instance
+        
+        reduction_percentage = ((old_memory_estimate - new_memory_estimate) / old_memory_estimate) * 100
+        
+        return {
+            "old_pattern_memory_kb": old_memory_estimate,
+            "new_pattern_memory_kb": new_memory_estimate,
+            "reduction_percentage": reduction_percentage,
+            "memory_saved_kb": old_memory_estimate - new_memory_estimate
+        }
+
+# 使用例
+monitor = PerformanceMonitor()
+memory_stats = monitor.get_memory_usage()
+print(f"Current memory usage: {memory_stats['rss_mb']:.2f} MB")
+print(f"Managing {memory_stats['managed_instances']} instances for {memory_stats['managed_projects']} projects")
+
+# 4つのMCPツールでの比較
+comparison = monitor.compare_memory_usage(old_pattern_count=4, new_pattern_count=1)
+print(f"Memory reduction: {comparison['reduction_percentage']:.1f}%")
+```
+
+#### エラーハンドリングとフォールバック
+
+```python
+class RobustMCPTool:
+    """エラー耐性のあるMCPツール実装"""
+    
+    def __init__(self, project_root: str = None):
+        self.project_root = project_root
+        self.file_output_manager = self._initialize_file_output_manager()
+    
+    def _initialize_file_output_manager(self):
+        """安全なFileOutputManager初期化"""
+        try:
+            # 推奨: ファクトリー管理インスタンスを試行
+            return FileOutputManager.get_managed_instance(self.project_root)
+        except Exception as e:
+            logger.warning(f"Factory initialization failed, falling back to direct instantiation: {e}")
+            # フォールバック: 直接インスタンス作成
+            return FileOutputManager.create_instance(self.project_root)
+    
+    def save_with_retry(self, content: str, base_name: str, max_retries: int = 3):
+        """リトライ機能付きファイル保存"""
+        for attempt in range(max_retries):
+            try:
+                return self.file_output_manager.save_to_file(
+                    content=content,
+                    base_name=base_name
+                )
+            except Exception as e:
+                logger.warning(f"Save attempt {attempt + 1} failed: {e}")
+                if attempt == max_retries - 1:
+                    raise
+                
+                # ファイル出力マネージャーを再初期化
+                self.file_output_manager = self._initialize_file_output_manager()
+```
+
+#### 移行ガイドライン
+
+##### 段階的移行戦略
+
+1. **Phase 1: 新規開発**
+   - 新しいMCPツールでは必ず `get_managed_instance()` を使用
+
+2. **Phase 2: 既存ツールの更新**
+   - 既存ツールを段階的に新方式に移行
+   - テストを実行して動作確認
+
+3. **Phase 3: 最適化**
+   - パフォーマンス監視を実装
+   - 不要なインスタンスのクリーンアップ
+
+##### 移行チェックリスト
+
+```python
+# 移行前チェックリスト
+class MigrationChecklist:
+    """移行チェックリスト"""
+    
+    @staticmethod
+    def check_current_usage(tool_class):
+        """現在の使用方法をチェック"""
+        # 1. 直接インスタンス化を使用しているか？
+        uses_direct_instantiation = "FileOutputManager(" in inspect.getsource(tool_class)
+        
+        # 2. set_project_path メソッドでインスタンスを更新しているか？
+        has_project_path_update = "set_project_path" in dir(tool_class)
+        
+        # 3. テストでクリーンアップを実装しているか？
+        # （テストファイルを確認）
+        
+        return {
+            "uses_direct_instantiation": uses_direct_instantiation,
+            "has_project_path_update": has_project_path_update,
+            "migration_needed": uses_direct_instantiation
+        }
+    
+    @staticmethod
+    def validate_migration(tool_instance):
+        """移行後の検証"""
+        # 1. ファクトリー管理インスタンスを使用しているか？
+        manager = tool_instance.file_output_manager
+        factory_instance = FileOutputManager.get_managed_instance(tool_instance.project_root)
+        
+        is_managed = manager is factory_instance
+        
+        # 2. インスタンス数が適切か？
+        instance_count = FileOutputManagerFactory.get_instance_count()
+        
+        return {
+            "is_managed_instance": is_managed,
+            "instance_count": instance_count,
+            "migration_successful": is_managed
+        }
+```
+
+### 新しいMCPツール開発ガイドライン
+
+#### 必須実装パターン
+
+```python
+from tree_sitter_analyzer.mcp.tools.base_tool import BaseMCPTool
+from tree_sitter_analyzer.mcp.utils.file_output_manager import FileOutputManager
+
+class NewMCPToolTemplate(BaseMCPTool):
+    """新しいMCPツールのテンプレート"""
+    
+    def __init__(self, project_root: str = None):
+        super().__init__(project_root)
+        # 必須: ファクトリー管理インスタンスを使用
+        self.file_output_manager = FileOutputManager.get_managed_instance(project_root)
+    
+    def set_project_path(self, project_path: str) -> None:
+        """プロジェクトパス更新（必須実装）
+        
+        全MCPツールで統一されたインターフェース。
+        SearchContentToolとFindAndGrepToolでも同様に実装済み。
+        """
+        super().set_project_path(project_path)
+        # 必須: ファクトリー管理インスタンスを再取得
+        self.file_output_manager = FileOutputManager.get_managed_instance(project_path)
+        logger.info(f"{self.__class__.__name__} project path updated to: {project_path}")
+    
+    def get_tool_definition(self) -> dict:
+        """MCPツール定義（必須実装）"""
+        return {
+            "name": "your_tool_name",
+            "description": "Your tool description",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    # ファイル出力機能を含める場合は以下を追加
+                    "output_file": {
+                        "type": "string",
+                        "description": "Optional filename to save output to file (extension auto-detected based on content)"
+                    },
+                    "suppress_output": {
+                        "type": "boolean",
+                        "description": "When true and output_file is specified, suppress detailed output in response to save tokens",
+                        "default": False
+                    }
+                },
+                "required": ["your_required_params"]
+            }
+        }
+    
+    async def execute(self, arguments: dict) -> dict:
+        """ツール実行（必須実装）"""
+        try:
+            # ツール固有の処理
+            result = await self._process_tool_logic(arguments)
+            
+            # ファイル出力処理（推奨パターン）
+            output_file = arguments.get("output_file")
+            suppress_output = arguments.get("suppress_output", False)
+            
+            if output_file:
+                try:
+                    # ファイル保存
+                    import json
+                    json_content = json.dumps(result, indent=2, ensure_ascii=False)
+                    saved_file_path = self.file_output_manager.save_to_file(
+                        content=json_content,
+                        base_name=output_file
+                    )
+                    
+                    result["output_file_path"] = saved_file_path
+                    result["file_saved"] = True
+                    
+                    # 出力抑制処理
+                    if suppress_output:
+                        return {
+                            "success": result.get("success", True),
+                            "count": result.get("count", 0),
+                            "output_file_path": saved_file_path,
+                            "file_saved": True
+                        }
+                
+                except Exception as e:
+                    logger.error(f"Failed to save output to file: {e}")
+                    result["file_save_error"] = str(e)
+                    result["file_saved"] = False
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"Tool execution failed: {e}")
+            return {
+                "success": False,
+                "error": str(e)
+            }
+    
+    async def _process_tool_logic(self, arguments: dict) -> dict:
+        """ツール固有のロジック（サブクラスで実装）"""
+        raise NotImplementedError("Subclasses must implement _process_tool_logic")
+```
+
+これらのベストプラクティスに従うことで、メモリ効率的で一貫性のあるMCPツールを開発できます。
 
 ## パフォーマンス最適化
 

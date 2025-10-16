@@ -439,12 +439,23 @@ Tree-sitter Analyzer provides a rich set of MCP tools designed for AI assistants
 | | `analyze_code_structure` | Code structure analysis and table generation | 🆕 suppress_output parameter, multiple formats (full/compact/csv/json/html), automatic language detection |
 | | `extract_code_section` | Precise code section extraction | Specified line range extraction, large file efficient processing, original format preservation |
 | **🔍 Intelligent Search** | `list_files` | High-performance file discovery | fd-based, glob patterns, file type filters, time range control |
-| | `search_content` | Regex content search | ripgrep-based, multiple output formats, context control, encoding handling |
-| | `find_and_grep` | Two-stage search | File discovery → content search, fd+ripgrep combination, intelligent cache optimization |
+| | `search_content` | Regex content search | ripgrep-based, multiple output formats, context control, encoding handling, 🆕 unified `set_project_path` support |
+| | `find_and_grep` | Two-stage search | File discovery → content search, fd+ripgrep combination, intelligent cache optimization, 🆕 unified `set_project_path` support |
 | **🔧 Advanced Queries** | `query_code` | tree-sitter queries | Predefined query keys, custom query strings, filter expression support |
-| **⚙️ System Management** | `set_project_path` | Project root path setting | Security boundary control, automatic path validation |
+| **⚙️ System Management** | `set_project_path` | Project root path setting | Security boundary control, automatic path validation, 🆕 unified across all MCP tools |
 | **📁 Resource Access** | Code file resources | URI code file access | File content access via URI identification |
 | | Project statistics resources | Project statistics data access | Project analysis data and statistical information |
+
+### 🆕 v1.8.3 New Feature: MCP Tools Design Consistency Enhancement
+
+Comprehensive MCP tools unification and design consistency improvements:
+
+- **🔧 Unified `set_project_path` Implementation**: SearchContentTool and FindAndGrepTool now have consistent `set_project_path` method implementation
+- **🏗️ Design Consistency Across All MCP Tools**: All 4 MCP tools (QueryTool, TableFormatTool, SearchContentTool, FindAndGrepTool) now have unified interface design
+- **📁 FileOutputManager Integration**: Unified FileOutputManager factory pattern for consistent file output management
+- **🔄 Dynamic Project Path Changes**: All MCP tools now support dynamic project path changes through unified interface
+- **🛡️ Enhanced Security Boundaries**: Consistent security boundary protection across all MCP tools
+- **📋 Improved Developer Experience**: Unified interface makes MCP tool development and usage more consistent
 
 ### 🆕 v1.8.2 New Feature: CLI Security and Argument Validation Enhancement
 

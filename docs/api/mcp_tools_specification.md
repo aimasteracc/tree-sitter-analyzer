@@ -1223,6 +1223,10 @@ mcp_servers:
 - 新しいデータモデル（MarkupElement, StyleElement）
   - HTML要素の階層関係とセマンティック情報
   - CSSルールの構造化表現
+- 全MCPツールでの`set_project_path`メソッド統一実装
+  - SearchContentToolとFindAndGrepToolに新規追加
+  - 動的プロジェクトパス変更の統一サポート
+  - FileOutputManager統合による設計一貫性確保
 
 ## Support & Documentation
 

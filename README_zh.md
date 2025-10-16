@@ -440,12 +440,23 @@ Tree-sitter Analyzer提供了丰富的MCP工具集，专为AI助手设计：
 | | `analyze_code_structure` | 分析代码结构和生成表格 | 🆕 suppress_output参数、多种格式(full/compact/csv/json/html)、自动语言检测 |
 | | `extract_code_section` | 精确提取代码片段 | 指定行范围提取、大文件高效处理、保持原始格式 |
 | **🔍 智能搜索** | `list_files` | 高性能文件发现 | 基于fd、glob模式、文件类型过滤、时间范围控制 |
-| | `search_content` | 正则表达式内容搜索 | 基于ripgrep、多种输出格式、上下文控制、编码处理 |
-| | `find_and_grep` | 两阶段搜索 | 先找文件再搜内容、组合fd+ripgrep、智能缓存优化 |
+| | `search_content` | 正则表达式内容搜索 | 基于ripgrep、多种输出格式、上下文控制、编码处理、🆕 统一`set_project_path`支持 |
+| | `find_and_grep` | 两阶段搜索 | 先找文件再搜内容、组合fd+ripgrep、智能缓存优化、🆕 统一`set_project_path`支持 |
 | **🔧 高级查询** | `query_code` | tree-sitter查询 | 预定义查询键、自定义查询字符串、过滤表达式支持 |
-| **⚙️ 系统管理** | `set_project_path` | 设置项目根路径 | 安全边界控制、自动路径验证 |
+| **⚙️ 系统管理** | `set_project_path` | 设置项目根路径 | 安全边界控制、自动路径验证、🆕 全MCP工具统一 |
 | **📁 资源访问** | 代码文件资源 | URI访问代码文件 | 通过URI标识访问文件内容 |
 | | 项目统计资源 | 访问项目统计数据 | 项目分析数据和统计信息 |
+
+### 🆕 v1.8.3新特性：MCP工具设计一致性增强
+
+全面的MCP工具统一和设计一致性改进：
+
+- **🔧 统一`set_project_path`实现**：SearchContentTool和FindAndGrepTool现在具有一致的`set_project_path`方法实现
+- **🏗️ 全MCP工具设计一致性**：全部4个MCP工具（QueryTool、TableFormatTool、SearchContentTool、FindAndGrepTool）现在具有统一的接口设计
+- **📁 FileOutputManager集成**：统一的FileOutputManager工厂模式用于一致的文件输出管理
+- **🔄 动态项目路径变更**：所有MCP工具现在通过统一接口支持动态项目路径变更
+- **🛡️ 增强的安全边界**：所有MCP工具具有一致的安全边界保护
+- **📋 改进的开发者体验**：统一接口使MCP工具开发和使用更加一致
 
 ### 🆕 v1.8.2新特性：CLI安全性和参数验证增强
 

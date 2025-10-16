@@ -4,12 +4,15 @@ File Output Manager for MCP Tools
 
 This module provides functionality to save analysis results to files with
 appropriate extensions based on content type, with security validation.
+
+Enhanced with Managed Singleton Factory Pattern support for consistent
+instance management across MCP tools.
 """
 
 import json
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 from ...utils import setup_logger
 
@@ -21,9 +24,12 @@ class FileOutputManager:
     """
     Manages file output for analysis results with automatic extension detection
     and security validation.
+    
+    Enhanced with factory method support for consistent instance management
+    across MCP tools while maintaining full backward compatibility.
     """
 
-    def __init__(self, project_root: str | None = None):
+    def __init__(self, project_root: Optional[str] = None):
         """
         Initialize the file output manager.
 
@@ -33,6 +39,50 @@ class FileOutputManager:
         self.project_root = project_root
         self._output_path = None
         self._initialize_output_path()
+    
+    @classmethod
+    def get_managed_instance(cls, project_root: Optional[str] = None) -> 'FileOutputManager':
+        """
+        Get a managed FileOutputManager instance using the factory pattern.
+        
+        This method provides access to the Managed Singleton Factory Pattern,
+        ensuring one instance per project root for optimal resource usage
+        and consistency across MCP tools.
+        
+        Args:
+            project_root: Project root directory. If None, uses current working directory.
+            
+        Returns:
+            FileOutputManager instance managed by the factory
+            
+        Note:
+            This method requires the factory module to be available. If the factory
+            is not available, it falls back to creating a new instance directly.
+        """
+        try:
+            # Import here to avoid circular imports
+            from .file_output_factory import FileOutputManagerFactory
+            return FileOutputManagerFactory.get_instance(project_root)
+        except ImportError as e:
+            logger.warning(f"Factory not available, creating new instance directly: {e}")
+            return cls(project_root)
+    
+    @classmethod
+    def create_instance(cls, project_root: Optional[str] = None) -> 'FileOutputManager':
+        """
+        Create a new FileOutputManager instance directly (bypass factory).
+        
+        This method creates a new instance without using the factory pattern.
+        Use this when you specifically need a separate instance that won't
+        be managed by the factory.
+        
+        Args:
+            project_root: Project root directory. If None, uses current working directory.
+            
+        Returns:
+            New FileOutputManager instance
+        """
+        return cls(project_root)
 
     def _initialize_output_path(self) -> None:
         """Initialize the output path from environment variables or project root."""
