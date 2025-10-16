@@ -92,7 +92,7 @@ class GitFlowReleaseAutomation:
         try:
             # Run the README updater script
             subprocess.run(  # nosec B603, B607
-                ["uv", "run", "python", "scripts/improved_readme_updater.py"],
+                ["uv", "run", "python", "scripts/update_readme_stats.py"],
                 cwd=self.project_root,
                 capture_output=True,
                 text=True,
