@@ -341,21 +341,41 @@ class SearchContentTool(BaseMCPTool):
             # Simple cache lookup without complex cross-format logic for performance
             cached_result = self.cache.get(cache_key)
             if cached_result is not None:
-                # Add cache hit indicator to result
-                if isinstance(cached_result, dict):
-                    cached_result = cached_result.copy()
-                    cached_result["cache_hit"] = True
-                    return cached_result
-                elif isinstance(cached_result, int):
-                    # For integer results (like total_only mode), return as-is
-                    return cached_result
+                # Check if this is a total_only request
+                total_only_requested = arguments.get("total_only", False)
+                
+                if total_only_requested:
+                    # For total_only mode, always return integer if possible
+                    if isinstance(cached_result, int):
+                        return cached_result
+                    elif isinstance(cached_result, dict) and "total_matches" in cached_result:
+                        return cached_result["total_matches"]
+                    elif isinstance(cached_result, dict) and "count" in cached_result:
+                        return cached_result["count"]
+                    else:
+                        # Fallback: extract count from dict or return 0
+                        return 0
                 else:
-                    # For other types, convert to dict format
-                    return {
-                        "success": True,
-                        "cached_result": cached_result,
-                        "cache_hit": True,
-                    }
+                    # For non-total_only modes, return dict format
+                    if isinstance(cached_result, dict):
+                        cached_result = cached_result.copy()
+                        cached_result["cache_hit"] = True
+                        return cached_result
+                    elif isinstance(cached_result, int):
+                        # Convert integer to dict format for non-total_only modes
+                        return {
+                            "success": True,
+                            "count": cached_result,
+                            "total_matches": cached_result,
+                            "cache_hit": True,
+                        }
+                    else:
+                        # For other types, convert to dict format
+                        return {
+                            "success": True,
+                            "cached_result": cached_result,
+                            "cache_hit": True,
+                        }
 
         # Handle max_count parameter properly
         # If user specifies max_count, use it directly (with reasonable upper limit)
