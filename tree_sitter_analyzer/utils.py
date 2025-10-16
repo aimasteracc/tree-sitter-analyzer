@@ -9,7 +9,9 @@ import atexit
 import logging
 import os
 import sys
+import tempfile
 from functools import wraps
+from pathlib import Path
 from typing import Any
 
 
@@ -51,6 +53,10 @@ def setup_logger(
     if name.startswith("test_"):
         logger.handlers.clear()
 
+    # Initialize file logging variables at function scope
+    enable_file_log = os.environ.get("TREE_SITTER_ANALYZER_ENABLE_FILE_LOG", "").lower() == "true"
+    file_log_level = level  # Default to main logger level
+
     if not logger.handlers:  # Avoid duplicate handlers
         # Create a safe handler that writes to stderr to avoid breaking MCP stdio
         handler = SafeStreamHandler()
@@ -60,27 +66,68 @@ def setup_logger(
         handler.setFormatter(formatter)
         logger.addHandler(handler)
 
-        # Also log to a local file for debugging when launched by clients (e.g., Cursor)
+        # Optional file logging for debugging when launched by clients (e.g., Cursor)
         # This helps diagnose cases where stdio is captured by the client and logs are hidden.
-        try:
-            file_handler = logging.FileHandler(
-                "cursor_mcp_server.log", encoding="utf-8"
-            )
-            file_handler.setFormatter(formatter)
-            logger.addHandler(file_handler)
-        except Exception as e:
-            # Never let logging configuration break runtime behavior; log to stderr if possible
-            if hasattr(sys, "stderr") and hasattr(sys.stderr, "write"):
-                try:
-                    sys.stderr.write(
-                        f"[logging_setup] file handler init skipped: {e}\n"
-                    )
-                except Exception:
-                    ...
+        # Only enabled when TREE_SITTER_ANALYZER_ENABLE_FILE_LOG is set to 'true'
+        if enable_file_log:
+            try:
+                # Determine log directory
+                log_dir = os.environ.get("TREE_SITTER_ANALYZER_LOG_DIR")
+                if log_dir:
+                    # Use specified directory
+                    log_path = Path(log_dir) / "tree_sitter_analyzer.log"
+                    # Ensure directory exists
+                    Path(log_dir).mkdir(parents=True, exist_ok=True)
+                else:
+                    # Use system temporary directory
+                    temp_dir = tempfile.gettempdir()
+                    log_path = Path(temp_dir) / "tree_sitter_analyzer.log"
+                
+                # Determine file log level
+                file_log_level_str = os.environ.get("TREE_SITTER_ANALYZER_FILE_LOG_LEVEL", "").upper()
+                if file_log_level_str and file_log_level_str in ["DEBUG", "INFO", "WARNING", "ERROR"]:
+                    if file_log_level_str == "DEBUG":
+                        file_log_level = logging.DEBUG
+                    elif file_log_level_str == "INFO":
+                        file_log_level = logging.INFO
+                    elif file_log_level_str == "WARNING":
+                        file_log_level = logging.WARNING
+                    elif file_log_level_str == "ERROR":
+                        file_log_level = logging.ERROR
+                else:
+                    # Use same level as main logger
+                    file_log_level = level
+                
+                file_handler = logging.FileHandler(str(log_path), encoding="utf-8")
+                file_handler.setFormatter(formatter)
+                file_handler.setLevel(file_log_level)
+                logger.addHandler(file_handler)
+                
+                # Log the file location for debugging purposes
+                if hasattr(sys, "stderr") and hasattr(sys.stderr, "write"):
+                    try:
+                        sys.stderr.write(f"[logging_setup] File logging enabled: {log_path}\n")
+                    except Exception:
+                        ...
+                        
+            except Exception as e:
+                # Never let logging configuration break runtime behavior; log to stderr if possible
+                if hasattr(sys, "stderr") and hasattr(sys.stderr, "write"):
+                    try:
+                        sys.stderr.write(
+                            f"[logging_setup] file handler init skipped: {e}\n"
+                        )
+                    except Exception:
+                        ...
 
-    # Always set the level, even if handlers already exist
-    # Ensure the level is properly set, not inherited
-    logger.setLevel(level)
+    # Set the logger level to the minimum of main level and file log level
+    # This ensures that all messages that should go to any handler are processed
+    final_level = level
+    if enable_file_log:
+        # Use the minimum level to ensure all messages reach their intended handlers
+        final_level = min(level, file_log_level)
+    
+    logger.setLevel(final_level)
     
     # For test loggers, ensure they don't inherit from parent and force level
     if logger.name.startswith("test_"):
