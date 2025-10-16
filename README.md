@@ -160,7 +160,10 @@ rg --version
       ],
       "env": {
         "TREE_SITTER_PROJECT_ROOT": "/absolute/path/to/your/project",
-        "TREE_SITTER_OUTPUT_PATH": "/absolute/path/to/output/directory"
+        "TREE_SITTER_OUTPUT_PATH": "/absolute/path/to/output/directory",
+        "TREE_SITTER_ANALYZER_ENABLE_FILE_LOG": "true",
+        "TREE_SITTER_ANALYZER_LOG_DIR": "/absolute/path/to/log/directory",
+        "TREE_SITTER_ANALYZER_FILE_LOG_LEVEL": "DEBUG"
       }
     }
   }
@@ -178,6 +181,54 @@ rg --version
 - **Cursor**: Built-in MCP support, refer to Cursor documentation for configuration
 - **Roo Code**: Supports MCP protocol, use the same configuration format
 - **Other MCP-compatible clients**: Use the same server configuration
+
+#### 🔧 Environment Variables for Debugging
+
+Tree-sitter Analyzer supports several environment variables for advanced logging and debugging:
+
+| Environment Variable | Description | Default | Example |
+|---------------------|-------------|---------|---------|
+| `TREE_SITTER_ANALYZER_ENABLE_FILE_LOG` | Enable file logging for debugging | `false` | `true` |
+| `TREE_SITTER_ANALYZER_LOG_DIR` | Custom log directory path | System temp directory | `/path/to/logs` |
+| `TREE_SITTER_ANALYZER_FILE_LOG_LEVEL` | File log level (DEBUG/INFO/WARNING/ERROR) | Same as main logger | `DEBUG` |
+| `LOG_LEVEL` | Main logger level (DEBUG/INFO/WARNING/ERROR) | `WARNING` | `INFO` |
+| `TREE_SITTER_PROJECT_ROOT` | Project root directory | Auto-detected | `/path/to/project` |
+| `TREE_SITTER_OUTPUT_PATH` | Output directory for files | Current directory | `/path/to/output` |
+
+**Usage Examples:**
+
+```bash
+# Enable debug file logging
+export TREE_SITTER_ANALYZER_ENABLE_FILE_LOG=true
+export TREE_SITTER_ANALYZER_FILE_LOG_LEVEL=DEBUG
+
+# Custom log directory
+export TREE_SITTER_ANALYZER_LOG_DIR=/var/log/tree-sitter-analyzer
+
+# Set main log level
+export LOG_LEVEL=INFO
+```
+
+**Claude Desktop Configuration with Debugging:**
+```json
+{
+  "mcpServers": {
+    "tree-sitter-analyzer": {
+      "command": "uv",
+      "args": [
+        "run", "--with", "tree-sitter-analyzer[mcp]",
+        "python", "-m", "tree_sitter_analyzer.mcp.server"
+      ],
+      "env": {
+        "TREE_SITTER_PROJECT_ROOT": "/absolute/path/to/your/project",
+        "TREE_SITTER_ANALYZER_ENABLE_FILE_LOG": "true",
+        "TREE_SITTER_ANALYZER_FILE_LOG_LEVEL": "DEBUG",
+        "LOG_LEVEL": "INFO"
+      }
+    }
+  }
+}
+```
 
 ---
 
