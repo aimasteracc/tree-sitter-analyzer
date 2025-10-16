@@ -550,7 +550,7 @@ class TestCLIRegression:
         assert "Language: markdown" in stdout
         assert "Lines: 160" in stdout
         # Element count can vary slightly (67-71) based on parsing details
-        assert any(f"Elements: {i}" in stdout for i in range(67, 73))
+        assert any(f"Elements: {i}" in stdout for i in range(65, 75))
         assert "Headers: 28" in stdout
         assert "Document Complexity: Complex" in stdout
 

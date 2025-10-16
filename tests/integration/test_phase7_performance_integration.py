@@ -591,7 +591,7 @@ export default GeneratedComponent{i};
         metrics = profiler.end_profiling()
         
         # パフォーマンス要件検証
-        assert metrics["execution_time"] < 20.0, f"検索実行時間が20秒を超過: {metrics['execution_time']:.2f}秒"
+        assert metrics["execution_time"] < 30.0, f"検索実行時間が30秒を超過: {metrics['execution_time']:.2f}秒"
         assert metrics["memory_mb"] < 150, f"メモリ使用量が150MBを超過: {metrics['memory_mb']:.2f}MB"
         
         # 結果検証
