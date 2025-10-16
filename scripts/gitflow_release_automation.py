@@ -91,14 +91,21 @@ class GitFlowReleaseAutomation:
 
         try:
             # Run the README updater script
-            subprocess.run(  # nosec B603, B607
+            result = subprocess.run(  # nosec B603, B607
                 ["uv", "run", "python", "scripts/update_readme_stats.py"],
                 cwd=self.project_root,
                 capture_output=True,
                 text=True,
-                check=True,
+                check=False,
             )
-            print("README statistics updated successfully")
+            
+            if result.returncode == 0:
+                print("README statistics updated successfully")
+            else:
+                print(f"README updater returned non-zero exit code: {result.returncode}")
+                print(f"Stdout: {result.stdout}")
+                print(f"Stderr: {result.stderr}")
+                print("Continuing with release process...")
 
             # Check if there are changes
             status = self.run_command(["git", "status", "--porcelain"]).stdout.strip()
@@ -121,9 +128,10 @@ class GitFlowReleaseAutomation:
                 print("No README changes needed")
 
             return True
-        except subprocess.CalledProcessError as e:
-            print(f"Failed to update README statistics: {e}")
-            return False
+        except Exception as e:
+            print(f"Exception during README statistics update: {e}")
+            print("Continuing with release process...")
+            return True
 
     def run_tests(self) -> bool:
         """Run tests to ensure quality"""
