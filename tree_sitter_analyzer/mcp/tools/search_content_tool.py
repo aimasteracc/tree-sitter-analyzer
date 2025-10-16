@@ -748,6 +748,7 @@ class SearchContentTool(BaseMCPTool):
                     content=json_content, base_name=output_file
                 )
 
+                result["output_file"] = output_file
                 result["output_file_path"] = saved_file_path
                 result["file_saved"] = True
 

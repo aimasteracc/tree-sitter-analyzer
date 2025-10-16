@@ -17,6 +17,10 @@ from .formatter_registry import IFormatter
 class HtmlFormatter(BaseFormatter, IFormatter):
     """HTML-specific formatter for MarkupElement and StyleElement"""
 
+    def __init__(self):
+        """Initialize HTML formatter"""
+        pass
+
     @staticmethod
     def get_format_name() -> str:
         return "html"
