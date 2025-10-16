@@ -731,6 +731,9 @@ This project provides complete documentation support, including:
 - **MCP Configuration Guide** - See the [AI Users Configuration](#31--ai-users-claude-desktop-cursor-etc) section
 - **CLI Usage Guide** - See the [Complete CLI Commands](#6--complete-cli-commands) section
 - **Core Features Documentation** - See the [Core Features](#7-️-core-features) section
+- **Contributing Guide** - See [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) for development guidelines and document management
+- **Analysis Results** - See [docs/analysis/](docs/analysis/) for project analysis reports and metrics
+- **Feature Specifications** - See [specs/](specs/) for detailed feature specifications and implementation plans
 
 ### 🤖 AI Collaboration Support
 This project supports AI-assisted development with professional quality control:

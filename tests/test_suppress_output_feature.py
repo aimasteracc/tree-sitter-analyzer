@@ -183,9 +183,9 @@ public class TestClass {
     @patch('tree_sitter_analyzer.mcp.tools.table_format_tool.get_analysis_engine')
     @patch('tree_sitter_analyzer.mcp.tools.table_format_tool.detect_language_from_file')
     @patch('tree_sitter_analyzer.mcp.tools.table_format_tool.get_performance_monitor')
-    @patch('tree_sitter_analyzer.mcp.tools.table_format_tool.FileOutputManager')
+    @patch('tree_sitter_analyzer.mcp.tools.table_format_tool.FileOutputManager.get_managed_instance')
     async def test_suppress_output_true_with_output_file_excludes_table_output(
-        self, mock_file_manager, mock_monitor, mock_detect_lang, mock_engine, temp_java_file
+        self, mock_get_managed_instance, mock_monitor, mock_detect_lang, mock_engine, temp_java_file
     ):
         """Test that suppress_output=True with output_file excludes table_output from response."""
         # Setup mocks
@@ -196,7 +196,7 @@ public class TestClass {
         # Mock file output manager
         mock_file_manager_instance = Mock()
         mock_file_manager_instance.save_to_file.return_value = "/path/to/output.md"
-        mock_file_manager.return_value = mock_file_manager_instance
+        mock_get_managed_instance.return_value = mock_file_manager_instance
         
         # Mock analysis result
         mock_analysis_result = Mock()
@@ -231,9 +231,9 @@ public class TestClass {
     @patch('tree_sitter_analyzer.mcp.tools.table_format_tool.get_analysis_engine')
     @patch('tree_sitter_analyzer.mcp.tools.table_format_tool.detect_language_from_file')
     @patch('tree_sitter_analyzer.mcp.tools.table_format_tool.get_performance_monitor')
-    @patch('tree_sitter_analyzer.mcp.tools.table_format_tool.FileOutputManager')
+    @patch('tree_sitter_analyzer.mcp.tools.table_format_tool.FileOutputManager.get_managed_instance')
     async def test_suppress_output_false_with_output_file_includes_table_output(
-        self, mock_file_manager, mock_monitor, mock_detect_lang, mock_engine, temp_java_file
+        self, mock_get_managed_instance, mock_monitor, mock_detect_lang, mock_engine, temp_java_file
     ):
         """Test that suppress_output=False with output_file still includes table_output."""
         # Setup mocks
@@ -244,7 +244,7 @@ public class TestClass {
         # Mock file output manager
         mock_file_manager_instance = Mock()
         mock_file_manager_instance.save_to_file.return_value = "/path/to/output.md"
-        mock_file_manager.return_value = mock_file_manager_instance
+        mock_get_managed_instance.return_value = mock_file_manager_instance
         
         # Mock analysis result
         mock_analysis_result = Mock()
