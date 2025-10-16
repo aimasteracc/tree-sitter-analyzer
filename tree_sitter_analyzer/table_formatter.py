@@ -688,7 +688,8 @@ class TableFormatter:
     def _convert_visibility(self, visibility: str) -> str:
         """Convert visibility to symbol"""
         mapping = {"public": "+", "private": "-", "protected": "#", "package": "~"}
-        return mapping.get(visibility, visibility)
+        # Return empty string for unknown visibility instead of the original value
+        return mapping.get(visibility, "")
 
     def _extract_doc_summary(self, javadoc: str) -> str:
         """Extract summary from JavaDoc"""

@@ -339,7 +339,8 @@ class CompactFormatter(IFormatter):
     def _get_visibility_symbol(self, visibility: str) -> str:
         """Get symbol for visibility"""
         mapping = {"public": "+", "private": "-", "protected": "#", "package": "~"}
-        return mapping.get(visibility, "?")
+        # Return empty string for unknown visibility instead of "?"
+        return mapping.get(visibility, "")
 
 
 # Register built-in formatters
