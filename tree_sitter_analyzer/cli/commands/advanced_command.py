@@ -14,8 +14,8 @@ from ...constants import (
     ELEMENT_TYPE_VARIABLE,
     get_element_type,
 )
-from ...output_manager import output_data, output_json, output_section
 from ...formatters.language_formatter_factory import create_language_formatter
+from ...output_manager import output_data, output_json, output_section
 from .base_command import BaseCommand
 
 if TYPE_CHECKING:
@@ -163,8 +163,10 @@ class AdvancedCommand(BaseCommand):
         formatter = create_language_formatter(analysis_result.language)
         if formatter:
             # Use language-specific formatter
-            output_format = getattr(self.args, 'output_format', 'json')
-            formatted_output = formatter.format_advanced(self._convert_to_formatter_format(analysis_result), output_format)
+            output_format = getattr(self.args, "output_format", "json")
+            formatted_output = formatter.format_advanced(
+                self._convert_to_formatter_format(analysis_result), output_format
+            )
             print(formatted_output)
             return
 
@@ -220,7 +222,7 @@ class AdvancedCommand(BaseCommand):
                     "line_range": {
                         "start": getattr(element, "start_line", 0),
                         "end": getattr(element, "end_line", 0),
-                    }
+                    },
                 }
                 for element in analysis_result.elements
             ],
@@ -231,7 +233,7 @@ class AdvancedCommand(BaseCommand):
                 "language": analysis_result.language,
                 "file_path": analysis_result.file_path,
                 "analyzer_version": "2.0.0",
-            }
+            },
         }
 
     def _output_text_analysis(self, analysis_result: "AnalysisResult") -> None:

@@ -11,8 +11,10 @@ def mock_external_commands(monkeypatch):
     """Auto-mock external command availability checks for all tests in this module."""
     monkeypatch.setattr(
         "tree_sitter_analyzer.mcp.tools.fd_rg_utils.check_external_command",
-        lambda cmd: True
+        lambda cmd: True,
     )
+
+
 from tree_sitter_analyzer.mcp.utils.search_cache import clear_cache
 
 

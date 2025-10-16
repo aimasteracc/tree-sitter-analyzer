@@ -6,100 +6,81 @@ Tree-sitter queries for extracting Markdown elements including headers,
 links, code blocks, lists, and other structural elements.
 """
 
-from typing import Dict, List
-
 # Markdown element extraction queries - simplified for compatibility
-MARKDOWN_QUERIES: Dict[str, str] = {
+MARKDOWN_QUERIES: dict[str, str] = {
     # Headers (H1-H6) - simplified
     "headers": """
     (atx_heading) @header
     (setext_heading) @header
     """,
-    
     # Code blocks - simplified
     "code_blocks": """
     (fenced_code_block) @code_block
     (indented_code_block) @code_block
     """,
-    
     # Inline code - simplified
     "inline_code": """
     (inline) @inline
     """,
-    
     # Links - simplified to avoid invalid node types
     "links": """
     (inline) @inline
     """,
-    
     # Images - simplified to avoid invalid node types
     "images": """
     (inline) @inline
     """,
-    
     # Lists - simplified to avoid invalid node types
     "lists": """
     (list) @list
     (list_item) @list_item
     """,
-    
     # Emphasis and strong - simplified
     "emphasis": """
     (inline) @inline
     """,
-    
     # Blockquotes - simplified
     "blockquotes": """
     (block_quote) @blockquote
     """,
-    
     # Tables - simplified
     "tables": """
     (pipe_table) @table
     """,
-    
     # Horizontal rules - simplified
     "horizontal_rules": """
     (thematic_break) @hr
     """,
-    
     # HTML blocks - simplified
     "html_blocks": """
     (html_block) @html_block
     """,
-    
     # Inline HTML - simplified
     "inline_html": """
     (inline) @inline
     """,
-    
     # Strikethrough - simplified
     "strikethrough": """
     (inline) @inline
     """,
-    
     # Task lists - simplified
     "task_lists": """
     (list_item) @list_item
     """,
-    
     # Footnotes - simplified
     "footnotes": """
     (paragraph) @paragraph
     (inline) @inline
     """,
-    
     # All text content - simplified
     "text_content": """
     (paragraph) @paragraph
     (inline) @inline
     """,
-    
     # Document structure - simplified
     "document": """
     (document) @document
     """,
-    
     # All elements (comprehensive) - simplified
     "all_elements": """
     (atx_heading) @heading
@@ -119,10 +100,10 @@ MARKDOWN_QUERIES: Dict[str, str] = {
 }
 
 # Query aliases for convenience
-QUERY_ALIASES: Dict[str, str] = {
+QUERY_ALIASES: dict[str, str] = {
     "heading": "headers",
     "h1": "headers",
-    "h2": "headers", 
+    "h2": "headers",
     "h3": "headers",
     "h4": "headers",
     "h5": "headers",
@@ -157,34 +138,36 @@ QUERY_ALIASES: Dict[str, str] = {
     "everything": "all_elements",
 }
 
+
 def get_query(query_name: str) -> str:
     """
     Get a query by name, supporting aliases
-    
+
     Args:
         query_name: Name of the query or alias
-        
+
     Returns:
         Query string
-        
+
     Raises:
         KeyError: If query name is not found
     """
     # Check direct queries first
     if query_name in MARKDOWN_QUERIES:
         return MARKDOWN_QUERIES[query_name]
-    
+
     # Check aliases
     if query_name in QUERY_ALIASES:
         actual_query = QUERY_ALIASES[query_name]
         return MARKDOWN_QUERIES[actual_query]
-    
+
     raise KeyError(f"Unknown query: {query_name}")
 
-def get_available_queries() -> List[str]:
+
+def get_available_queries() -> list[str]:
     """
     Get list of all available query names including aliases
-    
+
     Returns:
         List of query names
     """
@@ -192,30 +175,34 @@ def get_available_queries() -> List[str]:
     aliases = list(QUERY_ALIASES.keys())
     return sorted(queries + aliases)
 
-def get_query_info(query_name: str) -> Dict[str, str]:
+
+def get_query_info(query_name: str) -> dict[str, str]:
     """
     Get information about a query
-    
+
     Args:
         query_name: Name of the query
-        
+
     Returns:
         Dictionary with query information
     """
     try:
         query_string = get_query(query_name)
         is_alias = query_name in QUERY_ALIASES
-        actual_name = QUERY_ALIASES.get(query_name, query_name) if is_alias else query_name
-        
+        actual_name = (
+            QUERY_ALIASES.get(query_name, query_name) if is_alias else query_name
+        )
+
         return {
             "name": query_name,
             "actual_name": actual_name,
             "is_alias": is_alias,
             "query": query_string,
-            "description": _get_query_description(actual_name)
+            "description": _get_query_description(actual_name),
         }
     except KeyError:
         return {"error": f"Query '{query_name}' not found"}
+
 
 def _get_query_description(query_name: str) -> str:
     """Get description for a query"""
@@ -237,26 +224,28 @@ def _get_query_description(query_name: str) -> str:
         "footnotes": "Extract footnote references and definitions",
         "text_content": "Extract all text content",
         "document": "Extract document root",
-        "all_elements": "Extract all Markdown elements"
+        "all_elements": "Extract all Markdown elements",
     }
     return descriptions.get(query_name, "No description available")
+
 
 def get_all_queries() -> dict[str, str]:
     """
     Get all queries for the query loader
-    
+
     Returns:
         Dictionary mapping query names to query strings
     """
     # Combine direct queries and aliases
     all_queries = MARKDOWN_QUERIES.copy()
-    
+
     # Add aliases that point to actual queries
     for alias, target in QUERY_ALIASES.items():
         if target in MARKDOWN_QUERIES:
             all_queries[alias] = MARKDOWN_QUERIES[target]
-    
+
     return all_queries
+
 
 # Export main functions and constants
 __all__ = [
@@ -265,5 +254,5 @@ __all__ = [
     "get_query",
     "get_available_queries",
     "get_query_info",
-    "get_all_queries"
+    "get_all_queries",
 ]

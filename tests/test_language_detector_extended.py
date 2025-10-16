@@ -225,7 +225,9 @@ def test_detect_language_ambiguous_m_file_matlab(language_detector):
 
     language, confidence = language_detector.detect_language(file_path, content)
 
-    assert language == "objc"  # .m files default to Objective-C (more common in modern dev)
+    assert (
+        language == "objc"
+    )  # .m files default to Objective-C (more common in modern dev)
     assert confidence >= 0.7  # Content-based detection may vary
 
 

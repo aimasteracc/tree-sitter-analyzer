@@ -6,7 +6,7 @@ Optimized with enhanced caching and lazy loading for better performance.
 
 import importlib
 
-from .utils import log_error, log_warning
+from .utils import log_error
 
 
 class QueryLoader:
@@ -58,10 +58,10 @@ class QueryLoader:
         # Handle None or empty language - return empty dict without warning
         if not language or language == "None" or language.strip() == "":
             return {}
-            
+
         # Normalize language name
         language = language.strip().lower()
-            
+
         if language in self._failed_languages:
             return {}
 
@@ -108,7 +108,7 @@ class QueryLoader:
         # Handle invalid language early
         if not language or language == "None" or language.strip() == "":
             return None
-            
+
         queries = self.load_language_queries(language)
 
         if query_name in queries:
@@ -140,7 +140,7 @@ class QueryLoader:
         # Handle invalid language early
         if not language or language == "None" or language.strip() == "":
             return []
-            
+
         queries = self.load_language_queries(language)
         return list(queries.keys())
 

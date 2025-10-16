@@ -175,6 +175,11 @@ class SearchContentTool(BaseMCPTool):
                         "description": "When true and output_file is specified, suppress detailed output in response to save tokens",
                         "default": False,
                     },
+                    "enable_parallel": {
+                        "type": "boolean",
+                        "description": "Enable parallel processing for multiple root directories to improve performance. Default: True",
+                        "default": True,
+                    },
                 },
                 "required": ["query"],
                 "anyOf": [
@@ -236,6 +241,7 @@ class SearchContentTool(BaseMCPTool):
             "no_ignore",
             "count_only_matches",
             "summary_only",
+            "enable_parallel",
         ]:
             if key in arguments and not isinstance(arguments[key], bool):
                 raise ValueError(f"{key} must be a boolean")
@@ -306,9 +312,9 @@ class SearchContentTool(BaseMCPTool):
                 "success": False,
                 "error": "rg (ripgrep) command not found. Please install ripgrep (https://github.com/BurntSushi/ripgrep) to use this tool.",
                 "count": 0,
-                "results": []
+                "results": [],
             }
-        
+
         self.validate_arguments(arguments)
 
         roots = arguments.get("roots")
@@ -318,30 +324,38 @@ class SearchContentTool(BaseMCPTool):
         if files:
             files = self._validate_files(files)
 
-        # Check cache if enabled
+        # Check cache if enabled (simplified for performance)
         cache_key = None
         if self.cache:
-            # Create cache key with relevant parameters (excluding 'query' and 'roots' from kwargs)
+            # Create simplified cache key for better performance
             cache_params = {
                 k: v
                 for k, v in arguments.items()
-                if k not in ["query", "roots", "files"]
+                if k
+                not in ["query", "roots", "files", "output_file", "suppress_output"]
             }
             cache_key = self.cache.create_cache_key(
                 query=arguments["query"], roots=roots or [], **cache_params
             )
 
-            # Try smart cross-format caching first
-            requested_format = self._determine_requested_format(arguments)
-            cached_result = self.cache.get_compatible_result(
-                cache_key, requested_format
-            )
+            # Simple cache lookup without complex cross-format logic for performance
+            cached_result = self.cache.get(cache_key)
             if cached_result is not None:
                 # Add cache hit indicator to result
                 if isinstance(cached_result, dict):
                     cached_result = cached_result.copy()
                     cached_result["cache_hit"] = True
-                return cached_result
+                    return cached_result
+                elif isinstance(cached_result, int):
+                    # For integer results (like total_only mode), return as-is
+                    return cached_result
+                else:
+                    # For other types, convert to dict format
+                    return {
+                        "success": True,
+                        "cached_result": cached_result,
+                        "cache_hit": True,
+                    }
 
         # Handle max_count parameter properly
         # If user specifies max_count, use it directly (with reasonable upper limit)
@@ -411,30 +425,82 @@ class SearchContentTool(BaseMCPTool):
                 )
 
         # Roots mode
-        cmd = fd_rg_utils.build_rg_command(
-            query=arguments["query"],
-            case=arguments.get("case", "smart"),
-            fixed_strings=bool(arguments.get("fixed_strings", False)),
-            word=bool(arguments.get("word", False)),
-            multiline=bool(arguments.get("multiline", False)),
-            include_globs=arguments.get("include_globs"),
-            exclude_globs=arguments.get("exclude_globs"),
-            follow_symlinks=bool(arguments.get("follow_symlinks", False)),
-            hidden=bool(arguments.get("hidden", False)),
-            no_ignore=no_ignore,  # Use the potentially auto-detected value
-            max_filesize=arguments.get("max_filesize"),
-            context_before=arguments.get("context_before"),
-            context_after=arguments.get("context_after"),
-            encoding=arguments.get("encoding"),
-            max_count=max_count,
-            timeout_ms=timeout_ms,
-            roots=roots,
-            files_from=None,
-            count_only_matches=count_only_matches,
+        # Determine if we should use parallel processing
+        use_parallel = (
+            roots is not None
+            and len(roots) > 1
+            and arguments.get("enable_parallel", True)
         )
 
         started = time.time()
-        rc, out, err = await fd_rg_utils.run_command_capture(cmd, timeout_ms=timeout_ms)
+
+        if use_parallel and roots is not None:
+            # Split roots for parallel processing
+            root_chunks = fd_rg_utils.split_roots_for_parallel_processing(
+                roots, max_chunks=4
+            )
+
+            # Build commands for each chunk
+            commands = []
+            for chunk in root_chunks:
+                cmd = fd_rg_utils.build_rg_command(
+                    query=arguments["query"],
+                    case=arguments.get("case", "smart"),
+                    fixed_strings=bool(arguments.get("fixed_strings", False)),
+                    word=bool(arguments.get("word", False)),
+                    multiline=bool(arguments.get("multiline", False)),
+                    include_globs=arguments.get("include_globs"),
+                    exclude_globs=arguments.get("exclude_globs"),
+                    follow_symlinks=bool(arguments.get("follow_symlinks", False)),
+                    hidden=bool(arguments.get("hidden", False)),
+                    no_ignore=no_ignore,
+                    max_filesize=arguments.get("max_filesize"),
+                    context_before=arguments.get("context_before"),
+                    context_after=arguments.get("context_after"),
+                    encoding=arguments.get("encoding"),
+                    max_count=max_count,
+                    timeout_ms=timeout_ms,
+                    roots=chunk,
+                    files_from=None,
+                    count_only_matches=count_only_matches,
+                )
+                commands.append(cmd)
+
+            # Execute commands in parallel
+            results = await fd_rg_utils.run_parallel_rg_searches(
+                commands, timeout_ms=timeout_ms, max_concurrent=4
+            )
+
+            # Merge results
+            rc, out, err = fd_rg_utils.merge_rg_results(results, count_only_matches)
+        else:
+            # Single command execution (original behavior)
+            cmd = fd_rg_utils.build_rg_command(
+                query=arguments["query"],
+                case=arguments.get("case", "smart"),
+                fixed_strings=bool(arguments.get("fixed_strings", False)),
+                word=bool(arguments.get("word", False)),
+                multiline=bool(arguments.get("multiline", False)),
+                include_globs=arguments.get("include_globs"),
+                exclude_globs=arguments.get("exclude_globs"),
+                follow_symlinks=bool(arguments.get("follow_symlinks", False)),
+                hidden=bool(arguments.get("hidden", False)),
+                no_ignore=no_ignore,
+                max_filesize=arguments.get("max_filesize"),
+                context_before=arguments.get("context_before"),
+                context_after=arguments.get("context_after"),
+                encoding=arguments.get("encoding"),
+                max_count=max_count,
+                timeout_ms=timeout_ms,
+                roots=roots,
+                files_from=None,
+                count_only_matches=count_only_matches,
+            )
+
+            rc, out, err = await fd_rg_utils.run_command_capture(
+                cmd, timeout_ms=timeout_ms
+            )
+
         elapsed_ms = int((time.time() - started) * 1000)
 
         if rc not in (0, 1):
@@ -498,7 +564,7 @@ class SearchContentTool(BaseMCPTool):
 
         # Handle normal mode
         matches = fd_rg_utils.parse_rg_json_lines_to_matches(out)
-        
+
         # Apply user-specified max_count limit if provided
         # Note: ripgrep's -m option limits matches per file, not total matches
         # So we need to apply the total limit here in post-processing
@@ -530,19 +596,19 @@ class SearchContentTool(BaseMCPTool):
                 try:
                     # Save full result to file
                     import json
+
                     json_content = json.dumps(result, indent=2, ensure_ascii=False)
                     file_path = self.file_output_manager.save_to_file(
-                        content=json_content,
-                        base_name=output_file
+                        content=json_content, base_name=output_file
                     )
-                    
+
                     # If suppress_output is True, return minimal response
                     if suppress_output:
                         minimal_result = {
                             "success": result.get("success", True),
                             "count": result.get("count", 0),
                             "output_file": output_file,
-                            "file_saved": f"Results saved to {file_path}"
+                            "file_saved": f"Results saved to {file_path}",
                         }
                         # Cache the full result, not the minimal one
                         if self.cache and cache_key:
@@ -562,7 +628,7 @@ class SearchContentTool(BaseMCPTool):
                     "success": result.get("success", True),
                     "count": result.get("count", 0),
                     "summary": result.get("summary", {}),
-                    "meta": result.get("meta", {})
+                    "meta": result.get("meta", {}),
                 }
                 # Cache the full result, not the minimal one
                 if self.cache and cache_key:
@@ -595,19 +661,19 @@ class SearchContentTool(BaseMCPTool):
                 try:
                     # Save full result to file
                     import json
+
                     json_content = json.dumps(result, indent=2, ensure_ascii=False)
                     file_path = self.file_output_manager.save_to_file(
-                        content=json_content,
-                        base_name=output_file
+                        content=json_content, base_name=output_file
                     )
-                    
+
                     # If suppress_output is True, return minimal response
                     if suppress_output:
                         minimal_result = {
                             "success": result.get("success", True),
                             "count": result.get("count", 0),
                             "output_file": output_file,
-                            "file_saved": f"Results saved to {file_path}"
+                            "file_saved": f"Results saved to {file_path}",
                         }
                         # Cache the full result, not the minimal one
                         if self.cache and cache_key:
@@ -627,7 +693,7 @@ class SearchContentTool(BaseMCPTool):
                     "success": result.get("success", True),
                     "count": result.get("count", 0),
                     "summary": result.get("summary", {}),
-                    "elapsed_ms": result.get("elapsed_ms", 0)
+                    "elapsed_ms": result.get("elapsed_ms", 0),
                 }
                 # Cache the full result, not the minimal one
                 if self.cache and cache_key:
@@ -651,7 +717,7 @@ class SearchContentTool(BaseMCPTool):
         output_file = arguments.get("output_file")
         suppress_output = arguments.get("suppress_output", False)
 
-        # Always add results to the base result for file saving
+        # Always add results to the base result for caching
         result["results"] = matches
 
         # Handle file output if requested
@@ -665,17 +731,21 @@ class SearchContentTool(BaseMCPTool):
                     "elapsed_ms": elapsed_ms,
                     "results": matches,
                     "summary": fd_rg_utils.summarize_search_results(matches),
-                    "grouped_by_file": fd_rg_utils.group_matches_by_file(matches)["files"] if matches else []
+                    "grouped_by_file": fd_rg_utils.group_matches_by_file(matches)[
+                        "files"
+                    ]
+                    if matches
+                    else [],
                 }
 
                 # Convert to JSON for file output
                 import json
+
                 json_content = json.dumps(file_content, indent=2, ensure_ascii=False)
 
                 # Save to file
                 saved_file_path = self.file_output_manager.save_to_file(
-                    content=json_content,
-                    base_name=output_file
+                    content=json_content, base_name=output_file
                 )
 
                 result["output_file_path"] = saved_file_path
@@ -683,40 +753,23 @@ class SearchContentTool(BaseMCPTool):
 
                 logger.info(f"Search results saved to: {saved_file_path}")
 
+                # If suppress_output is True, return minimal response
+                if suppress_output:
+                    minimal_result = {
+                        "success": result.get("success", True),
+                        "count": result.get("count", 0),
+                        "output_file": output_file,
+                        "file_saved": f"Results saved to {saved_file_path}",
+                    }
+                    # Cache the full result, not the minimal one
+                    if self.cache and cache_key:
+                        self.cache.set(cache_key, result)
+                    return minimal_result
+
             except Exception as e:
                 logger.error(f"Failed to save output to file: {e}")
                 result["file_save_error"] = str(e)
                 result["file_saved"] = False
-
-        # Handle file output and suppression
-        output_file = arguments.get("output_file")
-        suppress_output = arguments.get("suppress_output", False)
-        
-        if output_file:
-            # Save full result to file
-            import json
-            json_content = json.dumps(result, indent=2, ensure_ascii=False)
-            file_path = self.file_output_manager.save_to_file(
-                content=json_content,
-                base_name=output_file
-            )
-            
-            # If suppress_output is True, return minimal response
-            if suppress_output:
-                minimal_result = {
-                    "success": result.get("success", True),
-                    "count": result.get("count", 0),
-                    "output_file": output_file,
-                    "file_saved": f"Results saved to {file_path}"
-                }
-                # Cache the full result, not the minimal one
-                if self.cache and cache_key:
-                    self.cache.set(cache_key, result)
-                return minimal_result
-            else:
-                # Include file info in full response
-                result["output_file"] = output_file
-                result["file_saved"] = f"Results saved to {file_path}"
         elif suppress_output:
             # If suppress_output is True but no output_file, remove results from response
             result_copy = result.copy()

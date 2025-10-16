@@ -10,8 +10,10 @@ Tests for the newly added Markdown element formatting functionality:
 - footnotes
 """
 
-import pytest
 import json
+
+import pytest
+
 from tree_sitter_analyzer.formatters.markdown_formatter import MarkdownFormatter
 
 
@@ -32,28 +34,30 @@ class TestMarkdownFormatterNewElements:
                     "type": "heading",
                     "text": "Test Document",
                     "level": 1,
-                    "line_range": {"start": 1, "end": 1}
+                    "line_range": {"start": 1, "end": 1},
                 },
                 {
                     "type": "blockquote",
                     "text": "This is a blockquote with some content",
-                    "line_range": {"start": 3, "end": 3}
+                    "line_range": {"start": 3, "end": 3},
                 },
                 {
                     "type": "blockquote",
                     "text": "Another blockquote with very long content that should be truncated when displayed in the table format",
-                    "line_range": {"start": 5, "end": 5}
-                }
-            ]
+                    "line_range": {"start": 5, "end": 5},
+                },
+            ],
         }
-        
+
         result = self.formatter.format_table(analysis_result)
-        
+
         # Check that blockquotes section is included
         assert "## Blockquotes" in result
         assert "| Content | Line |" in result
         assert "This is a blockquote with some content | 3 |" in result
-        assert "Another blockquote with very long content that sho..." in result  # Should be truncated
+        assert (
+            "Another blockquote with very long content that sho..." in result
+        )  # Should be truncated
 
     def test_format_table_with_horizontal_rules(self):
         """Test table formatting with horizontal rules"""
@@ -65,25 +69,16 @@ class TestMarkdownFormatterNewElements:
                     "type": "heading",
                     "text": "Test Document",
                     "level": 1,
-                    "line_range": {"start": 1, "end": 1}
+                    "line_range": {"start": 1, "end": 1},
                 },
-                {
-                    "type": "horizontal_rule",
-                    "line_range": {"start": 3, "end": 3}
-                },
-                {
-                    "type": "horizontal_rule",
-                    "line_range": {"start": 7, "end": 7}
-                },
-                {
-                    "type": "horizontal_rule",
-                    "line_range": {"start": 12, "end": 12}
-                }
-            ]
+                {"type": "horizontal_rule", "line_range": {"start": 3, "end": 3}},
+                {"type": "horizontal_rule", "line_range": {"start": 7, "end": 7}},
+                {"type": "horizontal_rule", "line_range": {"start": 12, "end": 12}},
+            ],
         }
-        
+
         result = self.formatter.format_table(analysis_result)
-        
+
         # Check that horizontal rules section is included
         assert "## Horizontal Rules" in result
         assert "| Type | Line |" in result
@@ -101,34 +96,36 @@ class TestMarkdownFormatterNewElements:
                     "type": "heading",
                     "text": "Test Document",
                     "level": 1,
-                    "line_range": {"start": 1, "end": 1}
+                    "line_range": {"start": 1, "end": 1},
                 },
                 {
                     "type": "html_block",
                     "name": "<div>This is an HTML div element</div>",
-                    "line_range": {"start": 3, "end": 3}
+                    "line_range": {"start": 3, "end": 3},
                 },
                 {
                     "type": "html_inline",
                     "name": "<strong>inline HTML</strong>",
-                    "line_range": {"start": 5, "end": 5}
+                    "line_range": {"start": 5, "end": 5},
                 },
                 {
                     "type": "html_block",
                     "name": "<p>HTML paragraph with very long content that should be truncated when displayed</p>",
-                    "line_range": {"start": 7, "end": 7}
-                }
-            ]
+                    "line_range": {"start": 7, "end": 7},
+                },
+            ],
         }
-        
+
         result = self.formatter.format_table(analysis_result)
-        
+
         # Check that HTML elements section is included
         assert "## HTML Elements" in result
         assert "| Type | Content | Line |" in result
         assert "| html_block | <div>This is an HTML div eleme... | 3 |" in result
         assert "| html_inline | <strong>inline HTML</strong> | 5 |" in result
-        assert "| html_block | <p>HTML paragraph with very lo... | 7 |" in result  # Should be truncated
+        assert (
+            "| html_block | <p>HTML paragraph with very lo... | 7 |" in result
+        )  # Should be truncated
 
     def test_format_table_with_text_formatting(self):
         """Test table formatting with text formatting elements"""
@@ -140,40 +137,42 @@ class TestMarkdownFormatterNewElements:
                     "type": "heading",
                     "text": "Test Document",
                     "level": 1,
-                    "line_range": {"start": 1, "end": 1}
+                    "line_range": {"start": 1, "end": 1},
                 },
                 {
                     "type": "strong_emphasis",
                     "text": "bold text",
-                    "line_range": {"start": 3, "end": 3}
+                    "line_range": {"start": 3, "end": 3},
                 },
                 {
                     "type": "emphasis",
                     "text": "italic text",
-                    "line_range": {"start": 3, "end": 3}
+                    "line_range": {"start": 3, "end": 3},
                 },
                 {
                     "type": "inline_code",
                     "text": "code span",
-                    "line_range": {"start": 5, "end": 5}
+                    "line_range": {"start": 5, "end": 5},
                 },
                 {
                     "type": "strikethrough",
                     "text": "strikethrough text with very long content that should be truncated",
-                    "line_range": {"start": 7, "end": 7}
-                }
-            ]
+                    "line_range": {"start": 7, "end": 7},
+                },
+            ],
         }
-        
+
         result = self.formatter.format_table(analysis_result)
-        
+
         # Check that text formatting section is included
         assert "## Text Formatting" in result
         assert "| Type | Content | Line |" in result
         assert "| strong_emphasis | bold text | 3 |" in result
         assert "| emphasis | italic text | 3 |" in result
         assert "| inline_code | code span | 5 |" in result
-        assert "| strikethrough | strikethrough text with very l... | 7 |" in result  # Should be truncated
+        assert (
+            "| strikethrough | strikethrough text with very l... | 7 |" in result
+        )  # Should be truncated
 
     def test_format_table_with_footnotes(self):
         """Test table formatting with footnotes"""
@@ -185,40 +184,44 @@ class TestMarkdownFormatterNewElements:
                     "type": "heading",
                     "text": "Test Document",
                     "level": 1,
-                    "line_range": {"start": 1, "end": 1}
+                    "line_range": {"start": 1, "end": 1},
                 },
                 {
                     "type": "footnote_reference",
                     "text": "[^1]",
-                    "line_range": {"start": 3, "end": 3}
+                    "line_range": {"start": 3, "end": 3},
                 },
                 {
                     "type": "footnote_reference",
                     "text": "[^note]",
-                    "line_range": {"start": 5, "end": 5}
+                    "line_range": {"start": 5, "end": 5},
                 },
                 {
                     "type": "footnote_definition",
                     "text": "[^1]: This is the footnote content.",
-                    "line_range": {"start": 10, "end": 10}
+                    "line_range": {"start": 10, "end": 10},
                 },
                 {
                     "type": "footnote_definition",
                     "text": "[^note]: This is another footnote with very long content that should be truncated when displayed in the table",
-                    "line_range": {"start": 12, "end": 12}
-                }
-            ]
+                    "line_range": {"start": 12, "end": 12},
+                },
+            ],
         }
-        
+
         result = self.formatter.format_table(analysis_result)
-        
+
         # Check that footnotes section is included
         assert "## Footnotes" in result
         assert "| Type | Content | Line |" in result
         assert "| footnote_reference | [^1] | 3 |" in result
         assert "| footnote_reference | [^note] | 5 |" in result
-        assert "| footnote_definition | [^1]: This is the footnote con... | 10 |" in result
-        assert "| footnote_definition | [^note]: This is another footn... | 12 |" in result  # Should be truncated
+        assert (
+            "| footnote_definition | [^1]: This is the footnote con... | 10 |" in result
+        )
+        assert (
+            "| footnote_definition | [^note]: This is another footn... | 12 |" in result
+        )  # Should be truncated
 
     def test_format_table_with_all_new_elements(self):
         """Test table formatting with all new element types combined"""
@@ -230,44 +233,41 @@ class TestMarkdownFormatterNewElements:
                     "type": "heading",
                     "text": "Comprehensive Test Document",
                     "level": 1,
-                    "line_range": {"start": 1, "end": 1}
+                    "line_range": {"start": 1, "end": 1},
                 },
                 {
                     "type": "blockquote",
                     "text": "This is a blockquote",
-                    "line_range": {"start": 3, "end": 3}
+                    "line_range": {"start": 3, "end": 3},
                 },
-                {
-                    "type": "horizontal_rule",
-                    "line_range": {"start": 5, "end": 5}
-                },
+                {"type": "horizontal_rule", "line_range": {"start": 5, "end": 5}},
                 {
                     "type": "html_block",
                     "name": "<div>HTML content</div>",
-                    "line_range": {"start": 7, "end": 7}
+                    "line_range": {"start": 7, "end": 7},
                 },
                 {
                     "type": "strong_emphasis",
                     "text": "bold text",
-                    "line_range": {"start": 9, "end": 9}
+                    "line_range": {"start": 9, "end": 9},
                 },
                 {
                     "type": "footnote_reference",
                     "text": "[^1]",
-                    "line_range": {"start": 11, "end": 11}
-                }
-            ]
+                    "line_range": {"start": 11, "end": 11},
+                },
+            ],
         }
-        
+
         result = self.formatter.format_table(analysis_result)
-        
+
         # Check that all new sections are included
         assert "## Blockquotes" in result
         assert "## Horizontal Rules" in result
         assert "## HTML Elements" in result
         assert "## Text Formatting" in result
         assert "## Footnotes" in result
-        
+
         # Check document overview
         assert "| Total Elements | 6 |" in result
 
@@ -281,26 +281,26 @@ class TestMarkdownFormatterNewElements:
                     "type": "heading",
                     "text": "Simple Document",
                     "level": 1,
-                    "line_range": {"start": 1, "end": 1}
+                    "line_range": {"start": 1, "end": 1},
                 },
                 {
                     "type": "link",
                     "text": "Example Link",
                     "url": "https://example.com",
-                    "line_range": {"start": 3, "end": 3}
-                }
-            ]
+                    "line_range": {"start": 3, "end": 3},
+                },
+            ],
         }
-        
+
         result = self.formatter.format_table(analysis_result)
-        
+
         # Check that new element sections are not included when no elements exist
         assert "## Blockquotes" not in result
         assert "## Horizontal Rules" not in result
         assert "## HTML Elements" not in result
         assert "## Text Formatting" not in result
         assert "## Footnotes" not in result
-        
+
         # But basic sections should still be there
         assert "## Document Overview" in result
         assert "## Document Structure" in result
@@ -311,35 +311,24 @@ class TestMarkdownFormatterNewElements:
         analysis_result = {
             "file_path": "test.md",
             "elements": [
-                {
-                    "type": "heading",
-                    "text": "Test Header",
-                    "level": 1
-                },
-                {
-                    "type": "blockquote",
-                    "text": "This is a blockquote"
-                },
-                {
-                    "type": "link",
-                    "text": "Test Link",
-                    "url": "https://example.com"
-                }
-            ]
+                {"type": "heading", "text": "Test Header", "level": 1},
+                {"type": "blockquote", "text": "This is a blockquote"},
+                {"type": "link", "text": "Test Link", "url": "https://example.com"},
+            ],
         }
-        
+
         result = self.formatter.format_summary(analysis_result)
-        
+
         # Summary should include traditional elements
         assert "headers" in result
         assert "links" in result
-        
+
         # Parse JSON to verify structure
-        lines = result.split('\n')
-        json_start = next(i for i, line in enumerate(lines) if line.startswith('{'))
-        json_content = '\n'.join(lines[json_start:])
+        lines = result.split("\n")
+        json_start = next(i for i, line in enumerate(lines) if line.startswith("{"))
+        json_content = "\n".join(lines[json_start:])
         data = json.loads(json_content)
-        
+
         assert len(data["summary"]["headers"]) == 1
         assert len(data["summary"]["links"]) == 1
         assert data["summary"]["headers"][0]["name"] == "Test Header"
@@ -355,30 +344,30 @@ class TestMarkdownFormatterNewElements:
                     "type": "heading",
                     "text": "Test Header",
                     "level": 1,
-                    "line_range": {"start": 1, "end": 1}
+                    "line_range": {"start": 1, "end": 1},
                 },
                 {
                     "type": "blockquote",
                     "text": "This is a blockquote",
-                    "line_range": {"start": 3, "end": 3}
+                    "line_range": {"start": 3, "end": 3},
                 },
                 {
                     "type": "code_block",
                     "language": "python",
                     "line_count": 3,
-                    "line_range": {"start": 5, "end": 7}
-                }
-            ]
+                    "line_range": {"start": 5, "end": 7},
+                },
+            ],
         }
-        
+
         result = self.formatter.format_structure(analysis_result)
-        
+
         # Parse JSON to verify structure
-        lines = result.split('\n')
-        json_start = next(i for i, line in enumerate(lines) if line.startswith('{'))
-        json_content = '\n'.join(lines[json_start:])
+        lines = result.split("\n")
+        json_start = next(i for i, line in enumerate(lines) if line.startswith("{"))
+        json_content = "\n".join(lines[json_start:])
         data = json.loads(json_content)
-        
+
         # Structure should include traditional elements
         assert len(data["headers"]) == 1
         assert len(data["code_blocks"]) == 1
@@ -391,41 +380,23 @@ class TestMarkdownFormatterNewElements:
             "file_path": "test.md",
             "line_count": 30,
             "elements": [
-                {
-                    "type": "heading",
-                    "text": "Test Header",
-                    "level": 1
-                },
-                {
-                    "type": "blockquote",
-                    "text": "This is a blockquote"
-                },
-                {
-                    "type": "horizontal_rule"
-                },
-                {
-                    "type": "html_block",
-                    "name": "<div>HTML content</div>"
-                },
-                {
-                    "type": "strong_emphasis",
-                    "text": "bold text"
-                },
-                {
-                    "type": "footnote_reference",
-                    "text": "[^1]"
-                }
-            ]
+                {"type": "heading", "text": "Test Header", "level": 1},
+                {"type": "blockquote", "text": "This is a blockquote"},
+                {"type": "horizontal_rule"},
+                {"type": "html_block", "name": "<div>HTML content</div>"},
+                {"type": "strong_emphasis", "text": "bold text"},
+                {"type": "footnote_reference", "text": "[^1]"},
+            ],
         }
-        
+
         result = self.formatter.format_advanced(analysis_result)
-        
+
         # Parse JSON to verify structure
-        lines = result.split('\n')
-        json_start = next(i for i, line in enumerate(lines) if line.startswith('{'))
-        json_content = '\n'.join(lines[json_start:])
+        lines = result.split("\n")
+        json_start = next(i for i, line in enumerate(lines) if line.startswith("{"))
+        json_content = "\n".join(lines[json_start:])
         data = json.loads(json_content)
-        
+
         # Should include all elements in count
         assert data["element_count"] == 6
         assert len(data["elements"]) == 6
@@ -436,26 +407,14 @@ class TestMarkdownFormatterNewElements:
             "file_path": "test.md",
             "line_count": 25,
             "elements": [
-                {
-                    "type": "heading",
-                    "text": "Test Header",
-                    "level": 1
-                },
-                {
-                    "type": "link",
-                    "text": "External Link",
-                    "url": "https://example.com"
-                },
-                {
-                    "type": "code_block",
-                    "language": "python",
-                    "line_count": 5
-                }
-            ]
+                {"type": "heading", "text": "Test Header", "level": 1},
+                {"type": "link", "text": "External Link", "url": "https://example.com"},
+                {"type": "code_block", "language": "python", "line_count": 5},
+            ],
         }
-        
+
         result = self.formatter.format_advanced(analysis_result, output_format="text")
-        
+
         # Check text format structure
         assert "--- Advanced Analysis Results ---" in result
         assert '"File: test.md"' in result
@@ -477,25 +436,34 @@ class TestMarkdownFormatterNewElements:
                     "type": "heading",
                     "text": "Minimal Document",
                     "level": 1,
-                    "line_range": {"start": 1, "end": 1}
+                    "line_range": {"start": 1, "end": 1},
                 }
-            ]
+            ],
         }
-        
+
         result = self.formatter.format_table(analysis_result)
-        
+
         # Verify that sections for new elements are not present when no elements exist
         new_element_sections = [
             "## Blockquotes",
-            "## Horizontal Rules", 
+            "## Horizontal Rules",
             "## HTML Elements",
             "## Text Formatting",
-            "## Footnotes"
+            "## Footnotes",
         ]
-        
+
         for section in new_element_sections:
-            assert section not in result, f"Section '{section}' should not be present when no elements exist"
+            assert section not in result, (
+                f"Section '{section}' should not be present when no elements exist"
+            )
 
 
 if __name__ == "__main__":
-    pytest.main([__file__, "-v", "--cov=tree_sitter_analyzer.formatters.markdown_formatter", "--cov-report=term-missing"])
+    pytest.main(
+        [
+            __file__,
+            "-v",
+            "--cov=tree_sitter_analyzer.formatters.markdown_formatter",
+            "--cov-report=term-missing",
+        ]
+    )

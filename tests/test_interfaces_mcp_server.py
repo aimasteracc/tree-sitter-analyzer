@@ -415,7 +415,9 @@ class TestIntegrationScenarios:
 
         # Verify all expected calls were made
         mock_server_class.assert_called_once_with("tree-sitter-analyzer")
-        mock_log_info.assert_any_call(f"Initializing tree-sitter-analyzer v{__version__}")
+        mock_log_info.assert_any_call(
+            f"Initializing tree-sitter-analyzer v{__version__}"
+        )
         mock_log_info.assert_any_call("MCP server created successfully")
 
         # Verify decorators were registered

@@ -131,7 +131,14 @@ class TestClass:
         assert not result.get("success", True)
         assert "error" in result
         error_msg = result.get("error", "").lower()
-        assert any(keyword in error_msg for keyword in ["invalid file path", "directory traversal", "security validation failed"])
+        assert any(
+            keyword in error_msg
+            for keyword in [
+                "invalid file path",
+                "directory traversal",
+                "security validation failed",
+            ]
+        )
 
     @pytest.mark.asyncio
     async def test_analyze_scale_tool_security(self):

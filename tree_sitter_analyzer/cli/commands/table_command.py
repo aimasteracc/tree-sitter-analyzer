@@ -16,9 +16,9 @@ from ...constants import (
     ELEMENT_TYPE_VARIABLE,
     get_element_type,
 )
-from ...output_manager import output_error, output_info
-from ...table_formatter import create_table_formatter
 from ...formatters.language_formatter_factory import create_language_formatter
+from ...output_manager import output_error
+from ...table_formatter import create_table_formatter
 from .base_command import BaseCommand
 
 
@@ -41,8 +41,10 @@ class TableCommand(BaseCommand):
             formatter = create_language_formatter(analysis_result.language)
             if formatter:
                 # Use language-specific formatter
-                table_type = getattr(self.args, 'table', 'full')
-                formatted_output = formatter.format_table(self._convert_to_formatter_format(analysis_result), table_type)
+                table_type = getattr(self.args, "table", "full")
+                formatted_output = formatter.format_table(
+                    self._convert_to_formatter_format(analysis_result), table_type
+                )
                 self._output_table(formatted_output)
                 return 0
 
@@ -67,7 +69,6 @@ class TableCommand(BaseCommand):
         except Exception as e:
             output_error(f"An error occurred during table format analysis: {e}")
             return 1
-
 
     def _convert_to_formatter_format(self, analysis_result: Any) -> dict[str, Any]:
         """Convert AnalysisResult to format expected by formatters."""
@@ -94,7 +95,7 @@ class TableCommand(BaseCommand):
                     "line_range": {
                         "start": getattr(element, "start_line", 0),
                         "end": getattr(element, "end_line", 0),
-                    }
+                    },
                 }
                 for element in analysis_result.elements
             ],
@@ -103,7 +104,7 @@ class TableCommand(BaseCommand):
                 "language": analysis_result.language,
                 "file_path": analysis_result.file_path,
                 "analyzer_version": "2.0.0",
-            }
+            },
         }
 
     def _convert_to_structure_format(

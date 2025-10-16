@@ -207,7 +207,7 @@ class UnifiedAnalysisEngine:
     _instances: dict[str, "UnifiedAnalysisEngine"] = {}
     _lock: threading.Lock = threading.Lock()
 
-    def __new__(cls, project_root: str = None) -> "UnifiedAnalysisEngine":
+    def __new__(cls, project_root: str | None = None) -> "UnifiedAnalysisEngine":
         """Singleton instance sharing (project_root aware)"""
         # Create a key based on project_root for different instances
         instance_key = project_root or "default"
@@ -218,13 +218,13 @@ class UnifiedAnalysisEngine:
                     instance = super().__new__(cls)
                     cls._instances[instance_key] = instance
                     # Mark as not initialized for this instance
-                    instance._initialized = False
+                    instance._initialized: bool = False
 
         return cls._instances[instance_key]
 
-    def __init__(self, project_root: str = None) -> None:
+    def __init__(self, project_root: str | None = None) -> None:
         """Initialize (executed only once per instance)"""
-        if hasattr(self, "_initialized") and self._initialized:
+        if hasattr(self, "_initialized") and getattr(self, "_initialized", False):
             return
 
         self._cache_service = CacheService()
@@ -566,7 +566,7 @@ class MockLanguagePlugin:
         )
 
 
-def get_analysis_engine(project_root: str = None) -> UnifiedAnalysisEngine:
+def get_analysis_engine(project_root: str | None = None) -> UnifiedAnalysisEngine:
     """
     Get unified analysis engine instance
 

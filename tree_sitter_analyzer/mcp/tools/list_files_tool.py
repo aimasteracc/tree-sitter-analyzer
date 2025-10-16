@@ -113,12 +113,12 @@ class ListFilesTool(BaseMCPTool):
                     },
                     "output_file": {
                         "type": "string",
-                        "description": "Optional filename to save output to file (extension auto-detected based on content)"
+                        "description": "Optional filename to save output to file (extension auto-detected based on content)",
                     },
                     "suppress_output": {
                         "type": "boolean",
                         "description": "When true and output_file is specified, suppress detailed output in response to save tokens",
-                        "default": False
+                        "default": False,
                     },
                 },
                 "required": ["roots"],
@@ -187,9 +187,9 @@ class ListFilesTool(BaseMCPTool):
                 "success": False,
                 "error": "fd command not found. Please install fd (https://github.com/sharkdp/fd) to use this tool.",
                 "count": 0,
-                "results": []
+                "results": [],
             }
-        
+
         self.validate_arguments(arguments)
         roots = self._validate_roots(arguments["roots"])  # normalized absolutes
 
@@ -273,7 +273,7 @@ class ListFilesTool(BaseMCPTool):
             # Handle file output for count_only mode
             output_file = arguments.get("output_file")
             suppress_output = arguments.get("suppress_output", False)
-            
+
             if output_file:
                 file_manager = FileOutputManager(self.project_root)
                 file_content = {
@@ -289,18 +289,20 @@ class ListFilesTool(BaseMCPTool):
                         "extensions": arguments.get("extensions"),
                         "exclude": arguments.get("exclude"),
                         "limit": limit,
-                    }
+                    },
                 }
-                
+
                 try:
                     import json
-                    json_content = json.dumps(file_content, indent=2, ensure_ascii=False)
+
+                    json_content = json.dumps(
+                        file_content, indent=2, ensure_ascii=False
+                    )
                     saved_path = file_manager.save_to_file(
-                        content=json_content,
-                        base_name=output_file
+                        content=json_content, base_name=output_file
                     )
                     result["output_file"] = saved_path
-                    
+
                     if suppress_output:
                         # Return minimal response to save tokens
                         return {
@@ -308,7 +310,7 @@ class ListFilesTool(BaseMCPTool):
                             "count_only": True,
                             "total_count": total_count,
                             "output_file": saved_path,
-                            "message": f"Count results saved to {saved_path}"
+                            "message": f"Count results saved to {saved_path}",
                         }
                 except Exception as e:
                     logger.warning(f"Failed to save output file: {e}")
@@ -359,7 +361,7 @@ class ListFilesTool(BaseMCPTool):
         # Handle file output for detailed results
         output_file = arguments.get("output_file")
         suppress_output = arguments.get("suppress_output", False)
-        
+
         if output_file:
             file_manager = FileOutputManager(self.project_root)
             file_content = {
@@ -384,25 +386,25 @@ class ListFilesTool(BaseMCPTool):
                     "full_path_match": arguments.get("full_path_match", False),
                     "absolute": arguments.get("absolute", True),
                     "limit": limit,
-                }
+                },
             }
-            
+
             try:
                 import json
+
                 json_content = json.dumps(file_content, indent=2, ensure_ascii=False)
                 saved_path = file_manager.save_to_file(
-                    content=json_content,
-                    base_name=output_file
+                    content=json_content, base_name=output_file
                 )
                 result["output_file"] = saved_path
-                
+
                 if suppress_output:
                     # Return minimal response to save tokens
                     return {
                         "success": True,
                         "count": len(results),
                         "output_file": saved_path,
-                        "message": f"File list results saved to {saved_path}"
+                        "message": f"File list results saved to {saved_path}",
                     }
             except Exception as e:
                 logger.warning(f"Failed to save output file: {e}")

@@ -4,8 +4,9 @@ Global test configuration and fixtures.
 """
 
 import shutil
-import pytest
 from pathlib import Path
+
+import pytest
 
 
 def pytest_configure(config):
@@ -13,15 +14,9 @@ def pytest_configure(config):
     config.addinivalue_line(
         "markers", "requires_ripgrep: mark test as requiring ripgrep (rg) command"
     )
-    config.addinivalue_line(
-        "markers", "requires_fd: mark test as requiring fd command"
-    )
-    config.addinivalue_line(
-        "markers", "integration: mark test as integration test"
-    )
-    config.addinivalue_line(
-        "markers", "performance: mark test as performance test"
-    )
+    config.addinivalue_line("markers", "requires_fd: mark test as requiring fd command")
+    config.addinivalue_line("markers", "integration: mark test as integration test")
+    config.addinivalue_line("markers", "performance: mark test as performance test")
 
 
 def pytest_collection_modifyitems(config, items):
@@ -29,15 +24,15 @@ def pytest_collection_modifyitems(config, items):
     # Check for external dependencies
     has_ripgrep = shutil.which("rg") is not None
     has_fd = shutil.which("fd") is not None
-    
+
     skip_ripgrep = pytest.mark.skip(reason="ripgrep (rg) not available")
     skip_fd = pytest.mark.skip(reason="fd not available")
-    
+
     for item in items:
         # Skip tests that require ripgrep if not available
         if "requires_ripgrep" in item.keywords and not has_ripgrep:
             item.add_marker(skip_ripgrep)
-        
+
         # Skip tests that require fd if not available
         if "requires_fd" in item.keywords and not has_fd:
             item.add_marker(skip_fd)
@@ -75,7 +70,7 @@ def main():
 if __name__ == "__main__":
     sys.exit(main())
 """)
-    
+
     # Create sample Java files
     (tmp_path / "java").mkdir()
     (tmp_path / "java" / "Main.java").write_text("""
@@ -85,7 +80,7 @@ public class Main {
     }
 }
 """)
-    
+
     # Create sample JavaScript files
     (tmp_path / "js").mkdir()
     (tmp_path / "js" / "index.js").write_text("""
@@ -100,7 +95,7 @@ app.listen(3000, () => {
     console.log('Server running on port 3000');
 });
 """)
-    
+
     # Create README
     (tmp_path / "README.md").write_text("""
 # Test Project
@@ -110,8 +105,8 @@ This is a test project for tree-sitter-analyzer.
 ## Features
 
 - Python support
-- Java support  
+- Java support
 - JavaScript support
 """)
-    
+
     return tmp_path

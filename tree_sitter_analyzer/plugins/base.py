@@ -181,7 +181,7 @@ class LanguagePlugin(ABC):
     def get_supported_element_types(self) -> list[str]:
         """
         Return list of supported CodeElement types.
-        
+
         Returns:
             List of element types (e.g., ["function", "class", "variable"])
         """
@@ -190,20 +190,22 @@ class LanguagePlugin(ABC):
     def get_queries(self) -> dict[str, str]:
         """
         Return language-specific tree-sitter queries.
-        
+
         Returns:
             Dictionary mapping query names to query strings
         """
         return {}
 
-    def execute_query_strategy(self, query_key: str | None, language: str) -> str | None:
+    def execute_query_strategy(
+        self, query_key: str | None, language: str
+    ) -> str | None:
         """
         Execute query strategy for this language plugin.
-        
+
         Args:
             query_key: Query key to execute
             language: Programming language
-            
+
         Returns:
             Query string or None if not supported
         """
@@ -213,7 +215,7 @@ class LanguagePlugin(ABC):
     def get_formatter_map(self) -> dict[str, str]:
         """
         Return mapping of format types to formatter class names.
-        
+
         Returns:
             Dictionary mapping format names to formatter classes
         """
@@ -222,7 +224,7 @@ class LanguagePlugin(ABC):
     def get_element_categories(self) -> dict[str, list[str]]:
         """
         Return element categories for HTML/CSS languages.
-        
+
         Returns:
             Dictionary mapping category names to element lists
         """

@@ -68,7 +68,7 @@ class TestLanguagePlugin:
         """Test get_supported_element_types method"""
         plugin = DefaultLanguagePlugin()
         types = plugin.get_supported_element_types()
-        
+
         assert isinstance(types, list)
         assert "function" in types
         assert "class" in types
@@ -79,7 +79,7 @@ class TestLanguagePlugin:
         """Test get_queries method"""
         plugin = DefaultLanguagePlugin()
         queries = plugin.get_queries()
-        
+
         assert isinstance(queries, dict)
         # Default plugin returns empty queries
         assert len(queries) == 0
@@ -87,11 +87,11 @@ class TestLanguagePlugin:
     def test_execute_query_strategy(self) -> None:
         """Test execute_query_strategy method"""
         plugin = DefaultLanguagePlugin()
-        
+
         # Default plugin returns None for any query
         result = plugin.execute_query_strategy("methods", "generic")
         assert result is None
-        
+
         result = plugin.execute_query_strategy(None, "generic")
         assert result is None
 
@@ -99,7 +99,7 @@ class TestLanguagePlugin:
         """Test get_formatter_map method"""
         plugin = DefaultLanguagePlugin()
         formatter_map = plugin.get_formatter_map()
-        
+
         assert isinstance(formatter_map, dict)
         # Default plugin returns empty formatter map
         assert len(formatter_map) == 0
@@ -108,7 +108,7 @@ class TestLanguagePlugin:
         """Test get_element_categories method"""
         plugin = DefaultLanguagePlugin()
         categories = plugin.get_element_categories()
-        
+
         assert isinstance(categories, dict)
         # Default plugin returns empty categories
         assert len(categories) == 0

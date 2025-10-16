@@ -20,21 +20,23 @@ class JavaScriptTableFormatter(BaseTableFormatter):
         # Handle None data
         if data is None:
             return "# No data available\n"
-        
+
         # Ensure data is a dictionary
         if not isinstance(data, dict):
             return f"# Invalid data type: {type(data)}\n"
-        
+
         if format_type:
             # Check for supported format types
-            supported_formats = ['full', 'compact', 'csv', 'json']
+            supported_formats = ["full", "compact", "csv", "json"]
             if format_type not in supported_formats:
-                raise ValueError(f"Unsupported format type: {format_type}. Supported formats: {supported_formats}")
-            
+                raise ValueError(
+                    f"Unsupported format type: {format_type}. Supported formats: {supported_formats}"
+                )
+
             # Handle json format separately
-            if format_type == 'json':
+            if format_type == "json":
                 return self._format_json(data)
-            
+
             # Temporarily change format type for this call
             original_format = self.format_type
             self.format_type = format_type
@@ -47,10 +49,10 @@ class JavaScriptTableFormatter(BaseTableFormatter):
         """Full table format for JavaScript"""
         if data is None:
             return "# No data available\n"
-        
+
         if not isinstance(data, dict):
             return f"# Invalid data type: {type(data)}\n"
-        
+
         lines = []
 
         # Header - JavaScript (module/file based)
@@ -479,10 +481,12 @@ class JavaScriptTableFormatter(BaseTableFormatter):
             return "array"
         elif value_str.startswith("{") and value_str.endswith("}"):
             return "object"
-        elif (value_str.startswith("function") or
-              value_str.startswith("async function") or
-              value_str.startswith("new Function") or
-              "=>" in value_str):
+        elif (
+            value_str.startswith("function")
+            or value_str.startswith("async function")
+            or value_str.startswith("new Function")
+            or "=>" in value_str
+        ):
             return "function"
         elif value_str.startswith("class"):
             return "class"
@@ -548,19 +552,20 @@ class JavaScriptTableFormatter(BaseTableFormatter):
         """Get class information as formatted string"""
         if cls is None:
             return "Unknown (0 methods)"
-        
+
         if not isinstance(cls, dict):
             return f"{str(cls)} (0 methods)"
-        
+
         name = str(cls.get("name", "Unknown"))
         methods = cls.get("methods", [])
         method_count = len(methods) if isinstance(methods, list) else 0
-        
+
         return f"{name} ({method_count} methods)"
 
     def _format_json(self, data: dict[str, Any]) -> str:
         """Format data as JSON"""
         import json
+
         try:
             return json.dumps(data, indent=2, ensure_ascii=False)
         except (TypeError, ValueError) as e:

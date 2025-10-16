@@ -11,7 +11,7 @@ def mock_external_commands(monkeypatch):
     """Auto-mock external command availability checks for all tests in this module."""
     monkeypatch.setattr(
         "tree_sitter_analyzer.mcp.tools.fd_rg_utils.check_external_command",
-        lambda cmd: True
+        lambda cmd: True,
     )
 
 
@@ -305,9 +305,9 @@ async def test_rg_53_files_mode_uses_parent_dirs(monkeypatch, tmp_path):
             ):
                 path_found = True
                 break
-        assert (
-            path_found
-        ), f"Neither {parent_path} nor {real_parent_path} found in {cmd}"
+        assert path_found, (
+            f"Neither {parent_path} nor {real_parent_path} found in {cmd}"
+        )
         return 0, evt, b""
 
     monkeypatch.setattr(

@@ -7,15 +7,14 @@ Tests the complete pipeline from file parsing to query execution across all supp
 """
 
 import asyncio
-import tempfile
 import os
-from pathlib import Path
-from typing import Dict, Any
+import tempfile
+
 import pytest
 
 from tree_sitter_analyzer.core.query_service import QueryService
-from tree_sitter_analyzer.mcp.tools.query_tool import QueryTool
 from tree_sitter_analyzer.language_detector import detect_language_from_file
+from tree_sitter_analyzer.mcp.tools.query_tool import QueryTool
 
 
 class TestTreeSitterIntegration:
@@ -29,24 +28,24 @@ package com.example;
 public class TestClass {
     private String name;
     private int value;
-    
+
     public TestClass(String name) {
         this.name = name;
         this.value = 0;
     }
-    
+
     public String getName() {
         return name;
     }
-    
+
     public void setValue(int value) {
         this.value = value;
     }
-    
+
     public static void staticMethod() {
         System.out.println("Static method");
     }
-    
+
     private void privateMethod() {
         // Private implementation
     }
@@ -70,15 +69,15 @@ class TestClass {
         this.name = name;
         this.value = 0;
     }
-    
+
     getName() {
         return this.name;
     }
-    
+
     setValue(value) {
         this.value = value;
     }
-    
+
     static staticMethod() {
         return "static";
     }
@@ -104,20 +103,20 @@ type TestType = {
 class TestClass implements TestInterface {
     public name: string;
     private value: number;
-    
+
     constructor(name: string) {
         this.name = name;
         this.value = 0;
     }
-    
+
     public getName(): string {
         return this.name;
     }
-    
+
     public setValue(value: number): void {
         this.value = value;
     }
-    
+
     static staticMethod(): string {
         return "static";
     }
@@ -137,21 +136,21 @@ class TestClass:
     def __init__(self, name: str):
         self.name = name
         self._value = 0
-    
+
     def get_name(self) -> str:
         return self.name
-    
+
     def set_value(self, value: int) -> None:
         self._value = value
-    
+
     @staticmethod
     def static_method() -> str:
         return "static"
-    
+
     @classmethod
     def class_method(cls) -> 'TestClass':
         return cls("default")
-    
+
     @property
     def value(self) -> int:
         return self._value
@@ -198,7 +197,7 @@ def code_block():
 | Table | Header |
 |-------|--------|
 | Cell  | Data   |
-"""
+""",
     }
 
     def setup_method(self):
@@ -207,25 +206,26 @@ def code_block():
         self.query_service = QueryService(self.temp_dir)
         self.query_tool = QueryTool(self.temp_dir)
         self.test_files = {}
-        
+
         # Create test files for all languages
         extensions = {
             "java": ".java",
-            "javascript": ".js", 
+            "javascript": ".js",
             "typescript": ".ts",
             "python": ".py",
-            "markdown": ".md"
+            "markdown": ".md",
         }
-        
+
         for lang, code in self.TEST_SAMPLES.items():
             file_path = os.path.join(self.temp_dir, f"test{extensions[lang]}")
-            with open(file_path, 'w', encoding='utf-8') as f:
+            with open(file_path, "w", encoding="utf-8") as f:
                 f.write(code)
             self.test_files[lang] = file_path
 
     def teardown_method(self):
         """Clean up test fixtures"""
         import shutil
+
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
     @pytest.mark.asyncio
@@ -234,14 +234,16 @@ def code_block():
         expected_languages = {
             "java": "java",
             "javascript": "javascript",
-            "typescript": "typescript", 
+            "typescript": "typescript",
             "python": "python",
-            "markdown": "markdown"
+            "markdown": "markdown",
         }
-        
+
         for lang, file_path in self.test_files.items():
             detected = detect_language_from_file(file_path)
-            assert detected == expected_languages[lang], f"Language detection failed for {lang}"
+            assert detected == expected_languages[lang], (
+                f"Language detection failed for {lang}"
+            )
 
     @pytest.mark.asyncio
     async def test_parser_integration_all_languages(self):
@@ -250,11 +252,15 @@ def code_block():
             try:
                 # Test through QueryService which uses the parser
                 results = await self.query_service.execute_query(
-                    file_path, lang, query_key="functions" if lang != "markdown" else "headers"
+                    file_path,
+                    lang,
+                    query_key="functions" if lang != "markdown" else "headers",
                 )
                 # Should not raise exception and should return some results
                 assert results is not None, f"Parser failed for {lang}"
-                print(f"✓ Parser integration successful for {lang}: {len(results)} results")
+                print(
+                    f"✓ Parser integration successful for {lang}: {len(results)} results"
+                )
             except Exception as e:
                 pytest.fail(f"Parser integration failed for {lang}: {e}")
 
@@ -267,19 +273,21 @@ def code_block():
             "javascript": ["functions", "classes", "variables"],
             "typescript": ["interfaces", "types", "functions", "classes"],
             "python": ["functions", "classes"],
-            "markdown": ["headers", "links", "code_blocks"]
+            "markdown": ["headers", "links", "code_blocks"],
         }
-        
+
         for lang, queries in query_tests.items():
             file_path = self.test_files[lang]
-            
+
             for query_key in queries:
                 try:
                     results = await self.query_service.execute_query(
                         file_path, lang, query_key=query_key
                     )
                     assert results is not None, f"Query {query_key} failed for {lang}"
-                    print(f"✓ Query '{query_key}' successful for {lang}: {len(results)} results")
+                    print(
+                        f"✓ Query '{query_key}' successful for {lang}: {len(results)} results"
+                    )
                 except Exception as e:
                     print(f"⚠ Query '{query_key}' failed for {lang}: {e}")
                     # Don't fail the test for individual query failures, just log them
@@ -292,33 +300,38 @@ def code_block():
                 "lang": "java",
                 "query": "(method_declaration) @method",
                 "file": self.test_files["java"],
-                "expected_min": 1
+                "expected_min": 1,
             },
             {
-                "lang": "javascript", 
+                "lang": "javascript",
                 "query": "(function_declaration) @func",
                 "file": self.test_files["javascript"],
-                "expected_min": 1
+                "expected_min": 1,
             },
             {
                 "lang": "python",
                 "query": "(function_definition) @func",
                 "file": self.test_files["python"],
-                "expected_min": 1
-            }
+                "expected_min": 1,
+            },
         ]
-        
+
         for test_case in custom_query_tests:
             try:
                 results = await self.query_service.execute_query(
                     test_case["file"],
                     test_case["lang"],
-                    query_string=test_case["query"]
+                    query_string=test_case["query"],
                 )
-                assert results is not None, f"Custom query failed for {test_case['lang']}"
-                assert len(results) >= test_case["expected_min"], \
+                assert results is not None, (
+                    f"Custom query failed for {test_case['lang']}"
+                )
+                assert len(results) >= test_case["expected_min"], (
                     f"Expected at least {test_case['expected_min']} results for {test_case['lang']}"
-                print(f"✓ Custom query successful for {test_case['lang']}: {len(results)} results")
+                )
+                print(
+                    f"✓ Custom query successful for {test_case['lang']}: {len(results)} results"
+                )
             except Exception as e:
                 pytest.fail(f"Custom query failed for {test_case['lang']}: {e}")
 
@@ -329,16 +342,22 @@ def code_block():
         results = await self.query_service.execute_query(
             file_path, "java", query_key="methods"
         )
-        
+
         assert results is not None
         assert isinstance(results, list)
-        
+
         if results:
             result = results[0]
-            required_fields = ["capture_name", "node_type", "start_line", "end_line", "content"]
+            required_fields = [
+                "capture_name",
+                "node_type",
+                "start_line",
+                "end_line",
+                "content",
+            ]
             for field in required_fields:
                 assert field in result, f"Missing required field: {field}"
-            
+
             # Validate field types
             assert isinstance(result["start_line"], int)
             assert isinstance(result["end_line"], int)
@@ -350,12 +369,12 @@ def code_block():
     async def test_filter_integration(self):
         """Test query filtering functionality"""
         file_path = self.test_files["java"]
-        
+
         # Test name filter
         results = await self.query_service.execute_query(
             file_path, "java", query_key="methods", filter_expression="name=getName"
         )
-        
+
         if results:
             # All results should contain "getName" in content
             for result in results:
@@ -366,16 +385,16 @@ def code_block():
         """Test MCP tool integration with tree-sitter"""
         file_path = self.test_files["python"]
         relative_path = os.path.relpath(file_path, self.temp_dir)
-        
+
         # Test through MCP tool interface
         arguments = {
             "file_path": relative_path,
             "query_key": "functions",
-            "output_format": "json"
+            "output_format": "json",
         }
-        
+
         result = await self.query_tool.execute(arguments)
-        
+
         assert result["success"] is True
         assert "results" in result
         assert "count" in result
@@ -389,7 +408,7 @@ def code_block():
             await self.query_service.execute_query(
                 "non_existent.py", "python", query_key="functions"
             )
-        
+
         # Test with invalid query key
         file_path = self.test_files["python"]
         with pytest.raises(ValueError):
@@ -403,23 +422,26 @@ def code_block():
         # Create a larger test file
         large_content = self.TEST_SAMPLES["python"] * 50  # Repeat content 50 times
         large_file = os.path.join(self.temp_dir, "large_test.py")
-        
-        with open(large_file, 'w', encoding='utf-8') as f:
+
+        with open(large_file, "w", encoding="utf-8") as f:
             f.write(large_content)
-        
+
         import time
+
         start_time = time.time()
-        
+
         results = await self.query_service.execute_query(
             large_file, "python", query_key="functions"
         )
-        
+
         end_time = time.time()
         execution_time = end_time - start_time
-        
+
         assert results is not None
         assert execution_time < 5.0, f"Query took too long: {execution_time}s"
-        print(f"✓ Large file query completed in {execution_time:.2f}s with {len(results)} results")
+        print(
+            f"✓ Large file query completed in {execution_time:.2f}s with {len(results)} results"
+        )
 
     @pytest.mark.asyncio
     async def test_encoding_handling(self):
@@ -435,16 +457,16 @@ class TestClass:
         self.name = "名前"
 """
         utf8_file = os.path.join(self.temp_dir, "utf8_test.py")
-        with open(utf8_file, 'w', encoding='utf-8') as f:
+        with open(utf8_file, "w", encoding="utf-8") as f:
             f.write(utf8_content)
-        
+
         results = await self.query_service.execute_query(
             utf8_file, "python", query_key="functions"
         )
-        
+
         assert results is not None
         assert len(results) > 0
-        
+
         # Check that content is properly decoded
         for result in results:
             assert isinstance(result["content"], str)
@@ -455,7 +477,7 @@ class TestClass:
     async def test_concurrent_queries(self):
         """Test concurrent query execution"""
         tasks = []
-        
+
         # Create multiple concurrent queries
         for lang, file_path in self.test_files.items():
             if lang != "markdown":  # Use functions query for code files
@@ -467,10 +489,10 @@ class TestClass:
                     file_path, lang, query_key="headers"
                 )
             tasks.append(task)
-        
+
         # Execute all queries concurrently
         results = await asyncio.gather(*tasks, return_exceptions=True)
-        
+
         # Check that all queries completed successfully
         for i, result in enumerate(results):
             if isinstance(result, Exception):
@@ -482,7 +504,7 @@ class TestClass:
         # Test with project root
         service = QueryService(self.temp_dir)
         assert service.project_root == self.temp_dir
-        
+
         # Test without project root
         service = QueryService()
         assert service.project_root is None
@@ -491,7 +513,7 @@ class TestClass:
     async def test_fallback_mechanisms(self):
         """Test fallback mechanisms in query execution"""
         file_path = self.test_files["java"]
-        
+
         # Test with potentially problematic query that might need fallback
         try:
             results = await self.query_service.execute_query(
@@ -506,12 +528,13 @@ class TestClass:
     @pytest.mark.asyncio
     async def test_memory_efficiency(self):
         """Test memory efficiency of query operations"""
-        import psutil
         import os
-        
+
+        import psutil
+
         process = psutil.Process(os.getpid())
         initial_memory = process.memory_info().rss
-        
+
         # Perform multiple queries
         for _ in range(10):
             for lang, file_path in self.test_files.items():
@@ -519,13 +542,14 @@ class TestClass:
                     await self.query_service.execute_query(
                         file_path, lang, query_key="functions"
                     )
-        
+
         final_memory = process.memory_info().rss
         memory_increase = final_memory - initial_memory
-        
+
         # Memory increase should be reasonable (less than 50MB for this test)
-        assert memory_increase < 50 * 1024 * 1024, \
+        assert memory_increase < 50 * 1024 * 1024, (
             f"Memory usage increased by {memory_increase / 1024 / 1024:.1f}MB"
+        )
 
     def test_available_queries_integration(self):
         """Test available queries functionality"""

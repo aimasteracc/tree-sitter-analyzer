@@ -6,6 +6,7 @@ Tests for Markdown language detection functionality.
 """
 
 import pytest
+
 from tree_sitter_analyzer.language_detector import LanguageDetector
 
 
@@ -26,7 +27,7 @@ class TestMarkdownLanguageDetection:
             ("document.mkdn", "markdown"),
             ("component.mdx", "markdown"),
         ]
-        
+
         for file_path, expected_language in test_cases:
             detected_language = self.detector.detect_from_extension(file_path)
             assert detected_language == expected_language, f"Failed for {file_path}"
@@ -41,11 +42,13 @@ class TestMarkdownLanguageDetection:
             ("document.mkdn", "markdown", 0.8),
             ("component.mdx", "markdown", 0.7),  # Lower confidence for MDX
         ]
-        
+
         for file_path, expected_language, expected_confidence in test_cases:
             language, confidence = self.detector.detect_language(file_path)
             assert language == expected_language, f"Language failed for {file_path}"
-            assert confidence == expected_confidence, f"Confidence failed for {file_path}: got {confidence}, expected {expected_confidence}"
+            assert confidence == expected_confidence, (
+                f"Confidence failed for {file_path}: got {confidence}, expected {expected_confidence}"
+            )
 
     def test_markdown_content_patterns(self):
         """Test Markdown content pattern detection"""
@@ -77,8 +80,10 @@ def hello():
 
 ---
 """
-        
-        language, confidence = self.detector.detect_language("test.md", markdown_content)
+
+        language, confidence = self.detector.detect_language(
+            "test.md", markdown_content
+        )
         assert language == "markdown"
         assert confidence == 0.9  # Extension-based detection confidence
 
@@ -100,7 +105,7 @@ def hello():
             ("===", True),  # Setext header underline
             ("Regular text", False),  # No special patterns
         ]
-        
+
         for content, should_match in test_patterns:
             # Test with .md extension to ensure we're testing content patterns
             language, confidence = self.detector.detect_language("test.md", content)
@@ -120,7 +125,7 @@ def hello():
             ("test.js", "function test() {}", "javascript"),
             ("test.cpp", "#include <iostream>", "cpp"),
         ]
-        
+
         for file_path, content, expected_language in non_markdown_cases:
             language, confidence = self.detector.detect_language(file_path, content)
             assert language == expected_language
@@ -135,14 +140,14 @@ def hello():
         """Test Markdown extension mapping"""
         supported_extensions = self.detector.get_supported_extensions()
         markdown_extensions = [".md", ".markdown", ".mdown", ".mkd", ".mkdn", ".mdx"]
-        
+
         for ext in markdown_extensions:
             assert ext in supported_extensions
 
     def test_markdown_language_info(self):
         """Test Markdown language information"""
         info = self.detector.get_language_info("markdown")
-        
+
         assert info["name"] == "markdown"
         assert info["supported"] is True
         assert info["tree_sitter_available"] is True
@@ -157,7 +162,7 @@ def hello():
             ("file.Md", "markdown"),
             ("test.MdX", "markdown"),
         ]
-        
+
         for file_path, expected_language in test_cases:
             detected_language = self.detector.detect_from_extension(file_path)
             assert detected_language == expected_language
@@ -171,7 +176,7 @@ def hello():
             ("C:\\Windows\\path\\file.md", "markdown"),
             ("docs/subfolder/nested.md", "markdown"),
         ]
-        
+
         for file_path, expected_language in test_cases:
             detected_language = self.detector.detect_from_extension(file_path)
             assert detected_language == expected_language
@@ -180,11 +185,11 @@ def hello():
         """Test adding custom Markdown extension"""
         # Add a custom extension
         self.detector.add_extension_mapping(".custom_md", "markdown")
-        
+
         # Test that it works
         language = self.detector.detect_from_extension("test.custom_md")
         assert language == "markdown"
-        
+
         # Test with confidence
         language, confidence = self.detector.detect_language("test.custom_md")
         assert language == "markdown"
@@ -195,21 +200,17 @@ def hello():
         edge_cases = [
             # Empty content
             ("", "markdown", 0.9),  # Extension-based
-            
             # Minimal content
             ("#", "markdown", 0.9),
-            
             # Mixed content
             ("# Header\nSome code: function() {}", "markdown", 0.9),
-            
             # HTML in Markdown
             ("# Header\n<div>HTML content</div>", "markdown", 0.9),
-            
             # Code blocks with various languages
             ("```python\nprint('hello')\n```", "markdown", 0.9),
             ("```javascript\nconsole.log('hello');\n```", "markdown", 0.9),
         ]
-        
+
         for content, expected_language, min_confidence in edge_cases:
             language, confidence = self.detector.detect_language("test.md", content)
             assert language == expected_language
@@ -220,7 +221,7 @@ def hello():
         # Access the content patterns for markdown
         markdown_patterns = self.detector.content_patterns.get("markdown", [])
         assert len(markdown_patterns) > 0
-        
+
         # Test that patterns are properly formatted
         for pattern, weight in markdown_patterns:
             assert isinstance(pattern, str)
@@ -236,7 +237,7 @@ def hello():
             "document.random",
             "noextension",
         ]
-        
+
         for file_path in unknown_files:
             language = self.detector.detect_from_extension(file_path)
             assert language != "markdown"
@@ -280,8 +281,10 @@ myProject.doSomething();
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 """
-        
-        language, confidence = self.detector.detect_language("README.md", readme_content)
+
+        language, confidence = self.detector.detect_language(
+            "README.md", readme_content
+        )
         assert language == "markdown"
         assert confidence == 0.9  # Extension-based detection
 
@@ -321,7 +324,7 @@ Authorization: Bearer YOUR_API_KEY
 }
 ```
 """
-        
+
         language, confidence = self.detector.detect_language("api-docs.md", doc_content)
         assert language == "markdown"
         assert confidence == 0.9  # Extension-based detection
@@ -353,11 +356,20 @@ Check out [this great resource](https://example.com) for more information.
 
 > Programming is not about what you know; it's about what you can figure out.
 """
-        
-        language, confidence = self.detector.detect_language("blog-post.md", blog_content)
+
+        language, confidence = self.detector.detect_language(
+            "blog-post.md", blog_content
+        )
         assert language == "markdown"
         assert confidence == 0.9  # Extension-based detection
 
 
 if __name__ == "__main__":
-    pytest.main([__file__, "-v", "--cov=tree_sitter_analyzer.language_detector", "--cov-report=term-missing"])
+    pytest.main(
+        [
+            __file__,
+            "-v",
+            "--cov=tree_sitter_analyzer.language_detector",
+            "--cov-report=term-missing",
+        ]
+    )

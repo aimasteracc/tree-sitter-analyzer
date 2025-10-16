@@ -298,7 +298,7 @@ class QueryService:
             node_type = getattr(node, "type", "")
             if not isinstance(node_type, str):
                 node_type = str(node_type)
-            
+
             # Generic node type matching (support both singular and plural forms)
             if query_key in ("function", "functions") and "function" in node_type:
                 captures.append((node, query_key))

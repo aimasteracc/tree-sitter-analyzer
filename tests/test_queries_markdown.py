@@ -6,13 +6,14 @@ Tests for Markdown query definitions and functionality.
 """
 
 import pytest
+
 from tree_sitter_analyzer.queries.markdown import (
     MARKDOWN_QUERIES,
     QUERY_ALIASES,
-    get_query,
-    get_available_queries,
-    get_query_info,
     _get_query_description,
+    get_available_queries,
+    get_query,
+    get_query_info,
 )
 
 
@@ -41,7 +42,7 @@ class TestMarkdownQueries:
             "document",
             "all_elements",
         ]
-        
+
         for query in expected_queries:
             assert query in MARKDOWN_QUERIES
             assert isinstance(MARKDOWN_QUERIES[query], str)
@@ -50,13 +51,41 @@ class TestMarkdownQueries:
     def test_query_aliases_exist(self):
         """Test that query aliases are properly defined"""
         expected_aliases = [
-            "heading", "h1", "h2", "h3", "h4", "h5", "h6",
-            "code", "fenced_code", "link", "url", "image", "img",
-            "list", "ul", "ol", "em", "strong", "bold", "italic",
-            "quote", "blockquote", "table", "hr", "html", "strike",
-            "task", "todo", "footnote", "text", "paragraph", "all", "everything"
+            "heading",
+            "h1",
+            "h2",
+            "h3",
+            "h4",
+            "h5",
+            "h6",
+            "code",
+            "fenced_code",
+            "link",
+            "url",
+            "image",
+            "img",
+            "list",
+            "ul",
+            "ol",
+            "em",
+            "strong",
+            "bold",
+            "italic",
+            "quote",
+            "blockquote",
+            "table",
+            "hr",
+            "html",
+            "strike",
+            "task",
+            "todo",
+            "footnote",
+            "text",
+            "paragraph",
+            "all",
+            "everything",
         ]
-        
+
         for alias in expected_aliases:
             assert alias in QUERY_ALIASES
             assert QUERY_ALIASES[alias] in MARKDOWN_QUERIES
@@ -257,7 +286,7 @@ class TestMarkdownQueryValidation:
 
     def test_all_queries_are_strings(self):
         """Test that all queries are valid strings"""
-        for query_name, query_string in MARKDOWN_QUERIES.items():
+        for _query_name, query_string in MARKDOWN_QUERIES.items():
             assert isinstance(query_string, str)
             assert len(query_string.strip()) > 0
             # Basic syntax check - should contain @ symbols for captures
@@ -273,13 +302,13 @@ class TestMarkdownQueryValidation:
 
     def test_no_circular_aliases(self):
         """Test that there are no circular alias references"""
-        for alias, target in QUERY_ALIASES.items():
+        for _alias, target in QUERY_ALIASES.items():
             # Target should not be an alias itself
             assert target not in QUERY_ALIASES
 
     def test_query_capture_names(self):
         """Test that queries have reasonable capture names"""
-        for query_name, query_string in MARKDOWN_QUERIES.items():
+        for _query_name, query_string in MARKDOWN_QUERIES.items():
             # Should have at least one capture
             assert "@" in query_string
             # Captures should not be empty
@@ -293,7 +322,9 @@ class TestMarkdownQueryValidation:
             # Should have balanced parentheses
             open_parens = query_string.count("(")
             close_parens = query_string.count(")")
-            assert open_parens == close_parens, f"Unbalanced parentheses in {query_name}"
+            assert open_parens == close_parens, (
+                f"Unbalanced parentheses in {query_name}"
+            )
 
 
 class TestMarkdownQueryEdgeCases:
@@ -314,7 +345,7 @@ class TestMarkdownQueryEdgeCases:
         # Should work
         query = get_query("headers")
         assert isinstance(query, str)
-        
+
         # Should fail (case sensitive)
         with pytest.raises(KeyError):
             get_query("HEADERS")
@@ -328,10 +359,17 @@ class TestMarkdownQueryEdgeCases:
         """Test handling of special characters in query names"""
         with pytest.raises(KeyError):
             get_query("headers!")
-        
+
         with pytest.raises(KeyError):
             get_query("headers@test")
 
 
 if __name__ == "__main__":
-    pytest.main([__file__, "-v", "--cov=tree_sitter_analyzer.queries.markdown", "--cov-report=term-missing"])
+    pytest.main(
+        [
+            __file__,
+            "-v",
+            "--cov=tree_sitter_analyzer.queries.markdown",
+            "--cov-report=term-missing",
+        ]
+    )

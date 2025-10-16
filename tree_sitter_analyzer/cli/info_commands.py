@@ -101,7 +101,7 @@ class ShowLanguagesCommand(InfoCommand):
             info = detector.get_language_info(language)
             extensions = ", ".join(info["extensions"][:5])
             if len(info["extensions"]) > 5:
-                extensions += f", ... ({len(info['extensions'])-5} more)"
+                extensions += f", ... ({len(info['extensions']) - 5} more)"
             output_list(f"  {language:<12} - Extensions: {extensions}")
         return 0
 

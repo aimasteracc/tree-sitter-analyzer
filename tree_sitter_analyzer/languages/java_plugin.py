@@ -201,7 +201,7 @@ class JavaElementExtractor(ElementExtractor):
                         import_name = static_match.group(1)
                         if import_content.endswith(".*"):
                             import_name = import_name.replace(".*", "")
-                        
+
                         # For static imports, extract the class name (remove method/field name)
                         parts = import_name.split(".")
                         if len(parts) > 1:
@@ -261,7 +261,7 @@ class JavaElementExtractor(ElementExtractor):
         if tree is None or tree.root_node is None:
             log_debug("Tree or root_node is None, returning empty packages list")
             return packages
-            
+
         for child in tree.root_node.children:
             if child.type == "package_declaration":
                 package_info = self._extract_package_element(child)
@@ -1061,7 +1061,7 @@ class JavaElementExtractor(ElementExtractor):
                     # Handle wildcard case
                     if import_content.endswith(".*"):
                         import_name = import_name.replace(".*", "")
-                    
+
                     # For static imports, extract the class name (remove method/field name)
                     parts = import_name.split(".")
                     if len(parts) > 1:
@@ -1111,7 +1111,7 @@ class JavaElementExtractor(ElementExtractor):
     def extract_elements(self, tree: "tree_sitter.Tree", source_code: str) -> list:
         """Extract elements from source code using tree-sitter AST"""
         elements = []
-        
+
         try:
             elements.extend(self.extract_functions(tree, source_code))
             elements.extend(self.extract_classes(tree, source_code))
@@ -1119,7 +1119,7 @@ class JavaElementExtractor(ElementExtractor):
             elements.extend(self.extract_imports(tree, source_code))
         except Exception as e:
             log_error(f"Failed to extract elements: {e}")
-        
+
         return elements
 
 
@@ -1130,8 +1130,8 @@ class JavaPlugin(LanguagePlugin):
         """Initialize the Java plugin"""
         super().__init__()
         self._language_cache: tree_sitter.Language | None = None
-        self._extractor: Optional[JavaElementExtractor] = None
-        
+        self._extractor: JavaElementExtractor | None = None
+
         # Legacy attributes for backward compatibility with tests
         self.language = "java"
         self.extractor = self.create_extractor()
@@ -1191,21 +1191,23 @@ class JavaPlugin(LanguagePlugin):
             "supported_queries": self.get_supported_queries(),
         }
 
-    def execute_query_strategy(self, tree: "tree_sitter.Tree", source_code: str, query_key: str) -> list[dict]:
+    def execute_query_strategy(
+        self, tree: "tree_sitter.Tree", source_code: str, query_key: str
+    ) -> list[dict]:
         """
         Execute query strategy for Java language
-        
+
         Args:
             tree: Tree-sitter tree object
             source_code: Source code string
             query_key: Query key to execute
-            
+
         Returns:
             List of query results
         """
         # Use the extractor to get elements based on query_key
         extractor = self.get_extractor()
-        
+
         # Map query keys to extraction methods
         if query_key in ["method", "methods", "function", "functions"]:
             elements = extractor.extract_functions(tree, source_code)
@@ -1222,7 +1224,7 @@ class JavaPlugin(LanguagePlugin):
         else:
             # For unknown query keys, return empty list
             return []
-        
+
         # Convert elements to query result format
         results = []
         for element in elements:
@@ -1235,15 +1237,19 @@ class JavaPlugin(LanguagePlugin):
                 "name": element.name,
             }
             results.append(result)
-        
+
         return results
-    
+
     def _get_node_type_for_element(self, element) -> str:
         """Get appropriate node type for element"""
-        from ..models import Function, Class, Variable, Import, Package
-        
+        from ..models import Class, Function, Import, Package, Variable
+
         if isinstance(element, Function):
-            return "method_declaration" if not element.is_constructor else "constructor_declaration"
+            return (
+                "method_declaration"
+                if not element.is_constructor
+                else "constructor_declaration"
+            )
         elif isinstance(element, Class):
             if element.class_type == "interface":
                 return "interface_declaration"
@@ -1263,7 +1269,7 @@ class JavaPlugin(LanguagePlugin):
     def get_element_categories(self) -> dict[str, list[str]]:
         """
         Get element categories mapping query keys to node types
-        
+
         Returns:
             Dictionary mapping query keys to lists of node types
         """
@@ -1273,7 +1279,6 @@ class JavaPlugin(LanguagePlugin):
             "methods": ["method_declaration"],
             "constructor": ["constructor_declaration"],
             "constructors": ["constructor_declaration"],
-            
             # Class-related queries
             "class": ["class_declaration"],
             "classes": ["class_declaration"],
@@ -1281,29 +1286,30 @@ class JavaPlugin(LanguagePlugin):
             "interfaces": ["interface_declaration"],
             "enum": ["enum_declaration"],
             "enums": ["enum_declaration"],
-            
             # Field-related queries
             "field": ["field_declaration"],
             "fields": ["field_declaration"],
-            
             # Import-related queries
             "import": ["import_declaration"],
             "imports": ["import_declaration"],
-            
             # Package-related queries
             "package": ["package_declaration"],
             "packages": ["package_declaration"],
-            
             # Annotation-related queries
             "annotation": ["annotation", "marker_annotation"],
             "annotations": ["annotation", "marker_annotation"],
-            
             # Generic queries
             "all_elements": [
-                "method_declaration", "constructor_declaration",
-                "class_declaration", "interface_declaration", "enum_declaration",
-                "field_declaration", "import_declaration", "package_declaration",
-                "annotation", "marker_annotation"
+                "method_declaration",
+                "constructor_declaration",
+                "class_declaration",
+                "interface_declaration",
+                "enum_declaration",
+                "field_declaration",
+                "import_declaration",
+                "package_declaration",
+                "annotation",
+                "marker_annotation",
             ],
         }
 
@@ -1422,7 +1428,9 @@ class JavaPlugin(LanguagePlugin):
                 error_message=str(e),
             )
 
-    def extract_elements(self, tree: "tree_sitter.Tree", source_code: str) -> dict[str, list[CodeElement]]:
+    def extract_elements(
+        self, tree: "tree_sitter.Tree", source_code: str
+    ) -> dict[str, list[CodeElement]]:
         """Legacy method for backward compatibility with tests"""
         if not tree or not tree.root_node:
             return {
@@ -1431,11 +1439,11 @@ class JavaPlugin(LanguagePlugin):
                 "classes": [],
                 "variables": [],
                 "imports": [],
-                "annotations": []
+                "annotations": [],
             }
-        
+
         extractor = self.create_extractor()
-        
+
         # Extract all types of elements and return as dictionary
         result = {
             "packages": extractor.extract_packages(tree, source_code),
@@ -1443,7 +1451,7 @@ class JavaPlugin(LanguagePlugin):
             "classes": extractor.extract_classes(tree, source_code),
             "variables": extractor.extract_variables(tree, source_code),
             "imports": extractor.extract_imports(tree, source_code),
-            "annotations": extractor.extract_annotations(tree, source_code)
+            "annotations": extractor.extract_annotations(tree, source_code),
         }
-        
+
         return result

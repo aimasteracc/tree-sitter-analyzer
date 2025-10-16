@@ -38,7 +38,7 @@ class TableFormatTool(BaseMCPTool):
     structured table output through the MCP protocol.
     """
 
-    def __init__(self, project_root: str = None) -> None:
+    def __init__(self, project_root: str | None = None) -> None:
         """Initialize the table format tool."""
         super().__init__(project_root)
         self.analysis_engine = get_analysis_engine(project_root)
@@ -74,7 +74,12 @@ class TableFormatTool(BaseMCPTool):
                 "format_type": {
                     "type": "string",
                     "description": "Table format type",
-                    "enum": list(set(FormatterRegistry.get_available_formats() + ["full", "compact", "csv", "json"])),
+                    "enum": list(
+                        set(
+                            FormatterRegistry.get_available_formats()
+                            + ["full", "compact", "csv", "json"]
+                        )
+                    ),
                     "default": "full",
                 },
                 "language": {
@@ -124,11 +129,18 @@ class TableFormatTool(BaseMCPTool):
             format_type = arguments["format_type"]
             if not isinstance(format_type, str):
                 raise ValueError("format_type must be a string")
-            
+
             # Check both new FormatterRegistry formats and legacy formats
-            available_formats = list(set(FormatterRegistry.get_available_formats() + ["full", "compact", "csv", "json"]))
+            available_formats = list(
+                set(
+                    FormatterRegistry.get_available_formats()
+                    + ["full", "compact", "csv", "json"]
+                )
+            )
             if format_type not in available_formats:
-                raise ValueError(f"format_type must be one of: {', '.join(sorted(available_formats))}")
+                raise ValueError(
+                    f"format_type must be one of: {', '.join(sorted(available_formats))}"
+                )
 
         # Validate language if provided
         if "language" in arguments:
@@ -454,7 +466,7 @@ class TableFormatTool(BaseMCPTool):
 
                 # Always convert analysis result to dict for metadata extraction
                 structure_dict = self._convert_analysis_result_to_dict(structure_result)
-                
+
                 # Try to use new FormatterRegistry first, fallback to legacy TableFormatter
                 try:
                     if FormatterRegistry.is_format_supported(format_type):
@@ -463,13 +475,15 @@ class TableFormatTool(BaseMCPTool):
                         table_output = formatter.format(structure_result.elements)
                     else:
                         # Fallback to legacy TableFormatter for backward compatibility
-                        formatter = TableFormatter(format_type)
-                        table_output = formatter.format_structure(structure_dict)
+                        formatter: Any = TableFormatter(format_type)
+                        table_output = formatter.format_structure(structure_dict)  # type: ignore[attr-defined]
                 except Exception as e:
                     # If FormatterRegistry fails, fallback to legacy TableFormatter
-                    logger.warning(f"FormatterRegistry failed, using legacy formatter: {e}")
-                    formatter = TableFormatter(format_type)
-                    table_output = formatter.format_structure(structure_dict)
+                    logger.warning(
+                        f"FormatterRegistry failed, using legacy formatter: {e}"
+                    )
+                    formatter: Any = TableFormatter(format_type)
+                    table_output = formatter.format_structure(structure_dict)  # type: ignore[attr-defined]
 
                 # Ensure output format matches CLI exactly
                 # Fix line ending differences: normalize to Unix-style LF (\n)
@@ -515,15 +529,14 @@ class TableFormatTool(BaseMCPTool):
 
                         # Save to file with automatic extension detection
                         saved_file_path = self.file_output_manager.save_to_file(
-                            content=table_output,
-                            base_name=base_name
+                            content=table_output, base_name=base_name
                         )
-                        
+
                         result["output_file_path"] = saved_file_path
                         result["file_saved"] = True
-                        
+
                         self.logger.info(f"Analysis output saved to: {saved_file_path}")
-                        
+
                     except Exception as e:
                         self.logger.error(f"Failed to save output to file: {e}")
                         result["file_save_error"] = str(e)

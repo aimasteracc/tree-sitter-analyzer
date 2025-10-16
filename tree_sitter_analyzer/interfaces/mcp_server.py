@@ -29,7 +29,7 @@ except ImportError:
         pass
 
     class InitializationOptions:
-        def __init__(self, **kwargs):
+        def __init__(self, **kwargs: Any) -> None:
             pass
 
     class Tool:
@@ -41,7 +41,7 @@ except ImportError:
     class TextContent:
         pass
 
-    def stdio_server():
+    def stdio_server() -> None:
         pass
 
 

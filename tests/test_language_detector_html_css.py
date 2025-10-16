@@ -6,7 +6,11 @@ Test cases for HTML and CSS language detection functionality.
 """
 
 import pytest
-from tree_sitter_analyzer.language_detector import LanguageDetector, detect_language_from_file
+
+from tree_sitter_analyzer.language_detector import (
+    LanguageDetector,
+    detect_language_from_file,
+)
 
 
 class TestHtmlCssLanguageDetection:
@@ -71,7 +75,7 @@ class TestHtmlCssLanguageDetection:
     </div>
 </body>
 </html>"""
-        
+
         # Test with .html extension and content
         language, confidence = self.detector.detect_language("test.html", html_content)
         assert language == "html"
@@ -80,14 +84,15 @@ class TestHtmlCssLanguageDetection:
         # Test content patterns
         patterns = self.detector.content_patterns.get("html", [])
         assert len(patterns) > 0
-        
+
         # Check that HTML patterns match
         html_score = 0
         for pattern, weight in patterns:
             import re
+
             if re.search(pattern, html_content, re.MULTILINE):
                 html_score += weight
-        
+
         assert html_score > 0
 
     def test_css_content_detection(self):
@@ -122,7 +127,7 @@ body {
     from { opacity: 0; }
     to { opacity: 1; }
 }"""
-        
+
         # Test with .css extension and content
         language, confidence = self.detector.detect_language("styles.css", css_content)
         assert language == "css"
@@ -131,14 +136,15 @@ body {
         # Test content patterns
         patterns = self.detector.content_patterns.get("css", [])
         assert len(patterns) > 0
-        
+
         # Check that CSS patterns match
         css_score = 0
         for pattern, weight in patterns:
             import re
+
             if re.search(pattern, css_content, re.MULTILINE):
                 css_score += weight
-        
+
         assert css_score > 0
 
     def test_html_css_supported_languages(self):
@@ -178,16 +184,16 @@ body {
         # Test HTML language info
         html_info = self.detector.get_language_info("html")
         assert html_info["name"] == "html"
-        assert html_info["supported"] == True
-        assert html_info["tree_sitter_available"] == True
+        assert html_info["supported"]
+        assert html_info["tree_sitter_available"]
         assert ".html" in html_info["extensions"]
         assert ".htm" in html_info["extensions"]
 
         # Test CSS language info
         css_info = self.detector.get_language_info("css")
         assert css_info["name"] == "css"
-        assert css_info["supported"] == True
-        assert css_info["tree_sitter_available"] == True
+        assert css_info["supported"]
+        assert css_info["tree_sitter_available"]
         assert ".css" in css_info["extensions"]
         assert ".scss" in css_info["extensions"]
 
@@ -225,14 +231,14 @@ body {
         # Test uppercase extensions
         language, confidence = self.detector.detect_language("INDEX.HTML")
         assert language == "html"
-        
+
         language, confidence = self.detector.detect_language("STYLES.CSS")
         assert language == "css"
 
         # Test mixed case extensions
         language, confidence = self.detector.detect_language("page.Html")
         assert language == "html"
-        
+
         language, confidence = self.detector.detect_language("styles.Css")
         assert language == "css"
 
@@ -248,8 +254,9 @@ class TestHtmlCssContentPatterns:
         """Test HTML DOCTYPE pattern matching"""
         content = "<!DOCTYPE html>"
         patterns = self.detector.content_patterns["html"]
-        
+
         import re
+
         doctype_pattern = next((p for p, w in patterns if "DOCTYPE" in p), None)
         assert doctype_pattern is not None
         assert re.search(doctype_pattern, content, re.IGNORECASE)
@@ -258,39 +265,42 @@ class TestHtmlCssContentPatterns:
         """Test HTML tag pattern matching"""
         content = "<html><head><title>Test</title></head><body><div><p>Content</p></div></body></html>"
         patterns = self.detector.content_patterns["html"]
-        
+
         import re
+
         matched_patterns = 0
-        for pattern, weight in patterns:
+        for pattern, _weight in patterns:
             if re.search(pattern, content, re.MULTILINE):
                 matched_patterns += 1
-        
+
         assert matched_patterns > 0
 
     def test_css_selector_patterns(self):
         """Test CSS selector pattern matching"""
         content = ".class { color: red; } #id { margin: 10px; }"
         patterns = self.detector.content_patterns["css"]
-        
+
         import re
+
         matched_patterns = 0
-        for pattern, weight in patterns:
+        for pattern, _weight in patterns:
             if re.search(pattern, content, re.MULTILINE):
                 matched_patterns += 1
-        
+
         assert matched_patterns > 0
 
     def test_css_at_rule_patterns(self):
         """Test CSS at-rule pattern matching"""
         content = "@media screen { .class { display: block; } } @import 'styles.css'; @keyframes fade { from { opacity: 0; } }"
         patterns = self.detector.content_patterns["css"]
-        
+
         import re
+
         at_rule_matches = 0
-        for pattern, weight in patterns:
+        for pattern, _weight in patterns:
             if "@" in pattern and re.search(pattern, content, re.MULTILINE):
                 at_rule_matches += 1
-        
+
         assert at_rule_matches > 0
 
 

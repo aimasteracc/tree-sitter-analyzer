@@ -36,7 +36,7 @@ class AnalyzeScaleTool(BaseMCPTool):
     for LLM workflow efficiency.
     """
 
-    def __init__(self, project_root: str = None) -> None:
+    def __init__(self, project_root: str | None = None) -> None:
         """Initialize the analyze scale tool."""
         # Use unified analysis engine instead of deprecated AdvancedAnalyzer
         super().__init__(project_root)
@@ -464,7 +464,7 @@ class AnalyzeScaleTool(BaseMCPTool):
                     universal_result = await self.analysis_engine.analyze(request)
                     if not universal_result or not universal_result.success:
                         error_msg = (
-                            universal_result.error_message
+                            universal_result.error_message or "Unknown error"
                             if universal_result
                             else "Unknown error"
                         )
@@ -708,12 +708,12 @@ class AnalyzeScaleTool(BaseMCPTool):
     ) -> dict[str, Any]:
         """
         Create analysis result for JSON files.
-        
+
         Args:
             file_path: Path to the JSON file
             file_metrics: Basic file metrics
             include_guidance: Whether to include guidance
-            
+
         Returns:
             Analysis result for JSON file
         """
@@ -723,7 +723,8 @@ class AnalyzeScaleTool(BaseMCPTool):
             "language": "json",
             "file_size_bytes": file_metrics["file_size_bytes"],
             "total_lines": file_metrics["total_lines"],
-            "non_empty_lines": file_metrics["total_lines"] - file_metrics["blank_lines"],
+            "non_empty_lines": file_metrics["total_lines"]
+            - file_metrics["blank_lines"],
             "estimated_tokens": file_metrics["estimated_tokens"],
             "complexity_metrics": {
                 "total_elements": 0,
@@ -735,14 +736,18 @@ class AnalyzeScaleTool(BaseMCPTool):
                 "methods": [],
                 "fields": [],
             },
-            "scale_category": "small" if file_metrics["total_lines"] < 100 else "medium" if file_metrics["total_lines"] < 1000 else "large",
+            "scale_category": "small"
+            if file_metrics["total_lines"] < 100
+            else "medium"
+            if file_metrics["total_lines"] < 1000
+            else "large",
             "analysis_recommendations": {
                 "suitable_for_full_analysis": file_metrics["total_lines"] < 1000,
                 "recommended_approach": "JSON files are configuration/data files - structural analysis not applicable",
                 "token_efficiency_notes": "JSON files can be read directly without tree-sitter parsing",
             },
         }
-        
+
         if include_guidance:
             result["llm_analysis_guidance"] = {
                 "file_characteristics": "JSON configuration/data file",
@@ -750,7 +755,7 @@ class AnalyzeScaleTool(BaseMCPTool):
                 "token_optimization": "Use simple file reading tools for JSON content",
                 "analysis_focus": "Data structure and configuration values",
             }
-            
+
         return result
 
     def get_tool_definition(self) -> dict[str, Any]:

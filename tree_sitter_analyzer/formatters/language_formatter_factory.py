@@ -3,20 +3,19 @@
 Factory for creating language-specific formatters for different output types.
 """
 
-from typing import Dict, Type, Any
 from .base_formatter import BaseFormatter
-from .markdown_formatter import MarkdownFormatter
 from .html_formatter import HtmlFormatter
+from .markdown_formatter import MarkdownFormatter
 
 
 class LanguageFormatterFactory:
     """Factory for creating language-specific formatters"""
 
-    _formatters: Dict[str, Type[BaseFormatter]] = {
+    _formatters: dict[str, type[BaseFormatter]] = {
         "markdown": MarkdownFormatter,
         "md": MarkdownFormatter,  # Alias
         "html": HtmlFormatter,
-        "css": HtmlFormatter,   # CSS files also use HTML formatter
+        "css": HtmlFormatter,  # CSS files also use HTML formatter
     }
 
     @classmethod
@@ -39,7 +38,9 @@ class LanguageFormatterFactory:
         return formatter_class()
 
     @classmethod
-    def register_formatter(cls, language: str, formatter_class: Type[BaseFormatter]) -> None:
+    def register_formatter(
+        cls, language: str, formatter_class: type[BaseFormatter]
+    ) -> None:
         """
         Register new language formatter
 

@@ -8,8 +8,10 @@ specialized formatting for TypeScript code analysis results.
 
 import pytest
 
-from tree_sitter_analyzer.formatters.typescript_formatter import TypeScriptTableFormatter
 from tree_sitter_analyzer.formatters.base_formatter import BaseTableFormatter
+from tree_sitter_analyzer.formatters.typescript_formatter import (
+    TypeScriptTableFormatter,
+)
 
 
 class TestTypeScriptTableFormatter:
@@ -177,10 +179,10 @@ class TestTypeScriptTableFormatter:
     def test_format_full_table(self, formatter, sample_data):
         """Test full table formatting"""
         result = formatter.format(sample_data)
-        
+
         assert isinstance(result, str)
         assert len(result) > 0
-        
+
         # Check for TypeScript-specific sections
         assert "# TypeScript Module: UserService" in result
         assert "## Module Info" in result
@@ -203,7 +205,7 @@ class TestTypeScriptTableFormatter:
             "exports": [],
             "statistics": {"function_count": 0, "variable_count": 0},
         }
-        
+
         result = formatter.format(tsx_data)
         assert "# TSX Module: Component" in result
 
@@ -218,27 +220,30 @@ class TestTypeScriptTableFormatter:
             "exports": [],
             "statistics": {"function_count": 0, "variable_count": 0},
         }
-        
+
         result = formatter.format(dts_data)
         assert "# Declaration File: index" in result
 
     def test_format_interfaces_section(self, formatter, sample_data):
         """Test interfaces section formatting"""
         result = formatter.format(sample_data)
-        
+
         # Check interface table headers
-        assert "| Interface | Extends | Lines | Properties | Methods | Generics |" in result
-        
+        assert (
+            "| Interface | Extends | Lines | Properties | Methods | Generics |"
+            in result
+        )
+
         # Check interface data
         assert "| IUserProfile | IUser | 5-12 | 1 | 0 | - |" in result
 
     def test_format_type_aliases_section(self, formatter, sample_data):
         """Test type aliases section formatting"""
         result = formatter.format(sample_data)
-        
+
         # Check type alias table headers
         assert "| Type | Lines | Generics | Definition |" in result
-        
+
         # Check type alias data
         assert "| Status | 2-2 | - |" in result
         assert "'active' | 'inactive' | 'pending'" in result
@@ -246,42 +251,56 @@ class TestTypeScriptTableFormatter:
     def test_format_enums_section(self, formatter, sample_data):
         """Test enums section formatting"""
         result = formatter.format(sample_data)
-        
+
         # Check enum table headers
         assert "| Enum | Lines | Values |" in result
-        
+
         # Check enum data
         assert "| UserRole | 47-52 | 3 |" in result
 
     def test_format_classes_section(self, formatter, sample_data):
         """Test classes section formatting"""
         result = formatter.format(sample_data)
-        
+
         # Check class table headers
-        assert "| Class | Type | Extends | Implements | Lines | Methods | Properties | Generics |" in result
-        
+        assert (
+            "| Class | Type | Extends | Implements | Lines | Methods | Properties | Generics |"
+            in result
+        )
+
         # Check class data
-        assert "| UserService | class | BaseService | IUserService, ILoggable | 15-45 | 1 | 1 | T, U |" in result
+        assert (
+            "| UserService | class | BaseService | IUserService, ILoggable | 15-45 | 1 | 1 | T, U |"
+            in result
+        )
 
     def test_format_functions_section(self, formatter, sample_data):
         """Test functions section formatting"""
         result = formatter.format(sample_data)
-        
+
         # Check function table headers
-        assert "| Function | Type | Return Type | Parameters | Async | Generic | Lines | Complexity |" in result
-        
+        assert (
+            "| Function | Type | Return Type | Parameters | Async | Generic | Lines | Complexity |"
+            in result
+        )
+
         # Check function data
-        assert "| fetchUserData | function | Promise<UserProfile | null> | 1 | ✓ |  | 55-65 | 3 |" in result
+        assert (
+            "| fetchUserData | function | Promise<UserProfile | null> | 1 | ✓ |  | 55-65 | 3 |"
+            in result
+        )
         assert "| mapArray | arrow | U[] | 2 |  | ✓ | 67-69 | 1 |" in result
         assert "| validate | method | boolean | 1 |  |  | 25-27 | 2 |" in result
 
     def test_format_variables_section(self, formatter, sample_data):
         """Test variables section formatting"""
         result = formatter.format(sample_data)
-        
+
         # Check variable table headers
-        assert "| Name | Type | Kind | Visibility | Static | Optional | Lines |" in result
-        
+        assert (
+            "| Name | Type | Kind | Visibility | Static | Optional | Lines |" in result
+        )
+
         # Check variable data
         assert "| config | AppConfig | const | public |  |  | 1-1 |" in result
         assert "| userId | string | property | private |  |  | 17-17 |" in result
@@ -291,10 +310,10 @@ class TestTypeScriptTableFormatter:
         """Test compact table formatting"""
         formatter = TypeScriptTableFormatter("compact")
         result = formatter.format(sample_data)
-        
+
         assert isinstance(result, str)
         assert len(result) > 0
-        
+
         # Check for compact format elements
         assert "# UserService.ts" in result
         assert "## Summary" in result
@@ -309,17 +328,19 @@ class TestTypeScriptTableFormatter:
         """Test CSV formatting"""
         formatter = TypeScriptTableFormatter("csv")
         result = formatter.format(sample_data)
-        
+
         assert isinstance(result, str)
         assert len(result) > 0
-        
+
         # Check CSV headers
-        assert "Type,Name,Kind,Return/Type,Lines,Visibility,Static,Async,Generic" in result
-        
+        assert (
+            "Type,Name,Kind,Return/Type,Lines,Visibility,Static,Async,Generic" in result
+        )
+
         # Check CSV data
-        lines = result.split('\n')
+        lines = result.split("\n")
         assert len(lines) > 1  # Should have header + data lines
-        
+
         # Check for TypeScript-specific data
         assert any("Class,UserService,class" in line for line in lines)
         assert any("Function,fetchUserData,function" in line for line in lines)
@@ -328,26 +349,82 @@ class TestTypeScriptTableFormatter:
     def test_get_element_type_name(self, formatter):
         """Test element type name generation"""
         # Test class types
-        assert formatter._get_element_type_name({"element_type": "class", "class_type": "interface"}) == "Interface"
-        assert formatter._get_element_type_name({"element_type": "class", "class_type": "type"}) == "Type Alias"
-        assert formatter._get_element_type_name({"element_type": "class", "class_type": "enum"}) == "Enum"
-        assert formatter._get_element_type_name({"element_type": "class", "class_type": "abstract_class"}) == "Abstract Class"
-        assert formatter._get_element_type_name({"element_type": "class", "class_type": "class"}) == "Class"
-        
+        assert (
+            formatter._get_element_type_name(
+                {"element_type": "class", "class_type": "interface"}
+            )
+            == "Interface"
+        )
+        assert (
+            formatter._get_element_type_name(
+                {"element_type": "class", "class_type": "type"}
+            )
+            == "Type Alias"
+        )
+        assert (
+            formatter._get_element_type_name(
+                {"element_type": "class", "class_type": "enum"}
+            )
+            == "Enum"
+        )
+        assert (
+            formatter._get_element_type_name(
+                {"element_type": "class", "class_type": "abstract_class"}
+            )
+            == "Abstract Class"
+        )
+        assert (
+            formatter._get_element_type_name(
+                {"element_type": "class", "class_type": "class"}
+            )
+            == "Class"
+        )
+
         # Test function types
-        assert formatter._get_element_type_name({"element_type": "function", "is_arrow": True}) == "Arrow Function"
-        assert formatter._get_element_type_name({"element_type": "function", "is_method": True}) == "Method"
-        assert formatter._get_element_type_name({"element_type": "function", "is_constructor": True}) == "Constructor"
-        assert formatter._get_element_type_name({"element_type": "function"}) == "Function"
-        
+        assert (
+            formatter._get_element_type_name(
+                {"element_type": "function", "is_arrow": True}
+            )
+            == "Arrow Function"
+        )
+        assert (
+            formatter._get_element_type_name(
+                {"element_type": "function", "is_method": True}
+            )
+            == "Method"
+        )
+        assert (
+            formatter._get_element_type_name(
+                {"element_type": "function", "is_constructor": True}
+            )
+            == "Constructor"
+        )
+        assert (
+            formatter._get_element_type_name({"element_type": "function"}) == "Function"
+        )
+
         # Test variable types
-        assert formatter._get_element_type_name({"element_type": "variable", "declaration_kind": "property"}) == "Property"
-        assert formatter._get_element_type_name({"element_type": "variable", "declaration_kind": "property_signature"}) == "Property Signature"
-        assert formatter._get_element_type_name({"element_type": "variable"}) == "Variable"
-        
+        assert (
+            formatter._get_element_type_name(
+                {"element_type": "variable", "declaration_kind": "property"}
+            )
+            == "Property"
+        )
+        assert (
+            formatter._get_element_type_name(
+                {"element_type": "variable", "declaration_kind": "property_signature"}
+            )
+            == "Property Signature"
+        )
+        assert (
+            formatter._get_element_type_name({"element_type": "variable"}) == "Variable"
+        )
+
         # Test other types
         assert formatter._get_element_type_name({"element_type": "import"}) == "Import"
-        assert formatter._get_element_type_name({"element_type": "unknown"}) == "Unknown"
+        assert (
+            formatter._get_element_type_name({"element_type": "unknown"}) == "Unknown"
+        )
 
     def test_format_element_details(self, formatter):
         """Test element details formatting"""
@@ -362,7 +439,7 @@ class TestTypeScriptTableFormatter:
             "is_optional": True,
             "framework_type": "react",
         }
-        
+
         details = formatter._format_element_details(element)
         assert "typed" in details
         assert "<T, U>" in details
@@ -390,7 +467,7 @@ class TestTypeScriptTableFormatter:
             "exports": [],
             "statistics": {"function_count": 0, "variable_count": 0},
         }
-        
+
         result = formatter.format(empty_data)
         assert isinstance(result, str)
         assert "# TypeScript Script: empty" in result
@@ -399,7 +476,7 @@ class TestTypeScriptTableFormatter:
     def test_format_with_imports(self, formatter, sample_data):
         """Test formatting with imports section"""
         result = formatter.format(sample_data)
-        
+
         assert "## Imports" in result
         assert "```typescript" in result
         assert "import Component from react;" in result
@@ -408,7 +485,7 @@ class TestTypeScriptTableFormatter:
     def test_format_with_exports(self, formatter, sample_data):
         """Test formatting with exports section"""
         result = formatter.format(sample_data)
-        
+
         assert "## Exports" in result
         assert "| Export | Type | Default |" in result
         assert "| UserService | named |  |" in result
@@ -417,7 +494,7 @@ class TestTypeScriptTableFormatter:
     def test_format_module_info_statistics(self, formatter, sample_data):
         """Test module info statistics"""
         result = formatter.format(sample_data)
-        
+
         # Check module info table
         assert "| Functions | 3 |" in result
         assert "| Classes | 1 |" in result
@@ -437,17 +514,17 @@ class TestTypeScriptTableFormatter:
             "exports": [],
             "statistics": {"function_count": 0, "variable_count": 0},
         }
-        
+
         # Test .ts file
         ts_data = {**base_data, "file_path": "service.ts"}
         result = formatter.format(ts_data)
         assert "# TypeScript Script: service" in result
-        
+
         # Test .tsx file
         tsx_data = {**base_data, "file_path": "component.tsx"}
         result = formatter.format(tsx_data)
         assert "# TSX Module: component" in result
-        
+
         # Test .d.ts file
         dts_data = {**base_data, "file_path": "types.d.ts"}
         result = formatter.format(dts_data)

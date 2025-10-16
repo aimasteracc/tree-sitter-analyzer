@@ -5,9 +5,11 @@ CSS Plugin Tests
 Test cases for CSS language plugin functionality.
 """
 
-import pytest
 from pathlib import Path
-from tree_sitter_analyzer.languages.css_plugin import CssPlugin, CssElementExtractor
+
+import pytest
+
+from tree_sitter_analyzer.languages.css_plugin import CssElementExtractor, CssPlugin
 from tree_sitter_analyzer.models import StyleElement
 
 
@@ -33,22 +35,22 @@ class TestCssElementExtractor:
         # Layout properties
         layout_props = {"display": "flex", "position": "absolute"}
         assert self.extractor._classify_rule(layout_props) == "layout"
-        
+
         # Typography properties
         typography_props = {"font-size": "16px", "color": "#333"}
         assert self.extractor._classify_rule(typography_props) == "typography"
-        
+
         # Box model properties
         box_props = {"margin": "10px", "padding": "5px"}
         assert self.extractor._classify_rule(box_props) == "box_model"
-        
+
         # Flexbox properties
         flex_props = {"justify-content": "center", "align-items": "center"}
         assert self.extractor._classify_rule(flex_props) == "flexbox"
-        
+
         # Empty properties
         assert self.extractor._classify_rule({}) == "other"
-        
+
         # Unknown properties
         unknown_props = {"unknown-property": "value"}
         assert self.extractor._classify_rule(unknown_props) == "other"
@@ -160,7 +162,7 @@ h1 {
     .container {
         padding: 10px;
     }
-    
+
     h1 {
         font-size: 1.5em;
     }
@@ -170,35 +172,36 @@ h1 {
     from { opacity: 0; }
     to { opacity: 1; }
 }"""
-        
+
         # Create a mock request
         class MockRequest:
             def __init__(self):
                 self.include_source = True
                 self.query_filters = {}
-        
+
         request = MockRequest()
-        
+
         # Create temporary file
         import tempfile
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.css', delete=False) as f:
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".css", delete=False) as f:
             f.write(css_content)
             temp_path = f.name
-        
+
         try:
             # Analyze the file
             result = await self.plugin.analyze_file(temp_path, request)
-            
+
             # Verify results
             assert result.success
             assert result.language == "css"
             assert result.line_count > 0
             assert len(result.elements) > 0
             assert result.source_code == css_content
-            
+
             # Check that we have at least one element
             assert any(isinstance(elem, StyleElement) for elem in result.elements)
-            
+
         finally:
             # Clean up
             Path(temp_path).unlink()
@@ -213,13 +216,13 @@ class TestCssIntegration:
             name=".container",
             start_line=5,
             end_line=9,
-            raw_text='.container {\n    max-width: 1200px;\n    margin: 0 auto;\n}',
+            raw_text=".container {\n    max-width: 1200px;\n    margin: 0 auto;\n}",
             language="css",
             selector=".container",
             properties={"max-width": "1200px", "margin": "0 auto"},
-            element_class="layout"
+            element_class="layout",
         )
-        
+
         assert element.name == ".container"
         assert element.selector == ".container"
         assert element.properties["max-width"] == "1200px"
@@ -237,9 +240,9 @@ class TestCssIntegration:
             language="css",
             selector="h1",
             properties={"color": "#333", "font-size": "2em"},
-            element_class="typography"
+            element_class="typography",
         )
-        
+
         summary = element.to_summary_item()
         assert summary["name"] == "h1"
         assert summary["selector"] == "h1"
@@ -258,9 +261,9 @@ class TestCssIntegration:
             language="css",
             selector="@media (max-width: 768px)",
             properties={},
-            element_class="at_rule"
+            element_class="at_rule",
         )
-        
+
         assert element.name.startswith("@media")
         assert element.selector.startswith("@media")
         assert element.element_class == "at_rule"
@@ -275,9 +278,9 @@ class TestCssIntegration:
             language="css",
             selector="@keyframes fadeIn",
             properties={},
-            element_class="at_rule"
+            element_class="at_rule",
         )
-        
+
         assert element.name.startswith("@keyframes")
         assert element.selector.startswith("@keyframes")
         assert element.element_class == "at_rule"
@@ -292,9 +295,9 @@ class TestCssIntegration:
             language="css",
             selector=".nav ul li a:hover",
             properties={"color": "blue", "text-decoration": "underline"},
-            element_class="typography"
+            element_class="typography",
         )
-        
+
         assert element.selector == ".nav ul li a:hover"
         assert element.properties["color"] == "blue"
         assert element.properties["text-decoration"] == "underline"

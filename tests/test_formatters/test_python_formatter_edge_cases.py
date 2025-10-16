@@ -4,7 +4,6 @@ Tests cover error conditions, boundary cases, and robustness scenarios.
 """
 
 import pytest
-from typing import Any, Dict, List
 
 from tree_sitter_analyzer.formatters.python_formatter import PythonTableFormatter
 
@@ -31,7 +30,7 @@ class TestPythonFormatterErrorHandling:
         """Test formatting with circular reference in data."""
         data = {"file_path": "test.py"}
         data["self_ref"] = data  # Circular reference
-        
+
         # Should handle gracefully without infinite recursion
         result = formatter.format(data)
         assert isinstance(result, str)
@@ -40,20 +39,20 @@ class TestPythonFormatterErrorHandling:
         """Test formatting with deeply nested data structures."""
         nested_data = {"level": 0}
         current = nested_data
-        
+
         # Create deep nesting
         for i in range(100):
             current["next"] = {"level": i + 1}
             current = current["next"]
-        
+
         data = {
             "file_path": "deep.py",
             "classes": [],
             "functions": [],
             "imports": [],
-            "nested": nested_data
+            "nested": nested_data,
         }
-        
+
         result = formatter.format(data)
         assert isinstance(result, str)
 
@@ -68,12 +67,14 @@ class TestPythonFormatterErrorHandling:
                 {
                     "name": "test_method",
                     "parameters": "invalid_string_instead_of_list",  # Should be list
-                    "return_type": {"invalid": "dict_instead_of_string"},  # Should be string
-                    "line_range": "invalid_string_instead_of_dict"  # Should be dict
+                    "return_type": {
+                        "invalid": "dict_instead_of_string"
+                    },  # Should be string
+                    "line_range": "invalid_string_instead_of_dict",  # Should be dict
                 }
-            ]
+            ],
         }
-        
+
         result = formatter.format(data)
         assert isinstance(result, str)
         assert "test_method" in result
@@ -87,9 +88,9 @@ class TestPythonFormatterErrorHandling:
                     # Missing name, parameters, etc.
                     "visibility": "public"
                 }
-            ]
+            ],
         }
-        
+
         result = formatter.format(data)
         assert isinstance(result, str)
 
@@ -105,11 +106,11 @@ class TestPythonFormatterErrorHandling:
                     "name": "large_method",
                     "line_range": {"start": 999999999, "end": 9999999999},
                     "complexity_score": 999999999,
-                    "parameters": []
+                    "parameters": [],
                 }
-            ]
+            ],
         }
-        
+
         result = formatter.format(data)
         assert isinstance(result, str)
         assert "999999999" in result
@@ -132,7 +133,7 @@ class TestPythonFormatterBoundaryConditions:
                     "name": "",
                     "type": "",
                     "visibility": "",
-                    "line_range": {"start": 0, "end": 0}
+                    "line_range": {"start": 0, "end": 0},
                 }
             ],
             "functions": [],
@@ -143,11 +144,11 @@ class TestPythonFormatterBoundaryConditions:
                     "visibility": "",
                     "return_type": "",
                     "docstring": "",
-                    "parameters": []
+                    "parameters": [],
                 }
-            ]
+            ],
         }
-        
+
         result = formatter.format(data)
         assert isinstance(result, str)
 
@@ -163,16 +164,12 @@ class TestPythonFormatterBoundaryConditions:
                     "name": "zero_method",
                     "line_range": {"start": 0, "end": 0},
                     "complexity_score": 0,
-                    "parameters": []
+                    "parameters": [],
                 }
             ],
-            "statistics": {
-                "method_count": 0,
-                "field_count": 0,
-                "class_count": 0
-            }
+            "statistics": {"method_count": 0, "field_count": 0, "class_count": 0},
         }
-        
+
         result = formatter.format(data)
         assert isinstance(result, str)
         assert "0" in result
@@ -189,11 +186,11 @@ class TestPythonFormatterBoundaryConditions:
                     "name": "negative_method",
                     "line_range": {"start": -1, "end": -1},
                     "complexity_score": -5,
-                    "parameters": []
+                    "parameters": [],
                 }
-            ]
+            ],
         }
-        
+
         result = formatter.format(data)
         assert isinstance(result, str)
         assert "-1" in result or "-5" in result
@@ -207,7 +204,7 @@ class TestPythonFormatterBoundaryConditions:
                     "name": "A",
                     "type": "class",
                     "visibility": "public",
-                    "line_range": {"start": 1, "end": 5}
+                    "line_range": {"start": 1, "end": 5},
                 }
             ],
             "functions": [],
@@ -217,11 +214,11 @@ class TestPythonFormatterBoundaryConditions:
                     "name": "f",
                     "visibility": "public",
                     "parameters": [{"name": "x", "type": "int"}],
-                    "return_type": "int"
+                    "return_type": "int",
                 }
-            ]
+            ],
         }
-        
+
         result = formatter.format(data)
         assert isinstance(result, str)
         # Single character class names appear in module header
@@ -232,7 +229,7 @@ class TestPythonFormatterBoundaryConditions:
         """Test formatting with maximum length strings."""
         max_length_name = "a" * 1000
         max_length_docstring = "This is a very long docstring. " * 100
-        
+
         data = {
             "file_path": "max_length.py",
             "classes": [
@@ -240,7 +237,7 @@ class TestPythonFormatterBoundaryConditions:
                     "name": max_length_name,
                     "type": "class",
                     "visibility": "public",
-                    "line_range": {"start": 1, "end": 100}
+                    "line_range": {"start": 1, "end": 100},
                 }
             ],
             "functions": [],
@@ -250,11 +247,11 @@ class TestPythonFormatterBoundaryConditions:
                     "name": max_length_name,
                     "visibility": "public",
                     "docstring": max_length_docstring,
-                    "parameters": []
+                    "parameters": [],
                 }
-            ]
+            ],
         }
-        
+
         result = formatter.format(data)
         assert isinstance(result, str)
         # Should handle very long strings without crashing
@@ -277,7 +274,7 @@ class TestPythonFormatterSpecialCharacters:
                     "name": "测试类",
                     "type": "class",
                     "visibility": "public",
-                    "line_range": {"start": 1, "end": 10}
+                    "line_range": {"start": 1, "end": 10},
                 }
             ],
             "functions": [],
@@ -288,11 +285,11 @@ class TestPythonFormatterSpecialCharacters:
                     "visibility": "public",
                     "docstring": "处理输入数据并返回结果。包含中文字符。",
                     "parameters": [{"name": "数据", "type": "str"}],
-                    "return_type": "bool"
+                    "return_type": "bool",
                 }
-            ]
+            ],
         }
-        
+
         result = formatter.format(data)
         assert isinstance(result, str)
         # Unicode characters are escaped in output
@@ -308,7 +305,7 @@ class TestPythonFormatterSpecialCharacters:
                     "name": "EmojiClass🚀",
                     "type": "class",
                     "visibility": "public",
-                    "line_range": {"start": 1, "end": 10}
+                    "line_range": {"start": 1, "end": 10},
                 }
             ],
             "functions": [],
@@ -319,11 +316,11 @@ class TestPythonFormatterSpecialCharacters:
                     "visibility": "public",
                     "docstring": "Process data with fire! 🔥🚀✨",
                     "parameters": [],
-                    "return_type": "str"
+                    "return_type": "str",
                 }
-            ]
+            ],
         }
-        
+
         result = formatter.format(data)
         assert isinstance(result, str)
         assert "🚀" in result
@@ -338,7 +335,7 @@ class TestPythonFormatterSpecialCharacters:
                     "name": "Class_With_$pecial_Ch@rs",
                     "type": "class",
                     "visibility": "public",
-                    "line_range": {"start": 1, "end": 10}
+                    "line_range": {"start": 1, "end": 10},
                 }
             ],
             "functions": [],
@@ -348,11 +345,11 @@ class TestPythonFormatterSpecialCharacters:
                     "name": "method_with_$ymbol$",
                     "visibility": "public",
                     "docstring": "Method with special symbols: @#$%^&*()",
-                    "parameters": []
+                    "parameters": [],
                 }
-            ]
+            ],
         }
-        
+
         result = formatter.format(data)
         assert isinstance(result, str)
 
@@ -368,11 +365,11 @@ class TestPythonFormatterSpecialCharacters:
                     "name": "multiline_method",
                     "visibility": "public",
                     "docstring": "This is a\nmultiline docstring\nwith\ttabs\tand\nnewlines.",
-                    "parameters": []
+                    "parameters": [],
                 }
-            ]
+            ],
         }
-        
+
         result = formatter.format(data)
         assert isinstance(result, str)
         # Should handle newlines and tabs appropriately
@@ -389,11 +386,11 @@ class TestPythonFormatterSpecialCharacters:
                     "name": "markdown_method",
                     "visibility": "public",
                     "docstring": "Method with **bold**, *italic*, `code`, and |pipe| characters.",
-                    "parameters": []
+                    "parameters": [],
                 }
-            ]
+            ],
         }
-        
+
         result = formatter.format(data)
         assert isinstance(result, str)
         # Should escape or handle Markdown characters properly
@@ -414,9 +411,9 @@ class TestPythonFormatterTypeHandling:
             "Callable[[str, int], Awaitable[Optional[bool]]]",
             "TypeVar('T', bound=Union[str, int])",
             "Literal['option1', 'option2', 'option3']",
-            "Final[ClassVar[Optional[List[str]]]]"
+            "Final[ClassVar[Optional[List[str]]]]",
         ]
-        
+
         for type_name in complex_types:
             result = formatter._shorten_type(type_name)
             assert isinstance(result, str)
@@ -432,15 +429,17 @@ class TestPythonFormatterTypeHandling:
             "123InvalidType",  # Starts with number
             "",  # Empty string
         ]
-        
+
         for type_name in invalid_types:
             result = formatter._shorten_type(type_name)
             assert isinstance(result, str)
 
     def test_shorten_type_with_nested_brackets(self, formatter):
         """Test type shortening with deeply nested brackets."""
-        nested_type = "List[Dict[str, List[Optional[Union[int, Dict[str, List[bool]]]]]]]"
-        
+        nested_type = (
+            "List[Dict[str, List[Optional[Union[int, Dict[str, List[bool]]]]]]]"
+        )
+
         result = formatter._shorten_type(nested_type)
         assert isinstance(result, str)
         assert len(result) > 0
@@ -452,11 +451,11 @@ class TestPythonFormatterTypeHandling:
                 {"name": "self", "type": "MyClass"},
                 {"name": "data", "type": "Dict[str, List[Optional[int]]]"},
                 {"name": "callback", "type": "Callable[[str], Awaitable[bool]]"},
-                {"name": "options", "type": "Union[str, int, None]"}
+                {"name": "options", "type": "Union[str, int, None]"},
             ],
-            "return_type": "AsyncGenerator[Tuple[str, int], None]"
+            "return_type": "AsyncGenerator[Tuple[str, int], None]",
         }
-        
+
         result = formatter._format_python_signature(method)
         assert isinstance(result, str)
         assert "data: Dict[str, List[Optional[int]]]" in result
@@ -468,11 +467,11 @@ class TestPythonFormatterTypeHandling:
                 "invalid_string_parameter",  # Should be dict
                 {"name": "valid_param"},  # Missing type
                 {"type": "str"},  # Missing name
-                {}  # Empty dict
+                {},  # Empty dict
             ],
-            "return_type": "str"
+            "return_type": "str",
         }
-        
+
         result = formatter._format_python_signature(method)
         assert isinstance(result, str)
 
@@ -496,7 +495,7 @@ class TestPythonFormatterDocstringHandling:
 class Test:
     pass"""
         }
-        
+
         result = formatter._extract_module_docstring(data)
         assert result == "Module docstring after comments."
 
@@ -510,7 +509,7 @@ import sys
 class Test:
     pass"""
         }
-        
+
         result = formatter._extract_module_docstring(data)
         assert result == "Module docstring after imports."
 
@@ -522,8 +521,8 @@ This should not crash the formatter
 class Test:
     pass"""
         }
-        
-        result = formatter._extract_module_docstring(data)
+
+        formatter._extract_module_docstring(data)
         # Should handle gracefully without crashing
 
     def test_extract_module_docstring_mixed_quotes(self, formatter):
@@ -534,17 +533,15 @@ class Test:
 class Test:
     pass'''
         }
-        
+
         result = formatter._extract_module_docstring(data)
         assert "single quotes" in result
 
     def test_extract_module_docstring_very_long(self, formatter):
         """Test extracting very long module docstring."""
         long_docstring = "Very long docstring. " * 1000
-        data = {
-            "source_code": f'"""{long_docstring}"""\n\nclass Test:\n    pass'
-        }
-        
+        data = {"source_code": f'"""{long_docstring}"""\n\nclass Test:\n    pass'}
+
         result = formatter._extract_module_docstring(data)
         assert isinstance(result, str)
         assert len(result) > 1000
@@ -563,9 +560,9 @@ class TestPythonFormatterDecoratorHandling:
         decorators = [
             "lru_cache(maxsize=128)",
             "retry(attempts=3, delay=1.0)",
-            "validate_input(schema='user_schema')"
+            "validate_input(schema='user_schema')",
         ]
-        
+
         result = formatter._format_decorators(decorators)
         assert isinstance(result, str)
 
@@ -574,9 +571,9 @@ class TestPythonFormatterDecoratorHandling:
         decorators = [
             "app.route('/api/v1/users/<int:user_id>', methods=['GET', 'POST'])",
             "pytest.mark.parametrize('input,expected', [(1, 2), (3, 4)])",
-            "functools.wraps(func)"
+            "functools.wraps(func)",
         ]
-        
+
         result = formatter._format_decorators(decorators)
         assert isinstance(result, str)
 
@@ -588,7 +585,7 @@ class TestPythonFormatterDecoratorHandling:
     def test_format_decorators_with_duplicates(self, formatter):
         """Test formatting decorators with duplicates."""
         decorators = ["property", "property", "staticmethod", "staticmethod"]
-        
+
         result = formatter._format_decorators(decorators)
         assert isinstance(result, str)
 
@@ -599,9 +596,9 @@ class TestPythonFormatterDecoratorHandling:
             "property",
             "another_custom",
             "staticmethod",
-            "third_custom"
+            "third_custom",
         ]
-        
+
         result = formatter._format_decorators(decorators)
         assert "@property" in result
         assert "@staticmethod" in result
@@ -620,7 +617,7 @@ class TestPythonFormatterPerformanceEdgeCases:
         # Create a recursive structure
         recursive_param = {"name": "recursive", "type": "RecursiveType"}
         recursive_param["self_ref"] = recursive_param
-        
+
         data = {
             "file_path": "recursive.py",
             "classes": [],
@@ -630,11 +627,11 @@ class TestPythonFormatterPerformanceEdgeCases:
                 {
                     "name": "recursive_method",
                     "parameters": [recursive_param],
-                    "return_type": "str"
+                    "return_type": "str",
                 }
-            ]
+            ],
         }
-        
+
         # Should handle without infinite recursion
         result = formatter.format(data)
         assert isinstance(result, str)
@@ -644,7 +641,7 @@ class TestPythonFormatterPerformanceEdgeCases:
         # Create large string data
         large_docstring = "x" * 100000  # 100KB string
         large_type_name = "VeryLongTypeName" * 1000
-        
+
         data = {
             "file_path": "memory_test.py",
             "classes": [],
@@ -654,14 +651,12 @@ class TestPythonFormatterPerformanceEdgeCases:
                 {
                     "name": "memory_intensive_method",
                     "docstring": large_docstring,
-                    "parameters": [
-                        {"name": "param", "type": large_type_name}
-                    ],
-                    "return_type": large_type_name
+                    "parameters": [{"name": "param", "type": large_type_name}],
+                    "return_type": large_type_name,
                 }
-            ]
+            ],
         }
-        
+
         result = formatter.format(data)
         assert isinstance(result, str)
 
@@ -670,23 +665,25 @@ class TestPythonFormatterPerformanceEdgeCases:
         # Create many small method objects
         many_methods = []
         for i in range(1000):
-            many_methods.append({
-                "name": f"method_{i}",
-                "visibility": "public",
-                "line_range": {"start": i, "end": i + 1},
-                "parameters": [],
-                "return_type": "None",
-                "complexity_score": 1
-            })
-        
+            many_methods.append(
+                {
+                    "name": f"method_{i}",
+                    "visibility": "public",
+                    "line_range": {"start": i, "end": i + 1},
+                    "parameters": [],
+                    "return_type": "None",
+                    "complexity_score": 1,
+                }
+            )
+
         data = {
             "file_path": "many_methods.py",
             "classes": [],
             "functions": [],
             "imports": [],
-            "methods": many_methods
+            "methods": many_methods,
         }
-        
+
         result = formatter.format(data)
         assert isinstance(result, str)
         assert "method_0" in result

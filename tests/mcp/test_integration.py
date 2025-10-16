@@ -391,9 +391,9 @@ module.exports = { Calculator, createCalculator };
                     pytest.fail(f"Failed to analyze {lang} file: {e}")
 
         # Verify we tested at least one language successfully
-        assert (
-            len(languages_tested) >= 1
-        ), f"No languages tested successfully. Tested: {languages_tested}, Skipped: {languages_skipped}"
+        assert len(languages_tested) >= 1, (
+            f"No languages tested successfully. Tested: {languages_tested}, Skipped: {languages_skipped}"
+        )
 
         # Log results for debugging
         print(f"Languages tested: {languages_tested}")

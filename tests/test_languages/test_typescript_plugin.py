@@ -7,8 +7,6 @@ support with comprehensive feature coverage including interfaces, type aliases,
 enums, generics, decorators, and modern JavaScript features with type annotations.
 """
 
-import os
-import tempfile
 from unittest.mock import Mock, patch
 
 import pytest
@@ -17,7 +15,6 @@ from tree_sitter_analyzer.languages.typescript_plugin import (
     TypeScriptElementExtractor,
     TypeScriptPlugin,
 )
-from tree_sitter_analyzer.models import Class, Function, Import, Variable
 from tree_sitter_analyzer.plugins.base import ElementExtractor, LanguagePlugin
 
 
@@ -244,7 +241,7 @@ export default UserComponent;
          * @param user The user object
          * @returns Promise with user data
          */"""
-        
+
         cleaned = extractor._clean_tsdoc(tsdoc)
         expected = "This is a TSDoc comment @param user The user object @returns Promise with user data"
         assert cleaned == expected
@@ -277,19 +274,19 @@ export default UserComponent;
     def test_is_framework_component_react(self, extractor):
         """Test React component detection"""
         extractor.framework_type = "react"
-        
+
         # Mock node with React component pattern
         node = Mock()
         node_text = "class MyComponent extends Component"
         extractor._get_node_text_optimized = Mock(return_value=node_text)
-        
+
         assert extractor._is_framework_component(node, "MyComponent") is True
 
     def test_is_framework_component_angular(self, extractor):
         """Test Angular component detection"""
         extractor.framework_type = "angular"
         extractor.source_code = "@Component({ selector: 'app-test' })"
-        
+
         node = Mock()
         assert extractor._is_framework_component(node, "TestComponent") is True
 
@@ -297,7 +294,7 @@ export default UserComponent;
         """Test Vue component detection"""
         extractor.framework_type = "vue"
         extractor.source_code = "Vue.component('test', {})"
-        
+
         node = Mock()
         assert extractor._is_framework_component(node, "TestComponent") is True
 
@@ -305,10 +302,10 @@ export default UserComponent;
         """Test exported class detection"""
         extractor.source_code = "export class TestClass {}"
         assert extractor._is_exported_class("TestClass") is True
-        
+
         extractor.source_code = "export default TestClass"
         assert extractor._is_exported_class("TestClass") is True
-        
+
         extractor.source_code = "class TestClass {}"
         assert extractor._is_exported_class("TestClass") is False
 
@@ -317,14 +314,16 @@ export default UserComponent;
         # Mock node
         node = Mock()
         node_id = id(node)
-        
+
         # Test caching
         extractor._complexity_cache[node_id] = 5
         assert extractor._calculate_complexity_optimized(node) == 5
-        
+
         # Test calculation
         extractor._complexity_cache.clear()
-        extractor._get_node_text_optimized = Mock(return_value="if (condition) { while (true) { for (let i = 0; i < 10; i++) {} } }")
+        extractor._get_node_text_optimized = Mock(
+            return_value="if (condition) { while (true) { for (let i = 0; i < 10; i++) {} } }"
+        )
         complexity = extractor._calculate_complexity_optimized(node)
         assert complexity > 1  # Should be greater than base complexity
 
@@ -387,7 +386,7 @@ class TestTypeScriptPlugin:
             "angular_component",
             "vue_component",
         ]
-        
+
         for query in expected_queries:
             assert query in queries
 
@@ -403,14 +402,14 @@ class TestTypeScriptPlugin:
     def test_plugin_info(self, plugin):
         """Test plugin information"""
         info = plugin.get_plugin_info()
-        
+
         assert info["name"] == "TypeScript Plugin"
         assert info["language"] == "typescript"
         assert info["extensions"] == [".ts", ".tsx", ".d.ts"]
         assert info["version"] == "2.0.0"
         assert "supported_queries" in info
         assert "features" in info
-        
+
         # Check some expected features
         features = info["features"]
         assert "TypeScript syntax support" in features
@@ -421,28 +420,30 @@ class TestTypeScriptPlugin:
         assert "Decorators" in features
         assert "TSX/JSX support" in features
 
-    @patch('tree_sitter_analyzer.languages.typescript_plugin.TREE_SITTER_AVAILABLE', False)
+    @patch(
+        "tree_sitter_analyzer.languages.typescript_plugin.TREE_SITTER_AVAILABLE", False
+    )
     @pytest.mark.asyncio
     async def test_analyze_file_no_tree_sitter(self, plugin):
         """Test file analysis when tree-sitter is not available"""
         from tree_sitter_analyzer.core.analysis_engine import AnalysisRequest
-        
+
         request = AnalysisRequest(file_path="test.ts")
         result = await plugin.analyze_file("test.ts", request)
-        
+
         assert result.success is False
         assert "Tree-sitter library not available" in result.error_message
 
-    @patch('tree_sitter_analyzer.languages.typescript_plugin.loader.load_language')
+    @patch("tree_sitter_analyzer.languages.typescript_plugin.loader.load_language")
     @pytest.mark.asyncio
     async def test_analyze_file_no_language(self, mock_load_language, plugin):
         """Test file analysis when TypeScript language cannot be loaded"""
         from tree_sitter_analyzer.core.analysis_engine import AnalysisRequest
-        
+
         mock_load_language.return_value = None
         request = AnalysisRequest(file_path="test.ts")
         result = await plugin.analyze_file("test.ts", request)
-        
+
         assert result.success is False
         assert "Could not load TypeScript language for parsing" in result.error_message
 
@@ -450,24 +451,26 @@ class TestTypeScriptPlugin:
     async def test_analyze_file_missing_file(self, plugin):
         """Test file analysis with missing file"""
         from tree_sitter_analyzer.core.analysis_engine import AnalysisRequest
-        
+
         request = AnalysisRequest(file_path="nonexistent.ts")
         result = await plugin.analyze_file("nonexistent.ts", request)
-        
+
         assert result.success is False
         assert result.error_message is not None
 
     def test_get_tree_sitter_language_caching(self, plugin):
         """Test tree-sitter language caching"""
         # First call should load the language
-        with patch('tree_sitter_analyzer.languages.typescript_plugin.loader.load_language') as mock_load:
+        with patch(
+            "tree_sitter_analyzer.languages.typescript_plugin.loader.load_language"
+        ) as mock_load:
             mock_language = Mock()
             mock_load.return_value = mock_language
-            
+
             language1 = plugin.get_tree_sitter_language()
             assert language1 == mock_language
             assert mock_load.call_count == 1
-            
+
             # Second call should use cached language
             language2 = plugin.get_tree_sitter_language()
             assert language2 == mock_language
@@ -485,38 +488,40 @@ class TestTypeScriptPluginIntegration:
     def test_plugin_registration(self):
         """Test that TypeScript plugin can be discovered by plugin manager"""
         from tree_sitter_analyzer.plugins.manager import PluginManager
-        
+
         manager = PluginManager()
-        
+
         # Mock the plugin discovery to avoid dependency issues
-        with patch.object(manager, '_load_from_local_directory') as mock_load:
+        with patch.object(manager, "_load_from_local_directory") as mock_load:
             mock_plugin = TypeScriptPlugin()
             mock_load.return_value = [mock_plugin]
-            
+
             plugins = manager.load_plugins()
-            
+
             # Find TypeScript plugin
             typescript_plugin = None
             for plugin in plugins:
                 if plugin.get_language_name() == "typescript":
                     typescript_plugin = plugin
                     break
-            
+
             assert typescript_plugin is not None
             assert isinstance(typescript_plugin, TypeScriptPlugin)
 
     def test_formatter_integration(self):
         """Test TypeScript formatter integration"""
-        from tree_sitter_analyzer.formatters.formatter_factory import TableFormatterFactory
-        
+        from tree_sitter_analyzer.formatters.formatter_factory import (
+            TableFormatterFactory,
+        )
+
         # Test that TypeScript formatter can be created
         formatter = TableFormatterFactory.create_formatter("typescript", "full")
         assert formatter is not None
-        
+
         # Test alias
         formatter_alias = TableFormatterFactory.create_formatter("ts", "full")
         assert formatter_alias is not None
-        
+
         # Test supported languages includes TypeScript
         supported = TableFormatterFactory.get_supported_languages()
         assert "typescript" in supported or "ts" in supported
@@ -524,21 +529,21 @@ class TestTypeScriptPluginIntegration:
     def test_language_detection_integration(self):
         """Test TypeScript language detection integration"""
         from tree_sitter_analyzer.language_detector import detector
-        
+
         # Test file extension detection
         assert detector.detect_from_extension("test.ts") == "typescript"
         assert detector.detect_from_extension("component.tsx") == "typescript"
         assert detector.detect_from_extension("types.d.ts") == "typescript"
-        
+
         # Test language support
         assert detector.is_supported("typescript") is True
 
     def test_language_loader_integration(self):
         """Test TypeScript language loader integration"""
         from tree_sitter_analyzer.language_loader import get_loader
-        
+
         loader = get_loader()
-        
+
         # Test language availability check
         # Note: This might fail if tree-sitter-typescript is not installed
         # but the method should exist and not crash
@@ -548,9 +553,9 @@ class TestTypeScriptPluginIntegration:
         except Exception:
             # If tree-sitter-typescript is not available, that's OK for testing
             pass
-        
+
         # Test supported languages includes TypeScript
-        supported = loader.get_supported_languages()
+        loader.get_supported_languages()
         # TypeScript should be in the supported list (even if not available)
         assert "typescript" in loader.LANGUAGE_MODULES
 

@@ -1,11 +1,9 @@
-
 """
 Comprehensive tests for Python table formatter.
 Tests cover all formatting methods, Python-specific features, and edge cases.
 """
 
 import pytest
-from typing import Any, Dict, List
 
 from tree_sitter_analyzer.formatters.python_formatter import PythonTableFormatter
 
@@ -30,7 +28,7 @@ class TestPythonTableFormatterBasic:
                     "type": "class",
                     "visibility": "public",
                     "line_range": {"start": 10, "end": 50},
-                    "docstring": "A simple calculator class for basic arithmetic operations."
+                    "docstring": "A simple calculator class for basic arithmetic operations.",
                 }
             ],
             "functions": [
@@ -41,13 +39,13 @@ class TestPythonTableFormatterBasic:
                     "parameters": [
                         {"name": "self", "type": "Calculator"},
                         {"name": "a", "type": "int"},
-                        {"name": "b", "type": "int"}
+                        {"name": "b", "type": "int"},
                     ],
                     "return_type": "int",
                     "complexity_score": 1,
                     "docstring": "Add two numbers together.",
                     "is_async": False,
-                    "decorators": []
+                    "decorators": [],
                 },
                 {
                     "name": "divide",
@@ -56,14 +54,14 @@ class TestPythonTableFormatterBasic:
                     "parameters": [
                         {"name": "self", "type": "Calculator"},
                         {"name": "a", "type": "float"},
-                        {"name": "b", "type": "float"}
+                        {"name": "b", "type": "float"},
                     ],
                     "return_type": "float",
                     "complexity_score": 3,
                     "docstring": "Divide two numbers with error handling.",
                     "is_async": False,
-                    "decorators": []
-                }
+                    "decorators": [],
+                },
             ],
             "methods": [
                 {
@@ -73,13 +71,13 @@ class TestPythonTableFormatterBasic:
                     "parameters": [
                         {"name": "self", "type": "Calculator"},
                         {"name": "a", "type": "int"},
-                        {"name": "b", "type": "int"}
+                        {"name": "b", "type": "int"},
                     ],
                     "return_type": "int",
                     "complexity_score": 1,
                     "docstring": "Add two numbers together.",
                     "is_async": False,
-                    "decorators": []
+                    "decorators": [],
                 }
             ],
             "fields": [
@@ -89,40 +87,34 @@ class TestPythonTableFormatterBasic:
                     "visibility": "private",
                     "line_range": {"start": 12, "end": 12},
                     "modifiers": ["class_variable"],
-                    "javadoc": "Precision for calculations"
+                    "javadoc": "Precision for calculations",
                 }
             ],
             "imports": [
-                {
-                    "name": "math",
-                    "module_name": "",
-                    "raw_text": "import math"
-                },
+                {"name": "math", "module_name": "", "raw_text": "import math"},
                 {
                     "name": "sqrt",
                     "module_name": "math",
-                    "raw_text": "from math import sqrt"
-                }
+                    "raw_text": "from math import sqrt",
+                },
             ],
-            "statistics": {
-                "method_count": 2,
-                "field_count": 1,
-                "class_count": 1
-            },
-            "source_code": '"""Calculator module for basic arithmetic operations."""\n\nimport math\nfrom math import sqrt\n\nclass Calculator:\n    """A simple calculator class."""\n    precision = 2\n    \n    def add(self, a: int, b: int) -> int:\n        """Add two numbers."""\n        return a + b'
+            "statistics": {"method_count": 2, "field_count": 1, "class_count": 1},
+            "source_code": '"""Calculator module for basic arithmetic operations."""\n\nimport math\nfrom math import sqrt\n\nclass Calculator:\n    """A simple calculator class."""\n    precision = 2\n    \n    def add(self, a: int, b: int) -> int:\n        """Add two numbers."""\n        return a + b',
         }
 
     def test_formatter_initialization(self, formatter):
         """Test formatter initialization."""
         assert isinstance(formatter, PythonTableFormatter)
-        assert hasattr(formatter, 'format')
-        assert hasattr(formatter, '_format_full_table')
-        assert hasattr(formatter, '_format_compact_table')
+        assert hasattr(formatter, "format")
+        assert hasattr(formatter, "_format_full_table")
+        assert hasattr(formatter, "_format_compact_table")
 
-    def test_format_method_delegates_to_format_structure(self, formatter, sample_python_data):
+    def test_format_method_delegates_to_format_structure(
+        self, formatter, sample_python_data
+    ):
         """Test that format method delegates to format_structure."""
         result = formatter.format(sample_python_data)
-        
+
         assert isinstance(result, str)
         assert len(result) > 0
         assert "Calculator" in result
@@ -131,7 +123,7 @@ class TestPythonTableFormatterBasic:
         """Test formatting with empty data."""
         empty_data = {}
         result = formatter.format(empty_data)
-        
+
         assert isinstance(result, str)
         # Should handle empty data gracefully
 
@@ -150,11 +142,11 @@ class TestPythonTableFormatterFullFormat:
             "file_path": "src/utils.py",
             "classes": [],
             "functions": [],
-            "imports": []
+            "imports": [],
         }
-        
+
         result = formatter._format_full_table(data)
-        
+
         assert "# Module: utils" in result
 
     def test_full_format_package_header(self, formatter):
@@ -163,11 +155,11 @@ class TestPythonTableFormatterFullFormat:
             "file_path": "src/__init__.py",
             "classes": [],
             "functions": [],
-            "imports": []
+            "imports": [],
         }
-        
+
         result = formatter._format_full_table(data)
-        
+
         assert "# Package:" in result
 
     def test_full_format_script_header(self, formatter):
@@ -176,16 +168,13 @@ class TestPythonTableFormatterFullFormat:
             "file_path": "main.py",
             "classes": [],
             "functions": [
-                {
-                    "name": "main",
-                    "raw_text": "if __name__ == '__main__':\n    main()"
-                }
+                {"name": "main", "raw_text": "if __name__ == '__main__':\n    main()"}
             ],
-            "imports": []
+            "imports": [],
         }
-        
+
         result = formatter._format_full_table(data)
-        
+
         assert "# Script: main" in result
 
     def test_full_format_module_docstring(self, formatter):
@@ -195,11 +184,11 @@ class TestPythonTableFormatterFullFormat:
             "source_code": '"""Calculator module for basic arithmetic operations."""\n\nclass Calculator:\n    pass',
             "classes": [],
             "functions": [],
-            "imports": []
+            "imports": [],
         }
-        
+
         result = formatter._format_full_table(data)
-        
+
         assert "## Description" in result
         assert "Calculator module for basic arithmetic operations." in result
 
@@ -212,12 +201,12 @@ class TestPythonTableFormatterFullFormat:
             "imports": [
                 {"raw_text": "import os"},
                 {"raw_text": "from typing import List"},
-                {"name": "json", "module_name": "", "raw_text": ""}  # Fallback case
-            ]
+                {"name": "json", "module_name": "", "raw_text": ""},  # Fallback case
+            ],
         }
-        
+
         result = formatter._format_full_table(data)
-        
+
         assert "## Imports" in result
         assert "```python" in result
         assert "import os" in result
@@ -233,37 +222,26 @@ class TestPythonTableFormatterFullFormat:
                     "name": "User",
                     "type": "class",
                     "visibility": "public",
-                    "line_range": {"start": 10, "end": 30}
+                    "line_range": {"start": 10, "end": 30},
                 },
                 {
                     "name": "Admin",
                     "type": "class",
                     "visibility": "public",
-                    "line_range": {"start": 35, "end": 50}
-                }
+                    "line_range": {"start": 35, "end": 50},
+                },
             ],
             "methods": [
-                {
-                    "name": "get_name",
-                    "line_range": {"start": 15, "end": 18}
-                },
-                {
-                    "name": "set_permissions",
-                    "line_range": {"start": 40, "end": 45}
-                }
+                {"name": "get_name", "line_range": {"start": 15, "end": 18}},
+                {"name": "set_permissions", "line_range": {"start": 40, "end": 45}},
             ],
-            "fields": [
-                {
-                    "name": "username",
-                    "line_range": {"start": 12, "end": 12}
-                }
-            ],
+            "fields": [{"name": "username", "line_range": {"start": 12, "end": 12}}],
             "functions": [],
-            "imports": []
+            "imports": [],
         }
-        
+
         result = formatter._format_full_table(data)
-        
+
         assert "## Classes" in result
         assert "| Class | Type | Visibility | Lines | Methods | Fields |" in result
         assert "| User | class | public | 10-30 | 1 | 1 |" in result
@@ -278,19 +256,16 @@ class TestPythonTableFormatterFullFormat:
                     "name": "Calculator",
                     "type": "class",
                     "visibility": "public",
-                    "line_range": {"start": 10, "end": 50}
+                    "line_range": {"start": 10, "end": 50},
                 }
             ],
-            "statistics": {
-                "method_count": 3,
-                "field_count": 2
-            },
+            "statistics": {"method_count": 3, "field_count": 2},
             "functions": [],
-            "imports": []
+            "imports": [],
         }
-        
+
         result = formatter._format_full_table(data)
-        
+
         assert "## Class Info" in result
         assert "| Property | Value |" in result
         assert "| Type | class |" in result
@@ -311,7 +286,7 @@ class TestPythonTableFormatterFullFormat:
                     "visibility": "private",
                     "modifiers": ["instance"],
                     "line_range": {"start": 15, "end": 15},
-                    "javadoc": "User's login name"
+                    "javadoc": "User's login name",
                 },
                 {
                     "name": "MAX_USERS",
@@ -319,13 +294,13 @@ class TestPythonTableFormatterFullFormat:
                     "visibility": "public",
                     "modifiers": ["class", "constant"],
                     "line_range": {"start": 10, "end": 10},
-                    "javadoc": "Maximum number of users allowed in the system"
-                }
-            ]
+                    "javadoc": "Maximum number of users allowed in the system",
+                },
+            ],
         }
-        
+
         result = formatter._format_full_table(data)
-        
+
         assert "## Fields" in result
         assert "| Name | Type | Vis | Modifiers | Line | Doc |" in result
         assert "| username | str |" in result
@@ -345,21 +320,24 @@ class TestPythonTableFormatterFullFormat:
                     "line_range": {"start": 20, "end": 35},
                     "parameters": [
                         {"name": "self", "type": "Service"},
-                        {"name": "data", "type": "List[str]"}
+                        {"name": "data", "type": "List[str]"},
                     ],
                     "return_type": "Dict[str, Any]",
                     "complexity_score": 5,
                     "docstring": "Process input data and return results.",
                     "is_async": True,
-                    "decorators": ["property", "cached"]
+                    "decorators": ["property", "cached"],
                 }
-            ]
+            ],
         }
-        
+
         result = formatter._format_full_table(data)
-        
+
         assert "## Methods" in result
-        assert "| Method | Signature | Vis | Lines | Cols | Cx | Decorators | Doc |" in result
+        assert (
+            "| Method | Signature | Vis | Lines | Cols | Cx | Decorators | Doc |"
+            in result
+        )
         assert "process_data🔄" in result  # Async indicator
         assert "@property" in result
 
@@ -376,29 +354,24 @@ class TestPythonTableFormatterCompactFormat:
         """Test compact format header with multiple classes."""
         data = {
             "file_path": "models.py",
-            "classes": [
-                {"name": "User"},
-                {"name": "Admin"}
-            ],
-            "statistics": {"method_count": 5, "field_count": 3}
+            "classes": [{"name": "User"}, {"name": "Admin"}],
+            "statistics": {"method_count": 5, "field_count": 3},
         }
-        
+
         result = formatter._format_compact_table(data)
-        
+
         assert "# models.py" in result
 
     def test_compact_format_single_class_header(self, formatter):
         """Test compact format header with single class."""
         data = {
             "file_path": "calculator.py",
-            "classes": [
-                {"name": "Calculator"}
-            ],
-            "statistics": {"method_count": 3, "field_count": 1}
+            "classes": [{"name": "Calculator"}],
+            "statistics": {"method_count": 3, "field_count": 1},
         }
-        
+
         result = formatter._format_compact_table(data)
-        
+
         assert "# Calculator" in result
 
     def test_compact_format_info_section(self, formatter):
@@ -406,14 +379,11 @@ class TestPythonTableFormatterCompactFormat:
         data = {
             "file_path": "test.py",
             "classes": [{"name": "Test"}],
-            "statistics": {
-                "method_count": 4,
-                "field_count": 2
-            }
+            "statistics": {"method_count": 4, "field_count": 2},
         }
-        
+
         result = formatter._format_compact_table(data)
-        
+
         assert "## Info" in result
         assert "| Classes | 1 |" in result
         assert "| Methods | 4 |" in result
@@ -432,17 +402,17 @@ class TestPythonTableFormatterCompactFormat:
                     "line_range": {"start": 10, "end": 20},
                     "parameters": [
                         {"name": "self", "type": "Service"},
-                        {"name": "command", "type": "str"}
+                        {"name": "command", "type": "str"},
                     ],
                     "return_type": "bool",
                     "complexity_score": 2,
-                    "javadoc": "Execute a command and return success status."
+                    "javadoc": "Execute a command and return success status.",
                 }
-            ]
+            ],
         }
-        
+
         result = formatter._format_compact_table(data)
-        
+
         assert "## Methods" in result
         assert "| Method | Sig | V | L | Cx | Doc |" in result
         assert "| execute |" in result
@@ -465,17 +435,17 @@ class TestPythonTableFormatterMethodFormatting:
             "line_range": {"start": 10, "end": 15},
             "parameters": [
                 {"name": "self", "type": "Calculator"},
-                {"name": "value", "type": "int"}
+                {"name": "value", "type": "int"},
             ],
             "return_type": "float",
             "complexity_score": 2,
             "docstring": "Calculate result from input value.",
             "is_async": False,
-            "decorators": []
+            "decorators": [],
         }
-        
+
         result = formatter._format_method_row(method)
-        
+
         assert "calculate" in result
         assert "🔓" in result  # Public visibility
         assert "10-15" in result
@@ -492,11 +462,11 @@ class TestPythonTableFormatterMethodFormatting:
             "complexity_score": 3,
             "docstring": "Fetch data asynchronously.",
             "is_async": True,
-            "decorators": []
+            "decorators": [],
         }
-        
+
         result = formatter._format_method_row(method)
-        
+
         assert "fetch_data🔄" in result  # Async indicator
 
     def test_format_method_row_private(self, formatter):
@@ -510,11 +480,11 @@ class TestPythonTableFormatterMethodFormatting:
             "complexity_score": 1,
             "docstring": "Internal helper method.",
             "is_async": False,
-            "decorators": []
+            "decorators": [],
         }
-        
+
         result = formatter._format_method_row(method)
-        
+
         assert "_helper_method" in result
         assert "🔒" in result  # Private visibility
 
@@ -526,17 +496,17 @@ class TestPythonTableFormatterMethodFormatting:
             "line_range": {"start": 5, "end": 10},
             "parameters": [
                 {"name": "self", "type": "Calculator"},
-                {"name": "precision", "type": "int"}
+                {"name": "precision", "type": "int"},
             ],
             "return_type": "None",
             "complexity_score": 1,
             "docstring": "Initialize calculator with precision.",
             "is_async": False,
-            "decorators": []
+            "decorators": [],
         }
-        
+
         result = formatter._format_method_row(method)
-        
+
         assert "__init__" in result
         assert "✨" in result  # Magic method visibility
 
@@ -551,11 +521,11 @@ class TestPythonTableFormatterMethodFormatting:
             "complexity_score": 1,
             "docstring": "Get cached result.",
             "is_async": False,
-            "decorators": ["property", "lru_cache"]
+            "decorators": ["property", "lru_cache"],
         }
-        
+
         result = formatter._format_method_row(method)
-        
+
         assert "@property" in result
 
     def test_format_method_row_fallback_line_numbers(self, formatter):
@@ -570,11 +540,11 @@ class TestPythonTableFormatterMethodFormatting:
             "complexity_score": 1,
             "docstring": "Legacy method with old line format.",
             "is_async": False,
-            "decorators": []
+            "decorators": [],
         }
-        
+
         result = formatter._format_method_row(method)
-        
+
         assert "100-110" in result
 
 
@@ -592,13 +562,13 @@ class TestPythonTableFormatterSignatures:
             "parameters": [
                 {"name": "self", "type": "Calculator"},
                 {"name": "a", "type": "int"},
-                {"name": "b", "type": "str"}
+                {"name": "b", "type": "str"},
             ],
-            "return_type": "bool"
+            "return_type": "bool",
         }
-        
+
         result = formatter._create_compact_signature(method)
-        
+
         assert result == "(Calculator,i,s):b"
 
     def test_create_compact_signature_complex_types(self, formatter):
@@ -607,13 +577,13 @@ class TestPythonTableFormatterSignatures:
             "parameters": [
                 {"name": "data", "type": "List[str]"},
                 {"name": "mapping", "type": "Dict[str, int]"},
-                {"name": "optional", "type": "Optional[float]"}
+                {"name": "optional", "type": "Optional[float]"},
             ],
-            "return_type": "Union[str, None]"
+            "return_type": "Union[str, None]",
         }
-        
+
         result = formatter._create_compact_signature(method)
-        
+
         assert "L[s]" in result
         assert "D[s,i]" in result
         assert "O[f]" in result
@@ -621,15 +591,12 @@ class TestPythonTableFormatterSignatures:
     def test_create_compact_signature_no_types(self, formatter):
         """Test compact signature with no type information."""
         method = {
-            "parameters": [
-                {"name": "param1"},
-                {"name": "param2"}
-            ],
-            "return_type": "Any"
+            "parameters": [{"name": "param1"}, {"name": "param2"}],
+            "return_type": "Any",
         }
-        
+
         result = formatter._create_compact_signature(method)
-        
+
         assert result == "(Any,Any):A"
 
     def test_format_python_signature_with_types(self, formatter):
@@ -638,27 +605,24 @@ class TestPythonTableFormatterSignatures:
             "parameters": [
                 {"name": "self", "type": "Calculator"},
                 {"name": "value", "type": "int"},
-                {"name": "precision", "type": "float"}
+                {"name": "precision", "type": "float"},
             ],
-            "return_type": "Decimal"
+            "return_type": "Decimal",
         }
-        
+
         result = formatter._format_python_signature(method)
-        
+
         assert result == "(self: Calculator, value: int, precision: float) -> Decimal"
 
     def test_format_python_signature_without_types(self, formatter):
         """Test Python signature formatting without types."""
         method = {
-            "parameters": [
-                {"name": "self"},
-                {"name": "value"}
-            ],
-            "return_type": ""
+            "parameters": [{"name": "self"}, {"name": "value"}],
+            "return_type": "",
         }
-        
+
         result = formatter._format_python_signature(method)
-        
+
         assert result == "(self, value)"
 
     def test_format_python_signature_mixed_types(self, formatter):
@@ -667,13 +631,13 @@ class TestPythonTableFormatterSignatures:
             "parameters": [
                 {"name": "self", "type": "Service"},
                 {"name": "data"},  # No type
-                {"name": "callback", "type": "Callable[[str], bool]"}
+                {"name": "callback", "type": "Callable[[str], bool]"},
             ],
-            "return_type": "Any"
+            "return_type": "Any",
         }
-        
+
         result = formatter._format_python_signature(method)
-        
+
         assert "self: Service" in result
         assert "data," in result  # No type annotation
         assert "callback: Callable[[str], bool]" in result
@@ -739,9 +703,9 @@ class TestPythonTableFormatterUtilities:
         data = {
             "source_code": '"""Single line module docstring."""\n\nclass Test:\n    pass'
         }
-        
+
         result = formatter._extract_module_docstring(data)
-        
+
         assert result == "Single line module docstring."
 
     def test_extract_module_docstring_multi_line(self, formatter):
@@ -749,9 +713,9 @@ class TestPythonTableFormatterUtilities:
         data = {
             "source_code": '"""Multi-line\nmodule docstring\nwith details."""\n\nclass Test:\n    pass'
         }
-        
+
         result = formatter._extract_module_docstring(data)
-        
+
         assert "Multi-line" in result
         assert "module docstring" in result
         assert "with details." in result
@@ -761,27 +725,25 @@ class TestPythonTableFormatterUtilities:
         data = {
             "source_code": "'''Module docstring with single quotes.'''\n\nclass Test:\n    pass"
         }
-        
+
         result = formatter._extract_module_docstring(data)
-        
+
         assert result == "Module docstring with single quotes."
 
     def test_extract_module_docstring_none(self, formatter):
         """Test extracting module docstring when none exists."""
-        data = {
-            "source_code": "import os\n\nclass Test:\n    pass"
-        }
-        
+        data = {"source_code": "import os\n\nclass Test:\n    pass"}
+
         result = formatter._extract_module_docstring(data)
-        
+
         assert result is None
 
     def test_extract_module_docstring_no_source(self, formatter):
         """Test extracting module docstring with no source code."""
         data = {}
-        
+
         result = formatter._extract_module_docstring(data)
-        
+
         assert result is None
 
     def test_get_python_visibility_symbol(self, formatter):
@@ -795,14 +757,14 @@ class TestPythonTableFormatterUtilities:
     def test_format_decorators_empty(self, formatter):
         """Test formatting empty decorators list."""
         result = formatter._format_decorators([])
-        
+
         assert result == "-"
 
     def test_format_decorators_important(self, formatter):
         """Test formatting important decorators."""
         decorators = ["property", "staticmethod", "custom"]
         result = formatter._format_decorators(decorators)
-        
+
         assert "@property" in result
         assert "@staticmethod" in result
 
@@ -810,14 +772,14 @@ class TestPythonTableFormatterUtilities:
         """Test formatting single decorator."""
         decorators = ["custom_decorator"]
         result = formatter._format_decorators(decorators)
-        
+
         assert result == "@custom_decorator"
 
     def test_format_decorators_multiple_non_important(self, formatter):
         """Test formatting multiple non-important decorators."""
         decorators = ["custom1", "custom2", "custom3"]
         result = formatter._format_decorators(decorators)
-        
+
         assert result == "@custom1 (+2)"
 
 
@@ -835,9 +797,9 @@ class TestPythonTableFormatterEdgeCases:
             "file_path": "incomplete.py"
             # Missing classes, functions, imports, etc.
         }
-        
+
         result = formatter._format_full_table(data)
-        
+
         assert isinstance(result, str)
         assert "# Module: incomplete" in result
 
@@ -853,13 +815,13 @@ class TestPythonTableFormatterEdgeCases:
                     "name": "broken_method",
                     "line_range": {},  # Empty line range
                     "parameters": [],
-                    "complexity_score": 0
+                    "complexity_score": 0,
                 }
-            ]
+            ],
         }
-        
+
         result = formatter._format_full_table(data)
-        
+
         assert "broken_method" in result
         assert "0-0" in result  # Default line range
 
@@ -872,7 +834,7 @@ class TestPythonTableFormatterEdgeCases:
                     "name": "测试类",
                     "type": "class",
                     "visibility": "public",
-                    "line_range": {"start": 1, "end": 10}
+                    "line_range": {"start": 1, "end": 10},
                 }
             ],
             "functions": [],
@@ -885,13 +847,13 @@ class TestPythonTableFormatterEdgeCases:
                     "parameters": [{"name": "数据", "type": "str"}],
                     "return_type": "bool",
                     "complexity_score": 1,
-                    "docstring": "处理输入数据并返回结果。"
+                    "docstring": "处理输入数据并返回结果。",
                 }
-            ]
+            ],
         }
-        
+
         result = formatter._format_full_table(data)
-        
+
         # Unicode characters are escaped in output
         assert "\u5904\u7406\u6570\u636e" in result  # 处理数据 method name
         assert "\u6570\u636e" in result  # 数据 parameter name
@@ -905,7 +867,7 @@ class TestPythonTableFormatterEdgeCases:
                     "name": "VeryLongClassNameThatExceedsNormalLengthLimits",
                     "type": "class",
                     "visibility": "public",
-                    "line_range": {"start": 1, "end": 50}
+                    "line_range": {"start": 1, "end": 50},
                 }
             ],
             "functions": [],
@@ -920,15 +882,18 @@ class TestPythonTableFormatterEdgeCases:
                     ],
                     "return_type": "AnotherVeryLongTypeName",
                     "complexity_score": 1,
-                    "docstring": "This is a very long docstring that should be truncated appropriately."
+                    "docstring": "This is a very long docstring that should be truncated appropriately.",
                 }
-            ]
+            ],
         }
-        
+
         result = formatter._format_full_table(data)
-        
+
         # Long names may be truncated in output, check for partial matches
-        assert "VeryLongClassNameThatExceedsNormalLengthLimits" in result or "Ver" in result
+        assert (
+            "VeryLongClassNameThatExceedsNormalLengthLimits" in result
+            or "Ver" in result
+        )
         assert "extremely_long_method_name_that_should_be_handled_gracefully" in result
 
     def test_format_with_empty_collections(self, formatter):
@@ -940,15 +905,11 @@ class TestPythonTableFormatterEdgeCases:
             "imports": [],
             "methods": [],
             "fields": [],
-            "statistics": {
-                "method_count": 0,
-                "field_count": 0,
-                "class_count": 0
-            }
+            "statistics": {"method_count": 0, "field_count": 0, "class_count": 0},
         }
-        
+
         result = formatter._format_full_table(data)
-        
+
         assert "# Module: empty" in result
         # Should handle empty collections gracefully
 
@@ -957,12 +918,7 @@ class TestPythonTableFormatterEdgeCases:
         data = {
             "file_path": "test.py",
             "classes": [
-                {
-                    "name": None,
-                    "type": None,
-                    "visibility": None,
-                    "line_range": None
-                }
+                {"name": None, "type": None, "visibility": None, "line_range": None}
             ],
             "functions": [],
             "imports": [],
@@ -974,13 +930,13 @@ class TestPythonTableFormatterEdgeCases:
                     "parameters": None,
                     "return_type": None,
                     "complexity_score": None,
-                    "docstring": None
+                    "docstring": None,
                 }
-            ]
+            ],
         }
-        
+
         result = formatter._format_full_table(data)
-        
+
         assert isinstance(result, str)
         # Should handle None values gracefully without crashing
 
@@ -989,35 +945,34 @@ class TestPythonTableFormatterEdgeCases:
         # Create large dataset
         large_methods = []
         for i in range(100):
-            large_methods.append({
-                "name": f"method_{i}",
-                "visibility": "public",
-                "line_range": {"start": i * 10, "end": i * 10 + 5},
-                "parameters": [
-                    {"name": "self", "type": "TestClass"}
-                ] + [{"name": f"param_{j}", "type": "str"} for j in range(5)],
-                "return_type": "bool",
-                "complexity_score": i % 10,
-                "docstring": f"Method {i} documentation.",
-                "is_async": i % 2 == 0,
-                "decorators": [f"decorator_{j}" for j in range(3)]
-            })
-        
+            large_methods.append(
+                {
+                    "name": f"method_{i}",
+                    "visibility": "public",
+                    "line_range": {"start": i * 10, "end": i * 10 + 5},
+                    "parameters": [{"name": "self", "type": "TestClass"}]
+                    + [{"name": f"param_{j}", "type": "str"} for j in range(5)],
+                    "return_type": "bool",
+                    "complexity_score": i % 10,
+                    "docstring": f"Method {i} documentation.",
+                    "is_async": i % 2 == 0,
+                    "decorators": [f"decorator_{j}" for j in range(3)],
+                }
+            )
+
         data = {
             "file_path": "large_file.py",
-            "classes": [{"name": "LargeClass", "type": "class", "visibility": "public"}],
+            "classes": [
+                {"name": "LargeClass", "type": "class", "visibility": "public"}
+            ],
             "functions": [],
             "imports": [],
             "methods": large_methods,
-            "statistics": {
-                "method_count": 100,
-                "field_count": 0,
-                "class_count": 1
-            }
+            "statistics": {"method_count": 100, "field_count": 0, "class_count": 1},
         }
-        
+
         result = formatter._format_full_table(data)
-        
+
         assert isinstance(result, str)
         assert len(result) > 1000  # Should generate substantial output
         assert "method_0" in result

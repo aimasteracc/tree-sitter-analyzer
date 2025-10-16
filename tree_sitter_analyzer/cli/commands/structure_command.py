@@ -15,8 +15,8 @@ from ...constants import (
     ELEMENT_TYPE_VARIABLE,
     is_element_of_type,
 )
-from ...output_manager import output_data, output_json, output_section
 from ...formatters.language_formatter_factory import create_language_formatter
+from ...output_manager import output_data, output_json, output_section
 from .base_command import BaseCommand
 
 if TYPE_CHECKING:
@@ -40,7 +40,9 @@ class StructureCommand(BaseCommand):
         formatter = create_language_formatter(analysis_result.language)
         if formatter:
             # Use language-specific formatter
-            formatted_output = formatter.format_structure(self._convert_to_formatter_format(analysis_result))
+            formatted_output = formatter.format_structure(
+                self._convert_to_formatter_format(analysis_result)
+            )
             print(formatted_output)
             return
 
@@ -58,7 +60,7 @@ class StructureCommand(BaseCommand):
     def _convert_to_formatter_format(self, analysis_result: "AnalysisResult") -> dict:
         """Convert AnalysisResult to format expected by formatters."""
         from ...constants import get_element_type
-        
+
         return {
             "file_path": analysis_result.file_path,
             "language": analysis_result.language,
@@ -82,7 +84,7 @@ class StructureCommand(BaseCommand):
                     "line_range": {
                         "start": getattr(element, "start_line", 0),
                         "end": getattr(element, "end_line", 0),
-                    }
+                    },
                 }
                 for element in analysis_result.elements
             ],
@@ -91,7 +93,7 @@ class StructureCommand(BaseCommand):
                 "language": analysis_result.language,
                 "file_path": analysis_result.file_path,
                 "analyzer_version": "2.0.0",
-            }
+            },
         }
 
     def _convert_to_legacy_format(self, analysis_result: "AnalysisResult") -> dict:

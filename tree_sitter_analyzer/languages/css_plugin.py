@@ -8,7 +8,7 @@ selector parsing, and property analysis.
 """
 
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from ..models import AnalysisResult, StyleElement
 from ..plugins.base import ElementExtractor, LanguagePlugin
@@ -28,15 +28,56 @@ class CssElementExtractor(ElementExtractor):
     def __init__(self):
         self.property_categories = {
             # CSS プロパティの分類システム
-            "layout": ["display", "position", "float", "clear", "overflow", "visibility", "z-index"],
-            "box_model": ["width", "height", "margin", "padding", "border", "box-sizing"],
-            "typography": ["font", "color", "text", "line-height", "letter-spacing", "word-spacing"],
-            "background": ["background", "background-color", "background-image", "background-position", "background-size"],
-            "flexbox": ["flex", "justify-content", "align-items", "align-content", "flex-direction", "flex-wrap"],
+            "layout": [
+                "display",
+                "position",
+                "float",
+                "clear",
+                "overflow",
+                "visibility",
+                "z-index",
+            ],
+            "box_model": [
+                "width",
+                "height",
+                "margin",
+                "padding",
+                "border",
+                "box-sizing",
+            ],
+            "typography": [
+                "font",
+                "color",
+                "text",
+                "line-height",
+                "letter-spacing",
+                "word-spacing",
+            ],
+            "background": [
+                "background",
+                "background-color",
+                "background-image",
+                "background-position",
+                "background-size",
+            ],
+            "flexbox": [
+                "flex",
+                "justify-content",
+                "align-items",
+                "align-content",
+                "flex-direction",
+                "flex-wrap",
+            ],
             "grid": ["grid", "grid-template", "grid-area", "grid-column", "grid-row"],
             "animation": ["animation", "transition", "transform", "keyframes"],
-            "responsive": ["media", "min-width", "max-width", "min-height", "max-height"],
-            "other": []
+            "responsive": [
+                "media",
+                "min-width",
+                "max-width",
+                "min-height",
+                "max-height",
+            ],
+            "other": [],
         }
 
     def extract_functions(self, tree: "tree_sitter.Tree", source_code: str) -> list:
@@ -55,10 +96,12 @@ class CssElementExtractor(ElementExtractor):
         """CSS doesn't have imports in the traditional sense, return empty list"""
         return []
 
-    def extract_css_rules(self, tree: "tree_sitter.Tree", source_code: str) -> list[StyleElement]:
+    def extract_css_rules(
+        self, tree: "tree_sitter.Tree", source_code: str
+    ) -> list[StyleElement]:
         """Extract CSS rules using tree-sitter-css parser"""
         elements = []
-        
+
         try:
             if hasattr(tree, "root_node"):
                 self._traverse_for_css_rules(tree.root_node, elements, source_code)
@@ -68,10 +111,7 @@ class CssElementExtractor(ElementExtractor):
         return elements
 
     def _traverse_for_css_rules(
-        self,
-        node: "tree_sitter.Node",
-        elements: list[StyleElement],
-        source_code: str
+        self, node: "tree_sitter.Node", elements: list[StyleElement], source_code: str
     ) -> None:
         """Traverse tree to find CSS rules using tree-sitter-css grammar"""
         if hasattr(node, "type") and self._is_css_rule_node(node.type):
@@ -99,14 +139,12 @@ class CssElementExtractor(ElementExtractor):
             "font_face_statement",
             "page_statement",
             "charset_statement",
-            "namespace_statement"
+            "namespace_statement",
         ]
         return node_type in css_rule_types
 
     def _create_style_element(
-        self, 
-        node: "tree_sitter.Node", 
-        source_code: str
+        self, node: "tree_sitter.Node", source_code: str
     ) -> StyleElement | None:
         """Create StyleElement from tree-sitter node using tree-sitter-css grammar"""
         try:
@@ -116,7 +154,12 @@ class CssElementExtractor(ElementExtractor):
                 properties = self._extract_properties(node, source_code)
                 element_class = self._classify_rule(properties)
                 name = selector or "unknown_rule"
-            elif node.type in ["at_rule", "media_statement", "import_statement", "keyframes_statement"]:
+            elif node.type in [
+                "at_rule",
+                "media_statement",
+                "import_statement",
+                "keyframes_statement",
+            ]:
                 selector = self._extract_at_rule_name(node, source_code)
                 properties = {}
                 element_class = "at_rule"
@@ -133,13 +176,15 @@ class CssElementExtractor(ElementExtractor):
             # Create StyleElement
             element = StyleElement(
                 name=name,
-                start_line=node.start_point[0] + 1 if hasattr(node, "start_point") else 0,
+                start_line=node.start_point[0] + 1
+                if hasattr(node, "start_point")
+                else 0,
                 end_line=node.end_point[0] + 1 if hasattr(node, "end_point") else 0,
                 raw_text=raw_text,
                 language="css",
                 selector=selector,
                 properties=properties,
-                element_class=element_class
+                element_class=element_class,
             )
 
             return element
@@ -155,28 +200,35 @@ class CssElementExtractor(ElementExtractor):
                 for child in node.children:
                     if hasattr(child, "type") and child.type == "selectors":
                         return self._extract_node_text(child, source_code).strip()
-            
+
             # Fallback: extract from beginning of node text
             node_text = self._extract_node_text(node, source_code)
             if "{" in node_text:
                 return node_text.split("{")[0].strip()
-            
+
             return "unknown"
         except Exception:
             return "unknown"
 
-    def _extract_properties(self, node: "tree_sitter.Node", source_code: str) -> dict[str, str]:
+    def _extract_properties(
+        self, node: "tree_sitter.Node", source_code: str
+    ) -> dict[str, str]:
         """Extract properties from CSS rule_set node using tree-sitter-css grammar"""
         properties = {}
-        
+
         try:
             if hasattr(node, "children"):
                 for child in node.children:
                     if hasattr(child, "type") and child.type == "block":
                         # Look for declarations within the block
                         for grandchild in child.children:
-                            if hasattr(grandchild, "type") and grandchild.type == "declaration":
-                                prop_name, prop_value = self._parse_declaration(grandchild, source_code)
+                            if (
+                                hasattr(grandchild, "type")
+                                and grandchild.type == "declaration"
+                            ):
+                                prop_name, prop_value = self._parse_declaration(
+                                    grandchild, source_code
+                                )
                                 if prop_name:
                                     properties[prop_name] = prop_value
         except Exception as e:
@@ -184,20 +236,26 @@ class CssElementExtractor(ElementExtractor):
 
         return properties
 
-    def _parse_declaration(self, decl_node: "tree_sitter.Node", source_code: str) -> tuple[str, str]:
+    def _parse_declaration(
+        self, decl_node: "tree_sitter.Node", source_code: str
+    ) -> tuple[str, str]:
         """Parse individual CSS declaration using tree-sitter-css grammar"""
         try:
             prop_name = ""
             prop_value = ""
-            
+
             if hasattr(decl_node, "children"):
                 for child in decl_node.children:
                     if hasattr(child, "type"):
                         if child.type == "property_name":
-                            prop_name = self._extract_node_text(child, source_code).strip()
+                            prop_name = self._extract_node_text(
+                                child, source_code
+                            ).strip()
                         elif child.type in ["value", "values"]:
-                            prop_value = self._extract_node_text(child, source_code).strip()
-            
+                            prop_value = self._extract_node_text(
+                                child, source_code
+                            ).strip()
+
             # Fallback to simple parsing
             if not prop_name:
                 decl_text = self._extract_node_text(decl_node, source_code)
@@ -205,7 +263,7 @@ class CssElementExtractor(ElementExtractor):
                     parts = decl_text.split(":", 1)
                     prop_name = parts[0].strip()
                     prop_value = parts[1].strip().rstrip(";")
-            
+
             return prop_name, prop_value
         except Exception:
             return "", ""
@@ -227,16 +285,16 @@ class CssElementExtractor(ElementExtractor):
         """Classify CSS rule based on properties"""
         if not properties:
             return "other"
-        
+
         # Count properties in each category
-        category_scores = {category: 0 for category in self.property_categories}
-        
+        category_scores = dict.fromkeys(self.property_categories, 0)
+
         for prop_name in properties.keys():
             prop_name_lower = prop_name.lower()
             for category, props in self.property_categories.items():
                 if any(prop in prop_name_lower for prop in props):
                     category_scores[category] += 1
-        
+
         # Return category with highest score
         best_category = max(category_scores, key=category_scores.get)
         return best_category if category_scores[best_category] > 0 else "other"
@@ -272,13 +330,16 @@ class CssPlugin(LanguagePlugin):
     def get_queries(self) -> dict[str, str]:
         """Return CSS-specific tree-sitter queries"""
         from ..queries.css import CSS_QUERIES
+
         return CSS_QUERIES
 
-    def execute_query_strategy(self, query_key: str | None, language: str) -> str | None:
+    def execute_query_strategy(
+        self, query_key: str | None, language: str
+    ) -> str | None:
         """Execute query strategy for CSS"""
         if language != "css":
             return None
-        
+
         queries = self.get_queries()
         return queries.get(query_key) if query_key else None
 
@@ -294,44 +355,40 @@ class CssPlugin(LanguagePlugin):
             "animation": ["rule_set"],
             "responsive": ["media_statement"],
             "at_rules": ["at_rule"],
-            "other": ["rule_set"]
+            "other": ["rule_set"],
         }
 
     async def analyze_file(
         self, file_path: str, request: "AnalysisRequest"
     ) -> "AnalysisResult":
         """Analyze CSS file using tree-sitter-css parser"""
-        from ..core.analysis_engine import UnifiedAnalysisEngine
         from ..encoding_utils import read_file_safe
 
         try:
             # Read file content
             content, encoding = read_file_safe(file_path)
-            
-            # Create analysis engine
-            engine = UnifiedAnalysisEngine()
-            
+
             # Use tree-sitter-css for parsing
             try:
-                import tree_sitter_css as ts_css
                 import tree_sitter
-                
+                import tree_sitter_css as ts_css
+
                 # Get CSS language
                 CSS_LANGUAGE = tree_sitter.Language(ts_css.language())
-                
+
                 # Create parser
                 parser = tree_sitter.Parser()
                 parser.language = CSS_LANGUAGE
-                
+
                 # Parse the CSS content
-                tree = parser.parse(content.encode('utf-8'))
-                
+                tree = parser.parse(content.encode("utf-8"))
+
                 # Extract elements using the extractor
                 extractor = self.create_extractor()
                 elements = extractor.extract_css_rules(tree, content)
-                
+
                 log_info(f"Extracted {len(elements)} CSS rules from {file_path}")
-                
+
                 return AnalysisResult(
                     file_path=file_path,
                     language="css",
@@ -341,15 +398,17 @@ class CssPlugin(LanguagePlugin):
                     query_results={},
                     source_code=content,
                     success=True,
-                    error_message=None
+                    error_message=None,
                 )
-                
+
             except ImportError:
-                log_error("tree-sitter-css not available, falling back to basic parsing")
+                log_error(
+                    "tree-sitter-css not available, falling back to basic parsing"
+                )
                 # Fallback to basic parsing
                 lines = content.splitlines()
                 line_count = len(lines)
-                
+
                 # Create basic StyleElement for the CSS document
                 css_element = StyleElement(
                     name="css",
@@ -359,7 +418,7 @@ class CssPlugin(LanguagePlugin):
                     language="css",
                     selector="*",
                     properties={},
-                    element_class="other"
+                    element_class="other",
                 )
                 elements = [css_element]
 
@@ -372,7 +431,7 @@ class CssPlugin(LanguagePlugin):
                     query_results={},
                     source_code=content,
                     success=True,
-                    error_message=None
+                    error_message=None,
                 )
 
         except Exception as e:
@@ -386,5 +445,5 @@ class CssPlugin(LanguagePlugin):
                 query_results={},
                 source_code="",
                 success=False,
-                error_message=str(e)
+                error_message=str(e),
             )

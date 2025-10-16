@@ -28,6 +28,7 @@ class TestFileOutputManager:
         """Clean up test fixtures after each test method."""
         # Clean up temporary files
         import shutil
+
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
     def test_init_with_project_root(self):
@@ -67,7 +68,9 @@ class TestFileOutputManager:
         assert content_type == "markdown"
 
         # Test with table
-        table_content = "| Column 1 | Column 2 |\n|----------|----------|\n| Value 1  | Value 2  |"
+        table_content = (
+            "| Column 1 | Column 2 |\n|----------|----------|\n| Value 1  | Value 2  |"
+        )
         content_type = self.manager.detect_content_type(table_content)
         assert content_type == "markdown"
 
@@ -116,14 +119,14 @@ class TestFileOutputManager:
         self.manager.set_output_path(self.temp_dir)
         content = "Test content"
         filename = "test_file.txt"
-        
+
         saved_path = self.manager.save_to_file(content, filename=filename)
-        
+
         expected_path = Path(self.temp_dir) / filename
         assert saved_path == str(expected_path)
         assert expected_path.exists()
-        
-        with open(expected_path, "r", encoding="utf-8") as f:
+
+        with open(expected_path, encoding="utf-8") as f:
             assert f.read() == content
 
     def test_save_to_file_with_base_name(self):
@@ -131,21 +134,23 @@ class TestFileOutputManager:
         self.manager.set_output_path(self.temp_dir)
         json_content = '{"key": "value"}'
         base_name = "test_data"
-        
+
         saved_path = self.manager.save_to_file(json_content, base_name=base_name)
-        
+
         expected_path = Path(self.temp_dir) / "test_data.json"
         assert saved_path == str(expected_path)
         assert expected_path.exists()
-        
-        with open(expected_path, "r", encoding="utf-8") as f:
+
+        with open(expected_path, encoding="utf-8") as f:
             assert f.read() == json_content
 
     def test_save_to_file_missing_parameters(self):
         """Test saving content to file with missing parameters."""
         content = "Test content"
-        
-        with pytest.raises(ValueError, match="Either filename or base_name must be provided"):
+
+        with pytest.raises(
+            ValueError, match="Either filename or base_name must be provided"
+        ):
             self.manager.save_to_file(content)
 
     def test_save_to_file_creates_directory(self):
@@ -153,9 +158,9 @@ class TestFileOutputManager:
         self.manager.set_output_path(self.temp_dir)
         content = "Test content"
         filename = "subdir/test_file.txt"
-        
+
         saved_path = self.manager.save_to_file(content, filename=filename)
-        
+
         expected_path = Path(self.temp_dir) / filename
         assert saved_path == str(expected_path)
         assert expected_path.exists()
@@ -165,18 +170,20 @@ class TestFileOutputManager:
         """Test output path validation with valid path."""
         test_file = Path(self.temp_dir) / "test.txt"
         is_valid, error_msg = self.manager.validate_output_path(str(test_file))
-        
+
         assert is_valid is True
         assert error_msg is None
 
     def test_validate_output_path_no_write_permission(self, monkeypatch):
         """Test output path validation with no write permission."""
         # Mock os.access to return False for write permission
-        monkeypatch.setattr(os, "access", lambda path, mode: False if mode == os.W_OK else True)
-        
+        monkeypatch.setattr(
+            os, "access", lambda path, mode: False if mode == os.W_OK else True
+        )
+
         test_file = Path(self.temp_dir) / "test.txt"
         is_valid, error_msg = self.manager.validate_output_path(str(test_file))
-        
+
         assert is_valid is False
         assert "No write permission" in error_msg
 
@@ -188,7 +195,7 @@ class TestFileOutputManager:
     def test_set_output_path_invalid(self):
         """Test setting invalid output path."""
         invalid_path = "/nonexistent/path"
-        
+
         with pytest.raises(ValueError, match="Output path does not exist"):
             self.manager.set_output_path(invalid_path)
 
@@ -196,17 +203,17 @@ class TestFileOutputManager:
         """Test setting output path to a file instead of directory."""
         test_file = Path(self.temp_dir) / "test.txt"
         test_file.write_text("content")
-        
+
         with pytest.raises(ValueError, match="Output path is not a directory"):
             self.manager.set_output_path(str(test_file))
 
     def test_set_project_root_updates_output_path(self):
         """Test that setting project root updates output path when no env var is set."""
         manager = FileOutputManager()
-        original_path = manager.get_output_path()
-        
+        manager.get_output_path()
+
         manager.set_project_root(self.temp_dir)
-        
+
         # Should update to new project root since no env var is set
         assert manager.get_output_path() == self.temp_dir
 
@@ -214,33 +221,34 @@ class TestFileOutputManager:
         """Test that setting project root preserves env var path."""
         env_path = self.temp_dir
         monkeypatch.setenv("TREE_SITTER_OUTPUT_PATH", env_path)
-        
+
         manager = FileOutputManager()
-        original_path = manager.get_output_path()
-        
+        manager.get_output_path()
+
         # Create another temp dir for project root
         other_temp_dir = tempfile.mkdtemp()
         try:
             manager.set_project_root(other_temp_dir)
-            
+
             # Should still use env var path
             assert manager.get_output_path() == env_path
         finally:
             import shutil
+
             shutil.rmtree(other_temp_dir, ignore_errors=True)
 
     def test_content_type_edge_cases(self):
         """Test content type detection edge cases."""
         # Empty content
         assert self.manager.detect_content_type("") == "text"
-        
+
         # Whitespace only
         assert self.manager.detect_content_type("   \n  \t  ") == "text"
-        
+
         # Invalid JSON that starts with {
         invalid_json = '{"invalid": json content}'
         assert self.manager.detect_content_type(invalid_json) == "text"
-        
+
         # Single line with comma (not CSV)
         single_line = "This is a sentence, with commas, but not CSV"
         assert self.manager.detect_content_type(single_line) == "text"
@@ -250,11 +258,13 @@ class TestFileOutputManager:
         # Empty base name
         filename = self.manager.generate_output_filename("", "content")
         assert filename.endswith(".txt")
-        
+
         # Base name with multiple dots
-        filename = self.manager.generate_output_filename("file.backup.old", '{"json": true}')
+        filename = self.manager.generate_output_filename(
+            "file.backup.old", '{"json": true}'
+        )
         assert filename == "file.backup.json"
-        
+
         # Base name with path separators (should be cleaned)
         filename = self.manager.generate_output_filename("path/to/file", "content")
         assert filename == "file.txt"

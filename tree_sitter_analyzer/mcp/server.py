@@ -29,7 +29,7 @@ except ImportError:
         pass
 
     class InitializationOptions:
-        def __init__(self, **kwargs):
+        def __init__(self, **kwargs: Any) -> None:
             pass
 
     class Tool:
@@ -41,7 +41,7 @@ except ImportError:
     class TextContent:
         pass
 
-    def stdio_server():
+    def stdio_server() -> None:
         pass
 
 
@@ -71,7 +71,7 @@ from .tools.table_format_tool import TableFormatTool
 try:
     from .tools.universal_analyze_tool import UniversalAnalyzeTool
 except ImportError:
-    UniversalAnalyzeTool = None
+    UniversalAnalyzeTool: type[Any] | None = None
 
 # Set up logging
 logger = setup_logger(__name__)
@@ -85,7 +85,7 @@ class TreeSitterAnalyzerMCPServer:
     integrating with existing analyzer components.
     """
 
-    def __init__(self, project_root: str = None) -> None:
+    def __init__(self, project_root: str | None = None) -> None:
         """Initialize the MCP server with analyzer components."""
         self.server: Server | None = None
         self._initialization_complete = False
@@ -116,9 +116,9 @@ class TreeSitterAnalyzerMCPServer:
             try:
                 self.universal_analyze_tool = UniversalAnalyzeTool(project_root)
             except Exception:
-                self.universal_analyze_tool = None
+                self.universal_analyze_tool: Any = None
         else:
-            self.universal_analyze_tool = None
+            self.universal_analyze_tool: Any = None
 
         # Initialize MCP resources
         self.code_file_resource = CodeFileResource()
@@ -132,7 +132,9 @@ class TreeSitterAnalyzerMCPServer:
 
         self._initialization_complete = True
         try:
-            logger.info(f"MCP server initialization complete: {self.name} v{self.version}")
+            logger.info(
+                f"MCP server initialization complete: {self.name} v{self.version}"
+            )
         except Exception:
             # Gracefully handle logging failures during initialization
             pass
@@ -215,7 +217,9 @@ class TreeSitterAnalyzerMCPServer:
 
         if analysis_result is None or not analysis_result.success:
             error_msg = (
-                analysis_result.error_message if analysis_result else "Unknown error"
+                analysis_result.error_message or "Unknown error"
+                if analysis_result
+                else "Unknown error"
             )
             raise RuntimeError(f"Failed to analyze file: {file_path} - {error_msg}")
 
@@ -293,7 +297,7 @@ class TreeSitterAnalyzerMCPServer:
                 if hasattr(elem, "__dict__"):
                     detailed_elements.append(elem.__dict__)
                 else:
-                    detailed_elements.append(str(elem))
+                    detailed_elements.append({"element": str(elem)})
             result["detailed_elements"] = detailed_elements
 
         return result
@@ -301,24 +305,24 @@ class TreeSitterAnalyzerMCPServer:
     async def _read_resource(self, uri: str) -> dict[str, Any]:
         """
         Read a resource by URI.
-        
+
         Args:
             uri: Resource URI to read
-            
+
         Returns:
             Resource content
-            
+
         Raises:
             ValueError: If URI is invalid or resource not found
         """
         if uri.startswith("code://file/"):
             # Extract file path from URI
-            file_path = uri.replace("code://file/", "")
-            return await self.code_file_resource.read_resource(uri)
+            result = await self.code_file_resource.read_resource(uri)
+            return {"content": result}
         elif uri.startswith("code://stats/"):
             # Extract stats type from URI
-            stats_type = uri.replace("code://stats/", "")
-            return await self.project_stats_resource.read_resource(uri)
+            result = await self.project_stats_resource.read_resource(uri)
+            return {"content": result}
         else:
             raise ValueError(f"Unknown resource URI: {uri}")
 
@@ -727,7 +731,7 @@ class TreeSitterAnalyzerMCPServer:
                 pass  # Silently ignore logging errors during shutdown
 
 
-def parse_mcp_args(args=None) -> argparse.Namespace:
+def parse_mcp_args(args: list[str] | None = None) -> argparse.Namespace:
     """Parse command line arguments for MCP server."""
     parser = argparse.ArgumentParser(
         description="Tree-sitter Analyzer MCP Server",
@@ -798,7 +802,7 @@ async def main() -> None:
 
         server = TreeSitterAnalyzerMCPServer(project_root)
         await server.run()
-        
+
         # Exit successfully after server run completes
         sys.exit(0)
     except KeyboardInterrupt:

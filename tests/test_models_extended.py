@@ -6,8 +6,6 @@ Tests for new HTML/CSS-specific models including MarkupElement and StyleElement,
 and their integration with the existing CodeElement hierarchy.
 """
 
-import pytest
-
 from tree_sitter_analyzer.models import (
     AnalysisResult,
     CodeElement,
@@ -29,7 +27,7 @@ class TestMarkupElement:
             language="html",
             tag_name="div",
             attributes={"class": "container", "id": "main"},
-            element_class="structure"
+            element_class="structure",
         )
 
         assert element.name == "div"
@@ -42,12 +40,7 @@ class TestMarkupElement:
 
     def test_markup_element_inheritance(self):
         """Test MarkupElement inherits from CodeElement"""
-        element = MarkupElement(
-            name="span",
-            start_line=2,
-            end_line=2,
-            tag_name="span"
-        )
+        element = MarkupElement(name="span", start_line=2, end_line=2, tag_name="span")
 
         assert isinstance(element, CodeElement)
         assert isinstance(element, MarkupElement)
@@ -59,7 +52,7 @@ class TestMarkupElement:
             start_line=1,
             end_line=10,
             tag_name="div",
-            element_class="structure"
+            element_class="structure",
         )
 
         child1 = MarkupElement(
@@ -68,7 +61,7 @@ class TestMarkupElement:
             end_line=4,
             tag_name="p",
             parent=parent,
-            element_class="text"
+            element_class="text",
         )
 
         child2 = MarkupElement(
@@ -77,7 +70,7 @@ class TestMarkupElement:
             end_line=7,
             tag_name="span",
             parent=parent,
-            element_class="text"
+            element_class="text",
         )
 
         parent.children = [child1, child2]
@@ -96,7 +89,7 @@ class TestMarkupElement:
             end_line=7,
             tag_name="button",
             attributes={"type": "submit", "class": "btn"},
-            element_class="form"
+            element_class="form",
         )
 
         summary = element.to_summary_item()
@@ -106,18 +99,14 @@ class TestMarkupElement:
             "tag_name": "button",
             "type": "html_element",
             "element_class": "form",
-            "lines": {"start": 5, "end": 7}
+            "lines": {"start": 5, "end": 7},
         }
 
         assert summary == expected
 
     def test_markup_element_default_values(self):
         """Test MarkupElement with default values"""
-        element = MarkupElement(
-            name="img",
-            start_line=1,
-            end_line=1
-        )
+        element = MarkupElement(name="img", start_line=1, end_line=1)
 
         assert element.tag_name == ""
         assert element.attributes == {}
@@ -138,9 +127,9 @@ class TestMarkupElement:
                 "name": "username",
                 "placeholder": "Enter username",
                 "required": "",
-                "data-validation": "required"
+                "data-validation": "required",
             },
-            element_class="form"
+            element_class="form",
         )
 
         assert element.attributes["type"] == "text"
@@ -161,7 +150,7 @@ class TestStyleElement:
             language="css",
             selector=".container",
             properties={"width": "100%", "margin": "0 auto"},
-            element_class="layout"
+            element_class="layout",
         )
 
         assert element.name == ".container"
@@ -172,12 +161,7 @@ class TestStyleElement:
 
     def test_style_element_inheritance(self):
         """Test StyleElement inherits from CodeElement"""
-        element = StyleElement(
-            name="h1",
-            start_line=1,
-            end_line=3,
-            selector="h1"
-        )
+        element = StyleElement(name="h1", start_line=1, end_line=3, selector="h1")
 
         assert isinstance(element, CodeElement)
         assert isinstance(element, StyleElement)
@@ -190,7 +174,7 @@ class TestStyleElement:
             end_line=15,
             selector="#header",
             properties={"background": "blue", "height": "60px"},
-            element_class="layout"
+            element_class="layout",
         )
 
         summary = element.to_summary_item()
@@ -200,18 +184,14 @@ class TestStyleElement:
             "selector": "#header",
             "type": "css_rule",
             "element_class": "layout",
-            "lines": {"start": 10, "end": 15}
+            "lines": {"start": 10, "end": 15},
         }
 
         assert summary == expected
 
     def test_style_element_default_values(self):
         """Test StyleElement with default values"""
-        element = StyleElement(
-            name="body",
-            start_line=1,
-            end_line=5
-        )
+        element = StyleElement(name="body", start_line=1, end_line=5)
 
         assert element.selector == ""
         assert element.properties == {}
@@ -232,9 +212,9 @@ class TestStyleElement:
                 "border-radius": "8px",
                 "box-shadow": "0 2px 4px rgba(0,0,0,0.1)",
                 "padding": "16px",
-                "margin": "8px 0"
+                "margin": "8px 0",
             },
-            element_class="layout"
+            element_class="layout",
         )
 
         assert element.properties["display"] == "flex"
@@ -253,15 +233,15 @@ class TestExtendedModelsIntegration:
                 start_line=1,
                 end_line=20,
                 tag_name="html",
-                element_class="structure"
+                element_class="structure",
             ),
             MarkupElement(
                 name="body",
                 start_line=5,
                 end_line=18,
                 tag_name="body",
-                element_class="structure"
-            )
+                element_class="structure",
+            ),
         ]
 
         result = AnalysisResult(
@@ -272,7 +252,7 @@ class TestExtendedModelsIntegration:
             node_count=2,
             query_results={},
             source_code="<html><body>content</body></html>",
-            success=True
+            success=True,
         )
 
         assert len(result.elements) == 2
@@ -288,7 +268,7 @@ class TestExtendedModelsIntegration:
                 end_line=3,
                 selector="body",
                 properties={"margin": "0", "padding": "0"},
-                element_class="layout"
+                element_class="layout",
             ),
             StyleElement(
                 name=".header",
@@ -296,8 +276,8 @@ class TestExtendedModelsIntegration:
                 end_line=8,
                 selector=".header",
                 properties={"background": "blue", "color": "white"},
-                element_class="layout"
-            )
+                element_class="layout",
+            ),
         ]
 
         result = AnalysisResult(
@@ -308,7 +288,7 @@ class TestExtendedModelsIntegration:
             node_count=2,
             query_results={},
             source_code="body { margin: 0; } .header { background: blue; }",
-            success=True
+            success=True,
         )
 
         assert len(result.elements) == 2
@@ -325,27 +305,17 @@ class TestExtendedModelsIntegration:
                 start_line=1,
                 end_line=5,
                 tag_name="div",
-                element_class="structure"
+                element_class="structure",
             ),
             StyleElement(
                 name=".container",
                 start_line=10,
                 end_line=15,
                 selector=".container",
-                element_class="layout"
+                element_class="layout",
             ),
-            Function(
-                name="init",
-                start_line=20,
-                end_line=25,
-                language="javascript"
-            ),
-            Variable(
-                name="config",
-                start_line=30,
-                end_line=30,
-                language="javascript"
-            )
+            Function(name="init", start_line=20, end_line=25, language="javascript"),
+            Variable(name="config", start_line=30, end_line=30, language="javascript"),
         ]
 
         result = AnalysisResult(
@@ -356,11 +326,11 @@ class TestExtendedModelsIntegration:
             node_count=4,
             query_results={},
             source_code="mixed content",
-            success=True
+            success=True,
         )
 
         assert len(result.elements) == 4
-        
+
         # Check element types
         markup_elements = [e for e in result.elements if isinstance(e, MarkupElement)]
         style_elements = [e for e in result.elements if isinstance(e, StyleElement)]
@@ -376,19 +346,69 @@ class TestExtendedModelsIntegration:
         """Test element classification system for HTML/CSS"""
         # HTML element classifications
         html_elements = [
-            MarkupElement(name="div", start_line=1, end_line=1, tag_name="div", element_class="structure"),
-            MarkupElement(name="h1", start_line=2, end_line=2, tag_name="h1", element_class="heading"),
-            MarkupElement(name="p", start_line=3, end_line=3, tag_name="p", element_class="text"),
-            MarkupElement(name="img", start_line=4, end_line=4, tag_name="img", element_class="media"),
-            MarkupElement(name="form", start_line=5, end_line=5, tag_name="form", element_class="form"),
-            MarkupElement(name="table", start_line=6, end_line=6, tag_name="table", element_class="table"),
+            MarkupElement(
+                name="div",
+                start_line=1,
+                end_line=1,
+                tag_name="div",
+                element_class="structure",
+            ),
+            MarkupElement(
+                name="h1",
+                start_line=2,
+                end_line=2,
+                tag_name="h1",
+                element_class="heading",
+            ),
+            MarkupElement(
+                name="p", start_line=3, end_line=3, tag_name="p", element_class="text"
+            ),
+            MarkupElement(
+                name="img",
+                start_line=4,
+                end_line=4,
+                tag_name="img",
+                element_class="media",
+            ),
+            MarkupElement(
+                name="form",
+                start_line=5,
+                end_line=5,
+                tag_name="form",
+                element_class="form",
+            ),
+            MarkupElement(
+                name="table",
+                start_line=6,
+                end_line=6,
+                tag_name="table",
+                element_class="table",
+            ),
         ]
 
         # CSS element classifications
         css_elements = [
-            StyleElement(name="body", start_line=1, end_line=1, selector="body", element_class="layout"),
-            StyleElement(name="h1", start_line=2, end_line=2, selector="h1", element_class="typography"),
-            StyleElement(name=".red", start_line=3, end_line=3, selector=".red", element_class="color"),
+            StyleElement(
+                name="body",
+                start_line=1,
+                end_line=1,
+                selector="body",
+                element_class="layout",
+            ),
+            StyleElement(
+                name="h1",
+                start_line=2,
+                end_line=2,
+                selector="h1",
+                element_class="typography",
+            ),
+            StyleElement(
+                name=".red",
+                start_line=3,
+                end_line=3,
+                selector=".red",
+                element_class="color",
+            ),
         ]
 
         # Verify classifications
@@ -411,7 +431,7 @@ class TestExtendedModelsIntegration:
             end_line=10,
             tag_name="article",
             attributes={"class": "post", "id": "post-1"},
-            element_class="structure"
+            element_class="structure",
         )
 
         style_element = StyleElement(
@@ -420,7 +440,7 @@ class TestExtendedModelsIntegration:
             end_line=20,
             selector=".post",
             properties={"margin": "20px", "padding": "15px"},
-            element_class="layout"
+            element_class="layout",
         )
 
         result = AnalysisResult(
@@ -431,7 +451,7 @@ class TestExtendedModelsIntegration:
             node_count=2,
             query_results={},
             source_code="<article>content</article>",
-            success=True
+            success=True,
         )
 
         # Test serialization methods
@@ -457,17 +477,11 @@ class TestElementTypeConstants:
     def test_element_type_detection(self):
         """Test element type detection for new models"""
         markup_element = MarkupElement(
-            name="div",
-            start_line=1,
-            end_line=1,
-            tag_name="div"
+            name="div", start_line=1, end_line=1, tag_name="div"
         )
 
         style_element = StyleElement(
-            name=".container",
-            start_line=1,
-            end_line=1,
-            selector=".container"
+            name=".container", start_line=1, end_line=1, selector=".container"
         )
 
         assert markup_element.element_type == "html_element"
@@ -480,7 +494,7 @@ class TestElementTypeConstants:
             start_line=5,
             end_line=15,
             tag_name="nav",
-            element_class="structure"
+            element_class="structure",
         )
 
         style_element = StyleElement(
@@ -488,7 +502,7 @@ class TestElementTypeConstants:
             start_line=20,
             end_line=25,
             selector="nav",
-            element_class="layout"
+            element_class="layout",
         )
 
         markup_summary = markup_element.to_summary_item()
@@ -517,11 +531,7 @@ class TestEdgeCases:
     def test_markup_element_empty_attributes(self):
         """Test MarkupElement with empty attributes"""
         element = MarkupElement(
-            name="br",
-            start_line=1,
-            end_line=1,
-            tag_name="br",
-            attributes={}
+            name="br", start_line=1, end_line=1, tag_name="br", attributes={}
         )
 
         assert element.attributes == {}
@@ -531,11 +541,7 @@ class TestEdgeCases:
     def test_style_element_empty_properties(self):
         """Test StyleElement with empty properties"""
         element = StyleElement(
-            name="*",
-            start_line=1,
-            end_line=1,
-            selector="*",
-            properties={}
+            name="*", start_line=1, end_line=1, selector="*", properties={}
         )
 
         assert element.properties == {}
@@ -544,19 +550,10 @@ class TestEdgeCases:
 
     def test_circular_reference_prevention(self):
         """Test that circular references are handled properly"""
-        parent = MarkupElement(
-            name="div",
-            start_line=1,
-            end_line=10,
-            tag_name="div"
-        )
+        parent = MarkupElement(name="div", start_line=1, end_line=10, tag_name="div")
 
         child = MarkupElement(
-            name="span",
-            start_line=2,
-            end_line=5,
-            tag_name="span",
-            parent=parent
+            name="span", start_line=2, end_line=5, tag_name="span", parent=parent
         )
 
         parent.children = [child]
@@ -571,10 +568,22 @@ class TestEdgeCases:
     def test_deep_nesting_hierarchy(self):
         """Test deeply nested element hierarchy"""
         root = MarkupElement(name="html", start_line=1, end_line=100, tag_name="html")
-        body = MarkupElement(name="body", start_line=5, end_line=95, tag_name="body", parent=root)
-        div = MarkupElement(name="div", start_line=10, end_line=90, tag_name="div", parent=body)
-        section = MarkupElement(name="section", start_line=15, end_line=85, tag_name="section", parent=div)
-        article = MarkupElement(name="article", start_line=20, end_line=80, tag_name="article", parent=section)
+        body = MarkupElement(
+            name="body", start_line=5, end_line=95, tag_name="body", parent=root
+        )
+        div = MarkupElement(
+            name="div", start_line=10, end_line=90, tag_name="div", parent=body
+        )
+        section = MarkupElement(
+            name="section", start_line=15, end_line=85, tag_name="section", parent=div
+        )
+        article = MarkupElement(
+            name="article",
+            start_line=20,
+            end_line=80,
+            tag_name="article",
+            parent=section,
+        )
 
         root.children = [body]
         body.children = [div]

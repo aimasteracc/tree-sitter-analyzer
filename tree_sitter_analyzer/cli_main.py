@@ -7,6 +7,8 @@ import os
 import sys
 from typing import Any
 
+from .cli.argument_validator import CLIArgumentValidator
+
 # Import command classes
 from .cli.commands import (
     AdvancedCommand,
@@ -25,7 +27,6 @@ from .cli.info_commands import (
 )
 from .output_manager import output_error, output_info, output_list
 from .query_loader import query_loader
-from .cli.argument_validator import CLIArgumentValidator
 
 
 class CLICommandFactory:
@@ -34,7 +35,7 @@ class CLICommandFactory:
     @staticmethod
     def create_command(args: argparse.Namespace) -> Any:
         """Create appropriate command based on arguments."""
-        
+
         # Validate argument combinations first
         validator = CLIArgumentValidator()
         validation_error = validator.validate_arguments(args)

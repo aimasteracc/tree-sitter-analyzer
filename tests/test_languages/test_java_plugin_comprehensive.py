@@ -4,15 +4,17 @@ Tests all major functionality including methods, classes, fields, imports, packa
 annotations, caching, performance optimizations, and Java-specific features.
 """
 
+from unittest.mock import Mock, patch
+
 import pytest
-from unittest.mock import Mock, patch, MagicMock
+
 from tree_sitter_analyzer.languages.java_plugin import JavaElementExtractor, JavaPlugin
-from tree_sitter_analyzer.models import Function, Class, Variable, Import, Package
+from tree_sitter_analyzer.models import Class, Function, Import, Package, Variable
 
 
 class TestJavaElementExtractor:
     """Test Java element extractor functionality"""
-    
+
     @pytest.fixture
     def extractor(self):
         """Create a Java element extractor instance"""
@@ -29,7 +31,7 @@ class TestJavaElementExtractor:
     @pytest.fixture
     def sample_java_code(self):
         """Sample Java code for testing"""
-        return '''
+        return """
 package com.example.service;
 
 import java.util.List;
@@ -52,34 +54,34 @@ import static org.junit.Assert.*;
 @Service
 @Component
 public class UserService extends BaseService implements UserOperations, Auditable {
-    
+
     /**
      * Default page size for pagination
      */
     public static final int DEFAULT_PAGE_SIZE = 20;
-    
+
     /**
      * Maximum allowed page size
      */
     private static final int MAX_PAGE_SIZE = 100;
-    
+
     /**
      * User repository for data access
      */
     @Autowired
     private UserRepository userRepository;
-    
+
     /**
      * Cache for storing user data
      */
     @Nullable
     private final Map<String, User> userCache = new HashMap<>();
-    
+
     /**
      * Configuration properties
      */
     protected UserConfig config;
-    
+
     /**
      * Default constructor
      */
@@ -87,7 +89,7 @@ public class UserService extends BaseService implements UserOperations, Auditabl
         super();
         this.config = new UserConfig();
     }
-    
+
     /**
      * Constructor with configuration
      * @param config User configuration
@@ -97,7 +99,7 @@ public class UserService extends BaseService implements UserOperations, Auditabl
         super();
         this.config = config;
     }
-    
+
     /**
      * Find user by ID
      * @param userId User identifier
@@ -111,24 +113,24 @@ public class UserService extends BaseService implements UserOperations, Auditabl
         if (userId == null || userId.trim().isEmpty()) {
             throw new IllegalArgumentException("User ID cannot be null or empty");
         }
-        
+
         // Check cache first
         User cachedUser = userCache.get(userId);
         if (cachedUser != null) {
             return cachedUser;
         }
-        
+
         // Query database
         User user = userRepository.findById(userId);
         if (user == null) {
             throw new UserNotFoundException("User not found: " + userId);
         }
-        
+
         // Cache the result
         userCache.put(userId, user);
         return user;
     }
-    
+
     /**
      * Create new user
      * @param userData User data for creation
@@ -138,18 +140,18 @@ public class UserService extends BaseService implements UserOperations, Auditabl
     @Transactional
     public User createUser(UserData userData) throws ValidationException {
         validateUserData(userData);
-        
+
         User user = new User();
         user.setName(userData.getName());
         user.setEmail(userData.getEmail());
         user.setCreatedAt(System.currentTimeMillis());
-        
+
         User savedUser = userRepository.save(user);
         userCache.put(savedUser.getId(), savedUser);
-        
+
         return savedUser;
     }
-    
+
     /**
      * Update existing user
      * @param userId User identifier
@@ -159,21 +161,21 @@ public class UserService extends BaseService implements UserOperations, Auditabl
      * @throws ValidationException if user data is invalid
      */
     @Transactional
-    public User updateUser(String userId, UserData userData) 
+    public User updateUser(String userId, UserData userData)
             throws UserNotFoundException, ValidationException {
         User existingUser = findById(userId);
         validateUserData(userData);
-        
+
         existingUser.setName(userData.getName());
         existingUser.setEmail(userData.getEmail());
         existingUser.setUpdatedAt(System.currentTimeMillis());
-        
+
         User updatedUser = userRepository.save(existingUser);
         userCache.put(userId, updatedUser);
-        
+
         return updatedUser;
     }
-    
+
     /**
      * Delete user by ID
      * @param userId User identifier
@@ -185,7 +187,7 @@ public class UserService extends BaseService implements UserOperations, Auditabl
         userRepository.delete(user);
         userCache.remove(userId);
     }
-    
+
     /**
      * Find users with pagination
      * @param page Page number (0-based)
@@ -200,10 +202,10 @@ public class UserService extends BaseService implements UserOperations, Auditabl
         if (size <= 0 || size > MAX_PAGE_SIZE) {
             throw new IllegalArgumentException("Invalid page size: " + size);
         }
-        
+
         return userRepository.findAll(page, size);
     }
-    
+
     /**
      * Search users by name pattern
      * @param namePattern Name pattern to search
@@ -213,10 +215,10 @@ public class UserService extends BaseService implements UserOperations, Auditabl
         if (namePattern == null || namePattern.trim().isEmpty()) {
             return emptyList();
         }
-        
+
         return userRepository.findByNameContaining(namePattern.trim());
     }
-    
+
     /**
      * Get user statistics asynchronously
      * @return Future containing user statistics
@@ -231,7 +233,7 @@ public class UserService extends BaseService implements UserOperations, Auditabl
             return stats;
         });
     }
-    
+
     /**
      * Validate user data
      * @param userData User data to validate
@@ -248,7 +250,7 @@ public class UserService extends BaseService implements UserOperations, Auditabl
             throw new ValidationException("Valid email is required");
         }
     }
-    
+
     /**
      * Check if email is valid
      * @param email Email to validate
@@ -257,14 +259,14 @@ public class UserService extends BaseService implements UserOperations, Auditabl
     private static boolean isValidEmail(String email) {
         return email != null && email.contains("@") && email.contains(".");
     }
-    
+
     /**
      * Clear user cache
      */
     protected void clearCache() {
         userCache.clear();
     }
-    
+
     /**
      * Get cache size
      * @return Number of cached users
@@ -272,7 +274,7 @@ public class UserService extends BaseService implements UserOperations, Auditabl
     public int getCacheSize() {
         return userCache.size();
     }
-    
+
     /**
      * Inner class for user statistics
      */
@@ -280,18 +282,18 @@ public class UserService extends BaseService implements UserOperations, Auditabl
         private long totalUsers;
         private long activeUsers;
         private long lastUpdated;
-        
+
         // Getters and setters
         public long getTotalUsers() { return totalUsers; }
         public void setTotalUsers(long totalUsers) { this.totalUsers = totalUsers; }
-        
+
         public long getActiveUsers() { return activeUsers; }
         public void setActiveUsers(long activeUsers) { this.activeUsers = activeUsers; }
-        
+
         public long getLastUpdated() { return lastUpdated; }
         public void setLastUpdated(long lastUpdated) { this.lastUpdated = lastUpdated; }
     }
-    
+
     /**
      * Nested interface for audit operations
      */
@@ -299,7 +301,7 @@ public class UserService extends BaseService implements UserOperations, Auditabl
         void logOperation(String operation, String userId);
         List<AuditEntry> getAuditLog(String userId);
     }
-    
+
     /**
      * Enum for user status
      */
@@ -308,13 +310,13 @@ public class UserService extends BaseService implements UserOperations, Auditabl
         INACTIVE("Inactive"),
         SUSPENDED("Suspended"),
         DELETED("Deleted");
-        
+
         private final String displayName;
-        
+
         UserStatus(String displayName) {
             this.displayName = displayName;
         }
-        
+
         public String getDisplayName() {
             return displayName;
         }
@@ -326,22 +328,22 @@ public class UserService extends BaseService implements UserOperations, Auditabl
  */
 @Configuration
 class UserConfig {
-    
+
     @Value("${user.cache.enabled:true}")
     private boolean cacheEnabled;
-    
+
     @Value("${user.cache.ttl:3600}")
     private int cacheTtl;
-    
+
     public boolean isCacheEnabled() {
         return cacheEnabled;
     }
-    
+
     public int getCacheTtl() {
         return cacheTtl;
     }
 }
-'''
+"""
 
     def test_initialization(self, extractor):
         """Test extractor initialization"""
@@ -367,10 +369,10 @@ class UserConfig {
         extractor._annotation_cache[1] = [{"name": "Test"}]
         extractor._signature_cache[1] = "signature"
         extractor.annotations.append({"name": "Test"})
-        
+
         # Reset caches
         extractor._reset_caches()
-        
+
         # Verify caches are empty
         assert len(extractor._node_text_cache) == 0
         assert len(extractor._processed_nodes) == 0
@@ -387,13 +389,15 @@ class UserConfig {
         mock_method_node.start_point = (10, 0)
         mock_method_node.end_point = (15, 0)
         mock_method_node.children = []
-        
+
         mock_tree.root_node.children = [mock_method_node]
-        
+
         # Mock the extraction method
-        with patch.object(extractor, '_traverse_and_extract_iterative') as mock_traverse:
+        with patch.object(
+            extractor, "_traverse_and_extract_iterative"
+        ) as mock_traverse:
             functions = extractor.extract_functions(mock_tree, sample_java_code)
-            
+
             # Verify traversal was called
             mock_traverse.assert_called_once()
             assert isinstance(functions, list)
@@ -406,37 +410,45 @@ class UserConfig {
         mock_class_node.start_point = (5, 0)
         mock_class_node.end_point = (25, 0)
         mock_class_node.children = []
-        
+
         mock_tree.root_node.children = [mock_class_node]
-        
+
         # Mock the extraction method
-        with patch.object(extractor, '_traverse_and_extract_iterative') as mock_traverse:
+        with patch.object(
+            extractor, "_traverse_and_extract_iterative"
+        ) as mock_traverse:
             classes = extractor.extract_classes(mock_tree, sample_java_code)
-            
+
             # Verify traversal was called
             mock_traverse.assert_called_once()
             assert isinstance(classes, list)
 
-    def test_extract_classes_with_package_extraction(self, extractor, mock_tree, sample_java_code):
+    def test_extract_classes_with_package_extraction(
+        self, extractor, mock_tree, sample_java_code
+    ):
         """Test class extraction with automatic package extraction"""
         # Mock package node
         mock_package_node = Mock()
         mock_package_node.type = "package_declaration"
-        
+
         # Mock class node
         mock_class_node = Mock()
         mock_class_node.type = "class_declaration"
         mock_class_node.children = []
-        
+
         mock_tree.root_node.children = [mock_package_node, mock_class_node]
-        
+
         # Mock package extraction
-        with patch.object(extractor, '_extract_package_from_tree') as mock_extract_package:
-            with patch.object(extractor, '_traverse_and_extract_iterative') as mock_traverse:
+        with patch.object(
+            extractor, "_extract_package_from_tree"
+        ) as mock_extract_package:
+            with patch.object(
+                extractor, "_traverse_and_extract_iterative"
+            ) as mock_traverse:
                 extractor.current_package = ""  # Ensure package is empty
-                
-                classes = extractor.extract_classes(mock_tree, sample_java_code)
-                
+
+                extractor.extract_classes(mock_tree, sample_java_code)
+
                 # Should call package extraction when current_package is empty
                 mock_extract_package.assert_called_once_with(mock_tree)
                 mock_traverse.assert_called_once()
@@ -449,13 +461,15 @@ class UserConfig {
         mock_field_node.start_point = (1, 0)
         mock_field_node.end_point = (1, 20)
         mock_field_node.children = []
-        
+
         mock_tree.root_node.children = [mock_field_node]
-        
+
         # Mock the extraction method
-        with patch.object(extractor, '_traverse_and_extract_iterative') as mock_traverse:
+        with patch.object(
+            extractor, "_traverse_and_extract_iterative"
+        ) as mock_traverse:
             variables = extractor.extract_variables(mock_tree, sample_java_code)
-            
+
             # Verify traversal was called
             mock_traverse.assert_called_once()
             assert isinstance(variables, list)
@@ -465,28 +479,32 @@ class UserConfig {
         # Mock package and import nodes
         mock_package_node = Mock()
         mock_package_node.type = "package_declaration"
-        
+
         mock_import_node = Mock()
         mock_import_node.type = "import_declaration"
-        
+
         mock_class_node = Mock()
         mock_class_node.type = "class_declaration"
-        
-        mock_tree.root_node.children = [mock_package_node, mock_import_node, mock_class_node]
-        
-        with patch.object(extractor, '_extract_package_info') as mock_extract_package:
-            with patch.object(extractor, '_extract_import_info') as mock_extract_import:
+
+        mock_tree.root_node.children = [
+            mock_package_node,
+            mock_import_node,
+            mock_class_node,
+        ]
+
+        with patch.object(extractor, "_extract_package_info") as mock_extract_package:
+            with patch.object(extractor, "_extract_import_info") as mock_extract_import:
                 mock_import = Import(
                     name="java.util.List",
                     start_line=1,
                     end_line=1,
                     raw_text="import java.util.List;",
-                    language="java"
+                    language="java",
                 )
                 mock_extract_import.return_value = mock_import
-                
+
                 imports = extractor.extract_imports(mock_tree, sample_java_code)
-                
+
                 assert isinstance(imports, list)
                 mock_extract_package.assert_called_once()
                 mock_extract_import.assert_called_once()
@@ -495,27 +513,27 @@ class UserConfig {
         """Test import extraction with regex fallback"""
         # Mock tree with no import nodes
         mock_tree.root_node.children = []
-        
+
         # Source code with imports
         source_with_imports = """
         import java.util.List;
         import static java.util.Collections.emptyList;
         import javax.annotation.*;
         """
-        
-        with patch.object(extractor, '_extract_imports_fallback') as mock_fallback:
+
+        with patch.object(extractor, "_extract_imports_fallback") as mock_fallback:
             mock_fallback.return_value = [
                 Import(
                     name="java.util.List",
                     start_line=2,
                     end_line=2,
                     raw_text="import java.util.List;",
-                    language="java"
+                    language="java",
                 )
             ]
-            
+
             imports = extractor.extract_imports(mock_tree, source_with_imports)
-            
+
             # Should call fallback when no imports found via tree-sitter
             mock_fallback.assert_called_once()
             assert isinstance(imports, list)
@@ -525,21 +543,21 @@ class UserConfig {
         # Mock package node
         mock_package_node = Mock()
         mock_package_node.type = "package_declaration"
-        
+
         mock_tree.root_node.children = [mock_package_node]
-        
-        with patch.object(extractor, '_extract_package_element') as mock_extract:
+
+        with patch.object(extractor, "_extract_package_element") as mock_extract:
             mock_package = Package(
                 name="com.example.service",
                 start_line=1,
                 end_line=1,
                 raw_text="package com.example.service;",
-                language="java"
+                language="java",
             )
             mock_extract.return_value = mock_package
-            
+
             packages = extractor.extract_packages(mock_tree, sample_java_code)
-            
+
             assert isinstance(packages, list)
             mock_extract.assert_called_once()
 
@@ -549,13 +567,15 @@ class UserConfig {
         mock_annotation_node = Mock()
         mock_annotation_node.type = "annotation"
         mock_annotation_node.children = []
-        
+
         mock_tree.root_node.children = [mock_annotation_node]
-        
+
         # Mock the extraction method
-        with patch.object(extractor, '_traverse_and_extract_iterative') as mock_traverse:
+        with patch.object(
+            extractor, "_traverse_and_extract_iterative"
+        ) as mock_traverse:
             annotations = extractor.extract_annotations(mock_tree, sample_java_code)
-            
+
             # Verify traversal was called
             mock_traverse.assert_called_once()
             assert isinstance(annotations, list)
@@ -567,20 +587,22 @@ class UserConfig {
         mock_node.start_byte = 0
         mock_node.end_byte = 10
         node_id = id(mock_node)
-        
+
         # Set up extractor state
         extractor.content_lines = ["test content line"]
         extractor._file_encoding = "utf-8"
-        
+
         # Mock extract_text_slice to return test text
-        with patch('tree_sitter_analyzer.languages.java_plugin.extract_text_slice') as mock_extract:
+        with patch(
+            "tree_sitter_analyzer.languages.java_plugin.extract_text_slice"
+        ) as mock_extract:
             mock_extract.return_value = "test text"
-            
+
             # First call should extract and cache
             result1 = extractor._get_node_text_optimized(mock_node)
             assert result1 == "test text"
             assert node_id in extractor._node_text_cache
-            
+
             # Second call should use cache
             result2 = extractor._get_node_text_optimized(mock_node)
             assert result2 == "test text"
@@ -594,15 +616,17 @@ class UserConfig {
         mock_node.end_byte = 10
         mock_node.start_point = (0, 0)
         mock_node.end_point = (0, 10)
-        
+
         # Set up extractor state
         extractor.content_lines = ["test content line"]
         extractor._file_encoding = "utf-8"
-        
+
         # Mock extract_text_slice to raise exception
-        with patch('tree_sitter_analyzer.languages.java_plugin.extract_text_slice') as mock_extract:
+        with patch(
+            "tree_sitter_analyzer.languages.java_plugin.extract_text_slice"
+        ) as mock_extract:
             mock_extract.side_effect = Exception("Test error")
-            
+
             # Should fallback to simple extraction
             result = extractor._get_node_text_optimized(mock_node)
             assert result == "test conte"  # Characters 0-10 from first line
@@ -613,22 +637,22 @@ class UserConfig {
         mock_node.type = "class_declaration"
         mock_node.start_point = (0, 0)
         mock_node.end_point = (10, 0)
-        
+
         # Mock identifier child
         mock_identifier = Mock()
         mock_identifier.type = "identifier"
         mock_node.children = [mock_identifier]
-        
+
         # Mock superclass child
         mock_superclass = Mock()
         mock_superclass.type = "superclass"
         mock_node.children.append(mock_superclass)
-        
+
         # Mock super_interfaces child
         mock_interfaces = Mock()
         mock_interfaces.type = "super_interfaces"
         mock_node.children.append(mock_interfaces)
-        
+
         extractor.content_lines = [
             "/**",
             " * User service class",
@@ -636,39 +660,50 @@ class UserConfig {
             "@Service",
             "public class UserService extends BaseService implements UserOperations {",
             "    // class body",
-            "}"
+            "}",
         ] * 2
         extractor.current_package = "com.example.service"
-        
-        with patch.object(extractor, '_get_node_text_optimized') as mock_get_text:
+
+        with patch.object(extractor, "_get_node_text_optimized") as mock_get_text:
             mock_get_text.side_effect = [
                 "UserService",  # Class name
                 "extends BaseService",  # Superclass text
                 "implements UserOperations",  # Interfaces text
-                "public class UserService extends BaseService implements UserOperations { // class body }"  # Full class text
+                "public class UserService extends BaseService implements UserOperations { // class body }",  # Full class text
             ]
-            
-            with patch.object(extractor, '_extract_modifiers_optimized') as mock_modifiers:
+
+            with patch.object(
+                extractor, "_extract_modifiers_optimized"
+            ) as mock_modifiers:
                 mock_modifiers.return_value = ["public"]
-                
-                with patch.object(extractor, '_determine_visibility') as mock_visibility:
+
+                with patch.object(
+                    extractor, "_determine_visibility"
+                ) as mock_visibility:
                     mock_visibility.return_value = "public"
-                    
-                    with patch.object(extractor, '_find_annotations_for_line_cached') as mock_annotations:
+
+                    with patch.object(
+                        extractor, "_find_annotations_for_line_cached"
+                    ) as mock_annotations:
                         mock_annotations.return_value = [{"name": "Service"}]
-                        
-                        with patch.object(extractor, '_is_nested_class') as mock_is_nested:
+
+                        with patch.object(
+                            extractor, "_is_nested_class"
+                        ) as mock_is_nested:
                             mock_is_nested.return_value = False
-                            
+
                             result = extractor._extract_class_optimized(mock_node)
-                            
+
                             assert isinstance(result, Class)
                             assert result.name == "UserService"
                             assert result.start_line == 1
                             assert result.end_line == 11
                             assert result.language == "java"
                             assert result.class_type == "class"
-                            assert result.full_qualified_name == "com.example.service.UserService"
+                            assert (
+                                result.full_qualified_name
+                                == "com.example.service.UserService"
+                            )
                             assert result.package_name == "com.example.service"
                             assert result.superclass == "BaseService"
                             assert result.interfaces == ["UserOperations"]
@@ -683,7 +718,7 @@ class UserConfig {
         mock_node.type = "method_declaration"
         mock_node.start_point = (0, 0)
         mock_node.end_point = (5, 0)
-        
+
         extractor.content_lines = [
             "/**",
             " * Find user by ID",
@@ -693,26 +728,38 @@ class UserConfig {
             "@Override",
             "public User findById(String userId) throws UserNotFoundException {",
             "    return userRepository.findById(userId);",
-            "}"
+            "}",
         ]
-        
-        with patch.object(extractor, '_parse_method_signature_optimized') as mock_parse:
-            mock_parse.return_value = ("findById", "User", ["String userId"], ["public"], ["UserNotFoundException"])
-            
-            with patch.object(extractor, '_determine_visibility') as mock_visibility:
+
+        with patch.object(extractor, "_parse_method_signature_optimized") as mock_parse:
+            mock_parse.return_value = (
+                "findById",
+                "User",
+                ["String userId"],
+                ["public"],
+                ["UserNotFoundException"],
+            )
+
+            with patch.object(extractor, "_determine_visibility") as mock_visibility:
                 mock_visibility.return_value = "public"
-                
-                with patch.object(extractor, '_find_annotations_for_line_cached') as mock_annotations:
+
+                with patch.object(
+                    extractor, "_find_annotations_for_line_cached"
+                ) as mock_annotations:
                     mock_annotations.return_value = [{"name": "Override"}]
-                    
-                    with patch.object(extractor, '_calculate_complexity_optimized') as mock_complexity:
+
+                    with patch.object(
+                        extractor, "_calculate_complexity_optimized"
+                    ) as mock_complexity:
                         mock_complexity.return_value = 2
-                        
-                        with patch.object(extractor, '_extract_javadoc_for_line') as mock_javadoc:
+
+                        with patch.object(
+                            extractor, "_extract_javadoc_for_line"
+                        ) as mock_javadoc:
                             mock_javadoc.return_value = "Find user by ID"
-                            
+
                             result = extractor._extract_method_optimized(mock_node)
-                            
+
                             assert isinstance(result, Function)
                             assert result.name == "findById"
                             assert result.start_line == 1
@@ -739,30 +786,42 @@ class UserConfig {
         mock_node.type = "constructor_declaration"
         mock_node.start_point = (0, 0)
         mock_node.end_point = (3, 0)
-        
+
         extractor.content_lines = [
             "public UserService(UserConfig config) {",
             "    this.config = config;",
-            "}"
+            "}",
         ]
-        
-        with patch.object(extractor, '_parse_method_signature_optimized') as mock_parse:
-            mock_parse.return_value = ("UserService", "void", ["UserConfig config"], ["public"], [])
-            
-            with patch.object(extractor, '_determine_visibility') as mock_visibility:
+
+        with patch.object(extractor, "_parse_method_signature_optimized") as mock_parse:
+            mock_parse.return_value = (
+                "UserService",
+                "void",
+                ["UserConfig config"],
+                ["public"],
+                [],
+            )
+
+            with patch.object(extractor, "_determine_visibility") as mock_visibility:
                 mock_visibility.return_value = "public"
-                
-                with patch.object(extractor, '_find_annotations_for_line_cached') as mock_annotations:
+
+                with patch.object(
+                    extractor, "_find_annotations_for_line_cached"
+                ) as mock_annotations:
                     mock_annotations.return_value = []
-                    
-                    with patch.object(extractor, '_calculate_complexity_optimized') as mock_complexity:
+
+                    with patch.object(
+                        extractor, "_calculate_complexity_optimized"
+                    ) as mock_complexity:
                         mock_complexity.return_value = 1
-                        
-                        with patch.object(extractor, '_extract_javadoc_for_line') as mock_javadoc:
+
+                        with patch.object(
+                            extractor, "_extract_javadoc_for_line"
+                        ) as mock_javadoc:
                             mock_javadoc.return_value = None
-                            
+
                             result = extractor._extract_method_optimized(mock_node)
-                            
+
                             assert isinstance(result, Function)
                             assert result.name == "UserService"
                             assert result.is_constructor is True
@@ -774,32 +833,42 @@ class UserConfig {
         mock_node.type = "field_declaration"
         mock_node.start_point = (0, 0)
         mock_node.end_point = (2, 0)
-        
+
         extractor.content_lines = [
             "/**",
             " * User repository for data access",
             " */",
             "@Autowired",
-            "private UserRepository userRepository;"
+            "private UserRepository userRepository;",
         ]
-        
-        with patch.object(extractor, '_parse_field_declaration_optimized') as mock_parse:
-            mock_parse.return_value = ("UserRepository", ["userRepository"], ["private"])
-            
-            with patch.object(extractor, '_determine_visibility') as mock_visibility:
+
+        with patch.object(
+            extractor, "_parse_field_declaration_optimized"
+        ) as mock_parse:
+            mock_parse.return_value = (
+                "UserRepository",
+                ["userRepository"],
+                ["private"],
+            )
+
+            with patch.object(extractor, "_determine_visibility") as mock_visibility:
                 mock_visibility.return_value = "private"
-                
-                with patch.object(extractor, '_find_annotations_for_line_cached') as mock_annotations:
+
+                with patch.object(
+                    extractor, "_find_annotations_for_line_cached"
+                ) as mock_annotations:
                     mock_annotations.return_value = [{"name": "Autowired"}]
-                    
-                    with patch.object(extractor, '_extract_javadoc_for_line') as mock_javadoc:
+
+                    with patch.object(
+                        extractor, "_extract_javadoc_for_line"
+                    ) as mock_javadoc:
                         mock_javadoc.return_value = "User repository for data access"
-                        
+
                         result = extractor._extract_field_optimized(mock_node)
-                        
+
                         assert isinstance(result, list)
                         assert len(result) == 1
-                        
+
                         field = result[0]
                         assert isinstance(field, Variable)
                         assert field.name == "userRepository"
@@ -822,34 +891,43 @@ class UserConfig {
         mock_node.type = "field_declaration"
         mock_node.start_point = (0, 0)
         mock_node.end_point = (0, 30)
-        
+
         extractor.content_lines = ["private String firstName, lastName, email;"]
-        
-        with patch.object(extractor, '_parse_field_declaration_optimized') as mock_parse:
-            mock_parse.return_value = ("String", ["firstName", "lastName", "email"], ["private"])
-            
-            with patch.object(extractor, '_determine_visibility') as mock_visibility:
+
+        with patch.object(
+            extractor, "_parse_field_declaration_optimized"
+        ) as mock_parse:
+            mock_parse.return_value = (
+                "String",
+                ["firstName", "lastName", "email"],
+                ["private"],
+            )
+
+            with patch.object(extractor, "_determine_visibility") as mock_visibility:
                 mock_visibility.return_value = "private"
-                
-                with patch.object(extractor, '_find_annotations_for_line_cached') as mock_annotations:
+
+                with patch.object(
+                    extractor, "_find_annotations_for_line_cached"
+                ) as mock_annotations:
                     mock_annotations.return_value = []
-                    
-                    with patch.object(extractor, '_extract_javadoc_for_line') as mock_javadoc:
+
+                    with patch.object(
+                        extractor, "_extract_javadoc_for_line"
+                    ) as mock_javadoc:
                         mock_javadoc.return_value = None
-                        
-                        
+
                         result = extractor._extract_field_optimized(mock_node)
-                        
+
                         assert isinstance(result, list)
                         assert len(result) == 3
-                        
+
                         # Check all three variables
-                        for i, field in enumerate(result):
+                        for _i, field in enumerate(result):
                             assert isinstance(field, Variable)
                             assert field.variable_type == "String"
                             assert field.modifiers == ["private"]
                             assert field.visibility == "private"
-                        
+
                         assert result[0].name == "firstName"
                         assert result[1].name == "lastName"
                         assert result[2].name == "email"
@@ -861,13 +939,13 @@ class UserConfig {
         mock_child1 = Mock()
         mock_child1.type = "method_declaration"
         mock_child1.children = []
-        
+
         mock_child2 = Mock()
         mock_child2.type = "class_declaration"
         mock_child2.children = []
-        
+
         mock_root.children = [mock_child1, mock_child2]
-        
+
         # Mock extractor functions
         mock_method_extractor = Mock()
         mock_method_extractor.return_value = Function(
@@ -875,26 +953,28 @@ class UserConfig {
             start_line=1,
             end_line=3,
             raw_text="public void test_method() {}",
-            language="java"
+            language="java",
         )
-        
+
         mock_class_extractor = Mock()
         mock_class_extractor.return_value = Class(
             name="TestClass",
             start_line=5,
             end_line=10,
             raw_text="public class TestClass {}",
-            language="java"
+            language="java",
         )
-        
+
         extractors = {
             "method_declaration": mock_method_extractor,
-            "class_declaration": mock_class_extractor
+            "class_declaration": mock_class_extractor,
         }
-        
+
         results = []
-        extractor._traverse_and_extract_iterative(mock_root, extractors, results, "mixed")
-        
+        extractor._traverse_and_extract_iterative(
+            mock_root, extractors, results, "mixed"
+        )
+
         assert len(results) == 2
         assert isinstance(results[0], Function)
         assert isinstance(results[1], Class)
@@ -906,7 +986,7 @@ class UserConfig {
         mock_child.type = "method_declaration"
         mock_child.children = []
         mock_root.children = [mock_child]
-        
+
         # Set up cache
         node_id = id(mock_child)
         cache_key = (node_id, "method")
@@ -915,51 +995,59 @@ class UserConfig {
             start_line=1,
             end_line=2,
             raw_text="public void cached_method() {}",
-            language="java"
+            language="java",
         )
         extractor._element_cache[cache_key] = cached_method
-        
+
         extractors = {"method_declaration": Mock()}
         results = []
-        
-        extractor._traverse_and_extract_iterative(mock_root, extractors, results, "method")
-        
+
+        extractor._traverse_and_extract_iterative(
+            mock_root, extractors, results, "method"
+        )
+
         # Should use cached result
         assert len(results) == 1
         assert results[0] == cached_method
-        assert extractors["method_declaration"].call_count == 0  # Should not call extractor
+        assert (
+            extractors["method_declaration"].call_count == 0
+        )  # Should not call extractor
 
     def test_traverse_and_extract_iterative_field_batching(self, extractor):
         """Test field batching in iterative traversal"""
         mock_root = Mock()
-        
+
         # Create 15 field nodes to test batching (batch size is 10)
         field_nodes = []
-        for i in range(15):
+        for _i in range(15):
             field_node = Mock()
             field_node.type = "field_declaration"
             field_node.children = []
             field_nodes.append(field_node)
-        
+
         mock_root.children = field_nodes
-        
+
         # Mock field extractor
         def mock_field_extractor(node):
-            return [Variable(
-                name=f"field_{id(node)}",
-                start_line=1,
-                end_line=1,
-                raw_text=f"private String field_{id(node)};",
-                language="java"
-            )]
-        
+            return [
+                Variable(
+                    name=f"field_{id(node)}",
+                    start_line=1,
+                    end_line=1,
+                    raw_text=f"private String field_{id(node)};",
+                    language="java",
+                )
+            ]
+
         extractors = {"field_declaration": mock_field_extractor}
         results = []
-        
+
         # Mock the batch processing method
-        with patch.object(extractor, '_process_field_batch') as mock_batch_process:
-            extractor._traverse_and_extract_iterative(mock_root, extractors, results, "field")
-            
+        with patch.object(extractor, "_process_field_batch") as mock_batch_process:
+            extractor._traverse_and_extract_iterative(
+                mock_root, extractors, results, "field"
+            )
+
             # Should call batch processing twice (10 + 5 fields)
             assert mock_batch_process.call_count == 2
 
@@ -967,26 +1055,29 @@ class UserConfig {
         """Test field batch processing"""
         # Create mock field nodes
         field_nodes = []
-        for i in range(5):
+        for _i in range(5):
             node = Mock()
             node.type = "field_declaration"
             field_nodes.append(node)
-        
+
         # Mock field extractor
         def mock_field_extractor(node):
-            return [Variable(
-                name=f"field_{i}",
-                start_line=1,
-                end_line=1,
-                raw_text=f"private String field_{i};",
-                language="java"
-            ) for i in range(2)]  # Return 2 variables per field declaration
-        
+            return [
+                Variable(
+                    name=f"field_{i}",
+                    start_line=1,
+                    end_line=1,
+                    raw_text=f"private String field_{i};",
+                    language="java",
+                )
+                for i in range(2)
+            ]  # Return 2 variables per field declaration
+
         extractors = {"field_declaration": mock_field_extractor}
         results = []
-        
+
         extractor._process_field_batch(field_nodes, extractors, results)
-        
+
         # Should process all 5 nodes, each returning 2 variables
         assert len(results) == 10
 
@@ -994,24 +1085,26 @@ class UserConfig {
         """Test field batch processing with caching"""
         field_node = Mock()
         field_node.type = "field_declaration"
-        
+
         # Set up cache
         node_id = id(field_node)
         cache_key = (node_id, "field")
-        cached_fields = [Variable(
-            name="cached_field",
-            start_line=1,
-            end_line=1,
-            raw_text="private String cached_field;",
-            language="java"
-        )]
+        cached_fields = [
+            Variable(
+                name="cached_field",
+                start_line=1,
+                end_line=1,
+                raw_text="private String cached_field;",
+                language="java",
+            )
+        ]
         extractor._element_cache[cache_key] = cached_fields
-        
+
         extractors = {"field_declaration": Mock()}
         results = []
-        
+
         extractor._process_field_batch([field_node], extractors, results)
-        
+
         # Should use cached result
         assert len(results) == 1
         assert results[0].name == "cached_field"
@@ -1023,30 +1116,34 @@ class UserConfig {
         root_node = Mock()
         root_node.type = "program"
         root_node.children = []
-        
+
         current_node = root_node
-        
+
         # Create 60 levels of nesting (exceeds max_depth of 50)
-        for i in range(60):
+        for _i in range(60):
             child = Mock()
             child.type = "class_body"
             child.children = []
             current_node.children = [child]
             current_node = child
-        
+
         # Add target node at the end
         target_node = Mock()
         target_node.type = "method_declaration"
         target_node.children = []
         current_node.children = [target_node]
-        
+
         extractors = {"method_declaration": Mock()}
         results = []
-        
+
         # Should not process deeply nested nodes
-        with patch('tree_sitter_analyzer.languages.java_plugin.log_warning') as mock_log:
-            extractor._traverse_and_extract_iterative(root_node, extractors, results, "method")
-            
+        with patch(
+            "tree_sitter_analyzer.languages.java_plugin.log_warning"
+        ) as mock_log:
+            extractor._traverse_and_extract_iterative(
+                root_node, extractors, results, "method"
+            )
+
             # Should log warning about max depth
             mock_log.assert_called()
 
@@ -1057,20 +1154,20 @@ class UserConfig {
         import static org.junit.Assert.*;
         import static com.example.Utils.helper;
         """
-        
+
         imports = extractor._extract_imports_fallback(source_code)
-        
+
         assert len(imports) == 3
-        
+
         # Check static imports
         assert imports[0].name == "java.util.Collections"
         assert imports[0].is_static is True
         assert imports[0].is_wildcard is False
-        
+
         assert imports[1].name == "org.junit.Assert"
         assert imports[1].is_static is True
         assert imports[1].is_wildcard is True
-        
+
         assert imports[2].name == "com.example.Utils"
         assert imports[2].is_static is True
         assert imports[2].is_wildcard is False
@@ -1082,20 +1179,20 @@ class UserConfig {
         import java.util.*;
         import javax.annotation.Nullable;
         """
-        
+
         imports = extractor._extract_imports_fallback(source_code)
-        
+
         assert len(imports) == 3
-        
+
         # Check normal imports
         assert imports[0].name == "java.util.List"
         assert imports[0].is_static is False
         assert imports[0].is_wildcard is False
-        
+
         assert imports[1].name == "java.util"
         assert imports[1].is_static is False
         assert imports[1].is_wildcard is True
-        
+
         assert imports[2].name == "javax.annotation.Nullable"
         assert imports[2].is_static is False
         assert imports[2].is_wildcard is False
@@ -1103,12 +1200,12 @@ class UserConfig {
     def test_performance_with_large_codebase(self, extractor):
         """Test performance with large codebase simulation"""
         import time
-        
+
         # Create large mock tree
         mock_tree = Mock()
         mock_root = Mock()
         mock_tree.root_node = mock_root
-        
+
         # Create many method nodes
         method_nodes = []
         for i in range(100):
@@ -1118,12 +1215,14 @@ class UserConfig {
             node.start_point = (i, 0)
             node.end_point = (i + 2, 0)
             method_nodes.append(node)
-        
+
         mock_root.children = method_nodes
-        
+
         # Create large source code
-        large_source = "\n".join([f"public void method_{i}() {{ return; }}" for i in range(100)])
-        
+        large_source = "\n".join(
+            [f"public void method_{i}() {{ return; }}" for i in range(100)]
+        )
+
         # Mock extraction method to return simple methods
         def mock_extract_method(node):
             return Function(
@@ -1131,14 +1230,16 @@ class UserConfig {
                 start_line=node.start_point[0] + 1,
                 end_line=node.end_point[0] + 1,
                 raw_text=f"public void method_{node.start_point[0]}() {{ return; }}",
-                language="java"
+                language="java",
             )
-        
-        with patch.object(extractor, '_extract_method_optimized', side_effect=mock_extract_method):
+
+        with patch.object(
+            extractor, "_extract_method_optimized", side_effect=mock_extract_method
+        ):
             start_time = time.time()
             methods = extractor.extract_functions(mock_tree, large_source)
             end_time = time.time()
-            
+
             # Should complete within reasonable time (5 seconds)
             assert end_time - start_time < 5.0
             assert len(methods) == 100
@@ -1146,16 +1247,16 @@ class UserConfig {
     def test_memory_usage_with_caching(self, extractor):
         """Test memory usage with caching"""
         import gc
-        
+
         # Perform many operations to populate caches
         mock_node = Mock()
         mock_node.start_byte = 0
         mock_node.end_byte = 10
         mock_node.start_point = (0, 0)
         mock_node.end_point = (0, 10)
-        
+
         extractor.content_lines = ["test content"] * 1000
-        
+
         # Populate caches
         for i in range(1000):
             mock_node_copy = Mock()
@@ -1163,18 +1264,20 @@ class UserConfig {
             mock_node_copy.end_byte = i + 10
             mock_node_copy.start_point = (0, 0)
             mock_node_copy.end_point = (0, 10)
-            
-            with patch('tree_sitter_analyzer.languages.java_plugin.extract_text_slice') as mock_extract:
+
+            with patch(
+                "tree_sitter_analyzer.languages.java_plugin.extract_text_slice"
+            ) as mock_extract:
                 mock_extract.return_value = f"text_{i}"
                 extractor._get_node_text_optimized(mock_node_copy)
-        
+
         # Check cache sizes
         assert len(extractor._node_text_cache) <= 1000
-        
+
         # Reset caches and force garbage collection
         extractor._reset_caches()
         gc.collect()
-        
+
         # Caches should be empty
         assert len(extractor._node_text_cache) == 0
 
@@ -1183,10 +1286,10 @@ class UserConfig {
         mock_tree = Mock()
         mock_tree.root_node = Mock()
         mock_tree.root_node.children = []
-        
+
         # Test with invalid source code
         invalid_source = None
-        
+
         # Should handle None source code gracefully
         try:
             methods = extractor.extract_functions(mock_tree, invalid_source)
@@ -1202,7 +1305,7 @@ class UserConfig {
         mock_node.start_point = (0, 0)
         mock_node.end_point = (2, 0)
         mock_node.children = []  # No identifier child
-        
+
         # Should return None when no class name found
         result = extractor._extract_class_optimized(mock_node)
         assert result is None
@@ -1213,11 +1316,11 @@ class UserConfig {
         mock_node.start_point = (0, 0)
         mock_node.end_point = (2, 0)
         mock_node.children = []
-        
+
         # Mock to raise exception during processing
-        with patch.object(extractor, '_extract_modifiers_optimized') as mock_modifiers:
+        with patch.object(extractor, "_extract_modifiers_optimized") as mock_modifiers:
             mock_modifiers.side_effect = Exception("Test error")
-            
+
             result = extractor._extract_class_optimized(mock_node)
             assert result is None
 
@@ -1227,11 +1330,11 @@ class UserConfig {
         mock_node.type = "method_declaration"
         mock_node.start_point = (0, 0)
         mock_node.end_point = (2, 0)
-        
+
         # Mock signature parsing to return None
-        with patch.object(extractor, '_parse_method_signature_optimized') as mock_parse:
+        with patch.object(extractor, "_parse_method_signature_optimized") as mock_parse:
             mock_parse.return_value = None
-            
+
             result = extractor._extract_method_optimized(mock_node)
             assert result is None
 
@@ -1240,11 +1343,11 @@ class UserConfig {
         mock_node = Mock()
         mock_node.start_point = (0, 0)
         mock_node.end_point = (2, 0)
-        
+
         # Mock to raise exception
-        with patch.object(extractor, '_parse_method_signature_optimized') as mock_parse:
+        with patch.object(extractor, "_parse_method_signature_optimized") as mock_parse:
             mock_parse.side_effect = Exception("Test error")
-            
+
             result = extractor._extract_method_optimized(mock_node)
             assert result is None
 
@@ -1254,11 +1357,13 @@ class UserConfig {
         mock_node.type = "field_declaration"
         mock_node.start_point = (0, 0)
         mock_node.end_point = (2, 0)
-        
+
         # Mock field parsing to return None
-        with patch.object(extractor, '_parse_field_declaration_optimized') as mock_parse:
+        with patch.object(
+            extractor, "_parse_field_declaration_optimized"
+        ) as mock_parse:
             mock_parse.return_value = None
-            
+
             result = extractor._extract_field_optimized(mock_node)
             assert result == []
 
@@ -1267,18 +1372,20 @@ class UserConfig {
         mock_node = Mock()
         mock_node.start_point = (0, 0)
         mock_node.end_point = (2, 0)
-        
+
         # Mock to raise exception
-        with patch.object(extractor, '_parse_field_declaration_optimized') as mock_parse:
+        with patch.object(
+            extractor, "_parse_field_declaration_optimized"
+        ) as mock_parse:
             mock_parse.side_effect = Exception("Test error")
-            
+
             result = extractor._extract_field_optimized(mock_node)
             assert result == []
 
 
 class TestJavaPlugin:
     """Test Java plugin functionality"""
-    
+
     @pytest.fixture
     def plugin(self):
         """Create a Java plugin instance"""
@@ -1294,25 +1401,33 @@ class TestJavaPlugin:
         mock_tree = Mock()
         mock_tree.root_node = Mock()
         mock_tree.root_node.children = []
-        
+
         source_code = "public class Test {}"
-        
+
         # Mock extractor methods
-        with patch.object(plugin.extractor, 'extract_functions') as mock_functions:
-            with patch.object(plugin.extractor, 'extract_classes') as mock_classes:
-                with patch.object(plugin.extractor, 'extract_variables') as mock_variables:
-                    with patch.object(plugin.extractor, 'extract_imports') as mock_imports:
-                        with patch.object(plugin.extractor, 'extract_packages') as mock_packages:
-                            with patch.object(plugin.extractor, 'extract_annotations') as mock_annotations:
+        with patch.object(plugin.extractor, "extract_functions") as mock_functions:
+            with patch.object(plugin.extractor, "extract_classes") as mock_classes:
+                with patch.object(
+                    plugin.extractor, "extract_variables"
+                ) as mock_variables:
+                    with patch.object(
+                        plugin.extractor, "extract_imports"
+                    ) as mock_imports:
+                        with patch.object(
+                            plugin.extractor, "extract_packages"
+                        ) as mock_packages:
+                            with patch.object(
+                                plugin.extractor, "extract_annotations"
+                            ) as mock_annotations:
                                 mock_functions.return_value = []
                                 mock_classes.return_value = []
                                 mock_variables.return_value = []
                                 mock_imports.return_value = []
                                 mock_packages.return_value = []
                                 mock_annotations.return_value = []
-                                
+
                                 result = plugin.extract_elements(mock_tree, source_code)
-                                
+
                                 assert "functions" in result
                                 assert "classes" in result
                                 assert "variables" in result
@@ -1324,9 +1439,16 @@ class TestJavaPlugin:
         """Test plugin behavior with invalid tree"""
         # Test with None tree
         result = plugin.extract_elements(None, "public class Test {}")
-        expected_keys = {"functions", "classes", "variables", "imports", "packages", "annotations"}
+        expected_keys = {
+            "functions",
+            "classes",
+            "variables",
+            "imports",
+            "packages",
+            "annotations",
+        }
         assert set(result.keys()) == expected_keys
-        
+
         # All should be empty lists
         for key in expected_keys:
             assert result[key] == []
@@ -1336,26 +1458,55 @@ class TestJavaPlugin:
         mock_tree = Mock()
         mock_tree.root_node = Mock()
         mock_tree.root_node.children = []
-        
+
         # Mock extractor to raise exceptions
-        with patch.object(plugin.extractor, 'extract_functions') as mock_functions:
-            with patch.object(plugin.extractor, 'extract_classes') as mock_classes:
-                with patch.object(plugin.extractor, 'extract_variables') as mock_variables:
-                    with patch.object(plugin.extractor, 'extract_imports') as mock_imports:
-                        with patch.object(plugin.extractor, 'extract_packages') as mock_packages:
-                            with patch.object(plugin.extractor, 'extract_annotations') as mock_annotations:
-                                mock_functions.side_effect = Exception("Function extraction error")
-                                mock_classes.side_effect = Exception("Class extraction error")
-                                mock_variables.side_effect = Exception("Variable extraction error")
-                                mock_imports.side_effect = Exception("Import extraction error")
-                                mock_packages.side_effect = Exception("Package extraction error")
-                                mock_annotations.side_effect = Exception("Annotation extraction error")
-                                
+        with patch.object(plugin.extractor, "extract_functions") as mock_functions:
+            with patch.object(plugin.extractor, "extract_classes") as mock_classes:
+                with patch.object(
+                    plugin.extractor, "extract_variables"
+                ) as mock_variables:
+                    with patch.object(
+                        plugin.extractor, "extract_imports"
+                    ) as mock_imports:
+                        with patch.object(
+                            plugin.extractor, "extract_packages"
+                        ) as mock_packages:
+                            with patch.object(
+                                plugin.extractor, "extract_annotations"
+                            ) as mock_annotations:
+                                mock_functions.side_effect = Exception(
+                                    "Function extraction error"
+                                )
+                                mock_classes.side_effect = Exception(
+                                    "Class extraction error"
+                                )
+                                mock_variables.side_effect = Exception(
+                                    "Variable extraction error"
+                                )
+                                mock_imports.side_effect = Exception(
+                                    "Import extraction error"
+                                )
+                                mock_packages.side_effect = Exception(
+                                    "Package extraction error"
+                                )
+                                mock_annotations.side_effect = Exception(
+                                    "Annotation extraction error"
+                                )
+
                                 # Should handle exceptions gracefully
-                                result = plugin.extract_elements(mock_tree, "public class Test {}")
-                                
+                                result = plugin.extract_elements(
+                                    mock_tree, "public class Test {}"
+                                )
+
                                 # Should return empty lists instead of crashing
-                                expected_keys = {"functions", "classes", "variables", "imports", "packages", "annotations"}
+                                expected_keys = {
+                                    "functions",
+                                    "classes",
+                                    "variables",
+                                    "imports",
+                                    "packages",
+                                    "annotations",
+                                }
                                 assert set(result.keys()) == expected_keys
                                 for key in expected_keys:
                                     assert result[key] == []
@@ -1364,34 +1515,36 @@ class TestJavaPlugin:
         """Test simulation of concurrent extraction"""
         import threading
         import time
-        
+
         results = []
         errors = []
-        
+
         def worker():
             try:
                 mock_tree = Mock()
                 mock_tree.root_node = Mock()
                 mock_tree.root_node.children = []
-                
+
                 for i in range(5):
-                    result = plugin.extract_elements(mock_tree, f"public class Test{i} {{}}")
+                    result = plugin.extract_elements(
+                        mock_tree, f"public class Test{i} {{}}"
+                    )
                     results.append(result)
                     time.sleep(0.001)  # Small delay
             except Exception as e:
                 errors.append(e)
-        
+
         # Create multiple threads
         threads = []
-        for i in range(3):
+        for _i in range(3):
             thread = threading.Thread(target=worker)
             threads.append(thread)
             thread.start()
-        
+
         # Wait for all threads to complete
         for thread in threads:
             thread.join()
-        
+
         # Should not have any errors
         assert len(errors) == 0
         assert len(results) == 15  # 3 threads * 5 operations each

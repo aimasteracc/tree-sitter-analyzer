@@ -168,18 +168,18 @@ class TestCLIAdvancedOptions:
                 element_counts["imports"] = int(line.split(": ")[1].rstrip('"'))
 
         # Verify expected counts for the sample file
-        assert (
-            element_counts.get("classes", 0) == 1
-        ), f"Expected 1 class, got {element_counts.get('classes', 0)}"
-        assert (
-            element_counts.get("methods", 0) == 2
-        ), f"Expected 2 methods, got {element_counts.get('methods', 0)}"
-        assert (
-            element_counts.get("fields", 0) == 1
-        ), f"Expected 1 field, got {element_counts.get('fields', 0)}"
-        assert (
-            element_counts.get("imports", 0) == 1
-        ), f"Expected 1 import, got {element_counts.get('imports', 0)}"
+        assert element_counts.get("classes", 0) == 1, (
+            f"Expected 1 class, got {element_counts.get('classes', 0)}"
+        )
+        assert element_counts.get("methods", 0) == 2, (
+            f"Expected 2 methods, got {element_counts.get('methods', 0)}"
+        )
+        assert element_counts.get("fields", 0) == 1, (
+            f"Expected 1 field, got {element_counts.get('fields', 0)}"
+        )
+        assert element_counts.get("imports", 0) == 1, (
+            f"Expected 1 import, got {element_counts.get('imports', 0)}"
+        )
 
     def test_advanced_option_analysis_failure(self, monkeypatch, sample_java_file):
         """Test --advanced option when analysis fails"""

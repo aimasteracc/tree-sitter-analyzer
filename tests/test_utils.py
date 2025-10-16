@@ -19,12 +19,7 @@ sys.path.insert(0, ".")
 # Import LoggingContext - it should be available
 from tree_sitter_analyzer.utils import (
     LoggingContext,
-    log_debug,
-    log_error,
-    log_info,
     log_performance,
-    log_warning,
-    safe_print,
     setup_performance_logger,
 )
 
@@ -52,20 +47,20 @@ def test_logger():
         # Remove handler first
         if handler in logger.handlers:
             logger.removeHandler(handler)
-        
+
         # Close handler
         try:
             handler.close()
         except (ValueError, OSError, AttributeError):
             pass
-            
+
     except Exception:
         # Ignore all cleanup errors during pytest shutdown
         pass
     finally:
         # Ensure log_capture is closed safely
         try:
-            if hasattr(log_capture, 'closed') and not log_capture.closed:
+            if hasattr(log_capture, "closed") and not log_capture.closed:
                 log_capture.close()
         except Exception:
             # Ignore all StringIO cleanup errors
@@ -94,20 +89,20 @@ def perf_logger():
         # Remove handler first
         if handler in logger.handlers:
             logger.removeHandler(handler)
-        
+
         # Close handler
         try:
             handler.close()
         except (ValueError, OSError, AttributeError):
             pass
-            
+
     except Exception:
         # Ignore all cleanup errors during pytest shutdown
         pass
     finally:
         # Ensure log_capture is closed safely
         try:
-            if hasattr(log_capture, 'closed') and not log_capture.closed:
+            if hasattr(log_capture, "closed") and not log_capture.closed:
                 log_capture.close()
         except Exception:
             # Ignore all StringIO cleanup errors
@@ -276,7 +271,7 @@ def test_logging_context_level_change():
         # Create LoggingContext that uses our test logger
         context = LoggingContext(enabled=True, level=logging.WARNING)
         context.target_logger = test_logger
-        
+
         with context:
             current_level = test_logger.level
             # Level should be changed to WARNING
@@ -301,7 +296,7 @@ def test_logging_context_nesting():
         # Create LoggingContext instances that use our test logger
         outer_context = LoggingContext(enabled=True, level=logging.ERROR)
         outer_context.target_logger = test_logger
-        
+
         inner_context = LoggingContext(enabled=True, level=logging.DEBUG)
         inner_context.target_logger = test_logger
 

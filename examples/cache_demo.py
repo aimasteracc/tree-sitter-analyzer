@@ -111,7 +111,7 @@ async def demo_cache_performance():
         elapsed = time.time() - start_time
         cached_times.append(elapsed)
         cache_hit = result.get("cache_hit", False)
-        print(f"   Run {i+1}: {elapsed:.3f}s (cache hit: {cache_hit})")
+        print(f"   Run {i + 1}: {elapsed:.3f}s (cache hit: {cache_hit})")
 
     avg_cached_time = sum(cached_times) / len(cached_times)
     print(f"   📊 Average: {avg_cached_time:.3f}s")
@@ -125,7 +125,7 @@ async def demo_cache_performance():
         await tool_without_cache.execute(search_args)
         elapsed = time.time() - start_time
         non_cached_times.append(elapsed)
-        print(f"   Run {i+1}: {elapsed:.3f}s")
+        print(f"   Run {i + 1}: {elapsed:.3f}s")
 
     avg_non_cached_time = sum(non_cached_times) / len(non_cached_times)
     print(f"   📊 Average: {avg_non_cached_time:.3f}s")

@@ -131,7 +131,9 @@ public class TestClass {
         invalid_query = "(invalid_syntax"
 
         # Mock TreeSitterQueryCompat to raise an exception
-        with patch("tree_sitter_analyzer.core.query.TreeSitterQueryCompat.safe_execute_query") as mock_safe_execute:
+        with patch(
+            "tree_sitter_analyzer.core.query.TreeSitterQueryCompat.safe_execute_query"
+        ) as mock_safe_execute:
             mock_safe_execute.side_effect = Exception("Invalid query syntax")
             result = query_executor.execute_query_string(
                 mock_tree, mock_language, invalid_query, "test code"

@@ -84,7 +84,7 @@ async def run_command_capture(
     if cmd and not check_external_command(cmd[0]):
         error_msg = f"Command '{cmd[0]}' not found in PATH. Please install {cmd[0]} to use this functionality."
         return 127, b"", error_msg.encode()
-    
+
     try:
         # Create process
         proc = await asyncio.create_subprocess_exec(
@@ -106,7 +106,7 @@ async def run_command_capture(
         stdout, stderr = await asyncio.wait_for(
             proc.communicate(input=input_data), timeout=timeout_s
         )
-        return proc.returncode, stdout, stderr
+        return proc.returncode or 0, stdout, stderr
     except asyncio.TimeoutError:
         try:
             proc.kill()
@@ -222,7 +222,7 @@ def build_rg_command(
     """Build ripgrep command with JSON output and options."""
     if count_only_matches:
         # Use --count-matches for count-only mode (no JSON output)
-        cmd: list[str] = [
+        cmd = [
             "rg",
             "--count-matches",
             "--no-heading",
@@ -231,7 +231,7 @@ def build_rg_command(
         ]
     else:
         # Use --json for full match details
-        cmd: list[str] = [
+        cmd = [
             "rg",
             "--json",
             "--no-heading",
@@ -286,11 +286,15 @@ def build_rg_command(
     # Normalize filesize
     cmd += ["--max-filesize", normalize_max_filesize(max_filesize)]
 
-    # Only add timeout if supported (check if timeout_ms is provided and > 0)
-    # Note: --timeout flag may not be available in all ripgrep versions
-    # For now, we'll skip the timeout flag to ensure compatibility
-    # effective_timeout = clamp_int(timeout_ms, DEFAULT_RG_TIMEOUT_MS, RG_TIMEOUT_HARD_CAP_MS)
-    # cmd += ["--timeout", str(effective_timeout)]
+    # Add timeout if provided and > 0 (enable timeout for performance optimization)
+    if timeout_ms is not None and timeout_ms > 0:
+        # effective_timeout = clamp_int(
+        #     timeout_ms, DEFAULT_RG_TIMEOUT_MS, RG_TIMEOUT_HARD_CAP_MS
+        # )  # Commented out as not used yet
+        # Use timeout in milliseconds for better control
+        # Note: We'll handle timeout at the process level instead of ripgrep flag
+        # to ensure compatibility across ripgrep versions
+        pass
 
     # Query must be last before roots/files
     cmd.append(query)
@@ -307,39 +311,63 @@ def build_rg_command(
 def parse_rg_json_lines_to_matches(stdout_bytes: bytes) -> list[dict[str, Any]]:
     """Parse ripgrep JSON event stream and keep only match events."""
     results: list[dict[str, Any]] = []
-    for raw_line in stdout_bytes.splitlines():
+    lines = stdout_bytes.splitlines()
+
+    # Batch process lines for better performance
+    for raw_line in lines:
         if not raw_line.strip():
             continue
         try:
-            evt = json.loads(raw_line.decode("utf-8", errors="replace"))
+            # Decode once and parse JSON
+            line_str = raw_line.decode("utf-8", errors="replace")
+            evt = json.loads(line_str)
         except (json.JSONDecodeError, UnicodeDecodeError):  # nosec B112
             continue
+
+        # Quick type check to skip non-match events
         if evt.get("type") != "match":
             continue
+
         data = evt.get("data", {})
-        path_text = (data.get("path", {}) or {}).get("text")
+        if not data:
+            continue
+
+        # Extract data with safe defaults
+        path_data = data.get("path", {})
+        path_text = path_data.get("text") if path_data else None
+        if not path_text:
+            continue
+
         line_number = data.get("line_number")
-        line_text = (data.get("lines", {}) or {}).get("text")
-        submatches_raw = data.get("submatches", []) or []
-        # Normalize line content to reduce token usage
+        lines_data = data.get("lines", {})
+        line_text = lines_data.get("text") if lines_data else ""
+
+        # Normalize line content to reduce token usage (optimized)
         normalized_line = " ".join(line_text.split()) if line_text else ""
 
-        # Simplify submatches - remove redundant match text, keep only positions
+        # Simplify submatches - keep only essential position data
+        submatches_raw = data.get("submatches", [])
         simplified_matches = []
-        for sm in submatches_raw:
-            start = sm.get("start")
-            end = sm.get("end")
-            if start is not None and end is not None:
-                simplified_matches.append([start, end])
+        if submatches_raw:
+            for sm in submatches_raw:
+                start = sm.get("start")
+                end = sm.get("end")
+                if start is not None and end is not None:
+                    simplified_matches.append([start, end])
 
         results.append(
             {
                 "file": path_text,
-                "line": line_number,  # Shortened field name
-                "text": normalized_line,  # Normalized content
-                "matches": simplified_matches,  # Simplified match positions
+                "line": line_number,
+                "text": normalized_line,
+                "matches": simplified_matches,
             }
         )
+
+        # Early exit if we have too many results to prevent memory issues
+        if len(results) >= MAX_RESULTS_HARD_CAP:
+            break
+
     return results
 
 
@@ -572,7 +600,9 @@ class TempFileList:
     def __enter__(self) -> TempFileList:
         return self
 
-    def __exit__(self, exc_type, exc, tb) -> None:
+    def __exit__(
+        self, exc_type: type[BaseException] | None, exc: BaseException | None, tb: Any
+    ) -> None:
         with contextlib.suppress(Exception):
             Path(self.path).unlink(missing_ok=True)
 
@@ -585,7 +615,12 @@ class contextlib:  # minimal shim for suppress without importing globally
         def __enter__(self) -> None:  # noqa: D401
             return None
 
-        def __exit__(self, exc_type, exc, tb) -> bool:
+        def __exit__(
+            self,
+            exc_type: type[BaseException] | None,
+            exc: BaseException | None,
+            tb: Any,
+        ) -> bool:
             return exc_type is not None and issubclass(exc_type, self.exceptions)
 
 
@@ -595,3 +630,174 @@ def write_files_to_temp(files: list[str]) -> TempFileList:
     content = "\n".join(files)
     Path(temp_path).write_text(content, encoding="utf-8")
     return TempFileList(path=temp_path)
+
+
+async def run_parallel_rg_searches(
+    commands: list[list[str]],
+    timeout_ms: int | None = None,
+    max_concurrent: int = 4,
+) -> list[tuple[int, bytes, bytes]]:
+    """
+    Run multiple ripgrep commands in parallel with concurrency control.
+
+    Args:
+        commands: List of ripgrep command lists to execute
+        timeout_ms: Timeout in milliseconds for each command
+        max_concurrent: Maximum number of concurrent processes (default: 4)
+
+    Returns:
+        List of (returncode, stdout, stderr) tuples in the same order as commands
+    """
+    if not commands:
+        return []
+
+    # Create semaphore to limit concurrent processes
+    semaphore = asyncio.Semaphore(max_concurrent)
+
+    async def run_single_command(cmd: list[str]) -> tuple[int, bytes, bytes]:
+        async with semaphore:
+            return await run_command_capture(cmd, timeout_ms=timeout_ms)
+
+    # Execute all commands concurrently
+    tasks = [run_single_command(cmd) for cmd in commands]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    # Handle exceptions and convert to proper format
+    processed_results: list[tuple[int, bytes, bytes]] = []
+    for _i, result in enumerate(results):
+        if isinstance(result, Exception):
+            # Convert exception to error result
+            error_msg = f"Command failed: {str(result)}"
+            processed_results.append((1, b"", error_msg.encode()))
+        elif isinstance(result, tuple) and len(result) == 3:
+            processed_results.append(result)
+        else:
+            # Fallback for unexpected result types
+            processed_results.append((1, b"", b"Unexpected result type"))
+
+    return processed_results
+
+
+def merge_rg_results(
+    results: list[tuple[int, bytes, bytes]],
+    count_only_mode: bool = False,
+) -> tuple[int, bytes, bytes]:
+    """
+    Merge results from multiple ripgrep executions.
+
+    Args:
+        results: List of (returncode, stdout, stderr) tuples
+        count_only_mode: Whether the results are from count-only mode
+
+    Returns:
+        Merged (returncode, stdout, stderr) tuple
+    """
+    if not results:
+        return (1, b"", b"No results to merge")
+
+    # Check if any command failed critically (not just "no matches found")
+    critical_failures = []
+    successful_results = []
+
+    for rc, stdout, stderr in results:
+        if rc not in (0, 1):  # 0=matches found, 1=no matches, others=errors
+            critical_failures.append((rc, stdout, stderr))
+        else:
+            successful_results.append((rc, stdout, stderr))
+
+    # If all commands failed critically, return the first failure
+    if not successful_results:
+        return critical_failures[0] if critical_failures else (1, b"", b"")
+
+    # Merge successful results
+    if count_only_mode:
+        return _merge_count_results(successful_results)
+    else:
+        return _merge_json_results(successful_results)
+
+
+def _merge_count_results(
+    results: list[tuple[int, bytes, bytes]],
+) -> tuple[int, bytes, bytes]:
+    """Merge count-only results from multiple ripgrep executions."""
+    merged_counts: dict[str, int] = {}
+    total_matches = 0
+
+    for rc, stdout, _stderr in results:
+        if rc in (0, 1):  # Success or no matches
+            file_counts = parse_rg_count_output(stdout)
+            # Remove the __total__ key and merge file counts
+            for file_path, count in file_counts.items():
+                if file_path != "__total__":
+                    merged_counts[file_path] = merged_counts.get(file_path, 0) + count
+                    total_matches += count
+
+    # Format as ripgrep count output
+    output_lines = []
+    for file_path, count in merged_counts.items():
+        output_lines.append(f"{file_path}:{count}")
+
+    merged_stdout = "\n".join(output_lines).encode("utf-8")
+
+    # Return code 0 if we have matches, 1 if no matches
+    return_code = 0 if total_matches > 0 else 1
+    return (return_code, merged_stdout, b"")
+
+
+def _merge_json_results(
+    results: list[tuple[int, bytes, bytes]],
+) -> tuple[int, bytes, bytes]:
+    """Merge JSON results from multiple ripgrep executions."""
+    merged_lines = []
+    has_matches = False
+
+    for rc, stdout, _stderr in results:
+        if rc in (0, 1):  # Success or no matches
+            if stdout.strip():
+                merged_lines.extend(stdout.splitlines())
+                if rc == 0:  # Has matches
+                    has_matches = True
+
+    merged_stdout = b"\n".join(merged_lines)
+    return_code = 0 if has_matches else 1
+    return (return_code, merged_stdout, b"")
+
+
+def split_roots_for_parallel_processing(
+    roots: list[str], max_chunks: int = 4
+) -> list[list[str]]:
+    """
+    Split roots into chunks for parallel processing.
+
+    Args:
+        roots: List of root directories
+        max_chunks: Maximum number of chunks to create
+
+    Returns:
+        List of root chunks for parallel processing
+    """
+    if not roots:
+        return []
+
+    if len(roots) <= max_chunks:
+        # Each root gets its own chunk
+        return [[root] for root in roots]
+
+    # Distribute roots across chunks
+    chunk_size = len(roots) // max_chunks
+    remainder = len(roots) % max_chunks
+
+    chunks = []
+    start = 0
+
+    for i in range(max_chunks):
+        # Add one extra item to first 'remainder' chunks
+        current_chunk_size = chunk_size + (1 if i < remainder else 0)
+        end = start + current_chunk_size
+
+        if start < len(roots):
+            chunks.append(roots[start:end])
+
+        start = end
+
+    return [chunk for chunk in chunks if chunk]  # Remove empty chunks

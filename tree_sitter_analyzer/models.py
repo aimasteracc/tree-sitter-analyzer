@@ -161,14 +161,14 @@ class MarkupElement(CodeElement):
     HTML要素を表現するデータモデル。
     CodeElementを継承し、マークアップ固有の属性を追加する。
     """
-    
+
     tag_name: str = ""
     attributes: dict[str, str] = field(default_factory=dict)
     parent: "MarkupElement | None" = None
     children: list["MarkupElement"] = field(default_factory=list)
     element_class: str = ""  # 分類システムのカテゴリ (例: 'structure', 'media', 'form')
     element_type: str = "html_element"
-    
+
     def to_summary_item(self) -> dict[str, Any]:
         """Return dictionary for summary item"""
         return {
@@ -186,12 +186,14 @@ class StyleElement(CodeElement):
     CSSルールを表現するデータモデル。
     CodeElementを継承する。
     """
-    
+
     selector: str = ""
     properties: dict[str, str] = field(default_factory=dict)
-    element_class: str = ""  # 分類システムのカテゴリ (例: 'layout', 'typography', 'color')
+    element_class: str = (
+        ""  # 分類システムのカテゴリ (例: 'layout', 'typography', 'color')
+    )
     element_type: str = "css_rule"
-    
+
     def to_summary_item(self) -> dict[str, Any]:
         """Return dictionary for summary item"""
         return {

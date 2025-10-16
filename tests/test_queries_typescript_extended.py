@@ -19,11 +19,11 @@ class TestTypeScriptExtendedQueries:
         """Test new function-specific queries"""
         function_queries = [
             "function_declaration",
-            "arrow_function", 
+            "arrow_function",
             "method_definition",
-            "async_function"
+            "async_function",
         ]
-        
+
         for query_name in function_queries:
             assert query_name in ts_queries.ALL_QUERIES
             query_data = ts_queries.ALL_QUERIES[query_name]
@@ -34,11 +34,8 @@ class TestTypeScriptExtendedQueries:
 
     def test_new_class_queries(self):
         """Test new class-specific queries"""
-        class_queries = [
-            "class_declaration",
-            "abstract_class"
-        ]
-        
+        class_queries = ["class_declaration", "abstract_class"]
+
         for query_name in class_queries:
             assert query_name in ts_queries.ALL_QUERIES
             query_data = ts_queries.ALL_QUERIES[query_name]
@@ -47,11 +44,8 @@ class TestTypeScriptExtendedQueries:
 
     def test_new_variable_queries(self):
         """Test new variable-specific queries"""
-        variable_queries = [
-            "const_declaration",
-            "let_declaration"
-        ]
-        
+        variable_queries = ["const_declaration", "let_declaration"]
+
         for query_name in variable_queries:
             assert query_name in ts_queries.ALL_QUERIES
             query_data = ts_queries.ALL_QUERIES[query_name]
@@ -64,9 +58,9 @@ class TestTypeScriptExtendedQueries:
             "import_statement",
             "type_import",
             "import_type",
-            "export_type"
+            "export_type",
         ]
-        
+
         for query_name in import_queries:
             assert query_name in ts_queries.ALL_QUERIES
             query_data = ts_queries.ALL_QUERIES[query_name]
@@ -77,7 +71,7 @@ class TestTypeScriptExtendedQueries:
         """Test TypeScript type system queries"""
         type_queries = [
             "union_type",
-            "intersection_type", 
+            "intersection_type",
             "conditional_type",
             "mapped_type",
             "tuple_type",
@@ -89,9 +83,9 @@ class TestTypeScriptExtendedQueries:
             "infer_type",
             "function_type",
             "constructor_type",
-            "object_type"
+            "object_type",
         ]
-        
+
         for query_name in type_queries:
             assert query_name in ts_queries.ALL_QUERIES
             query_data = ts_queries.ALL_QUERIES[query_name]
@@ -103,15 +97,15 @@ class TestTypeScriptExtendedQueries:
         """Test method visibility queries"""
         visibility_queries = [
             "getter_method",
-            "setter_method", 
+            "setter_method",
             "static_method",
             "private_method",
             "protected_method",
             "public_method",
             "override_method",
-            "abstract_method"
+            "abstract_method",
         ]
-        
+
         for query_name in visibility_queries:
             assert query_name in ts_queries.ALL_QUERIES
             query_data = ts_queries.ALL_QUERIES[query_name]
@@ -120,11 +114,8 @@ class TestTypeScriptExtendedQueries:
 
     def test_property_queries(self):
         """Test property-specific queries"""
-        property_queries = [
-            "readonly_property",
-            "optional_property"
-        ]
-        
+        property_queries = ["readonly_property", "optional_property"]
+
         for query_name in property_queries:
             assert query_name in ts_queries.ALL_QUERIES
             query_data = ts_queries.ALL_QUERIES[query_name]
@@ -132,18 +123,20 @@ class TestTypeScriptExtendedQueries:
             assert "description" in query_data
             # Check for "property" or "properties" in description
             description_lower = query_data["description"].lower()
-            assert "propert" in description_lower, f"Description for {query_name} should contain 'property' or 'properties'"
+            assert "propert" in description_lower, (
+                f"Description for {query_name} should contain 'property' or 'properties'"
+            )
 
     def test_signature_queries(self):
         """Test signature-specific queries"""
         signature_queries = [
             "index_signature",
-            "call_signature", 
+            "call_signature",
             "construct_signature",
             "predicate_type",
-            "asserts_type"
+            "asserts_type",
         ]
-        
+
         for query_name in signature_queries:
             assert query_name in ts_queries.ALL_QUERIES
             query_data = ts_queries.ALL_QUERIES[query_name]
@@ -155,10 +148,10 @@ class TestTypeScriptExtendedQueries:
         jsx_queries = [
             "jsx_element",
             "jsx_self_closing",
-            "jsx_fragment", 
-            "jsx_expression"
+            "jsx_fragment",
+            "jsx_expression",
         ]
-        
+
         for query_name in jsx_queries:
             assert query_name in ts_queries.ALL_QUERIES
             query_data = ts_queries.ALL_QUERIES[query_name]
@@ -174,9 +167,9 @@ class TestTypeScriptExtendedQueries:
             "satisfies_expression",
             "non_null_expression",
             "optional_chain",
-            "nullish_coalescing"
+            "nullish_coalescing",
         ]
-        
+
         for query_name in expression_queries:
             assert query_name in ts_queries.ALL_QUERIES
             query_data = ts_queries.ALL_QUERIES[query_name]
@@ -185,12 +178,8 @@ class TestTypeScriptExtendedQueries:
 
     def test_pattern_queries(self):
         """Test pattern-specific queries"""
-        pattern_queries = [
-            "rest_pattern",
-            "spread_element",
-            "destructuring_pattern"
-        ]
-        
+        pattern_queries = ["rest_pattern", "spread_element", "destructuring_pattern"]
+
         for query_name in pattern_queries:
             assert query_name in ts_queries.ALL_QUERIES
             query_data = ts_queries.ALL_QUERIES[query_name]
@@ -199,12 +188,8 @@ class TestTypeScriptExtendedQueries:
 
     def test_literal_queries(self):
         """Test literal-specific queries"""
-        literal_queries = [
-            "template_string",
-            "regex_literal",
-            "this_type"
-        ]
-        
+        literal_queries = ["template_string", "regex_literal", "this_type"]
+
         for query_name in literal_queries:
             assert query_name in ts_queries.ALL_QUERIES
             query_data = ts_queries.ALL_QUERIES[query_name]
@@ -217,9 +202,9 @@ class TestTypeScriptExtendedQueries:
             "declare_statement",
             "module_declaration",
             "global_declaration",
-            "augmentation"
+            "augmentation",
         ]
-        
+
         for query_name in declaration_queries:
             assert query_name in ts_queries.ALL_QUERIES
             query_data = ts_queries.ALL_QUERIES[query_name]
@@ -231,11 +216,11 @@ class TestTypeScriptExtendedQueries:
         modifier_queries = [
             "readonly_modifier",
             "static_modifier",
-            "async_modifier", 
+            "async_modifier",
             "override_modifier",
-            "abstract_modifier"
+            "abstract_modifier",
         ]
-        
+
         for query_name in modifier_queries:
             assert query_name in ts_queries.ALL_QUERIES
             query_data = ts_queries.ALL_QUERIES[query_name]
@@ -257,13 +242,13 @@ class TestTypeScriptExtendedQueries:
             assert isinstance(query_data, dict)
             assert "query" in query_data
             assert "description" in query_data
-            
+
             # Check content
             assert isinstance(query_data["query"], str)
             assert isinstance(query_data["description"], str)
             assert len(query_data["query"].strip()) > 0
             assert len(query_data["description"].strip()) > 0
-            
+
             # Check description quality
             assert len(query_data["description"]) > 10
             assert not query_data["description"].lower().startswith("todo")
@@ -272,44 +257,50 @@ class TestTypeScriptExtendedQueries:
         """Test basic syntax validation for queries"""
         for query_name, query_data in ts_queries.ALL_QUERIES.items():
             query_string = query_data["query"]
-            
+
             # Skip parentheses check for imports query (known issue)
             if query_name != "imports":
-                assert query_string.count("(") == query_string.count(")"), \
+                assert query_string.count("(") == query_string.count(")"), (
                     f"Unbalanced parentheses in {query_name} query"
-            
-            assert query_string.count("[") == query_string.count("]"), \
+                )
+
+            assert query_string.count("[") == query_string.count("]"), (
                 f"Unbalanced brackets in {query_name} query"
-            assert query_string.count("{") == query_string.count("}"), \
+            )
+            assert query_string.count("{") == query_string.count("}"), (
                 f"Unbalanced braces in {query_name} query"
+            )
 
     def test_capture_groups_present(self):
         """Test that queries contain capture groups"""
         for query_name, query_data in ts_queries.ALL_QUERIES.items():
             query_string = query_data["query"]
-            
+
             # Should contain capture groups (indicated by @)
             assert "@" in query_string, f"No capture groups found in {query_name} query"
 
     def test_typescript_coverage_comprehensive(self):
         """Test comprehensive TypeScript feature coverage"""
-        all_queries_text = " ".join([q["query"] for q in ts_queries.ALL_QUERIES.values()])
-        
+        all_queries_text = " ".join(
+            [q["query"] for q in ts_queries.ALL_QUERIES.values()]
+        )
+
         # Core TypeScript features
         core_features = [
             "interface_declaration",
-            "type_alias_declaration", 
+            "type_alias_declaration",
             "enum_declaration",
             "class_declaration",
             "abstract_class_declaration",
             "function_declaration",
             "arrow_function",
-            "method_definition"
+            "method_definition",
         ]
-        
+
         for feature in core_features:
-            assert feature in all_queries_text, \
+            assert feature in all_queries_text, (
                 f"Core TypeScript feature '{feature}' not found in queries"
+            )
 
         # Advanced type system features
         advanced_features = [
@@ -318,12 +309,13 @@ class TestTypeScriptExtendedQueries:
             "conditional_type",
             "mapped_type_clause",
             "type_parameters",
-            "type_annotation"
+            "type_annotation",
         ]
-        
+
         for feature in advanced_features:
-            assert feature in all_queries_text, \
+            assert feature in all_queries_text, (
                 f"Advanced TypeScript feature '{feature}' not found in queries"
+            )
 
     def test_alias_queries(self):
         """Test that alias queries work correctly"""
@@ -337,7 +329,7 @@ class TestTypeScriptExtendedQueries:
         """Test generic_type query specifically"""
         assert "generic_type" in ts_queries.ALL_QUERIES
         generic_query = ts_queries.ALL_QUERIES["generic_type"]
-        
+
         # Should contain type_parameters
         assert "type_parameters" in generic_query["query"]
         assert "type_parameter" in generic_query["query"]
@@ -347,7 +339,7 @@ class TestTypeScriptExtendedQueries:
         """Test namespace query specifically"""
         assert "namespace" in ts_queries.ALL_QUERIES
         namespace_query = ts_queries.ALL_QUERIES["namespace"]
-        
+
         # Should contain module declaration
         assert "module" in namespace_query["query"]
         assert "@namespace.name" in namespace_query["query"]
@@ -356,15 +348,15 @@ class TestTypeScriptExtendedQueries:
         """Test that query descriptions are meaningful and specific"""
         for query_name, query_data in ts_queries.ALL_QUERIES.items():
             description = query_data["description"]
-            
+
             # Should be descriptive
             assert len(description) > 15
-            
+
             # Should contain action word
             action_words = ["search", "find", "extract", "match", "locate"]
             has_action = any(word in description.lower() for word in action_words)
             assert has_action, f"Description for {query_name} lacks action word"
-            
+
             # Should not be generic
             assert "todo" not in description.lower()
             assert "placeholder" not in description.lower()
@@ -374,10 +366,10 @@ class TestTypeScriptExtendedQueries:
         # Check that we have both basic and specific queries
         assert "functions" in ts_queries.ALL_QUERIES  # Basic
         assert "arrow_function" in ts_queries.ALL_QUERIES  # Specific
-        
+
         assert "classes" in ts_queries.ALL_QUERIES  # Basic
         assert "abstract_class" in ts_queries.ALL_QUERIES  # Specific
-        
+
         assert "variables" in ts_queries.ALL_QUERIES  # Basic
         assert "const_declaration" in ts_queries.ALL_QUERIES  # Specific
 
@@ -387,15 +379,15 @@ class TestTypeScriptExtendedQueries:
         arrow_query = ts_queries.get_query("arrow_function")
         assert isinstance(arrow_query, str)
         assert "arrow_function" in arrow_query
-        
+
         # Test get_all_queries function
         all_queries = ts_queries.get_all_queries()
         assert len(all_queries) >= 80
         assert "union_type" in all_queries
         assert "jsx_element" in all_queries
-        
+
         # Test list_queries function (if exists)
-        if hasattr(ts_queries, 'list_queries'):
+        if hasattr(ts_queries, "list_queries"):
             query_names = ts_queries.list_queries()
             assert isinstance(query_names, list)
             assert "conditional_type" in query_names
@@ -408,25 +400,30 @@ class TestTypeScriptQueryComparison:
     def test_typescript_vs_javascript_coverage(self):
         """Test that TypeScript has more queries than JavaScript"""
         ts_count = len(ts_queries.ALL_QUERIES)
-        
+
         # TypeScript should have significantly more queries due to type system
-        assert ts_count >= 80, f"TypeScript should have at least 80 queries, got {ts_count}"
-        
+        assert ts_count >= 80, (
+            f"TypeScript should have at least 80 queries, got {ts_count}"
+        )
+
         # Check TypeScript-specific features not in JavaScript
         ts_specific = [
-            "interface_declaration", 
+            "interface_declaration",
             "type_alias_declaration",
             "enum_declaration",
             "abstract_class_declaration",
             "union_type",
             "intersection_type",
-            "conditional_type"
+            "conditional_type",
         ]
-        
-        all_queries_text = " ".join([q["query"] for q in ts_queries.ALL_QUERIES.values()])
+
+        all_queries_text = " ".join(
+            [q["query"] for q in ts_queries.ALL_QUERIES.values()]
+        )
         for feature in ts_specific:
-            assert feature in all_queries_text, \
+            assert feature in all_queries_text, (
                 f"TypeScript-specific feature '{feature}' missing"
+            )
 
     def test_comprehensive_language_support(self):
         """Test that TypeScript queries provide comprehensive language support"""
@@ -437,13 +434,14 @@ class TestTypeScriptQueryComparison:
             "imports": ["import_statement", "type_import"],
             "jsx": ["jsx_element", "jsx_self_closing"],
             "expressions": ["as_expression", "optional_chain"],
-            "modifiers": ["readonly_modifier", "static_modifier"]
+            "modifiers": ["readonly_modifier", "static_modifier"],
         }
-        
+
         for category, queries in categories.items():
             for query_name in queries:
-                assert query_name in ts_queries.ALL_QUERIES, \
+                assert query_name in ts_queries.ALL_QUERIES, (
                     f"Missing {category} query: {query_name}"
+                )
 
 
 if __name__ == "__main__":

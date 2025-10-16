@@ -66,6 +66,7 @@ class PluginManager:
         final_plugins = list(unique_plugins.values())
         # Only log if not in CLI mode (check if we're in quiet mode)
         import os
+
         log_level = os.environ.get("LOG_LEVEL", "WARNING")
         if log_level != "ERROR":
             log_info(f"Successfully loaded {len(final_plugins)} plugins")

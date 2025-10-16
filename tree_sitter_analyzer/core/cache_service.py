@@ -20,7 +20,7 @@ from typing import Any
 
 from cachetools import LRUCache, TTLCache
 
-from ..utils import log_debug, log_error, log_info
+from ..utils import log_debug, log_info
 
 
 @dataclass(frozen=True)
@@ -227,6 +227,7 @@ class CacheService:
 
             # Only log if not in quiet mode (check log level)
             import logging
+
             if logging.getLogger("tree_sitter_analyzer").level <= logging.INFO:
                 log_info("All caches cleared")
 
@@ -320,6 +321,7 @@ class CacheService:
         try:
             # Only clear if not in shutdown mode
             import sys
+
             if sys.meta_path is not None:  # Check if Python is not shutting down
                 # Clear caches without logging to avoid shutdown issues
                 with self._lock:

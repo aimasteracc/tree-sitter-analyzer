@@ -65,7 +65,7 @@ def analyze_file(
 
         # Perform the analysis
         analysis_result = engine.analyze_file(file_path, language)
-        
+
         # Convert AnalysisResult to expected API format (same as analyze_code)
         result = {
             "success": analysis_result.success,
@@ -375,15 +375,15 @@ def detect_language(file_path: str | Path) -> str:
         # Handle invalid input
         if not file_path:
             return "unknown"
-            
+
         engine = get_engine()
         # Use language_detector instead of language_registry
         result = engine.language_detector.detect_from_extension(str(file_path))
-        
+
         # Ensure result is valid
         if not result or result.strip() == "":
             return "unknown"
-            
+
         return result
     except Exception as e:
         log_error(f"Failed to detect language for {file_path}: {e}")

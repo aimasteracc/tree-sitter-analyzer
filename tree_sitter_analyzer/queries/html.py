@@ -30,7 +30,6 @@ HTML_QUERIES: dict[str, str] = {
             name: (tag_name) @tag_name
             (#match? @tag_name "^(area|base|br|col|embed|hr|img|input|link|meta|param|source|track|wbr)$"))) @void_element
     """,
-    
     # --- Attributes ---
     "attribute": """
     (attribute
@@ -67,7 +66,6 @@ HTML_QUERIES: dict[str, str] = {
         (#match? @attr_name "^href$")
         value: (quoted_attribute_value) @href_value) @href_attribute
     """,
-    
     # --- Text Content ---
     "text": """
     (text) @text
@@ -75,12 +73,10 @@ HTML_QUERIES: dict[str, str] = {
     "raw_text": """
     (raw_text) @raw_text
     """,
-    
     # --- Comments ---
     "comment": """
     (comment) @comment
     """,
-    
     # --- Document Structure ---
     "doctype": """
     (doctype) @doctype
@@ -88,7 +84,6 @@ HTML_QUERIES: dict[str, str] = {
     "document": """
     (document) @document
     """,
-    
     # --- Semantic Elements ---
     "heading": """
     (element
@@ -144,7 +139,6 @@ HTML_QUERIES: dict[str, str] = {
             name: (tag_name) @tag_name
             (#match? @tag_name "^(td|th)$"))) @table_cell
     """,
-    
     # --- Structure Elements ---
     "html": """
     (element
@@ -218,7 +212,6 @@ HTML_QUERIES: dict[str, str] = {
             name: (tag_name) @tag_name
             (#match? @tag_name "^span$"))) @span
     """,
-    
     # --- Form Elements ---
     "form": """
     (element
@@ -274,7 +267,6 @@ HTML_QUERIES: dict[str, str] = {
             name: (tag_name) @tag_name
             (#match? @tag_name "^legend$"))) @legend
     """,
-    
     # --- Media Elements ---
     "video": """
     (element
@@ -312,7 +304,6 @@ HTML_QUERIES: dict[str, str] = {
             name: (tag_name) @tag_name
             (#match? @tag_name "^svg$"))) @svg
     """,
-    
     # --- Meta Elements ---
     "meta": """
     (element
@@ -356,7 +347,6 @@ HTML_QUERIES: dict[str, str] = {
             name: (tag_name) @tag_name
             (#match? @tag_name "^base$"))) @base
     """,
-    
     # --- Script and Style Elements ---
     "script_element": """
     (script_element) @script_element
@@ -364,7 +354,6 @@ HTML_QUERIES: dict[str, str] = {
     "style_element": """
     (style_element) @style_element
     """,
-    
     # --- Name-only Extraction ---
     "tag_name": """
     (tag_name) @tag_name
@@ -507,9 +496,7 @@ def get_html_query(name: str) -> str:
     """
     if name not in HTML_QUERIES:
         available = list(HTML_QUERIES.keys())
-        raise ValueError(
-            f"HTML query '{name}' does not exist. Available: {available}"
-        )
+        raise ValueError(f"HTML query '{name}' does not exist. Available: {available}")
 
     return HTML_QUERIES[name]
 

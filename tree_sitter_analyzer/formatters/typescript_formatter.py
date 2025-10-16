@@ -35,7 +35,12 @@ class TypeScriptTableFormatter(BaseTableFormatter):
         classes = data.get("classes", [])
         interfaces = data.get("interfaces", [])
         functions = data.get("functions", [])
-        is_module = len(exports) > 0 or len(classes) > 0 or len(interfaces) > 0 or len(functions) > 0
+        is_module = (
+            len(exports) > 0
+            or len(classes) > 0
+            or len(interfaces) > 0
+            or len(functions) > 0
+        )
         is_declaration_file = file_name.endswith(".d.ts")
         is_tsx = file_name.endswith(".tsx")
 
@@ -74,13 +79,17 @@ class TypeScriptTableFormatter(BaseTableFormatter):
         interfaces = [c for c in classes if c.get("class_type") == "interface"]
         type_aliases = [c for c in classes if c.get("class_type") == "type"]
         enums = [c for c in classes if c.get("class_type") == "enum"]
-        actual_classes = [c for c in classes if c.get("class_type") in ["class", "abstract_class"]]
+        actual_classes = [
+            c for c in classes if c.get("class_type") in ["class", "abstract_class"]
+        ]
 
         lines.append("## Module Info")
         lines.append("| Property | Value |")
         lines.append("|----------|-------|")
         lines.append(f"| File | {file_name} |")
-        lines.append(f"| Type | {'Declaration File' if is_declaration_file else 'TSX Module' if is_tsx else 'TypeScript Module' if is_module else 'TypeScript Script'} |")
+        lines.append(
+            f"| Type | {'Declaration File' if is_declaration_file else 'TSX Module' if is_tsx else 'TypeScript Module' if is_module else 'TypeScript Script'} |"
+        )
         lines.append(f"| Functions | {stats.get('function_count', 0)} |")
         lines.append(f"| Classes | {len(actual_classes)} |")
         lines.append(f"| Interfaces | {len(interfaces)} |")
@@ -93,31 +102,43 @@ class TypeScriptTableFormatter(BaseTableFormatter):
         # Interfaces (TypeScript specific)
         if interfaces:
             lines.append("## Interfaces")
-            lines.append("| Interface | Extends | Lines | Properties | Methods | Generics |")
-            lines.append("|-----------|---------|-------|------------|---------|----------|")
+            lines.append(
+                "| Interface | Extends | Lines | Properties | Methods | Generics |"
+            )
+            lines.append(
+                "|-----------|---------|-------|------------|---------|----------|"
+            )
 
             for interface in interfaces:
                 name = str(interface.get("name", "Unknown"))
                 extends = ", ".join(interface.get("interfaces", [])) or "-"
                 line_range = interface.get("line_range", {})
                 lines_str = f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
-                
+
                 # Count properties and methods within the interface
                 interface_properties = [
-                    v for v in data.get("variables", [])
-                    if line_range.get("start", 0) <= v.get("line_range", {}).get("start", 0) <= line_range.get("end", 0)
+                    v
+                    for v in data.get("variables", [])
+                    if line_range.get("start", 0)
+                    <= v.get("line_range", {}).get("start", 0)
+                    <= line_range.get("end", 0)
                     and v.get("declaration_kind") == "property_signature"
                 ]
-                
+
                 interface_methods = [
-                    m for m in data.get("methods", [])
-                    if line_range.get("start", 0) <= m.get("line_range", {}).get("start", 0) <= line_range.get("end", 0)
+                    m
+                    for m in data.get("methods", [])
+                    if line_range.get("start", 0)
+                    <= m.get("line_range", {}).get("start", 0)
+                    <= line_range.get("end", 0)
                     and m.get("is_signature", False)
                 ]
-                
+
                 generics = ", ".join(interface.get("generics", [])) or "-"
 
-                lines.append(f"| {name} | {extends} | {lines_str} | {len(interface_properties)} | {len(interface_methods)} | {generics} |")
+                lines.append(
+                    f"| {name} | {extends} | {lines_str} | {len(interface_properties)} | {len(interface_methods)} | {generics} |"
+                )
             lines.append("")
 
         # Type Aliases (TypeScript specific)
@@ -131,7 +152,7 @@ class TypeScriptTableFormatter(BaseTableFormatter):
                 line_range = type_alias.get("line_range", {})
                 lines_str = f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
                 generics = ", ".join(type_alias.get("generics", [])) or "-"
-                
+
                 # Extract type definition from raw text
                 raw_text = type_alias.get("raw_text", "")
                 if "=" in raw_text:
@@ -154,7 +175,7 @@ class TypeScriptTableFormatter(BaseTableFormatter):
                 name = str(enum.get("name", "Unknown"))
                 line_range = enum.get("line_range", {})
                 lines_str = f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
-                
+
                 # Count enum values (simplified)
                 raw_text = enum.get("raw_text", "")
                 value_count = raw_text.count(",") + 1 if raw_text.count("{") > 0 else 0
@@ -165,8 +186,12 @@ class TypeScriptTableFormatter(BaseTableFormatter):
         # Classes
         if actual_classes:
             lines.append("## Classes")
-            lines.append("| Class | Type | Extends | Implements | Lines | Methods | Properties | Generics |")
-            lines.append("|-------|------|---------|------------|-------|---------|------------|----------|")
+            lines.append(
+                "| Class | Type | Extends | Implements | Lines | Methods | Properties | Generics |"
+            )
+            lines.append(
+                "|-------|------|---------|------------|-------|---------|------------|----------|"
+            )
 
             for class_info in actual_classes:
                 name = str(class_info.get("name", "Unknown"))
@@ -179,32 +204,52 @@ class TypeScriptTableFormatter(BaseTableFormatter):
 
                 # Count methods within the class
                 class_methods = [
-                    m for m in data.get("functions", [])
-                    if (line_range.get("start", 0) <= m.get("line_range", {}).get("start", 0) <= line_range.get("end", 0)
+                    m
+                    for m in data.get("functions", [])
+                    if (
+                        line_range.get("start", 0)
+                        <= m.get("line_range", {}).get("start", 0)
+                        <= line_range.get("end", 0)
                         and m.get("is_method", False)
-                        and not m.get("is_signature", False))
+                        and not m.get("is_signature", False)
+                    )
                 ]
 
                 # Count properties (class fields)
                 class_properties = [
-                    v for v in data.get("variables", [])
-                    if line_range.get("start", 0) <= v.get("line_range", {}).get("start", 0) <= line_range.get("end", 0)
+                    v
+                    for v in data.get("variables", [])
+                    if line_range.get("start", 0)
+                    <= v.get("line_range", {}).get("start", 0)
+                    <= line_range.get("end", 0)
                     and v.get("declaration_kind") == "property"
                 ]
 
-                lines.append(f"| {name} | {class_type} | {extends} | {implements} | {lines_str} | {len(class_methods)} | {len(class_properties)} | {generics} |")
+                lines.append(
+                    f"| {name} | {class_type} | {extends} | {implements} | {lines_str} | {len(class_methods)} | {len(class_properties)} | {generics} |"
+                )
             lines.append("")
 
         # Functions
         functions = data.get("functions", [])
         if functions:
             lines.append("## Functions")
-            lines.append("| Function | Type | Return Type | Parameters | Async | Generic | Lines | Complexity |")
-            lines.append("|----------|------|-------------|------------|-------|---------|-------|------------|")
+            lines.append(
+                "| Function | Type | Return Type | Parameters | Async | Generic | Lines | Complexity |"
+            )
+            lines.append(
+                "|----------|------|-------------|------------|-------|---------|-------|------------|"
+            )
 
             for func in functions:
                 name = str(func.get("name", "Unknown"))
-                func_type = "arrow" if func.get("is_arrow") else "method" if func.get("is_method") else "function"
+                func_type = (
+                    "arrow"
+                    if func.get("is_arrow")
+                    else "method"
+                    if func.get("is_method")
+                    else "function"
+                )
                 return_type = str(func.get("return_type", "any"))
                 params = func.get("parameters", [])
                 param_count = len(params)
@@ -214,15 +259,21 @@ class TypeScriptTableFormatter(BaseTableFormatter):
                 lines_str = f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
                 complexity = func.get("complexity_score", 1)
 
-                lines.append(f"| {name} | {func_type} | {return_type} | {param_count} | {is_async} | {has_generics} | {lines_str} | {complexity} |")
+                lines.append(
+                    f"| {name} | {func_type} | {return_type} | {param_count} | {is_async} | {has_generics} | {lines_str} | {complexity} |"
+                )
             lines.append("")
 
         # Variables/Properties
         variables = data.get("variables", [])
         if variables:
             lines.append("## Variables & Properties")
-            lines.append("| Name | Type | Kind | Visibility | Static | Optional | Lines |")
-            lines.append("|------|------|------|------------|--------|----------|-------|")
+            lines.append(
+                "| Name | Type | Kind | Visibility | Static | Optional | Lines |"
+            )
+            lines.append(
+                "|------|------|------|------------|--------|----------|-------|"
+            )
 
             for var in variables:
                 name = str(var.get("name", "Unknown"))
@@ -234,7 +285,9 @@ class TypeScriptTableFormatter(BaseTableFormatter):
                 line_range = var.get("line_range", {})
                 lines_str = f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
 
-                lines.append(f"| {name} | {var_type} | {kind} | {visibility} | {is_static} | {is_optional} | {lines_str} |")
+                lines.append(
+                    f"| {name} | {var_type} | {kind} | {visibility} | {is_static} | {is_optional} | {lines_str} |"
+                )
             lines.append("")
 
         # Exports
@@ -265,7 +318,6 @@ class TypeScriptTableFormatter(BaseTableFormatter):
         lines.append("")
 
         # Summary
-        stats = data.get("statistics", {})
         classes = data.get("classes", [])
         functions = data.get("functions", [])
         variables = data.get("variables", [])
@@ -273,7 +325,9 @@ class TypeScriptTableFormatter(BaseTableFormatter):
         interfaces = len([c for c in classes if c.get("class_type") == "interface"])
         type_aliases = len([c for c in classes if c.get("class_type") == "type"])
         enums = len([c for c in classes if c.get("class_type") == "enum"])
-        actual_classes = len([c for c in classes if c.get("class_type") in ["class", "abstract_class"]])
+        actual_classes = len(
+            [c for c in classes if c.get("class_type") in ["class", "abstract_class"]]
+        )
 
         lines.append("## Summary")
         lines.append(f"- **Classes**: {actual_classes}")
@@ -303,7 +357,9 @@ class TypeScriptTableFormatter(BaseTableFormatter):
                 line_range = func.get("line_range", {})
                 lines_str = f"L{line_range.get('start', 0)}-{line_range.get('end', 0)}"
                 async_marker = " (async)" if func.get("is_async") else ""
-                lines.append(f"- **{name}**(): {return_type}{async_marker} - {lines_str}")
+                lines.append(
+                    f"- **{name}**(): {return_type}{async_marker} - {lines_str}"
+                )
             lines.append("")
 
         return "\n".join(lines)
@@ -326,13 +382,21 @@ class TypeScriptTableFormatter(BaseTableFormatter):
             is_static = "true" if class_info.get("is_static") else "false"
             has_generics = "true" if class_info.get("generics") else "false"
 
-            lines.append(f"Class,{name},{class_type},,{lines_str},{visibility},{is_static},,{has_generics}")
+            lines.append(
+                f"Class,{name},{class_type},,{lines_str},{visibility},{is_static},,{has_generics}"
+            )
 
         # Functions
         functions = data.get("functions", [])
         for func in functions:
             name = func.get("name", "")
-            func_type = "arrow" if func.get("is_arrow") else "method" if func.get("is_method") else "function"
+            func_type = (
+                "arrow"
+                if func.get("is_arrow")
+                else "method"
+                if func.get("is_method")
+                else "function"
+            )
             return_type = func.get("return_type", "any")
             line_range = func.get("line_range", {})
             lines_str = f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
@@ -341,7 +405,9 @@ class TypeScriptTableFormatter(BaseTableFormatter):
             is_async = "true" if func.get("is_async") else "false"
             has_generics = "true" if func.get("generics") else "false"
 
-            lines.append(f"Function,{name},{func_type},{return_type},{lines_str},{visibility},{is_static},{is_async},{has_generics}")
+            lines.append(
+                f"Function,{name},{func_type},{return_type},{lines_str},{visibility},{is_static},{is_async},{has_generics}"
+            )
 
         # Variables
         variables = data.get("variables", [])
@@ -354,14 +420,16 @@ class TypeScriptTableFormatter(BaseTableFormatter):
             visibility = var.get("visibility", "public")
             is_static = "true" if var.get("is_static") else "false"
 
-            lines.append(f"Variable,{name},{kind},{var_type},{lines_str},{visibility},{is_static},,")
+            lines.append(
+                f"Variable,{name},{kind},{var_type},{lines_str},{visibility},{is_static},,"
+            )
 
         return "\n".join(lines)
 
     def _get_element_type_name(self, element: dict[str, Any]) -> str:
         """Get human-readable type name for TypeScript elements"""
         element_type = element.get("element_type", "unknown")
-        
+
         if element_type == "class":
             class_type = element.get("class_type", "class")
             if class_type == "interface":
@@ -399,21 +467,21 @@ class TypeScriptTableFormatter(BaseTableFormatter):
     def _format_element_details(self, element: dict[str, Any]) -> str:
         """Format TypeScript-specific element details"""
         details = []
-        
+
         # Type annotations
         if element.get("has_type_annotations"):
             details.append("typed")
-        
+
         # Generics
         if element.get("generics"):
             generics = ", ".join(element.get("generics", []))
             details.append(f"<{generics}>")
-        
+
         # Visibility
         visibility = element.get("visibility")
         if visibility and visibility != "public":
             details.append(visibility)
-        
+
         # Modifiers
         if element.get("is_static"):
             details.append("static")
@@ -423,10 +491,10 @@ class TypeScriptTableFormatter(BaseTableFormatter):
             details.append("abstract")
         if element.get("is_optional"):
             details.append("optional")
-        
+
         # Framework specific
         framework = element.get("framework_type")
         if framework:
             details.append(f"{framework}")
-        
+
         return " ".join(details) if details else ""

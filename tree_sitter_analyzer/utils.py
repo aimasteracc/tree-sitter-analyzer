@@ -33,7 +33,7 @@ def setup_logger(
             level = logging.ERROR
         else:
             level = logging.WARNING  # Default fallback
-    
+
     # Get log level from environment variable (only if set and not empty)
     env_level = os.environ.get("LOG_LEVEL", "").upper()
     if env_level and env_level in ["DEBUG", "INFO", "WARNING", "ERROR"]:
@@ -48,13 +48,15 @@ def setup_logger(
     # If env_level is empty or not recognized, use the passed level parameter
 
     logger = logging.getLogger(name)
-    
+
     # Clear existing handlers if this is a test logger to ensure clean state
     if name.startswith("test_"):
         logger.handlers.clear()
 
     # Initialize file logging variables at function scope
-    enable_file_log = os.environ.get("TREE_SITTER_ANALYZER_ENABLE_FILE_LOG", "").lower() == "true"
+    enable_file_log = (
+        os.environ.get("TREE_SITTER_ANALYZER_ENABLE_FILE_LOG", "").lower() == "true"
+    )
     file_log_level = level  # Default to main logger level
 
     if not logger.handlers:  # Avoid duplicate handlers
@@ -82,10 +84,17 @@ def setup_logger(
                     # Use system temporary directory
                     temp_dir = tempfile.gettempdir()
                     log_path = Path(temp_dir) / "tree_sitter_analyzer.log"
-                
+
                 # Determine file log level
-                file_log_level_str = os.environ.get("TREE_SITTER_ANALYZER_FILE_LOG_LEVEL", "").upper()
-                if file_log_level_str and file_log_level_str in ["DEBUG", "INFO", "WARNING", "ERROR"]:
+                file_log_level_str = os.environ.get(
+                    "TREE_SITTER_ANALYZER_FILE_LOG_LEVEL", ""
+                ).upper()
+                if file_log_level_str and file_log_level_str in [
+                    "DEBUG",
+                    "INFO",
+                    "WARNING",
+                    "ERROR",
+                ]:
                     if file_log_level_str == "DEBUG":
                         file_log_level = logging.DEBUG
                     elif file_log_level_str == "INFO":
@@ -97,19 +106,21 @@ def setup_logger(
                 else:
                     # Use same level as main logger
                     file_log_level = level
-                
+
                 file_handler = logging.FileHandler(str(log_path), encoding="utf-8")
                 file_handler.setFormatter(formatter)
                 file_handler.setLevel(file_log_level)
                 logger.addHandler(file_handler)
-                
+
                 # Log the file location for debugging purposes
                 if hasattr(sys, "stderr") and hasattr(sys.stderr, "write"):
                     try:
-                        sys.stderr.write(f"[logging_setup] File logging enabled: {log_path}\n")
+                        sys.stderr.write(
+                            f"[logging_setup] File logging enabled: {log_path}\n"
+                        )
                     except Exception:
                         ...
-                        
+
             except Exception as e:
                 # Never let logging configuration break runtime behavior; log to stderr if possible
                 if hasattr(sys, "stderr") and hasattr(sys.stderr, "write"):
@@ -126,9 +137,9 @@ def setup_logger(
     if enable_file_log:
         # Use the minimum level to ensure all messages reach their intended handlers
         final_level = min(level, file_log_level)
-    
+
     logger.setLevel(final_level)
-    
+
     # For test loggers, ensure they don't inherit from parent and force level
     if logger.name.startswith("test_"):
         logger.propagate = False
@@ -162,8 +173,8 @@ class SafeStreamHandler(logging.StreamHandler):
 
             # Special handling for pytest capture scenarios
             # Check if this is a pytest capture stream that might be problematic
-            stream_name = getattr(self.stream, 'name', '')
-            if stream_name is None or 'pytest' in str(type(self.stream)).lower():
+            stream_name = getattr(self.stream, "name", "")
+            if stream_name is None or "pytest" in str(type(self.stream)).lower():
                 # For pytest streams, be extra cautious
                 try:
                     # Just try to emit without any pre-checks
@@ -342,7 +353,7 @@ def safe_print(message: str | None, level: str = "info", quiet: bool = False) ->
 
     # Handle None message by converting to string - always call log function even for None
     msg = str(message) if message is not None else "None"
-    
+
     # Use dynamic lookup to support mocking
     level_lower = level.lower()
     if level_lower == "info":

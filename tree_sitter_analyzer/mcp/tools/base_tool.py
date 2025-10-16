@@ -121,7 +121,7 @@ class MCPTool(BaseMCPTool):
         Returns:
             Dictionary containing execution results
         """
-        ...
+        raise NotImplementedError("Subclasses must implement execute method")
 
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
         """
@@ -136,4 +136,4 @@ class MCPTool(BaseMCPTool):
         Raises:
             ValueError: If arguments are invalid
         """
-        ...
+        raise NotImplementedError("Subclasses must implement validate_arguments method")

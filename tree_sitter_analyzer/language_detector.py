@@ -266,14 +266,14 @@ class LanguageDetector:
         # Handle invalid input
         if not file_path or not isinstance(file_path, str):
             return "unknown", 0.0
-            
+
         path = Path(file_path)
         extension = path.suffix.lower()
 
         # Direct mapping by extension
         if extension in self.EXTENSION_MAPPING:
             language = self.EXTENSION_MAPPING[extension]
-            
+
             # Ensure language is valid
             if not language or language.strip() == "":
                 return "unknown", 0.0
@@ -313,7 +313,7 @@ class LanguageDetector:
         # Handle invalid input
         if not file_path or not isinstance(file_path, str):
             return "unknown"
-            
+
         result = self.detect_language(file_path)
         if isinstance(result, tuple):
             language, _ = result
@@ -487,15 +487,15 @@ def detect_language_from_file(file_path: str) -> str:
     # Handle invalid input
     if not file_path or not isinstance(file_path, str):
         return "unknown"
-        
+
     # Create a fresh instance to ensure latest configuration
     fresh_detector = LanguageDetector()
     result = fresh_detector.detect_from_extension(file_path)
-    
+
     # Ensure result is valid
     if not result or result.strip() == "":
         return "unknown"
-    
+
     return result
 
 

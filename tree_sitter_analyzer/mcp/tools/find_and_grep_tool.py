@@ -257,9 +257,9 @@ class FindAndGrepTool(BaseMCPTool):
                 "success": False,
                 "error": f"Required commands not found: {', '.join(missing_commands)}. Please install fd (https://github.com/sharkdp/fd) and ripgrep (https://github.com/BurntSushi/ripgrep) to use this tool.",
                 "count": 0,
-                "results": []
+                "results": [],
             }
-        
+
         self.validate_arguments(arguments)
         roots = self._validate_roots(arguments["roots"])  # absolute validated
 
@@ -459,7 +459,7 @@ class FindAndGrepTool(BaseMCPTool):
         else:
             # Parse full match details
             matches = fd_rg_utils.parse_rg_json_lines_to_matches(rg_out)
-            
+
             # Apply user-specified max_count limit if provided
             # Note: ripgrep's -m option limits matches per file, not total matches
             # So we need to apply the total limit here in post-processing
@@ -503,25 +503,29 @@ class FindAndGrepTool(BaseMCPTool):
                     try:
                         # Save full result to file
                         import json
-                        json_content = json.dumps(grouped_result, indent=2, ensure_ascii=False)
-                        file_path = self.file_output_manager.save_to_file(
-                            content=json_content,
-                            base_name=output_file
+
+                        json_content = json.dumps(
+                            grouped_result, indent=2, ensure_ascii=False
                         )
-                        
+                        file_path = self.file_output_manager.save_to_file(
+                            content=json_content, base_name=output_file
+                        )
+
                         # If suppress_output is True, return minimal response
                         if suppress_output:
                             minimal_result = {
                                 "success": grouped_result.get("success", True),
                                 "count": grouped_result.get("count", 0),
                                 "output_file": output_file,
-                                "file_saved": f"Results saved to {file_path}"
+                                "file_saved": f"Results saved to {file_path}",
                             }
                             return minimal_result
                         else:
                             # Include file info in full response
                             grouped_result["output_file"] = output_file
-                            grouped_result["file_saved"] = f"Results saved to {file_path}"
+                            grouped_result["file_saved"] = (
+                                f"Results saved to {file_path}"
+                            )
                     except Exception as e:
                         logger.error(f"Failed to save output to file: {e}")
                         grouped_result["file_save_error"] = str(e)
@@ -532,7 +536,7 @@ class FindAndGrepTool(BaseMCPTool):
                         "success": grouped_result.get("success", True),
                         "count": grouped_result.get("count", 0),
                         "summary": grouped_result.get("summary", {}),
-                        "meta": grouped_result.get("meta", {})
+                        "meta": grouped_result.get("meta", {}),
                     }
                     return minimal_result
 
@@ -562,19 +566,19 @@ class FindAndGrepTool(BaseMCPTool):
                     try:
                         # Save full result to file
                         import json
+
                         json_content = json.dumps(result, indent=2, ensure_ascii=False)
                         file_path = self.file_output_manager.save_to_file(
-                            content=json_content,
-                            base_name=output_file
+                            content=json_content, base_name=output_file
                         )
-                        
+
                         # If suppress_output is True, return minimal response
                         if suppress_output:
                             minimal_result = {
                                 "success": result.get("success", True),
                                 "count": len(matches),
                                 "output_file": output_file,
-                                "file_saved": f"Results saved to {file_path}"
+                                "file_saved": f"Results saved to {file_path}",
                             }
                             return minimal_result
                         else:
@@ -591,7 +595,7 @@ class FindAndGrepTool(BaseMCPTool):
                         "success": result.get("success", True),
                         "count": len(matches),
                         "summary": result.get("summary", {}),
-                        "meta": result.get("meta", {})
+                        "meta": result.get("meta", {}),
                     }
                     return minimal_result
 
@@ -624,20 +628,24 @@ class FindAndGrepTool(BaseMCPTool):
                             "success": True,
                             "results": matches,
                             "count": len(matches),
-                            "files": fd_rg_utils.group_matches_by_file(matches)["files"] if matches else [],
+                            "files": fd_rg_utils.group_matches_by_file(matches)["files"]
+                            if matches
+                            else [],
                             "summary": fd_rg_utils.summarize_search_results(matches),
-                            "meta": result["meta"]
+                            "meta": result["meta"],
                         }
 
                         # Convert to JSON for file output
                         # Save full result to file using FileOutputManager
                         import json
-                        json_content = json.dumps(file_content, indent=2, ensure_ascii=False)
-                        file_path = self.file_output_manager.save_to_file(
-                            content=json_content,
-                            base_name=output_file
+
+                        json_content = json.dumps(
+                            file_content, indent=2, ensure_ascii=False
                         )
-                        
+                        file_path = self.file_output_manager.save_to_file(
+                            content=json_content, base_name=output_file
+                        )
+
                         # Check if suppress_output is enabled
                         suppress_output = arguments.get("suppress_output", False)
                         if suppress_output:
@@ -646,7 +654,7 @@ class FindAndGrepTool(BaseMCPTool):
                                 "success": result.get("success", True),
                                 "count": result.get("count", 0),
                                 "output_file": output_file,
-                                "file_saved": f"Results saved to {file_path}"
+                                "file_saved": f"Results saved to {file_path}",
                             }
                             return minimal_result
                         else:
@@ -669,7 +677,7 @@ class FindAndGrepTool(BaseMCPTool):
                             "success": result.get("success", True),
                             "count": result.get("count", 0),
                             "summary": result.get("summary", {}),
-                            "meta": result.get("meta", {})
+                            "meta": result.get("meta", {}),
                         }
                         return minimal_result
 

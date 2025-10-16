@@ -78,14 +78,22 @@ class QueryExecutor:
                 if not language_name:
                     language_name = getattr(language, "_name", None)
                 if not language_name:
-                    language_name = str(language).split('.')[-1] if hasattr(language, '__class__') else None
-            
+                    language_name = (
+                        str(language).split(".")[-1]
+                        if hasattr(language, "__class__")
+                        else None
+                    )
+
             # Ensure we have a valid language name
-            if not language_name or language_name.strip() == "" or language_name == "None":
+            if (
+                not language_name
+                or language_name.strip() == ""
+                or language_name == "None"
+            ):
                 language_name = "unknown"
             else:
                 language_name = language_name.strip().lower()
-            
+
             query_string = self._query_loader.get_query(language_name, query_name)
             if query_string is None:
                 return self._create_error_result(
@@ -244,7 +252,11 @@ class QueryExecutor:
                     if isinstance(capture, tuple) and len(capture) == 2:
                         node, name = capture
                     # Handle dictionary format (legacy API compatibility)
-                    elif isinstance(capture, dict) and "node" in capture and "name" in capture:
+                    elif (
+                        isinstance(capture, dict)
+                        and "node" in capture
+                        and "name" in capture
+                    ):
                         node = capture["node"]
                         name = capture["name"]
                     else:

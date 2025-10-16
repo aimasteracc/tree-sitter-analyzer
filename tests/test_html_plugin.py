@@ -5,9 +5,11 @@ HTML Plugin Tests
 Test cases for HTML language plugin functionality.
 """
 
-import pytest
 from pathlib import Path
-from tree_sitter_analyzer.languages.html_plugin import HtmlPlugin, HtmlElementExtractor
+
+import pytest
+
+from tree_sitter_analyzer.languages.html_plugin import HtmlElementExtractor, HtmlPlugin
 from tree_sitter_analyzer.models import MarkupElement
 
 
@@ -128,35 +130,36 @@ class TestHtmlPlugin:
     </div>
 </body>
 </html>"""
-        
+
         # Create a mock request
         class MockRequest:
             def __init__(self):
                 self.include_source = True
                 self.query_filters = {}
-        
+
         request = MockRequest()
-        
+
         # Create temporary file
         import tempfile
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.html', delete=False) as f:
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".html", delete=False) as f:
             f.write(html_content)
             temp_path = f.name
-        
+
         try:
             # Analyze the file
             result = await self.plugin.analyze_file(temp_path, request)
-            
+
             # Verify results
             assert result.success
             assert result.language == "html"
             assert result.line_count > 0
             assert len(result.elements) > 0
             assert result.source_code == html_content
-            
+
             # Check that we have at least one element
             assert any(isinstance(elem, MarkupElement) for elem in result.elements)
-            
+
         finally:
             # Clean up
             Path(temp_path).unlink()
@@ -177,9 +180,9 @@ class TestHtmlIntegration:
             attributes={"class": "test"},
             parent=None,
             children=[],
-            element_class="structure"
+            element_class="structure",
         )
-        
+
         assert element.name == "div"
         assert element.tag_name == "div"
         assert element.attributes["class"] == "test"
@@ -198,9 +201,9 @@ class TestHtmlIntegration:
             attributes={},
             parent=None,
             children=[],
-            element_class="heading"
+            element_class="heading",
         )
-        
+
         summary = element.to_summary_item()
         assert summary["name"] == "h1"
         assert summary["tag_name"] == "h1"
@@ -215,15 +218,15 @@ class TestHtmlIntegration:
             name="div",
             start_line=1,
             end_line=5,
-            raw_text='<div><p>content</p></div>',
+            raw_text="<div><p>content</p></div>",
             language="html",
             tag_name="div",
             attributes={},
             parent=None,
             children=[],
-            element_class="structure"
+            element_class="structure",
         )
-        
+
         child = MarkupElement(
             name="p",
             start_line=2,
@@ -234,11 +237,11 @@ class TestHtmlIntegration:
             attributes={},
             parent=parent,
             children=[],
-            element_class="text"
+            element_class="text",
         )
-        
+
         parent.children.append(child)
-        
+
         assert len(parent.children) == 1
         assert parent.children[0] == child
         assert child.parent == parent

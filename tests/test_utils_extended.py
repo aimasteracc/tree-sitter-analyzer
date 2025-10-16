@@ -92,7 +92,7 @@ class TestUtilsExtended(unittest.TestCase):
         # We'll test by checking if the function executes without errors
         try:
             safe_print("test info", level="info")
-            safe_print("test debug", level="debug") 
+            safe_print("test debug", level="debug")
             safe_print("test error", level="error")
             safe_print("test warning", level="warning")
             # If no exception is raised, the test passes
@@ -103,24 +103,24 @@ class TestUtilsExtended(unittest.TestCase):
     def test_safe_print_with_none_message(self):
         """Test safe print functions with None message."""
         # Patch the log_info in safe_print's globals since it's dynamically loaded
-        original_log_info = safe_print.__globals__['log_info']
-        original_log_error = safe_print.__globals__['log_error']
-        
+        original_log_info = safe_print.__globals__["log_info"]
+        original_log_error = safe_print.__globals__["log_error"]
+
         mock_info = unittest.mock.MagicMock()
         mock_error = unittest.mock.MagicMock()
-        
+
         try:
-            safe_print.__globals__['log_info'] = mock_info
+            safe_print.__globals__["log_info"] = mock_info
             safe_print(None, level="info")
             mock_info.assert_called_once()
-            
-            safe_print.__globals__['log_error'] = mock_error
+
+            safe_print.__globals__["log_error"] = mock_error
             safe_print(None, level="error")
             mock_error.assert_called_once()
         finally:
             # Restore originals
-            safe_print.__globals__['log_info'] = original_log_info
-            safe_print.__globals__['log_error'] = original_log_error
+            safe_print.__globals__["log_info"] = original_log_info
+            safe_print.__globals__["log_error"] = original_log_error
 
     def test_safe_print_with_invalid_level(self):
         """Test safe print with invalid level."""
@@ -261,15 +261,15 @@ class TestUtilsExtended(unittest.TestCase):
         try:
             # Test with empty string
             log_info("")
-            
+
             # Test with very long message
             long_message = "a" * 10000
             log_info(long_message)
-            
+
             # Test with special characters
             special_message = "test@#$%^&*()_+-=[]{}|;':\",./<>?`~"
             log_info(special_message)
-            
+
             self.assertTrue(True)
         except Exception as e:
             self.fail(f"Edge cases failed: {e}")
@@ -280,14 +280,14 @@ class TestUtilsExtended(unittest.TestCase):
         try:
             # Test with None message
             log_info(None)
-            
+
             # Test with non-string message
             log_info(123)
-            
+
             # Test with object message
             test_obj = object()
             log_info(test_obj)
-            
+
             self.assertTrue(True)
         except Exception as e:
             self.fail(f"Error handling failed: {e}")

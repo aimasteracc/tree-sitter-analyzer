@@ -12,7 +12,6 @@ from typing import Any
 
 from ...core.query_service import QueryService
 from ...language_detector import detect_language_from_file
-from ..utils.error_handler import handle_mcp_errors
 from ..utils.file_output_manager import FileOutputManager
 from .base_tool import BaseMCPTool
 
@@ -111,28 +110,25 @@ class QueryTool(BaseMCPTool):
             # Validate input parameters - check for empty arguments first
             if not arguments:
                 from ..utils.error_handler import AnalysisError
-                raise AnalysisError(
-                    "file_path is required",
-                    operation="query_code"
-                )
-                
+
+                raise AnalysisError("file_path is required", operation="query_code")
+
             file_path = arguments.get("file_path")
             if not file_path:
                 from ..utils.error_handler import AnalysisError
-                raise AnalysisError(
-                    "file_path is required",
-                    operation="query_code"
-                )
+
+                raise AnalysisError("file_path is required", operation="query_code")
 
             # Check that either query_key or query_string is provided early
             query_key = arguments.get("query_key")
             query_string = arguments.get("query_string")
-            
+
             if not query_key and not query_string:
                 from ..utils.error_handler import AnalysisError
+
                 raise AnalysisError(
                     "Either query_key or query_string must be provided",
-                    operation="query_code"
+                    operation="query_code",
                 )
 
             # Security validation BEFORE path resolution to catch symlinks
@@ -140,12 +136,14 @@ class QueryTool(BaseMCPTool):
             if not is_valid:
                 return {
                     "success": False,
-                    "error": f"Invalid or unsafe file path: {error_msg or file_path}"
+                    "error": f"Invalid or unsafe file path: {error_msg or file_path}",
                 }
 
             # Resolve file path to absolute path
             resolved_file_path = self.path_resolver.resolve(file_path)
-            logger.info(f"Querying file: {file_path} (resolved to: {resolved_file_path})")
+            logger.info(
+                f"Querying file: {file_path} (resolved to: {resolved_file_path})"
+            )
 
             # Additional security validation on resolved path
             is_valid, error_msg = self.security_validator.validate_file_path(
@@ -154,7 +152,7 @@ class QueryTool(BaseMCPTool):
             if not is_valid:
                 return {
                     "success": False,
-                    "error": f"Invalid or unsafe resolved path: {error_msg or resolved_file_path}"
+                    "error": f"Invalid or unsafe resolved path: {error_msg or resolved_file_path}",
                 }
 
             # Get query parameters (already validated above)
@@ -166,7 +164,7 @@ class QueryTool(BaseMCPTool):
             if query_key and query_string:
                 return {
                     "success": False,
-                    "error": "Cannot provide both query_key and query_string"
+                    "error": "Cannot provide both query_key and query_string",
                 }
 
             # Detect language
@@ -176,7 +174,7 @@ class QueryTool(BaseMCPTool):
                 if not language:
                     return {
                         "success": False,
-                        "error": f"Could not detect language for file: {file_path}"
+                        "error": f"Could not detect language for file: {file_path}",
                     }
 
             # Execute query
@@ -270,10 +268,11 @@ class QueryTool(BaseMCPTool):
 
         except Exception as e:
             from ..utils.error_handler import AnalysisError
+
             # Re-raise AnalysisError to maintain proper error handling
             if isinstance(e, AnalysisError):
                 raise
-            
+
             logger.error(f"Query execution failed: {e}")
             return {
                 "success": False,

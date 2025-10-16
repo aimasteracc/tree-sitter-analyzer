@@ -6,6 +6,7 @@ Tests for the CLI argument validation functionality.
 """
 
 import argparse
+
 import pytest
 
 from tree_sitter_analyzer.cli.argument_validator import CLIArgumentValidator
@@ -93,11 +94,13 @@ class TestCLIArgumentValidation:
     def test_different_table_formats_with_query_key(self):
         """Test that all table formats are invalid with query-key."""
         table_formats = ["full", "compact", "csv", "json"]
-        
+
         for table_format in table_formats:
             args = self.create_args(table=table_format, query_key="methods")
             result = self.validator.validate_arguments(args)
-            assert result is not None, f"Table format '{table_format}' should be invalid with query-key"
+            assert result is not None, (
+                f"Table format '{table_format}' should be invalid with query-key"
+            )
             assert "--table and --query-key cannot be used together" in result
 
     def test_missing_attributes_handling(self):
@@ -145,7 +148,7 @@ class TestCLIArgumentValidation:
         """Test validator can be initialized properly."""
         validator = CLIArgumentValidator()
         assert validator is not None
-        
+
         # Test that methods are callable
         assert callable(validator.validate_arguments)
         assert callable(validator.validate_table_query_exclusivity)

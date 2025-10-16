@@ -32,7 +32,6 @@ CSS_QUERIES: dict[str, str] = {
     (declaration
         value: (_) @property_value)
     """,
-    
     # --- Selectors ---
     "selector": """
     (selectors
@@ -74,7 +73,6 @@ CSS_QUERIES: dict[str, str] = {
     "adjacent_sibling_selector": """
     (adjacent_sibling_selector) @adjacent_sibling_selector
     """,
-    
     # --- At-Rules ---
     "at_rule": """
     (at_rule) @at_rule
@@ -103,7 +101,6 @@ CSS_QUERIES: dict[str, str] = {
     "font_face_statement": """
     (font_face_statement) @font_face_statement
     """,
-    
     # --- Media Queries ---
     "media_query": """
     (media_query) @media_query
@@ -114,7 +111,6 @@ CSS_QUERIES: dict[str, str] = {
     "media_type": """
     (media_type) @media_type
     """,
-    
     # --- Values ---
     "string_value": """
     (string_value) @string_value
@@ -181,7 +177,6 @@ CSS_QUERIES: dict[str, str] = {
         (#match? @func_name "^hsla$")
         arguments: (arguments) @hsla_args) @hsla
     """,
-    
     # --- Units ---
     "dimension": """
     (dimension) @dimension
@@ -193,7 +188,6 @@ CSS_QUERIES: dict[str, str] = {
     (dimension
         unit: (unit) @unit)
     """,
-    
     # --- Layout Properties ---
     "display": """
     (declaration
@@ -237,7 +231,6 @@ CSS_QUERIES: dict[str, str] = {
         (#match? @prop_name "^z-index$")
         value: (_) @z_index_value) @z_index
     """,
-    
     # --- Box Model Properties ---
     "width": """
     (declaration
@@ -275,7 +268,6 @@ CSS_QUERIES: dict[str, str] = {
         (#match? @prop_name "^box-sizing$")
         value: (_) @box_sizing_value) @box_sizing
     """,
-    
     # --- Typography Properties ---
     "font": """
     (declaration
@@ -313,7 +305,6 @@ CSS_QUERIES: dict[str, str] = {
         (#match? @prop_name "^word-spacing$")
         value: (_) @word_spacing_value) @word_spacing
     """,
-    
     # --- Background Properties ---
     "background": """
     (declaration
@@ -321,7 +312,6 @@ CSS_QUERIES: dict[str, str] = {
         (#match? @prop_name "^background")
         value: (_) @background_value) @background
     """,
-    
     # --- Flexbox Properties ---
     "flex": """
     (declaration
@@ -347,7 +337,6 @@ CSS_QUERIES: dict[str, str] = {
         (#match? @prop_name "^align-content$")
         value: (_) @align_content_value) @align_content
     """,
-    
     # --- Grid Properties ---
     "grid": """
     (declaration
@@ -355,7 +344,6 @@ CSS_QUERIES: dict[str, str] = {
         (#match? @prop_name "^grid")
         value: (_) @grid_value) @grid
     """,
-    
     # --- Animation Properties ---
     "animation": """
     (declaration
@@ -375,12 +363,10 @@ CSS_QUERIES: dict[str, str] = {
         (#match? @prop_name "^transform")
         value: (_) @transform_value) @transform
     """,
-    
     # --- Comments ---
     "comment": """
     (comment) @comment
     """,
-    
     # --- Custom Properties (CSS Variables) ---
     "custom_property": """
     (declaration
@@ -388,7 +374,6 @@ CSS_QUERIES: dict[str, str] = {
         (#match? @prop_name "^--")
         value: (_) @custom_value) @custom_property
     """,
-    
     # --- Important Declarations ---
     "important": """
     (declaration
@@ -396,7 +381,6 @@ CSS_QUERIES: dict[str, str] = {
         "!" @important_mark
         "important" @important_keyword) @important
     """,
-    
     # --- Keyframe Rules ---
     "keyframe_block": """
     (keyframe_block) @keyframe_block
@@ -410,7 +394,6 @@ CSS_QUERIES: dict[str, str] = {
     "to": """
     (to) @to
     """,
-    
     # --- Name-only Extraction ---
     "class_name": """
     (class_selector
@@ -585,9 +568,7 @@ def get_css_query(name: str) -> str:
     """
     if name not in CSS_QUERIES:
         available = list(CSS_QUERIES.keys())
-        raise ValueError(
-            f"CSS query '{name}' does not exist. Available: {available}"
-        )
+        raise ValueError(f"CSS query '{name}' does not exist. Available: {available}")
 
     return CSS_QUERIES[name]
 

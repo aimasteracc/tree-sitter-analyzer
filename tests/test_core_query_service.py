@@ -310,7 +310,9 @@ class TestQueryService:
 
         # Pass source_code parameter to _create_result_dict
         source_code = "public void test() {}"
-        result = self.query_service._create_result_dict(mock_node, "method", source_code)
+        result = self.query_service._create_result_dict(
+            mock_node, "method", source_code
+        )
 
         assert result["capture_name"] == "method"
         assert result["node_type"] == "method_declaration"

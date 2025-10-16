@@ -25,7 +25,7 @@ from ..encoding_utils import extract_text_slice, safe_encode
 from ..models import AnalysisResult, Class, CodeElement, Function, Import, Variable
 from ..plugins.base import ElementExtractor, LanguagePlugin
 from ..utils import log_debug, log_error, log_warning
-from ..utils.tree_sitter_compat import TreeSitterQueryCompat, get_node_text_safe
+from ..utils.tree_sitter_compat import TreeSitterQueryCompat
 
 
 class PythonElementExtractor(ElementExtractor):
@@ -72,7 +72,7 @@ class PythonElementExtractor(ElementExtractor):
         if tree is None or tree.root_node is None:
             log_debug("Tree or root_node is None, returning empty functions list")
             return functions
-            
+
         try:
             self._traverse_and_extract_iterative(
                 tree.root_node, extractors, functions, "function"
@@ -103,7 +103,7 @@ class PythonElementExtractor(ElementExtractor):
         if tree is None or tree.root_node is None:
             log_debug("Tree or root_node is None, returning empty classes list")
             return classes
-            
+
         self._traverse_and_extract_iterative(
             tree.root_node, extractors, classes, "class"
         )
@@ -136,9 +136,11 @@ class PythonElementExtractor(ElementExtractor):
                         if capture_name == "class.body":
                             class_bodies.append(node)
                 except Exception as e:
-                    log_debug(f"Could not extract Python class attributes using query: {e}")
+                    log_debug(
+                        f"Could not extract Python class attributes using query: {e}"
+                    )
                     class_bodies = []
-                
+
                 # For each class body, extract attribute assignments
                 for class_body in class_bodies:
                     variables.extend(
@@ -267,7 +269,7 @@ class PythonElementExtractor(ElementExtractor):
                     except TypeError:
                         # If children is not iterable, skip
                         children = []
-                
+
                 for child in children:
                     node_stack.append((child, depth + 1))
 
@@ -301,10 +303,10 @@ class PythonElementExtractor(ElementExtractor):
             end_point = node.end_point
 
             # Validate points are within bounds
-            if (start_point[0] < 0 or start_point[0] >= len(self.content_lines)):
+            if start_point[0] < 0 or start_point[0] >= len(self.content_lines):
                 return ""
-            
-            if (end_point[0] < 0 or end_point[0] >= len(self.content_lines)):
+
+            if end_point[0] < 0 or end_point[0] >= len(self.content_lines):
                 return ""
 
             if start_point[0] == end_point[0]:
@@ -504,8 +506,8 @@ class PythonElementExtractor(ElementExtractor):
                     # Join preserving formatting and add leading newline for multi-line
                     docstring = "\n".join(docstring_lines)
                     # Add leading newline for multi-line docstrings to match expected format
-                    if not docstring.startswith('\n'):
-                        docstring = '\n' + docstring
+                    if not docstring.startswith("\n"):
+                        docstring = "\n" + docstring
                     self._docstring_cache[target_line] = docstring
                     return docstring
 
@@ -519,7 +521,7 @@ class PythonElementExtractor(ElementExtractor):
     def _calculate_complexity_optimized(self, node: "tree_sitter.Node") -> int:
         """Calculate cyclomatic complexity efficiently"""
         import re
-        
+
         node_id = id(node)
         if node_id in self._complexity_cache:
             return self._complexity_cache[node_id]
@@ -541,7 +543,7 @@ class PythonElementExtractor(ElementExtractor):
             ]
             for keyword in keywords:
                 # More flexible keyword matching
-                pattern = rf'\b{keyword}\b'
+                pattern = rf"\b{keyword}\b"
                 matches = re.findall(pattern, node_text)
                 complexity += len(matches)
         except Exception as e:
@@ -580,7 +582,11 @@ class PythonElementExtractor(ElementExtractor):
                     if child.children:  # Check if children exists and is not None
                         for grandchild in child.children:
                             if grandchild.type == "identifier":
-                                superclass_name = grandchild.text.decode("utf8") if grandchild.text else None
+                                superclass_name = (
+                                    grandchild.text.decode("utf8")
+                                    if grandchild.text
+                                    else None
+                                )
                                 if superclass_name:
                                     superclasses.append(superclass_name)
 
@@ -740,14 +746,14 @@ class PythonElementExtractor(ElementExtractor):
                         captures = TreeSitterQueryCompat.safe_execute_query(
                             language, query_string, tree.root_node, fallback_result=[]
                         )
-                        
+
                         # Group captures by name
                         captures_dict = {}
                         for node, capture_name in captures:
                             if capture_name not in captures_dict:
                                 captures_dict[capture_name] = []
                             captures_dict[capture_name].append(node)
-                        
+
                         # Process different types of imports
                         for key, nodes in captures_dict.items():
                             if key.endswith("statement"):
@@ -760,8 +766,12 @@ class PythonElementExtractor(ElementExtractor):
                                         imports.append(imp)
                     except Exception as query_error:
                         # Fallback to manual extraction for tree-sitter compatibility
-                        log_debug(f"Query execution failed, using manual extraction: {query_error}")
-                        imports.extend(self._extract_imports_manual(tree.root_node, source_code))
+                        log_debug(
+                            f"Query execution failed, using manual extraction: {query_error}"
+                        )
+                        imports.extend(
+                            self._extract_imports_manual(tree.root_node, source_code)
+                        )
                         break
 
         except Exception as e:
@@ -771,51 +781,67 @@ class PythonElementExtractor(ElementExtractor):
 
         return imports
 
-    def _extract_imports_manual(self, root_node: "tree_sitter.Node", source_code: str) -> list[Import]:
+    def _extract_imports_manual(
+        self, root_node: "tree_sitter.Node", source_code: str
+    ) -> list[Import]:
         """Manual import extraction for tree-sitter 0.25.x compatibility"""
         imports = []
-        
+
         def walk_tree(node):
             if node.type in ["import_statement", "import_from_statement"]:
                 try:
                     start_line = node.start_point[0] + 1
                     end_line = node.end_point[0] + 1
-                    raw_text = source_code[node.start_byte:node.end_byte] if hasattr(node, 'start_byte') else ""
-                    
+                    raw_text = (
+                        source_code[node.start_byte : node.end_byte]
+                        if hasattr(node, "start_byte")
+                        else ""
+                    )
+
                     # Extract module name from the import statement
                     module_name = ""
                     imported_names = []
-                    
+
                     if node.type == "import_statement":
                         # Simple import: import os, sys
                         for child in node.children:
                             if child.type == "dotted_name":
-                                module_name = source_code[child.start_byte:child.end_byte] if hasattr(child, 'start_byte') else ""
+                                module_name = (
+                                    source_code[child.start_byte : child.end_byte]
+                                    if hasattr(child, "start_byte")
+                                    else ""
+                                )
                                 imported_names.append(module_name)
                     elif node.type == "import_from_statement":
                         # From import: from os import path
                         for child in node.children:
                             if child.type == "dotted_name" and not module_name:
-                                module_name = source_code[child.start_byte:child.end_byte] if hasattr(child, 'start_byte') else ""
-                    
+                                module_name = (
+                                    source_code[child.start_byte : child.end_byte]
+                                    if hasattr(child, "start_byte")
+                                    else ""
+                                )
+
                     if module_name or imported_names:
                         import_obj = Import(
-                            name=module_name or imported_names[0] if imported_names else "unknown",
+                            name=module_name or imported_names[0]
+                            if imported_names
+                            else "unknown",
                             start_line=start_line,
                             end_line=end_line,
                             raw_text=raw_text,
                             module_name=module_name,
                             imported_names=imported_names,
-                            element_type="import"
+                            element_type="import",
                         )
                         imports.append(import_obj)
                 except Exception as e:
                     log_warning(f"Failed to extract import manually: {e}")
-            
+
             # Recursively process children
             for child in node.children:
                 walk_tree(child)
-        
+
         walk_tree(root_node)
         return imports
 
@@ -1140,7 +1166,7 @@ class PythonPlugin(LanguagePlugin):
         super().__init__()
         self._language_cache: tree_sitter.Language | None = None
         self._extractor: PythonElementExtractor | None = None
-        
+
         # Legacy compatibility attributes for tests
         self.language = "python"
         self.extractor = self.get_extractor()
@@ -1167,22 +1193,30 @@ class PythonPlugin(LanguagePlugin):
         """Get the language name for Python (legacy compatibility)"""
         return "python"
 
-    def extract_functions(self, tree: "tree_sitter.Tree", source_code: str) -> list[Function]:
+    def extract_functions(
+        self, tree: "tree_sitter.Tree", source_code: str
+    ) -> list[Function]:
         """Extract functions from the tree (legacy compatibility)"""
         extractor = self.get_extractor()
         return extractor.extract_functions(tree, source_code)
 
-    def extract_classes(self, tree: "tree_sitter.Tree", source_code: str) -> list[Class]:
+    def extract_classes(
+        self, tree: "tree_sitter.Tree", source_code: str
+    ) -> list[Class]:
         """Extract classes from the tree (legacy compatibility)"""
         extractor = self.get_extractor()
         return extractor.extract_classes(tree, source_code)
 
-    def extract_variables(self, tree: "tree_sitter.Tree", source_code: str) -> list[Variable]:
+    def extract_variables(
+        self, tree: "tree_sitter.Tree", source_code: str
+    ) -> list[Variable]:
         """Extract variables from the tree (legacy compatibility)"""
         extractor = self.get_extractor()
         return extractor.extract_variables(tree, source_code)
 
-    def extract_imports(self, tree: "tree_sitter.Tree", source_code: str) -> list[Import]:
+    def extract_imports(
+        self, tree: "tree_sitter.Tree", source_code: str
+    ) -> list[Import]:
         """Extract imports from the tree (legacy compatibility)"""
         extractor = self.get_extractor()
         return extractor.extract_imports(tree, source_code)
@@ -1259,21 +1293,23 @@ class PythonPlugin(LanguagePlugin):
             ],
         }
 
-    def execute_query_strategy(self, tree: "tree_sitter.Tree", source_code: str, query_key: str) -> list[dict]:
+    def execute_query_strategy(
+        self, tree: "tree_sitter.Tree", source_code: str, query_key: str
+    ) -> list[dict]:
         """
         Execute query strategy for Python language
-        
+
         Args:
             tree: Tree-sitter tree object
             source_code: Source code string
             query_key: Query key to execute
-            
+
         Returns:
             List of query results
         """
         # Use the extractor to get elements based on query_key
         extractor = self.get_extractor()
-        
+
         # Map query keys to extraction methods
         if query_key in ["function", "functions", "method", "methods"]:
             elements = extractor.extract_functions(tree, source_code)
@@ -1286,7 +1322,7 @@ class PythonPlugin(LanguagePlugin):
         else:
             # For unknown query keys, return empty list
             return []
-        
+
         # Convert elements to query result format
         results = []
         for element in elements:
@@ -1299,13 +1335,13 @@ class PythonPlugin(LanguagePlugin):
                 "name": element.name,
             }
             results.append(result)
-        
+
         return results
-    
+
     def _get_node_type_for_element(self, element) -> str:
         """Get appropriate node type for element"""
-        from ..models import Function, Class, Variable, Import
-        
+        from ..models import Class, Function, Import, Variable
+
         if isinstance(element, Function):
             return "function_definition"
         elif isinstance(element, Class):
@@ -1320,7 +1356,7 @@ class PythonPlugin(LanguagePlugin):
     def get_element_categories(self) -> dict[str, list[str]]:
         """
         Get element categories mapping query keys to node types
-        
+
         Returns:
             Dictionary mapping query keys to lists of node types
         """
@@ -1334,45 +1370,45 @@ class PythonPlugin(LanguagePlugin):
             "methods": ["function_definition"],
             "lambda": ["lambda"],
             "lambdas": ["lambda"],
-            
             # Class-related queries
             "class": ["class_definition"],
             "classes": ["class_definition"],
-            
             # Import-related queries
             "import": ["import_statement", "import_from_statement"],
             "imports": ["import_statement", "import_from_statement"],
             "from_import": ["import_from_statement"],
             "from_imports": ["import_from_statement"],
-            
             # Variable-related queries
             "variable": ["assignment"],
             "variables": ["assignment"],
-            
             # Decorator-related queries
             "decorator": ["decorator"],
             "decorators": ["decorator"],
-            
             # Exception-related queries
             "exception": ["raise_statement", "except_clause"],
             "exceptions": ["raise_statement", "except_clause"],
-            
             # Comprehension-related queries
-            "comprehension": ["list_comprehension", "set_comprehension", "dictionary_comprehension", "generator_expression"],
-            "comprehensions": ["list_comprehension", "set_comprehension", "dictionary_comprehension", "generator_expression"],
-            
+            "comprehension": [
+                "list_comprehension",
+                "set_comprehension",
+                "dictionary_comprehension",
+                "generator_expression",
+            ],
+            "comprehensions": [
+                "list_comprehension",
+                "set_comprehension",
+                "dictionary_comprehension",
+                "generator_expression",
+            ],
             # Context manager queries
             "context_manager": ["with_statement"],
             "context_managers": ["with_statement"],
-            
             # Type hint queries
             "type_hint": ["type"],
             "type_hints": ["type"],
-            
             # Docstring queries
             "docstring": ["string"],
             "docstrings": ["string"],
-            
             # Framework-specific queries
             "django_model": ["class_definition"],
             "django_models": ["class_definition"],
@@ -1380,13 +1416,24 @@ class PythonPlugin(LanguagePlugin):
             "flask_routes": ["decorator"],
             "fastapi_endpoint": ["function_definition"],
             "fastapi_endpoints": ["function_definition"],
-            
             # Generic queries
             "all_elements": [
-                "function_definition", "class_definition", "import_statement", "import_from_statement",
-                "assignment", "decorator", "raise_statement", "except_clause",
-                "list_comprehension", "set_comprehension", "dictionary_comprehension", "generator_expression",
-                "with_statement", "type", "string", "lambda"
+                "function_definition",
+                "class_definition",
+                "import_statement",
+                "import_from_statement",
+                "assignment",
+                "decorator",
+                "raise_statement",
+                "except_clause",
+                "list_comprehension",
+                "set_comprehension",
+                "dictionary_comprehension",
+                "generator_expression",
+                "with_statement",
+                "type",
+                "string",
+                "lambda",
             ],
         }
 
@@ -1486,7 +1533,7 @@ class PythonPlugin(LanguagePlugin):
         """Extract elements from source code using tree-sitter AST"""
         extractor = self.get_extractor()
         elements = []
-        
+
         try:
             elements.extend(extractor.extract_functions(tree, source_code))
             elements.extend(extractor.extract_classes(tree, source_code))
@@ -1494,5 +1541,5 @@ class PythonPlugin(LanguagePlugin):
             elements.extend(extractor.extract_imports(tree, source_code))
         except Exception as e:
             log_error(f"Failed to extract elements: {e}")
-        
+
         return elements

@@ -207,9 +207,11 @@ class GitignoreDetector:
         try:
             # Check if paths exist before resolving
             if not search_dir.exists() or not pattern_dir.exists():
-                logger.debug(f"Path does not exist: {search_dir} or {pattern_dir}, assuming affected")
+                logger.debug(
+                    f"Path does not exist: {search_dir} or {pattern_dir}, assuming affected"
+                )
                 return True
-                
+
             # If search_dir is the same as pattern_dir or is a subdirectory of pattern_dir
             search_resolved = search_dir.resolve()
             pattern_resolved = pattern_dir.resolve()
@@ -220,7 +222,9 @@ class GitignoreDetector:
             ).startswith(str(pattern_resolved) + os.sep)
         except (OSError, ValueError, RuntimeError):
             # If path resolution fails, assume it could be affected
-            logger.debug(f"Path resolution failed for {search_dir} or {pattern_dir}, assuming affected")
+            logger.debug(
+                f"Path resolution failed for {search_dir} or {pattern_dir}, assuming affected"
+            )
             return True
 
     def _directory_has_searchable_files(self, directory: Path) -> bool:
@@ -280,7 +284,7 @@ class GitignoreDetector:
             # Check if project path exists
             if not project_path.exists():
                 raise FileNotFoundError(f"Project root does not exist: {project_root}")
-                
+
             gitignore_files = self._find_gitignore_files(project_path)
             info["detected_gitignore_files"] = [str(f) for f in gitignore_files]
 

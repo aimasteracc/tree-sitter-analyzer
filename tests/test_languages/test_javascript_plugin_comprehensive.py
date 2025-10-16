@@ -4,15 +4,19 @@ Tests all major functionality including functions, classes, variables, imports,
 caching, performance optimizations, and JavaScript-specific features.
 """
 
+from unittest.mock import Mock, patch
+
 import pytest
-from unittest.mock import Mock, patch, MagicMock
-from tree_sitter_analyzer.languages.javascript_plugin import JavaScriptElementExtractor, JavaScriptPlugin
-from tree_sitter_analyzer.models import Function, Class, Variable, Import
+
+from tree_sitter_analyzer.languages.javascript_plugin import (
+    JavaScriptElementExtractor,
+)
+from tree_sitter_analyzer.models import Class, Function, Import
 
 
 class TestJavaScriptElementExtractor:
     """Test JavaScript element extractor functionality"""
-    
+
     @pytest.fixture
     def extractor(self):
         """Create a JavaScript element extractor instance"""
@@ -29,7 +33,7 @@ class TestJavaScriptElementExtractor:
     @pytest.fixture
     def sample_javascript_code(self):
         """Sample JavaScript code for testing"""
-        return '''
+        return """
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { debounce } from 'lodash';
@@ -100,15 +104,15 @@ class UserManager extends React.Component {
      */
     render() {
         const { users, loading, error } = this.state;
-        
+
         if (loading) return <div>Loading...</div>;
         if (error) return <div>Error: {error}</div>;
-        
+
         return (
             <div className="user-manager">
                 {users.map(user => (
-                    <UserCard 
-                        key={user.id} 
+                    <UserCard
+                        key={user.id}
                         user={user}
                         displayName={this.getUserDisplayName(user)}
                     />
@@ -125,13 +129,13 @@ class UserManager extends React.Component {
  */
 const UserCard = ({ user, displayName }) => {
     const [expanded, setExpanded] = useState(false);
-    
+
     useEffect(() => {
         console.log(`UserCard for ${displayName} mounted`);
     }, [displayName]);
-    
+
     const toggleExpanded = () => setExpanded(!expanded);
-    
+
     return (
         <div className={`user-card ${expanded ? 'expanded' : ''}`}>
             <h3 onClick={toggleExpanded}>{displayName}</h3>
@@ -190,7 +194,7 @@ export const API_ENDPOINTS = {
     users: '/api/users',
     profile: '/api/profile'
 };
-'''
+"""
 
     def test_initialization(self, extractor):
         """Test extractor initialization"""
@@ -217,10 +221,10 @@ export const API_ENDPOINTS = {
         extractor._element_cache[(1, "test")] = "value"
         extractor._jsdoc_cache[1] = "doc"
         extractor._complexity_cache[1] = 5
-        
+
         # Reset caches
         extractor._reset_caches()
-        
+
         # Verify caches are empty
         assert len(extractor._node_text_cache) == 0
         assert len(extractor._processed_nodes) == 0
@@ -233,29 +237,31 @@ export const API_ENDPOINTS = {
         extractor.source_code = sample_javascript_code
         extractor.current_file = "UserManager.jsx"
         extractor._detect_file_characteristics()
-        
+
         # Should detect as module due to imports/exports
         assert extractor.is_module is True
-        
+
         # Should detect JSX
         assert extractor.is_jsx is True
-        
+
         # Should detect React framework
         assert extractor.framework_type == "react"
-        
+
         # Test Vue detection
         vue_code = "import Vue from 'vue'; export default { name: 'Component' }"
         extractor.source_code = vue_code
         extractor._detect_file_characteristics()
         assert extractor.framework_type == "vue"
-        
+
         # Test Angular detection
         angular_code = "import { Component } from '@angular/core';"
         extractor.source_code = angular_code
         extractor._detect_file_characteristics()
         assert extractor.framework_type == "angular"
 
-    def test_extract_functions_basic(self, extractor, mock_tree, sample_javascript_code):
+    def test_extract_functions_basic(
+        self, extractor, mock_tree, sample_javascript_code
+    ):
         """Test basic function extraction"""
         # Mock tree structure for function extraction
         mock_function_node = Mock()
@@ -265,13 +271,15 @@ export const API_ENDPOINTS = {
         mock_function_node.start_byte = 100
         mock_function_node.end_byte = 200
         mock_function_node.children = []
-        
+
         mock_tree.root_node.children = [mock_function_node]
-        
+
         # Mock the extraction method
-        with patch.object(extractor, '_traverse_and_extract_iterative') as mock_traverse:
+        with patch.object(
+            extractor, "_traverse_and_extract_iterative"
+        ) as mock_traverse:
             functions = extractor.extract_functions(mock_tree, sample_javascript_code)
-            
+
             # Verify traversal was called
             mock_traverse.assert_called_once()
             assert isinstance(functions, list)
@@ -286,18 +294,22 @@ export const API_ENDPOINTS = {
         mock_class_node.start_byte = 50
         mock_class_node.end_byte = 300
         mock_class_node.children = []
-        
+
         mock_tree.root_node.children = [mock_class_node]
-        
+
         # Mock the extraction method
-        with patch.object(extractor, '_traverse_and_extract_iterative') as mock_traverse:
+        with patch.object(
+            extractor, "_traverse_and_extract_iterative"
+        ) as mock_traverse:
             classes = extractor.extract_classes(mock_tree, sample_javascript_code)
-            
+
             # Verify traversal was called
             mock_traverse.assert_called_once()
             assert isinstance(classes, list)
 
-    def test_extract_variables_basic(self, extractor, mock_tree, sample_javascript_code):
+    def test_extract_variables_basic(
+        self, extractor, mock_tree, sample_javascript_code
+    ):
         """Test basic variable extraction"""
         # Mock tree structure for variable extraction
         mock_var_node = Mock()
@@ -305,13 +317,15 @@ export const API_ENDPOINTS = {
         mock_var_node.start_point = (1, 0)
         mock_var_node.end_point = (1, 20)
         mock_var_node.children = []
-        
+
         mock_tree.root_node.children = [mock_var_node]
-        
+
         # Mock the extraction method
-        with patch.object(extractor, '_traverse_and_extract_iterative') as mock_traverse:
+        with patch.object(
+            extractor, "_traverse_and_extract_iterative"
+        ) as mock_traverse:
             variables = extractor.extract_variables(mock_tree, sample_javascript_code)
-            
+
             # Verify traversal was called
             mock_traverse.assert_called_once()
             assert isinstance(variables, list)
@@ -321,21 +335,21 @@ export const API_ENDPOINTS = {
         # Mock import statement
         mock_import_node = Mock()
         mock_import_node.type = "import_statement"
-        
+
         mock_tree.root_node.children = [mock_import_node]
-        
-        with patch.object(extractor, '_extract_import_info_simple') as mock_extract:
+
+        with patch.object(extractor, "_extract_import_info_simple") as mock_extract:
             mock_import = Import(
                 name="react",
                 start_line=1,
                 end_line=1,
                 raw_text="import React from 'react'",
-                language="javascript"
+                language="javascript",
             )
             mock_extract.return_value = mock_import
-            
+
             imports = extractor.extract_imports(mock_tree, sample_javascript_code)
-            
+
             assert isinstance(imports, list)
             mock_extract.assert_called_once()
 
@@ -344,18 +358,18 @@ export const API_ENDPOINTS = {
         # Mock export statement
         mock_export_node = Mock()
         mock_export_node.type = "export_statement"
-        
+
         mock_tree.root_node.children = [mock_export_node]
-        
-        with patch.object(extractor, '_extract_export_info') as mock_extract:
+
+        with patch.object(extractor, "_extract_export_info") as mock_extract:
             mock_export = {"name": "UserManager", "is_default": True}
             mock_extract.return_value = mock_export
-            
-            with patch.object(extractor, '_extract_commonjs_exports') as mock_commonjs:
+
+            with patch.object(extractor, "_extract_commonjs_exports") as mock_commonjs:
                 mock_commonjs.return_value = []
-                
+
                 exports = extractor.extract_exports(mock_tree, sample_javascript_code)
-                
+
                 assert isinstance(exports, list)
                 mock_extract.assert_called_once()
 
@@ -366,20 +380,22 @@ export const API_ENDPOINTS = {
         mock_node.start_byte = 0
         mock_node.end_byte = 10
         node_id = id(mock_node)
-        
+
         # Set up extractor state
         extractor.content_lines = ["test content line"]
         extractor._file_encoding = "utf-8"
-        
+
         # Mock extract_text_slice to return test text
-        with patch('tree_sitter_analyzer.languages.javascript_plugin.extract_text_slice') as mock_extract:
+        with patch(
+            "tree_sitter_analyzer.languages.javascript_plugin.extract_text_slice"
+        ) as mock_extract:
             mock_extract.return_value = "test text"
-            
+
             # First call should extract and cache
             result1 = extractor._get_node_text_optimized(mock_node)
             assert result1 == "test text"
             assert node_id in extractor._node_text_cache
-            
+
             # Second call should use cache
             result2 = extractor._get_node_text_optimized(mock_node)
             assert result2 == "test text"
@@ -393,15 +409,17 @@ export const API_ENDPOINTS = {
         mock_node.end_byte = 10
         mock_node.start_point = (0, 0)
         mock_node.end_point = (0, 10)
-        
+
         # Set up extractor state
         extractor.content_lines = ["test content line"]
         extractor._file_encoding = "utf-8"
-        
+
         # Mock extract_text_slice to raise exception
-        with patch('tree_sitter_analyzer.languages.javascript_plugin.extract_text_slice') as mock_extract:
+        with patch(
+            "tree_sitter_analyzer.languages.javascript_plugin.extract_text_slice"
+        ) as mock_extract:
             mock_extract.side_effect = Exception("Test error")
-            
+
             # Should fallback to simple extraction
             result = extractor._get_node_text_optimized(mock_node)
             assert result == "test conte"  # Characters 0-10 from first line
@@ -412,7 +430,7 @@ export const API_ENDPOINTS = {
         mock_node = Mock()
         mock_node.start_point = (0, 0)
         mock_node.end_point = (5, 0)
-        
+
         # Set up extractor state
         extractor.content_lines = [
             "/**",
@@ -420,22 +438,31 @@ export const API_ENDPOINTS = {
             " */",
             "async function testFunction(param1, param2) {",
             "    return param1 + param2;",
-            "}"
+            "}",
         ]
         extractor.framework_type = "react"
-        
+
         # Mock helper methods
-        with patch.object(extractor, '_parse_function_signature_optimized') as mock_parse:
-            mock_parse.return_value = ("testFunction", ["param1", "param2"], True, False)
-            
-            with patch.object(extractor, '_extract_jsdoc_for_line') as mock_jsdoc:
+        with patch.object(
+            extractor, "_parse_function_signature_optimized"
+        ) as mock_parse:
+            mock_parse.return_value = (
+                "testFunction",
+                ["param1", "param2"],
+                True,
+                False,
+            )
+
+            with patch.object(extractor, "_extract_jsdoc_for_line") as mock_jsdoc:
                 mock_jsdoc.return_value = "Test function"
-                
-                with patch.object(extractor, '_calculate_complexity_optimized') as mock_complexity:
+
+                with patch.object(
+                    extractor, "_calculate_complexity_optimized"
+                ) as mock_complexity:
                     mock_complexity.return_value = 2
-                    
+
                     result = extractor._extract_function_optimized(mock_node)
-                    
+
                     assert isinstance(result, Function)
                     assert result.name == "testFunction"
                     assert result.start_line == 1
@@ -457,7 +484,7 @@ export const API_ENDPOINTS = {
         mock_node = Mock()
         mock_node.start_point = (0, 0)
         mock_node.end_point = (2, 0)
-        
+
         # Mock parent variable declarator
         mock_parent = Mock()
         mock_parent.type = "variable_declarator"
@@ -465,36 +492,38 @@ export const API_ENDPOINTS = {
         mock_identifier.type = "identifier"
         mock_parent.children = [mock_identifier]
         mock_node.parent = mock_parent
-        
+
         # Mock formal parameters
         mock_params = Mock()
         mock_params.type = "formal_parameters"
         mock_node.children = [mock_params]
-        
+
         extractor.content_lines = [
             "const arrowFunc = async (param1, param2) => {",
             "    return param1 * param2;",
-            "};"
+            "};",
         ]
-        
-        with patch.object(extractor, '_get_node_text_optimized') as mock_get_text:
+
+        with patch.object(extractor, "_get_node_text_optimized") as mock_get_text:
             mock_get_text.side_effect = [
                 "arrowFunc",  # identifier text
                 "async (param1, param2) => { return param1 * param2; }",  # full function text
-                "async (param1, param2) => { return param1 * param2; }"   # for async check
+                "async (param1, param2) => { return param1 * param2; }",  # for async check
             ]
-            
-            with patch.object(extractor, '_extract_parameters') as mock_extract_params:
+
+            with patch.object(extractor, "_extract_parameters") as mock_extract_params:
                 mock_extract_params.return_value = ["param1", "param2"]
-                
-                with patch.object(extractor, '_extract_jsdoc_for_line') as mock_jsdoc:
+
+                with patch.object(extractor, "_extract_jsdoc_for_line") as mock_jsdoc:
                     mock_jsdoc.return_value = None
-                    
-                    with patch.object(extractor, '_calculate_complexity_optimized') as mock_complexity:
+
+                    with patch.object(
+                        extractor, "_calculate_complexity_optimized"
+                    ) as mock_complexity:
                         mock_complexity.return_value = 1
-                        
+
                         result = extractor._extract_arrow_function_optimized(mock_node)
-                        
+
                         assert isinstance(result, Function)
                         assert result.name == "arrowFunc"
                         assert result.is_arrow is True
@@ -507,27 +536,39 @@ export const API_ENDPOINTS = {
         mock_node = Mock()
         mock_node.start_point = (0, 0)
         mock_node.end_point = (3, 0)
-        
+
         extractor.content_lines = [
             "static async validateUser(userData) {",
             "    return userData && userData.name;",
-            "}"
+            "}",
         ]
-        
-        with patch.object(extractor, '_parse_method_signature_optimized') as mock_parse:
-            mock_parse.return_value = ("validateUser", ["userData"], True, True, False, False, False)
-            
-            with patch.object(extractor, '_extract_jsdoc_for_line') as mock_jsdoc:
+
+        with patch.object(extractor, "_parse_method_signature_optimized") as mock_parse:
+            mock_parse.return_value = (
+                "validateUser",
+                ["userData"],
+                True,
+                True,
+                False,
+                False,
+                False,
+            )
+
+            with patch.object(extractor, "_extract_jsdoc_for_line") as mock_jsdoc:
                 mock_jsdoc.return_value = "Validate user data"
-                
-                with patch.object(extractor, '_calculate_complexity_optimized') as mock_complexity:
+
+                with patch.object(
+                    extractor, "_calculate_complexity_optimized"
+                ) as mock_complexity:
                     mock_complexity.return_value = 2
-                    
-                    with patch.object(extractor, '_get_node_text_optimized') as mock_get_text:
+
+                    with patch.object(
+                        extractor, "_get_node_text_optimized"
+                    ) as mock_get_text:
                         mock_get_text.return_value = "static async validateUser(userData) { return userData && userData.name; }"
-                        
+
                         result = extractor._extract_method_optimized(mock_node)
-                        
+
                         assert isinstance(result, Function)
                         assert result.name == "validateUser"
                         assert result.is_method is True
@@ -541,29 +582,37 @@ export const API_ENDPOINTS = {
         mock_node = Mock()
         mock_node.start_point = (0, 0)
         mock_node.end_point = (4, 0)
-        
+
         extractor.content_lines = [
             "function* userGenerator(users) {",
             "    for (const user of users) {",
             "        yield user;",
             "    }",
-            "}"
+            "}",
         ]
-        
-        with patch.object(extractor, '_parse_function_signature_optimized') as mock_parse:
+
+        with patch.object(
+            extractor, "_parse_function_signature_optimized"
+        ) as mock_parse:
             mock_parse.return_value = ("userGenerator", ["users"], False, True)
-            
-            with patch.object(extractor, '_extract_jsdoc_for_line') as mock_jsdoc:
+
+            with patch.object(extractor, "_extract_jsdoc_for_line") as mock_jsdoc:
                 mock_jsdoc.return_value = "Generate users"
-                
-                with patch.object(extractor, '_calculate_complexity_optimized') as mock_complexity:
+
+                with patch.object(
+                    extractor, "_calculate_complexity_optimized"
+                ) as mock_complexity:
                     mock_complexity.return_value = 2
-                    
-                    with patch.object(extractor, '_get_node_text_optimized') as mock_get_text:
+
+                    with patch.object(
+                        extractor, "_get_node_text_optimized"
+                    ) as mock_get_text:
                         mock_get_text.return_value = "function* userGenerator(users) { for (const user of users) { yield user; } }"
-                        
-                        result = extractor._extract_generator_function_optimized(mock_node)
-                        
+
+                        result = extractor._extract_generator_function_optimized(
+                            mock_node
+                        )
+
                         assert isinstance(result, Function)
                         assert result.name == "userGenerator"
                         assert result.is_generator is True
@@ -575,18 +624,18 @@ export const API_ENDPOINTS = {
         mock_node = Mock()
         mock_node.start_point = (0, 0)
         mock_node.end_point = (10, 0)
-        
+
         # Mock identifier child
         mock_identifier = Mock()
         mock_identifier.type = "identifier"
         mock_identifier.text = b"UserManager"
-        
+
         # Mock class heritage (extends clause)
         mock_heritage = Mock()
         mock_heritage.type = "class_heritage"
-        
+
         mock_node.children = [mock_identifier, mock_heritage]
-        
+
         extractor.content_lines = [
             "/**",
             " * User management class",
@@ -595,27 +644,29 @@ export const API_ENDPOINTS = {
             "    constructor(props) {",
             "        super(props);",
             "    }",
-            "}"
+            "}",
         ] * 2
         extractor.framework_type = "react"
-        
-        with patch.object(extractor, '_get_node_text_optimized') as mock_get_text:
+
+        with patch.object(extractor, "_get_node_text_optimized") as mock_get_text:
             mock_get_text.side_effect = [
                 "extends React.Component",  # Heritage text
-                "class UserManager extends React.Component { constructor(props) { super(props); } }"  # Full class text
+                "class UserManager extends React.Component { constructor(props) { super(props); } }",  # Full class text
             ]
-            
-            with patch.object(extractor, '_extract_jsdoc_for_line') as mock_jsdoc:
+
+            with patch.object(extractor, "_extract_jsdoc_for_line") as mock_jsdoc:
                 mock_jsdoc.return_value = "User management class"
-                
-                with patch.object(extractor, '_is_react_component') as mock_is_react:
+
+                with patch.object(extractor, "_is_react_component") as mock_is_react:
                     mock_is_react.return_value = True
-                    
-                    with patch.object(extractor, '_is_exported_class') as mock_is_exported:
+
+                    with patch.object(
+                        extractor, "_is_exported_class"
+                    ) as mock_is_exported:
                         mock_is_exported.return_value = True
-                        
+
                         result = extractor._extract_class_optimized(mock_node)
-                        
+
                         assert isinstance(result, Class)
                         assert result.name == "UserManager"
                         assert result.start_line == 1
@@ -635,13 +686,13 @@ export const API_ENDPOINTS = {
         mock_child1 = Mock()
         mock_child1.type = "function_declaration"
         mock_child1.children = []
-        
+
         mock_child2 = Mock()
         mock_child2.type = "class_declaration"
         mock_child2.children = []
-        
+
         mock_root.children = [mock_child1, mock_child2]
-        
+
         # Mock extractor functions
         mock_func_extractor = Mock()
         mock_func_extractor.return_value = Function(
@@ -649,26 +700,28 @@ export const API_ENDPOINTS = {
             start_line=1,
             end_line=3,
             raw_text="function test_func() {}",
-            language="javascript"
+            language="javascript",
         )
-        
+
         mock_class_extractor = Mock()
         mock_class_extractor.return_value = Class(
             name="TestClass",
             start_line=5,
             end_line=10,
             raw_text="class TestClass {}",
-            language="javascript"
+            language="javascript",
         )
-        
+
         extractors = {
             "function_declaration": mock_func_extractor,
-            "class_declaration": mock_class_extractor
+            "class_declaration": mock_class_extractor,
         }
-        
+
         results = []
-        extractor._traverse_and_extract_iterative(mock_root, extractors, results, "mixed")
-        
+        extractor._traverse_and_extract_iterative(
+            mock_root, extractors, results, "mixed"
+        )
+
         assert len(results) == 2
         assert isinstance(results[0], Function)
         assert isinstance(results[1], Class)
@@ -680,7 +733,7 @@ export const API_ENDPOINTS = {
         mock_child.type = "function_declaration"
         mock_child.children = []
         mock_root.children = [mock_child]
-        
+
         # Set up cache
         node_id = id(mock_child)
         cache_key = (node_id, "function")
@@ -689,19 +742,23 @@ export const API_ENDPOINTS = {
             start_line=1,
             end_line=2,
             raw_text="function cached_func() {}",
-            language="javascript"
+            language="javascript",
         )
         extractor._element_cache[cache_key] = cached_function
-        
+
         extractors = {"function_declaration": Mock()}
         results = []
-        
-        extractor._traverse_and_extract_iterative(mock_root, extractors, results, "function")
-        
+
+        extractor._traverse_and_extract_iterative(
+            mock_root, extractors, results, "function"
+        )
+
         # Should use cached result
         assert len(results) == 1
         assert results[0] == cached_function
-        assert extractors["function_declaration"].call_count == 0  # Should not call extractor
+        assert (
+            extractors["function_declaration"].call_count == 0
+        )  # Should not call extractor
 
     def test_traverse_and_extract_iterative_max_depth(self, extractor):
         """Test max depth protection in traversal"""
@@ -709,42 +766,46 @@ export const API_ENDPOINTS = {
         root_node = Mock()
         root_node.type = "program"
         root_node.children = []
-        
+
         current_node = root_node
-        
+
         # Create 60 levels of nesting (exceeds max_depth of 50)
-        for i in range(60):
+        for _i in range(60):
             child = Mock()
             child.type = "statement_block"
             child.children = []
             current_node.children = [child]
             current_node = child
-        
+
         # Add target node at the end
         target_node = Mock()
         target_node.type = "function_declaration"
         target_node.children = []
         current_node.children = [target_node]
-        
+
         extractors = {"function_declaration": Mock()}
         results = []
-        
+
         # Should not process deeply nested nodes
-        with patch('tree_sitter_analyzer.languages.javascript_plugin.log_warning') as mock_log:
-            extractor._traverse_and_extract_iterative(root_node, extractors, results, "function")
-            
+        with patch(
+            "tree_sitter_analyzer.languages.javascript_plugin.log_warning"
+        ) as mock_log:
+            extractor._traverse_and_extract_iterative(
+                root_node, extractors, results, "function"
+            )
+
             # Should log warning about max depth
             mock_log.assert_called()
 
     def test_performance_with_large_codebase(self, extractor):
         """Test performance with large codebase simulation"""
         import time
-        
+
         # Create large mock tree
         mock_tree = Mock()
         mock_root = Mock()
         mock_tree.root_node = mock_root
-        
+
         # Create many function nodes
         function_nodes = []
         for i in range(100):
@@ -754,12 +815,14 @@ export const API_ENDPOINTS = {
             node.start_point = (i, 0)
             node.end_point = (i + 2, 0)
             function_nodes.append(node)
-        
+
         mock_root.children = function_nodes
-        
+
         # Create large source code
-        large_source = "\n".join([f"function func_{i}() {{ return {i}; }}" for i in range(100)])
-        
+        large_source = "\n".join(
+            [f"function func_{i}() {{ return {i}; }}" for i in range(100)]
+        )
+
         # Mock extraction method to return simple functions
         def mock_extract_function(node):
             return Function(
@@ -767,14 +830,16 @@ export const API_ENDPOINTS = {
                 start_line=node.start_point[0] + 1,
                 end_line=node.end_point[0] + 1,
                 raw_text=f"function func_{node.start_point[0]}() {{ return {node.start_point[0]}; }}",
-                language="javascript"
+                language="javascript",
             )
-        
-        with patch.object(extractor, '_extract_function_optimized', side_effect=mock_extract_function):
+
+        with patch.object(
+            extractor, "_extract_function_optimized", side_effect=mock_extract_function
+        ):
             start_time = time.time()
             functions = extractor.extract_functions(mock_tree, large_source)
             end_time = time.time()
-            
+
             # Should complete within reasonable time (5 seconds)
             assert end_time - start_time < 5.0
             assert len(functions) == 100
@@ -782,16 +847,16 @@ export const API_ENDPOINTS = {
     def test_memory_usage_with_caching(self, extractor):
         """Test memory usage with caching"""
         import gc
-        
+
         # Perform many operations to populate caches
         mock_node = Mock()
         mock_node.start_byte = 0
         mock_node.end_byte = 10
         mock_node.start_point = (0, 0)
         mock_node.end_point = (0, 10)
-        
+
         extractor.content_lines = ["test content"] * 1000
-        
+
         # Populate caches
         for i in range(1000):
             mock_node_copy = Mock()
@@ -799,18 +864,20 @@ export const API_ENDPOINTS = {
             mock_node_copy.end_byte = i + 10
             mock_node_copy.start_point = (0, 0)
             mock_node_copy.end_point = (0, 10)
-            
-            with patch('tree_sitter_analyzer.languages.javascript_plugin.extract_text_slice') as mock_extract:
+
+            with patch(
+                "tree_sitter_analyzer.languages.javascript_plugin.extract_text_slice"
+            ) as mock_extract:
                 mock_extract.return_value = f"text_{i}"
                 extractor._get_node_text_optimized(mock_node_copy)
-        
+
         # Check cache sizes
         assert len(extractor._node_text_cache) <= 1000
-        
+
         # Reset caches and force garbage collection
         extractor._reset_caches()
         gc.collect()
-        
+
         # Caches should be empty
         assert len(extractor._node_text_cache) == 0
 

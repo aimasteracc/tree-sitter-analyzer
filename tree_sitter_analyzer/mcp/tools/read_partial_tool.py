@@ -27,7 +27,7 @@ class ReadPartialTool(BaseMCPTool):
     selective file content reading through the MCP protocol.
     """
 
-    def __init__(self, project_root: str = None) -> None:
+    def __init__(self, project_root: str | None = None) -> None:
         """Initialize the read partial tool."""
         super().__init__(project_root)
         self.file_output_manager = FileOutputManager(project_root)
@@ -117,7 +117,9 @@ class ReadPartialTool(BaseMCPTool):
         output_format = arguments.get("format", "text")
 
         # Security validation BEFORE path resolution to catch symlinks
-        is_valid, error_msg = self.security_validator.validate_file_path(file_path, self.project_root)
+        is_valid, error_msg = self.security_validator.validate_file_path(
+            file_path, self.project_root
+        )
         if not is_valid:
             logger.warning(
                 f"Security validation failed for file path: {file_path} - {error_msg}"
@@ -125,14 +127,16 @@ class ReadPartialTool(BaseMCPTool):
             return {
                 "success": False,
                 "error": f"Security validation failed: {error_msg}",
-                "file_path": file_path
+                "file_path": file_path,
             }
 
         # Resolve file path using common path resolver
         resolved_path = self.path_resolver.resolve(file_path)
 
         # Additional security validation on resolved path
-        is_valid, error_msg = self.security_validator.validate_file_path(resolved_path, self.project_root)
+        is_valid, error_msg = self.security_validator.validate_file_path(
+            resolved_path, self.project_root
+        )
         if not is_valid:
             logger.warning(
                 f"Security validation failed for resolved path: {resolved_path} - {error_msg}"
@@ -140,7 +144,7 @@ class ReadPartialTool(BaseMCPTool):
             return {
                 "success": False,
                 "error": f"Security validation failed for resolved path: {error_msg}",
-                "file_path": file_path
+                "file_path": file_path,
             }
 
         # Validate file exists
@@ -148,7 +152,7 @@ class ReadPartialTool(BaseMCPTool):
             return {
                 "success": False,
                 "error": "Invalid file path: file does not exist",
-                "file_path": file_path
+                "file_path": file_path,
             }
 
         # Validate line numbers
@@ -156,14 +160,14 @@ class ReadPartialTool(BaseMCPTool):
             return {
                 "success": False,
                 "error": "start_line must be >= 1",
-                "file_path": file_path
+                "file_path": file_path,
             }
 
         if end_line is not None and end_line < start_line:
             return {
                 "success": False,
                 "error": "end_line must be >= start_line",
-                "file_path": file_path
+                "file_path": file_path,
             }
 
         # Validate column numbers
@@ -171,14 +175,14 @@ class ReadPartialTool(BaseMCPTool):
             return {
                 "success": False,
                 "error": "start_column must be >= 0",
-                "file_path": file_path
+                "file_path": file_path,
             }
 
         if end_column is not None and end_column < 0:
             return {
                 "success": False,
                 "error": "end_column must be >= 0",
-                "file_path": file_path
+                "file_path": file_path,
             }
 
         logger.info(
@@ -199,15 +203,15 @@ class ReadPartialTool(BaseMCPTool):
                     return {
                         "success": False,
                         "error": f"Failed to read partial content from file: {file_path}",
-                        "file_path": file_path
+                        "file_path": file_path,
                     }
-                
+
                 # Check if content is empty or invalid range
                 if not content or content.strip() == "":
                     return {
                         "success": False,
                         "error": f"Invalid line range or empty content: start_line={start_line}, end_line={end_line}",
-                        "file_path": file_path
+                        "file_path": file_path,
                     }
 
                 # Build result structure compatible with CLI --partial-read format
@@ -245,7 +249,7 @@ class ReadPartialTool(BaseMCPTool):
                 )
 
                 # Calculate lines extracted
-                lines_extracted = len(content.split('\n')) if content else 0
+                lines_extracted = len(content.split("\n")) if content else 0
                 if end_line:
                     lines_extracted = end_line - start_line + 1
 
@@ -267,15 +271,15 @@ class ReadPartialTool(BaseMCPTool):
                 if not suppress_output or not output_file:
                     if output_format == "json":
                         # For JSON format, return structured data with exact line count
-                        lines = content.split('\n') if content else []
-                        
+                        lines = content.split("\n") if content else []
+
                         # If end_line is specified, ensure we return exactly the requested number of lines
                         if end_line and len(lines) > lines_extracted:
                             lines = lines[:lines_extracted]
                         elif end_line and len(lines) < lines_extracted:
                             # Pad with empty lines if needed (shouldn't normally happen)
-                            lines.extend([''] * (lines_extracted - len(lines)))
-                        
+                            lines.extend([""] * (lines_extracted - len(lines)))
+
                         result["partial_content_result"] = {
                             "lines": lines,
                             "metadata": {
@@ -287,8 +291,8 @@ class ReadPartialTool(BaseMCPTool):
                                     "end_column": end_column,
                                 },
                                 "content_length": len(content),
-                                "lines_count": len(lines)
-                            }
+                                "lines_count": len(lines),
+                            },
                         }
                     else:
                         # For text/raw format, return CLI-compatible string
@@ -313,18 +317,17 @@ class ReadPartialTool(BaseMCPTool):
                         else:  # format == "text" (default)
                             # Save CLI-compatible format with headers
                             content_to_save = cli_output
-                        
+
                         # Save to file with automatic extension detection
                         saved_file_path = self.file_output_manager.save_to_file(
-                            content=content_to_save,
-                            base_name=base_name
+                            content=content_to_save, base_name=base_name
                         )
-                        
+
                         result["output_file_path"] = saved_file_path
                         result["file_saved"] = True
-                        
+
                         logger.info(f"Extract output saved to: {saved_file_path}")
-                        
+
                     except Exception as e:
                         logger.error(f"Failed to save output to file: {e}")
                         result["file_save_error"] = str(e)
@@ -334,11 +337,7 @@ class ReadPartialTool(BaseMCPTool):
 
         except Exception as e:
             logger.error(f"Error reading partial content from {file_path}: {e}")
-            return {
-                "success": False,
-                "error": str(e),
-                "file_path": file_path
-            }
+            return {"success": False, "error": str(e), "file_path": file_path}
 
     def _read_file_partial(
         self,

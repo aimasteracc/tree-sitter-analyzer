@@ -12,7 +12,6 @@ instance management across MCP tools.
 import json
 import os
 from pathlib import Path
-from typing import Any, Optional
 
 from ...utils import setup_logger
 
@@ -24,12 +23,12 @@ class FileOutputManager:
     """
     Manages file output for analysis results with automatic extension detection
     and security validation.
-    
+
     Enhanced with factory method support for consistent instance management
     across MCP tools while maintaining full backward compatibility.
     """
 
-    def __init__(self, project_root: Optional[str] = None):
+    def __init__(self, project_root: str | None = None):
         """
         Initialize the file output manager.
 
@@ -39,22 +38,24 @@ class FileOutputManager:
         self.project_root = project_root
         self._output_path = None
         self._initialize_output_path()
-    
+
     @classmethod
-    def get_managed_instance(cls, project_root: Optional[str] = None) -> 'FileOutputManager':
+    def get_managed_instance(
+        cls, project_root: str | None = None
+    ) -> "FileOutputManager":
         """
         Get a managed FileOutputManager instance using the factory pattern.
-        
+
         This method provides access to the Managed Singleton Factory Pattern,
         ensuring one instance per project root for optimal resource usage
         and consistency across MCP tools.
-        
+
         Args:
             project_root: Project root directory. If None, uses current working directory.
-            
+
         Returns:
             FileOutputManager instance managed by the factory
-            
+
         Note:
             This method requires the factory module to be available. If the factory
             is not available, it falls back to creating a new instance directly.
@@ -62,23 +63,26 @@ class FileOutputManager:
         try:
             # Import here to avoid circular imports
             from .file_output_factory import FileOutputManagerFactory
+
             return FileOutputManagerFactory.get_instance(project_root)
         except ImportError as e:
-            logger.warning(f"Factory not available, creating new instance directly: {e}")
+            logger.warning(
+                f"Factory not available, creating new instance directly: {e}"
+            )
             return cls(project_root)
-    
+
     @classmethod
-    def create_instance(cls, project_root: Optional[str] = None) -> 'FileOutputManager':
+    def create_instance(cls, project_root: str | None = None) -> "FileOutputManager":
         """
         Create a new FileOutputManager instance directly (bypass factory).
-        
+
         This method creates a new instance without using the factory pattern.
         Use this when you specifically need a separate instance that won't
         be managed by the factory.
-        
+
         Args:
             project_root: Project root directory. If None, uses current working directory.
-            
+
         Returns:
             New FileOutputManager instance
         """
@@ -159,14 +163,18 @@ class FileOutputManager:
             if first_line_commas > 0:
                 # Check if at least 2 more lines have similar comma counts
                 similar_comma_lines = sum(
-                    1 for line in lines[1:4] if abs(line.count(",") - first_line_commas) <= 1
+                    1
+                    for line in lines[1:4]
+                    if abs(line.count(",") - first_line_commas) <= 1
                 )
                 if similar_comma_lines >= 1:
                     return "csv"
 
         # Check for Markdown (simple heuristic)
         markdown_indicators = ["#", "##", "###", "|", "```", "*", "-", "+"]
-        if any(content_stripped.startswith(indicator) for indicator in markdown_indicators):
+        if any(
+            content_stripped.startswith(indicator) for indicator in markdown_indicators
+        ):
             return "markdown"
 
         # Check for table format (pipe-separated)
@@ -193,7 +201,7 @@ class FileOutputManager:
             "json": ".json",
             "csv": ".csv",
             "markdown": ".md",
-            "text": ".txt"
+            "text": ".txt",
         }
         return extension_map.get(content_type, ".txt")
 
@@ -210,13 +218,15 @@ class FileOutputManager:
         """
         content_type = self.detect_content_type(content)
         extension = self.get_file_extension(content_type)
-        
+
         # Remove existing extension if present
         base_name_clean = Path(base_name).stem
-        
+
         return f"{base_name_clean}{extension}"
 
-    def save_to_file(self, content: str, filename: str | None = None, base_name: str | None = None) -> str:
+    def save_to_file(
+        self, content: str, filename: str | None = None, base_name: str | None = None
+    ) -> str:
         """
         Save content to file with automatic extension detection.
 
@@ -252,7 +262,7 @@ class FileOutputManager:
         try:
             with open(output_file, "w", encoding="utf-8") as f:
                 f.write(content)
-            
+
             logger.info(f"Content saved to file: {output_file}")
             return str(output_file)
 
@@ -272,7 +282,7 @@ class FileOutputManager:
         """
         try:
             path_obj = Path(path).resolve()
-            
+
             # Check if parent directory exists or can be created
             parent_dir = path_obj.parent
             if not parent_dir.exists():

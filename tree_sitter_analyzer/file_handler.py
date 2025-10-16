@@ -13,13 +13,16 @@ from .utils import setup_logger
 # Set up logger for this module
 logger = setup_logger(__name__)
 
+
 def log_error(message: str, *args, **kwargs) -> None:
     """Log error message"""
     logger.error(message, *args, **kwargs)
 
+
 def log_info(message: str, *args, **kwargs) -> None:
     """Log info message"""
     logger.info(message, *args, **kwargs)
+
 
 def log_warning(message: str, *args, **kwargs) -> None:
     """Log warning message"""
