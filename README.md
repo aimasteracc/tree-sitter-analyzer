@@ -8,7 +8,7 @@
 [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer)
 [![Quality](https://img.shields.io/badge/quality-enterprise%20grade-blue.svg)](#quality-assurance)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
-[![Version](https://img.shields.io/badge/version-1.8.3-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
+[![Version](https://img.shields.io/badge/version-1.8.4-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
 [![zread](https://img.shields.io/badge/Ask_Zread-_.svg?style=flat&color=00b0aa&labelColor=000000&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB3aWR0aD0iMTYiIGhlaWdodD0iMTYiIHZpZXdCb3g9IjAgMCAxNiAxNiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTQuOTYxNTYgMS42MDAxSDIuMjQxNTZDMS44ODgxIDEuNjAwMSAxLjYwMTU2IDEuODg2NjQgMS42MDE1NiAyLjI0MDFWNC45NjAxQzEuNjAxNTYgNS4zMTM1NiAxLjg4ODEgNS42MDAxIDIuMjQxNTYgNS42MDAxSDQuOTYxNTZDNS4zMTUwMiA1LjYwMDEgNS42MDE1NiA1LjMxMzU2IDUuNjAxNTYgNC45NjAxVjIuMjQwMUM1LjYwMTU2IDEuODg2NjQgNS4zMTUwMiAxLjYwMDEgNC45NjE1NiAxLjYwMDFaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik00Ljk2MTU2IDEwLjM5OTlIMi4yNDE1NkMxLjg4ODEgMTAuMzk5OSAxLjYwMTU2IDEwLjY4NjQgMS42MDE1NiAxMS4wMzk5VjEzLjc1OTlDMS42MDE1NiAxNC4xMTM0IDEuODg4MSAxNC4zOTk5IDIuMjQxNTYgMTQuMzk5OUg0Ljk2MTU2QzUuMzE1MDIgMTQuMzk5OSA1LjYwMTU2IDE0LjExMzQgNS42MDE1NiAxMy43NTk5VjExLjAzOTlDNS42MDE1NiAxMC42ODY0IDUuMzE1MDIgMTAuMzk5OSA0Ljk2MTU2IDEwLjM5OTlaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik0xMy43NTg0IDEuNjAwMUgxMS4wMzg0QzEwLjY4NSAxLjYwMDEgMTAuMzk4NCAxLjg4NjY0IDEwLjM5ODQgMi4yNDAxVjQuOTYwMUMxMC4zOTg0IDUuMzEzNTYgMTAuNjg1IDUuNjAwMSAxMS4wMzg0IDUuNjAwMUgxMy43NTg0QzE0LjExMTkgNS42MDAxIDE0LjM5ODQgNS4zMTM1NiAxNC4zOTg0IDQuOTYwMVYyLjI0MDFDMTQuMzk4NCAxLjg4NjY0IDE0LjExMTkgMS42MDAxIDEzLjc1ODQgMS42MDAxWiIgZmlsbD0iI2ZmZiIvPgo8cGF0aCBkPSJNNCAxMkwxMiA0TDQgMTJaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik00IDEyTDEyIDQiIHN0cm9rZT0iI2ZmZiIgc3Ryb2tlLXdpZHRoPSIxLjUiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPgo8L3N2Zz4K&logoColor=ffffff)](https://zread.ai/aimasteracc/tree-sitter-analyzer)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
@@ -160,10 +160,7 @@ rg --version
       ],
       "env": {
         "TREE_SITTER_PROJECT_ROOT": "/absolute/path/to/your/project",
-        "TREE_SITTER_OUTPUT_PATH": "/absolute/path/to/output/directory",
-        "TREE_SITTER_ANALYZER_ENABLE_FILE_LOG": "true",
-        "TREE_SITTER_ANALYZER_LOG_DIR": "/absolute/path/to/log/directory",
-        "TREE_SITTER_ANALYZER_FILE_LOG_LEVEL": "DEBUG"
+        "TREE_SITTER_OUTPUT_PATH": "/absolute/path/to/output/directory"
       }
     }
   }
@@ -182,53 +179,6 @@ rg --version
 - **Roo Code**: Supports MCP protocol, use the same configuration format
 - **Other MCP-compatible clients**: Use the same server configuration
 
-#### 🔧 Environment Variables for Debugging
-
-Tree-sitter Analyzer supports several environment variables for advanced logging and debugging:
-
-| Environment Variable | Description | Default | Example |
-|---------------------|-------------|---------|---------|
-| `TREE_SITTER_ANALYZER_ENABLE_FILE_LOG` | Enable file logging for debugging | `false` | `true` |
-| `TREE_SITTER_ANALYZER_LOG_DIR` | Custom log directory path | System temp directory | `/path/to/logs` |
-| `TREE_SITTER_ANALYZER_FILE_LOG_LEVEL` | File log level (DEBUG/INFO/WARNING/ERROR) | Same as main logger | `DEBUG` |
-| `LOG_LEVEL` | Main logger level (DEBUG/INFO/WARNING/ERROR) | `WARNING` | `INFO` |
-| `TREE_SITTER_PROJECT_ROOT` | Project root directory | Auto-detected | `/path/to/project` |
-| `TREE_SITTER_OUTPUT_PATH` | Output directory for files | Current directory | `/path/to/output` |
-
-**Usage Examples:**
-
-```bash
-# Enable debug file logging
-export TREE_SITTER_ANALYZER_ENABLE_FILE_LOG=true
-export TREE_SITTER_ANALYZER_FILE_LOG_LEVEL=DEBUG
-
-# Custom log directory
-export TREE_SITTER_ANALYZER_LOG_DIR=/var/log/tree-sitter-analyzer
-
-# Set main log level
-export LOG_LEVEL=INFO
-```
-
-**Claude Desktop Configuration with Debugging:**
-```json
-{
-  "mcpServers": {
-    "tree-sitter-analyzer": {
-      "command": "uv",
-      "args": [
-        "run", "--with", "tree-sitter-analyzer[mcp]",
-        "python", "-m", "tree_sitter_analyzer.mcp.server"
-      ],
-      "env": {
-        "TREE_SITTER_PROJECT_ROOT": "/absolute/path/to/your/project",
-        "TREE_SITTER_ANALYZER_ENABLE_FILE_LOG": "true",
-        "TREE_SITTER_ANALYZER_FILE_LOG_LEVEL": "DEBUG",
-        "LOG_LEVEL": "INFO"
-      }
-    }
-  }
-}
-```
 
 ---
 
@@ -496,6 +446,19 @@ Tree-sitter Analyzer provides a rich set of MCP tools designed for AI assistants
 | **⚙️ System Management** | `set_project_path` | Project root path setting | Security boundary control, automatic path validation, 🆕 unified across all MCP tools |
 | **📁 Resource Access** | Code file resources | URI code file access | File content access via URI identification |
 | | Project statistics resources | Project statistics data access | Project analysis data and statistical information |
+
+### 🆕 v1.8.4 New Feature: Configurable File Logging
+
+Revolutionary environment variable-controlled file logging system:
+
+- **🔧 Environment Variable Control**: Flexible file logging behavior control through environment variables
+  - `TREE_SITTER_ANALYZER_ENABLE_FILE_LOG`: Enable/disable file logging
+  - `TREE_SITTER_ANALYZER_LOG_DIR`: Custom log directory path
+  - `TREE_SITTER_ANALYZER_FILE_LOG_LEVEL`: Control file log level
+- **🛡️ Improved Default Behavior**: File logging disabled by default to prevent user project pollution
+- **📁 Smart Directory Selection**: Uses system temp directory when enabled, keeping projects clean
+- **🔄 Backward Compatibility**: Maintains all existing functionality unchanged
+- **📚 Complete Documentation Support**: Includes debugging guides and troubleshooting documentation
 
 ### 🆕 v1.8.3 New Feature: MCP Tools Design Consistency Enhancement
 

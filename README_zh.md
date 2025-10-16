@@ -8,7 +8,7 @@
 [![覆盖率](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer)
 [![质量](https://img.shields.io/badge/quality-enterprise%20grade-blue.svg)](#质量保证)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
-[![版本](https://img.shields.io/badge/version-1.8.3-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
+[![版本](https://img.shields.io/badge/version-1.8.4-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
 [![zread](https://img.shields.io/badge/Ask_Zread-_.svg?style=flat&color=00b0aa&labelColor=000000&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB3aWR0aD0iMTYiIGhlaWdodD0iMTYiIHZpZXdCb3g9IjAgMCAxNiAxNiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTQuOTYxNTYgMS42MDAxSDIuMjQxNTZDMS44ODgxIDEuNjAwMSAxLjYwMTU2IDEuODg2NjQgMS42MDE1NiAyLjI0MDFWNC45NjAxQzEuNjAxNTYgNS4zMTM1NiAxLjg4ODEgNS42MDAxIDIuMjQxNTYgNS42MDAxSDQuOTYxNTZDNS4zMTUwMiA1LjYwMDEgNS42MDE1NiA1LjMxMzU2IDUuNjAxNTYgNC45NjAxVjIuMjQwMUM1LjYwMTU2IDEuODg2NjQgNS4zMTUwMiAxLjYwMDEgNC45NjE1NiAxLjYwMDFaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik00Ljk2MTU2IDEwLjM5OTlIMi4yNDE1NkMxLjg4ODEgMTAuMzk5OSAxLjYwMTU2IDEwLjY4NjQgMS42MDE1NiAxMS4wMzk5VjEzLjc1OTlDMS42MDE1NiAxNC4xMTM0IDEuODg4MSAxNC4zOTk5IDIuMjQxNTYgMTQuMzk5OUg0Ljk2MTU2QzUuMzE1MDIgMTQuMzk5OSA1LjYwMTU2IDE0LjExMzQgNS42MDE1NiAxMy43NTk5VjExLjAzOTlDNS42MDE1NiAxMC42ODY0IDUuMzE1MDIgMTAuMzk5OSA0Ljk2MTU2IDEwLjM5OTlaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik0xMy43NTg0IDEuNjAwMUgxMS4wMzg0QzEwLjY4NSAxLjYwMDEgMTAuMzk4NCAxLjg4NjY0IDEwLjM5ODQgMi4yNDAxVjQuOTYwMUMxMC4zOTg0IDUuMzEzNTYgMTAuNjg1IDUuNjAwMSAxMS4wMzg0IDUuNjAwMUgxMy43NTg0QzE0LjExMTkgNS42MDAxIDE0LjM5ODQgNS4zMTM1NiAxNC4zOTg0IDQuOTYwMVYyLjI0MDFDMTQuMzk4NCAxLjg4NjY0IDE0LjExMTkgMS42MDAxIDEzLjc1ODQgMS42MDAxWiIgZmlsbD0iI2ZmZiIvPgo8cGF0aCBkPSJNNCAxMkwxMiA0TDQgMTJaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik00IDEyTDEyIDQiIHN0cm9rZT0iI2ZmZiIgc3Ryb2tlLXdpZHRoPSIxLjUiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPgo8L3N2Zz4K&logoColor=ffffff)](https://zread.ai/aimasteracc/tree-sitter-analyzer)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
@@ -446,6 +446,19 @@ Tree-sitter Analyzer提供了丰富的MCP工具集，专为AI助手设计：
 | **⚙️ 系统管理** | `set_project_path` | 设置项目根路径 | 安全边界控制、自动路径验证、🆕 全MCP工具统一 |
 | **📁 资源访问** | 代码文件资源 | URI访问代码文件 | 通过URI标识访问文件内容 |
 | | 项目统计资源 | 访问项目统计数据 | 项目分析数据和统计信息 |
+
+### 🆕 v1.8.4新特性：可配置文件日志功能
+
+革命性的环境变量控制文件日志系统：
+
+- **🔧 环境变量控制**：通过环境变量灵活控制文件日志行为
+  - `TREE_SITTER_ANALYZER_ENABLE_FILE_LOG`: 启用/禁用文件日志
+  - `TREE_SITTER_ANALYZER_LOG_DIR`: 自定义日志目录路径
+  - `TREE_SITTER_ANALYZER_FILE_LOG_LEVEL`: 控制文件日志级别
+- **🛡️ 默认行为改进**：默认禁用文件日志，防止用户项目污染
+- **📁 智能目录选择**：启用时使用系统临时目录，保持项目清洁
+- **🔄 向后兼容性**：完全保持现有功能不变
+- **📚 完整文档支持**：包含调试指南和故障排除文档
 
 ### 🆕 v1.8.3新特性：MCP工具设计一致性增强
 
