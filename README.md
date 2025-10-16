@@ -8,7 +8,7 @@
 [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer)
 [![Quality](https://img.shields.io/badge/quality-enterprise%20grade-blue.svg)](#quality-assurance)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
-[![Version](https://img.shields.io/badge/version-1.8.4-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
+[![Version](https://img.shields.io/badge/version-1.9.0-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
 [![zread](https://img.shields.io/badge/Ask_Zread-_.svg?style=flat&color=00b0aa&labelColor=000000&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB3aWR0aD0iMTYiIGhlaWdodD0iMTYiIHZpZXdCb3g9IjAgMCAxNiAxNiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTQuOTYxNTYgMS42MDAxSDIuMjQxNTZDMS44ODgxIDEuNjAwMSAxLjYwMTU2IDEuODg2NjQgMS42MDE1NiAyLjI0MDFWNC45NjAxQzEuNjAxNTYgNS4zMTM1NiAxLjg4ODEgNS42MDAxIDIuMjQxNTYgNS42MDAxSDQuOTYxNTZDNS4zMTUwMiA1LjYwMDEgNS42MDE1NiA1LjMxMzU2IDUuNjAxNTYgNC45NjAxVjIuMjQwMUM1LjYwMTU2IDEuODg2NjQgNS4zMTUwMiAxLjYwMDEgNC45NjE1NiAxLjYwMDFaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik00Ljk2MTU2IDEwLjM5OTlIMi4yNDE1NkMxLjg4ODEgMTAuMzk5OSAxLjYwMTU2IDEwLjY4NjQgMS42MDE1NiAxMS4wMzk5VjEzLjc1OTlDMS42MDE1NiAxNC4xMTM0IDEuODg4MSAxNC4zOTk5IDIuMjQxNTYgMTQuMzk5OUg0Ljk2MTU2QzUuMzE1MDIgMTQuMzk5OSA1LjYwMTU2IDE0LjExMzQgNS42MDE1NiAxMy43NTk5VjExLjAzOTlDNS42MDE1NiAxMC42ODY0IDUuMzE1MDIgMTAuMzk5OSA0Ljk2MTU2IDEwLjM5OTlaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik0xMy43NTg0IDEuNjAwMUgxMS4wMzg0QzEwLjY4NSAxLjYwMDEgMTAuMzk4NCAxLjg4NjY0IDEwLjM5ODQgMi4yNDAxVjQuOTYwMUMxMC4zOTg0IDUuMzEzNTYgMTAuNjg1IDUuNjAwMSAxMS4wMzg0IDUuNjAwMUgxMy43NTg0QzE0LjExMTkgNS42MDAxIDE0LjM5ODQgNS4zMTM1NiAxNC4zOTg0IDQuOTYwMVYyLjI0MDFDMTQuMzk4NCAxLjg4NjY0IDE0LjExMTkgMS42MDAxIDEzLjc1ODQgMS42MDAxWiIgZmlsbD0iI2ZmZiIvPgo8cGF0aCBkPSJNNCAxMkwxMiA0TDQgMTJaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik00IDEyTDEyIDQiIHN0cm9rZT0iI2ZmZiIgc3Ryb2tlLXdpZHRoPSIxLjUiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPgo8L3N2Zz4K&logoColor=ffffff)](https://zread.ai/aimasteracc/tree-sitter-analyzer)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
@@ -440,12 +440,29 @@ Tree-sitter Analyzer provides a rich set of MCP tools designed for AI assistants
 | | `analyze_code_structure` | Code structure analysis and table generation | 🆕 suppress_output parameter, multiple formats (full/compact/csv/json/html), automatic language detection |
 | | `extract_code_section` | Precise code section extraction | Specified line range extraction, large file efficient processing, original format preservation |
 | **🔍 Intelligent Search** | `list_files` | High-performance file discovery | fd-based, glob patterns, file type filters, time range control |
-| | `search_content` | Regex content search | ripgrep-based, multiple output formats, context control, encoding handling, 🆕 unified `set_project_path` support |
+| | `search_content` | Regex content search | ripgrep-based, multiple output formats, context control, encoding handling, 🆕 parallel processing engine, unified `set_project_path` support |
 | | `find_and_grep` | Two-stage search | File discovery → content search, fd+ripgrep combination, intelligent cache optimization, 🆕 unified `set_project_path` support |
 | **🔧 Advanced Queries** | `query_code` | tree-sitter queries | Predefined query keys, custom query strings, filter expression support |
 | **⚙️ System Management** | `set_project_path` | Project root path setting | Security boundary control, automatic path validation, 🆕 unified across all MCP tools |
 | **📁 Resource Access** | Code file resources | URI code file access | File content access via URI identification |
 | | Project statistics resources | Project statistics data access | Project analysis data and statistical information |
+
+### 🆕 v1.9.0 New Feature: Parallel Processing Engine
+
+Revolutionary parallel processing capabilities for enhanced search performance:
+
+- **🔄 Parallel Processing Engine**: search_content MCP tool now supports parallel processing for multiple directories
+- **⚡ Performance Boost**: Up to 4x faster search speeds for large codebases
+- **🛡️ Type Safety Improvements**: 7% reduction in mypy errors (341→318)
+- **✨ Code Style Unification**: Significant reduction in ruff violations
+- **🏗️ Technical Debt Resolution**: Comprehensive code quality improvements
+- **🚀 Test Execution Time**: Maintained 83% reduction (215s→37s)
+
+#### 🔄 Parallel Processing Details
+- **Automatic Parallel Execution**: Multiple roots directories are automatically processed in parallel
+- **Configurable Control**: `enable_parallel` option for control (default: True)
+- **Scalable Performance**: Performance improvements scale with directory count
+- **Memory Efficient**: Semaphore-controlled concurrent execution limits
 
 ### 🆕 v1.8.4 New Feature: Configurable File Logging
 

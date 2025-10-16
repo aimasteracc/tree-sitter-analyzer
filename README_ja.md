@@ -8,7 +8,7 @@
 [![カバレッジ](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer)
 [![品質](https://img.shields.io/badge/quality-enterprise%20grade-blue.svg)](#8--品質保証)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
-[![バージョン](https://img.shields.io/badge/version-1.8.4-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
+[![バージョン](https://img.shields.io/badge/version-1.9.0-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
 [![zread](https://img.shields.io/badge/Ask_Zread-_.svg?style=flat&color=00b0aa&labelColor=000000&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB3aWR0aD0iMTYiIGhlaWdodD0iMTYiIHZpZXdCb3g9IjAgMCAxNiAxNiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTQuOTYxNTYgMS42MDAxSDIuMjQxNTZDMS44ODgxIDEuNjAwMSAxLjYwMTU2IDEuODg2NjQgMS42MDE1NiAyLjI0MDFWNC45NjAxQzEuNjAxNTYgNS4zMTM1NiAxLjg4ODEgNS42MDAxIDIuMjQxNTYgNS42MDAxSDQuOTYxNTZDNS4zMTUwMiA1LjYwMDEgNS42MDE1NiA1LjMxMzU2IDUuNjAxNTYgNC45NjAxVjIuMjQwMUM1LjYwMTU2IDEuODg2NjQgNS4zMTUwMiAxLjYwMDEgNC45NjE1NiAxLjYwMDFaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik00Ljk2MTU2IDEwLjM5OTlIMi4yNDE1NkMxLjg4ODEgMTAuMzk5OSAxLjYwMTU2IDEwLjY4NjQgMS42MDE1NiAxMS4wMzk5VjEzLjc1OTlDMS42MDE1NiAxNC4xMTM0IDEuODg4MSAxNC4zOTk5IDIuMjQxNTYgMTQuMzk5OUg0Ljk2MTU2QzUuMzE1MDIgMTQuMzk5OSA1LjYwMTU2IDE0LjExMzQgNS42MDE1NiAxMy43NTk5VjExLjAzOTlDNS42MDE1NiAxMC42ODY0IDUuMzE1MDIgMTAuMzk5OSA0Ljk2MTU2IDEwLjM5OTlaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik0xMy43NTg0IDEuNjAwMUgxMS4wMzg0QzEwLjY4NSAxLjYwMDEgMTAuMzk4NCAxLjg4NjY0IDEwLjM5ODQgMi4yNDAxVjQuOTYwMUMxMC4zOTg0IDUuMzEzNTYgMTAuNjg1IDUuNjAwMSAxMS4wMzg0IDUuNjAwMUgxMy43NTg0QzE0LjExMTkgNS42MDAxIDE0LjM5ODQgNS4zMTM1NiAxNC4zOTg0IDQuOTYwMVYyLjI0MDFDMTQuMzk4NCAxLjg4NjY0IDE0LjExMTkgMS42MDAxIDEzLjc1ODQgMS42MDAxWiIgZmlsbD0iI2ZmZiIvPgo8cGF0aCBkPSJNNCAxMkwxMiA0TDQgMTJaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik00IDEyTDEyIDQiIHN0cm9rZT0iI2ZmZiIgc3Ryb2tlLXdpZHRoPSIxLjUiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPgo8L3N2Zz4K&logoColor=ffffff)](https://zread.ai/aimasteracc/tree-sitter-analyzer)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
@@ -439,12 +439,29 @@ Tree-sitter AnalyzerはAIアシスタント向けに設計された豊富なMCP�
 | | `analyze_code_structure` | コード構造解析とテーブル生成 | 🆕 suppress_outputパラメータ、複数フォーマット(full/compact/csv/json)、自動言語検出 |
 | | `extract_code_section` | 正確なコードセクション抽出 | 指定行範囲抽出、大ファイル効率処理、元フォーマット保持 |
 | **🔍 インテリジェント検索** | `list_files` | 高性能ファイル発見 | fdベース、globパターン、ファイルタイプフィルタ、時間範囲制御 |
-| | `search_content` | 正規表現コンテンツ検索 | ripgrepベース、複数出力フォーマット、コンテキスト制御、エンコーディング処理、🆕 統一`set_project_path`サポート |
+| | `search_content` | 正規表現コンテンツ検索 | ripgrepベース、複数出力フォーマット、コンテキスト制御、エンコーディング処理、🆕 並行処理エンジン、統一`set_project_path`サポート |
 | | `find_and_grep` | 2段階検索 | ファイル発見→コンテンツ検索、fd+ripgrep組み合わせ、インテリジェントキャッシュ最適化、🆕 統一`set_project_path`サポート |
 | **🔧 高度なクエリ** | `query_code` | tree-sitterクエリ | 事前定義クエリキー、カスタムクエリ文字列、フィルタ式サポート |
 | **⚙️ システム管理** | `set_project_path` | プロジェクトルートパス設定 | セキュリティ境界制御、自動パス検証、🆕 全MCPツールで統一 |
 | **📁 リソースアクセス** | コードファイルリソース | URIコードファイルアクセス | URI識別によるファイルコンテンツアクセス |
 | | プロジェクト統計リソース | プロジェクト統計データアクセス | プロジェクト解析データと統計情報 |
+
+### 🆕 v1.9.0新機能：並行処理エンジン
+
+革命的な並行処理機能による検索パフォーマンスの向上：
+
+- **🔄 並行処理エンジン**: search_content MCPツールで複数ディレクトリの並行検索対応
+- **⚡ パフォーマンス向上**: 大規模コードベースで最大4倍の検索速度向上
+- **🛡️ 型安全性改善**: mypyエラー7%削減（341個→318個）
+- **✨ コードスタイル統一**: ruff違反の大幅削減
+- **🏗️ 技術的負債解消**: 包括的なコード品質改善
+- **🚀 テスト実行時間**: 83%短縮の維持（215秒→37秒）
+
+#### 🔄 並行処理機能の詳細
+- **自動並行処理**: 複数のrootsディレクトリを自動的に並行実行
+- **設定可能**: `enable_parallel`オプションで制御可能（デフォルト: True）
+- **スケーラブル**: ディレクトリ数に応じた性能向上
+- **メモリ効率**: セマフォによる同時実行数制御
 
 ### 🆕 v1.8.4新機能：設定可能ファイルログ
 
