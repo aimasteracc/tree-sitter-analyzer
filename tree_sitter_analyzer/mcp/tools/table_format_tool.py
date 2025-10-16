@@ -42,7 +42,7 @@ class TableFormatTool(BaseMCPTool):
         """Initialize the table format tool."""
         super().__init__(project_root)
         self.analysis_engine = get_analysis_engine(project_root)
-        self.file_output_manager = FileOutputManager(project_root)
+        self.file_output_manager = FileOutputManager.get_managed_instance(project_root)
         self.logger = logger
 
     def set_project_path(self, project_path: str) -> None:
@@ -54,7 +54,7 @@ class TableFormatTool(BaseMCPTool):
         """
         super().set_project_path(project_path)
         self.analysis_engine = get_analysis_engine(project_path)
-        self.file_output_manager.set_project_root(project_path)
+        self.file_output_manager = FileOutputManager.get_managed_instance(project_path)
         logger.info(f"TableFormatTool project path updated to: {project_path}")
 
     def get_tool_schema(self) -> dict[str, Any]:

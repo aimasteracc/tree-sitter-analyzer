@@ -4,11 +4,11 @@
 
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-3342%20passed-brightgreen.svg)](#quality-assurance)
+[![Tests](https://img.shields.io/badge/tests-3361%20passed-brightgreen.svg)](#quality-assurance)
 [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer)
 [![Quality](https://img.shields.io/badge/quality-enterprise%20grade-blue.svg)](#quality-assurance)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
-[![Version](https://img.shields.io/badge/version-1.8.2-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
+[![Version](https://img.shields.io/badge/version-1.8.3-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
 [![zread](https://img.shields.io/badge/Ask_Zread-_.svg?style=flat&color=00b0aa&labelColor=000000&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB3aWR0aD0iMTYiIGhlaWdodD0iMTYiIHZpZXdCb3g9IjAgMCAxNiAxNiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTQuOTYxNTYgMS42MDAxSDIuMjQxNTZDMS44ODgxIDEuNjAwMSAxLjYwMTU2IDEuODg2NjQgMS42MDE1NiAyLjI0MDFWNC45NjAxQzEuNjAxNTYgNS4zMTM1NiAxLjg4ODEgNS42MDAxIDIuMjQxNTYgNS42MDAxSDQuOTYxNTZDNS4zMTUwMiA1LjYwMDEgNS42MDE1NiA1LjMxMzU2IDUuNjAxNTYgNC45NjAxVjIuMjQwMUM1LjYwMTU2IDEuODg2NjQgNS4zMTUwMiAxLjYwMDEgNC45NjE1NiAxLjYwMDFaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik00Ljk2MTU2IDEwLjM5OTlIMi4yNDE1NkMxLjg4ODEgMTAuMzk5OSAxLjYwMTU2IDEwLjY4NjQgMS42MDE1NiAxMS4wMzk5VjEzLjc1OTlDMS42MDE1NiAxNC4xMTM0IDEuODg4MSAxNC4zOTk5IDIuMjQxNTYgMTQuMzk5OUg0Ljk2MTU2QzUuMzE1MDIgMTQuMzk5OSA1LjYwMTU2IDE0LjExMzQgNS42MDE1NiAxMy43NTk5VjExLjAzOTlDNS42MDE1NiAxMC42ODY0IDUuMzE1MDIgMTAuMzk5OSA0Ljk2MTU2IDEwLjM5OTlaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik0xMy43NTg0IDEuNjAwMUgxMS4wMzg0QzEwLjY4NSAxLjYwMDEgMTAuMzk4NCAxLjg4NjY0IDEwLjM5ODQgMi4yNDAxVjQuOTYwMUMxMC4zOTg0IDUuMzEzNTYgMTAuNjg1IDUuNjAwMSAxMS4wMzg0IDUuNjAwMUgxMy43NTg0QzE0LjExMTkgNS42MDAxIDE0LjM5ODQgNS4zMTM1NiAxNC4zOTg0IDQuOTYwMVYyLjI0MDFDMTQuMzk4NCAxLjg4NjY0IDE0LjExMTkgMS42MDAxIDEzLjc1ODQgMS42MDAxWiIgZmlsbD0iI2ZmZiIvPgo8cGF0aCBkPSJNNCAxMkwxMiA0TDQgMTJaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik00IDEyTDEyIDQiIHN0cm9rZT0iI2ZmZiIgc3Ryb2tlLXdpZHRoPSIxLjUiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPgo8L3N2Zz4K&logoColor=ffffff)](https://zread.ai/aimasteracc/tree-sitter-analyzer)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
@@ -61,7 +61,7 @@ Tree-sitter Analyzer is an enterprise-grade code analysis tool designed for the 
 | **Go** | Basic Support | Basic syntax parsing |
 
 ### 🏆 Production Ready
-- **3,342 Tests** - 100% pass rate, enterprise-grade quality assurance
+- **3,361 Tests** - 100% pass rate, enterprise-grade quality assurance
 - **High Coverage** - Comprehensive test coverage
 - **Cross-platform Support** - Compatible with Windows, macOS, Linux
 - **Continuous Maintenance** - Active development and community support
@@ -439,12 +439,23 @@ Tree-sitter Analyzer provides a rich set of MCP tools designed for AI assistants
 | | `analyze_code_structure` | Code structure analysis and table generation | 🆕 suppress_output parameter, multiple formats (full/compact/csv/json/html), automatic language detection |
 | | `extract_code_section` | Precise code section extraction | Specified line range extraction, large file efficient processing, original format preservation |
 | **🔍 Intelligent Search** | `list_files` | High-performance file discovery | fd-based, glob patterns, file type filters, time range control |
-| | `search_content` | Regex content search | ripgrep-based, multiple output formats, context control, encoding handling |
-| | `find_and_grep` | Two-stage search | File discovery → content search, fd+ripgrep combination, intelligent cache optimization |
+| | `search_content` | Regex content search | ripgrep-based, multiple output formats, context control, encoding handling, 🆕 unified `set_project_path` support |
+| | `find_and_grep` | Two-stage search | File discovery → content search, fd+ripgrep combination, intelligent cache optimization, 🆕 unified `set_project_path` support |
 | **🔧 Advanced Queries** | `query_code` | tree-sitter queries | Predefined query keys, custom query strings, filter expression support |
-| **⚙️ System Management** | `set_project_path` | Project root path setting | Security boundary control, automatic path validation |
+| **⚙️ System Management** | `set_project_path` | Project root path setting | Security boundary control, automatic path validation, 🆕 unified across all MCP tools |
 | **📁 Resource Access** | Code file resources | URI code file access | File content access via URI identification |
 | | Project statistics resources | Project statistics data access | Project analysis data and statistical information |
+
+### 🆕 v1.8.3 New Feature: MCP Tools Design Consistency Enhancement
+
+Comprehensive MCP tools unification and design consistency improvements:
+
+- **🔧 Unified `set_project_path` Implementation**: SearchContentTool and FindAndGrepTool now have consistent `set_project_path` method implementation
+- **🏗️ Design Consistency Across All MCP Tools**: All 4 MCP tools (QueryTool, TableFormatTool, SearchContentTool, FindAndGrepTool) now have unified interface design
+- **📁 FileOutputManager Integration**: Unified FileOutputManager factory pattern for consistent file output management
+- **🔄 Dynamic Project Path Changes**: All MCP tools now support dynamic project path changes through unified interface
+- **🛡️ Enhanced Security Boundaries**: Consistent security boundary protection across all MCP tools
+- **📋 Improved Developer Experience**: Unified interface makes MCP tool development and usage more consistent
 
 ### 🆕 v1.8.2 New Feature: CLI Security and Argument Validation Enhancement
 
@@ -654,12 +665,12 @@ uv run python -m tree_sitter_analyzer --show-query-languages
 ## 8. 🏆 Quality Assurance
 
 ### 📊 Quality Metrics
-- **3,342 tests** - 100% pass rate ✅
+- **3,361 tests** - 100% pass rate ✅
 - **High code coverage** - Comprehensive test suite
 - **Zero test failures** - Production ready
 - **Cross-platform support** - Windows, macOS, Linux
 
-### ⚡ Latest Quality Achievements (v1.8.2)
+### ⚡ Latest Quality Achievements (v1.8.3)
 - ✅ **🔒 CLI Security Enhancement** - Fixed CLI mode security boundary errors, ensuring file access security
 - ✅ **✅ Argument Validation Improvement** - Implemented complete CLI argument validation system, preventing invalid parameter combinations
 - ✅ **🚫 Exclusive Parameter Control** - `--table` and `--query-key` parameters properly implement exclusive control
@@ -720,6 +731,9 @@ This project provides complete documentation support, including:
 - **MCP Configuration Guide** - See the [AI Users Configuration](#31--ai-users-claude-desktop-cursor-etc) section
 - **CLI Usage Guide** - See the [Complete CLI Commands](#6--complete-cli-commands) section
 - **Core Features Documentation** - See the [Core Features](#7-️-core-features) section
+- **Contributing Guide** - See [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) for development guidelines and document management
+- **Analysis Results** - See [docs/analysis/](docs/analysis/) for project analysis reports and metrics
+- **Feature Specifications** - See [specs/](specs/) for detailed feature specifications and implementation plans
 
 ### 🤖 AI Collaboration Support
 This project supports AI-assisted development with professional quality control:

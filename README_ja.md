@@ -4,11 +4,11 @@
 
 [![Pythonバージョン](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![ライセンス](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![テスト](https://img.shields.io/badge/tests-3342%20passed-brightgreen.svg)](#8--品質保証)
+[![テスト](https://img.shields.io/badge/tests-3361%20passed-brightgreen.svg)](#8--品質保証)
 [![カバレッジ](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer)
 [![品質](https://img.shields.io/badge/quality-enterprise%20grade-blue.svg)](#8--品質保証)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
-[![バージョン](https://img.shields.io/badge/version-1.8.2-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
+[![バージョン](https://img.shields.io/badge/version-1.8.3-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
 [![zread](https://img.shields.io/badge/Ask_Zread-_.svg?style=flat&color=00b0aa&labelColor=000000&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB3aWR0aD0iMTYiIGhlaWdodD0iMTYiIHZpZXdCb3g9IjAgMCAxNiAxNiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTQuOTYxNTYgMS42MDAxSDIuMjQxNTZDMS44ODgxIDEuNjAwMSAxLjYwMTU2IDEuODg2NjQgMS42MDE1NiAyLjI0MDFWNC45NjAxQzEuNjAxNTYgNS4zMTM1NiAxLjg4ODEgNS42MDAxIDIuMjQxNTYgNS42MDAxSDQuOTYxNTZDNS4zMTUwMiA1LjYwMDEgNS42MDE1NiA1LjMxMzU2IDUuNjAxNTYgNC45NjAxVjIuMjQwMUM1LjYwMTU2IDEuODg2NjQgNS4zMTUwMiAxLjYwMDEgNC45NjE1NiAxLjYwMDFaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik00Ljk2MTU2IDEwLjM5OTlIMi4yNDE1NkMxLjg4ODEgMTAuMzk5OSAxLjYwMTU2IDEwLjY4NjQgMS42MDE1NiAxMS4wMzk5VjEzLjc1OTlDMS42MDE1NiAxNC4xMTM0IDEuODg4MSAxNC4zOTk5IDIuMjQxNTYgMTQuMzk5OUg0Ljk2MTU2QzUuMzE1MDIgMTQuMzk5OSA1LjYwMTU2IDE0LjExMzQgNS42MDE1NiAxMy43NTk5VjExLjAzOTlDNS42MDE1NiAxMC42ODY0IDUuMzE1MDIgMTAuMzk5OSA0Ljk2MTU2IDEwLjM5OTlaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik0xMy43NTg0IDEuNjAwMUgxMS4wMzg0QzEwLjY4NSAxLjYwMDEgMTAuMzk4NCAxLjg4NjY0IDEwLjM5ODQgMi4yNDAxVjQuOTYwMUMxMC4zOTg0IDUuMzEzNTYgMTAuNjg1IDUuNjAwMSAxMS4wMzg0IDUuNjAwMUgxMy43NTg0QzE0LjExMTkgNS42MDAxIDE0LjM5ODQgNS4zMTM1NiAxNC4zOTg0IDQuOTYwMVYyLjI0MDFDMTQuMzk4NCAxLjg4NjY0IDE0LjExMTkgMS42MDAxIDEzLjc1ODQgMS42MDAxWiIgZmlsbD0iI2ZmZiIvPgo8cGF0aCBkPSJNNCAxMkwxMiA0TDQgMTJaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik00IDEyTDEyIDQiIHN0cm9rZT0iI2ZmZiIgc3Ryb2tlLXdpZHRoPSIxLjUiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPgo8L3N2Zz4K&logoColor=ffffff)](https://zread.ai/aimasteracc/tree-sitter-analyzer)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
@@ -61,7 +61,7 @@ Tree-sitter Analyzerは、AI時代のために設計されたエンタープラ�
 | **Go** | 基本サポート | 基本構文解析 |
 
 ### 🏆 本番環境対応
-- **3,342のテスト** - 100%合格率、エンタープライズグレードの品質保証
+- **3,361のテスト** - 100%合格率、エンタープライズグレードの品質保証
 - **高カバレッジ** - 包括的なテストスイート
 - **クロスプラットフォームサポート** - Windows、macOS、Linuxとの完全な互換性
 - **継続的なメンテナンス** - アクティブな開発とコミュニティサポート
@@ -439,12 +439,23 @@ Tree-sitter AnalyzerはAIアシスタント向けに設計された豊富なMCP�
 | | `analyze_code_structure` | コード構造解析とテーブル生成 | 🆕 suppress_outputパラメータ、複数フォーマット(full/compact/csv/json)、自動言語検出 |
 | | `extract_code_section` | 正確なコードセクション抽出 | 指定行範囲抽出、大ファイル効率処理、元フォーマット保持 |
 | **🔍 インテリジェント検索** | `list_files` | 高性能ファイル発見 | fdベース、globパターン、ファイルタイプフィルタ、時間範囲制御 |
-| | `search_content` | 正規表現コンテンツ検索 | ripgrepベース、複数出力フォーマット、コンテキスト制御、エンコーディング処理 |
-| | `find_and_grep` | 2段階検索 | ファイル発見→コンテンツ検索、fd+ripgrep組み合わせ、インテリジェントキャッシュ最適化 |
+| | `search_content` | 正規表現コンテンツ検索 | ripgrepベース、複数出力フォーマット、コンテキスト制御、エンコーディング処理、🆕 統一`set_project_path`サポート |
+| | `find_and_grep` | 2段階検索 | ファイル発見→コンテンツ検索、fd+ripgrep組み合わせ、インテリジェントキャッシュ最適化、🆕 統一`set_project_path`サポート |
 | **🔧 高度なクエリ** | `query_code` | tree-sitterクエリ | 事前定義クエリキー、カスタムクエリ文字列、フィルタ式サポート |
-| **⚙️ システム管理** | `set_project_path` | プロジェクトルートパス設定 | セキュリティ境界制御、自動パス検証 |
+| **⚙️ システム管理** | `set_project_path` | プロジェクトルートパス設定 | セキュリティ境界制御、自動パス検証、🆕 全MCPツールで統一 |
 | **📁 リソースアクセス** | コードファイルリソース | URIコードファイルアクセス | URI識別によるファイルコンテンツアクセス |
 | | プロジェクト統計リソース | プロジェクト統計データアクセス | プロジェクト解析データと統計情報 |
+
+### 🆕 v1.8.3新機能：MCPツール設計一貫性の強化
+
+包括的なMCPツール統一と設計一貫性の改善：
+
+- **🔧 統一`set_project_path`実装**：SearchContentToolとFindAndGrepToolに一貫した`set_project_path`メソッド実装を追加
+- **🏗️ 全MCPツールでの設計一貫性**：全4つのMCPツール（QueryTool、TableFormatTool、SearchContentTool、FindAndGrepTool）で統一されたインターフェース設計を実現
+- **📁 FileOutputManager統合**：統一されたファイル出力管理のためのFileOutputManagerファクトリパターン
+- **🔄 動的プロジェクトパス変更**：統一されたインターフェースを通じて全MCPツールで動的プロジェクトパス変更をサポート
+- **🛡️ セキュリティ境界の強化**：全MCPツールで一貫したセキュリティ境界保護
+- **📋 開発者エクスペリエンスの改善**：統一されたインターフェースによりMCPツールの開発と使用がより一貫性のあるものに
 
 ### 🆕 v1.8.2新機能：CLIセキュリティと引数検証の強化
 
@@ -452,8 +463,8 @@ Tree-sitter AnalyzerはAIアシスタント向けに設計された豊富なMCP�
 
 - **🔒 CLIセキュリティ境界の修正**：CLIモードでのセキュリティ境界エラーを修正し、ファイルアクセスの安全性を確保
 - **✅ 正しいCLI引数検証**：完全なCLI引数検証システムを実装し、無効な引数の組み合わせを防止
-- **🚫 排他引数制御**：[`--table`](README_ja.md:508)と[`--query-key`](README_ja.md:530)引数が正しく排他制御を実装
-- **🔍 強化されたフィルタサポート**：[`--query-key`](README_ja.md:530)と[`--filter`](README_ja.md:534)の組み合わせ使用が完全にサポート
+- **🚫 排他引数制御**：[`--table`](README_ja.md:521)と[`--query-key`](README_ja.md:543)引数が正しく排他制御を実装
+- **🔍 強化されたフィルタサポート**：[`--query-key`](README_ja.md:543)と[`--filter`](README_ja.md:560)の組み合わせ使用が完全にサポート
 - **⚠️ 明確なエラーメッセージ**：詳細なエラー情報を提供し、ユーザーが正しくコマンドを使用できるよう支援
 - **🛡️ セキュリティ機能の強化**：テスト環境での一時ディレクトリアクセス許可とプロジェクト境界保護
 - **📋 改善されたユーザーエクスペリエンス**：より直感的なコマンドラインインターフェースとエラー処理
@@ -654,12 +665,12 @@ uv run python -m tree_sitter_analyzer --show-query-languages
 ## 8. 🏆 品質保証
 
 ### 📊 品質メトリクス
-- **3,342のテスト** - 100%合格率 ✅
+- **3,361のテスト** - 100%合格率 ✅
 - **高コードカバレッジ** - 包括的なテストスイート
 - **ゼロテスト失敗** - 本番環境対応
 - **クロスプラットフォームサポート** - Windows、macOS、Linux
 
-### ⚡ 最新の品質成果（v1.8.2）
+### ⚡ 最新の品質成果（v1.8.3）
 - ✅ **🔒 CLIセキュリティの強化** - CLIモードでのセキュリティ境界エラーを修正し、ファイルアクセスの安全性を確保
 - ✅ **✅ 引数検証の完善** - 完全なCLI引数検証システムを実装し、無効な引数の組み合わせを防止
 - ✅ **🚫 排他引数制御** - [`--table`](README_ja.md:521)と[`--query-key`](README_ja.md:543)引数が正しく排他制御を実装

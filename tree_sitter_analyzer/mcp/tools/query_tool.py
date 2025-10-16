@@ -26,7 +26,7 @@ class QueryTool(BaseMCPTool):
         """Initialize query tool"""
         super().__init__(project_root)
         self.query_service = QueryService(project_root)
-        self.file_output_manager = FileOutputManager(project_root)
+        self.file_output_manager = FileOutputManager.get_managed_instance(project_root)
 
     def set_project_path(self, project_path: str) -> None:
         """
@@ -37,7 +37,7 @@ class QueryTool(BaseMCPTool):
         """
         super().set_project_path(project_path)
         self.query_service = QueryService(project_path)
-        self.file_output_manager.set_project_root(project_path)
+        self.file_output_manager = FileOutputManager.get_managed_instance(project_path)
         logger.info(f"QueryTool project path updated to: {project_path}")
 
     def get_tool_definition(self) -> dict[str, Any]:

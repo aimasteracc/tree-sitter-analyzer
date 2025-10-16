@@ -4,11 +4,11 @@
 
 [![Python版本](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![许可证](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![测试](https://img.shields.io/badge/tests-3342%20passed-brightgreen.svg)](#质量保证)
+[![测试](https://img.shields.io/badge/tests-3361%20passed-brightgreen.svg)](#质量保证)
 [![覆盖率](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer)
 [![质量](https://img.shields.io/badge/quality-enterprise%20grade-blue.svg)](#质量保证)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
-[![版本](https://img.shields.io/badge/version-1.8.2-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
+[![版本](https://img.shields.io/badge/version-1.8.3-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
 [![zread](https://img.shields.io/badge/Ask_Zread-_.svg?style=flat&color=00b0aa&labelColor=000000&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB3aWR0aD0iMTYiIGhlaWdodD0iMTYiIHZpZXdCb3g9IjAgMCAxNiAxNiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTQuOTYxNTYgMS42MDAxSDIuMjQxNTZDMS44ODgxIDEuNjAwMSAxLjYwMTU2IDEuODg2NjQgMS42MDE1NiAyLjI0MDFWNC45NjAxQzEuNjAxNTYgNS4zMTM1NiAxLjg4ODEgNS42MDAxIDIuMjQxNTYgNS42MDAxSDQuOTYxNTZDNS4zMTUwMiA1LjYwMDEgNS42MDE1NiA1LjMxMzU2IDUuNjAxNTYgNC45NjAxVjIuMjQwMUM1LjYwMTU2IDEuODg2NjQgNS4zMTUwMiAxLjYwMDEgNC45NjE1NiAxLjYwMDFaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik00Ljk2MTU2IDEwLjM5OTlIMi4yNDE1NkMxLjg4ODEgMTAuMzk5OSAxLjYwMTU2IDEwLjY4NjQgMS42MDE1NiAxMS4wMzk5VjEzLjc1OTlDMS42MDE1NiAxNC4xMTM0IDEuODg4MSAxNC4zOTk5IDIuMjQxNTYgMTQuMzk5OUg0Ljk2MTU2QzUuMzE1MDIgMTQuMzk5OSA1LjYwMTU2IDE0LjExMzQgNS42MDE1NiAxMy43NTk5VjExLjAzOTlDNS42MDE1NiAxMC42ODY0IDUuMzE1MDIgMTAuMzk5OSA0Ljk2MTU2IDEwLjM5OTlaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik0xMy43NTg0IDEuNjAwMUgxMS4wMzg0QzEwLjY4NSAxLjYwMDEgMTAuMzk4NCAxLjg4NjY0IDEwLjM5ODQgMi4yNDAxVjQuOTYwMUMxMC4zOTg0IDUuMzEzNTYgMTAuNjg1IDUuNjAwMSAxMS4wMzg0IDUuNjAwMUgxMy43NTg0QzE0LjExMTkgNS42MDAxIDE0LjM5ODQgNS4zMTM1NiAxNC4zOTg0IDQuOTYwMVYyLjI0MDFDMTQuMzk4NCAxLjg4NjY0IDE0LjExMTkgMS42MDAxIDEzLjc1ODQgMS42MDAxWiIgZmlsbD0iI2ZmZiIvPgo8cGF0aCBkPSJNNCAxMkwxMiA0TDQgMTJaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik00IDEyTDEyIDQiIHN0cm9rZT0iI2ZmZiIgc3Ryb2tlLXdpZHRoPSIxLjUiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPgo8L3N2Zz4K&logoColor=ffffff)](https://zread.ai/aimasteracc/tree-sitter-analyzer)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
@@ -62,7 +62,7 @@ Tree-sitter Analyzer 是一个为AI时代设计的企业级代码分析工具，
 | **Go** | 基础支持 | 基本语法解析 |
 
 ### 🏆 生产就绪
-- **3,342个测试** - 100%通过率，企业级质量保证
+- **3,361个测试** - 100%通过率，企业级质量保证
 - **高覆盖率** - 全面的测试覆盖
 - **跨平台支持** - Windows、macOS、Linux全平台兼容
 - **持续维护** - 活跃的开发和社区支持
@@ -440,12 +440,23 @@ Tree-sitter Analyzer提供了丰富的MCP工具集，专为AI助手设计：
 | | `analyze_code_structure` | 分析代码结构和生成表格 | 🆕 suppress_output参数、多种格式(full/compact/csv/json/html)、自动语言检测 |
 | | `extract_code_section` | 精确提取代码片段 | 指定行范围提取、大文件高效处理、保持原始格式 |
 | **🔍 智能搜索** | `list_files` | 高性能文件发现 | 基于fd、glob模式、文件类型过滤、时间范围控制 |
-| | `search_content` | 正则表达式内容搜索 | 基于ripgrep、多种输出格式、上下文控制、编码处理 |
-| | `find_and_grep` | 两阶段搜索 | 先找文件再搜内容、组合fd+ripgrep、智能缓存优化 |
+| | `search_content` | 正则表达式内容搜索 | 基于ripgrep、多种输出格式、上下文控制、编码处理、🆕 统一`set_project_path`支持 |
+| | `find_and_grep` | 两阶段搜索 | 先找文件再搜内容、组合fd+ripgrep、智能缓存优化、🆕 统一`set_project_path`支持 |
 | **🔧 高级查询** | `query_code` | tree-sitter查询 | 预定义查询键、自定义查询字符串、过滤表达式支持 |
-| **⚙️ 系统管理** | `set_project_path` | 设置项目根路径 | 安全边界控制、自动路径验证 |
+| **⚙️ 系统管理** | `set_project_path` | 设置项目根路径 | 安全边界控制、自动路径验证、🆕 全MCP工具统一 |
 | **📁 资源访问** | 代码文件资源 | URI访问代码文件 | 通过URI标识访问文件内容 |
 | | 项目统计资源 | 访问项目统计数据 | 项目分析数据和统计信息 |
+
+### 🆕 v1.8.3新特性：MCP工具设计一致性增强
+
+全面的MCP工具统一和设计一致性改进：
+
+- **🔧 统一`set_project_path`实现**：SearchContentTool和FindAndGrepTool现在具有一致的`set_project_path`方法实现
+- **🏗️ 全MCP工具设计一致性**：全部4个MCP工具（QueryTool、TableFormatTool、SearchContentTool、FindAndGrepTool）现在具有统一的接口设计
+- **📁 FileOutputManager集成**：统一的FileOutputManager工厂模式用于一致的文件输出管理
+- **🔄 动态项目路径变更**：所有MCP工具现在通过统一接口支持动态项目路径变更
+- **🛡️ 增强的安全边界**：所有MCP工具具有一致的安全边界保护
+- **📋 改进的开发者体验**：统一接口使MCP工具开发和使用更加一致
 
 ### 🆕 v1.8.2新特性：CLI安全性和参数验证增强
 
@@ -656,12 +667,12 @@ uv run python -m tree_sitter_analyzer --show-query-languages
 ## 8. 🏆 质量保证
 
 ### 📊 质量指标
-- **3,342个测试** - 100%通过率 ✅
+- **3,361个测试** - 100%通过率 ✅
 - **高代码覆盖率** - 全面测试套件
 - **零测试失败** - 生产就绪
 - **跨平台支持** - Windows、macOS、Linux
 
-### ⚡ 最新质量成就（v1.8.2）
+### ⚡ 最新质量成就（v1.8.3）
 - ✅ **🔒 CLI安全性增强** - 修复CLI模式下的安全边界错误，确保文件访问安全
 - ✅ **✅ 参数验证完善** - 实现完整的CLI参数验证系统，防止无效参数组合
 - ✅ **🚫 排他参数控制** - `--table`和`--query-key`参数正确实现排他控制

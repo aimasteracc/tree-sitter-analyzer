@@ -252,6 +252,13 @@ temp/
 tmp/
 .temp/
 
+# Speckit temporary files and analysis
+.specify/
+# But keep important speckit configuration files
+!.specify/memory/
+!.specify/scripts/
+!.specify/templates/
+
 # Tree-sitter specific
 tree-sitter-*/
 *.so

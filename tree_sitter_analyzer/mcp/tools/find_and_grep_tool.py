@@ -27,7 +27,18 @@ class FindAndGrepTool(BaseMCPTool):
     def __init__(self, project_root: str | None = None) -> None:
         """Initialize the find and grep tool."""
         super().__init__(project_root)
-        self.file_output_manager = FileOutputManager(project_root)
+        self.file_output_manager = FileOutputManager.get_managed_instance(project_root)
+
+    def set_project_path(self, project_path: str) -> None:
+        """
+        Update the project path for all components.
+
+        Args:
+            project_path: New project root directory
+        """
+        super().set_project_path(project_path)
+        self.file_output_manager = FileOutputManager.get_managed_instance(project_path)
+        logger.info(f"FindAndGrepTool project path updated to: {project_path}")
 
     def get_tool_definition(self) -> dict[str, Any]:
         return {
