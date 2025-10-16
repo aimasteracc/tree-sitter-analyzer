@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.9.1] - 2025-10-16
+
+### 🐛 修正
+- **HTMLフォーマッター警告解消**: 重複登録による警告メッセージを完全解消
+- **パッケージインストール**: クリーンな出力を実現
+- **フォーマッター登録**: 一元管理による安定化
+
+### 🔧 技術改善
+- html_formatter.pyの自動登録機能を削除
+- formatter_registry.pyでの一元管理に統一
+- 重複登録の根本的防止
+
+### 修正された警告
+- `WARNING: Overriding existing formatter for format: html`
+- `WARNING: Overriding existing formatter for format: html_json`
+- `WARNING: Overriding existing formatter for format: html_compact`
+
 ## [1.9.0] - 2025-10-16
 
 ### 🚀 新機能
