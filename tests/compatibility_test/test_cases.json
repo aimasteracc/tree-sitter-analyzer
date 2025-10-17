@@ -1,0 +1,668 @@
+{
+  "metadata": {
+    "version": "2.0.0",
+    "created_date": "2025-10-17",
+    "updated_date": "2025-10-17",
+    "description": "tree-sitter-analyzer MCP互換性テスト用の完全なテストケース定義",
+    "total_mcp_test_cases": 52,
+    "total_error_test_cases": 6
+  },
+  "test_cases": [
+    {
+      "tool": "check_code_scale",
+      "test_id": "MCP-001-check-code-scale-basic",
+      "description": "基本的なコードスケール分析",
+      "arguments": {
+        "file_path": "examples/BigService.java",
+        "include_complexity": true,
+        "include_details": false,
+        "include_guidance": true
+      },
+      "expected_fields": ["file_info", "scale_metrics", "complexity_metrics", "guidance"]
+    },
+    {
+      "tool": "check_code_scale",
+      "test_id": "MCP-002-check-code-scale-detailed",
+      "description": "詳細情報を含むコードスケール分析",
+      "arguments": {
+        "file_path": "examples/ComprehensiveTypeScript.ts",
+        "include_complexity": true,
+        "include_details": true,
+        "include_guidance": true
+      },
+      "expected_fields": ["file_info", "scale_metrics", "complexity_metrics", "detailed_elements", "guidance"]
+    },
+    {
+      "tool": "check_code_scale",
+      "test_id": "MCP-003-check-code-scale-minimal",
+      "description": "最小限の情報でのコードスケール分析",
+      "arguments": {
+        "file_path": "examples/ModernJavaScript.js",
+        "include_complexity": false,
+        "include_details": false,
+        "include_guidance": false
+      },
+      "expected_fields": ["file_info", "scale_metrics"]
+    },
+    {
+      "tool": "check_code_scale",
+      "test_id": "MCP-004-check-code-scale-python",
+      "description": "Pythonファイルのコードスケール分析",
+      "arguments": {
+        "file_path": "examples/sample.py",
+        "include_complexity": true,
+        "include_details": true,
+        "include_guidance": true
+      },
+      "expected_fields": ["file_info", "scale_metrics", "complexity_metrics", "detailed_elements", "guidance"]
+    },
+    {
+      "tool": "check_code_scale",
+      "test_id": "MCP-005-check-code-scale-html",
+      "description": "HTMLファイルのコードスケール分析",
+      "arguments": {
+        "file_path": "examples/comprehensive_sample.html",
+        "include_complexity": true,
+        "include_details": false,
+        "include_guidance": true
+      },
+      "expected_fields": ["file_info", "scale_metrics", "complexity_metrics", "guidance"]
+    },
+    {
+      "tool": "check_code_scale",
+      "test_id": "MCP-006-check-code-scale-css",
+      "description": "CSSファイルのコードスケール分析",
+      "arguments": {
+        "file_path": "examples/comprehensive_sample.css",
+        "include_complexity": true,
+        "include_details": false,
+        "include_guidance": true
+      },
+      "expected_fields": ["file_info", "scale_metrics", "complexity_metrics", "guidance"]
+    },
+    {
+      "tool": "analyze_code_structure",
+      "test_id": "MCP-007-analyze-structure-full",
+      "description": "完全なコード構造分析（full形式）",
+      "arguments": {
+        "file_path": "examples/BigService.java",
+        "format_type": "full"
+      },
+      "expected_fields": ["table_output", "summary"]
+    },
+    {
+      "tool": "analyze_code_structure",
+      "test_id": "MCP-008-analyze-structure-html",
+      "description": "HTML形式でのコード構造分析",
+      "arguments": {
+        "file_path": "examples/BigService.java",
+        "format_type": "html"
+      },
+      "expected_fields": ["table_output", "summary"]
+    },
+    {
+      "tool": "analyze_code_structure",
+      "test_id": "MCP-009-analyze-structure-compact",
+      "description": "コンパクト形式でのコード構造分析",
+      "arguments": {
+        "file_path": "examples/ComprehensiveTypeScript.ts",
+        "format_type": "compact"
+      },
+      "expected_fields": ["table_output", "summary"]
+    },
+    {
+      "tool": "analyze_code_structure",
+      "test_id": "MCP-010-analyze-structure-json",
+      "description": "JSON形式でのコード構造分析",
+      "arguments": {
+        "file_path": "examples/ModernJavaScript.js",
+        "format_type": "json"
+      },
+      "expected_fields": ["table_output", "summary"]
+    },
+    {
+      "tool": "analyze_code_structure",
+      "test_id": "MCP-011-analyze-structure-csv",
+      "description": "CSV形式でのコード構造分析",
+      "arguments": {
+        "file_path": "examples/sample.py",
+        "format_type": "csv"
+      },
+      "expected_fields": ["table_output", "summary"]
+    },
+    {
+      "tool": "extract_code_section",
+      "test_id": "MCP-012-extract-section-basic",
+      "description": "基本的なコードセクション抽出",
+      "arguments": {
+        "file_path": "examples/BigService.java",
+        "start_line": 1,
+        "end_line": 50,
+        "format": "text"
+      },
+      "expected_fields": ["partial_content_result"]
+    },
+    {
+      "tool": "extract_code_section",
+      "test_id": "MCP-013-extract-section-json",
+      "description": "JSON形式でのコードセクション抽出",
+      "arguments": {
+        "file_path": "examples/ComprehensiveTypeScript.ts",
+        "start_line": 10,
+        "end_line": 30,
+        "format": "json"
+      },
+      "expected_fields": ["partial_content_result"]
+    },
+    {
+      "tool": "extract_code_section",
+      "test_id": "MCP-014-extract-section-column",
+      "description": "列指定でのコードセクション抽出",
+      "arguments": {
+        "file_path": "examples/ModernJavaScript.js",
+        "start_line": 5,
+        "end_line": 15,
+        "start_column": 0,
+        "end_column": 50,
+        "format": "text"
+      },
+      "expected_fields": ["partial_content_result"]
+    },
+    {
+      "tool": "query_code",
+      "test_id": "MCP-015-query-methods",
+      "description": "メソッド抽出クエリ",
+      "arguments": {
+        "file_path": "examples/BigService.java",
+        "query_key": "methods",
+        "output_format": "json"
+      },
+      "expected_fields": ["query_results"]
+    },
+    {
+      "tool": "query_code",
+      "test_id": "MCP-016-query-classes",
+      "description": "クラス抽出クエリ",
+      "arguments": {
+        "file_path": "examples/BigService.java",
+        "query_key": "class",
+        "output_format": "json"
+      },
+      "expected_fields": ["query_results"]
+    },
+    {
+      "tool": "query_code",
+      "test_id": "MCP-017-query-functions",
+      "description": "関数抽出クエリ",
+      "arguments": {
+        "file_path": "examples/ModernJavaScript.js",
+        "query_key": "functions",
+        "output_format": "json"
+      },
+      "expected_fields": ["query_results"]
+    },
+    {
+      "tool": "query_code",
+      "test_id": "MCP-018-query-custom",
+      "description": "カスタムクエリ",
+      "arguments": {
+        "file_path": "examples/ComprehensiveTypeScript.ts",
+        "query_string": "(method_definition) @method",
+        "output_format": "json"
+      },
+      "expected_fields": ["query_results"]
+    },
+    {
+      "tool": "query_code",
+      "test_id": "MCP-019-query-filter",
+      "description": "フィルター付きクエリ",
+      "arguments": {
+        "file_path": "examples/BigService.java",
+        "query_key": "methods",
+        "filter": "name=~get*",
+        "output_format": "json"
+      },
+      "expected_fields": ["query_results"]
+    },
+    {
+      "tool": "list_files",
+      "test_id": "MCP-020-list-files-basic",
+      "description": "基本的なファイル一覧取得",
+      "arguments": {
+        "roots": ["."],
+        "types": ["f"],
+        "extensions": ["java", "ts", "js"]
+      },
+      "expected_fields": ["files"]
+    },
+    {
+      "tool": "list_files",
+      "test_id": "MCP-021-list-files-pattern",
+      "description": "パターン指定でのファイル一覧取得",
+      "arguments": {
+        "roots": ["examples"],
+        "pattern": "*.java",
+        "glob": true,
+        "types": ["f"]
+      },
+      "expected_fields": ["files"]
+    },
+    {
+      "tool": "list_files",
+      "test_id": "MCP-022-list-files-depth",
+      "description": "深度制限でのファイル一覧取得",
+      "arguments": {
+        "roots": ["."],
+        "types": ["f"],
+        "depth": 2,
+        "extensions": ["py", "md"]
+      },
+      "expected_fields": ["files"]
+    },
+    {
+      "tool": "list_files",
+      "test_id": "MCP-023-list-files-size",
+      "description": "サイズフィルターでのファイル一覧取得",
+      "arguments": {
+        "roots": ["examples"],
+        "types": ["f"],
+        "size": ["+1K", "-100K"]
+      },
+      "expected_fields": ["files"]
+    },
+    {
+      "tool": "list_files",
+      "test_id": "MCP-024-list-files-count",
+      "description": "ファイル数のみ取得",
+      "arguments": {
+        "roots": ["."],
+        "types": ["f"],
+        "count_only": true
+      },
+      "expected_fields": ["count"]
+    },
+    {
+      "tool": "search_content",
+      "test_id": "MCP-025-search-content-basic",
+      "description": "基本的なコンテンツ検索",
+      "arguments": {
+        "roots": ["examples"],
+        "query": "class",
+        "case": "smart"
+      },
+      "expected_fields": ["matches"]
+    },
+    {
+      "tool": "search_content",
+      "test_id": "MCP-026-search-content-regex",
+      "description": "正規表現でのコンテンツ検索",
+      "arguments": {
+        "roots": ["examples"],
+        "query": "public\\s+class\\s+\\w+",
+        "case": "sensitive",
+        "fixed_strings": false
+      },
+      "expected_fields": ["matches"]
+    },
+    {
+      "tool": "search_content",
+      "test_id": "MCP-027-search-content-context",
+      "description": "コンテキスト付きコンテンツ検索",
+      "arguments": {
+        "roots": ["examples"],
+        "query": "function",
+        "context_before": 2,
+        "context_after": 2,
+        "include_globs": ["*.js", "*.ts"]
+      },
+      "expected_fields": ["matches"]
+    },
+    {
+      "tool": "search_content",
+      "test_id": "MCP-028-search-content-files",
+      "description": "特定ファイルでのコンテンツ検索",
+      "arguments": {
+        "files": ["examples/BigService.java", "examples/ModernJavaScript.js"],
+        "query": "public",
+        "case": "insensitive"
+      },
+      "expected_fields": ["matches"]
+    },
+    {
+      "tool": "search_content",
+      "test_id": "MCP-029-search-content-word",
+      "description": "単語境界でのコンテンツ検索",
+      "arguments": {
+        "roots": ["examples"],
+        "query": "class",
+        "word": true,
+        "case": "smart"
+      },
+      "expected_fields": ["matches"]
+    },
+    {
+      "tool": "search_content",
+      "test_id": "MCP-030-search-content-multiline",
+      "description": "複数行でのコンテンツ検索",
+      "arguments": {
+        "roots": ["examples"],
+        "query": "public.*\\n.*{",
+        "multiline": true,
+        "include_globs": ["*.java"]
+      },
+      "expected_fields": ["matches"]
+    },
+    {
+      "tool": "search_content",
+      "test_id": "MCP-031-search-content-count",
+      "description": "マッチ数のみ取得",
+      "arguments": {
+        "roots": ["examples"],
+        "query": "function",
+        "count_only_matches": true
+      },
+      "expected_fields": ["match_counts"]
+    },
+    {
+      "tool": "search_content",
+      "test_id": "MCP-032-search-content-summary",
+      "description": "サマリー形式での検索",
+      "arguments": {
+        "roots": ["examples"],
+        "query": "import",
+        "summary_only": true
+      },
+      "expected_fields": ["summary"]
+    },
+    {
+      "tool": "search_content",
+      "test_id": "MCP-033-search-content-grouped",
+      "description": "ファイル別グループ化検索",
+      "arguments": {
+        "roots": ["examples"],
+        "query": "class",
+        "group_by_file": true
+      },
+      "expected_fields": ["grouped_matches"]
+    },
+    {
+      "tool": "search_content",
+      "test_id": "MCP-034-search-content-total",
+      "description": "総数のみ取得",
+      "arguments": {
+        "roots": ["examples"],
+        "query": "public",
+        "total_only": true
+      },
+      "expected_fields": ["total_matches"]
+    },
+    {
+      "tool": "find_and_grep",
+      "test_id": "MCP-035-find-grep-basic",
+      "description": "基本的なファイル検索とコンテンツ検索",
+      "arguments": {
+        "roots": ["examples"],
+        "pattern": "*.java",
+        "glob": true,
+        "query": "public class"
+      },
+      "expected_fields": ["matches"]
+    },
+    {
+      "tool": "find_and_grep",
+      "test_id": "MCP-036-find-grep-extension",
+      "description": "拡張子指定でのファイル検索とコンテンツ検索",
+      "arguments": {
+        "roots": ["examples"],
+        "extensions": ["js", "ts"],
+        "query": "function",
+        "case": "smart"
+      },
+      "expected_fields": ["matches"]
+    },
+    {
+      "tool": "find_and_grep",
+      "test_id": "MCP-037-find-grep-size",
+      "description": "サイズフィルター付きファイル検索とコンテンツ検索",
+      "arguments": {
+        "roots": ["examples"],
+        "size": ["+1K"],
+        "query": "class",
+        "context_before": 1,
+        "context_after": 1
+      },
+      "expected_fields": ["matches"]
+    },
+    {
+      "tool": "find_and_grep",
+      "test_id": "MCP-038-find-grep-exclude",
+      "description": "除外パターン付きファイル検索とコンテンツ検索",
+      "arguments": {
+        "roots": ["."],
+        "exclude": ["*.log", "*.tmp"],
+        "query": "import",
+        "include_globs": ["*.py", "*.java"]
+      },
+      "expected_fields": ["matches"]
+    },
+    {
+      "tool": "find_and_grep",
+      "test_id": "MCP-039-find-grep-depth",
+      "description": "深度制限付きファイル検索とコンテンツ検索",
+      "arguments": {
+        "roots": ["."],
+        "depth": 2,
+        "query": "def ",
+        "include_globs": ["*.py"]
+      },
+      "expected_fields": ["matches"]
+    },
+    {
+      "tool": "find_and_grep",
+      "test_id": "MCP-040-find-grep-regex",
+      "description": "正規表現でのファイル検索とコンテンツ検索",
+      "arguments": {
+        "roots": ["examples"],
+        "pattern": ".*Service.*",
+        "glob": false,
+        "query": "public.*method",
+        "fixed_strings": false
+      },
+      "expected_fields": ["matches"]
+    },
+    {
+      "tool": "find_and_grep",
+      "test_id": "MCP-041-find-grep-count",
+      "description": "マッチ数のみでのファイル検索とコンテンツ検索",
+      "arguments": {
+        "roots": ["examples"],
+        "extensions": ["java"],
+        "query": "public",
+        "count_only_matches": true
+      },
+      "expected_fields": ["match_counts"]
+    },
+    {
+      "tool": "find_and_grep",
+      "test_id": "MCP-042-find-grep-summary",
+      "description": "サマリー形式でのファイル検索とコンテンツ検索",
+      "arguments": {
+        "roots": ["examples"],
+        "types": ["f"],
+        "query": "class",
+        "summary_only": true
+      },
+      "expected_fields": ["summary"]
+    },
+    {
+      "tool": "find_and_grep",
+      "test_id": "MCP-043-find-grep-grouped",
+      "description": "グループ化でのファイル検索とコンテンツ検索",
+      "arguments": {
+        "roots": ["examples"],
+        "extensions": ["js", "ts"],
+        "query": "function",
+        "group_by_file": true
+      },
+      "expected_fields": ["grouped_matches"]
+    },
+    {
+      "tool": "find_and_grep",
+      "test_id": "MCP-044-find-grep-total",
+      "description": "総数のみでのファイル検索とコンテンツ検索",
+      "arguments": {
+        "roots": ["examples"],
+        "pattern": "*.py",
+        "glob": true,
+        "query": "def",
+        "total_only": true
+      },
+      "expected_fields": ["total_matches"]
+    },
+    {
+      "tool": "set_project_path",
+      "test_id": "MCP-045-set-project-path-basic",
+      "description": "基本的なプロジェクトパス設定",
+      "arguments": {
+        "project_path": "/tmp/test_project"
+      },
+      "expected_fields": ["success", "message"]
+    },
+    {
+      "tool": "set_project_path",
+      "test_id": "MCP-046-set-project-path-current",
+      "description": "現在のディレクトリをプロジェクトパスに設定",
+      "arguments": {
+        "project_path": "."
+      },
+      "expected_fields": ["success", "message"]
+    },
+    {
+      "tool": "check_code_scale",
+      "test_id": "MCP-047-check-code-scale-jsx",
+      "description": "JSXファイルのコードスケール分析",
+      "arguments": {
+        "file_path": "examples/ReactComponent.jsx",
+        "include_complexity": true,
+        "include_details": true,
+        "include_guidance": true
+      },
+      "expected_fields": ["file_info", "scale_metrics", "complexity_metrics", "detailed_elements", "guidance"]
+    },
+    {
+      "tool": "check_code_scale",
+      "test_id": "MCP-048-check-code-scale-tsx",
+      "description": "TSXファイルのコードスケール分析",
+      "arguments": {
+        "file_path": "examples/ReactTypeScriptComponent.tsx",
+        "include_complexity": true,
+        "include_details": false,
+        "include_guidance": true
+      },
+      "expected_fields": ["file_info", "scale_metrics", "complexity_metrics", "guidance"]
+    },
+    {
+      "tool": "analyze_code_structure",
+      "test_id": "MCP-049-analyze-structure-html-json",
+      "description": "HTML-JSON形式でのコード構造分析",
+      "arguments": {
+        "file_path": "examples/BigService.java",
+        "format_type": "html_json"
+      },
+      "expected_fields": ["table_output", "summary"]
+    },
+    {
+      "tool": "analyze_code_structure",
+      "test_id": "MCP-050-analyze-structure-html-compact",
+      "description": "HTML-コンパクト形式でのコード構造分析",
+      "arguments": {
+        "file_path": "examples/ComprehensiveTypeScript.ts",
+        "format_type": "html_compact"
+      },
+      "expected_fields": ["table_output", "summary"]
+    },
+    {
+      "tool": "query_code",
+      "test_id": "MCP-051-query-summary",
+      "description": "サマリー形式でのクエリ",
+      "arguments": {
+        "file_path": "examples/BigService.java",
+        "query_key": "methods",
+        "output_format": "summary"
+      },
+      "expected_fields": ["query_summary"]
+    },
+    {
+      "tool": "extract_code_section",
+      "test_id": "MCP-052-extract-section-raw",
+      "description": "RAW形式でのコードセクション抽出",
+      "arguments": {
+        "file_path": "examples/sample.py",
+        "start_line": 1,
+        "end_line": 20,
+        "format": "raw"
+      },
+      "expected_fields": ["partial_content_result"]
+    }
+  ],
+  "error_test_cases": [
+    {
+      "tool": "check_code_scale",
+      "test_id": "MCP-E001-invalid-file",
+      "description": "存在しないファイルでのエラーテスト",
+      "arguments": {
+        "file_path": "nonexistent/file.java"
+      },
+      "expected_error": true
+    },
+    {
+      "tool": "analyze_code_structure",
+      "test_id": "MCP-E002-invalid-format",
+      "description": "無効なフォーマット指定でのエラーテスト",
+      "arguments": {
+        "file_path": "examples/BigService.java",
+        "format_type": "invalid_format"
+      },
+      "expected_error": true
+    },
+    {
+      "tool": "extract_code_section",
+      "test_id": "MCP-E003-invalid-range",
+      "description": "無効な行範囲でのエラーテスト",
+      "arguments": {
+        "file_path": "examples/BigService.java",
+        "start_line": 1000,
+        "end_line": 2000
+      },
+      "expected_error": true
+    },
+    {
+      "tool": "query_code",
+      "test_id": "MCP-E004-invalid-query",
+      "description": "無効なクエリでのエラーテスト",
+      "arguments": {
+        "file_path": "examples/BigService.java",
+        "query_key": "invalid_query_key"
+      },
+      "expected_error": true
+    },
+    {
+      "tool": "list_files",
+      "test_id": "MCP-E005-invalid-root",
+      "description": "存在しないルートディレクトリでのエラーテスト",
+      "arguments": {
+        "roots": ["nonexistent_directory"]
+      },
+      "expected_error": true
+    },
+    {
+      "tool": "set_project_path",
+      "test_id": "MCP-E006-invalid-path",
+      "description": "無効なプロジェクトパスでのエラーテスト",
+      "arguments": {
+        "project_path": "/nonexistent/invalid/path"
+      },
+      "expected_error": true
+    }
+  ]
+}

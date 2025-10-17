@@ -1,0 +1,13 @@
+# Tree-sitter Analyzer 互換性テスト用依存関係
+httpx>=0.24.0
+deepdiff>=6.0.0
+pytest>=7.0.0
+pytest-asyncio>=0.21.0
+tree-sitter-analyzer[mcp]>=1.6.1
+colorama>=0.4.6
+
+# 高度な自動インストール機能用依存関係
+questionary>=1.10.0  # TUIインターフェース
+rich>=13.0.0         # 進捗表示とリッチテキスト
+PyYAML>=6.0          # 設定ファイル（将来用）
+packaging>=21.0      # バージョン管理

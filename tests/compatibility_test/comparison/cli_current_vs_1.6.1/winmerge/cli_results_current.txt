@@ -1,0 +1,80 @@
+=== CLI-001-summary ===
+(同一出力)
+
+=== CLI-002-structure ===
+(同一出力)
+
+=== CLI-003-advanced ===
+(同一出力)
+
+=== CLI-004-table-full ===
+(同一出力)
+
+=== CLI-005-table-compact ===
+(同一出力)
+
+=== CLI-006-table-csv ===
+(同一出力)
+
+=== CLI-007-table-json ===
+(同一出力)
+
+=== CLI-008-partial-read ===
+(同一出力)
+
+=== CLI-009-partial-read-column ===
+(同一出力)
+
+=== CLI-010-query-methods ===
+(同一出力)
+
+=== CLI-011-query-classes ===
+(同一出力)
+
+=== CLI-012-query-fields ===
+(同一出力)
+
+=== CLI-013-help ===
+(同一出力)
+
+=== CLI-014-list-queries ===
+(同一出力)
+
+=== CLI-015-supported-languages ===
+(同一出力)
+
+=== CLI-016-multi-typescript ===
+(同一出力)
+
+=== CLI-017-multi-javascript ===
+(同一出力)
+
+=== CLI-018-python-analysis ===
+(同一出力)
+
+=== CLI-019-html-analysis ===
+(同一出力)
+
+=== CLI-020-css-analysis ===
+(同一出力)
+
+=== CLI-E001-invalid-file ===
+STDERR:
+ERROR: Invalid file path: file does not exist
+2025-10-17 20:47:00,787 - tree_sitter_analyzer - ERROR - Invalid file path: file does not exist
+
+
+=== CLI-E002-invalid-table-format ===
+(同一出力)
+
+=== CLI-E003-invalid-query-key ===
+STDERR:
+ERROR: Query 'invalid_query' not found for language 'java'
+2025-10-17 20:47:04,520 - tree_sitter_analyzer - ERROR - Query 'invalid_query' not found for language 'java'
+
+
+=== CLI-E004-invalid-line-range ===
+STDERR:
+ERROR: --end-line must be greater than or equal to --start-line
+2025-10-17 20:47:06,273 - tree_sitter_analyzer - ERROR - --end-line must be greater than or equal to --start-line
+

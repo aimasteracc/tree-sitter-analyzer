@@ -1,0 +1,27 @@
+# 互換性テスト用.gitignore
+
+# 仮想環境
+venvs/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# テスト結果
+result/
+*.log
+
+# 一時ファイル
+*.tmp
+*.temp
+.pytest_cache/
+
+# IDE設定
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS固有ファイル
+.DS_Store
+Thumbs.db

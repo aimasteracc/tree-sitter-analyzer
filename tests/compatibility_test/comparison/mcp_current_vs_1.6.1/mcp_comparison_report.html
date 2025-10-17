@@ -1,0 +1,232 @@
+
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MCP互換性比較レポート</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .header { background-color: #f0f0f0; padding: 20px; border-radius: 5px; }
+        .stats { display: flex; gap: 20px; margin: 20px 0; }
+        .stat-box { background-color: #e8f4f8; padding: 15px; border-radius: 5px; flex: 1; }
+        .compatibility-excellent { background-color: #d4edda; }
+        .compatibility-good { background-color: #d1ecf1; }
+        .compatibility-acceptable { background-color: #fff3cd; }
+        .compatibility-poor { background-color: #f8d7da; }
+        .compatibility-critical { background-color: #f5c6cb; }
+        table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        th { background-color: #f2f2f2; }
+        .compatible { background-color: #d4edda; }
+        .output-changed { background-color: #fff3cd; }
+        .regression { background-color: #f8d7da; }
+        .improvement { background-color: #d1ecf1; }
+        .both-failed { background-color: #f5c6cb; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>MCP互換性比較レポート</h1>
+        <p>生成日時: 2025-10-17T20:48:11.318182</p>
+        <p>比較バージョン: current vs 1.6.1</p>
+    </div>
+    
+    <div class="stats">
+        <div class="stat-box">
+            <h3>current</h3>
+            <p>総テスト数: 23</p>
+            <p>成功テスト数: 23</p>
+            <p>成功率: 100.0%</p>
+        </div>
+        <div class="stat-box">
+            <h3>1.6.1</h3>
+            <p>総テスト数: 23</p>
+            <p>成功テスト数: 22</p>
+            <p>成功率: 95.7%</p>
+        </div>
+    </div>
+    
+    <div class="stat-box compatibility-poor">
+        <h3>互換性分析</h3>
+        <p>17個のテストが完全互換、5個のテストで出力が変更、1個のテストでリグレッション。全体の互換性率: 73.9%</p>
+        <p>互換性レベル: poor</p>
+    </div>
+    
+    <h2>詳細テスト比較</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>テストID</th>
+                <th>互換性</th>
+                <th>差分数</th>
+                <th>ステータス</th>
+            </tr>
+        </thead>
+        <tbody>
+
+            <tr class="compatible">
+                <td>MCP-001</td>
+                <td>compatible</td>
+                <td>1</td>
+                <td>both_present</td>
+            </tr>
+
+            <tr class="compatible">
+                <td>MCP-002</td>
+                <td>compatible</td>
+                <td>1</td>
+                <td>both_present</td>
+            </tr>
+
+            <tr class="output-changed">
+                <td>MCP-003</td>
+                <td>output_changed</td>
+                <td>2</td>
+                <td>both_present</td>
+            </tr>
+
+            <tr class="output-changed">
+                <td>MCP-004</td>
+                <td>output_changed</td>
+                <td>2</td>
+                <td>both_present</td>
+            </tr>
+
+            <tr class="regression">
+                <td>MCP-005</td>
+                <td>regression</td>
+                <td>11</td>
+                <td>both_present</td>
+            </tr>
+
+            <tr class="compatible">
+                <td>MCP-006</td>
+                <td>compatible</td>
+                <td>5</td>
+                <td>both_present</td>
+            </tr>
+
+            <tr class="compatible">
+                <td>MCP-007</td>
+                <td>compatible</td>
+                <td>6</td>
+                <td>both_present</td>
+            </tr>
+
+            <tr class="compatible">
+                <td>MCP-008</td>
+                <td>compatible</td>
+                <td>1</td>
+                <td>both_present</td>
+            </tr>
+
+            <tr class="compatible">
+                <td>MCP-009</td>
+                <td>compatible</td>
+                <td>0</td>
+                <td>both_present</td>
+            </tr>
+
+            <tr class="compatible">
+                <td>MCP-010</td>
+                <td>compatible</td>
+                <td>0</td>
+                <td>both_present</td>
+            </tr>
+
+            <tr class="compatible">
+                <td>MCP-011</td>
+                <td>compatible</td>
+                <td>0</td>
+                <td>both_present</td>
+            </tr>
+
+            <tr class="compatible">
+                <td>MCP-012</td>
+                <td>compatible</td>
+                <td>0</td>
+                <td>both_present</td>
+            </tr>
+
+            <tr class="compatible">
+                <td>MCP-013</td>
+                <td>compatible</td>
+                <td>1</td>
+                <td>both_present</td>
+            </tr>
+
+            <tr class="compatible">
+                <td>MCP-014</td>
+                <td>compatible</td>
+                <td>0</td>
+                <td>both_present</td>
+            </tr>
+
+            <tr class="compatible">
+                <td>MCP-015</td>
+                <td>compatible</td>
+                <td>0</td>
+                <td>both_present</td>
+            </tr>
+
+            <tr class="compatible">
+                <td>MCP-016</td>
+                <td>compatible</td>
+                <td>0</td>
+                <td>both_present</td>
+            </tr>
+
+            <tr class="compatible">
+                <td>MCP-017</td>
+                <td>compatible</td>
+                <td>2</td>
+                <td>both_present</td>
+            </tr>
+
+            <tr class="compatible">
+                <td>MCP-018</td>
+                <td>compatible</td>
+                <td>2</td>
+                <td>both_present</td>
+            </tr>
+
+            <tr class="compatible">
+                <td>MCP-019</td>
+                <td>compatible</td>
+                <td>3</td>
+                <td>both_present</td>
+            </tr>
+
+            <tr class="compatible">
+                <td>MCP-020</td>
+                <td>compatible</td>
+                <td>0</td>
+                <td>both_present</td>
+            </tr>
+
+            <tr class="output-changed">
+                <td>MCP-E001</td>
+                <td>output_changed</td>
+                <td>4</td>
+                <td>both_present</td>
+            </tr>
+
+            <tr class="output-changed">
+                <td>MCP-E002</td>
+                <td>output_changed</td>
+                <td>6</td>
+                <td>both_present</td>
+            </tr>
+
+            <tr class="output-changed">
+                <td>MCP-E003</td>
+                <td>output_changed</td>
+                <td>4</td>
+                <td>both_present</td>
+            </tr>
+
+        </tbody>
+    </table>
+</body>
+</html>

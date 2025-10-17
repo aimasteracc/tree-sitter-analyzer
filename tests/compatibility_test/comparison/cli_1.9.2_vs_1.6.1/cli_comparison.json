@@ -1,0 +1,198 @@
+{
+  "comparison_timestamp": "2025-10-17T20:53:28.743733",
+  "versions": {
+    "version1": "1.9.2",
+    "version2": "1.6.1"
+  },
+  "stats_comparison": {
+    "version1": {
+      "version": "1.9.2",
+      "total_tests": 24,
+      "successful_tests": 24,
+      "success_rate": 1.0
+    },
+    "version2": {
+      "version": "1.6.1",
+      "total_tests": 24,
+      "successful_tests": 24,
+      "success_rate": 1.0
+    }
+  },
+  "test_comparisons": [
+    {
+      "test_id": "CLI-001-summary",
+      "status": "both_present",
+      "differences": [],
+      "compatibility": "compatible"
+    },
+    {
+      "test_id": "CLI-002-structure",
+      "status": "both_present",
+      "differences": [],
+      "compatibility": "compatible"
+    },
+    {
+      "test_id": "CLI-003-advanced",
+      "status": "both_present",
+      "differences": [],
+      "compatibility": "compatible"
+    },
+    {
+      "test_id": "CLI-004-table-full",
+      "status": "both_present",
+      "differences": [],
+      "compatibility": "compatible"
+    },
+    {
+      "test_id": "CLI-005-table-compact",
+      "status": "both_present",
+      "differences": [],
+      "compatibility": "compatible"
+    },
+    {
+      "test_id": "CLI-006-table-csv",
+      "status": "both_present",
+      "differences": [],
+      "compatibility": "compatible"
+    },
+    {
+      "test_id": "CLI-007-table-json",
+      "status": "both_present",
+      "differences": [],
+      "compatibility": "compatible"
+    },
+    {
+      "test_id": "CLI-008-partial-read",
+      "status": "both_present",
+      "differences": [],
+      "compatibility": "compatible"
+    },
+    {
+      "test_id": "CLI-009-partial-read-column",
+      "status": "both_present",
+      "differences": [],
+      "compatibility": "compatible"
+    },
+    {
+      "test_id": "CLI-010-query-methods",
+      "status": "both_present",
+      "differences": [],
+      "compatibility": "compatible"
+    },
+    {
+      "test_id": "CLI-011-query-classes",
+      "status": "both_present",
+      "differences": [],
+      "compatibility": "compatible"
+    },
+    {
+      "test_id": "CLI-012-query-fields",
+      "status": "both_present",
+      "differences": [],
+      "compatibility": "compatible"
+    },
+    {
+      "test_id": "CLI-013-help",
+      "status": "both_present",
+      "differences": [],
+      "compatibility": "compatible"
+    },
+    {
+      "test_id": "CLI-014-list-queries",
+      "status": "both_present",
+      "differences": [],
+      "compatibility": "compatible"
+    },
+    {
+      "test_id": "CLI-015-supported-languages",
+      "status": "both_present",
+      "differences": [],
+      "compatibility": "compatible"
+    },
+    {
+      "test_id": "CLI-016-multi-typescript",
+      "status": "both_present",
+      "differences": [],
+      "compatibility": "compatible"
+    },
+    {
+      "test_id": "CLI-017-multi-javascript",
+      "status": "both_present",
+      "differences": [],
+      "compatibility": "compatible"
+    },
+    {
+      "test_id": "CLI-018-python-analysis",
+      "status": "both_present",
+      "differences": [],
+      "compatibility": "compatible"
+    },
+    {
+      "test_id": "CLI-019-html-analysis",
+      "status": "both_present",
+      "differences": [],
+      "compatibility": "compatible"
+    },
+    {
+      "test_id": "CLI-020-css-analysis",
+      "status": "both_present",
+      "differences": [],
+      "compatibility": "compatible"
+    },
+    {
+      "test_id": "CLI-E001-invalid-file",
+      "status": "both_present",
+      "differences": [
+        {
+          "type": "stderr",
+          "field": "stderr",
+          "value1": "ERROR: Invalid file path: file does not exist\n2025-10-17 20:52:59,526 - tree_sitter_analyzer - ERROR - Invalid file path: file does not exist\n",
+          "value2": "ERROR: Invalid file path: file does not exist\n2025-10-17 20:47:53,029 - tree_sitter_analyzer - ERROR - Invalid file path: file does not exist\n"
+        }
+      ],
+      "compatibility": "compatible"
+    },
+    {
+      "test_id": "CLI-E002-invalid-table-format",
+      "status": "both_present",
+      "differences": [],
+      "compatibility": "compatible"
+    },
+    {
+      "test_id": "CLI-E003-invalid-query-key",
+      "status": "both_present",
+      "differences": [
+        {
+          "type": "stderr",
+          "field": "stderr",
+          "value1": "ERROR: Query 'invalid_query' not found for language 'java'\n2025-10-17 20:53:02,869 - tree_sitter_analyzer - ERROR - Query 'invalid_query' not found for language 'java'\n",
+          "value2": "ERROR: Query 'invalid_query' not found for language 'java'\n2025-10-17 20:47:56,465 - tree_sitter_analyzer - ERROR - Query 'invalid_query' not found for language 'java'\n"
+        }
+      ],
+      "compatibility": "compatible"
+    },
+    {
+      "test_id": "CLI-E004-invalid-line-range",
+      "status": "both_present",
+      "differences": [
+        {
+          "type": "stderr",
+          "field": "stderr",
+          "value1": "ERROR: --end-line must be greater than or equal to --start-line\n2025-10-17 20:53:04,687 - tree_sitter_analyzer - ERROR - --end-line must be greater than or equal to --start-line\n",
+          "value2": "ERROR: --end-line must be greater than or equal to --start-line\n2025-10-17 20:47:58,299 - tree_sitter_analyzer - ERROR - --end-line must be greater than or equal to --start-line\n"
+        }
+      ],
+      "compatibility": "compatible"
+    }
+  ],
+  "compatibility_analysis": {
+    "total_tests": 24,
+    "compatibility_counts": {
+      "compatible": 24
+    },
+    "compatible_tests": 24,
+    "compatibility_rate": 1.0,
+    "compatibility_level": "excellent",
+    "summary": "24個のCLIコマンドが完全互換。全体のCLI互換性率: 100.0%"
+  }
+}

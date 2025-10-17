@@ -1,0 +1,341 @@
+{
+  "cli_test_cases": [
+    {
+      "test_id": "CLI-001-summary",
+      "name": "basic_summary",
+      "description": "基本サマリー出力",
+      "template": "{file_path} --summary",
+      "parameters": {
+        "file_path": "examples/BigService.java"
+      },
+      "expected_success": true,
+      "category": "basic",
+      "timeout": 30
+    },
+    {
+      "test_id": "CLI-002-structure",
+      "name": "basic_structure",
+      "description": "構造分析出力",
+      "template": "{file_path} --structure",
+      "parameters": {
+        "file_path": "examples/BigService.java"
+      },
+      "expected_success": true,
+      "category": "basic",
+      "timeout": 30
+    },
+    {
+      "test_id": "CLI-003-advanced",
+      "name": "basic_advanced",
+      "description": "詳細分析出力",
+      "template": "{file_path} --advanced",
+      "parameters": {
+        "file_path": "examples/BigService.java"
+      },
+      "expected_success": true,
+      "category": "basic",
+      "timeout": 30
+    },
+    {
+      "test_id": "CLI-004-table-full",
+      "name": "table_full",
+      "description": "フルテーブル出力",
+      "template": "{file_path} --table={format}",
+      "parameters": {
+        "file_path": "examples/BigService.java",
+        "format": "full"
+      },
+      "expected_success": true,
+      "category": "table",
+      "timeout": 30
+    },
+    {
+      "test_id": "CLI-005-table-compact",
+      "name": "table_compact",
+      "description": "コンパクトテーブル出力",
+      "template": "{file_path} --table={format}",
+      "parameters": {
+        "file_path": "examples/BigService.java",
+        "format": "compact"
+      },
+      "expected_success": true,
+      "category": "table",
+      "timeout": 30
+    },
+    {
+      "test_id": "CLI-006-table-csv",
+      "name": "table_csv",
+      "description": "CSVテーブル出力",
+      "template": "{file_path} --table={format}",
+      "parameters": {
+        "file_path": "examples/BigService.java",
+        "format": "csv"
+      },
+      "expected_success": true,
+      "category": "table",
+      "timeout": 30
+    },
+    {
+      "test_id": "CLI-007-table-json",
+      "name": "table_json",
+      "description": "JSONテーブル出力",
+      "template": "{file_path} --table={format}",
+      "parameters": {
+        "file_path": "examples/BigService.java",
+        "format": "json"
+      },
+      "expected_success": true,
+      "category": "table",
+      "timeout": 30
+    },
+    {
+      "test_id": "CLI-008-partial-read",
+      "name": "partial_read_basic",
+      "description": "部分読み取り",
+      "template": "{file_path} --partial-read --start-line {start_line} --end-line {end_line}",
+      "parameters": {
+        "file_path": "examples/BigService.java",
+        "start_line": "1",
+        "end_line": "50"
+      },
+      "expected_success": true,
+      "category": "partial",
+      "timeout": 30
+    },
+    {
+      "test_id": "CLI-009-partial-read-column",
+      "name": "partial_read_column",
+      "description": "列指定部分読み取り",
+      "template": "{file_path} --partial-read --start-line {start_line} --end-line {end_line} --start-column {start_column} --end-column {end_column}",
+      "parameters": {
+        "file_path": "examples/BigService.java",
+        "start_line": "1",
+        "end_line": "50",
+        "start_column": "0",
+        "end_column": "80"
+      },
+      "expected_success": true,
+      "category": "partial",
+      "timeout": 30
+    },
+    {
+      "test_id": "CLI-010-query-methods",
+      "name": "query_methods",
+      "description": "メソッドクエリ",
+      "template": "{file_path} --query-key {query_key}",
+      "parameters": {
+        "file_path": "examples/BigService.java",
+        "query_key": "methods"
+      },
+      "expected_success": true,
+      "category": "query",
+      "timeout": 30
+    },
+    {
+      "test_id": "CLI-011-query-classes",
+      "name": "query_classes",
+      "description": "クラスクエリ",
+      "template": "{file_path} --query-key {query_key}",
+      "parameters": {
+        "file_path": "examples/BigService.java",
+        "query_key": "class"
+      },
+      "expected_success": true,
+      "category": "query",
+      "timeout": 30
+    },
+    {
+      "test_id": "CLI-012-query-fields",
+      "name": "query_fields",
+      "description": "フィールドクエリ",
+      "template": "{file_path} --query-key {query_key}",
+      "parameters": {
+        "file_path": "examples/BigService.java",
+        "query_key": "field"
+      },
+      "expected_success": true,
+      "category": "query",
+      "timeout": 30
+    },
+    {
+      "test_id": "CLI-013-help",
+      "name": "info_help",
+      "description": "ヘルプ表示",
+      "template": "--help",
+      "parameters": {},
+      "expected_success": true,
+      "category": "info",
+      "timeout": 10
+    },
+    {
+      "test_id": "CLI-014-list-queries",
+      "name": "info_list_queries",
+      "description": "クエリ一覧表示",
+      "template": "--list-queries",
+      "parameters": {},
+      "expected_success": true,
+      "category": "info",
+      "timeout": 10
+    },
+    {
+      "test_id": "CLI-015-supported-languages",
+      "name": "info_supported_languages",
+      "description": "サポート言語表示",
+      "template": "--show-supported-languages",
+      "parameters": {},
+      "expected_success": true,
+      "category": "info",
+      "timeout": 10
+    },
+    {
+      "test_id": "CLI-016-multi-typescript",
+      "name": "multi_typescript",
+      "description": "TypeScriptファイル分析",
+      "template": "{file_path} --summary",
+      "parameters": {
+        "file_path": "examples/ComprehensiveTypeScript.ts"
+      },
+      "expected_success": true,
+      "category": "multi_file",
+      "timeout": 30
+    },
+    {
+      "test_id": "CLI-017-multi-javascript",
+      "name": "multi_javascript",
+      "description": "JavaScriptファイル分析",
+      "template": "{file_path} --structure",
+      "parameters": {
+        "file_path": "examples/ModernJavaScript.js"
+      },
+      "expected_success": true,
+      "category": "multi_file",
+      "timeout": 30
+    },
+    {
+      "test_id": "CLI-018-python-analysis",
+      "name": "python_analysis",
+      "description": "Pythonファイル分析",
+      "template": "{file_path} --summary",
+      "parameters": {
+        "file_path": "examples/sample.py"
+      },
+      "expected_success": true,
+      "category": "multi_file",
+      "timeout": 30
+    },
+    {
+      "test_id": "CLI-019-html-analysis",
+      "name": "html_analysis",
+      "description": "HTMLファイル分析",
+      "template": "{file_path} --structure",
+      "parameters": {
+        "file_path": "examples/comprehensive_sample.html"
+      },
+      "expected_success": true,
+      "category": "multi_file",
+      "timeout": 30
+    },
+    {
+      "test_id": "CLI-020-css-analysis",
+      "name": "css_analysis",
+      "description": "CSSファイル分析",
+      "template": "{file_path} --summary",
+      "parameters": {
+        "file_path": "examples/comprehensive_sample.css"
+      },
+      "expected_success": true,
+      "category": "multi_file",
+      "timeout": 30
+    }
+  ],
+  "error_test_cases": [
+    {
+      "test_id": "CLI-E001-invalid-file",
+      "name": "error_invalid_file",
+      "description": "存在しないファイル",
+      "template": "{file_path} --summary",
+      "parameters": {
+        "file_path": "nonexistent/file.java"
+      },
+      "expected_success": false,
+      "category": "error",
+      "timeout": 10
+    },
+    {
+      "test_id": "CLI-E002-invalid-table-format",
+      "name": "error_invalid_table_format",
+      "description": "無効なテーブル形式",
+      "template": "{file_path} --table={format}",
+      "parameters": {
+        "file_path": "examples/BigService.java",
+        "format": "invalid"
+      },
+      "expected_success": false,
+      "category": "error",
+      "timeout": 10
+    },
+    {
+      "test_id": "CLI-E003-invalid-query-key",
+      "name": "error_invalid_query_key",
+      "description": "無効なクエリキー",
+      "template": "{file_path} --query-key {query_key}",
+      "parameters": {
+        "file_path": "examples/BigService.java",
+        "query_key": "invalid_query"
+      },
+      "expected_success": false,
+      "category": "error",
+      "timeout": 10
+    },
+    {
+      "test_id": "CLI-E004-invalid-line-range",
+      "name": "error_invalid_line_range",
+      "description": "無効な行範囲",
+      "template": "{file_path} --partial-read --start-line {start_line} --end-line {end_line}",
+      "parameters": {
+        "file_path": "examples/BigService.java",
+        "start_line": "100",
+        "end_line": "50"
+      },
+      "expected_success": false,
+      "category": "error",
+      "timeout": 10
+    }
+  ],
+  "test_categories": {
+    "basic": {
+      "description": "基本機能テスト",
+      "priority": 1
+    },
+    "table": {
+      "description": "テーブル出力テスト",
+      "priority": 2
+    },
+    "partial": {
+      "description": "部分読み取りテスト",
+      "priority": 3
+    },
+    "query": {
+      "description": "クエリ実行テスト",
+      "priority": 4
+    },
+    "info": {
+      "description": "情報表示テスト",
+      "priority": 5
+    },
+    "multi_file": {
+      "description": "複数ファイル形式テスト",
+      "priority": 6
+    },
+    "error": {
+      "description": "エラーハンドリングテスト",
+      "priority": 7
+    }
+  },
+  "global_settings": {
+    "default_timeout": 30,
+    "max_retries": 3,
+    "encoding": "utf-8",
+    "log_level": "INFO"
+  }
+}

@@ -1,0 +1,276 @@
+
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CLI互換性比較レポート</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .header { background-color: #f0f0f0; padding: 20px; border-radius: 5px; }
+        .stats { display: flex; gap: 20px; margin: 20px 0; }
+        .stat-box { background-color: #e8f4f8; padding: 15px; border-radius: 5px; flex: 1; }
+        .compatibility-excellent { background-color: #d4edda; }
+        .compatibility-good { background-color: #d1ecf1; }
+        .compatibility-acceptable { background-color: #fff3cd; }
+        .compatibility-poor { background-color: #f8d7da; }
+        .compatibility-critical { background-color: #f5c6cb; }
+        table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        th { background-color: #f2f2f2; }
+        .compatible { background-color: #d4edda; }
+        .output-changed { background-color: #fff3cd; }
+        .regression { background-color: #f8d7da; }
+        .improvement { background-color: #d1ecf1; }
+        .both-failed-same { background-color: #f5c6cb; }
+        .both-failed-different { background-color: #f5c6cb; }
+        .code { font-family: monospace; background-color: #f8f9fa; padding: 2px 4px; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>CLI互換性比較レポート</h1>
+        <p>生成日時: 2025-10-17T20:53:28.743733</p>
+        <p>比較バージョン: 1.9.2 vs 1.6.1</p>
+    </div>
+    
+    <div class="stats">
+        <div class="stat-box">
+            <h3>1.9.2</h3>
+            <p>総テスト数: 24</p>
+            <p>成功テスト数: 24</p>
+            <p>成功率: 100.0%</p>
+        </div>
+        <div class="stat-box">
+            <h3>1.6.1</h3>
+            <p>総テスト数: 24</p>
+            <p>成功テスト数: 24</p>
+            <p>成功率: 100.0%</p>
+        </div>
+    </div>
+    
+    <div class="stat-box compatibility-excellent">
+        <h3>CLI互換性分析</h3>
+        <p>24個のCLIコマンドが完全互換。全体のCLI互換性率: 100.0%</p>
+        <p>互換性レベル: excellent</p>
+    </div>
+    
+    <h2>詳細CLIテスト比較</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>テストID</th>
+                <th>コマンド</th>
+                <th>互換性</th>
+                <th>差分数</th>
+                <th>ステータス</th>
+            </tr>
+        </thead>
+        <tbody>
+
+            <tr class="compatible">
+                <td><span class="code">CLI-001-summary</span></td>
+                <td>001</td>
+                <td>compatible</td>
+                <td>0</td>
+                <td>both_present</td>
+            </tr>
+
+            <tr class="compatible">
+                <td><span class="code">CLI-002-structure</span></td>
+                <td>002</td>
+                <td>compatible</td>
+                <td>0</td>
+                <td>both_present</td>
+            </tr>
+
+            <tr class="compatible">
+                <td><span class="code">CLI-003-advanced</span></td>
+                <td>003</td>
+                <td>compatible</td>
+                <td>0</td>
+                <td>both_present</td>
+            </tr>
+
+            <tr class="compatible">
+                <td><span class="code">CLI-004-table-full</span></td>
+                <td>004</td>
+                <td>compatible</td>
+                <td>0</td>
+                <td>both_present</td>
+            </tr>
+
+            <tr class="compatible">
+                <td><span class="code">CLI-005-table-compact</span></td>
+                <td>005</td>
+                <td>compatible</td>
+                <td>0</td>
+                <td>both_present</td>
+            </tr>
+
+            <tr class="compatible">
+                <td><span class="code">CLI-006-table-csv</span></td>
+                <td>006</td>
+                <td>compatible</td>
+                <td>0</td>
+                <td>both_present</td>
+            </tr>
+
+            <tr class="compatible">
+                <td><span class="code">CLI-007-table-json</span></td>
+                <td>007</td>
+                <td>compatible</td>
+                <td>0</td>
+                <td>both_present</td>
+            </tr>
+
+            <tr class="compatible">
+                <td><span class="code">CLI-008-partial-read</span></td>
+                <td>008</td>
+                <td>compatible</td>
+                <td>0</td>
+                <td>both_present</td>
+            </tr>
+
+            <tr class="compatible">
+                <td><span class="code">CLI-009-partial-read-column</span></td>
+                <td>009</td>
+                <td>compatible</td>
+                <td>0</td>
+                <td>both_present</td>
+            </tr>
+
+            <tr class="compatible">
+                <td><span class="code">CLI-010-query-methods</span></td>
+                <td>010</td>
+                <td>compatible</td>
+                <td>0</td>
+                <td>both_present</td>
+            </tr>
+
+            <tr class="compatible">
+                <td><span class="code">CLI-011-query-classes</span></td>
+                <td>011</td>
+                <td>compatible</td>
+                <td>0</td>
+                <td>both_present</td>
+            </tr>
+
+            <tr class="compatible">
+                <td><span class="code">CLI-012-query-fields</span></td>
+                <td>012</td>
+                <td>compatible</td>
+                <td>0</td>
+                <td>both_present</td>
+            </tr>
+
+            <tr class="compatible">
+                <td><span class="code">CLI-013-help</span></td>
+                <td>013</td>
+                <td>compatible</td>
+                <td>0</td>
+                <td>both_present</td>
+            </tr>
+
+            <tr class="compatible">
+                <td><span class="code">CLI-014-list-queries</span></td>
+                <td>014</td>
+                <td>compatible</td>
+                <td>0</td>
+                <td>both_present</td>
+            </tr>
+
+            <tr class="compatible">
+                <td><span class="code">CLI-015-supported-languages</span></td>
+                <td>015</td>
+                <td>compatible</td>
+                <td>0</td>
+                <td>both_present</td>
+            </tr>
+
+            <tr class="compatible">
+                <td><span class="code">CLI-016-multi-typescript</span></td>
+                <td>016</td>
+                <td>compatible</td>
+                <td>0</td>
+                <td>both_present</td>
+            </tr>
+
+            <tr class="compatible">
+                <td><span class="code">CLI-017-multi-javascript</span></td>
+                <td>017</td>
+                <td>compatible</td>
+                <td>0</td>
+                <td>both_present</td>
+            </tr>
+
+            <tr class="compatible">
+                <td><span class="code">CLI-018-python-analysis</span></td>
+                <td>018</td>
+                <td>compatible</td>
+                <td>0</td>
+                <td>both_present</td>
+            </tr>
+
+            <tr class="compatible">
+                <td><span class="code">CLI-019-html-analysis</span></td>
+                <td>019</td>
+                <td>compatible</td>
+                <td>0</td>
+                <td>both_present</td>
+            </tr>
+
+            <tr class="compatible">
+                <td><span class="code">CLI-020-css-analysis</span></td>
+                <td>020</td>
+                <td>compatible</td>
+                <td>0</td>
+                <td>both_present</td>
+            </tr>
+
+            <tr class="compatible">
+                <td><span class="code">CLI-E001-invalid-file</span></td>
+                <td>E001</td>
+                <td>compatible</td>
+                <td>1</td>
+                <td>both_present</td>
+            </tr>
+
+            <tr class="compatible">
+                <td><span class="code">CLI-E002-invalid-table-format</span></td>
+                <td>E002</td>
+                <td>compatible</td>
+                <td>0</td>
+                <td>both_present</td>
+            </tr>
+
+            <tr class="compatible">
+                <td><span class="code">CLI-E003-invalid-query-key</span></td>
+                <td>E003</td>
+                <td>compatible</td>
+                <td>1</td>
+                <td>both_present</td>
+            </tr>
+
+            <tr class="compatible">
+                <td><span class="code">CLI-E004-invalid-line-range</span></td>
+                <td>E004</td>
+                <td>compatible</td>
+                <td>1</td>
+                <td>both_present</td>
+            </tr>
+
+        </tbody>
+    </table>
+    
+    <h2>互換性カテゴリ説明</h2>
+    <ul>
+        <li><strong>compatible</strong>: 完全に互換性あり</li>
+        <li><strong>output_changed</strong>: 成功するが出力が変更</li>
+        <li><strong>regression</strong>: 以前は成功していたが失敗するように</li>
+        <li><strong>improvement</strong>: 以前は失敗していたが成功するように</li>
+        <li><strong>both_failed_same</strong>: 両方失敗、同じエラーコード</li>
+        <li><strong>both_failed_different</strong>: 両方失敗、異なるエラーコード</li>
+    </ul>
+</body>
+</html>

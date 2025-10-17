@@ -62,10 +62,15 @@ dependencies = [
     "mcp>=1.12.3",
     "tree-sitter-javascript>=0.23.1,<0.25.0",
     "tree-sitter-markdown>=0.3.1",
-    "tree-sitter-html>=0.23.0,<0.25.0",  # HTML language support with MarkupElement data model
-    "tree-sitter-css>=0.23.0,<0.25.0",   # CSS language support with StyleElement data model
+    "tree-sitter-html>=0.23.0,<0.25.0", # HTML language support with MarkupElement data model
+    "tree-sitter-css>=0.23.0,<0.25.0", # CSS language support with StyleElement data model
     "psutil>=5.9.8",
     "tree-sitter-typescript>=0.23.2",
+    "httpx>=0.28.1",
+    "deepdiff>=8.6.1",
+    "pytest>=8.4.2",
+    "pytest-asyncio>=1.2.0",
+    "colorama>=0.4.6",
 ]
 
 [project.optional-dependencies]

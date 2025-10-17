@@ -1,0 +1,63 @@
+{
+  "test_settings": {
+    "timeout": 30,
+    "max_retries": 3,
+    "log_level": "INFO",
+    "output_formats": ["json", "html"],
+    "enable_performance_logging": true
+  },
+  "mcp_settings": {
+    "project_root_auto_detect": true,
+    "normalize_paths": true,
+    "handle_total_only_results": true,
+    "test_case_file": "mcp_test_cases.json",
+    "color_output": true,
+    "progress_display": true,
+    "category_summary": true,
+    "tool_filtering": {
+      "enabled": true,
+      "default_tools": ["check_code_scale", "analyze_code_structure"],
+      "exclude_tools": []
+    },
+    "execution_settings": {
+      "timeout_per_test": 30,
+      "delay_between_tests": 0.05,
+      "max_parallel_tests": 1
+    },
+    "error_handling": {
+      "continue_on_error": true,
+      "log_errors": true,
+      "save_error_details": true,
+      "treat_expected_errors_as_success": true
+    },
+    "output_settings": {
+      "save_individual_results": true,
+      "generate_summary": true,
+      "normalize_timestamps": true,
+      "normalize_execution_times": true
+    }
+  },
+  "cli_settings": {
+    "resolve_relative_paths": true,
+    "normalize_output": true,
+    "parse_json_output": true,
+    "encoding": "utf-8"
+  },
+  "comparison_settings": {
+    "tolerance": 0.001,
+    "ignore_timestamps": true,
+    "ignore_execution_times": true,
+    "normalize_file_paths": true
+  },
+  "report_settings": {
+    "generate_html": true,
+    "generate_json": true,
+    "include_winmerge_files": true,
+    "compatibility_thresholds": {
+      "excellent": 0.95,
+      "good": 0.90,
+      "acceptable": 0.80,
+      "poor": 0.70
+    }
+  }
+}
