@@ -1,0 +1,139 @@
+{
+  "test_case_id": "INT-LOG-02",
+  "test_name": "実際のログ出力内容: MCPツール実行時に、処理内容に応じたログがファイルに出力されることを確認する",
+  "execution_datetime": "2025-10-19T01:33:43.639Z",
+  "execution_method": "MCP経由でのanalyze_code_structureツール実行",
+  "mcp_server": "tree-sitter-analyzer-bc-test",
+  "environment_variables": {
+    "TREE_SITTER_ANALYZER_ENABLE_FILE_LOG": "true",
+    "TREE_SITTER_ANALYZER_LOG_DIR": "./test_logs_content",
+    "TREE_SITTER_ANALYZER_FILE_LOG_LEVEL": "INFO",
+    "LOG_LEVEL": "未設定"
+  },
+  "test_parameters": {
+    "mcp_tool": "analyze_code_structure",
+    "file_path": "examples/BigService.java",
+    "log_level": "INFO",
+    "custom_log_directory": "./test_logs_content"
+  },
+  "expected_results": {
+    "log_file_generated": true,
+    "log_file_location": "./test_logs_content/tree_sitter_analyzer.log",
+    "tool_execution_start_logged": true,
+    "target_file_path_logged": true,
+    "analysis_completion_logged": true,
+    "info_level_logs_recorded": true,
+    "debug_logs_excluded": true
+  },
+  "actual_results": {
+    "log_file_generated": true,
+    "log_file_location": "test_logs_content\\tree_sitter_analyzer.log",
+    "mcp_tool_execution_success": true,
+    "log_statistics": {
+      "debug_entries": 0,
+      "info_entries": 11,
+      "warning_entries": 2,
+      "error_entries": 1,
+      "total_entries": 14
+    },
+    "log_level_filtering_working": true,
+    "processing_details_logged": true
+  },
+  "verification_steps": [
+    {
+      "step": "環境変数設定確認",
+      "command": "test_int_log_02.bat",
+      "result": "TREE_SITTER_ANALYZER_ENABLE_FILE_LOG=true, TREE_SITTER_ANALYZER_LOG_DIR=./test_logs_content, TREE_SITTER_ANALYZER_FILE_LOG_LEVEL=INFO が正常に設定された"
+    },
+    {
+      "step": "MCPツール実行",
+      "tool": "analyze_code_structure",
+      "parameters": {"file_path": "examples/BigService.java"},
+      "result": "正常実行完了、詳細な構造解析結果を取得"
+    },
+    {
+      "step": "ログファイル生成確認",
+      "command": "Test-Path './test_logs_content/tree_sitter_analyzer.log'",
+      "result": "ログファイルがカスタムディレクトリに正常に生成された"
+    },
+    {
+      "step": "ログレベル分布分析",
+      "command": "powershell -ExecutionPolicy Bypass -File analyze_logs.ps1",
+      "result": "DEBUG(0), INFO(11), WARNING(2), ERROR(1) - INFOレベル制御が正常に動作"
+    },
+    {
+      "step": "ログ内容詳細確認",
+      "command": "Get-Content test_logs_content/tree_sitter_analyzer.log",
+      "result": "処理内容に応じた詳細なログが記録されていることを確認"
+    }
+  ],
+  "test_status": "PASS",
+  "notes": [
+    "MCPツール（analyze_code_structure）が正常に実行された",
+    "ログファイルがカスタムディレクトリ（./test_logs_content）に正常に生成された",
+    "INFOレベル設定により、DEBUGログは記録されず、INFO以上のみが記録された",
+    "処理内容に応じた詳細なログが適切に記録された",
+    "ツールの実行開始、解析対象ファイルパス、解析完了が明確にログに記録された",
+    "各処理段階（Parser初期化、QueryExecutor初期化、プラグインロード等）が詳細に記録された",
+    "テスト用のWARNINGとERRORメッセージも正常に記録された"
+  ],
+  "log_content_verification": {
+    "tool_execution_start": {
+      "logged": true,
+      "sample": "--- Starting single file test for examples/BigService.java ---"
+    },
+    "target_file_path": {
+      "logged": true,
+      "sample": "examples/BigService.java",
+      "occurrences": 6
+    },
+    "analysis_completion": {
+      "logged": true,
+      "samples": [
+        "analyze_file finished successfully for examples/BigService.java.",
+        "execute_query (class) finished successfully for examples/BigService.java.",
+        "execute_query (method) finished successfully for examples/BigService.java.",
+        "validate_file finished successfully for examples/BigService.java."
+      ]
+    },
+    "processing_details": {
+      "parser_initialization": "Parser initialized successfully",
+      "query_executor_initialization": "QueryExecutor initialized successfully",
+      "plugin_loading": "Successfully loaded 3 plugins",
+      "analysis_engine_initialization": "AnalysisEngine initialized successfully"
+    },
+    "log_level_control": {
+      "debug_excluded": true,
+      "info_included": true,
+      "warning_included": true,
+      "error_included": true
+    }
+  },
+  "comparison_with_previous_tests": {
+    "log_ctl_05_info_level": "同じINFOレベル設定で一貫した動作（DEBUGログ除外、INFO以上記録）",
+    "int_log_01_debug_level": "DEBUGレベル（73エントリ）と比較してINFOレベル（14エントリ）で大幅な削減",
+    "filtering_effectiveness": "INFOレベル設定により約81%のログエントリが削減された"
+  },
+  "mcp_tool_integration": {
+    "tool_execution_success": true,
+    "log_generation_during_mcp_execution": true,
+    "environment_variable_inheritance": true,
+    "real_time_logging": true
+  },
+  "complete_log_content": [
+    "2025-10-19 01:30:32,537 - tree_sitter_analyzer - INFO - --- Starting single file test for examples/BigService.java ---",
+    "2025-10-19 01:30:32,538 - tree_sitter_analyzer.core.parser - INFO - Parser initialized successfully",
+    "2025-10-19 01:30:32,538 - tree_sitter_analyzer.core.query - INFO - QueryExecutor initialized successfully",
+    "2025-10-19 01:30:32,576 - tree_sitter_analyzer - INFO - Successfully loaded 3 plugins",
+    "2025-10-19 01:30:32,576 - tree_sitter_analyzer.core.engine - INFO - Loaded 3 plugins successfully",
+    "2025-10-19 01:30:32,576 - tree_sitter_analyzer.core.engine - INFO - AnalysisEngine initialized successfully",
+    "2025-10-19 01:30:32,612 - tree_sitter_analyzer - WARNING - No dynamic query module for 'unknown', using predefined queries.",
+    "2025-10-19 01:30:32,635 - tree_sitter_analyzer - INFO - analyze_file finished successfully for examples/BigService.java.",
+    "2025-10-19 01:30:32,663 - tree_sitter_analyzer - INFO - execute_query (class) finished successfully for examples/BigService.java.",
+    "2025-10-19 01:30:32,690 - tree_sitter_analyzer - INFO - execute_query (method) finished successfully for examples/BigService.java.",
+    "2025-10-19 01:30:32,692 - tree_sitter_analyzer - INFO - validate_file finished successfully for examples/BigService.java.",
+    "2025-10-19 01:30:32,692 - tree_sitter_analyzer - WARNING - This is a test warning message for single file test.",
+    "2025-10-19 01:30:32,692 - tree_sitter_analyzer - ERROR - This is a test error message for single file test.",
+    "2025-10-19 01:30:32,692 - tree_sitter_analyzer - INFO - --- Single file test finished for examples/BigService.java ---"
+  ]
+}

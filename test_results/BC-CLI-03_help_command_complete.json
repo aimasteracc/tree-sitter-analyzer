@@ -1,0 +1,61 @@
+{
+  "test_case_id": "BC-CLI-03",
+  "test_name": "CLI機能 (--help): ログ機能の環境変数を設定せずにヘルプ表示が正常に動作することを確認する",
+  "execution_datetime": "2025-10-18T15:28:32.375Z",
+  "execution_method": "CLI",
+  "cli_command": "uv run python -m tree_sitter_analyzer --help",
+  "mcp_server": "N/A",
+  "environment_variables": {
+    "TREE_SITTER_ANALYZER_ENABLE_FILE_LOG": "未設定",
+    "TREE_SITTER_ANALYZER_LOG_DIR": "未設定",
+    "TREE_SITTER_ANALYZER_FILE_LOG_LEVEL": "未設定",
+    "LOG_LEVEL": "未設定"
+  },
+  "test_parameters": {
+    "command_option": "--help"
+  },
+  "expected_results": {
+    "log_file_generated": false,
+    "command_execution_success": true,
+    "output_format": "ヘルプメッセージテキスト",
+    "exit_code": 0
+  },
+  "actual_results": {
+    "log_file_generated": false,
+    "command_execution_success": true,
+    "exit_code": 0,
+    "execution_time_ms": "約1000",
+    "output_summary": {
+      "help_message_displayed": true,
+      "usage_line_present": true,
+      "options_listed": true,
+      "example_provided": true
+    }
+  },
+  "verification_steps": [
+    {
+      "step": "環境変数クリア確認",
+      "command": "powershell -Command \"echo 'Environment variables check:'; echo 'TREE_SITTER_ANALYZER_ENABLE_FILE_LOG:' $env:TREE_SITTER_ANALYZER_ENABLE_FILE_LOG; echo 'TREE_SITTER_ANALYZER_LOG_DIR:' $env:TREE_SITTER_ANALYZER_LOG_DIR; echo 'TREE_SITTER_ANALYZER_FILE_LOG_LEVEL:' $env:TREE_SITTER_ANALYZER_FILE_LOG_LEVEL; echo 'LOG_LEVEL:' $env:LOG_LEVEL\"",
+      "result": "全てのログ関連環境変数が未設定であることを確認"
+    },
+    {
+      "step": "ログファイル生成確認",
+      "command": "Get-ChildItem -Path . -Name \"*.log\" -Recurse | ForEach-Object { Get-Item $_ | Select-Object Name, LastWriteTime } | Where-Object { $_.LastWriteTime -gt (Get-Date).AddMinutes(-2) }",
+      "result": "ログファイル生成なし（期待通り）"
+    },
+    {
+      "step": "CLIヘルプコマンド実行",
+      "command": "uv run python -m tree_sitter_analyzer --help",
+      "result": "正常実行完了（終了コード: 0）"
+    }
+  ],
+  "test_status": "PASS",
+  "notes": [
+    "ログファイルが生成されていないことを確認済み",
+    "詳細なヘルプメッセージが正常に表示された",
+    "使用方法、オプション一覧、使用例が適切に表示",
+    "全ての利用可能なオプションが網羅的に表示",
+    "アプリケーションが正常終了"
+  ],
+  "complete_actual_output": "usage: __main__.py [-h] [--query-key QUERY_KEY | --query-string QUERY_STRING] [--filter FILTER]\n                   [--list-queries] [--filter-help] [--describe-query DESCRIBE_QUERY]\n                   [--show-supported-languages] [--show-supported-extensions] [--show-common-queries]\n                   [--show-query-languages] [--output-format {json,text}]\n                   [--table {full,compact,csv,json}] [--include-javadoc] [--advanced]\n                   [--summary [SUMMARY]] [--structure] [--statistics] [--language LANGUAGE]\n                   [--project-root PROJECT_ROOT] [--quiet] [--partial-read] [--start-line START_LINE]\n                   [--end-line END_LINE] [--start-column START_COLUMN] [--end-column END_COLUMN]\n                   [file_path]\n\nAnalyze code using Tree-sitter and extract structured information.\n\npositional arguments:\n  file_path             Path to the file to analyze\n\noptions:\n  -h, --help            show this help message and exit\n  --query-key QUERY_KEY\n                        Available query key (e.g., class, method)\n  --query-string QUERY_STRING\n                        Directly specify Tree-sitter query to execute\n  --filter FILTER       Filter query results (e.g., 'name=main', 'name=~get*,public=true')\n  --list-queries        Display list of available query keys\n  --filter-help         Display help for query filter syntax\n  --describe-query DESCRIBE_QUERY\n                        Display description of specified query key\n  --show-supported-languages\n                        Display list of supported languages\n  --show-supported-extensions\n                        Display list of supported file extensions\n  --show-common-queries\n                        Display list of common queries across multiple languages\n  --show-query-languages\n                        Display list of languages with query support\n  --output-format {json,text}\n                        Specify output format\n  --table {full,compact,csv,json}\n                        Output in table format\n  --include-javadoc     Include JavaDoc/documentation comments in output\n  --advanced            Use advanced analysis features\n  --summary [SUMMARY]   Display summary of specified element types\n  --structure           Output detailed structure information in JSON format\n  --statistics          Display only statistical information\n  --language LANGUAGE   Explicitly specify language (auto-detected from extension if omitted)\n  --project-root PROJECT_ROOT\n                        Project root directory for security validation (auto-detected if not specified)\n  --quiet               Suppress INFO level logs (show errors only)\n  --partial-read        Enable partial file reading mode\n  --start-line START_LINE\n                        Starting line number for reading (1-based)\n  --end-line END_LINE   Ending line number for reading (1-based)\n  --start-column START_COLUMN\n                        Starting column number for reading (0-based)\n  --end-column END_COLUMN\n                        Ending column number for reading (0-based)\n\nExample: tree-sitter-analyzer example.java --table=full"
+}

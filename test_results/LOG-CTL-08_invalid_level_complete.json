@@ -1,0 +1,94 @@
+{
+  "test_case_id": "LOG-CTL-08",
+  "test_name": "エラーハンドリング (不正なログレベル): 不正なログレベルが指定された場合の動作確認",
+  "execution_datetime": "2025-10-19T01:23:15.598Z",
+  "execution_method": "バッチファイル経由での環境変数設定 + run_test.py実行",
+  "environment_variables": {
+    "TREE_SITTER_ANALYZER_ENABLE_FILE_LOG": "true",
+    "TREE_SITTER_ANALYZER_FILE_LOG_LEVEL": "INVALID_LEVEL",
+    "TREE_SITTER_ANALYZER_LOG_DIR": "未設定（システムtempディレクトリ使用）",
+    "LOG_LEVEL": "未設定"
+  },
+  "test_parameters": {
+    "file_log_enabled": true,
+    "file_log_level": "INVALID_LEVEL",
+    "test_script": "run_test.py",
+    "target_file": "examples/BigService.java",
+    "execution_method": "test_log_ctl_08.bat"
+  },
+  "expected_results": {
+    "application_does_not_crash": true,
+    "log_file_generated": true,
+    "log_file_location": "システムtempディレクトリ",
+    "fallback_to_default_level": true,
+    "default_level_behavior": "メインロガーのレベル（通常はWARNING）として動作"
+  },
+  "actual_results": {
+    "application_crashed": false,
+    "log_file_generated": true,
+    "log_file_location": "C:\\Users\\[USER]\\AppData\\Local\\Temp\\tree_sitter_analyzer.log",
+    "execution_time_ms": "約3000",
+    "log_statistics": {
+      "debug_entries": 0,
+      "info_entries": 0,
+      "warning_entries": 2,
+      "error_entries": 1,
+      "total_entries": 3
+    },
+    "fallback_behavior_confirmed": true,
+    "effective_log_level": "WARNING",
+    "file_logging_setup_message": "[logging_setup] File logging enabled: C:\\Users\\[USER]\\AppData\\Local\\Temp\\tree_sitter_analyzer.log"
+  },
+  "verification_steps": [
+    {
+      "step": "環境変数設定",
+      "command": "test_log_ctl_08.bat",
+      "result": "TREE_SITTER_ANALYZER_ENABLE_FILE_LOG=true, TREE_SITTER_ANALYZER_FILE_LOG_LEVEL=INVALID_LEVEL が正常に設定された"
+    },
+    {
+      "step": "テストスクリプト実行",
+      "command": "uv run python run_test.py",
+      "result": "正常実行完了、アプリケーションがクラッシュせずに実行された"
+    },
+    {
+      "step": "ログファイル生成確認",
+      "command": "Test-Path 'C:\\Users\\[USER]\\AppData\\Local\\Temp\\tree_sitter_analyzer.log'",
+      "result": "ログファイルが正常に生成された"
+    },
+    {
+      "step": "ログレベル分布分析",
+      "command": "powershell -ExecutionPolicy Bypass -File analyze_logs.ps1",
+      "result": "DEBUG(0), INFO(0), WARNING(2), ERROR(1) - WARNINGレベルにフォールバックして動作"
+    }
+  ],
+  "test_status": "PASS",
+  "notes": [
+    "不正なログレベル'INVALID_LEVEL'が指定されても、アプリケーションはクラッシュしなかった",
+    "ファイルログが正常に有効化され、システムtempディレクトリに出力された",
+    "不正なログレベルに対して、デフォルトのWARNINGレベルにフォールバックした",
+    "ログファイルの内容はLOG-CTL-06（WARNINGレベル）と同一の結果となった",
+    "標準エラー出力にはDEBUG、INFO、WARNING、ERRORログが表示され、標準ロガーは正常に動作した",
+    "エラーハンドリングが適切に実装されており、堅牢性が確認された",
+    "ログファイルの総エントリ数は3個で、WARNINGレベル以上のログが記録された"
+  ],
+  "error_handling_analysis": {
+    "invalid_level_handling": "正常",
+    "application_stability": "安定",
+    "fallback_mechanism": "WARNINGレベルへの自動フォールバック",
+    "comparison_with_warning_test": "LOG-CTL-06と同一の結果（DEBUG:0, INFO:0, WARNING:2, ERROR:1）",
+    "robustness_confirmed": true
+  },
+  "comparison_with_valid_levels": {
+    "debug_level": "76エントリ（全レベル記録）",
+    "info_level": "14エントリ（INFO以上記録）",
+    "warning_level": "3エントリ（WARNING以上記録）",
+    "error_level": "1エントリ（ERRORのみ記録）",
+    "invalid_level": "3エントリ（WARNINGレベルにフォールバック）",
+    "fallback_behavior": "不正レベル → WARNINGレベルとして動作"
+  },
+  "sample_log_entries": {
+    "warning_sample_1": "2025-10-19 01:23:15,666 - tree_sitter_analyzer - WARNING - No dynamic query module for 'unknown', using predefined queries.",
+    "warning_sample_2": "2025-10-19 01:23:15,745 - tree_sitter_analyzer - WARNING - This is a test warning message for single file test.",
+    "error_sample": "2025-10-19 01:23:15,745 - tree_sitter_analyzer - ERROR - This is a test error message for single file test."
+  }
+}

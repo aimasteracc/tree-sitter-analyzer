@@ -1,0 +1,86 @@
+{
+  "test_case_id": "LOG-CTL-02",
+  "test_name": "ファイルログ有効化: 環境変数による有効化の確認",
+  "execution_datetime": "2025-10-18T16:05:00.000Z",
+  "execution_method": "CLI経由",
+  "environment_variables": {
+    "TREE_SITTER_ANALYZER_ENABLE_FILE_LOG": "true",
+    "TREE_SITTER_ANALYZER_LOG_DIR": "未設定",
+    "TREE_SITTER_ANALYZER_FILE_LOG_LEVEL": "未設定",
+    "LOG_LEVEL": "未設定"
+  },
+  "test_parameters": {
+    "enable_file_log": "true"
+  },
+  "expected_results": {
+    "log_file_generated": true,
+    "log_file_location": "システムのtmpディレクトリ",
+    "log_file_name": "tree_sitter_analyzer.log",
+    "command_execution_success": true,
+    "logs_written_to_file": true
+  },
+  "actual_results": {
+    "log_file_generated": true,
+    "log_file_location": "C:\\Users\\[USER]\\AppData\\Local\\Temp\\tree_sitter_analyzer.log",
+    "command_execution_success": true,
+    "exit_code": 0,
+    "execution_time_ms": "約1500",
+    "logs_written_to_file": true,
+    "log_entries_count": 3,
+    "log_levels_recorded": ["WARNING", "ERROR"]
+  },
+  "verification_steps": [
+    {
+      "step": "環境変数設定",
+      "command": "[Environment]::SetEnvironmentVariable('TREE_SITTER_ANALYZER_ENABLE_FILE_LOG', 'true', 'Process')",
+      "result": "正常設定完了"
+    },
+    {
+      "step": "テストスクリプト実行",
+      "command": "uv run python run_test.py",
+      "result": "正常実行完了（exit code: 0）"
+    },
+    {
+      "step": "ログファイル生成確認",
+      "command": "Get-Content 'C:\\Users\\[USER]\\AppData\\Local\\Temp\\tree_sitter_analyzer.log'",
+      "result": "ログファイル生成確認済み"
+    },
+    {
+      "step": "ログ内容検証",
+      "checks": [
+        "ファイルログが有効化されたことを示すメッセージが標準エラー出力に表示",
+        "システムのtempディレクトリにtree_sitter_analyzer.logが生成",
+        "ログファイルにWARNINGとERRORレベルのログが記録",
+        "テストスクリプトからの意図的なログメッセージが記録"
+      ],
+      "result": "すべて正常"
+    }
+  ],
+  "test_status": "PASS",
+  "notes": [
+    "環境変数TREE_SITTER_ANALYZER_ENABLE_FILE_LOG=trueによりファイルログが正常に有効化された",
+    "デフォルトのログディレクトリ（システムのtmpディレクトリ）にログファイルが生成された",
+    "ログファイルにはWARNINGとERRORレベルのログが記録された（デフォルトレベル）",
+    "標準エラー出力にファイルログ有効化メッセージが表示された",
+    "テストスクリプトが正常に実行され、意図的なログメッセージが記録された"
+  ],
+  "complete_actual_output": {
+    "console_output": {
+      "file_log_setup_message": "[logging_setup] File logging enabled: C:\\Users\\[USER]\\AppData\\Local\\Temp\\tree_sitter_analyzer.log",
+      "test_execution": "正常実行（詳細ログは標準エラー出力に表示）"
+    },
+    "log_file_content": [
+      "2025-10-19 01:04:40,755 - tree_sitter_analyzer - WARNING - No dynamic query module for 'unknown', using predefined queries.",
+      "2025-10-19 01:04:40,834 - tree_sitter_analyzer - WARNING - This is a test warning message for single file test.",
+      "2025-10-19 01:04:40,834 - tree_sitter_analyzer - ERROR - This is a test error message for single file test."
+    ],
+    "log_file_path": "C:\\Users\\[USER]\\AppData\\Local\\Temp\\tree_sitter_analyzer.log",
+    "log_entries_analysis": {
+      "total_entries": 3,
+      "warning_entries": 2,
+      "error_entries": 1,
+      "debug_entries": 0,
+      "info_entries": 0
+    }
+  }
+}

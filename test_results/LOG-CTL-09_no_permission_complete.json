@@ -1,0 +1,87 @@
+{
+  "test_case_id": "LOG-CTL-09",
+  "test_name": "エラーハンドリング (書き込み権限のないディレクトリ): 書き込み権限のないディレクトリを指定した場合の動作確認",
+  "execution_datetime": "2025-10-19T01:25:12.848Z",
+  "execution_method": "バッチファイル経由での環境変数設定 + run_test.py実行",
+  "environment_variables": {
+    "TREE_SITTER_ANALYZER_ENABLE_FILE_LOG": "true",
+    "TREE_SITTER_ANALYZER_LOG_DIR": "C:\\Windows\\System32",
+    "TREE_SITTER_ANALYZER_FILE_LOG_LEVEL": "INFO",
+    "LOG_LEVEL": "未設定"
+  },
+  "test_parameters": {
+    "file_log_enabled": true,
+    "log_directory": "C:\\Windows\\System32",
+    "file_log_level": "INFO",
+    "test_script": "run_test.py",
+    "target_file": "examples/BigService.java",
+    "execution_method": "test_log_ctl_09.bat"
+  },
+  "expected_results": {
+    "application_does_not_crash": true,
+    "file_handler_init_skipped": true,
+    "log_file_not_generated": true,
+    "error_message_displayed": true,
+    "standard_logger_continues_working": true
+  },
+  "actual_results": {
+    "application_crashed": false,
+    "file_handler_init_skipped": true,
+    "log_file_generated": false,
+    "execution_time_ms": "約3000",
+    "error_message": "[logging_setup] file handler init skipped: [Errno 13] Permission denied: 'C:\\Windows\\System32\\tree_sitter_analyzer.log'",
+    "standard_logger_working": true,
+    "application_completed_successfully": true
+  },
+  "verification_steps": [
+    {
+      "step": "環境変数設定",
+      "command": "test_log_ctl_09.bat",
+      "result": "TREE_SITTER_ANALYZER_ENABLE_FILE_LOG=true, TREE_SITTER_ANALYZER_LOG_DIR=C:\\Windows\\System32, TREE_SITTER_ANALYZER_FILE_LOG_LEVEL=INFO が正常に設定された"
+    },
+    {
+      "step": "テストスクリプト実行",
+      "command": "uv run python run_test.py",
+      "result": "正常実行完了、アプリケーションがクラッシュせずに実行された"
+    },
+    {
+      "step": "エラーメッセージ確認",
+      "result": "Permission denied エラーメッセージが適切に表示された"
+    },
+    {
+      "step": "ログファイル生成確認",
+      "command": "Test-Path 'C:\\Users\\[USER]\\AppData\\Local\\Temp\\tree_sitter_analyzer.log' および Test-Path 'C:\\Windows\\System32\\tree_sitter_analyzer.log'",
+      "result": "両方の場所でログファイルが生成されていないことを確認（期待通り）"
+    }
+  ],
+  "test_status": "PASS",
+  "notes": [
+    "書き込み権限のないディレクトリ（C:\\Windows\\System32）を指定しても、アプリケーションはクラッシュしなかった",
+    "適切なエラーメッセージ '[Errno 13] Permission denied' が表示された",
+    "ファイルハンドラの初期化がスキップされ、ファイルログは生成されなかった",
+    "標準エラー出力は正常に動作し、DEBUG、INFO、WARNING、ERRORログが表示された",
+    "アプリケーションの主要機能（コード解析）は正常に実行された",
+    "エラーハンドリングが適切に実装されており、堅牢性が確認された",
+    "権限エラーに対する graceful degradation が正常に機能している"
+  ],
+  "error_handling_analysis": {
+    "permission_error_handling": "正常",
+    "application_stability": "安定",
+    "graceful_degradation": "ファイルログ機能のみ無効化、他の機能は正常動作",
+    "error_message_clarity": "明確で分かりやすいエラーメッセージ",
+    "robustness_confirmed": true
+  },
+  "security_and_safety_verification": {
+    "no_unauthorized_file_creation": true,
+    "no_privilege_escalation_attempt": true,
+    "safe_error_handling": true,
+    "no_system_directory_pollution": true,
+    "appropriate_permission_respect": true
+  },
+  "comparison_with_successful_tests": {
+    "successful_file_logging": "ログファイル生成あり、正常動作",
+    "permission_denied_scenario": "ログファイル生成なし、エラーメッセージ表示、アプリケーション継続",
+    "error_handling_effectiveness": "権限エラーが適切に処理され、アプリケーションの安定性が保たれた"
+  },
+  "logged_error_message": "[logging_setup] file handler init skipped: [Errno 13] Permission denied: 'C:\\Windows\\System32\\tree_sitter_analyzer.log'"
+}

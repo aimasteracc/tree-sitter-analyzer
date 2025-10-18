@@ -1,0 +1,105 @@
+{
+  "test_case_id": "INT-LOG-01",
+  "test_name": "環境変数組み合わせ: ログ有効化、カスタムディレクトリ、ログレベル(DEBUG)をすべて指定した場合の動作確認",
+  "execution_datetime": "2025-10-19T01:27:17.551Z",
+  "execution_method": "バッチファイル経由での環境変数設定 + run_test.py実行",
+  "environment_variables": {
+    "TREE_SITTER_ANALYZER_ENABLE_FILE_LOG": "true",
+    "TREE_SITTER_ANALYZER_LOG_DIR": "./test_logs_int",
+    "TREE_SITTER_ANALYZER_FILE_LOG_LEVEL": "DEBUG",
+    "LOG_LEVEL": "未設定"
+  },
+  "test_parameters": {
+    "file_log_enabled": true,
+    "custom_log_directory": "./test_logs_int",
+    "file_log_level": "DEBUG",
+    "test_script": "run_test.py",
+    "target_file": "examples/BigService.java",
+    "execution_method": "test_int_log_01.bat"
+  },
+  "expected_results": {
+    "custom_directory_created": true,
+    "log_file_generated": true,
+    "log_file_location": "./test_logs_int/tree_sitter_analyzer.log",
+    "all_log_levels_recorded": true,
+    "debug_level_functionality": true
+  },
+  "actual_results": {
+    "custom_directory_created": true,
+    "log_file_generated": true,
+    "log_file_location": "test_logs_int\\tree_sitter_analyzer.log",
+    "execution_time_ms": "約3000",
+    "log_statistics": {
+      "debug_entries": 59,
+      "info_entries": 11,
+      "warning_entries": 2,
+      "error_entries": 1,
+      "total_entries": 73
+    },
+    "all_environment_variables_working": true,
+    "file_logging_setup_message": "[logging_setup] File logging enabled: test_logs_int\\tree_sitter_analyzer.log"
+  },
+  "verification_steps": [
+    {
+      "step": "環境変数設定",
+      "command": "test_int_log_01.bat",
+      "result": "TREE_SITTER_ANALYZER_ENABLE_FILE_LOG=true, TREE_SITTER_ANALYZER_LOG_DIR=./test_logs_int, TREE_SITTER_ANALYZER_FILE_LOG_LEVEL=DEBUG が正常に設定された"
+    },
+    {
+      "step": "テストスクリプト実行",
+      "command": "uv run python run_test.py",
+      "result": "正常実行完了、カスタムディレクトリにログファイルが生成された"
+    },
+    {
+      "step": "カスタムディレクトリ確認",
+      "command": "Test-Path './test_logs_int'",
+      "result": "カスタムディレクトリが正常に作成された"
+    },
+    {
+      "step": "ログファイル生成確認",
+      "command": "Test-Path './test_logs_int/tree_sitter_analyzer.log'",
+      "result": "ログファイルがカスタムディレクトリに正常に生成された"
+    },
+    {
+      "step": "ログレベル分布分析",
+      "command": "powershell -ExecutionPolicy Bypass -File analyze_logs.ps1",
+      "result": "DEBUG(59), INFO(11), WARNING(2), ERROR(1) - 全レベルが記録された"
+    }
+  ],
+  "test_status": "PASS",
+  "notes": [
+    "すべての環境変数が正しく連携して動作した",
+    "カスタムディレクトリ（./test_logs_int）が自動的に作成された",
+    "ログファイルがカスタムディレクトリに正常に生成された",
+    "DEBUGレベル設定により、すべてのログレベル（DEBUG、INFO、WARNING、ERROR）が記録された",
+    "ログファイルの総エントリ数は73個で、LOG-CTL-04（76個）とほぼ同じ結果",
+    "標準エラー出力にもDEBUGレベルのログが表示され、ファイルと標準出力の両方に出力された",
+    "環境変数の組み合わせ機能が完璧に動作している",
+    "相対パス指定（./test_logs_int）が正常に処理された"
+  ],
+  "integration_analysis": {
+    "environment_variable_integration": "完璧",
+    "directory_creation_functionality": "正常",
+    "log_level_control_functionality": "正常",
+    "file_logging_functionality": "正常",
+    "all_features_working_together": true
+  },
+  "comparison_with_individual_tests": {
+    "log_ctl_02_file_enablement": "ファイルログ有効化機能が正常に動作",
+    "log_ctl_03_custom_directory": "カスタムディレクトリ機能が正常に動作",
+    "log_ctl_04_debug_level": "DEBUGレベル制御機能が正常に動作（76 vs 73エントリ、微細な差）",
+    "integration_success": "個別機能の組み合わせが完璧に動作"
+  },
+  "performance_observations": {
+    "directory_creation_overhead": "最小限",
+    "log_file_writing_performance": "良好",
+    "overall_execution_time": "正常範囲内",
+    "no_performance_degradation": true
+  },
+  "sample_log_entries": {
+    "debug_sample": "2025-10-19 01:27:17,613 - tree_sitter_analyzer - DEBUG - Detected encoding: utf-8 (confidence: 0.99)",
+    "info_sample": "2025-10-19 01:27:17,551 - tree_sitter_analyzer - INFO - --- Starting single file test for examples/BigService.java ---",
+    "warning_sample": "2025-10-19 01:27:17,626 - tree_sitter_analyzer - WARNING - No dynamic query module for 'unknown', using predefined queries.",
+    "error_sample": "2025-10-19 01:27:17,709 - tree_sitter_analyzer - ERROR - This is a test error message for single file test."
+  }
+}

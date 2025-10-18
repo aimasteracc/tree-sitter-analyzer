@@ -1,0 +1,87 @@
+{
+  "test_case_id": "LOG-CTL-06",
+  "test_name": "ログレベル制御 (WARNING): ファイルログレベルがWARNINGになることの確認",
+  "execution_datetime": "2025-10-19T01:19:06.274Z",
+  "execution_method": "バッチファイル経由での環境変数設定 + run_test.py実行",
+  "environment_variables": {
+    "TREE_SITTER_ANALYZER_ENABLE_FILE_LOG": "true",
+    "TREE_SITTER_ANALYZER_FILE_LOG_LEVEL": "WARNING",
+    "TREE_SITTER_ANALYZER_LOG_DIR": "未設定（システムtempディレクトリ使用）",
+    "LOG_LEVEL": "未設定"
+  },
+  "test_parameters": {
+    "file_log_enabled": true,
+    "file_log_level": "WARNING",
+    "test_script": "run_test.py",
+    "target_file": "examples/BigService.java",
+    "execution_method": "test_log_ctl_06.bat"
+  },
+  "expected_results": {
+    "log_file_generated": true,
+    "log_file_location": "システムtempディレクトリ",
+    "log_levels_recorded": ["WARNING", "ERROR"],
+    "debug_logs_excluded": true,
+    "info_logs_excluded": true,
+    "warning_logs_included": true
+  },
+  "actual_results": {
+    "log_file_generated": true,
+    "log_file_location": "C:\\Users\\[USER]\\AppData\\Local\\Temp\\tree_sitter_analyzer.log",
+    "execution_time_ms": "約3000",
+    "log_statistics": {
+      "debug_entries": 0,
+      "info_entries": 0,
+      "warning_entries": 2,
+      "error_entries": 1,
+      "total_entries": 3
+    },
+    "debug_and_info_logs_excluded": true,
+    "warning_and_above_included": true,
+    "file_logging_setup_message": "[logging_setup] File logging enabled: C:\\Users\\[USER]\\AppData\\Local\\Temp\\tree_sitter_analyzer.log"
+  },
+  "verification_steps": [
+    {
+      "step": "環境変数設定",
+      "command": "test_log_ctl_06.bat",
+      "result": "TREE_SITTER_ANALYZER_ENABLE_FILE_LOG=true, TREE_SITTER_ANALYZER_FILE_LOG_LEVEL=WARNING が正常に設定された"
+    },
+    {
+      "step": "テストスクリプト実行",
+      "command": "uv run python run_test.py",
+      "result": "正常実行完了、ファイルログ有効化メッセージが表示された"
+    },
+    {
+      "step": "ログファイル生成確認",
+      "command": "Test-Path 'C:\\Users\\[USER]\\AppData\\Local\\Temp\\tree_sitter_analyzer.log'",
+      "result": "ログファイルが正常に生成された"
+    },
+    {
+      "step": "ログレベル分布分析",
+      "command": "powershell -ExecutionPolicy Bypass -File analyze_logs.ps1",
+      "result": "DEBUG(0), INFO(0), WARNING(2), ERROR(1) - DEBUG、INFOログが除外され、WARNING以上のみが記録された"
+    }
+  ],
+  "test_status": "PASS",
+  "notes": [
+    "ファイルログが正常に有効化され、システムtempディレクトリに出力された",
+    "TREE_SITTER_ANALYZER_FILE_LOG_LEVEL='WARNING'設定により、WARNINGレベル以上のログのみが記録された",
+    "DEBUGログとINFOログが完全に除外された（両方とも0個）ことを確認",
+    "WARNINGレベルのログが適切に記録された（2個）",
+    "ERRORレベルのログも正常に記録された（1個）",
+    "標準エラー出力にはDEBUG、INFOログが表示されており、ファイルロガーと標準ロガーが独立して動作している",
+    "ログファイルの総エントリ数は3個で、非常に効率的にフィルタリングされた",
+    "analyze_logs.ps1の文字化け問題が修正され、正常に動作した"
+  ],
+  "comparison_with_previous_tests": {
+    "log_ctl_04_total_entries": 76,
+    "log_ctl_05_total_entries": 14,
+    "log_ctl_06_total_entries": 3,
+    "filtering_progression": "DEBUG(76) → INFO(14) → WARNING(3) - 段階的なフィルタリング効果を確認",
+    "size_reduction": "LOG-CTL-04比で96%削減、LOG-CTL-05比で79%削減"
+  },
+  "sample_log_entries": {
+    "warning_sample_1": "2025-10-19 01:19:06,350 - tree_sitter_analyzer - WARNING - No dynamic query module for 'unknown', using predefined queries.",
+    "warning_sample_2": "2025-10-19 01:19:06,432 - tree_sitter_analyzer - WARNING - This is a test warning message for single file test.",
+    "error_sample": "2025-10-19 01:19:06,432 - tree_sitter_analyzer - ERROR - This is a test error message for single file test."
+  }
+}

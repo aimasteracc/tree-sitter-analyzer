@@ -1,0 +1,85 @@
+{
+  "test_case_id": "LOG-CTL-05",
+  "test_name": "ログレベル制御 (INFO): ファイルログレベルがINFOになることの確認",
+  "execution_datetime": "2025-10-19T01:16:32.490Z",
+  "execution_method": "バッチファイル経由での環境変数設定 + run_test.py実行",
+  "environment_variables": {
+    "TREE_SITTER_ANALYZER_ENABLE_FILE_LOG": "true",
+    "TREE_SITTER_ANALYZER_FILE_LOG_LEVEL": "INFO",
+    "TREE_SITTER_ANALYZER_LOG_DIR": "未設定（システムtempディレクトリ使用）",
+    "LOG_LEVEL": "未設定"
+  },
+  "test_parameters": {
+    "file_log_enabled": true,
+    "file_log_level": "INFO",
+    "test_script": "run_test.py",
+    "target_file": "examples/BigService.java",
+    "execution_method": "test_log_ctl_05.bat"
+  },
+  "expected_results": {
+    "log_file_generated": true,
+    "log_file_location": "システムtempディレクトリ",
+    "log_levels_recorded": ["INFO", "WARNING", "ERROR"],
+    "debug_logs_excluded": true,
+    "info_logs_included": true
+  },
+  "actual_results": {
+    "log_file_generated": true,
+    "log_file_location": "C:\\Users\\[USER]\\AppData\\Local\\Temp\\tree_sitter_analyzer.log",
+    "execution_time_ms": "約3000",
+    "log_statistics": {
+      "debug_entries": 0,
+      "info_entries": 11,
+      "warning_entries": 2,
+      "error_entries": 1,
+      "total_entries": 14
+    },
+    "debug_logs_excluded": true,
+    "info_and_above_included": true,
+    "file_logging_setup_message": "[logging_setup] File logging enabled: C:\\Users\\[USER]\\AppData\\Local\\Temp\\tree_sitter_analyzer.log"
+  },
+  "verification_steps": [
+    {
+      "step": "環境変数設定",
+      "command": "test_log_ctl_05.bat",
+      "result": "TREE_SITTER_ANALYZER_ENABLE_FILE_LOG=true, TREE_SITTER_ANALYZER_FILE_LOG_LEVEL=INFO が正常に設定された"
+    },
+    {
+      "step": "テストスクリプト実行",
+      "command": "uv run python run_test.py",
+      "result": "正常実行完了、ファイルログ有効化メッセージが表示された"
+    },
+    {
+      "step": "ログファイル生成確認",
+      "command": "Test-Path 'C:\\Users\\[USER]\\AppData\\Local\\Temp\\tree_sitter_analyzer.log'",
+      "result": "ログファイルが正常に生成された"
+    },
+    {
+      "step": "ログレベル分布分析",
+      "command": "powershell -ExecutionPolicy Bypass -File analyze_logs.ps1",
+      "result": "DEBUG(0), INFO(11), WARNING(2), ERROR(1) - DEBUGログが除外され、INFO以上のみが記録された"
+    }
+  ],
+  "test_status": "PASS",
+  "notes": [
+    "ファイルログが正常に有効化され、システムtempディレクトリに出力された",
+    "TREE_SITTER_ANALYZER_FILE_LOG_LEVEL='INFO'設定により、INFOレベル以上のログのみが記録された",
+    "DEBUGログが完全に除外された（0個）ことを確認",
+    "INFOレベルのログが適切に記録された（11個）",
+    "WARNING、ERRORレベルのログも正常に記録された",
+    "標準エラー出力にはDEBUGログが表示されており、ファイルロガーと標準ロガーが独立して動作している",
+    "バッチファイルを使用した環境変数設定が効果的に機能した",
+    "ログファイルの総エントリ数は14個で、適切にフィルタリングされた"
+  ],
+  "comparison_with_debug_test": {
+    "log_ctl_04_total_entries": 76,
+    "log_ctl_05_total_entries": 14,
+    "debug_entries_difference": "LOG-CTL-04: 59個 → LOG-CTL-05: 0個（完全に除外）",
+    "filtering_effectiveness": "DEBUGログの除外により、ログファイルサイズが約82%削減された"
+  },
+  "sample_log_entries": {
+    "info_sample": "2025-10-19 01:16:32,490 - tree_sitter_analyzer - INFO - --- Starting single file test for examples/BigService.java ---",
+    "warning_sample": "2025-10-19 01:16:32,558 - tree_sitter_analyzer - WARNING - No dynamic query module for 'unknown', using predefined queries.",
+    "error_sample": "2025-10-19 01:16:32,635 - tree_sitter_analyzer - ERROR - This is a test error message for single file test."
+  }
+}

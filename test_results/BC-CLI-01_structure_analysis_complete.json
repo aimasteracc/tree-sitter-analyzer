@@ -1,0 +1,414 @@
+{
+  "test_case_id": "BC-CLI-01",
+  "test_name": "CLI機能 (構造解析) 後方互換性テスト",
+  "execution_datetime": "2025-10-18T23:11:24.533Z",
+  "execution_method": "CLI経由",
+  "command": "uv run python -m tree_sitter_analyzer examples/BigService.java --structure",
+  "environment_variables": {
+    "TREE_SITTER_ANALYZER_ENABLE_FILE_LOG": "未設定",
+    "TREE_SITTER_ANALYZER_LOG_DIR": "未設定",
+    "TREE_SITTER_ANALYZER_FILE_LOG_LEVEL": "未設定",
+    "LOG_LEVEL": "未設定"
+  },
+  "test_parameters": {
+    "file_path": "examples/BigService.java",
+    "options": ["--structure"]
+  },
+  "expected_results": {
+    "log_file_generated": false,
+    "command_execution_success": true,
+    "output_format": "詳細な構造解析結果（JSON形式）"
+  },
+  "actual_results": {
+    "log_file_generated": false,
+    "command_execution_success": true,
+    "exit_code": 0,
+    "execution_time_ms": 78749,
+    "output_summary": {
+      "file_path": "examples/BigService.java",
+      "language": "java",
+      "statistics": {
+        "class_count": 1,
+        "method_count": 66,
+        "field_count": 9,
+        "import_count": 8,
+        "total_lines": 1419,
+        "annotation_count": 0
+      }
+    }
+  },
+  "verification_steps": [
+    {
+      "step": "ログファイル生成確認",
+      "result": "ログファイル生成なし（期待通り）"
+    },
+    {
+      "step": "CLIコマンド実行",
+      "command": "uv run python -m tree_sitter_analyzer examples/BigService.java --structure",
+      "result": "正常実行完了（exit code: 0）"
+    },
+    {
+      "step": "出力検証",
+      "checks": [
+        "JSON形式の構造解析結果が出力された",
+        "パッケージ情報が正確に取得された",
+        "66個のメソッドが検出された",
+        "9個のフィールドが検出された",
+        "8個のインポートが検出された",
+        "統計情報が適切に計算された"
+      ],
+      "result": "すべて正常"
+    }
+  ],
+  "test_status": "PASS",
+  "notes": [
+    "ログファイルが生成されていないことを確認済み",
+    "CLIコマンドが正常に実行され、詳細な構造解析結果が出力された",
+    "JSON形式で包括的な情報（パッケージ、クラス、メソッド、フィールド、インポート、統計）が取得された",
+    "BC-MCP-01の結果と一貫性がある（メソッド数66個、フィールド数9個等）",
+    "CLIの構文が変更されており、analyzeサブコマンドではなく--structureオプションを使用"
+  ],
+  "complete_actual_output": {
+    "file_path": "examples/BigService.java",
+    "language": "java",
+    "package": {
+      "name": "com.example.service",
+      "line_range": {
+        "start": 1,
+        "end": 1
+      }
+    },
+    "classes": [
+      {
+        "name": "BigService"
+      }
+    ],
+    "methods": [
+      {
+        "name": "BigService"
+      },
+      {
+        "name": "initializeService"
+      },
+      {
+        "name": "loadConfiguration"
+      },
+      {
+        "name": "setupDatabaseConnection"
+      },
+      {
+        "name": "validateSystemRequirements"
+      },
+      {
+        "name": "checkMemoryUsage"
+      },
+      {
+        "name": "checkDiskSpace"
+      },
+      {
+        "name": "checkNetworkConnectivity"
+      },
+      {
+        "name": "authenticateUser"
+      },
+      {
+        "name": "createSession"
+      },
+      {
+        "name": "validateData"
+      },
+      {
+        "name": "validateEmail"
+      },
+      {
+        "name": "validatePhoneNumber"
+      },
+      {
+        "name": "validateDate"
+      },
+      {
+        "name": "logOperation"
+      },
+      {
+        "name": "manageCache"
+      },
+      {
+        "name": "cleanupCache"
+      },
+      {
+        "name": "updateCacheStatistics"
+      },
+      {
+        "name": "calculateCacheHitRatio"
+      },
+      {
+        "name": "performBackup"
+      },
+      {
+        "name": "performFullBackup"
+      },
+      {
+        "name": "performIncrementalBackup"
+      },
+      {
+        "name": "performDifferentialBackup"
+      },
+      {
+        "name": "generateReport"
+      },
+      {
+        "name": "prepareReportData"
+      },
+      {
+        "name": "generateSalesReport"
+      },
+      {
+        "name": "generatePerformanceReport"
+      },
+      {
+        "name": "generateUserActivityReport"
+      },
+      {
+        "name": "generateSystemHealthReport"
+      },
+      {
+        "name": "finalizeReport"
+      },
+      {
+        "name": "updateCustomerName"
+      },
+      {
+        "name": "getCustomerInfo"
+      },
+      {
+        "name": "deleteCustomer"
+      },
+      {
+        "name": "processOrder"
+      },
+      {
+        "name": "manageInventory"
+      },
+      {
+        "name": "addInventory"
+      },
+      {
+        "name": "removeInventory"
+      },
+      {
+        "name": "updateInventory"
+      },
+      {
+        "name": "checkInventory"
+      },
+      {
+        "name": "sendNotification"
+      },
+      {
+        "name": "shutdownSystem"
+      },
+      {
+        "name": "savePendingOperations"
+      },
+      {
+        "name": "closeDatabaseConnections"
+      },
+      {
+        "name": "finalizeSystemLogs"
+      },
+      {
+        "name": "handleError"
+      },
+      {
+        "name": "handleDatabaseError"
+      },
+      {
+        "name": "handleValidationError"
+      },
+      {
+        "name": "handleRuntimeError"
+      },
+      {
+        "name": "handleGenericError"
+      },
+      {
+        "name": "monitorPerformance"
+      },
+      {
+        "name": "monitorCpuUsage"
+      },
+      {
+        "name": "monitorMemoryUsage"
+      },
+      {
+        "name": "monitorDiskIO"
+      },
+      {
+        "name": "monitorNetworkUsage"
+      },
+      {
+        "name": "performSecurityCheck"
+      },
+      {
+        "name": "checkAccessPermissions"
+      },
+      {
+        "name": "validateSecuritySettings"
+      },
+      {
+        "name": "performVulnerabilityScan"
+      },
+      {
+        "name": "reviewSecurityLogs"
+      },
+      {
+        "name": "synchronizeData"
+      },
+      {
+        "name": "prepareSynchronization"
+      },
+      {
+        "name": "extractData"
+      },
+      {
+        "name": "transformData"
+      },
+      {
+        "name": "loadData"
+      },
+      {
+        "name": "verifySynchronization"
+      },
+      {
+        "name": "main"
+      }
+    ],
+    "fields": [
+      {
+        "name": "DEFAULT_ENCODING"
+      },
+      {
+        "name": "MAX_RETRY_COUNT"
+      },
+      {
+        "name": "TIMEOUT_MILLISECONDS"
+      },
+      {
+        "name": "DATE_FORMAT"
+      },
+      {
+        "name": "dataSource"
+      },
+      {
+        "name": "configurationCache"
+      },
+      {
+        "name": "activeConnections"
+      },
+      {
+        "name": "validatedUsers"
+      },
+      {
+        "name": "pendingOperations"
+      }
+    ],
+    "imports": [
+      {
+        "name": "java.util",
+        "is_static": false,
+        "is_wildcard": true,
+        "statement": "import java.util.*",
+        "line_range": {
+          "start": 3,
+          "end": 3
+        }
+      },
+      {
+        "name": "java.time.LocalDateTime",
+        "is_static": false,
+        "is_wildcard": false,
+        "statement": "import java.time.LocalDateTime",
+        "line_range": {
+          "start": 4,
+          "end": 4
+        }
+      },
+      {
+        "name": "java.time.format.DateTimeFormatter",
+        "is_static": false,
+        "is_wildcard": false,
+        "statement": "import java.time.format.DateTimeFormatter",
+        "line_range": {
+          "start": 5,
+          "end": 5
+        }
+      },
+      {
+        "name": "java.sql.Connection",
+        "is_static": false,
+        "is_wildcard": false,
+        "statement": "import java.sql.Connection",
+        "line_range": {
+          "start": 6,
+          "end": 6
+        }
+      },
+      {
+        "name": "java.sql.PreparedStatement",
+        "is_static": false,
+        "is_wildcard": false,
+        "statement": "import java.sql.PreparedStatement",
+        "line_range": {
+          "start": 7,
+          "end": 7
+        }
+      },
+      {
+        "name": "java.sql.ResultSet",
+        "is_static": false,
+        "is_wildcard": false,
+        "statement": "import java.sql.ResultSet",
+        "line_range": {
+          "start": 8,
+          "end": 8
+        }
+      },
+      {
+        "name": "java.sql.SQLException",
+        "is_static": false,
+        "is_wildcard": false,
+        "statement": "import java.sql.SQLException",
+        "line_range": {
+          "start": 9,
+          "end": 9
+        }
+      },
+      {
+        "name": "javax.sql.DataSource",
+        "is_static": false,
+        "is_wildcard": false,
+        "statement": "import javax.sql.DataSource",
+        "line_range": {
+          "start": 10,
+          "end": 10
+        }
+      }
+    ],
+    "annotations": [],
+    "statistics": {
+      "class_count": 1,
+      "method_count": 66,
+      "field_count": 9,
+      "import_count": 8,
+      "total_lines": 1419,
+      "annotation_count": 0
+    },
+    "analysis_metadata": {
+      "analysis_time": 0.0,
+      "language": "java",
+      "file_path": "examples/BigService.java",
+      "analyzer_version": "2.0.0",
+      "timestamp": 1760796682.1102781
+    }
+  }
+}

@@ -1,0 +1,83 @@
+{
+  "test_case_id": "BC-MCP-02",
+  "test_name": "MCPツール (query_code) 後方互換性テスト",
+  "execution_datetime": "2025-10-18T23:08:11.464Z",
+  "execution_method": "MCP経由",
+  "mcp_server": "tree-sitter-analyzer-bc-test",
+  "environment_variables": {
+    "TREE_SITTER_ANALYZER_ENABLE_FILE_LOG": "未設定",
+    "TREE_SITTER_ANALYZER_LOG_DIR": "未設定",
+    "TREE_SITTER_ANALYZER_FILE_LOG_LEVEL": "未設定",
+    "LOG_LEVEL": "未設定"
+  },
+  "test_parameters": {
+    "file_path": "examples/BigService.java",
+    "query_key": "methods"
+  },
+  "expected_results": {
+    "log_file_generated": false,
+    "tool_execution_success": true,
+    "output_format": "メソッド定義の抽出結果"
+  },
+  "actual_results": {
+    "log_file_generated": false,
+    "tool_execution_success": true,
+    "execution_time_ms": 9847,
+    "output_summary": {
+      "success": true,
+      "count": 65,
+      "file_path": "examples/BigService.java",
+      "language": "java",
+      "query": "methods"
+    }
+  },
+  "verification_steps": [
+    {
+      "step": "ログファイル生成確認",
+      "result": "ログファイル生成なし（期待通り）"
+    },
+    {
+      "step": "MCPツール実行",
+      "tool": "query_code",
+      "parameters": {
+        "query_key": "methods"
+      },
+      "result": "正常実行完了"
+    },
+    {
+      "step": "結果検証",
+      "checks": [
+        "メソッド数の確認: 65個検出",
+        "各メソッドの詳細情報取得確認",
+        "開始行・終了行の正確性確認",
+        "メソッド内容の完全性確認"
+      ],
+      "result": "すべて正常"
+    }
+  ],
+  "test_status": "PASS",
+  "notes": [
+    "ログファイルが生成されていないことを確認済み",
+    "BigService.javaから65個のメソッドが正常に抽出された",
+    "各メソッドの開始行、終了行、内容が正確に取得された",
+    "public、private、staticメソッドがすべて適切に検出された",
+    "コンストラクタ、通常メソッド、mainメソッドが含まれている"
+  ],
+  "complete_actual_output": {
+    "success": true,
+    "results": [
+      {
+        "capture_name": "method",
+        "node_type": "method_declaration",
+        "start_line": 835,
+        "end_line": 850,
+        "content": "private void checkInventory(String itemId) {\n        System.out.println(\"Checking inventory for item: \" + itemId);\n\n        for (int i = 0; i < 6; i++) {\n            System.out.println(\"Inventory check step \" + (i + 1) + \"/6\");\n\n            if (i == 2) {\n                System.out.println(\"Querying inventory database...\");\n            } else if (i == 4) {\n                System.out.println(\"Calculating available quantity...\");\n            }\n        }\n\n        int availableQuantity = (int) (Math.random() * 100) + 1;\n        System.out.println(\"Available quantity for item \" + itemId + \": \" + availableQuantity);\n    }"
+      }
+    ],
+    "count": 65,
+    "file_path": "examples/BigService.java",
+    "language": "java",
+    "query": "methods",
+    "note": "完全な結果には65個のメソッドが含まれています。上記は最初の1つのサンプルです。"
+  }
+}

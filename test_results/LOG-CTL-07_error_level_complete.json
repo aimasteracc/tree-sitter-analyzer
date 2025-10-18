@@ -1,0 +1,93 @@
+{
+  "test_case_id": "LOG-CTL-07",
+  "test_name": "ログレベル制御 (ERROR): ファイルログレベルがERRORになることの確認",
+  "execution_datetime": "2025-10-19T01:21:08.674Z",
+  "execution_method": "バッチファイル経由での環境変数設定 + run_test.py実行",
+  "environment_variables": {
+    "TREE_SITTER_ANALYZER_ENABLE_FILE_LOG": "true",
+    "TREE_SITTER_ANALYZER_FILE_LOG_LEVEL": "ERROR",
+    "TREE_SITTER_ANALYZER_LOG_DIR": "未設定（システムtempディレクトリ使用）",
+    "LOG_LEVEL": "未設定"
+  },
+  "test_parameters": {
+    "file_log_enabled": true,
+    "file_log_level": "ERROR",
+    "test_script": "run_test.py",
+    "target_file": "examples/BigService.java",
+    "execution_method": "test_log_ctl_07.bat"
+  },
+  "expected_results": {
+    "log_file_generated": true,
+    "log_file_location": "システムtempディレクトリ",
+    "log_levels_recorded": ["ERROR"],
+    "debug_logs_excluded": true,
+    "info_logs_excluded": true,
+    "warning_logs_excluded": true,
+    "error_logs_only": true
+  },
+  "actual_results": {
+    "log_file_generated": true,
+    "log_file_location": "C:\\Users\\[USER]\\AppData\\Local\\Temp\\tree_sitter_analyzer.log",
+    "execution_time_ms": "約3000",
+    "log_statistics": {
+      "debug_entries": 0,
+      "info_entries": 0,
+      "warning_entries": 0,
+      "error_entries": 1,
+      "total_entries": 1
+    },
+    "all_lower_levels_excluded": true,
+    "error_logs_only": true,
+    "file_logging_setup_message": "[logging_setup] File logging enabled: C:\\Users\\[USER]\\AppData\\Local\\Temp\\tree_sitter_analyzer.log"
+  },
+  "verification_steps": [
+    {
+      "step": "環境変数設定",
+      "command": "test_log_ctl_07.bat",
+      "result": "TREE_SITTER_ANALYZER_ENABLE_FILE_LOG=true, TREE_SITTER_ANALYZER_FILE_LOG_LEVEL=ERROR が正常に設定された"
+    },
+    {
+      "step": "テストスクリプト実行",
+      "command": "uv run python run_test.py",
+      "result": "正常実行完了、ファイルログ有効化メッセージが表示された"
+    },
+    {
+      "step": "ログファイル生成確認",
+      "command": "Test-Path 'C:\\Users\\[USER]\\AppData\\Local\\Temp\\tree_sitter_analyzer.log'",
+      "result": "ログファイルが正常に生成された"
+    },
+    {
+      "step": "ログレベル分布分析",
+      "command": "powershell -ExecutionPolicy Bypass -File analyze_logs.ps1",
+      "result": "DEBUG(0), INFO(0), WARNING(0), ERROR(1) - ERRORログのみが記録され、他のすべてのレベルが除外された"
+    }
+  ],
+  "test_status": "PASS",
+  "notes": [
+    "ファイルログが正常に有効化され、システムtempディレクトリに出力された",
+    "TREE_SITTER_ANALYZER_FILE_LOG_LEVEL='ERROR'設定により、ERRORレベルのログのみが記録された",
+    "DEBUG、INFO、WARNINGログが完全に除外された（すべて0個）ことを確認",
+    "ERRORレベルのログが適切に記録された（1個）",
+    "標準エラー出力にはDEBUG、INFO、WARNINGログが表示されており、ファイルロガーと標準ロガーが独立して動作している",
+    "ログファイルの総エントリ数は1個で、最も効率的なフィルタリングが実現された",
+    "最高レベルのログフィルタリングが正常に機能している"
+  ],
+  "comparison_with_all_tests": {
+    "log_ctl_04_total_entries": 76,
+    "log_ctl_05_total_entries": 14,
+    "log_ctl_06_total_entries": 3,
+    "log_ctl_07_total_entries": 1,
+    "filtering_progression": "DEBUG(76) → INFO(14) → WARNING(3) → ERROR(1) - 完全な段階的フィルタリング効果を確認",
+    "maximum_efficiency": "LOG-CTL-04比で98.7%削減、最小限のログ出力を実現"
+  },
+  "log_level_filtering_effectiveness": {
+    "debug_level_test": "全レベル記録（76エントリ）",
+    "info_level_test": "INFO以上記録（14エントリ、82%削減）",
+    "warning_level_test": "WARNING以上記録（3エントリ、96%削減）",
+    "error_level_test": "ERROR のみ記録（1エントリ、98.7%削減）",
+    "conclusion": "ログレベル制御機能が段階的に正確に動作し、期待通りのフィルタリング効果を実現"
+  },
+  "sample_log_entries": {
+    "error_sample": "2025-10-19 01:21:08,824 - tree_sitter_analyzer - ERROR - This is a test error message for single file test."
+  }
+}

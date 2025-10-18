@@ -1,0 +1,89 @@
+{
+  "test_case_id": "BC-MCP-03",
+  "test_name": "MCPツール (check_code_scale) 後方互換性テスト",
+  "execution_datetime": "2025-10-18T23:08:52.259Z",
+  "execution_method": "MCP経由",
+  "mcp_server": "tree-sitter-analyzer-bc-test",
+  "environment_variables": {
+    "TREE_SITTER_ANALYZER_ENABLE_FILE_LOG": "未設定",
+    "TREE_SITTER_ANALYZER_LOG_DIR": "未設定",
+    "TREE_SITTER_ANALYZER_FILE_LOG_LEVEL": "未設定",
+    "LOG_LEVEL": "未設定"
+  },
+  "test_parameters": {
+    "file_path": "examples/BigService.java"
+  },
+  "expected_results": {
+    "log_file_generated": false,
+    "tool_execution_success": true,
+    "output_format": "コード規模の解析結果"
+  },
+  "actual_results": {
+    "log_file_generated": false,
+    "tool_execution_success": true,
+    "execution_time_ms": 8934,
+    "output_summary": {
+      "file_path": "examples/BigService.java",
+      "language": "java"
+    }
+  },
+  "verification_steps": [
+    {
+      "step": "ログファイル生成確認",
+      "result": "ログファイル生成なし（期待通り）"
+    },
+    {
+      "step": "MCPツール実行",
+      "tool": "check_code_scale",
+      "result": "正常実行完了"
+    },
+    {
+      "step": "メトリクス検証",
+      "checks": [
+        "総行数: 1419行",
+        "コード行数: 906行",
+        "コメント行数: 246行",
+        "空行数: 267行",
+        "クラス数: 1個",
+        "メソッド数: 66個",
+        "フィールド数: 9個",
+        "複雑度合計: 348",
+        "平均複雑度: 5.27",
+        "最大複雑度: 15"
+      ],
+      "result": "すべて妥当な値"
+    }
+  ],
+  "test_status": "PASS",
+  "notes": [
+    "ログファイルが生成されていないことを確認済み",
+    "BigService.javaのコード規模が正確に解析された",
+    "行数の内訳（コード、コメント、空行）が適切に分類された",
+    "要素数（クラス、メソッド、フィールド等）が正確にカウントされた",
+    "複雑度メトリクスが適切に計算された",
+    "BC-MCP-01、BC-MCP-02の結果と一貫性がある（メソッド数66個、クラス数1個等）"
+  ],
+  "complete_actual_output": {
+    "file_path": "examples/BigService.java",
+    "language": "java",
+    "metrics": {
+      "lines_total": 1419,
+      "lines_code": 906,
+      "lines_comment": 246,
+      "lines_blank": 267,
+      "elements": {
+        "classes": 1,
+        "methods": 66,
+        "fields": 9,
+        "imports": 8,
+        "packages": 1,
+        "total": 85
+      },
+      "complexity": {
+        "total": 348,
+        "average": 5.27,
+        "max": 15
+      }
+    }
+  }
+}

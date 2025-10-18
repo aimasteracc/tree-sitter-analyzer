@@ -1,0 +1,61 @@
+{
+  "test_case_id": "[TEST_CASE_ID]",
+  "test_name": "[TEST_NAME]",
+  "execution_datetime": "[EXECUTION_DATETIME]",
+  "execution_method": "[EXECUTION_METHOD]",
+  "cli_command": "[CLI_COMMAND]",
+  "mcp_server": "[MCP_SERVER]",
+  "environment_variables": {
+    "TREE_SITTER_ANALYZER_ENABLE_FILE_LOG": "未設定",
+    "TREE_SITTER_ANALYZER_LOG_DIR": "未設定",
+    "TREE_SITTER_ANALYZER_FILE_LOG_LEVEL": "未設定",
+    "LOG_LEVEL": "未設定"
+  },
+  "test_parameters": {
+    "[PARAMETER_KEY]": "[PARAMETER_VALUE]"
+  },
+  "expected_results": {
+    "log_file_generated": false,
+    "command_execution_success": true,
+    "output_format": "[EXPECTED_OUTPUT_FORMAT]",
+    "exit_code": 0
+  },
+  "actual_results": {
+    "log_file_generated": false,
+    "command_execution_success": true,
+    "exit_code": 0,
+    "execution_time_ms": "[EXECUTION_TIME]",
+    "output_summary": {
+      "[OUTPUT_SUMMARY_KEY]": "[OUTPUT_SUMMARY_VALUE]"
+    }
+  },
+  "verification_steps": [
+    {
+      "step": "環境変数クリア確認",
+      "command": "echo Environment variables check",
+      "result": "全てのログ関連環境変数が未設定であることを確認"
+    },
+    {
+      "step": "ログファイル生成確認",
+      "command": "Get-ChildItem -Path . -Filter '*.log' -Recurse | Where-Object { $_.LastWriteTime -gt (Get-Date).AddMinutes(-2) }",
+      "result": "ログファイル生成なし（期待通り）"
+    },
+    {
+      "step": "[TEST_EXECUTION_STEP]",
+      "command": "[TEST_COMMAND]",
+      "result": "正常実行完了（終了コード: 0）"
+    }
+  ],
+  "test_status": "PASS",
+  "notes": [
+    "ログファイルが生成されていないことを確認済み",
+    "[TEST_SPECIFIC_NOTE_1]",
+    "[TEST_SPECIFIC_NOTE_2]",
+    "アプリケーションが正常終了"
+  ],
+  "complete_actual_output": {
+    "[OUTPUT_KEY]": "[ACTUAL_OUTPUT_CONTENT]",
+    "output_type": "[OUTPUT_TYPE]",
+    "note": "実際のコマンド出力結果をそのままの順序で記録すること。配列の場合は要素の順序を正確に保持する。"
+  }
+}

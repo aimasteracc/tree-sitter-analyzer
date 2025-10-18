@@ -1,0 +1,115 @@
+{
+  "test_case_id": "INT-LOG-04",
+  "test_name": "標準ロガーとファイルロガーのレベル分離: 標準ロガー(WARNING)とファイルロガー(DEBUG)のレベルを個別に設定した場合の動作確認",
+  "execution_datetime": "2025-10-19T01:39:14.727Z",
+  "execution_method": "バッチファイル経由での環境変数設定 + run_test.py実行",
+  "environment_variables": {
+    "LOG_LEVEL": "WARNING",
+    "TREE_SITTER_ANALYZER_ENABLE_FILE_LOG": "true",
+    "TREE_SITTER_ANALYZER_LOG_DIR": "./test_logs_separation",
+    "TREE_SITTER_ANALYZER_FILE_LOG_LEVEL": "DEBUG"
+  },
+  "test_parameters": {
+    "standard_logger_level": "WARNING",
+    "file_logger_level": "DEBUG",
+    "custom_log_directory": "./test_logs_separation",
+    "test_script": "run_test.py"
+  },
+  "expected_results": {
+    "standard_error_output": "WARNINGとERRORログのみが出力される",
+    "log_file_content": "DEBUG、INFO、WARNING、ERRORのすべてのログが出力される",
+    "logger_level_separation": true,
+    "independent_level_control": true
+  },
+  "actual_results": {
+    "standard_error_output": {
+      "debug_logs_displayed": false,
+      "info_logs_displayed": false,
+      "warning_logs_displayed": true,
+      "error_logs_displayed": true,
+      "behavior_as_expected": true
+    },
+    "log_file_content": {
+      "debug_entries": 0,
+      "info_entries": 0,
+      "warning_entries": 2,
+      "error_entries": 1,
+      "total_entries": 3,
+      "all_levels_recorded": false,
+      "behavior_as_expected": false
+    },
+    "logger_level_separation": false,
+    "independent_level_control": false
+  },
+  "verification_steps": [
+    {
+      "step": "環境変数設定確認",
+      "command": "test_int_log_04.bat",
+      "result": "LOG_LEVEL=WARNING, TREE_SITTER_ANALYZER_FILE_LOG_LEVEL=DEBUG が正常に設定された"
+    },
+    {
+      "step": "標準エラー出力確認",
+      "observation": "WARNINGとERRORログのみが表示された",
+      "result": "期待通り（標準ロガーレベルWARNINGが正常に動作）"
+    },
+    {
+      "step": "ログファイル生成確認",
+      "command": "Test-Path './test_logs_separation/tree_sitter_analyzer.log'",
+      "result": "ログファイルがカスタムディレクトリに正常に生成された"
+    },
+    {
+      "step": "ログファイル内容分析",
+      "command": "powershell -ExecutionPolicy Bypass -Command \"[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; & '.\\analyze_logs.ps1'\"",
+      "result": "DEBUG(0), INFO(0), WARNING(2), ERROR(1) - DEBUGとINFOログが記録されていない"
+    },
+    {
+      "step": "ログファイル詳細確認",
+      "command": "Get-Content test_logs_separation/tree_sitter_analyzer.log",
+      "result": "WARNINGとERRORログのみが記録されていることを確認"
+    }
+  ],
+  "test_status": "PARTIAL_PASS",
+  "implementation_limitation_discovered": {
+    "issue": "標準ロガーのレベルがファイルロガーのレベルに影響している",
+    "description": "LOG_LEVEL=WARNINGが設定されると、TREE_SITTER_ANALYZER_FILE_LOG_LEVEL=DEBUGを設定してもファイルログにDEBUGとINFOログが記録されない",
+    "expected_behavior": "ファイルロガーは独立してDEBUGレベルで動作すべき",
+    "actual_behavior": "ファイルロガーも標準ロガーのWARNINGレベルに制限される",
+    "impact": "ファイルログとコンソール出力の独立したレベル制御ができない"
+  },
+  "notes": [
+    "標準エラー出力は期待通りWARNINGとERRORのみが表示された",
+    "ログファイルには期待に反してWARNINGとERRORのみが記録された",
+    "TREE_SITTER_ANALYZER_FILE_LOG_LEVEL=DEBUGの設定が効果を発揮していない",
+    "LOG_LEVEL=WARNINGがファイルロガーにも影響している",
+    "これは現在の実装における制限事項として記録する",
+    "完全なロガーレベル分離機能は未実装であることが判明"
+  ],
+  "comparison_with_other_tests": {
+    "log_ctl_04_debug_only": "LOG-CTL-04（DEBUGレベル単独）では76エントリ記録",
+    "log_ctl_05_info_only": "LOG-CTL-05（INFOレベル単独）では14エントリ記録",
+    "int_log_04_mixed_levels": "INT-LOG-04（混合レベル）では3エントリのみ記録",
+    "conclusion": "標準ロガーレベルがファイルロガーレベルを上書きしている"
+  },
+  "technical_analysis": {
+    "root_cause": "ロガー階層において標準ロガーのレベルがファイルハンドラーにも適用されている",
+    "logger_architecture": "単一ロガーインスタンスに複数ハンドラーが追加される構造",
+    "level_inheritance": "ロガーレベルがすべてのハンドラーに継承される",
+    "handler_level_independence": "ハンドラー個別のレベル設定が機能していない可能性"
+  },
+  "recommendations": {
+    "implementation_improvement": "ファイルハンドラーとコンソールハンドラーの独立したレベル制御を実装",
+    "architecture_review": "ロガー設定の見直しが必要",
+    "feature_enhancement": "真の分離ログレベル制御機能の追加を検討",
+    "documentation_update": "現在の制限事項をドキュメントに明記"
+  },
+  "complete_log_content": [
+    "2025-10-19 01:39:14,727 - tree_sitter_analyzer - WARNING - No dynamic query module for 'unknown', using predefined queries.",
+    "2025-10-19 01:39:14,800 - tree_sitter_analyzer - WARNING - This is a test warning message for single file test.",
+    "2025-10-19 01:39:14,800 - tree_sitter_analyzer - ERROR - This is a test error message for single file test."
+  ],
+  "console_output_observed": [
+    "2025-10-19 01:39:14,727 - tree_sitter_analyzer - WARNING - No dynamic query module for 'unknown', using predefined queries.",
+    "2025-10-19 01:39:14,800 - tree_sitter_analyzer - WARNING - This is a test warning message for single file test.",
+    "2025-10-19 01:39:14,800 - tree_sitter_analyzer - ERROR - This is a test error message for single file test."
+  ]
+}

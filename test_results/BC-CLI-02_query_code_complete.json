@@ -1,0 +1,216 @@
+{
+  "test_case_id": "BC-CLI-02",
+  "test_name": "CLI機能 (query): ログ機能の環境変数を設定せずにCLIコマンドが正常に動作することを確認する",
+  "execution_datetime": "2025-10-18T15:05:10.912Z",
+  "execution_method": "CLI",
+  "cli_command": "uv run python -m tree_sitter_analyzer examples/Sample.java --query-key methods",
+  "mcp_server": "N/A",
+  "environment_variables": {
+    "TREE_SITTER_ANALYZER_ENABLE_FILE_LOG": "未設定",
+    "TREE_SITTER_ANALYZER_LOG_DIR": "未設定",
+    "TREE_SITTER_ANALYZER_FILE_LOG_LEVEL": "未設定",
+    "LOG_LEVEL": "未設定"
+  },
+  "test_parameters": {
+    "file_path": "examples/Sample.java",
+    "query_key": "methods"
+  },
+  "expected_results": {
+    "log_file_generated": false,
+    "command_execution_success": true,
+    "output_format": "JSON配列形式",
+    "exit_code": 0
+  },
+  "actual_results": {
+    "log_file_generated": false,
+    "command_execution_success": true,
+    "exit_code": 0,
+    "execution_time_ms": "約4000",
+    "output_summary": {
+      "methods_extracted": 22,
+      "output_format": "JSON配列",
+      "method_types": "abstract, static, public, private, protected, generic, interface, enum methods"
+    }
+  },
+  "verification_steps": [
+    {
+      "step": "環境変数クリア確認",
+      "command": "powershell -Command \"Remove-Item Env:TREE_SITTER_ANALYZER_ENABLE_FILE_LOG -ErrorAction SilentlyContinue; Remove-Item Env:TREE_SITTER_ANALYZER_LOG_DIR -ErrorAction SilentlyContinue; Remove-Item Env:TREE_SITTER_ANALYZER_FILE_LOG_LEVEL -ErrorAction SilentlyContinue; Remove-Item Env:LOG_LEVEL -ErrorAction SilentlyContinue; echo 'Environment variables cleared'\"",
+      "result": "全てのログ関連環境変数が未設定であることを確認"
+    },
+    {
+      "step": "ログファイル生成確認",
+      "command": "Get-ChildItem -Path . -Name \"*.log\" -Recurse | ForEach-Object { Get-Item $_ | Select-Object Name, LastWriteTime } | Where-Object { $_.LastWriteTime -gt (Get-Date).AddMinutes(-5) }",
+      "result": "ログファイル生成なし（期待通り）"
+    },
+    {
+      "step": "CLIクエリコマンド実行",
+      "command": "uv run python -m tree_sitter_analyzer examples/Sample.java --query-key methods",
+      "result": "正常実行完了（終了コード: 0）"
+    }
+  ],
+  "test_status": "PASS",
+  "notes": [
+    "ログファイルが生成されていないことを確認済み",
+    "22個のメソッド定義が正常に抽出された",
+    "各メソッドの詳細情報（capture_name, node_type, start_line, end_line, content）が完全に取得",
+    "検出されたメソッド種類: abstract, static, public, private, protected, generic, interface, enum methods",
+    "アプリケーションが正常終了"
+  ],
+  "complete_actual_output": [
+    {
+      "capture_name": "method",
+      "node_type": "method_declaration",
+      "start_line": 118,
+      "end_line": 120,
+      "content": "void packageMethod() {\n        System.out.println(\"Package method\");\n    }"
+    },
+    {
+      "capture_name": "method",
+      "node_type": "method_declaration",
+      "start_line": 138,
+      "end_line": 141,
+      "content": "@Override\n    public void doSomething() {\n        System.out.println(\"Implementation of TestInterface method\");\n    }"
+    },
+    {
+      "capture_name": "method",
+      "node_type": "method_declaration",
+      "start_line": 154,
+      "end_line": 158,
+      "content": "public <T> List<T> createList(T item) {\n        List<T> list = new ArrayList<>();\n        list.add(item);\n        return list;\n    }"
+    },
+    {
+      "capture_name": "method",
+      "node_type": "method_declaration",
+      "start_line": 42,
+      "end_line": 44,
+      "content": "void parentMethod() {\n        System.out.println(\"Parent method\");\n    }"
+    },
+    {
+      "capture_name": "method",
+      "node_type": "method_declaration",
+      "start_line": 113,
+      "end_line": 115,
+      "content": "protected void setValue(int value) {\n        this.value = value;\n    }"
+    },
+    {
+      "capture_name": "method",
+      "node_type": "method_declaration",
+      "start_line": 133,
+      "end_line": 135,
+      "content": "public final void finalMethod() {\n        System.out.println(\"This method cannot be overridden\");\n    }"
+    },
+    {
+      "capture_name": "method",
+      "node_type": "method_declaration",
+      "start_line": 36,
+      "end_line": 39,
+      "content": "@Override\n    void abstractMethod() {\n        System.out.println(\"Implementation of abstract method\");\n    }"
+    },
+    {
+      "capture_name": "method",
+      "node_type": "method_declaration",
+      "start_line": 56,
+      "end_line": 58,
+      "content": "default void defaultMethod() {\n        System.out.println(\"Default method in interface\");\n    }"
+    },
+    {
+      "capture_name": "method",
+      "node_type": "method_declaration",
+      "start_line": 175,
+      "end_line": 177,
+      "content": "public String getDescription() {\n        return description;\n    }"
+    },
+    {
+      "capture_name": "method",
+      "node_type": "method_declaration",
+      "start_line": 68,
+      "end_line": 68,
+      "content": "void anotherMethod();"
+    },
+    {
+      "capture_name": "method",
+      "node_type": "method_declaration",
+      "start_line": 84,
+      "end_line": 86,
+      "content": "public void innerMethod() {\n            System.out.println(\"Inner class method, value: \" + value);\n        }"
+    },
+    {
+      "capture_name": "method",
+      "node_type": "method_declaration",
+      "start_line": 31,
+      "end_line": 33,
+      "content": "static void staticParentMethod() {\n        System.out.println(\"Static parent method\");\n    }"
+    },
+    {
+      "capture_name": "method",
+      "node_type": "method_declaration",
+      "start_line": 12,
+      "end_line": 14,
+      "content": "void concreteMethod() {\n        System.out.println(\"Concrete method in abstract class\");\n    }"
+    },
+    {
+      "capture_name": "method",
+      "node_type": "method_declaration",
+      "start_line": 128,
+      "end_line": 130,
+      "content": "public static void staticMethod() {\n        System.out.println(\"Static method\");\n    }"
+    },
+    {
+      "capture_name": "method",
+      "node_type": "method_declaration",
+      "start_line": 149,
+      "end_line": 151,
+      "content": "public <T> void genericMethod(T input) {\n        System.out.println(\"Generic input: \" + input);\n    }"
+    },
+    {
+      "capture_name": "method",
+      "node_type": "method_declaration",
+      "start_line": 91,
+      "end_line": 93,
+      "content": "public void nestedMethod() {\n            System.out.println(\"Static nested class method\");\n        }"
+    },
+    {
+      "capture_name": "method",
+      "node_type": "method_declaration",
+      "start_line": 9,
+      "end_line": 9,
+      "content": "abstract void abstractMethod();"
+    },
+    {
+      "capture_name": "method",
+      "node_type": "method_declaration",
+      "start_line": 61,
+      "end_line": 63,
+      "content": "static void staticInterfaceMethod() {\n        System.out.println(\"Static method in interface\");\n    }"
+    },
+    {
+      "capture_name": "method",
+      "node_type": "method_declaration",
+      "start_line": 108,
+      "end_line": 110,
+      "content": "public String getValue() {\n        return \"Value: \" + value;\n    }"
+    },
+    {
+      "capture_name": "method",
+      "node_type": "method_declaration",
+      "start_line": 123,
+      "end_line": 125,
+      "content": "private void privateMethod() {\n        System.out.println(\"Private method\");\n    }"
+    },
+    {
+      "capture_name": "method",
+      "node_type": "method_declaration",
+      "start_line": 143,
+      "end_line": 146,
+      "content": "@Override\n    public void anotherMethod() {\n        System.out.println(\"Implementation of AnotherInterface method\");\n    }"
+    },
+    {
+      "capture_name": "method",
+      "node_type": "method_declaration",
+      "start_line": 53,
+      "end_line": 53,
+      "content": "void doSomething();"
+    }
+  ]
+}

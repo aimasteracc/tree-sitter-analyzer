@@ -1,0 +1,119 @@
+{
+  "test_case_id": "LOG-CTL-01",
+  "test_name": "ログ制御機能 (デフォルト動作): ファイルログが無効であることの確認",
+  "execution_datetime": "2025-10-19T00:54:04.605Z",
+  "execution_method": "run_test.py経由",
+  "environment_variables": {
+    "TREE_SITTER_ANALYZER_ENABLE_FILE_LOG": "未設定",
+    "TREE_SITTER_ANALYZER_LOG_DIR": "未設定",
+    "TREE_SITTER_ANALYZER_FILE_LOG_LEVEL": "未設定",
+    "LOG_LEVEL": "未設定"
+  },
+  "test_parameters": {
+    "test_script": "run_test.py",
+    "target_file": "examples/BigService.java"
+  },
+  "expected_results": {
+    "log_file_generated": false,
+    "console_log_output": true,
+    "stderr_output_visible": true
+  },
+  "actual_results": {
+    "log_file_generated": false,
+    "console_log_output": true,
+    "stderr_output_visible": true,
+    "execution_time_ms": 1976,
+    "output_summary": {
+      "console_logs_detected": true,
+      "debug_logs_visible": true,
+      "info_logs_visible": true,
+      "warning_logs_visible": true,
+      "error_logs_visible": true,
+      "file_analysis_successful": true
+    }
+  },
+  "verification_steps": [
+    {
+      "step": "環境変数クリア確認",
+      "command": "Remove-Item Env:TREE_SITTER_ANALYZER_* -ErrorAction SilentlyContinue",
+      "result": "全てのログ関連環境変数が未設定であることを確認"
+    },
+    {
+      "step": "テスト実行前ログファイル確認",
+      "command": "Test-Path tree_sitter_analyzer.log",
+      "result": "現在ディレクトリにログファイル生成なし"
+    },
+    {
+      "step": "run_test.py実行",
+      "command": "uv run python run_test.py",
+      "result": "正常実行完了（標準エラー出力にログが表示）"
+    },
+    {
+      "step": "テスト実行後ログファイル確認（現在ディレクトリ）",
+      "command": "Test-Path tree_sitter_analyzer.log",
+      "result": "現在ディレクトリにログファイル生成なし（期待通り）"
+    },
+    {
+      "step": "テスト実行後ログファイル確認（tempディレクトリ）",
+      "command": "Get-Item C:\\Users\\[USER]\\AppData\\Local\\Temp\\tree_sitter_analyzer.log",
+      "result": "tempディレクトリの既存ログファイルは古い（2025/10/18 22:16:27）、新しいログファイル生成なし（期待通り）"
+    }
+  ],
+  "test_status": "PASS",
+  "notes": [
+    "環境変数が未設定の状態で、ファイルログが生成されないことを確認済み",
+    "標準エラー出力にDEBUG、INFO、WARNING、ERRORレベルのログが正常に表示",
+    "BigService.javaの解析が正常に実行され、66個のメソッド、9個のフィールドが検出",
+    "プラグインの読み込み、パーサーの初期化、クエリ実行が全て正常に動作",
+    "tempディレクトリの既存ログファイルは更新されず、新しいファイルも生成されない",
+    "デフォルト動作（ファイルログ無効）が正しく機能している"
+  ],
+  "complete_actual_output": {
+    "console_stderr_logs": [
+      "2025-10-19 00:54:04,605 - tree_sitter_analyzer - INFO - --- Starting single file test for examples/BigService.java ---",
+      "2025-10-19 00:54:04,605 - tree_sitter_analyzer - DEBUG - Calling analyze_file for examples/BigService.java",
+      "2025-10-19 00:54:04,605 - tree_sitter_analyzer.core.parser - INFO - Parser initialized successfully",
+      "2025-10-19 00:54:04,606 - tree_sitter_analyzer.core.query - INFO - QueryExecutor initialized successfully",
+      "2025-10-19 00:54:05,432 - tree_sitter_analyzer - DEBUG - Loaded plugin from entry point: java",
+      "2025-10-19 00:54:05,435 - tree_sitter_analyzer - DEBUG - Loaded plugin from entry point: javascript",
+      "2025-10-19 00:54:05,437 - tree_sitter_analyzer - DEBUG - Loaded plugin from entry point: python",
+      "2025-10-19 00:54:05,438 - tree_sitter_analyzer - DEBUG - Loaded local plugin: JavaPlugin",
+      "2025-10-19 00:54:05,438 - tree_sitter_analyzer - DEBUG - Loaded local plugin: JavaScriptPlugin",
+      "2025-10-19 00:54:05,438 - tree_sitter_analyzer - DEBUG - Loaded local plugin: PythonPlugin",
+      "2025-10-19 00:54:05,438 - tree_sitter_analyzer - DEBUG - Skipping duplicate plugin for language: java",
+      "2025-10-19 00:54:05,438 - tree_sitter_analyzer - DEBUG - Skipping duplicate plugin for language: javascript",
+      "2025-10-19 00:54:05,438 - tree_sitter_analyzer - DEBUG - Skipping duplicate plugin for language: python",
+      "2025-10-19 00:54:05,438 - tree_sitter_analyzer - INFO - Successfully loaded 3 plugins",
+      "2025-10-19 00:54:05,439 - tree_sitter_analyzer.core.engine - INFO - Loaded 3 plugins successfully",
+      "2025-10-19 00:54:05,439 - tree_sitter_analyzer.core.engine - INFO - AnalysisEngine initialized successfully",
+      "2025-10-19 00:54:05,468 - tree_sitter_analyzer - DEBUG - Detected encoding: utf-8 (confidence: 0.99)",
+      "2025-10-19 00:54:05,468 - tree_sitter_analyzer - DEBUG - Cached encoding for examples\\BigService.java: utf-8",
+      "2025-10-19 00:54:05,469 - tree_sitter_analyzer.core.parser - DEBUG - Read file examples\\BigService.java with encoding utf-8",
+      "2025-10-19 00:54:05,485 - tree_sitter_analyzer.core.parser - DEBUG - Successfully parsed java code",
+      "2025-10-19 00:54:05,489 - tree_sitter_analyzer - WARNING - No dynamic query module for 'unknown', using predefined queries.",
+      "2025-10-19 00:54:05,490 - tree_sitter_analyzer - DEBUG - Extracted 1 packages",
+      "2025-10-19 00:54:05,506 - tree_sitter_analyzer - DEBUG - Iterative traversal processed 1002 nodes",
+      "2025-10-19 00:54:05,506 - tree_sitter_analyzer - DEBUG - Extracted 66 methods",
+      "2025-10-19 00:54:05,508 - tree_sitter_analyzer - DEBUG - Iterative traversal processed 1002 nodes",
+      "2025-10-19 00:54:05,508 - tree_sitter_analyzer - DEBUG - Extracted 1 classes",
+      "2025-10-19 00:54:05,508 - tree_sitter_analyzer - DEBUG - Starting field extraction with iterative traversal",
+      "2025-10-19 00:54:05,510 - tree_sitter_analyzer - DEBUG - Iterative traversal processed 1055 nodes",
+      "2025-10-19 00:54:05,510 - tree_sitter_analyzer - DEBUG - Extracted 9 fields",
+      "2025-10-19 00:54:05,510 - tree_sitter_analyzer - DEBUG - Field 0: DEFAULT_ENCODING (String)",
+      "2025-10-19 00:54:05,510 - tree_sitter_analyzer - DEBUG - Field 1: MAX_RETRY_COUNT (int)",
+      "2025-10-19 00:54:05,511 - tree_sitter_analyzer - DEBUG - Field 2: TIMEOUT_MILLISECONDS (long)",
+      "2025-10-19 00:54:05,512 - tree_sitter_analyzer - DEBUG - Extracted 8 imports",
+      "2025-10-19 00:54:05,518 - tree_sitter_analyzer - INFO - analyze_file finished successfully for examples/BigService.java.",
+      "2025-10-19 00:54:05,580 - tree_sitter_analyzer - WARNING - This is a test warning message for single file test.",
+      "2025-10-19 00:54:05,581 - tree_sitter_analyzer - ERROR - This is a test error message for single file test.",
+      "2025-10-19 00:54:05,581 - tree_sitter_analyzer - INFO - --- Single file test finished for examples/BigService.java ---"
+    ],
+    "temp_log_file_status": {
+      "path": "C:\\Users\\[USER]\\AppData\\Local\\Temp\\tree_sitter_analyzer.log",
+      "exists": true,
+      "last_write_time": "2025/10/18 22:16:27",
+      "updated_during_test": false,
+      "note": "既存の古いログファイルは更新されず、新しいファイルも生成されない"
+    }
+  }
+}
