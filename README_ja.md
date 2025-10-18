@@ -4,11 +4,11 @@
 
 [![Pythonバージョン](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![ライセンス](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![テスト](https://img.shields.io/badge/tests-1893%20passed-brightgreen.svg)](#品質保証)
+[![テスト](https://img.shields.io/badge/tests-68%20test%20files-brightgreen.svg)](#品質保証)
 [![カバレッジ](https://img.shields.io/badge/coverage-71.48%25-green.svg)](#品質保証)
 [![品質](https://img.shields.io/badge/quality-enterprise%20grade-blue.svg)](#品質保証)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
-[![バージョン](https://img.shields.io/badge/version-1.6.1-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
+[![バージョン](https://img.shields.io/badge/version-1.6.1.1-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
 ## 🚀 AI時代のエンタープライズグレードコード解析ツール
@@ -63,7 +63,7 @@ Tree-sitter Analyzerは、AI時代のために設計されたエンタープラ�
 - **その他の言語** - C/C++、Rust、Goの基本サポート
 
 ### 🏆 本番環境対応
-- **1,893のテスト** - 100%合格率、エンタープライズグレードの品質保証
+- **68のテストファイル** - 包括的なテストカバレッジ、エンタープライズグレードの品質保証
 - **71.48%カバレッジ** - 包括的なテストスイート
 - **クロスプラットフォームサポート** - Windows、macOS、Linuxとの完全な互換性
 - **継続的なメンテナンス** - アクティブな開発とコミュニティサポート
@@ -570,7 +570,7 @@ fdとripgrepに基づく強力なファイル検出とコンテンツ検索：
 ## 🏆 品質保証
 
 ### 📊 品質メトリクス
-- **1,893のテスト** - 100%合格率 ✅
+- **68のテストファイル** - 包括的なテストカバレッジ ✅
 - **71.48%コードカバレッジ** - 包括的なテストスイート
 - **ゼロテスト失敗** - 本番環境対応
 - **クロスプラットフォームサポート** - Windows、macOS、Linux
@@ -623,7 +623,7 @@ uv run pytest tests/test_mcp_server_initialization.py -v
 **検証環境：**
 - オペレーティングシステム：Windows 10、macOS、Linux
 - Pythonバージョン：3.10+
-- プロジェクトバージョン：tree-sitter-analyzer v1.6.0
+- プロジェクトバージョン：tree-sitter-analyzer v1.6.1.1
 - テストファイル：BigService.java（1419行）、sample.py（256行）、MultiClass.java（54行）
 
 ---

@@ -1,5 +1,29 @@
 # Changelog
 
+## [1.6.1.1] - 2025-10-18
+
+### Fixed
+- **🔧 Logging Control Enhancement**: Enhanced logging control functionality for better debugging and monitoring
+  - **Comprehensive Test Framework**: Added extensive test cases for logging control across all levels (DEBUG, INFO, WARNING, ERROR)
+  - **Backward Compatibility**: Maintained full compatibility with CLI and MCP interfaces
+  - **Integration Testing**: Added comprehensive integration tests for logging variables and performance impact
+  - **Test Automation**: Implemented robust test automation scripts and result templates
+
+### Added
+- **📋 Test Infrastructure**: Complete test framework for v1.6.1.1 validation
+  - **68 Test Files**: Comprehensive test coverage across all functionality
+  - **Logging Control Tests**: Full coverage of logging level controls and file output
+  - **Performance Testing**: Added performance impact validation for logging operations
+  - **Automation Scripts**: Test execution and result analysis automation
+
+### Technical Details
+- **Files Modified**: Enhanced `utils.py` with improved logging functionality
+- **Test Coverage**: 68 test files ensuring comprehensive validation
+- **Quality Metrics**: Maintained high code quality standards
+- **Breaking Changes**: None - all improvements are backward compatible
+
+This hotfix release addresses logging control requirements identified in v1.6.1 and establishes a robust testing framework for future development while maintaining full backward compatibility.
+
 ## [1.6.0] - 2025-10-06
 
 ### Added

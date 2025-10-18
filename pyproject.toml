@@ -371,7 +371,7 @@ directory = "htmlcov"
 # MCP server configuration
 [tool.mcp]
 server_name = "tree-sitter-analyzer"
-server_version = "1.6.1"
+server_version = "1.6.1.1"
 description = "Tree-sitter based code analysis MCP server with multi-language support"
 capabilities = [
     "check_code_scale",
