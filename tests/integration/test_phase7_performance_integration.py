@@ -11,6 +11,7 @@ Phase 7: Performance Integration Tests
 
 import asyncio
 import gc
+import shutil
 import tempfile
 import time
 from pathlib import Path
@@ -486,6 +487,10 @@ export default GeneratedComponent{i};
             (js_root / f"GeneratedComponent{i}.js").write_text(js_content)
 
     @pytest.mark.asyncio
+    @pytest.mark.skipif(
+        not shutil.which("fd"), 
+        reason="fd command not available - skipping fd-dependent test"
+    )
     async def test_large_scale_file_analysis_performance(self, large_scale_project):
         """大規模ファイル分析のパフォーマンステスト"""
         profiler = PerformanceProfiler()
@@ -504,7 +509,7 @@ export default GeneratedComponent{i};
             }
         )
 
-        assert file_list_result["success"]
+        assert file_list_result["success"], f"File list failed: {file_list_result}"
         assert file_list_result["count"] == 180  # 100 Java + 50 Python + 30 JS
 
         # 2. 複数ファイルの並行分析
@@ -557,6 +562,10 @@ export default GeneratedComponent{i};
         )
 
     @pytest.mark.asyncio
+    @pytest.mark.skipif(
+        not shutil.which("fd") or not shutil.which("rg"), 
+        reason="fd/rg commands not available - skipping search-dependent test"
+    )
     async def test_concurrent_search_performance(self, large_scale_project):
         """同時検索のパフォーマンステスト"""
         profiler = PerformanceProfiler()
@@ -622,6 +631,10 @@ export default GeneratedComponent{i};
         )
 
     @pytest.mark.asyncio
+    @pytest.mark.skipif(
+        not shutil.which("fd") or not shutil.which("rg"), 
+        reason="fd/rg commands not available - skipping search-dependent test"
+    )
     async def test_memory_efficiency_under_load(self, large_scale_project):
         """負荷下でのメモリ効率性テスト"""
         profiler = PerformanceProfiler()

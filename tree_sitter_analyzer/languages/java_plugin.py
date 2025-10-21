@@ -1034,6 +1034,24 @@ class JavaElementExtractor(ElementExtractor):
 
         return None
 
+    def _extract_class_name(self, node: "tree_sitter.Node") -> Optional[str]:
+        """Extract class name from class declaration node"""
+        try:
+            for child in node.children:
+                if child.type == "identifier":
+                    return self._get_node_text_optimized(child)
+        except Exception as e:
+            log_debug(f"Failed to extract class name: {e}")
+        return None
+
+    def _calculate_complexity_optimized(self, node: "tree_sitter.Node") -> int:
+        """Calculate cyclomatic complexity for a node (optimized version)"""
+        try:
+            return self._calculate_cyclomatic_complexity(node)
+        except Exception as e:
+            log_debug(f"Failed to calculate complexity: {e}")
+            return 1
+
 
 class JavaLanguagePlugin(LanguagePlugin):
     """Java language plugin implementation"""
@@ -1042,6 +1060,7 @@ class JavaLanguagePlugin(LanguagePlugin):
         """Initialize the Java language plugin."""
         super().__init__()
         self.extractor = JavaElementExtractor()
+        self._language_cache: Optional["tree_sitter.Language"] = None
 
     def get_language_name(self) -> str:
         """Get the language name."""
@@ -1051,9 +1070,20 @@ class JavaLanguagePlugin(LanguagePlugin):
         """Get supported file extensions."""
         return [".java"]
 
+    def create_extractor(self) -> ElementExtractor:
+        """Create a new element extractor instance."""
+        return JavaElementExtractor()
+
     def create_element_extractor(self) -> ElementExtractor:
         """Create a new element extractor instance."""
         return JavaElementExtractor()
+
+    async def analyze_file(self, file_path: str, request: "AnalysisRequest") -> "AnalysisResult":
+        """Analyze Java file and return structured results."""
+        from ..core.analysis_engine import UnifiedAnalysisEngine
+
+        engine = UnifiedAnalysisEngine()
+        return await engine.analyze(request)
 
     async def analyze(self, request: "AnalysisRequest") -> "AnalysisResult":
         """Analyze Java code and return structured results."""
@@ -1067,3 +1097,25 @@ class JavaLanguagePlugin(LanguagePlugin):
         return any(
             file_path.lower().endswith(ext) for ext in self.get_file_extensions()
         )
+
+    def get_tree_sitter_language(self) -> Optional["tree_sitter.Language"]:
+        """Get the Tree-sitter language object for Java"""
+        if self._language_cache is None:
+            try:
+                import tree_sitter
+                import tree_sitter_java as tsjava
+
+                # PyCapsuleオブジェクトをLanguageオブジェクトに変換
+                language_capsule = tsjava.language()
+                # 如果language_capsule已经是Language对象（比如在测试中），直接使用它
+                if hasattr(language_capsule, 'query'):
+                    self._language_cache = language_capsule
+                else:
+                    self._language_cache = tree_sitter.Language(language_capsule)
+            except ImportError:
+                log_error("tree-sitter-java not available")
+                return None
+            except Exception as e:
+                log_error(f"Failed to load Java language: {e}")
+                return None
+        return self._language_cache

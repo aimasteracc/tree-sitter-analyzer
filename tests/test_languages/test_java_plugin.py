@@ -2,7 +2,7 @@
 """
 Tests for tree_sitter_analyzer.languages.java_plugin module.
 
-This module tests the JavaPlugin class which provides Java language
+This module tests the JavaLanguagePlugin class which provides Java language
 support in the new plugin architecture.
 """
 
@@ -12,7 +12,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from tree_sitter_analyzer.languages.java_plugin import JavaElementExtractor, JavaPlugin
+from tree_sitter_analyzer.languages.java_plugin import JavaElementExtractor, JavaLanguagePlugin
 from tree_sitter_analyzer.models import Class, Function, Import
 from tree_sitter_analyzer.plugins.base import ElementExtractor, LanguagePlugin
 
@@ -268,55 +268,55 @@ public class Calculator {
         assert complex_complexity >= 1
 
 
-class TestJavaPlugin:
-    """Test cases for JavaPlugin class"""
+class TestJavaLanguagePlugin:
+    """Test cases for JavaLanguagePlugin class"""
 
     @pytest.fixture
-    def plugin(self) -> JavaPlugin:
-        """Create a JavaPlugin instance for testing"""
-        return JavaPlugin()
+    def plugin(self) -> JavaLanguagePlugin:
+        """Create a JavaLanguagePlugin instance for testing"""
+        return JavaLanguagePlugin()
 
-    def test_plugin_initialization(self, plugin: JavaPlugin) -> None:
-        """Test JavaPlugin initialization"""
+    def test_plugin_initialization(self, plugin: JavaLanguagePlugin) -> None:
+        """Test JavaLanguagePlugin initialization"""
         assert plugin is not None
         assert isinstance(plugin, LanguagePlugin)
         assert hasattr(plugin, "get_language_name")
         assert hasattr(plugin, "get_file_extensions")
         assert hasattr(plugin, "create_extractor")
 
-    def test_get_language_name(self, plugin: JavaPlugin) -> None:
+    def test_get_language_name(self, plugin: JavaLanguagePlugin) -> None:
         """Test getting language name"""
         language_name = plugin.get_language_name()
 
         assert language_name == "java"
 
-    def test_get_file_extensions(self, plugin: JavaPlugin) -> None:
+    def test_get_file_extensions(self, plugin: JavaLanguagePlugin) -> None:
         """Test getting file extensions"""
         extensions = plugin.get_file_extensions()
 
         assert isinstance(extensions, list)
         assert ".java" in extensions
 
-    def test_create_extractor(self, plugin: JavaPlugin) -> None:
+    def test_create_extractor(self, plugin: JavaLanguagePlugin) -> None:
         """Test creating element extractor"""
         extractor = plugin.create_extractor()
 
         assert isinstance(extractor, JavaElementExtractor)
         assert isinstance(extractor, ElementExtractor)
 
-    def test_is_applicable_java_file(self, plugin: JavaPlugin) -> None:
+    def test_is_applicable_java_file(self, plugin: JavaLanguagePlugin) -> None:
         """Test applicability check for Java file"""
         is_applicable = plugin.is_applicable("test.java")
 
         assert is_applicable is True
 
-    def test_is_applicable_non_java_file(self, plugin: JavaPlugin) -> None:
+    def test_is_applicable_non_java_file(self, plugin: JavaLanguagePlugin) -> None:
         """Test applicability check for non-Java file"""
         is_applicable = plugin.is_applicable("test.py")
 
         assert is_applicable is False
 
-    def test_get_plugin_info(self, plugin: JavaPlugin) -> None:
+    def test_get_plugin_info(self, plugin: JavaLanguagePlugin) -> None:
         """Test getting plugin information"""
         info = plugin.get_plugin_info()
 
@@ -325,7 +325,7 @@ class TestJavaPlugin:
         assert "extensions" in info
         assert info["language"] == "java"
 
-    def test_get_tree_sitter_language(self, plugin: JavaPlugin) -> None:
+    def test_get_tree_sitter_language(self, plugin: JavaLanguagePlugin) -> None:
         """Test getting tree-sitter language"""
         with patch("tree_sitter_java.language") as mock_language:
             mock_lang_obj = Mock()
@@ -335,7 +335,7 @@ class TestJavaPlugin:
 
             assert language is mock_lang_obj
 
-    def test_get_tree_sitter_language_caching(self, plugin: JavaPlugin) -> None:
+    def test_get_tree_sitter_language_caching(self, plugin: JavaLanguagePlugin) -> None:
         """Test tree-sitter language caching"""
         with patch("tree_sitter_java.language") as mock_language:
             mock_lang_obj = Mock()
@@ -352,7 +352,7 @@ class TestJavaPlugin:
             mock_language.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_analyze_file_success(self, plugin: JavaPlugin) -> None:
+    async def test_analyze_file_success(self, plugin: JavaLanguagePlugin) -> None:
         """Test successful file analysis"""
         java_code = """
 public class TestClass {
@@ -367,12 +367,13 @@ public class TestClass {
             temp_path = f.name
 
         try:
-            # Mock AnalysisRequest
+            # Mock AnalysisRequest with all required attributes
             mock_request = Mock()
             mock_request.file_path = temp_path
             mock_request.language = "java"
             mock_request.include_complexity = False
             mock_request.include_details = False
+            mock_request.format_type = "json"
 
             result = await plugin.analyze_file(temp_path, mock_request)
 
@@ -385,13 +386,16 @@ public class TestClass {
             os.unlink(temp_path)
 
     @pytest.mark.asyncio
-    async def test_analyze_file_nonexistent(self, plugin: JavaPlugin) -> None:
+    async def test_analyze_file_nonexistent(self, plugin: JavaLanguagePlugin) -> None:
         """Test analysis of non-existent file"""
         mock_request = Mock()
-        mock_request.file_path = "/nonexistent/file.java"
+        mock_request.file_path = "nonexistent/file.java"  # Use relative path
         mock_request.language = "java"
+        mock_request.include_complexity = False
+        mock_request.include_details = False
+        mock_request.format_type = "json"
 
-        result = await plugin.analyze_file("/nonexistent/file.java", mock_request)
+        result = await plugin.analyze_file("nonexistent/file.java", mock_request)
 
         # Should return an AnalysisResult with success=False instead of raising
         assert result is not None
@@ -399,13 +403,13 @@ public class TestClass {
         assert result.success is False
 
 
-class TestJavaPluginErrorHandling:
-    """Test error handling in JavaPlugin"""
+class TestJavaLanguagePluginErrorHandling:
+    """Test error handling in JavaLanguagePlugin"""
 
     @pytest.fixture
-    def plugin(self) -> JavaPlugin:
-        """Create a JavaPlugin instance for testing"""
-        return JavaPlugin()
+    def plugin(self) -> JavaLanguagePlugin:
+        """Create a JavaLanguagePlugin instance for testing"""
+        return JavaLanguagePlugin()
 
     @pytest.fixture
     def extractor(self) -> JavaElementExtractor:
@@ -467,7 +471,7 @@ class TestJavaPluginErrorHandling:
             # Should handle gracefully
             assert result is None
 
-    def test_get_tree_sitter_language_failure(self, plugin: JavaPlugin) -> None:
+    def test_get_tree_sitter_language_failure(self, plugin: JavaLanguagePlugin) -> None:
         """Test tree-sitter language loading failure"""
         with patch("tree_sitter_java.language") as mock_language:
             mock_language.side_effect = ImportError("Module not found")
@@ -477,7 +481,7 @@ class TestJavaPluginErrorHandling:
             assert language is None
 
     @pytest.mark.asyncio
-    async def test_analyze_file_with_exception(self, plugin: JavaPlugin) -> None:
+    async def test_analyze_file_with_exception(self, plugin: JavaLanguagePlugin) -> None:
         """Test file analysis with exception"""
         java_code = "public class Test {}"
 
@@ -489,6 +493,9 @@ class TestJavaPluginErrorHandling:
             mock_request = Mock()
             mock_request.file_path = temp_path
             mock_request.language = "java"
+            mock_request.include_complexity = False
+            mock_request.include_details = False
+            mock_request.format_type = "json"
 
             with patch("builtins.open") as mock_open:
                 mock_open.side_effect = Exception("Read error")
@@ -504,15 +511,15 @@ class TestJavaPluginErrorHandling:
             os.unlink(temp_path)
 
 
-class TestJavaPluginIntegration:
-    """Integration tests for JavaPlugin"""
+class TestJavaLanguagePluginIntegration:
+    """Integration tests for JavaLanguagePlugin"""
 
     @pytest.fixture
-    def plugin(self) -> JavaPlugin:
-        """Create a JavaPlugin instance for testing"""
-        return JavaPlugin()
+    def plugin(self) -> JavaLanguagePlugin:
+        """Create a JavaLanguagePlugin instance for testing"""
+        return JavaLanguagePlugin()
 
-    def test_full_extraction_workflow(self, plugin: JavaPlugin) -> None:
+    def test_full_extraction_workflow(self, plugin: JavaLanguagePlugin) -> None:
         """Test complete extraction workflow"""
         # Test that plugin can handle complex Java code
 
@@ -529,7 +536,7 @@ class TestJavaPluginIntegration:
         assert info["language"] == "java"
         assert ".java" in info["extensions"]
 
-    def test_plugin_consistency(self, plugin: JavaPlugin) -> None:
+    def test_plugin_consistency(self, plugin: JavaLanguagePlugin) -> None:
         """Test plugin consistency across multiple calls"""
         # Multiple calls should return consistent results
         for _ in range(5):
@@ -537,7 +544,7 @@ class TestJavaPluginIntegration:
             assert ".java" in plugin.get_file_extensions()
             assert isinstance(plugin.create_extractor(), JavaElementExtractor)
 
-    def test_extractor_consistency(self, plugin: JavaPlugin) -> None:
+    def test_extractor_consistency(self, plugin: JavaLanguagePlugin) -> None:
         """Test extractor consistency"""
         # Multiple extractors should be independent
         extractor1 = plugin.create_extractor()
@@ -547,7 +554,7 @@ class TestJavaPluginIntegration:
         assert isinstance(extractor1, JavaElementExtractor)
         assert isinstance(extractor2, JavaElementExtractor)
 
-    def test_plugin_with_various_java_files(self, plugin: JavaPlugin) -> None:
+    def test_plugin_with_various_java_files(self, plugin: JavaLanguagePlugin) -> None:
         """Test plugin with various Java file types"""
         java_files = [
             "Test.java",

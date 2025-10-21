@@ -8,7 +8,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from tree_sitter_analyzer.languages.java_plugin import JavaElementExtractor, JavaPlugin
+from tree_sitter_analyzer.languages.java_plugin import JavaElementExtractor, JavaLanguagePlugin
 from tree_sitter_analyzer.models import Class, Function, Import, Package, Variable
 
 
@@ -1383,13 +1383,13 @@ class UserConfig {
             assert result == []
 
 
-class TestJavaPlugin:
+class TestJavaLanguagePlugin:
     """Test Java plugin functionality"""
 
     @pytest.fixture
     def plugin(self):
         """Create a Java plugin instance"""
-        return JavaPlugin()
+        return JavaLanguagePlugin()
 
     def test_plugin_initialization(self, plugin):
         """Test plugin initialization"""

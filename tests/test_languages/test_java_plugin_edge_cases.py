@@ -7,10 +7,10 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from tree_sitter_analyzer.languages.java_plugin import JavaElementExtractor, JavaPlugin
+from tree_sitter_analyzer.languages.java_plugin import JavaElementExtractor, JavaLanguagePlugin
 
 
-class TestJavaPluginEdgeCases:
+class TestJavaLanguagePluginEdgeCases:
     """Test edge cases and error handling for Java plugin"""
 
     @pytest.fixture
@@ -21,7 +21,7 @@ class TestJavaPluginEdgeCases:
     @pytest.fixture
     def plugin(self):
         """Create a Java plugin instance"""
-        return JavaPlugin()
+        return JavaLanguagePlugin()
 
     def test_empty_source_code(self, extractor):
         """Test handling of empty source code"""

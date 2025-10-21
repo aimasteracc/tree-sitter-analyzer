@@ -12,7 +12,7 @@ import sys
 sys.path.insert(0, ".")
 
 
-from tree_sitter_analyzer.languages.java_plugin import JavaElementExtractor, JavaPlugin
+from tree_sitter_analyzer.languages.java_plugin import JavaElementExtractor, JavaLanguagePlugin
 from tree_sitter_analyzer.languages.javascript_plugin import (
     JavaScriptElementExtractor,
     JavaScriptPlugin,
@@ -29,7 +29,7 @@ def test_plugin_manager_instance():
 def test_register_plugin():
     """Test plugin registration"""
     manager = PluginManager()
-    java_plugin = JavaPlugin()
+    java_plugin = JavaLanguagePlugin()
 
     manager.register_plugin(java_plugin)
 
@@ -40,7 +40,7 @@ def test_register_plugin():
 def test_get_plugin():
     """Test getting plugin by language"""
     manager = PluginManager()
-    java_plugin = JavaPlugin()
+    java_plugin = JavaLanguagePlugin()
     manager.register_plugin(java_plugin)
 
     retrieved_plugin = manager.get_plugin("java")
@@ -57,7 +57,7 @@ def test_get_nonexistent_plugin():
 
 def test_java_plugin_properties():
     """Test Java plugin basic properties"""
-    plugin = JavaPlugin()
+    plugin = JavaLanguagePlugin()
 
     assert plugin.get_language_name() == "java"
     extensions = plugin.get_file_extensions()
@@ -68,7 +68,7 @@ def test_java_plugin_properties():
 
 def test_java_plugin_extractor():
     """Test Java plugin element extractor"""
-    plugin = JavaPlugin()
+    plugin = JavaLanguagePlugin()
     extractor = plugin.create_extractor()
 
     assert isinstance(extractor, JavaElementExtractor)
@@ -76,7 +76,7 @@ def test_java_plugin_extractor():
 
 def test_java_plugin_tree_sitter_language():
     """Test Java plugin tree-sitter language loading"""
-    plugin = JavaPlugin()
+    plugin = JavaLanguagePlugin()
     language = plugin.get_tree_sitter_language()
 
     # Language may be None if tree-sitter-java is not available
