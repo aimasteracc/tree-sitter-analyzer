@@ -1168,8 +1168,13 @@ class JavaPlugin(LanguagePlugin):
                     if hasattr(tree_sitter.Language, 'from_library'):
                         self._cached_language = tree_sitter.Language.from_library(caps_or_lang)  # type: ignore[attr-defined]
                     else:
-                        # Fallback to old API
-                        self._cached_language = tree_sitter.Language(caps_or_lang)
+                        # Fallback to old API - check if it's a valid PyCapsule
+                        if hasattr(caps_or_lang, '__class__') and 'PyCapsule' in str(type(caps_or_lang)):
+                            self._cached_language = tree_sitter.Language(caps_or_lang)
+                        else:
+                            # If it's not a PyCapsule (e.g., in tests), try to use it directly
+                            log_debug(f"Received non-PyCapsule object: {type(caps_or_lang)}")
+                            self._cached_language = caps_or_lang
                 except Exception as e:
                     log_error(f"Failed to create Language object from PyCapsule: {e}")
                     return None
