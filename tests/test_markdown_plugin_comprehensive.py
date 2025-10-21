@@ -491,7 +491,7 @@ class TestMarkdownPlugin:
     def test_extract_elements(self):
         """Test extract_elements method"""
         mock_tree = Mock()
-        mock_extractor = Mock()
+        mock_extractor = Mock(spec=MarkdownElementExtractor)
 
         # Setup mock returns
         mock_extractor.extract_headers.return_value = [Mock()]
@@ -500,17 +500,29 @@ class TestMarkdownPlugin:
         mock_extractor.extract_images.return_value = [Mock()]
         mock_extractor.extract_references.return_value = [Mock()]
         mock_extractor.extract_lists.return_value = [Mock()]
+        mock_extractor.extract_tables.return_value = [Mock()]
+        mock_extractor.extract_blockquotes.return_value = [Mock()]
+        mock_extractor.extract_horizontal_rules.return_value = [Mock()]
+        mock_extractor.extract_html_elements.return_value = [Mock()]
+        mock_extractor.extract_text_formatting.return_value = [Mock()]
+        mock_extractor.extract_footnotes.return_value = [Mock()]
 
         with patch.object(self.plugin, "get_extractor", return_value=mock_extractor):
             elements = self.plugin.extract_elements(mock_tree, "test content")
 
-            assert len(elements) == 6  # All extraction methods called
+            assert len(elements) == 12  # All extraction methods called
             mock_extractor.extract_headers.assert_called_once()
             mock_extractor.extract_code_blocks.assert_called_once()
             mock_extractor.extract_links.assert_called_once()
             mock_extractor.extract_images.assert_called_once()
             mock_extractor.extract_references.assert_called_once()
             mock_extractor.extract_lists.assert_called_once()
+            mock_extractor.extract_tables.assert_called_once()
+            mock_extractor.extract_blockquotes.assert_called_once()
+            mock_extractor.extract_horizontal_rules.assert_called_once()
+            mock_extractor.extract_html_elements.assert_called_once()
+            mock_extractor.extract_text_formatting.assert_called_once()
+            mock_extractor.extract_footnotes.assert_called_once()
 
     def test_extract_elements_exception(self):
         """Test extract_elements with exception"""
@@ -573,14 +585,12 @@ class TestMarkdownPluginIntegration:
             assert "Could not load Markdown language" in result.error_message
 
     @pytest.mark.asyncio
-    @patch("builtins.open")
+    @patch("tree_sitter_analyzer.encoding_utils.read_file_safe")
     @patch("tree_sitter_analyzer.languages.markdown_plugin.tree_sitter")
-    async def test_analyze_file_success(self, mock_ts, mock_open):
+    async def test_analyze_file_success(self, mock_ts, mock_read_file_safe):
         """Test successful analyze_file"""
         # Setup mocks
-        mock_file = Mock()
-        mock_file.read.return_value = "# Test Header\n\nContent"
-        mock_open.return_value.__enter__.return_value = mock_file
+        mock_read_file_safe.return_value = ("# Test Header\n\nContent", "utf-8")
 
         mock_parser = Mock()
         mock_tree = Mock()

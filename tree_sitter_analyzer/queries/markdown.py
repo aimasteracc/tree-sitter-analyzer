@@ -176,7 +176,7 @@ def get_available_queries() -> list[str]:
     return sorted(queries + aliases)
 
 
-def get_query_info(query_name: str) -> dict[str, str]:
+def get_query_info(query_name: str) -> dict[str, str | bool]:
     """
     Get information about a query
 
@@ -196,7 +196,7 @@ def get_query_info(query_name: str) -> dict[str, str]:
         return {
             "name": query_name,
             "actual_name": actual_name,
-            "is_alias": str(is_alias),
+            "is_alias": is_alias,
             "query": query_string,
             "description": _get_query_description(actual_name),
         }

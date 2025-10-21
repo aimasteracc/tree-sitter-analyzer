@@ -335,6 +335,10 @@ class TypeScriptElementExtractor(ElementExtractor):
                 function_info
             )
 
+            # Skip if no name found
+            if name is None:
+                return None
+
             # Extract TSDoc
             tsdoc = self._extract_tsdoc_for_line(start_line)
 
@@ -461,6 +465,10 @@ class TypeScriptElementExtractor(ElementExtractor):
                 generics,
             ) = method_info
 
+            # Skip if no name found
+            if name is None:
+                return None
+
             # Extract TSDoc
             tsdoc = self._extract_tsdoc_for_line(start_line)
 
@@ -519,6 +527,10 @@ class TypeScriptElementExtractor(ElementExtractor):
                 generics,
             ) = method_info
 
+            # Skip if no name found
+            if name is None:
+                return None
+
             # Extract TSDoc
             tsdoc = self._extract_tsdoc_for_line(start_line)
 
@@ -560,6 +572,10 @@ class TypeScriptElementExtractor(ElementExtractor):
                 return None
 
             name, parameters, is_async, _, return_type, generics = function_info
+
+            # Skip if no name found
+            if name is None:
+                return None
 
             # Extract TSDoc
             tsdoc = self._extract_tsdoc_for_line(start_line)
@@ -990,7 +1006,7 @@ class TypeScriptElementExtractor(ElementExtractor):
 
     def _parse_function_signature_optimized(
         self, node: "tree_sitter.Node"
-    ) -> Optional[tuple[str, list[str], bool, bool, Optional[str], list[str]]]:
+    ) -> Optional[tuple[Optional[str], list[str], bool, bool, Optional[str], list[str]]]:
         """Parse function signature for TypeScript functions"""
         try:
             name = None
@@ -1015,13 +1031,13 @@ class TypeScriptElementExtractor(ElementExtractor):
                 elif child.type == "type_parameters":
                     generics = self._extract_generics(child)
 
-            return name or "", parameters, is_async, is_generator, return_type, generics
+            return name, parameters, is_async, is_generator, return_type, generics
         except Exception:
             return None
 
     def _parse_method_signature_optimized(
         self, node: "tree_sitter.Node"
-    ) -> Optional[tuple[str, list[str], bool, bool, bool, bool, bool, Optional[str], str, list[str]]]:
+    ) -> Optional[tuple[Optional[str], list[str], bool, bool, bool, bool, bool, Optional[str], str, list[str]]]:
         """Parse method signature for TypeScript class methods"""
         try:
             name = None
@@ -1088,7 +1104,7 @@ class TypeScriptElementExtractor(ElementExtractor):
                 is_setter = True
 
             return (
-                name or "",
+                name,
                 parameters,
                 is_async,
                 is_static,

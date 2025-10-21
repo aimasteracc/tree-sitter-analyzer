@@ -360,7 +360,7 @@ class TestMarkdownPluginNewElementsIntegration:
     def test_extract_elements_includes_new_elements(self):
         """Test that extract_elements includes new element types"""
         mock_tree = Mock()
-        mock_extractor = Mock()
+        mock_extractor = Mock(spec=MarkdownElementExtractor)
 
         # Create mock elements that can be iterated
         mock_element = Mock()
@@ -384,8 +384,8 @@ class TestMarkdownPluginNewElementsIntegration:
             elements = self.plugin.extract_elements(mock_tree, "test content")
 
             # Should include all element types that return results
-            assert len(elements) >= 6  # At least the original 6 types
-
+            assert len(elements) >= 12  # All 12 extraction methods
+            
             # Verify all extraction methods were called
             mock_extractor.extract_headers.assert_called_once()
             mock_extractor.extract_code_blocks.assert_called_once()
@@ -435,7 +435,7 @@ Footnote reference[^1]
         mock_parser.parse.return_value = mock_tree
 
         # Mock extractor with new elements
-        mock_extractor = Mock()
+        mock_extractor = Mock(spec=MarkdownElementExtractor)
         mock_extractor.extract_headers.return_value = [
             MarkdownElement("Header", 1, 1, "# Header", element_type="header")
         ]
@@ -492,10 +492,8 @@ Footnote reference[^1]
 
         mock_root_node.children = []
 
-        with patch("builtins.open") as mock_open:
-            mock_file = Mock()
-            mock_file.read.return_value = content
-            mock_open.return_value.__enter__.return_value = mock_file
+        with patch("tree_sitter_analyzer.encoding_utils.read_file_safe") as mock_read_file_safe:
+            mock_read_file_safe.return_value = (content, "utf-8")
 
             with patch(
                 "tree_sitter_analyzer.languages.markdown_plugin.tree_sitter"

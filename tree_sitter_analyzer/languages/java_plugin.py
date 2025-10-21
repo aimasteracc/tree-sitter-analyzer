@@ -1045,6 +1045,7 @@ class JavaPlugin(LanguagePlugin):
         self.extractor = JavaElementExtractor()
         self.language = "java"  # Add language property for test compatibility
         self.supported_extensions = self.get_file_extensions()  # Add for test compatibility
+        self._cached_language = None  # Cache for tree-sitter language
 
     def get_language_name(self) -> str:
         """Get the language name."""
@@ -1125,9 +1126,16 @@ class JavaPlugin(LanguagePlugin):
 
     def get_tree_sitter_language(self) -> Optional[Any]:
         """Get the tree-sitter language for Java."""
+        if self._cached_language is not None:
+            return self._cached_language
+        
         try:
-            from ..language_loader import load_language
-            return load_language("java")
+            import tree_sitter_java
+            self._cached_language = tree_sitter_java.language()
+            return self._cached_language
+        except ImportError as e:
+            log_error(f"tree-sitter-java not available: {e}")
+            return None
         except Exception as e:
             log_error(f"Failed to load tree-sitter language for Java: {e}")
             return None

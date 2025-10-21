@@ -1672,7 +1672,7 @@ class MarkdownPlugin(LanguagePlugin):
 
             parser = tree_sitter.Parser()
             parser.language = language
-            tree = parser.parse(bytes(source_code, "utf8"))
+            tree = parser.parse(source_code.encode("utf-8"))
 
             extractor = self.create_extractor()
             extractor.current_file = file_path  # Set current file for context

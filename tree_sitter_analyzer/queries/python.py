@@ -40,7 +40,7 @@ IMPORTS = """
 
 (import_from_statement
     module_name: (dotted_name)? @import.module
-    name: (import_list) @import.list) @import.from_list
+    name: (aliased_import) @import.aliased_item) @import.from_aliased
 
 (aliased_import
     name: (dotted_name) @import.name
@@ -335,7 +335,7 @@ PYTHON_QUERIES: dict[str, str] = {
     "import_from_list": """
     (import_from_statement
         module_name: (dotted_name)? @module_name
-        name: (import_list) @import_list) @import_from_list
+        name: (aliased_import) @import_item) @import_from_list
     """,
     "aliased_import": """
     (aliased_import

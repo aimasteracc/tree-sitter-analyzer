@@ -80,8 +80,11 @@ def test_java_plugin_tree_sitter_language():
     language = plugin.get_tree_sitter_language()
 
     # Language may be None if tree-sitter-java is not available
-    # Tree-sitter Language objects are PyCapsule objects
-    assert language is None or str(type(language)) == "<class 'PyCapsule'>"
+    # Tree-sitter Language objects can be PyCapsule or tree_sitter.Language objects
+    assert language is None or str(type(language)) in [
+        "<class 'PyCapsule'>",
+        "<class 'tree_sitter.Language'>"
+    ]
 
 
 def test_javascript_plugin_properties():

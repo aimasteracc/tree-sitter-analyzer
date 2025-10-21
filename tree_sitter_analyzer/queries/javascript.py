@@ -56,13 +56,13 @@ JAVASCRIPT_QUERIES: dict[str, str] = {
     "class_declaration": """
     (class_declaration
         name: (identifier) @class_name
-        superclass: (class_heritage)? @superclass
+        (class_heritage)? @superclass
         body: (class_body) @body) @class_declaration
     """,
     "class_expression": """
     (class_expression
         name: (identifier)? @class_name
-        superclass: (class_heritage)? @superclass
+        (class_heritage)? @superclass
         body: (class_body) @body) @class_expression
     """,
     "class_method": """
@@ -542,12 +542,12 @@ FUNCTIONS = """
 CLASSES = """
 (class_declaration
     name: (identifier) @class.name
-    superclass: (class_heritage)? @class.superclass
+    (class_heritage)? @class.superclass
     body: (class_body) @class.body) @class.declaration
 
 (class_expression
     name: (identifier)? @class.name
-    superclass: (class_heritage)? @class.superclass
+    (class_heritage)? @class.superclass
     body: (class_body) @class.body) @class.expression
 """
 
@@ -623,8 +623,13 @@ ALL_QUERIES["functions"] = {
     "description": "Search all function declarations, expressions, and methods",
 }
 ALL_QUERIES["classes"] = {
-    "query": CLASSES,
-    "description": "Search all class declarations and expressions",
+    "query": """
+(class_declaration
+    name: (identifier) @class.name
+    (class_heritage)? @class.superclass
+    body: (class_body) @class.body) @class.declaration
+""",
+    "description": "Search all class declarations",
 }
 ALL_QUERIES["variables"] = {
     "query": VARIABLES,
