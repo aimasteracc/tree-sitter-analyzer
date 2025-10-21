@@ -92,7 +92,7 @@ class LanguageLoader:
             self._unavailable_languages.add(language)
             return False
 
-    def load_language(self, language: str) -> Optional["Language"]:
+    def load_language(self, language: str) -> Optional[Any]:
         """Load and return a tree-sitter Language object for the specified language"""
         if not TREE_SITTER_AVAILABLE:
             log_warning("Tree-sitter is not available")
@@ -131,13 +131,26 @@ class LanguageLoader:
                 else:
                     return None
 
-            # Language オブジェクト作成（互換性対応）
+            # Language オブジェクト作成（新しいAPI対応）
             caps_or_lang = language_func()
-            try:
-                tree_sitter_language = tree_sitter.Language(caps_or_lang)
-            except Exception:
-                # 一部のパッケージは既に Language オブジェクトを返すため、そのまま使用
+            
+            # 新しいtree-sitter APIでは、language_func()が直接Languageオブジェクトを返す
+            # 古いAPIではPyCapsuleを返すため、適切に処理する
+            if hasattr(caps_or_lang, '__class__') and 'Language' in str(type(caps_or_lang)):
+                # 既にLanguageオブジェクトの場合はそのまま使用
                 tree_sitter_language = caps_or_lang
+            else:
+                # PyCapsuleの場合は、Languageオブジェクトを作成
+                try:
+                    # 新しいAPIを試す（存在する場合）
+                    if hasattr(tree_sitter.Language, 'from_library'):
+                        tree_sitter_language = tree_sitter.Language.from_library(caps_or_lang)  # type: ignore[attr-defined]
+                    else:
+                        # フォールバック: 古いAPIを使用
+                        tree_sitter_language = tree_sitter.Language(caps_or_lang)
+                except Exception as e:
+                    log_warning(f"Failed to create Language object for {language}: {e}")
+                    return None
 
             self._loaded_languages[language] = tree_sitter_language
             return tree_sitter_language
@@ -162,23 +175,26 @@ class LanguageLoader:
             return None
 
         try:
-            # Prefer constructor with language for environments that require it
-            try:
-                parser = tree_sitter.Parser(tree_sitter_language)
-            except Exception:
-                # Fallback to no-arg constructor with setter for newer APIs
-                parser = tree_sitter.Parser()
-                if hasattr(parser, "set_language"):
-                    parser.set_language(tree_sitter_language)
-                elif hasattr(parser, "language"):
-                    try:
-                        parser.language = tree_sitter_language
-                    except Exception as inner_e:  # noqa: F841
-                        raise
-                else:
-                    raise RuntimeError(
-                        "Unsupported Parser API: no way to set language"
-                    ) from None
+            # Create parser and set language properly
+            parser = tree_sitter.Parser()
+            
+            # Ensure we have a proper Language object
+            if not hasattr(tree_sitter_language, '__class__') or 'Language' not in str(type(tree_sitter_language)):
+                log_warning(f"Invalid language object for {language}: {type(tree_sitter_language)}")
+                return None
+            
+            # Set language using the preferred method
+            if hasattr(parser, "set_language"):
+                parser.set_language(tree_sitter_language)
+            elif hasattr(parser, "language"):
+                parser.language = tree_sitter_language
+            else:
+                # Try constructor approach as last resort
+                try:
+                    parser = tree_sitter.Parser(tree_sitter_language)
+                except Exception as e:
+                    log_warning(f"Failed to create parser with language constructor for {language}: {e}")
+                    return None
 
             # Cache and return
             self._parser_cache[language] = parser

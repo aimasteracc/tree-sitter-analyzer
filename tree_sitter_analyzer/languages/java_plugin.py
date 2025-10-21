@@ -1045,7 +1045,7 @@ class JavaPlugin(LanguagePlugin):
         self.extractor = JavaElementExtractor()
         self.language = "java"  # Add language property for test compatibility
         self.supported_extensions = self.get_file_extensions()  # Add for test compatibility
-        self._cached_language = None  # Cache for tree-sitter language
+        self._cached_language: Optional[Any] = None  # Cache for tree-sitter language
 
     def get_language_name(self) -> str:
         """Get the language name."""
@@ -1084,7 +1084,28 @@ class JavaPlugin(LanguagePlugin):
             # Parse the code
             import tree_sitter
             parser = tree_sitter.Parser()
-            parser.language = language  # Use .language property instead of .set_language()
+            
+            # Set language using the appropriate method
+            if hasattr(parser, "set_language"):
+                parser.set_language(language)
+            elif hasattr(parser, "language"):
+                parser.language = language
+            else:
+                # Try constructor approach as last resort
+                try:
+                    parser = tree_sitter.Parser(language)
+                except Exception as e:
+                    log_error(f"Failed to create parser with language: {e}")
+                    return AnalysisResult(
+                        file_path=file_path,
+                        language="java",
+                        line_count=len(file_content.split('\n')),
+                        elements=[],
+                        source_code=file_content,
+                        error_message=f"Parser creation failed: {e}",
+                        success=False
+                    )
+            
             tree = parser.parse(file_content.encode('utf-8'))
             
             # Extract elements using our extractor
@@ -1131,7 +1152,28 @@ class JavaPlugin(LanguagePlugin):
         
         try:
             import tree_sitter_java
-            self._cached_language = tree_sitter_java.language()
+            import tree_sitter
+            
+            # Get the language function result
+            caps_or_lang = tree_sitter_java.language()
+            
+            # Convert to proper Language object if needed
+            if hasattr(caps_or_lang, '__class__') and 'Language' in str(type(caps_or_lang)):
+                # Already a Language object
+                self._cached_language = caps_or_lang
+            else:
+                # PyCapsule - convert to Language object
+                try:
+                    # Try new API first
+                    if hasattr(tree_sitter.Language, 'from_library'):
+                        self._cached_language = tree_sitter.Language.from_library(caps_or_lang)  # type: ignore[attr-defined]
+                    else:
+                        # Fallback to old API
+                        self._cached_language = tree_sitter.Language(caps_or_lang)
+                except Exception as e:
+                    log_error(f"Failed to create Language object from PyCapsule: {e}")
+                    return None
+            
             return self._cached_language
         except ImportError as e:
             log_error(f"tree-sitter-java not available: {e}")
