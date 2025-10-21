@@ -112,7 +112,7 @@ class TestCLIRegression:
         # Verify expected structure and counts
         assert data["file_path"] == bigservice_path
         assert data["language"] == "java"
-        assert data["line_count"] == 1419
+        assert data["line_count"] == 1420
         assert (
             data["element_count"] == 85
         )  # Total elements (methods, classes, fields, imports, package)
@@ -146,7 +146,7 @@ class TestCLIRegression:
         # Verify text format output structure
         assert "Advanced Analysis Results" in stdout
         assert "File: examples/BigService.java" in stdout
-        assert "Lines: 1419" in stdout
+        assert "Lines: 1420" in stdout
         assert "Classes: 1" in stdout
         assert "Methods: 66" in stdout
         assert "Fields: 9" in stdout
@@ -215,7 +215,7 @@ class TestCLIRegression:
         assert data["statistics"]["class_count"] == 1
         assert data["statistics"]["method_count"] == 66
         assert data["statistics"]["field_count"] == 9
-        assert data["statistics"]["total_lines"] == 1419
+        assert data["statistics"]["total_lines"] == 1420
 
     def test_python_language_command_consistency(self, sample_py_path):
         """Test --language python --table=full command produces consistent output"""

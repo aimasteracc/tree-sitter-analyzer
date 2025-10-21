@@ -249,7 +249,7 @@ class FindAndGrepTool(BaseMCPTool):
         return True
 
     @handle_mcp_errors("find_and_grep")
-    async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
+    async def execute(self, arguments: dict[str, Any]) -> dict[str, Any] | int:
         # Check if both fd and rg commands are available
         missing_commands = fd_rg_utils.get_missing_commands()
         if missing_commands:
@@ -437,7 +437,7 @@ class FindAndGrepTool(BaseMCPTool):
             # Parse count output and return only the total
             count_data = fd_rg_utils.parse_rg_count_output(rg_out)
             total_matches = count_data.pop("__total__", 0)
-            return {"total_matches": total_matches}
+            return total_matches
 
         if arguments.get("count_only_matches", False):
             # Parse count-only output

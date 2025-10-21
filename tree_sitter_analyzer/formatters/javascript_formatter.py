@@ -15,11 +15,11 @@ from .base_formatter import BaseTableFormatter
 class JavaScriptTableFormatter(BaseTableFormatter):
     """Table formatter specialized for JavaScript"""
 
-    def format(self, data: dict[str, Any], format_type: str = "full") -> str:
+    def format(self, data: dict[str, Any] | None, format_type: str = "full") -> str:
         """Format data using the configured format type"""
-        # Handle None data
+        # Handle None data gracefully
         if data is None:
-            raise TypeError("Cannot format None data")
+            data = {}
 
         # Ensure data is a dictionary
         if not isinstance(data, dict):
@@ -47,9 +47,6 @@ class JavaScriptTableFormatter(BaseTableFormatter):
 
     def _format_full_table(self, data: dict[str, Any]) -> str:
         """Full table format for JavaScript"""
-        if data is None:
-            raise TypeError("Cannot format None data")
-
         if not isinstance(data, dict):
             raise TypeError(f"Expected dict, got {type(data)}")
 
@@ -243,16 +240,26 @@ class JavaScriptTableFormatter(BaseTableFormatter):
             lines.append("| Export | Type | Name | Default |")
             lines.append("|--------|------|------|---------|")
 
-            for export in exports:
-                export_type = self._get_export_type(export)
-                if isinstance(export, dict):
-                    name = str(export.get("name", ""))
-                    is_default = "✓" if export.get("is_default", False) else "-"
-                else:
-                    name = str(export)
-                    is_default = "-"
+            # Handle malformed exports data
+            if isinstance(exports, list):
+                for export in exports:
+                    try:
+                        export_type = self._get_export_type(export)
+                        if isinstance(export, dict):
+                            name = str(export.get("name", ""))
+                            is_default = "✓" if export.get("is_default", False) else "-"
+                        else:
+                            name = str(export)
+                            is_default = "-"
+                            export_type = "unknown"
 
-                lines.append(f"| {export_type} | {name} | {is_default} |")
+                        lines.append(f"| {export_type} | {name} | {is_default} |")
+                    except (TypeError, AttributeError):
+                        # Handle malformed export data gracefully
+                        lines.append(f"| unknown | {str(export)} | - |")
+            else:
+                # Handle case where exports is not a list (malformed data)
+                lines.append(f"| unknown | {str(exports)} | - |")
             lines.append("")
 
         # Trim trailing blank lines
@@ -526,10 +533,10 @@ class JavaScriptTableFormatter(BaseTableFormatter):
         else:
             return "unknown"
 
-    def _get_export_type(self, export: dict[str, Any]) -> str:
+    def _get_export_type(self, export: Any) -> str:
         """Get export type"""
         if not isinstance(export, dict):
-            raise TypeError(f"Expected dict, got {type(export)}")
+            return "unknown"
         if export.get("is_default", False):
             return "default"
         elif export.get("is_named", False):
