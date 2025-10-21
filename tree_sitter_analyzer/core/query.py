@@ -65,11 +65,6 @@ class QueryExecutor:
             if tree is None:
                 return self._create_error_result("Tree is None", query_name=query_name)
 
-            if language is None:
-                return self._create_error_result(  # type: ignore[unreachable]
-                    "Language is None", query_name=query_name
-                )
-
             # Get the query string with robust language name handling
             language_name = None
             if language:
@@ -166,9 +161,6 @@ class QueryExecutor:
             # Validate inputs
             if tree is None:
                 return self._create_error_result("Tree is None")
-
-            if language is None:
-                return self._create_error_result("Language is None")  # type: ignore[unreachable]
 
             # Create and execute the query using modern API
             try:

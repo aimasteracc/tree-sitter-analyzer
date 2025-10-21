@@ -289,8 +289,6 @@ class JavaElementExtractor(ElementExtractor):
         Iterative node traversal and extraction (from AdvancedAnalyzer)
         Uses batch processing for optimal performance
         """
-        if not root_node:
-            return  # type: ignore[unreachable]
 
         # Target node types for extraction
         target_node_types = set(extractors.keys())
@@ -453,7 +451,7 @@ class JavaElementExtractor(ElementExtractor):
                 if start_point[0] == end_point[0]:
                     # Single line
                     line = self.content_lines[start_point[0]]
-                    return line[start_point[1] : end_point[1]]
+                    return str(line[start_point[1] : end_point[1]])
                 else:
                     # Multiple lines
                     lines = []
@@ -832,7 +830,7 @@ class JavaElementExtractor(ElementExtractor):
             log_debug(f"Failed to extract package element: {e}")
         except Exception as e:
             log_error(f"Unexpected error in package element extraction: {e}")
-        
+
         return None
 
     def _extract_package_from_tree(self, tree: "tree_sitter.Tree") -> None:
@@ -843,12 +841,14 @@ class JavaElementExtractor(ElementExtractor):
                     self._extract_package_info(child)
                     break
 
-    def _extract_import_info(self, node: "tree_sitter.Node", source_code: str) -> Optional[Import]:
+    def _extract_import_info(
+        self, node: "tree_sitter.Node", source_code: str
+    ) -> Optional[Import]:
         """Extract import information from import declaration node"""
         try:
             import_text = self._get_node_text_optimized(node)
             line_num = node.start_point[0] + 1
-            
+
             # Parse import statement
             if "static" in import_text:
                 # Static import
@@ -857,12 +857,12 @@ class JavaElementExtractor(ElementExtractor):
                     import_name = static_match.group(1)
                     if import_text.endswith(".*"):
                         import_name = import_name.replace(".*", "")
-                    
+
                     # For static imports, extract the class name
                     parts = import_name.split(".")
                     if len(parts) > 1:
                         import_name = ".".join(parts[:-1])
-                    
+
                     return Import(
                         name=import_name,
                         start_line=line_num,
@@ -884,7 +884,7 @@ class JavaElementExtractor(ElementExtractor):
                             import_name = import_name[:-2]
                         elif import_name.endswith("."):
                             import_name = import_name[:-1]
-                    
+
                     return Import(
                         name=import_name,
                         start_line=line_num,
@@ -898,38 +898,40 @@ class JavaElementExtractor(ElementExtractor):
                     )
         except Exception as e:
             log_debug(f"Failed to extract import info: {e}")
-        
+
         return None
 
-    def _extract_annotation_optimized(self, node: "tree_sitter.Node") -> Optional[dict[str, Any]]:
+    def _extract_annotation_optimized(
+        self, node: "tree_sitter.Node"
+    ) -> Optional[dict[str, Any]]:
         """Extract annotation information optimized"""
         try:
             annotation_text = self._get_node_text_optimized(node)
             start_line = node.start_point[0] + 1
-            
+
             # Extract annotation name
             annotation_name = None
             for child in node.children:
                 if child.type == "identifier":
                     annotation_name = self._get_node_text_optimized(child)
                     break
-            
+
             if not annotation_name:
                 # Try to extract from text
                 match = re.search(r"@(\w+)", annotation_text)
                 if match:
                     annotation_name = match.group(1)
-            
+
             if annotation_name:
                 return {
                     "name": annotation_name,
                     "line": start_line,
                     "text": annotation_text,
-                    "type": "annotation"
+                    "type": "annotation",
                 }
         except Exception as e:
             log_debug(f"Failed to extract annotation: {e}")
-        
+
         return None
 
     def _determine_visibility(self, modifiers: list[str]) -> str:
@@ -947,13 +949,13 @@ class JavaElementExtractor(ElementExtractor):
         """Find annotations for a specific line with caching"""
         if line in self._annotation_cache:
             return self._annotation_cache[line]
-        
+
         # Find annotations near this line
         annotations = []
         for annotation in self.annotations:
             if abs(annotation.get("line", 0) - line) <= 2:
                 annotations.append(annotation)
-        
+
         self._annotation_cache[line] = annotations
         return annotations
 
@@ -961,7 +963,11 @@ class JavaElementExtractor(ElementExtractor):
         """Check if this is a nested class"""
         parent = node.parent
         while parent:
-            if parent.type in ["class_declaration", "interface_declaration", "enum_declaration"]:
+            if parent.type in [
+                "class_declaration",
+                "interface_declaration",
+                "enum_declaration",
+            ]:
                 return True
             parent = parent.parent
         return False
@@ -970,7 +976,11 @@ class JavaElementExtractor(ElementExtractor):
         """Find parent class name for nested classes"""
         parent = node.parent
         while parent:
-            if parent.type in ["class_declaration", "interface_declaration", "enum_declaration"]:
+            if parent.type in [
+                "class_declaration",
+                "interface_declaration",
+                "enum_declaration",
+            ]:
                 for child in parent.children:
                     if child.type == "identifier":
                         return self._get_node_text_optimized(child)
@@ -980,13 +990,18 @@ class JavaElementExtractor(ElementExtractor):
     def _calculate_complexity_optimized(self, node: "tree_sitter.Node") -> int:
         """Calculate cyclomatic complexity optimized"""
         complexity = 1  # Base complexity
-        
+
         # Count decision points
         decision_nodes = [
-            "if_statement", "while_statement", "for_statement", "switch_statement",
-            "catch_clause", "conditional_expression", "enhanced_for_statement"
+            "if_statement",
+            "while_statement",
+            "for_statement",
+            "switch_statement",
+            "catch_clause",
+            "conditional_expression",
+            "enhanced_for_statement",
         ]
-        
+
         def count_decisions(n: "tree_sitter.Node") -> int:
             count = 0
             if n.type in decision_nodes:
@@ -994,7 +1009,7 @@ class JavaElementExtractor(ElementExtractor):
             for child in n.children:
                 count += count_decisions(child)
             return count
-        
+
         complexity += count_decisions(node)
         return complexity
 
@@ -1016,7 +1031,7 @@ class JavaElementExtractor(ElementExtractor):
                         return "\n".join(javadoc_lines)
         except Exception as e:
             log_debug(f"Failed to extract JavaDoc: {e}")
-        
+
         return None
 
 
@@ -1043,10 +1058,12 @@ class JavaLanguagePlugin(LanguagePlugin):
     async def analyze(self, request: "AnalysisRequest") -> "AnalysisResult":
         """Analyze Java code and return structured results."""
         from ..core.analysis_engine import UnifiedAnalysisEngine
-        
+
         engine = UnifiedAnalysisEngine()
         return await engine.analyze(request)
 
     def supports_file(self, file_path: str) -> bool:
         """Check if this plugin supports the given file."""
-        return any(file_path.lower().endswith(ext) for ext in self.get_file_extensions())
+        return any(
+            file_path.lower().endswith(ext) for ext in self.get_file_extensions()
+        )

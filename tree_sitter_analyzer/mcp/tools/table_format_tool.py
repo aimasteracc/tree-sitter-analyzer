@@ -471,8 +471,12 @@ class TableFormatTool(BaseMCPTool):
                 try:
                     if FormatterRegistry.is_format_supported(format_type):
                         # Use new FormatterRegistry
-                        registry_formatter = FormatterRegistry.get_formatter(format_type)
-                        table_output = registry_formatter.format(structure_result.elements)
+                        registry_formatter = FormatterRegistry.get_formatter(
+                            format_type
+                        )
+                        table_output = registry_formatter.format(
+                            structure_result.elements
+                        )
                     else:
                         # Fallback to legacy TableFormatter for backward compatibility
                         legacy_formatter: Any = TableFormatter(format_type)

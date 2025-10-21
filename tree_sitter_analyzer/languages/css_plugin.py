@@ -176,9 +176,9 @@ class CssElementExtractor(ElementExtractor):
             # Create StyleElement
             element = StyleElement(
                 name=name,
-                start_line=node.start_point[0] + 1
-                if hasattr(node, "start_point")
-                else 0,
+                start_line=(
+                    node.start_point[0] + 1 if hasattr(node, "start_point") else 0
+                ),
                 end_line=node.end_point[0] + 1 if hasattr(node, "end_point") else 0,
                 raw_text=raw_text,
                 language="css",

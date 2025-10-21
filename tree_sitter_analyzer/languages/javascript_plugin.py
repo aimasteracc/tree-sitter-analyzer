@@ -315,7 +315,7 @@ class JavaScriptElementExtractor(ElementExtractor):
 
                 if start_point[0] == end_point[0]:
                     line = self.content_lines[start_point[0]]
-                    return line[start_point[1] : end_point[1]]
+                    return str(line[start_point[1] : end_point[1]])
                 else:
                     lines = []
                     for i in range(start_point[0], end_point[0] + 1):
@@ -332,7 +332,9 @@ class JavaScriptElementExtractor(ElementExtractor):
                 log_error(f"Fallback text extraction also failed: {fallback_error}")
                 return ""
 
-    def _extract_function_optimized(self, node: "tree_sitter.Node") -> Optional[Function]:
+    def _extract_function_optimized(
+        self, node: "tree_sitter.Node"
+    ) -> Optional[Function]:
         """Extract regular function information with detailed metadata"""
         try:
             start_line = node.start_point[0] + 1
@@ -376,6 +378,7 @@ class JavaScriptElementExtractor(ElementExtractor):
         except Exception as e:
             log_error(f"Failed to extract function info: {e}")
             import traceback
+
             traceback.print_exc()
             return None
 
@@ -604,7 +607,9 @@ class JavaScriptElementExtractor(ElementExtractor):
         kind = "let" if node_text.strip().startswith("let") else "const"
         return self._extract_variables_from_declaration(node, kind)
 
-    def _extract_property_optimized(self, node: "tree_sitter.Node") -> Optional[Variable]:
+    def _extract_property_optimized(
+        self, node: "tree_sitter.Node"
+    ) -> Optional[Variable]:
         """Extract class property definition"""
         try:
             start_line = node.start_point[0] + 1
@@ -1012,7 +1017,9 @@ class JavaScriptElementExtractor(ElementExtractor):
 
         return imports
 
-    def _extract_export_info(self, node: "tree_sitter.Node") -> Optional[dict[str, Any]]:
+    def _extract_export_info(
+        self, node: "tree_sitter.Node"
+    ) -> Optional[dict[str, Any]]:
         """Extract export information"""
         try:
             export_text = self._get_node_text_optimized(node)
@@ -1206,7 +1213,9 @@ class JavaScriptElementExtractor(ElementExtractor):
         else:
             return "unknown"
 
-    def extract_elements(self, tree: "tree_sitter.Tree", source_code: str) -> list[CodeElement]:
+    def extract_elements(
+        self, tree: "tree_sitter.Tree", source_code: str
+    ) -> list[CodeElement]:
         """Extract elements from source code using tree-sitter AST"""
         elements: list[CodeElement] = []
 

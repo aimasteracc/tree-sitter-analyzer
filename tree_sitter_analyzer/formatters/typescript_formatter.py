@@ -246,9 +246,7 @@ class TypeScriptTableFormatter(BaseTableFormatter):
                 func_type = (
                     "arrow"
                     if func.get("is_arrow")
-                    else "method"
-                    if func.get("is_method")
-                    else "function"
+                    else "method" if func.get("is_method") else "function"
                 )
                 return_type = str(func.get("return_type", "any"))
                 params = func.get("parameters", [])
@@ -393,9 +391,7 @@ class TypeScriptTableFormatter(BaseTableFormatter):
             func_type = (
                 "arrow"
                 if func.get("is_arrow")
-                else "method"
-                if func.get("is_method")
-                else "function"
+                else "method" if func.get("is_method") else "function"
             )
             return_type = func.get("return_type", "any")
             line_range = func.get("line_range", {})

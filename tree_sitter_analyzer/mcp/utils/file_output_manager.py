@@ -253,7 +253,9 @@ class FileOutputManager:
         else:
             # Generate filename with appropriate extension
             if base_name is None:
-                raise ValueError("base_name cannot be None when filename is not provided")
+                raise ValueError(
+                    "base_name cannot be None when filename is not provided"
+                )
             generated_filename = self.generate_output_filename(base_name, content)
             output_file = output_path / generated_filename
 

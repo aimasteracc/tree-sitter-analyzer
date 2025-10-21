@@ -343,14 +343,21 @@ class SearchContentTool(BaseMCPTool):
             if cached_result is not None:
                 # Check if this is a total_only request
                 total_only_requested = arguments.get("total_only", False)
-                
+
                 if total_only_requested:
                     # For total_only mode, always return integer if possible
                     if isinstance(cached_result, int):
                         return cached_result
-                    elif isinstance(cached_result, dict) and "total_matches" in cached_result:
+                    elif (
+                        isinstance(cached_result, dict)
+                        and "total_matches" in cached_result
+                    ):
                         total_matches = cached_result["total_matches"]
-                        return int(total_matches) if isinstance(total_matches, (int, float)) else 0
+                        return (
+                            int(total_matches)
+                            if isinstance(total_matches, (int, float))
+                            else 0
+                        )
                     elif isinstance(cached_result, dict) and "count" in cached_result:
                         count = cached_result["count"]
                         return int(count) if isinstance(count, (int, float)) else 0
@@ -753,11 +760,11 @@ class SearchContentTool(BaseMCPTool):
                     "elapsed_ms": elapsed_ms,
                     "results": matches,
                     "summary": fd_rg_utils.summarize_search_results(matches),
-                    "grouped_by_file": fd_rg_utils.group_matches_by_file(matches)[
-                        "files"
-                    ]
-                    if matches
-                    else [],
+                    "grouped_by_file": (
+                        fd_rg_utils.group_matches_by_file(matches)["files"]
+                        if matches
+                        else []
+                    ),
                 }
 
                 # Convert to JSON for file output

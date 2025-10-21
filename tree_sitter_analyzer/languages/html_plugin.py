@@ -178,7 +178,10 @@ class HtmlElementExtractor(ElementExtractor):
         return node_type in html_element_types
 
     def _create_markup_element(
-        self, node: "tree_sitter.Node", source_code: str, parent: Optional[MarkupElement]
+        self,
+        node: "tree_sitter.Node",
+        source_code: str,
+        parent: Optional[MarkupElement],
     ) -> Optional[MarkupElement]:
         """Create MarkupElement from tree-sitter node using tree-sitter-html grammar"""
         try:
@@ -199,9 +202,9 @@ class HtmlElementExtractor(ElementExtractor):
             # Create MarkupElement
             element = MarkupElement(
                 name=tag_name,
-                start_line=node.start_point[0] + 1
-                if hasattr(node, "start_point")
-                else 0,
+                start_line=(
+                    node.start_point[0] + 1 if hasattr(node, "start_point") else 0
+                ),
                 end_line=node.end_point[0] + 1 if hasattr(node, "end_point") else 0,
                 raw_text=raw_text,
                 language="html",
