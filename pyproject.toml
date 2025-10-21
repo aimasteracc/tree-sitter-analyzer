@@ -66,6 +66,7 @@ dependencies = [
     "tree-sitter-css>=0.23.0,<0.25.0",   # CSS language support with StyleElement data model
     "psutil>=5.9.8",
     "tree-sitter-typescript>=0.23.2",
+    "deepdiff>=6.7.1",
 ]
 
 [project.optional-dependencies]

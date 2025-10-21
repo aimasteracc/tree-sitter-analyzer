@@ -1,0 +1,21 @@
+{
+  "ignore_fields": [
+    "elapsed_ms",
+    "fd_elapsed_ms",
+    "rg_elapsed_ms",
+    "execution_time",
+    "timestamp",
+    "cache_hit"
+  ],
+  "sort_arrays_by": {
+    "results": "file"
+  },
+  "secondary_sort": {
+    "results": "line"
+  },
+  "normalize_keys": true,
+  "ignore_field_order": true,
+  "preserve_array_order": [
+    "matches"
+  ]
+}

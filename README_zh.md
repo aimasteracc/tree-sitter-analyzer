@@ -762,6 +762,38 @@ uv run pytest tests/test_mcp_server_initialization.py -v
 - **MCP配置指南** - 参见[AI使用者配置](#31--ai使用者claude-desktopcursor等)部分
 - **CLI使用指南** - 参见[CLI命令大全](#6--cli命令大全)部分
 - **核心功能说明** - 参见[核心功能特性](#7-️-核心功能特性)部分
+- **贡献指南** - 关于开发指南和文档管理，请参见[docs/CONTRIBUTING.md](docs/CONTRIBUTING.md)
+- **分析结果** - 关于项目分析报告和指标，请参见[docs/analysis/](docs/analysis/)
+- **功能规格** - 关于详细的功能规格和实施计划，请参见[specs/](specs/)
+
+### 🔄 MCP 兼容性测试
+对于使用多个 tree-sitter-analyzer 版本的开发者，我们提供了一个全面的兼容性测试框架，现已引入**智能JSON比较系统**。
+
+- **[MCP兼容性测试标准](docs/mcp_compatibility_test_standard.md)** - 完整的版本兼容性测试标准化流程
+- **[兼容性测试工具](compatibility_test/README.md)** - 用于版本比较的自动化测试工具和脚本
+- **[故障排除指南](compatibility_test/troubleshooting_guide.md)** - 常见兼容性测试问题的解决方案
+
+**技术文档:**
+- **[MCP直接执行技术背景](compatibility_test/MCP_DIRECT_EXECUTION_TECHNICAL_BACKGROUND.md)** - 关于兼容性测试为何能直接执行工具类而无需MCP服务器的技术原理说明
+- **[智能JSON比较系统](docs/SMART_JSON_COMPARISON_SYSTEM.md)** - 关于新型配置驱动比较系统的深入解释。
+
+**主要特性:**
+- **智能JSON比较**: 对复杂的JSON输出进行高级的、由配置驱动的比较。
+- **配置驱动**: 使用 `comparison_config.json` 来定义比较规则、忽略字段和规范化数据。
+- **性能字段过滤**: 自动忽略不稳定的性能相关字段（如 `execution_time`），以实现稳定的比较。
+- **数组规范化**: 根据指定的键对数组进行规范化和排序，确保与顺序无关的比较。
+- **规范化输出生成**: 创建JSON文件的规范化版本，以便于手动审查和调试。
+- **深度差异分析**: 利用 `deepdiff` 库生成细粒度且易于解读的差异报告。
+
+**快速开始:**
+```bash
+# 在两个版本之间运行标准比较
+python compatibility_test/scripts/run_compatibility_test.py --version-a 1.9.2 --version-b 1.9.3
+
+# 对复杂的JSON输出使用智能比较功能
+python compatibility_test/scripts/analyze_differences.py --version-a 1.9.2 --version-b 1.9.3 --smart-compare --generate-normalized
+
+```
 
 ### 🤖 AI协作支持
 本项目支持AI辅助开发，具有专门的质量控制：

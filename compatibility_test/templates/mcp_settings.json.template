@@ -1,0 +1,50 @@
+{
+  "mcpServers": {
+    "tree-sitter-analyzer-vA": {
+      "command": "uv",
+      "args": [
+        "run", "--with", "tree-sitter-analyzer[mcp]=={VERSION_A}",
+        "python", "-m", "tree_sitter_analyzer.mcp.server"
+      ],
+      "env": {
+        "TREE_SITTER_PROJECT_ROOT": "{PROJECT_ROOT}",
+        "TREE_SITTER_OUTPUT_PATH": "{PROJECT_ROOT}/.analysis-{VERSION_A}"
+      },
+      "alwaysAllow": [
+        "analyze_code_structure",
+        "query_code",
+        "check_code_scale",
+        "extract_code_section",
+        "set_project_path",
+        "list_files",
+        "find_and_grep",
+        "search_content"
+      ],
+      "timeout": 3600,
+      "disabled": true
+    },
+    "tree-sitter-analyzer-vB": {
+      "command": "uv",
+      "args": [
+        "run", "--with", "tree-sitter-analyzer[mcp]=={VERSION_B}",
+        "python", "-m", "tree_sitter_analyzer.mcp.server"
+      ],
+      "env": {
+        "TREE_SITTER_PROJECT_ROOT": "{PROJECT_ROOT}",
+        "TREE_SITTER_OUTPUT_PATH": "{PROJECT_ROOT}/.analysis-{VERSION_B}"
+      },
+      "alwaysAllow": [
+        "analyze_code_structure",
+        "query_code",
+        "check_code_scale",
+        "extract_code_section",
+        "set_project_path",
+        "list_files",
+        "find_and_grep",
+        "search_content"
+      ],
+      "timeout": 3600,
+      "disabled": true
+    }
+  }
+}

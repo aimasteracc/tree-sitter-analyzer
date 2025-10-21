@@ -1,0 +1,175 @@
+{
+  "analyze_code_structure": [
+    {
+      "id": "java_sample_full",
+      "params": {
+        "file_path": "examples/Sample.java",
+        "format_type": "full"
+      },
+      "output_file": "analyze_code_structure_java_full.txt"
+    },
+    {
+      "id": "python_engine_full",
+      "params": {
+        "file_path": "tree_sitter_analyzer/core/engine.py",
+        "format_type": "full"
+      },
+      "output_file": "analyze_code_structure_python_full.txt"
+    },
+    {
+      "id": "java_sample_json",
+      "params": {
+        "file_path": "examples/Sample.java",
+        "format_type": "json"
+      },
+      "output_file": "analyze_code_structure_java.json"
+    }
+  ],
+  "query_code": [
+    {
+      "id": "java_methods",
+      "params": {
+        "file_path": "examples/Sample.java",
+        "query_key": "methods"
+      },
+      "output_file": "query_code_java_methods.json"
+    },
+    {
+      "id": "python_methods",
+      "params": {
+        "file_path": "tree_sitter_analyzer/core/engine.py",
+        "query_key": "methods"
+      },
+      "output_file": "query_code_python_methods.json"
+    },
+    {
+      "id": "java_classes",
+      "params": {
+        "file_path": "examples/Sample.java",
+        "query_key": "class"
+      },
+      "output_file": "query_code_java_classes.json"
+    }
+  ],
+  "check_code_scale": [
+    {
+      "id": "java_sample",
+      "params": {
+        "file_path": "examples/Sample.java",
+        "include_complexity": true,
+        "include_details": false,
+        "include_guidance": true
+      },
+      "output_file": "check_code_scale_java.json"
+    },
+    {
+      "id": "python_engine",
+      "params": {
+        "file_path": "tree_sitter_analyzer/core/engine.py",
+        "include_complexity": true,
+        "include_details": false,
+        "include_guidance": true
+      },
+      "output_file": "check_code_scale_python.json"
+    }
+  ],
+  "extract_code_section": [
+    {
+      "id": "java_sample_section",
+      "params": {
+        "file_path": "examples/Sample.java",
+        "start_line": 1,
+        "end_line": 30,
+        "format": "text"
+      },
+      "output_file": "extract_code_section_java.txt"
+    },
+    {
+      "id": "python_engine_section",
+      "params": {
+        "file_path": "tree_sitter_analyzer/core/engine.py",
+        "start_line": 1,
+        "end_line": 50,
+        "format": "json"
+      },
+      "output_file": "extract_code_section_python.json"
+    }
+  ],
+  "set_project_path": [
+    {
+      "id": "set_current_project",
+      "params": {
+        "project_path": "{PROJECT_ROOT}"
+      },
+      "output_file": "set_project_path.json"
+    }
+  ],
+  "list_files": [
+    {
+      "id": "list_examples",
+      "params": {
+        "roots": ["examples/"],
+        "extensions": ["java", "py", "js"],
+        "types": ["f"]
+      },
+      "output_file": "list_files_examples.json"
+    },
+    {
+      "id": "list_core",
+      "params": {
+        "roots": ["tree_sitter_analyzer/core/"],
+        "extensions": ["py"],
+        "types": ["f"]
+      },
+      "output_file": "list_files_core.json"
+    }
+  ],
+  "find_and_grep": [
+    {
+      "id": "python_classes",
+      "params": {
+        "roots": ["."],
+        "pattern": "*.py",
+        "glob": true,
+        "query": "class ",
+        "case": "smart",
+        "context_before": 1,
+        "context_after": 1
+      },
+      "output_file": "find_and_grep_python_classes.json"
+    },
+    {
+      "id": "java_public_classes",
+      "params": {
+        "roots": ["examples/"],
+        "pattern": "*.java",
+        "glob": true,
+        "query": "public class",
+        "case": "smart"
+      },
+      "output_file": "find_and_grep_java_public_classes.json"
+    }
+  ],
+  "search_content": [
+    {
+      "id": "python_init_methods",
+      "params": {
+        "roots": ["tree_sitter_analyzer/"],
+        "query": "def __init__",
+        "include_globs": ["*.py"],
+        "case": "smart"
+      },
+      "output_file": "search_content_python_init.json"
+    },
+    {
+      "id": "java_constructors",
+      "params": {
+        "roots": ["examples/"],
+        "query": "public.*\\(",
+        "include_globs": ["*.java"],
+        "case": "smart"
+      },
+      "output_file": "search_content_java_constructors.json"
+    }
+  ]
+}

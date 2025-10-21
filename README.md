@@ -766,6 +766,35 @@ This project provides complete documentation support, including:
 - **Analysis Results** - See [docs/analysis/](docs/analysis/) for project analysis reports and metrics
 - **Feature Specifications** - See [specs/](specs/) for detailed feature specifications and implementation plans
 
+### 🔄 MCP Compatibility Testing
+For developers working with multiple versions of tree-sitter-analyzer, we provide a comprehensive compatibility testing framework, now featuring a **Smart JSON Comparison System**.
+
+- **[MCP Compatibility Test Standard](docs/mcp_compatibility_test_standard.md)** - Complete standardized process for version compatibility testing
+- **[Compatibility Test Tools](compatibility_test/README.md)** - Automated testing tools and scripts for version comparison
+- **[Troubleshooting Guide](compatibility_test/troubleshooting_guide.md)** - Solutions for common compatibility testing issues
+
+**Technical Documentation:**
+- **[MCP Direct Execution Technical Background](compatibility_test/MCP_DIRECT_EXECUTION_TECHNICAL_BACKGROUND.md)** - Technical rationale for why compatibility tests can execute tool classes directly without MCP server
+- **[Smart JSON Comparison System](docs/SMART_JSON_COMPARISON_SYSTEM.md)** - In-depth explanation of the new configuration-driven comparison system.
+
+**Key Features:**
+- **Smart JSON Comparison**: Advanced, configuration-driven comparison of complex JSON outputs.
+- **Configuration-Driven**: Use `comparison_config.json` to define comparison rules, ignore fields, and normalize data.
+- **Performance Field Filtering**: Automatically ignores volatile performance fields (e.g., `execution_time`) for stable comparisons.
+- **Array Normalization**: Normalizes and sorts arrays based on a specified key, ensuring order-independent comparisons.
+- **Normalized Output Generation**: Create normalized versions of JSON files for easier manual review and debugging.
+- **Deep Difference Analysis**: Utilizes the `deepdiff` library for granular and interpretable difference reporting.
+
+**Quick Start:**
+```bash
+# Run a standard comparison between two versions
+python compatibility_test/scripts/run_compatibility_test.py --version-a 1.9.2 --version-b 1.9.3
+
+# Use the smart comparison feature for complex JSON outputs
+python compatibility_test/scripts/analyze_differences.py --version-a 1.9.2 --version-b 1.9.3 --smart-compare --generate-normalized
+
+```
+
 ### 🤖 AI Collaboration Support
 This project supports AI-assisted development with professional quality control:
 

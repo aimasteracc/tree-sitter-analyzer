@@ -757,6 +757,38 @@ uv run pytest tests/test_mcp_server_initialization.py -v
 - **MCP設定ガイド** - [AIユーザー設定](#31--aiユーザーclaude-desktopcursorなど)部分を参照
 - **CLI使用ガイド** - [完全なCLIコマンド](#6--完全なcliコマンド)部分を参照
 - **コア機能説明** - [コア機能](#7-️-コア機能)部分を参照
+- **貢献ガイド** - 開発ガイドラインとドキュメント管理については[docs/CONTRIBUTING.md](docs/CONTRIBUTING.md)を参照
+- **分析結果** - プロジェクト分析レポートとメトリクスについては[docs/analysis/](docs/analysis/)を参照
+- **機能仕様** - 詳細な機能仕様と実装計画については[specs/](specs/)を参照
+
+### 🔄 MCP互換性テスト
+tree-sitter-analyzerの複数バージョンを扱う開発者向けに、**スマートJSON比較システム**を搭載した包括的な互換性テストフレームワークを提供します。
+
+- **[MCP互換性テスト標準](docs/mcp_compatibility_test_standard.md)** - バージョン互換性テストのための完全な標準化プロセス
+- **[互換性テストツール](compatibility_test/README.md)** - バージョン比較のための自動テストツールとスクリプト
+- **[トラブルシューティングガイド](compatibility_test/troubleshooting_guide.md)** - 一般的な互換性テスト問題の解決策
+
+**技術ドキュメント:**
+- **[MCP直接実行の技術的背景](compatibility_test/MCP_DIRECT_EXECUTION_TECHNICAL_BACKGROUND.md)** - 互換性テストがMCPサーバーなしでツールクラスを直接実行できる技術的根拠
+- **[スマートJSON比較システム](docs/SMART_JSON_COMPARISON_SYSTEM.md)** - 新しい設定駆動型比較システムに関する詳細な説明。
+
+**主な特徴:**
+- **スマートJSON比較**: 複雑なJSON出力を設定駆動で高度に比較。
+- **設定駆動**: `comparison_config.json`を使用して比較ルールを定義し、フィールドを無視し、データを正規化。
+- **パフォーマンスフィールドのフィルタリング**: 安定した比較のために、揮発性のパフォーマンス関連フィールド（例：`execution_time`）を自動的に無視。
+- **配列の正規化**: 指定されたキーに基づいて配列を正規化およびソートし、順序に依存しない比較を保証。
+- **正規化された出力生成**: 手動レビューとデバッグを容易にするために、JSONファイルの正規化版を作成。
+- **詳細な差分分析**: `deepdiff`ライブラリを利用して、詳細で解釈可能な差分レポートを作成。
+
+**クイックスタート:**
+```bash
+# 2つのバージョン間で標準的な比較を実行
+python compatibility_test/scripts/run_compatibility_test.py --version-a 1.9.2 --version-b 1.9.3
+
+# 複雑なJSON出力に対してスマート比較機能を使用
+python compatibility_test/scripts/analyze_differences.py --version-a 1.9.2 --version-b 1.9.3 --smart-compare --generate-normalized
+
+```
 
 ### 🤖 AIコラボレーションサポート
 本プロジェクトは、専門的な品質管理を備えたAI支援開発をサポートしています：

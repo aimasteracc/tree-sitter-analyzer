@@ -286,3 +286,16 @@ local_settings.py
 
 # Compiled tree-sitter parsers
 parsers/
+
+# Compatibility test results (keep directory structure, ignore content)
+compatibility_test/results/*/
+compatibility_test/reports/*.md
+!compatibility_test/results/.gitkeep
+!compatibility_test/reports/.gitkeep
+
+# Normalized comparison files
+.analysis-*-normalized/
+
+
+# Integration test reports
+phase7_integration_report.json
