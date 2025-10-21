@@ -332,7 +332,20 @@ class LanguageDetector:
         Returns:
             Support status
         """
-        return language in self.SUPPORTED_LANGUAGES
+        # First check the static list for basic support
+        if language in self.SUPPORTED_LANGUAGES:
+            return True
+        
+        # Also check if we have a plugin for this language
+        try:
+            from .plugins.manager import PluginManager
+            plugin_manager = PluginManager()
+            plugin_manager.load_plugins()  # Ensure plugins are loaded
+            supported_languages = plugin_manager.get_supported_languages()
+            return language in supported_languages
+        except Exception:
+            # Fallback to static list if plugin manager fails
+            return language in self.SUPPORTED_LANGUAGES
 
     def get_supported_extensions(self) -> list[str]:
         """
@@ -506,4 +519,17 @@ def is_language_supported(language: str) -> bool:
     Returns:
         Support status
     """
-    return detector.is_supported(language)
+    # First check the static list for basic support
+    if detector.is_supported(language):
+        return True
+    
+    # Also check if we have a plugin for this language
+    try:
+        from .plugins.manager import PluginManager
+        plugin_manager = PluginManager()
+        plugin_manager.load_plugins()  # Ensure plugins are loaded
+        supported_languages = plugin_manager.get_supported_languages()
+        return language in supported_languages
+    except Exception:
+        # Fallback to static list if plugin manager fails
+        return detector.is_supported(language)

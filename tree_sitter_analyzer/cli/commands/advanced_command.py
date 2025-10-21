@@ -49,8 +49,8 @@ class AdvancedCommand(BaseCommand):
             Dictionary containing file metrics
         """
         try:
-            with open(file_path, encoding="utf-8") as f:
-                content = f.read()
+            from ...encoding_utils import read_file_safe
+            content, _ = read_file_safe(file_path)
 
             lines = content.split("\n")
             total_lines = len(lines)

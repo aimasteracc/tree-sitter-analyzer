@@ -623,8 +623,8 @@ class MarkdownFormatter(BaseFormatter):
             return counts
 
         try:
-            with open(file_path, encoding="utf-8", errors="replace") as f:
-                content = f.read()
+            from ..encoding_utils import read_file_safe
+            content, _ = read_file_safe(file_path)
         except Exception:
             return counts
 

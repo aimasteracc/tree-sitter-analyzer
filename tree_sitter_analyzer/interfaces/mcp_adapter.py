@@ -32,8 +32,9 @@ def handle_mcp_resource_request(uri: str) -> dict[str, Any]:
 def read_file_safe(file_path: str) -> str:
     """Read file safely for MCP resource requests."""
     try:
-        with open(file_path, encoding="utf-8") as f:
-            return f.read()
+        from ..encoding_utils import read_file_safe
+        content, _ = read_file_safe(file_path)
+        return content
     except Exception as e:
         raise FileNotFoundError(f"Could not read file {file_path}: {e}") from e
 

@@ -374,8 +374,8 @@ class TableFormatTool(BaseMCPTool):
 
         # Write content to file
         try:
-            with open(output_path, "w", encoding="utf-8") as f:
-                f.write(content)
+            from ...encoding_utils import write_file_safe
+            write_file_safe(output_path, content)
             self.logger.info(f"Output written to file: {output_path}")
             return output_path
         except Exception as e:

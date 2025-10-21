@@ -116,8 +116,9 @@ class GitignoreDetector:
             current_search_dir: Directory where the search is being performed
         """
         try:
-            with open(gitignore_file, encoding="utf-8", errors="ignore") as f:
-                lines = f.readlines()
+            from ...encoding_utils import read_file_safe
+            content, _ = read_file_safe(gitignore_file)
+            lines = content.splitlines()
 
             for line in lines:
                 line = line.strip()
@@ -320,8 +321,9 @@ class GitignoreDetector:
         interfering = []
 
         try:
-            with open(gitignore_file, encoding="utf-8", errors="ignore") as f:
-                lines = f.readlines()
+            from ...encoding_utils import read_file_safe
+            content, _ = read_file_safe(gitignore_file)
+            lines = content.splitlines()
 
             for line in lines:
                 line = line.strip()

@@ -262,8 +262,8 @@ class FileOutputManager:
 
         # Write content to file
         try:
-            with open(output_file, "w", encoding="utf-8") as f:
-                f.write(content)
+            from ...encoding_utils import write_file_safe
+            write_file_safe(output_file, content)
 
             logger.info(f"Content saved to file: {output_file}")
             return str(output_file)

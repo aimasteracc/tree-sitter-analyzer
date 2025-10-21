@@ -214,9 +214,10 @@ class ProjectStatsResource:
             if file_path.is_file() and self._is_supported_code_file(file_path):
                 total_files += 1
                 try:
-                    with open(file_path, encoding="utf-8") as f:
-                        file_lines = sum(1 for _ in f)
-                        total_lines += file_lines
+                    from ...encoding_utils import read_file_safe
+                    content, _ = read_file_safe(file_path)
+                    file_lines = len(content.splitlines())
+                    total_lines += file_lines
                 except Exception as e:
                     logger.debug(
                         f"Skipping unreadable file during overview scan: {file_path} ({e})"
@@ -280,9 +281,10 @@ class ProjectStatsResource:
             if file_path.is_file() and self._is_supported_code_file(file_path):
                 total_files += 1
                 try:
-                    with open(file_path, encoding="utf-8") as f:
-                        file_lines = sum(1 for _ in f)
-                        total_lines += file_lines
+                    from ...encoding_utils import read_file_safe
+                    content, _ = read_file_safe(file_path)
+                    file_lines = len(content.splitlines())
+                    total_lines += file_lines
                 except Exception as e:
                     logger.debug(f"Failed to count lines for {file_path}: {e}")
                     file_lines = 0
@@ -452,8 +454,9 @@ class ProjectStatsResource:
 
                     # Count lines
                     try:
-                        with open(file_path, encoding="utf-8") as f:
-                            line_count = sum(1 for _ in f)
+                        from ...encoding_utils import read_file_safe
+                        content, _ = read_file_safe(file_path)
+                        line_count = len(content.splitlines())
                     except Exception:
                         line_count = 0
 

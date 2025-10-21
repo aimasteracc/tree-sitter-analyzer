@@ -73,7 +73,7 @@ class LanguageFormatterFactory:
         return language.lower() in cls._formatters
 
 
-def create_language_formatter(language: str) -> BaseFormatter:
+def create_language_formatter(language: str) -> BaseFormatter | None:
     """
     Create language formatter (function for compatibility)
 
@@ -83,4 +83,8 @@ def create_language_formatter(language: str) -> BaseFormatter:
     Returns:
         Language formatter or None if not supported
     """
-    return LanguageFormatterFactory.create_formatter(language)
+    try:
+        return LanguageFormatterFactory.create_formatter(language)
+    except ValueError:
+        # Return None for unsupported languages instead of raising exception
+        return None

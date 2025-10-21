@@ -1667,8 +1667,8 @@ class MarkdownPlugin(LanguagePlugin):
             )
 
         try:
-            with open(file_path, encoding="utf-8") as f:
-                source_code = f.read()
+            from ..encoding_utils import read_file_safe
+            source_code, _ = read_file_safe(file_path)
 
             parser = tree_sitter.Parser()
             parser.language = language

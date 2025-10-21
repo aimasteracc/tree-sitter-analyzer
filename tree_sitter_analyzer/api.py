@@ -456,8 +456,9 @@ def validate_file(file_path: str | Path) -> dict[str, Any]:
 
         # Check if file is readable
         try:
-            with open(file_path, encoding="utf-8") as f:
-                f.read(100)  # Read first 100 chars to test
+            from .encoding_utils import read_file_safe
+            # Test file readability by reading it
+            read_file_safe(file_path)
             result["readable"] = True
             result["size"] = file_path.stat().st_size
         except Exception as e:

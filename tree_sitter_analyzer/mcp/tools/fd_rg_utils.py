@@ -637,7 +637,8 @@ def write_files_to_temp(files: list[str]) -> TempFileList:
     fd, temp_path = tempfile.mkstemp(prefix="rg-files-", suffix=".lst")
     os.close(fd)
     content = "\n".join(files)
-    Path(temp_path).write_text(content, encoding="utf-8")
+    from ...encoding_utils import write_file_safe
+    write_file_safe(temp_path, content)
     return TempFileList(path=temp_path)
 
 
