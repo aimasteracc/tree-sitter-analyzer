@@ -25,7 +25,7 @@ from .base_command import BaseCommand
 class TableCommand(BaseCommand):
     """Command for generating table format output."""
 
-    def __init__(self, args):
+    def __init__(self, args: Any) -> None:
         """Initialize the table command."""
         super().__init__(args)
 
@@ -56,10 +56,10 @@ class TableCommand(BaseCommand):
 
             # Create table formatter
             include_javadoc = getattr(self.args, "include_javadoc", False)
-            formatter = create_table_formatter(
+            table_formatter: Any = create_table_formatter(
                 self.args.table, language, include_javadoc
             )
-            table_output = formatter.format_structure(structure_result)
+            table_output = table_formatter.format_structure(structure_result)
 
             # Output table
             self._output_table(table_output)

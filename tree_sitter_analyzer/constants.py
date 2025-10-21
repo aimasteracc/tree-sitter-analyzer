@@ -5,6 +5,7 @@ Constants for tree-sitter-analyzer
 This module defines constants used throughout the project to ensure consistency.
 """
 
+from typing import Any, cast
 # Element types for unified element management system
 ELEMENT_TYPE_CLASS = "class"
 ELEMENT_TYPE_FUNCTION = "function"
@@ -34,7 +35,7 @@ LEGACY_CLASS_MAPPING = {
 }
 
 
-def get_element_type(element) -> str:
+def get_element_type(element: Any) -> str:
     """
     Get the element type from an element object.
 
@@ -45,7 +46,7 @@ def get_element_type(element) -> str:
         Standardized element type string
     """
     if hasattr(element, "element_type"):
-        return element.element_type
+        return cast(str, element.element_type)
 
     if hasattr(element, "__class__") and hasattr(element.__class__, "__name__"):
         class_name = element.__class__.__name__
@@ -54,7 +55,7 @@ def get_element_type(element) -> str:
     return "unknown"
 
 
-def is_element_of_type(element, element_type: str) -> bool:
+def is_element_of_type(element: Any, element_type: str) -> bool:
     """
     Check if an element is of a specific type.
 

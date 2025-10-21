@@ -665,7 +665,7 @@ class TableFormatter:
 
         # Map<String,Object> -> M<S,O>
         if "Map<" in type_name:
-            return (
+            return str(
                 type_name.replace("Map<", "M<")
                 .replace("String", "S")
                 .replace("Object", "O")
@@ -673,17 +673,17 @@ class TableFormatter:
 
         # List<String> -> L<S>
         if "List<" in type_name:
-            return type_name.replace("List<", "L<").replace("String", "S")
+            return str(type_name.replace("List<", "L<").replace("String", "S"))
 
         # String[] -> S[]
         if "[]" in type_name:
             base_type = type_name.replace("[]", "")
             if base_type:
-                return type_mapping.get(base_type, base_type[0].upper()) + "[]"
+                return str(type_mapping.get(base_type, base_type[0].upper())) + "[]"
             else:
                 return "O[]"
 
-        return type_mapping.get(type_name, type_name)
+        return str(type_mapping.get(type_name, type_name))
 
     def _convert_visibility(self, visibility: str) -> str:
         """Convert visibility to symbol"""

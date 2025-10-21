@@ -14,8 +14,7 @@ from .base_formatter import BaseFormatter
 class MarkdownFormatter(BaseFormatter):
     """Formatter specialized for Markdown documents"""
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self) -> None:
         self.language = "markdown"
 
     def format_summary(self, analysis_result: dict[str, Any]) -> str:

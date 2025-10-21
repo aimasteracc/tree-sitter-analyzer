@@ -44,7 +44,7 @@ class PythonElementExtractor(ElementExtractor):
         self._node_text_cache: dict[int, str] = {}
         self._processed_nodes: set[int] = set()
         self._element_cache: dict[tuple[int, str], Any] = {}
-        self._file_encoding: str | None = None
+        self._file_encoding: Optional[str] = None
         self._docstring_cache: dict[int, str] = {}
         self._complexity_cache: dict[int, int] = {}
 
@@ -69,20 +69,16 @@ class PythonElementExtractor(ElementExtractor):
             "function_definition": self._extract_function_optimized,
         }
 
-        if tree is None or tree.root_node is None:
-            log_debug("Tree or root_node is None, returning empty functions list")
-            return functions
-
-        try:
-            self._traverse_and_extract_iterative(
-                tree.root_node, extractors, functions, "function"
-            )
-        except Exception as e:
-            log_debug(f"Error during function extraction: {e}")
-            # Return empty list on error to handle gracefully
-            return []
-
-        log_debug(f"Extracted {len(functions)} Python functions")
+        if tree is not None and tree.root_node is not None:
+            try:
+                self._traverse_and_extract_iterative(
+                    tree.root_node, extractors, functions, "function"
+                )
+                log_debug(f"Extracted {len(functions)} Python functions")
+            except Exception as e:
+                log_debug(f"Error during function extraction: {e}")
+                return []
+        
         return functions
 
     def extract_classes(
@@ -100,15 +96,16 @@ class PythonElementExtractor(ElementExtractor):
             "class_definition": self._extract_class_optimized,
         }
 
-        if tree is None or tree.root_node is None:
-            log_debug("Tree or root_node is None, returning empty classes list")
-            return classes
-
-        self._traverse_and_extract_iterative(
-            tree.root_node, extractors, classes, "class"
-        )
-
-        log_debug(f"Extracted {len(classes)} Python classes")
+        if tree is not None and tree.root_node is not None:
+            try:
+                self._traverse_and_extract_iterative(
+                    tree.root_node, extractors, classes, "class"
+                )
+                log_debug(f"Extracted {len(classes)} Python classes")
+            except Exception as e:
+                log_debug(f"Error during class extraction: {e}")
+                return []
+        
         return classes
 
     def extract_variables(
@@ -178,7 +175,7 @@ class PythonElementExtractor(ElementExtractor):
 
     def _traverse_and_extract_iterative(
         self,
-        root_node: "tree_sitter.Node",
+        root_node: Optional["tree_sitter.Node"],
         extractors: dict[str, Any],
         results: list[Any],
         element_type: str,
@@ -255,22 +252,23 @@ class PythonElementExtractor(ElementExtractor):
                     except Exception:
                         # Skip nodes that cause extraction errors
                         self._processed_nodes.add(node_id)
-                        continue
 
             # Add children to stack
             if current_node.children:
                 try:
                     # Try to reverse children for proper traversal order
-                    children = reversed(current_node.children)
+                    children_list = list(current_node.children)
+                    children_iter = reversed(children_list)
                 except TypeError:
                     # Fallback for Mock objects or other non-reversible types
                     try:
-                        children = list(current_node.children)
+                        children_list = list(current_node.children)
+                        children_iter = iter(children_list)  # type: ignore
                     except TypeError:
                         # If children is not iterable, skip
-                        children = []
+                        children_iter = iter([])  # type: ignore
 
-                for child in children:
+                for child in children_iter:
                     node_stack.append((child, depth + 1))
 
         log_debug(f"Iterative traversal processed {processed_nodes} nodes")
@@ -337,7 +335,7 @@ class PythonElementExtractor(ElementExtractor):
             log_error(f"Fallback text extraction also failed: {fallback_error}")
             return ""
 
-    def _extract_function_optimized(self, node: "tree_sitter.Node") -> Function | None:
+    def _extract_function_optimized(self, node: "tree_sitter.Node") -> Optional[Function]:
         """Extract function information with detailed metadata"""
         try:
             start_line = node.start_point[0] + 1
@@ -393,13 +391,12 @@ class PythonElementExtractor(ElementExtractor):
         except Exception as e:
             log_error(f"Failed to extract function info: {e}")
             import traceback
-
             traceback.print_exc()
             return None
 
     def _parse_function_signature_optimized(
         self, node: "tree_sitter.Node"
-    ) -> tuple[str, list[str], bool, list[str], str | None] | None:
+    ) -> Optional[tuple[str, list[str], bool, list[str], Optional[str]]]:
         """Parse function signature for Python functions"""
         try:
             name = None
@@ -464,7 +461,7 @@ class PythonElementExtractor(ElementExtractor):
 
         return parameters
 
-    def _extract_docstring_for_line(self, target_line: int) -> str | None:
+    def _extract_docstring_for_line(self, target_line: int) -> Optional[str]:
         """Extract docstring for the specified line"""
         if target_line in self._docstring_cache:
             return self._docstring_cache[target_line]
@@ -498,9 +495,8 @@ class PythonElementExtractor(ElementExtractor):
                             break
                         docstring_lines.append(next_line)
 
-                    # If no closing quote found, return None (malformed docstring)
                     if not found_closing_quote:
-                        self._docstring_cache[target_line] = None
+                        self._docstring_cache[target_line] = ""
                         return None
 
                     # Join preserving formatting and add leading newline for multi-line
@@ -511,7 +507,7 @@ class PythonElementExtractor(ElementExtractor):
                     self._docstring_cache[target_line] = docstring
                     return docstring
 
-            self._docstring_cache[target_line] = None
+            self._docstring_cache[target_line] = ""
             return None
 
         except Exception as e:
@@ -552,7 +548,7 @@ class PythonElementExtractor(ElementExtractor):
         self._complexity_cache[node_id] = complexity
         return complexity
 
-    def _extract_class_optimized(self, node: "tree_sitter.Node") -> Class | None:
+    def _extract_class_optimized(self, node: "tree_sitter.Node") -> Optional[Class]:
         """Extract class information with detailed metadata"""
         try:
             start_line = node.start_point[0] + 1
@@ -678,7 +674,7 @@ class PythonElementExtractor(ElementExtractor):
 
     def _extract_class_attribute_info(
         self, node: "tree_sitter.Node", source_code: str
-    ) -> Variable | None:
+    ) -> Optional[Variable]:
         """Extract class attribute information from assignment node"""
         try:
             # Get the full assignment text
@@ -748,7 +744,7 @@ class PythonElementExtractor(ElementExtractor):
                         )
 
                         # Group captures by name
-                        captures_dict = {}
+                        captures_dict: dict[str, list[Any]] = {}
                         for node, capture_name in captures:
                             if capture_name not in captures_dict:
                                 captures_dict[capture_name] = []
@@ -787,7 +783,7 @@ class PythonElementExtractor(ElementExtractor):
         """Manual import extraction for tree-sitter 0.25.x compatibility"""
         imports = []
 
-        def walk_tree(node):
+        def walk_tree(node: "tree_sitter.Node") -> None:
             if node.type in ["import_statement", "import_from_statement"]:
                 try:
                     start_line = node.start_point[0] + 1
@@ -990,7 +986,7 @@ class PythonElementExtractor(ElementExtractor):
 
     def _extract_import_info(
         self, node: "tree_sitter.Node", source_code: str, import_type: str
-    ) -> Import | None:
+    ) -> Optional[Import]:
         """Extract detailed import information from AST node"""
         try:
             if not self._validate_node(node):
@@ -1045,7 +1041,7 @@ class PythonElementExtractor(ElementExtractor):
 
     def _extract_name_from_node(
         self, node: "tree_sitter.Node", source_code: str
-    ) -> str | None:
+    ) -> Optional[str]:
         """Extract name from AST node"""
         for child in node.children:
             if child.type == "identifier":
@@ -1094,7 +1090,7 @@ class PythonElementExtractor(ElementExtractor):
 
     def _extract_return_type_from_node(
         self, node: "tree_sitter.Node", source_code: str
-    ) -> str | None:
+    ) -> Optional[str]:
         """Extract return type annotation from function node"""
         for child in node.children:
             if child.type == "type":
@@ -1103,7 +1099,7 @@ class PythonElementExtractor(ElementExtractor):
 
     def _extract_docstring_from_node(
         self, node: "tree_sitter.Node", source_code: str
-    ) -> str | None:
+    ) -> Optional[str]:
         """Extract docstring from function/class node"""
         for child in node.children:
             if child.type == "block":
@@ -1164,8 +1160,8 @@ class PythonPlugin(LanguagePlugin):
     def __init__(self) -> None:
         """Initialize the Python plugin"""
         super().__init__()
-        self._language_cache: tree_sitter.Language | None = None
-        self._extractor: PythonElementExtractor | None = None
+        self._language_cache: Optional["tree_sitter.Language"] = None
+        self._extractor: Optional[PythonElementExtractor] = None
 
         # Legacy compatibility attributes for tests
         self.language = "python"
@@ -1294,51 +1290,13 @@ class PythonPlugin(LanguagePlugin):
         }
 
     def execute_query_strategy(
-        self, tree: "tree_sitter.Tree", source_code: str, query_key: str
-    ) -> list[dict]:
-        """
-        Execute query strategy for Python language
+        self, query_key: str | None, language: str
+    ) -> str | None:
+        """Execute query strategy for Python language"""
+        queries = self.get_queries()
+        return queries.get(query_key) if query_key else None
 
-        Args:
-            tree: Tree-sitter tree object
-            source_code: Source code string
-            query_key: Query key to execute
-
-        Returns:
-            List of query results
-        """
-        # Use the extractor to get elements based on query_key
-        extractor = self.get_extractor()
-
-        # Map query keys to extraction methods
-        if query_key in ["function", "functions", "method", "methods"]:
-            elements = extractor.extract_functions(tree, source_code)
-        elif query_key in ["class", "classes"]:
-            elements = extractor.extract_classes(tree, source_code)
-        elif query_key in ["variable", "variables"]:
-            elements = extractor.extract_variables(tree, source_code)
-        elif query_key in ["import", "imports", "from_import", "from_imports"]:
-            elements = extractor.extract_imports(tree, source_code)
-        else:
-            # For unknown query keys, return empty list
-            return []
-
-        # Convert elements to query result format
-        results = []
-        for element in elements:
-            result = {
-                "capture_name": query_key,
-                "node_type": self._get_node_type_for_element(element),
-                "start_line": element.start_line,
-                "end_line": element.end_line,
-                "text": element.raw_text,
-                "name": element.name,
-            }
-            results.append(result)
-
-        return results
-
-    def _get_node_type_for_element(self, element) -> str:
+    def _get_node_type_for_element(self, element: Any) -> str:
         """Get appropriate node type for element"""
         from ..models import Class, Function, Import, Variable
 
@@ -1536,9 +1494,9 @@ class PythonPlugin(LanguagePlugin):
 
         try:
             elements.extend(extractor.extract_functions(tree, source_code))
-            elements.extend(extractor.extract_classes(tree, source_code))
-            elements.extend(extractor.extract_variables(tree, source_code))
-            elements.extend(extractor.extract_imports(tree, source_code))
+            elements.extend(extractor.extract_classes(tree, source_code))  # type: ignore
+            elements.extend(extractor.extract_variables(tree, source_code))  # type: ignore
+            elements.extend(extractor.extract_imports(tree, source_code))  # type: ignore
         except Exception as e:
             log_error(f"Failed to extract elements: {e}")
 

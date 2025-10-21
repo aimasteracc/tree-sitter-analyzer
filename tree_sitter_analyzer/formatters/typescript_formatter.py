@@ -462,7 +462,7 @@ class TypeScriptTableFormatter(BaseTableFormatter):
         elif element_type == "import":
             return "Import"
         else:
-            return element_type.title()
+            return str(element_type.title())
 
     def _format_element_details(self, element: dict[str, Any]) -> str:
         """Format TypeScript-specific element details"""

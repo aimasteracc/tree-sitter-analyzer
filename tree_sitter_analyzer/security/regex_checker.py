@@ -219,9 +219,9 @@ class RegexSafetyChecker:
 
             # Calculate complexity score
             metrics["complexity_score"] = (
-                metrics["length"] * 0.1
+                int(metrics["length"] * 0.1)
                 + metrics["quantifiers"] * 2
-                + metrics["groups"] * 1.5
+                + int(metrics["groups"] * 1.5)
                 + metrics["alternations"] * 3
                 + metrics["character_classes"] * 1
             )

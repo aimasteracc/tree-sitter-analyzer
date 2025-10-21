@@ -45,8 +45,6 @@ class ProjectBoundaryManager:
             # Handle both string and Path objects
             if isinstance(project_root, str):
                 project_path = Path(project_root)
-            elif isinstance(project_root, Path):
-                project_path = project_root
             else:
                 raise SecurityError(f"Invalid project root type: {type(project_root)}")
 
@@ -150,18 +148,17 @@ class ProjectBoundaryManager:
             real_path = Path(file_path).resolve()
             try:
                 rel_path = real_path.relative_to(Path(self.project_root))
-                rel_path = str(rel_path)
             except ValueError:
                 # Path is not relative to project root
                 log_warning(f"Path not relative to project root: {file_path}")
                 return None
 
             # Ensure relative path doesn't start with ..
-            if rel_path.startswith(".."):
+            if str(rel_path).startswith(".."):
                 log_warning(f"Relative path calculation failed: {rel_path}")
                 return None
 
-            return rel_path
+            return str(rel_path)
 
         except Exception as e:
             log_warning(f"Relative path calculation error: {e}")

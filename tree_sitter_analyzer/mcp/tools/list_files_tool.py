@@ -301,7 +301,7 @@ class ListFilesTool(BaseMCPTool):
                     saved_path = file_manager.save_to_file(
                         content=json_content, base_name=output_file
                     )
-                    result["output_file"] = saved_path
+                    result["output_file"] = saved_path  # type: ignore[assignment]
 
                     if suppress_output:
                         # Return minimal response to save tokens
@@ -314,7 +314,7 @@ class ListFilesTool(BaseMCPTool):
                         }
                 except Exception as e:
                     logger.warning(f"Failed to save output file: {e}")
-                    result["output_file_error"] = str(e)
+                    result["output_file_error"] = str(e)  # type: ignore[assignment]
 
             return result
 
@@ -350,7 +350,7 @@ class ListFilesTool(BaseMCPTool):
             except (OSError, ValueError):  # nosec B112
                 continue
 
-        result = {
+        final_result: dict[str, Any] = {
             "success": True,
             "count": len(results),
             "truncated": truncated,
@@ -396,7 +396,7 @@ class ListFilesTool(BaseMCPTool):
                 saved_path = file_manager.save_to_file(
                     content=json_content, base_name=output_file
                 )
-                result["output_file"] = saved_path
+                final_result["output_file"] = saved_path
 
                 if suppress_output:
                     # Return minimal response to save tokens
@@ -408,6 +408,6 @@ class ListFilesTool(BaseMCPTool):
                     }
             except Exception as e:
                 logger.warning(f"Failed to save output file: {e}")
-                result["output_file_error"] = str(e)
+                final_result["output_file_error"] = str(e)
 
-        return result
+        return final_result

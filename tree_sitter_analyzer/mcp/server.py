@@ -25,23 +25,23 @@ except ImportError:
     MCP_AVAILABLE = False
 
     # Fallback types for development without MCP
-    class Server:
+    class Server:  # type: ignore
         pass
 
-    class InitializationOptions:
+    class InitializationOptions:  # type: ignore
         def __init__(self, **kwargs: Any) -> None:
             pass
 
-    class Tool:
+    class Tool:  # type: ignore
         pass
 
-    class Resource:
+    class Resource:  # type: ignore
         pass
 
-    class TextContent:
+    class TextContent:  # type: ignore
         pass
 
-    def stdio_server() -> None:
+    def stdio_server() -> None:  # type: ignore
         pass
 
 
@@ -70,8 +70,10 @@ from .tools.table_format_tool import TableFormatTool
 # Import UniversalAnalyzeTool at module level for test compatibility
 try:
     from .tools.universal_analyze_tool import UniversalAnalyzeTool
+    UNIVERSAL_TOOL_AVAILABLE = True
 except ImportError:
-    UniversalAnalyzeTool: type[Any] | None = None
+    UniversalAnalyzeTool = None  # type: ignore
+    UNIVERSAL_TOOL_AVAILABLE = False
 
 # Set up logging
 logger = setup_logger(__name__)
@@ -112,13 +114,13 @@ class TreeSitterAnalyzerMCPServer:
 
         # Optional universal tool to satisfy initialization tests
         # Allow tests to control initialization by checking if UniversalAnalyzeTool is available
-        if UniversalAnalyzeTool is not None:
+        if UNIVERSAL_TOOL_AVAILABLE and UniversalAnalyzeTool is not None:
             try:
-                self.universal_analyze_tool = UniversalAnalyzeTool(project_root)
+                self.universal_analyze_tool: UniversalAnalyzeTool | None = UniversalAnalyzeTool(project_root)
             except Exception:
-                self.universal_analyze_tool: Any = None
+                self.universal_analyze_tool = None
         else:
-            self.universal_analyze_tool: Any = None
+            self.universal_analyze_tool = None
 
         # Initialize MCP resources
         self.code_file_resource = CodeFileResource()
@@ -162,9 +164,11 @@ class TreeSitterAnalyzerMCPServer:
 
         # For specific initialization tests we allow delegating to universal tool
         if "file_path" not in arguments:
-            if getattr(self, "universal_analyze_tool", None) is not None:
+            universal_tool = getattr(self, "universal_analyze_tool", None)
+            if universal_tool is not None:
                 try:
-                    return await self.universal_analyze_tool.execute(arguments)
+                    result = await universal_tool.execute(arguments)
+                    return dict(result)  # Ensure proper type casting
                 except ValueError:
                     # Re-raise ValueError as-is for test compatibility
                     raise
@@ -400,10 +404,6 @@ class TreeSitterAnalyzerMCPServer:
                     if "-->" not in stripped:
                         in_multiline_comment = True
                     continue
-                elif in_multiline_comment and "-->" in stripped:
-                    comment_lines += 1
-                    in_multiline_comment = False
-                    continue
 
                 # If not a comment, it's code
                 code_lines += 1
@@ -444,7 +444,7 @@ class TreeSitterAnalyzerMCPServer:
         server: Server = Server(self.name)
 
         # Register tools using @server decorators (standard MCP pattern)
-        @server.list_tools()
+        @server.list_tools()  # type: ignore[misc]
         async def handle_list_tools() -> list[Tool]:
             """List all available tools."""
             logger.info("Client requesting tools list")
@@ -477,7 +477,7 @@ class TreeSitterAnalyzerMCPServer:
             logger.info(f"Returning {len(tools)} tools: {[t.name for t in tools]}")
             return tools
 
-        @server.call_tool()
+        @server.call_tool()  # type: ignore[misc]
         async def handle_call_tool(
             name: str, arguments: dict[str, Any]
         ) -> list[TextContent]:
@@ -635,8 +635,9 @@ class TreeSitterAnalyzerMCPServer:
                 raise
 
         # Some clients may request prompts; explicitly return empty list
+        # Some clients may request prompts; explicitly return empty list
         try:
-            from mcp.types import Prompt  # type: ignore
+            from mcp.types import Prompt
 
             @server.list_prompts()  # type: ignore
             async def handle_list_prompts() -> list[Prompt]:
@@ -704,7 +705,7 @@ class TreeSitterAnalyzerMCPServer:
         options = InitializationOptions(
             server_name=self.name,
             server_version=self.version,
-            capabilities={"tools": {}, "resources": {}, "prompts": {}, "logging": {}},
+            capabilities={"tools": {}, "resources": {}, "prompts": {}, "logging": {}},  # type: ignore
         )
 
         try:

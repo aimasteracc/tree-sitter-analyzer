@@ -32,8 +32,7 @@ class LanguageFormatterFactory:
         formatter_class = cls._formatters.get(language.lower())
 
         if formatter_class is None:
-            # Return None for unsupported languages
-            return None
+            raise ValueError(f"Unsupported language: {language}")
 
         return formatter_class()
 

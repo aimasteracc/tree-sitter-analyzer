@@ -34,6 +34,10 @@ class ElementExtractor(ABC):
     meaningful code elements like functions, classes, variables, etc.
     """
 
+    def __init__(self) -> None:
+        """Initialize the element extractor."""
+        self.current_file: str = ""  # Current file being processed
+
     @abstractmethod
     def extract_functions(
         self, tree: "tree_sitter.Tree", source_code: str
@@ -98,6 +102,38 @@ class ElementExtractor(ABC):
         """
         pass
 
+    def extract_packages(
+        self, tree: "tree_sitter.Tree", source_code: str
+    ) -> list[Any]:
+        """
+        Extract package declarations from the syntax tree.
+        
+        Args:
+            tree: Tree-sitter AST
+            source_code: Original source code
+            
+        Returns:
+            List of extracted package objects
+        """
+        # Default implementation returns empty list
+        return []
+
+    def extract_annotations(
+        self, tree: "tree_sitter.Tree", source_code: str
+    ) -> list[Any]:
+        """
+        Extract annotations from the syntax tree.
+        
+        Args:
+            tree: Tree-sitter AST
+            source_code: Original source code
+            
+        Returns:
+            List of extracted annotation objects
+        """
+        # Default implementation returns empty list
+        return []
+
     def extract_all_elements(
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[CodeElement]:
@@ -122,6 +158,38 @@ class ElementExtractor(ABC):
             log_error(f"Failed to extract all elements: {e}")
 
         return elements
+
+    def extract_html_elements(
+        self, tree: "tree_sitter.Tree", source_code: str
+    ) -> list[Any]:
+        """
+        Extract HTML elements from the syntax tree.
+        
+        Args:
+            tree: Tree-sitter AST
+            source_code: Original source code
+            
+        Returns:
+            List of extracted HTML elements
+        """
+        # Default implementation returns empty list
+        return []
+
+    def extract_css_rules(
+        self, tree: "tree_sitter.Tree", source_code: str
+    ) -> list[Any]:
+        """
+        Extract CSS rules from the syntax tree.
+        
+        Args:
+            tree: Tree-sitter AST
+            source_code: Original source code
+            
+        Returns:
+            List of extracted CSS rules
+        """
+        # Default implementation returns empty list
+        return []
 
 
 class LanguagePlugin(ABC):

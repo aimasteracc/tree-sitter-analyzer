@@ -137,19 +137,21 @@ class AnalyzeScaleToolCLICompatible:
                     else None
                 ),
                 "element_counts": {
-                    "imports": len(analysis_result.imports),
-                    "classes": len(analysis_result.classes),
-                    "methods": len(analysis_result.methods),
-                    "fields": len(analysis_result.fields),
-                    "annotations": len(getattr(analysis_result, "annotations", [])),
+                    "imports": len([e for e in analysis_result.elements if getattr(e, 'element_type', '') == 'import']),
+                    "classes": len([e for e in analysis_result.elements if getattr(e, 'element_type', '') == 'class']),
+                    "methods": len([e for e in analysis_result.elements if getattr(e, 'element_type', '') == 'function']),
+                    "fields": len([e for e in analysis_result.elements if getattr(e, 'element_type', '') == 'variable']),
+                    "annotations": len([e for e in analysis_result.elements if getattr(e, 'element_type', '') == 'annotation']),
                 },
                 "analysis_time_ms": analysis_time_ms,
                 "error_message": None,
             }
 
+            classes_count = len([e for e in analysis_result.elements if getattr(e, 'element_type', '') == 'class'])
+            methods_count = len([e for e in analysis_result.elements if getattr(e, 'element_type', '') == 'function'])
             logger.info(
-                f"Successfully analyzed {file_path}: {len(analysis_result.classes)} classes, "
-                f"{len(analysis_result.methods)} methods, {analysis_time_ms}ms"
+                f"Successfully analyzed {file_path}: {classes_count} classes, "
+                f"{methods_count} methods, {analysis_time_ms}ms"
             )
 
             return result

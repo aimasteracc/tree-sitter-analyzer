@@ -1,0 +1,2 @@
+mcp\server.py: error: Source file found twice under different module names:
+"tree_sitter_analyzer.mcp.server" and "mcp.server"

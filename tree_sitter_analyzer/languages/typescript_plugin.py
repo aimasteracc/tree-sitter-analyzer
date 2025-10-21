@@ -44,7 +44,7 @@ class TypeScriptElementExtractor(ElementExtractor):
         self._node_text_cache: dict[int, str] = {}
         self._processed_nodes: set[int] = set()
         self._element_cache: dict[tuple[int, str], Any] = {}
-        self._file_encoding: str | None = None
+        self._file_encoding: Optional[str] = None
         self._tsdoc_cache: dict[int, str] = {}
         self._complexity_cache: dict[int, int] = {}
 
@@ -189,7 +189,7 @@ class TypeScriptElementExtractor(ElementExtractor):
 
     def _traverse_and_extract_iterative(
         self,
-        root_node: "tree_sitter.Node",
+        root_node: Optional["tree_sitter.Node"],
         extractors: dict[str, Any],
         results: list[Any],
         element_type: str,
@@ -320,7 +320,7 @@ class TypeScriptElementExtractor(ElementExtractor):
                 log_error(f"Fallback text extraction also failed: {fallback_error}")
                 return ""
 
-    def _extract_function_optimized(self, node: "tree_sitter.Node") -> Function | None:
+    def _extract_function_optimized(self, node: "tree_sitter.Node") -> Optional[Function]:
         """Extract regular function information with detailed metadata"""
         try:
             start_line = node.start_point[0] + 1
@@ -372,7 +372,7 @@ class TypeScriptElementExtractor(ElementExtractor):
 
     def _extract_arrow_function_optimized(
         self, node: "tree_sitter.Node"
-    ) -> Function | None:
+    ) -> Optional[Function]:
         """Extract arrow function information"""
         try:
             start_line = node.start_point[0] + 1
@@ -437,7 +437,7 @@ class TypeScriptElementExtractor(ElementExtractor):
             log_debug(f"Failed to extract arrow function info: {e}")
             return None
 
-    def _extract_method_optimized(self, node: "tree_sitter.Node") -> Function | None:
+    def _extract_method_optimized(self, node: "tree_sitter.Node") -> Optional[Function]:
         """Extract method information from class"""
         try:
             start_line = node.start_point[0] + 1
@@ -495,7 +495,7 @@ class TypeScriptElementExtractor(ElementExtractor):
 
     def _extract_method_signature_optimized(
         self, node: "tree_sitter.Node"
-    ) -> Function | None:
+    ) -> Optional[Function]:
         """Extract method signature information from interfaces"""
         try:
             start_line = node.start_point[0] + 1
@@ -540,12 +540,7 @@ class TypeScriptElementExtractor(ElementExtractor):
                 # TypeScript-specific properties
                 is_arrow=False,
                 is_method=True,
-                is_signature=True,
                 framework_type=self.framework_type,
-                visibility=visibility,
-                is_getter=is_getter,
-                is_setter=is_setter,
-                # TypeScript-specific properties handled above
             )
         except Exception as e:
             log_debug(f"Failed to extract method signature info: {e}")
@@ -553,7 +548,7 @@ class TypeScriptElementExtractor(ElementExtractor):
 
     def _extract_generator_function_optimized(
         self, node: "tree_sitter.Node"
-    ) -> Function | None:
+    ) -> Optional[Function]:
         """Extract generator function information"""
         try:
             start_line = node.start_point[0] + 1
@@ -597,7 +592,7 @@ class TypeScriptElementExtractor(ElementExtractor):
             log_debug(f"Failed to extract generator function info: {e}")
             return None
 
-    def _extract_class_optimized(self, node: "tree_sitter.Node") -> Class | None:
+    def _extract_class_optimized(self, node: "tree_sitter.Node") -> Optional[Class]:
         """Extract class information with detailed metadata"""
         try:
             start_line = node.start_point[0] + 1
@@ -663,7 +658,7 @@ class TypeScriptElementExtractor(ElementExtractor):
             log_debug(f"Failed to extract class info: {e}")
             return None
 
-    def _extract_interface_optimized(self, node: "tree_sitter.Node") -> Class | None:
+    def _extract_interface_optimized(self, node: "tree_sitter.Node") -> Optional[Class]:
         """Extract interface information"""
         try:
             start_line = node.start_point[0] + 1
@@ -715,7 +710,7 @@ class TypeScriptElementExtractor(ElementExtractor):
             log_debug(f"Failed to extract interface info: {e}")
             return None
 
-    def _extract_type_alias_optimized(self, node: "tree_sitter.Node") -> Class | None:
+    def _extract_type_alias_optimized(self, node: "tree_sitter.Node") -> Optional[Class]:
         """Extract type alias information"""
         try:
             start_line = node.start_point[0] + 1
@@ -757,7 +752,7 @@ class TypeScriptElementExtractor(ElementExtractor):
             log_debug(f"Failed to extract type alias info: {e}")
             return None
 
-    def _extract_enum_optimized(self, node: "tree_sitter.Node") -> Class | None:
+    def _extract_enum_optimized(self, node: "tree_sitter.Node") -> Optional[Class]:
         """Extract enum information"""
         try:
             start_line = node.start_point[0] + 1
@@ -809,7 +804,7 @@ class TypeScriptElementExtractor(ElementExtractor):
         kind = "let" if node_text.strip().startswith("let") else "const"
         return self._extract_variables_from_declaration(node, kind)
 
-    def _extract_property_optimized(self, node: "tree_sitter.Node") -> Variable | None:
+    def _extract_property_optimized(self, node: "tree_sitter.Node") -> Optional[Variable]:
         """Extract class property definition"""
         try:
             start_line = node.start_point[0] + 1
@@ -874,7 +869,7 @@ class TypeScriptElementExtractor(ElementExtractor):
 
     def _extract_property_signature_optimized(
         self, node: "tree_sitter.Node"
-    ) -> Variable | None:
+    ) -> Optional[Variable]:
         """Extract property signature from interface"""
         try:
             start_line = node.start_point[0] + 1
@@ -943,7 +938,7 @@ class TypeScriptElementExtractor(ElementExtractor):
 
     def _parse_variable_declarator(
         self, node: "tree_sitter.Node", kind: str, start_line: int, end_line: int
-    ) -> Variable | None:
+    ) -> Optional[Variable]:
         """Parse individual variable declarator with TypeScript type annotations"""
         try:
             var_name = None
@@ -995,7 +990,7 @@ class TypeScriptElementExtractor(ElementExtractor):
 
     def _parse_function_signature_optimized(
         self, node: "tree_sitter.Node"
-    ) -> tuple[str, list[str], bool, bool, str | None, list[str]] | None:
+    ) -> Optional[tuple[str, list[str], bool, bool, Optional[str], list[str]]]:
         """Parse function signature for TypeScript functions"""
         try:
             name = None
@@ -1020,16 +1015,13 @@ class TypeScriptElementExtractor(ElementExtractor):
                 elif child.type == "type_parameters":
                     generics = self._extract_generics(child)
 
-            return name, parameters, is_async, is_generator, return_type, generics
+            return name or "", parameters, is_async, is_generator, return_type, generics
         except Exception:
             return None
 
     def _parse_method_signature_optimized(
         self, node: "tree_sitter.Node"
-    ) -> (
-        tuple[str, list[str], bool, bool, bool, bool, bool, str | None, str, list[str]]
-        | None
-    ):
+    ) -> Optional[tuple[str, list[str], bool, bool, bool, bool, bool, Optional[str], str, list[str]]]:
         """Parse method signature for TypeScript class methods"""
         try:
             name = None
@@ -1096,7 +1088,7 @@ class TypeScriptElementExtractor(ElementExtractor):
                 is_setter = True
 
             return (
-                name,
+                name or "",
                 parameters,
                 is_async,
                 is_static,
@@ -1150,7 +1142,7 @@ class TypeScriptElementExtractor(ElementExtractor):
 
         return generics
 
-    def _extract_import_info_simple(self, node: "tree_sitter.Node") -> Import | None:
+    def _extract_import_info_simple(self, node: "tree_sitter.Node") -> Optional[Import]:
         """Extract import information from import_statement node"""
         try:
             # Handle Mock objects in tests
@@ -1261,7 +1253,7 @@ class TypeScriptElementExtractor(ElementExtractor):
         self, import_clause_node: "tree_sitter.Node", import_text: str = ""
     ) -> list[str]:
         """Extract import names from import clause"""
-        names = []
+        names: list[str] = []
 
         try:
             # Handle Mock objects in tests
@@ -1375,7 +1367,7 @@ class TypeScriptElementExtractor(ElementExtractor):
 
         return names
 
-    def _extract_dynamic_import(self, node: "tree_sitter.Node") -> Import | None:
+    def _extract_dynamic_import(self, node: "tree_sitter.Node") -> Optional[Import]:
         """Extract dynamic import() calls"""
         try:
             node_text = self._get_node_text_optimized(node)
@@ -1416,11 +1408,9 @@ class TypeScriptElementExtractor(ElementExtractor):
 
         try:
             # Test if _get_node_text_optimized is working (for error handling tests)
-            if hasattr(self, "_get_node_text_optimized"):
+            if hasattr(self, "_get_node_text_optimized") and tree and hasattr(tree, "root_node") and tree.root_node:
                 # This will trigger the mocked exception in tests
-                self._get_node_text_optimized(
-                    tree.root_node if tree and hasattr(tree, "root_node") else None
-                )
+                self._get_node_text_optimized(tree.root_node)
 
             # Use regex to find require statements
             require_pattern = r"(?:const|let|var)\s+(\w+)\s*=\s*require\s*\(\s*[\"']([^\"']+)[\"']\s*\)"
@@ -1476,7 +1466,7 @@ class TypeScriptElementExtractor(ElementExtractor):
             or f"export default {class_name}" in self.source_code
         )
 
-    def _infer_type_from_value(self, value: str | None) -> str:
+    def _infer_type_from_value(self, value: Optional[str]) -> str:
         """Infer TypeScript type from value"""
         if not value:
             return "any"
@@ -1502,7 +1492,7 @@ class TypeScriptElementExtractor(ElementExtractor):
         else:
             return "any"
 
-    def _extract_tsdoc_for_line(self, target_line: int) -> str | None:
+    def _extract_tsdoc_for_line(self, target_line: int) -> Optional[str]:
         """Extract TSDoc comment immediately before the specified line"""
         if target_line in self._tsdoc_cache:
             return self._tsdoc_cache[target_line]
@@ -1551,7 +1541,7 @@ class TypeScriptElementExtractor(ElementExtractor):
                             return cleaned
                         current_line -= 1
 
-            self._tsdoc_cache[target_line] = None
+            self._tsdoc_cache[target_line] = ""
             return None
 
         except Exception as e:
@@ -1630,7 +1620,7 @@ class TypeScriptPlugin(LanguagePlugin):
 
     def __init__(self) -> None:
         self._extractor = TypeScriptElementExtractor()
-        self._language: tree_sitter.Language | None = None
+        self._language: Optional["tree_sitter.Language"] = None
 
     @property
     def language_name(self) -> str:
@@ -1811,112 +1801,11 @@ class TypeScriptPlugin(LanguagePlugin):
         return all_elements
 
     def execute_query_strategy(
-        self, tree: "tree_sitter.Tree", source_code: str, query_key: str
-    ) -> list[CodeElement]:
-        """Execute TypeScript-specific query strategy based on query_key"""
-        if not tree or not source_code:
-            return []
-
-        # Initialize extractor with source code
-        self._extractor.source_code = source_code
-        self._extractor.content_lines = source_code.split("\n")
-        self._extractor._reset_caches()
-        self._extractor._detect_file_characteristics()
-
-        # Map query_key to appropriate extraction method
-        query_mapping = {
-            # Function-related queries
-            "function": lambda: self._extractor.extract_functions(tree, source_code),
-            "async_function": lambda: [
-                f
-                for f in self._extractor.extract_functions(tree, source_code)
-                if getattr(f, "is_async", False)
-            ],
-            "arrow_function": lambda: [
-                f
-                for f in self._extractor.extract_functions(tree, source_code)
-                if getattr(f, "is_arrow", False)
-            ],
-            "method": lambda: [
-                f
-                for f in self._extractor.extract_functions(tree, source_code)
-                if getattr(f, "is_method", False)
-            ],
-            "constructor": lambda: [
-                f
-                for f in self._extractor.extract_functions(tree, source_code)
-                if getattr(f, "is_constructor", False)
-            ],
-            "signature": lambda: [
-                f
-                for f in self._extractor.extract_functions(tree, source_code)
-                if getattr(f, "is_signature", False)
-            ],
-            # Class-related queries
-            "class": lambda: self._extractor.extract_classes(tree, source_code),
-            "interface": lambda: [
-                c
-                for c in self._extractor.extract_classes(tree, source_code)
-                if getattr(c, "class_type", "") == "interface"
-            ],
-            "type_alias": lambda: [
-                c
-                for c in self._extractor.extract_classes(tree, source_code)
-                if getattr(c, "class_type", "") == "type"
-            ],
-            "enum": lambda: [
-                c
-                for c in self._extractor.extract_classes(tree, source_code)
-                if getattr(c, "class_type", "") == "enum"
-            ],
-            # Variable-related queries
-            "variable": lambda: self._extractor.extract_variables(tree, source_code),
-            # Import/Export queries
-            "import": lambda: self._extractor.extract_imports(tree, source_code),
-            "export": lambda: [
-                i
-                for i in self._extractor.extract_imports(tree, source_code)
-                if "export" in getattr(i, "raw_text", "")
-            ],
-            # TypeScript-specific queries
-            "generic": lambda: [
-                c
-                for c in self._extractor.extract_classes(tree, source_code)
-                if "generics" in getattr(c, "raw_text", "")
-            ],
-            "decorator": lambda: [
-                f
-                for f in self._extractor.extract_functions(tree, source_code)
-                if "@" in getattr(f, "raw_text", "")
-            ],
-            # Framework-specific queries
-            "react_component": lambda: [
-                c
-                for c in self._extractor.extract_classes(tree, source_code)
-                if getattr(c, "is_react_component", False)
-            ],
-            "angular_component": lambda: [
-                c
-                for c in self._extractor.extract_classes(tree, source_code)
-                if getattr(c, "framework_type", "") == "angular"
-            ],
-            "vue_component": lambda: [
-                c
-                for c in self._extractor.extract_classes(tree, source_code)
-                if getattr(c, "framework_type", "") == "vue"
-            ],
-        }
-
-        # Execute the appropriate extraction method
-        if query_key in query_mapping:
-            try:
-                return query_mapping[query_key]()
-            except Exception as e:
-                log_error(f"Error executing TypeScript query '{query_key}': {e}")
-                return []
-        else:
-            log_warning(f"Unsupported TypeScript query key: {query_key}")
-            return []
+        self, query_key: str | None, language: str
+    ) -> str | None:
+        """Execute query strategy for TypeScript language"""
+        queries = self.get_queries()
+        return queries.get(query_key) if query_key else None
 
     def get_element_categories(self) -> dict[str, list[str]]:
         """Get TypeScript element categories mapping query_key to node_types"""

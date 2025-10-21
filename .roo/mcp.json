@@ -80,7 +80,7 @@
         "search_content"
       ],
       "timeout": 3600,
-      "disabled": false
+      "disabled": true
     },
     "tree-sitter-analyzer-1.9.2": {
       "command": "uv",
@@ -100,7 +100,6 @@
         "analyze_code_structure",
         "query_code",
         "check_code_scale",
-        "extract_code_section",
         "set_project_path",
         "list_files",
         "find_and_grep",

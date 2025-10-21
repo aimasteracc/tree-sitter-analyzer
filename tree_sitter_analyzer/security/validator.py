@@ -36,6 +36,8 @@ class SecurityValidator:
         Args:
             project_root: Optional project root directory for boundary checks
         """
+        self.boundary_manager: ProjectBoundaryManager | None
+        
         # Ensure project_root is properly resolved if provided
         if project_root:
             try:
@@ -488,7 +490,9 @@ class SecurityValidator:
                 or "CI" in os.environ
                 or "GITHUB_ACTIONS" in os.environ
                 or any(
-                    "test" in arg.lower() for arg in os.sys.argv if hasattr(os, "sys")
+                    "test" in arg.lower()
+                    for arg in getattr(getattr(os, "sys", None), "argv", [])
+                    if hasattr(os, "sys")
                 )
             )
 

@@ -235,7 +235,7 @@ def get_node_text_safe(node: Any, source_code: str, encoding: str = "utf-8") -> 
                     line = lines[start_point[0]]
                     start_col = max(0, min(start_point[1], len(line)))
                     end_col = max(start_col, min(end_point[1], len(line)))
-                    return line[start_col:end_col]
+                    return str(line[start_col:end_col])
                 else:
                     # Multiple lines
                     result_lines = []
@@ -258,7 +258,7 @@ def get_node_text_safe(node: Any, source_code: str, encoding: str = "utf-8") -> 
         return ""
 
 
-def log_api_info():
+def log_api_info() -> None:
     """Log information about available tree-sitter APIs."""
     try:
         import tree_sitter

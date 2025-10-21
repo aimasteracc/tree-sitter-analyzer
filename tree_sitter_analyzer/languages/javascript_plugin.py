@@ -44,7 +44,7 @@ class JavaScriptElementExtractor(ElementExtractor):
         self._node_text_cache: dict[int, str] = {}
         self._processed_nodes: set[int] = set()
         self._element_cache: dict[tuple[int, str], Any] = {}
-        self._file_encoding: str | None = None
+        self._file_encoding: Optional[str] = None
         self._jsdoc_cache: dict[int, str] = {}
         self._complexity_cache: dict[int, int] = {}
 
@@ -205,7 +205,7 @@ class JavaScriptElementExtractor(ElementExtractor):
 
     def _traverse_and_extract_iterative(
         self,
-        root_node: "tree_sitter.Node",
+        root_node: Optional["tree_sitter.Node"],
         extractors: dict[str, Any],
         results: list[Any],
         element_type: str,
@@ -332,7 +332,7 @@ class JavaScriptElementExtractor(ElementExtractor):
                 log_error(f"Fallback text extraction also failed: {fallback_error}")
                 return ""
 
-    def _extract_function_optimized(self, node: "tree_sitter.Node") -> Function | None:
+    def _extract_function_optimized(self, node: "tree_sitter.Node") -> Optional[Function]:
         """Extract regular function information with detailed metadata"""
         try:
             start_line = node.start_point[0] + 1
@@ -376,13 +376,12 @@ class JavaScriptElementExtractor(ElementExtractor):
         except Exception as e:
             log_error(f"Failed to extract function info: {e}")
             import traceback
-
             traceback.print_exc()
             return None
 
     def _extract_arrow_function_optimized(
         self, node: "tree_sitter.Node"
-    ) -> Function | None:
+    ) -> Optional[Function]:
         """Extract arrow function information"""
         try:
             start_line = node.start_point[0] + 1
@@ -441,7 +440,7 @@ class JavaScriptElementExtractor(ElementExtractor):
             log_debug(f"Failed to extract arrow function info: {e}")
             return None
 
-    def _extract_method_optimized(self, node: "tree_sitter.Node") -> Function | None:
+    def _extract_method_optimized(self, node: "tree_sitter.Node") -> Optional[Function]:
         """Extract method information from class"""
         try:
             start_line = node.start_point[0] + 1
@@ -494,12 +493,11 @@ class JavaScriptElementExtractor(ElementExtractor):
             )
         except Exception as e:
             log_debug(f"Failed to extract method info: {e}")
-            # Re-raise for debugging
             raise
 
     def _extract_generator_function_optimized(
         self, node: "tree_sitter.Node"
-    ) -> Function | None:
+    ) -> Optional[Function]:
         """Extract generator function information"""
         try:
             start_line = node.start_point[0] + 1
@@ -542,7 +540,7 @@ class JavaScriptElementExtractor(ElementExtractor):
             log_debug(f"Failed to extract generator function info: {e}")
             return None
 
-    def _extract_class_optimized(self, node: "tree_sitter.Node") -> Class | None:
+    def _extract_class_optimized(self, node: "tree_sitter.Node") -> Optional[Class]:
         """Extract class information with detailed metadata"""
         try:
             start_line = node.start_point[0] + 1
@@ -606,7 +604,7 @@ class JavaScriptElementExtractor(ElementExtractor):
         kind = "let" if node_text.strip().startswith("let") else "const"
         return self._extract_variables_from_declaration(node, kind)
 
-    def _extract_property_optimized(self, node: "tree_sitter.Node") -> Variable | None:
+    def _extract_property_optimized(self, node: "tree_sitter.Node") -> Optional[Variable]:
         """Extract class property definition"""
         try:
             start_line = node.start_point[0] + 1
@@ -645,13 +643,9 @@ class JavaScriptElementExtractor(ElementExtractor):
                 raw_text=raw_text,
                 language="javascript",
                 variable_type=self._infer_type_from_value(prop_value),
-                value=prop_value,
                 is_static=is_static,
                 is_constant=False,  # Class properties are not const
-                # JavaScript-specific properties
-                # class_name=class_name,  # Not available since class_name is commented out
-                declaration_kind="property",
-                framework_type=self.framework_type,
+                initializer=prop_value,
             )
         except Exception as e:
             log_debug(f"Failed to extract property info: {e}")
@@ -683,7 +677,7 @@ class JavaScriptElementExtractor(ElementExtractor):
 
     def _parse_variable_declarator(
         self, node: "tree_sitter.Node", kind: str, start_line: int, end_line: int
-    ) -> Variable | None:
+    ) -> Optional[Variable]:
         """Parse individual variable declarator"""
         try:
             var_name = None
@@ -769,7 +763,7 @@ class JavaScriptElementExtractor(ElementExtractor):
 
     def _parse_function_signature_optimized(
         self, node: "tree_sitter.Node"
-    ) -> tuple[str, list[str], bool, bool] | None:
+    ) -> Optional[tuple[str, list[str], bool, bool]]:
         """Parse function signature for regular functions"""
         try:
             name = None
@@ -794,7 +788,7 @@ class JavaScriptElementExtractor(ElementExtractor):
 
     def _parse_method_signature_optimized(
         self, node: "tree_sitter.Node"
-    ) -> tuple[str, list[str], bool, bool, bool, bool, bool] | None:
+    ) -> Optional[tuple[str, list[str], bool, bool, bool, bool, bool]]:
         """Parse method signature for class methods"""
         try:
             name = None
@@ -824,7 +818,7 @@ class JavaScriptElementExtractor(ElementExtractor):
                 is_setter = True
 
             return (
-                name,
+                name or "",
                 parameters,
                 is_async,
                 is_static,
@@ -854,7 +848,7 @@ class JavaScriptElementExtractor(ElementExtractor):
 
         return parameters
 
-    def _extract_import_info_simple(self, node: "tree_sitter.Node") -> Import | None:
+    def _extract_import_info_simple(self, node: "tree_sitter.Node") -> Optional[Import]:
         """Extract import information from import_statement node"""
         try:
             start_line = node.start_point[0] + 1
@@ -929,7 +923,7 @@ class JavaScriptElementExtractor(ElementExtractor):
 
     def _extract_import_info_enhanced(
         self, node: "tree_sitter.Node", source_code: str
-    ) -> Import | None:
+    ) -> Optional[Import]:
         """Extract enhanced import information"""
         try:
             import_text = self._get_node_text_optimized(node)
@@ -948,18 +942,14 @@ class JavaScriptElementExtractor(ElementExtractor):
                 raw_text=import_text,
                 language="javascript",
                 module_path=source,
-                # JavaScript-specific properties
-                import_type=import_type,
+                module_name=source,
                 imported_names=names,
-                is_default=is_default,
-                is_namespace=is_namespace,
-                is_dynamic=False,
             )
         except Exception as e:
             log_debug(f"Failed to extract import info: {e}")
             return None
 
-    def _extract_dynamic_import(self, node: "tree_sitter.Node") -> Import | None:
+    def _extract_dynamic_import(self, node: "tree_sitter.Node") -> Optional[Import]:
         """Extract dynamic import() calls"""
         try:
             node_text = self._get_node_text_optimized(node)
@@ -980,9 +970,8 @@ class JavaScriptElementExtractor(ElementExtractor):
                 raw_text=node_text,
                 language="javascript",
                 module_path=source,
-                # JavaScript-specific properties
-                import_type="dynamic",
-                is_dynamic=True,
+                module_name=source,
+                imported_names=["dynamic_import"],
             )
         except Exception as e:
             log_debug(f"Failed to extract dynamic import: {e}")
@@ -1019,12 +1008,11 @@ class JavaScriptElementExtractor(ElementExtractor):
 
         except Exception as e:
             log_debug(f"Failed to extract CommonJS requires: {e}")
-            # Re-raise for debugging
             raise
 
         return imports
 
-    def _extract_export_info(self, node: "tree_sitter.Node") -> dict[str, Any] | None:
+    def _extract_export_info(self, node: "tree_sitter.Node") -> Optional[dict[str, Any]]:
         """Extract export information"""
         try:
             export_text = self._get_node_text_optimized(node)
@@ -1084,7 +1072,7 @@ class JavaScriptElementExtractor(ElementExtractor):
 
     def _parse_import_statement(
         self, import_text: str
-    ) -> tuple[str, list[str], str, bool, bool] | None:
+    ) -> Optional[tuple[str, list[str], str, bool, bool]]:
         """Parse import statement to extract details"""
         try:
             # Remove semicolon and clean up
@@ -1124,7 +1112,7 @@ class JavaScriptElementExtractor(ElementExtractor):
 
     def _parse_export_statement(
         self, export_text: str
-    ) -> tuple[str, list[str], bool] | None:
+    ) -> Optional[tuple[str, list[str], bool]]:
         """Parse export statement to extract details"""
         try:
             clean_text = export_text.strip().rstrip(";")
@@ -1163,7 +1151,7 @@ class JavaScriptElementExtractor(ElementExtractor):
         except Exception:
             return None
 
-    def _find_parent_class_name(self, node: "tree_sitter.Node") -> str | None:
+    def _find_parent_class_name(self, node: "tree_sitter.Node") -> Optional[str]:
         """Find parent class name for methods/properties"""
         current = node.parent
         while current:
@@ -1192,7 +1180,7 @@ class JavaScriptElementExtractor(ElementExtractor):
                 return True
         return False
 
-    def _infer_type_from_value(self, value: str | None) -> str:
+    def _infer_type_from_value(self, value: Optional[str]) -> str:
         """Infer JavaScript type from value"""
         if not value:
             return "unknown"
@@ -1218,9 +1206,9 @@ class JavaScriptElementExtractor(ElementExtractor):
         else:
             return "unknown"
 
-    def extract_elements(self, tree: "tree_sitter.Tree", source_code: str) -> list:
+    def extract_elements(self, tree: "tree_sitter.Tree", source_code: str) -> list[CodeElement]:
         """Extract elements from source code using tree-sitter AST"""
-        elements = []
+        elements: list[CodeElement] = []
 
         try:
             elements.extend(self.extract_functions(tree, source_code))
@@ -1252,7 +1240,7 @@ class JavaScriptElementExtractor(ElementExtractor):
         else:
             return "unknown"
 
-    def _extract_jsdoc_for_line(self, target_line: int) -> str | None:
+    def _extract_jsdoc_for_line(self, target_line: int) -> Optional[str]:
         """Extract JSDoc comment immediately before the specified line"""
         if target_line in self._jsdoc_cache:
             return self._jsdoc_cache[target_line]
@@ -1293,7 +1281,7 @@ class JavaScriptElementExtractor(ElementExtractor):
                             return cleaned
                         current_line -= 1
 
-            self._jsdoc_cache[target_line] = None
+            self._jsdoc_cache[target_line] = ""
             return None
 
         except Exception as e:
@@ -1358,7 +1346,7 @@ class JavaScriptPlugin(LanguagePlugin):
 
     def __init__(self) -> None:
         self._extractor = JavaScriptElementExtractor()
-        self._language: tree_sitter.Language | None = None
+        self._language: Optional["tree_sitter.Language"] = None
 
         # Legacy compatibility attributes for tests
         self.language = "javascript"
@@ -1441,62 +1429,13 @@ class JavaScriptPlugin(LanguagePlugin):
         }
 
     def execute_query_strategy(
-        self, tree: "tree_sitter.Tree", source_code: str, query_key: str
-    ) -> list[dict]:
-        """
-        Execute query strategy for JavaScript language
+        self, query_key: str | None, language: str
+    ) -> str | None:
+        """Execute query strategy for JavaScript language"""
+        queries = self.get_queries()
+        return queries.get(query_key) if query_key else None
 
-        Args:
-            tree: Tree-sitter tree object
-            source_code: Source code string
-            query_key: Query key to execute
-
-        Returns:
-            List of query results
-        """
-        # Use the extractor to get elements based on query_key
-        extractor = self.get_extractor()
-
-        # Map query keys to extraction methods
-        if query_key in [
-            "function",
-            "functions",
-            "async_function",
-            "async_functions",
-            "arrow_function",
-            "arrow_functions",
-            "method",
-            "methods",
-            "constructor",
-            "constructors",
-        ]:
-            elements = extractor.extract_functions(tree, source_code)
-        elif query_key in ["class", "classes", "react_component", "react_components"]:
-            elements = extractor.extract_classes(tree, source_code)
-        elif query_key in ["variable", "variables"]:
-            elements = extractor.extract_variables(tree, source_code)
-        elif query_key in ["import", "imports"]:
-            elements = extractor.extract_imports(tree, source_code)
-        else:
-            # For unknown query keys, return empty list
-            return []
-
-        # Convert elements to query result format
-        results = []
-        for element in elements:
-            result = {
-                "capture_name": query_key,
-                "node_type": self._get_node_type_for_element(element),
-                "start_line": element.start_line,
-                "end_line": element.end_line,
-                "text": element.raw_text,
-                "name": element.name,
-            }
-            results.append(result)
-
-        return results
-
-    def _get_node_type_for_element(self, element) -> str:
+    def _get_node_type_for_element(self, element: Any) -> str:
         """Get appropriate node type for element"""
         from ..models import Class, Function, Import, Variable
 

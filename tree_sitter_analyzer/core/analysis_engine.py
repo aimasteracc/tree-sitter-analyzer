@@ -218,7 +218,7 @@ class UnifiedAnalysisEngine:
                     instance = super().__new__(cls)
                     cls._instances[instance_key] = instance
                     # Mark as not initialized for this instance
-                    instance._initialized: bool = False
+                    instance._initialized = False
 
         return cls._instances[instance_key]
 

@@ -11,7 +11,7 @@ from typing import Any
 class CLIArgumentValidator:
     """Validator for CLI argument combinations."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the validator."""
         pass
 

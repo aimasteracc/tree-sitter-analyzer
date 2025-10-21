@@ -52,7 +52,7 @@ def _normalize_path_cross_platform(path_str: str) -> str:
             from ctypes import wintypes
 
             # GetLongPathNameW function
-            _GetLongPathNameW = ctypes.windll.kernel32.GetLongPathNameW  # type: ignore[attr-defined]
+            _GetLongPathNameW = ctypes.windll.kernel32.GetLongPathNameW
             _GetLongPathNameW.argtypes = [
                 wintypes.LPCWSTR,
                 wintypes.LPWSTR,
@@ -110,7 +110,7 @@ class PathResolver:
             project_root: Optional project root directory for resolving relative paths
         """
         self.project_root = None
-        self._cache = {}  # Simple cache for resolved paths
+        self._cache: dict[str, str] = {}  # Simple cache for resolved paths
         self._cache_size_limit = 100  # Limit cache size to prevent memory issues
 
         if project_root:

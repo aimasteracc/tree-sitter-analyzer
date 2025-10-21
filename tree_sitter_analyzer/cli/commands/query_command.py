@@ -5,6 +5,8 @@ Query Command
 Handles query execution functionality.
 """
 
+from typing import Any
+
 from ...core.query_service import QueryService
 from ...output_manager import output_data, output_error, output_info, output_json
 from .base_command import BaseCommand
@@ -13,7 +15,7 @@ from .base_command import BaseCommand
 class QueryCommand(BaseCommand):
     """Command for executing queries."""
 
-    def __init__(self, args):
+    def __init__(self, args: Any) -> None:
         """Initialize the query command with QueryService."""
         super().__init__(args)
         self.query_service = QueryService()

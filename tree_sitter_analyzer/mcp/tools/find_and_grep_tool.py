@@ -341,14 +341,14 @@ class FindAndGrepTool(BaseMCPTool):
                     files.sort()
                 elif sort_mode == "mtime":
 
-                    def get_mtime(p):
+                    def get_mtime(p: str) -> float:
                         path_obj = pathlib.Path(p)
                         return path_obj.stat().st_mtime if path_obj.exists() else 0
 
                     files.sort(key=get_mtime, reverse=True)
                 elif sort_mode == "size":
 
-                    def get_size(p):
+                    def get_size(p: str) -> int:
                         path_obj = pathlib.Path(p)
                         return path_obj.stat().st_size if path_obj.exists() else 0
 
@@ -437,7 +437,7 @@ class FindAndGrepTool(BaseMCPTool):
             # Parse count output and return only the total
             count_data = fd_rg_utils.parse_rg_count_output(rg_out)
             total_matches = count_data.pop("__total__", 0)
-            return total_matches
+            return {"total_matches": total_matches}
 
         if arguments.get("count_only_matches", False):
             # Parse count-only output

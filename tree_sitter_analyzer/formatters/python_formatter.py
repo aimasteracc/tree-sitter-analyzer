@@ -30,10 +30,10 @@ class PythonTableFormatter(BaseTableFormatter):
     def _format_full_table(self, data: dict[str, Any]) -> str:
         """Full table format for Python"""
         if data is None:
-            return "# No data available\n"
+            raise TypeError("Cannot format None data")
 
         if not isinstance(data, dict):
-            return f"# Invalid data type: {type(data)}\n"
+            raise TypeError(f"Expected dict, got {type(data)}")
 
         lines = []
 
@@ -300,7 +300,7 @@ class PythonTableFormatter(BaseTableFormatter):
     def _create_compact_signature(self, method: dict[str, Any]) -> str:
         """Create compact method signature for Python"""
         if method is None or not isinstance(method, dict):
-            return "(Any,Any):A"
+            raise TypeError(f"Expected dict, got {type(method)}")
 
         params = method.get("parameters", [])
         param_types = []
@@ -387,7 +387,7 @@ class PythonTableFormatter(BaseTableFormatter):
 
                 # Single line docstring
                 if stripped.count(quote_type) >= 2:
-                    return stripped.replace(quote_type, "").strip()
+                    return str(stripped.replace(quote_type, "").strip())
 
                 # Multi-line docstring
                 docstring_lines = [stripped.replace(quote_type, "")]

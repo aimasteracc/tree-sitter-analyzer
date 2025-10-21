@@ -36,7 +36,7 @@ class FileOutputManager:
             project_root: Optional project root directory for fallback output path
         """
         self.project_root = project_root
-        self._output_path = None
+        self._output_path: str | None = None
         self._initialize_output_path()
 
     @classmethod
@@ -252,6 +252,8 @@ class FileOutputManager:
             output_file = output_path / filename
         else:
             # Generate filename with appropriate extension
+            if base_name is None:
+                raise ValueError("base_name cannot be None when filename is not provided")
             generated_filename = self.generate_output_filename(base_name, content)
             output_file = output_path / generated_filename
 

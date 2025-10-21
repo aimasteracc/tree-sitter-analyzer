@@ -8,7 +8,7 @@ selector parsing, and property analysis.
 """
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 from ..models import AnalysisResult, StyleElement
 from ..plugins.base import ElementExtractor, LanguagePlugin
@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 class CssElementExtractor(ElementExtractor):
     """CSS-specific element extractor using tree-sitter-css"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.property_categories = {
             # CSS プロパティの分類システム
             "layout": [
@@ -100,7 +100,7 @@ class CssElementExtractor(ElementExtractor):
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[StyleElement]:
         """Extract CSS rules using tree-sitter-css parser"""
-        elements = []
+        elements: list[StyleElement] = []
 
         try:
             if hasattr(tree, "root_node"):
@@ -145,7 +145,7 @@ class CssElementExtractor(ElementExtractor):
 
     def _create_style_element(
         self, node: "tree_sitter.Node", source_code: str
-    ) -> StyleElement | None:
+    ) -> Optional[StyleElement]:
         """Create StyleElement from tree-sitter node using tree-sitter-css grammar"""
         try:
             # Extract selector and properties based on node type
@@ -296,7 +296,7 @@ class CssElementExtractor(ElementExtractor):
                     category_scores[category] += 1
 
         # Return category with highest score
-        best_category = max(category_scores, key=category_scores.get)
+        best_category = max(category_scores, key=lambda k: category_scores[k])
         return best_category if category_scores[best_category] > 0 else "other"
 
     def _extract_node_text(self, node: "tree_sitter.Node", source_code: str) -> str:
@@ -334,8 +334,8 @@ class CssPlugin(LanguagePlugin):
         return CSS_QUERIES
 
     def execute_query_strategy(
-        self, query_key: str | None, language: str
-    ) -> str | None:
+        self, query_key: Optional[str], language: str
+    ) -> Optional[str]:
         """Execute query strategy for CSS"""
         if language != "css":
             return None

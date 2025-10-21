@@ -111,10 +111,6 @@ class AdvancedCommand(BaseCommand):
                     if "-->" not in stripped:
                         in_multiline_comment = True
                     continue
-                elif in_multiline_comment and "-->" in stripped:
-                    comment_lines += 1
-                    in_multiline_comment = False
-                    continue
 
                 # If not a comment, it's code
                 code_lines += 1

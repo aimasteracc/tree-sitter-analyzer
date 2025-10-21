@@ -8,11 +8,13 @@ including tree-sitter API compatibility.
 
 # Import from tree-sitter compatibility module
 from .tree_sitter_compat import TreeSitterQueryCompat, get_node_text_safe, log_api_info
+from typing import Any
+import logging
 
 
 # Re-export logging functions from the parent utils module
 # We need to import these dynamically to avoid circular imports
-def _import_logging_functions():
+def _import_logging_functions() -> tuple:
     """Dynamically import logging functions to avoid circular imports."""
     import importlib.util
     import os
@@ -23,8 +25,10 @@ def _import_logging_functions():
     spec = importlib.util.spec_from_file_location(
         "tree_sitter_analyzer_utils", utils_path
     )
-    utils_module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(utils_module)
+    if spec and spec.loader:
+        utils_module = importlib.util.module_from_spec(spec)
+        if utils_module:
+            spec.loader.exec_module(utils_module)
 
     return (
         utils_module.setup_logger,
@@ -58,7 +62,7 @@ try:
     ) = _import_logging_functions()
 except Exception:
     # Fallback logging functions if import fails
-    def setup_logger(name="tree_sitter_analyzer", level=30):
+    def setup_logger(name: str = "tree_sitter_analyzer", level: int = 30) -> "logging.Logger":
         import logging
 
         logger = logging.getLogger(name)
@@ -72,55 +76,55 @@ except Exception:
         logger.setLevel(level)
         return logger
 
-    def log_debug(msg, *args, **kwargs):
+    def log_debug(msg: str, *args: Any, **kwargs: Any) -> None:
         pass
 
-    def log_error(msg, *args, **kwargs):
+    def log_error(msg: str, *args: Any, **kwargs: Any) -> None:
         print(f"ERROR: {msg}", *args)
 
-    def log_warning(msg, *args, **kwargs):
+    def log_warning(msg: str, *args: Any, **kwargs: Any) -> None:
         print(f"WARNING: {msg}", *args)
 
-    def log_info(msg, *args, **kwargs):
+    def log_info(msg: str, *args: Any, **kwargs: Any) -> None:
         print(f"INFO: {msg}", *args)
 
-    def log_performance(operation, execution_time=None, details=None):
+    def log_performance(operation: str, execution_time: float | None = None, details: str | None = None) -> None:
         pass
 
     # Fallback QuietMode class
-    class QuietMode:
-        def __init__(self, enabled=True):
+    class _FallbackQuietMode:
+        def __init__(self, enabled: bool = True) -> None:
             self.enabled = enabled
 
-        def __enter__(self):
+        def __enter__(self) -> "_FallbackQuietMode":
             return self
 
-        def __exit__(self, exc_type, exc_val, exc_tb):
+        def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
             pass
 
     # Fallback LoggingContext class
-    class LoggingContext:
-        def __init__(self, enabled=True, level=None):
+    class _FallbackLoggingContext:
+        def __init__(self, enabled: bool = True, level: int | None = None) -> None:
             self.enabled = enabled
             self.level = level
 
-        def __enter__(self):
+        def __enter__(self) -> "_FallbackLoggingContext":
             return self
 
-        def __exit__(self, exc_type, exc_val, exc_tb):
+        def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
             pass
 
-    def setup_performance_logger():
+    def setup_performance_logger() -> "logging.Logger":
         import logging
 
         return logging.getLogger("performance")
 
-    def create_performance_logger(name):
+    def create_performance_logger(name: str) -> "logging.Logger":
         import logging
 
         return logging.getLogger(f"{name}.performance")
 
-    def safe_print(message, level="info", quiet=False):
+    def safe_print(message: str, level: str = "info", quiet: bool = False) -> None:
         if not quiet:
             print(message)
 

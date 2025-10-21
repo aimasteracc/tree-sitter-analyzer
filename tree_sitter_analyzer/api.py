@@ -85,7 +85,8 @@ def analyze_file(
 
         # Add elements if requested and available
         if include_elements and hasattr(analysis_result, "elements"):
-            result["elements"] = []
+            elements_list: list[dict[str, Any]] = []
+            result["elements"] = elements_list
             for elem in analysis_result.elements:
                 elem_dict = {
                     "name": elem.name,
@@ -145,7 +146,7 @@ def analyze_file(
                     else:
                         elem_dict["class_name"] = None
 
-                result["elements"].append(elem_dict)
+                elements_list.append(elem_dict)
 
         # Add query results if requested and available
         if include_queries and hasattr(analysis_result, "query_results"):
@@ -219,7 +220,8 @@ def analyze_code(
 
         # Add elements if requested and available
         if include_elements and hasattr(analysis_result, "elements"):
-            result["elements"] = []
+            elements_list: list[dict[str, Any]] = []
+            result["elements"] = elements_list
             for elem in analysis_result.elements:
                 elem_dict = {
                     "name": elem.name,
@@ -279,7 +281,7 @@ def analyze_code(
                     else:
                         elem_dict["class_name"] = None
 
-                result["elements"].append(elem_dict)
+                elements_list.append(elem_dict)
 
         # Add query results if requested and available
         if include_queries and hasattr(analysis_result, "query_results"):

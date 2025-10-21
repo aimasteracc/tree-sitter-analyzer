@@ -349,9 +349,11 @@ class SearchContentTool(BaseMCPTool):
                     if isinstance(cached_result, int):
                         return cached_result
                     elif isinstance(cached_result, dict) and "total_matches" in cached_result:
-                        return cached_result["total_matches"]
+                        total_matches = cached_result["total_matches"]
+                        return int(total_matches) if isinstance(total_matches, (int, float)) else 0
                     elif isinstance(cached_result, dict) and "count" in cached_result:
-                        return cached_result["count"]
+                        count = cached_result["count"]
+                        return int(count) if isinstance(count, (int, float)) else 0
                     else:
                         # Fallback: extract count from dict or return 0
                         return 0

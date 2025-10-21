@@ -45,7 +45,14 @@ class CodeElement(ABC):
     raw_text: str = ""
     language: str = "unknown"
     docstring: str | None = None  # JavaDoc/docstring for this element
+    element_type: str = "unknown"
 
+    def to_summary_item(self) -> dict[str, Any]:
+        return {
+            "name": self.name,
+            "type": self.element_type,
+            "lines": {"start": self.start_line, "end": self.end_line}
+        }
 
 @dataclass(frozen=False)
 class Function(CodeElement):
@@ -340,6 +347,14 @@ class JavaPackage:
     name: str
     start_line: int = 0
     end_line: int = 0
+
+    def to_summary_item(self) -> dict[str, Any]:
+        """Return dictionary for summary item"""
+        return {
+            "name": self.name,
+            "type": "package",
+            "lines": {"start": self.start_line, "end": self.end_line},
+        }
 
 
 @dataclass(frozen=False)

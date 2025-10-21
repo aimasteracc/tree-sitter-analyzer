@@ -15,15 +15,15 @@ from .base_formatter import BaseTableFormatter
 class JavaScriptTableFormatter(BaseTableFormatter):
     """Table formatter specialized for JavaScript"""
 
-    def format(self, data: dict[str, Any], format_type: str = None) -> str:
+    def format(self, data: dict[str, Any], format_type: str = "full") -> str:
         """Format data using the configured format type"""
         # Handle None data
         if data is None:
-            return "# No data available\n"
+            raise TypeError("Cannot format None data")
 
         # Ensure data is a dictionary
         if not isinstance(data, dict):
-            return f"# Invalid data type: {type(data)}\n"
+            raise TypeError(f"Expected dict, got {type(data)}")
 
         if format_type:
             # Check for supported format types
@@ -48,10 +48,10 @@ class JavaScriptTableFormatter(BaseTableFormatter):
     def _format_full_table(self, data: dict[str, Any]) -> str:
         """Full table format for JavaScript"""
         if data is None:
-            return "# No data available\n"
+            raise TypeError("Cannot format None data")
 
         if not isinstance(data, dict):
-            return f"# Invalid data type: {type(data)}\n"
+            raise TypeError(f"Expected dict, got {type(data)}")
 
         lines = []
 
@@ -529,7 +529,7 @@ class JavaScriptTableFormatter(BaseTableFormatter):
     def _get_export_type(self, export: dict[str, Any]) -> str:
         """Get export type"""
         if not isinstance(export, dict):
-            return "unknown"
+            raise TypeError(f"Expected dict, got {type(export)}")
         if export.get("is_default", False):
             return "default"
         elif export.get("is_named", False):
@@ -551,10 +551,10 @@ class JavaScriptTableFormatter(BaseTableFormatter):
     def _get_class_info(self, cls: dict[str, Any]) -> str:
         """Get class information as formatted string"""
         if cls is None:
-            return "Unknown (0 methods)"
+            raise TypeError("Cannot format None data")
 
         if not isinstance(cls, dict):
-            return f"{str(cls)} (0 methods)"
+            raise TypeError(f"Expected dict, got {type(cls)}")
 
         name = str(cls.get("name", "Unknown"))
         methods = cls.get("methods", [])

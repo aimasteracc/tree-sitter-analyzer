@@ -137,10 +137,10 @@ class LanguageLoader:
                 tree_sitter_language = tree_sitter.Language(caps_or_lang)
             except Exception:
                 # 一部のパッケージは既に Language オブジェクトを返すため、そのまま使用
-                tree_sitter_language = caps_or_lang  # type: ignore[assignment]
+                tree_sitter_language = caps_or_lang
 
-            self._loaded_languages[language] = tree_sitter_language  # type: ignore[assignment]
-            return tree_sitter_language  # type: ignore[return-value]
+            self._loaded_languages[language] = tree_sitter_language
+            return tree_sitter_language
 
         except (ImportError, AttributeError, Exception) as e:
             log_warning(f"Failed to load language '{language}': {e}")

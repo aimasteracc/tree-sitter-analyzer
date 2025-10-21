@@ -14,17 +14,17 @@ from .utils import setup_logger
 logger = setup_logger(__name__)
 
 
-def log_error(message: str, *args, **kwargs) -> None:
+def log_error(message: str, *args: object, **kwargs: object) -> None:
     """Log error message"""
     logger.error(message, *args, **kwargs)
 
 
-def log_info(message: str, *args, **kwargs) -> None:
+def log_info(message: str, *args: object, **kwargs: object) -> None:
     """Log info message"""
     logger.info(message, *args, **kwargs)
 
 
-def log_warning(message: str, *args, **kwargs) -> None:
+def log_warning(message: str, *args: object, **kwargs: object) -> None:
     """Log warning message"""
     logger.warning(message, *args, **kwargs)
 

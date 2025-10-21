@@ -471,19 +471,19 @@ class TableFormatTool(BaseMCPTool):
                 try:
                     if FormatterRegistry.is_format_supported(format_type):
                         # Use new FormatterRegistry
-                        formatter = FormatterRegistry.get_formatter(format_type)
-                        table_output = formatter.format(structure_result.elements)
+                        registry_formatter = FormatterRegistry.get_formatter(format_type)
+                        table_output = registry_formatter.format(structure_result.elements)
                     else:
                         # Fallback to legacy TableFormatter for backward compatibility
-                        formatter: Any = TableFormatter(format_type)
-                        table_output = formatter.format_structure(structure_dict)  # type: ignore[attr-defined]
+                        legacy_formatter: Any = TableFormatter(format_type)
+                        table_output = legacy_formatter.format_structure(structure_dict)
                 except Exception as e:
                     # If FormatterRegistry fails, fallback to legacy TableFormatter
                     logger.warning(
                         f"FormatterRegistry failed, using legacy formatter: {e}"
                     )
-                    formatter: Any = TableFormatter(format_type)
-                    table_output = formatter.format_structure(structure_dict)  # type: ignore[attr-defined]
+                    fallback_formatter: Any = TableFormatter(format_type)
+                    table_output = fallback_formatter.format_structure(structure_dict)
 
                 # Ensure output format matches CLI exactly
                 # Fix line ending differences: normalize to Unix-style LF (\n)

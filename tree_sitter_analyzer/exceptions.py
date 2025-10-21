@@ -616,7 +616,7 @@ def create_mcp_error_response(
 
 def _sanitize_error_context(context: dict[str, Any]) -> dict[str, Any]:
     """Sanitize sensitive information from error context."""
-    sanitized = {}
+    sanitized: dict[str, Any] = {}
     sensitive_keys = {
         "password",
         "token",

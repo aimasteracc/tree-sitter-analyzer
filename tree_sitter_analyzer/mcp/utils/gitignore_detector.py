@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 class GitignoreDetector:
     """Detects .gitignore interference with file searches"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.common_ignore_patterns = {
             # Directory patterns that commonly cause search issues
             "build/*",
@@ -257,14 +257,14 @@ class GitignoreDetector:
 
     def get_detection_info(
         self, roots: list[str], project_root: str | None = None
-    ) -> dict:
+    ) -> dict[str, object]:
         """
         Get detailed information about gitignore detection
 
         Returns:
             Dictionary with detection details for debugging/logging
         """
-        info = {
+        info: dict[str, object] = {
             "should_use_no_ignore": False,
             "detected_gitignore_files": [],
             "interfering_patterns": [],
@@ -294,12 +294,18 @@ class GitignoreDetector:
                     gitignore_file, gitignore_dir, project_path
                 )
                 if patterns:
-                    info["interfering_patterns"].extend(patterns)
+                    existing_patterns = info.get("interfering_patterns", [])
+                    if isinstance(existing_patterns, list):
+                        info["interfering_patterns"] = existing_patterns + patterns
+                    else:
+                        info["interfering_patterns"] = patterns
 
-            if info["interfering_patterns"]:
+            interfering_patterns = info.get("interfering_patterns", [])
+            if interfering_patterns:
                 info["should_use_no_ignore"] = True
+                pattern_count = len(interfering_patterns) if isinstance(interfering_patterns, list) else 0
                 info["reason"] = (
-                    f"Found {len(info['interfering_patterns'])} interfering patterns"
+                    f"Found {pattern_count} interfering patterns"
                 )
 
         except Exception as e:

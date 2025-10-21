@@ -22,6 +22,10 @@ except ImportError:
 from ..core.analysis_engine import AnalysisRequest
 from ..encoding_utils import extract_text_slice, safe_encode
 from ..models import AnalysisResult, CodeElement
+from ..models import Class as ModelClass
+from ..models import Function as ModelFunction
+from ..models import Import as ModelImport
+from ..models import Variable as ModelVariable
 from ..plugins.base import ElementExtractor, LanguagePlugin
 from ..utils import log_debug, log_error, log_warning
 from ..utils.tree_sitter_compat import TreeSitterQueryCompat
@@ -38,14 +42,14 @@ class MarkdownElement(CodeElement):
         raw_text: str,
         language: str = "markdown",
         element_type: str = "markdown",
-        level: int | None = None,
-        url: str | None = None,
-        alt_text: str | None = None,
-        title: str | None = None,
-        language_info: str | None = None,
-        is_checked: bool | None = None,
-        **kwargs,
-    ):
+        level: Optional[int] = None,
+        url: Optional[str] = None,
+        alt_text: Optional[str] = None,
+        title: Optional[str] = None,
+        language_info: Optional[str] = None,
+        is_checked: Optional[bool] = None,
+        **kwargs: Any,
+    ) -> None:
         super().__init__(
             name=name,
             start_line=start_line,
@@ -61,6 +65,16 @@ class MarkdownElement(CodeElement):
         self.title = title  # For links and images
         self.language_info = language_info  # For code blocks
         self.is_checked = is_checked  # For task list items
+        
+        # Additional attributes used by formatters
+        self.text: Optional[str] = None  # Text content
+        self.type: Optional[str] = None  # Element type for formatters
+        self.line_count: Optional[int] = None  # For code blocks
+        self.alt: Optional[str] = None  # Alternative text for images
+        self.list_type: Optional[str] = None  # For lists (ordered/unordered/task)
+        self.item_count: Optional[int] = None  # For lists
+        self.row_count: Optional[int] = None  # For tables
+        self.column_count: Optional[int] = None  # For tables
 
 
 class MarkdownElementExtractor(ElementExtractor):
@@ -80,30 +94,74 @@ class MarkdownElementExtractor(ElementExtractor):
 
     def extract_functions(
         self, tree: "tree_sitter.Tree", source_code: str
-    ) -> list[CodeElement]:
+    ) -> list[ModelFunction]:
         """Extract Markdown elements (headers act as 'functions')"""
-        return self.extract_headers(tree, source_code)
+        headers = self.extract_headers(tree, source_code)
+        functions = []
+        for header in headers:
+            func = ModelFunction(
+                name=header.name,
+                start_line=header.start_line,
+                end_line=header.end_line,
+                raw_text=header.raw_text,
+                language=header.language,
+            )
+            functions.append(func)
+        return functions
 
     def extract_classes(
         self, tree: "tree_sitter.Tree", source_code: str
-    ) -> list[CodeElement]:
+    ) -> list[ModelClass]:
         """Extract Markdown sections (code blocks act as 'classes')"""
-        return self.extract_code_blocks(tree, source_code)
+        code_blocks = self.extract_code_blocks(tree, source_code)
+        classes = []
+        for block in code_blocks:
+            cls = ModelClass(
+                name=block.name,
+                start_line=block.start_line,
+                end_line=block.end_line,
+                raw_text=block.raw_text,
+                language=block.language,
+            )
+            classes.append(cls)
+        return classes
 
     def extract_variables(
         self, tree: "tree_sitter.Tree", source_code: str
-    ) -> list[CodeElement]:
+    ) -> list[ModelVariable]:
         """Extract Markdown links and images (act as 'variables')"""
         elements = []
         elements.extend(self.extract_links(tree, source_code))
         elements.extend(self.extract_images(tree, source_code))
-        return elements
+        
+        variables = []
+        for element in elements:
+            var = ModelVariable(
+                name=element.name,
+                start_line=element.start_line,
+                end_line=element.end_line,
+                raw_text=element.raw_text,
+                language=element.language,
+            )
+            variables.append(var)
+        return variables
 
     def extract_imports(
         self, tree: "tree_sitter.Tree", source_code: str
-    ) -> list[CodeElement]:
+    ) -> list[ModelImport]:
         """Extract Markdown references and definitions"""
-        return self.extract_references(tree, source_code)
+        references = self.extract_references(tree, source_code)
+        imports = []
+        for ref in references:
+            imp = ModelImport(
+                name=ref.name,
+                start_line=ref.start_line,
+                end_line=ref.end_line,
+                raw_text=ref.raw_text,
+                language=ref.language,
+            )
+            imports.append(imp)
+        return imports
 
     def extract_headers(
         self, tree: "tree_sitter.Tree", source_code: str
@@ -115,18 +173,14 @@ class MarkdownElementExtractor(ElementExtractor):
 
         headers: list[MarkdownElement] = []
 
-        if tree is None or tree.root_node is None:
-            log_debug("Tree or root_node is None, returning empty headers list")
-            return headers
-
-        try:
-            # Extract ATX headers (# ## ### etc.)
-            self._extract_atx_headers(tree.root_node, headers)
-            # Extract Setext headers (underlined)
-            self._extract_setext_headers(tree.root_node, headers)
-        except Exception as e:
-            log_debug(f"Error during header extraction: {e}")
-            return []
+        if tree is not None and tree.root_node is not None:
+            try:
+                # Extract ATX headers (# ## ### etc.)
+                self._extract_atx_headers(tree.root_node, headers)
+                # Extract Setext headers (underlined)
+                self._extract_setext_headers(tree.root_node, headers)
+            except Exception as e:
+                log_debug(f"Error during header extraction: {e}")
 
         log_debug(f"Extracted {len(headers)} Markdown headers")
         return headers
@@ -141,16 +195,12 @@ class MarkdownElementExtractor(ElementExtractor):
 
         code_blocks: list[MarkdownElement] = []
 
-        if tree is None or tree.root_node is None:
-            log_debug("Tree or root_node is None, returning empty code blocks list")
-            return code_blocks
-
-        try:
-            self._extract_fenced_code_blocks(tree.root_node, code_blocks)
-            self._extract_indented_code_blocks(tree.root_node, code_blocks)
-        except Exception as e:
-            log_debug(f"Error during code block extraction: {e}")
-            return []
+        if tree is not None and tree.root_node is not None:
+            try:
+                self._extract_fenced_code_blocks(tree.root_node, code_blocks)
+                self._extract_indented_code_blocks(tree.root_node, code_blocks)
+            except Exception as e:
+                log_debug(f"Error during code block extraction: {e}")
 
         log_debug(f"Extracted {len(code_blocks)} Markdown code blocks")
         return code_blocks
@@ -165,25 +215,21 @@ class MarkdownElementExtractor(ElementExtractor):
 
         links: list[MarkdownElement] = []
 
-        if tree is None or tree.root_node is None:
-            log_debug("Tree or root_node is None, returning empty links list")
-            return links
+        if tree is not None and tree.root_node is not None:
+            try:
+                # Track extracted links to prevent global duplicates (ensure reset)
+                self._extracted_links = set()
 
-        try:
-            # Track extracted links to prevent global duplicates (ensure reset)
-            self._extracted_links = set()
+                self._extract_inline_links(tree.root_node, links)
+                self._extract_reference_links(tree.root_node, links)
+                self._extract_autolinks(tree.root_node, links)
 
-            self._extract_inline_links(tree.root_node, links)
-            self._extract_reference_links(tree.root_node, links)
-            self._extract_autolinks(tree.root_node, links)
+                # Clean up after extraction is complete
+                if hasattr(self, "_extracted_links"):
+                    delattr(self, "_extracted_links")
 
-            # Clean up after extraction is complete
-            if hasattr(self, "_extracted_links"):
-                delattr(self, "_extracted_links")
-
-        except Exception as e:
-            log_debug(f"Error during link extraction: {e}")
-            return []
+            except Exception as e:
+                log_debug(f"Error during link extraction: {e}")
 
         # 重複除去: 同じtextとurlを持つ要素を除去
         seen = set()
@@ -209,17 +255,13 @@ class MarkdownElementExtractor(ElementExtractor):
 
         images: list[MarkdownElement] = []
 
-        if tree is None or tree.root_node is None:
-            log_debug("Tree or root_node is None, returning empty images list")
-            return images
-
-        try:
-            self._extract_inline_images(tree.root_node, images)
-            self._extract_reference_images(tree.root_node, images)
-            self._extract_image_reference_definitions(tree.root_node, images)
-        except Exception as e:
-            log_debug(f"Error during image extraction: {e}")
-            return []
+        if tree is not None and tree.root_node is not None:
+            try:
+                self._extract_inline_images(tree.root_node, images)
+                self._extract_reference_images(tree.root_node, images)
+                self._extract_image_reference_definitions(tree.root_node, images)
+            except Exception as e:
+                log_debug(f"Error during image extraction: {e}")
 
         # 重複除去: 同じalt_textとurlを持つ要素を除去
         seen = set()
@@ -245,15 +287,11 @@ class MarkdownElementExtractor(ElementExtractor):
 
         references: list[MarkdownElement] = []
 
-        if tree is None or tree.root_node is None:
-            log_debug("Tree or root_node is None, returning empty references list")
-            return references
-
-        try:
-            self._extract_link_reference_definitions(tree.root_node, references)
-        except Exception as e:
-            log_debug(f"Error during reference extraction: {e}")
-            return []
+        if tree is not None and tree.root_node is not None:
+            try:
+                self._extract_link_reference_definitions(tree.root_node, references)
+            except Exception as e:
+                log_debug(f"Error during reference extraction: {e}")
 
         log_debug(f"Extracted {len(references)} Markdown references")
         return references
@@ -268,15 +306,11 @@ class MarkdownElementExtractor(ElementExtractor):
 
         blockquotes: list[MarkdownElement] = []
 
-        if tree is None or tree.root_node is None:
-            log_debug("Tree or root_node is None, returning empty blockquotes list")
-            return blockquotes
-
-        try:
-            self._extract_block_quotes(tree.root_node, blockquotes)
-        except Exception as e:
-            log_debug(f"Error during blockquote extraction: {e}")
-            return []
+        if tree is not None and tree.root_node is not None:
+            try:
+                self._extract_block_quotes(tree.root_node, blockquotes)
+            except Exception as e:
+                log_debug(f"Error during blockquote extraction: {e}")
 
         log_debug(f"Extracted {len(blockquotes)} Markdown blockquotes")
         return blockquotes
@@ -291,17 +325,11 @@ class MarkdownElementExtractor(ElementExtractor):
 
         horizontal_rules: list[MarkdownElement] = []
 
-        if tree is None or tree.root_node is None:
-            log_debug(
-                "Tree or root_node is None, returning empty horizontal rules list"
-            )
-            return horizontal_rules
-
-        try:
-            self._extract_thematic_breaks(tree.root_node, horizontal_rules)
-        except Exception as e:
-            log_debug(f"Error during horizontal rule extraction: {e}")
-            return []
+        if tree is not None and tree.root_node is not None:
+            try:
+                self._extract_thematic_breaks(tree.root_node, horizontal_rules)
+            except Exception as e:
+                log_debug(f"Error during horizontal rule extraction: {e}")
 
         log_debug(f"Extracted {len(horizontal_rules)} Markdown horizontal rules")
         return horizontal_rules
@@ -316,16 +344,12 @@ class MarkdownElementExtractor(ElementExtractor):
 
         html_elements: list[MarkdownElement] = []
 
-        if tree is None or tree.root_node is None:
-            log_debug("Tree or root_node is None, returning empty HTML elements list")
-            return html_elements
-
-        try:
-            self._extract_html_blocks(tree.root_node, html_elements)
-            self._extract_inline_html(tree.root_node, html_elements)
-        except Exception as e:
-            log_debug(f"Error during HTML element extraction: {e}")
-            return []
+        if tree is not None and tree.root_node is not None:
+            try:
+                self._extract_html_blocks(tree.root_node, html_elements)
+                self._extract_inline_html(tree.root_node, html_elements)
+            except Exception as e:
+                log_debug(f"Error during HTML element extraction: {e}")
 
         log_debug(f"Extracted {len(html_elements)} HTML elements")
         return html_elements
@@ -340,19 +364,13 @@ class MarkdownElementExtractor(ElementExtractor):
 
         formatting_elements: list[MarkdownElement] = []
 
-        if tree is None or tree.root_node is None:
-            log_debug(
-                "Tree or root_node is None, returning empty formatting elements list"
-            )
-            return formatting_elements
-
-        try:
-            self._extract_emphasis_elements(tree.root_node, formatting_elements)
-            self._extract_inline_code_spans(tree.root_node, formatting_elements)
-            self._extract_strikethrough_elements(tree.root_node, formatting_elements)
-        except Exception as e:
-            log_debug(f"Error during text formatting extraction: {e}")
-            return []
+        if tree is not None and tree.root_node is not None:
+            try:
+                self._extract_emphasis_elements(tree.root_node, formatting_elements)
+                self._extract_inline_code_spans(tree.root_node, formatting_elements)
+                self._extract_strikethrough_elements(tree.root_node, formatting_elements)
+            except Exception as e:
+                log_debug(f"Error during text formatting extraction: {e}")
 
         log_debug(f"Extracted {len(formatting_elements)} text formatting elements")
         return formatting_elements
@@ -367,15 +385,11 @@ class MarkdownElementExtractor(ElementExtractor):
 
         footnotes: list[MarkdownElement] = []
 
-        if tree is None or tree.root_node is None:
-            log_debug("Tree or root_node is None, returning empty footnotes list")
-            return footnotes
-
-        try:
-            self._extract_footnote_elements(tree.root_node, footnotes)
-        except Exception as e:
-            log_debug(f"Error during footnote extraction: {e}")
-            return []
+        if tree is not None and tree.root_node is not None:
+            try:
+                self._extract_footnote_elements(tree.root_node, footnotes)
+            except Exception as e:
+                log_debug(f"Error during footnote extraction: {e}")
 
         log_debug(f"Extracted {len(footnotes)} footnotes")
         return footnotes
@@ -390,15 +404,11 @@ class MarkdownElementExtractor(ElementExtractor):
 
         lists: list[MarkdownElement] = []
 
-        if tree is None or tree.root_node is None:
-            log_debug("Tree or root_node is None, returning empty lists list")
-            return lists
-
-        try:
-            self._extract_list_items(tree.root_node, lists)
-        except Exception as e:
-            log_debug(f"Error during list extraction: {e}")
-            return []
+        if tree is not None and tree.root_node is not None:
+            try:
+                self._extract_list_items(tree.root_node, lists)
+            except Exception as e:
+                log_debug(f"Error during list extraction: {e}")
 
         log_debug(f"Extracted {len(lists)} Markdown list items")
         return lists
@@ -413,15 +423,11 @@ class MarkdownElementExtractor(ElementExtractor):
 
         tables: list[MarkdownElement] = []
 
-        if tree is None or tree.root_node is None:
-            log_debug("Tree or root_node is None, returning empty tables list")
-            return tables
-
-        try:
-            self._extract_pipe_tables(tree.root_node, tables)
-        except Exception as e:
-            log_debug(f"Error during table extraction: {e}")
-            return []
+        if tree is not None and tree.root_node is not None:
+            try:
+                self._extract_pipe_tables(tree.root_node, tables)
+            except Exception as e:
+                log_debug(f"Error during table extraction: {e}")
 
         log_debug(f"Extracted {len(tables)} Markdown tables")
         return tables
@@ -932,12 +938,12 @@ class MarkdownElementExtractor(ElementExtractor):
 
                     # Pattern: [label]: url "title"
                     ref_pattern = r'^\[([^\]]+)\]:\s*([^\s]+)(?:\s+"([^"]*)")?'
-                    match = re.match(ref_pattern, raw_text.strip())
+                    ref_match: re.Match[str] | None = re.match(ref_pattern, raw_text.strip())
 
-                    if match:
-                        label = match.group(1) or ""
-                        url = match.group(2) or ""
-                        title = match.group(3) or ""
+                    if ref_match:
+                        label = ref_match.group(1) or ""
+                        url = ref_match.group(2) or ""
+                        title = ref_match.group(3) or ""
 
                         # Include if this reference is used by an image OR if URL looks like an image
                         is_used_by_image = label.lower() in image_refs_used
@@ -1406,13 +1412,13 @@ class MarkdownElementExtractor(ElementExtractor):
 
                     # Pattern for footnote definitions: [^1]: content
                     footnote_def_pattern = r"^\[\^([^\]]+)\]:\s*(.+)$"
-                    match = re.match(
+                    footnote_match: re.Match[str] | None = re.match(
                         footnote_def_pattern, raw_text.strip(), re.MULTILINE
                     )
 
-                    if match:
-                        ref_id = match.group(1) or ""
-                        content = match.group(2) or ""
+                    if footnote_match:
+                        ref_id = footnote_match.group(1) or ""
+                        content = footnote_match.group(2) or ""
                         start_line = node.start_point[0] + 1
                         end_line = node.end_point[0] + 1
 
@@ -1430,7 +1436,7 @@ class MarkdownElementExtractor(ElementExtractor):
                 except Exception as e:
                     log_debug(f"Failed to extract footnote definition: {e}")
 
-    def _traverse_nodes(self, node: "tree_sitter.Node"):
+    def _traverse_nodes(self, node: "tree_sitter.Node") -> Any:
         """Traverse all nodes in the tree"""
         yield node
         for child in node.children:
@@ -1475,7 +1481,7 @@ class MarkdownPlugin(LanguagePlugin):
     def __init__(self) -> None:
         """Initialize the Markdown plugin"""
         super().__init__()
-        self._language_cache: tree_sitter.Language | None = None
+        self._language_cache: Optional["tree_sitter.Language"] = None
         self._extractor: MarkdownElementExtractor = MarkdownElementExtractor()
 
         # Legacy compatibility attributes for tests
@@ -1507,28 +1513,56 @@ class MarkdownPlugin(LanguagePlugin):
     ) -> list[CodeElement]:
         """Extract functions from the tree (legacy compatibility)"""
         extractor = self.get_extractor()
-        return extractor.extract_functions(tree, source_code)
+        functions = extractor.extract_functions(tree, source_code)
+        return [CodeElement(
+            name=f.name,
+            start_line=f.start_line,
+            end_line=f.end_line,
+            raw_text=f.raw_text,
+            language=f.language
+        ) for f in functions]
 
     def extract_classes(
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[CodeElement]:
         """Extract classes from the tree (legacy compatibility)"""
         extractor = self.get_extractor()
-        return extractor.extract_classes(tree, source_code)
+        classes = extractor.extract_classes(tree, source_code)
+        return [CodeElement(
+            name=c.name,
+            start_line=c.start_line,
+            end_line=c.end_line,
+            raw_text=c.raw_text,
+            language=c.language
+        ) for c in classes]
 
     def extract_variables(
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[CodeElement]:
         """Extract variables from the tree (legacy compatibility)"""
         extractor = self.get_extractor()
-        return extractor.extract_variables(tree, source_code)
+        variables = extractor.extract_variables(tree, source_code)
+        return [CodeElement(
+            name=v.name,
+            start_line=v.start_line,
+            end_line=v.end_line,
+            raw_text=v.raw_text,
+            language=v.language
+        ) for v in variables]
 
     def extract_imports(
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[CodeElement]:
         """Extract imports from the tree (legacy compatibility)"""
         extractor = self.get_extractor()
-        return extractor.extract_imports(tree, source_code)
+        imports = extractor.extract_imports(tree, source_code)
+        return [CodeElement(
+            name=i.name,
+            start_line=i.start_line,
+            end_line=i.end_line,
+            raw_text=i.raw_text,
+            language=i.language
+        ) for i in imports]
 
     def get_tree_sitter_language(self) -> Optional["tree_sitter.Language"]:
         """Get the Tree-sitter language object for Markdown"""
@@ -1645,21 +1679,36 @@ class MarkdownPlugin(LanguagePlugin):
 
             elements: list[CodeElement] = []
 
-            # Extract all element types
-            headers = extractor.extract_headers(tree, source_code)
-            code_blocks = extractor.extract_code_blocks(tree, source_code)
-            links = extractor.extract_links(tree, source_code)
-            images = extractor.extract_images(tree, source_code)
-            references = extractor.extract_references(tree, source_code)
-            lists = extractor.extract_lists(tree, source_code)
-            tables = extractor.extract_tables(tree, source_code)
+            # Extract all element types using the markdown-specific extractor
+            if isinstance(extractor, MarkdownElementExtractor):
+                headers = extractor.extract_headers(tree, source_code)
+                code_blocks = extractor.extract_code_blocks(tree, source_code)
+                links = extractor.extract_links(tree, source_code)
+                images = extractor.extract_images(tree, source_code)
+                references = extractor.extract_references(tree, source_code)
+                lists = extractor.extract_lists(tree, source_code)
+                tables = extractor.extract_tables(tree, source_code)
 
-            # Extract new element types
-            blockquotes = extractor.extract_blockquotes(tree, source_code)
-            horizontal_rules = extractor.extract_horizontal_rules(tree, source_code)
-            html_elements = extractor.extract_html_elements(tree, source_code)
-            text_formatting = extractor.extract_text_formatting(tree, source_code)
-            footnotes = extractor.extract_footnotes(tree, source_code)
+                # Extract new element types
+                blockquotes = extractor.extract_blockquotes(tree, source_code)
+                horizontal_rules = extractor.extract_horizontal_rules(tree, source_code)
+                html_elements = extractor.extract_html_elements(tree, source_code)
+                text_formatting = extractor.extract_text_formatting(tree, source_code)
+                footnotes = extractor.extract_footnotes(tree, source_code)
+            else:
+                # Fallback for base ElementExtractor
+                headers = []
+                code_blocks = []
+                links = []
+                images = []
+                references = []
+                lists = []
+                tables = []
+                blockquotes = []
+                horizontal_rules = []
+                html_elements = []
+                text_formatting = []
+                footnotes = []
 
             elements.extend(headers)
             elements.extend(code_blocks)
@@ -1732,129 +1781,43 @@ class MarkdownPlugin(LanguagePlugin):
         elements = []
 
         try:
-            elements.extend(extractor.extract_headers(tree, source_code))
-            elements.extend(extractor.extract_code_blocks(tree, source_code))
-            elements.extend(extractor.extract_links(tree, source_code))
-            elements.extend(extractor.extract_images(tree, source_code))
-            elements.extend(extractor.extract_references(tree, source_code))
-            elements.extend(extractor.extract_lists(tree, source_code))
-            elements.extend(extractor.extract_tables(tree, source_code))
-            elements.extend(extractor.extract_blockquotes(tree, source_code))
-            elements.extend(extractor.extract_horizontal_rules(tree, source_code))
-            elements.extend(extractor.extract_html_elements(tree, source_code))
-            elements.extend(extractor.extract_text_formatting(tree, source_code))
-            elements.extend(extractor.extract_footnotes(tree, source_code))
+            if isinstance(extractor, MarkdownElementExtractor):
+                elements.extend(extractor.extract_headers(tree, source_code))
+                elements.extend(extractor.extract_code_blocks(tree, source_code))
+                elements.extend(extractor.extract_links(tree, source_code))
+                elements.extend(extractor.extract_images(tree, source_code))
+                elements.extend(extractor.extract_references(tree, source_code))
+                elements.extend(extractor.extract_lists(tree, source_code))
+                elements.extend(extractor.extract_tables(tree, source_code))
+                elements.extend(extractor.extract_blockquotes(tree, source_code))
+                elements.extend(extractor.extract_horizontal_rules(tree, source_code))
+                elements.extend(extractor.extract_html_elements(tree, source_code))
+                elements.extend(extractor.extract_text_formatting(tree, source_code))
+                elements.extend(extractor.extract_footnotes(tree, source_code))
         except Exception as e:
             log_error(f"Failed to extract elements: {e}")
 
         return elements
 
     def execute_query_strategy(
-        self, tree: "tree_sitter.Tree", source_code: str, query_key: str
-    ) -> list[CodeElement]:
-        """Execute Markdown-specific query strategy based on query_key"""
-        if not tree or not source_code:
-            return []
-
-        # Initialize extractor with source code
-        self._extractor.source_code = source_code
-        self._extractor.content_lines = source_code.split("\n")
-        self._extractor._reset_caches()
-
-        # Map query_key to appropriate extraction method
-        query_mapping = {
-            # Header-related queries (mapped to functions)
-            "function": lambda: self._extractor.extract_headers(tree, source_code),
-            "headers": lambda: self._extractor.extract_headers(tree, source_code),
-            "heading": lambda: self._extractor.extract_headers(tree, source_code),
-            # Code block-related queries (mapped to classes)
-            "class": lambda: self._extractor.extract_code_blocks(tree, source_code),
-            "code_blocks": lambda: self._extractor.extract_code_blocks(
-                tree, source_code
-            ),
-            "code_block": lambda: self._extractor.extract_code_blocks(
-                tree, source_code
-            ),
-            # Link and image queries (mapped to variables)
-            "variable": lambda: self._extractor.extract_links(tree, source_code)
-            + self._extractor.extract_images(tree, source_code),
-            "links": lambda: self._extractor.extract_links(tree, source_code),
-            "link": lambda: self._extractor.extract_links(tree, source_code),
-            "images": lambda: self._extractor.extract_images(tree, source_code),
-            "image": lambda: self._extractor.extract_images(tree, source_code),
-            # Reference queries (mapped to imports)
-            "import": lambda: self._extractor.extract_references(tree, source_code),
-            "references": lambda: self._extractor.extract_references(tree, source_code),
-            "reference": lambda: self._extractor.extract_references(tree, source_code),
-            # List and table queries
-            "lists": lambda: self._extractor.extract_lists(tree, source_code),
-            "list": lambda: self._extractor.extract_lists(tree, source_code),
-            "task_lists": lambda: [
-                lst
-                for lst in self._extractor.extract_lists(tree, source_code)
-                if getattr(lst, "element_type", "") == "task_list"
-            ],
-            "tables": lambda: self._extractor.extract_tables(tree, source_code),
-            "table": lambda: self._extractor.extract_tables(tree, source_code),
-            # Content structure queries
-            "blockquotes": lambda: self._extractor.extract_blockquotes(
-                tree, source_code
-            ),
-            "blockquote": lambda: self._extractor.extract_blockquotes(
-                tree, source_code
-            ),
-            "horizontal_rules": lambda: self._extractor.extract_horizontal_rules(
-                tree, source_code
-            ),
-            "horizontal_rule": lambda: self._extractor.extract_horizontal_rules(
-                tree, source_code
-            ),
-            # HTML and formatting queries
-            "html_blocks": lambda: self._extractor.extract_html_elements(
-                tree, source_code
-            ),
-            "html_block": lambda: self._extractor.extract_html_elements(
-                tree, source_code
-            ),
-            "html": lambda: self._extractor.extract_html_elements(tree, source_code),
-            "emphasis": lambda: self._extractor.extract_text_formatting(
-                tree, source_code
-            ),
-            "formatting": lambda: self._extractor.extract_text_formatting(
-                tree, source_code
-            ),
-            "text_formatting": lambda: self._extractor.extract_text_formatting(
-                tree, source_code
-            ),
-            "inline_code": lambda: [
-                f
-                for f in self._extractor.extract_text_formatting(tree, source_code)
-                if getattr(f, "element_type", "") == "inline_code"
-            ],
-            "strikethrough": lambda: [
-                f
-                for f in self._extractor.extract_text_formatting(tree, source_code)
-                if getattr(f, "element_type", "") == "strikethrough"
-            ],
-            # Footnote queries
-            "footnotes": lambda: self._extractor.extract_footnotes(tree, source_code),
-            "footnote": lambda: self._extractor.extract_footnotes(tree, source_code),
-            # Comprehensive queries
-            "all_elements": lambda: self.extract_elements(tree, source_code),
-            "text_content": lambda: self._extractor.extract_headers(tree, source_code)
-            + self._extractor.extract_text_formatting(tree, source_code),
-        }
-
-        # Execute the appropriate extraction method
-        if query_key in query_mapping:
-            try:
-                return query_mapping[query_key]()
-            except Exception as e:
-                log_error(f"Error executing Markdown query '{query_key}': {e}")
-                return []
-        else:
-            log_warning(f"Unsupported Markdown query key: {query_key}")
-            return []
+        self, query_key: str | None, language: str
+    ) -> str | None:
+        """Execute query strategy for Markdown language"""
+        if not query_key:
+            return None
+            
+        # Use markdown-specific element categories instead of base queries
+        element_categories = self.get_element_categories()
+        if query_key in element_categories:
+            # Return a simple query string for the category
+            node_types = element_categories[query_key]
+            if node_types:
+                # Create a basic query for the first node type
+                return f"({node_types[0]}) @{query_key}"
+        
+        # Fallback to base implementation
+        queries = self.get_queries()
+        return queries.get(query_key) if queries else None
 
     def get_element_categories(self) -> dict[str, list[str]]:
         """Get Markdown element categories mapping query_key to node_types"""

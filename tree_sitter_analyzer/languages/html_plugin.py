@@ -8,7 +8,7 @@ attribute parsing, and document structure analysis.
 """
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 from ..models import AnalysisResult, MarkupElement
 from ..plugins.base import ElementExtractor, LanguagePlugin
@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 class HtmlElementExtractor(ElementExtractor):
     """HTML-specific element extractor using tree-sitter-html"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.element_categories = {
             # HTML要素の分類システム
             "structure": [
@@ -124,7 +124,7 @@ class HtmlElementExtractor(ElementExtractor):
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[MarkupElement]:
         """Extract HTML elements using tree-sitter-html parser"""
-        elements = []
+        elements: list[MarkupElement] = []
 
         try:
             if hasattr(tree, "root_node"):
@@ -141,7 +141,7 @@ class HtmlElementExtractor(ElementExtractor):
         node: "tree_sitter.Node",
         elements: list[MarkupElement],
         source_code: str,
-        parent: MarkupElement | None,
+        parent: Optional[MarkupElement],
     ) -> None:
         """Traverse tree to find HTML elements using tree-sitter-html grammar"""
         if hasattr(node, "type") and self._is_html_element_node(node.type):
@@ -178,8 +178,8 @@ class HtmlElementExtractor(ElementExtractor):
         return node_type in html_element_types
 
     def _create_markup_element(
-        self, node: "tree_sitter.Node", source_code: str, parent: MarkupElement | None
-    ) -> MarkupElement | None:
+        self, node: "tree_sitter.Node", source_code: str, parent: Optional[MarkupElement]
+    ) -> Optional[MarkupElement]:
         """Create MarkupElement from tree-sitter node using tree-sitter-html grammar"""
         try:
             # Extract tag name using tree-sitter-html structure
@@ -377,8 +377,8 @@ class HtmlPlugin(LanguagePlugin):
         return HTML_QUERIES
 
     def execute_query_strategy(
-        self, query_key: str | None, language: str
-    ) -> str | None:
+        self, query_key: Optional[str], language: str
+    ) -> Optional[str]:
         """Execute query strategy for HTML"""
         if language != "html":
             return None

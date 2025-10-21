@@ -535,7 +535,7 @@ class AnalysisEngine:
             logger.error(f"Error getting extensions for {language}: {e}")
             return []
 
-    def get_registry_info(self) -> dict:
+    def get_registry_info(self) -> dict[str, Any]:
         """
         Get registry information (compatibility method)
 

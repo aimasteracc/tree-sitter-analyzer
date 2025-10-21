@@ -321,9 +321,6 @@ class LanguageDetector:
             if not language or language.strip() == "":
                 return "unknown"
             return language
-        else:
-            # Fallback for unexpected result format
-            return "unknown"
 
     def is_supported(self, language: str) -> bool:
         """
