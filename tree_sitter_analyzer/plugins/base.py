@@ -102,16 +102,14 @@ class ElementExtractor(ABC):
         """
         pass
 
-    def extract_packages(
-        self, tree: "tree_sitter.Tree", source_code: str
-    ) -> list[Any]:
+    def extract_packages(self, tree: "tree_sitter.Tree", source_code: str) -> list[Any]:
         """
         Extract package declarations from the syntax tree.
-        
+
         Args:
             tree: Tree-sitter AST
             source_code: Original source code
-            
+
         Returns:
             List of extracted package objects
         """
@@ -123,11 +121,11 @@ class ElementExtractor(ABC):
     ) -> list[Any]:
         """
         Extract annotations from the syntax tree.
-        
+
         Args:
             tree: Tree-sitter AST
             source_code: Original source code
-            
+
         Returns:
             List of extracted annotation objects
         """
@@ -164,11 +162,11 @@ class ElementExtractor(ABC):
     ) -> list[Any]:
         """
         Extract HTML elements from the syntax tree.
-        
+
         Args:
             tree: Tree-sitter AST
             source_code: Original source code
-            
+
         Returns:
             List of extracted HTML elements
         """
@@ -180,11 +178,11 @@ class ElementExtractor(ABC):
     ) -> list[Any]:
         """
         Extract CSS rules from the syntax tree.
-        
+
         Args:
             tree: Tree-sitter AST
             source_code: Original source code
-            
+
         Returns:
             List of extracted CSS rules
         """

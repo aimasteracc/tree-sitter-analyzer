@@ -6,6 +6,7 @@ This module defines constants used throughout the project to ensure consistency.
 """
 
 from typing import Any, cast
+
 # Element types for unified element management system
 ELEMENT_TYPE_CLASS = "class"
 ELEMENT_TYPE_FUNCTION = "function"

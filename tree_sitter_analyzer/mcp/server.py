@@ -70,6 +70,7 @@ from .tools.table_format_tool import TableFormatTool
 # Import UniversalAnalyzeTool at module level for test compatibility
 try:
     from .tools.universal_analyze_tool import UniversalAnalyzeTool
+
     UNIVERSAL_TOOL_AVAILABLE = True
 except ImportError:
     UniversalAnalyzeTool = None  # type: ignore
@@ -116,7 +117,9 @@ class TreeSitterAnalyzerMCPServer:
         # Allow tests to control initialization by checking if UniversalAnalyzeTool is available
         if UNIVERSAL_TOOL_AVAILABLE and UniversalAnalyzeTool is not None:
             try:
-                self.universal_analyze_tool: UniversalAnalyzeTool | None = UniversalAnalyzeTool(project_root)
+                self.universal_analyze_tool: UniversalAnalyzeTool | None = (
+                    UniversalAnalyzeTool(project_root)
+                )
             except Exception:
                 self.universal_analyze_tool = None
         else:

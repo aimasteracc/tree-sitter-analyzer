@@ -18,6 +18,22 @@ def run_command(
     """Run a command and return success status and output"""
     try:
         print(f"🔍 {description}...")
+
+        # Check if uv is available, fallback to direct python commands
+        if (
+            cmd[0] == "uv"
+            and not subprocess.run(["which", "uv"], capture_output=True).returncode == 0
+        ):
+            # Fallback to direct python execution
+            if "black" in cmd:
+                cmd = ["python3", "-m", "black"] + cmd[3:]
+            elif "ruff" in cmd:
+                cmd = ["python3", "-m", "ruff"] + cmd[3:]
+            elif "mypy" in cmd:
+                cmd = ["python3", "-m", "mypy"] + cmd[3:]
+            elif "pytest" in cmd:
+                cmd = ["python3", "-m", "pytest"] + cmd[3:]
+
         result = subprocess.run(
             cmd,
             capture_output=True,

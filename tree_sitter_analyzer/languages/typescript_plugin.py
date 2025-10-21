@@ -320,7 +320,9 @@ class TypeScriptElementExtractor(ElementExtractor):
                 log_error(f"Fallback text extraction also failed: {fallback_error}")
                 return ""
 
-    def _extract_function_optimized(self, node: "tree_sitter.Node") -> Optional[Function]:
+    def _extract_function_optimized(
+        self, node: "tree_sitter.Node"
+    ) -> Optional[Function]:
         """Extract regular function information with detailed metadata"""
         try:
             start_line = node.start_point[0] + 1
@@ -710,7 +712,9 @@ class TypeScriptElementExtractor(ElementExtractor):
             log_debug(f"Failed to extract interface info: {e}")
             return None
 
-    def _extract_type_alias_optimized(self, node: "tree_sitter.Node") -> Optional[Class]:
+    def _extract_type_alias_optimized(
+        self, node: "tree_sitter.Node"
+    ) -> Optional[Class]:
         """Extract type alias information"""
         try:
             start_line = node.start_point[0] + 1
@@ -804,7 +808,9 @@ class TypeScriptElementExtractor(ElementExtractor):
         kind = "let" if node_text.strip().startswith("let") else "const"
         return self._extract_variables_from_declaration(node, kind)
 
-    def _extract_property_optimized(self, node: "tree_sitter.Node") -> Optional[Variable]:
+    def _extract_property_optimized(
+        self, node: "tree_sitter.Node"
+    ) -> Optional[Variable]:
         """Extract class property definition"""
         try:
             start_line = node.start_point[0] + 1
@@ -1021,7 +1027,11 @@ class TypeScriptElementExtractor(ElementExtractor):
 
     def _parse_method_signature_optimized(
         self, node: "tree_sitter.Node"
-    ) -> Optional[tuple[str, list[str], bool, bool, bool, bool, bool, Optional[str], str, list[str]]]:
+    ) -> Optional[
+        tuple[
+            str, list[str], bool, bool, bool, bool, bool, Optional[str], str, list[str]
+        ]
+    ]:
         """Parse method signature for TypeScript class methods"""
         try:
             name = None
@@ -1408,7 +1418,12 @@ class TypeScriptElementExtractor(ElementExtractor):
 
         try:
             # Test if _get_node_text_optimized is working (for error handling tests)
-            if hasattr(self, "_get_node_text_optimized") and tree and hasattr(tree, "root_node") and tree.root_node:
+            if (
+                hasattr(self, "_get_node_text_optimized")
+                and tree
+                and hasattr(tree, "root_node")
+                and tree.root_node
+            ):
                 # This will trigger the mocked exception in tests
                 self._get_node_text_optimized(tree.root_node)
 

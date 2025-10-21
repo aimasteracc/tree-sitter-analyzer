@@ -62,7 +62,9 @@ try:
     ) = _import_logging_functions()
 except Exception:
     # Fallback logging functions if import fails
-    def setup_logger(name: str = "tree_sitter_analyzer", level: int = 30) -> "logging.Logger":
+    def setup_logger(
+        name: str = "tree_sitter_analyzer", level: int = 30
+    ) -> "logging.Logger":
         import logging
 
         logger = logging.getLogger(name)
@@ -88,7 +90,9 @@ except Exception:
     def log_info(msg: str, *args: Any, **kwargs: Any) -> None:
         print(f"INFO: {msg}", *args)
 
-    def log_performance(operation: str, execution_time: float | None = None, details: str | None = None) -> None:
+    def log_performance(
+        operation: str, execution_time: float | None = None, details: str | None = None
+    ) -> None:
         pass
 
     # Fallback QuietMode class

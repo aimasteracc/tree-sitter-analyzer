@@ -314,7 +314,6 @@ class HtmlFormatter(BaseFormatter, IFormatter):
 
         return MockStyleElement(data)
 
-
     def _element_to_dict(self, element: CodeElement) -> dict[str, Any]:
         """Convert generic CodeElement to dictionary"""
         return {

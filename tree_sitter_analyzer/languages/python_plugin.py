@@ -78,7 +78,7 @@ class PythonElementExtractor(ElementExtractor):
             except Exception as e:
                 log_debug(f"Error during function extraction: {e}")
                 return []
-        
+
         return functions
 
     def extract_classes(
@@ -105,7 +105,7 @@ class PythonElementExtractor(ElementExtractor):
             except Exception as e:
                 log_debug(f"Error during class extraction: {e}")
                 return []
-        
+
         return classes
 
     def extract_variables(
@@ -335,7 +335,9 @@ class PythonElementExtractor(ElementExtractor):
             log_error(f"Fallback text extraction also failed: {fallback_error}")
             return ""
 
-    def _extract_function_optimized(self, node: "tree_sitter.Node") -> Optional[Function]:
+    def _extract_function_optimized(
+        self, node: "tree_sitter.Node"
+    ) -> Optional[Function]:
         """Extract function information with detailed metadata"""
         try:
             start_line = node.start_point[0] + 1
@@ -391,6 +393,7 @@ class PythonElementExtractor(ElementExtractor):
         except Exception as e:
             log_error(f"Failed to extract function info: {e}")
             import traceback
+
             traceback.print_exc()
             return None
 
@@ -820,9 +823,11 @@ class PythonElementExtractor(ElementExtractor):
 
                     if module_name or imported_names:
                         import_obj = Import(
-                            name=module_name or imported_names[0]
-                            if imported_names
-                            else "unknown",
+                            name=(
+                                module_name or imported_names[0]
+                                if imported_names
+                                else "unknown"
+                            ),
                             start_line=start_line,
                             end_line=end_line,
                             raw_text=raw_text,

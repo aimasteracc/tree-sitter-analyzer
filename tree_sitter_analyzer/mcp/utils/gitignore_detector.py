@@ -303,10 +303,12 @@ class GitignoreDetector:
             interfering_patterns = info.get("interfering_patterns", [])
             if interfering_patterns:
                 info["should_use_no_ignore"] = True
-                pattern_count = len(interfering_patterns) if isinstance(interfering_patterns, list) else 0
-                info["reason"] = (
-                    f"Found {pattern_count} interfering patterns"
+                pattern_count = (
+                    len(interfering_patterns)
+                    if isinstance(interfering_patterns, list)
+                    else 0
                 )
+                info["reason"] = f"Found {pattern_count} interfering patterns"
 
         except Exception as e:
             info["reason"] = f"Error during detection: {e}"
