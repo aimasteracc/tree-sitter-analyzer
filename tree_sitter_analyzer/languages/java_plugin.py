@@ -290,7 +290,7 @@ class JavaElementExtractor(ElementExtractor):
         Uses batch processing for optimal performance
         """
         if not root_node:
-            return  # type: ignore[unreachable]
+                return
 
         # Target node types for extraction
         target_node_types = set(extractors.keys())
@@ -453,7 +453,7 @@ class JavaElementExtractor(ElementExtractor):
                 if start_point[0] == end_point[0]:
                     # Single line
                     line = self.content_lines[start_point[0]]
-                    return line[start_point[1] : end_point[1]]
+                    return str(line[start_point[1] : end_point[1]])
                 else:
                     # Multiple lines
                     lines = []

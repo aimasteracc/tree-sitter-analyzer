@@ -315,7 +315,7 @@ class JavaScriptElementExtractor(ElementExtractor):
 
                 if start_point[0] == end_point[0]:
                     line = self.content_lines[start_point[0]]
-                    return line[start_point[1] : end_point[1]]
+                    return str(line[start_point[1] : end_point[1]])
                 else:
                     lines = []
                     for i in range(start_point[0], end_point[0] + 1):

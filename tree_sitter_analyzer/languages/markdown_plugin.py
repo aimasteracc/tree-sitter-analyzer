@@ -476,7 +476,7 @@ class MarkdownElementExtractor(ElementExtractor):
                 end_col = max(start_col, min(end_point[1], len(line)))
                 result = line[start_col:end_col]
                 self._node_text_cache[node_id] = result
-                return result
+                return str(result)
             else:
                 lines = []
                 for i in range(

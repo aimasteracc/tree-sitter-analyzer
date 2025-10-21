@@ -362,7 +362,7 @@ class SecurityValidator:
                 # Check if it has the reparse point attribute
                 if hasattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT"):
                     return bool(
-                        path_stat.st_file_attributes & stat.FILE_ATTRIBUTE_REPARSE_POINT
+                        path_stat.st_file_attributes & stat.FILE_ATTRIBUTE_REPARSE_POINT  # type: ignore[attr-defined]
                     )
 
             # Alternative method using Windows API
@@ -371,7 +371,7 @@ class SecurityValidator:
                 from ctypes import wintypes
 
                 # GetFileAttributesW function
-                _GetFileAttributesW = ctypes.windll.kernel32.GetFileAttributesW
+                _GetFileAttributesW = ctypes.windll.kernel32.GetFileAttributesW  # type: ignore[attr-defined]
                 _GetFileAttributesW.argtypes = [wintypes.LPCWSTR]
                 _GetFileAttributesW.restype = wintypes.DWORD
 

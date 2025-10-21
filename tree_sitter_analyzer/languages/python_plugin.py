@@ -314,7 +314,7 @@ class PythonElementExtractor(ElementExtractor):
                 end_col = max(start_col, min(end_point[1], len(line)))
                 result = line[start_col:end_col]
                 self._node_text_cache[node_id] = result
-                return result
+                return str(result)
             else:
                 lines = []
                 for i in range(start_point[0], end_point[0] + 1):
