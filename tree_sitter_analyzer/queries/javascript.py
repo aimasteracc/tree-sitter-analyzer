@@ -544,11 +544,6 @@ CLASSES = """
     name: (identifier) @class.name
     (class_heritage)? @class.superclass
     body: (class_body) @class.body) @class.declaration
-
-(class_expression
-    name: (identifier)? @class.name
-    (class_heritage)? @class.superclass
-    body: (class_body) @class.body) @class.expression
 """
 
 VARIABLES = """
@@ -623,13 +618,8 @@ ALL_QUERIES["functions"] = {
     "description": "Search all function declarations, expressions, and methods",
 }
 ALL_QUERIES["classes"] = {
-    "query": """
-(class_declaration
-    name: (identifier) @class.name
-    (class_heritage)? @class.superclass
-    body: (class_body) @class.body) @class.declaration
-""",
-    "description": "Search all class declarations",
+    "query": CLASSES,
+    "description": "Search all class declarations and expressions",
 }
 ALL_QUERIES["variables"] = {
     "query": VARIABLES,
