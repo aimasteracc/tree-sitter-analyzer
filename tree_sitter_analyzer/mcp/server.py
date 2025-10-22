@@ -707,15 +707,20 @@ class TreeSitterAnalyzerMCPServer:
 
         # Initialize server options with required capabilities field
         from mcp.server.models import ServerCapabilities
-        from mcp.types import ToolsCapability, ResourcesCapability, PromptsCapability, LoggingCapability
-        
+        from mcp.types import (
+            LoggingCapability,
+            PromptsCapability,
+            ResourcesCapability,
+            ToolsCapability,
+        )
+
         capabilities = ServerCapabilities(
             tools=ToolsCapability(listChanged=True),
             resources=ResourcesCapability(subscribe=True, listChanged=True),
             prompts=PromptsCapability(listChanged=True),
-            logging=LoggingCapability()
+            logging=LoggingCapability(),
         )
-        
+
         options = InitializationOptions(
             server_name=self.name,
             server_version=self.version,

@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""
-Java Language Plugin
+"""Java Language Plugin.
 
 Provides Java-specific parsing and element extraction functionality.
 Migrated from AdvancedAnalyzer implementation for future independence.
 """
 
+import contextlib
 import re
 from typing import TYPE_CHECKING, Any
 
@@ -22,7 +22,7 @@ from ..utils import log_debug, log_error, log_warning
 
 
 class JavaElementExtractor(ElementExtractor):
-    """Java-specific element extractor with AdvancedAnalyzer implementation"""
+    """Java-specific element extractor with AdvancedAnalyzer implementation."""
 
     def __init__(self) -> None:
         """Initialize the Java element extractor."""
@@ -46,7 +46,7 @@ class JavaElementExtractor(ElementExtractor):
     def extract_annotations(
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[dict[str, Any]]:
-        """Extract Java annotations using AdvancedAnalyzer implementation"""
+        """Extract Java annotations using AdvancedAnalyzer implementation."""
         self.source_code = source_code
         self.content_lines = source_code.split("\n")
         self._reset_caches()
@@ -72,7 +72,7 @@ class JavaElementExtractor(ElementExtractor):
     def extract_functions(
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[Function]:
-        """Extract Java method definitions using AdvancedAnalyzer implementation"""
+        """Extract Java method definitions using AdvancedAnalyzer implementation."""
         self.source_code = source_code
         self.content_lines = source_code.split("\n")
         self._reset_caches()
@@ -95,7 +95,7 @@ class JavaElementExtractor(ElementExtractor):
     def extract_classes(
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[Class]:
-        """Extract Java class definitions using AdvancedAnalyzer implementation"""
+        """Extract Java class definitions using AdvancedAnalyzer implementation."""
         self.source_code = source_code
         self.content_lines = source_code.split("\n")
         self._reset_caches()
@@ -150,7 +150,7 @@ class JavaElementExtractor(ElementExtractor):
     def extract_imports(
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[Import]:
-        """Extract Java import statements with enhanced robustness"""
+        """Extract Java import statements with enhanced robustness."""
         self.source_code = source_code
         self.content_lines = source_code.split("\n")
 
@@ -182,7 +182,7 @@ class JavaElementExtractor(ElementExtractor):
         return imports
 
     def _extract_imports_fallback(self, source_code: str) -> list[Import]:
-        """Fallback import extraction using regex when tree-sitter fails"""
+        """Fallback import extraction using regex when tree-sitter fails."""
         imports = []
         lines = source_code.split("\n")
 
@@ -202,7 +202,7 @@ class JavaElementExtractor(ElementExtractor):
                         if import_content.endswith(".*"):
                             import_name = import_name.replace(".*", "")
 
-                        # For static imports, extract the class name (remove method/field name)
+                        # For static imports, extract the class name (remove method/field name).
                         parts = import_name.split(".")
                         if len(parts) > 1:
                             # Remove the last part (method/field name) to get class name
@@ -251,7 +251,7 @@ class JavaElementExtractor(ElementExtractor):
     def extract_packages(
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[Package]:
-        """Extract Java package declarations"""
+        """Extract Java package declarations."""
         self.source_code = source_code
         self.content_lines = source_code.split("\n")
 
@@ -270,13 +270,15 @@ class JavaElementExtractor(ElementExtractor):
         return packages
 
     def _reset_caches(self) -> None:
-        """Reset performance caches"""
+        """Reset performance caches."""
         self._node_text_cache.clear()
         self._processed_nodes.clear()
         self._element_cache.clear()
         self._annotation_cache.clear()
         self._signature_cache.clear()
         self.annotations.clear()
+        # Reset package information to ensure clean state between files
+        self.current_package = ""
 
     def _traverse_and_extract_iterative(
         self,
@@ -285,9 +287,9 @@ class JavaElementExtractor(ElementExtractor):
         results: list[Any],
         element_type: str,
     ) -> None:
-        """
-        Iterative node traversal and extraction (from AdvancedAnalyzer)
-        Uses batch processing for optimal performance
+        """Iterative node traversal and extraction (from AdvancedAnalyzer).
+
+        Uses batch processing for optimal performance.
         """
         if not root_node:
             return  # type: ignore[unreachable]
@@ -392,7 +394,7 @@ class JavaElementExtractor(ElementExtractor):
     def _process_field_batch(
         self, batch: list["tree_sitter.Node"], extractors: dict, results: list[Any]
     ) -> None:
-        """Process field nodes with caching (from AdvancedAnalyzer)"""
+        """Process field nodes with caching (from AdvancedAnalyzer)."""
         for node in batch:
             node_id = id(node)
 
@@ -425,7 +427,7 @@ class JavaElementExtractor(ElementExtractor):
                 self._processed_nodes.add(node_id)
 
     def _get_node_text_optimized(self, node: "tree_sitter.Node") -> str:
-        """Get node text with optimized caching (from AdvancedAnalyzer)"""
+        """Get node text with optimized caching (from AdvancedAnalyzer)."""
         node_id = id(node)
 
         # Check cache first
@@ -473,7 +475,7 @@ class JavaElementExtractor(ElementExtractor):
                 return ""
 
     def _extract_class_optimized(self, node: "tree_sitter.Node") -> Class | None:
-        """Extract class information optimized (from AdvancedAnalyzer)"""
+        """Extract class information optimized (from AdvancedAnalyzer)."""
         try:
             start_line = node.start_point[0] + 1
             end_line = node.end_point[0] + 1
@@ -560,7 +562,7 @@ class JavaElementExtractor(ElementExtractor):
             return None
 
     def _extract_method_optimized(self, node: "tree_sitter.Node") -> Function | None:
-        """Extract method information optimized (from AdvancedAnalyzer)"""
+        """Extract method information optimized (from AdvancedAnalyzer)."""
         try:
             start_line = node.start_point[0] + 1
             end_line = node.end_point[0] + 1
@@ -618,7 +620,7 @@ class JavaElementExtractor(ElementExtractor):
             return None
 
     def _extract_field_optimized(self, node: "tree_sitter.Node") -> list[Variable]:
-        """Extract field information optimized (from AdvancedAnalyzer)"""
+        """Extract field information optimized (from AdvancedAnalyzer)."""
         fields: list[Variable] = []
         try:
             start_line = node.start_point[0] + 1
@@ -638,7 +640,7 @@ class JavaElementExtractor(ElementExtractor):
             # Extract JavaDoc for this field
             field_javadoc = self._extract_javadoc_for_line(start_line)
 
-            # Create Variable object for each variable (matching AdvancedAnalyzer structure)
+            # Create Variable object for each variable (matching AdvancedAnalyzer structure).
             for var_name in variable_names:
                 # Extract raw text
                 start_line_idx = max(0, start_line - 1)
@@ -673,7 +675,7 @@ class JavaElementExtractor(ElementExtractor):
     def _parse_method_signature_optimized(
         self, node: "tree_sitter.Node"
     ) -> tuple[str, str, list[str], list[str], list[str]] | None:
-        """Parse method signature optimized (from AdvancedAnalyzer)"""
+        """Parse method signature optimized (from AdvancedAnalyzer)."""
         try:
             # Extract method name
             method_name = None
@@ -730,7 +732,7 @@ class JavaElementExtractor(ElementExtractor):
     def _parse_field_declaration_optimized(
         self, node: "tree_sitter.Node"
     ) -> tuple[str, list[str], list[str]] | None:
-        """Parse field declaration optimized (from AdvancedAnalyzer)"""
+        """Parse field declaration optimized (from AdvancedAnalyzer)."""
         try:
             # Extract type (exactly as in AdvancedAnalyzer)
             field_type = None
@@ -770,7 +772,7 @@ class JavaElementExtractor(ElementExtractor):
             return None
 
     def _extract_modifiers_optimized(self, node: "tree_sitter.Node") -> list[str]:
-        """Extract modifiers efficiently (from AdvancedAnalyzer)"""
+        """Extract modifiers efficiently (from AdvancedAnalyzer)."""
         modifiers = []
         for child in node.children:
             if child.type == "modifiers":
@@ -804,7 +806,7 @@ class JavaElementExtractor(ElementExtractor):
         return modifiers
 
     def _extract_package_info(self, node: "tree_sitter.Node") -> None:
-        """Extract package information (from AdvancedAnalyzer)"""
+        """Extract package information (from AdvancedAnalyzer)."""
         try:
             package_text = self._get_node_text_optimized(node)
             match = re.search(r"package\s+([\w.]+)", package_text)
@@ -816,7 +818,7 @@ class JavaElementExtractor(ElementExtractor):
             log_error(f"Unexpected error in package extraction: {e}")
 
     def _extract_package_element(self, node: "tree_sitter.Node") -> Package | None:
-        """Extract package element for inclusion in results"""
+        """Extract package element for inclusion in results."""
         try:
             package_text = self._get_node_text_optimized(node)
             match = re.search(r"package\s+([\w.]+)", package_text)
@@ -837,7 +839,7 @@ class JavaElementExtractor(ElementExtractor):
         return None
 
     def _extract_package_from_tree(self, tree: "tree_sitter.Tree") -> None:
-        """Extract package information from tree when needed"""
+        """Extract package information from tree when needed."""
         if tree and tree.root_node:
             for child in tree.root_node.children:
                 if child.type == "package_declaration":
@@ -847,7 +849,7 @@ class JavaElementExtractor(ElementExtractor):
     def _extract_import_info(
         self, node: "tree_sitter.Node", source_code: str
     ) -> Import | None:
-        """Extract import information from import declaration node"""
+        """Extract import information from import declaration node."""
         try:
             import_text = self._get_node_text_optimized(node)
             line_num = node.start_point[0] + 1
@@ -907,7 +909,7 @@ class JavaElementExtractor(ElementExtractor):
     def _extract_annotation_optimized(
         self, node: "tree_sitter.Node"
     ) -> dict[str, Any] | None:
-        """Extract annotation information optimized"""
+        """Extract annotation information optimized."""
         try:
             annotation_text = self._get_node_text_optimized(node)
             start_line = node.start_point[0] + 1
@@ -938,7 +940,7 @@ class JavaElementExtractor(ElementExtractor):
         return None
 
     def _determine_visibility(self, modifiers: list[str]) -> str:
-        """Determine visibility from modifiers"""
+        """Determine visibility from modifiers."""
         if "public" in modifiers:
             return "public"
         elif "private" in modifiers:
@@ -949,7 +951,7 @@ class JavaElementExtractor(ElementExtractor):
             return "package"
 
     def _find_annotations_for_line_cached(self, line: int) -> list[dict[str, Any]]:
-        """Find annotations for a specific line with caching"""
+        """Find annotations for a specific line with caching."""
         if line in self._annotation_cache:
             return self._annotation_cache[line]
 
@@ -963,7 +965,7 @@ class JavaElementExtractor(ElementExtractor):
         return annotations
 
     def _is_nested_class(self, node: "tree_sitter.Node") -> bool:
-        """Check if this is a nested class"""
+        """Check if this is a nested class."""
         parent = node.parent
         while parent:
             if parent.type in [
@@ -976,7 +978,7 @@ class JavaElementExtractor(ElementExtractor):
         return False
 
     def _find_parent_class(self, node: "tree_sitter.Node") -> str | None:
-        """Find parent class name for nested classes"""
+        """Find parent class name for nested classes."""
         parent = node.parent
         while parent:
             if parent.type in [
@@ -991,7 +993,7 @@ class JavaElementExtractor(ElementExtractor):
         return None
 
     def _calculate_complexity_optimized(self, node: "tree_sitter.Node") -> int:
-        """Calculate cyclomatic complexity optimized"""
+        """Calculate cyclomatic complexity optimized."""
         complexity = 1  # Base complexity
 
         # Count decision points
@@ -1010,19 +1012,16 @@ class JavaElementExtractor(ElementExtractor):
             if hasattr(n, "type") and n.type in decision_nodes:
                 count += 1
             if hasattr(n, "children"):
-                try:
+                with contextlib.suppress(TypeError, AttributeError):
                     for child in n.children:
                         count += count_decisions(child)
-                except (TypeError, AttributeError):
-                    # Handle Mock objects or other non-iterable children
-                    pass
             return count
 
         complexity += count_decisions(node)
         return complexity
 
     def _extract_javadoc_for_line(self, line: int) -> str | None:
-        """Extract JavaDoc comment for a specific line"""
+        """Extract JavaDoc comment for a specific line."""
         try:
             # Look for JavaDoc comment before the line
             for i in range(max(0, line - 10), line):
@@ -1055,7 +1054,7 @@ class JavaElementExtractor(ElementExtractor):
 
 
 class JavaPlugin(LanguagePlugin):
-    """Java language plugin implementation"""
+    """Java language plugin implementation."""
 
     def __init__(self) -> None:
         """Initialize the Java language plugin."""

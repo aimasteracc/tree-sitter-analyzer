@@ -229,7 +229,9 @@ class LLMCodeChecker:
                         node.lineno,
                     )
 
-    def _check_anti_patterns(self, file_path: Path, tree: ast.AST, content: str) -> None:
+    def _check_anti_patterns(
+        self, file_path: Path, tree: ast.AST, content: str
+    ) -> None:
         """Check for common anti-patterns."""
         # Check for mutable default arguments
         for node in ast.walk(tree):
@@ -259,7 +261,9 @@ class LLMCodeChecker:
                     )
                     break
 
-    def _check_project_patterns(self, file_path: Path, tree: ast.AST, content: str) -> None:
+    def _check_project_patterns(
+        self, file_path: Path, tree: ast.AST, content: str
+    ) -> None:
         """Check for project-specific patterns."""
         # Check for proper exception usage
         if "tree_sitter_analyzer" in str(file_path):

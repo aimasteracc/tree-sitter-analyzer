@@ -14,7 +14,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 # Import setup_logger and SafeStreamHandler from utils package
-from tree_sitter_analyzer.utils import setup_logger, SafeStreamHandler
+from tree_sitter_analyzer.utils import SafeStreamHandler, setup_logger
 
 
 class TestLoggingConfiguration(unittest.TestCase):

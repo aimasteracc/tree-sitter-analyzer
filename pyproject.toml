@@ -242,6 +242,10 @@ all = [
 tree-sitter-analyzer = "tree_sitter_analyzer.cli_main:main"
 # MCP server entry point
 tree-sitter-analyzer-mcp = "tree_sitter_analyzer.mcp.server:main_sync"
+# Development and quality tools
+tsa-dev-setup = "tree_sitter_analyzer.dev.setup:main"
+tsa-fast-check = "tree_sitter_analyzer.dev.fast_check:main"
+tsa-full-check = "tree_sitter_analyzer.dev.full_check:main"
 # Legacy aliases for backward compatibility
 code-analyzer = "tree_sitter_analyzer.cli_main:main"
 java-analyzer = "tree_sitter_analyzer.cli_main:main"
@@ -468,4 +472,11 @@ dev = [
     "types-toml>=0.10.8.20240310",
     "types-requests>=2.32.4.20250913",
     "mypy==1.18.2",
+    "pydocstyle>=6.3.0",
+    "pyupgrade>=3.21.0",
+    "flake8>=7.3.0",
+    "flake8-bugbear>=25.10.21",
+    "flake8-comprehensions>=3.17.0",
+    "flake8-simplify>=0.22.0",
+    "types-psutil>=7.0.0.20251001",
 ]
