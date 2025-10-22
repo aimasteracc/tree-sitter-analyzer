@@ -1,7 +1,7 @@
 /**
  * TypeScript 宣言ファイルの包括的なテスト
  * Comprehensive TypeScript declarations test file
- * 
+ *
  * @author TypeScript Analyzer Test
  * @version 1.0.0
  * @since 2025-01-07

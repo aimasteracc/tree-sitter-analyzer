@@ -223,13 +223,15 @@ class TestGitignoreDetectorBoundaryConditions:
         with tempfile.TemporaryDirectory() as temp_dir:
             project_path = Path(temp_dir)
             gitignore_file = project_path / ".gitignore"
-            gitignore_file.write_text("""
+            gitignore_file.write_text(
+                """
 # This is a comment
 # Another comment
 # Yet another comment
 
 # More comments
-""")
+"""
+            )
 
             result = detector._has_interfering_patterns(
                 gitignore_file, project_path, project_path
@@ -339,14 +341,16 @@ código/
             gitignore_file = project_path / ".gitignore"
 
             # Create .gitignore with special regex characters
-            gitignore_file.write_text("""
+            gitignore_file.write_text(
+                """
 # Special characters
 [abc]/
 *.{js,ts}
 file?.txt
 dir*/
 (test)/
-""")
+"""
+            )
 
             result = detector._has_interfering_patterns(
                 gitignore_file, project_path, project_path

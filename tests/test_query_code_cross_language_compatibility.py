@@ -141,9 +141,9 @@ public class JavaClass {
             )
 
             assert function_results is not None, "function query should return results"
-            assert functions_results is not None, (
-                "functions query should return results"
-            )
+            assert (
+                functions_results is not None
+            ), "functions query should return results"
             assert len(function_results) > 0, "Should find JavaScript functions"
             assert len(functions_results) > 0, "Should find JavaScript functions"
 
@@ -191,9 +191,9 @@ public class JavaClass {
             )
 
             assert function_results is not None, "function query should return results"
-            assert functions_results is not None, (
-                "functions query should return results"
-            )
+            assert (
+                functions_results is not None
+            ), "functions query should return results"
             assert len(function_results) > 0, "Should find TypeScript functions"
             assert len(functions_results) > 0, "Should find TypeScript functions"
 
@@ -218,12 +218,12 @@ public class JavaClass {
                 temp_file, "typescript", query_key="interfaces"
             )
 
-            assert interface_results is not None, (
-                "interface query should return results"
-            )
-            assert interfaces_results is not None, (
-                "interfaces query should return results"
-            )
+            assert (
+                interface_results is not None
+            ), "interface query should return results"
+            assert (
+                interfaces_results is not None
+            ), "interfaces query should return results"
             assert len(interface_results) > 0, "Should find TypeScript interfaces"
             assert len(interfaces_results) > 0, "Should find TypeScript interfaces"
 
@@ -258,9 +258,9 @@ public class JavaClass {
             )
 
             assert function_results is not None, "function query should return results"
-            assert functions_results is not None, (
-                "functions query should return results"
-            )
+            assert (
+                functions_results is not None
+            ), "functions query should return results"
             assert len(function_results) > 0, "Should find Python functions"
             assert len(functions_results) > 0, "Should find Python functions"
 
@@ -357,9 +357,9 @@ public class JavaClass {
             }
 
             # Should find at least some of the expected function types
-            assert len(function_types.intersection(expected_types)) > 0, (
-                f"Should find function types, got: {function_types}"
-            )
+            assert (
+                len(function_types.intersection(expected_types)) > 0
+            ), f"Should find function types, got: {function_types}"
 
             # Verify specific functions are found
             function_contents = [result.get("content", "") for result in results]
@@ -393,41 +393,41 @@ public class JavaClass {
                     temp_file, language, query_key=query_key
                 )
 
-                assert results is not None, (
-                    f"{language} {query_key} should return results"
-                )
+                assert (
+                    results is not None
+                ), f"{language} {query_key} should return results"
                 assert len(results) > 0, f"{language} {query_key} should find results"
 
                 # Check result structure consistency
                 for result in results:
-                    assert "capture_name" in result, (
-                        f"{language} result should have capture_name"
-                    )
-                    assert "node_type" in result, (
-                        f"{language} result should have node_type"
-                    )
-                    assert "start_line" in result, (
-                        f"{language} result should have start_line"
-                    )
-                    assert "end_line" in result, (
-                        f"{language} result should have end_line"
-                    )
+                    assert (
+                        "capture_name" in result
+                    ), f"{language} result should have capture_name"
+                    assert (
+                        "node_type" in result
+                    ), f"{language} result should have node_type"
+                    assert (
+                        "start_line" in result
+                    ), f"{language} result should have start_line"
+                    assert (
+                        "end_line" in result
+                    ), f"{language} result should have end_line"
                     assert "content" in result, f"{language} result should have content"
 
                     # Verify data types
-                    assert isinstance(result["capture_name"], str), (
-                        "capture_name should be string"
-                    )
-                    assert isinstance(result["node_type"], str), (
-                        "node_type should be string"
-                    )
-                    assert isinstance(result["start_line"], int), (
-                        "start_line should be int"
-                    )
+                    assert isinstance(
+                        result["capture_name"], str
+                    ), "capture_name should be string"
+                    assert isinstance(
+                        result["node_type"], str
+                    ), "node_type should be string"
+                    assert isinstance(
+                        result["start_line"], int
+                    ), "start_line should be int"
                     assert isinstance(result["end_line"], int), "end_line should be int"
-                    assert isinstance(result["content"], str), (
-                        "content should be string"
-                    )
+                    assert isinstance(
+                        result["content"], str
+                    ), "content should be string"
 
             finally:
                 os.unlink(temp_file)
@@ -458,9 +458,9 @@ public class JavaClass {
             }
             found_types = node_types.intersection(expected_manual_types)
 
-            assert len(found_types) > 0, (
-                f"Manual execution should find function types, got: {node_types}"
-            )
+            assert (
+                len(found_types) > 0
+            ), f"Manual execution should find function types, got: {node_types}"
 
         finally:
             os.unlink(temp_file)

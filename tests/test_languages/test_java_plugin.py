@@ -327,9 +327,11 @@ class TestJavaPlugin:
 
     def test_get_tree_sitter_language(self, plugin: JavaPlugin) -> None:
         """Test getting tree-sitter language"""
-        with patch("tree_sitter_java.language") as mock_language:
+        with patch("tree_sitter_java.language") as mock_language, \
+             patch("tree_sitter.Language") as mock_language_constructor:
             mock_lang_obj = Mock()
             mock_language.return_value = mock_lang_obj
+            mock_language_constructor.return_value = mock_lang_obj
 
             language = plugin.get_tree_sitter_language()
 
@@ -337,9 +339,11 @@ class TestJavaPlugin:
 
     def test_get_tree_sitter_language_caching(self, plugin: JavaPlugin) -> None:
         """Test tree-sitter language caching"""
-        with patch("tree_sitter_java.language") as mock_language:
+        with patch("tree_sitter_java.language") as mock_language, \
+             patch("tree_sitter.Language") as mock_language_constructor:
             mock_lang_obj = Mock()
             mock_language.return_value = mock_lang_obj
+            mock_language_constructor.return_value = mock_lang_obj
 
             # First call
             language1 = plugin.get_tree_sitter_language()

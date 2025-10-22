@@ -77,37 +77,41 @@ def sample_analysis_result() -> MagicMock:
     result = MagicMock()
     result.package = MagicMock()
     result.package.name = "com.example.test"
-    
+
     # Create mock elements with element_type attributes
     import_element1 = MagicMock()
-    import_element1.element_type = 'import'
+    import_element1.element_type = "import"
     import_element2 = MagicMock()
-    import_element2.element_type = 'import'
-    
+    import_element2.element_type = "import"
+
     class_element = MagicMock()
-    class_element.element_type = 'class'
-    
+    class_element.element_type = "class"
+
     method_element1 = MagicMock()
-    method_element1.element_type = 'function'
+    method_element1.element_type = "function"
     method_element2 = MagicMock()
-    method_element2.element_type = 'function'
+    method_element2.element_type = "function"
     method_element3 = MagicMock()
-    method_element3.element_type = 'function'
-    
+    method_element3.element_type = "function"
+
     field_element1 = MagicMock()
-    field_element1.element_type = 'variable'
+    field_element1.element_type = "variable"
     field_element2 = MagicMock()
-    field_element2.element_type = 'variable'
-    
+    field_element2.element_type = "variable"
+
     # Set up elements list with proper element_type attributes
     result.elements = [
-        import_element1, import_element2,  # 2 imports
+        import_element1,
+        import_element2,  # 2 imports
         class_element,  # 1 class
-        method_element1, method_element2, method_element3,  # 3 methods
-        field_element1, field_element2,  # 2 fields
+        method_element1,
+        method_element2,
+        method_element3,  # 3 methods
+        field_element1,
+        field_element2,  # 2 fields
         # 0 annotations
     ]
-    
+
     return result
 
 
@@ -645,42 +649,45 @@ class TestAnalyzeScaleToolCLICompatiblePerformance:
         large_result = MagicMock()
         large_result.package = MagicMock()
         large_result.package.name = "com.example.large"
-        
+
         # Create mock elements with proper element_type attributes
         import_elements = []
         for _ in range(1000):
             elem = MagicMock()
-            elem.element_type = 'import'
+            elem.element_type = "import"
             import_elements.append(elem)
-            
+
         class_elements = []
         for _ in range(100):
             elem = MagicMock()
-            elem.element_type = 'class'
+            elem.element_type = "class"
             class_elements.append(elem)
-            
+
         method_elements = []
         for _ in range(500):
             elem = MagicMock()
-            elem.element_type = 'function'
+            elem.element_type = "function"
             method_elements.append(elem)
-            
+
         field_elements = []
         for _ in range(200):
             elem = MagicMock()
-            elem.element_type = 'variable'
+            elem.element_type = "variable"
             field_elements.append(elem)
-            
+
         annotation_elements = []
         for _ in range(50):
             elem = MagicMock()
-            elem.element_type = 'annotation'
+            elem.element_type = "annotation"
             annotation_elements.append(elem)
-        
+
         # Set up elements list
         large_result.elements = (
-            import_elements + class_elements + method_elements +
-            field_elements + annotation_elements
+            import_elements
+            + class_elements
+            + method_elements
+            + field_elements
+            + annotation_elements
         )
 
         with patch.object(

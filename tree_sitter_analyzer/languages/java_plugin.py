@@ -7,7 +7,7 @@ Migrated from AdvancedAnalyzer implementation for future independence.
 """
 
 import re
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     from ..models import AnalysisResult
 
 from ..encoding_utils import extract_text_slice, safe_encode
-from ..models import Class, CodeElement, Function, Import, Package, Variable
+from ..models import Class, Function, Import, Package, Variable
 from ..plugins.base import ElementExtractor, LanguagePlugin
 from ..utils import log_debug, log_error, log_warning
 
@@ -36,7 +36,7 @@ class JavaElementExtractor(ElementExtractor):
         self._node_text_cache: dict[int, str] = {}
         self._processed_nodes: set[int] = set()
         self._element_cache: dict[tuple[int, str], Any] = {}
-        self._file_encoding: Optional[str] = None
+        self._file_encoding: str | None = None
         self._annotation_cache: dict[int, list[dict[str, Any]]] = {}
         self._signature_cache: dict[int, str] = {}
 
@@ -453,7 +453,8 @@ class JavaElementExtractor(ElementExtractor):
                 if start_point[0] == end_point[0]:
                     # Single line
                     line = self.content_lines[start_point[0]]
-                    return line[start_point[1] : end_point[1]]
+                    result: str = line[start_point[1] : end_point[1]]
+                    return result
                 else:
                     # Multiple lines
                     lines = []
@@ -471,7 +472,7 @@ class JavaElementExtractor(ElementExtractor):
                 log_error(f"Fallback text extraction also failed: {fallback_error}")
                 return ""
 
-    def _extract_class_optimized(self, node: "tree_sitter.Node") -> Optional[Class]:
+    def _extract_class_optimized(self, node: "tree_sitter.Node") -> Class | None:
         """Extract class information optimized (from AdvancedAnalyzer)"""
         try:
             start_line = node.start_point[0] + 1
@@ -558,7 +559,7 @@ class JavaElementExtractor(ElementExtractor):
             log_error(f"Unexpected error in class extraction: {e}")
             return None
 
-    def _extract_method_optimized(self, node: "tree_sitter.Node") -> Optional[Function]:
+    def _extract_method_optimized(self, node: "tree_sitter.Node") -> Function | None:
         """Extract method information optimized (from AdvancedAnalyzer)"""
         try:
             start_line = node.start_point[0] + 1
@@ -671,7 +672,7 @@ class JavaElementExtractor(ElementExtractor):
 
     def _parse_method_signature_optimized(
         self, node: "tree_sitter.Node"
-    ) -> Optional[tuple[str, str, list[str], list[str], list[str]]]:
+    ) -> tuple[str, str, list[str], list[str], list[str]] | None:
         """Parse method signature optimized (from AdvancedAnalyzer)"""
         try:
             # Extract method name
@@ -728,7 +729,7 @@ class JavaElementExtractor(ElementExtractor):
 
     def _parse_field_declaration_optimized(
         self, node: "tree_sitter.Node"
-    ) -> Optional[tuple[str, list[str], list[str]]]:
+    ) -> tuple[str, list[str], list[str]] | None:
         """Parse field declaration optimized (from AdvancedAnalyzer)"""
         try:
             # Extract type (exactly as in AdvancedAnalyzer)
@@ -814,7 +815,7 @@ class JavaElementExtractor(ElementExtractor):
         except Exception as e:
             log_error(f"Unexpected error in package extraction: {e}")
 
-    def _extract_package_element(self, node: "tree_sitter.Node") -> Optional[Package]:
+    def _extract_package_element(self, node: "tree_sitter.Node") -> Package | None:
         """Extract package element for inclusion in results"""
         try:
             package_text = self._get_node_text_optimized(node)
@@ -832,7 +833,7 @@ class JavaElementExtractor(ElementExtractor):
             log_debug(f"Failed to extract package element: {e}")
         except Exception as e:
             log_error(f"Unexpected error in package element extraction: {e}")
-        
+
         return None
 
     def _extract_package_from_tree(self, tree: "tree_sitter.Tree") -> None:
@@ -843,12 +844,14 @@ class JavaElementExtractor(ElementExtractor):
                     self._extract_package_info(child)
                     break
 
-    def _extract_import_info(self, node: "tree_sitter.Node", source_code: str) -> Optional[Import]:
+    def _extract_import_info(
+        self, node: "tree_sitter.Node", source_code: str
+    ) -> Import | None:
         """Extract import information from import declaration node"""
         try:
             import_text = self._get_node_text_optimized(node)
             line_num = node.start_point[0] + 1
-            
+
             # Parse import statement
             if "static" in import_text:
                 # Static import
@@ -857,12 +860,12 @@ class JavaElementExtractor(ElementExtractor):
                     import_name = static_match.group(1)
                     if import_text.endswith(".*"):
                         import_name = import_name.replace(".*", "")
-                    
+
                     # For static imports, extract the class name
                     parts = import_name.split(".")
                     if len(parts) > 1:
                         import_name = ".".join(parts[:-1])
-                    
+
                     return Import(
                         name=import_name,
                         start_line=line_num,
@@ -884,7 +887,7 @@ class JavaElementExtractor(ElementExtractor):
                             import_name = import_name[:-2]
                         elif import_name.endswith("."):
                             import_name = import_name[:-1]
-                    
+
                     return Import(
                         name=import_name,
                         start_line=line_num,
@@ -898,38 +901,40 @@ class JavaElementExtractor(ElementExtractor):
                     )
         except Exception as e:
             log_debug(f"Failed to extract import info: {e}")
-        
+
         return None
 
-    def _extract_annotation_optimized(self, node: "tree_sitter.Node") -> Optional[dict[str, Any]]:
+    def _extract_annotation_optimized(
+        self, node: "tree_sitter.Node"
+    ) -> dict[str, Any] | None:
         """Extract annotation information optimized"""
         try:
             annotation_text = self._get_node_text_optimized(node)
             start_line = node.start_point[0] + 1
-            
+
             # Extract annotation name
             annotation_name = None
             for child in node.children:
                 if child.type == "identifier":
                     annotation_name = self._get_node_text_optimized(child)
                     break
-            
+
             if not annotation_name:
                 # Try to extract from text
                 match = re.search(r"@(\w+)", annotation_text)
                 if match:
                     annotation_name = match.group(1)
-            
+
             if annotation_name:
                 return {
                     "name": annotation_name,
                     "line": start_line,
                     "text": annotation_text,
-                    "type": "annotation"
+                    "type": "annotation",
                 }
         except Exception as e:
             log_debug(f"Failed to extract annotation: {e}")
-        
+
         return None
 
     def _determine_visibility(self, modifiers: list[str]) -> str:
@@ -947,13 +952,13 @@ class JavaElementExtractor(ElementExtractor):
         """Find annotations for a specific line with caching"""
         if line in self._annotation_cache:
             return self._annotation_cache[line]
-        
+
         # Find annotations near this line
         annotations = []
         for annotation in self.annotations:
             if abs(annotation.get("line", 0) - line) <= 2:
                 annotations.append(annotation)
-        
+
         self._annotation_cache[line] = annotations
         return annotations
 
@@ -961,16 +966,24 @@ class JavaElementExtractor(ElementExtractor):
         """Check if this is a nested class"""
         parent = node.parent
         while parent:
-            if parent.type in ["class_declaration", "interface_declaration", "enum_declaration"]:
+            if parent.type in [
+                "class_declaration",
+                "interface_declaration",
+                "enum_declaration",
+            ]:
                 return True
             parent = parent.parent
         return False
 
-    def _find_parent_class(self, node: "tree_sitter.Node") -> Optional[str]:
+    def _find_parent_class(self, node: "tree_sitter.Node") -> str | None:
         """Find parent class name for nested classes"""
         parent = node.parent
         while parent:
-            if parent.type in ["class_declaration", "interface_declaration", "enum_declaration"]:
+            if parent.type in [
+                "class_declaration",
+                "interface_declaration",
+                "enum_declaration",
+            ]:
                 for child in parent.children:
                     if child.type == "identifier":
                         return self._get_node_text_optimized(child)
@@ -980,18 +993,23 @@ class JavaElementExtractor(ElementExtractor):
     def _calculate_complexity_optimized(self, node: "tree_sitter.Node") -> int:
         """Calculate cyclomatic complexity optimized"""
         complexity = 1  # Base complexity
-        
+
         # Count decision points
         decision_nodes = [
-            "if_statement", "while_statement", "for_statement", "switch_statement",
-            "catch_clause", "conditional_expression", "enhanced_for_statement"
+            "if_statement",
+            "while_statement",
+            "for_statement",
+            "switch_statement",
+            "catch_clause",
+            "conditional_expression",
+            "enhanced_for_statement",
         ]
-        
+
         def count_decisions(n: "tree_sitter.Node") -> int:
             count = 0
-            if hasattr(n, 'type') and n.type in decision_nodes:
+            if hasattr(n, "type") and n.type in decision_nodes:
                 count += 1
-            if hasattr(n, 'children'):
+            if hasattr(n, "children"):
                 try:
                     for child in n.children:
                         count += count_decisions(child)
@@ -999,11 +1017,11 @@ class JavaElementExtractor(ElementExtractor):
                     # Handle Mock objects or other non-iterable children
                     pass
             return count
-        
+
         complexity += count_decisions(node)
         return complexity
 
-    def _extract_javadoc_for_line(self, line: int) -> Optional[str]:
+    def _extract_javadoc_for_line(self, line: int) -> str | None:
         """Extract JavaDoc comment for a specific line"""
         try:
             # Look for JavaDoc comment before the line
@@ -1021,10 +1039,10 @@ class JavaElementExtractor(ElementExtractor):
                         return "\n".join(javadoc_lines)
         except Exception as e:
             log_debug(f"Failed to extract JavaDoc: {e}")
-        
+
         return None
 
-    def _extract_class_name(self, node: "tree_sitter.Node") -> Optional[str]:
+    def _extract_class_name(self, node: "tree_sitter.Node") -> str | None:
         """Extract class name from a class declaration node."""
         try:
             for child in node.children:
@@ -1044,8 +1062,10 @@ class JavaPlugin(LanguagePlugin):
         super().__init__()
         self.extractor = JavaElementExtractor()
         self.language = "java"  # Add language property for test compatibility
-        self.supported_extensions = self.get_file_extensions()  # Add for test compatibility
-        self._cached_language: Optional[Any] = None  # Cache for tree-sitter language
+        self.supported_extensions = (
+            self.get_file_extensions()
+        )  # Add for test compatibility
+        self._cached_language: Any | None = None  # Cache for tree-sitter language
 
     def get_language_name(self) -> str:
         """Get the language name."""
@@ -1059,16 +1079,19 @@ class JavaPlugin(LanguagePlugin):
         """Create a new element extractor instance."""
         return JavaElementExtractor()
 
-    async def analyze_file(self, file_path: str, request: "AnalysisRequest") -> "AnalysisResult":
+    async def analyze_file(
+        self, file_path: str, request: "AnalysisRequest"
+    ) -> "AnalysisResult":
         """Analyze Java code and return structured results."""
+
         from ..models import AnalysisResult
-        from pathlib import Path
-        
+
         try:
             # Read the file content using safe encoding detection
             from ..encoding_utils import read_file_safe
+
             file_content, detected_encoding = read_file_safe(file_path)
-            
+
             # Get tree-sitter language and parse
             language = self.get_tree_sitter_language()
             if language is None:
@@ -1076,15 +1099,16 @@ class JavaPlugin(LanguagePlugin):
                 return AnalysisResult(
                     file_path=file_path,
                     language="java",
-                    line_count=len(file_content.split('\n')),
+                    line_count=len(file_content.split("\n")),
                     elements=[],
-                    source_code=file_content
+                    source_code=file_content,
                 )
-            
+
             # Parse the code
             import tree_sitter
+
             parser = tree_sitter.Parser()
-            
+
             # Set language using the appropriate method
             if hasattr(parser, "set_language"):
                 parser.set_language(language)
@@ -1099,39 +1123,39 @@ class JavaPlugin(LanguagePlugin):
                     return AnalysisResult(
                         file_path=file_path,
                         language="java",
-                        line_count=len(file_content.split('\n')),
+                        line_count=len(file_content.split("\n")),
                         elements=[],
                         source_code=file_content,
                         error_message=f"Parser creation failed: {e}",
-                        success=False
+                        success=False,
                     )
-            
-            tree = parser.parse(file_content.encode('utf-8'))
-            
+
+            tree = parser.parse(file_content.encode("utf-8"))
+
             # Extract elements using our extractor
             elements_dict = self.extract_elements(tree, file_content)
-            
+
             # Combine all elements into a single list
             all_elements = []
-            all_elements.extend(elements_dict.get('functions', []))
-            all_elements.extend(elements_dict.get('classes', []))
-            all_elements.extend(elements_dict.get('variables', []))
-            all_elements.extend(elements_dict.get('imports', []))
-            all_elements.extend(elements_dict.get('packages', []))
-            
+            all_elements.extend(elements_dict.get("functions", []))
+            all_elements.extend(elements_dict.get("classes", []))
+            all_elements.extend(elements_dict.get("variables", []))
+            all_elements.extend(elements_dict.get("imports", []))
+            all_elements.extend(elements_dict.get("packages", []))
+
             # Get package info if available
-            packages = elements_dict.get('packages', [])
+            packages = elements_dict.get("packages", [])
             package = packages[0] if packages else None
-            
+
             return AnalysisResult(
                 file_path=file_path,
                 language="java",
-                line_count=len(file_content.split('\n')),
+                line_count=len(file_content.split("\n")),
                 elements=all_elements,
                 source_code=file_content,
-                package=package
+                package=package,
             )
-            
+
         except Exception as e:
             log_error(f"Error analyzing Java file {file_path}: {e}")
             # Return empty result on error
@@ -1142,43 +1166,36 @@ class JavaPlugin(LanguagePlugin):
                 elements=[],
                 source_code="",
                 error_message=str(e),
-                success=False
+                success=False,
             )
 
-    def get_tree_sitter_language(self) -> Optional[Any]:
+    def get_tree_sitter_language(self) -> Any | None:
         """Get the tree-sitter language for Java."""
         if self._cached_language is not None:
             return self._cached_language
-        
+
         try:
-            import tree_sitter_java
             import tree_sitter
-            
+            import tree_sitter_java
+
             # Get the language function result
             caps_or_lang = tree_sitter_java.language()
-            
+
             # Convert to proper Language object if needed
-            if hasattr(caps_or_lang, '__class__') and 'Language' in str(type(caps_or_lang)):
+            if hasattr(caps_or_lang, "__class__") and "Language" in str(
+                type(caps_or_lang)
+            ):
                 # Already a Language object
                 self._cached_language = caps_or_lang
             else:
                 # PyCapsule - convert to Language object
                 try:
-                    # Try new API first
-                    if hasattr(tree_sitter.Language, 'from_library'):
-                        self._cached_language = tree_sitter.Language.from_library(caps_or_lang)  # type: ignore[attr-defined]
-                    else:
-                        # Fallback to old API - check if it's a valid PyCapsule
-                        if hasattr(caps_or_lang, '__class__') and 'PyCapsule' in str(type(caps_or_lang)):
-                            self._cached_language = tree_sitter.Language(caps_or_lang)
-                        else:
-                            # If it's not a PyCapsule (e.g., in tests), try to use it directly
-                            log_debug(f"Received non-PyCapsule object: {type(caps_or_lang)}")
-                            self._cached_language = caps_or_lang
+                    # Use modern tree-sitter API - PyCapsule should be passed to Language constructor
+                    self._cached_language = tree_sitter.Language(caps_or_lang)
                 except Exception as e:
                     log_error(f"Failed to create Language object from PyCapsule: {e}")
                     return None
-            
+
             return self._cached_language
         except ImportError as e:
             log_error(f"tree-sitter-java not available: {e}")
@@ -1187,7 +1204,7 @@ class JavaPlugin(LanguagePlugin):
             log_error(f"Failed to load tree-sitter language for Java: {e}")
             return None
 
-    def extract_elements(self, tree: Optional[Any], source_code: str) -> dict[str, Any]:
+    def extract_elements(self, tree: Any | None, source_code: str) -> dict[str, Any]:
         """Extract all elements from Java code for test compatibility."""
         if tree is None:
             return {
@@ -1196,9 +1213,9 @@ class JavaPlugin(LanguagePlugin):
                 "variables": [],
                 "imports": [],
                 "packages": [],
-                "annotations": []
+                "annotations": [],
             }
-        
+
         try:
             extractor = self.create_extractor()
             return {
@@ -1207,7 +1224,7 @@ class JavaPlugin(LanguagePlugin):
                 "variables": extractor.extract_variables(tree, source_code),
                 "imports": extractor.extract_imports(tree, source_code),
                 "packages": extractor.extract_packages(tree, source_code),
-                "annotations": extractor.extract_annotations(tree, source_code)
+                "annotations": extractor.extract_annotations(tree, source_code),
             }
         except Exception as e:
             log_error(f"Error extracting elements: {e}")
@@ -1217,9 +1234,11 @@ class JavaPlugin(LanguagePlugin):
                 "variables": [],
                 "imports": [],
                 "packages": [],
-                "annotations": []
+                "annotations": [],
             }
 
     def supports_file(self, file_path: str) -> bool:
         """Check if this plugin supports the given file."""
-        return any(file_path.lower().endswith(ext) for ext in self.get_file_extensions())
+        return any(
+            file_path.lower().endswith(ext) for ext in self.get_file_extensions()
+        )

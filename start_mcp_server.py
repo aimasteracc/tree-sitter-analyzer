@@ -21,7 +21,7 @@ from tree_sitter_analyzer.utils import setup_logger
 logger = setup_logger(__name__)
 
 
-async def start_server_with_initialization_check():
+async def start_server_with_initialization_check() -> None:
     """Start the MCP server with proper initialization checking."""
     try:
         logger.info("=== Tree-sitter Analyzer MCP Server Startup ===")
@@ -37,11 +37,11 @@ async def start_server_with_initialization_check():
         # Wait for initialization to complete
         max_wait_time = 10  # seconds
         wait_interval = 0.1  # seconds
-        elapsed_time = 0
+        elapsed_time = 0.0
 
         while not server.is_initialized() and elapsed_time < max_wait_time:
             await asyncio.sleep(wait_interval)
-            elapsed_time += wait_interval
+            elapsed_time = elapsed_time + wait_interval
 
         if not server.is_initialized():
             raise RuntimeError(
@@ -63,7 +63,7 @@ async def start_server_with_initialization_check():
         logger.info("🔄 Server shutdown complete")
 
 
-async def main_with_retry():
+async def main_with_retry() -> None:
     """Main function with retry logic for robustness."""
     max_retries = 3
     retry_delay = 2  # seconds
@@ -83,7 +83,7 @@ async def main_with_retry():
                 sys.exit(1)
 
 
-def check_dependencies():
+def check_dependencies() -> bool:
     """Check if all required dependencies are available."""
     try:
         import importlib.util

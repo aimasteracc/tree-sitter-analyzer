@@ -41,7 +41,7 @@ except ImportError:
     class TextContent:  # type: ignore
         pass
 
-    def stdio_server() -> None:  # type: ignore
+    def stdio_server() -> None:  # type: ignore[misc]
         pass
 
 
@@ -70,6 +70,7 @@ from .tools.table_format_tool import TableFormatTool
 # Import UniversalAnalyzeTool at module level for test compatibility
 try:
     from .tools.universal_analyze_tool import UniversalAnalyzeTool
+
     UNIVERSAL_TOOL_AVAILABLE = True
 except ImportError:
     UniversalAnalyzeTool = None  # type: ignore
@@ -116,7 +117,9 @@ class TreeSitterAnalyzerMCPServer:
         # Allow tests to control initialization by checking if UniversalAnalyzeTool is available
         if UNIVERSAL_TOOL_AVAILABLE and UniversalAnalyzeTool is not None:
             try:
-                self.universal_analyze_tool: UniversalAnalyzeTool | None = UniversalAnalyzeTool(project_root)
+                self.universal_analyze_tool: UniversalAnalyzeTool | None = (
+                    UniversalAnalyzeTool(project_root)
+                )
             except Exception:
                 self.universal_analyze_tool = None
         else:
@@ -343,6 +346,7 @@ class TreeSitterAnalyzerMCPServer:
         """
         try:
             from ..encoding_utils import read_file_safe
+
             content, _ = read_file_safe(file_path)
 
             lines = content.split("\n")
@@ -702,10 +706,20 @@ class TreeSitterAnalyzerMCPServer:
         server = self.create_server()
 
         # Initialize server options with required capabilities field
+        from mcp.server.models import ServerCapabilities
+        from mcp.types import ToolsCapability, ResourcesCapability, PromptsCapability, LoggingCapability
+        
+        capabilities = ServerCapabilities(
+            tools=ToolsCapability(listChanged=True),
+            resources=ResourcesCapability(subscribe=True, listChanged=True),
+            prompts=PromptsCapability(listChanged=True),
+            logging=LoggingCapability()
+        )
+        
         options = InitializationOptions(
             server_name=self.name,
             server_version=self.version,
-            capabilities={"tools": {}, "resources": {}, "prompts": {}, "logging": {}},  # type: ignore
+            capabilities=capabilities,
         )
 
         try:

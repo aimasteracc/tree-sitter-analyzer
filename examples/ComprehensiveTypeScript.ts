@@ -1,7 +1,7 @@
 /**
  * 包含所有TypeScript特性的综合测试文件
  * Comprehensive TypeScript features test file
- * 
+ *
  * @author TypeScript Analyzer Test
  * @version 1.0.0
  * @since 2025-01-07
@@ -200,7 +200,7 @@ class UserService extends BaseEntity implements Repository<User> {
 
     public async findAll(filter?: Partial<User>): Promise<User[]> {
         let users = Array.from(this.users.values());
-        
+
         if (filter) {
             users = users.filter(user => {
                 return Object.entries(filter).every(([key, value]) => {
@@ -208,7 +208,7 @@ class UserService extends BaseEntity implements Repository<User> {
                 });
             });
         }
-        
+
         return users;
     }
 
@@ -235,7 +235,7 @@ class UserService extends BaseEntity implements Repository<User> {
  */
 function Log(target: any, propertyName: string, descriptor: PropertyDescriptor) {
     const method = descriptor.value;
-    
+
     descriptor.value = function (...args: any[]) {
         console.log(`呼び出し中: ${propertyName} with args:`, args);
         const result = method.apply(this, args);
@@ -251,7 +251,7 @@ function Log(target: any, propertyName: string, descriptor: PropertyDescriptor) 
 function Validate(validator: (value: any) => boolean) {
     return function (target: any, propertyName: string) {
         let value = target[propertyName];
-        
+
         const getter = () => value;
         const setter = (newValue: any) => {
             if (!validator(newValue)) {
@@ -259,7 +259,7 @@ function Validate(validator: (value: any) => boolean) {
             }
             value = newValue;
         };
-        
+
         Object.defineProperty(target, propertyName, {
             get: getter,
             set: setter,
@@ -291,10 +291,10 @@ type UserKeys = keyof User;
 type UserValues = User[keyof User];
 
 // 条件型の使用例 (Conditional Types Usage)
-type ApiResponse<T> = T extends string 
-    ? { message: T } 
-    : T extends number 
-    ? { code: T } 
+type ApiResponse<T> = T extends string
+    ? { message: T }
+    : T extends number
+    ? { code: T }
     : { data: T };
 
 // インデックス型 (Index Types)
@@ -528,7 +528,7 @@ class Application {
      */
     public async demonstrateStreamProcessing(): Promise<void> {
         const users = await this.userService.findAll();
-        
+
         console.log('ストリーム処理開始...');
         for await (const user of this.dataProcessor.processDataStream(users)) {
             console.log(`処理中: ${user.name}`);
@@ -540,21 +540,21 @@ class Application {
 // ===== エクスポート (Exports) =====
 
 export default Application;
-export { 
-    User, 
-    UserService, 
-    AsyncDataProcessor, 
-    UserRole, 
+export {
+    User,
+    UserService,
+    AsyncDataProcessor,
+    UserRole,
     HttpStatusCode,
     ValidatedUser,
     DataProcessing
 };
 
-export type { 
-    UserPreferences, 
-    AdminUser, 
-    Permission, 
-    Repository, 
+export type {
+    UserPreferences,
+    AdminUser,
+    Permission,
+    Repository,
     EventHandler,
     StringOrNumber,
     UserID,
@@ -575,7 +575,7 @@ function processUser(user: User | null): string {
 // ===== 型ガード (Type Guards) =====
 
 function isUser(obj: any): obj is User {
-    return obj && 
+    return obj &&
            typeof obj.id === 'string' &&
            typeof obj.name === 'string' &&
            typeof obj.age === 'number';
@@ -598,20 +598,20 @@ function handleUser(user: User | AdminUser): void {
 
 async function main(): Promise<void> {
     const app = new Application();
-    
+
     try {
         await app.initialize();
         await app.demonstrateUserSearch();
         await app.demonstrateStreamProcessing();
-        
+
         // バリデーション付きユーザーのテスト (Validated user test)
         const validatedUser = new ValidatedUser();
         validatedUser.name = "検証済みユーザー";
         validatedUser.age = 25;
-        
+
         const greeting = validatedUser.greet("TypeScript分析のテストです！");
         console.log(greeting);
-        
+
     } catch (error) {
         console.error('アプリケーションエラー:', error);
     }

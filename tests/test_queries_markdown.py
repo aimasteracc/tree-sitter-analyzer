@@ -322,9 +322,9 @@ class TestMarkdownQueryValidation:
             # Should have balanced parentheses
             open_parens = query_string.count("(")
             close_parens = query_string.count(")")
-            assert open_parens == close_parens, (
-                f"Unbalanced parentheses in {query_name}"
-            )
+            assert (
+                open_parens == close_parens
+            ), f"Unbalanced parentheses in {query_name}"
 
 
 class TestMarkdownQueryEdgeCases:

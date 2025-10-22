@@ -27,7 +27,8 @@ class TestQueryToolFileOutput:
 
             # Create a comprehensive Python test file
             python_file = project_path / "sample.py"
-            python_file.write_text("""#!/usr/bin/env python3
+            python_file.write_text(
+                """#!/usr/bin/env python3
 \"\"\"
 Sample Python file for testing query functionality.
 \"\"\"
@@ -68,11 +69,13 @@ def main():
 
 if __name__ == "__main__":
     main()
-""")
+"""
+            )
 
             # Create a Java test file
             java_file = project_path / "Sample.java"
-            java_file.write_text("""package com.example;
+            java_file.write_text(
+                """package com.example;
 
 import java.util.List;
 import java.util.ArrayList;
@@ -102,11 +105,13 @@ public class Sample {
         System.out.println("Name: " + sample.getName());
     }
 }
-""")
+"""
+            )
 
             # Create a JavaScript test file
             js_file = project_path / "sample.js"
-            js_file.write_text("""/**
+            js_file.write_text(
+                """/**
  * Sample JavaScript file for testing.
  */
 
@@ -140,7 +145,8 @@ function main() {
 if (typeof module !== 'undefined') {
     module.exports = { SampleClass, main };
 }
-""")
+"""
+            )
 
             yield str(project_path)
 

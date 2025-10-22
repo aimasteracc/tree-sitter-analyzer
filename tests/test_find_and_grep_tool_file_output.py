@@ -26,7 +26,8 @@ class TestFindAndGrepToolFileOutput:
             project_path = Path(temp_dir)
 
             # Create test files with different extensions
-            (project_path / "test1.py").write_text("""
+            (project_path / "test1.py").write_text(
+                """
 def hello_world():
     print("Hello, World!")
     return "success"
@@ -34,9 +35,11 @@ def hello_world():
 class TestClass:
     def __init__(self):
         self.value = 42
-""")
+"""
+            )
 
-            (project_path / "test2.js").write_text("""
+            (project_path / "test2.js").write_text(
+                """
 function helloWorld() {
     console.log("Hello, World!");
     return "success";
@@ -47,21 +50,26 @@ class TestClass {
         this.value = 42;
     }
 }
-""")
+"""
+            )
 
-            (project_path / "README.md").write_text("""
+            (project_path / "README.md").write_text(
+                """
 # Test Project
 
 This is a test project for hello world examples.
-""")
+"""
+            )
 
             # Create subdirectory
             subdir = project_path / "subdir"
             subdir.mkdir()
-            (subdir / "nested.py").write_text("""
+            (subdir / "nested.py").write_text(
+                """
 def nested_hello():
     print("Nested hello!")
-""")
+"""
+            )
 
             yield str(project_path)
 

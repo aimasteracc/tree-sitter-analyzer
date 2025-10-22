@@ -171,7 +171,8 @@ class TestMCPServerCodeAnalysisEdgeCases:
 
         # Create a file with syntax errors
         test_file = Path(temp_project_dir) / "malformed.py"
-        test_file.write_text("""
+        test_file.write_text(
+            """
 def incomplete_function(
     # Missing closing parenthesis and body
 
@@ -182,7 +183,8 @@ if True
     # Missing colon
     print("test"
     # Missing closing parenthesis
-""")
+"""
+        )
 
         arguments = {"file_path": str(test_file)}
         result = await server._analyze_code_scale(arguments)
@@ -425,9 +427,9 @@ class TestMCPServerToolHandlingEdgeCases:
             server.create_server()
 
             # Get the captured handler
-            assert "call_tool" in captured_handlers, (
-                "call_tool handler was not registered"
-            )
+            assert (
+                "call_tool" in captured_handlers
+            ), "call_tool handler was not registered"
             call_tool_handler = captured_handlers["call_tool"]
 
             result = await call_tool_handler(

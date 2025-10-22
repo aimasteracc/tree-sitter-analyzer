@@ -33,6 +33,7 @@ def read_file_safe(file_path: str) -> str:
     """Read file safely for MCP resource requests."""
     try:
         from ..encoding_utils import read_file_safe
+
         content, _ = read_file_safe(file_path)
         return content
     except Exception as e:

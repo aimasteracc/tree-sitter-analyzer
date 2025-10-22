@@ -15,7 +15,7 @@
             background-color: yellow;
             font-weight: bold;
         }
-        
+
         .container {
             max-width: 1200px;
             margin: 0 auto;
@@ -65,12 +65,12 @@
                     <h2>概要</h2>
                     <p class="section-subtitle">HTML5の全主要要素を含むサンプル</p>
                 </header>
-                
+
                 <article class="about-content">
                     <h3>このサンプルについて</h3>
                     <p>このHTMLファイルは、<strong>Tree-sitter Analyzer</strong>のHTML解析機能をテストするために作成されました。</p>
                     <p>以下の要素が含まれています：</p>
-                    
+
                     <details>
                         <summary>含まれる要素の詳細</summary>
                         <ul>
@@ -83,7 +83,7 @@
                             <li>テーブル要素（table, thead, tbody, tr, th, td）</li>
                         </ul>
                     </details>
-                    
+
                     <blockquote cite="https://developer.mozilla.org/ja/docs/Web/HTML">
                         <p>HTML（HyperText Markup Language）は、ウェブページを作成するために使用される標準的なマークアップ言語です。</p>
                         <footer>— <cite>MDN Web Docs</cite></footer>
@@ -96,7 +96,7 @@
         <section id="features" class="features-section">
             <div class="container">
                 <h2>主要機能</h2>
-                
+
                 <!-- グリッドレイアウト -->
                 <div class="features-grid">
                     <div class="feature-card">
@@ -119,40 +119,40 @@
         <section id="contact" class="form-section">
             <div class="container">
                 <h2>お問い合わせフォーム</h2>
-                
+
                 <form class="contact-form" action="/submit" method="post" enctype="multipart/form-data">
                     <fieldset>
                         <legend>基本情報</legend>
-                        
+
                         <div class="form-group">
                             <label for="name">お名前 <span class="required">*</span></label>
                             <input type="text" id="name" name="name" required placeholder="山田太郎">
                         </div>
-                        
+
                         <div class="form-group">
                             <label for="email">メールアドレス <span class="required">*</span></label>
                             <input type="email" id="email" name="email" required placeholder="example@email.com">
                         </div>
-                        
+
                         <div class="form-group">
                             <label for="phone">電話番号</label>
                             <input type="tel" id="phone" name="phone" pattern="[0-9]{3}-[0-9]{4}-[0-9]{4}" placeholder="090-1234-5678">
                         </div>
-                        
+
                         <div class="form-group">
                             <label for="birthdate">生年月日</label>
                             <input type="date" id="birthdate" name="birthdate">
                         </div>
-                        
+
                         <div class="form-group">
                             <label for="website">ウェブサイト</label>
                             <input type="url" id="website" name="website" placeholder="https://example.com">
                         </div>
                     </fieldset>
-                    
+
                     <fieldset>
                         <legend>詳細情報</legend>
-                        
+
                         <div class="form-group">
                             <label for="category">カテゴリ</label>
                             <select id="category" name="category">
@@ -168,55 +168,55 @@
                                 </optgroup>
                             </select>
                         </div>
-                        
+
                         <div class="form-group">
                             <label for="priority">優先度</label>
                             <div class="radio-group">
                                 <input type="radio" id="low" name="priority" value="low">
                                 <label for="low">低</label>
-                                
+
                                 <input type="radio" id="medium" name="priority" value="medium" checked>
                                 <label for="medium">中</label>
-                                
+
                                 <input type="radio" id="high" name="priority" value="high">
                                 <label for="high">高</label>
                             </div>
                         </div>
-                        
+
                         <div class="form-group">
                             <label for="features">興味のある機能（複数選択可）</label>
                             <div class="checkbox-group">
                                 <input type="checkbox" id="html-analysis" name="features" value="html">
                                 <label for="html-analysis">HTML解析</label>
-                                
+
                                 <input type="checkbox" id="css-analysis" name="features" value="css">
                                 <label for="css-analysis">CSS解析</label>
-                                
+
                                 <input type="checkbox" id="js-analysis" name="features" value="javascript">
                                 <label for="js-analysis">JavaScript解析</label>
-                                
+
                                 <input type="checkbox" id="mcp-integration" name="features" value="mcp">
                                 <label for="mcp-integration">MCP統合</label>
                             </div>
                         </div>
-                        
+
                         <div class="form-group">
                             <label for="message">メッセージ</label>
                             <textarea id="message" name="message" rows="5" placeholder="ご質問やご要望をお聞かせください..."></textarea>
                         </div>
-                        
+
                         <div class="form-group">
                             <label for="attachment">添付ファイル</label>
                             <input type="file" id="attachment" name="attachment" accept=".txt,.pdf,.doc,.docx">
                         </div>
-                        
+
                         <div class="form-group">
                             <label for="experience">経験レベル</label>
                             <input type="range" id="experience" name="experience" min="1" max="10" value="5">
                             <output for="experience">5</output>
                         </div>
                     </fieldset>
-                    
+
                     <div class="form-actions">
                         <button type="submit" class="btn btn-primary">送信</button>
                         <button type="reset" class="btn btn-secondary">リセット</button>
@@ -229,7 +229,7 @@
         <section id="media" class="media-section">
             <div class="container">
                 <h2>メディア要素</h2>
-                
+
                 <div class="media-grid">
                     <!-- 画像 -->
                     <figure class="media-item">
@@ -240,7 +240,7 @@
                         </picture>
                         <figcaption>Tree-sitter Analyzerのロゴ</figcaption>
                     </figure>
-                    
+
                     <!-- 動画 -->
                     <figure class="media-item">
                         <video controls width="400" height="300" poster="video-poster.jpg">
@@ -252,7 +252,7 @@
                         </video>
                         <figcaption>デモンストレーション動画</figcaption>
                     </figure>
-                    
+
                     <!-- 音声 -->
                     <figure class="media-item">
                         <audio controls>
@@ -270,7 +270,7 @@
         <section id="data" class="table-section">
             <div class="container">
                 <h2>データテーブル</h2>
-                
+
                 <table class="data-table">
                     <caption>HTML要素の分類表</caption>
                     <thead>
@@ -336,7 +336,7 @@
         <section id="lists" class="lists-section">
             <div class="container">
                 <h2>リスト要素</h2>
-                
+
                 <div class="lists-grid">
                     <!-- 順序なしリスト -->
                     <div class="list-item">
@@ -359,7 +359,7 @@
                             <li>MCP統合</li>
                         </ul>
                     </div>
-                    
+
                     <!-- 順序ありリスト -->
                     <div class="list-item">
                         <h3>セットアップ手順</h3>
@@ -375,20 +375,20 @@
                             <li>テストの実行</li>
                         </ol>
                     </div>
-                    
+
                     <!-- 定義リスト -->
                     <div class="list-item">
                         <h3>用語集</h3>
                         <dl>
                             <dt>Tree-sitter</dt>
                             <dd>プログラミング言語のパーサージェネレーター</dd>
-                            
+
                             <dt>MCP (Model Context Protocol)</dt>
                             <dd>AIモデルとアプリケーション間の通信プロトコル</dd>
-                            
+
                             <dt>DOM (Document Object Model)</dt>
                             <dd>HTMLやXML文書の構造を表現するためのAPI</dd>
-                            
+
                             <dt>CSS (Cascading Style Sheets)</dt>
                             <dd>Webページのスタイルを定義するためのスタイルシート言語</dd>
                         </dl>
@@ -410,7 +410,7 @@
                 </ul>
             </nav>
         </div>
-        
+
         <div class="widget">
             <h3>最新情報</h3>
             <div class="news-item">
@@ -431,7 +431,7 @@
                         <p>Email: <a href="mailto:contact@example.com">contact@example.com</a></p>
                     </address>
                 </div>
-                
+
                 <div class="footer-section">
                     <h4>ドキュメント</h4>
                     <ul>
@@ -440,7 +440,7 @@
                         <li><a href="#examples">使用例</a></li>
                     </ul>
                 </div>
-                
+
                 <div class="footer-section">
                     <h4>コミュニティ</h4>
                     <ul>
@@ -450,7 +450,7 @@
                     </ul>
                 </div>
             </div>
-            
+
             <div class="footer-bottom">
                 <p>&copy; 2025 Tree-sitter Analyzer Team. All rights reserved.</p>
                 <p>
@@ -469,27 +469,27 @@
         function showAlert() {
             alert('Tree-sitter Analyzerへようこそ！');
         }
-        
+
         // メニュートグル
         document.querySelector('.menu-toggle').addEventListener('click', function() {
             document.querySelector('.nav-menu').classList.toggle('active');
         });
-        
+
         // 経験レベルスライダー
         const experienceSlider = document.getElementById('experience');
         const experienceOutput = document.querySelector('output[for="experience"]');
-        
+
         experienceSlider.addEventListener('input', function() {
             experienceOutput.textContent = this.value;
         });
-        
+
         // フォーム送信処理
         document.querySelector('.contact-form').addEventListener('submit', function(e) {
             e.preventDefault();
             console.log('フォームが送信されました');
             alert('フォームの送信をシミュレートしました（実際には送信されません）');
         });
-        
+
         // スムーススクロール
         document.querySelectorAll('a[href^="#"]').forEach(anchor => {
             anchor.addEventListener('click', function (e) {
@@ -503,7 +503,7 @@
             });
         });
     </script>
-    
+
     <!-- 構造化データ -->
     <script type="application/ld+json">
     {

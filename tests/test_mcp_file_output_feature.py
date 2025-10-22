@@ -39,7 +39,8 @@ class TestFileOutputFeature:
 
             # Create test files
             test_file = project_path / "test.py"
-            test_file.write_text("""
+            test_file.write_text(
+                """
 def hello_world():
     print("Hello, World!")
     return "success"
@@ -50,10 +51,12 @@ class TestClass:
 
     def get_value(self):
         return self.value
-""")
+"""
+            )
 
             test_java_file = project_path / "Test.java"
-            test_java_file.write_text("""
+            test_java_file.write_text(
+                """
 public class Test {
     private int value = 42;
 
@@ -65,7 +68,8 @@ public class Test {
         return this.value;
     }
 }
-""")
+"""
+            )
 
             yield str(project_path)
 
@@ -558,9 +562,9 @@ public class Test {
                         "file_saved" in result,
                         "output_file" in result,
                     ]
-                    assert any(file_output_indicators), (
-                        f"Tool {tool.__class__.__name__} missing file output indicators"
-                    )
+                    assert any(
+                        file_output_indicators
+                    ), f"Tool {tool.__class__.__name__} missing file output indicators"
 
 
 class TestFileOutputManagerIntegration:

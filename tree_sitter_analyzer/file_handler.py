@@ -16,17 +16,17 @@ logger = setup_logger(__name__)
 
 def log_error(message: str, *args: object, **kwargs: object) -> None:
     """Log error message"""
-    logger.error(message, *args, **kwargs)
+    logger.error(message, *args, **kwargs)  # type: ignore[arg-type]
 
 
 def log_info(message: str, *args: object, **kwargs: object) -> None:
     """Log info message"""
-    logger.info(message, *args, **kwargs)
+    logger.info(message, *args, **kwargs)  # type: ignore[arg-type]
 
 
 def log_warning(message: str, *args: object, **kwargs: object) -> None:
     """Log warning message"""
-    logger.warning(message, *args, **kwargs)
+    logger.warning(message, *args, **kwargs)  # type: ignore[arg-type]
 
 
 def detect_language_from_extension(file_path: str) -> str:

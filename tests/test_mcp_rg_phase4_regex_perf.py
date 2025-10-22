@@ -305,9 +305,9 @@ async def test_rg_53_files_mode_uses_parent_dirs(monkeypatch, tmp_path):
             ):
                 path_found = True
                 break
-        assert path_found, (
-            f"Neither {parent_path} nor {real_parent_path} found in {cmd}"
-        )
+        assert (
+            path_found
+        ), f"Neither {parent_path} nor {real_parent_path} found in {cmd}"
         return 0, evt, b""
 
     monkeypatch.setattr(

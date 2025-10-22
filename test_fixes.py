@@ -12,13 +12,13 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 
-def test_mcp_async_integration():
+def test_mcp_async_integration() -> bool:
     """测试MCP异步集成修复"""
     print("测试MCP异步集成...")
     try:
         from tree_sitter_analyzer.mcp.tools.query_tool import QueryTool
 
-        async def test_validation():
+        async def test_validation() -> bool:
             tool = QueryTool(project_root=os.getcwd())
 
             # 测试缺少file_path参数
@@ -34,7 +34,7 @@ def test_mcp_async_integration():
         return False
 
 
-def test_output_manager():
+def test_output_manager() -> bool:
     """测试OutputManager修复"""
     print("测试OutputManager...")
     try:
@@ -79,7 +79,7 @@ def test_output_manager():
         return False
 
 
-def test_query_service():
+def test_query_service() -> bool:
     """测试QueryService修复"""
     print("测试QueryService...")
     try:
@@ -116,7 +116,7 @@ def test_query_service():
         return False
 
 
-def test_logging():
+def test_logging() -> bool:
     """测试日志修复"""
     print("测试日志功能...")
     try:
@@ -153,7 +153,7 @@ def test_logging():
         return False
 
 
-def test_utils_extended():
+def test_utils_extended() -> bool:
     """测试utils_extended修复"""
     print("测试utils_extended...")
     try:
@@ -175,7 +175,7 @@ def test_utils_extended():
         return False
 
 
-def main():
+def main() -> bool:
     """运行所有测试"""
     print("开始验证修复结果...\n")
 

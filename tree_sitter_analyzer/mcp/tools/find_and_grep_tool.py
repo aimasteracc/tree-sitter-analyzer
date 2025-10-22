@@ -628,9 +628,11 @@ class FindAndGrepTool(BaseMCPTool):
                             "success": True,
                             "results": matches,
                             "count": len(matches),
-                            "files": fd_rg_utils.group_matches_by_file(matches)["files"]
-                            if matches
-                            else [],
+                            "files": (
+                                fd_rg_utils.group_matches_by_file(matches)["files"]
+                                if matches
+                                else []
+                            ),
                             "summary": fd_rg_utils.summarize_search_results(matches),
                             "meta": result["meta"],
                         }

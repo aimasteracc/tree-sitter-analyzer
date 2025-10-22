@@ -579,9 +579,9 @@ public class NewService {
         execution_time = end_time - start_time
 
         # 実行時間が合理的な範囲内であることを確認（小規模プロジェクトなので5秒以内）
-        assert execution_time < 5.0, (
-            f"Statistics generation took too long: {execution_time}s"
-        )
+        assert (
+            execution_time < 5.0
+        ), f"Statistics generation took too long: {execution_time}s"
 
         # すべての結果が有効なJSONであることを確認
         for result in results:
@@ -616,9 +616,9 @@ public class NewService {
 
         # 例外が発生していないことを確認
         for i, result in enumerate(results):
-            assert not isinstance(result, Exception), (
-                f"Task {i} failed with exception: {result}"
-            )
+            assert not isinstance(
+                result, Exception
+            ), f"Task {i} failed with exception: {result}"
 
         # 結果が期待される形式であることを確認
         assert "results" in results[0]  # find_and_grep結果

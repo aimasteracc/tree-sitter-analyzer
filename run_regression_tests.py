@@ -283,9 +283,11 @@ class RegressionTestRunner:
                 "passed": self.passed,
                 "failed": self.failed,
                 "skipped": self.skipped,
-                "success_rate": (self.passed / (self.passed + self.failed)) * 100
-                if (self.passed + self.failed) > 0
-                else 0,
+                "success_rate": (
+                    (self.passed / (self.passed + self.failed)) * 100
+                    if (self.passed + self.failed) > 0
+                    else 0
+                ),
             },
             "results": self.results,
             "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),

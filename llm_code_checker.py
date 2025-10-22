@@ -35,8 +35,8 @@ class Colors:
 class LLMCodeChecker:
     """Specialized code quality checker for LLM-generated code."""
 
-    def __init__(self):
-        self.issues: list[dict[str, str]] = []
+    def __init__(self) -> None:
+        self.issues: list[dict[str, str | int | None]] = []
         self.files_checked = 0
         self.total_issues = 0
 
@@ -85,19 +85,19 @@ class LLMCodeChecker:
 
     def _add_issue(
         self, file_path: Path, issue_type: str, message: str, line: int | None = None
-    ):
+    ) -> None:
         """Add an issue to the list."""
         self.issues.append(
             {
                 "file": str(file_path),
                 "type": issue_type,
                 "message": message,
-                "line": line,
+                "line": str(line) if line is not None else None,
             }
         )
         self.total_issues += 1
 
-    def _check_type_hints(self, file_path: Path, tree: ast.AST, content: str):
+    def _check_type_hints(self, file_path: Path, tree: ast.AST, content: str) -> None:
         """Check for missing type hints."""
         for node in ast.walk(tree):
             if isinstance(node, ast.FunctionDef):
@@ -124,7 +124,7 @@ class LLMCodeChecker:
                             node.lineno,
                         )
 
-    def _check_docstrings(self, file_path: Path, tree: ast.AST):
+    def _check_docstrings(self, file_path: Path, tree: ast.AST) -> None:
         """Check for missing docstrings."""
         for node in ast.walk(tree):
             if isinstance(node, ast.FunctionDef | ast.ClassDef):
@@ -151,7 +151,7 @@ class LLMCodeChecker:
                         node.lineno,
                     )
 
-    def _check_error_handling(self, file_path: Path, tree: ast.AST):
+    def _check_error_handling(self, file_path: Path, tree: ast.AST) -> None:
         """Check for proper error handling."""
         for node in ast.walk(tree):
             if isinstance(node, ast.ExceptHandler):
@@ -173,7 +173,7 @@ class LLMCodeChecker:
                         node.lineno,
                     )
 
-    def _check_imports(self, file_path: Path, tree: ast.AST, content: str):
+    def _check_imports(self, file_path: Path, tree: ast.AST, content: str) -> None:
         """Check import organization and usage."""
         imports = []
         for node in ast.walk(tree):
@@ -204,7 +204,7 @@ class LLMCodeChecker:
                     )
                     break
 
-    def _check_naming_conventions(self, file_path: Path, tree: ast.AST):
+    def _check_naming_conventions(self, file_path: Path, tree: ast.AST) -> None:
         """Check naming conventions."""
         for node in ast.walk(tree):
             if isinstance(node, ast.FunctionDef):
@@ -229,7 +229,7 @@ class LLMCodeChecker:
                         node.lineno,
                     )
 
-    def _check_anti_patterns(self, file_path: Path, tree: ast.AST, content: str):
+    def _check_anti_patterns(self, file_path: Path, tree: ast.AST, content: str) -> None:
         """Check for common anti-patterns."""
         # Check for mutable default arguments
         for node in ast.walk(tree):
@@ -259,7 +259,7 @@ class LLMCodeChecker:
                     )
                     break
 
-    def _check_project_patterns(self, file_path: Path, tree: ast.AST, content: str):
+    def _check_project_patterns(self, file_path: Path, tree: ast.AST, content: str) -> None:
         """Check for project-specific patterns."""
         # Check for proper exception usage
         if "tree_sitter_analyzer" in str(file_path):
@@ -291,7 +291,7 @@ class LLMCodeChecker:
                     "Use logging instead of print statements",
                 )
 
-    def print_summary(self):
+    def print_summary(self) -> bool:
         """Print a summary of all issues found."""
         print(f"\n{Colors.BOLD}=== LLM Code Quality Check Summary ==={Colors.END}")
         print(f"Files checked: {self.files_checked}")
@@ -328,7 +328,7 @@ class LLMCodeChecker:
         return False
 
 
-def main():
+def main() -> None:
     """Main entry point."""
     parser = argparse.ArgumentParser(description="LLM Code Quality Checker")
     parser.add_argument(

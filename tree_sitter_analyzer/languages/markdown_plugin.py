@@ -21,13 +21,14 @@ except ImportError:
 
 from ..core.analysis_engine import AnalysisRequest
 from ..encoding_utils import extract_text_slice, safe_encode
-from ..models import AnalysisResult, CodeElement
+from ..models import AnalysisResult
 from ..models import Class as ModelClass
+from ..models import CodeElement
 from ..models import Function as ModelFunction
 from ..models import Import as ModelImport
 from ..models import Variable as ModelVariable
 from ..plugins.base import ElementExtractor, LanguagePlugin
-from ..utils import log_debug, log_error, log_warning
+from ..utils import log_debug, log_error
 from ..utils.tree_sitter_compat import TreeSitterQueryCompat
 
 
@@ -42,12 +43,12 @@ class MarkdownElement(CodeElement):
         raw_text: str,
         language: str = "markdown",
         element_type: str = "markdown",
-        level: Optional[int] = None,
-        url: Optional[str] = None,
-        alt_text: Optional[str] = None,
-        title: Optional[str] = None,
-        language_info: Optional[str] = None,
-        is_checked: Optional[bool] = None,
+        level: int | None = None,
+        url: str | None = None,
+        alt_text: str | None = None,
+        title: str | None = None,
+        language_info: str | None = None,
+        is_checked: bool | None = None,
         **kwargs: Any,
     ) -> None:
         super().__init__(
@@ -65,16 +66,16 @@ class MarkdownElement(CodeElement):
         self.title = title  # For links and images
         self.language_info = language_info  # For code blocks
         self.is_checked = is_checked  # For task list items
-        
+
         # Additional attributes used by formatters
-        self.text: Optional[str] = None  # Text content
-        self.type: Optional[str] = None  # Element type for formatters
-        self.line_count: Optional[int] = None  # For code blocks
-        self.alt: Optional[str] = None  # Alternative text for images
-        self.list_type: Optional[str] = None  # For lists (ordered/unordered/task)
-        self.item_count: Optional[int] = None  # For lists
-        self.row_count: Optional[int] = None  # For tables
-        self.column_count: Optional[int] = None  # For tables
+        self.text: str | None = None  # Text content
+        self.type: str | None = None  # Element type for formatters
+        self.line_count: int | None = None  # For code blocks
+        self.alt: str | None = None  # Alternative text for images
+        self.list_type: str | None = None  # For lists (ordered/unordered/task)
+        self.item_count: int | None = None  # For lists
+        self.row_count: int | None = None  # For tables
+        self.column_count: int | None = None  # For tables
 
 
 class MarkdownElementExtractor(ElementExtractor):
@@ -133,7 +134,7 @@ class MarkdownElementExtractor(ElementExtractor):
         elements = []
         elements.extend(self.extract_links(tree, source_code))
         elements.extend(self.extract_images(tree, source_code))
-        
+
         variables = []
         for element in elements:
             var = ModelVariable(
@@ -368,7 +369,9 @@ class MarkdownElementExtractor(ElementExtractor):
             try:
                 self._extract_emphasis_elements(tree.root_node, formatting_elements)
                 self._extract_inline_code_spans(tree.root_node, formatting_elements)
-                self._extract_strikethrough_elements(tree.root_node, formatting_elements)
+                self._extract_strikethrough_elements(
+                    tree.root_node, formatting_elements
+                )
             except Exception as e:
                 log_debug(f"Error during text formatting extraction: {e}")
 
@@ -474,7 +477,7 @@ class MarkdownElementExtractor(ElementExtractor):
                 line = self.content_lines[start_point[0]]
                 start_col = max(0, min(start_point[1], len(line)))
                 end_col = max(start_col, min(end_point[1], len(line)))
-                result = line[start_col:end_col]
+                result: str = line[start_col:end_col]
                 self._node_text_cache[node_id] = result
                 return result
             else:
@@ -906,7 +909,6 @@ class MarkdownElementExtractor(ElementExtractor):
 
         # Extract all reference definitions that could be used for images
         # We check if the URL points to an image file or if it's used by an image reference
-
         # First, collect all image references used in the document
         image_refs_used = set()
         for node in self._traverse_nodes(root_node):
@@ -938,7 +940,9 @@ class MarkdownElementExtractor(ElementExtractor):
 
                     # Pattern: [label]: url "title"
                     ref_pattern = r'^\[([^\]]+)\]:\s*([^\s]+)(?:\s+"([^"]*)")?'
-                    ref_match: re.Match[str] | None = re.match(ref_pattern, raw_text.strip())
+                    ref_match: re.Match[str] | None = re.match(
+                        ref_pattern, raw_text.strip()
+                    )
 
                     if ref_match:
                         label = ref_match.group(1) or ""
@@ -1130,9 +1134,11 @@ class MarkdownElementExtractor(ElementExtractor):
                     content = "\n".join(content_lines).strip()
 
                     blockquote = MarkdownElement(
-                        name=f"Blockquote: {content[:50]}..."
-                        if len(content) > 50
-                        else f"Blockquote: {content}",
+                        name=(
+                            f"Blockquote: {content[:50]}..."
+                            if len(content) > 50
+                            else f"Blockquote: {content}"
+                        ),
                         start_line=start_line,
                         end_line=end_line,
                         raw_text=raw_text,
@@ -1481,7 +1487,7 @@ class MarkdownPlugin(LanguagePlugin):
     def __init__(self) -> None:
         """Initialize the Markdown plugin"""
         super().__init__()
-        self._language_cache: Optional["tree_sitter.Language"] = None
+        self._language_cache: tree_sitter.Language | None = None
         self._extractor: MarkdownElementExtractor = MarkdownElementExtractor()
 
         # Legacy compatibility attributes for tests
@@ -1514,13 +1520,16 @@ class MarkdownPlugin(LanguagePlugin):
         """Extract functions from the tree (legacy compatibility)"""
         extractor = self.get_extractor()
         functions = extractor.extract_functions(tree, source_code)
-        return [CodeElement(
-            name=f.name,
-            start_line=f.start_line,
-            end_line=f.end_line,
-            raw_text=f.raw_text,
-            language=f.language
-        ) for f in functions]
+        return [
+            CodeElement(
+                name=f.name,
+                start_line=f.start_line,
+                end_line=f.end_line,
+                raw_text=f.raw_text,
+                language=f.language,
+            )
+            for f in functions
+        ]
 
     def extract_classes(
         self, tree: "tree_sitter.Tree", source_code: str
@@ -1528,13 +1537,16 @@ class MarkdownPlugin(LanguagePlugin):
         """Extract classes from the tree (legacy compatibility)"""
         extractor = self.get_extractor()
         classes = extractor.extract_classes(tree, source_code)
-        return [CodeElement(
-            name=c.name,
-            start_line=c.start_line,
-            end_line=c.end_line,
-            raw_text=c.raw_text,
-            language=c.language
-        ) for c in classes]
+        return [
+            CodeElement(
+                name=c.name,
+                start_line=c.start_line,
+                end_line=c.end_line,
+                raw_text=c.raw_text,
+                language=c.language,
+            )
+            for c in classes
+        ]
 
     def extract_variables(
         self, tree: "tree_sitter.Tree", source_code: str
@@ -1542,13 +1554,16 @@ class MarkdownPlugin(LanguagePlugin):
         """Extract variables from the tree (legacy compatibility)"""
         extractor = self.get_extractor()
         variables = extractor.extract_variables(tree, source_code)
-        return [CodeElement(
-            name=v.name,
-            start_line=v.start_line,
-            end_line=v.end_line,
-            raw_text=v.raw_text,
-            language=v.language
-        ) for v in variables]
+        return [
+            CodeElement(
+                name=v.name,
+                start_line=v.start_line,
+                end_line=v.end_line,
+                raw_text=v.raw_text,
+                language=v.language,
+            )
+            for v in variables
+        ]
 
     def extract_imports(
         self, tree: "tree_sitter.Tree", source_code: str
@@ -1556,13 +1571,16 @@ class MarkdownPlugin(LanguagePlugin):
         """Extract imports from the tree (legacy compatibility)"""
         extractor = self.get_extractor()
         imports = extractor.extract_imports(tree, source_code)
-        return [CodeElement(
-            name=i.name,
-            start_line=i.start_line,
-            end_line=i.end_line,
-            raw_text=i.raw_text,
-            language=i.language
-        ) for i in imports]
+        return [
+            CodeElement(
+                name=i.name,
+                start_line=i.start_line,
+                end_line=i.end_line,
+                raw_text=i.raw_text,
+                language=i.language,
+            )
+            for i in imports
+        ]
 
     def get_tree_sitter_language(self) -> Optional["tree_sitter.Language"]:
         """Get the Tree-sitter language object for Markdown"""
@@ -1668,6 +1686,7 @@ class MarkdownPlugin(LanguagePlugin):
 
         try:
             from ..encoding_utils import read_file_safe
+
             source_code, _ = read_file_safe(file_path)
 
             parser = tree_sitter.Parser()
@@ -1805,7 +1824,7 @@ class MarkdownPlugin(LanguagePlugin):
         """Execute query strategy for Markdown language"""
         if not query_key:
             return None
-            
+
         # Use markdown-specific element categories instead of base queries
         element_categories = self.get_element_categories()
         if query_key in element_categories:
@@ -1814,7 +1833,7 @@ class MarkdownPlugin(LanguagePlugin):
             if node_types:
                 # Create a basic query for the first node type
                 return f"({node_types[0]}) @{query_key}"
-        
+
         # Fallback to base implementation
         queries = self.get_queries()
         return queries.get(query_key) if queries else None
@@ -1874,9 +1893,7 @@ class MarkdownPlugin(LanguagePlugin):
             "html_block": ["html_block", "inline"],
             "html": ["html_block", "inline"],
             # Text formatting categories
-            "emphasis": [
-                "inline"  # Contains emphasis elements
-            ],
+            "emphasis": ["inline"],  # Contains emphasis elements
             "formatting": ["inline"],
             "text_formatting": ["inline"],
             "inline_code": ["inline"],

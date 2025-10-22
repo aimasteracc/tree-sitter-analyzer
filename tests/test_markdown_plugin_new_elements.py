@@ -385,7 +385,7 @@ class TestMarkdownPluginNewElementsIntegration:
 
             # Should include all element types that return results
             assert len(elements) >= 12  # All 12 extraction methods
-            
+
             # Verify all extraction methods were called
             mock_extractor.extract_headers.assert_called_once()
             mock_extractor.extract_code_blocks.assert_called_once()
@@ -492,7 +492,9 @@ Footnote reference[^1]
 
         mock_root_node.children = []
 
-        with patch("tree_sitter_analyzer.encoding_utils.read_file_safe") as mock_read_file_safe:
+        with patch(
+            "tree_sitter_analyzer.encoding_utils.read_file_safe"
+        ) as mock_read_file_safe:
             mock_read_file_safe.return_value = (content, "utf-8")
 
             with patch(

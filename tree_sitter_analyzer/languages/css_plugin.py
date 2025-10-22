@@ -8,7 +8,7 @@ selector parsing, and property analysis.
 """
 
 import logging
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 from ..models import AnalysisResult, StyleElement
 from ..plugins.base import ElementExtractor, LanguagePlugin
@@ -145,7 +145,7 @@ class CssElementExtractor(ElementExtractor):
 
     def _create_style_element(
         self, node: "tree_sitter.Node", source_code: str
-    ) -> Optional[StyleElement]:
+    ) -> StyleElement | None:
         """Create StyleElement from tree-sitter node using tree-sitter-css grammar"""
         try:
             # Extract selector and properties based on node type
@@ -176,9 +176,9 @@ class CssElementExtractor(ElementExtractor):
             # Create StyleElement
             element = StyleElement(
                 name=name,
-                start_line=node.start_point[0] + 1
-                if hasattr(node, "start_point")
-                else 0,
+                start_line=(
+                    node.start_point[0] + 1 if hasattr(node, "start_point") else 0
+                ),
                 end_line=node.end_point[0] + 1 if hasattr(node, "end_point") else 0,
                 raw_text=raw_text,
                 language="css",
@@ -334,8 +334,8 @@ class CssPlugin(LanguagePlugin):
         return CSS_QUERIES
 
     def execute_query_strategy(
-        self, query_key: Optional[str], language: str
-    ) -> Optional[str]:
+        self, query_key: str | None, language: str
+    ) -> str | None:
         """Execute query strategy for CSS"""
         if language != "css":
             return None

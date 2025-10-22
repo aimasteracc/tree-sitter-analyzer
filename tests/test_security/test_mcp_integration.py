@@ -191,12 +191,12 @@ class TestSecurityMCPIntegration:
                     violation_func()
             else:
                 is_valid, error = violation_func()
-                assert not is_valid, (
-                    f"Security violation should be detected: {violation_type}"
-                )
-                assert error != "", (
-                    f"Error message should be provided for: {violation_type}"
-                )
+                assert (
+                    not is_valid
+                ), f"Security violation should be detected: {violation_type}"
+                assert (
+                    error != ""
+                ), f"Error message should be provided for: {violation_type}"
 
     @pytest.mark.integration
     def test_mcp_server_project_boundary_enforcement(self):
@@ -291,6 +291,6 @@ class TestSecurityMCPIntegration:
 
             # Assert - should be fast (< 10ms average)
             avg_time = (end_time - start_time) / 100
-            assert avg_time < 0.01, (
-                f"{operation_name} too slow: {avg_time:.4f}s average"
-            )
+            assert (
+                avg_time < 0.01
+            ), f"{operation_name} too slow: {avg_time:.4f}s average"

@@ -192,9 +192,9 @@ class TestSecurityIntegration:
                             kw.lower() in error.lower() for kw in error_keyword
                         ), f"Expected one of {error_keyword} in error: {error}"
                     else:
-                        assert error_keyword.lower() in error.lower(), (
-                            f"Expected '{error_keyword}' in error: {error}"
-                        )
+                        assert (
+                            error_keyword.lower() in error.lower()
+                        ), f"Expected '{error_keyword}' in error: {error}"
 
     @pytest.mark.integration
     def test_regex_performance_and_safety(self):

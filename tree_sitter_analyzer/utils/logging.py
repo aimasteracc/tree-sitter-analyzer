@@ -154,7 +154,7 @@ class SafeStreamHandler(logging.StreamHandler):
     A StreamHandler that safely handles closed streams
     """
 
-    def __init__(self, stream=None):
+    def __init__(self, stream: Any = None) -> None:
         # Default to sys.stderr to keep stdout clean for MCP stdio
         super().__init__(stream if stream is not None else sys.stderr)
 

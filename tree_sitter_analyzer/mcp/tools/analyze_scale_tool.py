@@ -66,6 +66,7 @@ class AnalyzeScaleTool(BaseMCPTool):
         """
         try:
             from ...encoding_utils import read_file_safe
+
             content, _ = read_file_safe(file_path)
 
             lines = content.split("\n")
@@ -736,11 +737,13 @@ class AnalyzeScaleTool(BaseMCPTool):
                 "methods": [],
                 "fields": [],
             },
-            "scale_category": "small"
-            if file_metrics["total_lines"] < 100
-            else "medium"
-            if file_metrics["total_lines"] < 1000
-            else "large",
+            "scale_category": (
+                "small"
+                if file_metrics["total_lines"] < 100
+                else "medium"
+                if file_metrics["total_lines"] < 1000
+                else "large"
+            ),
             "analysis_recommendations": {
                 "suitable_for_full_analysis": file_metrics["total_lines"] < 1000,
                 "recommended_approach": "JSON files are configuration/data files - structural analysis not applicable",

@@ -308,9 +308,9 @@ async def test_find_and_grep_output_file_auto_extension_detection(
             created_file = possible_file
             break
 
-    assert created_file is not None, (
-        f"No output file found. Checked: {[str(f) for f in possible_files]}"
-    )
+    assert (
+        created_file is not None
+    ), f"No output file found. Checked: {[str(f) for f in possible_files]}"
 
 
 @pytest.mark.asyncio

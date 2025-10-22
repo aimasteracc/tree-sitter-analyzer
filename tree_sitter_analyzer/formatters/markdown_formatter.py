@@ -624,6 +624,7 @@ class MarkdownFormatter(BaseFormatter):
 
         try:
             from ..encoding_utils import read_file_safe
+
             content, _ = read_file_safe(file_path)
         except Exception:
             return counts

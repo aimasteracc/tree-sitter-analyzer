@@ -123,9 +123,9 @@ class TestTypeScriptExtendedQueries:
             assert "description" in query_data
             # Check for "property" or "properties" in description
             description_lower = query_data["description"].lower()
-            assert "propert" in description_lower, (
-                f"Description for {query_name} should contain 'property' or 'properties'"
-            )
+            assert (
+                "propert" in description_lower
+            ), f"Description for {query_name} should contain 'property' or 'properties'"
 
     def test_signature_queries(self):
         """Test signature-specific queries"""
@@ -260,16 +260,16 @@ class TestTypeScriptExtendedQueries:
 
             # Skip parentheses check for imports query (known issue)
             if query_name != "imports":
-                assert query_string.count("(") == query_string.count(")"), (
-                    f"Unbalanced parentheses in {query_name} query"
-                )
+                assert query_string.count("(") == query_string.count(
+                    ")"
+                ), f"Unbalanced parentheses in {query_name} query"
 
-            assert query_string.count("[") == query_string.count("]"), (
-                f"Unbalanced brackets in {query_name} query"
-            )
-            assert query_string.count("{") == query_string.count("}"), (
-                f"Unbalanced braces in {query_name} query"
-            )
+            assert query_string.count("[") == query_string.count(
+                "]"
+            ), f"Unbalanced brackets in {query_name} query"
+            assert query_string.count("{") == query_string.count(
+                "}"
+            ), f"Unbalanced braces in {query_name} query"
 
     def test_capture_groups_present(self):
         """Test that queries contain capture groups"""
@@ -298,9 +298,9 @@ class TestTypeScriptExtendedQueries:
         ]
 
         for feature in core_features:
-            assert feature in all_queries_text, (
-                f"Core TypeScript feature '{feature}' not found in queries"
-            )
+            assert (
+                feature in all_queries_text
+            ), f"Core TypeScript feature '{feature}' not found in queries"
 
         # Advanced type system features
         advanced_features = [
@@ -313,9 +313,9 @@ class TestTypeScriptExtendedQueries:
         ]
 
         for feature in advanced_features:
-            assert feature in all_queries_text, (
-                f"Advanced TypeScript feature '{feature}' not found in queries"
-            )
+            assert (
+                feature in all_queries_text
+            ), f"Advanced TypeScript feature '{feature}' not found in queries"
 
     def test_alias_queries(self):
         """Test that alias queries work correctly"""
@@ -402,9 +402,9 @@ class TestTypeScriptQueryComparison:
         ts_count = len(ts_queries.ALL_QUERIES)
 
         # TypeScript should have significantly more queries due to type system
-        assert ts_count >= 80, (
-            f"TypeScript should have at least 80 queries, got {ts_count}"
-        )
+        assert (
+            ts_count >= 80
+        ), f"TypeScript should have at least 80 queries, got {ts_count}"
 
         # Check TypeScript-specific features not in JavaScript
         ts_specific = [
@@ -421,9 +421,9 @@ class TestTypeScriptQueryComparison:
             [q["query"] for q in ts_queries.ALL_QUERIES.values()]
         )
         for feature in ts_specific:
-            assert feature in all_queries_text, (
-                f"TypeScript-specific feature '{feature}' missing"
-            )
+            assert (
+                feature in all_queries_text
+            ), f"TypeScript-specific feature '{feature}' missing"
 
     def test_comprehensive_language_support(self):
         """Test that TypeScript queries provide comprehensive language support"""
@@ -439,9 +439,9 @@ class TestTypeScriptQueryComparison:
 
         for category, queries in categories.items():
             for query_name in queries:
-                assert query_name in ts_queries.ALL_QUERIES, (
-                    f"Missing {category} query: {query_name}"
-                )
+                assert (
+                    query_name in ts_queries.ALL_QUERIES
+                ), f"Missing {category} query: {query_name}"
 
 
 if __name__ == "__main__":

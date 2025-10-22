@@ -50,6 +50,7 @@ class AdvancedCommand(BaseCommand):
         """
         try:
             from ...encoding_utils import read_file_safe
+
             content, _ = read_file_safe(file_path)
 
             lines = content.split("\n")

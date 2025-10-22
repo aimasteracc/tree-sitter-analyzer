@@ -526,43 +526,43 @@ a:focus {
     .container {
         padding: 0 15px;
     }
-    
+
     .navigation {
         flex-direction: column;
         gap: 1rem;
     }
-    
+
     .nav-list {
         flex-wrap: wrap;
         justify-content: center;
         gap: 1rem;
     }
-    
+
     .hero-section {
         padding: 2rem 1rem;
     }
-    
+
     .content-grid {
         grid-template-columns: 1fr;
     }
-    
+
     .media-grid {
         grid-template-columns: 1fr;
     }
-    
+
     .newsletter-form {
         flex-direction: column;
     }
-    
+
     .footer-bottom {
         flex-direction: column;
         text-align: center;
     }
-    
+
     h1 {
         font-size: 2rem;
     }
-    
+
     h2 {
         font-size: 1.5rem;
     }
@@ -572,28 +572,28 @@ a:focus {
     .main-header {
         padding: 0.5rem 0;
     }
-    
+
     .page-title {
         font-size: 1.5rem;
         margin: 1rem 0;
     }
-    
+
     .hero-section {
         padding: 1.5rem 0.5rem;
     }
-    
+
     .content-card {
         padding: 1rem;
     }
-    
+
     .contact-form {
         padding: 1rem;
     }
-    
+
     .data-table {
         font-size: 0.9rem;
     }
-    
+
     .table-header,
     .table-cell {
         padding: 0.5rem;
@@ -607,26 +607,26 @@ a:focus {
     .main-footer {
         display: none;
     }
-    
+
     .main-content {
         padding: 0;
     }
-    
+
     .hero-section {
         background: none;
         color: black;
     }
-    
+
     .content-card {
         box-shadow: none;
         border: 1px solid #ddd;
     }
-    
+
     a {
         color: black;
         text-decoration: underline;
     }
-    
+
     .cta-button {
         background: none;
         color: black;
@@ -649,7 +649,7 @@ a:focus {
         background-color: #1a1a1a;
         color: #e0e0e0;
     }
-    
+
     .content-card,
     .contact-form,
     .sidebar,
@@ -657,18 +657,18 @@ a:focus {
         background: #2d2d2d;
         color: #e0e0e0;
     }
-    
+
     .form-input,
     .form-textarea {
         background: #3d3d3d;
         border-color: #555;
         color: #e0e0e0;
     }
-    
+
     .table-row:nth-child(even) {
         background: #3d3d3d;
     }
-    
+
     .table-row:hover {
         background: #4d4d4d;
     }
@@ -684,10 +684,10 @@ a:focus {
     --info-color: #17a2b8;
     --light-color: #f8f9fa;
     --dark-color: #343a40;
-    
+
     --font-family-primary: 'Arial', 'Helvetica', sans-serif;
     --font-family-secondary: 'Georgia', serif;
-    
+
     --border-radius: 4px;
     --box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
     --transition: all 0.3s ease;

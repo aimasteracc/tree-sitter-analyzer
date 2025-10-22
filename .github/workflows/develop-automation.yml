@@ -49,10 +49,11 @@ jobs:
 
       - name: Run tests
         run: |
+          echo "Running pytest test suite..."
           uv run pytest tests/ -v --tb=short \
             --cov=tree_sitter_analyzer --cov-report=xml --cov-report=term-missing \
-            -m "not requires_ripgrep or not requires_fd" \
-            || echo "Some tests failed but continuing CI"
+            -m "not requires_ripgrep or not requires_fd"
+          echo "✅ All tests passed"
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
@@ -120,10 +121,12 @@ jobs:
 
             This PR was automatically created from the develop branch after successful:
 
+            - ✅ Pre-commit quality checks passed (mypy, black, ruff, isort, bandit)
             - ✅ All tests passed
             - ✅ Package built successfully
 
             ### 📊 Quality Metrics
+            - Code quality: 100% passed (pre-commit hooks)
             - Tests: 1504+ (100% pass rate)
             - Coverage: 74.44%+
             - Cross-platform compatibility verified

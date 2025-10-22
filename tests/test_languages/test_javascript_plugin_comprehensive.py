@@ -8,9 +8,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from tree_sitter_analyzer.languages.javascript_plugin import (
-    JavaScriptElementExtractor,
-)
+from tree_sitter_analyzer.languages.javascript_plugin import JavaScriptElementExtractor
 from tree_sitter_analyzer.models import Class, Function, Import
 
 

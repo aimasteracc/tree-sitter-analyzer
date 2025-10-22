@@ -37,9 +37,8 @@ class TestUserStory3Integration:
             (project_root / "docs").mkdir()
 
             # 複雑なJavaファイル
-            (
-                project_root / "src" / "ComplexService.java"
-            ).write_text("""package com.example.service;
+            (project_root / "src" / "ComplexService.java").write_text(
+                """package com.example.service;
 
 import java.util.*;
 import java.util.concurrent.*;
@@ -155,12 +154,12 @@ class ServiceException extends Exception {
         super(message, cause);
     }
 }
-""")
+"""
+            )
 
             # 複雑なTypeScriptファイル
-            (
-                project_root / "src" / "DataManager.ts"
-            ).write_text("""import { EventEmitter } from 'events';
+            (project_root / "src" / "DataManager.ts").write_text(
+                """import { EventEmitter } from 'events';
 
 interface DataItem {
     id: string;
@@ -281,12 +280,12 @@ class DataManager extends EventEmitter {
 }
 
 export { DataManager, DataItem, DataManagerConfig, DataChangeEvent };
-""")
+"""
+            )
 
             # 複雑なPythonファイル
-            (
-                project_root / "src" / "analytics_engine.py"
-            ).write_text("""#!/usr/bin/env python3
+            (project_root / "src" / "analytics_engine.py").write_text(
+                """#!/usr/bin/env python3
 \"\"\"
 Advanced Analytics Engine
 
@@ -442,10 +441,12 @@ async def quick_analyze(data) -> AnalysisResult:
     \"\"\"Quick analysis function for simple use cases\"\"\"
     engine = create_default_engine()
     return await engine.analyze_dataset(data)
-""")
+"""
+            )
 
             # Markdownファイル
-            (project_root / "docs" / "API_Reference.md").write_text("""# API Reference
+            (project_root / "docs" / "API_Reference.md").write_text(
+                """# API Reference
 
 ## Overview
 
@@ -520,7 +521,8 @@ asyncio.run(main())
 - [GitHub Repository](https://github.com/example/analytics-engine)
 - [Documentation](https://docs.example.com/analytics-engine)
 - [Examples](https://github.com/example/analytics-engine/tree/main/examples)
-""")
+"""
+            )
 
             yield project_root
 
@@ -1082,9 +1084,9 @@ asyncio.run(main())
         memory_increase = final_memory - initial_memory
 
         # メモリ増加が合理的な範囲内であることを確認（100MB以下）
-        assert memory_increase < 100 * 1024 * 1024, (
-            f"メモリ使用量が{memory_increase / 1024 / 1024:.1f}MB増加"
-        )
+        assert (
+            memory_increase < 100 * 1024 * 1024
+        ), f"メモリ使用量が{memory_increase / 1024 / 1024:.1f}MB増加"
 
         print(
             f"✓ メモリ効率性テスト成功: メモリ増加{memory_increase / 1024 / 1024:.1f}MB"

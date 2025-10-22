@@ -126,9 +126,9 @@ class TestTypeScriptQueries:
 
         queries = ts_queries.ALL_QUERIES
         for expected_query in expected_queries:
-            assert expected_query in queries, (
-                f"Query '{expected_query}' not found in ALL_QUERIES"
-            )
+            assert (
+                expected_query in queries
+            ), f"Query '{expected_query}' not found in ALL_QUERIES"
 
     def test_functions_query_patterns(self):
         """Test that FUNCTIONS query contains expected patterns"""
@@ -300,15 +300,15 @@ class TestTypeScriptQueries:
             query_string = query_data["query"]
 
             # Basic syntax checks
-            assert query_string.count("(") == query_string.count(")"), (
-                f"Unbalanced parentheses in {query_name} query"
-            )
-            assert query_string.count("[") == query_string.count("]"), (
-                f"Unbalanced brackets in {query_name} query"
-            )
-            assert query_string.count("{") == query_string.count("}"), (
-                f"Unbalanced braces in {query_name} query"
-            )
+            assert query_string.count("(") == query_string.count(
+                ")"
+            ), f"Unbalanced parentheses in {query_name} query"
+            assert query_string.count("[") == query_string.count(
+                "]"
+            ), f"Unbalanced brackets in {query_name} query"
+            assert query_string.count("{") == query_string.count(
+                "}"
+            ), f"Unbalanced braces in {query_name} query"
 
             # Should contain capture groups (indicated by @)
             assert "@" in query_string, f"No capture groups found in {query_name} query"
@@ -333,9 +333,9 @@ class TestTypeScriptQueries:
         ]
 
         for feature in typescript_features:
-            assert feature in all_queries_text, (
-                f"TypeScript feature '{feature}' not found in queries"
-            )
+            assert (
+                feature in all_queries_text
+            ), f"TypeScript feature '{feature}' not found in queries"
 
     def test_query_descriptions_quality(self):
         """Test that query descriptions are meaningful"""
@@ -346,16 +346,16 @@ class TestTypeScriptQueries:
 
             # Description should be meaningful
             assert len(description) > 10, f"Description for {query_name} is too short"
-            assert not description.lower().startswith("todo"), (
-                f"Description for {query_name} appears to be a placeholder"
-            )
+            assert not description.lower().startswith(
+                "todo"
+            ), f"Description for {query_name} appears to be a placeholder"
             assert query_name.replace(
                 "_", " "
             ) in description.lower() or query_name.replace(
                 "_", ""
-            ) in description.lower().replace(" ", ""), (
-                f"Description for {query_name} doesn't seem to relate to the query name"
-            )
+            ) in description.lower().replace(
+                " ", ""
+            ), f"Description for {query_name} doesn't seem to relate to the query name"
 
     def test_capture_group_consistency(self):
         """Test that capture groups follow consistent naming patterns"""
@@ -382,9 +382,7 @@ class TestTypeScriptQueries:
                 has_expected_pattern = any(
                     pattern in query_string for pattern in patterns
                 )
-                assert has_expected_pattern, (
-                    f"Query {query_name} doesn't contain expected capture group patterns: {patterns}"
-                )
+                assert has_expected_pattern, f"Query {query_name} doesn't contain expected capture group patterns: {patterns}"
 
 
 if __name__ == "__main__":

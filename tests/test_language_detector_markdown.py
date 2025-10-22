@@ -46,9 +46,9 @@ class TestMarkdownLanguageDetection:
         for file_path, expected_language, expected_confidence in test_cases:
             language, confidence = self.detector.detect_language(file_path)
             assert language == expected_language, f"Language failed for {file_path}"
-            assert confidence == expected_confidence, (
-                f"Confidence failed for {file_path}: got {confidence}, expected {expected_confidence}"
-            )
+            assert (
+                confidence == expected_confidence
+            ), f"Confidence failed for {file_path}: got {confidence}, expected {expected_confidence}"
 
     def test_markdown_content_patterns(self):
         """Test Markdown content pattern detection"""

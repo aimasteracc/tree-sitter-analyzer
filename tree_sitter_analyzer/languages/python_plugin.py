@@ -44,7 +44,7 @@ class PythonElementExtractor(ElementExtractor):
         self._node_text_cache: dict[int, str] = {}
         self._processed_nodes: set[int] = set()
         self._element_cache: dict[tuple[int, str], Any] = {}
-        self._file_encoding: Optional[str] = None
+        self._file_encoding: str | None = None
         self._docstring_cache: dict[int, str] = {}
         self._complexity_cache: dict[int, int] = {}
 
@@ -78,7 +78,7 @@ class PythonElementExtractor(ElementExtractor):
             except Exception as e:
                 log_debug(f"Error during function extraction: {e}")
                 return []
-        
+
         return functions
 
     def extract_classes(
@@ -105,7 +105,7 @@ class PythonElementExtractor(ElementExtractor):
             except Exception as e:
                 log_debug(f"Error during class extraction: {e}")
                 return []
-        
+
         return classes
 
     def extract_variables(
@@ -312,7 +312,7 @@ class PythonElementExtractor(ElementExtractor):
                 # Ensure column indices are within line bounds
                 start_col = max(0, min(start_point[1], len(line)))
                 end_col = max(start_col, min(end_point[1], len(line)))
-                result = line[start_col:end_col]
+                result: str = line[start_col:end_col]
                 self._node_text_cache[node_id] = result
                 return result
             else:
@@ -335,7 +335,7 @@ class PythonElementExtractor(ElementExtractor):
             log_error(f"Fallback text extraction also failed: {fallback_error}")
             return ""
 
-    def _extract_function_optimized(self, node: "tree_sitter.Node") -> Optional[Function]:
+    def _extract_function_optimized(self, node: "tree_sitter.Node") -> Function | None:
         """Extract function information with detailed metadata"""
         try:
             start_line = node.start_point[0] + 1
@@ -391,12 +391,13 @@ class PythonElementExtractor(ElementExtractor):
         except Exception as e:
             log_error(f"Failed to extract function info: {e}")
             import traceback
+
             traceback.print_exc()
             return None
 
     def _parse_function_signature_optimized(
         self, node: "tree_sitter.Node"
-    ) -> Optional[tuple[str, list[str], bool, list[str], Optional[str]]]:
+    ) -> tuple[str, list[str], bool, list[str], str | None] | None:
         """Parse function signature for Python functions"""
         try:
             name = None
@@ -461,7 +462,7 @@ class PythonElementExtractor(ElementExtractor):
 
         return parameters
 
-    def _extract_docstring_for_line(self, target_line: int) -> Optional[str]:
+    def _extract_docstring_for_line(self, target_line: int) -> str | None:
         """Extract docstring for the specified line"""
         if target_line in self._docstring_cache:
             return self._docstring_cache[target_line]
@@ -548,7 +549,7 @@ class PythonElementExtractor(ElementExtractor):
         self._complexity_cache[node_id] = complexity
         return complexity
 
-    def _extract_class_optimized(self, node: "tree_sitter.Node") -> Optional[Class]:
+    def _extract_class_optimized(self, node: "tree_sitter.Node") -> Class | None:
         """Extract class information with detailed metadata"""
         try:
             start_line = node.start_point[0] + 1
@@ -674,7 +675,7 @@ class PythonElementExtractor(ElementExtractor):
 
     def _extract_class_attribute_info(
         self, node: "tree_sitter.Node", source_code: str
-    ) -> Optional[Variable]:
+    ) -> Variable | None:
         """Extract class attribute information from assignment node"""
         try:
             # Get the full assignment text
@@ -820,9 +821,11 @@ class PythonElementExtractor(ElementExtractor):
 
                     if module_name or imported_names:
                         import_obj = Import(
-                            name=module_name or imported_names[0]
-                            if imported_names
-                            else "unknown",
+                            name=(
+                                module_name or imported_names[0]
+                                if imported_names
+                                else "unknown"
+                            ),
                             start_line=start_line,
                             end_line=end_line,
                             raw_text=raw_text,
@@ -986,7 +989,7 @@ class PythonElementExtractor(ElementExtractor):
 
     def _extract_import_info(
         self, node: "tree_sitter.Node", source_code: str, import_type: str
-    ) -> Optional[Import]:
+    ) -> Import | None:
         """Extract detailed import information from AST node"""
         try:
             if not self._validate_node(node):
@@ -1041,7 +1044,7 @@ class PythonElementExtractor(ElementExtractor):
 
     def _extract_name_from_node(
         self, node: "tree_sitter.Node", source_code: str
-    ) -> Optional[str]:
+    ) -> str | None:
         """Extract name from AST node"""
         for child in node.children:
             if child.type == "identifier":
@@ -1090,7 +1093,7 @@ class PythonElementExtractor(ElementExtractor):
 
     def _extract_return_type_from_node(
         self, node: "tree_sitter.Node", source_code: str
-    ) -> Optional[str]:
+    ) -> str | None:
         """Extract return type annotation from function node"""
         for child in node.children:
             if child.type == "type":
@@ -1099,7 +1102,7 @@ class PythonElementExtractor(ElementExtractor):
 
     def _extract_docstring_from_node(
         self, node: "tree_sitter.Node", source_code: str
-    ) -> Optional[str]:
+    ) -> str | None:
         """Extract docstring from function/class node"""
         for child in node.children:
             if child.type == "block":
@@ -1160,8 +1163,8 @@ class PythonPlugin(LanguagePlugin):
     def __init__(self) -> None:
         """Initialize the Python plugin"""
         super().__init__()
-        self._language_cache: Optional["tree_sitter.Language"] = None
-        self._extractor: Optional[PythonElementExtractor] = None
+        self._language_cache: tree_sitter.Language | None = None
+        self._extractor: PythonElementExtractor | None = None
 
         # Legacy compatibility attributes for tests
         self.language = "python"
@@ -1418,6 +1421,7 @@ class PythonPlugin(LanguagePlugin):
 
         try:
             from ..encoding_utils import read_file_safe
+
             source_code, _ = read_file_safe(file_path)
 
             parser = tree_sitter.Parser()

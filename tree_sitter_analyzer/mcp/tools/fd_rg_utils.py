@@ -397,11 +397,13 @@ def group_matches_by_file(matches: list[dict[str, Any]]) -> dict[str, Any]:
     # Convert to grouped structure
     files = []
     for file_path, file_matches in file_groups.items():
-        files.append({
-            "file": file_path,
-            "matches": file_matches,
-            "match_count": len(file_matches)
-        })
+        files.append(
+            {
+                "file": file_path,
+                "matches": file_matches,
+                "match_count": len(file_matches),
+            }
+        )
 
     return {"success": True, "count": total_matches, "files": files}
 
@@ -519,7 +521,7 @@ def summarize_search_results(
                     truncated_line += "..."
                 sample_lines.append(f"L{line_num}: {truncated_line}")
                 remaining_lines -= 1
-            
+
         # Ensure we have at least some sample lines if matches exist
         if not sample_lines and file_matches:
             # Fallback: create a simple summary line
@@ -638,6 +640,7 @@ def write_files_to_temp(files: list[str]) -> TempFileList:
     os.close(fd)
     content = "\n".join(files)
     from ...encoding_utils import write_file_safe
+
     write_file_safe(temp_path, content)
     return TempFileList(path=temp_path)
 

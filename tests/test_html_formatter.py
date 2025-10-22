@@ -14,12 +14,7 @@ from tree_sitter_analyzer.formatters.html_formatter import (
     HtmlFormatter,
     HtmlJsonFormatter,
 )
-from tree_sitter_analyzer.models import (
-    Function,
-    MarkupElement,
-    StyleElement,
-    Variable,
-)
+from tree_sitter_analyzer.models import Function, MarkupElement, StyleElement, Variable
 
 
 class TestHtmlFormatter:

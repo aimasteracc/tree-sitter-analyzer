@@ -37,7 +37,7 @@ class SecurityValidator:
             project_root: Optional project root directory for boundary checks
         """
         self.boundary_manager: ProjectBoundaryManager | None
-        
+
         # Ensure project_root is properly resolved if provided
         if project_root:
             try:

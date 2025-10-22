@@ -41,7 +41,7 @@ except ImportError:
     class TextContent:  # type: ignore
         pass
 
-    def stdio_server() -> None:  # type: ignore
+    def stdio_server() -> None:  # type: ignore[misc]
         pass
 
 
@@ -337,13 +337,13 @@ class TreeSitterAnalyzerMCPServer:
             """List available resources."""
             return [
                 Resource(
-                    uri="code://file/{file_path}",  # type: ignore
+                    uri="code://file/{file_path}",  # type: ignore[arg-type]
                     name="Code File Analysis",
                     description="Access to code file content and analysis",
                     mimeType="application/json",
                 ),
                 Resource(
-                    uri="code://stats/{stats_type}",  # type: ignore
+                    uri="code://stats/{stats_type}",  # type: ignore[arg-type]
                     name="Project Statistics",
                     description="Access to project statistics and analysis data",
                     mimeType="application/json",
@@ -389,7 +389,7 @@ class TreeSitterAnalyzerMCPServer:
 
         self.server = server
         log_info("MCP server created successfully")
-        return server  # type: ignore
+        return server  # type: ignore[no-any-return]
 
     async def run(self) -> None:
         """Run the MCP server."""
@@ -399,7 +399,7 @@ class TreeSitterAnalyzerMCPServer:
         options = InitializationOptions(
             server_name=self.name,
             server_version=self.version,
-            capabilities={"tools": {}, "resources": {}},  # type: ignore
+            capabilities={"tools": {}, "resources": {}},  # type: ignore[arg-type]
         )
 
         log_info(f"Starting MCP server: {self.name} v{self.version}")

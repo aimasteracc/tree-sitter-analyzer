@@ -28,7 +28,8 @@ class TestAnalyzeScaleToolFileOutput:
 
             # Create a comprehensive Java test file (since analyze_scale_tool works best with Java)
             java_file = project_path / "ComplexSample.java"
-            java_file.write_text("""package com.example.complex;
+            java_file.write_text(
+                """package com.example.complex;
 
 import java.util.List;
 import java.util.ArrayList;
@@ -158,11 +159,13 @@ public class ComplexSample {
         ACTIVE, INACTIVE, PENDING
     }
 }
-""")
+"""
+            )
 
             # Create a Python test file
             python_file = project_path / "sample.py"
-            python_file.write_text("""#!/usr/bin/env python3
+            python_file.write_text(
+                """#!/usr/bin/env python3
 \"\"\"
 Sample Python file for testing analyze_scale functionality.
 \"\"\"
@@ -236,7 +239,8 @@ def main():
 
 if __name__ == "__main__":
     main()
-""")
+"""
+            )
 
             yield str(project_path)
 

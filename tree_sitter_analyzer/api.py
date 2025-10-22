@@ -457,6 +457,7 @@ def validate_file(file_path: str | Path) -> dict[str, Any]:
         # Check if file is readable
         try:
             from .encoding_utils import read_file_safe
+
             # Test file readability by reading it
             read_file_safe(file_path)
             result["readable"] = True

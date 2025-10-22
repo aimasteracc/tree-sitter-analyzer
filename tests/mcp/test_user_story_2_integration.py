@@ -40,7 +40,8 @@ class TestUserStory2Integration:
             (project_root / "config").mkdir()
 
             # Python ファイル
-            (project_root / "src" / "main.py").write_text("""#!/usr/bin/env python3
+            (project_root / "src" / "main.py").write_text(
+                """#!/usr/bin/env python3
 \"\"\"
 Main application module
 \"\"\"
@@ -97,10 +98,12 @@ def main():
 
 if __name__ == "__main__":
     main()
-""")
+"""
+            )
 
             # JavaScript ファイル
-            (project_root / "src" / "utils.js").write_text("""/**
+            (project_root / "src" / "utils.js").write_text(
+                """/**
  * Utility functions for data processing
  */
 
@@ -164,12 +167,12 @@ class FileManager {
 }
 
 module.exports = { FileManager };
-""")
+"""
+            )
 
             # テストファイル
-            (
-                project_root / "tests" / "test_main.py"
-            ).write_text("""#!/usr/bin/env python3
+            (project_root / "tests" / "test_main.py").write_text(
+                """#!/usr/bin/env python3
 \"\"\"
 Tests for main module
 \"\"\"
@@ -242,10 +245,12 @@ class TestDataProcessor(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-""")
+"""
+            )
 
             # 設定ファイル
-            (project_root / "config" / "settings.json").write_text("""{
+            (project_root / "config" / "settings.json").write_text(
+                """{
   "application": {
     "name": "Data Processor",
     "version": "1.0.0",
@@ -267,10 +272,12 @@ if __name__ == "__main__":
     "file": "app.log",
     "max_size": "10MB"
   }
-}""")
+}"""
+            )
 
             # README ファイル
-            (project_root / "README.md").write_text("""# Data Processor
+            (project_root / "README.md").write_text(
+                """# Data Processor
 
 A powerful data processing application with advanced analysis capabilities.
 
@@ -333,10 +340,12 @@ python -m pytest tests/
 - [ ] Create web interface
 - [ ] Add performance monitoring
 - [ ] Implement data validation
-""")
+"""
+            )
 
             # .gitignore ファイル
-            (project_root / ".gitignore").write_text("""# Python
+            (project_root / ".gitignore").write_text(
+                """# Python
 __pycache__/
 *.py[cod]
 *$py.class
@@ -382,7 +391,8 @@ logs/
 *.tmp
 *.temp
 temp/
-""")
+"""
+            )
 
             yield str(project_root)
 

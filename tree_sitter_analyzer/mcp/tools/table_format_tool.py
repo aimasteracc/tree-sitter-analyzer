@@ -375,6 +375,7 @@ class TableFormatTool(BaseMCPTool):
         # Write content to file
         try:
             from ...encoding_utils import write_file_safe
+
             write_file_safe(output_path, content)
             self.logger.info(f"Output written to file: {output_path}")
             return output_path
@@ -471,8 +472,12 @@ class TableFormatTool(BaseMCPTool):
                 try:
                     if FormatterRegistry.is_format_supported(format_type):
                         # Use new FormatterRegistry
-                        registry_formatter = FormatterRegistry.get_formatter(format_type)
-                        table_output = registry_formatter.format(structure_result.elements)
+                        registry_formatter = FormatterRegistry.get_formatter(
+                            format_type
+                        )
+                        table_output = registry_formatter.format(
+                            structure_result.elements
+                        )
                     else:
                         # Fallback to legacy TableFormatter for backward compatibility
                         legacy_formatter: Any = TableFormatter(format_type)

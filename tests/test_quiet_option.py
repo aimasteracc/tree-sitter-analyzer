@@ -271,9 +271,9 @@ public class Test {
         assert quiet_action is not None, "--quiet option should be defined"
 
         # Check that it's a store_true action by checking the action type
-        assert hasattr(quiet_action, "const") and quiet_action.const is True, (
-            "--quiet should be a store_true action"
-        )
+        assert (
+            hasattr(quiet_action, "const") and quiet_action.const is True
+        ), "--quiet should be a store_true action"
 
         # Check help text (it should contain relevant keywords)
         assert quiet_action.help is not None

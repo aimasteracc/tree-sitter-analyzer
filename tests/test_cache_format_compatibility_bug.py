@@ -36,9 +36,9 @@ class TestCacheFormatCompatibilityBug:
         result = cache.get_compatible_result(detailed_key, "summary")
 
         # Should return None (not compatible) instead of the integer 3
-        assert result is None, (
-            "Should not return integer result for summary format request"
-        )
+        assert (
+            result is None
+        ), "Should not return integer result for summary format request"
 
     def test_format_compatibility_validation(self):
         """Test the _is_format_compatible method with various scenarios."""
@@ -164,9 +164,9 @@ class TestCacheFormatCompatibilityBug:
         cache.set("test_key", 42)  # Integer result
 
         result = cache.get_compatible_result("test_key", "unknown_format")
-        assert result is None, (
-            "Unknown formats should not return primitive data (prevents bug)"
-        )
+        assert (
+            result is None
+        ), "Unknown formats should not return primitive data (prevents bug)"
 
         # But dict results are allowed for unknown formats (backward compatibility)
         cache.set("test_key2", {"some": "data"})

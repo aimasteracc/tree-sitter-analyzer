@@ -406,9 +406,9 @@ class TestTreeSitterAnalyzerMCPServerCreation:
             server.create_server()
 
             # Get the captured handler
-            assert "list_tools" in captured_handlers, (
-                "list_tools handler was not registered"
-            )
+            assert (
+                "list_tools" in captured_handlers
+            ), "list_tools handler was not registered"
             list_tools_handler = captured_handlers["list_tools"]
             tools = await list_tools_handler()
 
@@ -448,9 +448,9 @@ class TestTreeSitterAnalyzerMCPServerCreation:
             server.create_server()
 
             # Get the captured handler
-            assert "list_resources" in captured_handlers, (
-                "list_resources handler was not registered"
-            )
+            assert (
+                "list_resources" in captured_handlers
+            ), "list_resources handler was not registered"
             list_resources_handler = captured_handlers["list_resources"]
             resources = await list_resources_handler()
 
@@ -510,9 +510,9 @@ class TestTreeSitterAnalyzerMCPServerToolHandling:
             server.create_server()
 
             # Get the captured handler
-            assert "call_tool" in captured_handlers, (
-                "call_tool handler was not registered"
-            )
+            assert (
+                "call_tool" in captured_handlers
+            ), "call_tool handler was not registered"
             call_tool_handler = captured_handlers["call_tool"]
 
             # Mock the _analyze_code_scale method
@@ -553,9 +553,9 @@ class TestTreeSitterAnalyzerMCPServerToolHandling:
             server.create_server()
 
             # Get the captured handler
-            assert "call_tool" in captured_handlers, (
-                "call_tool handler was not registered"
-            )
+            assert (
+                "call_tool" in captured_handlers
+            ), "call_tool handler was not registered"
             call_tool_handler = captured_handlers["call_tool"]
 
             arguments = {"file_path": "test.py", "format_type": "full"}
@@ -589,9 +589,9 @@ class TestTreeSitterAnalyzerMCPServerToolHandling:
             server.create_server()
 
             # Get the captured handler
-            assert "call_tool" in captured_handlers, (
-                "call_tool handler was not registered"
-            )
+            assert (
+                "call_tool" in captured_handlers
+            ), "call_tool handler was not registered"
             call_tool_handler = captured_handlers["call_tool"]
 
             arguments = {"file_path": "test.py", "start_line": 1, "end_line": 10}
@@ -634,9 +634,9 @@ class TestTreeSitterAnalyzerMCPServerToolHandling:
             server.create_server()
 
             # Get the captured handler
-            assert "call_tool" in captured_handlers, (
-                "call_tool handler was not registered"
-            )
+            assert (
+                "call_tool" in captured_handlers
+            ), "call_tool handler was not registered"
             call_tool_handler = captured_handlers["call_tool"]
 
             arguments = {"project_path": str(temp_project_dir)}
@@ -675,9 +675,9 @@ class TestTreeSitterAnalyzerMCPServerToolHandling:
             server.create_server()
 
             # Get the captured handler
-            assert "call_tool" in captured_handlers, (
-                "call_tool handler was not registered"
-            )
+            assert (
+                "call_tool" in captured_handlers
+            ), "call_tool handler was not registered"
             call_tool_handler = captured_handlers["call_tool"]
 
             arguments = {}
@@ -718,9 +718,9 @@ class TestTreeSitterAnalyzerMCPServerToolHandling:
                 server.create_server()
 
                 # Get the captured handler
-                assert "call_tool" in captured_handlers, (
-                    "call_tool handler was not registered"
-                )
+                assert (
+                    "call_tool" in captured_handlers
+                ), "call_tool handler was not registered"
                 call_tool_handler = captured_handlers["call_tool"]
 
                 arguments = {"file_path": "../../../etc/passwd"}

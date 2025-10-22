@@ -1,18 +1,18 @@
 /**
  * React TypeScript コンポーネントの包括的なテストファイル
  * Comprehensive React TypeScript component test file
- * 
+ *
  * @author React TypeScript Analyzer Test
  * @version 1.0.0
  * @since 2025-01-07
  */
 
-import React, { 
-    useState, 
-    useEffect, 
-    useCallback, 
-    useMemo, 
-    useRef, 
+import React, {
+    useState,
+    useEffect,
+    useCallback,
+    useMemo,
+    useRef,
     useContext,
     createContext,
     Component,
@@ -126,7 +126,7 @@ const Button: FC<ButtonProps> = ({
     const variantClass = `btn-${variant}`;
     const sizeClass = `btn-${size}`;
     const disabledClass = disabled || loading ? 'btn-disabled' : '';
-    
+
     const classes = [baseClasses, variantClass, sizeClass, disabledClass, className]
         .filter(Boolean)
         .join(' ');
@@ -184,8 +184,8 @@ const UserCard: FC<UserCardProps> = ({
         <div className="user-card">
             <div className="user-card-header">
                 {user.avatar && (
-                    <img 
-                        src={user.avatar} 
+                    <img
+                        src={user.avatar}
                         alt={`${user.name}のアバター`}
                         className="user-avatar"
                     />
@@ -193,7 +193,7 @@ const UserCard: FC<UserCardProps> = ({
                 <div className="user-info">
                     <h3 className="user-name">{user.name}</h3>
                     <p className="user-email">{user.email}</p>
-                    <span 
+                    <span
                         className="user-role"
                         style={{ backgroundColor: roleColor }}
                     >
@@ -201,7 +201,7 @@ const UserCard: FC<UserCardProps> = ({
                     </span>
                 </div>
             </div>
-            
+
             {showActions && (
                 <div className="user-card-actions">
                     <Button
@@ -247,7 +247,7 @@ const UserForm: FC<UserFormProps> = ({
         value: string
     ) => {
         setFormData(prev => ({ ...prev, [field]: value }));
-        
+
         // エラーをクリア (Clear errors)
         if (errors[field]) {
             setErrors(prev => ({ ...prev, [field]: undefined }));
@@ -273,7 +273,7 @@ const UserForm: FC<UserFormProps> = ({
 
     const handleSubmit = useCallback(async (e: React.FormEvent) => {
         e.preventDefault();
-        
+
         if (!validateForm()) {
             return;
         }
@@ -458,7 +458,7 @@ class UserManager extends Component<{}, UserManagerState> {
         try {
             // シミュレートされたAPI呼び出し (Simulated API call)
             await new Promise(resolve => setTimeout(resolve, 1000));
-            
+
             const mockUsers: User[] = [
                 {
                     id: '1',
@@ -484,9 +484,9 @@ class UserManager extends Component<{}, UserManagerState> {
             this.setState({ users: mockUsers, loading: false });
         } catch (error) {
             if (!this.abortController?.signal.aborted) {
-                this.setState({ 
-                    error: 'ユーザーの読み込みに失敗しました', 
-                    loading: false 
+                this.setState({
+                    error: 'ユーザーの読み込みに失敗しました',
+                    loading: false
                 });
             }
         }
@@ -500,7 +500,7 @@ class UserManager extends Component<{}, UserManagerState> {
         try {
             // シミュレートされた削除処理 (Simulated delete operation)
             await new Promise(resolve => setTimeout(resolve, 500));
-            
+
             this.setState(prevState => ({
                 users: prevState.users.filter(user => user.id !== userId)
             }));
@@ -740,7 +740,7 @@ function useApi<T>(
         try {
             // シミュレートされたAPI呼び出し (Simulated API call)
             await new Promise(resolve => setTimeout(resolve, 1000));
-            
+
             const mockData = {
                 message: `データが正常に取得されました: ${url}`,
                 timestamp: new Date().toISOString()
@@ -852,25 +852,25 @@ const App: FC = () => {
 // ===== エクスポート (Exports) =====
 
 export default App;
-export { 
-    AppProvider, 
-    Button, 
-    UserCard, 
-    UserForm, 
-    UserList, 
-    UserManager, 
+export {
+    AppProvider,
+    Button,
+    UserCard,
+    UserForm,
+    UserList,
+    UserManager,
     Counter,
     useAppContext,
     useLocalStorage,
     useApi
 };
 
-export type { 
-    User, 
-    Theme, 
-    ButtonProps, 
-    UserCardProps, 
-    UserFormProps, 
+export type {
+    User,
+    Theme,
+    ButtonProps,
+    UserCardProps,
+    UserFormProps,
     UserListProps,
     AppContextType,
     ButtonVariant,

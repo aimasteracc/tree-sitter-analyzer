@@ -19,7 +19,8 @@ def get_version_from_pyproject() -> str | None:
 
         with open("pyproject.toml", "rb") as f:
             data = tomllib.load(f)
-        return data["project"]["version"]
+        version: str = data["project"]["version"]
+        return version
     except ImportError:
         # Fallback for older Python versions - use regex parsing
         try:
@@ -335,7 +336,7 @@ def upload_with_uv() -> bool:
         return False
 
 
-def main():
+def main() -> None:
     """Main function"""
     print("🚀 Smart PyPI Upload for tree-sitter-analyzer")
     print("=" * 50)

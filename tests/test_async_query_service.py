@@ -288,11 +288,13 @@ const arrowFunction = () => {
         with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
             # 1000個の関数を持つファイルを生成
             for i in range(1000):
-                f.write(f"""
+                f.write(
+                    f"""
 def function_{i}():
     '''Function {i}'''
     return {i}
-""")
+"""
+                )
             large_file = f.name
 
         try:

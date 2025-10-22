@@ -215,6 +215,7 @@ class ProjectStatsResource:
                 total_files += 1
                 try:
                     from ...encoding_utils import read_file_safe
+
                     content, _ = read_file_safe(file_path)
                     file_lines = len(content.splitlines())
                     total_lines += file_lines
@@ -282,6 +283,7 @@ class ProjectStatsResource:
                 total_files += 1
                 try:
                     from ...encoding_utils import read_file_safe
+
                     content, _ = read_file_safe(file_path)
                     file_lines = len(content.splitlines())
                     total_lines += file_lines
@@ -455,6 +457,7 @@ class ProjectStatsResource:
                     # Count lines
                     try:
                         from ...encoding_utils import read_file_safe
+
                         content, _ = read_file_safe(file_path)
                         line_count = len(content.splitlines())
                     except Exception:

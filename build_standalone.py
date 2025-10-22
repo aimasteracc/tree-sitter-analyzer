@@ -8,7 +8,7 @@ import subprocess
 import sys
 
 
-def install_pyinstaller():
+def install_pyinstaller() -> None:
     """PyInstallerをインストール"""
     try:
         import importlib.util
@@ -22,7 +22,7 @@ def install_pyinstaller():
         subprocess.check_call([sys.executable, "-m", "pip", "install", "pyinstaller"])
 
 
-def create_spec_file():
+def create_spec_file() -> None:
     """PyInstaller用の.specファイルを作成"""
     spec_content = """# -*- mode: python ; coding: utf-8 -*-
 
@@ -88,7 +88,7 @@ exe = EXE(
     print("Created tree-sitter-analyzer.spec")
 
 
-def build_executable():
+def build_executable() -> bool:
     """実行ファイルをビルド"""
     print("Building standalone executable...")
     try:
@@ -109,7 +109,7 @@ def build_executable():
     return True
 
 
-def main():
+def main() -> None:
     """メイン処理"""
     print("=== Tree-sitter Analyzer Standalone Builder ===")
 

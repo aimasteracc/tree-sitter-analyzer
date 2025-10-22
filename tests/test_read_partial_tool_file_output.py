@@ -26,7 +26,8 @@ class TestReadPartialToolFileOutput:
 
             # Create a comprehensive test file
             test_file = project_path / "sample.py"
-            test_file.write_text("""#!/usr/bin/env python3
+            test_file.write_text(
+                """#!/usr/bin/env python3
 \"\"\"
 Sample Python file for testing read_partial functionality.
 This file contains various code constructs for testing.
@@ -69,11 +70,13 @@ def main():
 
 if __name__ == "__main__":
     main()
-""")
+"""
+            )
 
             # Create a Java test file
             java_file = project_path / "Sample.java"
-            java_file.write_text("""package com.example;
+            java_file.write_text(
+                """package com.example;
 
 import java.util.List;
 import java.util.ArrayList;
@@ -104,7 +107,8 @@ public class Sample {
         System.out.println("Calculation: " + sample.calculate(10, 20));
     }
 }
-""")
+"""
+            )
 
             yield str(project_path)
 

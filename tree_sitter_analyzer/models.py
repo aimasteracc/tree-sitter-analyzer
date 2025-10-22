@@ -51,8 +51,9 @@ class CodeElement(ABC):
         return {
             "name": self.name,
             "type": self.element_type,
-            "lines": {"start": self.start_line, "end": self.end_line}
+            "lines": {"start": self.start_line, "end": self.end_line},
         }
+
 
 @dataclass(frozen=False)
 class Function(CodeElement):

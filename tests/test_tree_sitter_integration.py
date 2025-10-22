@@ -241,9 +241,9 @@ def code_block():
 
         for lang, file_path in self.test_files.items():
             detected = detect_language_from_file(file_path)
-            assert detected == expected_languages[lang], (
-                f"Language detection failed for {lang}"
-            )
+            assert (
+                detected == expected_languages[lang]
+            ), f"Language detection failed for {lang}"
 
     @pytest.mark.asyncio
     async def test_parser_integration_all_languages(self):
@@ -323,12 +323,12 @@ def code_block():
                     test_case["lang"],
                     query_string=test_case["query"],
                 )
-                assert results is not None, (
-                    f"Custom query failed for {test_case['lang']}"
-                )
-                assert len(results) >= test_case["expected_min"], (
-                    f"Expected at least {test_case['expected_min']} results for {test_case['lang']}"
-                )
+                assert (
+                    results is not None
+                ), f"Custom query failed for {test_case['lang']}"
+                assert (
+                    len(results) >= test_case["expected_min"]
+                ), f"Expected at least {test_case['expected_min']} results for {test_case['lang']}"
                 print(
                     f"✓ Custom query successful for {test_case['lang']}: {len(results)} results"
                 )
@@ -547,9 +547,9 @@ class TestClass:
         memory_increase = final_memory - initial_memory
 
         # Memory increase should be reasonable (less than 50MB for this test)
-        assert memory_increase < 50 * 1024 * 1024, (
-            f"Memory usage increased by {memory_increase / 1024 / 1024:.1f}MB"
-        )
+        assert (
+            memory_increase < 50 * 1024 * 1024
+        ), f"Memory usage increased by {memory_increase / 1024 / 1024:.1f}MB"
 
     def test_available_queries_integration(self):
         """Test available queries functionality"""

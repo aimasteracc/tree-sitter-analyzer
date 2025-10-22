@@ -12,7 +12,7 @@ from pathlib import Path
 import toml
 
 
-def get_version():
+def get_version() -> str | None:
     """Get version from pyproject.toml"""
     try:
         with open("pyproject.toml", encoding="utf-8") as f:
@@ -23,7 +23,7 @@ def get_version():
         return None
 
 
-def check_packages():
+def check_packages() -> bool:
     """Check if packages are built"""
     version = get_version()
     if not version:
@@ -49,7 +49,7 @@ def check_packages():
     return True
 
 
-def upload_with_uv():
+def upload_with_uv() -> bool:
     """Upload using uv"""
     print("\n🚀 Uploading to PyPI using uv...")
 
@@ -80,7 +80,7 @@ def upload_with_uv():
         return False
 
 
-def upload_with_twine():
+def upload_with_twine() -> bool:
     """Upload using twine"""
     print("\n🚀 Uploading to PyPI using twine...")
 
@@ -121,7 +121,7 @@ def upload_with_twine():
         return False
 
 
-def test_installation():
+def test_installation() -> None:
     """Test installation from PyPI"""
     version = get_version()
     print("\n🧪 Testing installation from PyPI...")
@@ -132,7 +132,7 @@ def test_installation():
     )
 
 
-def main():
+def main() -> None:
     """Main function"""
     version = get_version()
     if not version:

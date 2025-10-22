@@ -672,7 +672,8 @@ class TestTypeScriptPluginComprehensive:
 
         # Create temporary TypeScript file
         with tempfile.NamedTemporaryFile(mode="w", suffix=".ts", delete=False) as f:
-            f.write("""
+            f.write(
+                """
 function greet(name: string): string {
     return `Hello, ${name}!`;
 }
@@ -686,7 +687,8 @@ class Person {
 }
 
 const person = new Person("World");
-""")
+"""
+            )
             temp_file = f.name
 
         try:

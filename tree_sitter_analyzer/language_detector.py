@@ -335,10 +335,11 @@ class LanguageDetector:
         # First check the static list for basic support
         if language in self.SUPPORTED_LANGUAGES:
             return True
-        
+
         # Also check if we have a plugin for this language
         try:
             from .plugins.manager import PluginManager
+
             plugin_manager = PluginManager()
             plugin_manager.load_plugins()  # Ensure plugins are loaded
             supported_languages = plugin_manager.get_supported_languages()
@@ -522,10 +523,11 @@ def is_language_supported(language: str) -> bool:
     # First check the static list for basic support
     if detector.is_supported(language):
         return True
-    
+
     # Also check if we have a plugin for this language
     try:
         from .plugins.manager import PluginManager
+
         plugin_manager = PluginManager()
         plugin_manager.load_plugins()  # Ensure plugins are loaded
         supported_languages = plugin_manager.get_supported_languages()

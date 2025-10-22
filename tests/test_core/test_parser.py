@@ -276,13 +276,13 @@ class TestParserErrorHandling:
         result = parser.parse_file(dummy_path, "java")
 
         # Assert that the failure was handled correctly
-        assert result.success is False, (
-            "Expected success to be False on PermissionError"
-        )
+        assert (
+            result.success is False
+        ), "Expected success to be False on PermissionError"
         assert result.error_message is not None, "Expected an error message on failure"
-        assert "permission denied" in result.error_message.lower(), (
-            "Error message should indicate a permission issue"
-        )
+        assert (
+            "permission denied" in result.error_message.lower()
+        ), "Error message should indicate a permission issue"
 
     def test_parse_file_encoding_error(self, parser: Parser) -> None:
         """Test handling of file encoding errors"""

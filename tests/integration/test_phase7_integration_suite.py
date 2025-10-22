@@ -204,21 +204,25 @@ class IntegrationTestReporter:
         """レポートをファイルに保存"""
         report_data = {
             "timestamp": time.time(),
-            "total_duration": self.end_time - self.start_time
-            if self.start_time and self.end_time
-            else 0,
+            "total_duration": (
+                self.end_time - self.start_time
+                if self.start_time and self.end_time
+                else 0
+            ),
             "test_results": self.test_results,
             "summary": {
                 "total_tests": len(self.test_results),
                 "passed": sum(1 for r in self.test_results if r["success"]),
                 "failed": sum(1 for r in self.test_results if not r["success"]),
                 "success_rate": (
-                    sum(1 for r in self.test_results if r["success"])
-                    / len(self.test_results)
-                )
-                * 100
-                if self.test_results
-                else 0,
+                    (
+                        sum(1 for r in self.test_results if r["success"])
+                        / len(self.test_results)
+                    )
+                    * 100
+                    if self.test_results
+                    else 0
+                ),
             },
         }
 

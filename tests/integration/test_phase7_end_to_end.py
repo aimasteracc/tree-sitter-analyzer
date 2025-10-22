@@ -62,7 +62,8 @@ class TestPhase7EndToEnd:
 
         # Core domain models
         (java_root / "domain").mkdir()
-        (java_root / "domain" / "User.java").write_text("""
+        (java_root / "domain" / "User.java").write_text(
+            """
 package com.enterprise.domain;
 
 import java.time.LocalDateTime;
@@ -129,11 +130,13 @@ public class User {
         }
     }
 }
-""")
+"""
+        )
 
         # Service layer
         (java_root / "service").mkdir()
-        (java_root / "service" / "UserService.java").write_text("""
+        (java_root / "service" / "UserService.java").write_text(
+            """
 package com.enterprise.service;
 
 import com.enterprise.domain.User;
@@ -235,7 +238,8 @@ public class UserService {
         return email.contains("@") && email.contains(".");
     }
 }
-""")
+"""
+        )
 
     def _create_python_enterprise_structure(self, project_root: Path):
         """エンタープライズPythonプロジェクト構造"""
@@ -245,7 +249,8 @@ public class UserService {
         # Core models
         (python_root / "models").mkdir()
         (python_root / "models" / "__init__.py").write_text("")
-        (python_root / "models" / "user.py").write_text('''
+        (python_root / "models" / "user.py").write_text(
+            '''
 #!/usr/bin/env python3
 """
 User model for enterprise application
@@ -387,7 +392,8 @@ class User:
             "login_count": self.login_count,
             "is_active": self.is_active
         }
-''')
+'''
+        )
 
     def _create_javascript_enterprise_structure(self, project_root: Path):
         """エンタープライズJavaScriptプロジェクト構造"""
@@ -396,7 +402,8 @@ class User:
 
         # Components
         (js_root / "components").mkdir()
-        (js_root / "components" / "UserManagement.js").write_text("""
+        (js_root / "components" / "UserManagement.js").write_text(
+            """
 /**
  * User Management Component
  * Enterprise-grade React component for user management
@@ -525,12 +532,14 @@ const UserManagement = () => {
 };
 
 export default UserManagement;
-""")
+"""
+        )
 
     def _create_config_and_docs(self, project_root: Path):
         """設定ファイルとドキュメント作成"""
         # README
-        (project_root / "README.md").write_text("""
+        (project_root / "README.md").write_text(
+            """
 # Enterprise Application
 
 This is a comprehensive enterprise application demonstrating:
@@ -563,7 +572,8 @@ npm test
 mvn test
 pytest
 ```
-""")
+"""
+        )
 
         # Package.json
         (project_root / "package.json").write_text(
@@ -874,9 +884,9 @@ pytest
         final_memory = process.memory_info().rss
         memory_increase = (final_memory - initial_memory) / 1024 / 1024  # MB
 
-        assert memory_increase < 100, (
-            f"メモリ使用量増加が100MBを超過: {memory_increase:.2f}MB"
-        )
+        assert (
+            memory_increase < 100
+        ), f"メモリ使用量増加が100MBを超過: {memory_increase:.2f}MB"
         results["performance_metrics"].append(("memory_usage", memory_increase))
 
         return results
@@ -947,9 +957,9 @@ pytest
                         continue
                     raise
 
-        assert len(languages_tested) >= 1, (
-            "少なくとも1つの言語がテストされる必要があります"
-        )
+        assert (
+            len(languages_tested) >= 1
+        ), "少なくとも1つの言語がテストされる必要があります"
         results["integration_checks"].append(("languages_tested", languages_tested))
 
         return results
@@ -1214,9 +1224,9 @@ pytest
             assert success_rate >= 0.5, f"成功率が低すぎます: {success_rate:.2f}"
 
             # 実行時間の制限を緩和（30秒→60秒）
-            assert execution_time < 60.0, (
-                f"並行実行時間が長すぎます: {execution_time:.2f}秒"
-            )
+            assert (
+                execution_time < 60.0
+            ), f"並行実行時間が長すぎます: {execution_time:.2f}秒"
 
             print(
                 f"並行実行結果: {len(successful_results)}/{len(results)} 成功, {execution_time:.2f}秒"

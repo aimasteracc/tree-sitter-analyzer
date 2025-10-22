@@ -642,7 +642,8 @@ class TestGitignoreDetectorIntegration:
 
             # Create .gitignore that ignores source directories
             gitignore_file = project_path / ".gitignore"
-            gitignore_file.write_text("""
+            gitignore_file.write_text(
+                """
 # Dependencies
 node_modules/
 npm-debug.log*
@@ -658,7 +659,8 @@ lib/
 # IDE files
 .vscode/
 .idea/
-""")
+"""
+            )
 
             roots = ["."]
             result = detector.should_use_no_ignore(roots, str(project_path))
@@ -677,7 +679,8 @@ lib/
 
             # Create .gitignore that doesn't interfere
             gitignore_file = project_path / ".gitignore"
-            gitignore_file.write_text("""
+            gitignore_file.write_text(
+                """
 # Build outputs
 target/
 *.class
@@ -690,7 +693,8 @@ target/
 
 # Logs
 *.log
-""")
+"""
+            )
 
             roots = ["."]
             result = detector.should_use_no_ignore(roots, str(project_path))
@@ -711,7 +715,8 @@ target/
 
             # Create .gitignore with mixed patterns
             gitignore_file = project_path / ".gitignore"
-            gitignore_file.write_text("""
+            gitignore_file.write_text(
+                """
 # Python
 __pycache__/
 *.pyc
@@ -728,7 +733,8 @@ dist/
 
 # Code directory (problematic)
 code/
-""")
+"""
+            )
 
             # Create code directory with files
             code_dir = project_path / "code"

@@ -59,7 +59,8 @@ def temp_project_dir(tmp_path):
     # Create sample Python files
     (tmp_path / "src").mkdir()
     (tmp_path / "src" / "__init__.py").write_text("")
-    (tmp_path / "src" / "main.py").write_text("""
+    (tmp_path / "src" / "main.py").write_text(
+        """
 import os
 import sys
 
@@ -69,21 +70,25 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
-""")
+"""
+    )
 
     # Create sample Java files
     (tmp_path / "java").mkdir()
-    (tmp_path / "java" / "Main.java").write_text("""
+    (tmp_path / "java" / "Main.java").write_text(
+        """
 public class Main {
     public static void main(String[] args) {
         System.out.println("Hello, World!");
     }
 }
-""")
+"""
+    )
 
     # Create sample JavaScript files
     (tmp_path / "js").mkdir()
-    (tmp_path / "js" / "index.js").write_text("""
+    (tmp_path / "js" / "index.js").write_text(
+        """
 const express = require('express');
 const app = express();
 
@@ -94,10 +99,12 @@ app.get('/', (req, res) => {
 app.listen(3000, () => {
     console.log('Server running on port 3000');
 });
-""")
+"""
+    )
 
     # Create README
-    (tmp_path / "README.md").write_text("""
+    (tmp_path / "README.md").write_text(
+        """
 # Test Project
 
 This is a test project for tree-sitter-analyzer.
@@ -107,6 +114,7 @@ This is a test project for tree-sitter-analyzer.
 - Python support
 - Java support
 - JavaScript support
-""")
+"""
+    )
 
     return tmp_path

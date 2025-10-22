@@ -6,8 +6,6 @@ This module tests the new environment variable-controlled logging features
 including file logging, log directory configuration, and log level settings.
 """
 
-# Import SafeStreamHandler directly from the main utils module
-import importlib.util
 import logging
 import os
 import tempfile
@@ -15,16 +13,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-# Import setup_logger from utils package
-from tree_sitter_analyzer.utils import setup_logger
-
-utils_path = os.path.join(
-    os.path.dirname(__file__), "..", "tree_sitter_analyzer", "utils.py"
-)
-spec = importlib.util.spec_from_file_location("utils_module", utils_path)
-utils_module = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(utils_module)
-SafeStreamHandler = utils_module.SafeStreamHandler
+# Import setup_logger and SafeStreamHandler from utils package
+from tree_sitter_analyzer.utils import setup_logger, SafeStreamHandler
 
 
 class TestLoggingConfiguration(unittest.TestCase):

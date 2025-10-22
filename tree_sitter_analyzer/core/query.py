@@ -64,7 +64,6 @@ class QueryExecutor:
             # Validate inputs
             if tree is None:
                 return self._create_error_result("Tree is None", query_name=query_name)
-
             if language is None:
                 return self._create_error_result(  # type: ignore[unreachable]
                     "Language is None", query_name=query_name
@@ -166,7 +165,6 @@ class QueryExecutor:
             # Validate inputs
             if tree is None:
                 return self._create_error_result("Tree is None")
-
             if language is None:
                 return self._create_error_result("Language is None")  # type: ignore[unreachable]
 

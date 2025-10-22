@@ -37,23 +37,27 @@ class TestRemainingToolsErrorHandling:
             (project_root / "tests").mkdir()
 
             # Python ファイル
-            (project_root / "src" / "main.py").write_text("""#!/usr/bin/env python3
+            (project_root / "src" / "main.py").write_text(
+                """#!/usr/bin/env python3
 class TestClass:
     def test_method(self):
         return "test"
 
 def test_function():
     return 42
-""")
+"""
+            )
 
             # Java ファイル
-            (project_root / "src" / "Example.java").write_text("""
+            (project_root / "src" / "Example.java").write_text(
+                """
 public class Example {
     public void testMethod() {
         System.out.println("Hello World");
     }
 }
-""")
+"""
+            )
 
             yield str(project_root)
 
@@ -269,9 +273,9 @@ public class Example {
         for tool, params, expected_error in test_cases:
             try:
                 await tool.execute(params)
-                assert False, (
-                    f"Expected {expected_error.__name__} for {tool.__class__.__name__}"
-                )
+                assert (
+                    False
+                ), f"Expected {expected_error.__name__} for {tool.__class__.__name__}"
             except expected_error as e:
                 error_msg = str(e)
                 # エラーメッセージが空でないことを確認

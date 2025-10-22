@@ -14,12 +14,12 @@
     --info-color: #17a2b8;
     --light-color: #f8f9fa;
     --dark-color: #343a40;
-    
+
     /* タイポグラフィ */
     --font-family-sans: 'Helvetica Neue', Arial, 'Hiragino Kaku Gothic ProN', 'Hiragino Sans', Meiryo, sans-serif;
     --font-family-serif: Georgia, 'Times New Roman', 'Yu Mincho', 'Hiragino Mincho ProN', serif;
     --font-family-mono: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
-    
+
     /* サイズ */
     --font-size-xs: 0.75rem;
     --font-size-sm: 0.875rem;
@@ -29,30 +29,30 @@
     --font-size-2xl: 1.5rem;
     --font-size-3xl: 1.875rem;
     --font-size-4xl: 2.25rem;
-    
+
     /* スペーシング */
     --spacing-xs: 0.25rem;
     --spacing-sm: 0.5rem;
     --spacing-md: 1rem;
     --spacing-lg: 1.5rem;
     --spacing-xl: 3rem;
-    
+
     /* ブレークポイント */
     --breakpoint-sm: 576px;
     --breakpoint-md: 768px;
     --breakpoint-lg: 992px;
     --breakpoint-xl: 1200px;
-    
+
     /* アニメーション */
     --transition-fast: 0.15s ease-in-out;
     --transition-base: 0.3s ease-in-out;
     --transition-slow: 0.5s ease-in-out;
-    
+
     /* シャドウ */
     --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
     --shadow-base: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
     --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
-    
+
     /* ボーダー半径 */
     --border-radius-sm: 0.125rem;
     --border-radius-base: 0.25rem;
@@ -1194,26 +1194,26 @@ figcaption {
     .container {
         padding: 0 var(--spacing-sm);
     }
-    
+
     .hero-title {
         font-size: var(--font-size-2xl);
     }
-    
+
     .hero-subtitle {
         font-size: var(--font-size-lg);
     }
-    
+
     .hero-actions {
         flex-direction: column;
         align-items: center;
     }
-    
+
     .features-grid,
     .lists-grid,
     .media-grid {
         grid-template-columns: 1fr;
     }
-    
+
     .nav-menu {
         display: none;
         position: absolute;
@@ -1225,24 +1225,24 @@ figcaption {
         padding: var(--spacing-md);
         box-shadow: var(--shadow-base);
     }
-    
+
     .nav-menu.active {
         display: flex;
     }
-    
+
     .menu-toggle {
         display: flex;
     }
-    
+
     .footer-content {
         grid-template-columns: 1fr;
         text-align: center;
     }
-    
+
     table {
         font-size: var(--font-size-sm);
     }
-    
+
     th,
     td {
         padding: var(--spacing-xs) var(--spacing-sm);
@@ -1254,11 +1254,11 @@ figcaption {
     .features-grid {
         grid-template-columns: repeat(2, 1fr);
     }
-    
+
     .lists-grid {
         grid-template-columns: repeat(2, 1fr);
     }
-    
+
     .media-grid {
         grid-template-columns: repeat(2, 1fr);
     }
@@ -1271,7 +1271,7 @@ figcaption {
         top: 100px;
         align-self: start;
     }
-    
+
     .main-content {
         display: grid;
         grid-template-columns: 1fr 300px;
@@ -1285,7 +1285,7 @@ figcaption {
     .container {
         max-width: 1400px;
     }
-    
+
     .features-grid {
         grid-template-columns: repeat(3, 1fr);
     }
@@ -1297,30 +1297,30 @@ figcaption {
         --dark-color: #f8f9fa;
         --light-color: #343a40;
     }
-    
+
     body {
         background-color: #121212;
         color: var(--dark-color);
     }
-    
+
     .main-header {
         background-color: #1e1e1e;
     }
-    
+
     .feature-card,
     .list-item {
         background-color: #1e1e1e;
         color: var(--dark-color);
     }
-    
+
     table {
         background-color: #1e1e1e;
     }
-    
+
     th {
         background-color: #2d2d2d;
     }
-    
+
     input,
     textarea,
     select {
@@ -1328,11 +1328,11 @@ figcaption {
         color: var(--dark-color);
         border-color: #495057;
     }
-    
+
     .sidebar {
         background-color: #1e1e1e;
     }
-    
+
     .news-item {
         background-color: #2d2d2d;
     }
@@ -1346,49 +1346,49 @@ figcaption {
         box-shadow: none !important;
         text-shadow: none !important;
     }
-    
+
     a,
     a:visited {
         text-decoration: underline;
     }
-    
+
     a[href]:after {
         content: " (" attr(href) ")";
     }
-    
+
     abbr[title]:after {
         content: " (" attr(title) ")";
     }
-    
+
     .main-header,
     .sidebar,
     .main-footer {
         display: none;
     }
-    
+
     .main-content {
         width: 100% !important;
         margin: 0 !important;
         padding: 0 !important;
     }
-    
+
     h1, h2, h3 {
         page-break-after: avoid;
     }
-    
+
     blockquote,
     tr,
     img {
         page-break-inside: avoid;
     }
-    
+
     p,
     h2,
     h3 {
         orphans: 3;
         widows: 3;
     }
-    
+
     thead {
         display: table-header-group;
     }
@@ -1404,11 +1404,11 @@ figcaption {
         --warning-color: #ffff00;
         --info-color: #00ffff;
     }
-    
+
     a {
         text-decoration: underline;
     }
-    
+
     button,
     .btn {
         border: 2px solid currentColor;

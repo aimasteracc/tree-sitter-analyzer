@@ -98,9 +98,9 @@ class TestCLIArgumentValidation:
         for table_format in table_formats:
             args = self.create_args(table=table_format, query_key="methods")
             result = self.validator.validate_arguments(args)
-            assert result is not None, (
-                f"Table format '{table_format}' should be invalid with query-key"
-            )
+            assert (
+                result is not None
+            ), f"Table format '{table_format}' should be invalid with query-key"
             assert "--table and --query-key cannot be used together" in result
 
     def test_missing_attributes_handling(self):

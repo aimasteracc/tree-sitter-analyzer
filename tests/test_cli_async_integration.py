@@ -77,7 +77,8 @@ def another_function():
         """JavaScriptテストファイル"""
         test_file = Path("test_sample.js")
         try:
-            test_file.write_text("""
+            test_file.write_text(
+                """
 function testFunction() {
     return 42;
 }
@@ -101,7 +102,8 @@ async function asyncFunction() {
         setTimeout(() => resolve("async"), 100);
     });
 }
-""")
+"""
+            )
             yield str(test_file)
         finally:
             test_file.unlink(missing_ok=True)
@@ -192,9 +194,9 @@ async function asyncFunction() {
                 timeout=30,
             )
 
-            assert result.returncode == 0, (
-                f"CLI failed for file {i} with stderr: {result.stderr}"
-            )
+            assert (
+                result.returncode == 0
+            ), f"CLI failed for file {i} with stderr: {result.stderr}"
             assert len(result.stdout) > 0, f"No output from CLI for file {i}"
 
     def test_output_format_json(self, sample_files):
@@ -433,9 +435,9 @@ async function asyncFunction() {
             timeout=30,
         )
 
-        assert result.returncode == 0, (
-            f"Help command failed with stderr: {result.stderr}"
-        )
+        assert (
+            result.returncode == 0
+        ), f"Help command failed with stderr: {result.stderr}"
         assert len(result.stdout) > 0, "No help output"
 
         # ヘルプ内容の確認
@@ -491,12 +493,12 @@ async function asyncFunction() {
 
         # 全ての実行が成功することを確認
         for i, result in enumerate(results):
-            assert result.returncode == 0, (
-                f"Concurrent CLI execution {i} failed with stderr: {result.stderr}"
-            )
-            assert len(result.stdout) > 0, (
-                f"No output from concurrent CLI execution {i}"
-            )
+            assert (
+                result.returncode == 0
+            ), f"Concurrent CLI execution {i} failed with stderr: {result.stderr}"
+            assert (
+                len(result.stdout) > 0
+            ), f"No output from concurrent CLI execution {i}"
 
     def test_large_file_cli_processing(self):
         """大きなファイルのCLI処理テスト"""
@@ -531,9 +533,9 @@ class Class_{i}:
                 timeout=60,
             )  # 大きなファイルなので60秒のタイムアウト
 
-            assert result.returncode == 0, (
-                f"Large file CLI processing failed with stderr: {result.stderr}"
-            )
+            assert (
+                result.returncode == 0
+            ), f"Large file CLI processing failed with stderr: {result.stderr}"
             assert len(result.stdout) > 0, "No output from large file CLI processing"
 
         finally:

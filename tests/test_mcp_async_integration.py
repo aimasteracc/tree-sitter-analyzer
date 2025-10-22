@@ -20,7 +20,8 @@ class TestMCPAsyncIntegration:
         # Create file in current directory to avoid security restrictions
         test_file = Path("test_sample_code.py")
         try:
-            test_file.write_text("""
+            test_file.write_text(
+                """
 def example_function():
     '''Example function for testing'''
     return "Hello, World!"
@@ -53,7 +54,8 @@ class UtilityClass:
     @classmethod
     def class_method(cls):
         return "class"
-""")
+"""
+            )
             yield str(test_file)
         finally:
             test_file.unlink(missing_ok=True)
@@ -64,7 +66,8 @@ class UtilityClass:
         # Create file in current directory to avoid security restrictions
         test_file = Path("test_sample_javascript.js")
         try:
-            test_file.write_text("""
+            test_file.write_text(
+                """
 function exampleFunction() {
     return "Hello, JavaScript!";
 }
@@ -92,7 +95,8 @@ async function asyncExampleFunction() {
         setTimeout(() => resolve("Async Hello, JavaScript!"), 100);
     });
 }
-""")
+"""
+            )
             yield str(test_file)
         finally:
             test_file.unlink(missing_ok=True)

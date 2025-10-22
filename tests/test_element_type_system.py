@@ -150,18 +150,18 @@ public class SampleClass {
                 element_counts["imports"] = int(line.split(": ")[1].rstrip('"'))
 
         # Verify expected counts for the sample file
-        assert element_counts.get("classes", 0) == 1, (
-            f"Expected 1 class, got {element_counts.get('classes', 0)}"
-        )
-        assert element_counts.get("methods", 0) == 3, (
-            f"Expected 3 methods, got {element_counts.get('methods', 0)}"
-        )
-        assert element_counts.get("fields", 0) == 2, (
-            f"Expected 2 fields, got {element_counts.get('fields', 0)}"
-        )
-        assert element_counts.get("imports", 0) == 1, (
-            f"Expected 1 import, got {element_counts.get('imports', 0)}"
-        )
+        assert (
+            element_counts.get("classes", 0) == 1
+        ), f"Expected 1 class, got {element_counts.get('classes', 0)}"
+        assert (
+            element_counts.get("methods", 0) == 3
+        ), f"Expected 3 methods, got {element_counts.get('methods', 0)}"
+        assert (
+            element_counts.get("fields", 0) == 2
+        ), f"Expected 2 fields, got {element_counts.get('fields', 0)}"
+        assert (
+            element_counts.get("imports", 0) == 1
+        ), f"Expected 1 import, got {element_counts.get('imports', 0)}"
 
     def test_table_command_element_counts(self, monkeypatch, sample_java_file):
         """Test that table command shows correct element counts"""
@@ -349,12 +349,12 @@ public class SampleClass {
         print(f"DEBUG: Parsed table counts: {table_counts}")
 
         # Verify consistency
-        assert advanced_counts.get("methods", 0) == table_counts.get("methods", 0), (
-            f"Method count mismatch: advanced={advanced_counts.get('methods', 0)}, table={table_counts.get('methods', 0)}"
-        )
-        assert advanced_counts.get("fields", 0) == table_counts.get("fields", 0), (
-            f"Field count mismatch: advanced={advanced_counts.get('fields', 0)}, table={table_counts.get('fields', 0)}"
-        )
+        assert (
+            advanced_counts.get("methods", 0) == table_counts.get("methods", 0)
+        ), f"Method count mismatch: advanced={advanced_counts.get('methods', 0)}, table={table_counts.get('methods', 0)}"
+        assert (
+            advanced_counts.get("fields", 0) == table_counts.get("fields", 0)
+        ), f"Field count mismatch: advanced={advanced_counts.get('fields', 0)}, table={table_counts.get('fields', 0)}"
 
 
 class TestElementTypeRegression:
@@ -412,10 +412,10 @@ public class EmptyClass {
 
         # For an empty class, we should have 1 class, 0 methods, 0 fields, 0 imports
         assert element_counts.get("classes", 0) == 1, "Empty class should have 1 class"
-        assert element_counts.get("methods", 0) == 0, (
-            "Empty class should have 0 methods"
-        )
+        assert (
+            element_counts.get("methods", 0) == 0
+        ), "Empty class should have 0 methods"
         assert element_counts.get("fields", 0) == 0, "Empty class should have 0 fields"
-        assert element_counts.get("imports", 0) == 0, (
-            "Empty class should have 0 imports"
-        )
+        assert (
+            element_counts.get("imports", 0) == 0
+        ), "Empty class should have 0 imports"

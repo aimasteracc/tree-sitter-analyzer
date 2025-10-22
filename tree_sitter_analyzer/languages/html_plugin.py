@@ -8,7 +8,7 @@ attribute parsing, and document structure analysis.
 """
 
 import logging
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 from ..models import AnalysisResult, MarkupElement
 from ..plugins.base import ElementExtractor, LanguagePlugin
@@ -141,7 +141,7 @@ class HtmlElementExtractor(ElementExtractor):
         node: "tree_sitter.Node",
         elements: list[MarkupElement],
         source_code: str,
-        parent: Optional[MarkupElement],
+        parent: MarkupElement | None,
     ) -> None:
         """Traverse tree to find HTML elements using tree-sitter-html grammar"""
         if hasattr(node, "type") and self._is_html_element_node(node.type):
@@ -178,8 +178,11 @@ class HtmlElementExtractor(ElementExtractor):
         return node_type in html_element_types
 
     def _create_markup_element(
-        self, node: "tree_sitter.Node", source_code: str, parent: Optional[MarkupElement]
-    ) -> Optional[MarkupElement]:
+        self,
+        node: "tree_sitter.Node",
+        source_code: str,
+        parent: MarkupElement | None,
+    ) -> MarkupElement | None:
         """Create MarkupElement from tree-sitter node using tree-sitter-html grammar"""
         try:
             # Extract tag name using tree-sitter-html structure
@@ -199,9 +202,9 @@ class HtmlElementExtractor(ElementExtractor):
             # Create MarkupElement
             element = MarkupElement(
                 name=tag_name,
-                start_line=node.start_point[0] + 1
-                if hasattr(node, "start_point")
-                else 0,
+                start_line=(
+                    node.start_point[0] + 1 if hasattr(node, "start_point") else 0
+                ),
                 end_line=node.end_point[0] + 1 if hasattr(node, "end_point") else 0,
                 raw_text=raw_text,
                 language="html",
@@ -377,8 +380,8 @@ class HtmlPlugin(LanguagePlugin):
         return HTML_QUERIES
 
     def execute_query_strategy(
-        self, query_key: Optional[str], language: str
-    ) -> Optional[str]:
+        self, query_key: str | None, language: str
+    ) -> str | None:
         """Execute query strategy for HTML"""
         if language != "html":
             return None
