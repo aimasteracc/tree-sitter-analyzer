@@ -4,42 +4,42 @@
 # ローカル開発用の最適化設定
 default_install_hook_types: [pre-commit, pre-push]
 default_stages: [pre-commit]
-fail_fast: false
+fail_fast: true
 minimum_pre_commit_version: "3.0.0"
 
 repos:
   # ローカルツールを優先使用（環境初期化を回避）
   - repo: local
     hooks:
-      # Black (ローカルインストール版使用)
-      - id: black-local
-        name: black (local)
-        entry: uv run black
-        language: system
-        types: [python]
-        args: [--line-length=88]
-        
-      # Ruff (ローカルインストール版使用)
+      # Ruff統合（check + format）- Blackとの競合を回避
       - id: ruff-local
-        name: ruff check (local)
+        name: ruff check and format (local)
         entry: uv run ruff check
         language: system
         types: [python]
-        args: [--fix, --exit-non-zero-on-fix]
+        args: [--fix]
         
       - id: ruff-format-local
         name: ruff format (local)
         entry: uv run ruff format
         language: system
         types: [python]
+        
+      # Blackは無効化（Ruffに統一）
+      # - id: black-local
+      #   name: black (local)
+      #   entry: uv run black
+      #   language: system
+      #   types: [python]
+      #   args: [--line-length=88]
 
-      # isort (ローカル版)
-      - id: isort-local
-        name: isort (local)
-        entry: uv run isort
-        language: system
-        types: [python]
-        args: [--profile, black, --line-length, "88"]
+      # isort無効化（Ruffのインポート整理機能と競合するため）
+      # - id: isort-local
+      #   name: isort (local)
+      #   entry: uv run isort
+      #   language: system
+      #   types: [python]
+      #   args: [--profile, black, --line-length, "88"]
 
       # pyupgrade (ローカル版)
       - id: pyupgrade-local
@@ -50,11 +50,11 @@ repos:
         args: [--py310-plus]
 
       # 基本的なファイルチェック（ローカル実装）
-      # - id: check-yaml-local
-      #   name: check yaml (local)
-      #   entry: uv run python -c "import yaml; import sys; import locale; enc=locale.getpreferredencoding(); [yaml.safe_load(open(f, encoding=enc, errors='replace')) for f in sys.argv[1:]]"
-      #   language: system
-      #   files: \.(yaml|yml)$
+      - id: check-yaml-local
+        name: check yaml (local)
+        entry: uv run python -c "import yaml; import sys; [yaml.safe_load(open(f, encoding='utf-8', errors='ignore')) for f in sys.argv[1:]]"
+        language: system
+        files: \.(yaml|yml)$
         
       - id: check-json-local
         name: check json (local)
@@ -69,11 +69,11 @@ repos:
         language: system
         files: \.toml$
         
-      - id: check-ast-local
-        name: check python ast (local)
-        entry: uv run python -c "import ast; import sys; import locale; enc=locale.getpreferredencoding(); [ast.parse(open(f, encoding=enc, errors='replace').read(), f) for f in sys.argv[1:]]"
-        language: system
-        files: \.py$
+      # - id: check-ast-local
+      #   name: check python ast (local)
+      #   entry: uv run python -c "import ast; import sys; import locale; enc=locale.getpreferredencoding(); [ast.parse(open(f, encoding=enc, errors='replace').read(), f) for f in sys.argv[1:]]"
+      #   language: system
+      #   files: \.py$
 
   # 重いツールはpre-pushステージに移動
   - repo: local

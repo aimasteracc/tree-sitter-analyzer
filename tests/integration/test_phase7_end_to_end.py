@@ -884,9 +884,9 @@ pytest
         final_memory = process.memory_info().rss
         memory_increase = (final_memory - initial_memory) / 1024 / 1024  # MB
 
-        assert (
-            memory_increase < 100
-        ), f"メモリ使用量増加が100MBを超過: {memory_increase:.2f}MB"
+        assert memory_increase < 100, (
+            f"メモリ使用量増加が100MBを超過: {memory_increase:.2f}MB"
+        )
         results["performance_metrics"].append(("memory_usage", memory_increase))
 
         return results
@@ -957,9 +957,9 @@ pytest
                         continue
                     raise
 
-        assert (
-            len(languages_tested) >= 1
-        ), "少なくとも1つの言語がテストされる必要があります"
+        assert len(languages_tested) >= 1, (
+            "少なくとも1つの言語がテストされる必要があります"
+        )
         results["integration_checks"].append(("languages_tested", languages_tested))
 
         return results
@@ -1224,9 +1224,9 @@ pytest
             assert success_rate >= 0.5, f"成功率が低すぎます: {success_rate:.2f}"
 
             # 実行時間の制限を緩和（30秒→60秒）
-            assert (
-                execution_time < 60.0
-            ), f"並行実行時間が長すぎます: {execution_time:.2f}秒"
+            assert execution_time < 60.0, (
+                f"並行実行時間が長すぎます: {execution_time:.2f}秒"
+            )
 
             print(
                 f"並行実行結果: {len(successful_results)}/{len(results)} 成功, {execution_time:.2f}秒"
@@ -1265,7 +1265,7 @@ pytest
         except (ValueError, AnalysisError) as e:
             # 存在しないディレクトリに対する適切なエラーが発生することを確認
             assert "does not exist" in str(e) or "Invalid root" in str(e)
-        except (ValueError, FileNotFoundError):
+        except FileNotFoundError:
             # 例外が発生する場合も正常
             pass
 

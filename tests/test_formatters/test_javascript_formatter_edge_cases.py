@@ -142,7 +142,7 @@ class TestJavaScriptTableFormatterEdgeCases:
         binary_data = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR"
         try:
             binary_string = binary_data.decode("utf-8", errors="ignore")
-        except:
+        except (UnicodeDecodeError, AttributeError):
             binary_string = str(binary_data)
 
         data = {
@@ -215,7 +215,7 @@ class TestJavaScriptTableFormatterEdgeCases:
         invalid_utf8 = b"\xff\xfe\xfd\xfc"
         try:
             invalid_string = invalid_utf8.decode("utf-8", errors="replace")
-        except:
+        except (UnicodeDecodeError, AttributeError):
             invalid_string = str(invalid_utf8)
 
         data = {

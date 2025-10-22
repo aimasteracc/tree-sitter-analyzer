@@ -349,9 +349,9 @@ echo "Potentially dangerous operation"
         print(f"  Failed to block: {len(successful_attacks)}")
 
         # 全ての攻撃がブロックされる必要がある
-        assert (
-            len(successful_attacks) == 0
-        ), f"Path traversal attacks succeeded: {successful_attacks}"
+        assert len(successful_attacks) == 0, (
+            f"Path traversal attacks succeeded: {successful_attacks}"
+        )
 
         # 少なくとも90%の攻撃がブロックされる必要がある
         block_rate = len(blocked_attacks) / len(attack_results) if attack_results else 0
@@ -476,16 +476,16 @@ echo "Potentially dangerous operation"
         print(f"  Long running (>3s): {len(long_running_queries)}")
 
         # DoS攻撃が効果的にブロックされることを確認
-        assert (
-            len(long_running_queries) < len(query_results) * 0.1
-        ), "Too many long-running queries (DoS vulnerability)"
+        assert len(long_running_queries) < len(query_results) * 0.1, (
+            "Too many long-running queries (DoS vulnerability)"
+        )
 
         # 悪意のあるクエリの一部がブロックされることを確認
         # 注意: 全てのクエリがブロックされるわけではないが、明らかに危険なものは検出される
         block_rate = len(blocked_queries) / len(query_results) if query_results else 0
-        assert (
-            block_rate >= 0.1
-        ), f"Malicious query block rate too low: {block_rate:.2%} (expected at least 10%)"
+        assert block_rate >= 0.1, (
+            f"Malicious query block rate too low: {block_rate:.2%} (expected at least 10%)"
+        )
 
     @pytest.mark.asyncio
     async def test_unicode_normalization_attacks(self, secure_test_project):
@@ -535,9 +535,9 @@ echo "Potentially dangerous operation"
 
         # 全てのUnicode攻撃が安全に処理されることを確認
         safely_handled = [r for r in unicode_results if r["handled_safely"]]
-        assert len(safely_handled) == len(
-            unicode_results
-        ), "Some Unicode attacks were not handled safely"
+        assert len(safely_handled) == len(unicode_results), (
+            "Some Unicode attacks were not handled safely"
+        )
 
     @pytest.mark.asyncio
     async def test_sensitive_data_exposure_prevention(self, secure_test_project):
@@ -631,9 +631,9 @@ echo "Potentially dangerous operation"
 
         # 機密データが適切にサニタイズされていることを確認
         exposed_data = [r for r in exposure_results if not r["properly_sanitized"]]
-        assert (
-            len(exposed_data) == 0
-        ), f"Sensitive data exposure detected: {exposed_data}"
+        assert len(exposed_data) == 0, (
+            f"Sensitive data exposure detected: {exposed_data}"
+        )
 
     @pytest.mark.asyncio
     async def test_concurrent_security_stress(self, secure_test_project):
@@ -725,9 +725,9 @@ echo "Potentially dangerous operation"
 
         # 正常なタスクは成功する必要がある
         successful_normal = [r for r in normal_tasks_results if r["success"]]
-        assert (
-            len(successful_normal) >= len(normal_tasks_results) * 0.8
-        ), "Normal tasks affected by concurrent attacks"
+        assert len(successful_normal) >= len(normal_tasks_results) * 0.8, (
+            "Normal tasks affected by concurrent attacks"
+        )
 
         # 攻撃タスクはブロックされる必要がある
         blocked_attacks = [r for r in attack_tasks_results if r["blocked"]]
@@ -736,14 +736,14 @@ echo "Potentially dangerous operation"
             if attack_tasks_results
             else 0
         )
-        assert (
-            block_rate >= 0.9
-        ), f"Concurrent attack block rate too low: {block_rate:.2%}"
+        assert block_rate >= 0.9, (
+            f"Concurrent attack block rate too low: {block_rate:.2%}"
+        )
 
         # システムが応答性を維持していることを確認
-        assert (
-            execution_time < 30.0
-        ), f"System became unresponsive under attack: {execution_time:.2f}s"
+        assert execution_time < 30.0, (
+            f"System became unresponsive under attack: {execution_time:.2f}s"
+        )
 
         print("Concurrent Security Stress Test Results:")
         print(f"  Execution time: {execution_time:.2f}s")
@@ -888,9 +888,9 @@ echo "Potentially dangerous operation"
 
         # 全ツールで一貫したセキュリティポリシーが適用されることを確認
         # テスト環境では80%以上の一貫性を要求（実際の攻撃検出は複雑なため）
-        assert (
-            consistency_rate >= 0.80
-        ), f"Security policy consistency too low: {consistency_rate:.2%}"
+        assert consistency_rate >= 0.80, (
+            f"Security policy consistency too low: {consistency_rate:.2%}"
+        )
 
     @pytest.mark.asyncio
     async def test_information_leakage_prevention(self, secure_test_project):
@@ -999,9 +999,9 @@ echo "Potentially dangerous operation"
 
         # 情報漏洩が発生していないことを確認
         unsafe_results = [r for r in leakage_results if not r["safe"]]
-        assert (
-            len(unsafe_results) == 0
-        ), f"Information leakage detected: {unsafe_results}"
+        assert len(unsafe_results) == 0, (
+            f"Information leakage detected: {unsafe_results}"
+        )
 
     @pytest.mark.asyncio
     async def test_security_under_load(self, secure_test_project):
@@ -1041,7 +1041,7 @@ echo "Potentially dangerous operation"
         successful_attacks = []
         blocked_attacks = []
 
-        for i, (attack_type, result) in enumerate(
+        for _i, (attack_type, result) in enumerate(
             zip([t[0] for t in concurrent_attacks], results, strict=False)
         ):
             if isinstance(result, Exception):
@@ -1081,9 +1081,9 @@ echo "Potentially dangerous operation"
         path_traversal_attacks = [
             a for a in successful_attacks if a["type"] == "path_traversal"
         ]
-        assert (
-            len(path_traversal_attacks) == 0
-        ), f"Path traversal attacks succeeded under load: {path_traversal_attacks}"
+        assert len(path_traversal_attacks) == 0, (
+            f"Path traversal attacks succeeded under load: {path_traversal_attacks}"
+        )
         assert execution_time < 60.0, "System became unresponsive under security load"
 
     @pytest.mark.asyncio
@@ -1235,9 +1235,9 @@ echo "Potentially dangerous operation"
             path_traversal_score = len(path_traversal_blocked) / len(
                 path_traversal_checks
             )
-            assert (
-                path_traversal_score >= 0.80
-            ), f"Path traversal protection too low: {path_traversal_score:.2%}"
+            assert path_traversal_score >= 0.80, (
+                f"Path traversal protection too low: {path_traversal_score:.2%}"
+            )
             print(f"✅ Path traversal protection: {path_traversal_score:.2%}")
 
         # 通常のクエリと検索は成功することを期待するため、
@@ -1250,14 +1250,14 @@ echo "Potentially dangerous operation"
             relevant_security_score = len(relevant_blocked) / len(
                 security_relevant_checks
             )
-            assert (
-                relevant_security_score >= 0.80
-            ), f"Security-relevant checks failed: {relevant_security_score:.2%}"
+            assert relevant_security_score >= 0.80, (
+                f"Security-relevant checks failed: {relevant_security_score:.2%}"
+            )
         else:
             # パストラバーサルチェックがない場合は、全体スコアを緩和
-            assert (
-                security_score >= 0.30
-            ), f"Overall security score too low: {security_score:.2%}"
+            assert security_score >= 0.30, (
+                f"Overall security score too low: {security_score:.2%}"
+            )
 
         print("✅ All security integration tests passed!")
 

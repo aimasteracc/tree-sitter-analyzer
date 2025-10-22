@@ -15,7 +15,6 @@ try:
     from tree_sitter_analyzer.core.analysis_engine import get_analysis_engine
     from tree_sitter_analyzer.formatters.html_formatter import HtmlFormatter
     from tree_sitter_analyzer.languages.html_plugin import HtmlPlugin
-    from tree_sitter_analyzer.models import MarkupElement
 except ImportError as e:
     print(f"エラー: Tree-sitter Analyzerがインストールされていません: {e}")
     print("以下のコマンドでインストールしてください:")

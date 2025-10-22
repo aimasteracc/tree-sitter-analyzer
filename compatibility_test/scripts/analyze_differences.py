@@ -125,7 +125,7 @@ class DifferenceAnalyzer:
         """JSON構造を再帰的に比較"""
         differences = []
 
-        if type(obj_a) != type(obj_b):
+        if not isinstance(obj_a, type(obj_b)) and not isinstance(obj_b, type(obj_a)):
             differences.append(
                 {
                     "type": "type_change",

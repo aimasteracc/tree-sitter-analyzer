@@ -538,18 +538,18 @@ export default GeneratedComponent{i};
         metrics = profiler.end_profiling()
 
         # パフォーマンス要件検証
-        assert (
-            metrics["execution_time"] < 15.0
-        ), f"実行時間が15秒を超過: {metrics['execution_time']:.2f}秒"
-        assert (
-            metrics["memory_mb"] < 200
-        ), f"メモリ使用量が200MBを超過: {metrics['memory_mb']:.2f}MB"
+        assert metrics["execution_time"] < 15.0, (
+            f"実行時間が15秒を超過: {metrics['execution_time']:.2f}秒"
+        )
+        assert metrics["memory_mb"] < 200, (
+            f"メモリ使用量が200MBを超過: {metrics['memory_mb']:.2f}MB"
+        )
 
         # 結果検証
         successful_analyses = [r for r in results if r["success"]]
-        assert (
-            len(successful_analyses) >= len(test_files) * 0.8
-        ), "80%以上の分析が成功する必要があります"
+        assert len(successful_analyses) >= len(test_files) * 0.8, (
+            "80%以上の分析が成功する必要があります"
+        )
 
         print(f"大規模分析完了: {len(successful_analyses)}/{len(test_files)} 成功")
         print(
@@ -598,20 +598,20 @@ export default GeneratedComponent{i};
         metrics = profiler.end_profiling()
 
         # パフォーマンス要件検証
-        assert (
-            metrics["execution_time"] < 30.0
-        ), f"検索実行時間が30秒を超過: {metrics['execution_time']:.2f}秒"
-        assert (
-            metrics["memory_mb"] < 150
-        ), f"メモリ使用量が150MBを超過: {metrics['memory_mb']:.2f}MB"
+        assert metrics["execution_time"] < 30.0, (
+            f"検索実行時間が30秒を超過: {metrics['execution_time']:.2f}秒"
+        )
+        assert metrics["memory_mb"] < 150, (
+            f"メモリ使用量が150MBを超過: {metrics['memory_mb']:.2f}MB"
+        )
 
         # 結果検証
         successful_searches = [
             r for r in results if isinstance(r, dict) and r.get("success")
         ]
-        assert (
-            len(successful_searches) >= len(search_queries) * 0.8
-        ), "80%以上の検索が成功する必要があります"
+        assert len(successful_searches) >= len(search_queries) * 0.8, (
+            "80%以上の検索が成功する必要があります"
+        )
 
         total_matches = sum(r.get("count", 0) for r in successful_searches)
         assert total_matches > 0, "検索結果が見つからない"
@@ -681,9 +681,9 @@ export default GeneratedComponent{i};
         avg_execution_time = sum(
             m["execution_time"] for m in memory_measurements
         ) / len(memory_measurements)
-        assert (
-            avg_execution_time < 2.0
-        ), f"平均実行時間が2秒を超過: {avg_execution_time:.2f}秒"
+        assert avg_execution_time < 2.0, (
+            f"平均実行時間が2秒を超過: {avg_execution_time:.2f}秒"
+        )
 
         print("メモリ効率性テスト完了:")
         print(f"初期メモリ: {initial_memory:.2f}MB")
@@ -780,21 +780,21 @@ export default GeneratedComponent{i};
             )
 
             # 基本的な要件確認
-            assert (
-                success_rate >= 0.7
-            ), f"負荷レベル {load_level} で成功率が70%を下回りました: {success_rate:.2%}"
+            assert success_rate >= 0.7, (
+                f"負荷レベル {load_level} で成功率が70%を下回りました: {success_rate:.2%}"
+            )
 
             # 短い休憩でシステム回復
             await asyncio.sleep(1)
 
         # スケーラビリティ分析
         max_load_result = scalability_results[-1]
-        assert (
-            max_load_result["execution_time"] < 60.0
-        ), "最大負荷での実行時間が60秒を超過"
-        assert (
-            max_load_result["memory_mb"] < 500
-        ), "最大負荷でのメモリ使用量が500MBを超過"
+        assert max_load_result["execution_time"] < 60.0, (
+            "最大負荷での実行時間が60秒を超過"
+        )
+        assert max_load_result["memory_mb"] < 500, (
+            "最大負荷でのメモリ使用量が500MBを超過"
+        )
 
         print("スケーラビリティテスト完了:")
         for result in scalability_results:
@@ -869,12 +869,12 @@ export default GeneratedComponent{i};
         )
 
         # 持続負荷要件検証
-        assert (
-            success_rate >= 0.95
-        ), f"持続負荷での成功率が95%を下回りました: {success_rate:.2%}"
-        assert (
-            avg_execution_time < 3.0
-        ), f"平均実行時間が3秒を超過: {avg_execution_time:.2f}秒"
+        assert success_rate >= 0.95, (
+            f"持続負荷での成功率が95%を下回りました: {success_rate:.2%}"
+        )
+        assert avg_execution_time < 3.0, (
+            f"平均実行時間が3秒を超過: {avg_execution_time:.2f}秒"
+        )
         assert avg_memory < 100, f"平均メモリ使用量が100MBを超過: {avg_memory:.2f}MB"
 
         print("持続負荷テスト完了:")
@@ -939,9 +939,9 @@ export default GeneratedComponent{i};
             print(f"  サイクル {cycle + 1} 後のメモリ増加: {memory_growth:.2f}MB")
 
             # メモリ増加が制御されていることを確認
-            assert (
-                memory_growth < 200
-            ), f"サイクル {cycle} でメモリ増加が200MBを超過: {memory_growth:.2f}MB"
+            assert memory_growth < 200, (
+                f"サイクル {cycle} でメモリ増加が200MBを超過: {memory_growth:.2f}MB"
+            )
 
         # 最終クリーンアップ
         gc.collect()
@@ -1023,14 +1023,14 @@ export default GeneratedComponent{i};
             elif isinstance(r, dict) and not r.get("success", True):
                 handled_errors.append(r)  # エラー辞書として処理された
 
-        assert (
-            len(handled_errors) >= 2
-        ), f"エラーが適切に処理されていません: {len(handled_errors)}/3"
+        assert len(handled_errors) >= 2, (
+            f"エラーが適切に処理されていません: {len(handled_errors)}/3"
+        )
 
         # パフォーマンスが大幅に劣化していないことを確認
-        assert (
-            metrics["execution_time"] < 10.0
-        ), f"エラー混在時の実行時間が10秒を超過: {metrics['execution_time']:.2f}秒"
+        assert metrics["execution_time"] < 10.0, (
+            f"エラー混在時の実行時間が10秒を超過: {metrics['execution_time']:.2f}秒"
+        )
 
         print("エラー回復パフォーマンステスト完了:")
         print(f"正常タスク成功: {len(successful_valid)}/5")

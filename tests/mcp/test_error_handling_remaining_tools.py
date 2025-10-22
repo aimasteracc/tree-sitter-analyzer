@@ -273,9 +273,9 @@ public class Example {
         for tool, params, expected_error in test_cases:
             try:
                 await tool.execute(params)
-                assert (
-                    False
-                ), f"Expected {expected_error.__name__} for {tool.__class__.__name__}"
+                assert False, (
+                    f"Expected {expected_error.__name__} for {tool.__class__.__name__}"
+                )
             except expected_error as e:
                 error_msg = str(e)
                 # エラーメッセージが空でないことを確認

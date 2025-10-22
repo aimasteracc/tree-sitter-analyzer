@@ -143,6 +143,6 @@ class TestPythonQueries:
             # Check for balanced parentheses (basic check)
             open_count = query.count("(")
             close_count = query.count(")")
-            assert (
-                open_count == close_count
-            ), f"Unbalanced parentheses in {query_name} query"
+            assert open_count == close_count, (
+                f"Unbalanced parentheses in {query_name} query"
+            )

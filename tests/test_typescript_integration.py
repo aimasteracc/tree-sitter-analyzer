@@ -243,9 +243,9 @@ class TestTypeScriptIntegration:
         # Check common queries
         common_queries = ["function", "class", "variable", "import", "export"]
         for query in common_queries:
-            assert (
-                query in queries
-            ), f"Common query '{query}' not found in supported queries"
+            assert query in queries, (
+                f"Common query '{query}' not found in supported queries"
+            )
 
     @patch(
         "tree_sitter_analyzer.languages.typescript_plugin.TREE_SITTER_AVAILABLE", True

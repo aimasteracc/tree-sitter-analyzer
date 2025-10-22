@@ -175,9 +175,9 @@ class TestSingleToolPerformance:
         metrics = performance_monitor.end_measurement()
 
         # パフォーマンス要件検証
-        assert (
-            metrics["execution_time"] < 3.0
-        ), f"実行時間が3秒を超過: {metrics['execution_time']:.2f}秒"
+        assert metrics["execution_time"] < 3.0, (
+            f"実行時間が3秒を超過: {metrics['execution_time']:.2f}秒"
+        )
         assert result["success"] is True
 
         print(f"check_code_scale実行時間: {metrics['execution_time']:.2f}秒")
@@ -199,9 +199,9 @@ class TestSingleToolPerformance:
         metrics = performance_monitor.end_measurement()
 
         # パフォーマンス要件検証
-        assert (
-            metrics["execution_time"] < 3.0
-        ), f"実行時間が3秒を超過: {metrics['execution_time']:.2f}秒"
+        assert metrics["execution_time"] < 3.0, (
+            f"実行時間が3秒を超過: {metrics['execution_time']:.2f}秒"
+        )
         assert result["success"] is True
 
         print(f"analyze_code_structure実行時間: {metrics['execution_time']:.2f}秒")
@@ -228,9 +228,9 @@ class TestSingleToolPerformance:
         metrics = performance_monitor.end_measurement()
 
         # パフォーマンス要件検証
-        assert (
-            metrics["execution_time"] < 3.0
-        ), f"実行時間が3秒を超過: {metrics['execution_time']:.2f}秒"
+        assert metrics["execution_time"] < 3.0, (
+            f"実行時間が3秒を超過: {metrics['execution_time']:.2f}秒"
+        )
         assert result["success"] is True
 
         print(f"extract_code_section実行時間: {metrics['execution_time']:.2f}秒")
@@ -254,9 +254,9 @@ class TestSingleToolPerformance:
         metrics = performance_monitor.end_measurement()
 
         # パフォーマンス要件検証
-        assert (
-            metrics["execution_time"] < 3.0
-        ), f"実行時間が3秒を超過: {metrics['execution_time']:.2f}秒"
+        assert metrics["execution_time"] < 3.0, (
+            f"実行時間が3秒を超過: {metrics['execution_time']:.2f}秒"
+        )
         assert result["success"] is True
 
         print(f"query_code実行時間: {metrics['execution_time']:.2f}秒")
@@ -278,9 +278,9 @@ class TestSingleToolPerformance:
         metrics = performance_monitor.end_measurement()
 
         # パフォーマンス要件検証
-        assert (
-            metrics["execution_time"] < 3.0
-        ), f"実行時間が3秒を超過: {metrics['execution_time']:.2f}秒"
+        assert metrics["execution_time"] < 3.0, (
+            f"実行時間が3秒を超過: {metrics['execution_time']:.2f}秒"
+        )
         assert result["success"] is True
 
         print(f"list_files実行時間: {metrics['execution_time']:.2f}秒")
@@ -319,9 +319,9 @@ class TestSingleToolPerformance:
 
         # パフォーマンス要件検証（Windows環境に合わせて調整）
         time_limit = 12.0 if os.name == "nt" else 5.0  # Windows環境では12秒まで許可
-        assert (
-            metrics["execution_time"] < time_limit
-        ), f"実行時間が{time_limit}秒を超過: {metrics['execution_time']:.2f}秒"
+        assert metrics["execution_time"] < time_limit, (
+            f"実行時間が{time_limit}秒を超過: {metrics['execution_time']:.2f}秒"
+        )
         assert result["success"] is True
 
         print(f"search_content実行時間: {metrics['execution_time']:.2f}秒")
@@ -382,9 +382,9 @@ class TestCompositeWorkflowPerformance:
         metrics = performance_monitor.end_measurement()
 
         # パフォーマンス要件検証
-        assert (
-            metrics["execution_time"] < 10.0
-        ), f"ワークフロー実行時間が10秒を超過: {metrics['execution_time']:.2f}秒"
+        assert metrics["execution_time"] < 10.0, (
+            f"ワークフロー実行時間が10秒を超過: {metrics['execution_time']:.2f}秒"
+        )
 
         print(f"完全解析ワークフロー実行時間: {metrics['execution_time']:.2f}秒")
         print(f"メモリ使用量: {metrics['memory_used'] / 1024 / 1024:.2f}MB")
@@ -434,9 +434,9 @@ class TestCompositeWorkflowPerformance:
 
         # パフォーマンス要件検証（Windowsでは時間制限を緩和）
         time_limit = 35.0 if os.name == "nt" else 10.0  # Windows環境では35秒まで許可
-        assert (
-            metrics["execution_time"] < time_limit
-        ), f"検索ワークフロー実行時間が{time_limit}秒を超過: {metrics['execution_time']:.2f}秒"
+        assert metrics["execution_time"] < time_limit, (
+            f"検索ワークフロー実行時間が{time_limit}秒を超過: {metrics['execution_time']:.2f}秒"
+        )
 
         print(f"検索・抽出ワークフロー実行時間: {metrics['execution_time']:.2f}秒")
         print(f"メモリ使用量: {metrics['memory_used'] / 1024 / 1024:.2f}MB")
@@ -465,9 +465,9 @@ class TestLargeScalePerformance:
         metrics = performance_monitor.end_measurement()
 
         assert result["success"] is True
-        assert (
-            metrics["execution_time"] < 5.0
-        ), f"大規模ファイル一覧取得が5秒を超過: {metrics['execution_time']:.2f}秒"
+        assert metrics["execution_time"] < 5.0, (
+            f"大規模ファイル一覧取得が5秒を超過: {metrics['execution_time']:.2f}秒"
+        )
 
         # 1000ファイルが検出されることを確認
         file_count = result.get("count", 0)
@@ -504,9 +504,9 @@ class TestLargeScalePerformance:
         assert result["success"] is True
         # Windows環境での実行時間制限を緩和
         time_limit = 15.0 if os.name == "nt" else 8.0  # Windows環境では15秒まで許可
-        assert (
-            metrics["execution_time"] < time_limit
-        ), f"大規模コンテンツ検索が{time_limit}秒を超過: {metrics['execution_time']:.2f}秒"
+        assert metrics["execution_time"] < time_limit, (
+            f"大規模コンテンツ検索が{time_limit}秒を超過: {metrics['execution_time']:.2f}秒"
+        )
 
         print(
             f"大規模プロジェクトコンテンツ検索時間: {metrics['execution_time']:.2f}秒"
@@ -546,9 +546,9 @@ class TestMemoryOptimization:
 
         # メモリ使用量が適切に制御されていることを確認
         memory_increase = (final_memory - initial_memory) / 1024 / 1024  # MB
-        assert (
-            memory_increase < 50
-        ), f"メモリ使用量増加が50MBを超過: {memory_increase:.2f}MB"
+        assert memory_increase < 50, (
+            f"メモリ使用量増加が50MBを超過: {memory_increase:.2f}MB"
+        )
 
         print(f"メモリ最適化実行時間: {metrics['execution_time']:.2f}秒")
         print(f"メモリ使用量増加: {memory_increase:.2f}MB")

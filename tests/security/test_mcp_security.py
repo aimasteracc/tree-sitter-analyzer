@@ -123,9 +123,9 @@ class TestInputValidation:
                 {"file_path": malicious_path, "start_line": 1, "end_line": 10}
             )
             # セキュリティエラーが適切に処理されることを確認
-            assert isinstance(result, dict) and not result.get(
-                "success", True
-            ), f"Expected security error for path: {malicious_path}"
+            assert isinstance(result, dict) and not result.get("success", True), (
+                f"Expected security error for path: {malicious_path}"
+            )
             assert (
                 "security validation failed" in result.get("error", "").lower()
                 or "null byte" in result.get("error", "").lower()
@@ -225,9 +225,9 @@ class TestProjectBoundaryProtection:
                 {"file_path": traversal_path, "start_line": 1, "end_line": 10}
             )
             # セキュリティエラーが適切に処理されることを確認
-            assert isinstance(result, dict) and not result.get(
-                "success", True
-            ), f"Expected security error for path: {traversal_path}"
+            assert isinstance(result, dict) and not result.get("success", True), (
+                f"Expected security error for path: {traversal_path}"
+            )
             assert (
                 "security validation failed" in result.get("error", "").lower()
                 or "traversal" in result.get("error", "").lower()
@@ -436,17 +436,17 @@ class TestInformationLeakagePrevention:
                 ]
 
                 for pattern in sensitive_patterns:
-                    assert (
-                        pattern.lower() not in error_message.lower()
-                    ), f"エラーメッセージに機密情報が含まれている: {pattern}"
+                    assert pattern.lower() not in error_message.lower(), (
+                        f"エラーメッセージに機密情報が含まれている: {pattern}"
+                    )
             else:
                 pytest.fail("Expected security error for absolute path")
         except (SecurityError, ValidationError, ValueError) as e:
             # 例外メッセージも確認
             error_message = str(e)
-            assert (
-                "/etc/passwd" not in error_message
-            ), "例外メッセージに機密パスが含まれている"
+            assert "/etc/passwd" not in error_message, (
+                "例外メッセージに機密パスが含まれている"
+            )
 
     @pytest.mark.asyncio
     async def test_stack_trace_filtering(self, safe_project_structure):
@@ -474,17 +474,17 @@ class TestInformationLeakagePrevention:
                 ]
 
                 for path in sensitive_paths:
-                    assert (
-                        path not in error_info
-                    ), f"エラー情報に機密パスが含まれている: {path}"
+                    assert path not in error_info, (
+                        f"エラー情報に機密パスが含まれている: {path}"
+                    )
             else:
                 pytest.fail("Expected security error for absolute path")
         except (SecurityError, ValidationError, ValueError, AnalysisError) as e:
             # 例外メッセージも確認
             error_message = str(e)
-            assert (
-                "/etc/passwd" not in error_message
-            ), "例外メッセージに機密パスが含まれている"
+            assert "/etc/passwd" not in error_message, (
+                "例外メッセージに機密パスが含まれている"
+            )
 
     @pytest.mark.asyncio
     async def test_file_content_filtering(self, tmp_path):
@@ -628,9 +628,9 @@ class TestSecurityConfiguration:
         ]
 
         for path in dangerous_paths:
-            assert not security_validator.is_safe_path(
-                path
-            ), f"危険なパスが許可されている: {path}"
+            assert not security_validator.is_safe_path(path), (
+                f"危険なパスが許可されている: {path}"
+            )
 
     def test_security_headers_and_metadata(self):
         """セキュリティヘッダーとメタデータの確認"""

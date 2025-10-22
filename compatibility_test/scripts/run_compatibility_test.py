@@ -326,9 +326,9 @@ class StandardizedCompatibilityTester:
                 raise ValueError(f"未知のツール名: {tool_name}")
 
         except ImportError as e:
-            raise Exception(f"ツール {tool_name} のインポートに失敗: {e}")
+            raise Exception(f"ツール {tool_name} のインポートに失敗: {e}") from e
         except Exception as e:
-            raise Exception(f"ツール {tool_name} の実行に失敗: {e}")
+            raise Exception(f"ツール {tool_name} の実行に失敗: {e}") from e
 
     def _process_params(self, params: dict[str, Any]) -> dict[str, Any]:
         """パラメータの{PROJECT_ROOT}などを実際の値に置換"""

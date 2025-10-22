@@ -427,9 +427,9 @@ class TestMCPServerToolHandlingEdgeCases:
             server.create_server()
 
             # Get the captured handler
-            assert (
-                "call_tool" in captured_handlers
-            ), "call_tool handler was not registered"
+            assert "call_tool" in captured_handlers, (
+                "call_tool handler was not registered"
+            )
             call_tool_handler = captured_handlers["call_tool"]
 
             result = await call_tool_handler(
@@ -627,7 +627,7 @@ class TestMCPServerUtilityEdgeCases:
                             if args and hasattr(args[0], "close"):
                                 try:
                                     args[0].close()
-                                except:
+                                except Exception:
                                     pass
                         raise
 

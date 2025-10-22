@@ -256,9 +256,9 @@ class TestCLIRegression:
 
         for cmd_args in commands:
             returncode, stdout, stderr = self.run_cli_command(cmd_args)
-            assert (
-                returncode == 0
-            ), f"Command {' '.join(cmd_args)} failed with stderr: {stderr}"
+            assert returncode == 0, (
+                f"Command {' '.join(cmd_args)} failed with stderr: {stderr}"
+            )
             assert len(stdout) > 0, f"Command {' '.join(cmd_args)} produced no output"
 
     def test_error_handling_consistency(self):
@@ -475,9 +475,9 @@ class TestCLIRegression:
 
         for cmd_args in commands:
             returncode, stdout, stderr = self.run_cli_command(cmd_args)
-            assert (
-                returncode == 0
-            ), f"Command {' '.join(cmd_args)} failed with stderr: {stderr}"
+            assert returncode == 0, (
+                f"Command {' '.join(cmd_args)} failed with stderr: {stderr}"
+            )
             assert len(stdout) > 0, f"Command {' '.join(cmd_args)} produced no output"
 
     # Markdown-specific tests
@@ -630,9 +630,9 @@ class TestCLIRegression:
 
         for cmd_args in commands:
             returncode, stdout, stderr = self.run_cli_command(cmd_args)
-            assert (
-                returncode == 0
-            ), f"Command {' '.join(cmd_args)} failed with stderr: {stderr}"
+            assert returncode == 0, (
+                f"Command {' '.join(cmd_args)} failed with stderr: {stderr}"
+            )
             assert len(stdout) > 0, f"Command {' '.join(cmd_args)} produced no output"
 
 

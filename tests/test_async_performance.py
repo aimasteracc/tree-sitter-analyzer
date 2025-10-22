@@ -235,9 +235,9 @@ class File_{i}_Class_{j}:
 
         # 並行実行が効率的であることを確認（少なくとも5%の改善、または同等の性能）
         efficiency = sequential_time / concurrent_time
-        assert (
-            efficiency > 0.95
-        ), f"Concurrent execution not efficient enough: {efficiency:.2f}x"
+        assert efficiency > 0.95, (
+            f"Concurrent execution not efficient enough: {efficiency:.2f}x"
+        )
 
         print(
             f"Sequential: {sequential_time:.3f}s, Concurrent: {concurrent_time:.3f}s, Efficiency: {efficiency:.2f}x"
@@ -274,9 +274,9 @@ class File_{i}_Class_{j}:
 
         # 並行実行が効率的であることを確認
         efficiency = sequential_time / concurrent_time
-        assert (
-            efficiency > 1.2
-        ), f"Multi-file concurrent execution not efficient: {efficiency:.2f}x"
+        assert efficiency > 1.2, (
+            f"Multi-file concurrent execution not efficient: {efficiency:.2f}x"
+        )
 
         print(
             f"Multi-file Sequential: {sequential_time:.3f}s, Concurrent: {concurrent_time:.3f}s, Efficiency: {efficiency:.2f}x"
@@ -306,9 +306,9 @@ class File_{i}_Class_{j}:
 
         # メモリ増加が10%以内であることを確認
         memory_increase_percent = (memory_increase / initial_memory) * 100
-        assert (
-            memory_increase_percent < 10.0
-        ), f"Memory increase too high: {memory_increase_percent:.2f}%"
+        assert memory_increase_percent < 10.0, (
+            f"Memory increase too high: {memory_increase_percent:.2f}%"
+        )
 
         print(
             f"Memory increase: {memory_increase_percent:.2f}% ({memory_increase / 1024 / 1024:.2f} MB)"
@@ -343,9 +343,9 @@ class File_{i}_Class_{j}:
 
         # メモリ増加が15%以内であることを確認（並行実行なので少し緩い制限）
         memory_increase_percent = (memory_increase / initial_memory) * 100
-        assert (
-            memory_increase_percent < 15.0
-        ), f"Concurrent memory increase too high: {memory_increase_percent:.2f}%"
+        assert memory_increase_percent < 15.0, (
+            f"Concurrent memory increase too high: {memory_increase_percent:.2f}%"
+        )
 
         print(
             f"Concurrent memory increase: {memory_increase_percent:.2f}% ({memory_increase / 1024 / 1024:.2f} MB)"
@@ -544,9 +544,9 @@ class File_{i}_Class_{j}:
 
             # I/Oパフォーマンス: 1MB/秒以上
             throughput_mbps = (file_size / 1024 / 1024) / duration
-            assert (
-                throughput_mbps > 1.0
-            ), f"File I/O too slow: {throughput_mbps:.2f} MB/s"
+            assert throughput_mbps > 1.0, (
+                f"File I/O too slow: {throughput_mbps:.2f} MB/s"
+            )
 
             print(
                 f"File I/O performance: {throughput_mbps:.2f} MB/s ({file_size / 1024:.2f} KB in {duration:.3f}s)"
