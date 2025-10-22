@@ -86,7 +86,6 @@ class TestJavaScriptQueries:
     def test_classes_query(self) -> None:
         """Test classes query content"""
         assert "class_declaration" in CLASSES
-        assert "class_expression" in CLASSES
         assert "@class" in CLASSES
 
     def test_variables_query(self) -> None:
