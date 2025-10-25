@@ -308,6 +308,15 @@ class SearchCache:
             "word": params.get("word", False),
             "multiline": params.get("multiline", False),
             "max_filesize": params.get("max_filesize", ""),
+            # Include output format parameters in cache key
+            "total_only": params.get("total_only", False),
+            "count_only_matches": params.get("count_only_matches", False),
+            "summary_only": params.get("summary_only", False),
+            "group_by_file": params.get("group_by_file", False),
+            "optimize_paths": params.get("optimize_paths", False),
+            "max_count": params.get("max_count", None),
+            "context_before": params.get("context_before", None),
+            "context_after": params.get("context_after", None),
         }
 
         # Create deterministic key

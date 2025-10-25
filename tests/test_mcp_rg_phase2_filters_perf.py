@@ -140,10 +140,10 @@ async def test_rg_15_max_count_clamped(monkeypatch, tmp_path):
     }
 
     async def fake_run(cmd, input_data=None, timeout_ms=None):
-        # max_count should be clamped to DEFAULT_RESULTS_LIMIT (2000)
+        # max_count should be clamped to MAX_RESULTS_HARD_CAP (10000) after our fix
         assert "-m" in cmd
         m_idx = cmd.index("-m")
-        assert cmd[m_idx + 1] == str(fd_rg_utils.DEFAULT_RESULTS_LIMIT)
+        assert cmd[m_idx + 1] == str(fd_rg_utils.MAX_RESULTS_HARD_CAP)
         return 0, (json.dumps(rg_json) + "\n").encode(), b""
 
     monkeypatch.setattr(

@@ -288,7 +288,8 @@ async def test_rg_77_cache_hit_field_present(monkeypatch, tmp_path):
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_rg_78_group_by_file_priority_over_summary(monkeypatch, tmp_path):
+async def test_rg_78_group_by_file_format_structure(monkeypatch, tmp_path):
+    """Test group_by_file format returns correct structure."""
     tool = SearchContentTool(str(tmp_path))
     evt = (
         json.dumps(
@@ -312,15 +313,15 @@ async def test_rg_78_group_by_file_priority_over_summary(monkeypatch, tmp_path):
         "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture", fake_run
     )
 
+    # Test group_by_file format only (no longer allows multiple format parameters)
     res = await tool.execute(
         {
             "roots": [str(tmp_path)],
             "query": "x",
             "group_by_file": True,
-            "summary_only": True,
         }
     )
-    # group_by_file takes priority and returns grouped structure
+    # group_by_file returns grouped structure
     assert "files" in res and "summary" not in res
 
 

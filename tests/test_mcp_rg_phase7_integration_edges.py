@@ -230,7 +230,8 @@ async def test_rg_89_find_and_grep_meta_truncated(monkeypatch, tmp_path):
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_rg_90_search_content_group_by_file_then_summary(monkeypatch, tmp_path):
+async def test_rg_90_search_content_group_by_file_format(monkeypatch, tmp_path):
+    """Test group_by_file output format works correctly."""
     tool = SearchContentTool(str(tmp_path))
 
     evt = (
@@ -255,13 +256,12 @@ async def test_rg_90_search_content_group_by_file_then_summary(monkeypatch, tmp_
         "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture", fake_run
     )
 
-    # group_by_file should take precedence, ignoring summary_only
+    # Test group_by_file format only (no longer allows multiple format parameters)
     res = await tool.execute(
         {
             "roots": [str(tmp_path)],
             "query": "x",
             "group_by_file": True,
-            "summary_only": True,
         }
     )
     assert "files" in res and "summary" not in res

@@ -17,6 +17,7 @@ from ..utils.gitignore_detector import get_default_detector
 from ..utils.search_cache import get_default_cache
 from . import fd_rg_utils
 from .base_tool import BaseMCPTool
+from .output_format_validator import get_default_validator
 
 logger = logging.getLogger(__name__)
 
@@ -214,6 +215,9 @@ class SearchContentTool(BaseMCPTool):
             "no_ignore",
             "count_only_matches",
             "summary_only",
+            "total_only",
+            "group_by_file",
+            "optimize_paths",
         ]:
             if key in arguments and not isinstance(arguments[key], bool):
                 raise ValueError(f"{key} must be a boolean")
@@ -225,6 +229,10 @@ class SearchContentTool(BaseMCPTool):
                 v = arguments[key]
                 if not isinstance(v, list) or not all(isinstance(x, str) for x in v):
                     raise ValueError(f"{key} must be an array of strings")
+
+        # Validate output format parameter exclusion
+        validator = get_default_validator()
+        validator.validate_output_format_exclusion(arguments)
 
         # Validate roots and files if provided
         if "roots" in arguments:
@@ -310,13 +318,19 @@ class SearchContentTool(BaseMCPTool):
                 if isinstance(cached_result, dict):
                     cached_result = cached_result.copy()
                     cached_result["cache_hit"] = True
-                return cached_result
+                    return cached_result
+                elif isinstance(cached_result, int):
+                    # Handle int results (for total_only)
+                    return cached_result
+                else:
+                    # Convert other types to dict format for type safety
+                    return {"success": True, "cache_hit": True, "value": cached_result}
 
         # Clamp counts to safety limits
         max_count = fd_rg_utils.clamp_int(
             arguments.get("max_count"),
             fd_rg_utils.DEFAULT_RESULTS_LIMIT,
-            fd_rg_utils.DEFAULT_RESULTS_LIMIT,
+            fd_rg_utils.MAX_RESULTS_HARD_CAP,
         )
         timeout_ms = arguments.get("timeout_ms")
 
