@@ -8,6 +8,8 @@ appropriate extensions based on content type, with security validation.
 
 import json
 import os
+import tempfile
+import time
 from pathlib import Path
 from typing import Any
 
@@ -22,6 +24,61 @@ class FileOutputManager:
     Manages file output for analysis results with automatic extension detection
     and security validation.
     """
+    
+    # クラス変数で警告メッセージの重複を防ぐ（プロセス内のみ）
+    _warning_messages_shown = set()
+    
+    # プロセス間共有用のファイルベース重複防止
+    @staticmethod
+    def _get_warning_lock_file(warning_key: str) -> Path:
+        """警告メッセージ用のロックファイルパスを取得"""
+        temp_dir = Path(tempfile.gettempdir())
+        safe_key = warning_key.replace("/", "_").replace(":", "_").replace("\\", "_")
+        return temp_dir / f"tree_sitter_analyzer_warning_{safe_key}.lock"
+    
+    @staticmethod
+    def _should_show_warning(warning_key: str, max_age_seconds: int = 300) -> bool:
+        """
+        プロセス間で警告表示の可否を判定
+        
+        Args:
+            warning_key: 警告キー
+            max_age_seconds: ロックファイルの有効期間（秒）
+            
+        Returns:
+            警告を表示すべきかどうか
+        """
+        # プロセス内での重複チェック
+        if warning_key in FileOutputManager._warning_messages_shown:
+            return False
+        
+        # プロセス間での重複チェック
+        lock_file = FileOutputManager._get_warning_lock_file(warning_key)
+        
+        try:
+            # ロックファイルが存在し、有効期間内なら警告をスキップ
+            if lock_file.exists():
+                mtime = lock_file.stat().st_mtime
+                if time.time() - mtime < max_age_seconds:
+                    FileOutputManager._warning_messages_shown.add(warning_key)
+                    return False
+                else:
+                    # 期限切れのロックファイルを削除
+                    try:
+                        lock_file.unlink()
+                    except (OSError, FileNotFoundError):
+                        pass
+            
+            # ロックファイルを作成して警告表示権を獲得
+            lock_file.touch()
+            FileOutputManager._warning_messages_shown.add(warning_key)
+            return True
+            
+        except (OSError, IOError):
+            # ファイル操作に失敗した場合はフォールバック
+            # プロセス内のみの重複防止に戻る
+            FileOutputManager._warning_messages_shown.add(warning_key)
+            return True
 
     def __init__(self, project_root: str | None = None):
         """
@@ -51,7 +108,11 @@ class FileOutputManager:
 
         # Priority 3: Current working directory as fallback
         self._output_path = str(Path.cwd())
-        logger.warning(f"Using current directory as output path: {self._output_path}")
+        
+        # プロセス間で重複警告を防ぐ
+        warning_key = f"fallback_path:{self._output_path}"
+        if self._should_show_warning(warning_key):
+            logger.warning(f"Using current directory as output path: {self._output_path}")
 
     def get_output_path(self) -> str:
         """

@@ -67,7 +67,7 @@ from .tools.read_partial_tool import ReadPartialTool
 from .tools.search_content_tool import SearchContentTool
 from .tools.table_format_tool import TableFormatTool
 
-# Set up logging
+# Set up logging using unified LoggerManager
 logger = setup_logger(__name__)
 
 

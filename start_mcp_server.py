@@ -17,7 +17,7 @@ from tree_sitter_analyzer.mcp.server import TreeSitterAnalyzerMCPServer
 from tree_sitter_analyzer.project_detector import detect_project_root
 from tree_sitter_analyzer.utils import setup_logger
 
-# Configure logging
+# Configure logging using unified LoggerManager
 logger = setup_logger(__name__)
 
 
