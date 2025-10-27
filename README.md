@@ -4,11 +4,11 @@
 
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-1893%20tests-brightgreen.svg)](#quality-assurance)
+[![Tests](https://img.shields.io/badge/tests-1967%20tests-brightgreen.svg)](#quality-assurance)
 [![Coverage](https://img.shields.io/badge/coverage-71.48%25-green.svg)](#quality-assurance)
 [![Quality](https://img.shields.io/badge/quality-enterprise%20grade-blue.svg)](#quality-assurance)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
-[![Version](https://img.shields.io/badge/version-1.6.1.2-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
+[![Version](https://img.shields.io/badge/version-1.6.1.3-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
 ## 🚀 Enterprise-Grade Code Analysis Tool for the AI Era
@@ -623,7 +623,7 @@ uv run pytest tests/test_mcp_server_initialization.py -v
 **Verification Environment:**
 - Operating Systems: Windows 10, macOS, Linux
 - Python Version: 3.10+
-- Project Version: tree-sitter-analyzer v1.6.1.2
+- Project Version: tree-sitter-analyzer v1.6.1.3
 - Test Files: BigService.java (1419 lines), sample.py (256 lines), MultiClass.java (54 lines)
 
 ---

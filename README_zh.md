@@ -4,11 +4,11 @@
 
 [![Python版本](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![许可证](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![测试](https://img.shields.io/badge/tests-1893%20tests-brightgreen.svg)](#质量保证)
+[![测试](https://img.shields.io/badge/tests-1967%20tests-brightgreen.svg)](#质量保证)
 [![覆盖率](https://img.shields.io/badge/coverage-71.48%25-green.svg)](#质量保证)
 [![质量](https://img.shields.io/badge/quality-enterprise%20grade-blue.svg)](#质量保证)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
-[![版本](https://img.shields.io/badge/version-1.6.1.2-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
+[![版本](https://img.shields.io/badge/version-1.6.1.3-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
 ## 🚀 AI时代的企业级代码分析工具
@@ -747,7 +747,7 @@ uv run pytest tests/test_mcp_server_initialization.py -v
 **验证环境：**
 - 操作系统：Windows 10、macOS、Linux
 - Python版本：3.10+
-- 项目版本：tree-sitter-analyzer v1.6.1.2
+- 项目版本：tree-sitter-analyzer v1.6.1.3
 - 测试文件：BigService.java (1419行)、sample.py (256行)、MultiClass.java (54行)
 
 ---
