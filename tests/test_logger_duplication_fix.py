@@ -111,13 +111,19 @@ class TestLoggerManager:
         """ファイルログ有効化のテスト"""
         manager = LoggerManager()
         
-        with patch('tempfile.gettempdir') as mock_tempdir:
-            mock_tempdir.return_value = '/tmp'
-            logger = manager.get_logger("file_test")
-            
-            # FileHandlerが追加されていることを確認
-            file_handlers = [h for h in logger.handlers if isinstance(h, logging.FileHandler)]
-            assert len(file_handlers) > 0
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with patch('tempfile.gettempdir') as mock_tempdir:
+                mock_tempdir.return_value = temp_dir
+                logger = manager.get_logger("file_test")
+                
+                # FileHandlerが追加されていることを確認
+                file_handlers = [h for h in logger.handlers if isinstance(h, logging.FileHandler)]
+                assert len(file_handlers) > 0
+                
+                # テスト後にファイルハンドラーをクローズしてファイルロックを解除
+                for handler in file_handlers:
+                    handler.close()
+                    logger.removeHandler(handler)
     
     def test_reset_for_testing(self):
         """テスト用リセット機能のテスト"""

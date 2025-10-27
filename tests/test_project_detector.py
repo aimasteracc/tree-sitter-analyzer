@@ -156,11 +156,13 @@ class TestProjectRootDetector(unittest.TestCase):
 
     def test_no_markers_found(self):
         """Test behavior when no markers are found"""
-        # Create a directory without project markers
-        no_markers_dir = self.temp_dir / "no_markers"
-        no_markers_dir.mkdir()
+        # Create a directory without project markers in a deep isolated location
+        # to avoid accidentally finding markers in parent directories
+        no_markers_dir = self.temp_dir / "very" / "deep" / "isolated" / "no_markers"
+        no_markers_dir.mkdir(parents=True)
 
-        detector = ProjectRootDetector()
+        # Use a detector with limited depth to ensure no markers are found
+        detector = ProjectRootDetector(max_depth=3)
         result = detector.detect_from_file(str(no_markers_dir / "test.py"))
 
         # When no markers are found, detect_from_file returns None
