@@ -9,6 +9,8 @@ Provides core tree-sitter query functionality including predefined and custom qu
 import logging
 from typing import Any
 
+from tree_sitter import Query, QueryCursor
+
 from ..encoding_utils import read_file_safe
 from ..query_loader import query_loader
 from .parser import Parser
@@ -80,23 +82,18 @@ class QueryService:
                         f"Query '{query_key}' not found for language '{language}'"
                     )
 
-            # Execute tree-sitter query
-            ts_query = language_obj.query(query_string)
-            captures = ts_query.captures(tree.root_node)
+            # Execute tree-sitter query using new API (tree-sitter 0.25.0+)
+            ts_query = Query(language_obj, query_string)
+            cursor = QueryCursor(ts_query)
+            matches = cursor.matches(tree.root_node)
 
-            # Process capture results
+            # Process match results (new API returns list of (pattern_index, captures_dict))
             results = []
-            if isinstance(captures, dict):
-                # New tree-sitter API returns dictionary
-                for capture_name, nodes in captures.items():
+            for pattern_index, captures_dict in matches:
+                # captures_dict is {capture_name: [node1, node2, ...]}
+                for capture_name, nodes in captures_dict.items():
                     for node in nodes:
                         results.append(self._create_result_dict(node, capture_name))
-            else:
-                # Old tree-sitter API returns list of tuples
-                for capture in captures:
-                    if isinstance(capture, tuple) and len(capture) == 2:
-                        node, name = capture
-                        results.append(self._create_result_dict(node, name))
 
             # Apply filters
             if filter_expression and results:

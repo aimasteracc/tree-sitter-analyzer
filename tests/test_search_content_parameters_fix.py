@@ -332,3 +332,179 @@ class TestBackwardCompatibility:
         # Format determination should return 'normal' for no format params
         format_type = tool._determine_requested_format(args)
         assert format_type == "normal"
+
+
+class TestMultilingualErrorMessages:
+    """Test cases for multilingual error message functionality."""
+
+    def test_english_error_message_content(self):
+        """Test that English error messages contain required elements."""
+        from tree_sitter_analyzer.mcp.tools.output_format_validator import OutputFormatValidator
+        
+        validator = OutputFormatValidator()
+        
+        # Mock English language detection
+        with patch.object(validator, '_detect_language', return_value='en'):
+            args = {"total_only": True, "summary_only": True}
+            
+            with pytest.raises(ValueError) as exc_info:
+                validator.validate_output_format_exclusion(args)
+            
+            error_message = str(exc_info.value)
+            
+            # Should contain English-specific elements
+            assert "Output Format Parameter Error" in error_message
+            assert "Multiple formats specified" in error_message
+            assert "Mutually Exclusive Parameters" in error_message
+            assert "Token Efficiency Guide" in error_message
+            assert "Recommended Usage Patterns" in error_message
+            assert "Incorrect:" in error_message
+            assert "Correct:" in error_message
+
+    def test_japanese_error_message_content(self):
+        """Test that Japanese error messages contain required elements."""
+        from tree_sitter_analyzer.mcp.tools.output_format_validator import OutputFormatValidator
+        
+        validator = OutputFormatValidator()
+        
+        # Mock Japanese language detection
+        with patch.object(validator, '_detect_language', return_value='ja'):
+            args = {"count_only_matches": True, "group_by_file": True}
+            
+            with pytest.raises(ValueError) as exc_info:
+                validator.validate_output_format_exclusion(args)
+            
+            error_message = str(exc_info.value)
+            
+            # Should contain Japanese-specific elements
+            assert "出力形式パラメータエラー" in error_message
+            assert "複数指定できません" in error_message
+            assert "排他的パラメータ" in error_message
+            assert "効率性ガイド" in error_message
+            assert "推奨パターン" in error_message
+            assert "間違った例" in error_message
+            assert "正しい例" in error_message
+
+    def test_error_message_includes_efficiency_guide(self):
+        """Test that error messages include token efficiency information."""
+        from tree_sitter_analyzer.mcp.tools.output_format_validator import OutputFormatValidator
+        
+        validator = OutputFormatValidator()
+        args = {"total_only": True, "optimize_paths": True}
+        
+        with pytest.raises(ValueError) as exc_info:
+            validator.validate_output_format_exclusion(args)
+        
+        error_message = str(exc_info.value)
+        
+        # Should include token estimates
+        token_estimates = ["~10 tokens", "~50-200 tokens", "~500-2000 tokens", "~2000-10000 tokens", "10-30%"]
+        found_estimates = [est for est in token_estimates if est in error_message]
+        assert len(found_estimates) >= 3, f"Expected at least 3 token estimates, found: {found_estimates}"
+
+    def test_error_message_includes_usage_examples(self):
+        """Test that error messages include concrete usage examples."""
+        from tree_sitter_analyzer.mcp.tools.output_format_validator import OutputFormatValidator
+        
+        validator = OutputFormatValidator()
+        args = {"summary_only": True, "group_by_file": True}
+        
+        with pytest.raises(ValueError) as exc_info:
+            validator.validate_output_format_exclusion(args)
+        
+        error_message = str(exc_info.value)
+        
+        # Should include usage examples
+        assert "total_only=true" in error_message
+        assert "count_only_matches=true" in error_message
+        assert "summary_only=true" in error_message
+        assert "group_by_file=true" in error_message
+
+    def test_error_message_visual_formatting(self):
+        """Test that error messages use visual formatting effectively."""
+        from tree_sitter_analyzer.mcp.tools.output_format_validator import OutputFormatValidator
+        
+        validator = OutputFormatValidator()
+        args = {"total_only": True, "count_only_matches": True, "summary_only": True}
+        
+        with pytest.raises(ValueError) as exc_info:
+            validator.validate_output_format_exclusion(args)
+        
+        error_message = str(exc_info.value)
+        
+        # Should include visual markers
+        visual_markers = ["⚠️", "📋", "💡", "✅", "❌"]
+        found_markers = [marker for marker in visual_markers if marker in error_message]
+        assert len(found_markers) >= 3, f"Expected at least 3 visual markers, found: {found_markers}"
+
+    def test_language_detection_environment_variable(self):
+        """Test language detection from environment variables."""
+        from tree_sitter_analyzer.mcp.tools.output_format_validator import OutputFormatValidator
+        
+        validator = OutputFormatValidator()
+        
+        # Test Japanese detection
+        with patch.dict('os.environ', {'LANG': 'ja_JP.UTF-8'}):
+            assert validator._detect_language() == 'ja'
+        
+        # Test English detection (default)
+        with patch.dict('os.environ', {'LANG': 'en_US.UTF-8'}):
+            assert validator._detect_language() == 'en'
+        
+        # Test fallback to English
+        with patch.dict('os.environ', {'LANG': 'fr_FR.UTF-8'}):
+            assert validator._detect_language() == 'en'
+
+    def test_error_message_parameter_specific_content(self):
+        """Test that error messages mention specific conflicting parameters."""
+        from tree_sitter_analyzer.mcp.tools.output_format_validator import OutputFormatValidator
+        
+        validator = OutputFormatValidator()
+        
+        # Test with specific parameter combination
+        args = {"total_only": True, "summary_only": True}
+        
+        with pytest.raises(ValueError) as exc_info:
+            validator.validate_output_format_exclusion(args)
+        
+        error_message = str(exc_info.value)
+        
+        # Should mention the specific conflicting parameters
+        assert "total_only" in error_message
+        assert "summary_only" in error_message
+
+    def test_efficiency_guide_completeness(self):
+        """Test that efficiency guide includes all format parameters."""
+        from tree_sitter_analyzer.mcp.tools.output_format_validator import OutputFormatValidator
+        
+        validator = OutputFormatValidator()
+        
+        # All format parameters should be in the efficiency guide
+        expected_formats = {"total_only", "count_only_matches", "summary_only", "group_by_file", "optimize_paths"}
+        guide_formats = set(validator.FORMAT_EFFICIENCY_GUIDE.keys())
+        
+        assert expected_formats == guide_formats, (
+            f"Efficiency guide missing formats: {expected_formats - guide_formats}"
+        )
+        
+        # Each entry should have meaningful description
+        for format_name, description in validator.FORMAT_EFFICIENCY_GUIDE.items():
+            assert description.strip(), f"Empty description for {format_name}"
+            assert len(description) > 10, f"Too short description for {format_name}: {description}"
+
+    def test_backwards_compatibility_error_detection(self):
+        """Test that enhanced error messages are still detectable by legacy code."""
+        tool = SearchContentTool(enable_cache=False)
+        
+        # Legacy error detection should still work
+        args = {"query": "test", "roots": [TEST_ROOT], "total_only": True, "count_only_matches": True}
+        
+        with pytest.raises(ValueError) as exc_info:
+            tool.validate_arguments(args)
+        
+        error_message = str(exc_info.value)
+        
+        # Legacy detection patterns should still match
+        assert ("排他的" in error_message or
+                "exclusive" in error_message.lower() or
+                "Multiple formats" in error_message)

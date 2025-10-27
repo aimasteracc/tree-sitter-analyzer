@@ -208,7 +208,8 @@ public class Test {
         """Test language support checking"""
         assert parser.is_language_supported("java") is True
         assert parser.is_language_supported("python") is True
-        assert parser.is_language_supported("javascript") is True
+        assert parser.is_language_supported("cpp") is True
+        assert parser.is_language_supported("javascript") is False  # Not currently supported
         assert parser.is_language_supported("unsupported_language") is False
 
     def test_get_supported_languages(self, parser: Parser) -> None:

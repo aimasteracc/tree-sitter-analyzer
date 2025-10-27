@@ -41,7 +41,26 @@ class SearchContentTool(BaseMCPTool):
     def get_tool_definition(self) -> dict[str, Any]:
         return {
             "name": "search_content",
-            "description": "Search text content inside files using ripgrep. Supports regex patterns, case sensitivity, context lines, and various output formats. Can search in directories or specific files.",
+            "description": """Search text content inside files using ripgrep. Supports regex patterns, case sensitivity, context lines, and various output formats. Can search in directories or specific files.
+
+⚠️ IMPORTANT: Token Efficiency Guide
+Choose output format parameters based on your needs to minimize token usage and maximize performance with efficient search strategies:
+
+🎯 RECOMMENDED WORKFLOW (Most Efficient Approach):
+1. START with total_only=true parameter for initial count validation (~10 tokens)
+2. IF more detail needed, use count_only_matches=true parameter for file distribution (~50-200 tokens)
+3. IF context needed, use summary_only=true parameter for overview (~500-2000 tokens)
+4. ONLY use full results when specific content review is required (~2000-50000+ tokens)
+
+💡 TOKEN EFFICIENCY COMPARISON:
+- total_only: ~10 tokens (single number) - MOST EFFICIENT for count queries
+- count_only_matches: ~50-200 tokens (file counts) - Good for file distribution analysis
+- summary_only: ~500-2000 tokens (condensed overview) - initial investigation
+- group_by_file: ~2000-10000 tokens (organized by file) - Context-aware review
+- optimize_paths: 10-30% reduction (path compression) - Use with deep directory structures
+- Full results: ~2000-50000+ tokens - Use sparingly for detailed analysis
+
+⚠️ MUTUALLY EXCLUSIVE: Only one output format parameter can be true at a time. Cannot be combined with other format parameters.""",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -132,27 +151,27 @@ class SearchContentTool(BaseMCPTool):
                     "count_only_matches": {
                         "type": "boolean",
                         "default": False,
-                        "description": "Return only match counts per file instead of full match details. Useful for statistics and performance",
+                        "description": "⚠️ EXCLUSIVE: Return only match counts per file (~50-200 tokens). RECOMMENDED for: File distribution analysis, understanding match spread across files. Cannot be combined with other output formats.",
                     },
                     "summary_only": {
                         "type": "boolean",
                         "default": False,
-                        "description": "Return a condensed summary of results to reduce context size. Shows top files and sample matches",
+                        "description": "⚠️ EXCLUSIVE: Return condensed overview with top files and sample matches (~500-2000 tokens). RECOMMENDED for: Initial investigation, scope confirmation, pattern validation. Cannot be combined with other output formats.",
                     },
                     "optimize_paths": {
                         "type": "boolean",
                         "default": False,
-                        "description": "Optimize file paths in results by removing common prefixes and shortening long paths. Saves tokens in output",
+                        "description": "⚠️ EXCLUSIVE: Optimize file paths by removing common prefixes (10-30% token reduction). RECOMMENDED for: Deep directory structures, large codebases. Cannot be combined with other output formats.",
                     },
                     "group_by_file": {
                         "type": "boolean",
                         "default": False,
-                        "description": "Group results by file to eliminate file path duplication when multiple matches exist in the same file. Significantly reduces tokens",
+                        "description": "⚠️ EXCLUSIVE: Group results by file, eliminating path duplication (~2000-10000 tokens). RECOMMENDED for: Context-aware review, analyzing matches within specific files. Cannot be combined with other output formats.",
                     },
                     "total_only": {
                         "type": "boolean",
                         "default": False,
-                        "description": "Return only the total match count as a number. Most token-efficient option for count queries. Takes priority over all other formats",
+                        "description": "⚠️ EXCLUSIVE: Return only total match count as single number (~10 tokens - MOST EFFICIENT). RECOMMENDED for: Count validation, filtering decisions, existence checks. Takes priority over all other formats. Cannot be combined with other output formats.",
                     },
                 },
                 "required": ["query"],

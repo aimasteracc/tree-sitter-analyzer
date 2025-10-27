@@ -14,6 +14,16 @@ import pytest
 from tree_sitter_analyzer.mcp.utils.file_output_manager import FileOutputManager
 
 
+def cleanup_lock_files():
+    """テスト用のロックファイルをクリーンアップ"""
+    temp_dir = Path(tempfile.gettempdir())
+    for lock_file in temp_dir.glob("tree_sitter_analyzer_warning_*.lock"):
+        try:
+            lock_file.unlink()
+        except (OSError, FileNotFoundError):
+            pass
+
+
 class TestFileOutputManagerDuplicationPrevention:
     """FileOutputManagerの重複警告防止テスト"""
     
@@ -21,6 +31,13 @@ class TestFileOutputManagerDuplicationPrevention:
         """各テストの前に実行される設定"""
         # 警告メッセージ履歴をリセット
         FileOutputManager._warning_messages_shown.clear()
+        # ロックファイルもクリーンアップ
+        cleanup_lock_files()
+    
+    def teardown_method(self):
+        """各テストの後に実行されるクリーンアップ"""
+        # ロックファイルをクリーンアップ
+        cleanup_lock_files()
     
     def test_no_duplicate_warnings_multiple_instances(self):
         """複数インスタンス作成時の重複警告防止テスト"""

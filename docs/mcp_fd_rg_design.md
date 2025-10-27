@@ -88,3 +88,135 @@ Testing Strategy
 Version Bounds
 - fd ≥ 10.x; ripgrep ≥ 13.x. Tools degrade gracefully with clear error messages if missing.
 
+## LLM Guidance Design
+
+### Token Efficiency Architecture
+
+The search_content tool is designed with a **progressive disclosure** architecture to minimize token consumption for LLM interactions:
+
+#### Output Format Hierarchy (Token Efficiency Order)
+1. **total_only** (~10 tokens) - Single integer count
+2. **count_only_matches** (~50-200 tokens) - File-level counts object
+3. **summary_only** (~500-2000 tokens) - Condensed overview with samples
+4. **group_by_file** (~2000-10000 tokens) - Results organized by file
+5. **optimize_paths** (10-30% reduction) - Path compression enhancement
+6. **Full results** (~2000-50000+ tokens) - Complete match details
+
+#### Smart Format Selection Logic
+```python
+def determine_optimal_format(query_scope, user_intent):
+    if user_intent == "count_validation":
+        return "total_only"  # Minimal tokens
+    elif user_intent == "file_distribution":
+        return "count_only_matches"  # File-level overview
+    elif user_intent == "initial_investigation":
+        return "summary_only"  # Sample-based exploration
+    elif user_intent == "detailed_analysis":
+        return "group_by_file"  # Context-aware review
+    else:
+        return "full_results"  # Complete information
+```
+
+### LLM Integration Features
+
+#### 1. Enhanced Tool Descriptions
+- **Visual Markers**: Use emoji (⚠️🎯💡) for visual hierarchy
+- **Token Estimates**: Explicit token cost information in descriptions
+- **Usage Recommendations**: Scenario-specific guidance
+- **Mutual Exclusion Warnings**: Clear parameter conflict prevention
+
+#### 2. Progressive Workflow Guidance
+Embedded in tool description to guide LLM decision-making:
+
+```
+🎯 RECOMMENDED WORKFLOW (Most Efficient Approach):
+1. START with total_only=true for initial count validation (~10 tokens)
+2. IF more detail needed, use count_only_matches=true for file distribution (~50-200 tokens)
+3. IF context needed, use summary_only=true for overview (~500-2000 tokens)
+4. ONLY use full results when specific content review is required (~2000-50000+ tokens)
+```
+
+#### 3. Error Message Enhancement
+- **Multilingual Support**: English/Japanese error messages with locale detection
+- **Actionable Guidance**: Specific usage examples in error messages
+- **Visual Formatting**: Enhanced readability with visual markers
+- **Token Efficiency Reminders**: Include efficiency guide in error responses
+
+### Token Efficiency Considerations
+
+#### Design Principles
+1. **Efficiency-First**: Default to most efficient format unless explicitly requested
+2. **Progressive Disclosure**: Enable step-by-step information gathering
+3. **Context Awareness**: Provide enough context for informed next steps
+4. **Format Isolation**: Prevent accidental token waste through parameter conflicts
+
+#### Implementation Strategies
+
+##### 1. Smart Caching with Cross-Format Optimization
+```python
+# total_only result can serve future count_only_matches queries
+if cache_hit_for_total_only:
+    derive_count_only_matches_from_cache(total_only_result)
+```
+
+##### 2. Path Optimization for Deep Structures
+```python
+# Remove common prefixes to reduce token overhead
+optimized_paths = remove_common_prefix(file_paths)
+shortened_paths = apply_smart_truncation(optimized_paths)
+```
+
+##### 3. Result Size Monitoring
+```python
+# Monitor and warn about large results
+estimated_tokens = calculate_token_estimate(result)
+if estimated_tokens > TOKEN_WARNING_THRESHOLD:
+    suggest_more_efficient_format()
+```
+
+#### Token Consumption Patterns
+
+| Search Scope | total_only | count_only | summary_only | group_by_file | full_results |
+|--------------|------------|------------|--------------|---------------|--------------|
+| Single file  | 10 tokens  | 20-50      | 200-500      | 500-2000      | 1000-10000   |
+| Small project| 10 tokens  | 50-100     | 500-1000     | 2000-5000     | 5000-25000   |
+| Large project| 10 tokens  | 100-200    | 1000-2000    | 5000-10000    | 10000-50000+ |
+
+### LLM Behavioral Optimization
+
+#### 1. Natural Language Processing
+- **Intent Recognition**: Tool descriptions help LLMs understand when to use each format
+- **Context Preservation**: Summary formats maintain enough context for follow-up queries
+- **Decision Support**: Clear efficiency guidance enables informed format selection
+
+#### 2. Conversation Flow Optimization
+```
+User: "How many TODO comments are in the project?"
+LLM: [Chooses total_only] → "47 TODO comments found"
+
+User: "Which files have the most?"
+LLM: [Chooses count_only_matches] → Shows file distribution
+
+User: "Show me some examples from the top files"
+LLM: [Chooses summary_only] → Shows sample TODOs with context
+```
+
+#### 3. Error Prevention
+- **Parameter Validation**: Prevent incompatible format combinations
+- **Usage Examples**: Show correct usage patterns in error messages
+- **Guided Recovery**: Suggest alternative approaches when errors occur
+
+### Performance Monitoring
+
+#### Token Efficiency Metrics
+- **Format Usage Distribution**: Track which formats are used most
+- **Token Consumption Trends**: Monitor average tokens per query type
+- **Efficiency Improvement**: Measure token savings from progressive disclosure
+
+#### Quality Assurance
+- **LLM Behavior Testing**: Verify LLMs follow efficiency guidelines
+- **Format Selection Accuracy**: Test that appropriate formats are chosen
+- **Error Message Effectiveness**: Validate error guidance leads to correct usage
+
+This architecture ensures that tree-sitter-analyzer's search capabilities are optimally integrated with LLM workflows, minimizing token consumption while maximizing analytical capability.
+

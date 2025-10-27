@@ -49,8 +49,8 @@ class LoggerManager:
                     self._initialized = True
     
     def get_logger(
-        self, 
-        name: str = "tree_sitter_analyzer", 
+        self,
+        name: str = "tree_sitter_analyzer",
         level: int | str = logging.WARNING
     ) -> logging.Logger:
         """
@@ -66,6 +66,17 @@ class LoggerManager:
         with self._lock:
             if name not in self._loggers:
                 self._loggers[name] = self._create_logger(name, level)
+            else:
+                # 既存のロガーでもレベルを更新
+                numeric_level = self._convert_level(level)
+                
+                # 環境変数からのレベル設定が優先
+                env_level = os.environ.get("LOG_LEVEL", "").upper()
+                if env_level and env_level in ["DEBUG", "INFO", "WARNING", "ERROR"]:
+                    numeric_level = getattr(logging, env_level)
+                
+                self._loggers[name].setLevel(numeric_level)
+            
             return self._loggers[name]
     
     def _create_logger(self, name: str, level: int | str) -> logging.Logger:

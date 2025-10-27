@@ -6,6 +6,7 @@ LoggerManagerの動作とログ重複防止機能を検証します。
 """
 
 import logging
+import os
 import tempfile
 import threading
 import time
@@ -28,6 +29,8 @@ class TestLoggerManager:
         LoggerManager._loggers = {}
         LoggerManager._handler_registry = {}
         LoggerManager._initialized = False
+        # 環境変数をクリア（他のテストからの漏れを防ぐ）
+        os.environ.pop('LOG_LEVEL', None)
     
     def test_singleton_pattern(self):
         """シングルトンパターンの動作テスト"""
@@ -145,6 +148,8 @@ class TestSetupLoggerIntegration:
         if hasattr(LoggerManager, '_instance') and LoggerManager._instance:
             LoggerManager._instance.reset_for_testing()
         LoggerManager._instance = None
+        # 環境変数をクリア（他のテストからの漏れを防ぐ）
+        os.environ.pop('LOG_LEVEL', None)
     
     def test_setup_logger_uses_manager(self):
         """setup_logger がLoggerManagerを使用することのテスト"""
@@ -186,6 +191,8 @@ class TestLoggerDuplicationPrevention:
         if hasattr(LoggerManager, '_instance') and LoggerManager._instance:
             LoggerManager._instance.reset_for_testing()
         LoggerManager._instance = None
+        # 環境変数をクリア（他のテストからの漏れを防ぐ）
+        os.environ.pop('LOG_LEVEL', None)
     
     def test_no_duplicate_logs_multiple_modules(self):
         """複数モジュールでのログ重複がないことのテスト"""
@@ -282,6 +289,8 @@ class TestPerformanceImpact:
         if hasattr(LoggerManager, '_instance') and LoggerManager._instance:
             LoggerManager._instance.reset_for_testing()
         LoggerManager._instance = None
+        # 環境変数をクリア（他のテストからの漏れを防ぐ）
+        os.environ.pop('LOG_LEVEL', None)
     
     def test_logger_creation_performance(self):
         """ロガー作成の性能テスト"""

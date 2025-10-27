@@ -9,6 +9,7 @@ appropriate extensions based on content type, with security validation.
 import json
 import os
 import tempfile
+import threading
 import time
 from pathlib import Path
 from typing import Any
@@ -27,6 +28,8 @@ class FileOutputManager:
     
     # クラス変数で警告メッセージの重複を防ぐ（プロセス内のみ）
     _warning_messages_shown = set()
+    # スレッド間の排他制御用ロック
+    _warning_lock = threading.Lock()
     
     # プロセス間共有用のファイルベース重複防止
     @staticmethod
@@ -48,37 +51,46 @@ class FileOutputManager:
         Returns:
             警告を表示すべきかどうか
         """
-        # プロセス内での重複チェック
-        if warning_key in FileOutputManager._warning_messages_shown:
-            return False
-        
-        # プロセス間での重複チェック
-        lock_file = FileOutputManager._get_warning_lock_file(warning_key)
-        
-        try:
-            # ロックファイルが存在し、有効期間内なら警告をスキップ
-            if lock_file.exists():
-                mtime = lock_file.stat().st_mtime
-                if time.time() - mtime < max_age_seconds:
+        # スレッド間の排他制御
+        with FileOutputManager._warning_lock:
+            # プロセス内での重複チェック
+            if warning_key in FileOutputManager._warning_messages_shown:
+                return False
+            
+            # プロセス間での重複チェック
+            lock_file = FileOutputManager._get_warning_lock_file(warning_key)
+            
+            try:
+                # ロックファイルが存在し、有効期間内なら警告をスキップ
+                if lock_file.exists():
+                    mtime = lock_file.stat().st_mtime
+                    if time.time() - mtime < max_age_seconds:
+                        FileOutputManager._warning_messages_shown.add(warning_key)
+                        return False
+                    else:
+                        # 期限切れのロックファイルを削除
+                        try:
+                            lock_file.unlink()
+                        except (OSError, FileNotFoundError):
+                            pass
+                
+                # ロックファイルを排他的に作成して警告表示権を獲得
+                # 'x'モードは、ファイルが既に存在する場合FileExistsErrorを発生させる
+                try:
+                    with open(lock_file, 'x') as f:
+                        f.write(str(time.time()))
+                    FileOutputManager._warning_messages_shown.add(warning_key)
+                    return True
+                except FileExistsError:
+                    # 別のプロセスが先にロックを獲得した
                     FileOutputManager._warning_messages_shown.add(warning_key)
                     return False
-                else:
-                    # 期限切れのロックファイルを削除
-                    try:
-                        lock_file.unlink()
-                    except (OSError, FileNotFoundError):
-                        pass
-            
-            # ロックファイルを作成して警告表示権を獲得
-            lock_file.touch()
-            FileOutputManager._warning_messages_shown.add(warning_key)
-            return True
-            
-        except (OSError, IOError):
-            # ファイル操作に失敗した場合はフォールバック
-            # プロセス内のみの重複防止に戻る
-            FileOutputManager._warning_messages_shown.add(warning_key)
-            return True
+                
+            except (OSError, IOError):
+                # ファイル操作に失敗した場合はフォールバック
+                # プロセス内のみの重複防止に戻る
+                FileOutputManager._warning_messages_shown.add(warning_key)
+                return True
 
     def __init__(self, project_root: str | None = None):
         """

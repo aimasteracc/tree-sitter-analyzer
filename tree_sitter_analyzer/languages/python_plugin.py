@@ -15,6 +15,7 @@ if TYPE_CHECKING:
 
 try:
     import tree_sitter
+    from tree_sitter import Query, QueryCursor
 
     TREE_SITTER_AVAILABLE = True
 except ImportError:
@@ -113,17 +114,23 @@ class PythonElementExtractor(ElementExtractor):
 
             language = tree.language if hasattr(tree, "language") else None
             if language:
-                query = language.query(class_query)
-                captures = query.captures(tree.root_node)
+                # Use new API (tree-sitter 0.25.0+)
+                query = Query(language, class_query)
+                cursor = QueryCursor(query)
+                matches = cursor.matches(tree.root_node)
 
-                if isinstance(captures, dict):
-                    class_bodies = captures.get("class.body", [])
+                # Process matches to get class bodies
+                class_bodies = []
+                for pattern_index, captures_dict in matches:
+                    for capture_name, nodes in captures_dict.items():
+                        if capture_name == "class.body":
+                            class_bodies.extend(nodes)
 
-                    # For each class body, extract attribute assignments
-                    for class_body in class_bodies:
-                        variables.extend(
-                            self._extract_class_attributes(class_body, source_code)
-                        )
+                # For each class body, extract attribute assignments
+                for class_body in class_bodies:
+                    variables.extend(
+                        self._extract_class_attributes(class_body, source_code)
+                    )
 
         except Exception as e:
             log_warning(f"Could not extract Python class attributes: {e}")
@@ -664,20 +671,29 @@ class PythonElementExtractor(ElementExtractor):
             language = tree.language if hasattr(tree, "language") else None
             if language:
                 for query_string in import_queries:
-                    query = language.query(query_string)
-                    captures = query.captures(tree.root_node)
+                    # Use new API (tree-sitter 0.25.0+)
+                    query = Query(language, query_string)
+                    cursor = QueryCursor(query)
+                    matches = cursor.matches(tree.root_node)
 
-                    if isinstance(captures, dict):
-                        # Process different types of imports
-                        for key, nodes in captures.items():
-                            if key.endswith("statement"):
-                                import_type = key.split(".")[0]
-                                for node in nodes:
-                                    imp = self._extract_import_info(
-                                        node, source_code, import_type
-                                    )
-                                    if imp:
-                                        imports.append(imp)
+                    # Process matches to get statement nodes
+                    statement_nodes = {}
+                    for pattern_index, captures_dict in matches:
+                        for capture_name, nodes in captures_dict.items():
+                            if capture_name.endswith("statement"):
+                                import_type = capture_name.split(".")[0]
+                                if import_type not in statement_nodes:
+                                    statement_nodes[import_type] = []
+                                statement_nodes[import_type].extend(nodes)
+
+                    # Process different types of imports
+                    for import_type, nodes in statement_nodes.items():
+                        for node in nodes:
+                            imp = self._extract_import_info(
+                                node, source_code, import_type
+                            )
+                            if imp:
+                                imports.append(imp)
 
         except Exception as e:
             log_warning(f"Could not extract Python imports: {e}")
@@ -1179,8 +1195,16 @@ class PythonPlugin(LanguagePlugin):
             else:
                 return {"error": f"Unknown query: {query_name}"}
 
-            query = language.query(query_string)
-            captures = query.captures(tree.root_node)
+            # Use new API (tree-sitter 0.25.0+)
+            query = Query(language, query_string)
+            cursor = QueryCursor(query)
+            matches = list(cursor.matches(tree.root_node))
+            # Convert matches to legacy format for compatibility
+            captures = []
+            for pattern_index, captures_dict in matches:
+                for capture_name, nodes in captures_dict.items():
+                    for node in nodes:
+                        captures.append((node, capture_name))
             return {"captures": captures, "query": query_string}
 
         except Exception as e:

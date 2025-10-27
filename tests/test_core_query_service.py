@@ -51,6 +51,12 @@ class TestQueryService:
             patch(
                 "tree_sitter_analyzer.core.query_service.query_loader"
             ) as mock_loader,
+            patch(
+                "tree_sitter_analyzer.core.query_service.Query"
+            ) as mock_query_class,
+            patch(
+                "tree_sitter_analyzer.core.query_service.QueryCursor"
+            ) as mock_cursor_class,
         ):
             # Setup mocks
             mock_read.return_value = (
@@ -60,17 +66,18 @@ class TestQueryService:
             mock_parser_class.return_value = self.mock_parser
             mock_loader.get_query.return_value = "(method_declaration) @method"
 
-            # Mock tree-sitter query
-            mock_query = Mock()
+            # Mock tree-sitter query and cursor (new API)
             mock_node = Mock()
             mock_node.type = "method_declaration"
             mock_node.start_point = (0, 0)
             mock_node.end_point = (0, 20)
             mock_node.text = b"public void main() {}"
 
-            # Test new API format (dictionary)
-            mock_query.captures.return_value = {"method": [mock_node]}
-            self.mock_language_obj.query.return_value = mock_query
+            # Mock QueryCursor to use new matches() API
+            mock_cursor = Mock()
+            # matches() returns [(pattern_index, {capture_name: [nodes]})]
+            mock_cursor.matches.return_value = [(0, {"method": [mock_node]})]
+            mock_cursor_class.return_value = mock_cursor
 
             # Execute query
             result = await self.query_service.execute_query(
@@ -97,22 +104,29 @@ class TestQueryService:
             patch(
                 "tree_sitter_analyzer.core.query_service.Parser"
             ) as mock_parser_class,
+            patch(
+                "tree_sitter_analyzer.core.query_service.Query"
+            ) as mock_query_class,
+            patch(
+                "tree_sitter_analyzer.core.query_service.QueryCursor"
+            ) as mock_cursor_class,
         ):
             # Setup mocks
             mock_read.return_value = ("class Test {}", "utf-8")
             mock_parser_class.return_value = self.mock_parser
 
-            # Mock tree-sitter query
-            mock_query = Mock()
+            # Mock tree-sitter query and cursor (new API)
             mock_node = Mock()
             mock_node.type = "class_declaration"
             mock_node.start_point = (0, 0)
             mock_node.end_point = (0, 12)
             mock_node.text = b"class Test {}"
 
-            # Test old API format (list of tuples)
-            mock_query.captures.return_value = [(mock_node, "class")]
-            self.mock_language_obj.query.return_value = mock_query
+            # Mock QueryCursor to use new matches() API
+            mock_cursor = Mock()
+            # matches() returns [(pattern_index, {capture_name: [nodes]})]
+            mock_cursor.matches.return_value = [(0, {"class": [mock_node]})]
+            mock_cursor_class.return_value = mock_cursor
 
             # Execute query
             result = await self.query_service.execute_query(
@@ -139,6 +153,12 @@ class TestQueryService:
             patch(
                 "tree_sitter_analyzer.core.query_service.query_loader"
             ) as mock_loader,
+            patch(
+                "tree_sitter_analyzer.core.query_service.Query"
+            ) as mock_query_class,
+            patch(
+                "tree_sitter_analyzer.core.query_service.QueryCursor"
+            ) as mock_cursor_class,
         ):
             # Setup mocks
             mock_read.return_value = (
@@ -148,8 +168,7 @@ class TestQueryService:
             mock_parser_class.return_value = self.mock_parser
             mock_loader.get_query.return_value = "(method_declaration) @method"
 
-            # Mock tree-sitter query with multiple results
-            mock_query = Mock()
+            # Mock tree-sitter query with multiple results (new API)
             mock_node1 = Mock()
             mock_node1.type = "method_declaration"
             mock_node1.start_point = (0, 0)
@@ -162,8 +181,13 @@ class TestQueryService:
             mock_node2.end_point = (1, 25)
             mock_node2.text = b"public void helper() {}"
 
-            mock_query.captures.return_value = {"method": [mock_node1, mock_node2]}
-            self.mock_language_obj.query.return_value = mock_query
+            # Mock QueryCursor to use new matches() API
+            mock_cursor = Mock()
+            # matches() returns [(pattern_index, {capture_name: [nodes]})]
+            mock_cursor.matches.return_value = [
+                (0, {"method": [mock_node1, mock_node2]})
+            ]
+            mock_cursor_class.return_value = mock_cursor
 
             # Mock filter to return only first result
             mock_filter = Mock()

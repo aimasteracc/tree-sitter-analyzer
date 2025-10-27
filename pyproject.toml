@@ -49,7 +49,7 @@ classifiers = [
 
 # Core dependencies (minimal set for basic functionality)
 dependencies = [
-    "tree-sitter==0.24.0",
+    "tree-sitter>=0.25.0",
     "chardet>=5.0.0",
     "cachetools>=5.0.0",
     "tree-sitter-java>=0.23.5,<0.25.0",
@@ -315,8 +315,7 @@ testpaths = ["tests"]
 python_files = "test_*.py"
 python_classes = "Test*"
 python_functions = "test_*"
-asyncio_mode = "auto"
-asyncio_default_fixture_loop_scope = "function"
+asyncio_mode = "strict"
 addopts = [
     "--strict-markers",
     "--strict-config",
@@ -421,4 +420,5 @@ dev = [
     "isort>=5.13.0",
     "bandit>=1.7.0",
     "safety>=3.0.0",
+    "psutil>=5.9.8",
 ]

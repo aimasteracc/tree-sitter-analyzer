@@ -5,6 +5,8 @@ Output format parameter validation for search_content tool.
 Ensures mutual exclusion of output format parameters to prevent conflicts.
 """
 
+import locale
+import os
 from typing import Any
 
 
@@ -19,6 +21,83 @@ class OutputFormatValidator:
         "group_by_file",
         "optimize_paths"
     }
+
+    # Token efficiency guidance for error messages
+    FORMAT_EFFICIENCY_GUIDE = {
+        "total_only": "~10 tokens (most efficient for count queries)",
+        "count_only_matches": "~50-200 tokens (file distribution analysis)",
+        "summary_only": "~500-2000 tokens (initial investigation)",
+        "group_by_file": "~2000-10000 tokens (context-aware review)",
+        "optimize_paths": "10-30% reduction (path compression)"
+    }
+
+    def _detect_language(self) -> str:
+        """Detect preferred language from environment."""
+        # Check environment variables for language preference
+        lang = os.environ.get('LANG', '')
+        if lang.startswith('ja'):
+            return 'ja'
+
+        # Check locale
+        try:
+            current_locale = locale.getlocale()[0]
+            if current_locale and current_locale.startswith('ja'):
+                return 'ja'
+        except Exception:
+            pass
+
+        # Default to English
+        return 'en'
+
+    def _get_error_message(self, specified_formats: list[str]) -> str:
+        """Generate localized error message with usage examples."""
+        lang = self._detect_language()
+        format_list = ", ".join(specified_formats)
+
+        if lang == 'ja':
+            # Japanese error message
+            base_message = (
+                f"⚠️ 出力形式パラメータエラー: 複数指定できません: {format_list}\n\n"
+                f"📋 排他的パラメータ: {', '.join(self.OUTPUT_FORMAT_PARAMS)}\n\n"
+                f"💡 効率性ガイド:\n"
+            )
+
+            for param, desc in self.FORMAT_EFFICIENCY_GUIDE.items():
+                base_message += f"  • {param}: {desc}\n"
+
+            base_message += (
+                "\n✅ 推奨パターン:\n"
+                "  • 件数確認: total_only=true\n"
+                "  • ファイル分布: count_only_matches=true\n"
+                "  • 初期調査: summary_only=true\n"
+                "  • 詳細レビュー: group_by_file=true\n"
+                "  • パス最適化: optimize_paths=true\n\n"
+                "❌ 間違った例: {\"total_only\": true, \"summary_only\": true}\n"
+                "✅ 正しい例: {\"total_only\": true}"
+            )
+        else:
+            # English error message
+            base_message = (
+                f"⚠️ Output Format Parameter Error: Multiple formats specified: {format_list}\n\n"
+                f"📋 Mutually Exclusive Parameters: {', '.join(self.OUTPUT_FORMAT_PARAMS)}\n\n"
+                f"💡 Token Efficiency Guide:\n"
+            )
+
+            for param, desc in self.FORMAT_EFFICIENCY_GUIDE.items():
+                base_message += f"  • {param}: {desc}\n"
+
+            base_message += (
+                "\n✅ Recommended Usage Patterns:\n"
+                "  • Count validation: total_only=true\n"
+                "  • File distribution: count_only_matches=true\n"
+                "  • Initial investigation: summary_only=true\n"
+                "  • Detailed review: group_by_file=true\n"
+                "  • Path optimization: optimize_paths=true\n\n"
+                "❌ Incorrect: {\"total_only\": true, \"summary_only\": true}\n"
+                "✅ Correct: {\"total_only\": true}"
+            )
+
+        return base_message
 
     def validate_output_format_exclusion(self, arguments: dict[str, Any]) -> None:
         """
@@ -37,11 +116,8 @@ class OutputFormatValidator:
                 specified_formats.append(param)
 
         if len(specified_formats) > 1:
-            format_list = ", ".join(specified_formats)
-            raise ValueError(
-                f"出力形式パラメータは排他的です。複数指定できません: {format_list}. "
-                f"次のうち1つのみ指定してください: {', '.join(self.OUTPUT_FORMAT_PARAMS)}"
-            )
+            error_message = self._get_error_message(specified_formats)
+            raise ValueError(error_message)
 
     def get_active_format(self, arguments: dict[str, Any]) -> str:
         """

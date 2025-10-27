@@ -518,18 +518,32 @@ class TestPythonPlugin:
     def test_execute_query(self, plugin: PythonPlugin) -> None:
         """Test query execution"""
         mock_tree = Mock()
+        mock_tree.root_node = Mock()
 
-        with patch.object(plugin, "get_tree_sitter_language") as mock_get_language:
+        with (
+            patch.object(plugin, "get_tree_sitter_language") as mock_get_language,
+            patch("tree_sitter_analyzer.languages.python_plugin.Query") as mock_query_cls,
+            patch("tree_sitter_analyzer.languages.python_plugin.QueryCursor") as mock_cursor_cls,
+        ):
             mock_language = Mock()
-            mock_query = Mock()
-            mock_language.query.return_value = mock_query
-            mock_query.captures.return_value = []
             mock_get_language.return_value = mock_language
+            
+            # Mock Query and QueryCursor for new API
+            mock_query = Mock()
+            mock_query_cls.return_value = mock_query
+            
+            mock_cursor = Mock()
+            mock_cursor_cls.return_value = mock_cursor
+            
+            # matches() returns [(pattern_index, {capture_name: [nodes]})]
+            mock_node = Mock()
+            mock_cursor.matches.return_value = [(0, {"function": [mock_node]})]
 
             result = plugin.execute_query(mock_tree, "function")
 
             assert isinstance(result, dict)
             assert "captures" in result
+            assert len(result["captures"]) > 0
 
     @pytest.mark.asyncio
     async def test_analyze_file_success(self, plugin: PythonPlugin) -> None:

@@ -10,7 +10,7 @@ import logging
 import time
 from typing import Any
 
-from tree_sitter import Language, Node, Tree
+from tree_sitter import Language, Node, Query, QueryCursor, Tree
 
 from ..query_loader import get_query_loader
 
@@ -77,10 +77,11 @@ class QueryExecutor:
                     f"Query '{query_name}' not found", query_name=query_name
                 )
 
-            # Create and execute the query
+            # Create and execute the query using new API (tree-sitter 0.25.0+)
             try:
-                query = language.query(query_string)
-                captures = query.captures(tree.root_node)
+                query = Query(language, query_string)
+                cursor = QueryCursor(query)
+                captures = list(cursor.captures(tree.root_node))
 
                 # Process captures
                 try:
@@ -146,10 +147,11 @@ class QueryExecutor:
             if language is None:
                 return self._create_error_result("Language is None")  # type: ignore[unreachable]
 
-            # Create and execute the query
+            # Create and execute the query using new API (tree-sitter 0.25.0+)
             try:
-                query = language.query(query_string)
-                captures = query.captures(tree.root_node)
+                query = Query(language, query_string)
+                cursor = QueryCursor(query)
+                captures = list(cursor.captures(tree.root_node))
 
                 # Process captures
                 try:
@@ -373,8 +375,8 @@ class QueryExecutor:
             if lang_obj is None:
                 return False
 
-            # Try to create the query
-            lang_obj.query(query_string)
+            # Try to create the query using new API (tree-sitter 0.25.0+)
+            Query(lang_obj, query_string)
             return True
 
         except Exception as e:
