@@ -54,6 +54,64 @@ Input:
 - context_before?: number; context_after?: number
 - encoding?: string; max_count?: number; timeout_ms?: number (default 4000)
 
+#### Encoding Parameter Support
+The `encoding` parameter enables searching files with various character encodings:
+
+**Supported Encodings:**
+- UTF-8, UTF-16, UTF-32 (with BOM detection)
+- Shift_JIS, CP932 (Japanese)
+- GBK, GB2312 (Chinese)
+- Latin-1, ISO-8859-1 (European)
+- ASCII
+
+**Automatic Normalization:**
+The system automatically normalizes encoding names to ripgrep-compatible format:
+- "Shift_JIS" → "shift-jis"
+- "UTF-8" → "utf-8"
+- "CP932" → "shift-jis" (CP932 is treated as Shift_JIS variant)
+- "latin1" → "latin1"
+- "GBK" → "gbk"
+
+**Usage Examples:**
+```json
+// Japanese files with Shift_JIS encoding
+{
+  "tool": "search_content",
+  "arguments": {
+    "query": "クラス",
+    "roots": ["src/"],
+    "encoding": "Shift_JIS"
+  }
+}
+
+// European files with Latin-1 encoding
+{
+  "tool": "search_content",
+  "arguments": {
+    "query": "café",
+    "roots": ["src/"],
+    "encoding": "latin-1"
+  }
+}
+
+// Chinese files with GBK encoding
+{
+  "tool": "search_content",
+  "arguments": {
+    "query": "函数",
+    "roots": ["src/"],
+    "encoding": "GBK"
+  }
+}
+```
+
+**Encoding Detection Fallback:**
+If no encoding is specified, the system uses automatic detection:
+1. BOM detection for UTF-8/16/32
+2. Statistical analysis via chardet library
+3. Confidence threshold (>70%) for non-UTF-8 encodings
+4. Fallback chain: UTF-8 → Latin-1 → ASCII
+
 Output:
 - Array of matches: { file, abs_path, line_number, line, submatches:[{start,end,match}] }
 - Only emit match events from rg --json.
@@ -63,15 +121,50 @@ Mapping to ripgrep:
 - case -> -S/-i/-s; fixed -> -F; word -> -w; multiline -> -U.
 - include_globs/exclude_globs -> repeated -g patterns; exclusions prefixed with '!'.
 - Respect hidden/no_ignore/follow_symlinks.
+- encoding -> -E with normalized encoding name (e.g., "Shift_JIS" becomes "shift-jis").
+
+**Encoding Normalization Process:**
+```python
+def normalize_encoding_name(encoding: str) -> str:
+    """Normalize encoding names for ripgrep compatibility."""
+    if not encoding:
+        return encoding
+    
+    # Convert to lowercase for consistent processing
+    normalized = encoding.lower().replace('_', '-')
+    
+    # Handle specific mappings
+    encoding_map = {
+        'shift-jis': 'shift-jis',
+        'sjis': 'shift-jis',
+        'cp932': 'shift-jis',  # CP932 is Shift_JIS variant
+        'utf-8': 'utf-8',
+        'utf8': 'utf-8',
+        'latin-1': 'latin1',
+        'iso-8859-1': 'latin1',
+        'gbk': 'gbk',
+        'gb2312': 'gbk',
+        'ascii': 'ascii'
+    }
+    
+    return encoding_map.get(normalized, encoding)
+```
 
 ### Tool 3: find_and_grep (fd→rg)
 Input:
 - All relevant list_files inputs + search_content core inputs
 - file_limit?: number (truncate fd outputs before rg)
 - sort?: "path"|"mtime"|"size"
+- encoding?: string (inherited from search_content, with same normalization)
 
 Output:
 - Same as search_content plus meta: { searched_file_count, truncated, fd_elapsed_ms, rg_elapsed_ms }
+
+**Encoding Support in find_and_grep:**
+The combined tool inherits full encoding support from search_content:
+- Automatic encoding normalization for ripgrep compatibility
+- Support for international file processing
+- Consistent encoding parameter handling across the pipeline
 
 Implementation Notes
 - SecurityValidator: validate roots under project boundary; reject absolute roots outside.
@@ -79,11 +172,14 @@ Implementation Notes
 - For large sets, write file list to a temporary file; pass via rg --files-from.
 - Enforce caps and timeouts at both subprocess level (rg --timeout) and asyncio wait_for.
 - Windows/macOS/Linux compatible; ensure UTF-8 I/O; no color codes.
+- Encoding normalization applied before ripgrep command construction.
 
 Testing Strategy
 - Unit tests: argument validation, boundary checks, flag mapping, JSON parsing.
 - Mocked subprocess for fd/rg happy-path and error-path.
 - Integration smoke test gated by environment (skipped on CI if binaries missing).
+- Encoding normalization tests: verify correct mapping of encoding names.
+- International file tests: validate Shift_JIS, Latin-1, GBK file processing.
 
 Version Bounds
 - fd ≥ 10.x; ripgrep ≥ 13.x. Tools degrade gracefully with clear error messages if missing.
