@@ -64,6 +64,11 @@ async def run_command_capture(
     Returns (returncode, stdout, stderr). On timeout, kills process and returns 124.
     Separated into a util for easy monkeypatching in tests.
     """
+    # Log the command being executed for debugging
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.debug(f"Executing command: {' '.join(cmd)}")
+    
     # Create process
     proc = await asyncio.create_subprocess_exec(
         *cmd,
@@ -172,6 +177,76 @@ def normalize_max_filesize(user_value: str | None) -> str:
     return user_value
 
 
+def normalize_encoding_name(encoding: str | None) -> str | None:
+    """
+    Normalize encoding name for ripgrep compatibility.
+    
+    Args:
+        encoding: User-provided encoding name
+        
+    Returns:
+        Normalized encoding name that ripgrep can understand
+    """
+    if not encoding:
+        return None
+    
+    # Convert to lowercase for comparison and strip whitespace
+    encoding_lower = encoding.lower().strip()
+    
+    # Return None if empty after stripping
+    if not encoding_lower:
+        return None
+    
+    # Common encoding name mappings for ripgrep compatibility
+    encoding_mappings = {
+        # Shift_JIS variants
+        "shift_jis": "shift-jis",
+        "shift-jis": "shift-jis",
+        "sjis": "shift-jis",
+        "cp932": "shift-jis",
+        "windows-31j": "shift-jis",
+        
+        # UTF variants
+        "utf-8": "utf-8",
+        "utf8": "utf-8",
+        "utf-16": "utf-16",
+        "utf16": "utf-16",
+        "utf-16le": "utf-16le",
+        "utf-16be": "utf-16be",
+        
+        # Latin variants
+        "latin1": "latin1",
+        "latin-1": "latin1",
+        "iso-8859-1": "latin1",
+        "cp1252": "latin1",
+        
+        # ASCII
+        "ascii": "ascii",
+        "us-ascii": "ascii",
+        
+        # Chinese
+        "gbk": "gbk",
+        "gb2312": "gbk",
+        "gb18030": "gbk",
+        
+        # Japanese
+        "euc-jp": "euc-jp",
+        "eucjp": "euc-jp",
+        
+        # Korean
+        "euc-kr": "euc-kr",
+        "euckr": "euc-kr",
+    }
+    
+    # Try to find a mapping
+    normalized = encoding_mappings.get(encoding_lower)
+    if normalized:
+        return normalized
+    
+    # If no mapping found, return the original (ripgrep might still understand it)
+    return encoding
+
+
 def build_rg_command(
     *,
     query: str,
@@ -192,14 +267,17 @@ def build_rg_command(
     timeout_ms: int | None,
     roots: list[str] | None,
     files_from: str | None,
+    files: list[str] | None = None,
     count_only_matches: bool = False,
 ) -> list[str]:
     """Build ripgrep command with JSON output and options."""
     if count_only_matches:
-        # Use --count-matches for count-only mode (no JSON output)
+        # Use --count for count-only mode (no JSON output)
+        # --with-filename ensures we get "filename:count" format for parsing
         cmd: list[str] = [
             "rg",
             "--count-matches",
+            "--with-filename",
             "--no-heading",
             "--color",
             "never",
@@ -253,8 +331,10 @@ def build_rg_command(
         cmd += ["-B", str(context_before)]
     if context_after is not None:
         cmd += ["-A", str(context_after)]
-    if encoding:
-        cmd += ["--encoding", encoding]
+    # Normalize encoding name for ripgrep compatibility
+    normalized_encoding = normalize_encoding_name(encoding)
+    if normalized_encoding:
+        cmd += ["--encoding", normalized_encoding]
     if max_count is not None:
         cmd += ["-m", str(max_count)]
 
@@ -270,9 +350,12 @@ def build_rg_command(
     # Query must be last before roots/files
     cmd.append(query)
 
+    # Handle files mode - add specific files directly
+    if files:
+        cmd += files
     # Skip --files-from flag as it's not supported in this ripgrep version
     # Use roots instead for compatibility
-    if roots:
+    elif roots:
         cmd += roots
     # Note: files_from functionality is disabled for compatibility
 

@@ -1,0 +1,5 @@
+TESTSTRING found here
+これはShift_JISエンコーディングのテストファイルです。
+TESTSTRING が含まれています。
+日本語のテキストです。
+Another TESTSTRING here

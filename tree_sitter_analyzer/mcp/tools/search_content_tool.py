@@ -353,31 +353,18 @@ Choose output format parameters based on your needs to minimize token usage and 
         )
         timeout_ms = arguments.get("timeout_ms")
 
-        # Note: --files-from is not supported in this ripgrep version
-        # For files mode, we'll search in the parent directories of the files
-        # and use glob patterns to restrict search to specific files
+        # For files mode, we'll pass the files directly to ripgrep
+        # instead of using glob patterns which can be unreliable
         if files:
-            # Extract unique parent directories from file paths
-            parent_dirs = set()
-            file_globs = []
+            # Convert relative paths to absolute paths for ripgrep
+            resolved_files = []
             for file_path in files:
                 resolved = self.path_resolver.resolve(file_path)
-                parent_dir = str(Path(resolved).parent)
-                parent_dirs.add(parent_dir)
-
-                # Create glob pattern for this specific file
-                file_name = Path(resolved).name
-                # Escape special characters in filename for glob pattern
-                escaped_name = file_name.replace("[", "[[]").replace("]", "[]]")
-                file_globs.append(escaped_name)
-
-            # Use parent directories as roots for compatibility
-            roots = list(parent_dirs)
-
-            # Add file-specific glob patterns to include_globs
-            if not arguments.get("include_globs"):
-                arguments["include_globs"] = []
-            arguments["include_globs"].extend(file_globs)
+                resolved_files.append(resolved)
+            
+            # Set roots to None and use resolved_files directly
+            roots = None
+            files = resolved_files
 
         # Check for count-only mode (total_only also requires count mode)
         total_only = bool(arguments.get("total_only", False))
@@ -406,7 +393,7 @@ Choose output format parameters based on your needs to minimize token usage and 
                     f"Auto-enabled --no-ignore due to .gitignore interference: {detection_info['reason']}"
                 )
 
-        # Roots mode
+        # Build ripgrep command
         cmd = fd_rg_utils.build_rg_command(
             query=arguments["query"],
             case=arguments.get("case", "smart"),
@@ -426,8 +413,16 @@ Choose output format parameters based on your needs to minimize token usage and 
             timeout_ms=timeout_ms,
             roots=roots,
             files_from=None,
+            files=files,  # Pass files directly to ripgrep
             count_only_matches=count_only_matches,
         )
+
+        # Log encoding information for debugging
+        if arguments.get("encoding"):
+            original_encoding = arguments.get("encoding")
+            normalized_encoding = fd_rg_utils.normalize_encoding_name(original_encoding)
+            if original_encoding != normalized_encoding:
+                logger.info(f"Normalized encoding '{original_encoding}' to '{normalized_encoding}' for ripgrep compatibility")
 
         started = time.time()
         rc, out, err = await fd_rg_utils.run_command_capture(cmd, timeout_ms=timeout_ms)
