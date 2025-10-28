@@ -458,10 +458,13 @@ def validate_file(file_path: str | Path) -> dict[str, Any]:
             result["errors"].append("File does not exist")
             return result
 
-        # Check if file is readable
+        # Check if file is readable using safe encoding detection
         try:
-            with open(file_path, encoding="utf-8") as f:
-                f.read(100)  # Read first 100 chars to test
+            from .encoding_utils import read_file_safe
+            # Try to read first 100 characters with automatic encoding detection
+            content, detected_encoding = read_file_safe(file_path)
+            if len(content) > 100:
+                content = content[:100]  # Limit to first 100 chars for validation
             result["readable"] = True
             result["size"] = file_path.stat().st_size
         except Exception as e:

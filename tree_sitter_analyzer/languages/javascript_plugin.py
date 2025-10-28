@@ -1442,8 +1442,9 @@ class JavaScriptPlugin(LanguagePlugin):
             )
 
         try:
-            with open(file_path, encoding="utf-8") as f:
-                source_code = f.read()
+            # Read file content using safe encoding detection
+            from ..encoding_utils import read_file_safe
+            source_code, detected_encoding = read_file_safe(file_path)
 
             parser = tree_sitter.Parser()
             parser.language = language

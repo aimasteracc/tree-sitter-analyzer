@@ -65,8 +65,9 @@ class AnalyzeScaleTool(BaseMCPTool):
             Dictionary containing file metrics
         """
         try:
-            with open(file_path, encoding="utf-8") as f:
-                content = f.read()
+            # Read file content using safe encoding detection
+            from ...encoding_utils import read_file_safe
+            content, detected_encoding = read_file_safe(file_path)
 
             lines = content.split("\n")
             total_lines = len(lines)

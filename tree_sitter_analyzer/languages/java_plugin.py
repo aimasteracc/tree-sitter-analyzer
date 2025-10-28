@@ -1175,9 +1175,9 @@ class JavaPlugin(LanguagePlugin):
 
             log_debug(f"Java Plugin: Starting analysis of {file_path}")
 
-            # Read file content
-            with open(file_path, encoding="utf-8") as f:
-                source_code = f.read()
+            # Read file content using safe encoding detection
+            from ..encoding_utils import read_file_safe
+            source_code, detected_encoding = read_file_safe(file_path)
 
             log_debug(f"Java Plugin: Read {len(source_code)} characters from file")
 
