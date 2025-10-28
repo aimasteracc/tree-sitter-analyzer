@@ -9,7 +9,7 @@ if (Test-Path $logFile) {
     $infoCount = ($content | Where-Object { $_ -match " - INFO - " }).Count
     $warningCount = ($content | Where-Object { $_ -match " - WARNING - " }).Count
     $errorCount = ($content | Where-Object { $_ -match " - ERROR - " }).Count
-    
+
     Write-Host "  DEBUG: $debugCount"
     Write-Host "  INFO: $infoCount"
     Write-Host "  WARNING: $warningCount"
@@ -32,7 +32,7 @@ foreach ($dir in @("test_logs_debug", "test_logs_info", "test_logs_warning", "te
         $infoCount = ($content | Where-Object { $_ -match " - INFO - " }).Count
         $warningCount = ($content | Where-Object { $_ -match " - WARNING - " }).Count
         $errorCount = ($content | Where-Object { $_ -match " - ERROR - " }).Count
-        
+
         Write-Host "  DEBUG: $debugCount"
         Write-Host "  INFO: $infoCount"
         Write-Host "  WARNING: $warningCount"

@@ -1,31 +1,29 @@
 # run_test.py
 import sys
-from tree_sitter_analyzer.api import (
-    analyze_file,
-    execute_query,
-    validate_file,
-)
+
+from tree_sitter_analyzer.api import analyze_file, execute_query, validate_file
 from tree_sitter_analyzer.utils import (
-    setup_logger,
     log_debug,
+    log_error,
     log_info,
     log_warning,
-    log_error,
+    setup_logger,
 )
 
 # ロガーを再セットアップして、環境変数の変更を確実に反映させる
-log_level = "DEBUG" # テスト中は全てのログを拾えるようにする
+log_level = "DEBUG"  # テスト中は全てのログを拾えるようにする
 logger = setup_logger(level=log_level)
+
 
 def run_mcp_tools():
     """MCPツールを実行してログを生成する"""
     # Javaファイルをテスト対象として使用
     java_files = [
         "examples/BigService.java",
-        "examples/MultiClass.java", 
-        "examples/Sample.java"
+        "examples/MultiClass.java",
+        "examples/Sample.java",
     ]
-    
+
     for file_path in java_files:
         log_info(f"--- Starting MCP tool tests for {file_path} ---")
 
@@ -46,11 +44,14 @@ def run_mcp_tools():
             log_debug(f"Scale result type: {type(scale_result)}")
 
         except Exception as e:
-            log_error(f"An error occurred during MCP tool execution for {file_path}: {e}")
+            log_error(
+                f"An error occurred during MCP tool execution for {file_path}: {e}"
+            )
 
         log_warning(f"This is a test warning message for {file_path}.")
         log_error(f"This is a test error message for {file_path}.")
         log_info(f"--- MCP tool tests finished for {file_path} ---")
+
 
 def run_single_file_test(file_path="examples/BigService.java"):
     """単一ファイルでのテスト（デフォルトはBigService.java）"""
@@ -76,9 +77,10 @@ def run_single_file_test(file_path="examples/BigService.java"):
     except Exception as e:
         log_error(f"An error occurred during single file test for {file_path}: {e}")
 
-    log_warning(f"This is a test warning message for single file test.")
-    log_error(f"This is a test error message for single file test.")
+    log_warning("This is a test warning message for single file test.")
+    log_error("This is a test error message for single file test.")
     log_info(f"--- Single file test finished for {file_path} ---")
+
 
 if __name__ == "__main__":
     if len(sys.argv) > 1:

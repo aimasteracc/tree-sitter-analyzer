@@ -6,7 +6,7 @@
   "test_parameters": {
     "test_files": [
       "examples/BigService.java",
-      "examples/Sample.java", 
+      "examples/Sample.java",
       "examples/MultiClass.java"
     ],
     "iterations_per_case": 5,
@@ -72,7 +72,7 @@
       "result": "平均0.040秒で正常実行完了"
     },
     {
-      "step": "Case 2: ログ機能有効テスト", 
+      "step": "Case 2: ログ機能有効テスト",
       "method": "ログ環境変数設定 + analyze_file API呼び出し",
       "iterations": 5,
       "result": "平均0.029秒で正常実行完了"
