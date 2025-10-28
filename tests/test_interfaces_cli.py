@@ -426,20 +426,22 @@ class TestHandleLanguagesCommand:
         """Test languages command with extensions"""
         mock_args.extensions = True
 
-        with patch(
-            "tree_sitter_analyzer.interfaces.cli.api.get_supported_languages"
-        ) as mock_get_langs:
-            with patch(
+        with (
+            patch(
+                "tree_sitter_analyzer.interfaces.cli.api.get_supported_languages"
+            ) as mock_get_langs,
+            patch(
                 "tree_sitter_analyzer.interfaces.cli.api.get_file_extensions"
-            ) as mock_get_exts:
-                mock_get_langs.return_value = ["python"]
-                mock_get_exts.return_value = [".py"]
+            ) as mock_get_exts,
+        ):
+            mock_get_langs.return_value = ["python"]
+            mock_get_exts.return_value = [".py"]
 
-                with patch("builtins.print"):
-                    result = handle_languages_command(mock_args)
+            with patch("builtins.print"):
+                result = handle_languages_command(mock_args)
 
-                assert result == 0
-                mock_get_exts.assert_called_with("python")
+            assert result == 0
+            mock_get_exts.assert_called_with("python")
 
     def test_handle_languages_command_json_output(self, mock_args: Mock) -> None:
         """Test languages command with JSON output"""
@@ -519,22 +521,24 @@ class TestHandleQueriesCommand:
 
     def test_handle_queries_command_success(self, mock_args: Mock) -> None:
         """Test successful queries command"""
-        with patch(
-            "tree_sitter_analyzer.interfaces.cli.api.is_language_supported"
-        ) as mock_is_supported:
-            with patch(
+        with (
+            patch(
+                "tree_sitter_analyzer.interfaces.cli.api.is_language_supported"
+            ) as mock_is_supported,
+            patch(
                 "tree_sitter_analyzer.interfaces.cli.api.get_available_queries"
-            ) as mock_get_queries:
-                mock_is_supported.return_value = True
-                mock_get_queries.return_value = ["functions", "classes"]
+            ) as mock_get_queries,
+        ):
+            mock_is_supported.return_value = True
+            mock_get_queries.return_value = ["functions", "classes"]
 
-                with patch("builtins.print") as mock_print:
-                    result = handle_queries_command(mock_args)
+            with patch("builtins.print") as mock_print:
+                result = handle_queries_command(mock_args)
 
-                assert result == 0
-                mock_is_supported.assert_called_with("python")
-                mock_get_queries.assert_called_with("python")
-                mock_print.assert_called()
+            assert result == 0
+            mock_is_supported.assert_called_with("python")
+            mock_get_queries.assert_called_with("python")
+            mock_print.assert_called()
 
     def test_handle_queries_command_unsupported_language(self, mock_args: Mock) -> None:
         """Test queries command with unsupported language"""
@@ -631,67 +635,75 @@ class TestMainFunction:
         """Test main function with analyze command"""
         test_args = ["analyze", "test.py"]
 
-        with patch("sys.argv", ["cli"] + test_args):
-            with patch(
+        with (
+            patch("sys.argv", ["cli"] + test_args),
+            patch(
                 "tree_sitter_analyzer.interfaces.cli.handle_analyze_command"
-            ) as mock_handle:
-                mock_handle.return_value = 0
+            ) as mock_handle,
+        ):
+            mock_handle.return_value = 0
 
-                result = main()
+            result = main()
 
-                assert result == 0
-                mock_handle.assert_called_once()
+            assert result == 0
+            mock_handle.assert_called_once()
 
     def test_main_no_command(self) -> None:
         """Test main function with no command"""
-        with patch("sys.argv", ["cli"]):
-            with patch(
+        with (
+            patch("sys.argv", ["cli"]),
+            patch(
                 "tree_sitter_analyzer.interfaces.cli.create_parser"
-            ) as mock_create_parser:
-                mock_parser = Mock()
-                mock_parser.parse_args.return_value = Mock(command=None)
-                mock_create_parser.return_value = mock_parser
+            ) as mock_create_parser,
+        ):
+            mock_parser = Mock()
+            mock_parser.parse_args.return_value = Mock(command=None)
+            mock_create_parser.return_value = mock_parser
 
-                result = main()
+            result = main()
 
-                assert result == 1
-                mock_parser.print_help.assert_called_once()
+            assert result == 1
+            mock_parser.print_help.assert_called_once()
 
     def test_main_with_verbose(self) -> None:
         """Test main function with verbose flag"""
         test_args = ["--verbose", "info"]
 
-        with patch("sys.argv", ["cli"] + test_args):
-            with patch(
+        with (
+            patch("sys.argv", ["cli"] + test_args),
+            patch(
                 "tree_sitter_analyzer.interfaces.cli.handle_info_command"
-            ) as mock_handle:
-                with patch("logging.getLogger") as mock_get_logger:
-                    mock_logger = Mock()
-                    mock_get_logger.return_value = mock_logger
-                    mock_handle.return_value = 0
+            ) as mock_handle,
+            patch("logging.getLogger") as mock_get_logger,
+        ):
+            mock_logger = Mock()
+            mock_get_logger.return_value = mock_logger
+            mock_handle.return_value = 0
 
-                    result = main()
+            result = main()
 
-                    assert result == 0
-                    mock_logger.setLevel.assert_called()
+            assert result == 0
+            mock_logger.setLevel.assert_called()
 
     def test_main_with_quiet(self) -> None:
         """Test main function with quiet flag"""
         test_args = ["--quiet", "info"]
 
-        with patch("sys.argv", ["cli"] + test_args):
-            with patch(
+        with (
+            patch("sys.argv", ["cli"] + test_args),
+            patch(
                 "tree_sitter_analyzer.interfaces.cli.handle_info_command"
-            ) as mock_handle:
-                with patch("logging.getLogger") as mock_get_logger:
-                    mock_logger = Mock()
-                    mock_get_logger.return_value = mock_logger
-                    mock_handle.return_value = 0
+            ) as mock_handle,
+            patch("logging.getLogger") as mock_get_logger,
+        ):
+            mock_logger = Mock()
+            mock_get_logger.return_value = mock_logger
+            mock_handle.return_value = 0
 
-                    result = main()
+            result = main()
 
-                    assert result == 0
-                    mock_logger.setLevel.assert_called()
+            assert result == 0
+            mock_logger.setLevel.assert_called()
 
 
 class TestEdgeCases:

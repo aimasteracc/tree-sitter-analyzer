@@ -168,7 +168,7 @@ async def _run(args: argparse.Namespace) -> int:
     try:
         result = await tool.execute(payload)
         output_data(result, args.output_format)
-        return 0 if (isinstance(result, dict) or isinstance(result, int)) else 0
+        return 0 if (isinstance(result, dict | int)) else 0
     except Exception as e:
         output_error(str(e))
         return 1

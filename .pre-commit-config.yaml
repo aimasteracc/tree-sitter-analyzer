@@ -53,7 +53,7 @@ repos:
     rev: 1.7.10
     hooks:
       - id: bandit
-        args: [-r, tree_sitter_analyzer/]
+        args: [-r, tree_sitter_analyzer/, -q]
         exclude: ^tests/
 
   # Import sorting

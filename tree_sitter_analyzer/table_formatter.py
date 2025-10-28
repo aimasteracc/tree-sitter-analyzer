@@ -71,10 +71,7 @@ class TableFormatter:
         if len(classes) == 1:
             # Single class: use package.ClassName format
             class_name = classes[0].get("name", "Unknown")
-            if package_name:
-                header = f"{package_name}.{class_name}"
-            else:
-                header = class_name
+            header = f"{package_name}.{class_name}" if package_name else class_name
         else:
             # Multiple classes or no classes: use filename or default
             file_path = data.get("file_path", "")

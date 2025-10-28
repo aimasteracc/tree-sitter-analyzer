@@ -51,9 +51,7 @@ class TestQueryService:
             patch(
                 "tree_sitter_analyzer.core.query_service.query_loader"
             ) as mock_loader,
-            patch(
-                "tree_sitter_analyzer.core.query_service.Query"
-            ) as mock_query_class,
+            patch("tree_sitter_analyzer.core.query_service.Query"),
             patch(
                 "tree_sitter_analyzer.core.query_service.QueryCursor"
             ) as mock_cursor_class,
@@ -104,9 +102,7 @@ class TestQueryService:
             patch(
                 "tree_sitter_analyzer.core.query_service.Parser"
             ) as mock_parser_class,
-            patch(
-                "tree_sitter_analyzer.core.query_service.Query"
-            ) as mock_query_class,
+            patch("tree_sitter_analyzer.core.query_service.Query"),
             patch(
                 "tree_sitter_analyzer.core.query_service.QueryCursor"
             ) as mock_cursor_class,
@@ -153,9 +149,7 @@ class TestQueryService:
             patch(
                 "tree_sitter_analyzer.core.query_service.query_loader"
             ) as mock_loader,
-            patch(
-                "tree_sitter_analyzer.core.query_service.Query"
-            ) as mock_query_class,
+            patch("tree_sitter_analyzer.core.query_service.Query"),
             patch(
                 "tree_sitter_analyzer.core.query_service.QueryCursor"
             ) as mock_cursor_class,

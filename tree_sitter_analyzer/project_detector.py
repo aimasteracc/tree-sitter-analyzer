@@ -94,10 +94,7 @@ class ProjectRootDetector:
         try:
             # Convert to absolute path and get directory
             abs_path = Path(file_path).resolve()
-            if abs_path.is_file():
-                start_dir = abs_path.parent
-            else:
-                start_dir = abs_path
+            start_dir = abs_path.parent if abs_path.is_file() else abs_path
 
             return self._traverse_upward(str(start_dir))
 

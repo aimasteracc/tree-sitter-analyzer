@@ -139,7 +139,9 @@ class TestSmartCacheOptimization:
         # With improved cache isolation, cross-format derivation may not work the same way
         # This is acceptable as long as cache hits work properly for same format
         # We'll test direct cache hits instead
-        assert result is None or (result["success"] is True and result["total_matches"] == 5)
+        assert result is None or (
+            result["success"] is True and result["total_matches"] == 5
+        )
 
     @pytest.mark.asyncio
     @patch("tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture")

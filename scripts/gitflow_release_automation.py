@@ -203,7 +203,7 @@ class GitFlowReleaseAutomation:
                     changelog_content = changelog_path.read_text(encoding="latin-1")
 
                 # Add new version entry
-                new_entry = f"""## [{new_version}] - {time.strftime('%Y-%m-%d')}
+                new_entry = f"""## [{new_version}] - {time.strftime("%Y-%m-%d")}
 
 ### Release: {self.version}
 

@@ -231,9 +231,7 @@ def upload_with_uv() -> bool:
             cmd = ["uv", "publish"]
             print("Running: uv publish (using .pypirc)")
 
-            result = subprocess.run(
-                cmd, capture_output=True, text=True
-            )  # nosec B607, B603
+            result = subprocess.run(cmd, capture_output=True, text=True)  # nosec B607, B603
 
             if result.returncode == 0:
                 print("✅ Successfully uploaded to PyPI using .pypirc!")
@@ -288,9 +286,7 @@ def upload_with_uv() -> bool:
         cmd = ["uv", "publish"]
         print("Running: uv publish (using token)")
 
-        result = subprocess.run(
-            cmd, env=env, capture_output=True, text=True
-        )  # nosec B607, B603
+        result = subprocess.run(cmd, env=env, capture_output=True, text=True)  # nosec B607, B603
 
         if result.returncode == 0:
             print("✅ Successfully uploaded to PyPI!")
@@ -383,11 +379,10 @@ def main():
 
     # Optional: Run tests
     run_tests_choice = input("\n🧪 Run tests before upload? (Y/n): ")
-    if run_tests_choice.lower() != "n":
-        if not run_tests():
-            response = input("\n❌ Tests failed. Continue anyway? (y/N): ")
-            if response.lower() != "y":
-                sys.exit(1)
+    if run_tests_choice.lower() != "n" and not run_tests():
+        response = input("\n❌ Tests failed. Continue anyway? (y/N): ")
+        if response.lower() != "y":
+            sys.exit(1)
 
     print(f"\n📋 Ready to upload tree-sitter-analyzer v{version}")
     print("✅ All checks passed (or skipped)")

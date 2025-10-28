@@ -429,9 +429,7 @@ class JavaScriptTableFormatter(BaseTableFormatter):
         # This would need more context from the parser
         # For now, return basic scope info
         kind = self._get_variable_kind(var)
-        if kind == "const":
-            return "block"
-        elif kind == "let":
+        if kind == "const" or kind == "let":
             return "block"
         elif kind == "var":
             return "function"

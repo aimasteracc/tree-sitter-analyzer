@@ -121,7 +121,7 @@ class PythonElementExtractor(ElementExtractor):
 
                 # Process matches to get class bodies
                 class_bodies = []
-                for pattern_index, captures_dict in matches:
+                for _pattern_index, captures_dict in matches:
                     for capture_name, nodes in captures_dict.items():
                         if capture_name == "class.body":
                             class_bodies.extend(nodes)
@@ -678,7 +678,7 @@ class PythonElementExtractor(ElementExtractor):
 
                     # Process matches to get statement nodes
                     statement_nodes = {}
-                    for pattern_index, captures_dict in matches:
+                    for _pattern_index, captures_dict in matches:
                         for capture_name, nodes in captures_dict.items():
                             if capture_name.endswith("statement"):
                                 import_type = capture_name.split(".")[0]
@@ -1136,6 +1136,7 @@ class PythonPlugin(LanguagePlugin):
         try:
             # Read file content using safe encoding detection
             from ..encoding_utils import read_file_safe
+
             source_code, detected_encoding = read_file_safe(file_path)
 
             parser = tree_sitter.Parser()
@@ -1202,7 +1203,7 @@ class PythonPlugin(LanguagePlugin):
             matches = list(cursor.matches(tree.root_node))
             # Convert matches to legacy format for compatibility
             captures = []
-            for pattern_index, captures_dict in matches:
+            for _pattern_index, captures_dict in matches:
                 for capture_name, nodes in captures_dict.items():
                     for node in nodes:
                         captures.append((node, capture_name))

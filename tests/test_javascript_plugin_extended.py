@@ -76,7 +76,9 @@ class TestJavaScriptElementExtractorExtended:
                 return "(a)"
             return ""
 
-        mocker.patch.object(extractor, '_get_node_text_optimized', side_effect=mock_get_text)
+        mocker.patch.object(
+            extractor, "_get_node_text_optimized", side_effect=mock_get_text
+        )
 
         function = extractor._extract_function_optimized(mock_node)
 
@@ -122,9 +124,9 @@ class TestJavaScriptElementExtractorExtended:
         mock_param_child.end_byte = 17
         mock_param_child.text = b"x"
         mock_params.children = [mock_param_child]
-        
+
         # Mock the _get_node_text_optimized method to return the parameter name
-        mocker.patch.object(extractor, '_get_node_text_optimized', return_value="x")
+        mocker.patch.object(extractor, "_get_node_text_optimized", return_value="x")
 
         mock_arrow_func.children = [mock_params]
         mock_declarator.children = [mock_identifier, mock_arrow_func]
@@ -229,13 +231,13 @@ class TestJavaScriptElementExtractorExtended:
         # Set up source code and content lines
         extractor.source_code = source_code
         extractor.content_lines = [source_code]
-        
+
         # Mock the node structure properly
         mock_node.type = "variable_declaration"
         mock_node.start_point = (0, 0)
         mock_node.end_point = (0, len(source_code))
         mock_identifier.text = b"myVar"
-        
+
         variables = extractor._extract_variable_optimized(mock_node)
 
         assert variables is not None
@@ -256,12 +258,12 @@ class TestJavaScriptElementExtractorExtended:
         # Set up source code and content lines
         extractor.source_code = "let;"
         extractor.content_lines = ["let;"]
-        
+
         # Mock the node structure properly
         mock_node.type = "variable_declaration"
         mock_node.start_point = (0, 0)
         mock_node.end_point = (0, 4)
-        
+
         variables = extractor._extract_variable_optimized(mock_node)
 
         assert variables == []
@@ -274,7 +276,7 @@ class TestJavaScriptElementExtractorExtended:
         # Set up source code and content lines
         extractor.source_code = "test"
         extractor.content_lines = ["test"]
-        
+
         # Mock the node structure properly
         mock_node.type = "variable_declaration"
         mock_node.end_point = (0, 4)
@@ -305,7 +307,7 @@ class TestJavaScriptElementExtractorExtended:
         # Set up source code and content lines
         extractor.source_code = source_code
         extractor.content_lines = [source_code]
-        
+
         imp = extractor._extract_import_info_simple(mock_node)
 
         assert imp is not None
@@ -336,7 +338,7 @@ class TestJavaScriptElementExtractorExtended:
         # Set up source code and content lines
         extractor.source_code = source_code
         extractor.content_lines = [source_code]
-        
+
         imp = extractor._extract_import_info_simple(mock_node)
 
         assert imp is not None
@@ -350,7 +352,7 @@ class TestJavaScriptElementExtractorExtended:
         # Set up source code and content lines
         extractor.source_code = "import;"
         extractor.content_lines = ["import;"]
-        
+
         imp = extractor._extract_import_info_simple(mock_node)
 
         # The method may return an Import object with default values instead of None
@@ -364,7 +366,7 @@ class TestJavaScriptElementExtractorExtended:
         # Set up source code and content lines
         extractor.source_code = "test"
         extractor.content_lines = ["test"]
-        
+
         imp = extractor._extract_import_info_simple(mock_node)
 
         assert imp is None

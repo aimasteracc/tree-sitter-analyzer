@@ -300,7 +300,7 @@ class CacheService:
         with self._lock:
             # 各階層からパターンに一致するキーを削除
             for cache in [self._l1_cache, self._l2_cache, self._l3_cache]:
-                keys_to_remove = [key for key in cache.keys() if pattern in key]
+                keys_to_remove = [key for key in cache if pattern in key]
 
                 for key in keys_to_remove:
                     if key in cache:

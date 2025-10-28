@@ -357,7 +357,7 @@ class TestTableFormatterHelperMethods:
         method = sample_structure_data["methods"][1]  # publicMethod
         result = formatter._create_full_signature(method)
 
-        assert "(input:String, count:int):boolean [static]" == result
+        assert result == "(input:String, count:int):boolean [static]"
 
     def test_create_compact_signature(
         self, sample_structure_data: dict[str, Any]
@@ -367,7 +367,7 @@ class TestTableFormatterHelperMethods:
         method = sample_structure_data["methods"][1]  # publicMethod
         result = formatter._create_compact_signature(method)
 
-        assert "(S,i):b" == result
+        assert result == "(S,i):b"
 
     def test_shorten_type_basic_types(self) -> None:
         """Test type shortening for basic types"""

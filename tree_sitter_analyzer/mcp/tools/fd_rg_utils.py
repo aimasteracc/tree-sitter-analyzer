@@ -10,11 +10,15 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+from tree_sitter_analyzer.encoding_utils import EncodingManager
+from tree_sitter_analyzer.mcp.utils.search_cache import get_default_cache
 
 # Safety caps (hard limits)
 MAX_RESULTS_HARD_CAP = 10000
@@ -66,9 +70,10 @@ async def run_command_capture(
     """
     # Log the command being executed for debugging
     import logging
+
     logger = logging.getLogger(__name__)
     logger.debug(f"Executing command: {' '.join(cmd)}")
-    
+
     # Create process
     proc = await asyncio.create_subprocess_exec(
         *cmd,
@@ -86,7 +91,7 @@ async def run_command_capture(
         stdout, stderr = await asyncio.wait_for(
             proc.communicate(input=input_data), timeout=timeout_s
         )
-        return proc.returncode, stdout, stderr
+        return proc.returncode or 0, stdout, stderr
     except asyncio.TimeoutError:
         try:
             proc.kill()
@@ -180,23 +185,23 @@ def normalize_max_filesize(user_value: str | None) -> str:
 def normalize_encoding_name(encoding: str | None) -> str | None:
     """
     Normalize encoding name for ripgrep compatibility.
-    
+
     Args:
         encoding: User-provided encoding name
-        
+
     Returns:
         Normalized encoding name that ripgrep can understand
     """
     if not encoding:
         return None
-    
+
     # Convert to lowercase for comparison and strip whitespace
     encoding_lower = encoding.lower().strip()
-    
+
     # Return None if empty after stripping
     if not encoding_lower:
         return None
-    
+
     # Common encoding name mappings for ripgrep compatibility
     encoding_mappings = {
         # Shift_JIS variants
@@ -205,7 +210,6 @@ def normalize_encoding_name(encoding: str | None) -> str | None:
         "sjis": "shift-jis",
         "cp932": "shift-jis",
         "windows-31j": "shift-jis",
-        
         # UTF variants
         "utf-8": "utf-8",
         "utf8": "utf-8",
@@ -213,36 +217,31 @@ def normalize_encoding_name(encoding: str | None) -> str | None:
         "utf16": "utf-16",
         "utf-16le": "utf-16le",
         "utf-16be": "utf-16be",
-        
         # Latin variants
         "latin1": "latin1",
         "latin-1": "latin1",
         "iso-8859-1": "latin1",
         "cp1252": "latin1",
-        
         # ASCII
         "ascii": "ascii",
         "us-ascii": "ascii",
-        
         # Chinese
         "gbk": "gbk",
         "gb2312": "gbk",
         "gb18030": "gbk",
-        
         # Japanese
         "euc-jp": "euc-jp",
         "eucjp": "euc-jp",
-        
         # Korean
         "euc-kr": "euc-kr",
         "euckr": "euc-kr",
     }
-    
+
     # Try to find a mapping
     normalized = encoding_mappings.get(encoding_lower)
     if normalized:
         return normalized
-    
+
     # If no mapping found, return the original (ripgrep might still understand it)
     return encoding
 
@@ -274,7 +273,7 @@ def build_rg_command(
     if count_only_matches:
         # Use --count for count-only mode (no JSON output)
         # --with-filename ensures we get "filename:count" format for parsing
-        cmd: list[str] = [
+        cmd = [
             "rg",
             "--count-matches",
             "--with-filename",
@@ -284,7 +283,7 @@ def build_rg_command(
         ]
     else:
         # Use --json for full match details
-        cmd: list[str] = [
+        cmd = [
             "rg",
             "--json",
             "--no-heading",
@@ -331,10 +330,8 @@ def build_rg_command(
         cmd += ["-B", str(context_before)]
     if context_after is not None:
         cmd += ["-A", str(context_after)]
-    # Normalize encoding name for ripgrep compatibility
-    normalized_encoding = normalize_encoding_name(encoding)
-    if normalized_encoding:
-        cmd += ["--encoding", normalized_encoding]
+    # Encoding is now handled after command construction, as auto-detection needs the file list.
+    # We will pass the user-provided encoding to a new handler function.
     if max_count is not None:
         cmd += ["-m", str(max_count)]
 
@@ -603,7 +600,7 @@ def parse_rg_count_output(stdout_bytes: bytes) -> dict[str, int]:
 
 def extract_file_list_from_count_data(count_data: dict[str, int]) -> list[str]:
     """Extract file list from count data, excluding the special __total__ key."""
-    return [file_path for file_path in count_data.keys() if file_path != "__total__"]
+    return [file_path for file_path in count_data if file_path != "__total__"]
 
 
 def create_file_summary_from_count_data(count_data: dict[str, int]) -> dict[str, Any]:
@@ -630,7 +627,12 @@ class TempFileList:
     def __enter__(self) -> TempFileList:
         return self
 
-    def __exit__(self, exc_type, exc, tb) -> None:
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: object,
+    ) -> None:
         with contextlib.suppress(Exception):
             Path(self.path).unlink(missing_ok=True)
 
@@ -643,7 +645,12 @@ class contextlib:  # minimal shim for suppress without importing globally
         def __enter__(self) -> None:  # noqa: D401
             return None
 
-        def __exit__(self, exc_type, exc, tb) -> bool:
+        def __exit__(
+            self,
+            exc_type: type[BaseException] | None,
+            exc: BaseException | None,
+            tb: object,
+        ) -> bool:
             return exc_type is not None and issubclass(exc_type, self.exceptions)
 
 
@@ -653,3 +660,111 @@ def write_files_to_temp(files: list[str]) -> TempFileList:
     content = "\n".join(files)
     Path(temp_path).write_text(content, encoding="utf-8")
     return TempFileList(path=temp_path)
+
+
+async def _detect_and_get_encoding(file_path: str) -> str | None:
+    """Detect encoding for a single file, using a cache."""
+    logger = logging.getLogger(__name__)
+    cache = get_default_cache()
+
+    try:
+        stat = os.stat(file_path)
+        cache_key = f"encoding:{file_path}:{stat.st_mtime}"
+    except FileNotFoundError:
+        logger.warning(f"File not found during encoding detection: {file_path}")
+        return None
+
+    cached_encoding = cache.get(cache_key)
+    if cached_encoding:
+        logger.debug(f"Using cached encoding '{cached_encoding}' for {file_path}")
+        return str(cached_encoding)
+
+    try:
+        with open(file_path, "rb") as f:
+            sample = f.read(1024)  # Read 1KB sample
+
+        if not sample:
+            return None
+
+        encoding_manager = EncodingManager()
+        detected_encoding = await asyncio.to_thread(
+            encoding_manager.detect_encoding, sample
+        )
+
+        if detected_encoding:
+            logger.debug(f"Detected encoding '{detected_encoding}' for {file_path}")
+            cache.set(cache_key, detected_encoding)
+            return detected_encoding
+
+    except Exception as e:
+        logger.warning(f"Could not detect encoding for {file_path}: {e}")
+
+    return None
+
+
+async def apply_encoding_to_command(
+    cmd: list[str],
+    files: list[str] | None,
+    roots: list[str] | None,
+    user_encoding: str | None,
+) -> None:
+    """
+    Detects or uses specified encoding and applies it to the ripgrep command.
+    - If user_encoding is provided, it's normalized and used.
+    - If user_encoding is 'auto' or None, detection is attempted on the first valid file.
+    - Fallback is to not add any encoding flag, letting ripgrep decide.
+    """
+    logger = logging.getLogger(__name__)
+
+    if user_encoding and user_encoding.lower() != "auto":
+        normalized_encoding = normalize_encoding_name(user_encoding)
+        if normalized_encoding:
+            cmd += ["--encoding", normalized_encoding]
+            logger.debug(f"Using user-specified encoding: {normalized_encoding}")
+        return
+
+    # Auto-detection logic
+    detection_target = None
+    # Prioritize files list for detection if available
+    if files and files[0]:
+        detection_target = files[0]
+    elif roots:
+        try:
+            first_root_path = roots[0]
+            first_root = Path(first_root_path)
+            if first_root.is_dir():
+                # Use rglob to find the first file recursively
+                try:
+                    # Find first file, not directory
+                    for entry in first_root.rglob("*"):
+                        if entry.is_file():
+                            detection_target = str(entry)
+                            break
+                except StopIteration:
+                    pass  # No files in directory
+            elif first_root.is_file():
+                detection_target = str(first_root)
+        except (OSError, IndexError):
+            logger.debug(
+                "Could not determine a file from roots for encoding detection."
+            )
+            pass
+
+    if detection_target:
+        logger.debug(f"Attempting to detect encoding from: {detection_target}")
+        detected_encoding = await _detect_and_get_encoding(detection_target)
+        if detected_encoding:
+            normalized_encoding = normalize_encoding_name(detected_encoding)
+            if normalized_encoding:
+                cmd += ["--encoding", normalized_encoding]
+                logger.debug(
+                    f"Auto-detected and applied encoding: {normalized_encoding}"
+                )
+            else:
+                logger.debug("Auto-detected encoding was not normalizable for ripgrep.")
+        else:
+            logger.debug(
+                "Encoding detection did not return a result. Using ripgrep's default."
+            )
+    else:
+        logger.debug("No files or roots provided for auto-detection of encoding.")

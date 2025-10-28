@@ -26,17 +26,22 @@ class PythonTableFormatter(BaseTableFormatter):
         # Header - Python (module/package based)
         file_path = data.get("file_path", "Unknown")
         file_name = file_path.split("/")[-1].split("\\")[-1]
-        module_name = file_name.replace(".py", "").replace(".pyw", "").replace(".pyi", "")
+        module_name = (
+            file_name.replace(".py", "").replace(".pyw", "").replace(".pyi", "")
+        )
 
         # Check if this is a package module
         classes = data.get("classes", [])
         functions = data.get("functions", [])
         imports = data.get("imports", [])
-        
+
         # Determine module type
         is_package = "__init__.py" in file_name
-        is_script = any("if __name__ == '__main__'" in func.get("raw_text", "") for func in functions)
-        
+        is_script = any(
+            "if __name__ == '__main__'" in func.get("raw_text", "")
+            for func in functions
+        )
+
         if is_package:
             lines.append(f"# Package: {module_name}")
         elif is_script:
@@ -146,11 +151,17 @@ class PythonTableFormatter(BaseTableFormatter):
             lines.append("")
 
         # Methods - Python (with decorators and async support)
-        methods = data.get("methods", []) or functions  # Use functions if methods not available
+        methods = (
+            data.get("methods", []) or functions
+        )  # Use functions if methods not available
         if methods:
             lines.append("## Methods")
-            lines.append("| Method | Signature | Vis | Lines | Cols | Cx | Decorators | Doc |")
-            lines.append("|--------|-----------|-----|-------|------|----|-----------|----|")
+            lines.append(
+                "| Method | Signature | Vis | Lines | Cols | Cx | Decorators | Doc |"
+            )
+            lines.append(
+                "|--------|-----------|-----|-------|------|----|-----------|----|"
+            )
 
             for method in methods:
                 lines.append(self._format_method_row(method))
@@ -219,16 +230,16 @@ class PythonTableFormatter(BaseTableFormatter):
         """Format a method table row for Python"""
         name = str(method.get("name", ""))
         signature = self._format_python_signature(method)
-        
+
         # Python-specific visibility handling
         visibility = method.get("visibility", "public")
         if name.startswith("__") and name.endswith("__"):
             visibility = "magic"
         elif name.startswith("_"):
             visibility = "private"
-        
+
         vis_symbol = self._get_python_visibility_symbol(visibility)
-        
+
         line_range = method.get("line_range", {})
         if not line_range:
             start_line = method.get("start_line", 0)
@@ -236,22 +247,22 @@ class PythonTableFormatter(BaseTableFormatter):
             lines_str = f"{start_line}-{end_line}"
         else:
             lines_str = f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
-        
+
         cols_str = "5-6"  # default placeholder
         complexity = method.get("complexity_score", 0)
-        
+
         # Use docstring instead of javadoc
         doc = self._clean_csv_text(
             self._extract_doc_summary(str(method.get("docstring", "")))
         )
-        
+
         # Add decorators info
         decorators = method.get("modifiers", []) or method.get("decorators", [])
         decorator_str = self._format_decorators(decorators)
-        
+
         # Add async indicator
         async_indicator = "🔄" if method.get("is_async", False) else ""
-        
+
         return f"| {name}{async_indicator} | {signature} | {vis_symbol} | {lines_str} | {cols_str} | {complexity} | {decorator_str} | {doc} |"
 
     def _create_compact_signature(self, method: dict[str, Any]) -> str:
@@ -321,17 +332,17 @@ class PythonTableFormatter(BaseTableFormatter):
         source_code = data.get("source_code", "")
         if not source_code:
             return None
-            
+
         lines = source_code.split("\n")
         for i, line in enumerate(lines[:10]):  # Check first 10 lines
             stripped = line.strip()
             if stripped.startswith('"""') or stripped.startswith("'''"):
                 quote_type = '"""' if stripped.startswith('"""') else "'''"
-                
+
                 # Single line docstring
                 if stripped.count(quote_type) >= 2:
                     return stripped.replace(quote_type, "").strip()
-                
+
                 # Multi-line docstring
                 docstring_lines = [stripped.replace(quote_type, "")]
                 for j in range(i + 1, len(lines)):
@@ -340,9 +351,9 @@ class PythonTableFormatter(BaseTableFormatter):
                         docstring_lines.append(next_line.replace(quote_type, ""))
                         break
                     docstring_lines.append(next_line)
-                
+
                 return "\n".join(docstring_lines).strip()
-        
+
         return None
 
     def _format_python_signature(self, method: dict[str, Any]) -> str:
@@ -363,7 +374,7 @@ class PythonTableFormatter(BaseTableFormatter):
 
         params_str = ", ".join(param_strs)
         return_type = method.get("return_type", "")
-        
+
         if return_type and return_type != "Any":
             return f"({params_str}) -> {return_type}"
         else:
@@ -373,7 +384,7 @@ class PythonTableFormatter(BaseTableFormatter):
         """Get Python visibility symbol"""
         visibility_map = {
             "public": "🔓",
-            "private": "🔒", 
+            "private": "🔒",
             "protected": "🔐",
             "magic": "✨",
         }
@@ -383,18 +394,24 @@ class PythonTableFormatter(BaseTableFormatter):
         """Format Python decorators"""
         if not decorators:
             return "-"
-        
+
         # Show important decorators
-        important = ["property", "staticmethod", "classmethod", "dataclass", "abstractmethod"]
+        important = [
+            "property",
+            "staticmethod",
+            "classmethod",
+            "dataclass",
+            "abstractmethod",
+        ]
         shown_decorators = []
-        
+
         for dec in decorators:
             if any(imp in dec for imp in important):
                 shown_decorators.append(f"@{dec}")
-        
+
         if shown_decorators:
             return ", ".join(shown_decorators)
         elif len(decorators) == 1:
             return f"@{decorators[0]}"
         else:
-            return f"@{decorators[0]} (+{len(decorators)-1})"
+            return f"@{decorators[0]} (+{len(decorators) - 1})"

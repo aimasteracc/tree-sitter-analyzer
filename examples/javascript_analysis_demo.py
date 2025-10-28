@@ -303,7 +303,7 @@ def analyze_modern_javascript():
                     names_str = (
                         ", ".join(names)
                         if len(names) <= 3
-                        else f"{names[0]}, ... (+{len(names)-1})"
+                        else f"{names[0]}, ... (+{len(names) - 1})"
                     )
                     print(f"   • {names_str} from '{module_path}' ({import_type})")
                 if len(es6_imports) > 5:

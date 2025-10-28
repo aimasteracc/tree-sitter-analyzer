@@ -175,7 +175,9 @@ class LanguageLoader:
                     except Exception as inner_e:  # noqa: F841
                         raise
                 else:
-                    raise RuntimeError("Unsupported Parser API: no way to set language") from None
+                    raise RuntimeError(
+                        "Unsupported Parser API: no way to set language"
+                    ) from None
 
             # Cache and return
             self._parser_cache[language] = parser
@@ -198,7 +200,7 @@ class LanguageLoader:
         # 利用可能な言語のみを返す（効率化）
         return [
             lang
-            for lang in self.LANGUAGE_MODULES.keys()
+            for lang in self.LANGUAGE_MODULES
             if lang not in self._unavailable_languages
             and self.is_language_available(lang)
         ]

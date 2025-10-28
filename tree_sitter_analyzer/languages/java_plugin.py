@@ -683,18 +683,19 @@ class JavaElementExtractor(ElementExtractor):
             # Extract return type
             return_type = "void"
             for child in node.children:
-                if child.type in [
-                    "type_identifier",
-                    "void_type",
-                    "primitive_type",
-                    "integral_type",
-                    "boolean_type",
-                    "floating_point_type",
-                    "array_type",
-                ]:
-                    return_type = self._get_node_text_optimized(child)
-                    break
-                elif child.type == "generic_type":
+                if (
+                    child.type
+                    in [
+                        "type_identifier",
+                        "void_type",
+                        "primitive_type",
+                        "integral_type",
+                        "boolean_type",
+                        "floating_point_type",
+                        "array_type",
+                    ]
+                    or child.type == "generic_type"
+                ):
                     return_type = self._get_node_text_optimized(child)
                     break
 
@@ -1177,6 +1178,7 @@ class JavaPlugin(LanguagePlugin):
 
             # Read file content using safe encoding detection
             from ..encoding_utils import read_file_safe
+
             source_code, detected_encoding = read_file_safe(file_path)
 
             log_debug(f"Java Plugin: Read {len(source_code)} characters from file")

@@ -45,6 +45,8 @@ except ImportError:
         pass
 
 
+import contextlib
+
 from ..constants import (
     ELEMENT_TYPE_CLASS,
     ELEMENT_TYPE_FUNCTION,
@@ -292,6 +294,7 @@ class TreeSitterAnalyzerMCPServer:
         try:
             # Read file content using safe encoding detection
             from ..encoding_utils import read_file_safe
+
             content, detected_encoding = read_file_safe(file_path)
 
             lines = content.split("\n")
@@ -342,10 +345,12 @@ class TreeSitterAnalyzerMCPServer:
                     continue
 
                 # Check for other comment types based on language
-                if language == "python" and stripped.startswith("#"):
-                    comment_lines += 1
-                    continue
-                elif language == "sql" and stripped.startswith("--"):
+                if (
+                    language == "python"
+                    and stripped.startswith("#")
+                    or language == "sql"
+                    and stripped.startswith("--")
+                ):
                     comment_lines += 1
                     continue
                 elif language in ["html", "xml"] and stripped.startswith("<!--"):
@@ -592,10 +597,8 @@ class TreeSitterAnalyzerMCPServer:
                 ]
 
             except Exception as e:
-                try:
+                with contextlib.suppress(ValueError, OSError):
                     logger.error(f"Tool call error for {name}: {e}")
-                except (ValueError, OSError):
-                    pass  # Silently ignore logging errors during shutdown
                 return [
                     TextContent(
                         type="text",
@@ -644,10 +647,8 @@ class TreeSitterAnalyzerMCPServer:
                     raise ValueError(f"Resource not found: {uri}")
 
             except Exception as e:
-                try:
+                with contextlib.suppress(ValueError, OSError):
                     logger.error(f"Resource read error for {uri}: {e}")
-                except (ValueError, OSError):
-                    pass  # Silently ignore logging errors during shutdown
                 raise
 
         # Some clients may request prompts; explicitly return empty list
@@ -661,16 +662,12 @@ class TreeSitterAnalyzerMCPServer:
 
         except Exception as e:
             # If Prompt type is unavailable, log at debug level and continue safely
-            try:
+            with contextlib.suppress(ValueError, OSError):
                 logger.debug(f"Prompts API unavailable or incompatible: {e}")
-            except (ValueError, OSError):
-                pass
 
         self.server = server
-        try:
+        with contextlib.suppress(ValueError, OSError):
             logger.info("MCP server created successfully")
-        except (ValueError, OSError):
-            pass  # Silently ignore logging errors during shutdown
         return server
 
     def set_project_path(self, project_path: str) -> None:
@@ -700,10 +697,8 @@ class TreeSitterAnalyzerMCPServer:
         self.analysis_engine = get_analysis_engine(project_path)
         self.security_validator = SecurityValidator(project_path)
 
-        try:
+        with contextlib.suppress(ValueError, OSError):
             logger.info(f"Set project path to: {project_path}")
-        except (ValueError, OSError):
-            pass  # Silently ignore logging errors during shutdown
 
     async def run(self) -> None:
         """
@@ -723,10 +718,8 @@ class TreeSitterAnalyzerMCPServer:
             capabilities={"tools": {}, "resources": {}, "prompts": {}, "logging": {}},
         )
 
-        try:
+        with contextlib.suppress(ValueError, OSError):
             logger.info(f"Starting MCP server: {self.name} v{self.version}")
-        except (ValueError, OSError):
-            pass  # Silently ignore logging errors during shutdown
 
         try:
             async with stdio_server() as (read_stream, write_stream):
@@ -734,17 +727,13 @@ class TreeSitterAnalyzerMCPServer:
                 await server.run(read_stream, write_stream, options)
         except Exception as e:
             # Use safe logging to avoid I/O errors during shutdown
-            try:
+            with contextlib.suppress(ValueError, OSError):
                 logger.error(f"Server error: {e}")
-            except (ValueError, OSError):
-                pass  # Silently ignore logging errors during shutdown
             raise
         finally:
             # Safe cleanup
-            try:
+            with contextlib.suppress(ValueError, OSError):
                 logger.info("MCP server shutting down")
-            except (ValueError, OSError):
-                pass  # Silently ignore logging errors during shutdown
 
 
 def parse_mcp_args(args=None) -> argparse.Namespace:
@@ -805,12 +794,10 @@ async def main() -> None:
             or not PathClass(project_root).is_dir()
         ):
             detected = detect_project_root()
-            try:
+            with contextlib.suppress(ValueError, OSError):
                 logger.warning(
                     f"Invalid project root '{project_root}', falling back to auto-detected root: {detected}"
                 )
-            except (ValueError, OSError):
-                pass
             project_root = detected
 
         logger.info(f"MCP server starting with project root: {project_root}")
@@ -818,22 +805,16 @@ async def main() -> None:
         server = TreeSitterAnalyzerMCPServer(project_root)
         await server.run()
     except KeyboardInterrupt:
-        try:
+        with contextlib.suppress(ValueError, OSError):
             logger.info("Server stopped by user")
-        except (ValueError, OSError):
-            pass  # Silently ignore logging errors during shutdown
     except Exception as e:
-        try:
+        with contextlib.suppress(ValueError, OSError):
             logger.error(f"Server failed: {e}")
-        except (ValueError, OSError):
-            pass  # Silently ignore logging errors during shutdown
         sys.exit(1)
     finally:
         # Ensure clean shutdown
-        try:
+        with contextlib.suppress(ValueError, OSError):
             logger.info("MCP server shutdown complete")
-        except (ValueError, OSError):
-            pass  # Silently ignore logging errors during shutdown
 
 
 def main_sync() -> None:

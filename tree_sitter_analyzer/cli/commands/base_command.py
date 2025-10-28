@@ -89,15 +89,14 @@ class BaseCommand(ABC):
                     pass
 
         # Language support validation
-        if not is_language_supported(target_language):
-            if target_language != "java":
-                if (not hasattr(self.args, "table") or not self.args.table) and (
-                    not hasattr(self.args, "quiet") or not self.args.quiet
-                ):
-                    output_info(
-                        "INFO: Trying with Java analysis engine. May not work correctly."
-                    )
-                target_language = "java"  # Fallback
+        if not is_language_supported(target_language) and target_language != "java":
+            if (not hasattr(self.args, "table") or not self.args.table) and (
+                not hasattr(self.args, "quiet") or not self.args.quiet
+            ):
+                output_info(
+                    "INFO: Trying with Java analysis engine. May not work correctly."
+                )
+            target_language = "java"  # Fallback
 
         return str(target_language) if target_language else None
 

@@ -49,7 +49,7 @@ class LLMCodeChecker:
         Returns:
             True if no issues found, False otherwise
         """
-        if not file_path.suffix == ".py":
+        if file_path.suffix != ".py":
             return True
 
         self.files_checked += 1
@@ -283,13 +283,12 @@ class LLMCodeChecker:
             "log_info" not in content
             and "logger" not in content
             and "print(" in content
-        ):
-            if not str(file_path).endswith("test_*.py"):
-                self._add_issue(
-                    file_path,
-                    "print_statement",
-                    "Use logging instead of print statements",
-                )
+        ) and not str(file_path).endswith("test_*.py"):
+            self._add_issue(
+                file_path,
+                "print_statement",
+                "Use logging instead of print statements",
+            )
 
     def print_summary(self):
         """Print a summary of all issues found."""
@@ -342,10 +341,7 @@ def main():
 
     checker = LLMCodeChecker()
 
-    if args.check_all:
-        target_path = Path(".")
-    else:
-        target_path = Path(args.path)
+    target_path = Path(".") if args.check_all else Path(args.path)
 
     if not target_path.exists():
         print(f"{Colors.RED}Error: Path {target_path} does not exist{Colors.END}")

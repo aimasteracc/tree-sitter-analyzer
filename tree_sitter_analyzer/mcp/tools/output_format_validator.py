@@ -19,7 +19,7 @@ class OutputFormatValidator:
         "count_only_matches",
         "summary_only",
         "group_by_file",
-        "optimize_paths"
+        "optimize_paths",
     }
 
     # Token efficiency guidance for error messages
@@ -28,33 +28,33 @@ class OutputFormatValidator:
         "count_only_matches": "~50-200 tokens (file distribution analysis)",
         "summary_only": "~500-2000 tokens (initial investigation)",
         "group_by_file": "~2000-10000 tokens (context-aware review)",
-        "optimize_paths": "10-30% reduction (path compression)"
+        "optimize_paths": "10-30% reduction (path compression)",
     }
 
     def _detect_language(self) -> str:
         """Detect preferred language from environment."""
         # Check environment variables for language preference
-        lang = os.environ.get('LANG', '')
-        if lang.startswith('ja'):
-            return 'ja'
+        lang = os.environ.get("LANG", "")
+        if lang.startswith("ja"):
+            return "ja"
 
         # Check locale
         try:
             current_locale = locale.getlocale()[0]
-            if current_locale and current_locale.startswith('ja'):
-                return 'ja'
+            if current_locale and current_locale.startswith("ja"):
+                return "ja"
         except Exception:
             pass
 
         # Default to English
-        return 'en'
+        return "en"
 
     def _get_error_message(self, specified_formats: list[str]) -> str:
         """Generate localized error message with usage examples."""
         lang = self._detect_language()
         format_list = ", ".join(specified_formats)
 
-        if lang == 'ja':
+        if lang == "ja":
             # Japanese error message
             base_message = (
                 f"⚠️ 出力形式パラメータエラー: 複数指定できません: {format_list}\n\n"
@@ -72,8 +72,8 @@ class OutputFormatValidator:
                 "  • 初期調査: summary_only=true\n"
                 "  • 詳細レビュー: group_by_file=true\n"
                 "  • パス最適化: optimize_paths=true\n\n"
-                "❌ 間違った例: {\"total_only\": true, \"summary_only\": true}\n"
-                "✅ 正しい例: {\"total_only\": true}"
+                '❌ 間違った例: {"total_only": true, "summary_only": true}\n'
+                '✅ 正しい例: {"total_only": true}'
             )
         else:
             # English error message
@@ -93,8 +93,8 @@ class OutputFormatValidator:
                 "  • Initial investigation: summary_only=true\n"
                 "  • Detailed review: group_by_file=true\n"
                 "  • Path optimization: optimize_paths=true\n\n"
-                "❌ Incorrect: {\"total_only\": true, \"summary_only\": true}\n"
-                "✅ Correct: {\"total_only\": true}"
+                '❌ Incorrect: {"total_only": true, "summary_only": true}\n'
+                '✅ Correct: {"total_only": true}'
             )
 
         return base_message

@@ -461,6 +461,7 @@ def validate_file(file_path: str | Path) -> dict[str, Any]:
         # Check if file is readable using safe encoding detection
         try:
             from .encoding_utils import read_file_safe
+
             # Try to read first 100 characters with automatic encoding detection
             content, detected_encoding = read_file_safe(file_path)
             if len(content) > 100:

@@ -6,13 +6,13 @@ This module provides functionality to save analysis results to files with
 appropriate extensions based on content type, with security validation.
 """
 
+import contextlib
 import json
 import os
 import tempfile
 import threading
 import time
 from pathlib import Path
-from typing import Any
 
 from ...utils import setup_logger
 
@@ -25,12 +25,12 @@ class FileOutputManager:
     Manages file output for analysis results with automatic extension detection
     and security validation.
     """
-    
+
     # クラス変数で警告メッセージの重複を防ぐ（プロセス内のみ）
     _warning_messages_shown = set()
     # スレッド間の排他制御用ロック
     _warning_lock = threading.Lock()
-    
+
     # プロセス間共有用のファイルベース重複防止
     @staticmethod
     def _get_warning_lock_file(warning_key: str) -> Path:
@@ -38,16 +38,16 @@ class FileOutputManager:
         temp_dir = Path(tempfile.gettempdir())
         safe_key = warning_key.replace("/", "_").replace(":", "_").replace("\\", "_")
         return temp_dir / f"tree_sitter_analyzer_warning_{safe_key}.lock"
-    
+
     @staticmethod
     def _should_show_warning(warning_key: str, max_age_seconds: int = 300) -> bool:
         """
         プロセス間で警告表示の可否を判定
-        
+
         Args:
             warning_key: 警告キー
             max_age_seconds: ロックファイルの有効期間（秒）
-            
+
         Returns:
             警告を表示すべきかどうか
         """
@@ -56,10 +56,10 @@ class FileOutputManager:
             # プロセス内での重複チェック
             if warning_key in FileOutputManager._warning_messages_shown:
                 return False
-            
+
             # プロセス間での重複チェック
             lock_file = FileOutputManager._get_warning_lock_file(warning_key)
-            
+
             try:
                 # ロックファイルが存在し、有効期間内なら警告をスキップ
                 if lock_file.exists():
@@ -69,15 +69,13 @@ class FileOutputManager:
                         return False
                     else:
                         # 期限切れのロックファイルを削除
-                        try:
+                        with contextlib.suppress(OSError, FileNotFoundError):
                             lock_file.unlink()
-                        except (OSError, FileNotFoundError):
-                            pass
-                
+
                 # ロックファイルを排他的に作成して警告表示権を獲得
                 # 'x'モードは、ファイルが既に存在する場合FileExistsErrorを発生させる
                 try:
-                    with open(lock_file, 'x') as f:
+                    with open(lock_file, "x") as f:
                         f.write(str(time.time()))
                     FileOutputManager._warning_messages_shown.add(warning_key)
                     return True
@@ -85,8 +83,8 @@ class FileOutputManager:
                     # 別のプロセスが先にロックを獲得した
                     FileOutputManager._warning_messages_shown.add(warning_key)
                     return False
-                
-            except (OSError, IOError):
+
+            except OSError:
                 # ファイル操作に失敗した場合はフォールバック
                 # プロセス内のみの重複防止に戻る
                 FileOutputManager._warning_messages_shown.add(warning_key)
@@ -120,11 +118,13 @@ class FileOutputManager:
 
         # Priority 3: Current working directory as fallback
         self._output_path = str(Path.cwd())
-        
+
         # プロセス間で重複警告を防ぐ
         warning_key = f"fallback_path:{self._output_path}"
         if self._should_show_warning(warning_key):
-            logger.warning(f"Using current directory as output path: {self._output_path}")
+            logger.warning(
+                f"Using current directory as output path: {self._output_path}"
+            )
 
     def get_output_path(self) -> str:
         """
@@ -182,14 +182,18 @@ class FileOutputManager:
             if first_line_commas > 0:
                 # Check if at least 2 more lines have similar comma counts
                 similar_comma_lines = sum(
-                    1 for line in lines[1:4] if abs(line.count(",") - first_line_commas) <= 1
+                    1
+                    for line in lines[1:4]
+                    if abs(line.count(",") - first_line_commas) <= 1
                 )
                 if similar_comma_lines >= 1:
                     return "csv"
 
         # Check for Markdown (simple heuristic)
         markdown_indicators = ["#", "##", "###", "|", "```", "*", "-", "+"]
-        if any(content_stripped.startswith(indicator) for indicator in markdown_indicators):
+        if any(
+            content_stripped.startswith(indicator) for indicator in markdown_indicators
+        ):
             return "markdown"
 
         # Check for table format (pipe-separated)
@@ -216,7 +220,7 @@ class FileOutputManager:
             "json": ".json",
             "csv": ".csv",
             "markdown": ".md",
-            "text": ".txt"
+            "text": ".txt",
         }
         return extension_map.get(content_type, ".txt")
 
@@ -233,13 +237,15 @@ class FileOutputManager:
         """
         content_type = self.detect_content_type(content)
         extension = self.get_file_extension(content_type)
-        
+
         # Remove existing extension if present
         base_name_clean = Path(base_name).stem
-        
+
         return f"{base_name_clean}{extension}"
 
-    def save_to_file(self, content: str, filename: str | None = None, base_name: str | None = None) -> str:
+    def save_to_file(
+        self, content: str, filename: str | None = None, base_name: str | None = None
+    ) -> str:
         """
         Save content to file with automatic extension detection.
 
@@ -275,7 +281,7 @@ class FileOutputManager:
         try:
             with open(output_file, "w", encoding="utf-8") as f:
                 f.write(content)
-            
+
             logger.info(f"Content saved to file: {output_file}")
             return str(output_file)
 
@@ -295,7 +301,7 @@ class FileOutputManager:
         """
         try:
             path_obj = Path(path).resolve()
-            
+
             # Check if parent directory exists or can be created
             parent_dir = path_obj.parent
             if not parent_dir.exists():

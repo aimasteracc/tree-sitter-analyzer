@@ -314,9 +314,9 @@ class SearchCache:
             "summary_only": params.get("summary_only", False),
             "group_by_file": params.get("group_by_file", False),
             "optimize_paths": params.get("optimize_paths", False),
-            "max_count": params.get("max_count", None),
-            "context_before": params.get("context_before", None),
-            "context_after": params.get("context_after", None),
+            "max_count": params.get("max_count"),
+            "context_before": params.get("context_before"),
+            "context_after": params.get("context_after"),
         }
 
         # Create deterministic key

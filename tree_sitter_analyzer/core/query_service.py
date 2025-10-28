@@ -89,7 +89,7 @@ class QueryService:
 
             # Process match results (new API returns list of (pattern_index, captures_dict))
             results = []
-            for pattern_index, captures_dict in matches:
+            for _pattern_index, captures_dict in matches:
                 # captures_dict is {capture_name: [node1, node2, ...]}
                 for capture_name, nodes in captures_dict.items():
                     for node in nodes:

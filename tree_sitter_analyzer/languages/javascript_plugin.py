@@ -1146,7 +1146,7 @@ class JavaScriptElementExtractor(ElementExtractor):
 
             elif (
                 clean_text.startswith("export ")
-                and not clean_text == "invalid export statement"
+                and clean_text != "invalid export statement"
             ):
                 # Direct export (export function, export class, etc.)
                 # But skip obviously invalid statements
@@ -1186,10 +1186,7 @@ class JavaScriptElementExtractor(ElementExtractor):
 
     def _is_exported_class(self, class_name: str) -> bool:
         """Check if class is exported"""
-        for export in self.exports:
-            if class_name in export.get("names", []):
-                return True
-        return False
+        return any(class_name in export.get("names", []) for export in self.exports)
 
     def _infer_type_from_value(self, value: str | None) -> str:
         """Infer JavaScript type from value"""
@@ -1444,6 +1441,7 @@ class JavaScriptPlugin(LanguagePlugin):
         try:
             # Read file content using safe encoding detection
             from ..encoding_utils import read_file_safe
+
             source_code, detected_encoding = read_file_safe(file_path)
 
             parser = tree_sitter.Parser()

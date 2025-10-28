@@ -17,6 +17,8 @@ import pytest
 # プロジェクトルートをパスに追加
 sys.path.insert(0, ".")
 
+import contextlib
+
 from tree_sitter_analyzer.cli_main import main
 from tree_sitter_analyzer.core.analysis_engine import get_analysis_engine
 
@@ -376,10 +378,8 @@ def test_cli_structure_option_with_sample_file(mocker, sample_java_path):
     mocker.patch.object(sys, "argv", ["cli", sample_java_path, "--structure"])
     mock_stdout = mocker.patch("sys.stdout", new=StringIO())
 
-    try:
+    with contextlib.suppress(SystemExit):
         main()
-    except SystemExit:
-        pass
 
     output = mock_stdout.getvalue()
     assert "Structure Analysis Results" in output
@@ -421,10 +421,8 @@ def test_cli_structure_option_json_format(mocker, simple_java_code):
         )
         mock_stdout = mocker.patch("sys.stdout", new=StringIO())
 
-        try:
+        with contextlib.suppress(SystemExit):
             main()
-        except SystemExit:
-            pass
 
         output = mock_stdout.getvalue()
         assert "Structure Analysis Results" in output
@@ -982,10 +980,8 @@ def test_cli_structure_option_text_format(mocker, simple_java_code):
         )
         mock_stdout = mocker.patch("sys.stdout", new=StringIO())
 
-        try:
+        with contextlib.suppress(SystemExit):
             main()
-        except SystemExit:
-            pass
 
         output = mock_stdout.getvalue()
         assert "Structure Analysis Results" in output

@@ -138,7 +138,8 @@ Choose output format parameters based on your needs to minimize token usage and 
                     },
                     "encoding": {
                         "type": "string",
-                        "description": "Text encoding to assume for files. Default is auto-detect. Example: 'utf-8', 'latin1', 'ascii'",
+                        "description": "Text encoding to assume for files. Use 'auto' for auto-detection (default). Example: 'utf-8', 'latin1', 'shift-jis'",
+                        "default": "auto",
                     },
                     "max_count": {
                         "type": "integer",
@@ -361,7 +362,7 @@ Choose output format parameters based on your needs to minimize token usage and 
             for file_path in files:
                 resolved = self.path_resolver.resolve(file_path)
                 resolved_files.append(resolved)
-            
+
             # Set roots to None and use resolved_files directly
             roots = None
             files = resolved_files
@@ -417,12 +418,13 @@ Choose output format parameters based on your needs to minimize token usage and 
             count_only_matches=count_only_matches,
         )
 
-        # Log encoding information for debugging
-        if arguments.get("encoding"):
-            original_encoding = arguments.get("encoding")
-            normalized_encoding = fd_rg_utils.normalize_encoding_name(original_encoding)
-            if original_encoding != normalized_encoding:
-                logger.info(f"Normalized encoding '{original_encoding}' to '{normalized_encoding}' for ripgrep compatibility")
+        # Apply encoding to the command, auto-detecting if necessary
+        await fd_rg_utils.apply_encoding_to_command(
+            cmd,
+            files=files,
+            roots=roots or [],
+            user_encoding=arguments.get("encoding", "auto"),
+        )
 
         started = time.time()
         rc, out, err = await fd_rg_utils.run_command_capture(cmd, timeout_ms=timeout_ms)

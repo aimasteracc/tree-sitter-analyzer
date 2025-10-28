@@ -6,16 +6,14 @@ Provides logging, debugging, and common utility functions.
 """
 
 import atexit
+import contextlib
 import logging
-import os
 import sys
-import tempfile
 from functools import wraps
-from pathlib import Path
 from typing import Any
 
 # Import the new unified logging manager
-from .logging_manager import get_logger_manager, SafeStreamHandler
+from .logging_manager import get_logger_manager
 
 
 def setup_logger(
@@ -23,14 +21,14 @@ def setup_logger(
 ) -> logging.Logger:
     """
     Setup unified logger for the project using LoggerManager
-    
+
     This function now delegates to the LoggerManager for unified logging
     while maintaining backward compatibility with the existing API.
-    
+
     Args:
         name: Logger name
         level: Log level (string or int)
-        
+
     Returns:
         Configured logger instance
     """
@@ -59,18 +57,14 @@ def setup_safe_logging_shutdown() -> None:
                         logger.removeHandler(handler)
                     except Exception as e:
                         if hasattr(sys, "stderr") and hasattr(sys.stderr, "write"):
-                            try:
+                            with contextlib.suppress(Exception):
                                 sys.stderr.write(
                                     f"[logging_cleanup] handler close/remove skipped: {e}\n"
                                 )
-                            except Exception:
-                                ...
         except Exception as e:
             if hasattr(sys, "stderr") and hasattr(sys.stderr, "write"):
-                try:
+                with contextlib.suppress(Exception):
                     sys.stderr.write(f"[logging_cleanup] cleanup skipped: {e}\n")
-                except Exception:
-                    ...
 
     # Register cleanup function
     atexit.register(cleanup_logging)
@@ -90,10 +84,8 @@ def log_info(message: str, *args: Any, **kwargs: Any) -> None:
         logger.info(message, *args, **kwargs)
     except (ValueError, OSError) as e:
         if hasattr(sys, "stderr") and hasattr(sys.stderr, "write"):
-            try:
+            with contextlib.suppress(Exception):
                 sys.stderr.write(f"[log_info] suppressed: {e}\n")
-            except Exception:
-                ...
 
 
 def log_warning(message: str, *args: Any, **kwargs: Any) -> None:
@@ -102,10 +94,8 @@ def log_warning(message: str, *args: Any, **kwargs: Any) -> None:
         logger.warning(message, *args, **kwargs)
     except (ValueError, OSError) as e:
         if hasattr(sys, "stderr") and hasattr(sys.stderr, "write"):
-            try:
+            with contextlib.suppress(Exception):
                 sys.stderr.write(f"[log_warning] suppressed: {e}\n")
-            except Exception:
-                ...
 
 
 def log_error(message: str, *args: Any, **kwargs: Any) -> None:
@@ -114,10 +104,8 @@ def log_error(message: str, *args: Any, **kwargs: Any) -> None:
         logger.error(message, *args, **kwargs)
     except (ValueError, OSError) as e:
         if hasattr(sys, "stderr") and hasattr(sys.stderr, "write"):
-            try:
+            with contextlib.suppress(Exception):
                 sys.stderr.write(f"[log_error] suppressed: {e}\n")
-            except Exception:
-                ...
 
 
 def log_debug(message: str, *args: Any, **kwargs: Any) -> None:
@@ -126,10 +114,8 @@ def log_debug(message: str, *args: Any, **kwargs: Any) -> None:
         logger.debug(message, *args, **kwargs)
     except (ValueError, OSError) as e:
         if hasattr(sys, "stderr") and hasattr(sys.stderr, "write"):
-            try:
+            with contextlib.suppress(Exception):
                 sys.stderr.write(f"[log_debug] suppressed: {e}\n")
-            except Exception:
-                ...
 
 
 def suppress_output(func: Any) -> Any:
@@ -153,12 +139,10 @@ def suppress_output(func: Any) -> Any:
                 sys.stdout.close()
             except Exception as e:
                 if hasattr(sys, "stderr") and hasattr(sys.stderr, "write"):
-                    try:
+                    with contextlib.suppress(Exception):
                         sys.stderr.write(
                             f"[suppress_output] stdout close suppressed: {e}\n"
                         )
-                    except Exception:
-                        ...
             sys.stdout = old_stdout
 
         return result
@@ -209,10 +193,10 @@ def safe_print(message: str | None, level: str = "info", quiet: bool = False) ->
 def create_performance_logger(name: str) -> logging.Logger:
     """
     Create performance-focused logger using unified LoggerManager
-    
+
     Args:
         name: Base name for the performance logger
-        
+
     Returns:
         Configured performance logger
     """
@@ -244,16 +228,14 @@ def log_performance(
         perf_logger.debug(message)
     except (ValueError, OSError) as e:
         if hasattr(sys, "stderr") and hasattr(sys.stderr, "write"):
-            try:
+            with contextlib.suppress(Exception):
                 sys.stderr.write(f"[log_performance] suppressed: {e}\n")
-            except Exception:
-                ...
 
 
 def setup_performance_logger() -> logging.Logger:
     """
     Set up performance logging (unified with create_performance_logger)
-    
+
     Returns:
         Performance logger instance
     """

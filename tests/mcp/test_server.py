@@ -7,6 +7,7 @@ tool registration, and basic protocol compliance.
 """
 
 import asyncio
+import contextlib
 
 # Mock functionality now provided by pytest-mock
 import pytest
@@ -75,10 +76,8 @@ async def cleanup_event_loop():
                     if not task.done():
                         print(f"  Task {i} is still running: {task}")
                         # 強制終了を試行
-                        try:
+                        with contextlib.suppress(Exception):
                             task.cancel()
-                        except Exception:
-                            pass
 
 
 class TestMCPServerInitialization:

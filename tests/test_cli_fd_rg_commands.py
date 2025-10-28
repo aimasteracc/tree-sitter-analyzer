@@ -6,6 +6,7 @@ These tests monkeypatch the underlying MCP tools to avoid requiring
 actual fd/rg binaries and focus on argument mapping and outputs.
 """
 
+import contextlib
 import sys
 from io import StringIO
 
@@ -39,10 +40,8 @@ def test_list_files_cli_basic(monkeypatch, tmp_path):
     stdout = StringIO()
     monkeypatch.setattr("sys.stdout", stdout)
 
-    try:
+    with contextlib.suppress(SystemExit):
         list_files_cli.main()
-    except SystemExit:
-        pass
 
     out = stdout.getvalue()
     assert '"success": true' in out.lower()
@@ -80,10 +79,8 @@ def test_search_content_cli_total_only(monkeypatch, tmp_path):
     stdout = StringIO()
     monkeypatch.setattr("sys.stdout", stdout)
 
-    try:
+    with contextlib.suppress(SystemExit):
         search_content_cli.main()
-    except SystemExit:
-        pass
 
     out = stdout.getvalue().strip()
     # total_only prints a number via output_data -> json
@@ -128,10 +125,8 @@ def test_find_and_grep_cli_count_only(monkeypatch, tmp_path):
     stdout = StringIO()
     monkeypatch.setattr("sys.stdout", stdout)
 
-    try:
+    with contextlib.suppress(SystemExit):
         find_and_grep_cli.main()
-    except SystemExit:
-        pass
 
     out = stdout.getvalue().lower()
     assert '"count_only": true' in out

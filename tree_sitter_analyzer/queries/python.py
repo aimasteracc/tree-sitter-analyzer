@@ -726,10 +726,22 @@ ALL_QUERIES["functions"] = {
     "query": FUNCTIONS,
     "description": "Search all function definitions (including async)",
 }
-ALL_QUERIES["classes"] = {"query": CLASSES, "description": "Search all class definitions"}
-ALL_QUERIES["imports"] = {"query": IMPORTS, "description": "Search all import statements"}
-ALL_QUERIES["variables"] = {"query": VARIABLES, "description": "Search all variable assignments"}
-ALL_QUERIES["decorators"] = {"query": DECORATORS, "description": "Search all decorators"}
+ALL_QUERIES["classes"] = {
+    "query": CLASSES,
+    "description": "Search all class definitions",
+}
+ALL_QUERIES["imports"] = {
+    "query": IMPORTS,
+    "description": "Search all import statements",
+}
+ALL_QUERIES["variables"] = {
+    "query": VARIABLES,
+    "description": "Search all variable assignments",
+}
+ALL_QUERIES["decorators"] = {
+    "query": DECORATORS,
+    "description": "Search all decorators",
+}
 ALL_QUERIES["methods"] = {
     "query": METHODS,
     "description": "Search all method definitions within classes",
@@ -742,7 +754,10 @@ ALL_QUERIES["comprehensions"] = {
     "query": COMPREHENSIONS,
     "description": "Search list, dictionary, and set comprehensions",
 }
-ALL_QUERIES["comments"] = {"query": COMMENTS, "description": "Search comments and docstrings"}
+ALL_QUERIES["comments"] = {
+    "query": COMMENTS,
+    "description": "Search comments and docstrings",
+}
 ALL_QUERIES["type_hints"] = {
     "query": TYPE_HINTS,
     "description": "Search type hints and annotations",

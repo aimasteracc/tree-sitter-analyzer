@@ -159,18 +159,22 @@ class TestUtilsExtended(unittest.TestCase):
 
     def test_logging_context_manager(self):
         """Test logging context manager."""
-        with LoggingContext(level=logging.DEBUG):
-            with patch("tree_sitter_analyzer.utils.logger.debug") as mock_debug:
-                log_debug("test debug message")
-                mock_debug.assert_called_once()
+        with (
+            LoggingContext(level=logging.DEBUG),
+            patch("tree_sitter_analyzer.utils.logger.debug") as mock_debug,
+        ):
+            log_debug("test debug message")
+            mock_debug.assert_called_once()
 
     def test_logging_context_nesting(self):
         """Test nested logging contexts."""
-        with LoggingContext(level=logging.INFO):
-            with LoggingContext(level=logging.DEBUG):
-                with patch("tree_sitter_analyzer.utils.logger.debug") as mock_debug:
-                    log_debug("test debug message")
-                    mock_debug.assert_called_once()
+        with (
+            LoggingContext(level=logging.INFO),
+            LoggingContext(level=logging.DEBUG),
+            patch("tree_sitter_analyzer.utils.logger.debug") as mock_debug,
+        ):
+            log_debug("test debug message")
+            mock_debug.assert_called_once()
 
     def test_logging_context_level_change(self):
         """Test logging context level change."""
@@ -198,36 +202,42 @@ class TestUtilsExtended(unittest.TestCase):
 
     def test_logging_with_safe_print_integration(self):
         """Test integration between logging and safe print."""
-        with patch("tree_sitter_analyzer.utils.logger.info") as mock_logger:
-            with patch("tree_sitter_analyzer.utils.log_info") as mock_log_info:
-                log_info("test message")
-                safe_print("test message", level="info")
+        with (
+            patch("tree_sitter_analyzer.utils.logger.info") as mock_logger,
+            patch("tree_sitter_analyzer.utils.log_info") as mock_log_info,
+        ):
+            log_info("test message")
+            safe_print("test message", level="info")
 
-                mock_logger.assert_called_once()
-                mock_log_info.assert_called_once()
+            mock_logger.assert_called_once()
+            mock_log_info.assert_called_once()
 
     def test_all_logging_functions_work_together(self):
         """Test that all logging functions work together."""
-        with patch("tree_sitter_analyzer.utils.logger.info") as mock_info:
-            with patch("tree_sitter_analyzer.utils.logger.warning") as mock_warning:
-                with patch("tree_sitter_analyzer.utils.logger.error") as mock_error:
-                    with patch("tree_sitter_analyzer.utils.logger.debug") as mock_debug:
-                        log_info("info message")
-                        log_warning("warning message")
-                        log_error("error message")
-                        log_debug("debug message")
+        with (
+            patch("tree_sitter_analyzer.utils.logger.info") as mock_info,
+            patch("tree_sitter_analyzer.utils.logger.warning") as mock_warning,
+            patch("tree_sitter_analyzer.utils.logger.error") as mock_error,
+            patch("tree_sitter_analyzer.utils.logger.debug") as mock_debug,
+        ):
+            log_info("info message")
+            log_warning("warning message")
+            log_error("error message")
+            log_debug("debug message")
 
-                        mock_info.assert_called_once()
-                        mock_warning.assert_called_once()
-                        mock_error.assert_called_once()
-                        mock_debug.assert_called_once()
+            mock_info.assert_called_once()
+            mock_warning.assert_called_once()
+            mock_error.assert_called_once()
+            mock_debug.assert_called_once()
 
     def test_logging_context_with_safe_print(self):
         """Test logging context with safe print."""
-        with LoggingContext(level=logging.INFO):
-            with patch("tree_sitter_analyzer.utils.log_info") as mock_info:
-                safe_print("test message", level="info")
-                mock_info.assert_called_once()
+        with (
+            LoggingContext(level=logging.INFO),
+            patch("tree_sitter_analyzer.utils.log_info") as mock_info,
+        ):
+            safe_print("test message", level="info")
+            mock_info.assert_called_once()
 
     def test_edge_cases(self):
         """Test various edge cases."""

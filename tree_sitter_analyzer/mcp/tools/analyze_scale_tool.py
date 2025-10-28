@@ -67,6 +67,7 @@ class AnalyzeScaleTool(BaseMCPTool):
         try:
             # Read file content using safe encoding detection
             from ...encoding_utils import read_file_safe
+
             content, detected_encoding = read_file_safe(file_path)
 
             lines = content.split("\n")

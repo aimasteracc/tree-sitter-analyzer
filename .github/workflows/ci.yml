@@ -49,7 +49,7 @@ jobs:
             python-version: "3.10"
           - os: macos-13
             python-version: "3.10"
-    
+
     env:
       PYTHONIOENCODING: utf-8
       PYTHONUTF8: 1
@@ -69,7 +69,7 @@ jobs:
       run: |
         uv sync --all-extras
       shell: bash
-      
+
     - name: Verify installation (Windows specific check)
       if: matrix.os == 'windows-latest'
       run: |

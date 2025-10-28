@@ -1,5 +1,11 @@
 TESTSTRING found here
 これはShift_JISエンコーディングのテストファイルです。
 TESTSTRING が含まれています。
+ 10秒後に再検索します。
 日本語のテキストです。
 Another TESTSTRING here
+2025-08-06 19:10:45.731 DEBUG [com.example.app.data.mapper.common.UserDataMapper.selectByExample] [REQ-AAAA] <==      Total: 0
+2025-08-06 19:10:48.756 DEBUG [com.example.app.data.mapper.common.ProductMapper.selectByExample] [DB-AAAA] ==>  Preparing: select PROD_ID, PROD_NAME, PROD_CODE, PROD_CATEGORY, PROD_PRICE, PROD_STATUS, PROD_CREATED_DATE, PROD_UPDATED_DATE, PROD_DESCRIPTION, PROD_STOCK_QTY, PROD_MIN_STOCK, PROD_MAX_STOCK, PROD_SUPPLIER_ID, PROD_BRAND_ID, PROD_WEIGHT, PROD_DIMENSIONS, PROD_COLOR, PROD_SIZE, PROD_MATERIAL, PROD_WARRANTY, PROD_RATING, PROD_REVIEW_COUNT, PROD_DISCOUNT_RATE from PRODUCTS WHERE ( PROD_STATUS = ? )
+2025-08-06 19:10:49.263 DEBUG [com.example.app.service.SchedulerService.run] [TASK-AAAA] 10秒後に再検索します。
+2025-08-06 19:10:49.263 DEBUG [com.example.app.data.mapper.common.ProductMapper.selectByExample] [DB-AAAA] ==> Parameters: 1(String)
+2025-08-06 19:10:49.267 DEBUG [com.example.app.data.mapper.common.ProductMapper.selectByExample] [DB-AAAA] <==      Total: 0

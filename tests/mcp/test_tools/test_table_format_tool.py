@@ -382,6 +382,7 @@ public class TestClass {
 
         # Mock unified analysis engine
         from unittest.mock import AsyncMock
+
         mocker.patch.object(
             self.tool.analysis_engine,
             "analyze",
@@ -399,15 +400,13 @@ public class TestClass {
         # Mock file output manager
         mock_save_path = "/tmp/test_analysis.md"
         mocker.patch.object(
-            self.tool.file_output_manager,
-            "save_to_file",
-            return_value=mock_save_path
+            self.tool.file_output_manager, "save_to_file", return_value=mock_save_path
         )
 
         arguments = {
             "file_path": self.test_file_path,
             "format_type": "full",
-            "output_file": "test_analysis"
+            "output_file": "test_analysis",
         }
 
         result = await self.tool.execute(arguments)
@@ -424,8 +423,7 @@ public class TestClass {
 
         # Verify file output manager was called correctly
         self.tool.file_output_manager.save_to_file.assert_called_once_with(
-            content=table_output,
-            base_name="test_analysis"
+            content=table_output, base_name="test_analysis"
         )
 
     @pytest.mark.asyncio
@@ -466,6 +464,7 @@ public class TestClass {
 
         # Mock unified analysis engine
         from unittest.mock import AsyncMock
+
         mocker.patch.object(
             self.tool.analysis_engine,
             "analyze",
@@ -485,13 +484,13 @@ public class TestClass {
         mocker.patch.object(
             self.tool.file_output_manager,
             "save_to_file",
-            side_effect=OSError(error_message)
+            side_effect=OSError(error_message),
         )
 
         arguments = {
             "file_path": self.test_file_path,
             "format_type": "full",
-            "output_file": "test_analysis"
+            "output_file": "test_analysis",
         }
 
         result = await self.tool.execute(arguments)

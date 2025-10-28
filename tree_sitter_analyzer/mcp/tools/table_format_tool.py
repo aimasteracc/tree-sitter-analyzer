@@ -471,15 +471,14 @@ class TableFormatTool(BaseMCPTool):
 
                         # Save to file with automatic extension detection
                         saved_file_path = self.file_output_manager.save_to_file(
-                            content=table_output,
-                            base_name=base_name
+                            content=table_output, base_name=base_name
                         )
-                        
+
                         result["output_file_path"] = saved_file_path
                         result["file_saved"] = True
-                        
+
                         self.logger.info(f"Analysis output saved to: {saved_file_path}")
-                        
+
                     except Exception as e:
                         self.logger.error(f"Failed to save output to file: {e}")
                         result["file_save_error"] = str(e)

@@ -82,9 +82,8 @@ async def fetch_data(url: str) -> dict[str, any]:
     """Asynchronously fetch data from a URL."""
     import aiohttp
 
-    async with aiohttp.ClientSession() as session:
-        async with session.get(url) as response:
-            return await response.json()
+    async with aiohttp.ClientSession() as session, session.get(url) as response:
+        return await response.json()
 
 
 def process_animals(animals: list[Animal]) -> dict[str, list[str]]:

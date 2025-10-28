@@ -6,6 +6,7 @@ Tests to verify that the --quiet option correctly suppresses INFO level logs
 and only displays error messages.
 """
 
+import contextlib
 import logging
 import os
 import sys
@@ -125,10 +126,8 @@ public class Test {
                         from tree_sitter_analyzer.cli_main import main
 
                         # The main function should set LOG_LEVEL=ERROR when --quiet is present
-                        try:
+                        with contextlib.suppress(SystemExit):
                             main()
-                        except SystemExit:
-                            pass  # Expected due to sys.exit() in main()
 
                         # Check that LOG_LEVEL was set to ERROR
                         assert os.environ.get("LOG_LEVEL") == "ERROR"

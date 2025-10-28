@@ -99,10 +99,12 @@ class AdvancedCommand(BaseCommand):
                     continue
 
                 # Check for other comment types based on language
-                if language == "python" and stripped.startswith("#"):
-                    comment_lines += 1
-                    continue
-                elif language == "sql" and stripped.startswith("--"):
+                if (
+                    language == "python"
+                    and stripped.startswith("#")
+                    or language == "sql"
+                    and stripped.startswith("--")
+                ):
                     comment_lines += 1
                     continue
                 elif language in ["html", "xml"] and stripped.startswith("<!--"):
