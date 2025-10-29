@@ -385,6 +385,14 @@ class FindAndGrepTool(BaseMCPTool):
             or bool(arguments.get("total_only", False)),
         )
 
+        # Apply encoding to the command, auto-detecting if necessary
+        await fd_rg_utils.apply_encoding_to_command(
+            rg_cmd,
+            files=files,
+            roots=None,  # files are absolute, so no roots needed
+            user_encoding=arguments.get("encoding", "auto"),
+        )
+
         rg_started = time.time()
         rg_rc, rg_out, rg_err = await fd_rg_utils.run_command_capture(
             rg_cmd, timeout_ms=arguments.get("timeout_ms")
