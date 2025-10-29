@@ -456,6 +456,61 @@ def extract_text_slice(
     )
 
 
+def read_file_safe_streaming(file_path: str | Path):
+    """
+    Context manager for streaming file reading with automatic encoding detection.
+    
+    This function opens a file with the correct encoding detected from the file's
+    content and yields a file handle that can be used for line-by-line reading.
+    This is memory-efficient for large files as it doesn't load the entire content.
+    
+    Args:
+        file_path: Path to the file to read
+        
+    Yields:
+        File handle opened with the correct encoding
+        
+    Example:
+        with read_file_safe_streaming("large_file.txt") as f:
+            for line_num, line in enumerate(f, 1):
+                if line_num >= start_line:
+                    # Process line
+                    pass
+    """
+    import contextlib
+    
+    file_path = Path(file_path)
+    
+    # First, detect encoding by reading a small sample
+    try:
+        with open(file_path, "rb") as f:
+            # Read first 8KB to detect encoding
+            sample_data = f.read(8192)
+            
+        if not sample_data:
+            # Empty file, use default encoding
+            detected_encoding = EncodingManager.DEFAULT_ENCODING
+        else:
+            # Detect encoding from sample with file path for caching
+            detected_encoding = EncodingManager.detect_encoding(sample_data, str(file_path))
+            
+    except OSError as e:
+        log_warning(f"Failed to read file for encoding detection {file_path}: {e}")
+        raise e
+    
+    # Open file with detected encoding for streaming
+    @contextlib.contextmanager
+    def _file_context():
+        try:
+            with open(file_path, "r", encoding=detected_encoding, errors="replace") as f:
+                yield f
+        except OSError as e:
+            log_warning(f"Failed to open file for streaming {file_path}: {e}")
+            raise e
+    
+    return _file_context()
+
+
 def clear_encoding_cache() -> None:
     """Clear the global encoding cache"""
     _encoding_cache.clear()
