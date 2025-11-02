@@ -766,6 +766,13 @@ uv run pytest tests/test_mcp_server_initialization.py -v
 - **分析结果** - 关于项目分析报告和指标，请参见[docs/analysis/](docs/analysis/)
 - **功能规格** - 关于详细的功能规格和实施计划，请参见[specs/](specs/)
 
+### 📋 开发者必备文档
+
+**项目管理框架：**
+- **[变更管理快速指南](CHANGE_MANAGEMENT_GUIDE.md)** - PMP与OpenSpec使用决策指南
+- **[详细变更管理方针](docs/ja/project-management/05_変更管理方針.md)** - 完整的变更管理流程和模板
+- **[日语文档主页](docs/ja/README.md)** - PMP兼容文档系统的完整说明
+
 ### 🔄 MCP 兼容性测试
 对于使用多个 tree-sitter-analyzer 版本的开发者，我们提供了一个全面的兼容性测试框架，现已引入**智能JSON比较系统**。
 

@@ -756,12 +756,23 @@ The project maintains high-quality test coverage. For detailed module coverage i
 ## 9. 📚 Documentation & Support
 
 ### 📖 Complete Documentation
-This project provides complete documentation support, including:
+This project provides complete documentation support:
 
+#### 🎯 Essential Developer Documentation
+- **[Change Management Quick Guide](CHANGE_MANAGEMENT_GUIDE.md)** ⭐ - **PMP vs OpenSpec Usage Rules** (1-minute check)
+- **[PMP-Compliant Document System](docs/ja/README.md)** - Complete guide for project management, feature specifications, and test management
+  - [Project Charter](docs/ja/project-management/00_プロジェクト憲章.md) - Overall project vision
+  - [Change Management Policy](docs/ja/project-management/05_変更管理方針.md) - Detailed change management rules
+  - [Quality Management Plan](docs/ja/project-management/03_品質管理計画.md) - Quality standards and KPIs
+  - [Test Strategy](docs/ja/test-management/00_テスト戦略.md) - Testing approach (3,370+ cases)
+
+#### 📚 User Documentation
 - **Quick Start Guide** - See the [Quick Start](#3--quick-start) section of this README
 - **MCP Configuration Guide** - See the [AI Users Configuration](#31--ai-users-claude-desktop-cursor-etc) section
 - **CLI Usage Guide** - See the [Complete CLI Commands](#6--complete-cli-commands) section
 - **Core Features Documentation** - See the [Core Features](#7-️-core-features) section
+
+#### 🔧 Technical Documentation
 - **Contributing Guide** - See [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) for development guidelines and document management
 - **Analysis Results** - See [docs/analysis/](docs/analysis/) for project analysis reports and metrics
 - **Feature Specifications** - See [specs/](specs/) for detailed feature specifications and implementation plans

@@ -753,10 +753,21 @@ uv run pytest tests/test_mcp_server_initialization.py -v
 ### 📖 完全なドキュメント
 本プロジェクトは完全なドキュメントサポートを提供しています：
 
+#### 🎯 開発者向け重要ドキュメント
+- **[変更管理クイックガイド](CHANGE_MANAGEMENT_GUIDE.md)** ⭐ - **PMP vs OpenSpecの使い分けルール**（1分で確認）
+- **[PMP準拠ドキュメント体系](docs/ja/README.md)** - プロジェクト管理、機能仕様、テスト管理の完全ガイド
+  - [プロジェクト憲章](docs/ja/project-management/00_プロジェクト憲章.md) - プロジェクト全体像
+  - [変更管理方針](docs/ja/project-management/05_変更管理方針.md) - 変更管理の詳細ルール
+  - [品質管理計画](docs/ja/project-management/03_品質管理計画.md) - 品質基準とKPI
+  - [テスト戦略](docs/ja/test-management/00_テスト戦略.md) - テスト方針（3,370+ケース）
+
+#### 📚 ユーザー向けドキュメント
 - **クイックスタートガイド** - 本READMEの[クイックスタート](#3--クイックスタート)部分を参照
 - **MCP設定ガイド** - [AIユーザー設定](#31--aiユーザーclaude-desktopcursorなど)部分を参照
 - **CLI使用ガイド** - [完全なCLIコマンド](#6--完全なcliコマンド)部分を参照
 - **コア機能説明** - [コア機能](#7-️-コア機能)部分を参照
+
+#### 🔧 技術ドキュメント
 - **貢献ガイド** - 開発ガイドラインとドキュメント管理については[docs/CONTRIBUTING.md](docs/CONTRIBUTING.md)を参照
 - **分析結果** - プロジェクト分析レポートとメトリクスについては[docs/analysis/](docs/analysis/)を参照
 - **機能仕様** - 詳細な機能仕様と実装計画については[specs/](specs/)を参照

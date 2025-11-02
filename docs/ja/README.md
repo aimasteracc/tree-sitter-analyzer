@@ -35,6 +35,7 @@ docs/ja/
 | **PM-002** | [スコープ定義書](project-management/01_スコープ定義書.md) | 詳細スコープ、成果物、境界条件 | PM、開発チーム |
 | **PM-003** | [WBS](project-management/02_WBS.md) | 作業分解構造、タスク階層 | 開発チーム |
 | **PM-004** | [品質管理計画](project-management/03_品質管理計画.md) | 品質基準、QA活動、メトリクス | QA、全員 |
+| **PM-005** | [変更管理方針](project-management/05_変更管理方針.md) ⭐ | **PMP vs OpenSpecの使い分けルール** | **全員必読** |
 
 ### 主要内容
 
@@ -62,6 +63,13 @@ docs/ja/
 - テスト戦略
 - CI/CD統合
 - 継続的改善プロセス
+
+#### 変更管理方針（PM-005） ⭐ **重要**
+- **PMPとOpenSpecの使い分けルール**
+- 変更管理の基本原則
+- 判断フローチャート
+- 具体的な実践例
+- 四半期レビュープロセス
 
 ---
 
@@ -158,10 +166,11 @@ docs/ja/
 
 **新規開発者が読むべき順序:**
 1. [プロジェクト憲章](project-management/00_プロジェクト憲章.md) - プロジェクト全体像
-2. [システム概要](specifications/01_システム概要.md) - 技術アーキテクチャ
-3. [スコープ定義書](project-management/01_スコープ定義書.md) - 機能詳細
-4. `docs/developer_guide.md` - 開発環境セットアップ
-5. [テスト戦略](test-management/00_テスト戦略.md) - テスト方針
+2. [変更管理方針](project-management/05_変更管理方針.md) ⭐ - **変更の進め方**
+3. [システム概要](specifications/01_システム概要.md) - 技術アーキテクチャ
+4. [スコープ定義書](project-management/01_スコープ定義書.md) - 機能詳細
+5. `docs/developer_guide.md` - 開発環境セットアップ
+6. [テスト戦略](test-management/00_テスト戦略.md) - テスト方針
 
 ### 5.2 QA担当者向けナビゲーション
 
