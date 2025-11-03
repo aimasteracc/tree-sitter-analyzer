@@ -181,7 +181,7 @@ JAVA_QUERIES: dict[str, str] = {
     # --- Structural Information Extraction Queries ---
     "javadoc_comment": """
     (block_comment) @javadoc_comment
-    (#match? @javadoc_comment "^/\\*\\*")
+    (#match? @javadoc_comment "^/\\\\\\\\\\\\*\\\\\\\\\\\\*")
     """,
     "class_with_javadoc": """
     (class_declaration

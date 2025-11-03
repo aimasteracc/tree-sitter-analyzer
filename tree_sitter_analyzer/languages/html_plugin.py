@@ -167,13 +167,14 @@ class HtmlElementExtractor(ElementExtractor):
 
     def _is_html_element_node(self, node_type: str) -> bool:
         """Check if a node type represents an HTML element in tree-sitter-html grammar"""
+        # Only process top-level element nodes to avoid duplication
+        # tree-sitter-html structure: element contains start_tag/end_tag
+        # Processing only 'element' avoids counting start_tag separately
         html_element_types = [
             "element",
-            "start_tag",
             "self_closing_tag",
             "script_element",
             "style_element",
-            "void_element",
         ]
         return node_type in html_element_types
 
