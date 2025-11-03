@@ -141,7 +141,10 @@ rg --version
       "args": [
         "run", "--with", "tree-sitter-analyzer[mcp]",
         "python", "-m", "tree_sitter_analyzer.mcp.server"
-      ]
+      ],
+      "env": {
+        "TREE_SITTER_OUTPUT_PATH": "/absolute/path/to/output/directory"
+      }
     }
   }
 }
@@ -700,15 +703,14 @@ uv run python -m tree_sitter_analyzer --show-query-languages
 - **Zero test failures** - Production ready
 - **Cross-platform support** - Windows, macOS, Linux
 
-### ⚡ Latest Quality Achievements (v1.8.3)
-- ✅ **🔒 CLI Security Enhancement** - Fixed CLI mode security boundary errors, ensuring file access security
-- ✅ **✅ Argument Validation Improvement** - Implemented complete CLI argument validation system, preventing invalid parameter combinations
-- ✅ **🚫 Exclusive Parameter Control** - `--table` and `--query-key` parameters properly implement exclusive control
-- ✅ **🔍 Enhanced Filter Functionality** - `--query-key` with `--filter` combination usage fully supported
-- ✅ **⚠️ Error Message Optimization** - Provides clear and detailed error information, improving user experience
-- ✅ **🛡️ Project Boundary Protection** - Automatically detects and respects project boundaries, preventing access to sensitive files
-- ✅ **🧪 Test Environment Support** - Temporary directory access permission in test environments
-- ✅ **📋 User Experience Improvement** - More intuitive command-line interface and error handling mechanisms
+### ⚡ Latest Quality Achievements (v1.9.3)
+- ✅ **🎯 Complete Type Safety Achievement** - Reduced mypy errors from 317 to 0, achieving 100% type safety
+- ✅ **🔧 HTML Element Duplication Fix** - Resolved HTML element duplicate detection and Java regex pattern issues
+- ✅ **🧪 Complete Test Suite Success** - All 3,370 tests passing with zero failure rate
+- ✅ **📚 Multilingual Documentation System** - Significant expansion and refinement of Japanese project documentation
+- ✅ **🔄 Parallel Processing Engine Maintained** - search_content supports multi-directory parallel search with up to 4x performance boost
+- ✅ **�️ Enhanced Encoding Processing** - Implementation of automatic encoding detection and UTF-8 processing optimization
+- ✅ **🏗️ Project Management Framework** - Comprehensive project management system including Roo rules and coding checklist
 
 
 ### ⚙️ Running Tests
@@ -746,9 +748,9 @@ The project maintains high-quality test coverage. For detailed module coverage i
 **Verification environment:**
 - Operating systems: Windows 10, macOS, Linux
 - Python version: 3.10+
-- Project version: tree-sitter-analyzer v1.8.2
+- Project version: tree-sitter-analyzer v1.9.3
 - Test files: BigService.java (1419 lines), sample.py (256 lines), MultiClass.java (54 lines)
-- New verification: CLI argument validation, security boundary protection, exclusive parameter control
+- Latest verification: Parallel processing engine, type safety improvements, code style unification
 
 ---
 

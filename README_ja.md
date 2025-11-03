@@ -8,7 +8,7 @@
 [![カバレッジ](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer)
 [![品質](https://img.shields.io/badge/quality-enterprise%20grade-blue.svg)](#8--品質保証)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
-[![バージョン](https://img.shields.io/badge/version-1.9.2-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
+[![バージョン](https://img.shields.io/badge/version-1.9.3-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
 [![zread](https://img.shields.io/badge/Ask_Zread-_.svg?style=flat&color=00b0aa&labelColor=000000&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB3aWR0aD0iMTYiIGhlaWdodD0iMTYiIHZpZXdCb3g9IjAgMCAxNiAxNiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTQuOTYxNTYgMS42MDAxSDIuMjQxNTZDMS44ODgxIDEuNjAwMSAxLjYwMTU2IDEuODg2NjQgMS42MDE1NiAyLjI0MDFWNC45NjAxQzEuNjAxNTYgNS4zMTM1NiAxLjg4ODEgNS42MDAxIDIuMjQxNTYgNS42MDAxSDQuOTYxNTZDNS4zMTUwMiA1LjYwMDEgNS42MDE1NiA1LjMxMzU2IDUuNjAxNTYgNC45NjAxVjIuMjQwMUM1LjYwMTU2IDEuODg2NjQgNS4zMTUwMiAxLjYwMDEgNC45NjE1NiAxLjYwMDFaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik00Ljk2MTU2IDEwLjM5OTlIMi4yNDE1NkMxLjg4ODEgMTAuMzk5OSAxLjYwMTU2IDEwLjY4NjQgMS42MDE1NiAxMS4wMzk5VjEzLjc1OTlDMS42MDE1NiAxNC4xMTM0IDEuODg4MSAxNC4zOTk5IDIuMjQxNTYgMTQuMzk5OUg0Ljk2MTU2QzUuMzE1MDIgMTQuMzk5OSA1LjYwMTU2IDE0LjExMzQgNS42MDE1NiAxMy43NTk5VjExLjAzOTlDNS42MDE1NiAxMC42ODY0IDUuMzE1MDIgMTAuMzk5OSA0Ljk2MTU2IDEwLjM5OTlaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik0xMy43NTg0IDEuNjAwMUgxMS4wMzg0QzEwLjY4NSAxLjYwMDEgMTAuMzk4NCAxLjg4NjY0IDEwLjM5ODQgMi4yNDAxVjQuOTYwMUMxMC4zOTg0IDUuMzEzNTYgMTAuNjg1IDUuNjAwMSAxMS4wMzg0IDUuNjAwMUgxMy43NTg0QzE0LjExMTkgNS42MDAxIDE0LjM5ODQgNS4zMTM1NiAxNC4zOTg0IDQuOTYwMVYyLjI0MDFDMTQuMzk4NCAxLjg4NjY0IDE0LjExMTkgMS42MDAxIDEzLjc1ODQgMS42MDAxWiIgZmlsbD0iI2ZmZiIvPgo8cGF0aCBkPSJNNCAxMkwxMiA0TDQgMTJaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik00IDEyTDEyIDQiIHN0cm9rZT0iI2ZmZiIgc3Ryb2tlLXdpZHRoPSIxLjUiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPgo8L3N2Zz4K&logoColor=ffffff)](https://zread.ai/aimasteracc/tree-sitter-analyzer)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
@@ -141,7 +141,10 @@ rg --version
       "args": [
         "run", "--with", "tree-sitter-analyzer[mcp]",
         "python", "-m", "tree_sitter_analyzer.mcp.server"
-      ]
+      ],
+      "env": {
+        "TREE_SITTER_OUTPUT_PATH": "/absolute/path/to/output/directory"
+      }
     }
   }
 }
@@ -696,15 +699,14 @@ uv run tree-sitter-analyzer --show-query-languages
 - **ゼロテスト失敗** - 本番環境対応
 - **クロスプラットフォームサポート** - Windows、macOS、Linux
 
-### ⚡ 最新の品質成果（v1.8.3）
-- ✅ **🔒 CLIセキュリティの強化** - CLIモードでのセキュリティ境界エラーを修正し、ファイルアクセスの安全性を確保
-- ✅ **✅ 引数検証の完善** - 完全なCLI引数検証システムを実装し、無効な引数の組み合わせを防止
-- ✅ **🚫 排他引数制御** - [`--table`](README_ja.md:521)と[`--query-key`](README_ja.md:543)引数が正しく排他制御を実装
-- ✅ **🔍 フィルタ機能の強化** - [`--query-key`](README_ja.md:543)と[`--filter`](README_ja.md:560)の組み合わせ使用が完全にサポート
-- ✅ **⚠️ エラーメッセージの最適化** - 明確で詳細なエラー情報を提供し、ユーザーエクスペリエンスを改善
-- ✅ **🛡️ プロジェクト境界保護** - 自動的にプロジェクト境界を検出し、尊重することで機密ファイルへのアクセスを防止
-- ✅ **🧪 テスト環境サポート** - テスト環境での一時ディレクトリアクセス許可
-- ✅ **📋 ユーザーエクスペリエンスの改善** - より直感的なコマンドラインインターフェースとエラー処理メカニズム
+### ⚡ 最新の品質成果（v1.9.3）
+- ✅ **🎯 型安全性の完全達成** - mypyエラーを317個から0個へ削減、100%型安全を実現
+- ✅ **🔧 HTML要素重複問題の修正** - HTML要素の重複検出とJava正規表現パターンの問題を解決
+- ✅ **🧪 テストスイート完全合格** - 3,370個のテスト全てが合格、ゼロ失敗率を維持
+- ✅ **📚 多言語ドキュメントシステム** - 日本語プロジェクト文書の大幅拡充と完善
+- ✅ **🔄 並行処理エンジン継続** - search_contentで複数ディレクトリの並行検索、最大4倍の性能向上を維持
+- ✅ **🛡️ エンコーディング処理強化** - 自動エンコーディング検出機能の実装とUTF-8処理の最適化
+- ✅ **🏗️ プロジェクト管理フレームワーク** - Rooルールシステムとコーディングチェックリストを含む包括的なプロジェクト管理システム
 
 ### ⚙️ テストの実行
 ```bash
@@ -741,9 +743,9 @@ uv run pytest tests/test_mcp_server_initialization.py -v
 **検証環境：**
 - オペレーティングシステム：Windows 10、macOS、Linux
 - Pythonバージョン：3.10+
-- プロジェクトバージョン：tree-sitter-analyzer v1.8.2
+- プロジェクトバージョン：tree-sitter-analyzer v1.9.3
 - テストファイル：BigService.java（1419行）、sample.py（256行）、MultiClass.java（54行）
-- 新規検証：CLI引数検証、セキュリティ境界保護、排他引数制御
+- 最新検証：並行処理エンジン、型安全性改善、コードスタイル統一
 
 ---
 
