@@ -56,9 +56,8 @@ Tree-sitter Analyzer is an enterprise-grade code analysis tool designed for the 
 | **HTML** | 🆕 Complete Support | DOM structure analysis, element classification, attribute extraction, hierarchical relationships |
 | **CSS** | 🆕 Complete Support | Selector analysis, property classification, style rule extraction, intelligent categorization |
 | **Markdown** | Complete Support | Headers, code blocks, links, images, tables, task lists, blockquotes |
-| **C/C++** | Basic Support | Basic syntax parsing |
-| **Rust** | Basic Support | Basic syntax parsing |
-| **Go** | Basic Support | Basic syntax parsing |
+
+**Note:** Currently, only the above 7 languages have complete plugin implementations. Languages such as C/C++, Rust, Go, JSON are defined in `LanguageDetector` but do not have functional plugin implementations at this time.
 
 ### 🏆 Production Ready
 - **3,370 Tests** - 100% pass rate, enterprise-grade quality assurance
@@ -203,21 +202,21 @@ uv add "tree-sitter-analyzer[all,mcp]"
 
 ```bash
 # View help
-uv run python -m tree_sitter_analyzer --help
+uv run tree-sitter-analyzer --help
 
 # Analyze large file scale (1419 lines completed instantly)
-uv run python -m tree_sitter_analyzer examples/BigService.java --advanced --output-format=text
+uv run tree-sitter-analyzer examples/BigService.java --advanced --output-format text
 
 # Generate detailed structure table for code files
-uv run python -m tree_sitter_analyzer examples/BigService.java --table=full
+uv run tree-sitter-analyzer examples/BigService.java --table full
 
 # 🆕 HTML/CSS analysis with new architecture
-uv run python -m tree_sitter_analyzer examples/comprehensive_sample.html --table=html --output-format=text
-uv run python -m tree_sitter_analyzer examples/comprehensive_sample.css --advanced --output-format=text
-uv run python -m tree_sitter_analyzer examples/comprehensive_sample.html --structure --language html
+uv run tree-sitter-analyzer examples/comprehensive_sample.html --table full
+uv run tree-sitter-analyzer examples/comprehensive_sample.css --advanced --output-format text
+uv run tree-sitter-analyzer examples/comprehensive_sample.html --structure
 
 # Precise code extraction
-uv run python -m tree_sitter_analyzer examples/BigService.java --partial-read --start-line 93 --end-line 106
+uv run tree-sitter-analyzer examples/BigService.java --partial-read --start-line 93 --end-line 106
 ```
 
 ---
@@ -550,47 +549,47 @@ The `suppress_output` parameter in the `analyze_code_structure` tool:
 
 ```bash
 # Quick analysis (show summary information)
-uv run python -m tree_sitter_analyzer examples/BigService.java --summary
+uv run tree-sitter-analyzer examples/BigService.java --summary
 
 # Detailed analysis (show complete structure)
-uv run python -m tree_sitter_analyzer examples/BigService.java --structure
+uv run tree-sitter-analyzer examples/BigService.java --structure
 
 # Advanced analysis (including complexity metrics)
-uv run python -m tree_sitter_analyzer examples/BigService.java --advanced
+uv run tree-sitter-analyzer examples/BigService.java --advanced
 
 # Generate complete structure table
-uv run python -m tree_sitter_analyzer examples/BigService.java --table=full
+uv run tree-sitter-analyzer examples/BigService.java --table full
 
 # 🆕 HTML/CSS analysis with new architecture
-uv run python -m tree_sitter_analyzer examples/comprehensive_sample.html --table=full --output-format=text
-uv run python -m tree_sitter_analyzer examples/comprehensive_sample.css --table=full --output-format=text
-uv run python -m tree_sitter_analyzer examples/comprehensive_sample.html --advanced --output-format=text
-uv run python -m tree_sitter_analyzer examples/comprehensive_sample.css --advanced --output-format=text
+uv run tree-sitter-analyzer examples/comprehensive_sample.html --table full
+uv run tree-sitter-analyzer examples/comprehensive_sample.css --table full
+uv run tree-sitter-analyzer examples/comprehensive_sample.html --advanced
+uv run tree-sitter-analyzer examples/comprehensive_sample.css --advanced
 
 # Specify output format
-uv run python -m tree_sitter_analyzer examples/BigService.java --advanced --output-format=json
-uv run python -m tree_sitter_analyzer examples/BigService.java --advanced --output-format=text
+uv run tree-sitter-analyzer examples/BigService.java --advanced --output-format json
+uv run tree-sitter-analyzer examples/BigService.java --advanced --output-format text
 
 # Precise code extraction
-uv run python -m tree_sitter_analyzer examples/BigService.java --partial-read --start-line 93 --end-line 106
+uv run tree-sitter-analyzer examples/BigService.java --partial-read --start-line 93 --end-line 106
 
 # Specify programming language
-uv run python -m tree_sitter_analyzer script.py --language python --table=full
+uv run tree-sitter-analyzer script.py --language python --table full
 ```
 
 #### 🔍 Query and Filter Commands
 
 ```bash
 # Query specific elements
-uv run python -m tree_sitter_analyzer examples/BigService.java --query-key methods
-uv run python -m tree_sitter_analyzer examples/BigService.java --query-key classes
+uv run tree-sitter-analyzer examples/BigService.java --query-key methods
+uv run tree-sitter-analyzer examples/BigService.java --query-key classes
 
 # 🆕 v1.8.2 Correct Usage Examples
 # Correct: Use --query-key with --filter combination
-uv run python -m tree_sitter_analyzer examples/BigService.java --query-key methods --filter "name=main"
+uv run tree-sitter-analyzer examples/BigService.java --query-key methods --filter "name=main"
 
 # Correct: Generate complete structure table
-uv run python -m tree_sitter_analyzer examples/BigService.java --table full
+uv run tree-sitter-analyzer examples/BigService.java --table full
 
 # 🚫 v1.8.2 Incorrect Usage Examples (will show error)
 # Incorrect: Using --table and --query-key together (exclusive parameters)
@@ -687,7 +686,7 @@ uv run python -m tree_sitter_analyzer --show-query-languages
 | **✂️ Intelligent Code Extraction** | Precision Extraction Tool | Precise extraction by line range<br>Preserves original formatting and indentation<br>Includes position metadata<br>Efficient processing of large files | Zero-loss format preservation<br>Memory-optimized algorithms<br>Streaming processing support |
 | **🔍 Advanced Query Filtering** | Multi-dimensional Filters | **Exact match**: `--filter "name=main"`<br>**Pattern match**: `--filter "name=~auth*"`<br>**Parameter filter**: `--filter "params=2"`<br>**Modifier filter**: `--filter "static=true,public=true"`<br>**Compound conditions**: Combine multiple conditions for precise queries | Flexible query syntax<br>High-performance indexing<br>Intelligent caching mechanisms |
 | **🔗 AI Assistant Integration** | MCP Protocol Support | **Claude Desktop** - Full MCP support<br>**Cursor IDE** - Built-in MCP integration<br>**Roo Code** - MCP protocol support<br>**Other MCP-compatible tools** - Universal MCP server | Standard MCP protocol<br>Plug-and-play design<br>Cross-platform compatibility |
-| **🌍 Multi-language Support** | Enterprise Language Engine | **Java** - Complete support, including Spring, JPA frameworks<br>**Python** - Complete support, including type annotations, decorators<br>**JavaScript** - Enterprise-grade support, including ES6+, React/Vue/Angular, JSX<br>**TypeScript** - **Complete support**, including interfaces, types, decorators, TSX/JSX, framework detection<br>**HTML** - **🆕 Complete support**, including DOM structure, element classification, attribute extraction<br>**CSS** - **🆕 Complete support**, including selector analysis, property classification, style rules<br>**Markdown** - **Complete support**, including headers, code blocks, links, images, tables, task lists, blockquotes<br>**C/C++, Rust, Go** - Basic support | Framework-aware parsing<br>Syntax extension support<br>Continuous language updates |
+| **🌍 Multi-language Support** | Enterprise Language Engine | **Java** - Complete support, including Spring, JPA frameworks<br>**Python** - Complete support, including type annotations, decorators<br>**JavaScript** - Enterprise-grade support, including ES6+, React/Vue/Angular, JSX<br>**TypeScript** - **Complete support**, including interfaces, types, decorators, TSX/JSX, framework detection<br>**HTML** - **🆕 Complete support**, including DOM structure, element classification, attribute extraction<br>**CSS** - **🆕 Complete support**, including selector analysis, property classification, style rules<br>**Markdown** - **Complete support**, including headers, code blocks, links, images, tables, task lists, blockquotes<br><br>**Note**: Currently 7 languages have complete plugin implementations (Java, Python, JavaScript, TypeScript, HTML, CSS, Markdown). Languages such as C/C++, Rust, Go are defined but not yet implemented. | Framework-aware parsing<br>Syntax extension support<br>Continuous language updates |
 | **📁 Advanced File Search** | fd+ripgrep Integration | **ListFilesTool** - Intelligent file discovery with multiple filtering conditions<br>**SearchContentTool** - Intelligent content search using regular expressions<br>**FindAndGrepTool** - Combined discovery and search, two-stage workflow | Rust-based high-performance tools<br>Parallel processing capabilities<br>Intelligent cache optimization |
 | **🏗️ Unified Element System** | Revolutionary Architecture Design | **Single element list** - Unified management of all code elements (classes, methods, fields, imports, packages)<br>**Consistent element types** - Each element has an `element_type` attribute<br>**Simplified API** - Clearer interfaces and reduced complexity<br>**Better maintainability** - Single source of truth for all code elements | Unified data model<br>Type safety guarantees<br>Extensible design |
 

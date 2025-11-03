@@ -56,9 +56,8 @@ Tree-sitter Analyzerは、AI時代のために設計されたエンタープラ�
 | **HTML** | 🆕 完全サポート | DOM構造解析、要素分類、属性抽出、階層関係 |
 | **CSS** | 🆕 完全サポート | セレクタ解析、プロパティ分類、スタイルルール抽出、インテリジェント分類 |
 | **Markdown** | 完全サポート | 見出し、コードブロック、リンク、画像、表、タスクリスト、引用 |
-| **C/C++** | 基本サポート | 基本構文解析 |
-| **Rust** | 基本サポート | 基本構文解析 |
-| **Go** | 基本サポート | 基本構文解析 |
+
+**注記:** 現在、上記7言語のみが完全なプラグイン実装を持っています。C/C++、Rust、Go、JSONなどは`LanguageDetector`に定義されていますが、現時点では機能的なプラグイン実装がありません。
 
 ### 🏆 本番環境対応
 - **3,370のテスト** - 100%合格率、エンタープライズグレードの品質保証
@@ -202,21 +201,21 @@ uv add "tree-sitter-analyzer[all,mcp]"
 
 ```bash
 # ヘルプを表示
-uv run python -m tree_sitter_analyzer --help
+uv run tree-sitter-analyzer --help
 
 # ファイルサイズを解析（1419行が瞬時に完了）
-uv run python -m tree_sitter_analyzer examples/BigService.java --advanced --output-format=text
+uv run tree-sitter-analyzer examples/BigService.java --advanced --output-format text
 
 # 詳細な構造テーブルを生成
-uv run python -m tree_sitter_analyzer examples/BigService.java --table=full
+uv run tree-sitter-analyzer examples/BigService.java --table full
 
 # 🆕 新しいアーキテクチャでHTML/CSS解析
-uv run python -m tree_sitter_analyzer examples/comprehensive_sample.html --table=html --output-format=text
-uv run python -m tree_sitter_analyzer examples/comprehensive_sample.css --advanced --output-format=text
-uv run python -m tree_sitter_analyzer examples/comprehensive_sample.html --structure --language html
+uv run tree-sitter-analyzer examples/comprehensive_sample.html --table full
+uv run tree-sitter-analyzer examples/comprehensive_sample.css --advanced --output-format text
+uv run tree-sitter-analyzer examples/comprehensive_sample.html --structure
 
 # 正確なコード抽出
-uv run python -m tree_sitter_analyzer examples/BigService.java --partial-read --start-line 93 --end-line 106
+uv run tree-sitter-analyzer examples/BigService.java --partial-read --start-line 93 --end-line 106
 ```
 
 ---
@@ -546,68 +545,68 @@ MCP検索ツールに新しく追加されたファイル出力最適化機能�
 
 ```bash
 # クイック解析（サマリー情報を表示）
-uv run python -m tree_sitter_analyzer examples/BigService.java --summary
+uv run tree-sitter-analyzer examples/BigService.java --summary
 
 # 詳細解析（完全な構造を表示）
-uv run python -m tree_sitter_analyzer examples/BigService.java --structure
+uv run tree-sitter-analyzer examples/BigService.java --structure
 
 # 高度な解析（複雑度メトリクスを含む）
-uv run python -m tree_sitter_analyzer examples/BigService.java --advanced
+uv run tree-sitter-analyzer examples/BigService.java --advanced
 
 # 完全な構造テーブルを生成
-uv run python -m tree_sitter_analyzer examples/BigService.java --table=full
+uv run tree-sitter-analyzer examples/BigService.java --table full
 
 # 🆕 新しいアーキテクチャでHTML/CSS解析
-uv run python -m tree_sitter_analyzer examples/comprehensive_sample.html --table=full --output-format=text
-uv run python -m tree_sitter_analyzer examples/comprehensive_sample.css --table=full --output-format=text
-uv run python -m tree_sitter_analyzer examples/comprehensive_sample.html --advanced --output-format=text
-uv run python -m tree_sitter_analyzer examples/comprehensive_sample.css --advanced --output-format=text
+uv run tree-sitter-analyzer examples/comprehensive_sample.html --table full
+uv run tree-sitter-analyzer examples/comprehensive_sample.css --table full
+uv run tree-sitter-analyzer examples/comprehensive_sample.html --advanced
+uv run tree-sitter-analyzer examples/comprehensive_sample.css --advanced
 
 # 出力形式を指定
-uv run python -m tree_sitter_analyzer examples/BigService.java --advanced --output-format=json
-uv run python -m tree_sitter_analyzer examples/BigService.java --advanced --output-format=text
+uv run tree-sitter-analyzer examples/BigService.java --advanced --output-format json
+uv run tree-sitter-analyzer examples/BigService.java --advanced --output-format text
 
 # 正確なコード抽出
-uv run python -m tree_sitter_analyzer examples/BigService.java --partial-read --start-line 93 --end-line 106
+uv run tree-sitter-analyzer examples/BigService.java --partial-read --start-line 93 --end-line 106
 
 # プログラミング言語を指定
-uv run python -m tree_sitter_analyzer script.py --language python --table=full
+uv run tree-sitter-analyzer script.py --language python --table full
 ```
 
 #### 🔍 クエリとフィルタコマンド
 
 ```bash
 # 特定の要素をクエリ
-uv run python -m tree_sitter_analyzer examples/BigService.java --query-key methods
-uv run python -m tree_sitter_analyzer examples/BigService.java --query-key classes
+uv run tree-sitter-analyzer examples/BigService.java --query-key methods
+uv run tree-sitter-analyzer examples/BigService.java --query-key classes
 
 # 🆕 v1.8.2 正しい使用方法
 # 正しい：--query-keyと--filterの組み合わせ
-uv run python -m tree_sitter_analyzer examples/BigService.java --query-key methods --filter "name=main"
+uv run tree-sitter-analyzer examples/BigService.java --query-key methods --filter "name=main"
 
 # 正しい：完全な構造テーブルの生成
-uv run python -m tree_sitter_analyzer examples/BigService.java --table full
+uv run tree-sitter-analyzer examples/BigService.java --table full
 
 # 🚫 v1.8.2 間違った使用方法（エラーが表示される）
 # 間違った：--tableと--query-keyの同時使用（排他引数）
-# uv run python -m tree_sitter_analyzer examples/BigService.java --table full --query-key methods
+# uv run tree-sitter-analyzer examples/BigService.java --table full --query-key methods
 # エラーメッセージ: "--table and --query-key cannot be used together. Use --query-key with --filter instead."
 
 # クエリ結果をフィルタ
 # 特定のメソッドを検索
-uv run python -m tree_sitter_analyzer examples/BigService.java --query-key methods --filter "name=main"
+uv run tree-sitter-analyzer examples/BigService.java --query-key methods --filter "name=main"
 
 # 認証関連メソッドを検索（パターンマッチング）
-uv run python -m tree_sitter_analyzer examples/BigService.java --query-key methods --filter "name=~auth*"
+uv run tree-sitter-analyzer examples/BigService.java --query-key methods --filter "name=~auth*"
 
 # パラメータなしのパブリックメソッドを検索（複合条件）
-uv run python -m tree_sitter_analyzer examples/BigService.java --query-key methods --filter "params=0,public=true"
+uv run tree-sitter-analyzer examples/BigService.java --query-key methods --filter "params=0,public=true"
 
 # 静的メソッドを検索
-uv run python -m tree_sitter_analyzer examples/BigService.java --query-key methods --filter "static=true"
+uv run tree-sitter-analyzer examples/BigService.java --query-key methods --filter "static=true"
 
 # フィルタ構文のヘルプを表示
-uv run python -m tree_sitter_analyzer --filter-help
+uv run tree-sitter-analyzer --filter-help
 ```
 
 #### 🔒 セキュリティ機能の説明
@@ -625,10 +624,10 @@ v1.8.2版本でセキュリティ機能が強化され、ファイルアクセ�
 # システムは引数の組み合わせの有効性を検証し、無効なコマンドの実行を防止
 
 # 例：安全なファイル解析
-uv run python -m tree_sitter_analyzer examples/BigService.java --advanced
+uv run tree-sitter-analyzer examples/BigService.java --advanced
 # ✅ 許可：ファイルがプロジェクトディレクトリ内にある
 
-# uv run python -m tree_sitter_analyzer /etc/passwd --advanced
+# uv run tree-sitter-analyzer /etc/passwd --advanced
 # ❌ 拒否：ファイルがプロジェクト境界外にある（セキュリティ保護）
 ```
 
@@ -655,22 +654,22 @@ uv run find-and-grep --roots . --query "public.*static.*void" --extensions java 
 
 ```bash
 # ヘルプを表示
-uv run python -m tree_sitter_analyzer --help
+uv run tree-sitter-analyzer --help
 
 # サポートされているクエリキーをリスト
-uv run python -m tree_sitter_analyzer --list-queries
+uv run tree-sitter-analyzer --list-queries
 
 # サポートされている言語を表示
-uv run python -m tree_sitter_analyzer --show-supported-languages
+uv run tree-sitter-analyzer --show-supported-languages
 
 # サポートされている拡張子を表示
-uv run python -m tree_sitter_analyzer --show-supported-extensions
+uv run tree-sitter-analyzer --show-supported-extensions
 
 # 一般的なクエリを表示
-uv run python -m tree_sitter_analyzer --show-common-queries
+uv run tree-sitter-analyzer --show-common-queries
 
 # クエリ言語サポートを表示
-uv run python -m tree_sitter_analyzer --show-query-languages
+uv run tree-sitter-analyzer --show-query-languages
 ```
 
 ---
@@ -683,7 +682,7 @@ uv run python -m tree_sitter_analyzer --show-query-languages
 | **✂️ インテリジェントなコード抽出** | 精密抽出ツール | 行範囲による正確な抽出<br>元のフォーマットとインデントを保持<br>位置メタデータを含む<br>大きなファイルの効率的な処理 | ゼロロスフォーマット保持<br>メモリ最適化アルゴリズム<br>ストリーミング処理サポート |
 | **🔍 高度なクエリフィルタリング** | 多次元フィルター | **完全一致**: `--filter "name=main"`<br>**パターンマッチ**: `--filter "name=~auth*"`<br>**パラメータフィルタ**: `--filter "params=2"`<br>**修飾子フィルタ**: `--filter "static=true,public=true"`<br>**複合条件**: 正確なクエリのために複数の条件を組み合わせる | 柔軟なクエリ構文<br>高性能インデックス<br>インテリジェントキャッシュ機構 |
 | **🔗 AIアシスタント統合** | MCPプロトコルサポート | **Claude Desktop** - 完全なMCPサポート<br>**Cursor IDE** - 組み込みのMCP統合<br>**Roo Code** - MCPプロトコルサポート<br>**その他のMCP互換ツール** - ユニバーサルMCPサーバー | 標準MCPプロトコル<br>プラグアンドプレイ設計<br>クロスプラットフォーム互換性 |
-| **🌍 多言語サポート** | エンタープライズ言語エンジン | **Java** - 完全サポート、Spring、JPAフレームワークを含む<br>**Python** - 完全サポート、型アノテーション、デコレータを含む<br>**JavaScript** - 企業級サポート、ES6+、React/Vue/Angular、JSXを含む<br>**TypeScript** - **完全サポート**、インターフェース、型、デコレータ、TSX/JSX、フレームワーク検出を含む<br>**HTML** - **🆕 完全サポート**、DOM構造、要素分類、属性抽出を含む<br>**CSS** - **🆕 完全サポート**、セレクタ解析、プロパティ分類、スタイルルールを含む<br>**Markdown** - **完全サポート**、見出し、コードブロック、リンク、画像、表、タスクリスト、引用を含む<br>**C/C++、Rust、Go** - 基本サポート | フレームワーク認識解析<br>構文拡張サポート<br>継続的言語アップデート |
+| **🌍 多言語サポート** | エンタープライズ言語エンジン | **Java** - 完全サポート、Spring、JPAフレームワークを含む<br>**Python** - 完全サポート、型アノテーション、デコレータを含む<br>**JavaScript** - 企業級サポート、ES6+、React/Vue/Angular、JSXを含む<br>**TypeScript** - **完全サポート**、インターフェース、型、デコレータ、TSX/JSX、フレームワーク検出を含む<br>**HTML** - **🆕 完全サポート**、DOM構造、要素分類、属性抽出を含む<br>**CSS** - **🆕 完全サポート**、セレクタ解析、プロパティ分類、スタイルルールを含む<br>**Markdown** - **完全サポート**、見出し、コードブロック、リンク、画像、表、タスクリスト、引用を含む<br><br>**注記**: 現在7言語が完全なプラグイン実装を持っています（Java、Python、JavaScript、TypeScript、HTML、CSS、Markdown）。C/C++、Rust、Goなどは定義されていますが、まだ実装されていません。 | フレームワーク認識解析<br>構文拡張サポート<br>継続的言語アップデート |
 | **📁 高度なファイル検索** | fd+ripgrep統合 | **ListFilesTool** - 複数のフィルタリング条件を持つインテリジェントなファイル検出<br>**SearchContentTool** - 正規表現を使用したインテリジェントなコンテンツ検索<br>**FindAndGrepTool** - 検出と検索の組み合わせ、2段階ワークフロー | Rustベースの高性能ツール<br>並列処理能力<br>インテリジェントキャッシュ最適化 |
 | **🏗️ 統一要素システム** | 革新的アーキテクチャ設計 | **単一要素リスト** - すべてのコード要素（クラス、メソッド、フィールド、インポート、パッケージ）の統一管理<br>**一貫した要素タイプ** - 各要素には`element_type`属性があります<br>**簡素化されたAPI** - より明確なインターフェースと複雑さの軽減<br>**より良い保守性** - すべてのコード要素の単一の真実の情報源 | 統一データモデル<br>型安全保証<br>拡張性設計 |
 

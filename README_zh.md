@@ -57,9 +57,8 @@ Tree-sitter Analyzer 是一个为AI时代设计的企业级代码分析工具，
 | **HTML** | 🆕 完整支持 | DOM结构分析、元素分类、属性提取、层次关系 |
 | **CSS** | 🆕 完整支持 | 选择器分析、属性分类、样式规则提取、智能分类 |
 | **Markdown** | 完整支持 | 标题、代码块、链接、图片、表格、任务列表、引用 |
-| **C/C++** | 基础支持 | 基本语法解析 |
-| **Rust** | 基础支持 | 基本语法解析 |
-| **Go** | 基础支持 | 基本语法解析 |
+
+**备注:** 目前仅以上7种语言具有完整的插件实现。C/C++、Rust、Go、JSON等语言虽在`LanguageDetector`中定义，但目前尚无功能性插件实现。
 
 ### 🏆 生产就绪
 - **3,370个测试** - 100%通过率，企业级质量保证
@@ -203,21 +202,21 @@ uv add "tree-sitter-analyzer[all,mcp]"
 
 ```bash
 # 查看帮助
-uv run python -m tree_sitter_analyzer --help
+uv run tree-sitter-analyzer --help
 
 # 分析大文件的规模（1419行瞬间完成）
-uv run python -m tree_sitter_analyzer examples/BigService.java --advanced --output-format=text
+uv run tree-sitter-analyzer examples/BigService.java --advanced --output-format text
 
 # 生成代码文件的详细结构表格
-uv run python -m tree_sitter_analyzer examples/BigService.java --table=full
+uv run tree-sitter-analyzer examples/BigService.java --table full
 
 # 🆕 新架构HTML/CSS分析
-uv run python -m tree_sitter_analyzer examples/comprehensive_sample.html --table=html --output-format=text
-uv run python -m tree_sitter_analyzer examples/comprehensive_sample.css --advanced --output-format=text
-uv run python -m tree_sitter_analyzer examples/comprehensive_sample.html --structure --language html
+uv run tree-sitter-analyzer examples/comprehensive_sample.html --table full
+uv run tree-sitter-analyzer examples/comprehensive_sample.css --advanced --output-format text
+uv run tree-sitter-analyzer examples/comprehensive_sample.html --structure
 
 # 精确代码提取
-uv run python -m tree_sitter_analyzer examples/BigService.java --partial-read --start-line 93 --end-line 106
+uv run tree-sitter-analyzer examples/BigService.java --partial-read --start-line 93 --end-line 106
 ```
 
 ---
@@ -550,68 +549,68 @@ MCP搜索工具新增的文件输出优化功能是一个革命性的token节省
 
 ```bash
 # 快速分析（显示摘要信息）
-uv run python -m tree_sitter_analyzer examples/BigService.java --summary
+uv run tree-sitter-analyzer examples/BigService.java --summary
 
 # 详细分析（显示完整结构）
-uv run python -m tree_sitter_analyzer examples/BigService.java --structure
+uv run tree-sitter-analyzer examples/BigService.java --structure
 
 # 高级分析（包含复杂度指标）
-uv run python -m tree_sitter_analyzer examples/BigService.java --advanced
+uv run tree-sitter-analyzer examples/BigService.java --advanced
 
 # 生成完整结构表格
-uv run python -m tree_sitter_analyzer examples/BigService.java --table=full
+uv run tree-sitter-analyzer examples/BigService.java --table full
 
 # 🆕 新架构HTML/CSS分析
-uv run python -m tree_sitter_analyzer examples/comprehensive_sample.html --table=full --output-format=text
-uv run python -m tree_sitter_analyzer examples/comprehensive_sample.css --table=full --output-format=text
-uv run python -m tree_sitter_analyzer examples/comprehensive_sample.html --advanced --output-format=text
-uv run python -m tree_sitter_analyzer examples/comprehensive_sample.css --advanced --output-format=text
+uv run tree-sitter-analyzer examples/comprehensive_sample.html --table full
+uv run tree-sitter-analyzer examples/comprehensive_sample.css --table full
+uv run tree-sitter-analyzer examples/comprehensive_sample.html --advanced
+uv run tree-sitter-analyzer examples/comprehensive_sample.css --advanced
 
 # 指定输出格式
-uv run python -m tree_sitter_analyzer examples/BigService.java --advanced --output-format=json
-uv run python -m tree_sitter_analyzer examples/BigService.java --advanced --output-format=text
+uv run tree-sitter-analyzer examples/BigService.java --advanced --output-format json
+uv run tree-sitter-analyzer examples/BigService.java --advanced --output-format text
 
 # 精确代码提取
-uv run python -m tree_sitter_analyzer examples/BigService.java --partial-read --start-line 93 --end-line 106
+uv run tree-sitter-analyzer examples/BigService.java --partial-read --start-line 93 --end-line 106
 
 # 指定编程语言
-uv run python -m tree_sitter_analyzer script.py --language python --table=full
+uv run tree-sitter-analyzer script.py --language python --table full
 ```
 
 #### 🔍 查询与过滤命令
 
 ```bash
 # 查询特定元素
-uv run python -m tree_sitter_analyzer examples/BigService.java --query-key methods
-uv run python -m tree_sitter_analyzer examples/BigService.java --query-key classes
+uv run tree-sitter-analyzer examples/BigService.java --query-key methods
+uv run tree-sitter-analyzer examples/BigService.java --query-key classes
 
 # 🆕 v1.8.2 正确的使用方法
 # 正确：使用 --query-key 与 --filter 组合
-uv run python -m tree_sitter_analyzer examples/BigService.java --query-key methods --filter "name=main"
+uv run tree-sitter-analyzer examples/BigService.java --query-key methods --filter "name=main"
 
 # 正确：生成完整结构表格
-uv run python -m tree_sitter_analyzer examples/BigService.java --table full
+uv run tree-sitter-analyzer examples/BigService.java --table full
 
 # 🚫 v1.8.2 错误的使用方法（会显示错误）
 # 错误：同时使用 --table 和 --query-key（排他参数）
-# uv run python -m tree_sitter_analyzer examples/BigService.java --table full --query-key methods
+# uv run tree-sitter-analyzer examples/BigService.java --table full --query-key methods
 # 错误信息: "--table and --query-key cannot be used together. Use --query-key with --filter instead."
 
 # 过滤查询结果
 # 查找特定方法
-uv run python -m tree_sitter_analyzer examples/BigService.java --query-key methods --filter "name=main"
+uv run tree-sitter-analyzer examples/BigService.java --query-key methods --filter "name=main"
 
 # 查找认证相关方法（模式匹配）
-uv run python -m tree_sitter_analyzer examples/BigService.java --query-key methods --filter "name=~auth*"
+uv run tree-sitter-analyzer examples/BigService.java --query-key methods --filter "name=~auth*"
 
 # 查找无参数的公开方法（复合条件）
-uv run python -m tree_sitter_analyzer examples/BigService.java --query-key methods --filter "params=0,public=true"
+uv run tree-sitter-analyzer examples/BigService.java --query-key methods --filter "params=0,public=true"
 
 # 查找静态方法
-uv run python -m tree_sitter_analyzer examples/BigService.java --query-key methods --filter "static=true"
+uv run tree-sitter-analyzer examples/BigService.java --query-key methods --filter "static=true"
 
 # 查看过滤语法帮助
-uv run python -m tree_sitter_analyzer --filter-help
+uv run tree-sitter-analyzer --filter-help
 ```
 
 #### 🔒 安全功能说明
@@ -629,10 +628,10 @@ v1.8.2版本增强了安全功能，确保文件访问的安全性：
 # 系统会验证参数组合的有效性，防止无效的命令执行
 
 # 示例：安全的文件分析
-uv run python -m tree_sitter_analyzer examples/BigService.java --advanced
+uv run tree-sitter-analyzer examples/BigService.java --advanced
 # ✅ 允许：文件在项目目录内
 
-# uv run python -m tree_sitter_analyzer /etc/passwd --advanced
+# uv run tree-sitter-analyzer /etc/passwd --advanced
 # ❌ 拒绝：文件在项目边界外（安全保护）
 ```
 
@@ -659,22 +658,22 @@ uv run find-and-grep --roots . --query "public.*static.*void" --extensions java 
 
 ```bash
 # 查看帮助
-uv run python -m tree_sitter_analyzer --help
+uv run tree-sitter-analyzer --help
 
 # 列出支持的查询键
-uv run python -m tree_sitter_analyzer --list-queries
+uv run tree-sitter-analyzer --list-queries
 
 # 显示支持的语言
-uv run python -m tree_sitter_analyzer --show-supported-languages
+uv run tree-sitter-analyzer --show-supported-languages
 
 # 显示支持的扩展名
-uv run python -m tree_sitter_analyzer --show-supported-extensions
+uv run tree-sitter-analyzer --show-supported-extensions
 
 # 显示通用查询
-uv run python -m tree_sitter_analyzer --show-common-queries
+uv run tree-sitter-analyzer --show-common-queries
 
 # 显示查询语言支持
-uv run python -m tree_sitter_analyzer --show-query-languages
+uv run tree-sitter-analyzer --show-query-languages
 ```
 
 ---
@@ -688,7 +687,7 @@ uv run python -m tree_sitter_analyzer --show-query-languages
 | **✂️ 智能代码提取** | 精确提取工具 | 精确按行范围提取<br>保持原始格式和缩进<br>包含位置元数据<br>支持大文件高效处理 | 零损失格式保持<br>内存优化算法<br>流式处理支持 |
 | **🔍 高级查询过滤** | 多维度过滤器 | **精确匹配**: `--filter "name=main"`<br>**模式匹配**: `--filter "name=~auth*"`<br>**参数过滤**: `--filter "params=2"`<br>**修饰符过滤**: `--filter "static=true,public=true"`<br>**复合条件**: 组合多个条件进行精确查询 | 灵活的查询语法<br>高性能索引<br>智能缓存机制 |
 | **🔗 AI助手集成** | MCP协议支持 | **Claude Desktop** - 完整MCP支持<br>**Cursor IDE** - 内置MCP集成<br>**Roo Code** - MCP协议支持<br>**其他MCP兼容工具** - 通用MCP服务器 | 标准MCP协议<br>即插即用设计<br>跨平台兼容 |
-| **🌍 多语言支持** | 企业级语言引擎 | **Java** - 完整支持，包括Spring、JPA框架<br>**Python** - 完整支持，包括类型注解、装饰器<br>**JavaScript** - 企业级支持，包括ES6+、React/Vue/Angular、JSX<br>**TypeScript** - **完整支持**，包括接口、类型、装饰器、TSX/JSX、框架检测<br>**HTML** - **🆕 完整支持**，包括DOM结构、元素分类、属性提取<br>**CSS** - **🆕 完整支持**，包括选择器分析、属性分类、样式规则<br>**Markdown** - **完整支持**，包括标题、代码块、链接、图片、表格、任务列表、引用<br>**C/C++、Rust、Go** - 基础支持 | 框架感知解析<br>语法扩展支持<br>持续语言更新 |
+| **🌍 多语言支持** | 企业级语言引擎 | **Java** - 完整支持，包括Spring、JPA框架<br>**Python** - 完整支持，包括类型注解、装饰器<br>**JavaScript** - 企业级支持，包括ES6+、React/Vue/Angular、JSX<br>**TypeScript** - **完整支持**，包括接口、类型、装饰器、TSX/JSX、框架检测<br>**HTML** - **🆕 完整支持**，包括DOM结构、元素分类、属性提取<br>**CSS** - **🆕 完整支持**，包括选择器分析、属性分类、样式规则<br>**Markdown** - **完整支持**，包括标题、代码块、链接、图片、表格、任务列表、引用<br><br>**备注**: 目前7种语言具有完整的插件实现（Java、Python、JavaScript、TypeScript、HTML、CSS、Markdown）。C/C++、Rust、Go等语言虽已定义但尚未实现。 | 框架感知解析<br>语法扩展支持<br>持续语言更新 |
 | **📁 高级文件搜索** | fd+ripgrep集成 | **ListFilesTool** - 智能文件发现，支持多种过滤条件<br>**SearchContentTool** - 智能内容搜索，支持正则表达式<br>**FindAndGrepTool** - 组合发现与搜索，两阶段工作流 | 基于Rust的高性能工具<br>并行处理能力<br>智能缓存优化 |
 | **🏗️ 统一元素系统** | 革命性架构设计 | **单一元素列表** - 所有代码元素（类、方法、字段、导入、包）统一管理<br>**一致的元素类型** - 每个元素都有`element_type`属性<br>**简化的API** - 更清晰的接口和降低的复杂度<br>**更好的可维护性** - 所有代码元素的单一真实来源 | 统一数据模型<br>类型安全保证<br>扩展性设计 |
 

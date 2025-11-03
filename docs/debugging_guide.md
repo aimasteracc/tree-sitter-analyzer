@@ -102,7 +102,7 @@ export LOG_LEVEL=DEBUG
 export TREE_SITTER_ANALYZER_ENABLE_FILE_LOG=true
 export TREE_SITTER_ANALYZER_FILE_LOG_LEVEL=DEBUG
 
-uv run python -m tree_sitter_analyzer examples/BigService.java --table=full
+uv run tree-sitter-analyzer examples/BigService.java --table full
 ```
 
 ### 3. 一般的な問題のトラブルシューティング
@@ -134,7 +134,7 @@ export TREE_SITTER_ANALYZER_FILE_LOG_LEVEL=DEBUG
 export LOG_LEVEL=DEBUG
 export TREE_SITTER_ANALYZER_ENABLE_FILE_LOG=true
 
-uv run python -m tree_sitter_analyzer problematic_file.java --advanced
+uv run tree-sitter-analyzer problematic_file.java --advanced
 ```
 
 #### 問題3: パフォーマンスが遅い
@@ -150,7 +150,7 @@ uv run python -m tree_sitter_analyzer problematic_file.java --advanced
 export TREE_SITTER_ANALYZER_ENABLE_FILE_LOG=true
 export TREE_SITTER_ANALYZER_FILE_LOG_LEVEL=DEBUG
 
-time uv run python -m tree_sitter_analyzer large_file.java --advanced
+time uv run tree-sitter-analyzer large_file.java --advanced
 ```
 
 ## 📊 ログ出力の理解

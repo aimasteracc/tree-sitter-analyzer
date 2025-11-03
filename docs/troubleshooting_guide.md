@@ -94,7 +94,7 @@
    export LOG_LEVEL=DEBUG
    export TREE_SITTER_ANALYZER_ENABLE_FILE_LOG=true
    
-   uv run python -m tree_sitter_analyzer problematic_file.java --advanced
+   uv run tree-sitter-analyzer problematic_file.java --advanced
    ```
 
 3. **ファイルサイズを確認**:
@@ -113,12 +113,12 @@
 
 1. **言語を明示的に指定**:
    ```bash
-   uv run python -m tree_sitter_analyzer file.ext --language java
+   uv run tree-sitter-analyzer file.ext --language java
    ```
 
 2. **サポートされている言語を確認**:
    ```bash
-   uv run python -m tree_sitter_analyzer --show-supported-languages
+   uv run tree-sitter-analyzer --show-supported-languages
    ```
 
 ### 3. ログ設定の問題
@@ -185,13 +185,13 @@
 
 2. **処理時間を測定**:
    ```bash
-   time uv run python -m tree_sitter_analyzer large_file.java --advanced
+   time uv run tree-sitter-analyzer large_file.java --advanced
    ```
 
 3. **メモリ使用量を監視**:
    ```bash
    # Linuxの場合
-   /usr/bin/time -v uv run python -m tree_sitter_analyzer large_file.java --advanced
+   /usr/bin/time -v uv run tree-sitter-analyzer large_file.java --advanced
    ```
 
 #### 問題: メモリ不足エラー
@@ -209,7 +209,7 @@
 
 2. **部分読み取り機能を使用**:
    ```bash
-   uv run python -m tree_sitter_analyzer large_file.java --partial-read --start-line 1 --end-line 500
+   uv run tree-sitter-analyzer large_file.java --partial-read --start-line 1 --end-line 500
    ```
 
 ### 5. 環境固有の問題
@@ -224,7 +224,7 @@
 
 1. **絶対パスを使用**:
    ```bash
-   uv run python -m tree_sitter_analyzer C:\full\path\to\file.java
+   uv run tree-sitter-analyzer C:\full\path\to\file.java
    ```
 
 2. **パスをエスケープ**:
