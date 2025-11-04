@@ -1147,11 +1147,15 @@ class JavaPlugin(LanguagePlugin):
             packages = elements_dict.get("packages", [])
             package = packages[0] if packages else None
 
+            # Count nodes in the AST tree
+            node_count = self._count_tree_nodes(tree.root_node) if tree and tree.root_node else 0
+
             return AnalysisResult(
                 file_path=file_path,
                 language="java",
                 line_count=len(file_content.split("\n")),
                 elements=all_elements,
+                node_count=node_count,
                 source_code=file_content,
                 package=package,
             )
@@ -1168,6 +1172,25 @@ class JavaPlugin(LanguagePlugin):
                 error_message=str(e),
                 success=False,
             )
+
+    def _count_tree_nodes(self, node: Any) -> int:
+        """
+        Recursively count nodes in the AST tree.
+        
+        Args:
+            node: Tree-sitter node
+            
+        Returns:
+            Total number of nodes
+        """
+        if node is None:
+            return 0
+        
+        count = 1  # Count current node
+        if hasattr(node, "children"):
+            for child in node.children:
+                count += self._count_tree_nodes(child)
+        return count
 
     def get_tree_sitter_language(self) -> Any | None:
         """Get the tree-sitter language for Java."""
