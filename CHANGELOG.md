@@ -2,12 +2,29 @@
 
 ## [Unreleased]
 
-### 🔧 修正
+### � 機能改善
+- **カスタムクエリAPI対応**: `analyze_file()`および`execute_query()`でカスタムクエリ実行をサポート
+  - `AnalysisEngine.analyze_file()`に`queries`パラメータを追加
+  - `QueryExecutor`に`execute_query_with_language_name()`メソッドを追加し、明示的な言語名指定をサポート
+  - クエリ結果のグループ化機能（`_group_captures_by_main_node()`）を追加
+  - メソッド・クラス・関数など主要ノードごとにキャプチャを自動グループ化
+  - 影響: ユーザー定義クエリがAPIを通じて実行可能に、より柔軟なコード解析が実現
+
+### �🔧 修正
 - **Javaアノテーションクエリ修正**: `method_with_annotations`クエリがアノテーション付きメソッドを正しくマッチするように修正
   - 問題: クエリパターン `(modifiers (annotation) @annotation)*` が複数の`modifiers`ノードを探していた
   - 修正: `(modifiers [(annotation) (marker_annotation)]+ @annotation)` に変更し、単一の`modifiers`ノード内の複数アノテーションをマッチ
   - 影響: `@Override`、`@Test`、`@SuppressWarnings`などのアノテーション付きメソッドが正しく抽出可能に
-  - テスト: 手動検証で動作確認済み（メソッド名とアノテーションの正確な抽出を確認）
+  - テスト: 5つのユニットテストが全て合格、手動検証でも動作確認済み
+
+### 🧪 品質保証
+- **アノテーションクエリテストスイート**: Javaアノテーションクエリの包括的テストを実装
+  - 単一マーカーアノテーション（`@Override`）のテスト
+  - パラメータ付きアノテーション（`@SuppressWarnings("unchecked")`）のテスト
+  - 複数アノテーションのテスト
+  - アノテーション付き/なしメソッドの混在テスト
+  - キャプチャタイプ構造の検証テスト
+  - 全5テストが合格、既存APIテスト（9テスト）も全て合格
 
 ## [1.9.3] - 2025-11-03
 
