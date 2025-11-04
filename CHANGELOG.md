@@ -1,5 +1,14 @@
 # Changelog
 
+## [Unreleased]
+
+### 🔧 修正
+- **Javaアノテーションクエリ修正**: `method_with_annotations`クエリがアノテーション付きメソッドを正しくマッチするように修正
+  - 問題: クエリパターン `(modifiers (annotation) @annotation)*` が複数の`modifiers`ノードを探していた
+  - 修正: `(modifiers [(annotation) (marker_annotation)]+ @annotation)` に変更し、単一の`modifiers`ノード内の複数アノテーションをマッチ
+  - 影響: `@Override`、`@Test`、`@SuppressWarnings`などのアノテーション付きメソッドが正しく抽出可能に
+  - テスト: 手動検証で動作確認済み（メソッド名とアノテーションの正確な抽出を確認）
+
 ## [1.9.3] - 2025-11-03
 
 ### 🚀 機能改善

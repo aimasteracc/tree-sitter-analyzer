@@ -107,10 +107,16 @@ JAVA_QUERIES: dict[str, str] = {
       name: (identifier) @name
       body: (block) @body) @method_with_body
     """,
+    # Fixed: Match methods WITH annotations (at least one required)
+    # Uses alternation [(annotation) (marker_annotation)] to match both types:
+    # - marker_annotation: Annotations without parameters (e.g., @Override)
+    # - annotation: Annotations with parameters (e.g., @SuppressWarnings("unchecked"))
+    # The + quantifier requires at least one annotation
     "method_with_annotations": """
     (method_declaration
-      (modifiers (annotation) @annotation)*
-      name: (identifier) @name) @method_with_annotations
+      (modifiers
+        [(annotation) (marker_annotation)]+ @annotation)
+      name: (identifier) @name) @method
     """,
     # --- Inheritance Relations ---
     "extends_clause": """
