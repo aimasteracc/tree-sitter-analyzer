@@ -163,7 +163,7 @@ public class Test {
     async def test_search_content_summary_only_with_output_file(
         self, search_content_tool, temp_project_dir
     ):
-        """Test summary_only mode with file output"""
+        """Test summary_only mode with file output (only one format parameter allowed)"""
         with patch(
             "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture"
         ) as mock_run:
@@ -176,12 +176,11 @@ public class Test {
                 "query": "hello",
                 "summary_only": True,
                 "output_file": "summary_results",
-                "suppress_output": True,
             }
 
             result = await search_content_tool.execute(arguments)
 
-            # Check minimal response
+            # Check summary response
             assert "success" in result
             assert "count" in result
             assert "output_file" in result

@@ -298,6 +298,7 @@ async def test_rg_77_cache_hit_field_present(monkeypatch, tmp_path):
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_rg_78_group_by_file_priority_over_summary(monkeypatch, tmp_path):
+    """Test group_by_file format parameter (only one format parameter allowed)"""
     tool = SearchContentTool(str(tmp_path))
     evt = (
         json.dumps(
@@ -326,10 +327,9 @@ async def test_rg_78_group_by_file_priority_over_summary(monkeypatch, tmp_path):
             "roots": [str(tmp_path)],
             "query": "x",
             "group_by_file": True,
-            "summary_only": True,
         }
     )
-    # group_by_file takes priority and returns grouped structure
+    # group_by_file returns grouped structure
     assert "files" in res and "summary" not in res
 
 

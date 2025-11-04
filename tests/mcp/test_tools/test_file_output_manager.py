@@ -194,7 +194,8 @@ class TestFileOutputManager:
 
     def test_set_output_path_invalid(self):
         """Test setting invalid output path."""
-        invalid_path = "/nonexistent/path"
+        # Use a path that definitely doesn't exist on any OS
+        invalid_path = str(Path(self.temp_dir) / "nonexistent_directory_xyz")
 
         with pytest.raises(ValueError, match="Output path does not exist"):
             self.manager.set_output_path(invalid_path)

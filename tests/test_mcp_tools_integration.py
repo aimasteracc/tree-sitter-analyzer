@@ -664,7 +664,6 @@ class CoreClass:
                 "extensions": ["py"],
                 "summary_only": True,
                 "output_file": "project_functions_overview",
-                "suppress_output": True,
             }
 
             search_result = await all_tools["search_content"].execute(search_args)

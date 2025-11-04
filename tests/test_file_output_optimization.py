@@ -355,15 +355,13 @@ async def test_search_content_large_results_token_optimization(monkeypatch, tmp_
         mock_run_command,
     )
 
-    # Test with suppress_output to save tokens
+    # Test with suppress_output to save tokens (only one format parameter allowed)
     result = await tool.execute(
         {
             "roots": [str(tmp_path)],
             "query": "function",
             "output_file": "large_results.json",
             "suppress_output": True,
-            "group_by_file": True,
-            "summary_only": True,
         }
     )
 
@@ -381,9 +379,9 @@ async def test_search_content_large_results_token_optimization(monkeypatch, tmp_
         saved_data = json.load(f)
 
     assert saved_data["success"] is True
-    # With group_by_file=True, results are in "files" format, not "results"
-    assert "files" in saved_data
-    assert len(saved_data["files"]) == 5  # 5 files with matches
+    # Full results are saved to file
+    assert "results" in saved_data
+    assert len(saved_data["results"]) == 50  # 5 files × 10 matches
 
 
 @pytest.mark.asyncio
