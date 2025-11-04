@@ -139,6 +139,88 @@ class QueryExecutor:
                 f"Unexpected error: {str(e)}", query_name=query_name
             )
 
+    def execute_query_with_language_name(
+        self,
+        tree: Tree | None,
+        language: Language,
+        query_name: str,
+        source_code: str,
+        language_name: str,
+    ) -> dict[str, Any]:
+        """
+        Execute a predefined query by name with explicit language name.
+
+        Args:
+            tree: Tree-sitter tree to query
+            language: Tree-sitter language object
+            query_name: Name of the predefined query
+            source_code: Source code for context
+            language_name: Name of the programming language
+
+        Returns:
+            Dictionary containing query results and metadata
+        """
+        start_time = time.time()
+        self._execution_stats["total_queries"] += 1
+
+        try:
+            # Validate inputs
+            if tree is None:
+                return self._create_error_result("Tree is None", query_name=query_name)
+            if language is None:
+                return self._create_error_result(  # type: ignore[unreachable]
+                    "Language is None", query_name=query_name
+                )
+
+            # Use the provided language name
+            language_name = language_name.strip().lower() if language_name else "unknown"
+
+            query_string = self._query_loader.get_query(language_name, query_name)
+            if query_string is None:
+                return self._create_error_result(
+                    f"Query '{query_name}' not found", query_name=query_name
+                )
+
+            # Create and execute the query using modern API
+            try:
+                captures = TreeSitterQueryCompat.safe_execute_query(
+                    language, query_string, tree.root_node, fallback_result=[]
+                )
+
+                # Process captures
+                try:
+                    processed_captures = self._process_captures(captures, source_code)
+                except Exception as e:
+                    logger.error(f"Error processing captures for {query_name}: {e}")
+                    return self._create_error_result(
+                        f"Capture processing failed: {str(e)}", query_name=query_name
+                    )
+
+                self._execution_stats["successful_queries"] += 1
+                execution_time = time.time() - start_time
+                self._execution_stats["total_execution_time"] += execution_time
+
+                return {
+                    "captures": processed_captures,
+                    "query_name": query_name,
+                    "query_string": query_string,
+                    "execution_time": execution_time,
+                    "success": True,
+                }
+
+            except Exception as e:
+                logger.error(f"Error executing query '{query_name}': {e}")
+                return self._create_error_result(
+                    f"Query execution failed: {str(e)}", query_name=query_name
+                )
+
+        except Exception as e:
+            logger.error(f"Unexpected error in execute_query: {e}")
+            self._execution_stats["failed_queries"] += 1
+            return self._create_error_result(
+                f"Unexpected error: {str(e)}", query_name=query_name
+            )
+
     def execute_query_string(
         self,
         tree: Tree | None,

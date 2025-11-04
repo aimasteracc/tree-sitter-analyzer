@@ -48,7 +48,7 @@ class AnalysisEngine:
             raise
 
     def analyze_file(
-        self, file_path: str | Path, language: str | None = None
+        self, file_path: str | Path, language: str | None = None, queries: list[str] | None = None
     ) -> AnalysisResult:
         """
         Analyze a source code file.
@@ -56,6 +56,7 @@ class AnalysisEngine:
         Args:
             file_path: Path to the file to analyze
             language: Optional language override
+            queries: List of query names to execute (all available if not specified)
 
         Returns:
             AnalysisResult containing analysis results
@@ -83,7 +84,7 @@ class AnalysisEngine:
                 )
 
             # Perform analysis
-            return self._perform_analysis(parse_result)
+            return self._perform_analysis(parse_result, queries=queries)
 
         except FileNotFoundError:
             raise
@@ -161,12 +162,15 @@ class AnalysisEngine:
             logger.warning(f"Language detection failed for {file_path}: {e}")
             return "unknown"
 
-    def _perform_analysis(self, parse_result: ParseResult) -> AnalysisResult:
+    def _perform_analysis(
+        self, parse_result: ParseResult, queries: list[str] | None = None
+    ) -> AnalysisResult:
         """
         Perform comprehensive analysis on parsed code.
 
         Args:
             parse_result: Result from parsing operation
+            queries: Optional list of query names to execute (default: all queries)
 
         Returns:
             AnalysisResult containing analysis results
@@ -176,7 +180,13 @@ class AnalysisEngine:
             plugin = self._get_language_plugin(parse_result.language)
 
             # Execute queries
-            query_results = self._execute_queries(parse_result.tree, plugin)
+            query_results = self._execute_queries(
+                parse_result.tree,
+                plugin,
+                queries=queries,
+                source_code=parse_result.source_code or "",
+                language_name=parse_result.language,
+            )
 
             # Extract elements
             elements = self._extract_elements(parse_result, plugin)
@@ -227,13 +237,23 @@ class AnalysisEngine:
 
         return None
 
-    def _execute_queries(self, tree: Tree | None, plugin: Any | None) -> dict[str, Any]:
+    def _execute_queries(
+        self,
+        tree: Tree | None,
+        plugin: Any | None,
+        queries: list[str] | None = None,
+        source_code: str = "",
+        language_name: str = "unknown",
+    ) -> dict[str, Any]:
         """
         Execute queries on the parsed tree.
 
         Args:
             tree: Parsed Tree-sitter tree
             plugin: Language plugin
+            queries: Optional list of query names to execute (default: uses plugin queries or ["class", "method", "field"])
+            source_code: Source code for context
+            language_name: Name of the programming language
 
         Returns:
             Dictionary of query results
@@ -242,8 +262,11 @@ class AnalysisEngine:
             return {}
 
         try:
-            # If plugin is available, use its supported queries
-            if plugin and hasattr(plugin, "get_supported_queries"):
+            # Use provided queries or determine from plugin/fallback
+            if queries is not None:
+                query_names = queries
+            elif plugin and hasattr(plugin, "get_supported_queries"):
+                # If plugin is available, use its supported queries
                 query_names = plugin.get_supported_queries()
             else:
                 # Fallback to common queries that exist in the system
@@ -258,11 +281,12 @@ class AnalysisEngine:
             results = {}
             for query_name in query_names:
                 try:
-                    result = self.query_executor.execute_query(
+                    result = self.query_executor.execute_query_with_language_name(
                         tree,
                         language_obj,
                         query_name,
-                        "",  # Source code would be passed here
+                        source_code,
+                        language_name,
                     )
                     results[query_name] = result
                 except Exception as e:

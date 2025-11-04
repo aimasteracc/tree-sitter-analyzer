@@ -64,7 +64,7 @@ def analyze_file(
         engine = get_engine()
 
         # Perform the analysis
-        analysis_result = engine.analyze_file(file_path, language)
+        analysis_result = engine.analyze_file(file_path, language, queries=queries)
 
         # Convert AnalysisResult to expected API format (same as analyze_code)
         result = {
@@ -522,6 +522,197 @@ def get_framework_info() -> dict[str, Any]:
         return {"name": "tree-sitter-analyzer", "version": __version__, "error": str(e)}
 
 
+def _group_captures_by_main_node(captures: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """
+    Group query captures by their main nodes (e.g., @method, @class, @function).
+    
+    Each group represents one match of the query pattern, with all its sub-captures.
+    For example, a method_with_annotations query returns:
+    - One @method capture (the main node)
+    - One or more @annotation captures
+    - One @name capture
+    These all get grouped together as one "result".
+    
+    Args:
+        captures: Flat list of all captures from the query
+        
+    Returns:
+        List of grouped results, where each result has a 'captures' dict mapping
+        capture names to their data.
+    """
+    if not captures:
+        return []
+    
+    # Identify the main capture type (method, class, function, etc.)
+    # Usually it's the one with the longest text span or appears first
+    main_capture_types = {"method", "class", "function", "interface", "field"}
+    
+    # Group by start position - captures that share the same main node position
+    position_groups: dict[tuple[int, int], list[dict[str, Any]]] = {}
+    
+    for capture in captures:
+        capture_name = capture.get("capture_name", "")
+        
+        # Find the main node position for this capture
+        if capture_name in main_capture_types:
+            # This is a main node, use its position as the key
+            pos_key = (capture.get("start_byte", 0), capture.get("end_byte", 0))
+        else:
+            # This is a sub-capture, we'll need to find its parent later
+            # For now, use its own position
+            pos_key = (capture.get("start_byte", 0), capture.get("end_byte", 0))
+        
+        if pos_key not in position_groups:
+            position_groups[pos_key] = []
+        position_groups[pos_key].append(capture)
+    
+    # Now group captures that belong together
+    # A capture belongs to a main node if it's within the main node's byte range
+    results = []
+    main_nodes = []
+    
+    # First, identify all main nodes
+    for captures_list in position_groups.values():
+        for capture in captures_list:
+            if capture.get("capture_name") in main_capture_types:
+                main_nodes.append(capture)
+    
+    # For each main node, find all sub-captures within its range
+    for main_node in main_nodes:
+        main_start = main_node.get("start_byte", 0)
+        main_end = main_node.get("end_byte", 0)
+        main_name = main_node.get("capture_name", "")
+        
+        # Collect all captures within this main node's range
+        grouped_captures = {main_name: main_node}
+        
+        for captures_list in position_groups.values():
+            for capture in captures_list:
+                capture_start = capture.get("start_byte", 0)
+                capture_end = capture.get("end_byte", 0)
+                capture_name = capture.get("capture_name", "")
+                
+                # Skip the main node itself
+                if capture is main_node:
+                    continue
+                
+                # Check if this capture is within the main node's range
+                if capture_start >= main_start and capture_end <= main_end:
+                    # Group multiple captures of the same name in a list
+                    if capture_name in grouped_captures:
+                        # Convert to list if not already
+                        if not isinstance(grouped_captures[capture_name], list):
+                            grouped_captures[capture_name] = [grouped_captures[capture_name]]
+                        grouped_captures[capture_name].append(capture)
+                    else:
+                        grouped_captures[capture_name] = capture
+        
+        results.append({"captures": grouped_captures})
+    
+    return results
+
+
+def _group_captures_by_main_node(captures: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """
+    Group query captures by their main nodes (e.g., @method, @class, @function).
+    
+    Each group represents one match of the query pattern, with all its sub-captures.
+    For example, a method_with_annotations query returns:
+    - One @method capture (the main node)
+    - One or more @annotation captures
+    - One @name capture
+    These all get grouped together as one "result".
+    
+    Args:
+        captures: Flat list of all captures from the query
+        
+    Returns:
+        List of grouped results, where each result has:
+        - 'captures' dict mapping capture names to their data
+        - Top-level fields from the main node (text, start_line, end_line, etc.)
+    """
+    if not captures:
+        return []
+    
+    # Identify the main capture type (method, class, function, etc.)
+    # Usually it's the one with the longest text span or appears first
+    main_capture_types = {"method", "class", "function", "interface", "field"}
+    
+    # Group by start position - captures that share the same main node position
+    position_groups: dict[tuple[int, int], list[dict[str, Any]]] = {}
+    
+    for capture in captures:
+        capture_name = capture.get("capture_name", "")
+        
+        # Find the main node position for this capture
+        if capture_name in main_capture_types:
+            # This is a main node, use its position as the key
+            pos_key = (capture.get("start_byte", 0), capture.get("end_byte", 0))
+        else:
+            # This is a sub-capture, we'll need to find its parent later
+            # For now, use its own position
+            pos_key = (capture.get("start_byte", 0), capture.get("end_byte", 0))
+        
+        if pos_key not in position_groups:
+            position_groups[pos_key] = []
+        position_groups[pos_key].append(capture)
+    
+    # Now group captures that belong together
+    # A capture belongs to a main node if it's within the main node's byte range
+    results = []
+    main_nodes = []
+    
+    # First, identify all main nodes
+    for captures_list in position_groups.values():
+        for capture in captures_list:
+            if capture.get("capture_name") in main_capture_types:
+                main_nodes.append(capture)
+    
+    # For each main node, find all sub-captures within its range
+    for main_node in main_nodes:
+        main_start = main_node.get("start_byte", 0)
+        main_end = main_node.get("end_byte", 0)
+        main_name = main_node.get("capture_name", "")
+        
+        # Collect all captures within this main node's range
+        grouped_captures = {main_name: main_node}
+        
+        for captures_list in position_groups.values():
+            for capture in captures_list:
+                capture_start = capture.get("start_byte", 0)
+                capture_end = capture.get("end_byte", 0)
+                capture_name = capture.get("capture_name", "")
+                
+                # Skip the main node itself
+                if capture is main_node:
+                    continue
+                
+                # Check if this capture is within the main node's range
+                if capture_start >= main_start and capture_end <= main_end:
+                    # Group multiple captures of the same name in a list
+                    if capture_name in grouped_captures:
+                        # Convert to list if not already
+                        if not isinstance(grouped_captures[capture_name], list):
+                            grouped_captures[capture_name] = [grouped_captures[capture_name]]
+                        grouped_captures[capture_name].append(capture)
+                    else:
+                        grouped_captures[capture_name] = capture
+        
+        # Create result with top-level fields from main node
+        result = {
+            "captures": grouped_captures,
+            "text": main_node.get("text", ""),
+            "start_line": main_node.get("line_number", 0),
+            "end_line": main_node.get("line_number", 0) + main_node.get("text", "").count("\n"),
+            "start_byte": main_start,
+            "end_byte": main_end,
+            "node_type": main_node.get("node_type", ""),
+        }
+        results.append(result)
+    
+    return results
+
+
 def execute_query(
     file_path: str | Path, query_name: str, language: str | None = None
 ) -> dict[str, Any]:
@@ -547,7 +738,20 @@ def execute_query(
         )
 
         if result["success"] and "query_results" in result:
-            query_results = result["query_results"].get(query_name, [])
+            query_result_dict = result["query_results"].get(query_name, {})
+            
+            # Extract the captures list from the query result dictionary
+            if isinstance(query_result_dict, dict) and "captures" in query_result_dict:
+                raw_captures = query_result_dict["captures"]
+            elif isinstance(query_result_dict, list):
+                raw_captures = query_result_dict
+            else:
+                raw_captures = []
+            
+            # Group captures by their main capture (e.g., @method, @class)
+            # This groups related captures together (e.g., method + its annotations + name)
+            query_results = _group_captures_by_main_node(raw_captures)
+            
             return {
                 "success": True,
                 "query_name": query_name,
