@@ -93,7 +93,7 @@ jobs:
 
     - name: Upload format validation report
       if: always()
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: format-validation-report-${{ matrix.python-version }}
         path: ./format-reports/
@@ -101,7 +101,7 @@ jobs:
 
     - name: Upload monitoring reports
       if: always()
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: format-monitoring-reports-${{ matrix.python-version }}
         path: ./monitoring-reports/
@@ -145,7 +145,7 @@ jobs:
         PYTHONPATH: ${{ github.workspace }}
 
     - name: Upload compatibility matrix report
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: format-compatibility-matrix
         path: ./compatibility-reports/
@@ -186,7 +186,7 @@ jobs:
         PYTHONPATH: ${{ github.workspace }}
 
     - name: Upload performance report
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: format-performance-report
         path: ./performance-reports/
@@ -229,6 +229,9 @@ jobs:
     runs-on: ubuntu-latest
     needs: [format-validation, format-compatibility-matrix]
     if: failure() && (github.event_name == 'push' || github.event_name == 'schedule')
+    permissions:
+      issues: write
+      contents: read
 
     steps:
     - name: Notify format validation failure
