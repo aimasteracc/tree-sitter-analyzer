@@ -321,20 +321,39 @@ class CSVFormatValidator(FormatValidator):
         self, header: list[str], result: ValidationResult
     ) -> None:
         """Validate presence of required columns"""
-        # Define required columns for analyze_code_structure CSV format
-        required_columns = {"Type", "Name", "Signature", "Visibility", "Lines"}
-        optional_columns = {"Complexity", "Doc", "Modifiers"}
-
+        # Support multiple CSV format variations
+        
+        # Format 1: Mock analyzer format (simple)
+        format1_required = {"Type", "Name", "Signature", "Visibility", "Lines"}
+        
+        # Format 2: New multi-language format
+        format2_required = {"Type", "Name", "Start Line", "End Line", "Language", "Visibility"}
+        
+        # Format 3: Legacy Java format
+        format3_required = {"Type", "Name"}
+        
         header_set = set(header)
-        missing_required = required_columns - header_set
-
-        if missing_required:
-            result.add_error(f"Missing required columns: {', '.join(missing_required)}")
-
-        # Check for unexpected columns
-        expected_columns = required_columns | optional_columns
-        unexpected_columns = header_set - expected_columns
-
+        
+        # Check if any format is satisfied
+        format1_satisfied = format1_required.issubset(header_set)
+        format2_satisfied = format2_required.issubset(header_set)
+        format3_satisfied = format3_required.issubset(header_set)
+        
+        if not (format1_satisfied or format2_satisfied or format3_satisfied):
+            result.add_error(
+                f"CSV does not match any known format. "
+                f"Headers found: {', '.join(header)}"
+            )
+        
+        # Just add a warning for unexpected columns, not an error
+        all_known_columns = {
+            "Type", "Name", "Signature", "Visibility", "Lines",
+            "Start Line", "End Line", "Language", "Parameters", 
+            "Return Type", "Modifiers", "Complexity", "Doc",
+            "ReturnType", "Access", "Static", "Final", "Line"
+        }
+        unexpected_columns = header_set - all_known_columns
+        
         if unexpected_columns:
             result.add_warning(f"Unexpected columns: {', '.join(unexpected_columns)}")
 

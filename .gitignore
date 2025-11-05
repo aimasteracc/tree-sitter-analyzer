@@ -299,3 +299,7 @@ compatibility_test/reports/*.md
 
 # Integration test reports
 phase7_integration_report.json
+
+# Format testing results and golden masters
+comprehensive_test_results/
+tests/golden_masters/

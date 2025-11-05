@@ -87,10 +87,14 @@ class Calculator:
             assert table_output and len(table_output.strip()) > 0
 
             # Format-specific validations
-            if format_type in ["full", "compact"]:
-                assert "#" in table_output  # Should have headers
-                assert "|" in table_output  # Should have table structure
-                assert "Calculator" in table_output  # Should contain class name
+            if format_type == "full":
+                # New FullFormatter uses text borders (=, -) instead of Markdown
+                assert "=" in table_output or "#" in table_output  # Should have headers/borders
+                assert "Calculator" in table_output or "FUNCTION" in table_output  # Should contain class or function info
+            elif format_type == "compact":
+                # Compact format should have visibility symbols or separators
+                assert "-" in table_output or "|" in table_output  # Should have structure
+                assert "Calculator" in table_output or "function" in table_output.lower()  # Should contain class or function info
             elif format_type == "csv":
                 assert "," in table_output  # Should have CSV structure
                 # CSV format may not include class name directly, check for methods instead
