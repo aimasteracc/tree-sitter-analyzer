@@ -101,11 +101,16 @@ class FormatSpecificationValidator:
 
     def _validate_full_format_header(self, lines: list[str], class_name: str) -> bool:
         """Validate Full Format header: # {package}.{ClassName}"""
-        if not lines:
+        if not lines or not any(line.strip() for line in lines):
             self.errors.append("Empty output")
             return False
 
         header_line = lines[0].strip()
+
+        # Check if header is empty
+        if not header_line:
+            self.errors.append("Empty output")
+            return False
 
         # Must start with #
         if not header_line.startswith("# "):

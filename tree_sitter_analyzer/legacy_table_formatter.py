@@ -80,10 +80,10 @@ class LegacyTableFormatter:
         return self._convert_to_platform_newlines(result)
 
     def _format_full_table(self, data: dict[str, Any]) -> str:
-        """Full table format - organized by class"""
+        """Full table format - compliant with format specification"""
         lines = []
 
-        # Header - use package.class format for single class, filename for multi-class files
+        # Header - use package.class format for single class
         classes = data.get("classes", [])
         if classes is None:
             classes = []
@@ -124,82 +124,118 @@ class LegacyTableFormatter:
         lines.append(f"# {header}")
         lines.append("")
 
-        # Package info
-        package_name = (data.get("package") or {}).get("name", "")
-        if package_name:
-            lines.append("## Package")
-            lines.append(f"`{package_name}`")
-            lines.append("")
+        # Class Info section (required by specification)
+        lines.append("## Class Info")
+        lines.append("| Property | Value |")
+        lines.append("|----------|-------|")
 
-        # Imports
+        package_name = (data.get("package") or {}).get("name", "unknown")
+
+        if len(classes) >= 1:
+            class_info = classes[0]
+            class_name = str(class_info.get("name", "Unknown"))
+            lines.append(f"| Name | {class_name} |")
+            lines.append(f"| Package | {package_name} |")
+            lines.append(f"| Type | {str(class_info.get('type', 'class'))} |")
+            lines.append(
+                f"| Access | {str(class_info.get('visibility', 'public'))} |"
+            )
+
+            # Lines
+            line_range = class_info.get("line_range", {})
+            lines_str = f"{line_range.get('start', 1)}-{line_range.get('end', 50)}"
+            
+            # Add optional fields
+            extends = class_info.get("extends")
+            if extends:
+                lines.append(f"| Extends | {extends} |")
+            
+            implements = class_info.get("implements", [])
+            if implements:
+                lines.append(f"| Implements | {', '.join(implements)} |")
+        else:
+            # Empty data case
+            lines.append(f"| Name | Unknown |")
+            lines.append(f"| Package | {package_name} |")
+            lines.append("| Type | class |")
+            lines.append("| Access | public |")
+
+        lines.append("")
+
+        # Methods section (required by specification)
+        all_methods = data.get("methods", []) or []
+        lines.append("## Methods")
+        if all_methods:
+            lines.append("| Name | Return Type | Parameters | Access | Line |")
+            lines.append("|------|-------------|------------|--------|------|")
+            
+            for method in all_methods:
+                name = str(method.get("name", ""))
+                return_type = str(method.get("return_type", "void"))
+                
+                # Format parameters as "type1 param1, type2 param2"
+                params = method.get("parameters", [])
+                param_strs = []
+                for param in params:
+                    if isinstance(param, dict):
+                        param_type = str(param.get("type", "Object"))
+                        param_name = str(param.get("name", "param"))
+                        param_strs.append(f"{param_type} {param_name}")
+                    elif isinstance(param, str):
+                        param_strs.append(param)
+                    else:
+                        param_strs.append(str(param))
+                params_str = ", ".join(param_strs)
+                
+                access = str(method.get("visibility", "public"))
+                line_num = method.get("line_range", {}).get("start", 0)
+                
+                lines.append(f"| {name} | {return_type} | {params_str} | {access} | {line_num} |")
+        else:
+            lines.append("| Name | Return Type | Parameters | Access | Line |")
+            lines.append("|------|-------------|------------|--------|------|")
+        lines.append("")
+
+        # Fields section (required by specification)
+        all_fields = data.get("fields", []) or []
+        lines.append("## Fields")
+        if all_fields:
+            lines.append("| Name | Type | Access | Static | Final | Line |")
+            lines.append("|------|------|--------|--------|-------|------|")
+            
+            for field in all_fields:
+                name = str(field.get("name", ""))
+                field_type = str(field.get("type", "Object"))
+                access = str(field.get("visibility", "private"))
+                
+                # Check modifiers for static and final
+                modifiers = field.get("modifiers", [])
+                is_static = "static" in modifiers or field.get("is_static", False)
+                is_final = "final" in modifiers or field.get("is_final", False)
+                
+                static_str = "true" if is_static else "false"
+                final_str = "true" if is_final else "false"
+                
+                line_num = field.get("line_range", {}).get("start", 0)
+                
+                lines.append(f"| {name} | {field_type} | {access} | {static_str} | {final_str} | {line_num} |")
+        else:
+            lines.append("| Name | Type | Access | Static | Final | Line |")
+            lines.append("|------|------|--------|--------|-------|------|")
+        lines.append("")
+
+        # Imports section (optional by specification)
         imports = data.get("imports", [])
         if imports:
             lines.append("## Imports")
-            lines.append(f"```{self.language}")
+            lines.append("| Import | Type |")
+            lines.append("|--------|------|")
+            
             for imp in imports:
-                lines.append(str(imp.get("statement", "")))
-            lines.append("```")
+                statement = str(imp.get("statement", ""))
+                import_type = "static" if imp.get("is_static", False) else "import"
+                lines.append(f"| {statement} | {import_type} |")
             lines.append("")
-
-        # Class Info section (for single class files or empty data)
-        if len(classes) == 1 or len(classes) == 0:
-            lines.append("## Class Info")
-            lines.append("| Property | Value |")
-            lines.append("|----------|-------|")
-
-            package_name = (data.get("package") or {}).get("name", "unknown")
-
-            if len(classes) == 1:
-                class_info = classes[0]
-                lines.append(f"| Package | {package_name} |")
-                lines.append(f"| Type | {str(class_info.get('type', 'class'))} |")
-                lines.append(
-                    f"| Visibility | {str(class_info.get('visibility', 'public'))} |"
-                )
-
-                # Lines
-                line_range = class_info.get("line_range", {})
-                lines_str = f"{line_range.get('start', 1)}-{line_range.get('end', 50)}"
-                lines.append(f"| Lines | {lines_str} |")
-            else:
-                # Empty data case
-                lines.append(f"| Package | {package_name} |")
-                lines.append("| Type | class |")
-                lines.append("| Visibility | public |")
-                lines.append("| Lines | 0-0 |")
-
-            # Count methods and fields
-            all_methods = data.get("methods", []) or []
-            all_fields = data.get("fields", []) or []
-            lines.append(f"| Total Methods | {len(all_methods)} |")
-            lines.append(f"| Total Fields | {len(all_fields)} |")
-            lines.append("")
-
-        # Classes Overview
-        if len(classes) > 1:
-            lines.append("## Classes Overview")
-            lines.append("| Class | Type | Visibility | Lines | Methods | Fields |")
-            lines.append("|-------|------|------------|-------|---------|--------|")
-
-            for class_info in classes:
-                name = str(class_info.get("name", "Unknown"))
-                class_type = str(class_info.get("type", "class"))
-                visibility = str(class_info.get("visibility", "public"))
-                line_range = class_info.get("line_range", {})
-                lines_str = f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
-
-                # Calculate method and field counts for this class
-                class_methods = self._get_class_methods(data, line_range)
-                class_fields = self._get_class_fields(data, line_range)
-
-                lines.append(
-                    f"| {name} | {class_type} | {visibility} | {lines_str} | {len(class_methods)} | {len(class_fields)} |"
-                )
-            lines.append("")
-
-        # Detailed class information - organized by class
-        for class_info in classes:
-            lines.extend(self._format_class_details(class_info, data))
 
         # Remove trailing empty lines
         while lines and lines[-1] == "":
@@ -395,71 +431,66 @@ class LegacyTableFormatter:
         return f"| {name} | {signature} | {visibility} | {lines_str} | {complexity} | {doc} |"
 
     def _format_compact_table(self, data: dict[str, Any]) -> str:
-        """Compact table format"""
+        """Compact table format - compliant with format specification"""
         lines = []
 
-        # Header
-        package_name = (data.get("package") or {}).get("name", "unknown")
+        # Header - just class name (no package in compact format)
         classes = data.get("classes", [])
         if classes is None:
             classes = []
         class_name = classes[0].get("name", "Unknown") if classes else "Unknown"
-        lines.append(f"# {package_name}.{class_name}")
+        lines.append(f"# {class_name}")
         lines.append("")
 
-        # Basic information
-        stats = data.get("statistics") or {}
+        # Info section (required by specification)
+        classes = data.get("classes", [])
+        class_type = classes[0].get("type", "class") if classes else "class"
+        methods = data.get("methods", []) or []
+        fields = data.get("fields", []) or []
+        
         lines.append("## Info")
         lines.append("| Property | Value |")
         lines.append("|----------|-------|")
-        lines.append(f"| Package | {package_name} |")
-        lines.append(f"| Methods | {stats.get('method_count', 0)} |")
-        lines.append(f"| Fields | {stats.get('field_count', 0)} |")
+        lines.append(f"| Type | {class_type} |")
+        lines.append(f"| Methods | {len(methods)} |")
+        lines.append(f"| Fields | {len(fields)} |")
         lines.append("")
 
-        # Methods (simplified version with COMPLEXITY)
-        methods = data.get("methods", [])
-        if methods is None:
-            methods = []
+        # Methods section (simplified, required by specification)
+        lines.append("## Methods")
         if methods:
-            lines.append("## Methods")
-            lines.append("| Method | Sig | V | L | Cx | Doc |")
-            lines.append("|--------|-----|---|---|----|----|")
+            lines.append("| Name | Return Type | Access | Line |")
+            lines.append("|------|-------------|--------|------|")
 
             for method in methods:
                 name = str(method.get("name", ""))
-                signature = self._create_compact_signature(method)
-                visibility = self._convert_visibility(str(method.get("visibility", "")))
-                line_range = method.get("line_range", {})
-                lines_str = f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
-                complexity = method.get(
-                    "complexity_score", 0
-                )  # CRITICAL: Include complexity
-                doc = self._clean_csv_text(
-                    self._extract_doc_summary(str(method.get("javadoc", "")))
-                )
+                return_type = str(method.get("return_type", "void"))
+                access = str(method.get("visibility", "public"))
+                line_num = method.get("line_range", {}).get("start", 0)
 
-                lines.append(
-                    f"| {name} | {signature} | {visibility} | {lines_str} | {complexity} | {doc} |"
-                )
-            lines.append("")
+                lines.append(f"| {name} | {return_type} | {access} | {line_num} |")
+        else:
+            lines.append("| Name | Return Type | Access | Line |")
+            lines.append("|------|-------------|--------|------|")
+        lines.append("")
 
-        # Fields (if any)
-        fields = data.get("fields", [])
+        # Fields section (simplified, required by specification)
+        lines.append("## Fields")
         if fields:
-            lines.append("## Fields")
-            lines.append("| Field | Type | V | L |")
-            lines.append("|-------|------|---|---|")
+            lines.append("| Name | Type | Access | Line |")
+            lines.append("|------|------|--------|------|")
 
             for field in fields:
                 name = str(field.get("name", ""))
-                field_type = self._shorten_type(field.get("type", "Object"))
-                visibility = self._convert_visibility(str(field.get("visibility", "")))
-                line_range = field.get("line_range", {})
-                lines_str = f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
+                field_type = str(field.get("type", "Object"))
+                access = str(field.get("visibility", "private"))
+                line_num = field.get("line_range", {}).get("start", 0)
 
-                lines.append(f"| {name} | {field_type} | {visibility} | {lines_str} |")
-            lines.append("")
+                lines.append(f"| {name} | {field_type} | {access} | {line_num} |")
+        else:
+            lines.append("| Name | Type | Access | Line |")
+            lines.append("|------|------|--------|------|")
+        lines.append("")
 
         # Remove trailing empty lines
         while lines and lines[-1] == "":
@@ -468,46 +499,94 @@ class LegacyTableFormatter:
         return "\n".join(lines)
 
     def _format_csv(self, data: dict[str, Any]) -> str:
-        """CSV format - simple structure matching v1.6.1.4"""
+        """CSV format - compliant with format specification"""
         output = io.StringIO()
         writer = csv.writer(
             output, lineterminator="\n"
         )  # Explicitly specify newline character
 
-        # Header - simple structure
+        # Header - specification compliant
         writer.writerow(
-            ["Type", "Name", "Signature", "Visibility", "Lines", "Complexity", "Doc"]
+            ["Type", "Name", "ReturnType", "Parameters", "Access", "Static", "Final", "Line"]
         )
 
-        # Fields
-        for field in data.get("fields", []):
+        # Class row
+        classes = data.get("classes", [])
+        if classes:
+            for cls in classes:
+                writer.writerow(
+                    [
+                        str(cls.get("type", "class")),
+                        str(cls.get("name", "Unknown")),
+                        "",  # No return type for class
+                        "",  # No parameters for class
+                        str(cls.get("visibility", "public")),
+                        "false",  # Classes are not static
+                        "true" if "final" in cls.get("modifiers", []) else "false",
+                        cls.get("line_range", {}).get("start", 0),
+                    ]
+                )
+
+        # Method rows
+        for method in data.get("methods", []):
+            # Format parameters as "param1:type1;param2:type2"
+            params = method.get("parameters", [])
+            param_strs = []
+            for param in params:
+                if isinstance(param, dict):
+                    param_type = str(param.get("type", "Object"))
+                    param_name = str(param.get("name", "param"))
+                    param_strs.append(f"{param_name}:{param_type}")
+                elif isinstance(param, str):
+                    # Handle "type param" format - convert to "param:type"
+                    parts = param.strip().split()
+                    if len(parts) >= 2:
+                        # Everything except last part is type, last part is name
+                        param_type = " ".join(parts[:-1])
+                        param_name = parts[-1]
+                        param_strs.append(f"{param_name}:{param_type}")
+                    else:
+                        # Fallback for single-part parameters
+                        param_strs.append(param)
+                else:
+                    param_strs.append(str(param))
+            params_str = ";".join(param_strs)
+            
+            # Check modifiers for static and final
+            modifiers = method.get("modifiers", [])
+            is_static = "static" in modifiers or method.get("is_static", False)
+            is_final = "final" in modifiers or method.get("is_final", False)
+            
             writer.writerow(
                 [
-                    "Field",
-                    str(field.get("name", "")),
-                    f"{str(field.get('name', ''))}:{str(field.get('type', ''))}",
-                    str(field.get("visibility", "")),
-                    f"{field.get('line_range', {}).get('start', 0)}-{field.get('line_range', {}).get('end', 0)}",
-                    "",  # Empty complexity for fields
-                    self._clean_csv_text(
-                        self._extract_doc_summary(str(field.get("javadoc", "")))
-                    ),
+                    "constructor" if method.get("is_constructor", False) else "method",
+                    str(method.get("name", "")),
+                    str(method.get("return_type", "void")),
+                    params_str,
+                    str(method.get("visibility", "public")),
+                    "true" if is_static else "false",
+                    "true" if is_final else "false",
+                    method.get("line_range", {}).get("start", 0),
                 ]
             )
 
-        # Methods
-        for method in data.get("methods", []):
+        # Field rows
+        for field in data.get("fields", []):
+            # Check modifiers for static and final
+            modifiers = field.get("modifiers", [])
+            is_static = "static" in modifiers or field.get("is_static", False)
+            is_final = "final" in modifiers or field.get("is_final", False)
+            
             writer.writerow(
                 [
-                    "Constructor" if method.get("is_constructor", False) else "Method",
-                    str(method.get("name", "")),
-                    self._clean_csv_text(self._create_full_signature(method)),
-                    str(method.get("visibility", "")),
-                    f"{method.get('line_range', {}).get('start', 0)}-{method.get('line_range', {}).get('end', 0)}",
-                    method.get("complexity_score", 0),  # Include complexity
-                    self._clean_csv_text(
-                        self._extract_doc_summary(str(method.get("javadoc", "")))
-                    ),
+                    "field",
+                    str(field.get("name", "")),
+                    str(field.get("type", "Object")),
+                    "",  # No parameters for fields
+                    str(field.get("visibility", "private")),
+                    "true" if is_static else "false",
+                    "true" if is_final else "false",
+                    field.get("line_range", {}).get("start", 0),
                 ]
             )
 

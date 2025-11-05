@@ -12,6 +12,15 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     pass
 
+from ..constants import (
+    ELEMENT_TYPE_CLASS,
+    ELEMENT_TYPE_FUNCTION,
+    ELEMENT_TYPE_IMPORT,
+    ELEMENT_TYPE_PACKAGE,
+    ELEMENT_TYPE_VARIABLE,
+    get_element_type,
+    is_element_of_type,
+)
 from ..legacy_table_formatter import LegacyTableFormatter
 from ..models import CodeElement
 from .formatter_registry import IFormatter
@@ -96,18 +105,20 @@ class LegacyFormatterAdapter(IFormatter):
         # Process elements by type
         package_name = "unknown"
         for element in elements:
-            element_type = getattr(element, "element_type", "unknown")
-
-            if element_type == "package":
+            # Use is_element_of_type helper for accurate type checking
+            # Also handle legacy "method" and "field" type names
+            element_type = get_element_type(element)
+            
+            if is_element_of_type(element, ELEMENT_TYPE_PACKAGE):
                 package_name = element.name
                 legacy_data["package"]["name"] = package_name
-            elif element_type == "class":
+            elif is_element_of_type(element, ELEMENT_TYPE_CLASS):
                 legacy_data["classes"].append(self._convert_class_element(element))
-            elif element_type == "method" or element_type == "function":
+            elif is_element_of_type(element, ELEMENT_TYPE_FUNCTION) or element_type == "method":
                 legacy_data["methods"].append(self._convert_method_element(element))
-            elif element_type == "field" or element_type == "variable":
+            elif is_element_of_type(element, ELEMENT_TYPE_VARIABLE) or element_type == "field":
                 legacy_data["fields"].append(self._convert_field_element(element))
-            elif element_type == "import":
+            elif is_element_of_type(element, ELEMENT_TYPE_IMPORT):
                 legacy_data["imports"].append(self._convert_import_element(element))
 
         # Update statistics
