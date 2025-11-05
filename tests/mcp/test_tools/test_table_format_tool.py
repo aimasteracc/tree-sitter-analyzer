@@ -75,11 +75,9 @@ public class TestClass {
         assert "language" in props
         assert "output_file" in props
 
-        # Test format_type enum values - updated to include new HTML formatters
+        # Test format_type enum values - v1.6.1.4 specification formats only
         format_type_prop = props["format_type"]
-        expected_formats = sorted(
-            ["full", "compact", "csv", "json", "html", "html_json", "html_compact"]
-        )
+        expected_formats = sorted(["full", "compact", "csv"])
         actual_formats = sorted(format_type_prop["enum"])
         assert actual_formats == expected_formats
         assert format_type_prop["default"] == "full"
@@ -129,22 +127,17 @@ public class TestClass {
         # Mock structure data in the correct format that the tool expects
         mock_structure_data = self._create_mock_structure_data()
 
-        # Mock TableFormatter
-        mock_formatter_class = mocker.patch(
-            "tree_sitter_analyzer.mcp.tools.table_format_tool.TableFormatter"
-        )
-        mock_formatter = mocker.MagicMock()
-        mock_formatter.format_structure.return_value = "# Mock Table Output\n| Column | Value |\n|--------|-------|\n| Test   | Data  |"
-        mock_formatter_class.return_value = mock_formatter
-
         # Mock unified analysis engine to return a dummy result
         from unittest.mock import AsyncMock
 
+        mock_result = mocker.MagicMock()
+        mock_result.elements = []  # Empty elements for simplicity
+        
         mocker.patch.object(
             self.tool.analysis_engine,
             "analyze",
             new_callable=AsyncMock,
-            return_value=mocker.MagicMock(),
+            return_value=mock_result,
         )
 
         # Mock the conversion method to return the expected structure
@@ -214,14 +207,6 @@ public class TestClass {
 
         # Mock structure data
         mock_structure_data = self._create_mock_structure_data()
-
-        # Mock TableFormatter
-        mock_formatter_class = mocker.patch(
-            "tree_sitter_analyzer.mcp.tools.table_format_tool.TableFormatter"
-        )
-        mock_formatter = mocker.MagicMock()
-        mock_formatter.format_structure.return_value = "# Mock Output"
-        mock_formatter_class.return_value = mock_formatter
 
         # Mock unified analysis engine to return a dummy result
         from unittest.mock import AsyncMock
@@ -323,13 +308,6 @@ public class TestClass {
         mock_formatter = mocker.MagicMock()
         mock_formatter_registry.get_formatter.return_value = mock_formatter
 
-        # Also mock TableFormatter as fallback
-        mock_formatter_class = mocker.patch(
-            "tree_sitter_analyzer.mcp.tools.table_format_tool.TableFormatter"
-        )
-        mock_formatter_fallback = mocker.MagicMock()
-        mock_formatter_class.return_value = mock_formatter_fallback
-
         # Mock unified analysis engine to return a dummy result
         from unittest.mock import AsyncMock
 
@@ -350,9 +328,6 @@ public class TestClass {
         # Test different formats
         for format_type in ["full", "compact", "csv"]:
             mock_formatter.format.return_value = f"Mock {format_type} output"
-            mock_formatter_fallback.format_structure.return_value = (
-                f"Mock {format_type} output"
-            )
             arguments = {"file_path": self.test_file_path, "format_type": format_type}
 
             result = await self.tool.execute(arguments)
@@ -395,14 +370,6 @@ public class TestClass {
         table_output = "| Class | Methods | Lines |\n|-------|---------|-------|\n| TestClass | 2 | 10 |"
         mock_formatter.format.return_value = table_output
         mock_formatter_registry.get_formatter.return_value = mock_formatter
-
-        # Also mock TableFormatter as fallback
-        mock_formatter_class = mocker.patch(
-            "tree_sitter_analyzer.mcp.tools.table_format_tool.TableFormatter"
-        )
-        mock_formatter_fallback = mocker.MagicMock()
-        mock_formatter_fallback.format_structure.return_value = table_output
-        mock_formatter_class.return_value = mock_formatter_fallback
 
         # Mock unified analysis engine
         from unittest.mock import AsyncMock
@@ -477,14 +444,15 @@ public class TestClass {
         # Mock structure data
         mock_structure_data = self._create_mock_structure_data()
 
-        # Mock TableFormatter
-        mock_formatter_class = mocker.patch(
-            "tree_sitter_analyzer.mcp.tools.table_format_tool.TableFormatter"
+        # Mock FormatterRegistry to ensure it uses our mock formatter
+        mock_formatter_registry = mocker.patch(
+            "tree_sitter_analyzer.mcp.tools.table_format_tool.FormatterRegistry"
         )
+        mock_formatter_registry.is_format_supported.return_value = True
         mock_formatter = mocker.MagicMock()
         table_output = "Mock table output"
-        mock_formatter.format_structure.return_value = table_output
-        mock_formatter_class.return_value = mock_formatter
+        mock_formatter.format.return_value = table_output
+        mock_formatter_registry.get_formatter.return_value = mock_formatter
 
         # Mock unified analysis engine
         from unittest.mock import AsyncMock
