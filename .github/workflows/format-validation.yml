@@ -84,20 +84,21 @@ jobs:
       env:
         PYTHONPATH: ${{ github.workspace }}
 
-    - name: Generate format validation report
-      if: always()
-      run: |
-        uv run python scripts/generate_format_report.py --output-dir ./format-reports
-      env:
-        PYTHONPATH: ${{ github.workspace }}
+    # Note: generate_format_report.py does not exist - disabled temporarily
+    # - name: Generate format validation report
+    #   if: always()
+    #   run: |
+    #     uv run python scripts/generate_format_report.py --output-dir ./format-reports
+    #   env:
+    #     PYTHONPATH: ${{ github.workspace }}
 
-    - name: Upload format validation report
-      if: always()
-      uses: actions/upload-artifact@v4
-      with:
-        name: format-validation-report-${{ matrix.python-version }}
-        path: ./format-reports/
-        retention-days: 30
+    # - name: Upload format validation report
+    #   if: always()
+    #   uses: actions/upload-artifact@v4
+    #   with:
+    #     name: format-validation-report-${{ matrix.python-version }}
+    #     path: ./format-reports/
+    #     retention-days: 30
 
     - name: Upload monitoring reports
       if: always()
