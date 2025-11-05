@@ -532,7 +532,7 @@ class TestFormatterRegistryIntegration:
         formatter2 = FormatterRegistry.get_formatter("json")
 
         assert formatter1 is not formatter2
-        assert type(formatter1) == type(formatter2)
+        assert isinstance(formatter1, type(formatter2))
 
 
 class TestFormatterErrorHandling:

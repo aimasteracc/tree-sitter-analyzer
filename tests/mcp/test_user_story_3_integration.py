@@ -1076,7 +1076,7 @@ asyncio.run(main())
                     )
                     # 結果の確認は行うが、メモリに保持しない
                     assert "success" in result
-                except:
+                except Exception:
                     # 一部のクエリが失敗しても継続
                     pass
 

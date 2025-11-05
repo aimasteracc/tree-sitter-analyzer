@@ -223,7 +223,7 @@ async function asyncFunction() {
         # JSON形式の出力を確認
         try:
             json_output = json.loads(result.stdout)
-            assert isinstance(json_output, (list, dict)), "Output is not valid JSON"
+            assert isinstance(json_output, list | dict), "Output is not valid JSON"
         except json.JSONDecodeError:
             # JSON形式でない場合もあるので、エラーにはしない
             pass

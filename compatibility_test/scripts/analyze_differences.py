@@ -125,7 +125,7 @@ class DifferenceAnalyzer:
         """JSON構造を再帰的に比較"""
         differences = []
 
-        if type(obj_a) != type(obj_b):
+        if not isinstance(obj_a, type(obj_b)) and not isinstance(obj_b, type(obj_a)):
             differences.append(
                 {
                     "type": "type_change",
@@ -170,7 +170,7 @@ class DifferenceAnalyzer:
             for key in common_keys:
                 new_path = f"{path}.{key}" if path else key
                 if obj_a[key] != obj_b[key]:
-                    if isinstance(obj_a[key], (dict, list)):
+                    if isinstance(obj_a[key], dict | list):
                         differences.extend(
                             self._compare_json_structure(
                                 obj_a[key], obj_b[key], new_path
@@ -208,7 +208,7 @@ class DifferenceAnalyzer:
             for i in range(min_length):
                 new_path = f"{path}[{i}]"
                 if obj_a[i] != obj_b[i]:
-                    if isinstance(obj_a[i], (dict, list)):
+                    if isinstance(obj_a[i], dict | list):
                         differences.extend(
                             self._compare_json_structure(obj_a[i], obj_b[i], new_path)
                         )
@@ -277,7 +277,7 @@ class DifferenceAnalyzer:
                 for key, value in obj.items():
                     new_path = f"{path}.{key}" if path else key
                     if key.endswith("_ms") or key.endswith("_time") or "elapsed" in key:
-                        if isinstance(value, (int, float)):
+                        if isinstance(value, int | float):
                             metrics[new_path] = value
                     elif isinstance(value, dict):
                         metrics.update(extract_metrics(value, new_path))

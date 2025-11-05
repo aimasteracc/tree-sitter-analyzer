@@ -438,7 +438,7 @@ Tree-sitter AnalyzerはAIアシスタント向けに設計された豊富なMCP�
 | ツールカテゴリ | ツール名 | 主要機能 | コア特性 |
 |-------------|---------|---------|---------|
 | **📊 コード解析** | `check_code_scale` | コードファイル規模の高速解析 | ファイルサイズ統計、行数統計、複雑度解析、パフォーマンス指標 |
-| | `analyze_code_structure` | コード構造解析とテーブル生成 | 🆕 suppress_outputパラメータ、複数フォーマット(full/compact/csv/json)、自動言語検出 |
+| | `analyze_code_structure` | コード構造解析とテーブル生成 | 🆕 suppress_outputパラメータ、複数フォーマット(full/compact/csv)、自動言語検出 |
 | | `extract_code_section` | 正確なコードセクション抽出 | 指定行範囲抽出、大ファイル効率処理、元フォーマット保持 |
 | **🔍 インテリジェント検索** | `list_files` | 高性能ファイル発見 | fdベース、globパターン、ファイルタイプフィルタ、時間範囲制御 |
 | | `search_content` | 正規表現コンテンツ検索 | ripgrepベース、複数出力フォーマット、コンテキスト制御、エンコーディング処理、🆕 並行処理エンジン、統一`set_project_path`サポート |

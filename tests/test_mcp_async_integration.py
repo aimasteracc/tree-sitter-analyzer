@@ -545,7 +545,7 @@ class Class_{i}:
                         # JSON形式の場合
                         try:
                             json_data = json.loads(content)
-                            assert isinstance(json_data, (list, dict))
+                            assert isinstance(json_data, list | dict)
                         except json.JSONDecodeError:
                             # JSON以外の形式でも問題なし
                             pass

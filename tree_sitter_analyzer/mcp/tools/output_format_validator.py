@@ -73,8 +73,8 @@ class OutputFormatValidator:
                 "  • 初期調査: summary_only=true\n"
                 "  • 詳細レビュー: group_by_file=true\n"
                 "  • キャッシュのみ: suppress_output=true\n\n"
-                "❌ 間違った例: {\"total_only\": true, \"summary_only\": true}\n"
-                "✅ 正しい例: {\"total_only\": true}"
+                '❌ 間違った例: {"total_only": true, "summary_only": true}\n'
+                '✅ 正しい例: {"total_only": true}'
             )
         else:
             # English error message
@@ -94,8 +94,8 @@ class OutputFormatValidator:
                 "  • Initial investigation: summary_only=true\n"
                 "  • Detailed review: group_by_file=true\n"
                 "  • Cache only: suppress_output=true\n\n"
-                "❌ Incorrect: {\"total_only\": true, \"summary_only\": true}\n"
-                "✅ Correct: {\"total_only\": true}"
+                '❌ Incorrect: {"total_only": true, "summary_only": true}\n'
+                '✅ Correct: {"total_only": true}'
             )
 
         return base_message

@@ -7,6 +7,7 @@ focusing on uncovered code paths to improve overall coverage.
 Follows TDD principles and .roo-config.json requirements.
 """
 
+import contextlib
 import logging
 import sys
 import tempfile
@@ -83,10 +84,8 @@ class TestCLIAdvancedOptions:
         mock_stdout = StringIO()
         monkeypatch.setattr("sys.stdout", mock_stdout)
 
-        try:
+        with contextlib.suppress(SystemExit):
             main()
-        except SystemExit:
-            pass
 
         output = mock_stdout.getvalue()
         assert len(output) > 0
@@ -110,10 +109,8 @@ class TestCLIAdvancedOptions:
         mock_stdout = StringIO()
         monkeypatch.setattr("sys.stdout", mock_stdout)
 
-        try:
+        with contextlib.suppress(SystemExit):
             main()
-        except SystemExit:
-            pass
 
         output = mock_stdout.getvalue()
         assert len(output) > 0
@@ -145,10 +142,8 @@ class TestCLIAdvancedOptions:
         mock_stdout = StringIO()
         monkeypatch.setattr("sys.stdout", mock_stdout)
 
-        try:
+        with contextlib.suppress(SystemExit):
             main()
-        except SystemExit:
-            pass
 
         output = mock_stdout.getvalue()
 
@@ -214,10 +209,8 @@ class TestCLIAdvancedOptions:
             mock_stderr = StringIO()
             monkeypatch.setattr("sys.stderr", mock_stderr)
 
-            try:
+            with contextlib.suppress(SystemExit):
                 main()
-            except SystemExit:
-                pass
 
             error_output = mock_stderr.getvalue()
             assert "Analysis failed" in error_output
@@ -241,10 +234,8 @@ class TestCLIAdvancedOptions:
         mock_stdout = StringIO()
         monkeypatch.setattr("sys.stdout", mock_stdout)
 
-        try:
+        with contextlib.suppress(SystemExit):
             main()
-        except SystemExit:
-            pass
 
         output = mock_stdout.getvalue()
         assert len(output) > 0
@@ -269,10 +260,8 @@ class TestCLIAdvancedOptions:
         mock_stdout = StringIO()
         monkeypatch.setattr("sys.stdout", mock_stdout)
 
-        try:
+        with contextlib.suppress(SystemExit):
             main()
-        except SystemExit:
-            pass
 
         output = mock_stdout.getvalue()
         assert len(output) > 0
@@ -293,10 +282,8 @@ class TestCLISummaryOption:
         mock_stdout = StringIO()
         monkeypatch.setattr("sys.stdout", mock_stdout)
 
-        try:
+        with contextlib.suppress(SystemExit):
             main()
-        except SystemExit:
-            pass
 
         output = mock_stdout.getvalue()
         assert len(output) > 0
@@ -319,10 +306,8 @@ class TestCLISummaryOption:
         mock_stdout = StringIO()
         monkeypatch.setattr("sys.stdout", mock_stdout)
 
-        try:
+        with contextlib.suppress(SystemExit):
             main()
-        except SystemExit:
-            pass
 
         output = mock_stdout.getvalue()
         assert len(output) > 0
@@ -346,10 +331,8 @@ class TestCLISummaryOption:
         mock_stdout = StringIO()
         monkeypatch.setattr("sys.stdout", mock_stdout)
 
-        try:
+        with contextlib.suppress(SystemExit):
             main()
-        except SystemExit:
-            pass
 
         output = mock_stdout.getvalue()
         assert len(output) > 0
@@ -387,10 +370,8 @@ class TestCLISummaryOption:
             mock_stderr = StringIO()
             monkeypatch.setattr("sys.stderr", mock_stderr)
 
-            try:
+            with contextlib.suppress(SystemExit):
                 main()
-            except SystemExit:
-                pass
 
             error_output = mock_stderr.getvalue()
             assert "Analysis failed" in error_output
@@ -418,10 +399,8 @@ class TestCLIStructureOption:
         mock_stdout = StringIO()
         monkeypatch.setattr("sys.stdout", mock_stdout)
 
-        try:
+        with contextlib.suppress(SystemExit):
             main()
-        except SystemExit:
-            pass
 
         output = mock_stdout.getvalue()
         assert len(output) > 0
@@ -445,10 +424,8 @@ class TestCLIStructureOption:
         mock_stdout = StringIO()
         monkeypatch.setattr("sys.stdout", mock_stdout)
 
-        try:
+        with contextlib.suppress(SystemExit):
             main()
-        except SystemExit:
-            pass
 
         output = mock_stdout.getvalue()
         assert len(output) > 0
@@ -486,10 +463,8 @@ class TestCLIStructureOption:
             mock_stderr = StringIO()
             monkeypatch.setattr("sys.stderr", mock_stderr)
 
-            try:
+            with contextlib.suppress(SystemExit):
                 main()
-            except SystemExit:
-                pass
 
             error_output = mock_stderr.getvalue()
             assert "Analysis failed" in error_output
@@ -510,10 +485,8 @@ class TestCLITableOption:
         mock_stdout = StringIO()
         monkeypatch.setattr("sys.stdout", mock_stdout)
 
-        try:
+        with contextlib.suppress(SystemExit):
             main()
-        except SystemExit:
-            pass
 
         output = mock_stdout.getvalue()
         assert len(output) > 0
@@ -535,10 +508,8 @@ class TestCLITableOption:
         mock_stdout = StringIO()
         monkeypatch.setattr("sys.stdout", mock_stdout)
 
-        try:
+        with contextlib.suppress(SystemExit):
             main()
-        except SystemExit:
-            pass
 
         output = mock_stdout.getvalue()
 
@@ -562,17 +533,13 @@ class TestCLITableOption:
             if in_class_info and "Total Methods" in line:
                 parts = line.split("|")
                 if len(parts) >= 3:
-                    try:
+                    with contextlib.suppress(ValueError):
                         method_count = int(parts[2].strip())
-                    except ValueError:
-                        pass
             elif in_class_info and "Total Fields" in line:
                 parts = line.split("|")
                 if len(parts) >= 3:
-                    try:
+                    with contextlib.suppress(ValueError):
                         field_count = int(parts[2].strip())
-                    except ValueError:
-                        pass
 
         # Verify expected counts for the sample file
         assert method_count == 2, f"Expected 2 methods in table, got {method_count}"
@@ -597,10 +564,8 @@ class TestCLITableOption:
         mock_stdout = StringIO()
         monkeypatch.setattr("sys.stdout", mock_stdout)
 
-        try:
+        with contextlib.suppress(SystemExit):
             main()
-        except SystemExit:
-            pass
 
         output = mock_stdout.getvalue()
         assert len(output) > 0
@@ -617,10 +582,8 @@ class TestCLITableOption:
         mock_stdout = StringIO()
         monkeypatch.setattr("sys.stdout", mock_stdout)
 
-        try:
+        with contextlib.suppress(SystemExit):
             main()
-        except SystemExit:
-            pass
 
         output = mock_stdout.getvalue()
         assert len(output) > 0
@@ -658,10 +621,8 @@ class TestCLITableOption:
             mock_stderr = StringIO()
             monkeypatch.setattr("sys.stderr", mock_stderr)
 
-            try:
+            with contextlib.suppress(SystemExit):
                 main()
-            except SystemExit:
-                pass
 
             error_output = mock_stderr.getvalue()
             assert "Analysis failed" in error_output
@@ -688,10 +649,8 @@ class TestCLIPartialReadOption:
         mock_stdout = StringIO()
         monkeypatch.setattr("sys.stdout", mock_stdout)
 
-        try:
+        with contextlib.suppress(SystemExit):
             main()
-        except SystemExit:
-            pass
 
         output = mock_stdout.getvalue()
         assert len(output) > 0
@@ -708,10 +667,8 @@ class TestCLIPartialReadOption:
         mock_stderr = StringIO()
         monkeypatch.setattr("sys.stderr", mock_stderr)
 
-        try:
+        with contextlib.suppress(SystemExit):
             main()
-        except SystemExit:
-            pass
 
         error_output = mock_stderr.getvalue()
         assert "--start-line is required" in error_output
@@ -726,10 +683,8 @@ class TestCLIPartialReadOption:
         mock_stderr = StringIO()
         monkeypatch.setattr("sys.stderr", mock_stderr)
 
-        try:
+        with contextlib.suppress(SystemExit):
             main()
-        except SystemExit:
-            pass
 
         error_output = mock_stderr.getvalue()
         assert "--start-line must be 1 or greater" in error_output
@@ -752,10 +707,8 @@ class TestCLIPartialReadOption:
         mock_stderr = StringIO()
         monkeypatch.setattr("sys.stderr", mock_stderr)
 
-        try:
+        with contextlib.suppress(SystemExit):
             main()
-        except SystemExit:
-            pass
 
         error_output = mock_stderr.getvalue()
         assert (
@@ -780,10 +733,8 @@ class TestCLIPartialReadOption:
         mock_stderr = StringIO()
         monkeypatch.setattr("sys.stderr", mock_stderr)
 
-        try:
+        with contextlib.suppress(SystemExit):
             main()
-        except SystemExit:
-            pass
 
         error_output = mock_stderr.getvalue()
         assert "--start-column must be 0 or greater" in error_output
@@ -806,10 +757,8 @@ class TestCLIPartialReadOption:
         mock_stderr = StringIO()
         monkeypatch.setattr("sys.stderr", mock_stderr)
 
-        try:
+        with contextlib.suppress(SystemExit):
             main()
-        except SystemExit:
-            pass
 
         error_output = mock_stderr.getvalue()
         assert "--end-column must be 0 or greater" in error_output
@@ -829,10 +778,8 @@ class TestCLIPartialReadOption:
             mock_stderr = StringIO()
             monkeypatch.setattr("sys.stderr", mock_stderr)
 
-            try:
+            with contextlib.suppress(SystemExit):
                 main()
-            except SystemExit:
-                pass
 
             error_output = mock_stderr.getvalue()
             assert "Failed to read file partially" in error_output
@@ -851,10 +798,8 @@ class TestCLIQueryHandling:
         mock_stderr = StringIO()
         monkeypatch.setattr("sys.stderr", mock_stderr)
 
-        try:
+        with contextlib.suppress(SystemExit):
             main()
-        except SystemExit:
-            pass
 
         error_output = mock_stderr.getvalue()
         assert "not found" in error_output
@@ -872,10 +817,8 @@ class TestCLIQueryHandling:
             mock_stderr = StringIO()
             monkeypatch.setattr("sys.stderr", mock_stderr)
 
-            try:
+            with contextlib.suppress(SystemExit):
                 main()
-            except SystemExit:
-                pass
 
             error_output = mock_stderr.getvalue()
             assert "Test error" in error_output
@@ -903,10 +846,8 @@ class TestCLILanguageHandling:
         mock_stdout = StringIO()
         monkeypatch.setattr("sys.stdout", mock_stdout)
 
-        try:
+        with contextlib.suppress(SystemExit):
             main()
-        except SystemExit:
-            pass
 
         output = mock_stdout.getvalue()
         assert "Trying with Java analysis engine" in output
@@ -951,10 +892,8 @@ class TestCLIQueryExecution:
             mock_stdout = StringIO()
             monkeypatch.setattr("sys.stdout", mock_stdout)
 
-            try:
+            with contextlib.suppress(SystemExit):
                 main()
-            except SystemExit:
-                pass
 
             output = mock_stdout.getvalue()
             assert "No results found matching the query" in output
@@ -1007,10 +946,8 @@ class TestCLIQueryExecution:
         mock_stderr = StringIO()
         monkeypatch.setattr("sys.stderr", mock_stderr)
 
-        try:
+        with contextlib.suppress(SystemExit):
             main()
-        except SystemExit:
-            pass
 
         error_output = mock_stderr.getvalue()
         assert "Please specify a query or --advanced option" in error_output
@@ -1036,10 +973,8 @@ class TestCLIQueryExecution:
             mock_stderr = StringIO()
             monkeypatch.setattr("sys.stderr", mock_stderr)
 
-            try:
+            with contextlib.suppress(SystemExit):
                 main()
-            except SystemExit:
-                pass
 
             error_output = mock_stderr.getvalue()
             assert "not found" in error_output
@@ -1068,10 +1003,8 @@ class TestCLIQueryExecution:
             mock_stderr = StringIO()
             monkeypatch.setattr("sys.stderr", mock_stderr)
 
-            try:
+            with contextlib.suppress(SystemExit):
                 main()
-            except SystemExit:
-                pass
 
             error_output = mock_stderr.getvalue()
             assert "Query error" in error_output
@@ -1094,10 +1027,8 @@ class TestCLILoggingConfiguration:
             mock_logger = Mock()
             mock_get_logger.return_value = mock_logger
 
-            try:
+            with contextlib.suppress(SystemExit):
                 main()
-            except SystemExit:
-                pass
 
             # Should have set logging level to ERROR
             mock_logger.setLevel.assert_called_with(logging.ERROR)
@@ -1116,10 +1047,8 @@ class TestCLIAdditionalCoverage:
         mock_stdout = StringIO()
         monkeypatch.setattr("sys.stdout", mock_stdout)
 
-        try:
+        with contextlib.suppress(SystemExit):
             main()
-        except SystemExit:
-            pass
 
         output = mock_stdout.getvalue()
         assert "Supported languages" in output
@@ -1130,10 +1059,8 @@ class TestCLIAdditionalCoverage:
         mock_stdout = StringIO()
         monkeypatch.setattr("sys.stdout", mock_stdout)
 
-        try:
+        with contextlib.suppress(SystemExit):
             main()
-        except SystemExit:
-            pass
 
         output = mock_stdout.getvalue()
         assert "Supported file extensions" in output
@@ -1144,10 +1071,8 @@ class TestCLIAdditionalCoverage:
         mock_stdout = StringIO()
         monkeypatch.setattr("sys.stdout", mock_stdout)
 
-        try:
+        with contextlib.suppress(SystemExit):
             main()
-        except SystemExit:
-            pass
 
         output = mock_stdout.getvalue()
         assert len(output) > 0
@@ -1158,10 +1083,8 @@ class TestCLIAdditionalCoverage:
         mock_stdout = StringIO()
         monkeypatch.setattr("sys.stdout", mock_stdout)
 
-        try:
+        with contextlib.suppress(SystemExit):
             main()
-        except SystemExit:
-            pass
 
         output = mock_stdout.getvalue()
         assert "Languages with query support" in output
@@ -1174,10 +1097,8 @@ class TestCLIAdditionalCoverage:
         mock_stdout = StringIO()
         monkeypatch.setattr("sys.stdout", mock_stdout)
 
-        try:
+        with contextlib.suppress(SystemExit):
             main()
-        except SystemExit:
-            pass
 
         output = mock_stdout.getvalue()
         assert "Available query keys" in output
@@ -1188,10 +1109,8 @@ class TestCLIAdditionalCoverage:
         mock_stdout = StringIO()
         monkeypatch.setattr("sys.stdout", mock_stdout)
 
-        try:
+        with contextlib.suppress(SystemExit):
             main()
-        except SystemExit:
-            pass
 
         output = mock_stdout.getvalue()
         assert "Available query keys" in output
@@ -1202,10 +1121,8 @@ class TestCLIAdditionalCoverage:
         mock_stdout = StringIO()
         monkeypatch.setattr("sys.stdout", mock_stdout)
 
-        try:
+        with contextlib.suppress(SystemExit):
             main()
-        except SystemExit:
-            pass
 
         output = mock_stdout.getvalue()
         assert "Supported languages" in output
@@ -1218,10 +1135,8 @@ class TestCLIAdditionalCoverage:
         mock_stdout = StringIO()
         monkeypatch.setattr("sys.stdout", mock_stdout)
 
-        try:
+        with contextlib.suppress(SystemExit):
             main()
-        except SystemExit:
-            pass
 
         output = mock_stdout.getvalue()
         assert "Query key 'class'" in output
@@ -1244,10 +1159,8 @@ class TestCLIAdditionalCoverage:
         mock_stdout = StringIO()
         monkeypatch.setattr("sys.stdout", mock_stdout)
 
-        try:
+        with contextlib.suppress(SystemExit):
             main()
-        except SystemExit:
-            pass
 
         output = mock_stdout.getvalue()
         assert "Query key 'class'" in output
@@ -1258,10 +1171,8 @@ class TestCLIAdditionalCoverage:
         mock_stderr = StringIO()
         monkeypatch.setattr("sys.stderr", mock_stderr)
 
-        try:
+        with contextlib.suppress(SystemExit):
             main()
-        except SystemExit:
-            pass
 
         error_output = mock_stderr.getvalue()
         assert (
@@ -1275,10 +1186,8 @@ class TestCLIAdditionalCoverage:
         mock_stderr = StringIO()
         monkeypatch.setattr("sys.stderr", mock_stderr)
 
-        try:
+        with contextlib.suppress(SystemExit):
             main()
-        except SystemExit:
-            pass
 
         error_output = mock_stderr.getvalue()
         assert "File path not specified" in error_output
@@ -1300,10 +1209,8 @@ class TestCLIAdditionalCoverage:
         mock_stderr = StringIO()
         monkeypatch.setattr("sys.stderr", mock_stderr)
 
-        try:
+        with contextlib.suppress(SystemExit):
             main()
-        except SystemExit:
-            pass
 
         error_output = mock_stderr.getvalue()
         assert "Invalid file path" in error_output
@@ -1335,10 +1242,8 @@ class TestCLIAdditionalCoverage:
         mock_stderr = StringIO()
         monkeypatch.setattr("sys.stderr", mock_stderr)
 
-        try:
+        with contextlib.suppress(SystemExit):
             main()
-        except SystemExit:
-            pass
 
         error_output = mock_stderr.getvalue()
         assert "Could not determine language for file" in error_output
@@ -1368,10 +1273,8 @@ class TestCLIAdditionalCoverage:
         mock_stdout = StringIO()
         monkeypatch.setattr("sys.stdout", mock_stdout)
 
-        try:
+        with contextlib.suppress(SystemExit):
             main()
-        except SystemExit:
-            pass
 
         output = mock_stdout.getvalue()
         assert "Trying with Java analysis engine" in output
@@ -1396,10 +1299,8 @@ class TestCLIAdditionalCoverage:
         mock_stdout = StringIO()
         monkeypatch.setattr("sys.stdout", mock_stdout)
 
-        try:
+        with contextlib.suppress(SystemExit):
             main()
-        except SystemExit:
-            pass
 
         output = mock_stdout.getvalue()
         assert len(output) > 0

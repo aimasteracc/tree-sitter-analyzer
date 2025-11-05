@@ -3,6 +3,7 @@ Edge case and error handling tests for MCP server.
 Tests cover error conditions, boundary cases, and robustness scenarios.
 """
 
+import contextlib
 import json
 import os
 from pathlib import Path
@@ -625,10 +626,8 @@ class TestMCPServerUtilityEdgeCases:
                         if mock_run.call_args:
                             args, kwargs = mock_run.call_args
                             if args and hasattr(args[0], "close"):
-                                try:
+                                with contextlib.suppress(Exception):
                                     args[0].close()
-                                except:
-                                    pass
                         raise
 
 

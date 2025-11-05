@@ -6,6 +6,7 @@ Tests for the unified element type system to ensure consistency
 between CLI commands and MCP tools.
 """
 
+import contextlib
 import sys
 from io import StringIO
 from pathlib import Path
@@ -127,10 +128,8 @@ public class SampleClass {
         mock_stdout = StringIO()
         monkeypatch.setattr("sys.stdout", mock_stdout)
 
-        try:
+        with contextlib.suppress(SystemExit):
             main()
-        except SystemExit:
-            pass
 
         output = mock_stdout.getvalue()
 
@@ -181,10 +180,8 @@ public class SampleClass {
         mock_stdout = StringIO()
         monkeypatch.setattr("sys.stdout", mock_stdout)
 
-        try:
+        with contextlib.suppress(SystemExit):
             main()
-        except SystemExit:
-            pass
 
         output = mock_stdout.getvalue()
 
@@ -209,17 +206,13 @@ public class SampleClass {
             if in_class_info and "Total Methods" in line:
                 parts = line.split("|")
                 if len(parts) >= 3:
-                    try:
+                    with contextlib.suppress(ValueError):
                         method_count = int(parts[2].strip())
-                    except ValueError:
-                        pass
             elif in_class_info and "Total Fields" in line:
                 parts = line.split("|")
                 if len(parts) >= 3:
-                    try:
+                    with contextlib.suppress(ValueError):
                         field_count = int(parts[2].strip())
-                    except ValueError:
-                        pass
 
         # Debug: Print the actual output to understand the format
         print("DEBUG: Table output lines:")
@@ -255,10 +248,8 @@ public class SampleClass {
         mock_stdout = StringIO()
         monkeypatch.setattr("sys.stdout", mock_stdout)
 
-        try:
+        with contextlib.suppress(SystemExit):
             main()
-        except SystemExit:
-            pass
 
         advanced_output = mock_stdout.getvalue()
 
@@ -267,25 +258,17 @@ public class SampleClass {
         for line in advanced_output.split("\n"):
             line = line.strip()
             if line.startswith('"Classes: '):
-                try:
+                with contextlib.suppress(ValueError, IndexError):
                     advanced_counts["classes"] = int(line.split(": ")[1].rstrip('"'))
-                except (ValueError, IndexError):
-                    pass
             elif line.startswith('"Methods: '):
-                try:
+                with contextlib.suppress(ValueError, IndexError):
                     advanced_counts["methods"] = int(line.split(": ")[1].rstrip('"'))
-                except (ValueError, IndexError):
-                    pass
             elif line.startswith('"Fields: '):
-                try:
+                with contextlib.suppress(ValueError, IndexError):
                     advanced_counts["fields"] = int(line.split(": ")[1].rstrip('"'))
-                except (ValueError, IndexError):
-                    pass
             elif line.startswith('"Imports: '):
-                try:
+                with contextlib.suppress(ValueError, IndexError):
                     advanced_counts["imports"] = int(line.split(": ")[1].rstrip('"'))
-                except (ValueError, IndexError):
-                    pass
 
         # Test table command
         monkeypatch.setattr(
@@ -303,10 +286,8 @@ public class SampleClass {
         mock_stdout = StringIO()
         monkeypatch.setattr("sys.stdout", mock_stdout)
 
-        try:
+        with contextlib.suppress(SystemExit):
             main()
-        except SystemExit:
-            pass
 
         table_output = mock_stdout.getvalue()
 
@@ -329,17 +310,13 @@ public class SampleClass {
             if in_class_info and "Total Methods" in line:
                 parts = line.split("|")
                 if len(parts) >= 3:
-                    try:
+                    with contextlib.suppress(ValueError):
                         table_counts["methods"] = int(parts[2].strip())
-                    except ValueError:
-                        pass
             elif in_class_info and "Total Fields" in line:
                 parts = line.split("|")
                 if len(parts) >= 3:
-                    try:
+                    with contextlib.suppress(ValueError):
                         table_counts["fields"] = int(parts[2].strip())
-                    except ValueError:
-                        pass
 
         # Debug: Print the actual output to understand the format
         print("DEBUG: Table output lines:")
@@ -388,10 +365,8 @@ public class EmptyClass {
         mock_stdout = StringIO()
         monkeypatch.setattr("sys.stdout", mock_stdout)
 
-        try:
+        with contextlib.suppress(SystemExit):
             main()
-        except SystemExit:
-            pass
 
         output = mock_stdout.getvalue()
 

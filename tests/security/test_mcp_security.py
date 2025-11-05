@@ -606,7 +606,7 @@ class TestSecurityBestPractices:
         # 全てのリクエストが適切に処理されることを確認
         for result in results:
             assert not isinstance(result, Exception) or isinstance(
-                result, (SecurityError, ValidationError)
+                result, SecurityError | ValidationError
             )
             if isinstance(result, dict):
                 assert result["success"] is True

@@ -7,6 +7,7 @@ including dependency checking and initialization handling.
 """
 
 import asyncio
+import contextlib
 import logging
 import os
 import sys
@@ -240,10 +241,8 @@ class TestStartupScriptIntegration:
         await asyncio.sleep(0.1)
         server_task.cancel()
 
-        try:
+        with contextlib.suppress(asyncio.CancelledError):
             await server_task
-        except asyncio.CancelledError:
-            pass
 
         # Should have handled shutdown gracefully
         assert shutdown_called

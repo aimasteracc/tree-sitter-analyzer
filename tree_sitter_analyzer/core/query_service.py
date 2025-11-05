@@ -300,17 +300,20 @@ class QueryService:
                 node_type = str(node_type)
 
             # Generic node type matching (support both singular and plural forms)
-            if query_key in ("function", "functions") and "function" in node_type:
-                captures.append((node, query_key))
-            elif query_key in ("class", "classes") and "class" in node_type:
-                captures.append((node, query_key))
-            elif query_key in ("method", "methods") and "method" in node_type:
-                captures.append((node, query_key))
-            elif query_key in ("variable", "variables") and "variable" in node_type:
-                captures.append((node, query_key))
-            elif query_key in ("import", "imports") and "import" in node_type:
-                captures.append((node, query_key))
-            elif query_key in ("header", "headers") and "heading" in node_type:
+            if (
+                query_key in ("function", "functions")
+                and "function" in node_type
+                or query_key in ("class", "classes")
+                and "class" in node_type
+                or query_key in ("method", "methods")
+                and "method" in node_type
+                or query_key in ("variable", "variables")
+                and "variable" in node_type
+                or query_key in ("import", "imports")
+                and "import" in node_type
+                or query_key in ("header", "headers")
+                and "heading" in node_type
+            ):
                 captures.append((node, query_key))
 
             # Recursively process children

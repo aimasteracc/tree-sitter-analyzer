@@ -439,7 +439,7 @@ Tree-sitter Analyzer provides a rich set of MCP tools designed for AI assistants
 | Tool Category | Tool Name | Main Function | Core Features |
 |-------------|---------|---------|---------|
 | **📊 Code Analysis** | `check_code_scale` | Fast code file scale analysis | File size statistics, line count statistics, complexity analysis, performance metrics |
-| | `analyze_code_structure` | Code structure analysis and table generation | 🆕 suppress_output parameter, multiple formats (full/compact/csv/json/html), automatic language detection |
+| | `analyze_code_structure` | Code structure analysis and table generation | 🆕 suppress_output parameter, multiple formats (full/compact/csv), automatic language detection |
 | | `extract_code_section` | Precise code section extraction | Specified line range extraction, large file efficient processing, original format preservation |
 | **🔍 Intelligent Search** | `list_files` | High-performance file discovery | fd-based, glob patterns, file type filters, time range control |
 | | `search_content` | Regex content search | ripgrep-based, multiple output formats, context control, encoding handling, 🆕 parallel processing engine, unified `set_project_path` support |

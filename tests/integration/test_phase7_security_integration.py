@@ -304,7 +304,10 @@ echo "Potentially dangerous operation"
                 try:
                     if isinstance(
                         tool,
-                        (AnalyzeScaleTool, TableFormatTool, ReadPartialTool, QueryTool),
+                        AnalyzeScaleTool
+                        | TableFormatTool
+                        | ReadPartialTool
+                        | QueryTool,
                     ):
                         result = await tool.execute({"file_path": malicious_path})
 
@@ -382,7 +385,7 @@ echo "Potentially dangerous operation"
                 start_time = time.time()
 
                 try:
-                    if isinstance(tool, (SearchContentTool, FindAndGrepTool)):
+                    if isinstance(tool, SearchContentTool | FindAndGrepTool):
                         result = await asyncio.wait_for(
                             tool.execute(
                                 {
@@ -806,7 +809,10 @@ echo "Potentially dangerous operation"
                     # ツールの種類に応じてテストパラメータを調整
                     if isinstance(
                         tool,
-                        (AnalyzeScaleTool, TableFormatTool, ReadPartialTool, QueryTool),
+                        AnalyzeScaleTool
+                        | TableFormatTool
+                        | ReadPartialTool
+                        | QueryTool,
                     ):
                         result = await tool.execute(
                             {"file_path": test_case["test_data"]}
@@ -819,7 +825,7 @@ echo "Potentially dangerous operation"
                                 ]  # 悪意のあるパスを直接使用
                             }
                         )
-                    elif isinstance(tool, (SearchContentTool, FindAndGrepTool)):
+                    elif isinstance(tool, SearchContentTool | FindAndGrepTool):
                         result = await tool.execute(
                             {
                                 "roots": [
@@ -1041,7 +1047,7 @@ echo "Potentially dangerous operation"
         successful_attacks = []
         blocked_attacks = []
 
-        for i, (attack_type, result) in enumerate(
+        for _i, (attack_type, result) in enumerate(
             zip([t[0] for t in concurrent_attacks], results, strict=False)
         ):
             if isinstance(result, Exception):

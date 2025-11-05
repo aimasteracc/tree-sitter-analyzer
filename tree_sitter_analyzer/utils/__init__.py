@@ -7,8 +7,6 @@ including tree-sitter API compatibility and logging.
 """
 
 # Import from tree-sitter compatibility module
-from .tree_sitter_compat import TreeSitterQueryCompat, get_node_text_safe, log_api_info
-
 # Import logging functions directly from logging module
 from .logging import (
     LoggingContext,
@@ -28,6 +26,7 @@ from .logging import (
     setup_safe_logging_shutdown,
     suppress_output,
 )
+from .tree_sitter_compat import TreeSitterQueryCompat, get_node_text_safe, log_api_info
 
 __all__ = [
     # Tree-sitter compatibility

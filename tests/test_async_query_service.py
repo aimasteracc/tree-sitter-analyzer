@@ -201,7 +201,7 @@ const arrowFunction = () => {
         """存在しないファイルのエラーハンドリングテスト"""
         service = QueryService()
 
-        with pytest.raises(Exception):
+        with pytest.raises((FileNotFoundError, ValueError)):
             await service.execute_query(
                 file_path="nonexistent_file.py", language="python", query_key="function"
             )
@@ -211,7 +211,7 @@ const arrowFunction = () => {
         """無効な言語のエラーハンドリングテスト"""
         service = QueryService()
 
-        with pytest.raises(Exception):
+        with pytest.raises((ValueError, RuntimeError)):
             await service.execute_query(
                 file_path=sample_python_file,
                 language="invalid_language",

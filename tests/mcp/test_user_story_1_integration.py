@@ -14,6 +14,7 @@ Test Coverage:
 - Checkpoint validation for independent testability
 """
 
+import contextlib
 import os
 import tempfile
 import time
@@ -459,10 +460,8 @@ if __name__ == '__main__':
         """Cleanup test files"""
         if hasattr(self, "test_files"):
             for file_path in self.test_files.values():
-                try:
+                with contextlib.suppress(FileNotFoundError):
                     os.unlink(file_path)
-                except FileNotFoundError:
-                    pass
 
     @pytest.mark.asyncio
     async def test_complete_analysis_workflow(self):

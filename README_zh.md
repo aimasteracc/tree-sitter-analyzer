@@ -439,7 +439,7 @@ Tree-sitter Analyzer提供了丰富的MCP工具集，专为AI助手设计：
 | 工具类别 | 工具名称 | 主要功能 | 核心特性 |
 |---------|---------|---------|---------|
 | **📊 代码分析** | `check_code_scale` | 快速分析代码文件规模 | 文件大小统计、行数统计、复杂度分析、性能指标 |
-| | `analyze_code_structure` | 分析代码结构和生成表格 | 🆕 suppress_output参数、多种格式(full/compact/csv/json/html)、自动语言检测 |
+| | `analyze_code_structure` | 分析代码结构和生成表格 | 🆕 suppress_output参数、多种格式(full/compact/csv)、自动语言检测 |
 | | `extract_code_section` | 精确提取代码片段 | 指定行范围提取、大文件高效处理、保持原始格式 |
 | **🔍 智能搜索** | `list_files` | 高性能文件发现 | 基于fd、glob模式、文件类型过滤、时间范围控制 |
 | | `search_content` | 正则表达式内容搜索 | 基于ripgrep、多种输出格式、上下文控制、编码处理、🆕 并行处理引擎、统一`set_project_path`支持 |

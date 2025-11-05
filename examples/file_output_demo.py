@@ -72,7 +72,7 @@ def detect_content_type_demo(content):
         try:
             json.loads(content)
             return "json"
-        except:
+        except Exception:
             pass
 
     # CSV detection

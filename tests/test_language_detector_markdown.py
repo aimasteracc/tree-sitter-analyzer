@@ -225,7 +225,7 @@ def hello():
         # Test that patterns are properly formatted
         for pattern, weight in markdown_patterns:
             assert isinstance(pattern, str)
-            assert isinstance(weight, (int, float))
+            assert isinstance(weight, int | float)
             assert weight > 0
             assert weight <= 1.0
 

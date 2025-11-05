@@ -48,7 +48,10 @@ class AnalysisEngine:
             raise
 
     def analyze_file(
-        self, file_path: str | Path, language: str | None = None, queries: list[str] | None = None
+        self,
+        file_path: str | Path,
+        language: str | None = None,
+        queries: list[str] | None = None,
     ) -> AnalysisResult:
         """
         Analyze a source code file.

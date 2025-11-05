@@ -114,7 +114,7 @@ ___"""
                 result = self.extractor.extract_horizontal_rules(mock_tree, content)
 
                 assert len(result) == 3
-                for i, hr in enumerate(result):
+                for _i, hr in enumerate(result):
                     assert hr.element_type == "horizontal_rule"
                     assert hr.name == "Horizontal Rule"
 

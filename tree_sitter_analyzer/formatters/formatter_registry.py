@@ -346,24 +346,31 @@ class CompactFormatter(IFormatter):
 def register_builtin_formatters() -> None:
     """Register all built-in formatters"""
     FormatterRegistry.register_formatter(JsonFormatter)
-    FormatterRegistry.register_formatter(CsvFormatter)
-    FormatterRegistry.register_formatter(FullFormatter)
-    FormatterRegistry.register_formatter(CompactFormatter)
 
-    # Register HTML formatters if available
+    # Register legacy formatters for backward compatibility (v1.6.1.4 format restoration)
     try:
-        from .html_formatter import (
-            HtmlCompactFormatter,
-            HtmlFormatter,
-            HtmlJsonFormatter,
+        from .legacy_formatter_adapters import (
+            LegacyCompactFormatter,
+            LegacyCsvFormatter,
+            LegacyFullFormatter,
         )
 
-        FormatterRegistry.register_formatter(HtmlFormatter)
-        FormatterRegistry.register_formatter(HtmlJsonFormatter)
-        FormatterRegistry.register_formatter(HtmlCompactFormatter)
-    except ImportError:
-        # HTML formatters not available, skip registration
-        pass
+        # Replace broken v1.9.4 formatters with legacy-compatible ones
+        FormatterRegistry.register_formatter(LegacyCsvFormatter)
+        FormatterRegistry.register_formatter(LegacyFullFormatter)
+        FormatterRegistry.register_formatter(LegacyCompactFormatter)
+
+        logger.info("Registered legacy formatters for v1.6.1.4 compatibility")
+    except ImportError as e:
+        logger.warning(f"Failed to register legacy formatters: {e}")
+        # Fallback to broken v1.9.4 formatters (should not happen in normal operation)
+        FormatterRegistry.register_formatter(CsvFormatter)
+        FormatterRegistry.register_formatter(FullFormatter)
+        FormatterRegistry.register_formatter(CompactFormatter)
+
+    # NOTE: HTML formatters are intentionally excluded from analyze_code_structure
+    # as they are not part of the v1.6.1.4 specification and cause format regression.
+    # HTML formatters can still be registered separately for other tools if needed.
 
 
 # Auto-register built-in formatters when module is imported

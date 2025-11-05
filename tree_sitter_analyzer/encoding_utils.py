@@ -282,11 +282,13 @@ class EncodingManager:
                     # Only trust high-confidence detections
                     if confidence > 0.7:
                         log_debug(
-                            f"Detected encoding: {detected_encoding} (confidence: {confidence:.2f})"
+                            f"Detected encoding: {detected_encoding} "
+                            f"(confidence: {confidence:.2f})"
                         )
                     else:
                         log_debug(
-                            f"Low confidence encoding detection: {detected_encoding} (confidence: {confidence:.2f}), using default"
+                            f"Low confidence encoding detection: {detected_encoding} "
+                            f"(confidence: {confidence:.2f}), using default"
                         )
                         detected_encoding = cls.DEFAULT_ENCODING
 
@@ -456,7 +458,7 @@ def extract_text_slice(
     )
 
 
-def read_file_safe_streaming(file_path: str | Path):
+def read_file_safe_streaming(file_path: str | Path) -> Any:
     """
     Context manager for streaming file reading with automatic encoding detection.
 
@@ -482,7 +484,7 @@ def read_file_safe_streaming(file_path: str | Path):
     """
     import contextlib
 
-    from .utils.logging import log_debug, log_warning
+    from .utils.logging import log_warning
 
     file_path = Path(file_path)
 
@@ -507,11 +509,9 @@ def read_file_safe_streaming(file_path: str | Path):
 
     # Open file with detected encoding for streaming
     @contextlib.contextmanager
-    def _file_context():
+    def _file_context() -> Any:
         try:
-            with open(
-                file_path, "r", encoding=detected_encoding, errors="replace"
-            ) as f:
+            with open(file_path, encoding=detected_encoding, errors="replace") as f:
                 yield f
         except OSError as e:
             log_warning(f"Failed to open file for streaming {file_path}: {e}")

@@ -17,6 +17,8 @@ sys.path.insert(0, ".")
 
 # Import the module under test
 # Import LoggingContext - it should be available
+import contextlib
+
 from tree_sitter_analyzer.utils import (
     LoggingContext,
     log_performance,
@@ -49,10 +51,8 @@ def test_logger():
             logger.removeHandler(handler)
 
         # Close handler
-        try:
+        with contextlib.suppress(ValueError, OSError, AttributeError):
             handler.close()
-        except (ValueError, OSError, AttributeError):
-            pass
 
     except Exception:
         # Ignore all cleanup errors during pytest shutdown
@@ -91,10 +91,8 @@ def perf_logger():
             logger.removeHandler(handler)
 
         # Close handler
-        try:
+        with contextlib.suppress(ValueError, OSError, AttributeError):
             handler.close()
-        except (ValueError, OSError, AttributeError):
-            pass
 
     except Exception:
         # Ignore all cleanup errors during pytest shutdown

@@ -715,7 +715,7 @@ class CoreClass:
 
         # Verify workflow completed successfully
         assert len(analysis_results) == 2
-        for file_name, analysis in analysis_results:
+        for _file_name, analysis in analysis_results:
             assert "file_metrics" in analysis
             assert "llm_guidance" in analysis
 

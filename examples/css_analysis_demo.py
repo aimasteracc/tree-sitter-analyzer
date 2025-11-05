@@ -15,7 +15,6 @@ from typing import Any
 try:
     from tree_sitter_analyzer.core.analysis_engine import get_analysis_engine
     from tree_sitter_analyzer.languages.css_plugin import CssPlugin
-    from tree_sitter_analyzer.models import StyleElement
 except ImportError as e:
     print(f"エラー: Tree-sitter Analyzerがインストールされていません: {e}")
     print("以下のコマンドでインストールしてください:")
@@ -242,7 +241,7 @@ class CssAnalysisDemo:
                             css_variables[prop_name] = prop_value
 
                 # CSS変数の使用を検索
-                for prop_name, prop_value in properties.items():
+                for _prop_name, prop_value in properties.items():
                     if "var(" in str(prop_value):
                         # var()関数から変数名を抽出（簡易版）
                         import re

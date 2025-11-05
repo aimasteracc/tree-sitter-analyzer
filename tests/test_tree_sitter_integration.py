@@ -404,7 +404,7 @@ def code_block():
     async def test_error_handling_integration(self):
         """Test error handling in tree-sitter integration"""
         # Test with non-existent file
-        with pytest.raises(Exception):
+        with pytest.raises((FileNotFoundError, ValueError)):
             await self.query_service.execute_query(
                 "non_existent.py", "python", query_key="functions"
             )

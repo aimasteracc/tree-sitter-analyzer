@@ -82,7 +82,7 @@ class MCPCompatibilityTester:
         server_name = f"tree-sitter-analyzer-{version}"
 
         if server_name not in settings.get("mcpServers", {}):
-            return {tool: False for tool in MCP_TOOLS}
+            return dict.fromkeys(MCP_TOOLS, False)
 
         allowed_tools = settings["mcpServers"][server_name].get("alwaysAllow", [])
         return {tool: tool in allowed_tools for tool in MCP_TOOLS}

@@ -45,6 +45,8 @@ except ImportError:
         pass
 
 
+import contextlib
+
 from ..constants import (
     ELEMENT_TYPE_CLASS,
     ELEMENT_TYPE_FUNCTION,
@@ -397,10 +399,12 @@ class TreeSitterAnalyzerMCPServer:
                     continue
 
                 # Check for other comment types based on language
-                if language == "python" and stripped.startswith("#"):
-                    comment_lines += 1
-                    continue
-                elif language == "sql" and stripped.startswith("--"):
+                if (
+                    language == "python"
+                    and stripped.startswith("#")
+                    or language == "sql"
+                    and stripped.startswith("--")
+                ):
                     comment_lines += 1
                     continue
                 elif language in ["html", "xml"] and stripped.startswith("<!--"):
@@ -650,10 +654,8 @@ class TreeSitterAnalyzerMCPServer:
 
         except Exception as e:
             # If Prompt type is unavailable, log at debug level and continue safely
-            try:
+            with contextlib.suppress(ValueError, OSError):
                 logger.debug(f"Prompts API unavailable or incompatible: {e}")
-            except (ValueError, OSError):
-                pass
 
         self.server = server
         try:
@@ -707,15 +709,20 @@ class TreeSitterAnalyzerMCPServer:
 
         # Initialize server options with required capabilities field
         from mcp.server.models import ServerCapabilities
-        from mcp.types import ToolsCapability, ResourcesCapability, PromptsCapability, LoggingCapability
-        
+        from mcp.types import (
+            LoggingCapability,
+            PromptsCapability,
+            ResourcesCapability,
+            ToolsCapability,
+        )
+
         capabilities = ServerCapabilities(
             tools=ToolsCapability(listChanged=True),
             resources=ResourcesCapability(subscribe=True, listChanged=True),
             prompts=PromptsCapability(listChanged=True),
-            logging=LoggingCapability()
+            logging=LoggingCapability(),
         )
-        
+
         options = InitializationOptions(
             server_name=self.name,
             server_version=self.version,
@@ -805,12 +812,10 @@ async def main() -> None:
         ):
             # Use current working directory as final fallback
             fallback_root = str(PathClass.cwd())
-            try:
+            with contextlib.suppress(ValueError, OSError):
                 logger.warning(
                     f"Invalid project root '{project_root}', falling back to current directory: {fallback_root}"
                 )
-            except (ValueError, OSError):
-                pass
             project_root = fallback_root
 
         logger.info(f"MCP server starting with project root: {project_root}")

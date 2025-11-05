@@ -49,7 +49,7 @@ class LLMCodeChecker:
         Returns:
             True if no issues found, False otherwise
         """
-        if not file_path.suffix == ".py":
+        if file_path.suffix != ".py":
             return True
 
         self.files_checked += 1
@@ -229,7 +229,9 @@ class LLMCodeChecker:
                         node.lineno,
                     )
 
-    def _check_anti_patterns(self, file_path: Path, tree: ast.AST, content: str) -> None:
+    def _check_anti_patterns(
+        self, file_path: Path, tree: ast.AST, content: str
+    ) -> None:
         """Check for common anti-patterns."""
         # Check for mutable default arguments
         for node in ast.walk(tree):
@@ -259,7 +261,9 @@ class LLMCodeChecker:
                     )
                     break
 
-    def _check_project_patterns(self, file_path: Path, tree: ast.AST, content: str) -> None:
+    def _check_project_patterns(
+        self, file_path: Path, tree: ast.AST, content: str
+    ) -> None:
         """Check for project-specific patterns."""
         # Check for proper exception usage
         if "tree_sitter_analyzer" in str(file_path):
@@ -283,13 +287,12 @@ class LLMCodeChecker:
             "log_info" not in content
             and "logger" not in content
             and "print(" in content
-        ):
-            if not str(file_path).endswith("test_*.py"):
-                self._add_issue(
-                    file_path,
-                    "print_statement",
-                    "Use logging instead of print statements",
-                )
+        ) and not str(file_path).endswith("test_*.py"):
+            self._add_issue(
+                file_path,
+                "print_statement",
+                "Use logging instead of print statements",
+            )
 
     def print_summary(self) -> bool:
         """Print a summary of all issues found."""

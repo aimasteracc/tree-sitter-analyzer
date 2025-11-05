@@ -16,15 +16,15 @@ to correctly match one or more annotations of either type within the modifiers.
 
 import os
 import tempfile
-from pathlib import Path
 
 import pytest
+
 from tree_sitter_analyzer import api
 
 
 def _write_temp_java_file(code: str) -> str:
     """Helper to write Java code to a temp file and return the path"""
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.java', delete=False) as f:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".java", delete=False) as f:
         f.write(code)
         return f.name
 
@@ -52,25 +52,25 @@ public class TestClass {
 }
 """
         test_file = _write_temp_java_file(java_code)
-        
+
         try:
             result = api.execute_query(
-                test_file,
-                "method_with_annotations",
-                language="java"
+                test_file, "method_with_annotations", language="java"
             )
-            
+
             assert result["success"], f"Query failed: {result.get('error')}"
-            
+
             method_with_annotations = result.get("results", [])
-            assert len(method_with_annotations) == 1, \
-                f"Expected 1 method with annotation, found {len(method_with_annotations)}"
-            
+            assert (
+                len(method_with_annotations) == 1
+            ), f"Expected 1 method with annotation, found {len(method_with_annotations)}"
+
             captures = method_with_annotations[0].get("captures", {})
             assert "name" in captures, "Method name not captured"
-            assert captures["name"]["text"] == "toString", \
-                f"Expected method name 'toString', got '{captures['name']['text']}'"
-            
+            assert (
+                captures["name"]["text"] == "toString"
+            ), f"Expected method name 'toString', got '{captures['name']['text']}'"
+
             assert "annotation" in captures, "Annotation not captured"
         finally:
             _cleanup_temp_file(test_file)
@@ -86,22 +86,20 @@ public class TestClass {
 }
 """
         test_file = _write_temp_java_file(java_code)
-        
+
         try:
             result = api.execute_query(
-                test_file,
-                "method_with_annotations",
-                language="java"
+                test_file, "method_with_annotations", language="java"
             )
-            
+
             assert result["success"], f"Query failed: {result.get('error')}"
-            
+
             method_with_annotations = result.get("results", [])
             assert len(method_with_annotations) == 1
-            
+
             captures = method_with_annotations[0].get("captures", {})
             assert captures["name"]["text"] == "getRawList"
-            
+
             # Check annotation with parameters
             assert "annotation" in captures
         finally:
@@ -119,19 +117,17 @@ public class TestClass {
 }
 """
         test_file = _write_temp_java_file(java_code)
-        
+
         try:
             result = api.execute_query(
-                test_file,
-                "method_with_annotations",
-                language="java"
+                test_file, "method_with_annotations", language="java"
             )
-            
+
             assert result["success"], f"Query failed: {result.get('error')}"
-            
+
             method_with_annotations = result.get("results", [])
             assert len(method_with_annotations) == 1
-            
+
             captures = method_with_annotations[0].get("captures", {})
             assert captures["name"]["text"] == "oldMethod"
             assert "annotation" in captures
@@ -146,11 +142,11 @@ public class TestClass {
     public String toString() {
         return "test";
     }
-    
+
     public void regularMethod() {
         // no annotation
     }
-    
+
     @Test
     public void testMethod() {
         // test code
@@ -158,30 +154,29 @@ public class TestClass {
 }
 """
         test_file = _write_temp_java_file(java_code)
-        
+
         try:
             result = api.execute_query(
-                test_file,
-                "method_with_annotations",
-                language="java"
+                test_file, "method_with_annotations", language="java"
             )
-            
+
             assert result["success"], f"Query failed: {result.get('error')}"
-            
+
             method_with_annotations = result.get("results", [])
-            
+
             # Should match exactly 2 methods (toString with @Override, testMethod with @Test)
             # Should NOT match regularMethod (no annotation)
-            assert len(method_with_annotations) == 2, \
-                f"Expected 2 annotated methods, found {len(method_with_annotations)}"
-            
+            assert (
+                len(method_with_annotations) == 2
+            ), f"Expected 2 annotated methods, found {len(method_with_annotations)}"
+
             # Check that the matched methods are the annotated ones
             matched_names = []
             for match in method_with_annotations:
                 captures = match.get("captures", {})
                 if "name" in captures:
                     matched_names.append(captures["name"]["text"])
-            
+
             assert "toString" in matched_names
             assert "testMethod" in matched_names
             assert "regularMethod" not in matched_names
@@ -199,28 +194,26 @@ public class TestClass {
 }
 """
         test_file = _write_temp_java_file(java_code)
-        
+
         try:
             result = api.execute_query(
-                test_file,
-                "method_with_annotations",
-                language="java"
+                test_file, "method_with_annotations", language="java"
             )
-            
+
             assert result["success"]
-            
+
             method_with_annotations = result.get("results", [])
             assert len(method_with_annotations) > 0
-            
+
             # Check structure of first result
             first_result = method_with_annotations[0]
-            
+
             # Should have standard fields
             assert "text" in first_result
             assert "start_line" in first_result
             assert "end_line" in first_result
             assert "captures" in first_result
-            
+
             # Captures should include 'name', 'annotation', and 'method'
             captures = first_result["captures"]
             assert "name" in captures, "Missing 'name' capture"

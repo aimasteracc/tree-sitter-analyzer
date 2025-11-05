@@ -122,7 +122,7 @@ class TestStreamingFileReading:
             # Read only first 10 lines - should be fast
             with read_file_safe_streaming(temp_file) as file_handle:
                 count = 0
-                for line in file_handle:
+                for _line in file_handle:
                     count += 1
                     if count >= 10:
                         break
@@ -139,10 +139,8 @@ class TestStreamingFileReading:
     def test_streaming_encoding_detection(self):
         """Test automatic encoding detection in streaming mode"""
         # Create UTF-8 file
-        with tempfile.NamedTemporaryFile(
-            mode="wb", delete=False, suffix=".txt"
-        ) as f:
-            f.write("UTF-8 content: 日本語\n".encode("utf-8"))
+        with tempfile.NamedTemporaryFile(mode="wb", delete=False, suffix=".txt") as f:
+            f.write("UTF-8 content: 日本語\n".encode())
             temp_file = f.name
 
         try:
@@ -156,9 +154,7 @@ class TestStreamingFileReading:
     def test_streaming_different_line_endings(self):
         """Test streaming with different line ending styles"""
         # Test Windows-style (CRLF)
-        with tempfile.NamedTemporaryFile(
-            mode="wb", delete=False, suffix=".txt"
-        ) as f:
+        with tempfile.NamedTemporaryFile(mode="wb", delete=False, suffix=".txt") as f:
             f.write(b"Line 1\r\nLine 2\r\nLine 3\r\n")
             temp_file = f.name
 

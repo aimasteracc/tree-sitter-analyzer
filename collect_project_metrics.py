@@ -20,10 +20,7 @@ def is_project_file(filepath):
         ".ruff_cache",
     ]
 
-    for exclude_dir in exclude_dirs:
-        if exclude_dir in path_str:
-            return False
-    return True
+    return all(exclude_dir not in path_str for exclude_dir in exclude_dirs)
 
 
 def count_lines_in_file(filepath):

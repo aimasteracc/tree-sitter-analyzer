@@ -12,6 +12,7 @@ Fixes:
 """
 
 import asyncio
+import contextlib
 import gc
 import json
 import tempfile
@@ -82,10 +83,8 @@ async def cleanup_event_loop():
                     if not task.done():
                         print(f"  Task {i} is still running: {task}")
                         # Attempt forced termination
-                        try:
+                        with contextlib.suppress(Exception):
                             task.cancel()
-                        except Exception:
-                            pass
 
         # Explicit event loop cleanup
         try:
@@ -100,10 +99,8 @@ async def cleanup_event_loop():
                 try:
                     # Cleanup registered file descriptors in selector
                     for key in list(loop._selector.get_map().values()):
-                        try:
+                        with contextlib.suppress(KeyError, ValueError, OSError):
                             loop._selector.unregister(key.fileobj)
-                        except (KeyError, ValueError, OSError):
-                            pass
                 except Exception:
                     pass
 

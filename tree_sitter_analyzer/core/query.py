@@ -65,7 +65,7 @@ class QueryExecutor:
             if tree is None:
                 return self._create_error_result("Tree is None", query_name=query_name)
             if language is None:
-                return self._create_error_result(  # type: ignore[unreachable]
+                return self._create_error_result(
                     "Language is None", query_name=query_name
                 )
 
@@ -168,12 +168,14 @@ class QueryExecutor:
             if tree is None:
                 return self._create_error_result("Tree is None", query_name=query_name)
             if language is None:
-                return self._create_error_result(  # type: ignore[unreachable]
+                return self._create_error_result(
                     "Language is None", query_name=query_name
                 )
 
             # Use the provided language name
-            language_name = language_name.strip().lower() if language_name else "unknown"
+            language_name = (
+                language_name.strip().lower() if language_name else "unknown"
+            )
 
             query_string = self._query_loader.get_query(language_name, query_name)
             if query_string is None:
@@ -248,7 +250,7 @@ class QueryExecutor:
             if tree is None:
                 return self._create_error_result("Tree is None")
             if language is None:
-                return self._create_error_result("Language is None")  # type: ignore[unreachable]
+                return self._create_error_result("Language is None")
 
             # Create and execute the query using modern API
             try:
@@ -564,8 +566,6 @@ def get_query_description(language: str, query_name: str) -> str | None:
 
 # Module-level attributes for backward compatibility
 try:
-    from ..query_loader import get_query_loader
-
     query_loader = get_query_loader()
 except Exception:
     query_loader = None  # type: ignore
@@ -588,8 +588,8 @@ def get_all_queries_for_language(language: str) -> list[str]:
     import warnings
 
     warnings.warn(
-        "get_all_queries_for_language is deprecated and will be removed in a future version. "
-        "Use the unified analysis engine instead.",
+        "get_all_queries_for_language is deprecated and will be removed "
+        "in a future version. Use the unified analysis engine instead.",
         DeprecationWarning,
         stacklevel=2,
     )

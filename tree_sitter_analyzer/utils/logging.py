@@ -6,6 +6,7 @@ Provides logging, debugging, and common utility functions.
 """
 
 import atexit
+import contextlib
 import logging
 import os
 import sys
@@ -114,22 +115,18 @@ def setup_logger(
 
                 # Log the file location for debugging purposes
                 if hasattr(sys, "stderr") and hasattr(sys.stderr, "write"):
-                    try:
+                    with contextlib.suppress(Exception):
                         sys.stderr.write(
                             f"[logging_setup] File logging enabled: {log_path}\n"
                         )
-                    except Exception:
-                        ...
 
             except Exception as e:
                 # Never let logging configuration break runtime behavior; log to stderr if possible
                 if hasattr(sys, "stderr") and hasattr(sys.stderr, "write"):
-                    try:
+                    with contextlib.suppress(Exception):
                         sys.stderr.write(
                             f"[logging_setup] file handler init skipped: {e}\n"
                         )
-                    except Exception:
-                        ...
 
     # Set the logger level to the minimum of main level and file log level
     # This ensures that all messages that should go to any handler are processed
@@ -221,18 +218,14 @@ def setup_safe_logging_shutdown() -> None:
                         logger.removeHandler(handler)
                     except Exception as e:
                         if hasattr(sys, "stderr") and hasattr(sys.stderr, "write"):
-                            try:
+                            with contextlib.suppress(Exception):
                                 sys.stderr.write(
                                     f"[logging_cleanup] handler close/remove skipped: {e}\n"
                                 )
-                            except Exception:
-                                ...
         except Exception as e:
             if hasattr(sys, "stderr") and hasattr(sys.stderr, "write"):
-                try:
+                with contextlib.suppress(Exception):
                     sys.stderr.write(f"[logging_cleanup] cleanup skipped: {e}\n")
-                except Exception:
-                    ...
 
     # Register cleanup function
     atexit.register(cleanup_logging)
@@ -252,10 +245,8 @@ def log_info(message: str, *args: Any, **kwargs: Any) -> None:
         logger.info(message, *args, **kwargs)
     except (ValueError, OSError) as e:
         if hasattr(sys, "stderr") and hasattr(sys.stderr, "write"):
-            try:
+            with contextlib.suppress(Exception):
                 sys.stderr.write(f"[log_info] suppressed: {e}\n")
-            except Exception:
-                ...
 
 
 def log_warning(message: str, *args: Any, **kwargs: Any) -> None:
@@ -264,10 +255,8 @@ def log_warning(message: str, *args: Any, **kwargs: Any) -> None:
         logger.warning(message, *args, **kwargs)
     except (ValueError, OSError) as e:
         if hasattr(sys, "stderr") and hasattr(sys.stderr, "write"):
-            try:
+            with contextlib.suppress(Exception):
                 sys.stderr.write(f"[log_warning] suppressed: {e}\n")
-            except Exception:
-                ...
 
 
 def log_error(message: str, *args: Any, **kwargs: Any) -> None:
@@ -276,10 +265,8 @@ def log_error(message: str, *args: Any, **kwargs: Any) -> None:
         logger.error(message, *args, **kwargs)
     except (ValueError, OSError) as e:
         if hasattr(sys, "stderr") and hasattr(sys.stderr, "write"):
-            try:
+            with contextlib.suppress(Exception):
                 sys.stderr.write(f"[log_error] suppressed: {e}\n")
-            except Exception:
-                ...
 
 
 def log_debug(message: str, *args: Any, **kwargs: Any) -> None:
@@ -288,10 +275,8 @@ def log_debug(message: str, *args: Any, **kwargs: Any) -> None:
         logger.debug(message, *args, **kwargs)
     except (ValueError, OSError) as e:
         if hasattr(sys, "stderr") and hasattr(sys.stderr, "write"):
-            try:
+            with contextlib.suppress(Exception):
                 sys.stderr.write(f"[log_debug] suppressed: {e}\n")
-            except Exception:
-                ...
 
 
 def suppress_output(func: Any) -> Any:
@@ -315,12 +300,10 @@ def suppress_output(func: Any) -> Any:
                 sys.stdout.close()
             except Exception as e:
                 if hasattr(sys, "stderr") and hasattr(sys.stderr, "write"):
-                    try:
+                    with contextlib.suppress(Exception):
                         sys.stderr.write(
                             f"[suppress_output] stdout close suppressed: {e}\n"
                         )
-                    except Exception:
-                        ...
             sys.stdout = old_stdout
 
         return result
@@ -405,10 +388,8 @@ def log_performance(
         perf_logger.debug(message)  # Change to DEBUG level
     except (ValueError, OSError) as e:
         if hasattr(sys, "stderr") and hasattr(sys.stderr, "write"):
-            try:
+            with contextlib.suppress(Exception):
                 sys.stderr.write(f"[log_performance] suppressed: {e}\n")
-            except Exception:
-                ...
 
 
 def setup_performance_logger() -> logging.Logger:

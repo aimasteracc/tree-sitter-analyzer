@@ -415,7 +415,7 @@ This release resolves critical async/await inconsistencies while maintaining ful
 - **🆕 FormatterRegistry**: Dynamic formatter management system using Registry pattern
 - **🆕 HTML Formatter**: Specialized formatter for HTML/CSS analysis results with structured table output
 - **🆕 Plugin-based Extension**: Easy addition of new formatters through `IFormatter` interface
-- **🆕 Enhanced Format Support**: Extended `analyze_code_structure` tool to support new `html` format type
+- **🆕 Enhanced Format Support**: Restored `analyze_code_structure` tool to v1.6.1.4 format specifications (full, compact, csv)
 
 #### Advanced Plugin System
 - **🆕 Language Plugin Architecture**: Extensible plugin system for adding new language support
@@ -432,7 +432,7 @@ This release resolves critical async/await inconsistencies while maintaining ful
 - **Enhanced**: Improved extensibility through Strategy and Factory patterns
 
 #### MCP Tools Enhancement
-- **Enhanced**: `analyze_code_structure` tool now supports HTML format output
+- **Enhanced**: `analyze_code_structure` tool restored to v1.6.1.4 format specifications (full, compact, csv)
 - **Enhanced**: Better language detection for HTML and CSS files
 - **Enhanced**: Improved error handling for web technology analysis
 

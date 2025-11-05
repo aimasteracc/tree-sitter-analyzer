@@ -2,8 +2,8 @@
 """
 Table Format Tool for MCP
 
-This tool provides code structure analysis and table formatting through the MCP protocol,
-converting analysis results into structured table formats for better readability.
+This tool provides code structure analysis and table formatting through the
+MCP protocol, converting analysis results into structured table formats.
 """
 
 from pathlib import Path
@@ -20,7 +20,6 @@ from ...constants import (
 from ...core.analysis_engine import AnalysisRequest, get_analysis_engine
 from ...formatters.formatter_registry import FormatterRegistry
 from ...language_detector import detect_language_from_file
-from ...table_formatter import TableFormatter
 from ...utils import setup_logger
 from ..utils import get_performance_monitor
 from ..utils.file_output_manager import FileOutputManager
@@ -74,12 +73,7 @@ class TableFormatTool(BaseMCPTool):
                 "format_type": {
                     "type": "string",
                     "description": "Table format type",
-                    "enum": list(
-                        set(
-                            FormatterRegistry.get_available_formats()
-                            + ["full", "compact", "csv", "json"]
-                        )
-                    ),
+                    "enum": ["full", "compact", "csv"],
                     "default": "full",
                 },
                 "language": {
@@ -88,11 +82,13 @@ class TableFormatTool(BaseMCPTool):
                 },
                 "output_file": {
                     "type": "string",
-                    "description": "Optional filename to save output to file (extension auto-detected based on content)",
+                    "description": "Optional filename to save output to file "
+                    "(extension auto-detected based on content)",
                 },
                 "suppress_output": {
                     "type": "boolean",
-                    "description": "When true and output_file is specified, suppress table_output in response to save tokens",
+                    "description": "When true and output_file is specified, "
+                    "suppress table_output in response to save tokens",
                     "default": False,
                 },
             },
@@ -130,16 +126,11 @@ class TableFormatTool(BaseMCPTool):
             if not isinstance(format_type, str):
                 raise ValueError("format_type must be a string")
 
-            # Check both new FormatterRegistry formats and legacy formats
-            available_formats = list(
-                set(
-                    FormatterRegistry.get_available_formats()
-                    + ["full", "compact", "csv", "json"]
-                )
-            )
-            if format_type not in available_formats:
+            # Only support v1.6.1.4 specification formats (no HTML formats)
+            allowed_formats = ["full", "compact", "csv"]
+            if format_type not in allowed_formats:
                 raise ValueError(
-                    f"format_type must be one of: {', '.join(sorted(available_formats))}"
+                    f"format_type must be one of: {', '.join(sorted(allowed_formats))}"
                 )
 
         # Validate language if provided
@@ -196,10 +187,10 @@ class TableFormatTool(BaseMCPTool):
         return modifiers
 
     def _get_method_parameters(self, method: Any) -> list[dict[str, str]]:
-        """Get method parameters in the correct format for TableFormatter"""
+        """Get method parameters in correct format for TableFormatter"""
         parameters = getattr(method, "parameters", [])
 
-        # If parameters is already a list of strings (like "int value"), convert to dict format
+        # If parameters is already a list of strings, convert to dict format
         if parameters and isinstance(parameters[0], str):
             result = []
             for param_str in parameters:
@@ -270,7 +261,7 @@ class TableFormatTool(BaseMCPTool):
                         "end": getattr(cls, "end_line", 0),
                     },
                     "type": getattr(cls, "class_type", "class"),
-                    "visibility": "public",  # Force all classes to public for CLI compatibility
+                    "visibility": "public",  # Force all classes to public
                     "extends": getattr(cls, "extends_class", None),
                     "implements": getattr(cls, "implements_interfaces", []),
                     "annotations": [],
@@ -400,7 +391,8 @@ class TableFormatTool(BaseMCPTool):
             is_valid, error_msg = self.security_validator.validate_file_path(file_path)
             if not is_valid:
                 self.logger.warning(
-                    f"Security validation failed for file path: {file_path} - {error_msg}"
+                    f"Security validation failed for file path: {file_path} - "
+                    f"{error_msg}"
                 )
                 raise ValueError(f"Invalid file path: {error_msg}")
 
@@ -413,7 +405,8 @@ class TableFormatTool(BaseMCPTool):
             )
             if not is_valid:
                 self.logger.warning(
-                    f"Security validation failed for resolved path: {resolved_path} - {error_msg}"
+                    f"Security validation failed for resolved path: "
+                    f"{resolved_path} - {error_msg}"
                 )
                 raise ValueError(f"Invalid resolved path: {error_msg}")
 
@@ -435,7 +428,7 @@ class TableFormatTool(BaseMCPTool):
                     output_file, max_length=255
                 )
 
-            # Sanitize suppress_output input (boolean, no sanitization needed but validate type)
+            # Sanitize suppress_output input (boolean, validate type)
             if suppress_output is not None and not isinstance(suppress_output, bool):
                 raise ValueError("suppress_output must be a boolean")
 
@@ -468,10 +461,10 @@ class TableFormatTool(BaseMCPTool):
                 # Always convert analysis result to dict for metadata extraction
                 structure_dict = self._convert_analysis_result_to_dict(structure_result)
 
-                # Try to use new FormatterRegistry first, fallback to legacy TableFormatter
+                # Use FormatterRegistry with legacy formatters for v1.6.1.4
                 try:
                     if FormatterRegistry.is_format_supported(format_type):
-                        # Use new FormatterRegistry
+                        # Use FormatterRegistry with legacy formatters
                         registry_formatter = FormatterRegistry.get_formatter(
                             format_type
                         )
@@ -479,16 +472,14 @@ class TableFormatTool(BaseMCPTool):
                             structure_result.elements
                         )
                     else:
-                        # Fallback to legacy TableFormatter for backward compatibility
-                        legacy_formatter: Any = TableFormatter(format_type)
-                        table_output = legacy_formatter.format_structure(structure_dict)
+                        # Fallback for unsupported format
+                        raise ValueError(f"Unsupported format type: {format_type}")
                 except Exception as e:
-                    # If FormatterRegistry fails, fallback to legacy TableFormatter
-                    logger.warning(
-                        f"FormatterRegistry failed, using legacy formatter: {e}"
+                    # Log error and re-raise - no fallback to broken formatters
+                    logger.error(
+                        f"Failed to format with legacy-compatible formatter: {e}"
                     )
-                    fallback_formatter: Any = TableFormatter(format_type)
-                    table_output = fallback_formatter.format_structure(structure_dict)
+                    raise RuntimeError(f"Format operation failed: {e}") from e
 
                 # Ensure output format matches CLI exactly
                 # Fix line ending differences: normalize to Unix-style LF (\n)
@@ -510,7 +501,7 @@ class TableFormatTool(BaseMCPTool):
                         "total_lines": stats.get("total_lines", 0),
                     }
 
-                # Build result - conditionally include table_output based on suppress_output
+                # Build result - include table_output based on suppress_output
                 result = {
                     "success": True,
                     "format_type": format_type,
@@ -519,7 +510,7 @@ class TableFormatTool(BaseMCPTool):
                     "metadata": metadata,
                 }
 
-                # Only include table_output if not suppressed or no output file specified
+                # Include table_output if not suppressed or no output file
                 if not suppress_output or not output_file:
                     result["table_output"] = table_output
 
@@ -562,7 +553,11 @@ class TableFormatTool(BaseMCPTool):
         """
         return {
             "name": "analyze_code_structure",
-            "description": "Analyze code structure and generate detailed overview tables (classes, methods, fields) with line positions for large files, optionally save to file",
+            "description": (
+                "Analyze code structure and generate detailed overview tables "
+                "(classes, methods, fields) with line positions for large files, "
+                "optionally save to file"
+            ),
             "inputSchema": self.get_tool_schema(),
         }
 

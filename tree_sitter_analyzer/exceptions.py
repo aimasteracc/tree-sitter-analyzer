@@ -635,7 +635,7 @@ def _sanitize_error_context(context: dict[str, Any]) -> dict[str, Any]:
             sanitized[key] = "***REDACTED***"
         elif isinstance(value, str) and len(value) > 500:
             sanitized[key] = value[:500] + "...[TRUNCATED]"
-        elif isinstance(value, (list, tuple)) and len(value) > 10:
+        elif isinstance(value, list | tuple) and len(value) > 10:
             sanitized[key] = list(value[:10]) + ["...[TRUNCATED]"]
         elif isinstance(value, dict) and len(value) > 20:
             # Recursively sanitize nested dictionaries

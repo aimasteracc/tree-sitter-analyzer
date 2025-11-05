@@ -1265,7 +1265,7 @@ pytest
         except (ValueError, AnalysisError) as e:
             # 存在しないディレクトリに対する適切なエラーが発生することを確認
             assert "does not exist" in str(e) or "Invalid root" in str(e)
-        except (ValueError, FileNotFoundError):
+        except FileNotFoundError:
             # 例外が発生する場合も正常
             pass
 

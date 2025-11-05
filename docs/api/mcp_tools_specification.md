@@ -132,7 +132,7 @@ Tree-sitter Analyzer MCPサーバーは、AI統合コード解析のための8�
     "format_type": {
       "type": "string",
       "description": "出力フォーマット",
-      "enum": ["full", "compact", "csv", "json", "html"],
+      "enum": ["full", "compact", "csv"],
       "default": "full"
     },
     "language": {

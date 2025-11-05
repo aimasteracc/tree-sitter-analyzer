@@ -301,7 +301,7 @@ class TestJavaScriptPluginEdgeCases:
             mock_parse.side_effect = Exception("Test error")
 
             # Should re-raise the exception for debugging
-            with pytest.raises(Exception):
+            with pytest.raises((RuntimeError, ValueError)):
                 extractor._extract_method_optimized(mock_node)
 
     def test_class_extraction_without_name(self, extractor):
@@ -408,7 +408,7 @@ class TestJavaScriptPluginEdgeCases:
 
         # Should handle malformed JSDoc gracefully
         jsdoc = extractor._extract_jsdoc_for_line(5)
-        assert isinstance(jsdoc, (str, type(None)))
+        assert isinstance(jsdoc, str | type(None))
 
     def test_complexity_calculation_with_extreme_nesting(self, extractor):
         """Test complexity calculation with extremely nested code"""

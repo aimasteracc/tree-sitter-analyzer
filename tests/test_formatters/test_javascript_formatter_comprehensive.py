@@ -1008,9 +1008,9 @@ class TestJavaScriptTableFormatterComprehensive:
 
         for var_data, expected in edge_cases:
             with patch.object(formatter, "_get_variable_kind") as mock_get_kind:
-                if var_data.get("is_constant"):
-                    mock_get_kind.return_value = "const"
-                elif var_data.get("raw_text", "").strip().startswith("const"):
+                if var_data.get("is_constant") or var_data.get(
+                    "raw_text", ""
+                ).strip().startswith("const"):
                     mock_get_kind.return_value = "const"
                 elif var_data.get("raw_text", "").strip().startswith("let"):
                     mock_get_kind.return_value = "let"

@@ -8,6 +8,7 @@ import sys
 # Add project root to path
 sys.path.insert(0, ".")
 
+import contextlib
 import sys
 import tempfile
 from io import StringIO
@@ -44,10 +45,8 @@ class TestCLI:
         mock_stdout = StringIO()
         monkeypatch.setattr("sys.stdout", mock_stdout)
 
-        try:
+        with contextlib.suppress(SystemExit):
             main()
-        except SystemExit:
-            pass
 
         output = mock_stdout.getvalue()
         assert "Supported languages" in output
@@ -58,10 +57,8 @@ class TestCLI:
         mock_stdout = StringIO()
         monkeypatch.setattr("sys.stdout", mock_stdout)
 
-        try:
+        with contextlib.suppress(SystemExit):
             main()
-        except SystemExit:
-            pass
 
         output = mock_stdout.getvalue()
         assert "Supported file extensions" in output
@@ -72,10 +69,8 @@ class TestCLI:
         mock_stdout = StringIO()
         monkeypatch.setattr("sys.stdout", mock_stdout)
 
-        try:
+        with contextlib.suppress(SystemExit):
             main()
-        except SystemExit:
-            pass
 
         output = mock_stdout.getvalue()
         assert "Common queries across multiple languages" in output
@@ -98,10 +93,8 @@ class TestCLI:
         mock_stdout = StringIO()
         monkeypatch.setattr("sys.stdout", mock_stdout)
 
-        try:
+        with contextlib.suppress(SystemExit):
             main()
-        except SystemExit:
-            pass
 
         output = mock_stdout.getvalue()
         assert "java" in output.lower()
@@ -112,10 +105,8 @@ class TestCLI:
         mock_stdout = StringIO()
         monkeypatch.setattr("sys.stdout", mock_stdout)
 
-        try:
+        with contextlib.suppress(SystemExit):
             main()
-        except SystemExit:
-            pass
 
         output = mock_stdout.getvalue()
         assert "Supported languages" in output
@@ -128,10 +119,8 @@ class TestCLI:
         mock_stdout = StringIO()
         monkeypatch.setattr("sys.stdout", mock_stdout)
 
-        try:
+        with contextlib.suppress(SystemExit):
             main()
-        except SystemExit:
-            pass
 
         output = mock_stdout.getvalue()
 
@@ -148,10 +137,8 @@ class TestCLI:
         mock_stdout = StringIO()
         monkeypatch.setattr("sys.stdout", mock_stdout)
 
-        try:
+        with contextlib.suppress(SystemExit):
             main()
-        except SystemExit:
-            pass
 
         # This should show an error message since no language is specified
         # The error goes to stderr, so check that stdout is empty
@@ -183,10 +170,8 @@ public class TestClass {
             mock_stdout = StringIO()
             monkeypatch.setattr("sys.stdout", mock_stdout)
 
-            try:
+            with contextlib.suppress(SystemExit):
                 main()
-            except SystemExit:
-                pass
 
             output = mock_stdout.getvalue()
             # Should contain some analysis results
@@ -230,10 +215,8 @@ public class TestClass {
             mock_stdout = StringIO()
             monkeypatch.setattr("sys.stdout", mock_stdout)
 
-            try:
+            with contextlib.suppress(SystemExit):
                 main()
-            except SystemExit:
-                pass
 
             output = mock_stdout.getvalue()
             # Should contain class name analysis
@@ -278,10 +261,8 @@ public class TestClass {
             mock_stdout = StringIO()
             monkeypatch.setattr("sys.stdout", mock_stdout)
 
-            try:
+            with contextlib.suppress(SystemExit):
                 main()
-            except SystemExit:
-                pass
 
             output = mock_stdout.getvalue()
             # Should contain query results
@@ -318,10 +299,8 @@ if __name__ == "__main__":
             mock_stdout = StringIO()
             monkeypatch.setattr("sys.stdout", mock_stdout)
 
-            try:
+            with contextlib.suppress(SystemExit):
                 main()
-            except SystemExit:
-                pass
 
             output = mock_stdout.getvalue()
             # Should automatically detect Python and analyze
@@ -358,10 +337,8 @@ public class TestClass {
             mock_stdout = StringIO()
             monkeypatch.setattr("sys.stdout", mock_stdout)
 
-            try:
+            with contextlib.suppress(SystemExit):
                 main()
-            except SystemExit:
-                pass
 
             output = mock_stdout.getvalue()
             # Should treat file as Java despite .txt extension
@@ -388,10 +365,8 @@ public class TestClass {
             mock_stderr = StringIO()
             monkeypatch.setattr("sys.stderr", mock_stderr)
 
-            try:
+            with contextlib.suppress(SystemExit):
                 main()
-            except SystemExit:
-                pass
 
             error_output = mock_stderr.getvalue()
             # Should contain error message about unsupported extension
@@ -411,10 +386,8 @@ public class TestClass {
         mock_stderr = StringIO()
         monkeypatch.setattr("sys.stderr", mock_stderr)
 
-        try:
+        with contextlib.suppress(SystemExit):
             main()
-        except SystemExit:
-            pass
 
         error_output = mock_stderr.getvalue()
         # Should contain error message about invalid file path (security validation)
@@ -454,10 +427,8 @@ public class TestClass {
             mock_stdout = StringIO()
             monkeypatch.setattr("sys.stdout", mock_stdout)
 
-            try:
+            with contextlib.suppress(SystemExit):
                 main()
-            except SystemExit:
-                pass
 
             output = mock_stdout.getvalue()
             # Should contain JSON formatted output
@@ -502,10 +473,8 @@ public class TestClass {
             mock_stdout = StringIO()
             monkeypatch.setattr("sys.stdout", mock_stdout)
 
-            try:
+            with contextlib.suppress(SystemExit):
                 main()
-            except SystemExit:
-                pass
 
             output = mock_stdout.getvalue()
             # Should contain text formatted output
@@ -526,10 +495,8 @@ class TestCLIEdgeCases:
         mock_stderr = StringIO()
         monkeypatch.setattr("sys.stderr", mock_stderr)
 
-        try:
+        with contextlib.suppress(SystemExit):
             main()
-        except SystemExit:
-            pass
 
         error_output = mock_stderr.getvalue()
         # Should show help or error message
@@ -562,10 +529,8 @@ class TestCLIEdgeCases:
             mock_stderr = StringIO()
             monkeypatch.setattr("sys.stderr", mock_stderr)
 
-            try:
+            with contextlib.suppress(SystemExit):
                 main()
-            except SystemExit:
-                pass
 
             error_output = mock_stderr.getvalue()
             # Should contain error about invalid query
@@ -582,10 +547,8 @@ class TestCLIEdgeCases:
         mock_stdout = StringIO()
         monkeypatch.setattr("sys.stdout", mock_stdout)
 
-        try:
+        with contextlib.suppress(SystemExit):
             main()
-        except SystemExit:
-            pass
 
         output = mock_stdout.getvalue()
         # Should contain help text

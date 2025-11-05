@@ -710,4 +710,4 @@ class TestPythonPluginEdgeCases:
 
             result = extractor._extract_docstring_for_line(1)
             # Should handle all cases without errors
-            assert isinstance(result, (str, type(None)))
+            assert isinstance(result, str | type(None))

@@ -379,12 +379,12 @@ Choose output format parameters based on your needs to minimize token usage and 
                         total_matches = cached_result["total_matches"]
                         return (
                             int(total_matches)
-                            if isinstance(total_matches, (int, float))
+                            if isinstance(total_matches, int | float)
                             else 0
                         )
                     elif isinstance(cached_result, dict) and "count" in cached_result:
                         count = cached_result["count"]
-                        return int(count) if isinstance(count, (int, float)) else 0
+                        return int(count) if isinstance(count, int | float) else 0
                     else:
                         # Fallback: extract count from dict or return 0
                         return 0
