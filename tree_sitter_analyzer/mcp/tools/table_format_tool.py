@@ -474,8 +474,11 @@ class TableFormatTool(BaseMCPTool):
                     else:
                         # Fallback for unsupported format
                         raise ValueError(f"Unsupported format type: {format_type}")
+                except ValueError:
+                    # Re-raise ValueError directly (validation errors should propagate)
+                    raise
                 except Exception as e:
-                    # Log error and re-raise - no fallback to broken formatters
+                    # Log error and re-raise other exceptions - no fallback to broken formatters
                     logger.error(
                         f"Failed to format with legacy-compatible formatter: {e}"
                     )

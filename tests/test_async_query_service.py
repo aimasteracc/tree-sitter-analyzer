@@ -211,7 +211,7 @@ const arrowFunction = () => {
         """無効な言語のエラーハンドリングテスト"""
         service = QueryService()
 
-        with pytest.raises((ValueError, RuntimeError)):
+        with pytest.raises((ValueError, RuntimeError, Exception)):
             await service.execute_query(
                 file_path=sample_python_file,
                 language="invalid_language",

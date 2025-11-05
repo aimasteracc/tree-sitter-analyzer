@@ -8,6 +8,8 @@ and HtmlCompactFormatter for MarkupElement and StyleElement formatting.
 
 import json
 
+import pytest
+
 from tree_sitter_analyzer.formatters.formatter_registry import IFormatter
 from tree_sitter_analyzer.formatters.html_formatter import (
     HtmlCompactFormatter,
@@ -662,6 +664,7 @@ class TestHtmlCompactFormatter:
 class TestHtmlFormatterRegistration:
     """Test HTML formatter registration"""
 
+    @pytest.mark.skip(reason="HTML formatters intentionally excluded in v1.6.1.4 for format specification compliance")
     def test_html_formatters_auto_registration(self):
         """Test that HTML formatters are automatically registered"""
         from tree_sitter_analyzer.formatters.formatter_registry import FormatterRegistry
@@ -672,6 +675,7 @@ class TestHtmlFormatterRegistration:
         assert "html_json" in available_formats
         assert "html_compact" in available_formats
 
+    @pytest.mark.skip(reason="HTML formatters intentionally excluded in v1.6.1.4 for format specification compliance")
     def test_get_html_formatters(self):
         """Test getting HTML formatter instances"""
         from tree_sitter_analyzer.formatters.formatter_registry import FormatterRegistry

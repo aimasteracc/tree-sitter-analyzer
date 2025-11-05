@@ -18,6 +18,11 @@ from tree_sitter_analyzer.formatters.formatter_registry import (
     IFormatter,
     JsonFormatter,
 )
+from tree_sitter_analyzer.formatters.legacy_formatter_adapters import (
+    LegacyCompactFormatter,
+    LegacyCsvFormatter,
+    LegacyFullFormatter,
+)
 from tree_sitter_analyzer.models import (
     Class,
     CodeElement,
@@ -522,9 +527,10 @@ class TestFormatterRegistryIntegration:
         compact_formatter = FormatterRegistry.get_formatter("compact")
 
         assert isinstance(json_formatter, JsonFormatter)
-        assert isinstance(csv_formatter, CsvFormatter)
-        assert isinstance(full_formatter, FullFormatter)
-        assert isinstance(compact_formatter, CompactFormatter)
+        # CSV, Full, and Compact formatters are now legacy adapters for v1.6.1.4 compatibility
+        assert isinstance(csv_formatter, LegacyCsvFormatter)
+        assert isinstance(full_formatter, LegacyFullFormatter)
+        assert isinstance(compact_formatter, LegacyCompactFormatter)
 
     def test_formatter_instances_are_new(self):
         """Test that each get_formatter call returns a new instance"""
