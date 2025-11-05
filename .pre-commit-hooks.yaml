@@ -1,13 +1,76 @@
-# Pre-commit hooks configuration
-# This file defines additional hooks beyond the standard ones
+# Pre-commit hooks for format validation
+# Add to .pre-commit-config.yaml:
+#
+# repos:
+#   - repo: local
+#     hooks:
+#       - id: format-validation
+#         name: Format Validation
+#         entry: python scripts/pre_commit_format_validation.py
+#         language: system
+#         files: \.(py|java|ts|js|html|css|md)$
+#         pass_filenames: true
 
-# Version consistency check
-- id: check-version-consistency
-  name: Check version consistency across all files
-  entry: uv run python scripts/sync_version.py --check
+- id: format-validation
+  name: Format Validation
+  description: Validate format output consistency and specification compliance
+  entry: python scripts/pre_commit_format_validation.py
   language: system
-  files: ^(pyproject\.toml|README.*\.md)$
-  pass_filenames: false
+  files: \.(py|java|ts|js|html|css|md)$
+  pass_filenames: true
+  require_serial: false
+  additional_dependencies: []
+  minimum_pre_commit_version: "2.9.0"
+
+- id: format-regression-check
+  name: Format Regression Check
+  description: Check for format regressions in modified files
+  entry: python scripts/pre_commit_format_regression.py
+  language: system
+  files: \.(py|java|ts|js|html|css|md)$
+  pass_filenames: true
+  require_serial: true
+  additional_dependencies: []
+
+- id: format-specification-compliance
+  name: Format Specification Compliance
+  description: Validate format specification compliance
+  entry: python scripts/pre_commit_specification_check.py
+  language: system
+  files: \.(py|java|ts|js|html|css|md)$
+  pass_filenames: true
+  require_serial: false
+  additional_dependencies: []
+
+- id: format-contract-validation
+  name: Format Contract Validation
+  description: Validate format contracts and cross-format consistency
+  entry: python scripts/pre_commit_contract_validation.py
+  language: system
+  files: \.(py|java|ts|js|html|css|md)$
+  pass_filenames: true
+  require_serial: false
+  additional_dependencies: []
+
+- id: format-monitoring
+  name: Format Monitoring
+  description: Monitor format output quality and performance
+  entry: python scripts/format_monitoring_tool.py
+  language: system
+  files: \.(py|java|ts|js|html|css|md)$
+  args: [--files]
+  pass_filenames: true
+  require_serial: false
+  additional_dependencies: []
+
+- id: format-change-check
+  name: Format Change Check
+  description: Check for pending format change requests
+  entry: python scripts/format_change_management.py
+  language: system
+  args: [list]
   always_run: true
-  stages: [commit, push]
-  description: "Ensure version numbers are consistent across pyproject.toml and README files"
+  require_serial: true
+  additional_dependencies: []
+  require_serial: true
+  additional_dependencies: []
