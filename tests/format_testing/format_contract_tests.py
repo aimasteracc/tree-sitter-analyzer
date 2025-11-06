@@ -109,22 +109,39 @@ class FormatContractValidator:
                 info["class_name"] = full_name
 
         # Extract methods
-        methods_section = re.search(r"## Methods\n(.*?)(?=\n##|\n$)", output, re.DOTALL)
+        methods_section = re.search(
+            r"## Methods\s*\n(.*?)(?=\n## |\Z)", output, re.DOTALL
+        )
         if methods_section:
             table_content = methods_section.group(1)
             info["methods"] = self._parse_markdown_table(table_content)
 
         # Extract fields
-        fields_section = re.search(r"## Fields\n(.*?)(?=\n##|\n$)", output, re.DOTALL)
+        fields_section = re.search(
+            r"## Fields\s*\n(.*?)(?=\n## |\Z)", output, re.DOTALL
+        )
         if fields_section:
             table_content = fields_section.group(1)
             info["fields"] = self._parse_markdown_table(table_content)
 
         # Extract imports
-        imports_section = re.search(r"## Imports\n(.*?)(?=\n##|\n$)", output, re.DOTALL)
+        imports_section = re.search(
+            r"## Imports\s*\n(.*?)(?=\n## |\Z)", output, re.DOTALL
+        )
         if imports_section:
-            table_content = imports_section.group(1)
-            info["imports"] = self._parse_markdown_table(table_content)
+            content = imports_section.group(1)
+            # v1.6.1.4 format uses code block, not table
+            if "```" in content:
+                # Extract imports from code block
+                code_match = re.search(r"```\w*\n(.*?)\n```", content, re.DOTALL)
+                if code_match:
+                    import_lines = code_match.group(1).strip().split("\n")
+                    info["imports"] = [
+                        [line.strip()] for line in import_lines if line.strip()
+                    ]
+            else:
+                # Fallback to table parsing
+                info["imports"] = self._parse_markdown_table(content)
 
         return info
 
@@ -153,13 +170,17 @@ class FormatContractValidator:
                             pass
 
         # Extract methods
-        methods_section = re.search(r"## Methods\n(.*?)(?:\n##|$)", output, re.DOTALL)
+        methods_section = re.search(
+            r"## Methods\s*\n(.*?)(?=\n## |\Z)", output, re.DOTALL
+        )
         if methods_section:
             table_content = methods_section.group(1)
             info["methods"] = self._parse_markdown_table(table_content)
 
         # Extract fields
-        fields_section = re.search(r"## Fields\n(.*?)(?:\n##|$)", output, re.DOTALL)
+        fields_section = re.search(
+            r"## Fields\s*\n(.*?)(?=\n## |\Z)", output, re.DOTALL
+        )
         if fields_section:
             table_content = fields_section.group(1)
             info["fields"] = self._parse_markdown_table(table_content)
@@ -364,9 +385,6 @@ class FormatContractValidator:
         # Get actual counts
         full_method_count = len(full_info.get("methods", []))
         full_field_count = len(full_info.get("fields", []))
-
-        csv_method_count = len(csv_info.get("methods", []))
-        csv_field_count = len(csv_info.get("fields", []))
 
         # Get reported counts from compact format
         compact_counts = compact_info.get("counts", {})
@@ -920,7 +938,7 @@ public class ContractTestService {
         # Validate parameter encoding
         try:
             reader = csv.reader(io.StringIO(csv_output))
-            header = next(reader)
+            next(reader)  # Skip header
 
             for row in reader:
                 if len(row) >= 4 and row[0] in ["method", "constructor"]:
@@ -1046,11 +1064,14 @@ public class ContractTestService {
                         full_line == compact_line
                     ), f"Line number mismatch for method {method_name}: full='{full_line}', compact='{compact_line}'"
 
-                # Find corresponding method in CSV format  
+                # Find corresponding method in CSV format
                 # Match by both name and line number for overloaded methods
                 csv_method = None
                 for csv_row in csv_info.get("methods", []):
-                    if csv_row.get("Name") == method_name and csv_row.get("Line", "") == full_line:
+                    if (
+                        csv_row.get("Name") == method_name
+                        and csv_row.get("Line", "") == full_line
+                    ):
                         csv_method = csv_row
                         break
 
