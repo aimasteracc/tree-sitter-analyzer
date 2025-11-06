@@ -102,21 +102,29 @@ def compare_with_golden_master(
                 diff_count += 1
 
         # 最初の20行の差分を表示
-        for i in range(min(20, max_lines)):
+        diff_shown = 0
+        for i in range(max_lines):
             if i >= len(golden_lines):
-                diff_lines.append(f"Line {i+1}: + {current_lines[i]}")
+                if diff_shown < 20:
+                    diff_lines.append(f"Line {i+1}: + {current_lines[i]!r}")
+                    diff_shown += 1
             elif i >= len(current_lines):
-                diff_lines.append(f"Line {i+1}: - {golden_lines[i]}")
+                if diff_shown < 20:
+                    diff_lines.append(f"Line {i+1}: - {golden_lines[i]!r}")
+                    diff_shown += 1
             elif golden_lines[i] != current_lines[i]:
-                diff_lines.append(f"Line {i+1}:")
-                diff_lines.append(f"  - {golden_lines[i]}")
-                diff_lines.append(f"  + {current_lines[i]}")
+                if diff_shown < 20:
+                    diff_lines.append(f"Line {i+1}:")
+                    diff_lines.append(f"  Golden: {golden_lines[i]!r}")
+                    diff_lines.append(f"  Current: {current_lines[i]!r}")
+                    diff_shown += 1
 
-        if max_lines > 20:
-            diff_lines.append(f"... ({max_lines - 20} more lines)")
+        if diff_count > 20:
+            diff_lines.append(f"... ({diff_count - 20} more differences)")
 
         diff_message = (
             f"Output differs from golden master ({diff_count} differences):\n"
+            f"Golden lines: {len(golden_lines)}, Current lines: {len(current_lines)}\n"
         )
         diff_message += "\n".join(diff_lines)
 
