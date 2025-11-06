@@ -132,7 +132,7 @@ public class TestClass {
 
         mock_result = mocker.MagicMock()
         mock_result.elements = []  # Empty elements for simplicity
-        
+
         mocker.patch.object(
             self.tool.analysis_engine,
             "analyze",
@@ -300,14 +300,6 @@ public class TestClass {
         # Mock structure data
         mock_structure_data = self._create_mock_structure_data()
 
-        # Mock FormatterRegistry to ensure it uses our mock formatter
-        mock_formatter_registry = mocker.patch(
-            "tree_sitter_analyzer.mcp.tools.table_format_tool.FormatterRegistry"
-        )
-        mock_formatter_registry.is_format_supported.return_value = True
-        mock_formatter = mocker.MagicMock()
-        mock_formatter_registry.get_formatter.return_value = mock_formatter
-
         # Mock unified analysis engine to return a dummy result
         from unittest.mock import AsyncMock
 
@@ -325,14 +317,15 @@ public class TestClass {
             return_value=mock_structure_data,
         )
 
-        # Test different formats
+        # Test different formats - now using real LegacyTableFormatter
         for format_type in ["full", "compact", "csv"]:
-            mock_formatter.format.return_value = f"Mock {format_type} output"
             arguments = {"file_path": self.test_file_path, "format_type": format_type}
 
             result = await self.tool.execute(arguments)
             assert result["format_type"] == format_type
-            assert f"Mock {format_type} output" in result["table_output"]
+            # Check that output is generated (actual format content from LegacyTableFormatter)
+            assert len(result["table_output"]) > 0
+            assert "TestClass" in result["table_output"]
 
     @pytest.mark.asyncio
     async def test_execute_with_file_output(self, mocker) -> None:
@@ -361,16 +354,6 @@ public class TestClass {
         # Mock structure data
         mock_structure_data = self._create_mock_structure_data()
 
-        # Mock FormatterRegistry to ensure it uses our mock formatter
-        mock_formatter_registry = mocker.patch(
-            "tree_sitter_analyzer.mcp.tools.table_format_tool.FormatterRegistry"
-        )
-        mock_formatter_registry.is_format_supported.return_value = True
-        mock_formatter = mocker.MagicMock()
-        table_output = "| Class | Methods | Lines |\n|-------|---------|-------|\n| TestClass | 2 | 10 |"
-        mock_formatter.format.return_value = table_output
-        mock_formatter_registry.get_formatter.return_value = mock_formatter
-
         # Mock unified analysis engine
         from unittest.mock import AsyncMock
 
@@ -390,7 +373,7 @@ public class TestClass {
 
         # Mock file output manager
         mock_save_path = "/tmp/test_analysis.md"
-        mocker.patch.object(
+        mock_save = mocker.patch.object(
             self.tool.file_output_manager, "save_to_file", return_value=mock_save_path
         )
 
@@ -412,10 +395,13 @@ public class TestClass {
         assert result["output_file_path"] == mock_save_path
         assert "file_save_error" not in result
 
-        # Verify file output manager was called correctly
-        self.tool.file_output_manager.save_to_file.assert_called_once_with(
-            content=table_output, base_name="test_analysis"
-        )
+        # Verify file output manager was called with actual LegacyTableFormatter output
+        mock_save.assert_called_once()
+        call_args = mock_save.call_args
+        assert call_args.kwargs["base_name"] == "test_analysis"
+        # Verify the content is actual formatted output (not mock)
+        assert "TestClass" in call_args.kwargs["content"]
+        assert "## Class Info" in call_args.kwargs["content"]
 
     @pytest.mark.asyncio
     async def test_execute_file_output_error(self, mocker) -> None:

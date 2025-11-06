@@ -304,8 +304,8 @@ class TableFormatTool(BaseMCPTool):
                 {
                     "name": getattr(imp, "name", "unknown"),
                     "statement": getattr(
-                        imp, "name", ""
-                    ),  # Use name for CLI compatibility
+                        imp, "import_statement", getattr(imp, "name", "")
+                    ),  # Use import_statement if available, fallback to name
                     "is_static": getattr(imp, "is_static", False),
                     "is_wildcard": getattr(imp, "is_wildcard", False),
                 }
@@ -461,28 +461,23 @@ class TableFormatTool(BaseMCPTool):
                 # Always convert analysis result to dict for metadata extraction
                 structure_dict = self._convert_analysis_result_to_dict(structure_result)
 
-                # Use FormatterRegistry with legacy formatters for v1.6.1.4
-                try:
-                    if FormatterRegistry.is_format_supported(format_type):
-                        # Use FormatterRegistry with legacy formatters
-                        registry_formatter = FormatterRegistry.get_formatter(
-                            format_type
-                        )
-                        table_output = registry_formatter.format(
-                            structure_result.elements
-                        )
-                    else:
-                        # Fallback for unsupported format
-                        raise ValueError(f"Unsupported format type: {format_type}")
-                except ValueError:
-                    # Re-raise ValueError directly (validation errors should propagate)
-                    raise
-                except Exception as e:
-                    # Log error and re-raise other exceptions - no fallback to broken formatters
-                    logger.error(
-                        f"Failed to format with legacy-compatible formatter: {e}"
+                # Use legacy formatter directly for core formats (v1.6.1.4 compatibility)
+                if format_type in ["full", "compact", "csv"]:
+                    from ...legacy_table_formatter import LegacyTableFormatter
+
+                    legacy_formatter = LegacyTableFormatter(
+                        format_type=format_type,
+                        language=language,
+                        include_javadoc=False,
                     )
-                    raise RuntimeError(f"Format operation failed: {e}") from e
+                    table_output = legacy_formatter.format_structure(structure_dict)
+                # Use FormatterRegistry for extended formats
+                elif FormatterRegistry.is_format_supported(format_type):
+                    registry_formatter = FormatterRegistry.get_formatter(format_type)
+                    table_output = registry_formatter.format(structure_result.elements)
+                else:
+                    # Unsupported format
+                    raise ValueError(f"Unsupported format type: {format_type}")
 
                 # Ensure output format matches CLI exactly
                 # Fix line ending differences: normalize to Unix-style LF (\n)

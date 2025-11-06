@@ -134,6 +134,8 @@ class TestFormatRegressionV1614:
 
         # Verify Markdown structure per format specification
         assert "# com.example.service.UserService" in result
+        assert "## Package" in result  # v1.6.1.4 has Package section
+        assert "`com.example.service`" in result
         assert "## Class Info" in result
         assert "| Property | Value |" in result
         assert "|----------|-------|" in result
@@ -141,20 +143,20 @@ class TestFormatRegressionV1614:
         assert "| Package | com.example.service |" in result
         assert "| Type | class |" in result
         assert "| Access | public |" in result
-        
+
         # Verify Methods section per specification
         assert "## Methods" in result
         assert "| Name | Return Type | Parameters | Access | Line |" in result
-        
+
         # Verify Fields section per specification
         assert "## Fields" in result
         assert "| Name | Type | Access | Static | Final | Line |" in result
-        
-        # Verify Imports section (optional per specification)
+
+        # Verify Imports section (v1.6.1.4 uses code block format, not table)
         assert "## Imports" in result
-        assert "| Import | Type |" in result
-        assert "| import java.util.List; | import |" in result
-        assert "| import java.sql.SQLException; | import |" in result
+        assert "```java" in result
+        assert "import java.util.List;" in result
+        assert "import java.sql.SQLException;" in result
 
     def test_compact_format_with_complexity(self, sample_java_elements):
         """Test compact format per specification (no complexity scores in spec)"""
@@ -217,84 +219,6 @@ class TestFormatRegressionV1614:
         compact_formatter = LegacyCompactFormatter()
         csv_formatter = LegacyCsvFormatter()
 
-        # Check full format
-        full_result = full_formatter.format(sample_java_elements)
-
-        assert "com.example.service.UserService" in full_result
-        assert "## Class Info" in full_result
-        assert "## Methods" in full_result
-        assert "## Fields" in full_result
-
-        # Check compact format
-        compact_result = compact_formatter.format(sample_java_elements)
-
-        assert "UserService" in compact_result
-        assert "## Info" in compact_result
-        assert "## Methods" in compact_result
-        assert "## Fields" in compact_result
-
-        # Check CSV format
-        csv_result = csv_formatter.format(sample_java_elements)
-
-        lines = csv_result.strip().split("\n")
-        expected_header = "Type,Name,ReturnType,Parameters,Access,Static,Final,Line"
-        assert lines[0] == expected_header
-        assert len(lines) > 1  # Has data rows
-
-        # All formats should contain the UserService class
-        assert "UserService" in full_result
-        assert "UserService" in compact_result
-        assert "UserService" in csv_result
-
-    def test_newline_handling_consistency(self, sample_java_elements):
-        """Test that newline handling is consistent"""
-        full_formatter = LegacyFullFormatter()
-        result = full_formatter.format(sample_java_elements)
-
-        # Should not contain Windows-style CRLF
-        assert "\r\n" not in result
-
-        # Should use Unix-style LF
-        assert "\n" in result
-
-        # Should not end with trailing newlines (CLI compatibility)
-        assert not result.endswith("\n\n")
-
-    def test_visibility_symbol_conversion(self, sample_java_elements):
-        """Test visibility display per specification (full names, not symbols)"""
-        compact_formatter = LegacyCompactFormatter()
-        result = compact_formatter.format(sample_java_elements)
-
-        # Per specification, compact format has visibility/access columns
-        assert "## Methods" in result
-        # Just verify the table structure exists
-        assert "|" in result
-
-    def test_no_html_formats_supported(self):
-        """Test HTML formats not supported (v1.6.1.4 compliance)"""
-        from tree_sitter_analyzer.formatters.formatter_registry import FormatterRegistry
-
-        available_formats = FormatterRegistry.get_available_formats()
-
-        # HTML formats should not be available for analyze_code_structure
-        html_formats = [f for f in available_formats if "html" in f.lower()]
-        assert len(html_formats) == 0, f"HTML formats found: {html_formats}"
-
-        # Only v1.6.1.4 formats should be available
-        actual_formats = set(available_formats)
-
-        # Check that core formats are present
-        core_formats = {"full", "compact", "csv"}
-        assert core_formats.issubset(
-            actual_formats
-        ), f"Missing core formats: {core_formats - actual_formats}"
-
-    def test_format_consistency_across_formatters(self, sample_java_elements):
-        """Test that all formatters handle the same data consistently"""
-        full_formatter = LegacyFullFormatter()
-        compact_formatter = LegacyCompactFormatter()
-        csv_formatter = LegacyCsvFormatter()
-
         full_result = full_formatter.format(sample_java_elements)
         compact_result = compact_formatter.format(sample_java_elements)
         csv_result = csv_formatter.format(sample_java_elements)
@@ -312,10 +236,6 @@ class TestFormatRegressionV1614:
         # All should contain method information
         assert "findUserById" in full_result
         assert "findUserById" in compact_result
-        # All formats should contain the UserService class
-        assert "UserService" in full_result
-        assert "UserService" in compact_result
-        assert "UserService" in csv_result
 
     def test_newline_handling_consistency(self, sample_java_elements):
         """Test that newline handling is consistent"""

@@ -158,12 +158,12 @@ public class UserService {
         # Validate format compliance
         assert_compact_format_compliance(table_output)
 
-        # Validate compact-specific features
-        assert "# com.example.service.UserService" in table_output
+        # Validate compact-specific features (v1.6.1.4 format)
+        assert "# UserService" in table_output  # Compact format uses short name
         assert "## Info" in table_output
         assert "## Methods" in table_output
-        assert "| + |" in table_output  # Public visibility symbol
-        assert "| - |" in table_output  # Private visibility symbol
+        assert "public" in table_output  # v1.6.1.4 uses text, not symbols
+        assert "private" in table_output
 
     @pytest.mark.asyncio
     async def test_csv_format_end_to_end(

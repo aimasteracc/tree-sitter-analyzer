@@ -91,9 +91,14 @@ class LegacyFormatterAdapter(IFormatter):
         Returns:
             Dictionary in legacy format expected by LegacyTableFormatter
         """
+        # Extract file_path from first element if available
+        file_path = "Unknown"
+        if elements and hasattr(elements[0], "file_path"):
+            file_path = elements[0].file_path or "Unknown"
+
         # Initialize legacy data structure
         legacy_data: dict[str, Any] = {
-            "file_path": "Unknown",
+            "file_path": file_path,
             "package": {"name": "unknown"},
             "imports": [],
             "classes": [],
@@ -108,15 +113,21 @@ class LegacyFormatterAdapter(IFormatter):
             # Use is_element_of_type helper for accurate type checking
             # Also handle legacy "method" and "field" type names
             element_type = get_element_type(element)
-            
+
             if is_element_of_type(element, ELEMENT_TYPE_PACKAGE):
                 package_name = element.name
                 legacy_data["package"]["name"] = package_name
             elif is_element_of_type(element, ELEMENT_TYPE_CLASS):
                 legacy_data["classes"].append(self._convert_class_element(element))
-            elif is_element_of_type(element, ELEMENT_TYPE_FUNCTION) or element_type == "method":
+            elif (
+                is_element_of_type(element, ELEMENT_TYPE_FUNCTION)
+                or element_type == "method"
+            ):
                 legacy_data["methods"].append(self._convert_method_element(element))
-            elif is_element_of_type(element, ELEMENT_TYPE_VARIABLE) or element_type == "field":
+            elif (
+                is_element_of_type(element, ELEMENT_TYPE_VARIABLE)
+                or element_type == "field"
+            ):
                 legacy_data["fields"].append(self._convert_field_element(element))
             elif is_element_of_type(element, ELEMENT_TYPE_IMPORT):
                 legacy_data["imports"].append(self._convert_import_element(element))

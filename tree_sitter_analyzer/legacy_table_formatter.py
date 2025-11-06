@@ -124,117 +124,236 @@ class LegacyTableFormatter:
         lines.append(f"# {header}")
         lines.append("")
 
+        # Get package name once for use throughout
+        package_name = (data.get("package") or {}).get("name", "")
+
+        # Package section (if package exists)
+        if package_name and package_name != "unknown":
+            lines.append("## Package")
+            lines.append(f"`{package_name}`")
+            lines.append("")
+
+        # Imports section (should appear before class info)
+        imports = data.get("imports", [])
+        if imports:
+            lines.append("## Imports")
+            lines.append(f"```{self.language}")
+            for imp in imports:
+                statement = str(imp.get("statement", ""))
+                lines.append(statement)
+            lines.append("```")
+            lines.append("")
+
         # Class Info section (required by specification)
         lines.append("## Class Info")
         lines.append("| Property | Value |")
         lines.append("|----------|-------|")
 
-        package_name = (data.get("package") or {}).get("name", "unknown")
+        # Use package_name or default to "unknown" for display
+        display_package = package_name if package_name else "unknown"
 
         if len(classes) >= 1:
             class_info = classes[0]
             class_name = str(class_info.get("name", "Unknown"))
             lines.append(f"| Name | {class_name} |")
-            lines.append(f"| Package | {package_name} |")
+            lines.append(f"| Package | {display_package} |")
             lines.append(f"| Type | {str(class_info.get('type', 'class'))} |")
-            lines.append(
-                f"| Access | {str(class_info.get('visibility', 'public'))} |"
-            )
+            lines.append(f"| Access | {str(class_info.get('visibility', 'public'))} |")
 
             # Lines
             line_range = class_info.get("line_range", {})
             lines_str = f"{line_range.get('start', 1)}-{line_range.get('end', 50)}"
-            
+
             # Add optional fields
             extends = class_info.get("extends")
             if extends:
                 lines.append(f"| Extends | {extends} |")
-            
+
             implements = class_info.get("implements", [])
             if implements:
                 lines.append(f"| Implements | {', '.join(implements)} |")
         else:
             # Empty data case
-            lines.append(f"| Name | Unknown |")
-            lines.append(f"| Package | {package_name} |")
+            lines.append("| Name | Unknown |")
+            lines.append(f"| Package | {display_package} |")
             lines.append("| Type | class |")
             lines.append("| Access | public |")
 
         lines.append("")
 
-        # Methods section (required by specification)
+        # Check if we have multiple classes to organize by class
         all_methods = data.get("methods", []) or []
-        lines.append("## Methods")
-        if all_methods:
-            lines.append("| Name | Return Type | Parameters | Access | Line |")
-            lines.append("|------|-------------|------------|--------|------|")
-            
-            for method in all_methods:
-                name = str(method.get("name", ""))
-                return_type = str(method.get("return_type", "void"))
-                
-                # Format parameters as "type1 param1, type2 param2"
-                params = method.get("parameters", [])
-                param_strs = []
-                for param in params:
-                    if isinstance(param, dict):
-                        param_type = str(param.get("type", "Object"))
-                        param_name = str(param.get("name", "param"))
-                        param_strs.append(f"{param_type} {param_name}")
-                    elif isinstance(param, str):
-                        param_strs.append(param)
-                    else:
-                        param_strs.append(str(param))
-                params_str = ", ".join(param_strs)
-                
-                access = str(method.get("visibility", "public"))
-                line_num = method.get("line_range", {}).get("start", 0)
-                
-                lines.append(f"| {name} | {return_type} | {params_str} | {access} | {line_num} |")
-        else:
-            lines.append("| Name | Return Type | Parameters | Access | Line |")
-            lines.append("|------|-------------|------------|--------|------|")
-        lines.append("")
-
-        # Fields section (required by specification)
         all_fields = data.get("fields", []) or []
-        lines.append("## Fields")
-        if all_fields:
-            lines.append("| Name | Type | Access | Static | Final | Line |")
-            lines.append("|------|------|--------|--------|-------|------|")
-            
-            for field in all_fields:
-                name = str(field.get("name", ""))
-                field_type = str(field.get("type", "Object"))
-                access = str(field.get("visibility", "private"))
-                
-                # Check modifiers for static and final
-                modifiers = field.get("modifiers", [])
-                is_static = "static" in modifiers or field.get("is_static", False)
-                is_final = "final" in modifiers or field.get("is_final", False)
-                
-                static_str = "true" if is_static else "false"
-                final_str = "true" if is_final else "false"
-                
-                line_num = field.get("line_range", {}).get("start", 0)
-                
-                lines.append(f"| {name} | {field_type} | {access} | {static_str} | {final_str} | {line_num} |")
-        else:
-            lines.append("| Name | Type | Access | Static | Final | Line |")
-            lines.append("|------|------|--------|--------|-------|------|")
-        lines.append("")
 
-        # Imports section (optional by specification)
-        imports = data.get("imports", [])
-        if imports:
-            lines.append("## Imports")
-            lines.append("| Import | Type |")
-            lines.append("|--------|------|")
-            
-            for imp in imports:
-                statement = str(imp.get("statement", ""))
-                import_type = "static" if imp.get("is_static", False) else "import"
-                lines.append(f"| {statement} | {import_type} |")
+        if len(classes) > 1:
+            # Multiple classes: add Classes Overview section
+            lines.append("## Classes Overview")
+            lines.append("| Class | Type | Visibility | Lines | Methods | Fields |")
+            lines.append("|-------|------|------------|-------|---------|--------|")
+
+            for class_info in classes:
+                class_name = str(class_info.get("name", "Unknown"))
+                class_type = str(class_info.get("type", "class"))
+                visibility = str(class_info.get("visibility", "public"))
+                line_range = class_info.get("line_range", {})
+                lines_str = f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
+
+                # Count methods and fields for this class
+                class_methods = self._get_class_methods(data, line_range)
+                class_fields = self._get_class_fields(data, line_range)
+
+                lines.append(
+                    f"| {class_name} | {class_type} | {visibility} | {lines_str} | {len(class_methods)} | {len(class_fields)} |"
+                )
+            lines.append("")
+
+            # Multiple classes: organize methods and fields by class
+            for class_info in classes:
+                class_name = str(class_info.get("name", "Unknown"))
+                line_range = class_info.get("line_range", {})
+                lines_str = f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
+
+                lines.append(f"## {class_name} ({lines_str})")
+
+                # Get methods for this class
+                class_methods = self._get_class_methods(data, line_range)
+
+                if class_methods:
+                    lines.append("### Methods")
+                    lines.append("| Name | Return Type | Parameters | Access | Line |")
+                    lines.append("|------|-------------|------------|--------|------|")
+
+                    for method in class_methods:
+                        name = str(method.get("name", ""))
+                        # Constructors don't have return types
+                        is_constructor = method.get("is_constructor", False)
+                        return_type = (
+                            "-"
+                            if is_constructor
+                            else str(method.get("return_type", "void"))
+                        )
+
+                        # Format parameters as "type1 param1, type2 param2"
+                        params = method.get("parameters", [])
+                        param_strs = []
+                        for param in params:
+                            if isinstance(param, dict):
+                                param_type = str(param.get("type", "Object"))
+                                param_name = str(param.get("name", "param"))
+                                param_strs.append(f"{param_type} {param_name}")
+                            elif isinstance(param, str):
+                                param_strs.append(param)
+                            else:
+                                param_strs.append(str(param))
+                        params_str = ", ".join(param_strs)
+
+                        access = str(method.get("visibility", "public"))
+                        line_num = method.get("line_range", {}).get("start", 0)
+
+                        lines.append(
+                            f"| {name} | {return_type} | {params_str} | {access} | {line_num} |"
+                        )
+                    lines.append("")
+
+                # Get fields for this class
+                class_fields = self._get_class_fields(data, line_range)
+
+                if class_fields:
+                    lines.append("### Fields")
+                    lines.append("| Name | Type | Access | Static | Final | Line |")
+                    lines.append("|------|------|--------|--------|-------|------|")
+
+                    for field in class_fields:
+                        name = str(field.get("name", ""))
+                        field_type = str(field.get("type", "Object"))
+                        access = str(field.get("visibility", "private"))
+
+                        # Check modifiers for static and final
+                        modifiers = field.get("modifiers", [])
+                        is_static = "static" in modifiers or field.get(
+                            "is_static", False
+                        )
+                        is_final = "final" in modifiers or field.get("is_final", False)
+
+                        static_str = "true" if is_static else "false"
+                        final_str = "true" if is_final else "false"
+
+                        line_num = field.get("line_range", {}).get("start", 0)
+
+                        lines.append(
+                            f"| {name} | {field_type} | {access} | {static_str} | {final_str} | {line_num} |"
+                        )
+                    lines.append("")
+        else:
+            # Single class or no classes: use original format
+            # Methods section (required by specification)
+            lines.append("## Methods")
+            if all_methods:
+                lines.append("| Name | Return Type | Parameters | Access | Line |")
+                lines.append("|------|-------------|------------|--------|------|")
+
+                for method in all_methods:
+                    name = str(method.get("name", ""))
+                    # Constructors don't have return types
+                    is_constructor = method.get("is_constructor", False)
+                    return_type = (
+                        "-"
+                        if is_constructor
+                        else str(method.get("return_type", "void"))
+                    )
+
+                    # Format parameters as "type1 param1, type2 param2"
+                    params = method.get("parameters", [])
+                    param_strs = []
+                    for param in params:
+                        if isinstance(param, dict):
+                            param_type = str(param.get("type", "Object"))
+                            param_name = str(param.get("name", "param"))
+                            param_strs.append(f"{param_type} {param_name}")
+                        elif isinstance(param, str):
+                            param_strs.append(param)
+                        else:
+                            param_strs.append(str(param))
+                    params_str = ", ".join(param_strs)
+
+                    access = str(method.get("visibility", "public"))
+                    line_num = method.get("line_range", {}).get("start", 0)
+
+                    lines.append(
+                        f"| {name} | {return_type} | {params_str} | {access} | {line_num} |"
+                    )
+            else:
+                lines.append("| Name | Return Type | Parameters | Access | Line |")
+                lines.append("|------|-------------|------------|--------|------|")
+            lines.append("")
+
+            # Fields section (required by specification)
+            lines.append("## Fields")
+            if all_fields:
+                lines.append("| Name | Type | Access | Static | Final | Line |")
+                lines.append("|------|------|--------|--------|-------|------|")
+
+                for field in all_fields:
+                    name = str(field.get("name", ""))
+                    field_type = str(field.get("type", "Object"))
+                    access = str(field.get("visibility", "private"))
+
+                    # Check modifiers for static and final
+                    modifiers = field.get("modifiers", [])
+                    is_static = "static" in modifiers or field.get("is_static", False)
+                    is_final = "final" in modifiers or field.get("is_final", False)
+
+                    static_str = "true" if is_static else "false"
+                    final_str = "true" if is_final else "false"
+
+                    line_num = field.get("line_range", {}).get("start", 0)
+
+                    lines.append(
+                        f"| {name} | {field_type} | {access} | {static_str} | {final_str} | {line_num} |"
+                    )
+            else:
+                lines.append("| Name | Type | Access | Static | Final | Line |")
+                lines.append("|------|------|--------|--------|-------|------|")
             lines.append("")
 
         # Remove trailing empty lines
@@ -447,7 +566,7 @@ class LegacyTableFormatter:
         class_type = classes[0].get("type", "class") if classes else "class"
         methods = data.get("methods", []) or []
         fields = data.get("fields", []) or []
-        
+
         lines.append("## Info")
         lines.append("| Property | Value |")
         lines.append("|----------|-------|")
@@ -507,7 +626,16 @@ class LegacyTableFormatter:
 
         # Header - specification compliant
         writer.writerow(
-            ["Type", "Name", "ReturnType", "Parameters", "Access", "Static", "Final", "Line"]
+            [
+                "Type",
+                "Name",
+                "ReturnType",
+                "Parameters",
+                "Access",
+                "Static",
+                "Final",
+                "Line",
+            ]
         )
 
         # Class row
@@ -551,12 +679,12 @@ class LegacyTableFormatter:
                 else:
                     param_strs.append(str(param))
             params_str = ";".join(param_strs)
-            
+
             # Check modifiers for static and final
             modifiers = method.get("modifiers", [])
             is_static = "static" in modifiers or method.get("is_static", False)
             is_final = "final" in modifiers or method.get("is_final", False)
-            
+
             writer.writerow(
                 [
                     "constructor" if method.get("is_constructor", False) else "method",
@@ -576,7 +704,7 @@ class LegacyTableFormatter:
             modifiers = field.get("modifiers", [])
             is_static = "static" in modifiers or field.get("is_static", False)
             is_final = "final" in modifiers or field.get("is_final", False)
-            
+
             writer.writerow(
                 [
                     "field",
