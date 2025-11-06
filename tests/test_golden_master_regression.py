@@ -47,6 +47,14 @@ def normalize_output(content: str) -> str:
         # バージョン情報などをスキップ（必要に応じて追加）
         if "version" in line.lower() or "timestamp" in line.lower():
             continue
+
+        # Python関数のパラメータ表記の正規化
+        # 環境によって (i):Any と (Any):Any のように異なる場合がある
+        # 単一文字のパラメータ名を Any に正規化
+        import re
+
+        line = re.sub(r"\| (\w+) \| \(([a-z])\):", r"| \1 | (Any):", line)
+
         normalized.append(line)
 
     # 再度末尾の改行を統一
