@@ -319,6 +319,10 @@ class AnalysisEngine:
             if plugin and hasattr(plugin, "create_extractor"):
                 extractor = plugin.create_extractor()
                 if extractor:
+                    # Set current file path for package detection
+                    if hasattr(extractor, "current_file"):
+                        extractor.current_file = parse_result.file_path or ""
+
                     # Extract different types of elements
                     elements = []
 

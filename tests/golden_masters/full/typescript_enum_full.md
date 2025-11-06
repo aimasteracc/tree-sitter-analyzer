@@ -1,8 +1,5 @@
 # test_enum.ts
 
-## Package
-`unknown`
-
 ## Classes Overview
 | Class | Type | Visibility | Lines | Methods | Fields |
 |-------|------|------------|-------|---------|--------|

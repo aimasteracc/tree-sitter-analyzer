@@ -5,8 +5,8 @@
 
 ## Imports
 ```java
-java.util.List
-java.util.ArrayList
+import java.util.List;
+import java.util.ArrayList;
 ```
 
 ## Classes Overview

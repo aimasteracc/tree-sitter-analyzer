@@ -844,6 +844,54 @@ class PythonElementExtractor(ElementExtractor):
         walk_tree(root_node)
         return imports
 
+    def extract_packages(self, tree: "tree_sitter.Tree", source_code: str) -> list:
+        """Extract Python package information from file path"""
+        import os
+
+        from ..models import Package
+
+        packages: list[Package] = []
+
+        # For Python, we infer package from file path structure
+        # Look for __init__.py in directories to determine package
+        if self.current_file:
+            file_path = os.path.abspath(self.current_file)
+            current_dir = os.path.dirname(file_path)
+            package_parts = []
+
+            # Walk up the directory tree looking for __init__.py
+            check_dir = current_dir
+            while check_dir:
+                # Check if current directory has __init__.py (indicating it's a package)
+                init_file = os.path.join(check_dir, "__init__.py")
+
+                if os.path.exists(init_file):
+                    package_parts.insert(0, os.path.basename(check_dir))
+                    # Move to parent directory
+                    parent_dir = os.path.dirname(check_dir)
+                    if parent_dir == check_dir:  # Reached root
+                        break
+                    check_dir = parent_dir
+                else:
+                    # No __init__.py, stop here
+                    break
+
+            # If we found package structure, create Package object
+            if package_parts:
+                package_name = ".".join(package_parts)
+                self.current_module = package_name
+
+                package = Package(
+                    name=package_name,
+                    start_line=1,
+                    end_line=1,
+                    raw_text=f"# Package: {package_name}",
+                    language="python",
+                )
+                packages.append(package)
+
+        return packages
+
     def _extract_detailed_function_info(
         self, node: "tree_sitter.Node", source_code: str, is_async: bool = False
     ) -> Function | None:

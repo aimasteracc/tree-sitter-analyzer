@@ -22,11 +22,17 @@ class JavaTableFormatter(BaseTableFormatter):
         if len(classes) > 1:
             # If multiple classes exist, use filename
             file_name = data.get("file_path", "Unknown").split("/")[-1].split("\\")[-1]
-            lines.append(f"# {package_name}.{file_name}")
+            if package_name == "unknown":
+                lines.append(f"# {file_name}")
+            else:
+                lines.append(f"# {package_name}.{file_name}")
         else:
             # Single class: use class name
             class_name = classes[0].get("name", "Unknown") if classes else "Unknown"
-            lines.append(f"# {package_name}.{class_name}")
+            if package_name == "unknown":
+                lines.append(f"# {class_name}")
+            else:
+                lines.append(f"# {package_name}.{class_name}")
         lines.append("")
 
         # Imports
@@ -172,8 +178,20 @@ class JavaTableFormatter(BaseTableFormatter):
         # Header
         package_name = (data.get("package") or {}).get("name", "unknown")
         classes = data.get("classes", [])
-        class_name = classes[0].get("name", "Unknown") if classes else "Unknown"
-        lines.append(f"# {package_name}.{class_name}")
+        if len(classes) > 1:
+            # If multiple classes exist, use filename
+            file_name = data.get("file_path", "Unknown").split("/")[-1].split("\\")[-1]
+            if package_name == "unknown":
+                lines.append(f"# {file_name}")
+            else:
+                lines.append(f"# {package_name}.{file_name}")
+        else:
+            # Single class: use class name
+            class_name = classes[0].get("name", "Unknown") if classes else "Unknown"
+            if package_name == "unknown":
+                lines.append(f"# {class_name}")
+            else:
+                lines.append(f"# {package_name}.{class_name}")
         lines.append("")
 
         # Info

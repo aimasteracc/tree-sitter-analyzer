@@ -239,8 +239,16 @@ class TableCommand(BaseCommand):
 
     def _convert_import_element(self, element: Any) -> dict[str, Any]:
         """Convert import element to table format."""
+        # Try to get the full import statement from raw_text
+        raw_text = getattr(element, "raw_text", "")
+        if raw_text:
+            statement = raw_text
+        else:
+            # Fallback to constructing from name
+            statement = f"import {getattr(element, 'name', str(element))}"
+
         return {
-            "statement": getattr(element, "name", str(element)),
+            "statement": statement,
             "name": getattr(element, "name", str(element)),
         }
 

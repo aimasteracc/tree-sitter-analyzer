@@ -5,14 +5,14 @@
 
 ## Imports
 ```java
-java.util.
-java.time.LocalDateTime
-java.time.format.DateTimeFormatter
-java.sql.Connection
-java.sql.PreparedStatement
-java.sql.ResultSet
-java.sql.SQLException
-javax.sql.DataSource
+import java.util.*;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import javax.sql.DataSource;
 ```
 
 ## Class Info

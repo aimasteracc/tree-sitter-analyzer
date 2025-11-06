@@ -264,6 +264,8 @@ class JavaElementExtractor(ElementExtractor):
                     package_info = self._extract_package_element(child)
                     if package_info:
                         packages.append(package_info)
+                        # Also set current_package for use by other extractors
+                        self.current_package = package_info.name
                     break  # Only one package declaration per file
 
         log_debug(f"Extracted {len(packages)} packages")

@@ -1,15 +1,12 @@
 # sample
 
-## Package
-`unknown`
-
 ## Imports
 ```python
-aiohttp
-ABC, abstractmethod
-ABC, abstractmethod
-dataclass
-reduce
+import aiohttp
+from abc import ABC, abstractmethod
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from functools import reduce
 ```
 
 ## Classes Overview

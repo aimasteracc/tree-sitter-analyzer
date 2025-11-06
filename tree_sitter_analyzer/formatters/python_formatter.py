@@ -73,6 +73,14 @@ class PythonTableFormatter(BaseTableFormatter):
             lines.append(f'"{module_docstring}"')
             lines.append("")
 
+        # Package information
+        package_info = data.get("package") or {}
+        package_name = package_info.get("name", "unknown")
+        if package_name and package_name != "unknown":
+            lines.append("## Package")
+            lines.append(f"`{package_name}`")
+            lines.append("")
+
         # Imports
         if imports:
             lines.append("## Imports")

@@ -103,8 +103,8 @@ class TableFormatter:
         lines.append("")
 
         # Package info
-        package_name = (data.get("package") or {}).get("name", "")
-        if package_name:
+        package_name = (data.get("package") or {}).get("name", "unknown")
+        if package_name and package_name != "unknown":
             lines.append("## Package")
             lines.append(f"`{package_name}`")
             lines.append("")
@@ -125,7 +125,7 @@ class TableFormatter:
             lines.append("| Property | Value |")
             lines.append("|----------|-------|")
 
-            package_name = (data.get("package") or {}).get("name", "unknown")
+            # Re-use package_name from above instead of re-fetching
 
             if len(classes) == 1:
                 class_info = classes[0]
