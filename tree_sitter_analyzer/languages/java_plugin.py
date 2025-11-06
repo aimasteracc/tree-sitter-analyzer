@@ -277,6 +277,7 @@ class JavaElementExtractor(ElementExtractor):
         self._annotation_cache.clear()
         self._signature_cache.clear()
         self.annotations.clear()
+        self.current_package = ""  # Reset package state to avoid cross-test contamination
 
     def _traverse_and_extract_iterative(
         self,
