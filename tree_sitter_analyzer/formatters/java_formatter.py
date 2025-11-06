@@ -48,7 +48,7 @@ class JavaTableFormatter(BaseTableFormatter):
             for class_info in classes:
                 name = str(class_info.get("name", "Unknown"))
                 class_type = str(class_info.get("type", "class"))
-                visibility = str(class_info.get("visibility", "public"))
+                visibility = str(class_info.get("visibility", "package"))
                 line_range = class_info.get("line_range", {})
                 lines_str = f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
 
@@ -83,7 +83,7 @@ class JavaTableFormatter(BaseTableFormatter):
             lines.append(f"| Package | {package_name} |")
             lines.append(f"| Type | {str(class_info.get('type', 'class'))} |")
             lines.append(
-                f"| Visibility | {str(class_info.get('visibility', 'public'))} |"
+                f"| Visibility | {str(class_info.get('visibility', 'package'))} |"
             )
             lines.append(
                 f"| Lines | {class_info.get('line_range', {}).get('start', 0)}-{class_info.get('line_range', {}).get('end', 0)} |"

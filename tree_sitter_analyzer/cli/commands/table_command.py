@@ -126,7 +126,7 @@ class TableCommand(BaseCommand):
                 if element_type == ELEMENT_TYPE_PACKAGE:
                     package_name = str(element_name)
                 elif element_type == ELEMENT_TYPE_CLASS:
-                    classes.append(self._convert_class_element(element, i))
+                    classes.append(self._convert_class_element(element, i, language))
                 elif element_type == ELEMENT_TYPE_FUNCTION:
                     methods.append(self._convert_function_element(element, language))
                 elif element_type == ELEMENT_TYPE_VARIABLE:
@@ -155,15 +155,25 @@ class TableCommand(BaseCommand):
             },
         }
 
-    def _convert_class_element(self, element: Any, index: int) -> dict[str, Any]:
+    def _convert_class_element(
+        self, element: Any, index: int, language: str
+    ) -> dict[str, Any]:
         """Convert class element to table format."""
         element_name = getattr(element, "name", None)
         final_name = element_name if element_name else f"UnknownClass_{index}"
 
+        # Get class type from element (interface, enum, or class)
+        class_type = getattr(element, "class_type", "class")
+
+        # Get visibility from element with language-specific default
+        # Java and C++ have package-private/private default, others have public default
+        default_visibility = "package" if language in ["java", "cpp", "c"] else "public"
+        visibility = getattr(element, "visibility", default_visibility)
+
         return {
             "name": final_name,
-            "type": "class",
-            "visibility": "public",
+            "type": class_type,
+            "visibility": visibility,
             "line_range": {
                 "start": getattr(element, "start_line", 0),
                 "end": getattr(element, "end_line", 0),

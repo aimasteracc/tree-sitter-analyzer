@@ -300,6 +300,16 @@ compatibility_test/reports/*.md
 # Integration test reports
 phase7_integration_report.json
 
-# Format testing results and golden masters
+# Format testing results
 comprehensive_test_results/
-tests/golden_masters/
+
+# Golden masters are version controlled for regression testing
+# tests/golden_masters/ is tracked
+
+# Temporary test files at root (should be moved to tests/)
+/test*.md
+/test*.js
+/test*.ts
+/test_class.py
+/debug*.py
+/sample_json.json

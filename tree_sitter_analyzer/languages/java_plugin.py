@@ -277,7 +277,9 @@ class JavaElementExtractor(ElementExtractor):
         self._annotation_cache.clear()
         self._signature_cache.clear()
         self.annotations.clear()
-        self.current_package = ""  # Reset package state to avoid cross-test contamination
+        self.current_package = (
+            ""  # Reset package state to avoid cross-test contamination
+        )
 
     def _traverse_and_extract_iterative(
         self,
@@ -302,6 +304,7 @@ class JavaElementExtractor(ElementExtractor):
             "class_body",
             "interface_body",
             "enum_body",
+            "enum_body_declarations",  # Required for enum methods/fields/constructors
             "class_declaration",
             "interface_declaration",
             "enum_declaration",

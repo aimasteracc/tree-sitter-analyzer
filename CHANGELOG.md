@@ -1,5 +1,40 @@
 # Changelog
 
+## [Unreleased]
+
+### 🐛 バグ修正
+- **Java言語サポート**: interface/enum/class typeの正しい認識
+  - `interface_declaration` が正しく "interface" として分類されるように修正
+  - `enum_declaration` が正しく "enum" として分類されるように修正
+  - package-private クラスが正しく "package" visibility として表示されるように修正
+- **Java Enumサポート強化**: enum内のメンバーが正しく抽出されるように修正
+  - `enum_body_declarations` をcontainer_node_typesに追加
+  - enum内のconstructor、method、fieldが正しく抽出されるようになった
+- **言語別デフォルトvisibility**: 言語ごとに適切なデフォルトvisibilityを設定
+  - Java/C/C++: "package" (package-private)
+  - その他の言語: "public"
+
+### 🧪 テスト改善
+- **Golden Master Testing導入**: リグレッションテスト基盤の整備
+  - `tests/golden_masters/` にfull/compact/csv フォーマットのゴールデンマスターを追加
+  - `scripts/update_golden_masters.py` でゴールデンマスター更新を自動化
+  - `tests/test_golden_master_regression.py` で自動リグレッションテスト実装
+- **テストフィクスチャ整理**: テスト用ファイルを`tests/test_data/`に整理
+  - TypeScript、JavaScript、Pythonのテストファイルを追加
+
+### 📚 ドキュメント
+- **テストガイド追加**: `docs/testing-guide.md` でゴールデンマスターテストのベストプラクティスを文書化
+- **.gitignore更新**: 一時テストファイルパターンを追加
+
+### 🛠️ 技術改善
+- **`tree_sitter_analyzer/cli/commands/table_command.py`**:
+  - `_convert_class_element()` でclass_typeとvisibilityを正しく取得
+  - 言語別デフォルトvisibilityのサポート
+- **`tree_sitter_analyzer/formatters/java_formatter.py`**:
+  - デフォルトvisibilityを "public" から "package" に変更
+- **`tree_sitter_analyzer/languages/java_plugin.py`**:
+  - container_node_typesに `"enum_body_declarations"` を追加
+
 ## [1.9.5] - 2025-11-06
 
 ### 🚀 機能改善
