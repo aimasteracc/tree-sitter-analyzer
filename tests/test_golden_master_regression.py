@@ -41,6 +41,9 @@ def normalize_output(content: str) -> str:
     normalized = []
 
     for line in lines:
+        # 行末の空白を削除（安定性向上）
+        line = line.rstrip()
+
         # バージョン情報などをスキップ（必要に応じて追加）
         if "version" in line.lower() or "timestamp" in line.lower():
             continue
