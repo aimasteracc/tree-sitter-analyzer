@@ -31,6 +31,12 @@ def normalize_output(content: str) -> str:
     出力を正規化して、バージョン情報や日時などの
     可変部分を除去します
     """
+    # 改行コードを統一（CRLF -> LF）
+    content = content.replace("\r\n", "\n")
+
+    # 末尾の改行を統一（常に1つの改行で終わるようにする）
+    content = content.rstrip("\n") + "\n"
+
     lines = content.split("\n")
     normalized = []
 
@@ -40,7 +46,9 @@ def normalize_output(content: str) -> str:
             continue
         normalized.append(line)
 
-    return "\n".join(normalized)
+    # 再度末尾の改行を統一
+    result = "\n".join(normalized)
+    return result.rstrip("\n") + "\n"
 
 
 def compare_with_golden_master(
@@ -83,18 +91,23 @@ def compare_with_golden_master(
         max_lines = max(len(golden_lines), len(current_lines))
         diff_count = 0
 
-        for i in range(min(20, max_lines)):  # 最初の20行のみ表示
+        # まず全体をスキャンして差分の総数をカウント
+        for i in range(max_lines):
+            if i >= len(golden_lines) or i >= len(current_lines):
+                diff_count += 1
+            elif golden_lines[i] != current_lines[i]:
+                diff_count += 1
+
+        # 最初の20行の差分を表示
+        for i in range(min(20, max_lines)):
             if i >= len(golden_lines):
                 diff_lines.append(f"Line {i+1}: + {current_lines[i]}")
-                diff_count += 1
             elif i >= len(current_lines):
                 diff_lines.append(f"Line {i+1}: - {golden_lines[i]}")
-                diff_count += 1
             elif golden_lines[i] != current_lines[i]:
                 diff_lines.append(f"Line {i+1}:")
                 diff_lines.append(f"  - {golden_lines[i]}")
                 diff_lines.append(f"  + {current_lines[i]}")
-                diff_count += 1
 
         if max_lines > 20:
             diff_lines.append(f"... ({max_lines - 20} more lines)")
