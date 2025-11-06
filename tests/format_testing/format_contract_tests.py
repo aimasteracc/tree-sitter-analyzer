@@ -153,13 +153,13 @@ class FormatContractValidator:
                             pass
 
         # Extract methods
-        methods_section = re.search(r"## Methods\n(.*?)(?=\n##|\n$)", output, re.DOTALL)
+        methods_section = re.search(r"## Methods\n(.*?)(?:\n##|$)", output, re.DOTALL)
         if methods_section:
             table_content = methods_section.group(1)
             info["methods"] = self._parse_markdown_table(table_content)
 
         # Extract fields
-        fields_section = re.search(r"## Fields\n(.*?)(?=\n##|\n$)", output, re.DOTALL)
+        fields_section = re.search(r"## Fields\n(.*?)(?:\n##|$)", output, re.DOTALL)
         if fields_section:
             table_content = fields_section.group(1)
             info["fields"] = self._parse_markdown_table(table_content)
@@ -1029,11 +1029,16 @@ public class ContractTestService {
                 full_line = method_row[4]
 
                 # Find corresponding method in compact format
+                # For overloaded methods, we need to match by line number too
                 compact_method = None
                 for compact_row in compact_info.get("methods", []):
-                    if len(compact_row) >= 4 and compact_row[0] == method_name:
-                        compact_method = compact_row
-                        break
+                    if len(compact_row) >= 4:
+                        if compact_row[0] == method_name:
+                            # For methods with same name (overloaded), match by line number
+                            compact_line = compact_row[3]
+                            if compact_line == full_line:
+                                compact_method = compact_row
+                                break
 
                 if compact_method and len(compact_method) >= 4:
                     compact_line = compact_method[3]  # Line column in compact
@@ -1041,10 +1046,11 @@ public class ContractTestService {
                         full_line == compact_line
                     ), f"Line number mismatch for method {method_name}: full='{full_line}', compact='{compact_line}'"
 
-                # Find corresponding method in CSV format
+                # Find corresponding method in CSV format  
+                # Match by both name and line number for overloaded methods
                 csv_method = None
                 for csv_row in csv_info.get("methods", []):
-                    if csv_row.get("Name") == method_name:
+                    if csv_row.get("Name") == method_name and csv_row.get("Line", "") == full_line:
                         csv_method = csv_row
                         break
 
