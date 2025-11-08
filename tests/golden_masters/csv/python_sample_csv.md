@@ -1,5 +1,5 @@
 Type,Name,Signature,Visibility,Lines,Complexity,Doc
-Field,email,email:str | None,private,19-19,,None
+Field,email,email:str | None,private,19-19,,-
 Method,__init__,"(self:Any, name:str, species:str):Any",public,34-36,1,-
 Method,describe,(self:Any):str,public,43-45,1,-
 Method,__init__,"(self:Any, name:str):Any",public,51-53,1,-

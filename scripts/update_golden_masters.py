@@ -70,6 +70,8 @@ def main():
         ("tests/test_data/test_enum.ts", "typescript_enum"),
         # JavaScript samples (from test_data)
         ("tests/test_data/test_class.js", "javascript_class"),
+        # SQL samples
+        ("examples/sample_database.sql", "sql_sample_database"),
     ]
 
     formats = ["full", "compact", "csv"]
