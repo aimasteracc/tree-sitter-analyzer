@@ -225,8 +225,8 @@ class TestCLIRegression:
 
         assert returncode == 0, f"Command failed with stderr: {stderr}"
 
-        # Verify Python-specific output
-        assert "# sample" in stdout
+        # Verify Python-specific output (improved format with Module: prefix)
+        assert "# Module: sample" in stdout
         assert "## Classes Overview" in stdout
         assert "Animal" in stdout
         assert "Dog" in stdout
