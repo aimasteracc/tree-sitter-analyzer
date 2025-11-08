@@ -259,7 +259,7 @@ class PythonTableFormatter(BaseTableFormatter):
         elif is_script:
             lines.append(f"# Script: {module_name}")
         else:
-            lines.append(f"# {module_name}")
+            lines.append(f"# Module: {module_name}")
         lines.append("")
 
         # Module docstring
@@ -308,7 +308,7 @@ class PythonTableFormatter(BaseTableFormatter):
                     name = str(class_info.get("name", "Unknown"))
                     class_type = str(class_info.get("type", "class"))
                     visibility = str(class_info.get("visibility", "public"))
-                    line_range = class_info.get("line_range", {})
+                    line_range = class_info.get("line_range") or {}
                     lines_str = (
                         f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
                     )
@@ -338,7 +338,7 @@ class PythonTableFormatter(BaseTableFormatter):
                     name = str(class_info.get("name", "Unknown"))
                     class_type = str(class_info.get("type", "class"))
                     visibility = str(class_info.get("visibility", "public"))
-                    line_range = class_info.get("line_range", {})
+                    line_range = class_info.get("line_range") or {}
                     lines_str = (
                         f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
                     )
@@ -348,14 +348,14 @@ class PythonTableFormatter(BaseTableFormatter):
                         m
                         for m in data.get("methods", [])
                         if line_range.get("start", 0)
-                        <= m.get("line_range", {}).get("start", 0)
+                        <= (m.get("line_range") or {}).get("start", 0)
                         <= line_range.get("end", 0)
                     ]
                     class_fields = [
                         f
                         for f in data.get("fields", [])
                         if line_range.get("start", 0)
-                        <= f.get("line_range", {}).get("start", 0)
+                        <= (f.get("line_range") or {}).get("start", 0)
                         <= line_range.get("end", 0)
                     ]
 
@@ -371,7 +371,7 @@ class PythonTableFormatter(BaseTableFormatter):
                 continue
 
             class_name = str(class_info.get("name", "Unknown"))
-            line_range = class_info.get("line_range", {})
+            line_range = class_info.get("line_range") or {}
             lines_str = f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
 
             # Get methods for this class
@@ -379,7 +379,7 @@ class PythonTableFormatter(BaseTableFormatter):
                 m
                 for m in methods
                 if line_range.get("start", 0)
-                <= m.get("line_range", {}).get("start", 0)
+                <= (m.get("line_range") or {}).get("start", 0)
                 <= line_range.get("end", 0)
             ]
 
@@ -398,12 +398,15 @@ class PythonTableFormatter(BaseTableFormatter):
         if classes:
             # Find functions that are not within any class range
             for method in methods:
-                method_start = method.get("line_range", {}).get("start", 0)
+                # Skip None methods
+                if method is None:
+                    continue
+                method_start = (method.get("line_range") or {}).get("start", 0)
                 is_in_class = False
                 for class_info in classes:
                     if class_info is None:
                         continue
-                    class_range = class_info.get("line_range", {})
+                    class_range = class_info.get("line_range") or {}
                     if (
                         class_range.get("start", 0)
                         <= method_start
@@ -414,8 +417,8 @@ class PythonTableFormatter(BaseTableFormatter):
                 if not is_in_class:
                     module_functions.append(method)
         else:
-            # No classes, all methods are module-level
-            module_functions = methods
+            # No classes, all methods are module-level (filter out None)
+            module_functions = [m for m in methods if m is not None]
 
         if module_functions:
             lines.append("## Module Functions")
@@ -436,14 +439,23 @@ class PythonTableFormatter(BaseTableFormatter):
         """Compact table format for Python"""
         lines = []
 
-        # Header
+        # Header - extract module/file name
+        file_path = data.get("file_path", "Unknown")
+        file_name = str(file_path).split("/")[-1].split("\\")[-1]
+        module_name = (
+            file_name.replace(".py", "").replace(".pyw", "").replace(".pyi", "")
+        )
+
         classes = data.get("classes", [])
-        if len(classes) > 1:
-            file_name = data.get("file_path", "Unknown").split("/")[-1].split("\\")[-1]
-            lines.append(f"# {file_name}")
-        else:
-            class_name = classes[0].get("name", "Unknown") if classes else "Unknown"
+
+        # Title logic for Python modules:
+        # - Single class: use class name directly
+        # - Multiple classes or no classes: use "Module: filename"
+        if len(classes) == 1:
+            class_name = classes[0].get("name", module_name)
             lines.append(f"# {class_name}")
+        else:
+            lines.append(f"# Module: {module_name}")
         lines.append("")
 
         # Info
@@ -466,7 +478,7 @@ class PythonTableFormatter(BaseTableFormatter):
                     continue
                 name = str(class_info.get("name", "Unknown"))
                 class_type = str(class_info.get("type", "class"))
-                line_range = class_info.get("line_range", {})
+                line_range = class_info.get("line_range") or {}
                 lines_str = f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
                 lines.append(f"| {name} | {class_type} | {lines_str} |")
             lines.append("")
@@ -482,7 +494,7 @@ class PythonTableFormatter(BaseTableFormatter):
                 name = str(method.get("name", ""))
                 signature = self._create_compact_signature(method)
                 visibility = self._convert_visibility(str(method.get("visibility", "")))
-                line_range = method.get("line_range", {})
+                line_range = method.get("line_range") or {}
                 lines_str = f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
                 complexity = method.get("complexity_score", 0)
                 doc = self._clean_csv_text(
@@ -514,7 +526,7 @@ class PythonTableFormatter(BaseTableFormatter):
 
         vis_symbol = self._get_python_visibility_symbol(visibility)
 
-        line_range = method.get("line_range", {})
+        line_range = method.get("line_range") or {}
         if not line_range or not isinstance(line_range, dict):
             start_line = method.get("start_line", 0)
             end_line = method.get("end_line", 0)
@@ -723,7 +735,7 @@ class PythonTableFormatter(BaseTableFormatter):
         # Use simple + symbol for visibility
         vis_symbol = "+" if visibility == "public" or visibility == "magic" else "-"
 
-        line_range = method.get("line_range", {})
+        line_range = method.get("line_range") or {}
         lines_str = f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
 
         complexity = method.get("complexity_score", 0)
