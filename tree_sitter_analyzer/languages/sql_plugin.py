@@ -1258,6 +1258,23 @@ class SQLElementExtractor(ElementExtractor):
                                 break
                         break
 
+                # Use regex to extract trigger name for better accuracy
+                if has_create and has_trigger and not trigger_name:
+                    import re
+                    trigger_text = self._get_node_text(node)
+                    # Pattern: CREATE TRIGGER trigger_name
+                    trigger_pattern = re.search(
+                        r"CREATE\s+TRIGGER\s+([a-zA-Z_][a-zA-Z0-9_]*)",
+                        trigger_text,
+                        re.IGNORECASE
+                    )
+                    if trigger_pattern:
+                        trigger_name = trigger_pattern.group(1)
+
+                # Skip invalid trigger names (too short or common SQL keywords)
+                if trigger_name and len(trigger_name) <= 2:
+                    trigger_name = None
+
                 # Extract trigger metadata from text
                 if has_create and has_trigger and trigger_name:
                     trigger_text = self._get_node_text(node)
@@ -1323,14 +1340,17 @@ class SQLElementExtractor(ElementExtractor):
             if node.type == "create_index":
                 index_name = None
 
-                # Extract index name - look for the first identifier after CREATE INDEX
-                for child in node.children:
-                    if child.type == "identifier" and index_name is None:
-                        candidate_name = self._get_node_text(child).strip()
-                        # Skip keywords like INDEX, UNIQUE
-                        if candidate_name.upper() not in ["INDEX", "UNIQUE", "CREATE"]:
-                            index_name = candidate_name
-                            break
+                # Use regex to extract index name from raw text for better accuracy
+                import re
+                raw_text = self._get_node_text(node)
+                # Pattern: CREATE [UNIQUE] INDEX index_name ON table_name
+                index_pattern = re.search(
+                    r"CREATE\s+(?:UNIQUE\s+)?INDEX\s+([a-zA-Z_][a-zA-Z0-9_]*)\s+ON",
+                    raw_text,
+                    re.IGNORECASE
+                )
+                if index_pattern:
+                    index_name = index_pattern.group(1)
 
                 if index_name and index_name not in processed_indexes:
                     try:
