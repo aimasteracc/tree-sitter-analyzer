@@ -1,5 +1,39 @@
 # Changelog
 
+## [Unreleased]
+
+### 🛠️ 架构改进
+- **命令-格式化器解耦**: 修复CLI命令层的设计缺陷,防止添加新语言时的回归
+  - 引入 `FormatterSelector` 服务,基于显式配置选择格式化器
+  - 创建 `LANGUAGE_FORMATTER_CONFIG` 配置,明确定义每种语言的格式化策略
+  - 替换隐式的 `if formatter exists` 检查为配置驱动的选择
+  - 完全隔离: 添加新语言不再影响现有语言的输出
+  - 移除3个命令文件中未使用的 `_convert_to_formatter_format()` 方法
+
+### 🐛 Bug修复
+- **包名提取改进**: 修复Java文件包名提取问题
+  - 直接使用 `analysis_result.package` 属性,确保包名始终可用
+  - 修复JavaScript/TypeScript输出中不必要的 "unknown." 前缀
+  - 为非打包语言(JS/TS/Python)返回空字符串而非 "unknown"
+
+- **标题生成优化**: 改进多类文件的标题生成逻辑
+  - Java多类文件: `com.example.Sample` 而非 `com.example.FirstClass`
+  - 更准确的表示: 文件名表明这是多类文件
+  - Python: 添加 `Module:` 前缀以提高清晰度
+  - JavaScript/TypeScript: 移除误导性的 "unknown." 前缀
+
+### 📊 Golden Master更新
+- 更新所有格式的golden master文件以匹配新的改进输出
+- 所有16个golden master测试通过
+- SQL索引现在显示表名和列信息(更完整的输出)
+
+### 🎯 质量保证
+- FormatterSelector服务实现并测试完成
+- table_command.py使用显式格式化器选择
+- JavaScript/TypeScript不再显示 "unknown" 包
+- 所有golden master测试通过
+- 从其他命令中清理未使用的代码
+
 ## [1.9.7] - 2025-11-07
 
 ### ✨ 新機能
