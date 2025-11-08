@@ -136,7 +136,14 @@ class TableCommand(BaseCommand):
         methods = []
         fields = []
         imports = []
-        package_name = self._get_default_package_name(language)
+
+        # Try to get package from analysis_result.package attribute first
+        package_obj = getattr(analysis_result, 'package', None)
+        if package_obj and hasattr(package_obj, 'name'):
+            package_name = str(package_obj.name)
+        else:
+            # Fall back to default or scanning elements
+            package_name = self._get_default_package_name(language)
 
         # Process each element
         for i, element in enumerate(analysis_result.elements):

@@ -1,9 +1,9 @@
-# sample.py
+# Module: sample
 
 ## Info
 | Property | Value |
 |----------|-------|
-| Classes | 3 |
+| Package |  |
 | Methods | 18 |
 | Fields | 1 |
 
@@ -20,7 +20,7 @@
 | fetch_data | (str):dict[str, any] | + | 81-87 | 3 | - |
 | process_animals | (list[Animal]):dict[str, list[str]] | + | 90-103 | 4 | - |
 | calculate_statistics | (list[int | float]):dict[str, float] | + | 106-117 | 3 | - |
-| fibonacci_generator | (int):Any | + | 120-125 | 2 | - |
+| fibonacci_generator | (i):Any | + | 120-125 | 2 | - |
 | list_comprehension_examples | ():Any | + | 128-142 | 7 | - |
 | exception_handling_example | ():Any | + | 145-160 | 3 | - |
 | context_manager_example | ():Any | + | 163-168 | 2 | - |

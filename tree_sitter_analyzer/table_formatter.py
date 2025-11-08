@@ -453,12 +453,16 @@ class TableFormatter:
     ) -> str:
         """Generate title for Java files."""
         if len(classes) == 1:
+            # Single class: use package.ClassName format
             class_name = classes[0].get("name", "Unknown")
             if package_name and package_name != "unknown":
                 return f"{package_name}.{class_name}"
             return class_name
-        # Multiple classes or no classes - use filename
-        return filename
+        else:
+            # Multiple classes or no classes: use package.filename format
+            if package_name and package_name != "unknown":
+                return f"{package_name}.{filename}"
+            return filename
 
     def _generate_python_title(self, filename: str) -> str:
         """Generate title for Python files."""

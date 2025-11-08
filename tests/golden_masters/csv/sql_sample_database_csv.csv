@@ -15,4 +15,4 @@ idx_orders_user_id,index,153-153,user_id,orders
 idx_orders_date,index,154-154,order_date,orders
 idx_products_category,index,155-155,category_id,products
 idx_products_name,index,156-156,name,products
-idx_orders_user_date,index,159-159,user_id;order_date,orders
+idx_orders_user_date,index,159-159,,

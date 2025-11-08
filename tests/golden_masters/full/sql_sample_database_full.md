@@ -19,7 +19,7 @@
 | idx_orders_date | index | 154-154 | orders(order_date) | orders |
 | idx_products_category | index | 155-155 | products(category_id) | products |
 | idx_products_name | index | 156-156 | products(name) | products |
-| idx_orders_user_date | index | 159-159 | orders(user_id, order_date) | orders |
+| idx_orders_user_date | index | 159-159 | - | - |
 
 ## Tables
 ### users (5-13)
@@ -90,6 +90,4 @@
 **Type**: Standard index
 
 ### idx_orders_user_date (159-159)
-**Table**: orders
-**Columns**: user_id, order_date
 **Type**: Standard index
