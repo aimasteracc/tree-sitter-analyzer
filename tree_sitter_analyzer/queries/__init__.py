@@ -9,6 +9,7 @@ Supported languages:
 - Java
 - JavaScript
 - Python
+- SQL
 - TypeScript
 
 Usage:

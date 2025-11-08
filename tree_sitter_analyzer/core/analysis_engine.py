@@ -410,6 +410,7 @@ class UnifiedAnalysisEngine:
             ".cxx": "cpp",
             ".rs": "rust",
             ".go": "go",
+            ".sql": "sql",
         }
 
         detected = language_map.get(ext.lower(), "unknown")

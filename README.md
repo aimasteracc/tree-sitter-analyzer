@@ -51,13 +51,14 @@ Tree-sitter Analyzer is an enterprise-grade code analysis tool designed for the 
 |---------------------|---------------|--------------|
 | **Java** | Complete Support | Spring framework, JPA, enterprise features |
 | **Python** | Complete Support | Type annotations, decorators, modern Python features |
+| **SQL** | 🆕 Enhanced Complete Support | Tables, views, stored procedures, functions, triggers, indexes with specialized output formatting |
 | **JavaScript** | Complete Support | ES6+, React/Vue/Angular, JSX |
 | **TypeScript** | Complete Support | Interfaces, types, decorators, TSX/JSX, framework detection |
 | **HTML** | 🆕 Complete Support | DOM structure analysis, element classification, attribute extraction, hierarchical relationships |
 | **CSS** | 🆕 Complete Support | Selector analysis, property classification, style rule extraction, intelligent categorization |
 | **Markdown** | Complete Support | Headers, code blocks, links, images, tables, task lists, blockquotes |
 
-**Note:** Currently, only the above 7 languages have complete plugin implementations. Languages such as C/C++, Rust, Go, JSON are defined in `LanguageDetector` but do not have functional plugin implementations at this time.
+**Note:** Currently, only the above 8 languages have complete plugin implementations. Languages such as C/C++, Rust, Go, JSON are defined in `LanguageDetector` but do not have functional plugin implementations at this time.
 
 ### 🏆 Production Ready
 - **3,445 Tests** - 100% pass rate, enterprise-grade quality assurance
@@ -217,6 +218,11 @@ uv run tree-sitter-analyzer examples/BigService.java --table full
 uv run tree-sitter-analyzer examples/comprehensive_sample.html --table full
 uv run tree-sitter-analyzer examples/comprehensive_sample.css --advanced --output-format text
 uv run tree-sitter-analyzer examples/comprehensive_sample.html --structure
+
+# 🆕 SQL database analysis with specialized formatting
+uv run tree-sitter-analyzer examples/sample_database.sql --table full
+uv run tree-sitter-analyzer examples/sample_database.sql --table compact
+uv run tree-sitter-analyzer examples/sample_database.sql --advanced --output-format text
 
 # Precise code extraction
 uv run tree-sitter-analyzer examples/BigService.java --partial-read --start-line 93 --end-line 106
@@ -430,6 +436,19 @@ AI will automatically:
 2. Analyze CSS selectors and properties with intelligent categorization
 3. Generate structured tables showing DOM hierarchy and style rules
 
+**SQL Database Analysis Example:**
+```
+I want to analyze the database schema in sample_database.sql:
+1. What tables, views, and stored procedures are defined?
+2. What are the relationships between different database objects?
+3. Show me the database structure in a professional format.
+```
+
+AI will automatically:
+1. Extract all SQL elements (tables, views, procedures, functions, triggers, indexes)
+2. Display database-specific terminology ("Database Schema Overview" instead of "Classes Overview")
+3. Generate professional database documentation with specialized SQL formatting
+
 ---
 
 ## 5. 🤖 Complete MCP Tool List
@@ -569,6 +588,12 @@ uv run tree-sitter-analyzer examples/comprehensive_sample.css --table full
 uv run tree-sitter-analyzer examples/comprehensive_sample.html --advanced
 uv run tree-sitter-analyzer examples/comprehensive_sample.css --advanced
 
+# 🆕 SQL database analysis with specialized formatting
+uv run tree-sitter-analyzer examples/sample_database.sql --table full
+uv run tree-sitter-analyzer examples/sample_database.sql --table compact
+uv run tree-sitter-analyzer examples/sample_database.sql --table csv
+uv run tree-sitter-analyzer examples/sample_database.sql --advanced --output-format text
+
 # Specify output format
 uv run tree-sitter-analyzer examples/BigService.java --advanced --output-format json
 uv run tree-sitter-analyzer examples/BigService.java --advanced --output-format text
@@ -689,7 +714,7 @@ uv run python -m tree_sitter_analyzer --show-query-languages
 | **✂️ Intelligent Code Extraction** | Precision Extraction Tool | Precise extraction by line range<br>Preserves original formatting and indentation<br>Includes position metadata<br>Efficient processing of large files | Zero-loss format preservation<br>Memory-optimized algorithms<br>Streaming processing support |
 | **🔍 Advanced Query Filtering** | Multi-dimensional Filters | **Exact match**: `--filter "name=main"`<br>**Pattern match**: `--filter "name=~auth*"`<br>**Parameter filter**: `--filter "params=2"`<br>**Modifier filter**: `--filter "static=true,public=true"`<br>**Compound conditions**: Combine multiple conditions for precise queries | Flexible query syntax<br>High-performance indexing<br>Intelligent caching mechanisms |
 | **🔗 AI Assistant Integration** | MCP Protocol Support | **Claude Desktop** - Full MCP support<br>**Cursor IDE** - Built-in MCP integration<br>**Roo Code** - MCP protocol support<br>**Other MCP-compatible tools** - Universal MCP server | Standard MCP protocol<br>Plug-and-play design<br>Cross-platform compatibility |
-| **🌍 Multi-language Support** | Enterprise Language Engine | **Java** - Complete support, including Spring, JPA frameworks<br>**Python** - Complete support, including type annotations, decorators<br>**JavaScript** - Enterprise-grade support, including ES6+, React/Vue/Angular, JSX<br>**TypeScript** - **Complete support**, including interfaces, types, decorators, TSX/JSX, framework detection<br>**HTML** - **🆕 Complete support**, including DOM structure, element classification, attribute extraction<br>**CSS** - **🆕 Complete support**, including selector analysis, property classification, style rules<br>**Markdown** - **Complete support**, including headers, code blocks, links, images, tables, task lists, blockquotes<br><br>**Note**: Currently 7 languages have complete plugin implementations (Java, Python, JavaScript, TypeScript, HTML, CSS, Markdown). Languages such as C/C++, Rust, Go are defined but not yet implemented. | Framework-aware parsing<br>Syntax extension support<br>Continuous language updates |
+| **🌍 Multi-language Support** | Enterprise Language Engine | **Java** - Complete support, including Spring, JPA frameworks<br>**Python** - Complete support, including type annotations, decorators<br>**SQL** - **🆕 Enhanced Complete Support**, including tables, views, stored procedures, functions, triggers, indexes with specialized database-focused output formatting<br>**JavaScript** - Enterprise-grade support, including ES6+, React/Vue/Angular, JSX<br>**TypeScript** - **Complete support**, including interfaces, types, decorators, TSX/JSX, framework detection<br>**HTML** - **🆕 Complete support**, including DOM structure, element classification, attribute extraction<br>**CSS** - **🆕 Complete support**, including selector analysis, property classification, style rules<br>**Markdown** - **Complete support**, including headers, code blocks, links, images, tables, task lists, blockquotes<br><br>**Note**: Currently 8 languages have complete plugin implementations (Java, Python, SQL, JavaScript, TypeScript, HTML, CSS, Markdown). Languages such as C/C++, Rust, Go are defined but not yet implemented. | Framework-aware parsing<br>Syntax extension support<br>Continuous language updates |
 | **📁 Advanced File Search** | fd+ripgrep Integration | **ListFilesTool** - Intelligent file discovery with multiple filtering conditions<br>**SearchContentTool** - Intelligent content search using regular expressions<br>**FindAndGrepTool** - Combined discovery and search, two-stage workflow | Rust-based high-performance tools<br>Parallel processing capabilities<br>Intelligent cache optimization |
 | **🏗️ Unified Element System** | Revolutionary Architecture Design | **Single element list** - Unified management of all code elements (classes, methods, fields, imports, packages)<br>**Consistent element types** - Each element has an `element_type` attribute<br>**Simplified API** - Clearer interfaces and reduced complexity<br>**Better maintainability** - Single source of truth for all code elements | Unified data model<br>Type safety guarantees<br>Extensible design |
 

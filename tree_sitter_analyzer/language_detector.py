@@ -75,6 +75,8 @@ class LanguageDetector:
         ".scss": "css",
         ".sass": "css",
         ".less": "css",
+        # SQL系
+        ".sql": "sql",
         # JSON系
         ".json": "json",
         ".jsonc": "json",
@@ -116,6 +118,7 @@ class LanguageDetector:
         "html",
         "css",
         "json",
+        "sql",
     }
 
     def __init__(self) -> None:
@@ -172,6 +175,8 @@ class LanguageDetector:
             ".json": ("json", 0.9),
             ".jsonc": ("json", 0.8),  # JSON with comments
             ".json5": ("json", 0.8),  # JSON5 format
+            # SQL extensions
+            ".sql": ("sql", 0.9),
         }
 
         # Content-based detection patterns

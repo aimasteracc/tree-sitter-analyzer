@@ -19,6 +19,7 @@ from ...constants import (
 )
 from ...core.analysis_engine import AnalysisRequest, get_analysis_engine
 from ...formatters.formatter_registry import FormatterRegistry
+from ...formatters.language_formatter_factory import create_language_formatter
 from ...language_detector import detect_language_from_file
 from ...utils import setup_logger
 from ..utils import get_performance_monitor
@@ -461,8 +462,15 @@ class TableFormatTool(BaseMCPTool):
                 # Always convert analysis result to dict for metadata extraction
                 structure_dict = self._convert_analysis_result_to_dict(structure_result)
 
+                # Check if we have a language-specific formatter (e.g., SQL)
+                language_formatter = create_language_formatter(language)
+                if language_formatter:
+                    # Use language-specific formatter
+                    table_output = language_formatter.format_table(
+                        structure_dict, format_type
+                    )
                 # Use legacy formatter directly for core formats (v1.6.1.4 compatibility)
-                if format_type in ["full", "compact", "csv"]:
+                elif format_type in ["full", "compact", "csv"]:
                     from ...legacy_table_formatter import LegacyTableFormatter
 
                     legacy_formatter = LegacyTableFormatter(

@@ -1,5 +1,48 @@
 # Changelog
 
+## [1.9.7] - 2025-11-07
+
+### ✨ 新機能
+- **SQL出力フォーマット再設計完了**: SQLファイル専用の出力フォーマットを完全実装
+  - **データベース専用用語**: 汎用的なクラスベース用語から適切なデータベース用語に変更
+    - "Classes Overview" → "Database Schema Overview"
+    - "Class" → "Table/View/Procedure/Function/Trigger/Index"
+    - データベース要素に特化した専門的な出力フォーマット
+  - **包括的なSQL要素サポート**: 全てのSQL要素タイプの識別と表示
+    - SQLTable: テーブル定義の検出と詳細情報表示
+    - SQLView: ビュー定義の検出と構造表示
+    - SQLProcedure: ストアドプロシージャの検出とパラメータ表示
+    - SQLFunction: 関数定義の検出と戻り値型表示
+    - SQLTrigger: トリガー定義の検出とイベント表示
+    - SQLIndex: インデックス定義の検出と対象テーブル表示
+  - **3つの出力フォーマット**: Full（詳細）、Compact（概要）、CSV（データ処理用）
+  - **構造化出力**: データベース文書化標準に準拠した出力形式
+  - **専用フォーマッター**: SQLFullFormatter、SQLCompactFormatter、SQLCSVFormatterを実装
+
+- **SQL言語サポート追加**: SQLファイルの解析機能を追加
+  - CREATE TABLE、CREATE VIEW、CREATE PROCEDURE、CREATE FUNCTION、CREATE TRIGGER、CREATE INDEX の完全な抽出をサポート
+  - SQL要素を統一要素モデルにマッピング（テーブル/ビュー→Class、プロシージャ/関数/トリガー→Function、インデックス→Variable）
+  - tree-sitter-sql をオプショナル依存として追加（`pip install tree-sitter-analyzer[sql]`）
+  - プラグインアーキテクチャに準拠した実装
+  - 包括的なテストスイート（25テスト、全て合格）
+
+- **SQLクエリシステム強化**: 包括的なSQL Tree-sitterクエリライブラリを実装
+  - 全てのSQL要素（テーブル、ビュー、プロシージャ、関数、トリガー、インデックス）をサポート
+  - 高度なSQL機能（CTE、ウィンドウ関数、サブクエリ）の解析対応
+  - tree-sitter-sql ERRORノードのエラーハンドリング実装
+  - QueryServiceとの完全統合
+
+### 🔧 品質保証
+- **包括的テスト**: 全てのSQLフォーマッターとプラグイン機能のテスト完了
+- **コード品質**: MyPy型チェック100%準拠、Ruffリンティング全チェック合格
+- **パフォーマンス**: 大きなSQLファイルでも適切な応答時間とメモリ使用量を確認
+- **エンドツーエンドテスト**: CLI、API、MCPインターフェース全てでSQL分析機能が正常動作
+
+### 📚 ドキュメント
+- **SQLフォーマットガイド**: 専用のSQL出力フォーマットドキュメントを作成
+- **使用例**: 全ての出力フォーマットの実例とベストプラクティスを文書化
+- **移行ガイド**: 既存のSQL出力から新フォーマットへの移行手順を提供
+
 ## [1.9.6] - 2025-11-06
 
 ### 🚀 リリース
@@ -22,38 +65,6 @@
 
 ## [Unreleased]
 
-### 🐛 バグ修正
-- **Java言語サポート**: interface/enum/class typeの正しい認識
-  - `interface_declaration` が正しく "interface" として分類されるように修正
-  - `enum_declaration` が正しく "enum" として分類されるように修正
-  - package-private クラスが正しく "package" visibility として表示されるように修正
-- **Java Enumサポート強化**: enum内のメンバーが正しく抽出されるように修正
-  - `enum_body_declarations` をcontainer_node_typesに追加
-  - enum内のconstructor、method、fieldが正しく抽出されるようになった
-- **言語別デフォルトvisibility**: 言語ごとに適切なデフォルトvisibilityを設定
-  - Java/C/C++: "package" (package-private)
-  - その他の言語: "public"
-
-### 🧪 テスト改善
-- **Golden Master Testing導入**: リグレッションテスト基盤の整備
-  - `tests/golden_masters/` にfull/compact/csv フォーマットのゴールデンマスターを追加
-  - `scripts/update_golden_masters.py` でゴールデンマスター更新を自動化
-  - `tests/test_golden_master_regression.py` で自動リグレッションテスト実装
-- **テストフィクスチャ整理**: テスト用ファイルを`tests/test_data/`に整理
-  - TypeScript、JavaScript、Pythonのテストファイルを追加
-
-### 📚 ドキュメント
-- **テストガイド追加**: `docs/testing-guide.md` でゴールデンマスターテストのベストプラクティスを文書化
-- **.gitignore更新**: 一時テストファイルパターンを追加
-
-### 🛠️ 技術改善
-- **`tree_sitter_analyzer/cli/commands/table_command.py`**:
-  - `_convert_class_element()` でclass_typeとvisibilityを正しく取得
-  - 言語別デフォルトvisibilityのサポート
-- **`tree_sitter_analyzer/formatters/java_formatter.py`**:
-  - デフォルトvisibilityを "public" から "package" に変更
-- **`tree_sitter_analyzer/languages/java_plugin.py`**:
-  - container_node_typesに `"enum_body_declarations"` を追加
 
 ## [1.9.5] - 2025-11-06
 

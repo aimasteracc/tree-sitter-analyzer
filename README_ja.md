@@ -51,13 +51,14 @@ Tree-sitter Analyzerは、AI時代のために設計されたエンタープラ�
 |------------------|---------------|---------|
 | **Java** | 完全サポート | Springフレームワーク、JPA、エンタープライズ機能 |
 | **Python** | 完全サポート | 型アノテーション、デコレータ、モダンPython機能 |
+| **SQL** | 🆕 強化された完全サポート | テーブル、ビュー、ストアドプロシージャ、関数、トリガー、インデックス、専用出力フォーマット |
 | **JavaScript** | 完全サポート | ES6+、React/Vue/Angular、JSX |
 | **TypeScript** | 完全サポート | インターフェース、型、デコレータ、TSX/JSX、フレームワーク検出 |
 | **HTML** | 🆕 完全サポート | DOM構造解析、要素分類、属性抽出、階層関係 |
 | **CSS** | 🆕 完全サポート | セレクタ解析、プロパティ分類、スタイルルール抽出、インテリジェント分類 |
 | **Markdown** | 完全サポート | 見出し、コードブロック、リンク、画像、表、タスクリスト、引用 |
 
-**注記:** 現在、上記7言語のみが完全なプラグイン実装を持っています。C/C++、Rust、Go、JSONなどは`LanguageDetector`に定義されていますが、現時点では機能的なプラグイン実装がありません。
+**注記:** 現在、上記8言語のみが完全なプラグイン実装を持っています。C/C++、Rust、Go、JSONなどは`LanguageDetector`に定義されていますが、現時点では機能的なプラグイン実装がありません。
 
 ### 🏆 本番環境対応
 - **3,445のテスト** - 100%合格率、エンタープライズグレードの品質保証
@@ -216,6 +217,11 @@ uv run tree-sitter-analyzer examples/BigService.java --table full
 uv run tree-sitter-analyzer examples/comprehensive_sample.html --table full
 uv run tree-sitter-analyzer examples/comprehensive_sample.css --advanced --output-format text
 uv run tree-sitter-analyzer examples/comprehensive_sample.html --structure
+
+# 🆕 専用フォーマットでSQLデータベース分析
+uv run tree-sitter-analyzer examples/sample_database.sql --table full
+uv run tree-sitter-analyzer examples/sample_database.sql --table compact
+uv run tree-sitter-analyzer examples/sample_database.sql --advanced --output-format text
 
 # 正確なコード抽出
 uv run tree-sitter-analyzer examples/BigService.java --partial-read --start-line 93 --end-line 106
@@ -429,6 +435,19 @@ AIは自動的に：
 2. インテリジェントな分類でCSSセレクタとプロパティを解析
 3. DOM階層とスタイルルールを示す構造化テーブルを生成
 
+**SQLデータベース分析例：**
+```
+sample_database.sqlのデータベーススキーマを分析したい：
+1. どのようなテーブル、ビュー、ストアドプロシージャが定義されていますか？
+2. 異なるデータベースオブジェクト間の関係は何ですか？
+3. プロフェッショナルな形式でデータベース構造を表示してください。
+```
+
+AIは自動的に：
+1. 全てのSQL要素（テーブル、ビュー、プロシージャ、関数、トリガー、インデックス）を抽出
+2. データベース専用用語（「クラス概要」ではなく「データベーススキーマ概要」）を表示
+3. 専用SQLフォーマットでプロフェッショナルなデータベース文書を生成
+
 ---
 
 ## 5. 🤖 MCP完全ツールリスト
@@ -565,6 +584,12 @@ uv run tree-sitter-analyzer examples/comprehensive_sample.css --table full
 uv run tree-sitter-analyzer examples/comprehensive_sample.html --advanced
 uv run tree-sitter-analyzer examples/comprehensive_sample.css --advanced
 
+# 🆕 専用フォーマットでSQLデータベース分析
+uv run tree-sitter-analyzer examples/sample_database.sql --table full
+uv run tree-sitter-analyzer examples/sample_database.sql --table compact
+uv run tree-sitter-analyzer examples/sample_database.sql --table csv
+uv run tree-sitter-analyzer examples/sample_database.sql --advanced --output-format text
+
 # 出力形式を指定
 uv run tree-sitter-analyzer examples/BigService.java --advanced --output-format json
 uv run tree-sitter-analyzer examples/BigService.java --advanced --output-format text
@@ -685,7 +710,7 @@ uv run tree-sitter-analyzer --show-query-languages
 | **✂️ インテリジェントなコード抽出** | 精密抽出ツール | 行範囲による正確な抽出<br>元のフォーマットとインデントを保持<br>位置メタデータを含む<br>大きなファイルの効率的な処理 | ゼロロスフォーマット保持<br>メモリ最適化アルゴリズム<br>ストリーミング処理サポート |
 | **🔍 高度なクエリフィルタリング** | 多次元フィルター | **完全一致**: `--filter "name=main"`<br>**パターンマッチ**: `--filter "name=~auth*"`<br>**パラメータフィルタ**: `--filter "params=2"`<br>**修飾子フィルタ**: `--filter "static=true,public=true"`<br>**複合条件**: 正確なクエリのために複数の条件を組み合わせる | 柔軟なクエリ構文<br>高性能インデックス<br>インテリジェントキャッシュ機構 |
 | **🔗 AIアシスタント統合** | MCPプロトコルサポート | **Claude Desktop** - 完全なMCPサポート<br>**Cursor IDE** - 組み込みのMCP統合<br>**Roo Code** - MCPプロトコルサポート<br>**その他のMCP互換ツール** - ユニバーサルMCPサーバー | 標準MCPプロトコル<br>プラグアンドプレイ設計<br>クロスプラットフォーム互換性 |
-| **🌍 多言語サポート** | エンタープライズ言語エンジン | **Java** - 完全サポート、Spring、JPAフレームワークを含む<br>**Python** - 完全サポート、型アノテーション、デコレータを含む<br>**JavaScript** - 企業級サポート、ES6+、React/Vue/Angular、JSXを含む<br>**TypeScript** - **完全サポート**、インターフェース、型、デコレータ、TSX/JSX、フレームワーク検出を含む<br>**HTML** - **🆕 完全サポート**、DOM構造、要素分類、属性抽出を含む<br>**CSS** - **🆕 完全サポート**、セレクタ解析、プロパティ分類、スタイルルールを含む<br>**Markdown** - **完全サポート**、見出し、コードブロック、リンク、画像、表、タスクリスト、引用を含む<br><br>**注記**: 現在7言語が完全なプラグイン実装を持っています（Java、Python、JavaScript、TypeScript、HTML、CSS、Markdown）。C/C++、Rust、Goなどは定義されていますが、まだ実装されていません。 | フレームワーク認識解析<br>構文拡張サポート<br>継続的言語アップデート |
+| **🌍 多言語サポート** | エンタープライズ言語エンジン | **Java** - 完全サポート、Spring、JPAフレームワークを含む<br>**Python** - 完全サポート、型アノテーション、デコレータを含む<br>**SQL** - **🆕 強化された完全サポート**、テーブル、ビュー、ストアドプロシージャ、関数、トリガー、インデックス、専用データベース中心の出力フォーマットを含む<br>**JavaScript** - 企業級サポート、ES6+、React/Vue/Angular、JSXを含む<br>**TypeScript** - **完全サポート**、インターフェース、型、デコレータ、TSX/JSX、フレームワーク検出を含む<br>**HTML** - **🆕 完全サポート**、DOM構造、要素分類、属性抽出を含む<br>**CSS** - **🆕 完全サポート**、セレクタ解析、プロパティ分類、スタイルルールを含む<br>**Markdown** - **完全サポート**、見出し、コードブロック、リンク、画像、表、タスクリスト、引用を含む<br><br>**注記**: 現在8言語が完全なプラグイン実装を持っています（Java、Python、SQL、JavaScript、TypeScript、HTML、CSS、Markdown）。C/C++、Rust、Goなどは定義されていますが、まだ実装されていません。 | フレームワーク認識解析<br>構文拡張サポート<br>継続的言語アップデート |
 | **📁 高度なファイル検索** | fd+ripgrep統合 | **ListFilesTool** - 複数のフィルタリング条件を持つインテリジェントなファイル検出<br>**SearchContentTool** - 正規表現を使用したインテリジェントなコンテンツ検索<br>**FindAndGrepTool** - 検出と検索の組み合わせ、2段階ワークフロー | Rustベースの高性能ツール<br>並列処理能力<br>インテリジェントキャッシュ最適化 |
 | **🏗️ 統一要素システム** | 革新的アーキテクチャ設計 | **単一要素リスト** - すべてのコード要素（クラス、メソッド、フィールド、インポート、パッケージ）の統一管理<br>**一貫した要素タイプ** - 各要素には`element_type`属性があります<br>**簡素化されたAPI** - より明確なインターフェースと複雑さの軽減<br>**より良い保守性** - すべてのコード要素の単一の真実の情報源 | 統一データモデル<br>型安全保証<br>拡張性設計 |
 

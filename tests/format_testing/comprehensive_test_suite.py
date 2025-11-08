@@ -357,10 +357,10 @@ class ComprehensiveFormatTestSuite:
 
                     # Compare with golden master
                     # Check if golden master exists
-                    golden_content = self.golden_master_tester.get_golden_master_content(
-                        test_name
+                    golden_content = (
+                        self.golden_master_tester.get_golden_master_content(test_name)
                     )
-                    
+
                     if golden_content is None:
                         # No golden master exists, create one
                         self.golden_master_tester.create_golden_master(
@@ -375,10 +375,8 @@ class ComprehensiveFormatTestSuite:
                             }
                         )
                         continue
-                    
-                    comparison_result = {
-                        "matches": current_output == golden_content
-                    }
+
+                    comparison_result = {"matches": current_output == golden_content}
 
                     if comparison_result["matches"]:
                         results["passed"] += 1
@@ -709,11 +707,16 @@ class ComprehensiveFormatTestSuite:
 
                         if format_type == "full":
                             # Should have main header and section headers (flexible for both formats)
-                            if not (("#" in output and "##" in output) or ("=" in output and "-" in output)):
+                            if not (
+                                ("#" in output and "##" in output)
+                                or ("=" in output and "-" in output)
+                            ):
                                 compliance_passed = False
                         elif format_type == "compact":
                             # Should have headers and table structure (flexible for both formats)
-                            if not (("#" in output and "|" in output) or ("-" in output)):
+                            if not (
+                                ("#" in output and "|" in output) or ("-" in output)
+                            ):
                                 compliance_passed = False
                         elif format_type == "csv":
                             # Should have comma-separated values
@@ -898,7 +901,7 @@ class ComprehensiveFormatTestSuite:
 
                 # Check if performance is acceptable
                 performance_acceptable = True
-                for format_type, metrics in performance_results.items():
+                for _format_type, metrics in performance_results.items():
                     if (
                         not metrics.success or metrics.execution_time_ms > 5000
                     ):  # 5 second threshold

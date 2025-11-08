@@ -37,12 +37,12 @@ def generate_golden_master(file_path: str, format_type: str, output_name: str) -
 
         # Save the output
         output_file.write_text(output, encoding="utf-8")
-        print(f"  ✓ Created: {output_file}")
+        print(f"  [OK] Created: {output_file}")
     except subprocess.CalledProcessError as e:
-        print(f"  ✗ Failed to analyze: {file_path}")
+        print(f"  [ERROR] Failed to analyze: {file_path}")
         print(f"    Error: {e}")
     except Exception as e:
-        print(f"  ✗ Unexpected error: {e}")
+        print(f"  [ERROR] Unexpected error: {e}")
 
 
 def main():
@@ -89,6 +89,15 @@ def main():
         generate_golden_master(test_class_js, "full", "javascript_class_full")
     else:
         print("  ⚠ test_class.js not found - skipping")
+
+    # sample_database.sql - SQL database schema test
+    sample_sql = "examples/sample_database.sql"
+    if Path(sample_sql).exists():
+        generate_golden_master(sample_sql, "full", "sql_sample_database_full")
+        generate_golden_master(sample_sql, "compact", "sql_sample_database_compact")
+        generate_golden_master(sample_sql, "csv", "sql_sample_database_csv")
+    else:
+        print("  ⚠ sample_database.sql not found - skipping")
 
     print()
     print("=" * 60)

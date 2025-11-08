@@ -93,6 +93,7 @@ tree-sitter-analyzer/
 ### Language Support
 - Python, Java, JavaScript, TypeScript
 - HTML, CSS, Markdown
+- SQL (NEW)
 - Extensible plugin architecture
 
 ### MCP Integration

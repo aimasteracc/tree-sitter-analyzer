@@ -1,0 +1,12 @@
+Element,Type,Lines,Columns_Parameters,Dependencies
+users,table,5-13,,
+orders,table,16-23,,
+products,table,26-34,,
+active_users,view,37-44,,
+order_summary,view,47-55,,
+get_user_orders,procedure,58-58,,
+update_product_stock,procedure,71-74,,
+calculate_order_total,function,89-100,,
+is_user_active,function,104-115,,
+update_order_total,trigger,119-156,,
+idx_orders_user_date,index,159-159,,

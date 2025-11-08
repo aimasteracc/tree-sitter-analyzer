@@ -5,7 +5,12 @@ Factory for creating language-specific formatters for different output types.
 
 from .base_formatter import BaseFormatter
 from .html_formatter import HtmlFormatter
+from .java_formatter import JavaTableFormatter
+from .javascript_formatter import JavaScriptTableFormatter
 from .markdown_formatter import MarkdownFormatter
+from .python_formatter import PythonTableFormatter
+from .sql_formatter_wrapper import SQLFormatterWrapper
+from .typescript_formatter import TypeScriptTableFormatter
 
 
 class LanguageFormatterFactory:
@@ -16,6 +21,14 @@ class LanguageFormatterFactory:
         "md": MarkdownFormatter,  # Alias
         "html": HtmlFormatter,
         "css": HtmlFormatter,  # CSS files also use HTML formatter
+        "sql": SQLFormatterWrapper,  # SQL-specific formatter
+        "python": PythonTableFormatter,  # Python files use Python formatter
+        "py": PythonTableFormatter,  # Python alias
+        "java": JavaTableFormatter,  # Java files use Java formatter
+        "javascript": JavaScriptTableFormatter,  # JavaScript files use JavaScript formatter
+        "js": JavaScriptTableFormatter,  # JavaScript alias
+        "typescript": TypeScriptTableFormatter,  # TypeScript files use TypeScript formatter
+        "ts": TypeScriptTableFormatter,  # TypeScript alias
     }
 
     @classmethod

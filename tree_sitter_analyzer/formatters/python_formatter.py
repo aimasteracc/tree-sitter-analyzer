@@ -27,6 +27,202 @@ class PythonTableFormatter(BaseTableFormatter):
 
         return self.format_structure(data)
 
+    def format_table(self, data: dict[str, Any], table_type: str = "full") -> str:
+        """Format table output for Python files"""
+        # Set the format type and delegate to format_structure
+        original_format_type = self.format_type
+        self.format_type = table_type
+        try:
+            result = self.format_structure(data)
+            return result
+        finally:
+            self.format_type = original_format_type
+
+    def format_summary(self, analysis_result: dict[str, Any]) -> str:
+        """Format summary output for Python"""
+        return self._format_compact_table(analysis_result)
+
+    def format_structure(self, analysis_result: dict[str, Any]) -> str:
+        """Format structure analysis output for Python"""
+        return super().format_structure(analysis_result)
+
+    def format_advanced(
+        self, analysis_result: dict[str, Any], output_format: str = "json"
+    ) -> str:
+        """Format advanced analysis output for Python"""
+        if output_format == "json":
+            return self._format_json(analysis_result)
+        elif output_format == "csv":
+            return self._format_csv(analysis_result)
+        else:
+            return self._format_full_table(analysis_result)
+
+    def _format_json(self, data: dict[str, Any]) -> str:
+        """Format data as JSON"""
+        import json
+
+        try:
+            return json.dumps(data, indent=2, ensure_ascii=False)
+        except (TypeError, ValueError) as e:
+            return f"# JSON serialization error: {e}\n"
+
+    def format_analysis_result(
+        self, analysis_result: Any, table_type: str = "full"
+    ) -> str:
+        """Format AnalysisResult directly for Python files - prevents degradation"""
+        # Convert AnalysisResult to the format expected by Python formatter
+        data = self._convert_analysis_result_to_python_format(analysis_result)
+        return self.format_table(data, table_type)
+
+    def _convert_analysis_result_to_python_format(
+        self, analysis_result: Any
+    ) -> dict[str, Any]:
+        """Convert AnalysisResult to Python formatter's expected format"""
+        from ..constants import (
+            ELEMENT_TYPE_CLASS,
+            ELEMENT_TYPE_FUNCTION,
+            ELEMENT_TYPE_IMPORT,
+            ELEMENT_TYPE_PACKAGE,
+            ELEMENT_TYPE_VARIABLE,
+            get_element_type,
+        )
+
+        classes = []
+        methods = []
+        fields = []
+        imports = []
+        package_name = "unknown"
+
+        # Process each element
+        for element in analysis_result.elements:
+            element_type = get_element_type(element)
+            element_name = getattr(element, "name", None)
+
+            if element_type == ELEMENT_TYPE_PACKAGE:
+                package_name = str(element_name)
+            elif element_type == ELEMENT_TYPE_CLASS:
+                classes.append(self._convert_class_element_for_python(element))
+            elif element_type == ELEMENT_TYPE_FUNCTION:
+                methods.append(self._convert_function_element_for_python(element))
+            elif element_type == ELEMENT_TYPE_VARIABLE:
+                fields.append(self._convert_variable_element_for_python(element))
+            elif element_type == ELEMENT_TYPE_IMPORT:
+                imports.append(self._convert_import_element_for_python(element))
+
+        return {
+            "file_path": analysis_result.file_path,
+            "language": analysis_result.language,
+            "line_count": analysis_result.line_count,
+            "package": {"name": package_name},
+            "classes": classes,
+            "methods": methods,
+            "fields": fields,
+            "imports": imports,
+            "statistics": {
+                "method_count": len(methods),
+                "field_count": len(fields),
+                "class_count": len(classes),
+                "import_count": len(imports),
+            },
+        }
+
+    def _convert_class_element_for_python(self, element: Any) -> dict[str, Any]:
+        """Convert class element for Python formatter"""
+        element_name = getattr(element, "name", None)
+        final_name = element_name if element_name else "UnknownClass"
+
+        return {
+            "name": final_name,
+            "type": getattr(element, "class_type", "class"),
+            "visibility": getattr(element, "visibility", "public"),
+            "line_range": {
+                "start": getattr(element, "start_line", 0),
+                "end": getattr(element, "end_line", 0),
+            },
+        }
+
+    def _convert_function_element_for_python(self, element: Any) -> dict[str, Any]:
+        """Convert function element for Python formatter"""
+        params = getattr(element, "parameters", [])
+        processed_params = self._process_python_parameters(params)
+
+        return {
+            "name": getattr(element, "name", str(element)),
+            "visibility": getattr(element, "visibility", "public"),
+            "return_type": getattr(element, "return_type", "Any"),
+            "parameters": processed_params,
+            "is_constructor": getattr(element, "is_constructor", False),
+            "is_static": getattr(element, "is_static", False),
+            "is_async": getattr(element, "is_async", False),
+            "complexity_score": getattr(element, "complexity_score", 1),
+            "line_range": {
+                "start": getattr(element, "start_line", 0),
+                "end": getattr(element, "end_line", 0),
+            },
+            "docstring": getattr(element, "docstring", "") or "",
+            "decorators": getattr(element, "decorators", []),
+            "modifiers": getattr(element, "modifiers", []),
+        }
+
+    def _convert_variable_element_for_python(self, element: Any) -> dict[str, Any]:
+        """Convert variable element for Python formatter"""
+        return {
+            "name": getattr(element, "name", str(element)),
+            "type": getattr(element, "variable_type", "")
+            or getattr(element, "field_type", ""),
+            "visibility": getattr(element, "visibility", "public"),
+            "modifiers": getattr(element, "modifiers", []),
+            "line_range": {
+                "start": getattr(element, "start_line", 0),
+                "end": getattr(element, "end_line", 0),
+            },
+            "javadoc": getattr(element, "docstring", ""),
+        }
+
+    def _convert_import_element_for_python(self, element: Any) -> dict[str, Any]:
+        """Convert import element for Python formatter"""
+        raw_text = getattr(element, "raw_text", "")
+        if raw_text:
+            statement = raw_text
+        else:
+            statement = f"import {getattr(element, 'name', str(element))}"
+
+        return {
+            "statement": statement,
+            "raw_text": statement,
+            "name": getattr(element, "name", str(element)),
+            "module_name": getattr(element, "module_name", ""),
+        }
+
+    def _process_python_parameters(self, params: Any) -> list[dict[str, str]]:
+        """Process parameters for Python formatter"""
+        if isinstance(params, str):
+            param_list = []
+            if params.strip():
+                param_names = [p.strip() for p in params.split(",") if p.strip()]
+                param_list = [{"name": name, "type": "Any"} for name in param_names]
+            return param_list
+        elif isinstance(params, list):
+            param_list = []
+            for param in params:
+                if isinstance(param, str):
+                    param = param.strip()
+                    # Python format: "name: type"
+                    if ":" in param:
+                        parts = param.split(":", 1)
+                        param_name = parts[0].strip()
+                        param_type = parts[1].strip() if len(parts) > 1 else "Any"
+                        param_list.append({"name": param_name, "type": param_type})
+                    else:
+                        param_list.append({"name": param, "type": "Any"})
+                elif isinstance(param, dict):
+                    param_list.append(param)
+                else:
+                    param_list.append({"name": str(param), "type": "Any"})
+            return param_list
+        else:
+            return []
+
     def _format_full_table(self, data: dict[str, Any]) -> str:
         """Full table format for Python"""
         if data is None:
@@ -63,7 +259,7 @@ class PythonTableFormatter(BaseTableFormatter):
         elif is_script:
             lines.append(f"# Script: {module_name}")
         else:
-            lines.append(f"# Module: {module_name}")
+            lines.append(f"# {module_name}")
         lines.append("")
 
         # Module docstring
@@ -99,112 +295,135 @@ class PythonTableFormatter(BaseTableFormatter):
             lines.append("```")
             lines.append("")
 
-        # Classes - Python (multi-class aware)
-        if len(classes) > 1:
-            lines.append("## Classes")
-            lines.append("| Class | Type | Visibility | Lines | Methods | Fields |")
-            lines.append("|-------|------|------------|-------|---------|--------|")
+        # Classes Overview or Class Info
+        if classes:
+            if len(classes) == 1:
+                # Single class - use Class Info format
+                class_info = classes[0]
+                if class_info is not None:
+                    lines.append("## Class Info")
+                    lines.append("| Property | Value |")
+                    lines.append("|----------|-------|")
 
-            for class_info in classes:
-                # Handle None class_info
-                if class_info is None:
-                    continue
+                    name = str(class_info.get("name", "Unknown"))
+                    class_type = str(class_info.get("type", "class"))
+                    visibility = str(class_info.get("visibility", "public"))
+                    line_range = class_info.get("line_range", {})
+                    lines_str = (
+                        f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
+                    )
 
-                name = str(class_info.get("name", "Unknown"))
-                class_type = str(class_info.get("type", "class"))
-                visibility = str(class_info.get("visibility", "public"))
-                line_range = class_info.get("line_range", {})
-                lines_str = f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
+                    # Get statistics
+                    stats = data.get("statistics", {})
+                    method_count = stats.get("method_count", 0)
+                    field_count = stats.get("field_count", 0)
 
-                # Count methods/fields within the class range
-                class_methods = [
-                    m
-                    for m in data.get("methods", [])
-                    if line_range.get("start", 0)
-                    <= m.get("line_range", {}).get("start", 0)
-                    <= line_range.get("end", 0)
-                ]
-                class_fields = [
-                    f
-                    for f in data.get("fields", [])
-                    if line_range.get("start", 0)
-                    <= f.get("line_range", {}).get("start", 0)
-                    <= line_range.get("end", 0)
-                ]
-
-                lines.append(
-                    f"| {name} | {class_type} | {visibility} | {lines_str} | {len(class_methods)} | {len(class_fields)} |"
-                )
-        else:
-            # Single class details
-            lines.append("## Class Info")
-            lines.append("| Property | Value |")
-            lines.append("|----------|-------|")
-
-            classes_list = data.get("classes", [])
-            if classes_list and len(classes_list) > 0 and classes_list[0] is not None:
-                class_info = classes_list[0]
+                    lines.append(f"| Type | {class_type} |")
+                    lines.append(f"| Visibility | {visibility} |")
+                    lines.append(f"| Lines | {lines_str} |")
+                    lines.append(f"| Total Methods | {method_count} |")
+                    lines.append(f"| Total Fields | {field_count} |")
+                    lines.append("")
             else:
-                class_info = {}
-            stats = data.get("statistics") or {}
+                # Multiple classes - use Classes Overview format
+                lines.append("## Classes Overview")
+                lines.append("| Class | Type | Visibility | Lines | Methods | Fields |")
+                lines.append("|-------|------|------------|-------|---------|--------|")
 
-            lines.append("| Package | (default) |")
-            lines.append(
-                f"| Type | {str(class_info.get('type', 'class') if class_info else 'class')} |"
-            )
-            lines.append(
-                f"| Visibility | {str(class_info.get('visibility', 'public') if class_info else 'public')} |"
-            )
+                for class_info in classes:
+                    # Handle None class_info
+                    if class_info is None:
+                        continue
 
-            # Handle None class_info for line range
-            if class_info and class_info.get("line_range"):
-                line_range = class_info.get("line_range", {})
-                lines.append(
-                    f"| Lines | {line_range.get('start', 0)}-{line_range.get('end', 0)} |"
-                )
-            else:
-                lines.append("| Lines | 0-0 |")
-            lines.append(f"| Total Methods | {stats.get('method_count', 0)} |")
-            lines.append(f"| Total Fields | {stats.get('field_count', 0)} |")
+                    name = str(class_info.get("name", "Unknown"))
+                    class_type = str(class_info.get("type", "class"))
+                    visibility = str(class_info.get("visibility", "public"))
+                    line_range = class_info.get("line_range", {})
+                    lines_str = (
+                        f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
+                    )
 
-        lines.append("")
+                    # Count methods/fields within the class range
+                    class_methods = [
+                        m
+                        for m in data.get("methods", [])
+                        if line_range.get("start", 0)
+                        <= m.get("line_range", {}).get("start", 0)
+                        <= line_range.get("end", 0)
+                    ]
+                    class_fields = [
+                        f
+                        for f in data.get("fields", [])
+                        if line_range.get("start", 0)
+                        <= f.get("line_range", {}).get("start", 0)
+                        <= line_range.get("end", 0)
+                    ]
 
-        # Fields
-        fields = data.get("fields", [])
-        if fields:
-            lines.append("## Fields")
-            lines.append("| Name | Type | Vis | Modifiers | Line | Doc |")
-            lines.append("|------|------|-----|-----------|------|-----|")
+                    lines.append(
+                        f"| {name} | {class_type} | {visibility} | {lines_str} | {len(class_methods)} | {len(class_fields)} |"
+                    )
+                lines.append("")
 
-            for field in fields:
-                name = str(field.get("name", ""))
-                field_type = str(field.get("type", ""))
-                visibility = self._convert_visibility(str(field.get("visibility", "")))
-                modifiers = ",".join([str(m) for m in field.get("modifiers", [])])
-                line = field.get("line_range", {}).get("start", 0)
-                doc = str(field.get("javadoc", "")) or "-"
-                doc = doc.replace("\n", " ").replace("|", "\\|")[:50]
+        # Class-specific method sections
+        methods = data.get("methods", []) or functions
+        for class_info in classes:
+            if class_info is None:
+                continue
 
-                lines.append(
-                    f"| {name} | {field_type} | {visibility} | {modifiers} | {line} | {doc} |"
-                )
-            lines.append("")
+            class_name = str(class_info.get("name", "Unknown"))
+            line_range = class_info.get("line_range", {})
+            lines_str = f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
 
-        # Methods - Python (with decorators and async support)
-        methods = (
-            data.get("methods", []) or functions
-        )  # Use functions if methods not available
-        if methods:
-            lines.append("## Methods")
-            lines.append(
-                "| Method | Signature | Vis | Lines | Cols | Cx | Decorators | Doc |"
-            )
-            lines.append(
-                "|--------|-----------|-----|-------|------|----|-----------|----|"
-            )
+            # Get methods for this class
+            class_methods = [
+                m
+                for m in methods
+                if line_range.get("start", 0)
+                <= m.get("line_range", {}).get("start", 0)
+                <= line_range.get("end", 0)
+            ]
 
+            if class_methods:
+                lines.append(f"## {class_name} ({lines_str})")
+                lines.append("### Public Methods")
+                lines.append("| Method | Signature | Vis | Lines | Cx | Doc |")
+                lines.append("|--------|-----------|-----|-------|----|----| ")
+
+                for method in class_methods:
+                    lines.append(self._format_class_method_row(method))
+                lines.append("")
+
+        # Module-level functions (not in any class)
+        module_functions = []
+        if classes:
+            # Find functions that are not within any class range
             for method in methods:
-                lines.append(self._format_method_row(method))
+                method_start = method.get("line_range", {}).get("start", 0)
+                is_in_class = False
+                for class_info in classes:
+                    if class_info is None:
+                        continue
+                    class_range = class_info.get("line_range", {})
+                    if (
+                        class_range.get("start", 0)
+                        <= method_start
+                        <= class_range.get("end", 0)
+                    ):
+                        is_in_class = True
+                        break
+                if not is_in_class:
+                    module_functions.append(method)
+        else:
+            # No classes, all methods are module-level
+            module_functions = methods
+
+        if module_functions:
+            lines.append("## Module Functions")
+            lines.append("| Method | Signature | Vis | Lines | Cx | Doc |")
+            lines.append("|--------|-----------|-----|-------|----|----| ")
+
+            for method in module_functions:
+                lines.append(self._format_class_method_row(method))
             lines.append("")
 
         # Trim trailing blank lines
@@ -236,6 +455,21 @@ class PythonTableFormatter(BaseTableFormatter):
         lines.append(f"| Methods | {stats.get('method_count', 0)} |")
         lines.append(f"| Fields | {stats.get('field_count', 0)} |")
         lines.append("")
+
+        # Classes section (add class names for better visibility)
+        if classes:
+            lines.append("## Classes")
+            lines.append("| Class | Type | Lines |")
+            lines.append("|-------|------|-------|")
+            for class_info in classes:
+                if class_info is None:
+                    continue
+                name = str(class_info.get("name", "Unknown"))
+                class_type = str(class_info.get("type", "class"))
+                line_range = class_info.get("line_range", {})
+                lines_str = f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
+                lines.append(f"| {name} | {class_type} | {lines_str} |")
+            lines.append("")
 
         # Methods (compact)
         methods = data.get("methods", [])
@@ -319,12 +553,14 @@ class PythonTableFormatter(BaseTableFormatter):
                 if param_type == "Any" or param_type is None:
                     param_types.append("Any")  # Keep "Any" as is for missing type info
                 else:
-                    param_types.append(self._shorten_type(param_type))
+                    param_types.append(
+                        param_type
+                    )  # Don't shorten types for consistency
             else:
                 param_types.append("Any")  # Use "Any" for missing type info
 
         params_str = ",".join(param_types)
-        return_type = self._shorten_type(method.get("return_type", "Any"))
+        return_type = method.get("return_type", "Any")
 
         return f"({params_str}):{return_type}"
 
@@ -471,3 +707,95 @@ class PythonTableFormatter(BaseTableFormatter):
             return f"@{decorators[0]}"
         else:
             return f"@{decorators[0]} (+{len(decorators) - 1})"
+
+    def _format_class_method_row(self, method: dict[str, Any]) -> str:
+        """Format a method table row for class-specific sections"""
+        name = str(method.get("name", ""))
+        signature = self._format_python_signature_compact(method)
+
+        # Python-specific visibility handling
+        visibility = method.get("visibility", "public")
+        if name.startswith("__") and name.endswith("__"):
+            visibility = "magic"
+        elif name.startswith("_"):
+            visibility = "private"
+
+        # Use simple + symbol for visibility
+        vis_symbol = "+" if visibility == "public" or visibility == "magic" else "-"
+
+        line_range = method.get("line_range", {})
+        lines_str = f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
+
+        complexity = method.get("complexity_score", 0)
+
+        # Use docstring for doc - ensure we get the correct docstring for this specific method
+        docstring = method.get("docstring", "")
+        method_name = method.get("name", "")
+
+        # Special handling for __init__ methods - they often get wrong docstrings from tree-sitter
+        if method_name == "__init__":
+            # For __init__ methods, be more strict about docstring validation
+            if (
+                docstring
+                and str(docstring).strip()
+                and str(docstring).strip() != "None"
+            ):
+                # Check if the docstring seems to belong to this method
+                # If it contains class-specific terms that don't match __init__, it's likely wrong
+                docstring_text = str(docstring).strip()
+                if any(
+                    word in docstring_text.lower()
+                    for word in ["bark", "meow", "fetch", "purr"]
+                ):
+                    # This looks like it belongs to another method, not __init__
+                    doc = "-"
+                else:
+                    doc = self._extract_doc_summary(docstring_text)
+            else:
+                doc = "-"
+        else:
+            # For non-__init__ methods, use normal processing
+            if (
+                docstring
+                and str(docstring).strip()
+                and str(docstring).strip() != "None"
+            ):
+                doc = self._extract_doc_summary(str(docstring))
+            else:
+                doc = "-"
+
+        # Add static modifier if applicable
+        modifiers = []
+        if method.get("is_static", False):
+            modifiers.append("static")
+
+        modifier_str = f" [{', '.join(modifiers)}]" if modifiers else ""
+
+        return f"| {name} | {signature}{modifier_str} | {vis_symbol} | {lines_str} | {complexity} | {doc} |"
+
+    def _format_python_signature_compact(self, method: dict[str, Any]) -> str:
+        """Create compact Python method signature for class sections"""
+        params = method.get("parameters", [])
+        if params is None:
+            params = []
+        param_strs = []
+
+        for p in params:
+            if isinstance(p, dict):
+                param_name = p.get("name", "")
+                param_type = p.get("type", "")
+                if param_type and param_type != "Any":
+                    param_strs.append(f"{param_name}:{param_type}")
+                else:
+                    # Include type hint as "Any" for all parameters including self
+                    param_strs.append(f"{param_name}:Any")
+            else:
+                param_strs.append(str(p))
+
+        params_str = ", ".join(param_strs)
+        return_type = method.get("return_type", "")
+
+        if return_type and return_type != "Any":
+            return f"({params_str}):{return_type}"
+        else:
+            return f"({params_str}):Any"

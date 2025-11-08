@@ -265,6 +265,51 @@ class MarkdownFormatter(BaseFormatter):
         else:
             return self._format_json_output("Advanced Analysis Results", advanced_data)
 
+    def format_analysis_result(
+        self, analysis_result: Any, table_type: str = "full"
+    ) -> str:
+        """Format AnalysisResult directly for Markdown files"""
+        # Convert AnalysisResult to the format expected by format_table
+        data = self._convert_analysis_result_to_format(analysis_result)
+        return self.format_table(data, table_type)
+
+    def _convert_analysis_result_to_format(
+        self, analysis_result: Any
+    ) -> dict[str, Any]:
+        """Convert AnalysisResult to format expected by format_table"""
+        return {
+            "file_path": analysis_result.file_path,
+            "language": analysis_result.language,
+            "line_count": analysis_result.line_count,
+            "elements": [
+                {
+                    "name": getattr(element, "name", ""),
+                    "type": getattr(element, "type", ""),
+                    "text": getattr(element, "text", ""),
+                    "level": getattr(element, "level", 1),
+                    "url": getattr(element, "url", ""),
+                    "alt": getattr(element, "alt", ""),
+                    "language": getattr(element, "language", ""),
+                    "line_count": getattr(element, "line_count", 0),
+                    "list_type": getattr(element, "list_type", ""),
+                    "item_count": getattr(element, "item_count", 0),
+                    "column_count": getattr(element, "column_count", 0),
+                    "row_count": getattr(element, "row_count", 0),
+                    "line_range": {
+                        "start": getattr(element, "start_line", 0),
+                        "end": getattr(element, "end_line", 0),
+                    },
+                }
+                for element in analysis_result.elements
+            ],
+            "analysis_metadata": {
+                "analysis_time": getattr(analysis_result, "analysis_time", 0.0),
+                "language": analysis_result.language,
+                "file_path": analysis_result.file_path,
+                "analyzer_version": "2.0.0",
+            },
+        }
+
     def format_table(
         self, analysis_result: dict[str, Any], table_type: str = "full"
     ) -> str:
