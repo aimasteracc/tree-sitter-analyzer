@@ -128,4 +128,5 @@ jobs:
         git config --local user.name "GitHub Action"
         git add tests/golden_masters/
         git diff --staged --quiet || git commit -m "Update format baselines [skip ci]"
+        git pull --rebase
         git push
