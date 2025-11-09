@@ -4,11 +4,11 @@
 
 [![Pythonバージョン](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![ライセンス](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![テスト](https://img.shields.io/badge/tests-3445%20passed-brightgreen.svg)](#8--品質保証)
+[![テスト](https://img.shields.io/badge/tests-3556%20passed-brightgreen.svg)](#8--品質保証)
 [![カバレッジ](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer)
 [![品質](https://img.shields.io/badge/quality-enterprise%20grade-blue.svg)](#8--品質保証)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
-[![バージョン](https://img.shields.io/badge/version-1.9.7-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
+[![バージョン](https://img.shields.io/badge/version-1.9.8-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
 [![zread](https://img.shields.io/badge/Ask_Zread-_.svg?style=flat&color=00b0aa&labelColor=000000&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB3aWR0aD0iMTYiIGhlaWdodD0iMTYiIHZpZXdCb3g9IjAgMCAxNiAxNiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTQuOTYxNTYgMS42MDAxSDIuMjQxNTZDMS44ODgxIDEuNjAwMSAxLjYwMTU2IDEuODg2NjQgMS42MDE1NiAyLjI0MDFWNC45NjAxQzEuNjAxNTYgNS4zMTM1NiAxLjg4ODEgNS42MDAxIDIuMjQxNTYgNS42MDAxSDQuOTYxNTZDNS4zMTUwMiA1LjYwMDEgNS42MDE1NiA1LjMxMzU2IDUuNjAxNTYgNC45NjAxVjIuMjQwMUM1LjYwMTU2IDEuODg2NjQgNS4zMTUwMiAxLjYwMDEgNC45NjE1NiAxLjYwMDFaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik00Ljk2MTU2IDEwLjM5OTlIMi4yNDE1NkMxLjg4ODEgMTAuMzk5OSAxLjYwMTU2IDEwLjY4NjQgMS42MDE1NiAxMS4wMzk5VjEzLjc1OTlDMS42MDE1NiAxNC4xMTM0IDEuODg4MSAxNC4zOTk5IDIuMjQxNTYgMTQuMzk5OUg0Ljk2MTU2QzUuMzE1MDIgMTQuMzk5OSA1LjYwMTU2IDE0LjExMzQgNS42MDE1NiAxMy43NTk5VjExLjAzOTlDNS42MDE1NiAxMC42ODY0IDUuMzE1MDIgMTAuMzk5OSA0Ljk2MTU2IDEwLjM5OTlaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik0xMy43NTg0IDEuNjAwMUgxMS4wMzg0QzEwLjY4NSAxLjYwMDEgMTAuMzk4NCAxLjg4NjY0IDEwLjM5ODQgMi4yNDAxVjQuOTYwMUMxMC4zOTg0IDUuMzEzNTYgMTAuNjg1IDUuNjAwMSAxMS4wMzg0IDUuNjAwMUgxMy43NTg0QzE0LjExMTkgNS42MDAxIDE0LjM5ODQgNS4zMTM1NiAxNC4zOTg0IDQuOTYwMVYyLjI0MDFDMTQuMzk4NCAxLjg4NjY0IDE0LjExMTkgMS42MDAxIDEzLjc1ODQgMS42MDAxWiIgZmlsbD0iI2ZmZiIvPgo8cGF0aCBkPSJNNCAxMkwxMiA0TDQgMTJaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik00IDEyTDEyIDQiIHN0cm9rZT0iI2ZmZiIgc3Ryb2tlLXdpZHRoPSIxLjUiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPgo8L3N2Zz4K&logoColor=ffffff)](https://zread.ai/aimasteracc/tree-sitter-analyzer)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
@@ -51,16 +51,17 @@ Tree-sitter Analyzerは、AI時代のために設計されたエンタープラ�
 |------------------|---------------|---------|
 | **Java** | 完全サポート | Springフレームワーク、JPA、エンタープライズ機能 |
 | **Python** | 完全サポート | 型アノテーション、デコレータ、モダンPython機能 |
+| **SQL** | 🆕 強化された完全サポート | テーブル、ビュー、ストアドプロシージャ、関数、トリガー、インデックス、専用出力フォーマット |
 | **JavaScript** | 完全サポート | ES6+、React/Vue/Angular、JSX |
 | **TypeScript** | 完全サポート | インターフェース、型、デコレータ、TSX/JSX、フレームワーク検出 |
 | **HTML** | 🆕 完全サポート | DOM構造解析、要素分類、属性抽出、階層関係 |
 | **CSS** | 🆕 完全サポート | セレクタ解析、プロパティ分類、スタイルルール抽出、インテリジェント分類 |
 | **Markdown** | 完全サポート | 見出し、コードブロック、リンク、画像、表、タスクリスト、引用 |
 
-**注記:** 現在、上記7言語のみが完全なプラグイン実装を持っています。C/C++、Rust、Go、JSONなどは`LanguageDetector`に定義されていますが、現時点では機能的なプラグイン実装がありません。
+**注記:** 現在、上記8言語のみが完全なプラグイン実装を持っています。C/C++、Rust、Go、JSONなどは`LanguageDetector`に定義されていますが、現時点では機能的なプラグイン実装がありません。
 
 ### 🏆 本番環境対応
-- **3,445のテスト** - 100%合格率、エンタープライズグレードの品質保証
+- **3,556のテスト** - 100%合格率、エンタープライズグレードの品質保証
 - **高カバレッジ** - 包括的なテストスイート
 - **クロスプラットフォームサポート** - Windows、macOS、Linuxとの完全な互換性
 - **継続的なメンテナンス** - アクティブな開発とコミュニティサポート
@@ -216,6 +217,11 @@ uv run tree-sitter-analyzer examples/BigService.java --table full
 uv run tree-sitter-analyzer examples/comprehensive_sample.html --table full
 uv run tree-sitter-analyzer examples/comprehensive_sample.css --advanced --output-format text
 uv run tree-sitter-analyzer examples/comprehensive_sample.html --structure
+
+# 🆕 専用フォーマットでSQLデータベース分析
+uv run tree-sitter-analyzer examples/sample_database.sql --table full
+uv run tree-sitter-analyzer examples/sample_database.sql --table compact
+uv run tree-sitter-analyzer examples/sample_database.sql --advanced --output-format text
 
 # 正確なコード抽出
 uv run tree-sitter-analyzer examples/BigService.java --partial-read --start-line 93 --end-line 106
@@ -429,6 +435,19 @@ AIは自動的に：
 2. インテリジェントな分類でCSSセレクタとプロパティを解析
 3. DOM階層とスタイルルールを示す構造化テーブルを生成
 
+**SQLデータベース分析例：**
+```
+sample_database.sqlのデータベーススキーマを分析したい：
+1. どのようなテーブル、ビュー、ストアドプロシージャが定義されていますか？
+2. 異なるデータベースオブジェクト間の関係は何ですか？
+3. プロフェッショナルな形式でデータベース構造を表示してください。
+```
+
+AIは自動的に：
+1. 全てのSQL要素（テーブル、ビュー、プロシージャ、関数、トリガー、インデックス）を抽出
+2. データベース専用用語（「クラス概要」ではなく「データベーススキーマ概要」）を表示
+3. 専用SQLフォーマットでプロフェッショナルなデータベース文書を生成
+
 ---
 
 ## 5. 🤖 MCP完全ツールリスト
@@ -565,6 +584,12 @@ uv run tree-sitter-analyzer examples/comprehensive_sample.css --table full
 uv run tree-sitter-analyzer examples/comprehensive_sample.html --advanced
 uv run tree-sitter-analyzer examples/comprehensive_sample.css --advanced
 
+# 🆕 専用フォーマットでSQLデータベース分析
+uv run tree-sitter-analyzer examples/sample_database.sql --table full
+uv run tree-sitter-analyzer examples/sample_database.sql --table compact
+uv run tree-sitter-analyzer examples/sample_database.sql --table csv
+uv run tree-sitter-analyzer examples/sample_database.sql --advanced --output-format text
+
 # 出力形式を指定
 uv run tree-sitter-analyzer examples/BigService.java --advanced --output-format json
 uv run tree-sitter-analyzer examples/BigService.java --advanced --output-format text
@@ -685,7 +710,7 @@ uv run tree-sitter-analyzer --show-query-languages
 | **✂️ インテリジェントなコード抽出** | 精密抽出ツール | 行範囲による正確な抽出<br>元のフォーマットとインデントを保持<br>位置メタデータを含む<br>大きなファイルの効率的な処理 | ゼロロスフォーマット保持<br>メモリ最適化アルゴリズム<br>ストリーミング処理サポート |
 | **🔍 高度なクエリフィルタリング** | 多次元フィルター | **完全一致**: `--filter "name=main"`<br>**パターンマッチ**: `--filter "name=~auth*"`<br>**パラメータフィルタ**: `--filter "params=2"`<br>**修飾子フィルタ**: `--filter "static=true,public=true"`<br>**複合条件**: 正確なクエリのために複数の条件を組み合わせる | 柔軟なクエリ構文<br>高性能インデックス<br>インテリジェントキャッシュ機構 |
 | **🔗 AIアシスタント統合** | MCPプロトコルサポート | **Claude Desktop** - 完全なMCPサポート<br>**Cursor IDE** - 組み込みのMCP統合<br>**Roo Code** - MCPプロトコルサポート<br>**その他のMCP互換ツール** - ユニバーサルMCPサーバー | 標準MCPプロトコル<br>プラグアンドプレイ設計<br>クロスプラットフォーム互換性 |
-| **🌍 多言語サポート** | エンタープライズ言語エンジン | **Java** - 完全サポート、Spring、JPAフレームワークを含む<br>**Python** - 完全サポート、型アノテーション、デコレータを含む<br>**JavaScript** - 企業級サポート、ES6+、React/Vue/Angular、JSXを含む<br>**TypeScript** - **完全サポート**、インターフェース、型、デコレータ、TSX/JSX、フレームワーク検出を含む<br>**HTML** - **🆕 完全サポート**、DOM構造、要素分類、属性抽出を含む<br>**CSS** - **🆕 完全サポート**、セレクタ解析、プロパティ分類、スタイルルールを含む<br>**Markdown** - **完全サポート**、見出し、コードブロック、リンク、画像、表、タスクリスト、引用を含む<br><br>**注記**: 現在7言語が完全なプラグイン実装を持っています（Java、Python、JavaScript、TypeScript、HTML、CSS、Markdown）。C/C++、Rust、Goなどは定義されていますが、まだ実装されていません。 | フレームワーク認識解析<br>構文拡張サポート<br>継続的言語アップデート |
+| **🌍 多言語サポート** | エンタープライズ言語エンジン | **Java** - 完全サポート、Spring、JPAフレームワークを含む<br>**Python** - 完全サポート、型アノテーション、デコレータを含む<br>**SQL** - **🆕 強化された完全サポート**、テーブル、ビュー、ストアドプロシージャ、関数、トリガー、インデックス、専用データベース中心の出力フォーマットを含む<br>**JavaScript** - 企業級サポート、ES6+、React/Vue/Angular、JSXを含む<br>**TypeScript** - **完全サポート**、インターフェース、型、デコレータ、TSX/JSX、フレームワーク検出を含む<br>**HTML** - **🆕 完全サポート**、DOM構造、要素分類、属性抽出を含む<br>**CSS** - **🆕 完全サポート**、セレクタ解析、プロパティ分類、スタイルルールを含む<br>**Markdown** - **完全サポート**、見出し、コードブロック、リンク、画像、表、タスクリスト、引用を含む<br><br>**注記**: 現在8言語が完全なプラグイン実装を持っています（Java、Python、SQL、JavaScript、TypeScript、HTML、CSS、Markdown）。C/C++、Rust、Goなどは定義されていますが、まだ実装されていません。 | フレームワーク認識解析<br>構文拡張サポート<br>継続的言語アップデート |
 | **📁 高度なファイル検索** | fd+ripgrep統合 | **ListFilesTool** - 複数のフィルタリング条件を持つインテリジェントなファイル検出<br>**SearchContentTool** - 正規表現を使用したインテリジェントなコンテンツ検索<br>**FindAndGrepTool** - 検出と検索の組み合わせ、2段階ワークフロー | Rustベースの高性能ツール<br>並列処理能力<br>インテリジェントキャッシュ最適化 |
 | **🏗️ 統一要素システム** | 革新的アーキテクチャ設計 | **単一要素リスト** - すべてのコード要素（クラス、メソッド、フィールド、インポート、パッケージ）の統一管理<br>**一貫した要素タイプ** - 各要素には`element_type`属性があります<br>**簡素化されたAPI** - より明確なインターフェースと複雑さの軽減<br>**より良い保守性** - すべてのコード要素の単一の真実の情報源 | 統一データモデル<br>型安全保証<br>拡張性設計 |
 
@@ -694,7 +719,7 @@ uv run tree-sitter-analyzer --show-query-languages
 ## 8. 🏆 品質保証
 
 ### 📊 品質メトリクス
-- **3,445のテスト** - 100%合格率 ✅
+- **3,556のテスト** - 100%合格率 ✅
 - **高コードカバレッジ** - 包括的なテストスイート
 - **ゼロテスト失敗** - 本番環境対応
 - **クロスプラットフォームサポート** - Windows、macOS、Linux

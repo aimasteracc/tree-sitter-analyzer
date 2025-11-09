@@ -1,9 +1,9 @@
-# unknown.Animal
+# Module: sample
 
 ## Info
 | Property | Value |
 |----------|-------|
-| Package | unknown |
+| Package |  |
 | Methods | 18 |
 | Fields | 1 |
 
@@ -18,8 +18,8 @@
 | __init__ | (Any,str):Any | + | 67-69 | 1 | - |
 | make_sound | (Any):str | + | 71-73 | 1 | - |
 | fetch_data | (str):dict[str, any] | + | 81-87 | 3 | - |
-| process_animals | (list[Animal]):@dataclass | + | 90-103 | 4 | - |
-| calculate_statistics | (list[int | float]):@dataclass | + | 106-117 | 3 | - |
+| process_animals | (list[Animal]):dict[str, list[str]] | + | 90-103 | 4 | - |
+| calculate_statistics | (list[int | float]):dict[str, float] | + | 106-117 | 3 | - |
 | fibonacci_generator | (i):Any | + | 120-125 | 2 | - |
 | list_comprehension_examples | ():Any | + | 128-142 | 7 | - |
 | exception_handling_example | ():Any | + | 145-160 | 3 | - |

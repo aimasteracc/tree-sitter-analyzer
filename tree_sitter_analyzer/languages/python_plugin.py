@@ -410,6 +410,30 @@ class PythonElementExtractor(ElementExtractor):
             node_text = self._get_node_text_optimized(node)
             is_async = node_text.strip().startswith("async def")
 
+            # Extract return type from function signature text
+            if "->" in node_text:
+                # Split by '->' and extract return type
+                parts = node_text.split("->")
+                if len(parts) > 1:
+                    # Get everything after '->' and before ':'
+                    return_part = parts[1].split(":")[0].strip()
+                    # Clean up the return type
+                    return_type = return_part.replace("\n", " ").strip()
+                    # Don't use decorator names as return types
+                    if (
+                        return_type
+                        and not return_type.startswith("@")
+                        and return_type != "dataclass"
+                    ):
+                        # Additional validation - ensure it's a valid type annotation
+                        if not any(
+                            invalid in return_type
+                            for invalid in ["def ", "class ", "import "]
+                        ):
+                            pass  # Keep the return_type
+                        else:
+                            return_type = None
+
             # Extract decorators from preceding siblings
             if node.parent:
                 for sibling in node.parent.children:
@@ -426,8 +450,15 @@ class PythonElementExtractor(ElementExtractor):
                     name = child.text.decode("utf8") if child.text else None
                 elif child.type == "parameters":
                     parameters = self._extract_parameters_from_node_optimized(child)
-                elif child.type == "type":
-                    return_type = self._get_node_text_optimized(child)
+                elif child.type == "type" and not return_type:
+                    # Only use this if we didn't extract from text
+                    type_text = self._get_node_text_optimized(child)
+                    if (
+                        type_text
+                        and not type_text.startswith("@")
+                        and type_text != "dataclass"
+                    ):
+                        return_type = type_text
 
             return name or "", parameters, is_async, decorators, return_type
         except Exception:
@@ -714,62 +745,49 @@ class PythonElementExtractor(ElementExtractor):
         """Extract Python import statements"""
         imports: list[Import] = []
 
-        # Import statement queries
-        import_queries = [
-            # Regular import statements
-            """
-            (import_statement
-                name: (dotted_name) @import.name) @import.statement
-            """,
-            # From import statements
-            """
-            (import_from_statement
-                module_name: (dotted_name) @from_import.module
-                name: (dotted_name) @from_import.name) @from_import.statement
-            """,
-            # Aliased imports
-            """
-            (aliased_import
-                name: (dotted_name) @aliased_import.name
-                alias: (identifier) @aliased_import.alias) @aliased_import.statement
-            """,
-        ]
+        # Simplified import statement query - only capture statements, not individual elements
+        import_query = """
+        (import_statement) @import_stmt
+        (import_from_statement) @from_import_stmt
+        """
 
         try:
             language = tree.language if hasattr(tree, "language") else None
             if language:
-                for query_string in import_queries:
-                    try:
-                        captures = TreeSitterQueryCompat.safe_execute_query(
-                            language, query_string, tree.root_node, fallback_result=[]
-                        )
+                try:
+                    captures = TreeSitterQueryCompat.safe_execute_query(
+                        language, import_query, tree.root_node, fallback_result=[]
+                    )
 
-                        # Group captures by name
-                        captures_dict: dict[str, list[Any]] = {}
-                        for node, capture_name in captures:
-                            if capture_name not in captures_dict:
-                                captures_dict[capture_name] = []
-                            captures_dict[capture_name].append(node)
+                    # Track processed statements by their start/end positions to avoid duplicates
+                    processed_positions: set[tuple[int, int]] = set()
 
-                        # Process different types of imports
-                        for key, nodes in captures_dict.items():
-                            if key.endswith("statement"):
-                                import_type = key.split(".")[0]
-                                for node in nodes:
-                                    imp = self._extract_import_info(
-                                        node, source_code, import_type
-                                    )
-                                    if imp:
-                                        imports.append(imp)
-                    except Exception as query_error:
-                        # Fallback to manual extraction for tree-sitter compatibility
-                        log_debug(
-                            f"Query execution failed, using manual extraction: {query_error}"
-                        )
-                        imports.extend(
-                            self._extract_imports_manual(tree.root_node, source_code)
-                        )
-                        break
+                    for node, capture_name in captures:
+                        # Use position as unique identifier
+                        position_key = (node.start_point[0], node.end_point[0])
+                        if position_key in processed_positions:
+                            continue
+
+                        processed_positions.add(position_key)
+
+                        # Determine import type from capture name
+                        if "from" in capture_name:
+                            import_type = "from_import"
+                        else:
+                            import_type = "import"
+
+                        imp = self._extract_import_info(node, source_code, import_type)
+                        if imp:
+                            imports.append(imp)
+
+                except Exception as query_error:
+                    # Fallback to manual extraction for tree-sitter compatibility
+                    log_debug(
+                        f"Query execution failed, using manual extraction: {query_error}"
+                    )
+                    imports.extend(
+                        self._extract_imports_manual(tree.root_node, source_code)
+                    )
 
         except Exception as e:
             log_warning(f"Could not extract Python imports: {e}")
@@ -795,22 +813,37 @@ class PythonElementExtractor(ElementExtractor):
                         else ""
                     )
 
-                    # Extract module name from the import statement
-                    module_name = ""
-                    imported_names = []
-
+                    # Parse the import statement correctly
                     if node.type == "import_statement":
-                        # Simple import: import os, sys
+                        # Simple import: import os, sys, json
+                        # Extract all imported modules
                         for child in node.children:
-                            if child.type == "dotted_name":
+                            if (
+                                child.type == "dotted_name"
+                                or child.type == "identifier"
+                            ):
                                 module_name = (
                                     source_code[child.start_byte : child.end_byte]
                                     if hasattr(child, "start_byte")
                                     else ""
                                 )
-                                imported_names.append(module_name)
+                                if module_name and module_name != "import":
+                                    import_obj = Import(
+                                        name=module_name,
+                                        start_line=start_line,
+                                        end_line=end_line,
+                                        raw_text=raw_text,
+                                        module_name=module_name,
+                                        imported_names=[module_name],
+                                        element_type="import",
+                                    )
+                                    imports.append(import_obj)
                     elif node.type == "import_from_statement":
-                        # From import: from os import path
+                        # From import: from abc import ABC, abstractmethod
+                        module_name = ""
+                        imported_items = []
+
+                        # Find the module name (after 'from')
                         for child in node.children:
                             if child.type == "dotted_name" and not module_name:
                                 module_name = (
@@ -818,22 +851,53 @@ class PythonElementExtractor(ElementExtractor):
                                     if hasattr(child, "start_byte")
                                     else ""
                                 )
+                            elif child.type == "import_list":
+                                # Extract items from import list
+                                for grandchild in child.children:
+                                    if (
+                                        grandchild.type == "dotted_name"
+                                        or grandchild.type == "identifier"
+                                    ):
+                                        item_name = (
+                                            source_code[
+                                                grandchild.start_byte : grandchild.end_byte
+                                            ]
+                                            if hasattr(grandchild, "start_byte")
+                                            else ""
+                                        )
+                                        if item_name and item_name not in [
+                                            ",",
+                                            "(",
+                                            ")",
+                                        ]:
+                                            imported_items.append(item_name)
+                            elif child.type == "dotted_name" and module_name:
+                                # Single import item (not in a list)
+                                item_name = (
+                                    source_code[child.start_byte : child.end_byte]
+                                    if hasattr(child, "start_byte")
+                                    else ""
+                                )
+                                if item_name:
+                                    imported_items.append(item_name)
 
-                    if module_name or imported_names:
-                        import_obj = Import(
-                            name=(
-                                module_name or imported_names[0]
-                                if imported_names
-                                else "unknown"
-                            ),
-                            start_line=start_line,
-                            end_line=end_line,
-                            raw_text=raw_text,
-                            module_name=module_name,
-                            imported_names=imported_names,
-                            element_type="import",
-                        )
-                        imports.append(import_obj)
+                        # Create import object for from import
+                        if module_name:
+                            import_obj = Import(
+                                name=(
+                                    f"from {module_name} import {', '.join(imported_items)}"
+                                    if imported_items
+                                    else f"from {module_name}"
+                                ),
+                                start_line=start_line,
+                                end_line=end_line,
+                                raw_text=raw_text,
+                                module_name=module_name,
+                                imported_names=imported_items,
+                                element_type="import",
+                            )
+                            imports.append(import_obj)
+
                 except Exception as e:
                     log_warning(f"Failed to extract import manually: {e}")
 
@@ -1143,9 +1207,26 @@ class PythonElementExtractor(ElementExtractor):
         self, node: "tree_sitter.Node", source_code: str
     ) -> str | None:
         """Extract return type annotation from function node"""
+        # Look for return type annotation after '->'
+        node_text = self._get_node_text_optimized(node)
+        if "->" in node_text:
+            # Extract everything after '->' and before ':'
+            parts = node_text.split("->")
+            if len(parts) > 1:
+                return_part = parts[1].split(":")[0].strip()
+                # Clean up the return type (remove whitespace and newlines)
+                return_type = return_part.replace("\n", " ").strip()
+                # Don't return decorator names as return types
+                if return_type and not return_type.startswith("@"):
+                    return return_type
+
+        # Fallback to original method
         for child in node.children:
             if child.type == "type":
-                return source_code[child.start_byte : child.end_byte]
+                type_text = source_code[child.start_byte : child.end_byte]
+                # Don't return decorator names as return types
+                if type_text and not type_text.startswith("@"):
+                    return type_text
         return None
 
     def _extract_docstring_from_node(

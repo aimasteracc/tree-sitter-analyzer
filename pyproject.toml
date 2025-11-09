@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "tree-sitter-analyzer"
-version = "1.9.7"
+version = "1.9.8"
 description = "AI-era enterprise-grade code analysis tool with comprehensive HTML/CSS support, dynamic plugin architecture, and MCP integration"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -88,6 +88,7 @@ go = ["tree-sitter-go>=0.20.0,<0.25.0"]
 markdown = ["tree-sitter-markdown>=0.3.1"]
 html = ["tree-sitter-html>=0.23.0,<0.25.0"]  # HTML DOM analysis with element classification
 css = ["tree-sitter-css>=0.23.0,<0.25.0"]   # CSS selector and property analysis with specificity calculation
+sql = ["tree-sitter-sql>=0.3.0"]   # SQL language support for database schema analysis
 
 # Language bundles for convenience
 web = [
@@ -120,6 +121,7 @@ all-languages = [
     "tree-sitter-markdown>=0.3.1",
     "tree-sitter-html>=0.23.0,<0.25.0",
     "tree-sitter-css>=0.23.0,<0.25.0",
+    "tree-sitter-sql>=0.3.0",  # SQL language support for database schema analysis
 ]
 
 # MCP server support
@@ -218,6 +220,9 @@ all = [
     "tree-sitter-rust>=0.20.0,<0.25.0",
     "tree-sitter-go>=0.20.0,<0.25.0",
     "tree-sitter-markdown>=0.3.1",
+    "tree-sitter-html>=0.23.0,<0.25.0",
+    "tree-sitter-css>=0.23.0,<0.25.0",
+    "tree-sitter-sql>=0.3.0",  # SQL language support for database schema analysis
     "mcp>=1.12.2",
     "anyio>=4.0.0",
     "httpx>=0.27.0,<1.0.0",
@@ -415,7 +420,7 @@ directory = "htmlcov"
 # MCP server configuration
 [tool.mcp]
 server_name = "tree-sitter-analyzer"
-server_version = "1.9.6"
+server_version = "1.9.8"
 description = "AI-era enterprise-grade code analysis MCP server with comprehensive HTML/CSS support and multi-language capabilities"
 capabilities = [
     "check_code_scale",

@@ -165,6 +165,7 @@ class QueryLoader:
             "javascript",
             "typescript",
             "python",
+            "sql",
             "c",
             "cpp",
             "rust",

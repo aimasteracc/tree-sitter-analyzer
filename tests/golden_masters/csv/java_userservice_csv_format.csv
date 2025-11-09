@@ -1,0 +1,8 @@
+Type,Name,ReturnType,Parameters,Access,Static,Final,Line
+class,UserService,,,public,false,false,6
+constructor,UserService,void,userRepository:UserRepository,public,false,false,10
+method,findUserById,User,id:Long,public,false,false,14
+method,createUser,User,name:String;email:String,public,false,false,21
+method,validateUser,boolean,user:User,private,false,false,27
+field,userRepository,UserRepository,,private,false,false,7
+field,logger,Logger,,private,true,true,8

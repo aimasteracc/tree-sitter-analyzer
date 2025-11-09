@@ -1,11 +1,10 @@
-# sample
+# Module: sample
 
 ## Imports
 ```python
-import aiohttp
-from abc import ABC, abstractmethod
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+import aiohttp
 from functools import reduce
 ```
 

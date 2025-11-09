@@ -15,6 +15,14 @@ ELEMENT_TYPE_IMPORT = "import"
 ELEMENT_TYPE_PACKAGE = "package"
 ELEMENT_TYPE_ANNOTATION = "annotation"
 
+# SQL element types
+ELEMENT_TYPE_SQL_TABLE = "table"
+ELEMENT_TYPE_SQL_VIEW = "view"
+ELEMENT_TYPE_SQL_PROCEDURE = "procedure"
+ELEMENT_TYPE_SQL_FUNCTION = "sql_function"
+ELEMENT_TYPE_SQL_TRIGGER = "trigger"
+ELEMENT_TYPE_SQL_INDEX = "index"
+
 # Element type mapping for backward compatibility
 ELEMENT_TYPE_MAPPING = {
     "Class": ELEMENT_TYPE_CLASS,
@@ -33,6 +41,13 @@ LEGACY_CLASS_MAPPING = {
     "Import": ELEMENT_TYPE_IMPORT,
     "Package": ELEMENT_TYPE_PACKAGE,
     "Annotation": ELEMENT_TYPE_ANNOTATION,
+    # SQL element mappings
+    "SQLTable": ELEMENT_TYPE_SQL_TABLE,
+    "SQLView": ELEMENT_TYPE_SQL_VIEW,
+    "SQLProcedure": ELEMENT_TYPE_SQL_PROCEDURE,
+    "SQLFunction": ELEMENT_TYPE_SQL_FUNCTION,
+    "SQLTrigger": ELEMENT_TYPE_SQL_TRIGGER,
+    "SQLIndex": ELEMENT_TYPE_SQL_INDEX,
 }
 
 

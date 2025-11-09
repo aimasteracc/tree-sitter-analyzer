@@ -1,4 +1,4 @@
-# com.example.AbstractParentClass
+# com.example.Sample
 
 ## Info
 | Property | Value |

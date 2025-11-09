@@ -498,3 +498,46 @@ class TypeScriptTableFormatter(BaseTableFormatter):
             details.append(f"{framework}")
 
         return " ".join(details) if details else ""
+
+    def format_table(
+        self, analysis_result: dict[str, Any], table_type: str = "full"
+    ) -> str:
+        """Format table output for TypeScript"""
+        # Set the format type based on table_type parameter
+        original_format_type = self.format_type
+        self.format_type = table_type
+
+        try:
+            # Use the existing format_structure method
+            return self.format_structure(analysis_result)
+        finally:
+            # Restore original format type
+            self.format_type = original_format_type
+
+    def format_summary(self, analysis_result: dict[str, Any]) -> str:
+        """Format summary output for TypeScript"""
+        return self._format_compact_table(analysis_result)
+
+    def format_structure(self, analysis_result: dict[str, Any]) -> str:
+        """Format structure analysis output for TypeScript"""
+        return super().format_structure(analysis_result)
+
+    def format_advanced(
+        self, analysis_result: dict[str, Any], output_format: str = "json"
+    ) -> str:
+        """Format advanced analysis output for TypeScript"""
+        if output_format == "json":
+            return self._format_json(analysis_result)
+        elif output_format == "csv":
+            return self._format_csv(analysis_result)
+        else:
+            return self._format_full_table(analysis_result)
+
+    def _format_json(self, data: dict[str, Any]) -> str:
+        """Format data as JSON"""
+        import json
+
+        try:
+            return json.dumps(data, indent=2, ensure_ascii=False)
+        except (TypeError, ValueError) as e:
+            return f"# JSON serialization error: {e}\n"

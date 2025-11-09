@@ -61,46 +61,15 @@ class TableFormatter:
         """Full table format - organized by class"""
         lines = []
 
-        # Header - use package.class format for single class, filename for multi-class files
+        # Header - use language-specific title generation
+        title = self._generate_title(data)
+        lines.append(f"# {title}")
+        lines.append("")
+
+        # Get classes for later use
         classes = data.get("classes", [])
         if classes is None:
             classes = []
-
-        # Determine header format
-        package_name = (data.get("package") or {}).get("name", "")
-        if len(classes) == 1:
-            # Single class: use package.ClassName format
-            class_name = classes[0].get("name", "Unknown")
-            if package_name:
-                header = f"{package_name}.{class_name}"
-            else:
-                header = class_name
-        else:
-            # Multiple classes or no classes: use filename or default
-            file_path = data.get("file_path", "")
-            if file_path and file_path != "Unknown":
-                file_name = file_path.split("/")[-1].split("\\")[-1]
-                if file_name.endswith(".java"):
-                    file_name = file_name[:-5]  # Remove .java extension
-                elif file_name.endswith(".py"):
-                    file_name = file_name[:-3]  # Remove .py extension
-                elif file_name.endswith(".js"):
-                    file_name = file_name[:-3]  # Remove .js extension
-
-                if package_name and len(classes) == 0:
-                    # No classes but has package: use package.filename
-                    header = f"{package_name}.{file_name}"
-                else:
-                    header = file_name
-            else:
-                # No file path: use default format
-                if package_name:
-                    header = f"{package_name}.Unknown"
-                else:
-                    header = "unknown.Unknown"
-
-        lines.append(f"# {header}")
-        lines.append("")
 
         # Package info
         package_name = (data.get("package") or {}).get("name", "unknown")
@@ -451,21 +420,100 @@ class TableFormatter:
 
         return lines
 
+    def _generate_title(self, data: dict[str, Any]) -> str:
+        """
+        Generate document title based on language and structure.
+
+        Args:
+            data: Analysis result dictionary containing classes, package, file_path
+
+        Returns:
+            Formatted title string (without leading "# ")
+        """
+        language = self.language.lower()
+        package_name = (data.get("package") or {}).get("name", "")
+        classes = data.get("classes", []) or []
+        file_path = data.get("file_path", "")
+
+        # Extract filename without extension
+        filename = self._extract_filename(file_path)
+
+        if language == "java":
+            return self._generate_java_title(package_name, classes, filename)
+        elif language == "python":
+            return self._generate_python_title(filename)
+        elif language in ["javascript", "typescript", "js", "ts"]:
+            return self._generate_js_ts_title(classes, filename)
+        else:
+            # Default fallback
+            return self._generate_default_title(package_name, classes, filename)
+
+    def _generate_java_title(
+        self, package_name: str, classes: list, filename: str
+    ) -> str:
+        """Generate title for Java files."""
+        if len(classes) == 1:
+            # Single class: use package.ClassName format
+            class_name = classes[0].get("name", "Unknown")
+            if package_name and package_name != "unknown":
+                return f"{package_name}.{class_name}"
+            return class_name
+        else:
+            # Multiple classes or no classes: use package.filename format
+            if package_name and package_name != "unknown":
+                return f"{package_name}.{filename}"
+            return filename
+
+    def _generate_python_title(self, filename: str) -> str:
+        """Generate title for Python files."""
+        return f"Module: {filename}"
+
+    def _generate_js_ts_title(self, classes: list, filename: str) -> str:
+        """Generate title for JavaScript/TypeScript files."""
+        if classes:
+            # Use primary (first) class name
+            return classes[0].get("name", filename)
+        return filename
+
+    def _generate_default_title(
+        self, package_name: str, classes: list, filename: str
+    ) -> str:
+        """Generate default title for unsupported languages."""
+        if len(classes) == 1:
+            class_name = classes[0].get("name", "Unknown")
+            if package_name and package_name != "unknown":
+                return f"{package_name}.{class_name}"
+            return class_name
+        return filename
+
+    def _extract_filename(self, file_path: str) -> str:
+        """Extract filename without extension from file path."""
+        if not file_path or file_path == "Unknown":
+            return "unknown"
+
+        # Get basename
+        filename = file_path.split("/")[-1].split("\\")[-1]
+
+        # Remove common extensions
+        for ext in [".java", ".py", ".js", ".ts", ".tsx", ".jsx"]:
+            if filename.endswith(ext):
+                filename = filename[: -len(ext)]
+                break
+
+        return filename or "unknown"
+
     def _format_compact_table(self, data: dict[str, Any]) -> str:
         """Compact table format"""
         lines = []
 
-        # Header
-        package_name = (data.get("package") or {}).get("name", "unknown")
-        classes = data.get("classes", [])
-        if classes is None:
-            classes = []
-        class_name = classes[0].get("name", "Unknown") if classes else "Unknown"
-        lines.append(f"# {package_name}.{class_name}")
+        # Header - use language-specific title generation
+        title = self._generate_title(data)
+        lines.append(f"# {title}")
         lines.append("")
 
         # Basic information
         stats = data.get("statistics") or {}
+        package_name = (data.get("package") or {}).get("name", "unknown")
         lines.append("## Info")
         lines.append("| Property | Value |")
         lines.append("|----------|-------|")

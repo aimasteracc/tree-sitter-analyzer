@@ -1,4 +1,4 @@
-# test_class
+# Animal
 
 ## Classes Overview
 | Class | Type | Visibility | Lines | Methods | Fields |

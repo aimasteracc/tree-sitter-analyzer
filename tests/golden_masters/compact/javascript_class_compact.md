@@ -1,9 +1,9 @@
-# unknown.Animal
+# Animal
 
 ## Info
 | Property | Value |
 |----------|-------|
-| Package | unknown |
+| Package |  |
 | Methods | 7 |
 | Fields | 0 |
 

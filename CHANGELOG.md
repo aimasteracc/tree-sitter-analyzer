@@ -1,14 +1,81 @@
 # Changelog
 
-## [1.9.7] - 2025-11-06
+## [Unreleased]
 
-### 🚀 リリース
-- **バージョン1.9.7**: 安定版リリース
-- **品質指標**: 3445テスト通過、エンタープライズグレード品質維持
-- **PyPI発布**: 自動化ワークフローによる安全なパッケージ配布
+## [1.9.8] - 2025-11-09
+
+### 🔄 リリース管理
+- **標準リリースプロセス**: GitFlowリリースプロセスに従って1.9.8をリリース
+  - バージョン番号を1.9.7から1.9.8に更新
+  - すべてのドキュメントのバージョンバッジを同期
+  - テスト数: 3,556テストすべて合格
+  - カバレッジ: Codecov自動バッジ使用
+
+### 🎯 品質保証
+- **テスト数**: 3,556テストすべて合格
+- **カバレッジ**: Codecovによる自動追跡
+- **品質**: エンタープライズグレード
+
+## [1.9.7] - 2025-11-09
+
+###📚 OpenSpec変更
+- **言語プラグイン隔離性監査**: フレームワークレベルの言語プラグイン隔離性監査を完了
+  - 隔離性評価: ⭐⭐⭐⭐⭐ (5/5星)
+  - 7項目の自動テスト全て合格 (100%)
+  - キャッシュキーに言語識別子が含まれることを検証
+  - 各言語が独立したプラグインインスタンスを持つことを確認
+  - ファクトリーパターンで新しいextractorインスタンスを作成することを検証
+  - クラスレベルの共有状態がないことを確認
+  - Entry Pointsが明確な境界を提供
+  - ユーザー要件を完全に満たす: 新規言語サポート追加時に相互影響なし
+
+### 🛠️ アーキテクチャ改善
+- **コマンド-フォーマッター分離**: CLI命令層の設計欠陥を修正し、新規言語追加時のリグレッションを防止
+  - `FormatterSelector` サービスを導入し、明示的な設定に基づいてフォーマッターを選択
+  - `LANGUAGE_FORMATTER_CONFIG` 設定を作成し、各言語のフォーマット戦略を明確に定義
+  - 暗黙的な `if formatter exists` チェックを設定駆動の選択に置き換え
+  - 完全分離: 新規言語の追加が既存言語の出力に影響しなくなった
+  - 3つのコマンドファイルから未使用の `_convert_to_formatter_format()` メソッドを削除
+
+### 🐛 バグ修正
+- **パッケージ名抽出の改善**: Javaファイルのパッケージ名抽出問題を修正
+  - `analysis_result.package` 属性を直接使用し、パッケージ名が常に利用可能に
+  - JavaScript/TypeScript出力の不要な "unknown." プレフィックスを修正
+  - 非パッケージ言語（JS/TS/Python）に対して "unknown" ではなく空文字列を返す
+
+- **タイトル生成の最適化**: 複数クラスファイルのタイトル生成ロジックを改善
+  - Java複数クラスファイル: `com.example.FirstClass` ではなく `com.example.Sample`
+  - より正確な表現: ファイル名が複数クラスファイルであることを示す
+  - Python: 明確性向上のため `Module:` プレフィックスを追加
+  - JavaScript/TypeScript: 誤解を招く "unknown." プレフィックスを削除
+
+### 📊 Golden Master更新
+- 新しい改善された出力に合わせてすべてのフォーマットのgolden masterファイルを更新
+- 16個すべてのgolden masterテストが合格
+- SQLインデックスが表名と列情報を表示するようになった（より完全な出力）
+
+### 🎯 品質保証
+- **テスト数**: 3,556テストすべて合格
+- FormatterSelector サービスの実装とテストが完了
+- table_command.py が明示的なフォーマッター選択を使用
+- JavaScript/TypeScript が "unknown" パッケージを表示しなくなった
+- すべての golden master テストが合格
+- 他のコマンドから未使用コードをクリーンアップ
+
+###✨ SQL新機能
+- **SQL出力フォーマット再設計完了**: SQLファイル専用の出力フォーマットを完全実装
+  - **データベース専用用語**: 汎用的なクラスベース用語から適切なデータベース用語に変更
+  - **包括的なSQL要素サポート**: 全てのSQL要素タイプの識別と表示
+  - **3つの出力フォーマット**: Full（詳細）、Compact（概要）、CSV（データ処理用）
+  - **専用フォーマッター**: SQLFullFormatter、SQLCompactFormatter、SQLCSVFormatterを実装
+
+- **SQL言語サポート追加**: SQLファイルの解析機能を追加
+  - CREATE TABLE、CREATE VIEW、CREATE PROCEDURE等の完全な抽出をサポート
+  - tree-sitter-sql をオプショナル依存として追加
 
 ### 📚 ドキュメント
-- **多言語README更新**: バージョン情報1.9.7に更新
+- **SQLフォーマットガイド**: 専用のSQL出力フォーマットドキュメントを作成
+- **使用例**: 全ての出力フォーマットの実例とベストプラクティスを文書化
 
 ## [1.9.6] - 2025-11-06
 
@@ -32,38 +99,6 @@
 
 ## [Unreleased]
 
-### 🐛 バグ修正
-- **Java言語サポート**: interface/enum/class typeの正しい認識
-  - `interface_declaration` が正しく "interface" として分類されるように修正
-  - `enum_declaration` が正しく "enum" として分類されるように修正
-  - package-private クラスが正しく "package" visibility として表示されるように修正
-- **Java Enumサポート強化**: enum内のメンバーが正しく抽出されるように修正
-  - `enum_body_declarations` をcontainer_node_typesに追加
-  - enum内のconstructor、method、fieldが正しく抽出されるようになった
-- **言語別デフォルトvisibility**: 言語ごとに適切なデフォルトvisibilityを設定
-  - Java/C/C++: "package" (package-private)
-  - その他の言語: "public"
-
-### 🧪 テスト改善
-- **Golden Master Testing導入**: リグレッションテスト基盤の整備
-  - `tests/golden_masters/` にfull/compact/csv フォーマットのゴールデンマスターを追加
-  - `scripts/update_golden_masters.py` でゴールデンマスター更新を自動化
-  - `tests/test_golden_master_regression.py` で自動リグレッションテスト実装
-- **テストフィクスチャ整理**: テスト用ファイルを`tests/test_data/`に整理
-  - TypeScript、JavaScript、Pythonのテストファイルを追加
-
-### 📚 ドキュメント
-- **テストガイド追加**: `docs/testing-guide.md` でゴールデンマスターテストのベストプラクティスを文書化
-- **.gitignore更新**: 一時テストファイルパターンを追加
-
-### 🛠️ 技術改善
-- **`tree_sitter_analyzer/cli/commands/table_command.py`**:
-  - `_convert_class_element()` でclass_typeとvisibilityを正しく取得
-  - 言語別デフォルトvisibilityのサポート
-- **`tree_sitter_analyzer/formatters/java_formatter.py`**:
-  - デフォルトvisibilityを "public" から "package" に変更
-- **`tree_sitter_analyzer/languages/java_plugin.py`**:
-  - container_node_typesに `"enum_body_declarations"` を追加
 
 ## [1.9.5] - 2025-11-06
 
@@ -409,79 +444,79 @@ self.file_output_manager = FileOutputManager(project_root)
 
 ## [1.8.2] - 2025-10-14
 
-### Improved
-- **🔧 Development Workflow**: Routine maintenance release to publish the latest changes from the develop branch.
-- **📚 Documentation**: Aligned version numbers across documentation files.
+### 改善
+- **🔧 開発ワークフロー**: developブランチからの最新変更を公開するための定期メンテナンスリリース
+- **📚 ドキュメント**: ドキュメントファイル全体でバージョン番号を統一
 
 ## [1.8.1] - 2025-10-14
 
-### 🔧 Fixed
+### 🔧 修正
 
-#### Critical Async/Await Inconsistency Resolution
-- **Critical**: Fixed async/await inconsistency in QueryService.execute_query()
-  - Resolved TypeError when QueryCommand and MCP QueryTool call execute_query()
-  - Added proper async keyword to method signature
-  - Implemented async file reading with run_in_executor
-- Improved error handling for async operations
-- Enhanced concurrent query execution support
+#### 重大な Async/Await 不整合の解決
+- **重大**: QueryService.execute_query() の async/await 不整合を修正
+  - QueryCommand と MCP QueryTool が execute_query() を呼び出す際の TypeError を解決
+  - メソッドシグネチャに適切な async キーワードを追加
+  - run_in_executor を使用した非同期ファイル読み取りを実装
+- 非同期操作のエラー処理を改善
+- 並行クエリ実行サポートを強化
 
-### 🆕 Added
+### 🆕 追加
 
-#### Async Infrastructure Enhancements
-- Async file reading with asyncio.run_in_executor for non-blocking I/O
-- Comprehensive async test suite (test_async_query_service.py)
-- CLI async integration tests (test_cli_async_integration.py)
-- Performance monitoring for async operations (test_async_performance.py)
-- Concurrent query execution capabilities
+#### 非同期インフラストラクチャの強化
+- ノンブロッキング I/O のための asyncio.run_in_executor を使用した非同期ファイル読み取り
+- 包括的な非同期テストスイート（test_async_query_service.py）
+- CLI 非同期統合テスト（test_cli_async_integration.py）
+- 非同期操作のパフォーマンス監視（test_async_performance.py）
+- 並行クエリ実行機能
 
-### 🔧 Enhanced
+### 🔧 強化
 
-#### Code Quality & Type Safety
-- **Type Safety**: Complete type annotation improvements across core modules
-- **Code Style**: Unified code formatting with ruff and comprehensive style checks
-- **Error Handling**: Enhanced async operation error handling and recovery
-- **Performance**: <5% processing time increase, 3x+ concurrent throughput improvement
+#### コード品質と型安全性
+- **型安全性**: コアモジュール全体での完全な型注釈の改善
+- **コードスタイル**: ruff による統一されたコードフォーマットと包括的なスタイルチェック
+- **エラーハンドリング**: 非同期操作のエラーハンドリングと回復を強化
+- **パフォーマンス**: 処理時間の増加 <5%、並行スループットの 3 倍以上の改善
 
-### 📊 Technical Details
+### 📊 技術詳細
 
-#### Breaking Changes
-- **None**: All improvements are backward compatible
-- **Transparent**: Internal async implementation is transparent to end users
-- **Maintained**: All existing CLI commands and MCP tools work unchanged
+#### 破壊的変更
+- **なし**: すべての改善は後方互換性あり
+- **透過的**: 内部の非同期実装はエンドユーザーに対して透過的
+- **維持**: 既存のすべての CLI コマンドと MCP ツールは変更なく動作
 
-#### Performance Impact
-- **Processing Time**: <5% increase for single queries
-- **Memory Usage**: <10% increase in memory consumption
-- **Concurrent Throughput**: 3x+ improvement with concurrent execution
-- **Test Coverage**: Added 25+ new async-specific tests
+#### パフォーマンスへの影響
+- **処理時間**: 単一クエリで <5% の増加
+- **メモリ使用量**: メモリ消費が <10% 増加
+- **並行スループット**: 並行実行で 3 倍以上の改善
+- **テストカバレッジ**: 25 個以上の新しい非同期固有のテストを追加
 
-#### Migration Notes
-- No action required for existing users
-- All existing CLI commands and MCP tools work unchanged
-- Internal async implementation is transparent to end users
+#### 移行ノート
+- 既存ユーザーにはアクション不要
+- 既存のすべての CLI コマンドと MCP ツールは変更なく動作
+- 内部の非同期実装はエンドユーザーに対して透過的
 
-#### Quality Assurance
-- **Type Checking**: 100% mypy compliance with zero type errors
-- **Code Style**: Complete ruff formatting and linting compliance
-- **Test Coverage**: All existing tests continue to pass
-- **Async Tests**: Comprehensive async-specific test coverage
+#### 品質保証
+- **型チェック**: ゼロ型エラーで 100% mypy 準拠
+- **コードスタイル**: ruff フォーマットとリンティングの完全準拠
+- **テストカバレッジ**: 既存のすべてのテストが引き続き合格
+- **非同期テスト**: 包括的な非同期固有のテストカバレッジ
 
-### 🎯 Impact
+### 🎯 影響
 
-#### For Developers
-- **Enhanced Performance**: Better responsiveness with async I/O operations
-- **Concurrent Execution**: Ability to run multiple queries simultaneously
-- **Improved Reliability**: Better error handling and recovery mechanisms
+#### 開発者向け
+- **パフォーマンス向上**: 非同期 I/O 操作による応答性の向上
+- **並行実行**: 複数のクエリを同時に実行する機能
+- **信頼性の向上**: より良いエラーハンドリングと回復メカニズム
 
-#### For AI Assistants
-- **Seamless Integration**: No changes required for existing MCP tool usage
-- **Better Performance**: Faster response times for large file analysis
-- **Enhanced Stability**: More robust async operation handling
+#### AI アシスタント向け
+- **シームレスな統合**: 既存の MCP ツール使用に変更不要
+- **パフォーマンス向上**: 大規模ファイル分析の応答時間の高速化
+- **安定性の強化**: より堅牢な非同期操作の処理
 
-#### For Enterprise Users
-- **Production Ready**: Enhanced stability and performance for production workloads
-- **Scalability**: Better handling of concurrent analysis requests
-- **Reliability**: Improved error handling and recovery mechanisms
+#### エンタープライズユーザー向け
+- **本番環境対応**: 本番ワークロードの安定性とパフォーマンスを強化
+- **スケーラビリティ**: 並行分析リクエストの処理を改善
+- **信頼性**: エラーハンドリングと回復メカニズムを改善
 
 This release resolves critical async/await inconsistencies while maintaining full backward compatibility and significantly improving concurrent execution performance.
 

@@ -21,17 +21,20 @@ from typing import Any
 
 import pytest
 
-# Skip all tests in this module - needs refactoring for v1.6.1.4
-pytestmark = pytest.mark.skip(reason="Needs refactoring for v1.6.1.4 API changes - analyze_code_structure removed")
-
-# Note: analyze_code_structure was removed from API in v1.6.1.4
-# This test file needs refactoring to use the current API (analyze_file)
-# For now, skip all tests that depend on the old API
 from tree_sitter_analyzer.core.engine import AnalysisEngine
 from tree_sitter_analyzer.formatters.formatter_factory import TableFormatterFactory
 from tree_sitter_analyzer.mcp.tools.table_format_tool import TableFormatTool
 
 from .schema_validation import validate_format
+
+# Skip all tests in this module - needs refactoring for v1.6.1.4
+pytestmark = pytest.mark.skip(
+    reason="Needs refactoring for v1.6.1.4 API changes - analyze_code_structure removed"
+)
+
+# Note: analyze_code_structure was removed from API in v1.6.1.4
+# This test file needs refactoring to use the current API (analyze_file)
+# For now, skip all tests that depend on the old API
 
 
 class CrossComponentFormatValidator:
@@ -68,7 +71,7 @@ class CrossComponentFormatValidator:
         # API interface test disabled - analyze_code_structure removed in v1.6.1.4
         # TODO: Refactor to use analyze_file() with proper formatting
         pytest.skip("API interface test needs refactoring for v1.6.1.4 API changes")
-        
+
         params = {"file_path": file_path, "format_type": format_type}
         if language:
             params["language"] = language

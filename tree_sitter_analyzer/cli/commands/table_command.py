@@ -13,12 +13,16 @@ from ...constants import (
     ELEMENT_TYPE_FUNCTION,
     ELEMENT_TYPE_IMPORT,
     ELEMENT_TYPE_PACKAGE,
+    ELEMENT_TYPE_SQL_FUNCTION,
+    ELEMENT_TYPE_SQL_INDEX,
+    ELEMENT_TYPE_SQL_PROCEDURE,
+    ELEMENT_TYPE_SQL_TABLE,
+    ELEMENT_TYPE_SQL_TRIGGER,
+    ELEMENT_TYPE_SQL_VIEW,
     ELEMENT_TYPE_VARIABLE,
     get_element_type,
 )
-from ...formatters.language_formatter_factory import create_language_formatter
 from ...output_manager import output_error
-from ...table_formatter import create_table_formatter
 from .base_command import BaseCommand
 
 
@@ -37,33 +41,29 @@ class TableCommand(BaseCommand):
             if not analysis_result:
                 return 1
 
-            # Check if we have a language-specific formatter
-            formatter = create_language_formatter(analysis_result.language)
-            if formatter:
-                # Use language-specific formatter
-                table_type = getattr(self.args, "table", "full")
-                formatted_output = formatter.format_table(
-                    self._convert_to_formatter_format(analysis_result), table_type
+            # Get appropriate formatter using FormatterSelector (explicit configuration)
+            from ...formatters.formatter_selector import FormatterSelector
+
+            table_type = getattr(self.args, "table", "full")
+            formatter = FormatterSelector.get_formatter(
+                analysis_result.language,
+                table_type,
+                include_javadoc=getattr(self.args, "include_javadoc", False),
+            )
+
+            # Check if formatter has a method to handle AnalysisResult directly
+            if hasattr(formatter, "format_analysis_result"):
+                formatted_output = formatter.format_analysis_result(
+                    analysis_result, table_type
                 )
-                self._output_table(formatted_output)
-                return 0
+            else:
+                # Convert to structure format that the formatter expects
+                formatted_data = self._convert_to_structure_format(
+                    analysis_result, language
+                )
+                formatted_output = formatter.format_structure(formatted_data)
 
-            # Fallback to original implementation for unsupported languages
-            # Convert analysis result to structure format
-            structure_result = self._convert_to_structure_format(
-                analysis_result, language
-            )
-
-            # Create table formatter
-            include_javadoc = getattr(self.args, "include_javadoc", False)
-            table_formatter: Any = create_table_formatter(
-                self.args.table, language, include_javadoc
-            )
-            table_output = table_formatter.format_structure(structure_result)
-
-            # Output table
-            self._output_table(table_output)
-
+            self._output_table(formatted_output)
             return 0
 
         except Exception as e:
@@ -107,6 +107,27 @@ class TableCommand(BaseCommand):
             },
         }
 
+    def _get_default_package_name(self, language: str) -> str:
+        """
+        Get default package name for language.
+
+        Only Java-like languages have package concept.
+        Other languages (JS, TS, Python) don't need package prefix.
+
+        Args:
+            language: Programming language name
+
+        Returns:
+            Default package name ("unknown" for Java-like, "" for others)
+        """
+        # Languages with package/namespace concept
+        PACKAGED_LANGUAGES = {"java", "kotlin", "scala", "csharp", "cpp", "c++"}
+
+        if language.lower() in PACKAGED_LANGUAGES:
+            return "unknown"
+
+        return ""  # No package for JS, TS, Python, etc.
+
     def _convert_to_structure_format(
         self, analysis_result: Any, language: str
     ) -> dict[str, Any]:
@@ -115,7 +136,14 @@ class TableCommand(BaseCommand):
         methods = []
         fields = []
         imports = []
-        package_name = "unknown"
+
+        # Try to get package from analysis_result.package attribute first
+        package_obj = getattr(analysis_result, 'package', None)
+        if package_obj and hasattr(package_obj, 'name'):
+            package_name = str(package_obj.name)
+        else:
+            # Fall back to default or scanning elements
+            package_name = self._get_default_package_name(language)
 
         # Process each element
         for i, element in enumerate(analysis_result.elements):
@@ -133,6 +161,16 @@ class TableCommand(BaseCommand):
                     fields.append(self._convert_variable_element(element, language))
                 elif element_type == ELEMENT_TYPE_IMPORT:
                     imports.append(self._convert_import_element(element))
+                # SQL element types
+                elif element_type in [
+                    ELEMENT_TYPE_SQL_TABLE,
+                    ELEMENT_TYPE_SQL_VIEW,
+                    ELEMENT_TYPE_SQL_PROCEDURE,
+                    ELEMENT_TYPE_SQL_FUNCTION,
+                    ELEMENT_TYPE_SQL_TRIGGER,
+                    ELEMENT_TYPE_SQL_INDEX,
+                ]:
+                    methods.append(self._convert_sql_element(element, language))
 
             except Exception as element_error:
                 output_error(f"ERROR: Element {i} processing failed: {element_error}")
@@ -249,8 +287,59 @@ class TableCommand(BaseCommand):
 
         return {
             "statement": statement,
+            "raw_text": statement,  # PythonTableFormatter expects raw_text
             "name": getattr(element, "name", str(element)),
+            "module_name": getattr(element, "module_name", ""),
         }
+
+    def _convert_sql_element(self, element: Any, language: str) -> dict[str, Any]:
+        """Convert SQL element to table format."""
+        element_name = getattr(element, "name", str(element))
+        element_type = get_element_type(element)
+
+        # Get SQL-specific attributes
+        columns = getattr(element, "columns", [])
+        parameters = getattr(element, "parameters", [])
+        dependencies = getattr(element, "dependencies", [])
+        source_tables = getattr(element, "source_tables", [])
+        return_type = getattr(element, "return_type", "")
+
+        return {
+            "name": element_name,
+            "visibility": "public",  # SQL elements are typically public
+            "return_type": (
+                return_type if return_type else ""
+            ),  # Don't fallback to element_type
+            "parameters": self._process_sql_parameters(parameters),
+            "is_constructor": False,
+            "is_static": False,
+            "complexity_score": 1,
+            "line_range": {
+                "start": getattr(element, "start_line", 0),
+                "end": getattr(element, "end_line", 0),
+            },
+            "javadoc": "",
+            "sql_type": element_type,
+            "columns": columns,
+            "dependencies": dependencies,
+            "source_tables": source_tables,
+        }
+
+    def _process_sql_parameters(self, params: Any) -> list[dict[str, str]]:
+        """Process SQL parameters."""
+        if not params:
+            return []
+
+        if isinstance(params, list):
+            param_list = []
+            for param in params:
+                if isinstance(param, dict):
+                    param_list.append(param)
+                else:
+                    param_list.append({"name": str(param), "type": "Any"})
+            return param_list
+        else:
+            return [{"name": str(params), "type": "Any"}]
 
     def _process_parameters(self, params: Any, language: str) -> list[dict[str, str]]:
         """Process parameters based on language syntax."""

@@ -4,11 +4,11 @@
 
 [![Python版本](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![许可证](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![测试](https://img.shields.io/badge/tests-3445%20passed-brightgreen.svg)](#质量保证)
+[![测试](https://img.shields.io/badge/tests-3556%20passed-brightgreen.svg)](#质量保证)
 [![覆盖率](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer)
 [![质量](https://img.shields.io/badge/quality-enterprise%20grade-blue.svg)](#质量保证)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
-[![版本](https://img.shields.io/badge/version-1.9.7-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
+[![版本](https://img.shields.io/badge/version-1.9.8-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
 [![zread](https://img.shields.io/badge/Ask_Zread-_.svg?style=flat&color=00b0aa&labelColor=000000&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB3aWR0aD0iMTYiIGhlaWdodD0iMTYiIHZpZXdCb3g9IjAgMCAxNiAxNiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTQuOTYxNTYgMS42MDAxSDIuMjQxNTZDMS44ODgxIDEuNjAwMSAxLjYwMTU2IDEuODg2NjQgMS42MDE1NiAyLjI0MDFWNC45NjAxQzEuNjAxNTYgNS4zMTM1NiAxLjg4ODEgNS42MDAxIDIuMjQxNTYgNS42MDAxSDQuOTYxNTZDNS4zMTUwMiA1LjYwMDEgNS42MDE1NiA1LjMxMzU2IDUuNjAxNTYgNC45NjAxVjIuMjQwMUM1LjYwMTU2IDEuODg2NjQgNS4zMTUwMiAxLjYwMDEgNC45NjE1NiAxLjYwMDFaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik00Ljk2MTU2IDEwLjM5OTlIMi4yNDE1NkMxLjg4ODEgMTAuMzk5OSAxLjYwMTU2IDEwLjY4NjQgMS42MDE1NiAxMS4wMzk5VjEzLjc1OTlDMS42MDE1NiAxNC4xMTM0IDEuODg4MSAxNC4zOTk5IDIuMjQxNTYgMTQuMzk5OUg0Ljk2MTU2QzUuMzE1MDIgMTQuMzk5OSA1LjYwMTU2IDE0LjExMzQgNS42MDE1NiAxMy43NTk5VjExLjAzOTlDNS42MDE1NiAxMC42ODY0IDUuMzE1MDIgMTAuMzk5OSA0Ljk2MTU2IDEwLjM5OTlaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik0xMy43NTg0IDEuNjAwMUgxMS4wMzg0QzEwLjY4NSAxLjYwMDEgMTAuMzk4NCAxLjg4NjY0IDEwLjM5ODQgMi4yNDAxVjQuOTYwMUMxMC4zOTg0IDUuMzEzNTYgMTAuNjg1IDUuNjAwMSAxMS4wMzg0IDUuNjAwMUgxMy43NTg0QzE0LjExMTkgNS42MDAxIDE0LjM5ODQgNS4zMTM1NiAxNC4zOTg0IDQuOTYwMVYyLjI0MDFDMTQuMzk4NCAxLjg4NjY0IDE0LjExMTkgMS42MDAxIDEzLjc1ODQgMS42MDAxWiIgZmlsbD0iI2ZmZiIvPgo8cGF0aCBkPSJNNCAxMkwxMiA0TDQgMTJaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik00IDEyTDEyIDQiIHN0cm9rZT0iI2ZmZiIgc3Ryb2tlLXdpZHRoPSIxLjUiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPgo8L3N2Zz4K&logoColor=ffffff)](https://zread.ai/aimasteracc/tree-sitter-analyzer)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
@@ -52,16 +52,17 @@ Tree-sitter Analyzer 是一个为AI时代设计的企业级代码分析工具，
 |---------|---------|---------|
 | **Java** | 完整支持 | Spring框架、JPA、企业级特性 |
 | **Python** | 完整支持 | 类型注解、装饰器、现代Python特性 |
+| **SQL** | 🆕 增强完整支持 | 表、视图、存储过程、函数、触发器、索引，专用输出格式 |
 | **JavaScript** | 完整支持 | ES6+、React/Vue/Angular、JSX |
 | **TypeScript** | 完整支持 | 接口、类型、装饰器、TSX/JSX、框架检测 |
 | **HTML** | 🆕 完整支持 | DOM结构分析、元素分类、属性提取、层次关系 |
 | **CSS** | 🆕 完整支持 | 选择器分析、属性分类、样式规则提取、智能分类 |
 | **Markdown** | 完整支持 | 标题、代码块、链接、图片、表格、任务列表、引用 |
 
-**备注:** 目前仅以上7种语言具有完整的插件实现。C/C++、Rust、Go、JSON等语言虽在`LanguageDetector`中定义，但目前尚无功能性插件实现。
+**备注:** 目前仅以上8种语言具有完整的插件实现。C/C++、Rust、Go、JSON等语言虽在`LanguageDetector`中定义，但目前尚无功能性插件实现。
 
 ### 🏆 生产就绪
-- **3,445个测试** - 100%通过率，企业级质量保证
+- **3,556个测试** - 100%通过率，企业级质量保证
 - **高覆盖率** - 全面的测试覆盖
 - **跨平台支持** - Windows、macOS、Linux全平台兼容
 - **持续维护** - 活跃的开发和社区支持
@@ -217,6 +218,11 @@ uv run tree-sitter-analyzer examples/BigService.java --table full
 uv run tree-sitter-analyzer examples/comprehensive_sample.html --table full
 uv run tree-sitter-analyzer examples/comprehensive_sample.css --advanced --output-format text
 uv run tree-sitter-analyzer examples/comprehensive_sample.html --structure
+
+# 🆕 专用格式SQL数据库分析
+uv run tree-sitter-analyzer examples/sample_database.sql --table full
+uv run tree-sitter-analyzer examples/sample_database.sql --table compact
+uv run tree-sitter-analyzer examples/sample_database.sql --advanced --output-format text
 
 # 精确代码提取
 uv run tree-sitter-analyzer examples/BigService.java --partial-read --start-line 93 --end-line 106
@@ -430,6 +436,19 @@ AI会自动：
 2. 通过智能分类分析CSS选择器和属性
 3. 生成显示DOM层次结构和样式规则的结构化表格
 
+**SQL数据库分析示例：**
+```
+我想分析sample_database.sql的数据库模式：
+1. 定义了哪些表、视图和存储过程？
+2. 不同数据库对象之间的关系是什么？
+3. 以专业格式显示数据库结构。
+```
+
+AI会自动：
+1. 提取所有SQL元素（表、视图、过程、函数、触发器、索引）
+2. 显示数据库专用术语（"数据库模式概览"而不是"类概览"）
+3. 使用专用SQL格式生成专业数据库文档
+
 ---
 
 ## 5. 🤖 MCP工具完整列表
@@ -569,6 +588,12 @@ uv run tree-sitter-analyzer examples/comprehensive_sample.css --table full
 uv run tree-sitter-analyzer examples/comprehensive_sample.html --advanced
 uv run tree-sitter-analyzer examples/comprehensive_sample.css --advanced
 
+# 🆕 专用格式SQL数据库分析
+uv run tree-sitter-analyzer examples/sample_database.sql --table full
+uv run tree-sitter-analyzer examples/sample_database.sql --table compact
+uv run tree-sitter-analyzer examples/sample_database.sql --table csv
+uv run tree-sitter-analyzer examples/sample_database.sql --advanced --output-format text
+
 # 指定输出格式
 uv run tree-sitter-analyzer examples/BigService.java --advanced --output-format json
 uv run tree-sitter-analyzer examples/BigService.java --advanced --output-format text
@@ -690,7 +715,7 @@ uv run tree-sitter-analyzer --show-query-languages
 | **✂️ 智能代码提取** | 精确提取工具 | 精确按行范围提取<br>保持原始格式和缩进<br>包含位置元数据<br>支持大文件高效处理 | 零损失格式保持<br>内存优化算法<br>流式处理支持 |
 | **🔍 高级查询过滤** | 多维度过滤器 | **精确匹配**: `--filter "name=main"`<br>**模式匹配**: `--filter "name=~auth*"`<br>**参数过滤**: `--filter "params=2"`<br>**修饰符过滤**: `--filter "static=true,public=true"`<br>**复合条件**: 组合多个条件进行精确查询 | 灵活的查询语法<br>高性能索引<br>智能缓存机制 |
 | **🔗 AI助手集成** | MCP协议支持 | **Claude Desktop** - 完整MCP支持<br>**Cursor IDE** - 内置MCP集成<br>**Roo Code** - MCP协议支持<br>**其他MCP兼容工具** - 通用MCP服务器 | 标准MCP协议<br>即插即用设计<br>跨平台兼容 |
-| **🌍 多语言支持** | 企业级语言引擎 | **Java** - 完整支持，包括Spring、JPA框架<br>**Python** - 完整支持，包括类型注解、装饰器<br>**JavaScript** - 企业级支持，包括ES6+、React/Vue/Angular、JSX<br>**TypeScript** - **完整支持**，包括接口、类型、装饰器、TSX/JSX、框架检测<br>**HTML** - **🆕 完整支持**，包括DOM结构、元素分类、属性提取<br>**CSS** - **🆕 完整支持**，包括选择器分析、属性分类、样式规则<br>**Markdown** - **完整支持**，包括标题、代码块、链接、图片、表格、任务列表、引用<br><br>**备注**: 目前7种语言具有完整的插件实现（Java、Python、JavaScript、TypeScript、HTML、CSS、Markdown）。C/C++、Rust、Go等语言虽已定义但尚未实现。 | 框架感知解析<br>语法扩展支持<br>持续语言更新 |
+| **🌍 多语言支持** | 企业级语言引擎 | **Java** - 完整支持，包括Spring、JPA框架<br>**Python** - 完整支持，包括类型注解、装饰器<br>**SQL** - **🆕 增强完整支持**，包括表、视图、存储过程、函数、触发器、索引，专用数据库中心输出格式<br>**JavaScript** - 企业级支持，包括ES6+、React/Vue/Angular、JSX<br>**TypeScript** - **完整支持**，包括接口、类型、装饰器、TSX/JSX、框架检测<br>**HTML** - **🆕 完整支持**，包括DOM结构、元素分类、属性提取<br>**CSS** - **🆕 完整支持**，包括选择器分析、属性分类、样式规则<br>**Markdown** - **完整支持**，包括标题、代码块、链接、图片、表格、任务列表、引用<br><br>**备注**: 目前8种语言具有完整的插件实现（Java、Python、SQL、JavaScript、TypeScript、HTML、CSS、Markdown）。C/C++、Rust、Go等语言虽已定义但尚未实现。 | 框架感知解析<br>语法扩展支持<br>持续语言更新 |
 | **📁 高级文件搜索** | fd+ripgrep集成 | **ListFilesTool** - 智能文件发现，支持多种过滤条件<br>**SearchContentTool** - 智能内容搜索，支持正则表达式<br>**FindAndGrepTool** - 组合发现与搜索，两阶段工作流 | 基于Rust的高性能工具<br>并行处理能力<br>智能缓存优化 |
 | **🏗️ 统一元素系统** | 革命性架构设计 | **单一元素列表** - 所有代码元素（类、方法、字段、导入、包）统一管理<br>**一致的元素类型** - 每个元素都有`element_type`属性<br>**简化的API** - 更清晰的接口和降低的复杂度<br>**更好的可维护性** - 所有代码元素的单一真实来源 | 统一数据模型<br>类型安全保证<br>扩展性设计 |
 
@@ -699,7 +724,7 @@ uv run tree-sitter-analyzer --show-query-languages
 ## 8. 🏆 质量保证
 
 ### 📊 质量指标
-- **3,445个测试** - 100%通过率 ✅
+- **3,556个测试** - 100%通过率 ✅
 - **高代码覆盖率** - 全面测试套件
 - **零测试失败** - 生产就绪
 - **跨平台支持** - Windows、macOS、Linux

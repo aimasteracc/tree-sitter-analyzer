@@ -1,4 +1,4 @@
-# Sample
+# com.example.Sample
 
 ## Package
 `com.example`

@@ -71,8 +71,11 @@ def compare_with_golden_master(
     Returns:
         (一致するか, 差分メッセージ)
     """
+    extension = "csv" if table_format == "csv" else "md"
     golden_path = (
-        Path("tests/golden_masters") / table_format / f"{golden_name}_{table_format}.md"
+        Path("tests/golden_masters")
+        / table_format
+        / f"{golden_name}_{table_format}.{extension}"
     )
 
     if not golden_path.exists():
@@ -158,6 +161,10 @@ class TestGoldenMasterRegression:
             ("tests/test_data/test_enum.ts", "typescript_enum", "full"),
             # JavaScript tests
             ("tests/test_data/test_class.js", "javascript_class", "full"),
+            # SQL tests
+            ("examples/sample_database.sql", "sql_sample_database", "full"),
+            ("examples/sample_database.sql", "sql_sample_database", "compact"),
+            ("examples/sample_database.sql", "sql_sample_database", "csv"),
         ],
     )
     def test_golden_master_comparison(

@@ -601,14 +601,16 @@ class StructuralFormatValidator:
         ]
         # Mock analyzer format
         mock_headers = ["Type", "Name", "Signature", "Visibility", "Lines"]
-        
+
         valid_header_sets = [legacy_headers, new_headers_1, mock_headers]
-        
+
         actual_headers = [h.strip() for h in header_line.split(",")]
 
         # Check if headers match any valid format
-        headers_valid = any(actual_headers == expected for expected in valid_header_sets)
-        
+        headers_valid = any(
+            actual_headers == expected for expected in valid_header_sets
+        )
+
         if not headers_valid:
             results.append(
                 AssertionResult(

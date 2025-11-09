@@ -165,6 +165,74 @@ class JavaTableFormatter(BaseTableFormatter):
                 lines.append(self._format_method_row(method))
             lines.append("")
 
+        # Enum sections - generate individual sections for each enum
+        enum_classes = [c for c in classes if c.get("type") == "enum"]
+        for enum_class in enum_classes:
+            enum_name = enum_class.get("name", "Unknown")
+            lines.append(f"## {enum_name}")
+
+            # Enum info
+            lines.append("| Property | Value |")
+            lines.append("|----------|-------|")
+            lines.append("| Type | enum |")
+            lines.append(f"| Visibility | {enum_class.get('visibility', 'package')} |")
+            line_range = enum_class.get("line_range", {})
+            lines.append(
+                f"| Lines | {line_range.get('start', 0)}-{line_range.get('end', 0)} |"
+            )
+
+            # Enum constants (if available)
+            enum_constants = enum_class.get("constants", [])
+            if enum_constants:
+                lines.append(f"| Constants | {', '.join(enum_constants)} |")
+
+            lines.append("")
+
+            # Enum fields
+            enum_line_start = line_range.get("start", 0)
+            enum_line_end = line_range.get("end", 0)
+            enum_fields = [
+                f
+                for f in fields
+                if enum_line_start
+                <= f.get("line_range", {}).get("start", 0)
+                <= enum_line_end
+            ]
+            if enum_fields:
+                lines.append("### Fields")
+                lines.append("| Name | Type | Vis | Modifiers | Line | Doc |")
+                lines.append("|------|------|-----|-----------|------|-----|")
+                for field in enum_fields:
+                    name = str(field.get("name", ""))
+                    field_type = str(field.get("type", ""))
+                    visibility = self._convert_visibility(
+                        str(field.get("visibility", ""))
+                    )
+                    modifiers = ",".join([str(m) for m in field.get("modifiers", [])])
+                    line = field.get("line_range", {}).get("start", 0)
+                    doc = str(field.get("javadoc", "")) or "-"
+                    doc = doc.replace("\n", " ").replace("|", "\\|")[:50]
+                    lines.append(
+                        f"| {name} | {field_type} | {visibility} | {modifiers} | {line} | {doc} |"
+                    )
+                lines.append("")
+
+            # Enum methods
+            enum_methods = [
+                m
+                for m in (data.get("methods") or [])
+                if enum_line_start
+                <= m.get("line_range", {}).get("start", 0)
+                <= enum_line_end
+            ]
+            if enum_methods:
+                lines.append("### Methods")
+                lines.append("| Method | Signature | Vis | Lines | Cols | Cx | Doc |")
+                lines.append("|--------|-----------|-----|-------|------|----|----|")
+                for method in enum_methods:
+                    lines.append(self._format_method_row(method))
+                lines.append("")
+
         # Trim trailing blank lines
         while lines and lines[-1] == "":
             lines.pop()
@@ -307,3 +375,49 @@ class JavaTableFormatter(BaseTableFormatter):
 
         result = type_mapping.get(type_name, type_name)
         return str(result)
+
+    def format_table(
+        self, analysis_result: dict[str, Any], table_type: str = "full"
+    ) -> str:
+        """Format table output for Java"""
+        # Set the format type based on table_type parameter
+        original_format_type = self.format_type
+        self.format_type = table_type
+
+        try:
+            # Handle json format separately
+            if table_type == "json":
+                return self._format_json(analysis_result)
+            # Use the existing format_structure method
+            return self.format_structure(analysis_result)
+        finally:
+            # Restore original format type
+            self.format_type = original_format_type
+
+    def format_summary(self, analysis_result: dict[str, Any]) -> str:
+        """Format summary output for Java"""
+        return self._format_compact_table(analysis_result)
+
+    def format_structure(self, analysis_result: dict[str, Any]) -> str:
+        """Format structure analysis output for Java"""
+        return super().format_structure(analysis_result)
+
+    def format_advanced(
+        self, analysis_result: dict[str, Any], output_format: str = "json"
+    ) -> str:
+        """Format advanced analysis output for Java"""
+        if output_format == "json":
+            return self._format_json(analysis_result)
+        elif output_format == "csv":
+            return self._format_csv(analysis_result)
+        else:
+            return self._format_full_table(analysis_result)
+
+    def _format_json(self, data: dict[str, Any]) -> str:
+        """Format data as JSON"""
+        import json
+
+        try:
+            return json.dumps(data, indent=2, ensure_ascii=False)
+        except (TypeError, ValueError) as e:
+            return f"# JSON serialization error: {e}\n"

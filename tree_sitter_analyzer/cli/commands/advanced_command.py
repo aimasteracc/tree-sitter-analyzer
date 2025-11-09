@@ -14,7 +14,6 @@ from ...constants import (
     ELEMENT_TYPE_VARIABLE,
     get_element_type,
 )
-from ...formatters.language_formatter_factory import create_language_formatter
 from ...output_manager import output_data, output_json, output_section
 from .base_command import BaseCommand
 
@@ -158,18 +157,6 @@ class AdvancedCommand(BaseCommand):
 
     def _output_full_analysis(self, analysis_result: "AnalysisResult") -> None:
         """Output full analysis results."""
-        # Check if we have a language-specific formatter
-        formatter = create_language_formatter(analysis_result.language)
-        if formatter:
-            # Use language-specific formatter
-            output_format = getattr(self.args, "output_format", "json")
-            formatted_output = formatter.format_advanced(
-                self._convert_to_formatter_format(analysis_result), output_format
-            )
-            print(formatted_output)
-            return
-
-        # Fallback to original implementation for unsupported languages
         output_section("Advanced Analysis Results")
         if self.args.output_format == "json":
             result_dict = {
@@ -193,47 +180,6 @@ class AdvancedCommand(BaseCommand):
             output_json(result_dict)
         else:
             self._output_text_analysis(analysis_result)
-
-    def _convert_to_formatter_format(self, analysis_result: "AnalysisResult") -> dict:
-        """Convert AnalysisResult to format expected by formatters."""
-        return {
-            "file_path": analysis_result.file_path,
-            "language": analysis_result.language,
-            "line_count": analysis_result.line_count,
-            "element_count": len(analysis_result.elements),
-            "node_count": getattr(analysis_result, "node_count", 0),
-            "elements": [
-                {
-                    "name": getattr(element, "name", str(element)),
-                    "type": get_element_type(element),
-                    "start_line": getattr(element, "start_line", 0),
-                    "end_line": getattr(element, "end_line", 0),
-                    "text": getattr(element, "text", ""),
-                    "level": getattr(element, "level", 1),
-                    "url": getattr(element, "url", ""),
-                    "alt": getattr(element, "alt", ""),
-                    "language": getattr(element, "language", ""),
-                    "line_count": getattr(element, "line_count", 0),
-                    "list_type": getattr(element, "list_type", ""),
-                    "item_count": getattr(element, "item_count", 0),
-                    "column_count": getattr(element, "column_count", 0),
-                    "row_count": getattr(element, "row_count", 0),
-                    "line_range": {
-                        "start": getattr(element, "start_line", 0),
-                        "end": getattr(element, "end_line", 0),
-                    },
-                }
-                for element in analysis_result.elements
-            ],
-            "success": getattr(analysis_result, "success", True),
-            "analysis_time": getattr(analysis_result, "analysis_time", 0.0),
-            "analysis_metadata": {
-                "analysis_time": getattr(analysis_result, "analysis_time", 0.0),
-                "language": analysis_result.language,
-                "file_path": analysis_result.file_path,
-                "analyzer_version": "2.0.0",
-            },
-        }
 
     def _output_text_analysis(self, analysis_result: "AnalysisResult") -> None:
         """Output analysis in text format."""
