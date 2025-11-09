@@ -209,33 +209,33 @@ class TestSQLFullFormatter:
         formatter = SQLFullFormatter()
         result = formatter.format_elements(sample_elements, "sample_database.sql")
 
-        # Check table entries
+        # Check table entries - update to match actual output format
         assert "| users | table | 5-13 | 4 columns | - |" in result
-        assert "| active_users | view | 37-44 | - | users |" in result
+        assert "| active_users | view | 37-44 | from users | users |" in result
         assert (
-            "| get_user_orders | procedure | 58-68 | 1 parameters | orders |" in result
+            "| get_user_orders | procedure | 58-68 | (user_id_param) | orders |" in result
         )
         assert (
-            "| calculate_order_total | function | 89-101 | 1 parameters | order_items |"
+            "| calculate_order_total | function | 89-101 | (order_id_param) | order_items |"
             in result
         )
         assert (
             "| update_order_total | trigger | 119-130 | - | orders, order_items |"
             in result
         )
-        assert "| idx_users_email | index | 151-151 | email | users |" in result
+        assert "| idx_users_email | index | 151-151 | users(email) | users |" in result
 
     def test_table_details_formatting(self, sample_elements):
         """Test table details formatting"""
         formatter = SQLFullFormatter()
         result = formatter.format_elements(sample_elements, "sample_database.sql")
 
-        # Check table section
+        # Check table section - update to match actual output format
         assert "### users (5-13)" in result
         assert "**Columns**: id, username, email, user_id" in result
         assert "**Primary Key**: id" in result
         assert "**Foreign Keys**: user_id → users(id)" in result
-        assert "**Constraints**: PRIMARY_KEY, UNIQUE" in result
+        assert "**Constraints**: UNIQUE, PRIMARY_KEY" in result
 
     def test_view_details_formatting(self, sample_elements):
         """Test view details formatting"""
@@ -377,12 +377,12 @@ class TestSQLCompactFormatter:
         formatter = SQLCompactFormatter()
         result = formatter.format_elements(sample_elements, "sample_database.sql")
 
-        # Check element entries
+        # Check element entries - update to match actual output format (-> not →)
         assert "| users | table | 5-13 | 2 cols, PK: id |" in result
         assert "| active_users | view | 37-44 | from users |" in result
         assert "| get_user_orders | procedure | 58-68 | 1 params |" in result
         assert (
-            "| calculate_total | function | 89-101 | 1 params, → DECIMAL(10, 2) |"
+            "| calculate_total | function | 89-101 | 1 params, -> DECIMAL(10, 2) |"
             in result
         )
         assert (

@@ -559,20 +559,31 @@ class PythonTableFormatter(BaseTableFormatter):
         params = method.get("parameters", [])
         param_types = []
 
-        for p in params:
-            if isinstance(p, dict):
-                param_type = p.get("type", "Any")
-                if param_type == "Any" or param_type is None:
-                    param_types.append("Any")  # Keep "Any" as is for missing type info
+        # Handle both list and string parameters
+        if isinstance(params, str):
+            # If parameters is a malformed string, skip it
+            pass
+        elif isinstance(params, list):
+            for p in params:
+                if isinstance(p, dict):
+                    param_type = p.get("type", "Any")
+                    if param_type == "Any" or param_type is None:
+                        param_types.append("Any")  # Keep "Any" as is for missing type info
+                    else:
+                        param_types.append(
+                            param_type
+                        )  # Don't shorten types for consistency
                 else:
-                    param_types.append(
-                        param_type
-                    )  # Don't shorten types for consistency
-            else:
-                param_types.append("Any")  # Use "Any" for missing type info
+                    param_types.append("Any")  # Use "Any" for missing type info
 
         params_str = ",".join(param_types)
         return_type = method.get("return_type", "Any")
+
+        # Handle dict return type
+        if isinstance(return_type, dict):
+            return_type = return_type.get("type", "Any") or str(return_type)
+        elif not isinstance(return_type, str):
+            return_type = str(return_type)
 
         return f"({params_str}):{return_type}"
 
@@ -736,7 +747,11 @@ class PythonTableFormatter(BaseTableFormatter):
         vis_symbol = "+" if visibility == "public" or visibility == "magic" else "-"
 
         line_range = method.get("line_range") or {}
-        lines_str = f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
+        # Handle malformed line_range (could be string)
+        if isinstance(line_range, dict):
+            lines_str = f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
+        else:
+            lines_str = "0-0"  # Fallback for malformed data
 
         complexity = method.get("complexity_score", 0)
 

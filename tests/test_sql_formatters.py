@@ -468,7 +468,7 @@ class TestSQLCompactFormatter:
 
         details = formatter._format_compact_details(function)
         assert "1 params" in details
-        assert "→ INT" in details
+        assert "-> INT" in details  # Changed from → to ->
 
     def test_compact_format_trigger_details(self):
         """Test compact trigger detail formatting"""

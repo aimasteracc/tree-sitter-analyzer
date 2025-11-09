@@ -113,9 +113,7 @@ class TestCLIRegression:
         assert data["file_path"] == bigservice_path
         assert data["language"] == "java"
         assert data["line_count"] == 1420
-        assert (
-            data["element_count"] == 85
-        )  # Total elements (methods, classes, fields, imports, package)
+        assert data["element_count"] == 85  # Total elements (methods, classes, fields, imports, package)
         assert data["success"] is True
 
         # Verify elements structure
