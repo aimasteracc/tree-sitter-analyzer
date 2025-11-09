@@ -213,7 +213,8 @@ class TestSQLFullFormatter:
         assert "| users | table | 5-13 | 4 columns | - |" in result
         assert "| active_users | view | 37-44 | from users | users |" in result
         assert (
-            "| get_user_orders | procedure | 58-68 | (user_id_param) | orders |" in result
+            "| get_user_orders | procedure | 58-68 | (user_id_param) | orders |"
+            in result
         )
         assert (
             "| calculate_order_total | function | 89-101 | (order_id_param) | order_items |"
@@ -235,7 +236,10 @@ class TestSQLFullFormatter:
         assert "**Columns**: id, username, email, user_id" in result
         assert "**Primary Key**: id" in result
         assert "**Foreign Keys**: user_id → users(id)" in result
-        assert "**Constraints**: UNIQUE, PRIMARY_KEY" in result
+        # Constraints order is not guaranteed due to set() usage, so check both are present
+        assert "**Constraints**:" in result
+        assert "UNIQUE" in result
+        assert "PRIMARY_KEY" in result
 
     def test_view_details_formatting(self, sample_elements):
         """Test view details formatting"""

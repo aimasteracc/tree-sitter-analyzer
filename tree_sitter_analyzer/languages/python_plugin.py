@@ -745,62 +745,49 @@ class PythonElementExtractor(ElementExtractor):
         """Extract Python import statements"""
         imports: list[Import] = []
 
-        # Import statement queries
-        import_queries = [
-            # Regular import statements
-            """
-            (import_statement
-                name: (dotted_name) @import.name) @import.statement
-            """,
-            # From import statements
-            """
-            (import_from_statement
-                module_name: (dotted_name) @from_import.module
-                name: (dotted_name) @from_import.name) @from_import.statement
-            """,
-            # Aliased imports
-            """
-            (aliased_import
-                name: (dotted_name) @aliased_import.name
-                alias: (identifier) @aliased_import.alias) @aliased_import.statement
-            """,
-        ]
+        # Simplified import statement query - only capture statements, not individual elements
+        import_query = """
+        (import_statement) @import_stmt
+        (import_from_statement) @from_import_stmt
+        """
 
         try:
             language = tree.language if hasattr(tree, "language") else None
             if language:
-                for query_string in import_queries:
-                    try:
-                        captures = TreeSitterQueryCompat.safe_execute_query(
-                            language, query_string, tree.root_node, fallback_result=[]
-                        )
+                try:
+                    captures = TreeSitterQueryCompat.safe_execute_query(
+                        language, import_query, tree.root_node, fallback_result=[]
+                    )
 
-                        # Group captures by name
-                        captures_dict: dict[str, list[Any]] = {}
-                        for node, capture_name in captures:
-                            if capture_name not in captures_dict:
-                                captures_dict[capture_name] = []
-                            captures_dict[capture_name].append(node)
+                    # Track processed statements by their start/end positions to avoid duplicates
+                    processed_positions: set[tuple[int, int]] = set()
 
-                        # Process different types of imports
-                        for key, nodes in captures_dict.items():
-                            if key.endswith("statement"):
-                                import_type = key.split(".")[0]
-                                for node in nodes:
-                                    imp = self._extract_import_info(
-                                        node, source_code, import_type
-                                    )
-                                    if imp:
-                                        imports.append(imp)
-                    except Exception as query_error:
-                        # Fallback to manual extraction for tree-sitter compatibility
-                        log_debug(
-                            f"Query execution failed, using manual extraction: {query_error}"
-                        )
-                        imports.extend(
-                            self._extract_imports_manual(tree.root_node, source_code)
-                        )
-                        break
+                    for node, capture_name in captures:
+                        # Use position as unique identifier
+                        position_key = (node.start_point[0], node.end_point[0])
+                        if position_key in processed_positions:
+                            continue
+
+                        processed_positions.add(position_key)
+
+                        # Determine import type from capture name
+                        if "from" in capture_name:
+                            import_type = "from_import"
+                        else:
+                            import_type = "import"
+
+                        imp = self._extract_import_info(node, source_code, import_type)
+                        if imp:
+                            imports.append(imp)
+
+                except Exception as query_error:
+                    # Fallback to manual extraction for tree-sitter compatibility
+                    log_debug(
+                        f"Query execution failed, using manual extraction: {query_error}"
+                    )
+                    imports.extend(
+                        self._extract_imports_manual(tree.root_node, source_code)
+                    )
 
         except Exception as e:
             log_warning(f"Could not extract Python imports: {e}")
