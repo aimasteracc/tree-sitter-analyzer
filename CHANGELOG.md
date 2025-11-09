@@ -2,7 +2,20 @@
 
 ## [Unreleased]
 
-### 🛠️ 架构改进
+## [1.9.7] - 2025-11-09
+
+###📚 OpenSpec変更
+- **言語プラグイン隔離性監査**: フレームワークレベルの言語プラグイン隔離性監査を完了
+  - 隔離性評価: ⭐⭐⭐⭐⭐ (5/5星)
+  - 7項目の自動テスト全て合格 (100%)
+  - キャッシュキーに言語識別子が含まれることを検証
+  - 各言語が独立したプラグインインスタンスを持つことを確認
+  - ファクトリーパターンで新しいextractorインスタンスを作成することを検証
+  - クラスレベルの共有状態がないことを確認
+  - Entry Pointsが明確な境界を提供
+  - ユーザー要件を完全に満たす: 新規言語サポート追加時に相互影響なし
+
+### 🛠️ 架構改进
 - **命令-格式化器解耦**: 修复CLI命令层的设计缺陷,防止添加新语言时的回归
   - 引入 `FormatterSelector` 服务,基于显式配置选择格式化器
   - 创建 `LANGUAGE_FORMATTER_CONFIG` 配置,明确定义每种语言的格式化策略
@@ -28,54 +41,27 @@
 - SQL索引现在显示表名和列信息(更完整的输出)
 
 ### 🎯 质量保证
-- FormatterSelector服务实现并测试完成
+- **測試数**: 3,556テスト全て合格
+- FormatterSelector服務実装與測試完了
 - table_command.py使用显式格式化器选择
 - JavaScript/TypeScript不再显示 "unknown" 包
 - 所有golden master测试通过
 - 从其他命令中清理未使用的代码
 
-## [1.9.7] - 2025-11-07
-
-### ✨ 新機能
+###✨ SQL新機能
 - **SQL出力フォーマット再設計完了**: SQLファイル専用の出力フォーマットを完全実装
   - **データベース専用用語**: 汎用的なクラスベース用語から適切なデータベース用語に変更
-    - "Classes Overview" → "Database Schema Overview"
-    - "Class" → "Table/View/Procedure/Function/Trigger/Index"
-    - データベース要素に特化した専門的な出力フォーマット
   - **包括的なSQL要素サポート**: 全てのSQL要素タイプの識別と表示
-    - SQLTable: テーブル定義の検出と詳細情報表示
-    - SQLView: ビュー定義の検出と構造表示
-    - SQLProcedure: ストアドプロシージャの検出とパラメータ表示
-    - SQLFunction: 関数定義の検出と戻り値型表示
-    - SQLTrigger: トリガー定義の検出とイベント表示
-    - SQLIndex: インデックス定義の検出と対象テーブル表示
   - **3つの出力フォーマット**: Full（詳細）、Compact（概要）、CSV（データ処理用）
-  - **構造化出力**: データベース文書化標準に準拠した出力形式
   - **専用フォーマッター**: SQLFullFormatter、SQLCompactFormatter、SQLCSVFormatterを実装
 
 - **SQL言語サポート追加**: SQLファイルの解析機能を追加
-  - CREATE TABLE、CREATE VIEW、CREATE PROCEDURE、CREATE FUNCTION、CREATE TRIGGER、CREATE INDEX の完全な抽出をサポート
-  - SQL要素を統一要素モデルにマッピング（テーブル/ビュー→Class、プロシージャ/関数/トリガー→Function、インデックス→Variable）
-  - tree-sitter-sql をオプショナル依存として追加（`pip install tree-sitter-analyzer[sql]`）
-  - プラグインアーキテクチャに準拠した実装
-  - 包括的なテストスイート（25テスト、全て合格）
-
-- **SQLクエリシステム強化**: 包括的なSQL Tree-sitterクエリライブラリを実装
-  - 全てのSQL要素（テーブル、ビュー、プロシージャ、関数、トリガー、インデックス）をサポート
-  - 高度なSQL機能（CTE、ウィンドウ関数、サブクエリ）の解析対応
-  - tree-sitter-sql ERRORノードのエラーハンドリング実装
-  - QueryServiceとの完全統合
-
-### 🔧 品質保証
-- **包括的テスト**: 全てのSQLフォーマッターとプラグイン機能のテスト完了
-- **コード品質**: MyPy型チェック100%準拠、Ruffリンティング全チェック合格
-- **パフォーマンス**: 大きなSQLファイルでも適切な応答時間とメモリ使用量を確認
-- **エンドツーエンドテスト**: CLI、API、MCPインターフェース全てでSQL分析機能が正常動作
+  - CREATE TABLE、CREATE VIEW、CREATE PROCEDURE等の完全な抽出をサポート
+  - tree-sitter-sql をオプショナル依存として追加
 
 ### 📚 ドキュメント
 - **SQLフォーマットガイド**: 専用のSQL出力フォーマットドキュメントを作成
 - **使用例**: 全ての出力フォーマットの実例とベストプラクティスを文書化
-- **移行ガイド**: 既存のSQL出力から新フォーマットへの移行手順を提供
 
 ## [1.9.6] - 2025-11-06
 
