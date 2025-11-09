@@ -4,6 +4,7 @@ Factory for creating language-specific formatters for different output types.
 """
 
 from .base_formatter import BaseFormatter
+from .csharp_formatter import CSharpTableFormatter
 from .html_formatter import HtmlFormatter
 from .java_formatter import JavaTableFormatter
 from .javascript_formatter import JavaScriptTableFormatter
@@ -29,6 +30,8 @@ class LanguageFormatterFactory:
         "js": JavaScriptTableFormatter,  # JavaScript alias
         "typescript": TypeScriptTableFormatter,  # TypeScript files use TypeScript formatter
         "ts": TypeScriptTableFormatter,  # TypeScript alias
+        "csharp": CSharpTableFormatter,  # C# files use C# formatter
+        "cs": CSharpTableFormatter,  # C# alias
     }
 
     @classmethod

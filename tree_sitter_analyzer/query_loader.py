@@ -86,8 +86,8 @@ class QueryLoader:
                         if isinstance(attr_value, str):
                             queries[attr_name] = attr_value
                         elif isinstance(attr_value, dict):
-                            # Convert dict to string representation for queries
-                            queries[attr_name] = str(attr_value)
+                            # Merge dict queries into the main queries dict
+                            queries.update(attr_value)
 
             self._loaded_queries[language] = queries
             self._query_modules[language] = module

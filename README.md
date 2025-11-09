@@ -4,11 +4,11 @@
 
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-3556%20passed-brightgreen.svg)](#quality-assurance)
+[![Tests](https://img.shields.io/badge/tests-3559%20passed-brightgreen.svg)](#quality-assurance)
 [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer)
 [![Quality](https://img.shields.io/badge/quality-enterprise%20grade-blue.svg)](#quality-assurance)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
-[![Version](https://img.shields.io/badge/version-1.9.8-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
+[![Version](https://img.shields.io/badge/version-1.9.9-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
 [![zread](https://img.shields.io/badge/Ask_Zread-_.svg?style=flat&color=00b0aa&labelColor=000000&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB3aWR0aD0iMTYiIGhlaWdodD0iMTYiIHZpZXdCb3g9IjAgMCAxNiAxNiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTQuOTYxNTYgMS42MDAxSDIuMjQxNTZDMS44ODgxIDEuNjAwMSAxLjYwMTU2IDEuODg2NjQgMS42MDE1NiAyLjI0MDFWNC45NjAxQzEuNjAxNTYgNS4zMTM1NiAxLjg4ODEgNS42MDAxIDIuMjQxNTYgNS42MDAxSDQuOTYxNTZDNS4zMTUwMiA1LjYwMDEgNS42MDE1NiA1LjMxMzU2IDUuNjAxNTYgNC45NjAxVjIuMjQwMUM1LjYwMTU2IDEuODg2NjQgNS4zMTUwMiAxLjYwMDEgNC45NjE1NiAxLjYwMDFaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik00Ljk2MTU2IDEwLjM5OTlIMi4yNDE1NkMxLjg4ODEgMTAuMzk5OSAxLjYwMTU2IDEwLjY4NjQgMS42MDE1NiAxMS4wMzk5VjEzLjc1OTlDMS42MDE1NiAxNC4xMTM0IDEuODg4MSAxNC4zOTk5IDIuMjQxNTYgMTQuMzk5OUg0Ljk2MTU2QzUuMzE1MDIgMTQuMzk5OSA1LjYwMTU2IDE0LjExMzQgNS42MDE1NiAxMy43NTk5VjExLjAzOTlDNS42MDE1NiAxMC42ODY0IDUuMzE1MDIgMTAuMzk5OSA0Ljk2MTU2IDEwLjM5OTlaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik0xMy43NTg0IDEuNjAwMUgxMS4wMzg0QzEwLjY4NSAxLjYwMDEgMTAuMzk4NCAxLjg4NjY0IDEwLjM5ODQgMi4yNDAxVjQuOTYwMUMxMC4zOTg0IDUuMzEzNTYgMTAuNjg1IDUuNjAwMSAxMS4wMzg0IDUuNjAwMUgxMy43NTg0QzE0LjExMTkgNS42MDAxIDE0LjM5ODQgNS4zMTM1NiAxNC4zOTg0IDQuOTYwMVYyLjI0MDFDMTQuMzk4NCAxLjg4NjY0IDE0LjExMTkgMS42MDAxIDEzLjc1ODQgMS42MDAxWiIgZmlsbD0iI2ZmZiIvPgo8cGF0aCBkPSJNNCAxMkwxMiA0TDQgMTJaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik00IDEyTDEyIDQiIHN0cm9rZT0iI2ZmZiIgc3Ryb2tlLXdpZHRoPSIxLjUiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPgo8L3N2Zz4K&logoColor=ffffff)](https://zread.ai/aimasteracc/tree-sitter-analyzer)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
@@ -35,6 +35,28 @@
 
 ---
 
+## 🎉 What's New in v1.9.9
+
+### C# Language Support Added! 🆕
+
+We're excited to announce **complete C# language support** with modern features:
+
+- **Type Extraction**: Classes, interfaces, records, enums, structs
+- **Member Analysis**: Methods, constructors, properties, fields, constants, events
+- **Modern C# Features**: 
+  - C# 8+ nullable reference types
+  - C# 9+ records
+  - Async/await pattern detection
+  - Attribute (annotation) extraction
+  - Generic types support
+- **Advanced Analysis**: Tree-sitter query support for complex code patterns
+- **Flexible Output Formats**: Full table, compact table, and CSV formats
+- **Full Integration**: Available in CLI, API, and MCP interfaces
+
+Perfect for .NET developers and AI assistants working with C# codebases!
+
+---
+
 ## 1. 💡 Project Features
 
 Tree-sitter Analyzer is an enterprise-grade code analysis tool designed for the AI era, providing:
@@ -51,6 +73,7 @@ Tree-sitter Analyzer is an enterprise-grade code analysis tool designed for the 
 |---------------------|---------------|--------------|
 | **Java** | Complete Support | Spring framework, JPA, enterprise features |
 | **Python** | Complete Support | Type annotations, decorators, modern Python features |
+| **C#** | 🆕 Complete Support | Classes, interfaces, records, properties, async/await, attributes, modern C# features |
 | **SQL** | 🆕 Enhanced Complete Support | Tables, views, stored procedures, functions, triggers, indexes with specialized output formatting |
 | **JavaScript** | Complete Support | ES6+, React/Vue/Angular, JSX |
 | **TypeScript** | Complete Support | Interfaces, types, decorators, TSX/JSX, framework detection |
@@ -58,10 +81,10 @@ Tree-sitter Analyzer is an enterprise-grade code analysis tool designed for the 
 | **CSS** | 🆕 Complete Support | Selector analysis, property classification, style rule extraction, intelligent categorization |
 | **Markdown** | Complete Support | Headers, code blocks, links, images, tables, task lists, blockquotes |
 
-**Note:** Currently, only the above 8 languages have complete plugin implementations. Languages such as C/C++, Rust, Go, JSON are defined in `LanguageDetector` but do not have functional plugin implementations at this time.
+**Note:** Currently, only the above 9 languages have complete plugin implementations. Languages such as C/C++, Rust, Go, JSON are defined in `LanguageDetector` but do not have functional plugin implementations at this time.
 
 ### 🏆 Production Ready
-- **3,556 Tests** - 100% pass rate, enterprise-grade quality assurance
+- **3,559 Tests** - 100% pass rate, enterprise-grade quality assurance
 - **High Coverage** - Comprehensive test coverage
 - **Cross-platform Support** - Compatible with Windows, macOS, Linux
 - **Continuous Maintenance** - Active development and community support
@@ -723,7 +746,7 @@ uv run python -m tree_sitter_analyzer --show-query-languages
 ## 8. 🏆 Quality Assurance
 
 ### 📊 Quality Metrics
-- **3,556 tests** - 100% pass rate ✅
+- **3,559 tests** - 100% pass rate ✅
 - **High code coverage** - Comprehensive test suite
 - **Zero test failures** - Production ready
 - **Cross-platform support** - Windows, macOS, Linux

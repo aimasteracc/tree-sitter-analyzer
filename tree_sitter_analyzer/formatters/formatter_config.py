@@ -99,6 +99,20 @@ LANGUAGE_FORMATTER_CONFIG: dict[str, dict[str, str]] = {
         "csv": "new",
         "json": "new",
     },
+    "csharp": {
+        "table": "legacy",
+        "compact": "legacy",
+        "full": "legacy",
+        "csv": "legacy",
+        "json": "legacy",
+    },
+    "cs": {  # Alias for C#
+        "table": "legacy",
+        "compact": "legacy",
+        "full": "legacy",
+        "csv": "legacy",
+        "json": "legacy",
+    },
 }
 
 # Default strategy for unknown languages

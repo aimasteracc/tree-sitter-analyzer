@@ -4,11 +4,11 @@
 
 [![Pythonバージョン](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![ライセンス](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![テスト](https://img.shields.io/badge/tests-3556%20passed-brightgreen.svg)](#8--品質保証)
+[![テスト](https://img.shields.io/badge/tests-3559%20passed-brightgreen.svg)](#8--品質保証)
 [![カバレッジ](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer)
 [![品質](https://img.shields.io/badge/quality-enterprise%20grade-blue.svg)](#8--品質保証)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
-[![バージョン](https://img.shields.io/badge/version-1.9.8-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
+[![バージョン](https://img.shields.io/badge/version-1.9.9-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
 [![zread](https://img.shields.io/badge/Ask_Zread-_.svg?style=flat&color=00b0aa&labelColor=000000&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB3aWR0aD0iMTYiIGhlaWdodD0iMTYiIHZpZXdCb3g9IjAgMCAxNiAxNiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTQuOTYxNTYgMS42MDAxSDIuMjQxNTZDMS44ODgxIDEuNjAwMSAxLjYwMTU2IDEuODg2NjQgMS42MDE1NiAyLjI0MDFWNC45NjAxQzEuNjAxNTYgNS4zMTM1NiAxLjg4ODEgNS42MDAxIDIuMjQxNTYgNS42MDAxSDQuOTYxNTZDNS4zMTUwMiA1LjYwMDEgNS42MDE1NiA1LjMxMzU2IDUuNjAxNTYgNC45NjAxVjIuMjQwMUM1LjYwMTU2IDEuODg2NjQgNS4zMTUwMiAxLjYwMDEgNC45NjE1NiAxLjYwMDFaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik00Ljk2MTU2IDEwLjM5OTlIMi4yNDE1NkMxLjg4ODEgMTAuMzk5OSAxLjYwMTU2IDEwLjY4NjQgMS42MDE1NiAxMS4wMzk5VjEzLjc1OTlDMS42MDE1NiAxNC4xMTM0IDEuODg4MSAxNC4zOTk5IDIuMjQxNTYgMTQuMzk5OUg0Ljk2MTU2QzUuMzE1MDIgMTQuMzk5OSA1LjYwMTU2IDE0LjExMzQgNS42MDE1NiAxMy43NTk5VjExLjAzOTlDNS42MDE1NiAxMC42ODY0IDUuMzE1MDIgMTAuMzk5OSA0Ljk2MTU2IDEwLjM5OTlaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik0xMy43NTg0IDEuNjAwMUgxMS4wMzg0QzEwLjY4NSAxLjYwMDEgMTAuMzk4NCAxLjg4NjY0IDEwLjM5ODQgMi4yNDAxVjQuOTYwMUMxMC4zOTg0IDUuMzEzNTYgMTAuNjg1IDUuNjAwMSAxMS4wMzg0IDUuNjAwMUgxMy43NTg0QzE0LjExMTkgNS42MDAxIDE0LjM5ODQgNS4zMTM1NiAxNC4zOTg0IDQuOTYwMVYyLjI0MDFDMTQuMzk4NCAxLjg4NjY0IDE0LjExMTkgMS42MDAxIDEzLjc1ODQgMS42MDAxWiIgZmlsbD0iI2ZmZiIvPgo8cGF0aCBkPSJNNCAxMkwxMiA0TDQgMTJaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik00IDEyTDEyIDQiIHN0cm9rZT0iI2ZmZiIgc3Ryb2tlLXdpZHRoPSIxLjUiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPgo8L3N2Zz4K&logoColor=ffffff)](https://zread.ai/aimasteracc/tree-sitter-analyzer)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
@@ -35,6 +35,28 @@
 
 ---
 
+## 🎉 v1.9.9の新機能
+
+### C#言語サポートを追加！🆕
+
+**完全なC#言語サポート**を提供開始しました。モダンな機能を含みます：
+
+- **型抽出**：クラス、インターフェース、レコード、列挙型、構造体
+- **メンバー解析**：メソッド、コンストラクタ、プロパティ、フィールド、定数、イベント
+- **モダンC#機能**：
+  - C# 8+ nullable参照型
+  - C# 9+ レコード型
+  - Async/awaitパターン検出
+  - 属性（アノテーション）抽出
+  - ジェネリック型サポート
+- **高度な解析**：Tree-sitterクエリによる複雑なコードパターン解析
+- **柔軟な出力形式**：完全テーブル、コンパクトテーブル、CSV形式
+- **完全統合**：CLI、API、MCPインターフェースで利用可能
+
+.NET開発者とC#コードベースを扱うAIアシスタントに最適！
+
+---
+
 ## 1. 💡 主な特徴
 
 Tree-sitter Analyzerは、AI時代のために設計されたエンタープライズグレードのコード解析ツールで、以下を提供します：
@@ -51,6 +73,7 @@ Tree-sitter Analyzerは、AI時代のために設計されたエンタープラ�
 |------------------|---------------|---------|
 | **Java** | 完全サポート | Springフレームワーク、JPA、エンタープライズ機能 |
 | **Python** | 完全サポート | 型アノテーション、デコレータ、モダンPython機能 |
+| **C#** | 🆕 完全サポート | クラス、インターフェース、レコード、プロパティ、async/await、属性、モダンC#機能 |
 | **SQL** | 🆕 強化された完全サポート | テーブル、ビュー、ストアドプロシージャ、関数、トリガー、インデックス、専用出力フォーマット |
 | **JavaScript** | 完全サポート | ES6+、React/Vue/Angular、JSX |
 | **TypeScript** | 完全サポート | インターフェース、型、デコレータ、TSX/JSX、フレームワーク検出 |
@@ -58,10 +81,10 @@ Tree-sitter Analyzerは、AI時代のために設計されたエンタープラ�
 | **CSS** | 🆕 完全サポート | セレクタ解析、プロパティ分類、スタイルルール抽出、インテリジェント分類 |
 | **Markdown** | 完全サポート | 見出し、コードブロック、リンク、画像、表、タスクリスト、引用 |
 
-**注記:** 現在、上記8言語のみが完全なプラグイン実装を持っています。C/C++、Rust、Go、JSONなどは`LanguageDetector`に定義されていますが、現時点では機能的なプラグイン実装がありません。
+**注記:** 現在、上記9言語のみが完全なプラグイン実装を持っています。C/C++、Rust、Go、JSONなどは`LanguageDetector`に定義されていますが、現時点では機能的なプラグイン実装がありません。
 
 ### 🏆 本番環境対応
-- **3,556のテスト** - 100%合格率、エンタープライズグレードの品質保証
+- **3,559のテスト** - 100%合格率、エンタープライズグレードの品質保証
 - **高カバレッジ** - 包括的なテストスイート
 - **クロスプラットフォームサポート** - Windows、macOS、Linuxとの完全な互換性
 - **継続的なメンテナンス** - アクティブな開発とコミュニティサポート
@@ -719,7 +742,7 @@ uv run tree-sitter-analyzer --show-query-languages
 ## 8. 🏆 品質保証
 
 ### 📊 品質メトリクス
-- **3,556のテスト** - 100%合格率 ✅
+- **3,559のテスト** - 100%合格率 ✅
 - **高コードカバレッジ** - 包括的なテストスイート
 - **ゼロテスト失敗** - 本番環境対応
 - **クロスプラットフォームサポート** - Windows、macOS、Linux

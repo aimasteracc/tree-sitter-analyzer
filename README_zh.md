@@ -4,11 +4,11 @@
 
 [![Python版本](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![许可证](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![测试](https://img.shields.io/badge/tests-3556%20passed-brightgreen.svg)](#质量保证)
+[![测试](https://img.shields.io/badge/tests-3559%20passed-brightgreen.svg)](#质量保证)
 [![覆盖率](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer)
 [![质量](https://img.shields.io/badge/quality-enterprise%20grade-blue.svg)](#质量保证)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
-[![版本](https://img.shields.io/badge/version-1.9.8-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
+[![版本](https://img.shields.io/badge/version-1.9.9-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
 [![zread](https://img.shields.io/badge/Ask_Zread-_.svg?style=flat&color=00b0aa&labelColor=000000&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB3aWR0aD0iMTYiIGhlaWdodD0iMTYiIHZpZXdCb3g9IjAgMCAxNiAxNiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTQuOTYxNTYgMS42MDAxSDIuMjQxNTZDMS44ODgxIDEuNjAwMSAxLjYwMTU2IDEuODg2NjQgMS42MDE1NiAyLjI0MDFWNC45NjAxQzEuNjAxNTYgNS4zMTM1NiAxLjg4ODEgNS42MDAxIDIuMjQxNTYgNS42MDAxSDQuOTYxNTZDNS4zMTUwMiA1LjYwMDEgNS42MDE1NiA1LjMxMzU2IDUuNjAxNTYgNC45NjAxVjIuMjQwMUM1LjYwMTU2IDEuODg2NjQgNS4zMTUwMiAxLjYwMDEgNC45NjE1NiAxLjYwMDFaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik00Ljk2MTU2IDEwLjM5OTlIMi4yNDE1NkMxLjg4ODEgMTAuMzk5OSAxLjYwMTU2IDEwLjY4NjQgMS42MDE1NiAxMS4wMzk5VjEzLjc1OTlDMS42MDE1NiAxNC4xMTM0IDEuODg4MSAxNC4zOTk5IDIuMjQxNTYgMTQuMzk5OUg0Ljk2MTU2QzUuMzE1MDIgMTQuMzk5OSA1LjYwMTU2IDE0LjExMzQgNS42MDE1NiAxMy43NTk5VjExLjAzOTlDNS42MDE1NiAxMC42ODY0IDUuMzE1MDIgMTAuMzk5OSA0Ljk2MTU2IDEwLjM5OTlaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik0xMy43NTg0IDEuNjAwMUgxMS4wMzg0QzEwLjY4NSAxLjYwMDEgMTAuMzk4NCAxLjg4NjY0IDEwLjM5ODQgMi4yNDAxVjQuOTYwMUMxMC4zOTg0IDUuMzEzNTYgMTAuNjg1IDUuNjAwMSAxMS4wMzg0IDUuNjAwMUgxMy43NTg0QzE0LjExMTkgNS42MDAxIDE0LjM5ODQgNS4zMTM1NiAxNC4zOTg0IDQuOTYwMVYyLjI0MDFDMTQuMzk4NCAxLjg4NjY0IDE0LjExMTkgMS42MDAxIDEzLjc1ODQgMS42MDAxWiIgZmlsbD0iI2ZmZiIvPgo8cGF0aCBkPSJNNCAxMkwxMiA0TDQgMTJaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik00IDEyTDEyIDQiIHN0cm9rZT0iI2ZmZiIgc3Ryb2tlLXdpZHRoPSIxLjUiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPgo8L3N2Zz4K&logoColor=ffffff)](https://zread.ai/aimasteracc/tree-sitter-analyzer)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
@@ -36,6 +36,28 @@
 
 ---
 
+## 🎉 v1.9.9 新特性
+
+### 新增C#语言支持！🆕
+
+我们很高兴地宣布**完整的C#语言支持**，包含现代特性：
+
+- **类型提取**：类、接口、记录、枚举、结构体
+- **成员分析**：方法、构造函数、属性、字段、常量、事件
+- **现代C#特性**：
+  - C# 8+ 可空引用类型
+  - C# 9+ 记录类型
+  - Async/await 模式检测
+  - 特性（注解）提取
+  - 泛型类型支持
+- **高级分析**：支持Tree-sitter查询的复杂代码模式分析
+- **灵活输出格式**：完整表格、紧凑表格和CSV格式
+- **全面集成**：CLI、API和MCP接口均可使用
+
+完美支持.NET开发者和使用C#代码库的AI助手！
+
+---
+
 ## 1. 💡 项目特色
 
 Tree-sitter Analyzer 是一个为AI时代设计的企业级代码分析工具，提供：
@@ -52,6 +74,7 @@ Tree-sitter Analyzer 是一个为AI时代设计的企业级代码分析工具，
 |---------|---------|---------|
 | **Java** | 完整支持 | Spring框架、JPA、企业级特性 |
 | **Python** | 完整支持 | 类型注解、装饰器、现代Python特性 |
+| **C#** | 🆕 完整支持 | 类、接口、记录、属性、async/await、特性、现代C#特性 |
 | **SQL** | 🆕 增强完整支持 | 表、视图、存储过程、函数、触发器、索引，专用输出格式 |
 | **JavaScript** | 完整支持 | ES6+、React/Vue/Angular、JSX |
 | **TypeScript** | 完整支持 | 接口、类型、装饰器、TSX/JSX、框架检测 |
@@ -59,10 +82,10 @@ Tree-sitter Analyzer 是一个为AI时代设计的企业级代码分析工具，
 | **CSS** | 🆕 完整支持 | 选择器分析、属性分类、样式规则提取、智能分类 |
 | **Markdown** | 完整支持 | 标题、代码块、链接、图片、表格、任务列表、引用 |
 
-**备注:** 目前仅以上8种语言具有完整的插件实现。C/C++、Rust、Go、JSON等语言虽在`LanguageDetector`中定义，但目前尚无功能性插件实现。
+**备注:** 目前仅以上9种语言具有完整的插件实现。C/C++、Rust、Go、JSON等语言虽在`LanguageDetector`中定义，但目前尚无功能性插件实现。
 
 ### 🏆 生产就绪
-- **3,556个测试** - 100%通过率，企业级质量保证
+- **3,559个测试** - 100%通过率，企业级质量保证
 - **高覆盖率** - 全面的测试覆盖
 - **跨平台支持** - Windows、macOS、Linux全平台兼容
 - **持续维护** - 活跃的开发和社区支持
@@ -724,7 +747,7 @@ uv run tree-sitter-analyzer --show-query-languages
 ## 8. 🏆 质量保证
 
 ### 📊 质量指标
-- **3,556个测试** - 100%通过率 ✅
+- **3,559个测试** - 100%通过率 ✅
 - **高代码覆盖率** - 全面测试套件
 - **零测试失败** - 生产就绪
 - **跨平台支持** - Windows、macOS、Linux
