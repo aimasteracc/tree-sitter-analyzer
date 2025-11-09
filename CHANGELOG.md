@@ -2,6 +2,26 @@
 
 ## [Unreleased]
 
+### 🎉 New Features
+- **C# Language Support**: Added complete C# language support with modern features
+  - Classes, interfaces, records, enums, structs extraction
+  - Methods, constructors, properties extraction
+  - Fields, constants, events extraction
+  - Using directives (import) extraction
+  - Support for C# 8+ nullable reference types
+  - Support for C# 9+ records
+  - Async/await pattern detection
+  - Attribute (annotation) extraction
+  - Generic types support
+  - Tree-sitter query support for advanced code analysis
+  - **C# Table Formatter**: Dedicated formatter for C# code output
+    - Full table format with namespace, classes, methods, fields
+    - Compact table format for quick overview
+    - CSV format for data processing
+    - Support for multi-class files
+    - Proper handling of C# visibility modifiers (public, private, protected, internal)
+  - Full integration with CLI, API, and MCP interfaces
+
 ## [1.9.8] - 2025-11-09
 
 ### 🔄 リリース管理

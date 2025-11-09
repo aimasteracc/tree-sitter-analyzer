@@ -37,6 +37,9 @@ class LanguageLoader:
         "rust": "tree_sitter_rust",
         "go": "tree_sitter_go",
         "markdown": "tree_sitter_markdown",
+        "sql": "tree_sitter_sql",
+        "csharp": "tree_sitter_c_sharp",
+        "cs": "tree_sitter_c_sharp",  # C# alias
     }
 
     # TypeScript特別処理（TypeScriptとTSX）

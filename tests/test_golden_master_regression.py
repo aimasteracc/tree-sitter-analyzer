@@ -165,6 +165,10 @@ class TestGoldenMasterRegression:
             ("examples/sample_database.sql", "sql_sample_database", "full"),
             ("examples/sample_database.sql", "sql_sample_database", "compact"),
             ("examples/sample_database.sql", "sql_sample_database", "csv"),
+            # C# tests
+            ("examples/Sample.cs", "csharp_sample", "full"),
+            ("examples/Sample.cs", "csharp_sample", "compact"),
+            ("examples/Sample.cs", "csharp_sample", "csv"),
         ],
     )
     def test_golden_master_comparison(

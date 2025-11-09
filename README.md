@@ -51,6 +51,7 @@ Tree-sitter Analyzer is an enterprise-grade code analysis tool designed for the 
 |---------------------|---------------|--------------|
 | **Java** | Complete Support | Spring framework, JPA, enterprise features |
 | **Python** | Complete Support | Type annotations, decorators, modern Python features |
+| **C#** | 🆕 Complete Support | Classes, interfaces, records, properties, async/await, attributes, modern C# features |
 | **SQL** | 🆕 Enhanced Complete Support | Tables, views, stored procedures, functions, triggers, indexes with specialized output formatting |
 | **JavaScript** | Complete Support | ES6+, React/Vue/Angular, JSX |
 | **TypeScript** | Complete Support | Interfaces, types, decorators, TSX/JSX, framework detection |
@@ -58,7 +59,7 @@ Tree-sitter Analyzer is an enterprise-grade code analysis tool designed for the 
 | **CSS** | 🆕 Complete Support | Selector analysis, property classification, style rule extraction, intelligent categorization |
 | **Markdown** | Complete Support | Headers, code blocks, links, images, tables, task lists, blockquotes |
 
-**Note:** Currently, only the above 8 languages have complete plugin implementations. Languages such as C/C++, Rust, Go, JSON are defined in `LanguageDetector` but do not have functional plugin implementations at this time.
+**Note:** Currently, only the above 9 languages have complete plugin implementations. Languages such as C/C++, Rust, Go, JSON are defined in `LanguageDetector` but do not have functional plugin implementations at this time.
 
 ### 🏆 Production Ready
 - **3,556 Tests** - 100% pass rate, enterprise-grade quality assurance

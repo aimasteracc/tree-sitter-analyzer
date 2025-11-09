@@ -62,13 +62,15 @@ dependencies = [
     "mcp>=1.12.3",
     "tree-sitter-javascript>=0.23.1,<0.25.0",
     "tree-sitter-markdown>=0.3.1",
-    "tree-sitter-html>=0.23.0,<0.25.0",  # HTML language support with MarkupElement data model
-    "tree-sitter-css>=0.23.0,<0.25.0",   # CSS language support with StyleElement data model
+    "tree-sitter-html>=0.23.0,<0.25.0", # HTML language support with MarkupElement data model
+    "tree-sitter-css>=0.23.0,<0.25.0", # CSS language support with StyleElement data model
     "psutil>=5.9.8",
     "tree-sitter-typescript>=0.23.2",
     "deepdiff>=6.7.1",
+    "tree-sitter-c-sharp>=0.23.1",
 ]
 
+# Add C# to optional dependencies
 [project.optional-dependencies]
 # Core language support - install specific languages as needed
 java = ["tree-sitter-java>=0.23.5,<0.25.0"]
@@ -89,6 +91,7 @@ markdown = ["tree-sitter-markdown>=0.3.1"]
 html = ["tree-sitter-html>=0.23.0,<0.25.0"]  # HTML DOM analysis with element classification
 css = ["tree-sitter-css>=0.23.0,<0.25.0"]   # CSS selector and property analysis with specificity calculation
 sql = ["tree-sitter-sql>=0.3.0"]   # SQL language support for database schema analysis
+csharp = ["tree-sitter-c-sharp>=0.23.1"]  # C# language support for .NET applications
 
 # Language bundles for convenience
 web = [
@@ -122,6 +125,7 @@ all-languages = [
     "tree-sitter-html>=0.23.0,<0.25.0",
     "tree-sitter-css>=0.23.0,<0.25.0",
     "tree-sitter-sql>=0.3.0",  # SQL language support for database schema analysis
+    "tree-sitter-c-sharp>=0.23.1",  # C# language support for .NET applications
 ]
 
 # MCP server support
@@ -263,6 +267,7 @@ typescript = "tree_sitter_analyzer.languages.typescript_plugin:TypeScriptPlugin"
 markdown = "tree_sitter_analyzer.languages.markdown_plugin:MarkdownPlugin"
 html = "tree_sitter_analyzer.languages.html_plugin:HtmlPlugin"
 css = "tree_sitter_analyzer.languages.css_plugin:CssPlugin"
+csharp = "tree_sitter_analyzer.languages.csharp_plugin:CSharpPlugin"
 
 [project.urls]
 Homepage = "https://github.com/aimasteracc/tree-sitter-analyzer"
