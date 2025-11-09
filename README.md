@@ -35,6 +35,28 @@
 
 ---
 
+## 🎉 What's New in v1.9.9
+
+### C# Language Support Added! 🆕
+
+We're excited to announce **complete C# language support** with modern features:
+
+- **Type Extraction**: Classes, interfaces, records, enums, structs
+- **Member Analysis**: Methods, constructors, properties, fields, constants, events
+- **Modern C# Features**: 
+  - C# 8+ nullable reference types
+  - C# 9+ records
+  - Async/await pattern detection
+  - Attribute (annotation) extraction
+  - Generic types support
+- **Advanced Analysis**: Tree-sitter query support for complex code patterns
+- **Flexible Output Formats**: Full table, compact table, and CSV formats
+- **Full Integration**: Available in CLI, API, and MCP interfaces
+
+Perfect for .NET developers and AI assistants working with C# codebases!
+
+---
+
 ## 1. 💡 Project Features
 
 Tree-sitter Analyzer is an enterprise-grade code analysis tool designed for the AI era, providing:
