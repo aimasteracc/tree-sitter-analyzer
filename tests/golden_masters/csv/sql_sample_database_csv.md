@@ -2,7 +2,7 @@ Element,Type,Lines,Columns_Parameters,Dependencies
 users,table,5-13,7 columns,
 orders,table,16-23,5 columns,
 products,table,26-34,7 columns,
-active_users,view,37-44,,
+INT,view,37-44,,
 order_summary,view,47-55,,
 get_user_orders,procedure,58-68,9 parameters,
 update_product_stock,procedure,71-86,11 parameters,
