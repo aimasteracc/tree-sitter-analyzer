@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.9.9] - 2025-11-09
+
 ### 🎉 New Features
 - **C# Language Support**: Added complete C# language support with modern features
   - Classes, interfaces, records, enums, structs extraction
@@ -21,6 +23,11 @@
     - Support for multi-class files
     - Proper handling of C# visibility modifiers (public, private, protected, internal)
   - Full integration with CLI, API, and MCP interfaces
+
+### 🎯 Quality Assurance
+- **Test Count**: 3,559 tests all passed
+- **Coverage**: Automated tracking via Codecov
+- **Quality**: Enterprise grade
 
 ## [1.9.8] - 2025-11-09
 
