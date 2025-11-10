@@ -302,22 +302,22 @@
 **Priority:** Critical  
 **Estimated Time:** 4 hours
 
-- [ ] Create `tests/test_languages/test_csharp_plugin.py`
-- [ ] Test plugin instantiation
-- [ ] Test `get_language_name()`
-- [ ] Test `get_file_extensions()`
-- [ ] Test `get_tree_sitter_language()`
-- [ ] Test class extraction
-- [ ] Test method extraction
-- [ ] Test property extraction
-- [ ] Test field extraction
-- [ ] Test using directive extraction
-- [ ] Test attribute extraction
-- [ ] Test async method detection
-- [ ] Test record extraction
-- [ ] Test enum extraction
-- [ ] Test interface extraction
-- [ ] Test edge cases (empty files, invalid syntax)
+- [x] Create `tests/test_languages/test_csharp_plugin.py`
+- [x] Test plugin instantiation
+- [x] Test `get_language_name()`
+- [x] Test `get_file_extensions()`
+- [x] Test `get_tree_sitter_language()`
+- [x] Test class extraction
+- [x] Test method extraction
+- [x] Test property extraction
+- [x] Test field extraction
+- [x] Test using directive extraction
+- [x] Test attribute extraction
+- [x] Test async method detection
+- [x] Test record extraction
+- [x] Test enum extraction
+- [x] Test interface extraction
+- [x] Test edge cases (empty files, invalid syntax)
 
 **Files to Create:**
 - `tests/test_languages/test_csharp_plugin.py`
@@ -336,11 +336,11 @@
 **Priority:** High  
 **Estimated Time:** 2 hours
 
-- [ ] Test CLI analysis of C# files
-- [ ] Test format output (Full, Compact, CSV)
-- [ ] Test MCP tools with C# files
-- [ ] Test large C# file performance
-- [ ] Test partial class handling
+- [x] Test CLI analysis of C# files
+- [x] Test format output (Full, Compact, CSV)
+- [x] Test MCP tools with C# files
+- [x] Test large C# file performance
+- [x] Test partial class handling
 
 **Files to Modify:**
 - `tests/test_integration/` (add C# test cases)
@@ -359,10 +359,10 @@
 **Priority:** Medium  
 **Estimated Time:** 2 hours
 
-- [ ] Create golden master files for C# samples
-- [ ] Test full format output matches golden master
-- [ ] Test CSV format output matches golden master
-- [ ] Update golden master test suite
+- [x] Create golden master files for C# samples
+- [x] Test full format output matches golden master
+- [x] Test CSV format output matches golden master
+- [x] Update golden master test suite
 
 **Files to Create:**
 - `tests/golden_masters/csharp_sample_full.txt`
@@ -433,15 +433,15 @@
 **Priority:** High  
 **Estimated Time:** 2 hours
 
-- [ ] Test C# analysis via CLI
+- [x] Test C# analysis via CLI
   - `uv run tree-sitter-analyzer examples/Sample.cs`
   - `uv run tree-sitter-analyzer examples/Sample.cs --format compact`
   - `uv run tree-sitter-analyzer examples/Sample.cs --format csv`
-- [ ] Test C# analysis via MCP
+- [x] Test C# analysis via MCP
   - `mcp analyze_code_structure examples/Sample.cs`
-- [ ] Test with real-world C# projects
-- [ ] Verify output quality
-- [ ] Check performance
+- [x] Test with real-world C# projects
+- [x] Verify output quality
+- [x] Check performance
 
 **Validation:**
 - CLI works correctly
@@ -459,10 +459,10 @@
 **Priority:** Critical  
 **Estimated Time:** 30 minutes
 
-- [ ] Run `uv run openspec validate add-csharp-language-support --strict`
-- [ ] Fix any validation errors
-- [ ] Ensure all specs are complete
-- [ ] Verify task completion
+- [x] Run `uv run openspec validate add-csharp-language-support --strict`
+- [x] Fix any validation errors
+- [x] Ensure all specs are complete
+- [x] Verify task completion
 
 **Validation:**
 - OpenSpec validation passes
@@ -477,12 +477,12 @@
 **Priority:** Critical  
 **Estimated Time:** 1 hour
 
-- [ ] Review all code changes
-- [ ] Verify no breaking changes
-- [ ] Verify isolation (no impact on other languages)
-- [ ] Check code quality
-- [ ] Check documentation completeness
-- [ ] Verify all success criteria met
+- [x] Review all code changes
+- [x] Verify no breaking changes
+- [x] Verify isolation (no impact on other languages)
+- [x] Check code quality
+- [x] Check documentation completeness
+- [x] Verify all success criteria met
 
 **Validation:**
 - Code review complete
@@ -538,16 +538,16 @@ Parallel Tasks:
 
 ## Success Criteria Checklist
 
-- [ ] C# plugin loads successfully via PluginManager
-- [ ] C# files (`.cs`) are recognized and processed
-- [ ] C# elements (classes, methods, properties, fields) are extracted correctly
-- [ ] C# analysis works through CLI, API, and MCP interfaces
-- [ ] Format output (Full, Compact, CSV) works for C# files
-- [ ] All tests pass (mypy, ruff, pytest)
-- [ ] Test coverage ≥80% for C# plugin
-- [ ] No regression in existing language plugins
-- [ ] Modern C# features are supported (records, nullable reference types)
-- [ ] C# attributes are extracted correctly
+- [x] C# plugin loads successfully via PluginManager
+- [x] C# files (`.cs`) are recognized and processed
+- [x] C# elements (classes, methods, properties, fields) are extracted correctly
+- [x] C# analysis works through CLI, API, and MCP interfaces
+- [x] Format output (Full, Compact, CSV) works for C# files
+- [x] All tests pass (mypy, ruff, pytest)
+- [x] Test coverage ≥80% for C# plugin
+- [x] No regression in existing language plugins
+- [x] Modern C# features are supported (records, nullable reference types)
+- [x] C# attributes are extracted correctly
 
 ---
 
