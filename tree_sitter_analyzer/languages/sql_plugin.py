@@ -469,40 +469,50 @@ class SQLElementExtractor(ElementExtractor):
             root_node: Root node of the SQL AST
             classes: List to append extracted view Class elements to
         """
+        import re
+        
         for node in self._traverse_nodes(root_node):
             if node.type == "create_view":
-                # Look for object_reference within create_view
+                # Get raw text first for fallback regex
+                raw_text = self._get_node_text(node)
                 view_name = None
+                
+                # Try AST parsing: Look for object_reference within create_view
                 for child in node.children:
                     if child.type == "object_reference":
                         # object_reference contains identifier
                         for subchild in child.children:
                             if subchild.type == "identifier":
-                                view_name = self._get_node_text(subchild).strip()
-                                # Validate view name
-                                if view_name and self._is_valid_identifier(view_name):
-                                    break
-                                else:
-                                    view_name = None
+                                potential_name = self._get_node_text(subchild)
+                                if potential_name:
+                                    potential_name = potential_name.strip()
+                                    # Validate view name
+                                    if potential_name and self._is_valid_identifier(potential_name):
+                                        view_name = potential_name
+                                        break
                         if view_name:
                             break
                 
-                # Fallback: Parse from raw text if AST parsing failed
-                if not view_name:
-                    raw_text = self._get_node_text(node)
-                    # Look for pattern: CREATE VIEW <name> AS
-                    import re
+                # Fallback 1: Direct text regex if AST didn't work
+                if not view_name and raw_text:
                     match = re.search(r'CREATE\s+VIEW\s+(\w+)\s+AS', raw_text, re.IGNORECASE)
                     if match:
                         potential_name = match.group(1).strip()
                         if self._is_valid_identifier(potential_name):
+                            view_name = potential_name
+                
+                # Fallback 2: More aggressive regex if still missing
+                if not view_name and raw_text:
+                    match = re.search(r'CREATE\s+VIEW\s+([a-zA-Z_]\w*)', raw_text, re.IGNORECASE)
+                    if match:
+                        potential_name = match.group(1).strip()
+                        if self._is_valid_identifier(potential_name) and potential_name.upper() not in ('AS', 'IF', 'NOT', 'EXISTS'):
                             view_name = potential_name
 
                 if view_name:
                     try:
                         start_line = node.start_point[0] + 1
                         end_line = node.end_point[0] + 1
-                        raw_text = self._get_node_text(node)
 
                         cls = Class(
                             name=view_name,
