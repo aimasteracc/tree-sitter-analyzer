@@ -257,7 +257,7 @@ class JavaElementExtractor(ElementExtractor):
 
         packages: list[Package] = []
 
-        # Extract package declaration
+        # Extract package declaration from AST
         if tree and tree.root_node:
             for child in tree.root_node.children:
                 if child.type == "package_declaration":
@@ -267,6 +267,16 @@ class JavaElementExtractor(ElementExtractor):
                         # Also set current_package for use by other extractors
                         self.current_package = package_info.name
                     break  # Only one package declaration per file
+        
+        # Fallback: Parse package from source code if AST parsing failed
+        if not packages:
+            import re
+            match = re.search(r'^\s*package\s+([\w.]+)\s*;', source_code, re.MULTILINE)
+            if match:
+                package_name = match.group(1).strip()
+                packages.append(Package(name=package_name))
+                self.current_package = package_name
+                log_debug(f"Package extracted via fallback: {package_name}")
 
         log_debug(f"Extracted {len(packages)} packages")
         return packages

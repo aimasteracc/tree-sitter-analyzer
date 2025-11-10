@@ -486,6 +486,17 @@ class SQLElementExtractor(ElementExtractor):
                                     view_name = None
                         if view_name:
                             break
+                
+                # Fallback: Parse from raw text if AST parsing failed
+                if not view_name:
+                    raw_text = self._get_node_text(node)
+                    # Look for pattern: CREATE VIEW <name> AS
+                    import re
+                    match = re.search(r'CREATE\s+VIEW\s+(\w+)\s+AS', raw_text, re.IGNORECASE)
+                    if match:
+                        potential_name = match.group(1).strip()
+                        if self._is_valid_identifier(potential_name):
+                            view_name = potential_name
 
                 if view_name:
                     try:
@@ -969,6 +980,17 @@ class SQLElementExtractor(ElementExtractor):
                                     view_name = None
                         if view_name:
                             break
+                
+                # Fallback: Parse from raw text if AST parsing failed
+                if not view_name:
+                    raw_text = self._get_node_text(node)
+                    # Look for pattern: CREATE VIEW <name> AS
+                    import re
+                    match = re.search(r'CREATE\s+VIEW\s+(\w+)\s+AS', raw_text, re.IGNORECASE)
+                    if match:
+                        potential_name = match.group(1).strip()
+                        if self._is_valid_identifier(potential_name):
+                            view_name = potential_name
 
                 # Extract source tables from SELECT statement
                 self._extract_view_sources(node, source_tables)
