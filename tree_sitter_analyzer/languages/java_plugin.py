@@ -271,12 +271,22 @@ class JavaElementExtractor(ElementExtractor):
         # Fallback: Parse package from source code if AST parsing failed
         if not packages:
             import re
-            match = re.search(r'^\s*package\s+([\w.]+)\s*;', source_code, re.MULTILINE)
-            if match:
-                package_name = match.group(1).strip()
-                packages.append(Package(name=package_name))
-                self.current_package = package_name
-                log_debug(f"Package extracted via fallback: {package_name}")
+            # Find package declaration with line number
+            lines = source_code.split('\n')
+            for line_num, line in enumerate(lines, start=1):
+                match = re.search(r'^\s*package\s+([\w.]+)\s*;', line)
+                if match:
+                    package_name = match.group(1).strip()
+                    packages.append(Package(
+                        name=package_name,
+                        start_line=line_num,
+                        end_line=line_num,
+                        raw_text=line.strip(),
+                        language="java"
+                    ))
+                    self.current_package = package_name
+                    log_debug(f"Package extracted via fallback: {package_name}")
+                    break
 
         log_debug(f"Extracted {len(packages)} packages")
         return packages
