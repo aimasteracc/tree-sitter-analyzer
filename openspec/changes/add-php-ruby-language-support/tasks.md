@@ -13,12 +13,12 @@
 **Priority:** Critical  
 **Estimated Time:** 1 hour
 
-- [ ] Verify `tree-sitter-php` package exists on PyPI
-- [ ] Verify `tree-sitter-ruby` package exists on PyPI
-- [ ] Check compatibility with `tree-sitter>=0.25.0`
-- [ ] Test basic installation: `pip install tree-sitter-php tree-sitter-ruby`
-- [ ] Verify language loading works with current tree-sitter version
-- [ ] Document any version constraints
+- [x] Verify `tree-sitter-php` package exists on PyPI
+- [x] Verify `tree-sitter-ruby` package exists on PyPI
+- [x] Check compatibility with `tree-sitter>=0.25.0`
+- [x] Test basic installation: `pip install tree-sitter-php tree-sitter-ruby`
+- [x] Verify language loading works with current tree-sitter version
+- [x] Document any version constraints
 
 **Validation:**
 - Both packages install successfully
@@ -33,11 +33,11 @@
 **Priority:** Critical  
 **Estimated Time:** 30 minutes
 
-- [ ] Add `tree-sitter-php` to optional dependencies
-- [ ] Add `tree-sitter-ruby` to optional dependencies
-- [ ] Add PHP and Ruby to language bundles (e.g., `all-languages`, `web`)
-- [ ] Update project description to mention PHP and Ruby support
-- [ ] Verify dependency resolution with `uv lock`
+- [x] Add `tree-sitter-php` to optional dependencies
+- [x] Add `tree-sitter-ruby` to optional dependencies
+- [x] Add PHP and Ruby to language bundles (e.g., `all-languages`, `web`)
+- [x] Update project description to mention PHP and Ruby support
+- [x] Verify dependency resolution with `uv lock`
 
 **Files to Modify:**
 - `pyproject.toml`
@@ -58,14 +58,14 @@
 **Priority:** Critical  
 **Estimated Time:** 2 hours
 
-- [ ] Create `tree_sitter_analyzer/languages/php_plugin.py`
-- [ ] Implement `PHPPlugin` class extending `LanguagePlugin`
-- [ ] Implement `get_language_name()` → "php"
-- [ ] Implement `get_file_extensions()` → [".php"]
-- [ ] Implement `get_tree_sitter_language()` with caching
-- [ ] Implement `create_extractor()` → PHPElementExtractor()
-- [ ] Add proper type hints for mypy compliance
-- [ ] Add docstrings for all public methods
+- [x] Create `tree_sitter_analyzer/languages/php_plugin.py`
+- [x] Implement `PHPPlugin` class extending `LanguagePlugin`
+- [x] Implement `get_language_name()` → "php"
+- [x] Implement `get_file_extensions()` → [".php"]
+- [x] Implement `get_tree_sitter_language()` with caching
+- [x] Implement `create_extractor()` → PHPElementExtractor()
+- [x] Add proper type hints for mypy compliance
+- [x] Add docstrings for all public methods
 
 **Files to Create:**
 - `tree_sitter_analyzer/languages/php_plugin.py`
@@ -84,14 +84,14 @@
 **Priority:** Critical  
 **Estimated Time:** 3 hours
 
-- [ ] Implement `PHPElementExtractor` class extending `ElementExtractor`
-- [ ] Initialize caches and state variables
-- [ ] Implement `_reset_caches()` method
-- [ ] Implement `_get_node_text_optimized()` method
-- [ ] Implement `_extract_namespace()` method
-- [ ] Implement `_extract_modifiers()` method (public, private, protected, static, final, abstract)
-- [ ] Implement `_determine_visibility()` method
-- [ ] Add performance optimization caches
+- [x] Implement `PHPElementExtractor` class extending `ElementExtractor`
+- [x] Initialize caches and state variables
+- [x] Implement `_reset_caches()` method
+- [x] Implement `_get_node_text_optimized()` method
+- [x] Implement `_extract_namespace()` method
+- [x] Implement `_extract_modifiers()` method (public, private, protected, static, final, abstract)
+- [x] Implement `_determine_visibility()` method
+- [x] Add performance optimization caches
 
 **Files to Modify:**
 - `tree_sitter_analyzer/languages/php_plugin.py`
@@ -109,15 +109,15 @@
 **Priority:** Critical  
 **Estimated Time:** 4 hours
 
-- [ ] Implement `extract_classes()` method
-- [ ] Implement `_extract_php_classes()` for class declarations
-- [ ] Implement `_extract_interfaces()` for interface declarations
-- [ ] Implement `_extract_traits()` for trait declarations
-- [ ] Implement `_extract_enums()` for enum declarations (PHP 8.1+)
-- [ ] Extract class name, modifiers, visibility
-- [ ] Extract extends and implements
-- [ ] Extract attributes (PHP 8+)
-- [ ] Generate fully qualified names with namespace
+- [x] Implement `extract_classes()` method
+- [x] Implement `_extract_php_classes()` for class declarations
+- [x] Implement `_extract_interfaces()` for interface declarations
+- [x] Implement `_extract_traits()` for trait declarations
+- [x] Implement `_extract_enums()` for enum declarations (PHP 8.1+)
+- [x] Extract class name, modifiers, visibility
+- [x] Extract extends and implements
+- [x] Extract attributes (PHP 8+)
+- [x] Generate fully qualified names with namespace
 
 **Files to Modify:**
 - `tree_sitter_analyzer/languages/php_plugin.py`
@@ -137,15 +137,15 @@
 **Priority:** Critical  
 **Estimated Time:** 4 hours
 
-- [ ] Implement `extract_functions()` method
-- [ ] Implement `_extract_methods()` for method declarations
-- [ ] Implement `_extract_functions()` for function declarations
-- [ ] Extract method/function name, parameters, return type
-- [ ] Extract modifiers (public, private, static, final, abstract)
-- [ ] Extract attributes (PHP 8+)
-- [ ] Detect magic methods (`__construct`, `__get`, etc.)
-- [ ] Calculate complexity score
-- [ ] Extract PHPDoc comments
+- [x] Implement `extract_functions()` method
+- [x] Implement `_extract_methods()` for method declarations
+- [x] Implement `_extract_functions()` for function declarations
+- [x] Extract method/function name, parameters, return type
+- [x] Extract modifiers (public, private, static, final, abstract)
+- [x] Extract attributes (PHP 8+)
+- [x] Detect magic methods (`__construct`, `__get`, etc.)
+- [x] Calculate complexity score
+- [x] Extract PHPDoc comments
 
 **Files to Modify:**
 - `tree_sitter_analyzer/languages/php_plugin.py`
@@ -165,13 +165,13 @@
 **Priority:** High  
 **Estimated Time:** 3 hours
 
-- [ ] Implement `extract_variables()` method
-- [ ] Implement `_extract_properties()` for property declarations
-- [ ] Implement `_extract_constants()` for constant declarations
-- [ ] Extract property/constant name, type, modifiers
-- [ ] Detect typed properties (PHP 7.4+)
-- [ ] Extract attributes on properties
-- [ ] Map properties/constants to Variable elements
+- [x] Implement `extract_variables()` method
+- [x] Implement `_extract_properties()` for property declarations
+- [x] Implement `_extract_constants()` for constant declarations
+- [x] Extract property/constant name, type, modifiers
+- [x] Detect typed properties (PHP 7.4+)
+- [x] Extract attributes on properties
+- [x] Map properties/constants to Variable elements
 
 **Files to Modify:**
 - `tree_sitter_analyzer/languages/php_plugin.py`
@@ -190,13 +190,13 @@
 **Priority:** High  
 **Estimated Time:** 2 hours
 
-- [ ] Implement `extract_imports()` method
-- [ ] Implement `_extract_use_statements()` for use declarations
-- [ ] Extract namespace imports
-- [ ] Extract function imports (`use function`)
-- [ ] Extract constant imports (`use const`)
-- [ ] Extract aliases
-- [ ] Map use statements to Import elements
+- [x] Implement `extract_imports()` method
+- [x] Implement `_extract_use_statements()` for use declarations
+- [x] Extract namespace imports
+- [x] Extract function imports (`use function`)
+- [x] Extract constant imports (`use const`)
+- [x] Extract aliases
+- [x] Map use statements to Import elements
 
 **Files to Modify:**
 - `tree_sitter_analyzer/languages/php_plugin.py`
@@ -215,13 +215,13 @@
 **Priority:** Critical  
 **Estimated Time:** 2 hours
 
-- [ ] Implement `analyze_file()` async method
-- [ ] Load PHP file with safe encoding detection
-- [ ] Parse file with tree-sitter-php
-- [ ] Extract all element types
-- [ ] Combine elements into AnalysisResult
-- [ ] Handle errors gracefully
-- [ ] Count AST nodes
+- [x] Implement `analyze_file()` async method
+- [x] Load PHP file with safe encoding detection
+- [x] Parse file with tree-sitter-php
+- [x] Extract all element types
+- [x] Combine elements into AnalysisResult
+- [x] Handle errors gracefully
+- [x] Count AST nodes
 
 **Files to Modify:**
 - `tree_sitter_analyzer/languages/php_plugin.py`
@@ -240,14 +240,14 @@
 **Priority:** High  
 **Estimated Time:** 2 hours
 
-- [ ] Create `tree_sitter_analyzer/queries/php.py`
-- [ ] Define PHP-specific tree-sitter queries
-- [ ] Query for classes, interfaces, traits, enums
-- [ ] Query for methods, functions
-- [ ] Query for properties, constants
-- [ ] Query for use statements
-- [ ] Query for attributes (PHP 8+)
-- [ ] Add docstrings and type hints
+- [x] Create `tree_sitter_analyzer/queries/php.py`
+- [x] Define PHP-specific tree-sitter queries
+- [x] Query for classes, interfaces, traits, enums
+- [x] Query for methods, functions
+- [x] Query for properties, constants
+- [x] Query for use statements
+- [x] Query for attributes (PHP 8+)
+- [x] Add docstrings and type hints
 
 **Files to Create:**
 - `tree_sitter_analyzer/queries/php.py`
@@ -265,14 +265,14 @@
 **Priority:** High  
 **Estimated Time:** 3 hours
 
-- [ ] Create `tree_sitter_analyzer/formatters/php_formatter.py`
-- [ ] Implement `PHPFullFormatter` for full table format
-- [ ] Implement `PHPCompactFormatter` for compact format
-- [ ] Implement `PHPCSVFormatter` for CSV format
-- [ ] Handle PHP-specific elements (traits, attributes, magic methods)
-- [ ] Update `formatter_config.py` to register PHP formatters
-- [ ] Update `language_formatter_factory.py` to include PHP
-- [ ] Add proper type hints and docstrings
+- [x] Create `tree_sitter_analyzer/formatters/php_formatter.py`
+- [x] Implement `PHPFullFormatter` for full table format
+- [x] Implement `PHPCompactFormatter` for compact format
+- [x] Implement `PHPCSVFormatter` for CSV format
+- [x] Handle PHP-specific elements (traits, attributes, magic methods)
+- [x] Update `formatter_config.py` to register PHP formatters
+- [x] Update `language_formatter_factory.py` to include PHP
+- [x] Add proper type hints and docstrings
 
 **Files to Create:**
 - `tree_sitter_analyzer/formatters/php_formatter.py`
@@ -297,14 +297,14 @@
 **Priority:** Critical  
 **Estimated Time:** 2 hours
 
-- [ ] Create `tree_sitter_analyzer/languages/ruby_plugin.py`
-- [ ] Implement `RubyPlugin` class extending `LanguagePlugin`
-- [ ] Implement `get_language_name()` → "ruby"
-- [ ] Implement `get_file_extensions()` → [".rb"]
-- [ ] Implement `get_tree_sitter_language()` with caching
-- [ ] Implement `create_extractor()` → RubyElementExtractor()
-- [ ] Add proper type hints for mypy compliance
-- [ ] Add docstrings for all public methods
+- [x] Create `tree_sitter_analyzer/languages/ruby_plugin.py`
+- [x] Implement `RubyPlugin` class extending `LanguagePlugin`
+- [x] Implement `get_language_name()` → "ruby"
+- [x] Implement `get_file_extensions()` → [".rb"]
+- [x] Implement `get_tree_sitter_language()` with caching
+- [x] Implement `create_extractor()` → RubyElementExtractor()
+- [x] Add proper type hints for mypy compliance
+- [x] Add docstrings for all public methods
 
 **Files to Create:**
 - `tree_sitter_analyzer/languages/ruby_plugin.py`
@@ -323,13 +323,13 @@
 **Priority:** Critical  
 **Estimated Time:** 3 hours
 
-- [ ] Implement `RubyElementExtractor` class extending `ElementExtractor`
-- [ ] Initialize caches and state variables
-- [ ] Implement `_reset_caches()` method
-- [ ] Implement `_get_node_text_optimized()` method
-- [ ] Implement `_extract_modifiers()` method
-- [ ] Implement `_determine_visibility()` method (public, private, protected)
-- [ ] Add performance optimization caches
+- [x] Implement `RubyElementExtractor` class extending `ElementExtractor`
+- [x] Initialize caches and state variables
+- [x] Implement `_reset_caches()` method
+- [x] Implement `_get_node_text_optimized()` method
+- [x] Implement `_extract_modifiers()` method
+- [x] Implement `_determine_visibility()` method (public, private, protected)
+- [x] Add performance optimization caches
 
 **Files to Modify:**
 - `tree_sitter_analyzer/languages/ruby_plugin.py`
@@ -347,13 +347,13 @@
 **Priority:** Critical  
 **Estimated Time:** 4 hours
 
-- [ ] Implement `extract_classes()` method
-- [ ] Implement `_extract_ruby_classes()` for class declarations
-- [ ] Implement `_extract_modules()` for module declarations
-- [ ] Extract class/module name
-- [ ] Extract inheritance (< SuperClass)
-- [ ] Extract included modules (include, prepend, extend)
-- [ ] Generate fully qualified names with namespace
+- [x] Implement `extract_classes()` method
+- [x] Implement `_extract_ruby_classes()` for class declarations
+- [x] Implement `_extract_modules()` for module declarations
+- [x] Extract class/module name
+- [x] Extract inheritance (< SuperClass)
+- [x] Extract included modules (include, prepend, extend)
+- [x] Generate fully qualified names with namespace
 
 **Files to Modify:**
 - `tree_sitter_analyzer/languages/ruby_plugin.py`
@@ -372,15 +372,15 @@
 **Priority:** Critical  
 **Estimated Time:** 4 hours
 
-- [ ] Implement `extract_functions()` method
-- [ ] Implement `_extract_methods()` for method declarations
-- [ ] Extract instance methods (`def method_name`)
-- [ ] Extract class methods (`def self.method_name`)
-- [ ] Extract method parameters
-- [ ] Detect blocks, procs, lambdas
-- [ ] Detect attr_accessor, attr_reader, attr_writer
-- [ ] Calculate complexity score
-- [ ] Extract YARD/RDoc comments
+- [x] Implement `extract_functions()` method
+- [x] Implement `_extract_methods()` for method declarations
+- [x] Extract instance methods (`def method_name`)
+- [x] Extract class methods (`def self.method_name`)
+- [x] Extract method parameters
+- [x] Detect blocks, procs, lambdas
+- [x] Detect attr_accessor, attr_reader, attr_writer
+- [x] Calculate complexity score
+- [x] Extract YARD/RDoc comments
 
 **Files to Modify:**
 - `tree_sitter_analyzer/languages/ruby_plugin.py`
@@ -400,12 +400,12 @@
 **Priority:** High  
 **Estimated Time:** 3 hours
 
-- [ ] Implement `extract_variables()` method
-- [ ] Implement `_extract_constants()` for constant declarations
-- [ ] Implement `_extract_instance_variables()` for @variables
-- [ ] Implement `_extract_class_variables()` for @@variables
-- [ ] Extract global variables ($variables)
-- [ ] Map variables to Variable elements
+- [x] Implement `extract_variables()` method
+- [x] Implement `_extract_constants()` for constant declarations
+- [x] Implement `_extract_instance_variables()` for @variables
+- [x] Implement `_extract_class_variables()` for @@variables
+- [x] Extract global variables ($variables)
+- [x] Map variables to Variable elements
 
 **Files to Modify:**
 - `tree_sitter_analyzer/languages/ruby_plugin.py`
@@ -424,11 +424,11 @@
 **Priority:** High  
 **Estimated Time:** 2 hours
 
-- [ ] Implement `extract_imports()` method
-- [ ] Implement `_extract_requires()` for require statements
-- [ ] Extract require_relative statements
-- [ ] Extract load statements
-- [ ] Map require statements to Import elements
+- [x] Implement `extract_imports()` method
+- [x] Implement `_extract_requires()` for require statements
+- [x] Extract require_relative statements
+- [x] Extract load statements
+- [x] Map require statements to Import elements
 
 **Files to Modify:**
 - `tree_sitter_analyzer/languages/ruby_plugin.py`
@@ -446,13 +446,13 @@
 **Priority:** Critical  
 **Estimated Time:** 2 hours
 
-- [ ] Implement `analyze_file()` async method
-- [ ] Load Ruby file with safe encoding detection
-- [ ] Parse file with tree-sitter-ruby
-- [ ] Extract all element types
-- [ ] Combine elements into AnalysisResult
-- [ ] Handle errors gracefully
-- [ ] Count AST nodes
+- [x] Implement `analyze_file()` async method
+- [x] Load Ruby file with safe encoding detection
+- [x] Parse file with tree-sitter-ruby
+- [x] Extract all element types
+- [x] Combine elements into AnalysisResult
+- [x] Handle errors gracefully
+- [x] Count AST nodes
 
 **Files to Modify:**
 - `tree_sitter_analyzer/languages/ruby_plugin.py`
@@ -474,28 +474,28 @@
 **Estimated Time:** 3 hours
 
 **PHP Samples:**
-- [ ] Create `examples/Sample.php` with basic PHP features
+- [x] Create `examples/Sample.php` with basic PHP features
   - Classes, methods, properties, functions
   - Namespaces, use statements
   - Attributes (PHP 8+)
-- [ ] Create `examples/SampleLaravel.php` with Laravel patterns
+- [x] Create `examples/SampleLaravel.php` with Laravel patterns
   - Controller class
   - Route attributes
   - Dependency injection
-- [ ] Create `examples/SampleWordPress.php` with WordPress patterns
+- [x] Create `examples/SampleWordPress.php` with WordPress patterns
   - Hooks, filters
   - Custom post types
 
 **Ruby Samples:**
-- [ ] Create `examples/Sample.rb` with basic Ruby features
+- [x] Create `examples/Sample.rb` with basic Ruby features
   - Classes, modules, methods
   - attr_accessor, attr_reader, attr_writer
   - require statements
-- [ ] Create `examples/SampleRails.rb` with Rails patterns
+- [x] Create `examples/SampleRails.rb` with Rails patterns
   - ActiveRecord model
   - Controller actions
   - Validations
-- [ ] Create `examples/SampleRSpec.rb` with RSpec patterns
+- [x] Create `examples/SampleRSpec.rb` with RSpec patterns
   - describe, context, it blocks
   - let, before, after
 
@@ -520,23 +520,23 @@
 **Priority:** Critical  
 **Estimated Time:** 4 hours
 
-- [ ] Create `tests/test_languages/test_php_plugin.py`
-- [ ] Test plugin instantiation
-- [ ] Test `get_language_name()`
-- [ ] Test `get_file_extensions()`
-- [ ] Test `get_tree_sitter_language()`
-- [ ] Test class extraction
-- [ ] Test interface extraction
-- [ ] Test trait extraction
-- [ ] Test enum extraction (PHP 8.1+)
-- [ ] Test method extraction
-- [ ] Test function extraction
-- [ ] Test property extraction
-- [ ] Test constant extraction
-- [ ] Test use statement extraction
-- [ ] Test attribute extraction (PHP 8+)
-- [ ] Test magic method detection
-- [ ] Test edge cases (empty files, invalid syntax)
+- [x] Create `tests/test_languages/test_php_plugin.py`
+- [x] Test plugin instantiation
+- [x] Test `get_language_name()`
+- [x] Test `get_file_extensions()`
+- [x] Test `get_tree_sitter_language()`
+- [x] Test class extraction
+- [x] Test interface extraction
+- [x] Test trait extraction
+- [x] Test enum extraction (PHP 8.1+)
+- [x] Test method extraction
+- [x] Test function extraction
+- [x] Test property extraction
+- [x] Test constant extraction
+- [x] Test use statement extraction
+- [x] Test attribute extraction (PHP 8+)
+- [x] Test magic method detection
+- [x] Test edge cases (empty files, invalid syntax)
 
 **Files to Create:**
 - `tests/test_languages/test_php_plugin.py`
@@ -555,21 +555,21 @@
 **Priority:** Critical  
 **Estimated Time:** 4 hours
 
-- [ ] Create `tests/test_languages/test_ruby_plugin.py`
-- [ ] Test plugin instantiation
-- [ ] Test `get_language_name()`
-- [ ] Test `get_file_extensions()`
-- [ ] Test `get_tree_sitter_language()`
-- [ ] Test class extraction
-- [ ] Test module extraction
-- [ ] Test method extraction (instance and class methods)
-- [ ] Test attr_accessor/reader/writer detection
-- [ ] Test constant extraction
-- [ ] Test instance variable extraction
-- [ ] Test class variable extraction
-- [ ] Test require statement extraction
-- [ ] Test block/proc/lambda detection
-- [ ] Test edge cases (empty files, invalid syntax)
+- [x] Create `tests/test_languages/test_ruby_plugin.py`
+- [x] Test plugin instantiation
+- [x] Test `get_language_name()`
+- [x] Test `get_file_extensions()`
+- [x] Test `get_tree_sitter_language()`
+- [x] Test class extraction
+- [x] Test module extraction
+- [x] Test method extraction (instance and class methods)
+- [x] Test attr_accessor/reader/writer detection
+- [x] Test constant extraction
+- [x] Test instance variable extraction
+- [x] Test class variable extraction
+- [x] Test require statement extraction
+- [x] Test block/proc/lambda detection
+- [x] Test edge cases (empty files, invalid syntax)
 
 **Files to Create:**
 - `tests/test_languages/test_ruby_plugin.py`
@@ -588,13 +588,13 @@
 **Priority:** High  
 **Estimated Time:** 3 hours
 
-- [ ] Test CLI analysis of PHP files
-- [ ] Test CLI analysis of Ruby files
-- [ ] Test format output (Full, Compact, CSV) for PHP
-- [ ] Test format output (Full, Compact, CSV) for Ruby
-- [ ] Test MCP tools with PHP files
-- [ ] Test MCP tools with Ruby files
-- [ ] Test large file performance
+- [x] Test CLI analysis of PHP files
+- [x] Test CLI analysis of Ruby files
+- [x] Test format output (Full, Compact, CSV) for PHP
+- [x] Test format output (Full, Compact, CSV) for Ruby
+- [x] Test MCP tools with PHP files
+- [x] Test MCP tools with Ruby files
+- [x] Test large file performance
 
 **Files to Modify:**
 - `tests/test_integration/` (add PHP/Ruby test cases)
@@ -614,27 +614,27 @@
 **Estimated Time:** 3 hours
 
 **PHP Golden Masters:**
-- [ ] Run `uv run python scripts/generate_golden_masters.py php examples/Sample.php --name php_sample`
-- [ ] Verify generated files:
+- [x] Run `uv run python scripts/generate_golden_masters.py php examples/Sample.php --name php_sample`
+- [x] Verify generated files:
   - `tests/golden_masters/full/php_sample_full.md`
   - `tests/golden_masters/compact/php_sample_compact.md`
   - `tests/golden_masters/csv/php_sample_csv.csv`
-- [ ] Run consistency check (3 times) to verify stable output
-- [ ] Fix any inconsistencies in PHP formatter
+- [x] Run consistency check (3 times) to verify stable output
+- [x] Fix any inconsistencies in PHP formatter
 
 **Ruby Golden Masters:**
-- [ ] Run `uv run python scripts/generate_golden_masters.py ruby examples/Sample.rb --name ruby_sample`
-- [ ] Verify generated files:
+- [x] Run `uv run python scripts/generate_golden_masters.py ruby examples/Sample.rb --name ruby_sample`
+- [x] Verify generated files:
   - `tests/golden_masters/full/ruby_sample_full.md`
   - `tests/golden_masters/compact/ruby_sample_compact.md`
   - `tests/golden_masters/csv/ruby_sample_csv.csv`
-- [ ] Run consistency check (3 times) to verify stable output
-- [ ] Fix any inconsistencies in Ruby formatter
+- [x] Run consistency check (3 times) to verify stable output
+- [x] Fix any inconsistencies in Ruby formatter
 
 **Update Test Suite:**
-- [ ] Add PHP golden master test cases to `tests/test_golden_master_regression.py`
-- [ ] Add Ruby golden master test cases to `tests/test_golden_master_regression.py`
-- [ ] Verify all golden master tests pass
+- [x] Add PHP golden master test cases to `tests/test_golden_master_regression.py`
+- [x] Add Ruby golden master test cases to `tests/test_golden_master_regression.py`
+- [x] Verify all golden master tests pass
 
 **Files to Create:**
 - `tests/golden_masters/full/php_sample_full.md`
@@ -664,14 +664,14 @@
 **Priority:** High  
 **Estimated Time:** 3 hours
 
-- [ ] Update `README.md` to include PHP and Ruby in supported languages
-- [ ] Update language support table
-- [ ] Add PHP example to README
-- [ ] Add Ruby example to README
-- [ ] Update `README_ja.md`
-- [ ] Update `README_zh.md`
-- [ ] Update `CHANGELOG.md` with PHP and Ruby support
-- [ ] Update language count (9 → 11 languages)
+- [x] Update `README.md` to include PHP and Ruby in supported languages
+- [x] Update language support table
+- [x] Add PHP example to README
+- [x] Add Ruby example to README
+- [x] Update `README_ja.md`
+- [x] Update `README_zh.md`
+- [x] Update `CHANGELOG.md` with PHP and Ruby support
+- [x] Update language count (9 → 11 languages)
 
 **Files to Modify:**
 - `README.md`
@@ -692,15 +692,15 @@
 **Priority:** Critical  
 **Estimated Time:** 1 hour
 
-- [ ] Run `mypy` on PHP plugin - must pass with zero errors
-- [ ] Run `mypy` on Ruby plugin - must pass with zero errors
-- [ ] Run `ruff` on PHP plugin - must pass with zero errors
-- [ ] Run `ruff` on Ruby plugin - must pass with zero errors
-- [ ] Run `black` on both plugins - must pass
-- [ ] Run `isort` on both plugins - must pass
-- [ ] Run `pytest` - all tests must pass
-- [ ] Run `pytest --cov` - coverage must be >80%
-- [ ] Verify no regression in existing tests
+- [x] Run `mypy` on PHP plugin - must pass with zero errors
+- [x] Run `mypy` on Ruby plugin - must pass with zero errors
+- [x] Run `ruff` on PHP plugin - must pass with zero errors
+- [x] Run `ruff` on Ruby plugin - must pass with zero errors
+- [x] Run `black` on both plugins - must pass
+- [x] Run `isort` on both plugins - must pass
+- [x] Run `pytest` - all tests must pass
+- [x] Run `pytest --cov` - coverage must be >80%
+- [x] Verify no regression in existing tests
 
 **Validation:**
 - All quality checks pass
@@ -718,22 +718,22 @@
 **Estimated Time:** 2 hours
 
 **PHP Testing:**
-- [ ] Test PHP analysis via CLI
+- [x] Test PHP analysis via CLI
   - `uv run tree-sitter-analyzer examples/Sample.php`
   - `uv run tree-sitter-analyzer examples/Sample.php --format compact`
   - `uv run tree-sitter-analyzer examples/Sample.php --format csv`
-- [ ] Test PHP analysis via MCP
+- [x] Test PHP analysis via MCP
   - `mcp analyze_code_structure examples/Sample.php`
-- [ ] Test with real-world PHP projects (WordPress, Laravel)
+- [x] Test with real-world PHP projects (WordPress, Laravel)
 
 **Ruby Testing:**
-- [ ] Test Ruby analysis via CLI
+- [x] Test Ruby analysis via CLI
   - `uv run tree-sitter-analyzer examples/Sample.rb`
   - `uv run tree-sitter-analyzer examples/Sample.rb --format compact`
   - `uv run tree-sitter-analyzer examples/Sample.rb --format csv`
-- [ ] Test Ruby analysis via MCP
+- [x] Test Ruby analysis via MCP
   - `mcp analyze_code_structure examples/Sample.rb`
-- [ ] Test with real-world Ruby projects (Rails, RSpec)
+- [x] Test with real-world Ruby projects (Rails, RSpec)
 
 **Validation:**
 - CLI works correctly for both languages
@@ -751,12 +751,12 @@
 **Priority:** Critical  
 **Estimated Time:** 2 hours
 
-- [ ] Review all code changes
-- [ ] Verify no breaking changes
-- [ ] Verify isolation (no impact on other languages)
-- [ ] Check code quality
-- [ ] Check documentation completeness
-- [ ] Verify all success criteria met
+- [x] Review all code changes
+- [x] Verify no breaking changes
+- [x] Verify isolation (no impact on other languages)
+- [x] Check code quality
+- [x] Check documentation completeness
+- [x] Verify all success criteria met
 
 **Validation:**
 - Code review complete
@@ -834,25 +834,25 @@ Parallel Tasks:
 ## Success Criteria Checklist
 
 ### PHP Support
-- [ ] PHP plugin loads successfully via PluginManager
-- [ ] PHP files (`.php`) are recognized and processed
-- [ ] PHP elements (classes, methods, functions, properties) are extracted correctly
-- [ ] PHP analysis works through CLI, API, and MCP interfaces
-- [ ] Format output (Full, Compact, CSV) works for PHP files
-- [ ] Modern PHP 8+ features are supported (attributes, enums, union types)
+- [x] PHP plugin loads successfully via PluginManager
+- [x] PHP files (`.php`) are recognized and processed
+- [x] PHP elements (classes, methods, functions, properties) are extracted correctly
+- [x] PHP analysis works through CLI, API, and MCP interfaces
+- [x] Format output (Full, Compact, CSV) works for PHP files
+- [x] Modern PHP 8+ features are supported (attributes, enums, union types)
 
 ### Ruby Support
-- [ ] Ruby plugin loads successfully via PluginManager
-- [ ] Ruby files (`.rb`) are recognized and processed
-- [ ] Ruby elements (classes, modules, methods) are extracted correctly
-- [ ] Ruby analysis works through CLI, API, and MCP interfaces
-- [ ] Format output (Full, Compact, CSV) works for Ruby files
-- [ ] Modern Ruby 3+ features are supported (pattern matching, endless methods)
+- [x] Ruby plugin loads successfully via PluginManager
+- [x] Ruby files (`.rb`) are recognized and processed
+- [x] Ruby elements (classes, modules, methods) are extracted correctly
+- [x] Ruby analysis works through CLI, API, and MCP interfaces
+- [x] Format output (Full, Compact, CSV) works for Ruby files
+- [x] Modern Ruby 3+ features are supported (pattern matching, endless methods)
 
 ### Quality
-- [ ] All tests pass (mypy, ruff, pytest)
-- [ ] Test coverage ≥80% for both plugins
-- [ ] No regression in existing language plugins
+- [x] All tests pass (mypy, ruff, pytest)
+- [x] Test coverage ≥80% for both plugins
+- [x] No regression in existing language plugins
 
 ---
 
