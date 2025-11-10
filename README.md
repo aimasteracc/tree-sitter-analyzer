@@ -37,9 +37,38 @@
 
 ## 🎉 What's New in v1.9.9
 
-### C# Language Support Added! 🆕
+### PHP & Ruby Language Support Added! 🆕
 
-We're excited to announce **complete C# language support** with modern features:
+We're excited to announce **complete PHP and Ruby language support** with modern features:
+
+#### PHP Support
+- **Type Extraction**: Classes, interfaces, traits, enums, namespaces
+- **Member Analysis**: Methods, constructors, properties, constants, magic methods
+- **Modern PHP Features**: 
+  - PHP 8+ attributes
+  - Readonly properties
+  - Typed properties and return types
+  - Enums with methods
+  - Named arguments support
+- **Advanced Analysis**: Tree-sitter query support for complex code patterns
+- **Flexible Output Formats**: Full table, compact table, and CSV formats
+
+#### Ruby Support
+- **Type Extraction**: Classes, modules, mixins
+- **Member Analysis**: Instance methods, class methods, singleton methods, attribute accessors
+- **Ruby Features**:
+  - Blocks, procs, and lambdas
+  - Metaprogramming patterns
+  - Rails-specific patterns
+  - Module inclusion and extension
+  - Class and instance variables
+- **Advanced Analysis**: Tree-sitter query support for Ruby idioms
+
+Perfect for web developers and AI assistants working with PHP (Laravel, Symfony, WordPress) and Ruby (Rails) codebases!
+
+### C# Language Support Added!
+
+Complete C# language support with modern features:
 
 - **Type Extraction**: Classes, interfaces, records, enums, structs
 - **Member Analysis**: Methods, constructors, properties, fields, constants, events
@@ -73,15 +102,17 @@ Tree-sitter Analyzer is an enterprise-grade code analysis tool designed for the 
 |---------------------|---------------|--------------|
 | **Java** | Complete Support | Spring framework, JPA, enterprise features |
 | **Python** | Complete Support | Type annotations, decorators, modern Python features |
-| **C#** | 🆕 Complete Support | Classes, interfaces, records, properties, async/await, attributes, modern C# features |
-| **SQL** | 🆕 Enhanced Complete Support | Tables, views, stored procedures, functions, triggers, indexes with specialized output formatting |
+| **C#** | Complete Support | Classes, interfaces, records, properties, async/await, attributes, modern C# features |
+| **PHP** | 🆕 Complete Support | Classes, interfaces, traits, enums, namespaces, attributes, magic methods, modern PHP 8+ features |
+| **Ruby** | 🆕 Complete Support | Classes, modules, mixins, blocks, procs, lambdas, metaprogramming, Rails patterns |
+| **SQL** | Enhanced Complete Support | Tables, views, stored procedures, functions, triggers, indexes with specialized output formatting |
 | **JavaScript** | Complete Support | ES6+, React/Vue/Angular, JSX |
 | **TypeScript** | Complete Support | Interfaces, types, decorators, TSX/JSX, framework detection |
-| **HTML** | 🆕 Complete Support | DOM structure analysis, element classification, attribute extraction, hierarchical relationships |
-| **CSS** | 🆕 Complete Support | Selector analysis, property classification, style rule extraction, intelligent categorization |
+| **HTML** | Complete Support | DOM structure analysis, element classification, attribute extraction, hierarchical relationships |
+| **CSS** | Complete Support | Selector analysis, property classification, style rule extraction, intelligent categorization |
 | **Markdown** | Complete Support | Headers, code blocks, links, images, tables, task lists, blockquotes |
 
-**Note:** Currently, only the above 9 languages have complete plugin implementations. Languages such as C/C++, Rust, Go, JSON are defined in `LanguageDetector` but do not have functional plugin implementations at this time.
+**Note:** Currently, only the above 11 languages have complete plugin implementations. Languages such as C/C++, Rust, Go, JSON are defined in `LanguageDetector` but do not have functional plugin implementations at this time.
 
 ### 🏆 Production Ready
 - **3,559 Tests** - 100% pass rate, enterprise-grade quality assurance

@@ -114,6 +114,8 @@ class LanguageDetector:
         "cpp",
         "rust",
         "go",
+        "php",
+        "ruby",
         "markdown",
         "html",
         "css",

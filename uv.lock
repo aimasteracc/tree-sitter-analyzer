@@ -2085,7 +2085,9 @@ all-languages = [
     { name = "tree-sitter-java" },
     { name = "tree-sitter-javascript" },
     { name = "tree-sitter-markdown" },
+    { name = "tree-sitter-php" },
     { name = "tree-sitter-python" },
+    { name = "tree-sitter-ruby" },
     { name = "tree-sitter-rust" },
     { name = "tree-sitter-sql" },
     { name = "tree-sitter-typescript" },
@@ -2182,6 +2184,9 @@ mcp = [
     { name = "pydantic" },
     { name = "pydantic-settings" },
 ]
+php = [
+    { name = "tree-sitter-php" },
+]
 popular = [
     { name = "tree-sitter-java" },
     { name = "tree-sitter-javascript" },
@@ -2190,6 +2195,9 @@ popular = [
 ]
 python = [
     { name = "tree-sitter-python" },
+]
+ruby = [
+    { name = "tree-sitter-ruby" },
 ]
 rust = [
     { name = "tree-sitter-rust" },
@@ -2220,6 +2228,8 @@ web = [
     { name = "tree-sitter-css" },
     { name = "tree-sitter-html" },
     { name = "tree-sitter-javascript" },
+    { name = "tree-sitter-php" },
+    { name = "tree-sitter-ruby" },
     { name = "tree-sitter-typescript" },
 ]
 
@@ -2365,6 +2375,9 @@ requires-dist = [
     { name = "tree-sitter-markdown", marker = "extra == 'full'", specifier = ">=0.3.1" },
     { name = "tree-sitter-markdown", marker = "extra == 'integration'", specifier = ">=0.3.1" },
     { name = "tree-sitter-markdown", marker = "extra == 'markdown'", specifier = ">=0.3.1" },
+    { name = "tree-sitter-php", marker = "extra == 'all-languages'", specifier = ">=0.23.0,<0.25.0" },
+    { name = "tree-sitter-php", marker = "extra == 'php'", specifier = ">=0.23.0,<0.25.0" },
+    { name = "tree-sitter-php", marker = "extra == 'web'", specifier = ">=0.23.0,<0.25.0" },
     { name = "tree-sitter-python", specifier = ">=0.23.6,<0.25.0" },
     { name = "tree-sitter-python", marker = "extra == 'all'", specifier = ">=0.23.0,<0.25.0" },
     { name = "tree-sitter-python", marker = "extra == 'all-languages'", specifier = ">=0.23.0,<0.25.0" },
@@ -2373,6 +2386,9 @@ requires-dist = [
     { name = "tree-sitter-python", marker = "extra == 'popular'", specifier = ">=0.23.0,<0.25.0" },
     { name = "tree-sitter-python", marker = "extra == 'python'", specifier = ">=0.23.0,<0.25.0" },
     { name = "tree-sitter-python", marker = "extra == 'test'", specifier = ">=0.23.0" },
+    { name = "tree-sitter-ruby", marker = "extra == 'all-languages'", specifier = ">=0.23.0,<0.25.0" },
+    { name = "tree-sitter-ruby", marker = "extra == 'ruby'", specifier = ">=0.23.0,<0.25.0" },
+    { name = "tree-sitter-ruby", marker = "extra == 'web'", specifier = ">=0.23.0,<0.25.0" },
     { name = "tree-sitter-rust", marker = "extra == 'all'", specifier = ">=0.20.0,<0.25.0" },
     { name = "tree-sitter-rust", marker = "extra == 'all-languages'", specifier = ">=0.20.0,<0.25.0" },
     { name = "tree-sitter-rust", marker = "extra == 'full'", specifier = ">=0.20.0,<0.25.0" },
@@ -2393,7 +2409,7 @@ requires-dist = [
     { name = "types-psutil", marker = "extra == 'dev'", specifier = ">=5.9.0" },
     { name = "types-psutil", marker = "extra == 'full'", specifier = ">=5.9.0" },
 ]
-provides-extras = ["java", "javascript", "typescript", "python", "c", "cpp", "rust", "go", "markdown", "html", "css", "sql", "csharp", "web", "systems", "popular", "all-languages", "mcp", "dev", "test", "integration", "full", "all"]
+provides-extras = ["java", "javascript", "typescript", "python", "c", "cpp", "rust", "go", "markdown", "html", "css", "sql", "csharp", "php", "ruby", "web", "systems", "popular", "all-languages", "mcp", "dev", "test", "integration", "full", "all"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -2552,6 +2568,20 @@ wheels = [
 ]
 
 [[package]]
+name = "tree-sitter-php"
+version = "0.24.1"
+source = { registry = "https://pypi.org/simple" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/a4/c8/1a499038cb4036bea1d560ffbc807a6fb940261aa22296bd49a62ed8bcba/tree_sitter_php-0.24.1-cp310-abi3-macosx_10_9_x86_64.whl", hash = "sha256:d56e2dcf025450f84a2cdbf4b18a09e6cb88b92e9e6858e63de3d4133ab2e43e", size = 219550, upload-time = "2025-08-16T22:14:30.212Z" },
+    { url = "https://files.pythonhosted.org/packages/ab/5e/b52f2599acb29f6899470f7137d3d491c752b88df3950fb7408aea57ddca/tree_sitter_php-0.24.1-cp310-abi3-macosx_11_0_arm64.whl", hash = "sha256:29759c67d4c27a68c227ed82c0b7e4699617b1bd23757d50c081f81a12b4f80d", size = 229632, upload-time = "2025-08-16T22:14:31.85Z" },
+    { url = "https://files.pythonhosted.org/packages/6b/58/ca290da45380bd6ba7c6b0b98cc5fc30325c32c7f14f0c93196a451b19c4/tree_sitter_php-0.24.1-cp310-abi3-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:94b89832ac09f078eed2acd88598838bc51012224cbcebb916dbb6a37e74357e", size = 325351, upload-time = "2025-08-16T22:14:33Z" },
+    { url = "https://files.pythonhosted.org/packages/9a/c6/fd863a7a779d0ab67688939eba0e08bff7b1ffe731288d3d3610df21217b/tree_sitter_php-0.24.1-cp310-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:7a1404a30f2972498ace040b0029738b8dac45d0a12932ccb8b605eb94bafbe4", size = 313021, upload-time = "2025-08-16T22:14:34.394Z" },
+    { url = "https://files.pythonhosted.org/packages/48/ed/aace12f30c4f5474a9ad0e9da85c060174e3764342c9860974bb0feb02fc/tree_sitter_php-0.24.1-cp310-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:3e96f61462a960c78e5389c7ba6c16c25e66b465c763b8e63ad66423326c2fa7", size = 305905, upload-time = "2025-08-16T22:14:35.846Z" },
+    { url = "https://files.pythonhosted.org/packages/4e/c4/6c690c33b1ae9cae9505c0a2896f046fda174d72c46bdafce6aab3b2f2e7/tree_sitter_php-0.24.1-cp310-abi3-win_amd64.whl", hash = "sha256:1a1b65b72a8410d421f914ee13d38fd546a94d01cb834f69b27c78ba7589a5b5", size = 208014, upload-time = "2025-08-16T22:14:37.206Z" },
+    { url = "https://files.pythonhosted.org/packages/7b/69/54c670d725c092b89e76ca6984582b6a768b128ac1859ed48141b124da1d/tree_sitter_php-0.24.1-cp310-abi3-win_arm64.whl", hash = "sha256:56a70c5ef1bddb15f220a479b2f2edf3042c764b6c443921fbd7ca9174d664e3", size = 206033, upload-time = "2025-08-16T22:14:38.632Z" },
+]
+
+[[package]]
 name = "tree-sitter-python"
 version = "0.23.6"
 source = { registry = "https://pypi.org/simple" }
@@ -2564,6 +2594,21 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/1a/58/c5e61add45e34fb8ecbf057c500bae9d96ed7c9ca36edb7985da8ae45526/tree_sitter_python-0.23.6-cp39-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:7e048733c36f564b379831689006801feb267d8194f9e793fbb395ef1723335d", size = 109382, upload-time = "2024-12-22T23:09:49.49Z" },
     { url = "https://files.pythonhosted.org/packages/e9/f3/9b30893cae9b3811fe652dc6f90aaadfda12ae0b2757f5722fc7266f423c/tree_sitter_python-0.23.6-cp39-abi3-win_amd64.whl", hash = "sha256:a24027248399fb41594b696f929f9956828ae7cc85596d9f775e6c239cd0c2be", size = 75904, upload-time = "2024-12-22T23:09:51.597Z" },
     { url = "https://files.pythonhosted.org/packages/87/cb/ce35a65f83a47b510d8a2f1eddf3bdbb0d57aabc87351c8788caf3309f76/tree_sitter_python-0.23.6-cp39-abi3-win_arm64.whl", hash = "sha256:71334371bd73d5fe080aed39fbff49ed8efb9506edebe16795b0c7567ed6a272", size = 73649, upload-time = "2024-12-22T23:09:53.71Z" },
+]
+
+[[package]]
+name = "tree-sitter-ruby"
+version = "0.23.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/09/5b/6d24be4fde4743481bd8e3fd24b434870cb6612238c8544b71fe129ed850/tree_sitter_ruby-0.23.1.tar.gz", hash = "sha256:886ed200bfd1f3ca7628bf1c9fefd42421bbdba70c627363abda67f662caa21e", size = 489602, upload-time = "2024-11-11T04:51:30.328Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/23/2e/2717b9451c712b60f833827a696baf29d8e50a0f7dccbf22a8d7006cc19e/tree_sitter_ruby-0.23.1-cp39-abi3-macosx_10_9_x86_64.whl", hash = "sha256:39f391322d2210843f07081182dbf00f8f69cfbfa4687b9575cac6d324bae443", size = 177959, upload-time = "2024-11-11T04:51:19.958Z" },
+    { url = "https://files.pythonhosted.org/packages/e7/38/c41ecf7692b8ecccd26861d3293a88150a4a52fc081abe60f837030d7315/tree_sitter_ruby-0.23.1-cp39-abi3-macosx_11_0_arm64.whl", hash = "sha256:aa4ee7433bd42fac22e2dad4a3c0f332292ecf482e610316828c711a0bb7f794", size = 195069, upload-time = "2024-11-11T04:51:21.82Z" },
+    { url = "https://files.pythonhosted.org/packages/d8/01/14ef2d5107e6f42b64a400c3bbc3dd3b8fd24c3cef5306004ae03668f231/tree_sitter_ruby-0.23.1-cp39-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:62b36813a56006b7569db7868f6b762caa3f4e419bd0f8cf9ccbb4abb1b6254c", size = 226761, upload-time = "2024-11-11T04:51:23.021Z" },
+    { url = "https://files.pythonhosted.org/packages/23/dd/1171b5dd25da10f768732a20fb62d2e3ae66e3b42329351f2ce5bf723abb/tree_sitter_ruby-0.23.1-cp39-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:f7bcd93972b4ca2803856d4fe0fbd04123ff29c4592bbb9f12a27528bd252341", size = 214427, upload-time = "2024-11-11T04:51:24.854Z" },
+    { url = "https://files.pythonhosted.org/packages/60/bc/de76c877a90fd8a62cd60f496d7832efddc1b18a148593d9aa9b4a9ce5e0/tree_sitter_ruby-0.23.1-cp39-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:66c65d6c2a629783ca4ab2bab539bd6f271ce6f77cacb62845831e11665b5bd3", size = 210409, upload-time = "2024-11-11T04:51:26.093Z" },
+    { url = "https://files.pythonhosted.org/packages/dd/4a/f5bcca350b84cdf75a53e918b8efa06c46ed650d99d3ef22195e9d8020cc/tree_sitter_ruby-0.23.1-cp39-abi3-win_amd64.whl", hash = "sha256:02e2c19ebefe29226c14aa63e11e291d990f5b5c20a99940ab6e7eda44e744e5", size = 179843, upload-time = "2024-11-11T04:51:27.265Z" },
+    { url = "https://files.pythonhosted.org/packages/71/5c/a2e068ad4b2c4ba9b774a88b24149168d3bcd94f58b964e49dcabfe5fd24/tree_sitter_ruby-0.23.1-cp39-abi3-win_arm64.whl", hash = "sha256:ed042007e89f2cceeb1cbdd8b0caa68af1e2ce54c7eb2053ace760f90657ac9f", size = 178025, upload-time = "2024-11-11T04:51:29.051Z" },
 ]
 
 [[package]]

@@ -113,6 +113,27 @@ LANGUAGE_FORMATTER_CONFIG: dict[str, dict[str, str]] = {
         "csv": "legacy",
         "json": "legacy",
     },
+    "php": {
+        "table": "legacy",
+        "compact": "legacy",
+        "full": "legacy",
+        "csv": "legacy",
+        "json": "legacy",
+    },
+    "ruby": {
+        "table": "legacy",
+        "compact": "legacy",
+        "full": "legacy",
+        "csv": "legacy",
+        "json": "legacy",
+    },
+    "rb": {  # Alias for Ruby
+        "table": "legacy",
+        "compact": "legacy",
+        "full": "legacy",
+        "csv": "legacy",
+        "json": "legacy",
+    },
 }
 
 # Default strategy for unknown languages

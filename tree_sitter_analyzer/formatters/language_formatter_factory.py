@@ -9,7 +9,9 @@ from .html_formatter import HtmlFormatter
 from .java_formatter import JavaTableFormatter
 from .javascript_formatter import JavaScriptTableFormatter
 from .markdown_formatter import MarkdownFormatter
+from .php_formatter import PHPTableFormatter
 from .python_formatter import PythonTableFormatter
+from .ruby_formatter import RubyTableFormatter
 from .sql_formatter_wrapper import SQLFormatterWrapper
 from .typescript_formatter import TypeScriptTableFormatter
 
@@ -32,6 +34,9 @@ class LanguageFormatterFactory:
         "ts": TypeScriptTableFormatter,  # TypeScript alias
         "csharp": CSharpTableFormatter,  # C# files use C# formatter
         "cs": CSharpTableFormatter,  # C# alias
+        "php": PHPTableFormatter,  # PHP files use PHP formatter
+        "ruby": RubyTableFormatter,  # Ruby files use Ruby formatter
+        "rb": RubyTableFormatter,  # Ruby alias
     }
 
     @classmethod

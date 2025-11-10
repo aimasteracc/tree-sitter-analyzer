@@ -4,30 +4,71 @@
 
 ## [1.9.9] - 2025-11-09
 
-### 🎉 New Features
-- **C# Language Support**: Added complete C# language support with modern features
-  - Classes, interfaces, records, enums, structs extraction
-  - Methods, constructors, properties extraction
-  - Fields, constants, events extraction
-  - Using directives (import) extraction
-  - Support for C# 8+ nullable reference types
-  - Support for C# 9+ records
-  - Async/await pattern detection
-  - Attribute (annotation) extraction
-  - Generic types support
-  - Tree-sitter query support for advanced code analysis
-  - **C# Table Formatter**: Dedicated formatter for C# code output
-    - Full table format with namespace, classes, methods, fields
-    - Compact table format for quick overview
-    - CSV format for data processing
-    - Support for multi-class files
-    - Proper handling of C# visibility modifiers (public, private, protected, internal)
-  - Full integration with CLI, API, and MCP interfaces
+### 🎉 新機能
 
-### 🎯 Quality Assurance
-- **Test Count**: 3,559 tests all passed
-- **Coverage**: Automated tracking via Codecov
-- **Quality**: Enterprise grade
+#### PHP言語サポート 🆕
+- **完全なPHP言語サポート**: モダンなPHP 8+機能を含む、包括的なPHP言語サポートを追加
+  - **型抽出**: クラス、インターフェース、トレイト、列挙型、名前空間
+  - **メンバー解析**: メソッド、コンストラクタ、プロパティ、定数、マジックメソッド
+  - **モダンPHP機能**:
+    - PHP 8+属性（アノテーション）
+    - Readonlyプロパティ
+    - 型付きプロパティと戻り値型
+    - メソッド付き列挙型
+    - 名前付き引数サポート
+  - **PHPテーブルフォーマッタ**: PHPコード出力専用フォーマッタ
+    - 名前空間、クラス、メソッド、プロパティの完全テーブル形式
+    - 高速プレビュー用コンパクトテーブル
+    - データ処理用CSV形式
+    - マルチクラスファイル対応
+    - PHPの可視性（public, private, protected）を正しく処理
+  - 複雑なコード解析のためのTree-sitterクエリサポート
+  - CLI・API・MCPインターフェイスに完全統合
+
+#### Ruby言語サポート 🆕
+- **完全なRuby言語サポート**: Railsパターンにも対応した包括的なRubyサポートを追加
+  - **型抽出**: クラス、モジュール、ミックスイン
+  - **メンバー解析**: インスタンスメソッド、クラスメソッド、シングルトンメソッド、属性アクセサ
+  - **Ruby機能**:
+    - ブロック、Proc、Lambda
+    - メタプログラミングパターン
+    - Rails固有パターン
+    - モジュールのインクルード・エクステンド
+    - クラス変数・インスタンス変数
+  - **Rubyテーブルフォーマッタ**: Rubyコード出力専用フォーマッタ
+    - クラス、モジュール、メソッド、フィールドの完全テーブル形式
+    - 高速プレビュー用コンパクトテーブル
+    - データ処理用CSV形式
+    - マルチクラスファイル対応
+    - Rubyの可視性（public, private, protected）を正しく処理
+  - Rubyイディオム解析のためのTree-sitterクエリサポート
+  - CLI・API・MCPインターフェイスに完全統合
+
+#### C#言語サポート
+- **完全なC#言語サポート**: モダン機能を含むC#言語サポートを追加
+  - クラス、インターフェース、レコード、列挙型、構造体の抽出
+  - メソッド、コンストラクタ、プロパティの抽出
+  - フィールド、定数、イベントの抽出
+  - usingディレクティブ（import）の抽出
+  - C# 8+ nullable参照型サポート
+  - C# 9+ レコード型サポート
+  - async/awaitパターンの検出
+  - 属性（アノテーション）の抽出
+  - ジェネリック型サポート
+  - 複雑なコード解析のためのTree-sitterクエリサポート
+  - **C#テーブルフォーマッタ**: C#コード出力専用フォーマッタ
+    - 名前空間、クラス、メソッド、フィールドの完全テーブル形式
+    - 高速プレビュー用コンパクトテーブル
+    - データ処理用CSV形式
+    - マルチクラスファイル対応
+    - C#の可視性（public, private, protected, internal）を正しく処理
+  - CLI・API・MCPインターフェイスに完全統合
+
+### 🎯 品質保証
+- **テスト数**: 3,559件、全て合格
+- **カバレッジ**: Codecovによる自動追跡
+- **品質**: エンタープライズグレード
+- **多言語サポート**: 完全なプラグイン実装で11言語に対応
 
 ## [1.9.8] - 2025-11-09
 
