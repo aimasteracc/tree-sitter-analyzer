@@ -347,6 +347,66 @@ class SQLElementExtractor(ElementExtractor):
             for child in node.children:
                 yield from self._traverse_nodes(child)
 
+    def _is_valid_identifier(self, name: str) -> bool:
+        """
+        Validate that a name is a valid SQL identifier.
+
+        This prevents accepting multi-line text or SQL statements as identifiers.
+
+        Args:
+            name: The identifier to validate
+
+        Returns:
+            True if the name is a valid identifier, False otherwise
+        """
+        if not name:
+            return False
+
+        # Reject if contains newlines or other control characters
+        if "\n" in name or "\r" in name or "\t" in name:
+            return False
+
+        # Reject if matches SQL statement patterns (keyword followed by space)
+        # This catches "CREATE TABLE" but allows "create_table" as an identifier
+        name_upper = name.upper()
+        sql_statement_patterns = [
+            "CREATE ",
+            "SELECT ",
+            "INSERT ",
+            "UPDATE ",
+            "DELETE ",
+            "DROP ",
+            "ALTER ",
+            "TABLE ",
+            "VIEW ",
+            "PROCEDURE ",
+            "FUNCTION ",
+            "TRIGGER ",
+        ]
+        if any(name_upper.startswith(pattern) for pattern in sql_statement_patterns):
+            return False
+
+        # Reject if contains parentheses (like "users (" or "(id")
+        if "(" in name or ")" in name:
+            return False
+
+        # Reject if too long (identifiers should be reasonable length)
+        if len(name) > 128:
+            return False
+
+        # Accept if it matches standard identifier pattern
+        import re
+
+        # Allow alphanumeric, underscore, and some special chars used in SQL identifiers
+        if re.match(r"^[a-zA-Z_][a-zA-Z0-9_]*$", name):
+            return True
+
+        # Also allow quoted identifiers (backticks, double quotes, square brackets)
+        if re.match(r'^[`"\[].*[`"\]]$', name):
+            return True
+
+        return False
+
     def _extract_tables(
         self, root_node: "tree_sitter.Node", classes: list[Class]
     ) -> None:
@@ -371,7 +431,11 @@ class SQLElementExtractor(ElementExtractor):
                         for subchild in child.children:
                             if subchild.type == "identifier":
                                 table_name = self._get_node_text(subchild).strip()
-                                break
+                                # Validate table name
+                                if table_name and self._is_valid_identifier(table_name):
+                                    break
+                                else:
+                                    table_name = None
                         if table_name:
                             break
 
@@ -415,7 +479,11 @@ class SQLElementExtractor(ElementExtractor):
                         for subchild in child.children:
                             if subchild.type == "identifier":
                                 view_name = self._get_node_text(subchild).strip()
-                                break
+                                # Validate view name
+                                if view_name and self._is_valid_identifier(view_name):
+                                    break
+                                else:
+                                    view_name = None
                         if view_name:
                             break
 
@@ -520,7 +588,11 @@ class SQLElementExtractor(ElementExtractor):
                         for subchild in child.children:
                             if subchild.type == "identifier":
                                 func_name = self._get_node_text(subchild).strip()
-                                break
+                                # Validate function name
+                                if func_name and self._is_valid_identifier(func_name):
+                                    break
+                                else:
+                                    func_name = None
                         if func_name:
                             break
 
@@ -580,9 +652,24 @@ class SQLElementExtractor(ElementExtractor):
                         # This should be the trigger name (first object_reference after TRIGGER keyword)
                         for subchild in child.children:
                             if subchild.type == "identifier":
-                                trigger_name = self._get_node_text(subchild).strip()
+                                extracted_name = self._get_node_text(subchild).strip()
+                                # Validate the identifier
+                                if extracted_name and self._is_valid_identifier(extracted_name):
+                                    trigger_name = extracted_name
                                 break
                         break  # Stop after finding the first object_reference after TRIGGER
+
+                # Skip common SQL keywords that might be incorrectly identified
+                if trigger_name and trigger_name.upper() in ('KEY', 'AUTO_INCREMENT', 'PRIMARY', 'FOREIGN', 'INDEX', 'UNIQUE'):
+                    trigger_name = None
+                
+                # Validate this is really a CREATE TRIGGER statement using regex
+                if has_create and has_trigger and trigger_name:
+                    import re
+                    node_text = self._get_node_text(node)
+                    # Verify this really starts with CREATE TRIGGER
+                    if not re.match(r'^\s*CREATE\s+TRIGGER\s+', node_text, re.IGNORECASE):
+                        trigger_name = None
 
                 if has_create and has_trigger and trigger_name:
                     try:
@@ -689,7 +776,11 @@ class SQLElementExtractor(ElementExtractor):
                         for subchild in child.children:
                             if subchild.type == "identifier":
                                 table_name = self._get_node_text(subchild).strip()
-                                break
+                                # Validate table name - should be a simple identifier
+                                if table_name and self._is_valid_identifier(table_name):
+                                    break
+                                else:
+                                    table_name = None
                         if table_name:
                             break
 
@@ -871,7 +962,11 @@ class SQLElementExtractor(ElementExtractor):
                         for subchild in child.children:
                             if subchild.type == "identifier":
                                 view_name = self._get_node_text(subchild).strip()
-                                break
+                                # Validate view name
+                                if view_name and self._is_valid_identifier(view_name):
+                                    break
+                                else:
+                                    view_name = None
                         if view_name:
                             break
 
@@ -1164,7 +1259,11 @@ class SQLElementExtractor(ElementExtractor):
                         for subchild in child.children:
                             if subchild.type == "identifier":
                                 func_name = self._get_node_text(subchild).strip()
-                                break
+                                # Validate function name
+                                if func_name and self._is_valid_identifier(func_name):
+                                    break
+                                else:
+                                    func_name = None
                         if func_name:
                             break
 
@@ -1254,25 +1353,41 @@ class SQLElementExtractor(ElementExtractor):
                     ):
                         for subchild in child.children:
                             if subchild.type == "identifier":
-                                trigger_name = self._get_node_text(subchild).strip()
+                                extracted_name = self._get_node_text(subchild).strip()
+                                # Validate trigger name
+                                if extracted_name and self._is_valid_identifier(
+                                    extracted_name
+                                ):
+                                    trigger_name = extracted_name
                                 break
                         break
 
                 # Use regex to extract trigger name for better accuracy
                 if has_create and has_trigger and not trigger_name:
                     import re
+
                     trigger_text = self._get_node_text(node)
+                    # First verify this really is a CREATE TRIGGER statement
+                    if not re.match(r'^\s*CREATE\s+TRIGGER\s+', trigger_text, re.IGNORECASE):
+                        continue  # Skip if not a CREATE TRIGGER statement
+                        
                     # Pattern: CREATE TRIGGER trigger_name
                     trigger_pattern = re.search(
                         r"CREATE\s+TRIGGER\s+([a-zA-Z_][a-zA-Z0-9_]*)",
                         trigger_text,
-                        re.IGNORECASE
+                        re.IGNORECASE,
                     )
                     if trigger_pattern:
-                        trigger_name = trigger_pattern.group(1)
+                        extracted_name = trigger_pattern.group(1)
+                        if self._is_valid_identifier(extracted_name):
+                            trigger_name = extracted_name
 
                 # Skip invalid trigger names (too short or common SQL keywords)
                 if trigger_name and len(trigger_name) <= 2:
+                    trigger_name = None
+                
+                # Skip common SQL keywords that might be incorrectly identified
+                if trigger_name and trigger_name.upper() in ('KEY', 'AUTO_INCREMENT', 'PRIMARY', 'FOREIGN', 'INDEX', 'UNIQUE'):
                     trigger_name = None
 
                 # Extract trigger metadata from text
@@ -1342,15 +1457,19 @@ class SQLElementExtractor(ElementExtractor):
 
                 # Use regex to extract index name from raw text for better accuracy
                 import re
+
                 raw_text = self._get_node_text(node)
                 # Pattern: CREATE [UNIQUE] INDEX index_name ON table_name
                 index_pattern = re.search(
                     r"CREATE\s+(?:UNIQUE\s+)?INDEX\s+([a-zA-Z_][a-zA-Z0-9_]*)\s+ON",
                     raw_text,
-                    re.IGNORECASE
+                    re.IGNORECASE,
                 )
                 if index_pattern:
-                    index_name = index_pattern.group(1)
+                    extracted_name = index_pattern.group(1)
+                    # Validate index name
+                    if self._is_valid_identifier(extracted_name):
+                        index_name = extracted_name
 
                 if index_name and index_name not in processed_indexes:
                     try:

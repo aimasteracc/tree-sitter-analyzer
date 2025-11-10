@@ -288,6 +288,8 @@ def test_detect_from_extension_various_files(
         "cpp",
         "rust",
         "go",
+        "php",
+        "ruby",
     ],
 )
 def test_is_supported_supported_languages(language_detector, language):
@@ -295,9 +297,7 @@ def test_is_supported_supported_languages(language_detector, language):
     assert language_detector.is_supported(language) is True
 
 
-@pytest.mark.parametrize(
-    "language", ["ruby", "php", "swift", "kotlin", "scala", "unknown"]
-)
+@pytest.mark.parametrize("language", ["swift", "kotlin", "scala", "unknown"])
 def test_is_supported_unsupported_languages(language_detector, language):
     """Test support status for unsupported languages"""
     assert language_detector.is_supported(language) is False
@@ -327,6 +327,8 @@ def test_get_supported_languages(language_detector):
     assert "javascript" in languages
     assert "typescript" in languages
     assert "cpp" in languages
+    assert "php" in languages
+    assert "ruby" in languages
     # Should be sorted
     assert languages == sorted(languages)
 
@@ -360,11 +362,11 @@ def test_get_language_info_supported(language_detector):
 
 def test_get_language_info_unsupported(language_detector):
     """Test getting language information for unsupported language"""
-    # Test for unsupported language
-    info = language_detector.get_language_info("ruby")
+    # Test for unsupported language (using swift which is not supported)
+    info = language_detector.get_language_info("swift")
 
-    assert info["name"] == "ruby"
-    assert ".rb" in info["extensions"]
+    assert info["name"] == "swift"
+    assert ".swift" in info["extensions"]
     assert info["supported"] is False
     assert info["tree_sitter_available"] is False
 
@@ -425,7 +427,7 @@ def test_is_language_supported_global():
     """Test global is_language_supported function"""
     assert is_language_supported("java") is True
     assert is_language_supported("python") is True
-    assert is_language_supported("ruby") is False
+    assert is_language_supported("swift") is False
     assert is_language_supported("unknown") is False
 
 

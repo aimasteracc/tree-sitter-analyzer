@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "tree-sitter-analyzer"
-version = "1.9.9"
+version = "1.9.11"
 description = "AI-era enterprise-grade code analysis tool with comprehensive HTML/CSS support, dynamic plugin architecture, and MCP integration"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -90,15 +90,19 @@ go = ["tree-sitter-go>=0.20.0,<0.25.0"]
 markdown = ["tree-sitter-markdown>=0.3.1"]
 html = ["tree-sitter-html>=0.23.0,<0.25.0"]  # HTML DOM analysis with element classification
 css = ["tree-sitter-css>=0.23.0,<0.25.0"]   # CSS selector and property analysis with specificity calculation
-sql = ["tree-sitter-sql>=0.3.0"]   # SQL language support for database schema analysis
+sql = ["tree-sitter-sql>=0.3.11,<0.4.0"]   # SQL language support for database schema analysis
 csharp = ["tree-sitter-c-sharp>=0.23.1"]  # C# language support for .NET applications
+php = ["tree-sitter-php>=0.23.0,<0.25.0"]  # PHP language support for web applications
+ruby = ["tree-sitter-ruby>=0.23.0,<0.25.0"]  # Ruby language support for Rails and scripting
 
 # Language bundles for convenience
 web = [
     "tree-sitter-javascript>=0.23.1,<0.25.0",
     "tree-sitter-typescript>=0.20.0,<0.25.0",
     "tree-sitter-html>=0.23.0,<0.25.0",      # Complete HTML5 support with semantic analysis
-    "tree-sitter-css>=0.23.0,<0.25.0"       # Complete CSS3 support with advanced property categorization
+    "tree-sitter-css>=0.23.0,<0.25.0",       # Complete CSS3 support with advanced property categorization
+    "tree-sitter-php>=0.23.0,<0.25.0",       # PHP for WordPress, Laravel, Symfony
+    "tree-sitter-ruby>=0.23.0,<0.25.0"       # Ruby for Rails applications
 ]
 systems = [
     "tree-sitter-c>=0.20.0,<0.25.0",
@@ -124,8 +128,10 @@ all-languages = [
     "tree-sitter-markdown>=0.3.1",
     "tree-sitter-html>=0.23.0,<0.25.0",
     "tree-sitter-css>=0.23.0,<0.25.0",
-    "tree-sitter-sql>=0.3.0",  # SQL language support for database schema analysis
+    "tree-sitter-sql>=0.3.11,<0.4.0",  # SQL language support for database schema analysis
     "tree-sitter-c-sharp>=0.23.1",  # C# language support for .NET applications
+    "tree-sitter-php>=0.23.0,<0.25.0",  # PHP language support for web applications
+    "tree-sitter-ruby>=0.23.0,<0.25.0",  # Ruby language support for Rails and scripting
 ]
 
 # MCP server support
@@ -163,6 +169,10 @@ test = [
     "tree-sitter-python>=0.23.0",
     "tree-sitter-javascript>=0.23.1",
     "tree-sitter-cpp>=0.23.4",
+    "tree-sitter-sql>=0.3.11,<0.4.0",
+    "tree-sitter-php>=0.23.0,<0.25.0",
+    "tree-sitter-ruby>=0.23.0,<0.25.0",
+    "tree-sitter-c-sharp>=0.23.1",
 ]
 
 # Integration testing dependencies (Phase 7)
@@ -226,7 +236,7 @@ all = [
     "tree-sitter-markdown>=0.3.1",
     "tree-sitter-html>=0.23.0,<0.25.0",
     "tree-sitter-css>=0.23.0,<0.25.0",
-    "tree-sitter-sql>=0.3.0",  # SQL language support for database schema analysis
+    "tree-sitter-sql>=0.3.11,<0.4.0",  # SQL language support for database schema analysis
     "mcp>=1.12.2",
     "anyio>=4.0.0",
     "httpx>=0.27.0,<1.0.0",
@@ -268,6 +278,9 @@ markdown = "tree_sitter_analyzer.languages.markdown_plugin:MarkdownPlugin"
 html = "tree_sitter_analyzer.languages.html_plugin:HtmlPlugin"
 css = "tree_sitter_analyzer.languages.css_plugin:CssPlugin"
 csharp = "tree_sitter_analyzer.languages.csharp_plugin:CSharpPlugin"
+sql = "tree_sitter_analyzer.languages.sql_plugin:SQLPlugin"
+php = "tree_sitter_analyzer.languages.php_plugin:PHPPlugin"
+ruby = "tree_sitter_analyzer.languages.ruby_plugin:RubyPlugin"
 
 [project.urls]
 Homepage = "https://github.com/aimasteracc/tree-sitter-analyzer"
@@ -425,7 +438,7 @@ directory = "htmlcov"
 # MCP server configuration
 [tool.mcp]
 server_name = "tree-sitter-analyzer"
-server_version = "1.9.9"
+server_version = "1.9.11"
 description = "AI-era enterprise-grade code analysis MCP server with comprehensive HTML/CSS support and multi-language capabilities"
 capabilities = [
     "check_code_scale",

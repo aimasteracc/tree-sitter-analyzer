@@ -169,6 +169,14 @@ class TestGoldenMasterRegression:
             ("examples/Sample.cs", "csharp_sample", "full"),
             ("examples/Sample.cs", "csharp_sample", "compact"),
             ("examples/Sample.cs", "csharp_sample", "csv"),
+            # PHP tests
+            ("examples/Sample.php", "php_sample", "full"),
+            ("examples/Sample.php", "php_sample", "compact"),
+            ("examples/Sample.php", "php_sample", "csv"),
+            # Ruby tests
+            ("examples/Sample.rb", "ruby_sample", "full"),
+            ("examples/Sample.rb", "ruby_sample", "compact"),
+            ("examples/Sample.rb", "ruby_sample", "csv"),
         ],
     )
     def test_golden_master_comparison(
