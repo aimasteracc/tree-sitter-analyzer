@@ -169,6 +169,10 @@ test = [
     "tree-sitter-python>=0.23.0",
     "tree-sitter-javascript>=0.23.1",
     "tree-sitter-cpp>=0.23.4",
+    "tree-sitter-sql>=0.3.0",
+    "tree-sitter-php>=0.23.0,<0.25.0",
+    "tree-sitter-ruby>=0.23.0,<0.25.0",
+    "tree-sitter-c-sharp>=0.23.1",
 ]
 
 # Integration testing dependencies (Phase 7)
@@ -274,6 +278,9 @@ markdown = "tree_sitter_analyzer.languages.markdown_plugin:MarkdownPlugin"
 html = "tree_sitter_analyzer.languages.html_plugin:HtmlPlugin"
 css = "tree_sitter_analyzer.languages.css_plugin:CssPlugin"
 csharp = "tree_sitter_analyzer.languages.csharp_plugin:CSharpPlugin"
+sql = "tree_sitter_analyzer.languages.sql_plugin:SQLPlugin"
+php = "tree_sitter_analyzer.languages.php_plugin:PHPPlugin"
+ruby = "tree_sitter_analyzer.languages.ruby_plugin:RubyPlugin"
 
 [project.urls]
 Homepage = "https://github.com/aimasteracc/tree-sitter-analyzer"

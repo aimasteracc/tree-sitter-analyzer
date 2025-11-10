@@ -652,9 +652,24 @@ class SQLElementExtractor(ElementExtractor):
                         # This should be the trigger name (first object_reference after TRIGGER keyword)
                         for subchild in child.children:
                             if subchild.type == "identifier":
-                                trigger_name = self._get_node_text(subchild).strip()
+                                extracted_name = self._get_node_text(subchild).strip()
+                                # Validate the identifier
+                                if extracted_name and self._is_valid_identifier(extracted_name):
+                                    trigger_name = extracted_name
                                 break
                         break  # Stop after finding the first object_reference after TRIGGER
+
+                # Skip common SQL keywords that might be incorrectly identified
+                if trigger_name and trigger_name.upper() in ('KEY', 'AUTO_INCREMENT', 'PRIMARY', 'FOREIGN', 'INDEX', 'UNIQUE'):
+                    trigger_name = None
+                
+                # Validate this is really a CREATE TRIGGER statement using regex
+                if has_create and has_trigger and trigger_name:
+                    import re
+                    node_text = self._get_node_text(node)
+                    # Verify this really starts with CREATE TRIGGER
+                    if not re.match(r'^\s*CREATE\s+TRIGGER\s+', node_text, re.IGNORECASE):
+                        trigger_name = None
 
                 if has_create and has_trigger and trigger_name:
                     try:
@@ -1352,6 +1367,10 @@ class SQLElementExtractor(ElementExtractor):
                     import re
 
                     trigger_text = self._get_node_text(node)
+                    # First verify this really is a CREATE TRIGGER statement
+                    if not re.match(r'^\s*CREATE\s+TRIGGER\s+', trigger_text, re.IGNORECASE):
+                        continue  # Skip if not a CREATE TRIGGER statement
+                        
                     # Pattern: CREATE TRIGGER trigger_name
                     trigger_pattern = re.search(
                         r"CREATE\s+TRIGGER\s+([a-zA-Z_][a-zA-Z0-9_]*)",
@@ -1365,6 +1384,10 @@ class SQLElementExtractor(ElementExtractor):
 
                 # Skip invalid trigger names (too short or common SQL keywords)
                 if trigger_name and len(trigger_name) <= 2:
+                    trigger_name = None
+                
+                # Skip common SQL keywords that might be incorrectly identified
+                if trigger_name and trigger_name.upper() in ('KEY', 'AUTO_INCREMENT', 'PRIMARY', 'FOREIGN', 'INDEX', 'UNIQUE'):
                     trigger_name = None
 
                 # Extract trigger metadata from text
