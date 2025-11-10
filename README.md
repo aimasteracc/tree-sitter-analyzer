@@ -8,7 +8,7 @@
 [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer)
 [![Quality](https://img.shields.io/badge/quality-enterprise%20grade-blue.svg)](#quality-assurance)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
-[![Version](https://img.shields.io/badge/version-1.9.9-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
+[![Version](https://img.shields.io/badge/version-1.9.10-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
 [![zread](https://img.shields.io/badge/Ask_Zread-_.svg?style=flat&color=00b0aa&labelColor=000000&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB3aWR0aD0iMTYiIGhlaWdodD0iMTYiIHZpZXdCb3g9IjAgMCAxNiAxNiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTQuOTYxNTYgMS42MDAxSDIuMjQxNTZDMS44ODgxIDEuNjAwMSAxLjYwMTU2IDEuODg2NjQgMS42MDE1NiAyLjI0MDFWNC45NjAxQzEuNjAxNTYgNS4zMTM1NiAxLjg4ODEgNS42MDAxIDIuMjQxNTYgNS42MDAxSDQuOTYxNTZDNS4zMTUwMiA1LjYwMDEgNS42MDE1NiA1LjMxMzU2IDUuNjAxNTYgNC45NjAxVjIuMjQwMUM1LjYwMTU2IDEuODg2NjQgNS4zMTUwMiAxLjYwMDEgNC45NjE1NiAxLjYwMDFaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik00Ljk2MTU2IDEwLjM5OTlIMi4yNDE1NkMxLjg4ODEgMTAuMzk5OSAxLjYwMTU2IDEwLjY4NjQgMS42MDE1NiAxMS4wMzk5VjEzLjc1OTlDMS42MDE1NiAxNC4xMTM0IDEuODg4MSAxNC4zOTk5IDIuMjQxNTYgMTQuMzk5OUg0Ljk2MTU2QzUuMzE1MDIgMTQuMzk5OSA1LjYwMTU2IDE0LjExMzQgNS42MDE1NiAxMy43NTk5VjExLjAzOTlDNS42MDE1NiAxMC42ODY0IDUuMzE1MDIgMTAuMzk5OSA0Ljk2MTU2IDEwLjM5OTlaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik0xMy43NTg0IDEuNjAwMUgxMS4wMzg0QzEwLjY4NSAxLjYwMDEgMTAuMzk4NCAxLjg4NjY0IDEwLjM5ODQgMi4yNDAxVjQuOTYwMUMxMC4zOTg0IDUuMzEzNTYgMTAuNjg1IDUuNjAwMSAxMS4wMzg0IDUuNjAwMUgxMy43NTg0QzE0LjExMTkgNS42MDAxIDE0LjM5ODQgNS4zMTM1NiAxNC4zOTg0IDQuOTYwMVYyLjI0MDFDMTQuMzk4NCAxLjg4NjY0IDE0LjExMTkgMS42MDAxIDEzLjc1ODQgMS42MDAxWiIgZmlsbD0iI2ZmZiIvPgo8cGF0aCBkPSJNNCAxMkwxMiA0TDQgMTJaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik00IDEyTDEyIDQiIHN0cm9rZT0iI2ZmZiIgc3Ryb2tlLXdpZHRoPSIxLjUiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPgo8L3N2Zz4K&logoColor=ffffff)](https://zread.ai/aimasteracc/tree-sitter-analyzer)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
@@ -32,57 +32,6 @@
 - [8. 🏆 Quality Assurance](#8--quality-assurance)
 - [9. 📚 Documentation & Support](#9--documentation--support)
 - [10. 🤝 Contributing & License](#10--contributing--license)
-
----
-
-## 🎉 What's New in v1.9.9
-
-### PHP & Ruby Language Support Added! 🆕
-
-We're excited to announce **complete PHP and Ruby language support** with modern features:
-
-#### PHP Support
-- **Type Extraction**: Classes, interfaces, traits, enums, namespaces
-- **Member Analysis**: Methods, constructors, properties, constants, magic methods
-- **Modern PHP Features**: 
-  - PHP 8+ attributes
-  - Readonly properties
-  - Typed properties and return types
-  - Enums with methods
-  - Named arguments support
-- **Advanced Analysis**: Tree-sitter query support for complex code patterns
-- **Flexible Output Formats**: Full table, compact table, and CSV formats
-
-#### Ruby Support
-- **Type Extraction**: Classes, modules, mixins
-- **Member Analysis**: Instance methods, class methods, singleton methods, attribute accessors
-- **Ruby Features**:
-  - Blocks, procs, and lambdas
-  - Metaprogramming patterns
-  - Rails-specific patterns
-  - Module inclusion and extension
-  - Class and instance variables
-- **Advanced Analysis**: Tree-sitter query support for Ruby idioms
-
-Perfect for web developers and AI assistants working with PHP (Laravel, Symfony, WordPress) and Ruby (Rails) codebases!
-
-### C# Language Support Added!
-
-Complete C# language support with modern features:
-
-- **Type Extraction**: Classes, interfaces, records, enums, structs
-- **Member Analysis**: Methods, constructors, properties, fields, constants, events
-- **Modern C# Features**: 
-  - C# 8+ nullable reference types
-  - C# 9+ records
-  - Async/await pattern detection
-  - Attribute (annotation) extraction
-  - Generic types support
-- **Advanced Analysis**: Tree-sitter query support for complex code patterns
-- **Flexible Output Formats**: Full table, compact table, and CSV formats
-- **Full Integration**: Available in CLI, API, and MCP interfaces
-
-Perfect for .NET developers and AI assistants working with C# codebases!
 
 ---
 
@@ -167,6 +116,57 @@ rg --version
 > - **uv** is required for running all functionality
 > - **fd** and **ripgrep** are required for using advanced file search and content analysis features
 > - If fd and ripgrep are not installed, basic code analysis functionality will still be available, but file search features will not work
+
+---
+
+## 🎉 What's New in v1.9.10
+
+### PHP & Ruby Language Support Added! 🆕
+
+We're excited to announce **complete PHP and Ruby language support** with modern features:
+
+#### PHP Support
+- **Type Extraction**: Classes, interfaces, traits, enums, namespaces
+- **Member Analysis**: Methods, constructors, properties, constants, magic methods
+- **Modern PHP Features**: 
+  - PHP 8+ attributes
+  - Readonly properties
+  - Typed properties and return types
+  - Enums with methods
+  - Named arguments support
+- **Advanced Analysis**: Tree-sitter query support for complex code patterns
+- **Flexible Output Formats**: Full table, compact table, and CSV formats
+
+#### Ruby Support
+- **Type Extraction**: Classes, modules, mixins
+- **Member Analysis**: Instance methods, class methods, singleton methods, attribute accessors
+- **Ruby Features**:
+  - Blocks, procs, and lambdas
+  - Metaprogramming patterns
+  - Rails-specific patterns
+  - Module inclusion and extension
+  - Class and instance variables
+- **Advanced Analysis**: Tree-sitter query support for Ruby idioms
+
+Perfect for web developers and AI assistants working with PHP (Laravel, Symfony, WordPress) and Ruby (Rails) codebases!
+
+### C# Language Support Added!
+
+Complete C# language support with modern features:
+
+- **Type Extraction**: Classes, interfaces, records, enums, structs
+- **Member Analysis**: Methods, constructors, properties, fields, constants, events
+- **Modern C# Features**: 
+  - C# 8+ nullable reference types
+  - C# 9+ records
+  - Async/await pattern detection
+  - Attribute (annotation) extraction
+  - Generic types support
+- **Advanced Analysis**: Tree-sitter query support for complex code patterns
+- **Flexible Output Formats**: Full table, compact table, and CSV formats
+- **Full Integration**: Available in CLI, API, and MCP interfaces
+
+Perfect for .NET developers and AI assistants working with C# codebases!
 
 ---
 
@@ -522,101 +522,6 @@ Tree-sitter Analyzer provides a rich set of MCP tools designed for AI assistants
 | **📁 Resource Access** | Code file resources | URI code file access | File content access via URI identification |
 | | Project statistics resources | Project statistics data access | Project analysis data and statistical information |
 
-### 🆕 v1.9.0 New Feature: Parallel Processing Engine
-
-Revolutionary parallel processing capabilities for enhanced search performance:
-
-- **🔄 Parallel Processing Engine**: search_content MCP tool now supports parallel processing for multiple directories
-- **⚡ Performance Boost**: Up to 4x faster search speeds for large codebases
-- **🛡️ Type Safety Improvements**: 7% reduction in mypy errors (341→318)
-- **✨ Code Style Unification**: Significant reduction in ruff violations
-- **🏗️ Technical Debt Resolution**: Comprehensive code quality improvements
-- **🚀 Test Execution Time**: Maintained 83% reduction (215s→37s)
-
-#### 🔄 Parallel Processing Details
-- **Automatic Parallel Execution**: Multiple roots directories are automatically processed in parallel
-- **Configurable Control**: `enable_parallel` option for control (default: True)
-- **Scalable Performance**: Performance improvements scale with directory count
-- **Memory Efficient**: Semaphore-controlled concurrent execution limits
-
-### 🆕 v1.8.4 New Feature: Configurable File Logging
-
-Revolutionary environment variable-controlled file logging system:
-
-- **🔧 Environment Variable Control**: Flexible file logging behavior control through environment variables
-  - `TREE_SITTER_ANALYZER_ENABLE_FILE_LOG`: Enable/disable file logging
-  - `TREE_SITTER_ANALYZER_LOG_DIR`: Custom log directory path
-  - `TREE_SITTER_ANALYZER_FILE_LOG_LEVEL`: Control file log level
-- **🛡️ Improved Default Behavior**: File logging disabled by default to prevent user project pollution
-- **📁 Smart Directory Selection**: Uses system temp directory when enabled, keeping projects clean
-- **🔄 Backward Compatibility**: Maintains all existing functionality unchanged
-- **📚 Complete Documentation Support**: Includes debugging guides and troubleshooting documentation
-
-### 🆕 v1.8.3 New Feature: MCP Tools Design Consistency Enhancement
-
-Comprehensive MCP tools unification and design consistency improvements:
-
-- **🔧 Unified `set_project_path` Implementation**: SearchContentTool and FindAndGrepTool now have consistent `set_project_path` method implementation
-- **🏗️ Design Consistency Across All MCP Tools**: All 4 MCP tools (QueryTool, TableFormatTool, SearchContentTool, FindAndGrepTool) now have unified interface design
-- **📁 FileOutputManager Integration**: Unified FileOutputManager factory pattern for consistent file output management
-- **🔄 Dynamic Project Path Changes**: All MCP tools now support dynamic project path changes through unified interface
-- **🛡️ Enhanced Security Boundaries**: Consistent security boundary protection across all MCP tools
-- **📋 Improved Developer Experience**: Unified interface makes MCP tool development and usage more consistent
-
-### 🆕 v1.8.2 New Feature: CLI Security and Argument Validation Enhancement
-
-Comprehensive CLI security improvements and argument validation optimization:
-
-- **🔒 CLI Security Boundary Fix**: Fixed CLI mode security boundary errors, ensuring file access security
-- **✅ Proper CLI Argument Validation**: Implemented complete CLI argument validation system, preventing invalid parameter combinations
-- **🚫 Exclusive Parameter Control**: `--table` and `--query-key` parameters now properly implement exclusive control
-- **🔍 Enhanced Filter Support**: `--query-key` with `--filter` combination usage is fully supported
-- **⚠️ Clear Error Messages**: Provides detailed error information to help users use commands correctly
-- **🛡️ Enhanced Security Features**: Temporary directory access permission in test environments and project boundary protection
-- **📋 Improved User Experience**: More intuitive command-line interface and error handling
-
-### 🆕 v1.8.0 New Feature: HTML/CSS Language Support
-
-Revolutionary HTML and CSS analysis capabilities with specialized data models and formatting:
-
-- **🏗️ HTML DOM Analysis**: Complete HTML element extraction with tag names, attributes, and hierarchical structure
-- **🎨 CSS Rule Analysis**: Comprehensive CSS selector and property analysis with intelligent classification
-- **📊 Element Classification System**: Smart categorization of HTML elements (structure, heading, text, list, media, form, table, metadata) and CSS properties (layout, box_model, typography, background, transition, interactivity)
-- **🔧 Specialized Data Models**: New `MarkupElement` and `StyleElement` classes for precise web technology analysis
-- **📋 Enhanced Formatters**: New HTML formatter with structured table output for web development workflows
-- **🔄 Extensible Architecture**: Plugin-based system with `FormatterRegistry` for dynamic format management
-- **🆕 Dependencies**: Added `tree-sitter-html>=0.23.0,<0.25.0` and `tree-sitter-css>=0.23.0,<0.25.0` for native parsing support
-
-### 🆕 v1.7.3 Feature: Complete Markdown Support
-
-Brand new Markdown language support provides powerful capabilities for document analysis and AI assistants:
-
-- **📝 Complete Markdown Parsing**: Support for all major elements including ATX headers, Setext headers, code blocks, links, images, tables
-- **🔍 Intelligent Element Extraction**: Automatically recognize and extract header levels, code languages, link URLs, image information
-- **📊 Structured Analysis**: Convert Markdown documents to structured data for easy AI understanding and processing
-- **🎯 Task List Support**: Complete support for GitHub-style task lists (checkboxes)
-- **🔧 Query System Integration**: Support for all existing query and filtering functionality
-- **📁 Multiple Extension Support**: Support for .md, .markdown, .mdown, .mkd, .mkdn, .mdx formats
-
-### 🆕 v1.7.2 Feature: File Output Optimization
-
-MCP search tools' newly added file output optimization feature is a revolutionary token-saving solution:
-
-- **🎯 File Output Optimization**: `find_and_grep`, `list_files`, and `search_content` tools now include `suppress_output` and `output_file` parameters
-- **🔄 Automatic Format Detection**: Smart file format selection (JSON/Markdown) based on content type
-- **💾 Massive Token Savings**: Response size reduced by up to 99% when saving large search results to files
-- **📚 ROO Rules Documentation**: Added comprehensive tree-sitter-analyzer MCP optimization usage guide
-- **🔧 Backward Compatibility**: Optional feature that doesn't affect existing functionality
-
-### 🆕 v1.7.0 Feature: suppress_output Function
-
-The `suppress_output` parameter in the `analyze_code_structure` tool:
-
-- **Problem solved**: When analysis results are too large, traditional methods return complete table data, consuming massive tokens
-- **Intelligent optimization**: When `suppress_output=true` and `output_file` specified, only basic metadata is returned
-- **Significant effect**: Response size reduced by up to 99%, dramatically saving AI dialog token consumption
-- **Use cases**: Particularly suitable for large code file structure analysis and batch processing scenarios
-
 ---
 
 ## 6. ⚡ Complete CLI Commands
@@ -904,6 +809,105 @@ uv run python llm_code_checker.py --check-all
 - 💡 **Innovation Support**: Enabled early release of advanced file search and content analysis features
 
 **[💖 Sponsor this project](https://github.com/sponsors/aimasteracc)** to help us continue building excellent tools for the developer community!
+
+---
+
+## 📜 Version History
+
+### 🆕 v1.9.0 New Feature: Parallel Processing Engine
+
+Revolutionary parallel processing capabilities for enhanced search performance:
+
+- **🔄 Parallel Processing Engine**: search_content MCP tool now supports parallel processing for multiple directories
+- **⚡ Performance Boost**: Up to 4x faster search speeds for large codebases
+- **🛡️ Type Safety Improvements**: 7% reduction in mypy errors (341→318)
+- **✨ Code Style Unification**: Significant reduction in ruff violations
+- **🏗️ Technical Debt Resolution**: Comprehensive code quality improvements
+- **🚀 Test Execution Time**: Maintained 83% reduction (215s→37s)
+
+#### 🔄 Parallel Processing Details
+- **Automatic Parallel Execution**: Multiple roots directories are automatically processed in parallel
+- **Configurable Control**: `enable_parallel` option for control (default: True)
+- **Scalable Performance**: Performance improvements scale with directory count
+- **Memory Efficient**: Semaphore-controlled concurrent execution limits
+
+### 🆕 v1.8.4 New Feature: Configurable File Logging
+
+Revolutionary environment variable-controlled file logging system:
+
+- **🔧 Environment Variable Control**: Flexible file logging behavior control through environment variables
+  - `TREE_SITTER_ANALYZER_ENABLE_FILE_LOG`: Enable/disable file logging
+  - `TREE_SITTER_ANALYZER_LOG_DIR`: Custom log directory path
+  - `TREE_SITTER_ANALYZER_FILE_LOG_LEVEL`: Control file log level
+- **🛡️ Improved Default Behavior**: File logging disabled by default to prevent user project pollution
+- **📁 Smart Directory Selection**: Uses system temp directory when enabled, keeping projects clean
+- **🔄 Backward Compatibility**: Maintains all existing functionality unchanged
+- **📚 Complete Documentation Support**: Includes debugging guides and troubleshooting documentation
+
+### 🆕 v1.8.3 New Feature: MCP Tools Design Consistency Enhancement
+
+Comprehensive MCP tools unification and design consistency improvements:
+
+- **🔧 Unified `set_project_path` Implementation**: SearchContentTool and FindAndGrepTool now have consistent `set_project_path` method implementation
+- **🏗️ Design Consistency Across All MCP Tools**: All 4 MCP tools (QueryTool, TableFormatTool, SearchContentTool, FindAndGrepTool) now have unified interface design
+- **📁 FileOutputManager Integration**: Unified FileOutputManager factory pattern for consistent file output management
+- **🔄 Dynamic Project Path Changes**: All MCP tools now support dynamic project path changes through unified interface
+- **🛡️ Enhanced Security Boundaries**: Consistent security boundary protection across all MCP tools
+- **📋 Improved Developer Experience**: Unified interface makes MCP tool development and usage more consistent
+
+### 🆕 v1.8.2 New Feature: CLI Security and Argument Validation Enhancement
+
+Comprehensive CLI security improvements and argument validation optimization:
+
+- **🔒 CLI Security Boundary Fix**: Fixed CLI mode security boundary errors, ensuring file access security
+- **✅ Proper CLI Argument Validation**: Implemented complete CLI argument validation system, preventing invalid parameter combinations
+- **🚫 Exclusive Parameter Control**: `--table` and `--query-key` parameters now properly implement exclusive control
+- **🔍 Enhanced Filter Support**: `--query-key` with `--filter` combination usage is fully supported
+- **⚠️ Clear Error Messages**: Provides detailed error information to help users use commands correctly
+- **🛡️ Enhanced Security Features**: Temporary directory access permission in test environments and project boundary protection
+- **📋 Improved User Experience**: More intuitive command-line interface and error handling
+
+### 🆕 v1.8.0 New Feature: HTML/CSS Language Support
+
+Revolutionary HTML and CSS analysis capabilities with specialized data models and formatting:
+
+- **🏗️ HTML DOM Analysis**: Complete HTML element extraction with tag names, attributes, and hierarchical structure
+- **🎨 CSS Rule Analysis**: Comprehensive CSS selector and property analysis with intelligent classification
+- **📊 Element Classification System**: Smart categorization of HTML elements (structure, heading, text, list, media, form, table, metadata) and CSS properties (layout, box_model, typography, background, transition, interactivity)
+- **🔧 Specialized Data Models**: New `MarkupElement` and `StyleElement` classes for precise web technology analysis
+- **📋 Enhanced Formatters**: New HTML formatter with structured table output for web development workflows
+- **🔄 Extensible Architecture**: Plugin-based system with `FormatterRegistry` for dynamic format management
+- **🆕 Dependencies**: Added `tree-sitter-html>=0.23.0,<0.25.0` and `tree-sitter-css>=0.23.0,<0.25.0` for native parsing support
+
+### 🆕 v1.7.3 Feature: Complete Markdown Support
+
+Brand new Markdown language support provides powerful capabilities for document analysis and AI assistants:
+
+- **📝 Complete Markdown Parsing**: Support for all major elements including ATX headers, Setext headers, code blocks, links, images, tables
+- **🔍 Intelligent Element Extraction**: Automatically recognize and extract header levels, code languages, link URLs, image information
+- **📊 Structured Analysis**: Convert Markdown documents to structured data for easy AI understanding and processing
+- **🎯 Task List Support**: Complete support for GitHub-style task lists (checkboxes)
+- **🔧 Query System Integration**: Support for all existing query and filtering functionality
+- **📁 Multiple Extension Support**: Support for .md, .markdown, .mdown, .mkd, .mkdn, .mdx formats
+
+### 🆕 v1.7.2 Feature: File Output Optimization
+
+MCP search tools' newly added file output optimization feature is a revolutionary token-saving solution:
+
+- **🎯 File Output Optimization**: `find_and_grep`, `list_files`, and `search_content` tools now include `suppress_output` and `output_file` parameters
+- **🔄 Automatic Format Detection**: Smart file format selection (JSON/Markdown) based on content type
+- **💾 Massive Token Savings**: Response size reduced by up to 99% when saving large search results to files
+- **📚 ROO Rules Documentation**: Added comprehensive tree-sitter-analyzer MCP optimization usage guide
+- **🔧 Backward Compatibility**: Optional feature that doesn't affect existing functionality
+
+### 🆕 v1.7.0 Feature: suppress_output Function
+
+The `suppress_output` parameter in the `analyze_code_structure` tool:
+
+- **Problem solved**: When analysis results are too large, traditional methods return complete table data, consuming massive tokens
+- **Intelligent optimization**: When `suppress_output=true` and `output_file` specified, only basic metadata is returned
+- **Significant effect**: Response size reduced by up to 99%, dramatically saving AI dialog token consumption
+- **Use cases**: Particularly suitable for large code file structure analysis and batch processing scenarios
 
 ---
 
