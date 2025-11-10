@@ -606,6 +606,17 @@ class SQLElementExtractor(ElementExtractor):
                                     func_name = None
                         if func_name:
                             break
+                
+                # Fallback: Parse from raw text if AST parsing failed or returned invalid name
+                if not func_name:
+                    raw_text = self._get_node_text(node)
+                    # Look for pattern: CREATE FUNCTION <name>(
+                    import re
+                    match = re.search(r'CREATE\s+FUNCTION\s+(\w+)\s*\(', raw_text, re.IGNORECASE)
+                    if match:
+                        potential_name = match.group(1).strip()
+                        if self._is_valid_identifier(potential_name):
+                            func_name = potential_name
 
                 if func_name:
                     try:
@@ -671,16 +682,19 @@ class SQLElementExtractor(ElementExtractor):
                         break  # Stop after finding the first object_reference after TRIGGER
 
                 # Skip common SQL keywords that might be incorrectly identified
-                if trigger_name and trigger_name.upper() in ('KEY', 'AUTO_INCREMENT', 'PRIMARY', 'FOREIGN', 'INDEX', 'UNIQUE'):
+                if trigger_name and trigger_name.upper() in ('KEY', 'AUTO_INCREMENT', 'PRIMARY', 'FOREIGN', 'INDEX', 'UNIQUE', 'PRICE', 'QUANTITY', 'TOTAL', 'SUM', 'COUNT', 'AVG', 'MAX', 'MIN'):
                     trigger_name = None
                 
-                # Validate this is really a CREATE TRIGGER statement using regex
-                if has_create and has_trigger and trigger_name:
+                # Fallback: Parse from raw text if AST parsing failed or returned suspicious name
+                if (has_create and has_trigger) and not trigger_name:
                     import re
                     node_text = self._get_node_text(node)
-                    # Verify this really starts with CREATE TRIGGER
-                    if not re.match(r'^\s*CREATE\s+TRIGGER\s+', node_text, re.IGNORECASE):
-                        trigger_name = None
+                    # Look for pattern: CREATE TRIGGER <name>
+                    match = re.search(r'CREATE\s+TRIGGER\s+(\w+)', node_text, re.IGNORECASE)
+                    if match:
+                        potential_name = match.group(1).strip()
+                        if self._is_valid_identifier(potential_name) and potential_name.upper() not in ('ON', 'AFTER', 'BEFORE', 'INSERT', 'UPDATE', 'DELETE', 'FOR', 'EACH', 'ROW'):
+                            trigger_name = potential_name
 
                 if has_create and has_trigger and trigger_name:
                     try:
