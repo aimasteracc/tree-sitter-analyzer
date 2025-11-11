@@ -469,29 +469,50 @@ class SQLElementExtractor(ElementExtractor):
             root_node: Root node of the SQL AST
             classes: List to append extracted view Class elements to
         """
+        import re
+        
         for node in self._traverse_nodes(root_node):
             if node.type == "create_view":
-                # Look for object_reference within create_view
+                # Get raw text first for fallback regex
+                raw_text = self._get_node_text(node)
                 view_name = None
+                
+                # Try AST parsing: Look for object_reference within create_view
                 for child in node.children:
                     if child.type == "object_reference":
                         # object_reference contains identifier
                         for subchild in child.children:
                             if subchild.type == "identifier":
-                                view_name = self._get_node_text(subchild).strip()
-                                # Validate view name
-                                if view_name and self._is_valid_identifier(view_name):
-                                    break
-                                else:
-                                    view_name = None
+                                potential_name = self._get_node_text(subchild)
+                                if potential_name:
+                                    potential_name = potential_name.strip()
+                                    # Validate view name
+                                    if potential_name and self._is_valid_identifier(potential_name):
+                                        view_name = potential_name
+                                        break
                         if view_name:
                             break
+                
+                # Fallback 1: Direct text regex if AST didn't work
+                if not view_name and raw_text:
+                    match = re.search(r'CREATE\s+VIEW\s+(\w+)\s+AS', raw_text, re.IGNORECASE)
+                    if match:
+                        potential_name = match.group(1).strip()
+                        if self._is_valid_identifier(potential_name):
+                            view_name = potential_name
+                
+                # Fallback 2: More aggressive regex if still missing
+                if not view_name and raw_text:
+                    match = re.search(r'CREATE\s+VIEW\s+([a-zA-Z_]\w*)', raw_text, re.IGNORECASE)
+                    if match:
+                        potential_name = match.group(1).strip()
+                        if self._is_valid_identifier(potential_name) and potential_name.upper() not in ('AS', 'IF', 'NOT', 'EXISTS'):
+                            view_name = potential_name
 
                 if view_name:
                     try:
                         start_line = node.start_point[0] + 1
                         end_line = node.end_point[0] + 1
-                        raw_text = self._get_node_text(node)
 
                         cls = Class(
                             name=view_name,
@@ -595,6 +616,17 @@ class SQLElementExtractor(ElementExtractor):
                                     func_name = None
                         if func_name:
                             break
+                
+                # Fallback: Parse from raw text if AST parsing failed or returned invalid name
+                if not func_name:
+                    raw_text = self._get_node_text(node)
+                    # Look for pattern: CREATE FUNCTION <name>(
+                    import re
+                    match = re.search(r'CREATE\s+FUNCTION\s+(\w+)\s*\(', raw_text, re.IGNORECASE)
+                    if match:
+                        potential_name = match.group(1).strip()
+                        if self._is_valid_identifier(potential_name):
+                            func_name = potential_name
 
                 if func_name:
                     try:
@@ -660,16 +692,19 @@ class SQLElementExtractor(ElementExtractor):
                         break  # Stop after finding the first object_reference after TRIGGER
 
                 # Skip common SQL keywords that might be incorrectly identified
-                if trigger_name and trigger_name.upper() in ('KEY', 'AUTO_INCREMENT', 'PRIMARY', 'FOREIGN', 'INDEX', 'UNIQUE'):
+                if trigger_name and trigger_name.upper() in ('KEY', 'AUTO_INCREMENT', 'PRIMARY', 'FOREIGN', 'INDEX', 'UNIQUE', 'PRICE', 'QUANTITY', 'TOTAL', 'SUM', 'COUNT', 'AVG', 'MAX', 'MIN'):
                     trigger_name = None
                 
-                # Validate this is really a CREATE TRIGGER statement using regex
-                if has_create and has_trigger and trigger_name:
+                # Fallback: Parse from raw text if AST parsing failed or returned suspicious name
+                if (has_create and has_trigger) and not trigger_name:
                     import re
                     node_text = self._get_node_text(node)
-                    # Verify this really starts with CREATE TRIGGER
-                    if not re.match(r'^\s*CREATE\s+TRIGGER\s+', node_text, re.IGNORECASE):
-                        trigger_name = None
+                    # Look for pattern: CREATE TRIGGER <name>
+                    match = re.search(r'CREATE\s+TRIGGER\s+(\w+)', node_text, re.IGNORECASE)
+                    if match:
+                        potential_name = match.group(1).strip()
+                        if self._is_valid_identifier(potential_name) and potential_name.upper() not in ('ON', 'AFTER', 'BEFORE', 'INSERT', 'UPDATE', 'DELETE', 'FOR', 'EACH', 'ROW'):
+                            trigger_name = potential_name
 
                 if has_create and has_trigger and trigger_name:
                     try:
@@ -961,14 +996,31 @@ class SQLElementExtractor(ElementExtractor):
                     if child.type == "object_reference":
                         for subchild in child.children:
                             if subchild.type == "identifier":
-                                view_name = self._get_node_text(subchild).strip()
-                                # Validate view name
-                                if view_name and self._is_valid_identifier(view_name):
+                                potential_name = self._get_node_text(subchild).strip()
+                                # Validate view name more strictly
+                                if (potential_name and 
+                                    self._is_valid_identifier(potential_name) and
+                                    potential_name.upper() not in ('SELECT', 'FROM', 'WHERE', 'CURRENT_TIMESTAMP', 'NOW', 'SYSDATE')):
+                                    view_name = potential_name
                                     break
-                                else:
-                                    view_name = None
                         if view_name:
                             break
+                
+                # Fallback: Parse from raw text if AST parsing failed or returned invalid name
+                if not view_name:
+                    raw_text = self._get_node_text(node)
+                    # Look for pattern: CREATE VIEW <name> AS
+                    import re
+                    match = re.search(r'CREATE\s+VIEW\s+(\w+)\s+AS', raw_text, re.IGNORECASE)
+                    if match:
+                        potential_name = match.group(1).strip()
+                        if (self._is_valid_identifier(potential_name) and
+                            potential_name.upper() not in ('SELECT', 'FROM', 'WHERE', 'CURRENT_TIMESTAMP', 'NOW', 'SYSDATE')):
+                            view_name = potential_name
+
+                # Additional validation: ensure view name doesn't match SQL keywords or function names
+                if view_name and view_name.upper() in ('CURRENT_TIMESTAMP', 'NOW', 'SYSDATE', 'COUNT', 'SUM', 'AVG', 'MAX', 'MIN'):
+                    view_name = None
 
                 # Extract source tables from SELECT statement
                 self._extract_view_sources(node, source_tables)
