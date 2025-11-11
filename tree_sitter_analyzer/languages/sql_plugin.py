@@ -386,6 +386,28 @@ class SQLElementExtractor(ElementExtractor):
         if any(name_upper.startswith(pattern) for pattern in sql_statement_patterns):
             return False
 
+        # Reject common SQL keywords that should never be identifiers
+        sql_keywords = {
+            "SELECT", "FROM", "WHERE", "AS", "IF", "NOT", "EXISTS",
+            "NULL", "CURRENT_TIMESTAMP", "NOW", "SYSDATE",
+            "COUNT", "SUM", "AVG", "MAX", "MIN",
+            "AND", "OR", "IN", "LIKE", "BETWEEN",
+            "JOIN", "LEFT", "RIGHT", "INNER", "OUTER", "CROSS",
+            "ON", "USING", "GROUP", "BY", "ORDER", "HAVING",
+            "LIMIT", "OFFSET", "DISTINCT", "ALL",
+            "UNION", "INTERSECT", "EXCEPT",
+            "INSERT", "UPDATE", "DELETE", "CREATE", "DROP", "ALTER",
+            "TABLE", "VIEW", "INDEX", "TRIGGER", "PROCEDURE", "FUNCTION",
+            "PRIMARY", "FOREIGN", "KEY", "UNIQUE", "CHECK", "DEFAULT",
+            "REFERENCES", "CASCADE", "RESTRICT", "SET", "NO", "ACTION",
+            "INTO", "VALUES", "BEGIN", "END", "DECLARE", "RETURN",
+            "RETURNS", "READS", "SQL", "DATA", "DETERMINISTIC",
+            "BEFORE", "AFTER", "EACH", "ROW", "FOR",
+            "COALESCE", "CASE", "WHEN", "THEN", "ELSE",
+        }
+        if name_upper in sql_keywords:
+            return False
+
         # Reject if contains parentheses (like "users (" or "(id")
         if "(" in name or ")" in name:
             return False
@@ -477,37 +499,33 @@ class SQLElementExtractor(ElementExtractor):
                 raw_text = self._get_node_text(node)
                 view_name = None
                 
-                # Try AST parsing: Look for object_reference within create_view
-                for child in node.children:
-                    if child.type == "object_reference":
-                        # object_reference contains identifier
-                        for subchild in child.children:
-                            if subchild.type == "identifier":
-                                potential_name = self._get_node_text(subchild)
-                                if potential_name:
-                                    potential_name = potential_name.strip()
-                                    # Validate view name
-                                    if potential_name and self._is_valid_identifier(potential_name):
-                                        view_name = potential_name
-                                        break
-                        if view_name:
-                            break
-                
-                # Fallback 1: Direct text regex if AST didn't work
-                if not view_name and raw_text:
-                    match = re.search(r'CREATE\s+VIEW\s+(\w+)\s+AS', raw_text, re.IGNORECASE)
+                # FIRST: Try regex parsing (most reliable for CREATE VIEW)
+                if raw_text:
+                    # Pattern: CREATE VIEW [IF NOT EXISTS] view_name AS
+                    match = re.search(r'CREATE\s+VIEW\s+(?:IF\s+NOT\s+EXISTS\s+)?(\w+)\s+AS', raw_text, re.IGNORECASE)
                     if match:
                         potential_name = match.group(1).strip()
                         if self._is_valid_identifier(potential_name):
                             view_name = potential_name
                 
-                # Fallback 2: More aggressive regex if still missing
-                if not view_name and raw_text:
-                    match = re.search(r'CREATE\s+VIEW\s+([a-zA-Z_]\w*)', raw_text, re.IGNORECASE)
-                    if match:
-                        potential_name = match.group(1).strip()
-                        if self._is_valid_identifier(potential_name) and potential_name.upper() not in ('AS', 'IF', 'NOT', 'EXISTS'):
-                            view_name = potential_name
+                # Fallback: Try AST parsing if regex didn't work
+                if not view_name:
+                    for child in node.children:
+                        if child.type == "object_reference":
+                            # object_reference contains identifier
+                            for subchild in child.children:
+                                if subchild.type == "identifier":
+                                    potential_name = self._get_node_text(subchild)
+                                    if potential_name:
+                                        potential_name = potential_name.strip()
+                                        # Validate view name - exclude SQL keywords
+                                        if (potential_name and 
+                                            self._is_valid_identifier(potential_name) and
+                                            potential_name.upper() not in ('SELECT', 'FROM', 'WHERE', 'AS', 'IF', 'NOT', 'EXISTS', 'NULL', 'CURRENT_TIMESTAMP', 'NOW', 'SYSDATE')):
+                                            view_name = potential_name
+                                            break
+                            if view_name:
+                                break
 
                 if view_name:
                     try:
@@ -991,36 +1009,34 @@ class SQLElementExtractor(ElementExtractor):
                 view_name = None
                 source_tables = []
 
-                # Extract view name
-                for child in node.children:
-                    if child.type == "object_reference":
-                        for subchild in child.children:
-                            if subchild.type == "identifier":
-                                potential_name = self._get_node_text(subchild).strip()
-                                # Validate view name more strictly
-                                if (potential_name and 
-                                    self._is_valid_identifier(potential_name) and
-                                    potential_name.upper() not in ('SELECT', 'FROM', 'WHERE', 'CURRENT_TIMESTAMP', 'NOW', 'SYSDATE')):
-                                    view_name = potential_name
-                                    break
-                        if view_name:
-                            break
+                # Get raw text for regex parsing
+                raw_text = self._get_node_text(node)
                 
-                # Fallback: Parse from raw text if AST parsing failed or returned invalid name
-                if not view_name:
-                    raw_text = self._get_node_text(node)
-                    # Look for pattern: CREATE VIEW <name> AS
+                # FIRST: Try regex parsing (most reliable for CREATE VIEW)
+                if raw_text:
+                    # Pattern: CREATE VIEW [IF NOT EXISTS] view_name AS
                     import re
-                    match = re.search(r'CREATE\s+VIEW\s+(\w+)\s+AS', raw_text, re.IGNORECASE)
+                    match = re.search(r'CREATE\s+VIEW\s+(?:IF\s+NOT\s+EXISTS\s+)?(\w+)\s+AS', raw_text, re.IGNORECASE)
                     if match:
                         potential_name = match.group(1).strip()
-                        if (self._is_valid_identifier(potential_name) and
-                            potential_name.upper() not in ('SELECT', 'FROM', 'WHERE', 'CURRENT_TIMESTAMP', 'NOW', 'SYSDATE')):
+                        if self._is_valid_identifier(potential_name):
                             view_name = potential_name
 
-                # Additional validation: ensure view name doesn't match SQL keywords or function names
-                if view_name and view_name.upper() in ('CURRENT_TIMESTAMP', 'NOW', 'SYSDATE', 'COUNT', 'SUM', 'AVG', 'MAX', 'MIN'):
-                    view_name = None
+                # Fallback: Try AST parsing if regex didn't work
+                if not view_name:
+                    for child in node.children:
+                        if child.type == "object_reference":
+                            for subchild in child.children:
+                                if subchild.type == "identifier":
+                                    potential_name = self._get_node_text(subchild).strip()
+                                    # Validate view name more strictly - exclude SQL keywords
+                                    if (potential_name and 
+                                        self._is_valid_identifier(potential_name) and
+                                        potential_name.upper() not in ('SELECT', 'FROM', 'WHERE', 'AS', 'IF', 'NOT', 'EXISTS', 'NULL', 'CURRENT_TIMESTAMP', 'NOW', 'SYSDATE', 'COUNT', 'SUM', 'AVG', 'MAX', 'MIN')):
+                                        view_name = potential_name
+                                        break
+                            if view_name:
+                                break
 
                 # Extract source tables from SELECT statement
                 self._extract_view_sources(node, source_tables)
