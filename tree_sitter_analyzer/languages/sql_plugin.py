@@ -996,16 +996,17 @@ class SQLElementExtractor(ElementExtractor):
                     if child.type == "object_reference":
                         for subchild in child.children:
                             if subchild.type == "identifier":
-                                view_name = self._get_node_text(subchild).strip()
-                                # Validate view name
-                                if view_name and self._is_valid_identifier(view_name):
+                                potential_name = self._get_node_text(subchild).strip()
+                                # Validate view name more strictly
+                                if (potential_name and 
+                                    self._is_valid_identifier(potential_name) and
+                                    potential_name.upper() not in ('SELECT', 'FROM', 'WHERE', 'CURRENT_TIMESTAMP', 'NOW', 'SYSDATE')):
+                                    view_name = potential_name
                                     break
-                                else:
-                                    view_name = None
                         if view_name:
                             break
                 
-                # Fallback: Parse from raw text if AST parsing failed
+                # Fallback: Parse from raw text if AST parsing failed or returned invalid name
                 if not view_name:
                     raw_text = self._get_node_text(node)
                     # Look for pattern: CREATE VIEW <name> AS
@@ -1013,8 +1014,13 @@ class SQLElementExtractor(ElementExtractor):
                     match = re.search(r'CREATE\s+VIEW\s+(\w+)\s+AS', raw_text, re.IGNORECASE)
                     if match:
                         potential_name = match.group(1).strip()
-                        if self._is_valid_identifier(potential_name):
+                        if (self._is_valid_identifier(potential_name) and
+                            potential_name.upper() not in ('SELECT', 'FROM', 'WHERE', 'CURRENT_TIMESTAMP', 'NOW', 'SYSDATE')):
                             view_name = potential_name
+
+                # Additional validation: ensure view name doesn't match SQL keywords or function names
+                if view_name and view_name.upper() in ('CURRENT_TIMESTAMP', 'NOW', 'SYSDATE', 'COUNT', 'SUM', 'AVG', 'MAX', 'MIN'):
+                    view_name = None
 
                 # Extract source tables from SELECT statement
                 self._extract_view_sources(node, source_tables)
