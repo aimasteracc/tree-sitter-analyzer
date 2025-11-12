@@ -619,29 +619,23 @@ class SQLElementExtractor(ElementExtractor):
         """
         for node in self._traverse_nodes(root_node):
             if node.type == "create_function":
-                # Look for the FIRST object_reference within create_function (this should be the function name)
-                # Subsequent object_references are usually parameters or other parts of the function signature
                 func_name = None
+                # Only use the FIRST object_reference as the function name
                 for child in node.children:
                     if child.type == "object_reference":
-                        # object_reference contains identifier
+                        # Only process the first object_reference
                         for subchild in child.children:
                             if subchild.type == "identifier":
                                 func_name = self._get_node_text(subchild).strip()
-                                # Validate function name
                                 if func_name and self._is_valid_identifier(func_name):
                                     break
                                 else:
                                     func_name = None
-                        # Stop at the FIRST object_reference (function name)
-                        # Don't continue to parameters
-                        if func_name:
-                            break
-                
+                        break  # Stop after first object_reference
+
                 # Fallback: Parse from raw text if AST parsing failed or returned invalid name
                 if not func_name:
                     raw_text = self._get_node_text(node)
-                    # Look for pattern: CREATE FUNCTION <name>(
                     import re
                     match = re.search(r'CREATE\s+FUNCTION\s+(\w+)\s*\(', raw_text, re.IGNORECASE)
                     if match:
@@ -654,7 +648,6 @@ class SQLElementExtractor(ElementExtractor):
                         start_line = node.start_point[0] + 1
                         end_line = node.end_point[0] + 1
                         raw_text = self._get_node_text(node)
-
                         func = Function(
                             name=func_name,
                             start_line=start_line,
