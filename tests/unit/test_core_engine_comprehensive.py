@@ -59,9 +59,12 @@ class TestAnalysisEngineAnalyzeFile:
             engine.analyze_file("nonexistent_file.py")
 
     @pytest.mark.skipif(os.name == 'nt', reason="Permission test not reliable on Windows")
-    @pytest.mark.skipif(os.name == 'nt', reason="chmod does not work as expected on Windows")
     def test_analyze_file_permission_error(self):
         """Test analyzing file with permission error"""
+        # Skip on Windows since chmod doesn't work reliably for permissions
+        if os.name == 'nt':
+            pytest.skip("Permission error testing not supported on Windows")
+            
         engine = AnalysisEngine()
         
         with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.py') as f:
@@ -70,15 +73,13 @@ class TestAnalysisEngineAnalyzeFile:
         
         try:
             # Make file unreadable (Unix-like systems)
-            if hasattr(os, 'chmod'):
-                os.chmod(temp_path, 0o000)
-                
-                with pytest.raises(PermissionError):
-                    engine.analyze_file(temp_path)
+            os.chmod(temp_path, 0o000)
+            
+            with pytest.raises(PermissionError):
+                engine.analyze_file(temp_path)
         finally:
             # Restore permissions and cleanup
-            if hasattr(os, 'chmod'):
-                os.chmod(temp_path, 0o644)
+            os.chmod(temp_path, 0o644)
             if os.path.exists(temp_path):
                 os.unlink(temp_path)
 
