@@ -11,6 +11,7 @@ from pathlib import Path
 from unittest.mock import Mock, patch, MagicMock, mock_open
 import tempfile
 import os
+import sys
 
 from tree_sitter_analyzer.core.engine import AnalysisEngine
 from tree_sitter_analyzer.core.parser import ParseResult
@@ -58,11 +59,11 @@ class TestAnalysisEngineAnalyzeFile:
         with pytest.raises(FileNotFoundError):
             engine.analyze_file("nonexistent_file.py")
 
-    @pytest.mark.skipif(os.name == 'nt', reason="Permission test not reliable on Windows")
+    @pytest.mark.skipif(sys.platform.startswith('win'), reason="Permission test not reliable on Windows")
     def test_analyze_file_permission_error(self):
-        """Test analyzing file with permission error"""
-        # Skip on Windows since chmod doesn't work reliably for permissions
-        if os.name == 'nt':
+        """Test analyzing file with permission error (Unix/Linux/macOS only)"""
+        # Double-check: skip on Windows platforms
+        if sys.platform.startswith('win') or os.name == 'nt':
             pytest.skip("Permission error testing not supported on Windows")
             
         engine = AnalysisEngine()
