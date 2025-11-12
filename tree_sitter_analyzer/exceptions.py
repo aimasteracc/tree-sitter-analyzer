@@ -170,7 +170,7 @@ class ValidationError(TreeSitterAnalyzerError):
         invalid_value: Any | None = None,
         **kwargs: Any,
     ) -> None:
-        context = kwargs.get("context", {})
+        context = kwargs.pop("context", {})
         if validation_type:
             context["validation_type"] = validation_type
         if invalid_value is not None:
@@ -188,7 +188,7 @@ class MCPError(TreeSitterAnalyzerError):
         resource_uri: str | None = None,
         **kwargs: Any,
     ) -> None:
-        context = kwargs.get("context", {})
+        context = kwargs.pop("context", {})
         if tool_name:
             context["tool_name"] = tool_name
         if resource_uri:
@@ -347,7 +347,7 @@ class SecurityError(TreeSitterAnalyzerError):
         file_path: str | Path | None = None,
         **kwargs: Any,
     ) -> None:
-        context = kwargs.get("context", {})
+        context = kwargs.pop("context", {})
         if security_type:
             context["security_type"] = security_type
         if file_path:
@@ -367,7 +367,7 @@ class PathTraversalError(SecurityError):
         attempted_path: str | None = None,
         **kwargs: Any,
     ) -> None:
-        context = kwargs.get("context", {})
+        context = kwargs.pop("context", {})
         if attempted_path:
             context["attempted_path"] = attempted_path
 
@@ -387,7 +387,7 @@ class RegexSecurityError(SecurityError):
         dangerous_construct: str | None = None,
         **kwargs: Any,
     ) -> None:
-        context = kwargs.get("context", {})
+        context = kwargs.pop("context", {})
         if pattern:
             context["pattern"] = pattern
         if dangerous_construct:
@@ -412,7 +412,7 @@ class MCPToolError(MCPError):
         execution_stage: str | None = None,
         **kwargs: Any,
     ) -> None:
-        context = kwargs.get("context", {})
+        context = kwargs.pop("context", {})
         if input_params:
             # Sanitize sensitive information from input params
             sanitized_params = self._sanitize_params(input_params)
@@ -421,6 +421,7 @@ class MCPToolError(MCPError):
             context["execution_stage"] = execution_stage
 
         super().__init__(message, tool_name=tool_name, context=context, **kwargs)
+        self.tool_name = tool_name
         self.input_params = input_params
         self.execution_stage = execution_stage
 
@@ -452,13 +453,14 @@ class MCPResourceError(MCPError):
         access_mode: str | None = None,
         **kwargs: Any,
     ) -> None:
-        context = kwargs.get("context", {})
+        context = kwargs.pop("context", {})
         if resource_type:
             context["resource_type"] = resource_type
         if access_mode:
             context["access_mode"] = access_mode
 
         super().__init__(message, resource_uri=resource_uri, context=context, **kwargs)
+        self.resource_uri = resource_uri
         self.resource_type = resource_type
         self.access_mode = access_mode
 
@@ -473,7 +475,7 @@ class MCPTimeoutError(MCPError):
         operation_type: str | None = None,
         **kwargs: Any,
     ) -> None:
-        context = kwargs.get("context", {})
+        context = kwargs.pop("context", {})
         if timeout_seconds:
             context["timeout_seconds"] = timeout_seconds
         if operation_type:
@@ -496,7 +498,7 @@ class MCPValidationError(ValidationError):
         validation_rule: str | None = None,
         **kwargs: Any,
     ) -> None:
-        context = kwargs.get("context", {})
+        context = kwargs.pop("context", {})
         if tool_name:
             context["tool_name"] = tool_name
         if parameter_name:
@@ -530,7 +532,7 @@ class FileRestrictionError(SecurityError):
         allowed_patterns: list[str] | None = None,
         **kwargs: Any,
     ) -> None:
-        context = kwargs.get("context", {})
+        context = kwargs.pop("context", {})
         if current_mode:
             context["current_mode"] = current_mode
         if allowed_patterns:

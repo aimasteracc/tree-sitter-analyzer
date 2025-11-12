@@ -79,12 +79,76 @@
 ## コード品質
 
 ### テスト
-- 新機能には必ずテストを追加
-- 既存テストの回帰を確認
+
+すべての新機能と変更には適切なテストが必要です。
+
+#### テスト要件
+- **カバレッジ**: 新規コードは100%カバレッジ必須
+- **既存テスト**: すべてのテストがパスすることを確認
+- **テストタイプ**: 
+  - ユニットテスト: 個別コンポーネントのテスト
+  - 統合テスト: コンポーネント間の相互作用テスト
+  - E2Eテスト: エンドツーエンドのワークフローテスト
+
+#### テストの実行
+
+```bash
+# すべてのテストを実行
+pytest
+
+# カバレッジレポート付きで実行
+pytest --cov=tree_sitter_analyzer --cov-report=term-missing
+
+# 特定のテストファイルを実行
+pytest tests/unit/test_specific_module.py
+
+# 並列実行（高速化）
+pytest -n auto
+```
+
+#### テストの書き方
+
+詳細なテストガイドラインは [TESTING.md](TESTING.md) を参照してください。
+
+**主要なポイント**:
+- `tests/fixtures/` のヘルパーを活用
+- Arrange-Act-Assert パターンに従う
+- 明確で説明的なテスト名を使用
+- 成功パスとエラーパス両方をテスト
+- 外部依存関係はモック化
+
+#### テストフィクスチャとユーティリティ
+
+プロジェクトは再利用可能なテストユーティリティを提供しています:
+
+```python
+from tests.fixtures import coverage_helpers, data_generators, assertion_helpers
+
+# モックデータの作成
+node = coverage_helpers.create_mock_node("function_definition")
+code = data_generators.generate_python_function("my_func")
+
+# カスタムアサーション
+assertion_helpers.assert_analysis_result_valid(result)
+assertion_helpers.assert_coverage_threshold(85.0, 80.0, "module")
+```
+
+#### カバレッジターゲット
+
+| モジュールカテゴリ | カバレッジ目標 | 優先度 |
+|-------------------|---------------|--------|
+| コアエンジン | ≥85% | クリティカル |
+| 例外処理 | ≥90% | クリティカル |
+| MCPインターフェース | ≥80% | 高 |
+| CLIコマンド | ≥85% | 高 |
+| フォーマッター | ≥80% | 中 |
+| クエリモジュール | ≥85% | 中 |
 
 ### ドキュメント
 - 公開APIの変更時は必ずドキュメントを更新
 - 重要な設計決定は `docs/analysis/` に記録
+- テストガイドライン: [TESTING.md](TESTING.md)
+- API仕様書: [api/](api/)
 
 ## リリース管理
 

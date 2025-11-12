@@ -4,7 +4,7 @@
 
 [![Python版本](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![许可证](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![测试](https://img.shields.io/badge/tests-3576%20passed-brightgreen.svg)](#质量保证)
+[![测试](https://img.shields.io/badge/tests-4438%20passed-brightgreen.svg)](#质量保证)
 [![覆盖率](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer)
 [![质量](https://img.shields.io/badge/quality-enterprise%20grade-blue.svg)](#质量保证)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)

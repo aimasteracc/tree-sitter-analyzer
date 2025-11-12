@@ -4,7 +4,7 @@
 
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-3576%20passed-brightgreen.svg)](#quality-assurance)
+[![Tests](https://img.shields.io/badge/tests-4438%20passed-brightgreen.svg)](#quality-assurance)
 [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer)
 [![Quality](https://img.shields.io/badge/quality-enterprise%20grade-blue.svg)](#quality-assurance)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
@@ -64,7 +64,7 @@ Tree-sitter Analyzer is an enterprise-grade code analysis tool designed for the 
 **Note:** Currently, only the above 11 languages have complete plugin implementations. Languages such as C/C++, Rust, Go, JSON are defined in `LanguageDetector` but do not have functional plugin implementations at this time.
 
 ### 🏆 Production Ready
-- **3,576 Tests** - 100% pass rate, enterprise-grade quality assurance
+- **4,438 Tests** - 100% pass rate, enterprise-grade quality assurance
 - **High Coverage** - Comprehensive test coverage
 - **Cross-platform Support** - Compatible with Windows, macOS, Linux
 - **Continuous Maintenance** - Active development and community support
@@ -682,7 +682,7 @@ uv run python -m tree_sitter_analyzer --show-query-languages
 ## 8. 🏆 Quality Assurance
 
 ### 📊 Quality Metrics
-- **3,576 tests** - 100% pass rate ✅
+- **4,438 tests** - 100% pass rate ✅
 - **High code coverage** - Comprehensive test suite
 - **Zero test failures** - Production ready
 - **Cross-platform support** - Windows, macOS, Linux
@@ -690,7 +690,7 @@ uv run python -m tree_sitter_analyzer --show-query-languages
 ### ⚡ Latest Quality Achievements (v1.9.3)
 - ✅ **🎯 Complete Type Safety Achievement** - Reduced mypy errors from 317 to 0, achieving 100% type safety
 - ✅ **🔧 HTML Element Duplication Fix** - Resolved HTML element duplicate detection and Java regex pattern issues
-- ✅ **🧪 Complete Test Suite Success** - All 3,370 tests passing with zero failure rate
+- ✅ **🧪 Complete Test Suite Success** - All 4,438 tests passing with zero failure rate
 - ✅ **📚 Multilingual Documentation System** - Significant expansion and refinement of Japanese project documentation
 - ✅ **🔄 Parallel Processing Engine Maintained** - search_content supports multi-directory parallel search with up to 4x performance boost
 - ✅ **�️ Enhanced Encoding Processing** - Implementation of automatic encoding detection and UTF-8 processing optimization
@@ -749,7 +749,7 @@ This project provides complete documentation support:
   - [Project Charter](docs/ja/project-management/00_プロジェクト憲章.md) - Overall project vision
   - [Change Management Policy](docs/ja/project-management/05_変更管理方針.md) - Detailed change management rules
   - [Quality Management Plan](docs/ja/project-management/03_品質管理計画.md) - Quality standards and KPIs
-  - [Test Strategy](docs/ja/test-management/00_テスト戦略.md) - Testing approach (3,370+ cases)
+  - [Test Strategy](docs/ja/test-management/00_テスト戦略.md) - Testing approach (4,438+ cases)
 
 #### 📚 User Documentation
 - **Quick Start Guide** - See the [Quick Start](#3--quick-start) section of this README

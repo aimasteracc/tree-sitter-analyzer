@@ -2,7 +2,7 @@
 
 **Project Name**: Tree-sitter Analyzer  
 **OpenSpec Version**: 1.0  
-**Last Updated**: 2025-11-04
+**Last Updated**: 2025-11-12
 
 ---
 

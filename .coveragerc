@@ -1,0 +1,64 @@
+# Coverage.py configuration
+# https://coverage.readthedocs.io/
+
+[run]
+source = tree_sitter_analyzer
+omit =
+    */tests/*
+    */test_*
+    */__pycache__/*
+    */venv/*
+    */.venv/*
+    */site-packages/*
+    */compatibility_test/*
+
+[report]
+precision = 2
+show_missing = True
+skip_covered = False
+skip_empty = True
+
+# Coverage thresholds
+fail_under = 75.0
+
+exclude_lines =
+    # Standard pragmas
+    pragma: no cover
+    
+    # Defensive programming
+    raise AssertionError
+    raise NotImplementedError
+    raise RuntimeError
+    
+    # Type checking
+    if TYPE_CHECKING:
+    if typing.TYPE_CHECKING:
+    @overload
+    
+    # Debugging
+    def __repr__
+    if self\.debug
+    if settings\.DEBUG
+    
+    # Abstract methods
+    @abc.abstractmethod
+    @abstractmethod
+    
+    # Main execution
+    if __name__ == .__main__.:
+
+[html]
+directory = htmlcov
+
+[xml]
+output = coverage.xml
+
+[json]
+output = coverage.json
+pretty_print = True
+show_contexts = True
+
+[paths]
+source =
+    tree_sitter_analyzer/
+    */tree-sitter-analyzer/tree_sitter_analyzer/
