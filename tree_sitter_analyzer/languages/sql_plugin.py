@@ -619,7 +619,8 @@ class SQLElementExtractor(ElementExtractor):
         """
         for node in self._traverse_nodes(root_node):
             if node.type == "create_function":
-                # Look for object_reference within create_function
+                # Look for the FIRST object_reference within create_function (this should be the function name)
+                # Subsequent object_references are usually parameters or other parts of the function signature
                 func_name = None
                 for child in node.children:
                     if child.type == "object_reference":
@@ -632,6 +633,8 @@ class SQLElementExtractor(ElementExtractor):
                                     break
                                 else:
                                     func_name = None
+                        # Stop at the FIRST object_reference (function name)
+                        # Don't continue to parameters
                         if func_name:
                             break
                 

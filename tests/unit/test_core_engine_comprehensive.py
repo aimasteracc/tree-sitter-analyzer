@@ -59,6 +59,7 @@ class TestAnalysisEngineAnalyzeFile:
             engine.analyze_file("nonexistent_file.py")
 
     @pytest.mark.skipif(os.name == 'nt', reason="Permission test not reliable on Windows")
+    @pytest.mark.skipif(os.name == 'nt', reason="chmod does not work as expected on Windows")
     def test_analyze_file_permission_error(self):
         """Test analyzing file with permission error"""
         engine = AnalysisEngine()
