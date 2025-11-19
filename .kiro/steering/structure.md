@@ -1,246 +1,171 @@
-# Project Structure & Organization
+---
+inclusion: always
+---
 
-## Current Project Status
+# プロジェクト構造
 
-- **Version**: v1.6.1
-- **Test Suite**: 1,893 tests with 71.48% code coverage
-- **Package Size**: Extensible multi-language code analyzer framework
-- **Build Status**: Beta (Development Status :: 4 - Beta)
+## ルートパッケージ
 
-## Root Directory Layout
+`tree_sitter_analyzer` - AI時代のエンタープライズグレードコード解析ツール
 
-```
-tree-sitter-analyzer/
-├── .git/                           # Git repository
-├── .github/                        # GitHub workflows and templates
-├── .kiro/                          # Kiro IDE configuration and steering
-├── tree_sitter_analyzer/          # Main package source code
-├── tests/                          # Comprehensive test suite (1,893 tests)
-├── examples/                       # Sample files for testing and demos
-├── docs/                           # Documentation
-├── training/                       # Training materials and guides
-├── scripts/                        # Automation and helper scripts
-├── dist/                           # Build artifacts (generated)
-├── .venv/                          # Virtual environment (generated)
-└── Configuration files (see below)
-```
+## ソース構成
 
-## Core Package Structure (`tree_sitter_analyzer/`)
+### メインソース (`tree_sitter_analyzer/`)
 
 ```
 tree_sitter_analyzer/
-├── __init__.py                     # Package initialization
-├── __main__.py                     # Module entry point
-├── api.py                          # Public API interface
-├── cli_main.py                     # CLI entry point
-├── models.py                       # Data models and types
-├── utils.py                        # Utility functions
-├── exceptions.py                   # Custom exception classes
-├── encoding_utils.py               # File encoding utilities
-├── file_handler.py                 # File operations
-├── language_detector.py            # Language detection logic
-├── language_loader.py              # Tree-sitter language loading
-├── output_manager.py               # Output formatting and display
-├── project_detector.py             # Project root detection
-├── query_loader.py                 # Query management
-├── table_formatter.py              # Table output formatting
-├── core/                           # Core analysis engine
-├── cli/                            # CLI command implementations
-├── formatters/                     # Output formatters
-├── interfaces/                     # Interface adapters (CLI, MCP)
-├── languages/                      # Language-specific plugins
-├── mcp/                            # MCP server implementation
-├── plugins/                        # Plugin system
-├── queries/                        # Tree-sitter queries
-├── security/                       # Security validation
-└── validation/                     # Input validation
+├── core/                    # コアエンジン
+│   ├── analysis_engine.py   # 統合解析エンジン
+│   ├── cache_service.py     # キャッシュサービス
+│   ├── engine.py           # レガシーエンジン
+│   ├── parser.py           # パーサー
+│   ├── query_filter.py     # クエリフィルタ
+│   ├── query_service.py    # クエリサービス
+│   └── query.py            # クエリ実行
+├── mcp/                    # MCPサーバー実装
+│   ├── server.py           # MCPサーバーメイン
+│   ├── tools/              # MCPツール群
+│   │   ├── analyze_scale_tool.py
+│   │   ├── find_and_grep_tool.py
+│   │   ├── list_files_tool.py
+│   │   ├── query_tool.py
+│   │   ├── search_content_tool.py
+│   │   ├── table_format_tool.py
+│   │   └── universal_analyze_tool.py
+│   ├── resources/          # MCPリソース
+│   └── utils/              # MCPユーティリティ
+├── languages/              # 言語プラグイン
+│   ├── java_plugin.py      # Java言語サポート
+│   ├── python_plugin.py    # Python言語サポート
+│   ├── javascript_plugin.py # JavaScript言語サポート
+│   ├── typescript_plugin.py # TypeScript言語サポート
+│   ├── csharp_plugin.py    # C#言語サポート
+│   ├── php_plugin.py       # PHP言語サポート
+│   ├── ruby_plugin.py      # Ruby言語サポート
+│   ├── sql_plugin.py       # SQL言語サポート
+│   ├── html_plugin.py      # HTML言語サポート
+│   ├── css_plugin.py       # CSS言語サポート
+│   └── markdown_plugin.py  # Markdown言語サポート
+├── formatters/             # 出力フォーマッター
+│   ├── base_formatter.py   # ベースフォーマッター
+│   ├── java_formatter.py   # Java専用フォーマッター
+│   ├── python_formatter.py # Python専用フォーマッター
+│   ├── csharp_formatter.py # C#専用フォーマッター
+│   ├── php_formatter.py    # PHP専用フォーマッター
+│   ├── ruby_formatter.py   # Ruby専用フォーマッター
+│   ├── sql_formatters.py   # SQL専用フォーマッター
+│   ├── html_formatter.py   # HTML専用フォーマッター
+│   ├── markdown_formatter.py # Markdown専用フォーマッター
+│   └── formatter_registry.py # フォーマッター登録
+├── cli/                    # CLIインターフェース
+│   ├── commands/           # CLIコマンド実装
+│   │   ├── advanced_command.py
+│   │   ├── structure_command.py
+│   │   ├── table_command.py
+│   │   ├── query_command.py
+│   │   ├── find_and_grep_cli.py
+│   │   ├── list_files_cli.py
+│   │   └── search_content_cli.py
+│   └── argument_validator.py # 引数検証
+├── queries/                # Tree-sitterクエリ
+│   ├── java.py             # Javaクエリ定義
+│   ├── python.py           # Pythonクエリ定義
+│   ├── javascript.py       # JavaScriptクエリ定義
+│   ├── typescript.py       # TypeScriptクエリ定義
+│   ├── csharp.py           # C#クエリ定義
+│   ├── php.py              # PHPクエリ定義
+│   ├── ruby.py             # Rubyクエリ定義
+│   ├── sql.py              # SQLクエリ定義
+│   ├── html.py             # HTMLクエリ定義
+│   ├── css.py              # CSSクエリ定義
+│   └── markdown.py         # Markdownクエリ定義
+├── security/               # セキュリティモジュール
+│   ├── validator.py        # セキュリティ検証
+│   ├── boundary_manager.py # プロジェクト境界管理
+│   └── regex_checker.py    # 正規表現安全性チェック
+├── plugins/                # プラグインシステム
+│   ├── base.py             # プラグインベースクラス
+│   └── manager.py          # プラグインマネージャー
+├── interfaces/             # インターフェース層
+│   ├── cli_adapter.py      # CLIアダプター
+│   └── mcp_adapter.py      # MCPアダプター
+└── utils/                  # ユーティリティ
+    ├── logging.py          # ログ設定
+    └── tree_sitter_compat.py # Tree-sitter互換性
 ```
 
-## Key Subdirectories
-
-### `core/` - Analysis Engine
-- `analysis_engine.py` - Main analysis orchestration
-- `query_engine.py` - Query execution engine
-- Core business logic for code analysis
-
-### `cli/` - Command Line Interface
-- `commands.py` - CLI command implementations
-- `parser.py` - Argument parsing
-- Command-line specific logic
-
-### `languages/` - Language Plugins
-- `java_plugin.py` - Java language support
-- `python_plugin.py` - Python language support
-- `javascript_plugin.py` - JavaScript language support
-- Language-specific analysis logic
-
-### `mcp/` - Model Context Protocol
-- `server.py` - MCP server implementation
-- `tools/` - 12 specialized MCP tools for AI integration
-  - `analyze_scale_tool.py` - Code scale analysis
-  - `table_format_tool.py` - Table formatting
-  - `query_tool.py` - Tree-sitter query execution
-  - `search_content_tool.py` - Content search with ripgrep
-  - `list_files_tool.py` - File listing with fd
-  - `find_and_grep_tool.py` - Two-stage search
-  - `read_partial_tool.py` - Partial file reading
-  - `universal_analyze_tool.py` - Universal analysis
-  - `fd_rg_utils.py` - File discovery and search utilities
-  - `base_tool.py` - Base tool functionality
-- `resources/` - MCP resource providers
-- AI assistant integration via Model Context Protocol
-
-### `security/` - Security Framework
-- `boundary_manager.py` - Project boundary validation
-- `validator.py` - Input validation and sanitization
-- `regex_checker.py` - Safe regex pattern validation
-
-## Test Structure (`tests/`) - 1,893 Tests
+### テストソース (`tests/`)
 
 ```
 tests/
-├── conftest.py                     # Pytest configuration and fixtures
-├── test_*.py                       # Unit tests (main level) - 80+ test files
-├── test_interfaces/                # Interface adapter tests
-├── test_languages/                 # Language plugin tests
-├── test_mcp/                       # MCP server and tools tests
-│   ├── test_tools/                 # Individual MCP tool tests
-│   └── test_resources/             # MCP resource tests
-├── test_plugins/                   # Plugin system tests
-├── test_security/                  # Security framework tests
-└── __pycache__/                    # Compiled test files (generated)
+├── unit/                   # 単体テスト
+├── integration/            # 統合テスト
+├── mcp/                   # MCPサーバーテスト
+├── security/              # セキュリティテスト
+├── test_languages/        # 言語プラグインテスト
+├── test_core/             # コアエンジンテスト
+├── test_data/             # テストデータ
+│   ├── sample.css
+│   ├── sample.html
+│   ├── test_class.js
+│   ├── test_class.py
+│   └── test_enum.ts
+└── fixtures/              # テストフィクスチャ
 ```
 
-### Test Coverage Statistics
-- **Total Tests**: 1,893 tests
-- **Code Coverage**: 71.48%
-- **Test Categories**: Unit, Integration, MCP, Security, Performance
-- **Quality Gates**: Pre-commit hooks, automated testing, coverage reporting
+## 主要アーキテクチャパターン
 
-## Configuration Files
+### プラグインアーキテクチャ
+- **言語プラグインシステム**: 各言語が独立したプラグインとして実装
+- **動的プラグイン発見**: Entry Pointsによる自動プラグイン検出
+- **統一インターフェース**: `LanguagePlugin`ベースクラスによる一貫したAPI
+- **拡張性**: 新しい言語サポートの容易な追加
 
-### Package Configuration
-- `pyproject.toml` - Main package configuration, dependencies, build settings
-- `uv.lock` - Dependency lock file
-- `pytest.ini` - Test configuration
+### MCPプロトコル統合
+- **非同期処理**: 全てのMCPツールは`async/await`パターンを使用
+- **エラーハンドリング**: MCPエラーレスポンスの標準化
+- **リソース管理**: ファイルハンドルやプロセスの適切なクリーンアップ
+- **セキュリティ**: パス検証とサンドボックス化の徹底
 
-### Code Quality
-- `.pre-commit-config.yaml` - Pre-commit hooks configuration
-- Quality tools configured in `pyproject.toml`
+### 統一要素システム
+- **単一要素リスト**: 全てのコード要素（クラス、メソッド、フィールド、インポート、パッケージ）の統一管理
+- **一貫した要素タイプ**: 各要素が`element_type`属性を持つ
+- **簡素化されたAPI**: より明確なインターフェースと複雑性の削減
+- **保守性の向上**: 全てのコード要素の単一情報源
 
-### Documentation
-- `README.md` - Main documentation (English)
-- `README_zh.md` - Chinese documentation
-- `README_ja.md` - Japanese documentation
-- `CONTRIBUTING.md` - Contribution guidelines
-- `CODE_STYLE_GUIDE.md` - Code style standards
-- `CHANGELOG.md` - Version history
+### フォーマッターレジストリパターン
+- **動的フォーマッター管理**: Registry パターンによる動的フォーマッター管理システム
+- **プラグインベース拡張**: `IFormatter`インターフェースによる新しいフォーマッターの容易な追加
+- **言語固有フォーマッター**: 各言語専用の最適化されたフォーマッター
+- **戦略パターン**: フォーマット戦略の動的選択
 
-### Deployment & Release
-- `DEPLOYMENT_GUIDE.md` - Deployment instructions
-- `PYPI_RELEASE_GUIDE.md` - PyPI release process
-- `upload_to_pypi.py` - Release automation script
-- `build_standalone.py` - Standalone build script
+### セキュリティフレームワーク
+- **多層防御**: パストラバーサル、ReDoS攻撃、入力インジェクションに対する7層防御
+- **プロジェクト境界管理**: シンボリックリンク保護付きの厳格なプロジェクト境界制御
+- **リアルタイム監視**: 正規表現パフォーマンス監視とReDoS攻撃防止
+- **包括的入力サニタイゼーション**: 全ての入力に対する検証とサニタイゼーション
 
-## Examples Directory (`examples/`)
+## 命名規則
 
-- `BigService.java` - Large Java service class (1419 lines, 66 methods) - main demo file
-- `Sample.java` - Smaller Java example (178 lines, 8 classes)
-- `MultiClass.java` - Multi-class Java example
-- `sample.py` - Python example
-- `*.json` - Analysis result examples
-- Demo and testing files for various languages
+### ファイル命名規則
+- **プラグインファイル**: `{language}_plugin.py` (例: `java_plugin.py`, `python_plugin.py`)
+- **フォーマッターファイル**: `{language}_formatter.py` (例: `java_formatter.py`, `sql_formatters.py`)
+- **クエリファイル**: `{language}.py` (例: `java.py`, `python.py`)
+- **MCPツールファイル**: `{function}_tool.py` (例: `query_tool.py`, `search_content_tool.py`)
+- **CLIコマンドファイル**: `{command}_command.py` または `{tool}_cli.py`
 
-## Naming Conventions
+### クラス命名規則
+- **プラグインクラス**: `{Language}Plugin` (例: `JavaPlugin`, `PythonPlugin`)
+- **フォーマッタークラス**: `{Language}Formatter` (例: `JavaFormatter`, `SQLFullFormatter`)
+- **MCPツールクラス**: `{Function}Tool` (例: `QueryTool`, `SearchContentTool`)
+- **エンジンクラス**: `{Function}Engine` (例: `UnifiedAnalysisEngine`)
 
-### Files and Directories
-- **Snake case** for Python files: `analysis_engine.py`
-- **Lowercase** for directories: `tree_sitter_analyzer/`
-- **Descriptive names** that indicate purpose
+### パッケージ命名規則
+- **メインパッケージ**: `tree_sitter_analyzer`
+- **サブパッケージ**: snake_case (例: `mcp.tools`, `cli.commands`)
+- **モジュール**: snake_case (例: `analysis_engine`, `query_service`)
 
-### Code Organization
-- **One class per file** when possible
-- **Logical grouping** by functionality
-- **Clear separation** between interfaces, core logic, and plugins
-
-### Import Structure
-```python
-# Standard library imports
-import os
-from pathlib import Path
-
-# Third-party imports
-import tree_sitter
-from typing import Dict, List
-
-# Local imports
-from .models import AnalysisResult
-from .utils import log_info
-```
-
-## Plugin Architecture
-
-### Language Plugins
-- Each language has its own plugin file
-- Plugins implement common interface
-- Dynamic loading and registration
-- Extensible for new languages
-
-### Entry Points
-- Defined in `pyproject.toml`
-- Automatic plugin discovery
-- Support for external plugins
-
-## Security Boundaries
-
-### Project Root Detection
-- Automatic detection from `.git`, `pyproject.toml`, etc.
-- Configurable via CLI `--project-root`
-- Environment variable `TREE_SITTER_PROJECT_ROOT`
-
-### File Access Control
-- All file operations validated against project boundaries
-- Path traversal attack prevention
-- Symlink safety checks
-
-## Build Artifacts (Generated)
-
-### Distribution
-- `dist/` - Wheel and source distributions
-- Built via `uv build`
-
-### Cache Directories
-- `.mypy_cache/` - MyPy type checking cache
-- `.pytest_cache/` - Pytest execution cache
-- `.ruff_cache/` - Ruff linting cache
-- `__pycache__/` - Python bytecode cache
-
-## Training & Documentation Structure
-
-### `training/` Directory
-- `01_onboarding.md` - New developer onboarding
-- `02_architecture_map.md` - System architecture overview
-- `03_cli_cheatsheet.md` - CLI command reference
-- `04_mcp_cheatsheet.md` - MCP integration guide
-- `05_plugin_tutorial.md` - Plugin development tutorial
-- `06_quality_workflow.md` - Quality assurance workflow
-- `07_troubleshooting.md` - Common issues and solutions
-- `08_prompt_library.md` - AI prompt templates
-- `09_tasks.md` - Development tasks and examples
-- `10_glossary.md` - Technical terminology
-- `11_takeover_plan.md` - Project handover guide
-
-### `scripts/` Directory
-- `gitflow_helper.py` - Git workflow automation
-- `gitflow_release_automation.py` - Release process automation
-- `sync_version.py` - Version synchronization
-- `README.md` - Scripts documentation
-
-## Development Workflow
-
-1. **Setup**: `uv sync --extra all --extra mcp`
-2. **Code**: Follow structure and naming conventions
-3. **Test**: Add tests in appropriate `test_*/` directories (maintain 71.48%+ coverage)
-4. **Quality**: Run `uv run python check_quality.py --new-code-only --fix`
-5. **Commit**: Pre-commit hooks ensure quality
-6. **Release**: Automated version management and PyPI deployment
+### 設定とエントリーポイント
+- **Entry Points**: `tree_sitter_analyzer.plugins` でプラグイン自動発見
+- **CLIスクリプト**: `tree-sitter-analyzer`, `tree-sitter-analyzer-mcp`
+- **MCPサーバー**: `tree_sitter_analyzer.mcp.server:main_sync`

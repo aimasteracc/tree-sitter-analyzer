@@ -1,174 +1,200 @@
-# Technology Stack & Build System
+---
+inclusion: always
+---
 
-## Current Version & Statistics
+# 技術スタック
 
-- **Version**: v1.6.1 (Latest stable release)
-- **Test Suite**: 1,893 tests with 71.48% code coverage
-- **MCP Tools**: 12 specialized tools for AI integration
-- **Build Status**: Beta (Development Status :: 4 - Beta)
+## ビルドシステム
 
-## Build System & Package Management
+- **hatchling** - モダンなPythonビルドバックエンド
+- **Python 3.10+** - source/target compatibility (3.10, 3.11, 3.12, 3.13対応)
+- **uv** - 高速Pythonパッケージマネージャー（推奨）
 
-- **Primary**: `uv` (fast Python package manager) - used for all development and user installations
-- **Build Backend**: `hatchling` (modern Python build system)
-- **Package Distribution**: PyPI with multiple installation options
+## 主要フレームワーク
 
-## Core Technology Stack
+- **tree-sitter >=0.25.0** - 高精度構文解析エンジン
+- **mcp >=1.12.3** - Model Context Protocol（AI統合）
+- **asyncio** - 非同期処理フレームワーク
+- **pathlib** - モダンパス操作
+- **chardet >=5.0.0** - 文字エンコーディング検出
+- **cachetools >=5.0.0** - インメモリキャッシュシステム
+- **psutil >=5.9.8** - システムプロセス監視
+- **deepdiff >=6.7.1** - 深い差分比較
 
-### Language & Runtime
-- **Python**: 3.10+ (required minimum, supports 3.10-3.13)
-- **Tree-sitter**: v0.24.0 (core parsing engine)
-- **Async Support**: `asyncio` for MCP server operations
+## 言語パーサー（Tree-sitter）
 
-### Key Dependencies
-- **MCP**: v1.12.3+ (Model Context Protocol for AI integration)
-- **Character Detection**: `chardet` v5.0.0+ (encoding detection)
-- **Caching**: `cachetools` v5.0.0+ (performance optimization)
+### コア言語サポート
+- **tree-sitter-java >=0.23.5,<0.25.0** - Java言語パーサー
+- **tree-sitter-python >=0.23.6,<0.25.0** - Python言語パーサー
+- **tree-sitter-javascript >=0.23.1,<0.25.0** - JavaScript言語パーサー
+- **tree-sitter-typescript >=0.23.2** - TypeScript言語パーサー
+- **tree-sitter-c-sharp >=0.23.1** - C#言語パーサー
 
-### Language Parsers
-- `tree-sitter-java` v0.23.5+
-- `tree-sitter-python` v0.23.6+
-- `tree-sitter-javascript` v0.23.1+
-- `tree-sitter-typescript` v0.20.0+
-- `tree-sitter-cpp` v0.23.4+
-- Additional parsers for C, Rust, Go
+### Web技術サポート
+- **tree-sitter-html >=0.23.0,<0.25.0** - HTML DOM解析（MarkupElement データモデル）
+- **tree-sitter-css >=0.23.0,<0.25.0** - CSS解析（StyleElement データモデル）
 
-## Development Tools
+### その他言語サポート
+- **tree-sitter-cpp >=0.23.4,<0.25.0** - C++言語パーサー
+- **tree-sitter-markdown >=0.3.1** - Markdown文書解析
+- **tree-sitter-sql >=0.3.11,<0.4.0** - SQLデータベーススキーマ解析
+- **tree-sitter-php >=0.23.0,<0.25.0** - PHP Webアプリケーション解析
+- **tree-sitter-ruby >=0.23.0,<0.25.0** - Ruby Rails/スクリプト解析
 
-### Code Quality
-- **Formatter**: Black (88 character line length)
-- **Linter**: Ruff (fast Python linter)
-- **Type Checker**: MyPy (with strict configuration)
-- **Import Sorting**: isort (Black-compatible)
+## MCPサーバーサポート
 
-### Testing Framework
-- **Test Runner**: pytest v8.4.1+
-- **Coverage**: pytest-cov v4.0.0+
-- **Async Testing**: pytest-asyncio v1.1.0+
-- **Mocking**: pytest-mock v3.14.1+
+- **mcp >=1.12.2** - Model Context Protocol コア
+- **anyio >=4.0.0** - 非同期I/O抽象化
+- **httpx >=0.27.0,<1.0.0** - 非同期HTTPクライアント
+- **pydantic >=2.5.0** - データ検証とシリアライゼーション
+- **pydantic-settings >=2.2.1** - 設定管理
 
-### Pre-commit Hooks
-- **Setup**: `pre-commit` v3.0.0+
-- **Hooks**: Black, Ruff, MyPy integration
+## 開発・テスト
 
-## Common Commands
+### コード品質ツール
+- **black >=24.0.0** - コードフォーマッター（88文字制限）
+- **ruff >=0.5.0** - 高速リンター・フォーマッター（統合ツール）
+- **mypy >=1.17.0** - 静的型チェック
+- **isort >=5.13.0** - インポート整理（Black互換）
+- **bandit** - セキュリティ脆弱性検出
+- **pydocstyle** - docstring品質チェック（Google規約）
+- **pyupgrade** - Python構文近代化
 
-### Development Setup
+### テストフレームワーク
+- **pytest >=8.4.1** - テストフレームワーク
+- **pytest-cov >=4.0.0** - カバレッジ測定
+- **pytest-asyncio >=1.1.0** - 非同期テストサポート
+- **pytest-mock >=3.14.1** - モックテスト
+- **pytest-benchmark >=4.0.0** - パフォーマンステスト
+- **memory-profiler >=0.61.0** - メモリプロファイリング
+
+### 型チェック補助
+- **types-psutil >=5.9.0** - psutil型定義
+- **types-toml >=0.10.8.20240310** - TOML型定義
+- **types-requests >=2.32.4.20250913** - requests型定義
+
+## 外部ツール統合
+
+### 高性能検索ツール
+- **fd** - 高速ファイル検索（Rust製）
+- **ripgrep (rg)** - 高速テキスト検索（Rust製）
+
+### CI/CD
+- **pre-commit >=3.0.0** - Git pre-commitフック
+- **GitHub Actions** - 継続的インテグレーション
+- **codecov** - コードカバレッジ監視
+
+## よく使うコマンド
+
+### 開発環境セットアップ
 ```bash
-# Clone and setup development environment
-git clone https://github.com/aimasteracc/tree-sitter-analyzer.git
-cd tree-sitter-analyzer
+# 基本インストール
+uv add tree-sitter-analyzer
+
+# 人気言語パッケージ（推奨）
+uv add "tree-sitter-analyzer[popular]"
+
+# 完全インストール（MCP対応）
+uv add "tree-sitter-analyzer[all,mcp]"
+
+# 開発環境セットアップ
 uv sync --extra all --extra mcp
 ```
 
-### Testing
+### コード解析実行
 ```bash
-# Run all tests (1,893 tests)
-uv run pytest tests/ -v
+# 基本解析
+uv run tree-sitter-analyzer examples/BigService.java --advanced --output-format text
 
-# Run with coverage report (71.48% coverage)
-uv run pytest tests/ --cov=tree_sitter_analyzer --cov-report=html
+# 構造テーブル生成
+uv run tree-sitter-analyzer examples/BigService.java --table full
 
-# Run specific test categories
-uv run pytest tests/test_mcp_server_initialization.py -v
-uv run pytest tests/test_formatters_comprehensive.py -v
+# 精密コード抽出
+uv run tree-sitter-analyzer examples/BigService.java --partial-read --start-line 93 --end-line 106
+
+# HTML/CSS解析
+uv run tree-sitter-analyzer examples/comprehensive_sample.html --table full
+uv run tree-sitter-analyzer examples/comprehensive_sample.css --advanced
+
+# SQL解析
+uv run tree-sitter-analyzer examples/sample_database.sql --table full
 ```
 
-### Code Quality Checks
+### 検索・発見コマンド
 ```bash
-# Format code
-uv run black .
+# ファイル一覧
+uv run list-files . --extensions java
 
-# Check formatting
-uv run black --check .
+# コンテンツ検索
+uv run search-content --roots . --query "class.*extends" --include-globs "*.java"
 
-# Lint code
+# 二段階検索
+uv run find-and-grep --roots . --query "@SpringBootApplication" --extensions java
+```
+
+### 品質チェック
+```bash
+# 包括的品質チェック
+uv run pre-commit run --all-files
+
+# 個別チェック
+uv run black --check --line-length=88 .
 uv run ruff check .
+uv run mypy tree_sitter_analyzer/
+uv run pytest tests/
 
-# Auto-fix safe issues
-uv run ruff check . --fix
-
-# Type checking
-uv run mypy .
-
-# Run all quality checks
-uv run python check_quality.py
-
-# Auto-fix and check (recommended for new contributors)
-uv run python check_quality.py --new-code-only --fix
+# テスト実行
+uv run pytest tests/ -v
+uv run pytest tests/ --cov=tree_sitter_analyzer --cov-report=html
 ```
 
-### Building & Distribution
+### MCPサーバー実行
 ```bash
-# Build package
-uv build
-
-# Upload to PyPI (maintainers only)
-uv run python upload_to_pypi.py
-```
-
-### CLI Usage
-```bash
-# Basic analysis (large file demo)
-uv run python -m tree_sitter_analyzer examples/BigService.java --advanced --output-format=text
-
-# Structure analysis (66 methods clearly displayed)
-uv run python -m tree_sitter_analyzer examples/BigService.java --table=full
-
-# Partial reading (extract specific code section)
-uv run python -m tree_sitter_analyzer examples/BigService.java --partial-read --start-line 100 --end-line 105
-
-# Quiet mode
-uv run python -m tree_sitter_analyzer examples/BigService.java --table=full --quiet
-```
-
-### MCP Server
-```bash
-# Start MCP server (development)
+# MCPサーバー起動
 uv run python -m tree_sitter_analyzer.mcp.server
 
-# Start with project root
-TREE_SITTER_PROJECT_ROOT=/path/to/project uv run python -m tree_sitter_analyzer.mcp.server
+# MCPサーバー（同期版）
+uv run tree-sitter-analyzer-mcp
 ```
 
-## Installation Options
+## 設定に関する注意事項
 
-### End Users
-```bash
-# Basic installation
-uv add tree-sitter-analyzer
+### 環境変数設定
+- **TREE_SITTER_PROJECT_ROOT**: プロジェクトルートパス（MCP設定）
+- **TREE_SITTER_OUTPUT_PATH**: 出力ディレクトリパス（MCP設定）
+- **TREE_SITTER_ANALYZER_ENABLE_FILE_LOG**: ファイルログ有効化
+- **TREE_SITTER_ANALYZER_LOG_DIR**: カスタムログディレクトリ
+- **TREE_SITTER_ANALYZER_FILE_LOG_LEVEL**: ファイルログレベル
 
-# Popular languages (Java, Python, JS, TS)
-uv add "tree-sitter-analyzer[popular]"
-
-# With MCP server support
-uv add "tree-sitter-analyzer[mcp]"
-
-# Full installation
-uv add "tree-sitter-analyzer[all,mcp]"
+### MCP設定（Claude Desktop）
+```json
+{
+  "mcpServers": {
+    "tree-sitter-analyzer": {
+      "command": "uv",
+      "args": [
+        "run", "--with", "tree-sitter-analyzer[mcp]",
+        "python", "-m", "tree_sitter_analyzer.mcp.server"
+      ],
+      "env": {
+        "TREE_SITTER_PROJECT_ROOT": "/absolute/path/to/your/project",
+        "TREE_SITTER_OUTPUT_PATH": "/absolute/path/to/output/directory"
+      }
+    }
+  }
+}
 ```
 
-## MCP Tools Architecture
+### 品質基準
+- **テストカバレッジ**: 80%以上を目標
+- **型チェック**: MyPyエラーゼロ
+- **リンティング**: Ruff/Flake8エラーゼロ
+- **セキュリティ**: Bandit警告ゼロ
+- **ドキュメント**: パブリックAPI 100%カバー
+- **行長制限**: 88文字以内（Black/Ruff統一）
 
-### Available MCP Tools (12 tools)
-- `analyze_code_structure` - Code structure analysis with line positioning
-- `check_code_scale` - File size and complexity metrics
-- `extract_code_section` - Precise line-range code extraction
-- `query_code` - Tree-sitter query execution
-- `list_files` - Advanced file listing with fd integration
-- `search_content` - Content search with ripgrep integration
-- `find_and_grep` - Two-stage file finding and content search
-- `read_partial_tool` - Partial file reading
-- `table_format_tool` - Table formatting for analysis results
-- `universal_analyze_tool` - Universal code analysis
-- `set_project_path` - Project root configuration
-- `base_tool` - Base tool functionality
-
-## Architecture Notes
-
-- **Plugin System**: Dynamic plugin architecture for language support
-- **Caching**: Multi-level caching for parsers and analysis results
-- **Security**: Project boundary validation and input sanitization
-- **Performance**: Optimized for large file handling with minimal memory usage
-- **Cross-platform**: Windows, macOS, Linux compatibility
-- **AI Integration**: Native MCP protocol support for seamless AI assistant integration
+### パフォーマンス要件
+- **大きなファイル**: 1MB+でも適切な応答時間
+- **並行処理**: 最大4倍の検索速度向上
+- **メモリ効率**: ストリーミング処理による最適化
+- **キャッシュ**: 99.8%高速化（200-400倍改善）

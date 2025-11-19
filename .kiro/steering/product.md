@@ -1,39 +1,80 @@
-# Product Overview
+---
+inclusion: always
+---
 
-## What is Tree-sitter Analyzer?
+# プロダクト概要
 
-Tree-sitter Analyzer is a revolutionary code analysis tool designed specifically for the AI era. It solves the fundamental problem of LLM token limits when analyzing large code files.
+Tree-sitter Analyzerは、AI時代のエンタープライズグレードコード解析ツールです。本プロジェクトは、複数のプログラミング言語に対応した包括的なコード解析機能を提供し、AI アシスタント（Claude Desktop、Cursor、Roo Code等）との深い統合を実現します。
 
-## Core Value Proposition
+## ドメイン
 
-**Problem**: Large code files (>10K lines) exceed LLM token limits, making AI-assisted code analysis impossible or inefficient.
+### コード解析・静的解析ツール
+- **Tree-sitter基盤**: 高精度なAST（抽象構文木）解析
+- **多言語対応**: Java、Python、JavaScript、TypeScript、C#、PHP、Ruby、SQL、HTML、CSS、Markdownの11言語
+- **AI統合**: MCP（Model Context Protocol）による AI アシスタントとのネイティブ統合
+- **エンタープライズ対応**: 大規模コードベースでの高性能処理
 
-**Solution**: Smart code analysis that provides:
-- Code structure overview without reading entire files
-- Precise line-range extraction of code sections
-- Accurate positioning data for code operations
-- Native AI assistant integration via MCP protocol
+### 主要ドメイン領域
+- **静的コード解析**: 構造解析、複雑度計算、要素抽出
+- **AI支援開発**: トークン制限突破、自然言語インタラクション
+- **ファイル検索・コンテンツ検索**: fd/ripgrep統合による高性能検索
+- **開発者ツール**: CLI、MCP、API の統合インターフェース
 
-## Target Users
+## 主要機能
 
-1. **AI Assistant Users**: Developers using Claude Desktop, Cursor, Roo Code, and other AI IDEs
-2. **CLI Users**: Developers who prefer command-line tools for code analysis
-3. **Enterprise Teams**: Organizations dealing with large codebases and AI-assisted development
+### 🤖 深いAI統合
+- **MCP プロトコルサポート**: Claude Desktop、Cursor、Roo Code でのネイティブサポート
+- **SMART ワークフロー**: 体系的なAI支援分析手法
+- **トークン制限突破**: 任意サイズのコードファイル処理
+- **自然言語インタラクション**: 複雑な解析を自然言語で実行
 
-## Key Features
+### 🔍 強力な検索機能
+- **インテリジェントファイル発見**: fd ベースの高性能検索
+- **精密コンテンツ検索**: ripgrep 正規表現コンテンツ検索
+- **二段階検索**: ファイル発見 + コンテンツ検索の組み合わせワークフロー
+- **プロジェクト境界保護**: 自動セキュリティ境界設定
 
-- **Multi-language Support**: Java, Python, JavaScript/TypeScript (full), C/C++/Rust/Go (basic)
-- **Three-step Workflow**: Scale check → Structure analysis → Code extraction
-- **MCP Integration**: Native support for Model Context Protocol
-- **Enterprise Quality**: 1,358 tests, 74.54% coverage, cross-platform compatibility
+### 📊 インテリジェント解析
+- **高速構造解析**: 完全読み込み不要のアーキテクチャ理解
+- **精密コード抽出**: 行範囲指定によるコードスニペット抽出
+- **複雑度解析**: 循環的複雑度メトリクス
+- **統一要素システム**: 革新的な要素管理システム
 
-## Current Version
+### 🌍 エンタープライズ多言語サポート
+- **Java**: Spring フレームワーク、JPA、エンタープライズ機能
+- **Python**: 型アノテーション、デコレータ、モダンPython機能
+- **C#**: クラス、インターフェース、レコード、プロパティ、async/await、属性、モダンC#機能
+- **PHP**: クラス、インターフェース、トレイト、列挙型、名前空間、属性、マジックメソッド、モダンPHP 8+機能
+- **Ruby**: クラス、モジュール、ミックスイン、ブロック、Proc、Lambda、メタプログラミング、Railsパターン
+- **SQL**: テーブル、ビュー、ストアドプロシージャ、関数、トリガー、インデックス、専用出力フォーマット
+- **JavaScript**: ES6+、React/Vue/Angular、JSX
+- **TypeScript**: インターフェース、型、デコレータ、TSX/JSX、フレームワーク検出
+- **HTML**: DOM構造解析、要素分類、属性抽出、階層関係
+- **CSS**: セレクタ解析、プロパティ分類、スタイルルール抽出、インテリジェント分類
+- **Markdown**: ヘッダー、コードブロック、リンク、画像、テーブル、タスクリスト、引用
 
-v1.6.1 - Latest stable release with comprehensive MCP support, enhanced security features, and expanded test coverage.
+## プログラム命名規則
 
-## Latest Statistics
+### MCPツール命名
+- **check_code_scale**: ファイル規模・複雑度チェック
+- **analyze_code_structure**: コード構造解析・テーブル生成
+- **extract_code_section**: 精密コードセクション抽出
+- **list_files**: 高性能ファイル発見
+- **search_content**: 正規表現コンテンツ検索
+- **find_and_grep**: 二段階検索（ファイル発見→コンテンツ検索）
+- **query_code**: tree-sitter クエリ実行
+- **set_project_path**: プロジェクトルートパス設定
 
-- **Test Coverage**: 1,893 tests with 71.48% code coverage
-- **MCP Tools**: 12 specialized tools for AI assistant integration
-- **Language Support**: Full support for Java, Python, JavaScript/TypeScript; Basic support for C/C++, Rust, Go
-- **Performance**: Optimized for large file handling with multi-level caching
+### CLIコマンド命名
+- **tree-sitter-analyzer**: メインCLIエントリーポイント
+- **tree-sitter-analyzer-mcp**: MCPサーバーエントリーポイント
+- **list-files**: ファイル一覧CLI
+- **search-content**: コンテンツ検索CLI
+- **find-and-grep**: 検索・抽出CLI
+
+### パッケージ命名例
+- **tree_sitter_analyzer.core**: コアエンジン
+- **tree_sitter_analyzer.mcp.tools**: MCPツール実装
+- **tree_sitter_analyzer.languages**: 言語プラグイン
+- **tree_sitter_analyzer.formatters**: 出力フォーマッター
+- **tree_sitter_analyzer.cli.commands**: CLIコマンド実装
