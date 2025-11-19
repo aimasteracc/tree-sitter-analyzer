@@ -139,7 +139,20 @@ class SQLFullFormatter(SQLFormatterBase):
                 param_names = []
                 for param in element.parameters:
                     if hasattr(param, "name") and param.name:
-                        param_names.append(param.name)
+                        # Only include valid parameter names, skip SQL keywords
+                        if param.name.upper() not in (
+                            "SELECT",
+                            "FROM",
+                            "WHERE",
+                            "INTO",
+                            "VALUES",
+                            "SET",
+                            "UPDATE",
+                            "INSERT",
+                            "DELETE",
+                            "PENDING",
+                        ):
+                            param_names.append(param.name)
                 if param_names:
                     details = f"({', '.join(param_names)})"
                 else:
@@ -476,14 +489,45 @@ class SQLCSVFormatter(SQLFormatterBase):
             if hasattr(element, "columns") and element.columns:
                 details = f"{len(element.columns)} columns"
             elif hasattr(element, "parameters") and element.parameters:
-                details = f"{len(element.parameters)} parameters"
+                # Clean parameter names for CSV display
+                param_names = []
+                for param in element.parameters:
+                    if hasattr(param, "name") and param.name:
+                        # Only include valid parameter names, skip SQL keywords
+                        if param.name.upper() not in (
+                            "SELECT",
+                            "FROM",
+                            "WHERE",
+                            "INTO",
+                            "VALUES",
+                            "SET",
+                            "UPDATE",
+                            "INSERT",
+                            "DELETE",
+                            "PENDING",
+                        ):
+                            param_names.append(param.name)
+                if param_names:
+                    details = f"{len(param_names)} parameters"
+                else:
+                    details = f"{len(element.parameters)} parameters"
             elif hasattr(element, "indexed_columns") and element.indexed_columns:
                 details = f"{';'.join(element.indexed_columns)}"
             else:
                 details = ""
 
-            # Format dependencies
-            deps = ";".join(element.dependencies) if element.dependencies else ""
+            # Format dependencies - ensure no line breaks in CSV
+            deps = ""
+            if element.dependencies:
+                # Clean dependencies and join with semicolon
+                clean_deps = []
+                for dep in element.dependencies:
+                    if dep and isinstance(dep, str):
+                        # Remove any line breaks or extra whitespace
+                        clean_dep = dep.replace("\n", "").replace("\r", "").strip()
+                        if clean_dep:
+                            clean_deps.append(clean_dep)
+                deps = ";".join(clean_deps)
 
             output.append(
                 f"{element.name},{element.sql_element_type.value},{line_range},{details},{deps}"

@@ -8,10 +8,10 @@
 | products | table | 26-34 | 7 columns | - |
 | active_users | view | 37-44 | - | - |
 | order_summary | view | 47-55 | - | - |
-| get_user_orders | procedure | 58-68 | (CREATE, user_id_param, BEGIN, status, orders, WHERE, user_id_param, BY, order_date) | - |
-| update_product_stock | procedure | 71-86 | (CREATE, IN, _id_param, IN, _change, BEGIN, products, quantity_change, SELECT, stock_quantity, products) | - |
-| calculate_order_total | function | 89-101 | (CREATE, order_id_param, RETURNS, READS, DATA, BEGIN, total, SELECT, INTO, FROM, _items, RETURN) | - |
-| is_user_active | function | 104-116 | (CREATE, user_id_param, RETURNS, READS, DATA, BEGIN, user_status, SELECT, INTO, _status, users, RETURN) | - |
+| get_user_orders | procedure | 58-68 | (user_id_param) | - |
+| update_product_stock | procedure | 71-86 | (product_id_param, _change) | - |
+| calculate_order_total | function | 89-101 | (order_id_param) | - |
+| is_user_active | function | 104-116 | (user_id_param) | - |
 | update_order_total | trigger | 119-156 | - | - |
 | idx_users_email | index | 151-151 | users(email) | users |
 | idx_users_status | index | 152-152 | users(status) | users |
@@ -41,18 +41,18 @@
 
 ## Procedures
 ### get_user_orders (58-68)
-**Parameters**: CREATE PROCEDURE, user_id_param INT, BEGIN SELECT, status FROM, orders o, WHERE o, user_id_param ORDER, BY o, order_date DESC
+**Parameters**: user_id_param INT
 
 ### update_product_stock (71-86)
-**Parameters**: CREATE PROCEDURE, IN product, _id_param INT, IN quantity, _change INT, BEGIN UPDATE, products SET, quantity_change WHERE, SELECT id, stock_quantity FROM, products WHERE
+**Parameters**: product_id_param INT, _change INT
 
 ## Functions
 ### calculate_order_total (89-101)
-**Parameters**: CREATE FUNCTION, order_id_param INT, RETURNS DECIMAL(10, 2), READS SQL, DATA DETERMINISTIC, BEGIN DECLARE, total DECIMAL(10, 2), SELECT COALESCE(SUM(price * quantity), INTO total, FROM order, _items WHERE, RETURN total
+**Parameters**: order_id_param INT
 **Returns**: DECIMAL(10, 2)
 
 ### is_user_active (104-116)
-**Parameters**: CREATE FUNCTION, user_id_param INT, RETURNS BOOLEAN, READS SQL, DATA DETERMINISTIC, BEGIN DECLARE, user_status VARCHAR(50), SELECT status, INTO user, _status FROM, users WHERE, RETURN user
+**Parameters**: user_id_param INT
 **Returns**: BOOLEAN
 
 ## Triggers

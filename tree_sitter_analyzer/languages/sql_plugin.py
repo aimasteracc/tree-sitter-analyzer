@@ -388,22 +388,91 @@ class SQLElementExtractor(ElementExtractor):
 
         # Reject common SQL keywords that should never be identifiers
         sql_keywords = {
-            "SELECT", "FROM", "WHERE", "AS", "IF", "NOT", "EXISTS",
-            "NULL", "CURRENT_TIMESTAMP", "NOW", "SYSDATE",
-            "COUNT", "SUM", "AVG", "MAX", "MIN",
-            "AND", "OR", "IN", "LIKE", "BETWEEN",
-            "JOIN", "LEFT", "RIGHT", "INNER", "OUTER", "CROSS",
-            "ON", "USING", "GROUP", "BY", "ORDER", "HAVING",
-            "LIMIT", "OFFSET", "DISTINCT", "ALL",
-            "UNION", "INTERSECT", "EXCEPT",
-            "INSERT", "UPDATE", "DELETE", "CREATE", "DROP", "ALTER",
-            "TABLE", "VIEW", "INDEX", "TRIGGER", "PROCEDURE", "FUNCTION",
-            "PRIMARY", "FOREIGN", "KEY", "UNIQUE", "CHECK", "DEFAULT",
-            "REFERENCES", "CASCADE", "RESTRICT", "SET", "NO", "ACTION",
-            "INTO", "VALUES", "BEGIN", "END", "DECLARE", "RETURN",
-            "RETURNS", "READS", "SQL", "DATA", "DETERMINISTIC",
-            "BEFORE", "AFTER", "EACH", "ROW", "FOR",
-            "COALESCE", "CASE", "WHEN", "THEN", "ELSE",
+            "SELECT",
+            "FROM",
+            "WHERE",
+            "AS",
+            "IF",
+            "NOT",
+            "EXISTS",
+            "NULL",
+            "CURRENT_TIMESTAMP",
+            "NOW",
+            "SYSDATE",
+            "COUNT",
+            "SUM",
+            "AVG",
+            "MAX",
+            "MIN",
+            "AND",
+            "OR",
+            "IN",
+            "LIKE",
+            "BETWEEN",
+            "JOIN",
+            "LEFT",
+            "RIGHT",
+            "INNER",
+            "OUTER",
+            "CROSS",
+            "ON",
+            "USING",
+            "GROUP",
+            "BY",
+            "ORDER",
+            "HAVING",
+            "LIMIT",
+            "OFFSET",
+            "DISTINCT",
+            "ALL",
+            "UNION",
+            "INTERSECT",
+            "EXCEPT",
+            "INSERT",
+            "UPDATE",
+            "DELETE",
+            "CREATE",
+            "DROP",
+            "ALTER",
+            "TABLE",
+            "VIEW",
+            "INDEX",
+            "TRIGGER",
+            "PROCEDURE",
+            "FUNCTION",
+            "PRIMARY",
+            "FOREIGN",
+            "KEY",
+            "UNIQUE",
+            "CHECK",
+            "DEFAULT",
+            "REFERENCES",
+            "CASCADE",
+            "RESTRICT",
+            "SET",
+            "NO",
+            "ACTION",
+            "INTO",
+            "VALUES",
+            "BEGIN",
+            "END",
+            "DECLARE",
+            "RETURN",
+            "RETURNS",
+            "READS",
+            "SQL",
+            "DATA",
+            "DETERMINISTIC",
+            "BEFORE",
+            "AFTER",
+            "EACH",
+            "ROW",
+            "FOR",
+            "COALESCE",
+            "CASE",
+            "WHEN",
+            "THEN",
+            "ELSE",
         }
         if name_upper in sql_keywords:
             return False
@@ -492,22 +561,26 @@ class SQLElementExtractor(ElementExtractor):
             classes: List to append extracted view Class elements to
         """
         import re
-        
+
         for node in self._traverse_nodes(root_node):
             if node.type == "create_view":
                 # Get raw text first for fallback regex
                 raw_text = self._get_node_text(node)
                 view_name = None
-                
+
                 # FIRST: Try regex parsing (most reliable for CREATE VIEW)
                 if raw_text:
                     # Pattern: CREATE VIEW [IF NOT EXISTS] view_name AS
-                    match = re.search(r'CREATE\s+VIEW\s+(?:IF\s+NOT\s+EXISTS\s+)?(\w+)\s+AS', raw_text, re.IGNORECASE)
+                    match = re.search(
+                        r"CREATE\s+VIEW\s+(?:IF\s+NOT\s+EXISTS\s+)?(\w+)\s+AS",
+                        raw_text,
+                        re.IGNORECASE,
+                    )
                     if match:
                         potential_name = match.group(1).strip()
                         if self._is_valid_identifier(potential_name):
                             view_name = potential_name
-                
+
                 # Fallback: Try AST parsing if regex didn't work
                 if not view_name:
                     for child in node.children:
@@ -519,9 +592,26 @@ class SQLElementExtractor(ElementExtractor):
                                     if potential_name:
                                         potential_name = potential_name.strip()
                                         # Validate view name - exclude SQL keywords
-                                        if (potential_name and 
-                                            self._is_valid_identifier(potential_name) and
-                                            potential_name.upper() not in ('SELECT', 'FROM', 'WHERE', 'AS', 'IF', 'NOT', 'EXISTS', 'NULL', 'CURRENT_TIMESTAMP', 'NOW', 'SYSDATE')):
+                                        if (
+                                            potential_name
+                                            and self._is_valid_identifier(
+                                                potential_name
+                                            )
+                                            and potential_name.upper()
+                                            not in (
+                                                "SELECT",
+                                                "FROM",
+                                                "WHERE",
+                                                "AS",
+                                                "IF",
+                                                "NOT",
+                                                "EXISTS",
+                                                "NULL",
+                                                "CURRENT_TIMESTAMP",
+                                                "NOW",
+                                                "SYSDATE",
+                                            )
+                                        ):
                                             view_name = potential_name
                                             break
                             if view_name:
@@ -637,7 +727,10 @@ class SQLElementExtractor(ElementExtractor):
                 if not func_name:
                     raw_text = self._get_node_text(node)
                     import re
-                    match = re.search(r'CREATE\s+FUNCTION\s+(\w+)\s*\(', raw_text, re.IGNORECASE)
+
+                    match = re.search(
+                        r"CREATE\s+FUNCTION\s+(\w+)\s*\(", raw_text, re.IGNORECASE
+                    )
                     if match:
                         potential_name = match.group(1).strip()
                         if self._is_valid_identifier(potential_name):
@@ -700,24 +793,56 @@ class SQLElementExtractor(ElementExtractor):
                             if subchild.type == "identifier":
                                 extracted_name = self._get_node_text(subchild).strip()
                                 # Validate the identifier
-                                if extracted_name and self._is_valid_identifier(extracted_name):
+                                if extracted_name and self._is_valid_identifier(
+                                    extracted_name
+                                ):
                                     trigger_name = extracted_name
                                 break
                         break  # Stop after finding the first object_reference after TRIGGER
 
                 # Skip common SQL keywords that might be incorrectly identified
-                if trigger_name and trigger_name.upper() in ('KEY', 'AUTO_INCREMENT', 'PRIMARY', 'FOREIGN', 'INDEX', 'UNIQUE', 'PRICE', 'QUANTITY', 'TOTAL', 'SUM', 'COUNT', 'AVG', 'MAX', 'MIN'):
+                if trigger_name and trigger_name.upper() in (
+                    "KEY",
+                    "AUTO_INCREMENT",
+                    "PRIMARY",
+                    "FOREIGN",
+                    "INDEX",
+                    "UNIQUE",
+                    "PRICE",
+                    "QUANTITY",
+                    "TOTAL",
+                    "SUM",
+                    "COUNT",
+                    "AVG",
+                    "MAX",
+                    "MIN",
+                ):
                     trigger_name = None
-                
+
                 # Fallback: Parse from raw text if AST parsing failed or returned suspicious name
                 if (has_create and has_trigger) and not trigger_name:
                     import re
+
                     node_text = self._get_node_text(node)
                     # Look for pattern: CREATE TRIGGER <name>
-                    match = re.search(r'CREATE\s+TRIGGER\s+(\w+)', node_text, re.IGNORECASE)
+                    match = re.search(
+                        r"CREATE\s+TRIGGER\s+(\w+)", node_text, re.IGNORECASE
+                    )
                     if match:
                         potential_name = match.group(1).strip()
-                        if self._is_valid_identifier(potential_name) and potential_name.upper() not in ('ON', 'AFTER', 'BEFORE', 'INSERT', 'UPDATE', 'DELETE', 'FOR', 'EACH', 'ROW'):
+                        if self._is_valid_identifier(
+                            potential_name
+                        ) and potential_name.upper() not in (
+                            "ON",
+                            "AFTER",
+                            "BEFORE",
+                            "INSERT",
+                            "UPDATE",
+                            "DELETE",
+                            "FOR",
+                            "EACH",
+                            "ROW",
+                        ):
                             trigger_name = potential_name
 
                 if has_create and has_trigger and trigger_name:
@@ -1007,12 +1132,17 @@ class SQLElementExtractor(ElementExtractor):
 
                 # Get raw text for regex parsing
                 raw_text = self._get_node_text(node)
-                
+
                 # FIRST: Try regex parsing (most reliable for CREATE VIEW)
                 if raw_text:
                     # Pattern: CREATE VIEW [IF NOT EXISTS] view_name AS
                     import re
-                    match = re.search(r'CREATE\s+VIEW\s+(?:IF\s+NOT\s+EXISTS\s+)?(\w+)\s+AS', raw_text, re.IGNORECASE)
+
+                    match = re.search(
+                        r"CREATE\s+VIEW\s+(?:IF\s+NOT\s+EXISTS\s+)?(\w+)\s+AS",
+                        raw_text,
+                        re.IGNORECASE,
+                    )
                     if match:
                         potential_name = match.group(1).strip()
                         if self._is_valid_identifier(potential_name):
@@ -1024,11 +1154,33 @@ class SQLElementExtractor(ElementExtractor):
                         if child.type == "object_reference":
                             for subchild in child.children:
                                 if subchild.type == "identifier":
-                                    potential_name = self._get_node_text(subchild).strip()
+                                    potential_name = self._get_node_text(
+                                        subchild
+                                    ).strip()
                                     # Validate view name more strictly - exclude SQL keywords
-                                    if (potential_name and 
-                                        self._is_valid_identifier(potential_name) and
-                                        potential_name.upper() not in ('SELECT', 'FROM', 'WHERE', 'AS', 'IF', 'NOT', 'EXISTS', 'NULL', 'CURRENT_TIMESTAMP', 'NOW', 'SYSDATE', 'COUNT', 'SUM', 'AVG', 'MAX', 'MIN')):
+                                    if (
+                                        potential_name
+                                        and self._is_valid_identifier(potential_name)
+                                        and potential_name.upper()
+                                        not in (
+                                            "SELECT",
+                                            "FROM",
+                                            "WHERE",
+                                            "AS",
+                                            "IF",
+                                            "NOT",
+                                            "EXISTS",
+                                            "NULL",
+                                            "CURRENT_TIMESTAMP",
+                                            "NOW",
+                                            "SYSDATE",
+                                            "COUNT",
+                                            "SUM",
+                                            "AVG",
+                                            "MAX",
+                                            "MIN",
+                                        )
+                                    ):
                                         view_name = potential_name
                                         break
                             if view_name:
@@ -1202,21 +1354,66 @@ class SQLElementExtractor(ElementExtractor):
         """Extract parameters from procedure definition."""
         import re
 
-        # Look for parameter patterns like: IN param_name TYPE
-        param_matches = re.findall(
-            r"(IN|OUT|INOUT)?\s*([a-zA-Z_][a-zA-Z0-9_]*)\s+([A-Z]+(?:\([^)]*\))?)",
+        # First, extract the parameter section from the procedure/function definition
+        # Look for the parameter list in parentheses after the procedure/function name
+        param_section_match = re.search(
+            r"(?:PROCEDURE|FUNCTION)\s+[a-zA-Z_][a-zA-Z0-9_]*\s*\(([^)]*)\)",
             proc_text,
+            re.IGNORECASE | re.DOTALL,
+        )
+
+        if not param_section_match:
+            return
+
+        param_section = param_section_match.group(1).strip()
+        if not param_section:
+            return
+
+        # Look for parameter patterns like: IN param_name TYPE
+        # Only search within the parameter section to avoid SQL statement content
+        param_matches = re.findall(
+            r"(?:IN|OUT|INOUT)?\s*([a-zA-Z_][a-zA-Z0-9_]*)\s+([A-Z]+(?:\([^)]*\))?)",
+            param_section,
             re.IGNORECASE,
         )
         for match in param_matches:
-            direction = match[0] if match[0] else "IN"
-            param_name = match[1]
-            data_type = match[2]
+            param_name = match[0]
+            data_type = match[1]
+
+            # Skip common SQL keywords and column names that might be incorrectly matched
+            if param_name.upper() in (
+                "SELECT",
+                "FROM",
+                "WHERE",
+                "INTO",
+                "VALUES",
+                "SET",
+                "UPDATE",
+                "INSERT",
+                "DELETE",
+                "CREATED_AT",
+                "UPDATED_AT",
+                "ID",
+                "NAME",
+                "EMAIL",
+                "STATUS",
+                "IN",
+                "OUT",
+                "INOUT",
+            ):
+                continue
+
+            # Determine direction from the original text
+            direction = "IN"  # Default
+            if f"OUT {param_name}" in param_section:
+                direction = "OUT"
+            elif f"INOUT {param_name}" in param_section:
+                direction = "INOUT"
 
             parameter = SQLParameter(
                 name=param_name,
                 data_type=data_type,
-                direction=direction.upper(),
+                direction=direction,
             )
             parameters.append(parameter)
 
@@ -1255,6 +1452,22 @@ class SQLElementExtractor(ElementExtractor):
                 match = function_pattern.match(lines[i])
                 if match:
                     func_name = match.group(1)
+
+                    # Skip common column names and SQL keywords that might be incorrectly matched
+                    if func_name.upper() in (
+                        "CREATED_AT",
+                        "UPDATED_AT",
+                        "ID",
+                        "NAME",
+                        "EMAIL",
+                        "STATUS",
+                        "CURRENT_TIMESTAMP",
+                        "NOW",
+                        "SYSDATE",
+                    ):
+                        i += 1
+                        continue
+
                     start_line = i + 1
 
                     # Find the end of the function (look for END; or END$$)
@@ -1432,9 +1645,11 @@ class SQLElementExtractor(ElementExtractor):
 
                     trigger_text = self._get_node_text(node)
                     # First verify this really is a CREATE TRIGGER statement
-                    if not re.match(r'^\s*CREATE\s+TRIGGER\s+', trigger_text, re.IGNORECASE):
+                    if not re.match(
+                        r"^\s*CREATE\s+TRIGGER\s+", trigger_text, re.IGNORECASE
+                    ):
                         continue  # Skip if not a CREATE TRIGGER statement
-                        
+
                     # Pattern: CREATE TRIGGER trigger_name
                     trigger_pattern = re.search(
                         r"CREATE\s+TRIGGER\s+([a-zA-Z_][a-zA-Z0-9_]*)",
@@ -1449,9 +1664,16 @@ class SQLElementExtractor(ElementExtractor):
                 # Skip invalid trigger names (too short or common SQL keywords)
                 if trigger_name and len(trigger_name) <= 2:
                     trigger_name = None
-                
+
                 # Skip common SQL keywords that might be incorrectly identified
-                if trigger_name and trigger_name.upper() in ('KEY', 'AUTO_INCREMENT', 'PRIMARY', 'FOREIGN', 'INDEX', 'UNIQUE'):
+                if trigger_name and trigger_name.upper() in (
+                    "KEY",
+                    "AUTO_INCREMENT",
+                    "PRIMARY",
+                    "FOREIGN",
+                    "INDEX",
+                    "UNIQUE",
+                ):
                     trigger_name = None
 
                 # Extract trigger metadata from text

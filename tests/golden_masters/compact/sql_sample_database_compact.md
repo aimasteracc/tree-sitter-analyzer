@@ -7,10 +7,10 @@
 | products | table | 26-34 | 7 cols, PK: id |
 | active_users | view | 37-44 | view |
 | order_summary | view | 47-55 | view |
-| get_user_orders | procedure | 58-68 | 9 params |
-| update_product_stock | procedure | 71-86 | 11 params |
-| calculate_order_total | function | 89-101 | 12 params, -> DECIMAL(10, 2) |
-| is_user_active | function | 104-116 | 12 params, -> BOOLEAN |
+| get_user_orders | procedure | 58-68 | 1 params |
+| update_product_stock | procedure | 71-86 | 2 params |
+| calculate_order_total | function | 89-101 | 1 params, -> DECIMAL(10, 2) |
+| is_user_active | function | 104-116 | 1 params, -> BOOLEAN |
 | update_order_total | trigger | 119-156 | trigger |
 | idx_users_email | index | 151-151 | on users, (email) |
 | idx_users_status | index | 152-152 | on users, (status) |
