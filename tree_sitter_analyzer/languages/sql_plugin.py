@@ -352,6 +352,7 @@ class SQLElementExtractor(ElementExtractor):
         Validate that a name is a valid SQL identifier.
 
         This prevents accepting multi-line text or SQL statements as identifiers.
+        Also rejects common column names and SQL reserved keywords.
 
         Args:
             name: The identifier to validate
@@ -386,6 +387,32 @@ class SQLElementExtractor(ElementExtractor):
         if any(name_upper.startswith(pattern) for pattern in sql_statement_patterns):
             return False
 
+        # Reject common column names that should never be function names
+        # These are typical column names that might appear in SELECT statements
+        common_column_names = {
+            "PRICE",
+            "QUANTITY",
+            "TOTAL",
+            "AMOUNT",
+            "COUNT",
+            "SUM",
+            "CREATED_AT",
+            "UPDATED_AT",
+            "ID",
+            "NAME",
+            "EMAIL",
+            "STATUS",
+            "VALUE",
+            "DATE",
+            "TIME",
+            "TIMESTAMP",
+            "USER_ID",
+            "ORDER_ID",
+            "PRODUCT_ID",
+        }
+        if name_upper in common_column_names:
+            return False
+
         # Reject common SQL keywords that should never be identifiers
         sql_keywords = {
             "SELECT",
@@ -399,8 +426,6 @@ class SQLElementExtractor(ElementExtractor):
             "CURRENT_TIMESTAMP",
             "NOW",
             "SYSDATE",
-            "COUNT",
-            "SUM",
             "AVG",
             "MAX",
             "MIN",
@@ -1439,86 +1464,87 @@ class SQLElementExtractor(ElementExtractor):
 
         lines = self.source_code.split("\n")
 
-        # Pattern to match CREATE FUNCTION statements
+        # Pattern to match CREATE FUNCTION statements - requires opening parenthesis
         function_pattern = re.compile(
-            r"^\s*CREATE\s+FUNCTION\s+([a-zA-Z_][a-zA-Z0-9_]*)",
-            re.IGNORECASE | re.MULTILINE,
+            r"^\s*CREATE\s+FUNCTION\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*\(",
+            re.IGNORECASE,
         )
 
         i = 0
+        inside_function = False
+
         while i < len(lines):
-            line = lines[i].strip()
-            if line.upper().startswith("CREATE") and "FUNCTION" in line.upper():
-                match = function_pattern.match(lines[i])
-                if match:
-                    func_name = match.group(1)
+            # Skip lines if we're inside a function body
+            if inside_function:
+                if lines[i].strip().upper() in ["END;", "END$"] or lines[
+                    i
+                ].strip().upper().startswith("END;"):
+                    inside_function = False
+                i += 1
+                continue
 
-                    # Skip common column names and SQL keywords that might be incorrectly matched
-                    if func_name.upper() in (
-                        "CREATED_AT",
-                        "UPDATED_AT",
-                        "ID",
-                        "NAME",
-                        "EMAIL",
-                        "STATUS",
-                        "CURRENT_TIMESTAMP",
-                        "NOW",
-                        "SYSDATE",
-                    ):
-                        i += 1
-                        continue
+            # Only check for CREATE FUNCTION when not inside a function
+            match = function_pattern.match(lines[i])
+            if match:
+                func_name = match.group(1)
 
-                    start_line = i + 1
-
-                    # Find the end of the function (look for END; or END$$)
-                    end_line = start_line
-                    for j in range(i + 1, len(lines)):
-                        if lines[j].strip().upper() in ["END;", "END$$", "END"]:
-                            end_line = j + 1
-                            break
-                        elif lines[j].strip().upper().startswith("END;"):
-                            end_line = j + 1
-                            break
-
-                    # Extract the full function text
-                    func_lines = lines[i:end_line]
-                    raw_text = "\n".join(func_lines)
-
-                    parameters = []
-                    dependencies = []
-                    return_type = None
-
-                    # Extract parameters, return type and dependencies from the text
-                    self._extract_procedure_parameters(raw_text, parameters)
-
-                    # Extract return type
-                    returns_match = re.search(
-                        r"RETURNS\s+([A-Z]+(?:\([^)]*\))?)", raw_text, re.IGNORECASE
-                    )
-                    if returns_match:
-                        return_type = returns_match.group(1)
-
-                    try:
-                        function = SQLFunction(
-                            name=func_name,
-                            start_line=start_line,
-                            end_line=end_line,
-                            raw_text=raw_text,
-                            language="sql",
-                            parameters=parameters,
-                            dependencies=dependencies,
-                            return_type=return_type,
-                        )
-                        sql_elements.append(function)
-                        log_debug(
-                            f"Extracted function: {func_name} at lines {start_line}-{end_line}"
-                        )
-                    except Exception as e:
-                        log_debug(f"Failed to extract enhanced function: {e}")
-
-                    i = end_line
-                else:
+                # Validate the function name using the centralized validation method
+                if not self._is_valid_identifier(func_name):
                     i += 1
+                    continue
+
+                start_line = i + 1
+                inside_function = True
+
+                # Find the end of the function (look for END; or END$$)
+                end_line = start_line
+                for j in range(i + 1, len(lines)):
+                    if lines[j].strip().upper() in ["END;", "END$", "END"]:
+                        end_line = j + 1
+                        inside_function = False
+                        break
+                    elif lines[j].strip().upper().startswith("END;"):
+                        end_line = j + 1
+                        inside_function = False
+                        break
+
+                # Extract the full function text
+                func_lines = lines[i:end_line]
+                raw_text = "\n".join(func_lines)
+
+                parameters = []
+                dependencies = []
+                return_type = None
+
+                # Extract parameters, return type and dependencies from the text
+                self._extract_procedure_parameters(raw_text, parameters)
+
+                # Extract return type
+                returns_match = re.search(
+                    r"RETURNS\s+([A-Z]+(?:\([^)]*\))?)", raw_text, re.IGNORECASE
+                )
+                if returns_match:
+                    return_type = returns_match.group(1)
+
+                try:
+                    function = SQLFunction(
+                        name=func_name,
+                        start_line=start_line,
+                        end_line=end_line,
+                        raw_text=raw_text,
+                        language="sql",
+                        parameters=parameters,
+                        dependencies=dependencies,
+                        return_type=return_type,
+                    )
+                    sql_elements.append(function)
+                    log_debug(
+                        f"Extracted function: {func_name} at lines {start_line}-{end_line}"
+                    )
+                except Exception as e:
+                    log_debug(f"Failed to extract enhanced function: {e}")
+
+                i = end_line
             else:
                 i += 1
 
@@ -1530,13 +1556,16 @@ class SQLElementExtractor(ElementExtractor):
                 return_type = None
                 dependencies = []
 
-                # Extract function name
+                # Extract function name - only from the FIRST object_reference child
+                # This should be the function name, not references within the function body
+                found_first_object_ref = False
                 for child in node.children:
-                    if child.type == "object_reference":
+                    if child.type == "object_reference" and not found_first_object_ref:
+                        found_first_object_ref = True
                         for subchild in child.children:
                             if subchild.type == "identifier":
                                 func_name = self._get_node_text(subchild).strip()
-                                # Validate function name
+                                # Validate function name using centralized validation
                                 if func_name and self._is_valid_identifier(func_name):
                                     break
                                 else:
