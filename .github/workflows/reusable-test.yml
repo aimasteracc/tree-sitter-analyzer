@@ -99,24 +99,14 @@ jobs:
       run: |
         uv run pytest tests/ -v --tb=short --maxfail=10 \
           --cov=tree_sitter_analyzer --cov-report=xml --cov-report=term-missing \
-          -m "not requires_ripgrep or not requires_fd" \
-          || echo "Some tests failed but continuing CI"
+          -m "not requires_ripgrep or not requires_fd"
       shell: bash
 
     - name: Run tests (no coverage)
       if: matrix.os != 'ubuntu-latest' || matrix.python-version != inputs.python-version
       run: |
-        if [ "${{ matrix.os }}" = "windows-latest" ]; then
-          # Run a subset of tests on Windows to avoid platform-specific issues
-          uv run pytest tests/test_api.py tests/test_core/ tests/test_formatters_comprehensive.py \
-            -v --tb=short --maxfail=5 \
-            -m "not requires_ripgrep or not requires_fd" \
-            || echo "Some Windows tests failed but continuing CI"
-        else
-          uv run pytest tests/ -v --tb=short --maxfail=10 \
-            -m "not requires_ripgrep or not requires_fd" \
-            || echo "Some tests failed but continuing CI"
-        fi
+        uv run pytest tests/ -v --tb=short --maxfail=10 \
+          -m "not requires_ripgrep or not requires_fd"
       shell: bash
 
     - name: Upload coverage to Codecov
