@@ -76,6 +76,64 @@
 2. 修正完了後、`.specify/` ディレクトリを削除
 3. 必要に応じて分析結果を `docs/analysis/` に保存
 
+## CI/CD ワークフロー
+
+### GitHub Actions による自動化
+
+本プロジェクトは GitHub Actions を使用した包括的な CI/CD パイプラインを実装しています。
+
+#### ブランチ別ワークフロー
+
+| ブランチ | ワークフロー | テスト | デプロイ | PR作成 |
+|---------|------------|--------|---------|--------|
+| `develop` | develop-automation.yml | ✅ 全テスト | ❌ なし | ✅ main へ |
+| `release/*` | release-automation.yml | ✅ 全テスト | ✅ PyPI | ✅ main へ |
+| `hotfix/*` | hotfix-automation.yml | ✅ 全テスト | ✅ PyPI | ✅ main へ |
+| `main` | ci.yml | ✅ 全テスト | ❌ なし | ❌ なし |
+
+#### テスト環境
+
+すべてのブランチで同一のテスト環境を使用します：
+
+- **Python バージョン**: 3.10, 3.11, 3.12, 3.13
+- **OS プラットフォーム**: ubuntu-latest, windows-latest, macos-13
+- **システム依存**: fd, ripgrep
+- **品質チェック**: mypy, black, ruff, isort, bandit, pydocstyle
+
+#### 必要なシークレット
+
+GitHub リポジトリの Settings → Secrets and variables → Actions で以下を設定：
+
+1. **CODECOV_TOKEN**: カバレッジレポートのアップロード用
+2. **PYPI_API_TOKEN**: PyPI へのデプロイ用（release/hotfix のみ）
+3. **GITHUB_TOKEN**: PR 作成用（自動提供）
+
+#### プッシュ前のチェックリスト
+
+```bash
+# 1. ローカルでテストを実行
+uv run pytest tests/ -v
+
+# 2. 品質チェックを実行
+uv run pre-commit run --all-files
+
+# 3. システム依存を確認
+fd --version
+rg --version
+
+# 4. 自信を持ってプッシュ
+git push
+```
+
+#### ワークフロー失敗時の対応
+
+1. GitHub Actions タブでログを確認
+2. ローカルで問題を再現
+3. 修正してローカルで検証
+4. プッシュして CI/CD で再確認
+
+詳細は [CI/CD Overview](ci-cd-overview.md) および [CI/CD Troubleshooting Guide](ci-cd-troubleshooting.md) を参照してください。
+
 ## コード品質
 
 ### テスト

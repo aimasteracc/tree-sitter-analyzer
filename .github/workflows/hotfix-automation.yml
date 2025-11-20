@@ -1,3 +1,16 @@
+# Hotfix Branch Automation
+#
+# Purpose: Automated testing, building, and deployment for hotfix branches
+# Triggers: Push to hotfix/* branches, manual dispatch
+# Jobs:
+#   - test: Runs comprehensive test suite (reusable workflow)
+#   - build-and-deploy: Builds and deploys to PyPI after tests pass
+#   - create-main-pr: Creates PR to main after successful deployment
+# Secrets Required:
+#   - CODECOV_TOKEN: For coverage upload
+#   - PYPI_API_TOKEN: For PyPI deployment
+#   - GITHUB_TOKEN: For PR creation
+
 name: Hotfix Branch Automation
 
 on:
@@ -15,30 +28,11 @@ permissions:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Python ${{ env.PYTHON_VERSION }}
-        uses: actions/setup-python@v4
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v4
-        with:
-          version: "latest"
-
-      - name: Install dependencies
-        run: uv sync --extra all --extra mcp
-
-      - name: Run tests
-        run: uv run pytest tests/ -v --tb=short --cov=tree_sitter_analyzer --cov-report=xml --cov-report=term-missing
-
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v5
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
+    uses: ./.github/workflows/reusable-test.yml
+    with:
+      python-version: "3.11"
+      upload-coverage: true
+    secrets: inherit
 
   build-and-deploy:
     needs: test

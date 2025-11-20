@@ -42,7 +42,7 @@ repos:
       - id: debug-statements
       - id: name-tests-test
         args: [--pytest-test-first]
-        exclude: ^tests/format_testing/(cross_version_compatibility|format_monitor|generate_compatibility_report|update_baselines|validate_golden_masters|format_assertions|integration_tests|format_contract_tests|comprehensive_test_suite|enhanced_assertions|cross_component_tests|schema_validation|specification_compliance_tests)\.py$
+        exclude: ^tests/format_testing/(cross_version_compatibility|format_monitor|generate_compatibility_report|update_baselines|validate_golden_masters|format_assertions|integration_tests|format_contract_tests|comprehensive_test_suite|enhanced_assertions|cross_component_tests|schema_validation|specification_compliance_tests)\.py$|^tests/test_workflows/validate_.*\.py$
 
   # Security checks
   - repo: https://github.com/PyCQA/bandit
@@ -96,6 +96,17 @@ repos:
   #         flake8-comprehensions,
   #         flake8-simplify,
   #       ]
+
+  # Workflow consistency tests
+  - repo: local
+    hooks:
+      - id: workflow-consistency-tests
+        name: Workflow Consistency Tests
+        entry: uv run pytest tests/test_workflows/test_workflow_properties.py -v --tb=short
+        language: system
+        pass_filenames: false
+        files: ^\.github/workflows/.*\.yml$
+        stages: [pre-commit]
 
 # Configuration
 default_stages: [pre-commit]
