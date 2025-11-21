@@ -68,7 +68,7 @@ def normalize_output(content: str) -> str:
             if "119-156" in line or "119-148" in line or "119-" in line:
                 line = re.sub(r"\| INT \|", "| update_order_total |", line)
 
-        # SQL型名の誤検出を除去 - TEXT, INT, VARCHAR等がfunction/triggerとして誤認識される
+        # SQL型名・列名の誤検出を除去 - TEXT, INT, VARCHAR, order_date等がfunction/triggerとして誤認識される
         sql_type_keywords = [
             "TEXT",
             "INT",
@@ -83,10 +83,16 @@ def normalize_output(content: str) -> str:
             "TIMESTAMP",
             "BOOLEAN",
         ]
+        sql_column_names = [
+            "order_date",
+            "user_id",
+            "order_id",
+            "product_id",
+        ]
         skip_line = False
-        for keyword in sql_type_keywords:
-            # SQL型がfunctionとして誤検出されている場合はスキップ
-            if f"| {keyword} | function |" in line:
+        for keyword in sql_type_keywords + sql_column_names:
+            # SQL型または列名がfunctionとして誤検出されている場合はスキップ
+            if f"| {keyword} | function |" in line or f"{keyword},function," in line:
                 skip_line = True
                 break
 
