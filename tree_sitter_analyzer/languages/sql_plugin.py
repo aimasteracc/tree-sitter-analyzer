@@ -130,16 +130,44 @@ class SQLElementExtractor(ElementExtractor):
         import re
 
         validated = []
+        seen_names = set()
 
         for elem in elements:
-            # Fix Trigger name issues (e.g. macOS "description" bug)
-            if (
-                hasattr(elem, "sql_element_type")
-                and elem.sql_element_type.value == "trigger"
-            ):
-                # Try to re-verify the name from raw text
-                if elem.raw_text:
-                    # Pattern: CREATE TRIGGER trigger_name
+            elem_type = getattr(elem, "sql_element_type", None)
+
+            # 1. Check for Phantom Elements (Mismatch between Type and Content)
+            if elem_type and elem.raw_text:
+                raw_text_stripped = elem.raw_text.strip()
+                is_valid = True
+
+                # Fix Ubuntu 3.12 phantom trigger issue (Trigger type but Function content)
+                if elem_type.value == "trigger":
+                    # Must start with CREATE TRIGGER (allow comments/whitespace)
+                    if not re.search(
+                        r"CREATE\s+TRIGGER", raw_text_stripped, re.IGNORECASE
+                    ):
+                        log_debug(
+                            f"Removing phantom trigger: {elem.name} (content mismatch)"
+                        )
+                        is_valid = False
+
+                # Fix phantom functions
+                elif elem_type.value == "function":
+                    if not re.search(
+                        r"CREATE\s+FUNCTION", raw_text_stripped, re.IGNORECASE
+                    ):
+                        log_debug(
+                            f"Removing phantom function: {elem.name} (content mismatch)"
+                        )
+                        is_valid = False
+
+                if not is_valid:
+                    continue
+
+            # 2. Fix Names
+            if elem_type and elem.raw_text:
+                # Fix Trigger name issues (e.g. macOS "description" bug)
+                if elem_type.value == "trigger":
                     match = re.search(
                         r"CREATE\s+TRIGGER\s+([a-zA-Z_][a-zA-Z0-9_]*)",
                         elem.raw_text,
@@ -154,6 +182,53 @@ class SQLElementExtractor(ElementExtractor):
                                 f"Fixing trigger name: {elem.name} -> {correct_name}"
                             )
                             elem.name = correct_name
+
+                # Fix Function name issues (e.g. Windows/Ubuntu "AUTO_INCREMENT" bug)
+                elif elem_type.value == "function":
+                    # Filter out obvious garbage names if they match keywords
+                    if elem.name and elem.name.upper() in (
+                        "AUTO_INCREMENT",
+                        "KEY",
+                        "PRIMARY",
+                        "FOREIGN",
+                    ):
+                        # Try to recover correct name
+                        match = re.search(
+                            r"CREATE\s+FUNCTION\s+([a-zA-Z_][a-zA-Z0-9_]*)",
+                            elem.raw_text,
+                            re.IGNORECASE,
+                        )
+                        if match:
+                            correct_name = match.group(1)
+                            log_debug(
+                                f"Fixing garbage function name: {elem.name} -> {correct_name}"
+                            )
+                            elem.name = correct_name
+                        else:
+                            log_debug(f"Removing garbage function name: {elem.name}")
+                            continue
+
+                    # General name verification
+                    match = re.search(
+                        r"CREATE\s+FUNCTION\s+([a-zA-Z_][a-zA-Z0-9_]*)",
+                        elem.raw_text,
+                        re.IGNORECASE,
+                    )
+                    if match:
+                        correct_name = match.group(1)
+                        if elem.name != correct_name and self._is_valid_identifier(
+                            correct_name
+                        ):
+                            log_debug(
+                                f"Fixing function name: {elem.name} -> {correct_name}"
+                            )
+                            elem.name = correct_name
+
+            # Deduplication
+            key = (getattr(elem, "sql_element_type", None), elem.name, elem.start_line)
+            if key in seen_names:
+                continue
+            seen_names.add(key)
 
             validated.append(elem)
 
