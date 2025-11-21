@@ -83,18 +83,43 @@ def normalize_output(content: str) -> str:
             "TIMESTAMP",
             "BOOLEAN",
         ]
+        # SQL列名の一般的なパターン - これらもfunctionとして誤検出される
         sql_column_names = [
             "order_date",
             "user_id",
             "order_id",
             "product_id",
+            "category_id",
+            "stock_quantity",  # 在庫数量
+            "total_amount",
+            "created_at",
+            "updated_at",
+            "password_hash",
+            "order_items",
         ]
+
+        # 複数のスキップ条件をチェック
         skip_line = False
+
+        # 1. テーブル行でSQL型・列名がfunctionとして誤検出
         for keyword in sql_type_keywords + sql_column_names:
-            # SQL型または列名がfunctionとして誤検出されている場合はスキップ
             if f"| {keyword} | function |" in line or f"{keyword},function," in line:
                 skip_line = True
                 break
+
+        # 2. Full formatの詳細セクションでSQL型名が誤検出（例: "### INT (104-115)"）
+        if not skip_line and line.startswith("### "):
+            parts = line.split()
+            if len(parts) > 1 and parts[1] in sql_type_keywords:
+                skip_line = True
+
+        # 3. SQL型名の詳細情報行もスキップ（例: "**Parameters**: user_id_param INT"）
+        if not skip_line and line.startswith("**"):
+            if "Parameters" in line or "Dependencies" in line or "Returns" in line:
+                for kw in sql_type_keywords:
+                    if f" {kw}" in line or f":{kw}" in line:
+                        skip_line = True
+                        break
 
         if skip_line:
             continue
