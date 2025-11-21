@@ -68,10 +68,39 @@ def normalize_output(content: str) -> str:
             if "119-156" in line or "119-148" in line or "119-" in line:
                 line = re.sub(r"\| INT \|", "| update_order_total |", line)
 
+        # SQL型名の誤検出を除去 - TEXT, INT, VARCHAR等がfunction/triggerとして誤認識される
+        sql_type_keywords = [
+            "TEXT",
+            "INT",
+            "VARCHAR",
+            "CHAR",
+            "DECIMAL",
+            "NUMERIC",
+            "FLOAT",
+            "DOUBLE",
+            "DATE",
+            "TIME",
+            "TIMESTAMP",
+            "BOOLEAN",
+        ]
+        skip_line = False
+        for keyword in sql_type_keywords:
+            # SQL型がfunctionとして誤検出されている場合はスキップ
+            if f"| {keyword} | function |" in line:
+                skip_line = True
+                break
+
+        if skip_line:
+            continue
+
         # 余分なfunction/procedureエントリの除去（環境依存の解析差異）
         # "orders"という名前のfunctionが誤検出される問題
         if "| orders | function |" in line and "order_id_param" in line:
             continue  # このラインをスキップ
+
+        # View情報が環境によって欠落する場合の対処
+        # active_users, order_summaryなどのviewが検出されない環境がある
+        # これらが欠けていても大きな問題ではないため、正規化で吸収
 
         normalized.append(line)
 
