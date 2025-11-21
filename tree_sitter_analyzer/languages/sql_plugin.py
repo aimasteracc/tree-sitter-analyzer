@@ -1151,7 +1151,63 @@ class SQLElementExtractor(ElementExtractor):
     ) -> None:
         """Extract CREATE VIEW statements with enhanced metadata."""
         for node in self._traverse_nodes(root_node):
-            if node.type == "create_view":
+            if node.type == "ERROR":
+                # Handle views inside ERROR nodes (common in some environments)
+                raw_text = self._get_node_text(node)
+                if not raw_text:
+                    continue
+
+                import re
+
+                # Find all views in this error node
+                view_matches = re.finditer(
+                    r"CREATE\s+VIEW\s+(?:IF\s+NOT\s+EXISTS\s+)?(\w+)\s+AS",
+                    raw_text,
+                    re.IGNORECASE,
+                )
+
+                for match in view_matches:
+                    view_name = match.group(1).strip()
+                    if not self._is_valid_identifier(view_name):
+                        continue
+
+                    # Avoid duplicates
+                    if any(
+                        e.name == view_name and isinstance(e, SQLView)
+                        for e in sql_elements
+                    ):
+                        continue
+
+                    start_line = node.start_point[0] + 1
+                    end_line = node.end_point[0] + 1
+
+                    # Extract source tables from context following the view definition
+                    view_context = raw_text[match.end() :]
+                    semicolon_match = re.search(r";", view_context)
+                    if semicolon_match:
+                        view_context = view_context[: semicolon_match.end()]
+
+                    source_tables = []
+                    # Simple extraction for source tables
+                    table_matches = re.findall(
+                        r"(?:FROM|JOIN)\s+([a-zA-Z_][a-zA-Z0-9_]*)",
+                        view_context,
+                        re.IGNORECASE,
+                    )
+                    source_tables.extend(table_matches)
+
+                    view = SQLView(
+                        name=view_name,
+                        start_line=start_line,
+                        end_line=end_line,
+                        raw_text=f"CREATE VIEW {view_name} ...",
+                        language="sql",
+                        source_tables=list(set(source_tables)),
+                        dependencies=list(set(source_tables)),
+                    )
+                    sql_elements.append(view)
+
+            elif node.type == "create_view":
                 view_name = None
                 source_tables = []
 
@@ -1638,57 +1694,40 @@ class SQLElementExtractor(ElementExtractor):
         """Extract CREATE TRIGGER statements with enhanced metadata."""
         for node in self._traverse_nodes(root_node):
             if node.type == "ERROR":
-                has_create = False
-                has_trigger = False
                 trigger_name = None
                 table_name = None
                 trigger_timing = None
                 trigger_event = None
-                found_trigger_keyword = False
 
-                for child in node.children:
-                    if child.type == "keyword_create":
-                        has_create = True
-                    elif child.type == "keyword_trigger":
-                        has_trigger = True
-                        found_trigger_keyword = True
-                    elif (
-                        child.type == "object_reference"
-                        and found_trigger_keyword
-                        and not trigger_name
-                    ):
-                        for subchild in child.children:
-                            if subchild.type == "identifier":
-                                extracted_name = self._get_node_text(subchild).strip()
-                                # Validate trigger name
-                                if extracted_name and self._is_valid_identifier(
-                                    extracted_name
-                                ):
-                                    trigger_name = extracted_name
-                                break
-                        break
+                # Get node text once
+                trigger_text = self._get_node_text(node)
 
-                # Use regex to extract trigger name for better accuracy
-                if has_create and has_trigger and not trigger_name:
-                    import re
+                # Check for CREATE TRIGGER keywords first to avoid unnecessary processing
+                import re
 
-                    trigger_text = self._get_node_text(node)
-                    # First verify this really is a CREATE TRIGGER statement
-                    if not re.match(
-                        r"^\s*CREATE\s+TRIGGER\s+", trigger_text, re.IGNORECASE
-                    ):
-                        continue  # Skip if not a CREATE TRIGGER statement
+                if not re.search(r"CREATE\s+TRIGGER", trigger_text, re.IGNORECASE):
+                    continue
 
-                    # Pattern: CREATE TRIGGER trigger_name
-                    trigger_pattern = re.search(
-                        r"CREATE\s+TRIGGER\s+([a-zA-Z_][a-zA-Z0-9_]*)",
-                        trigger_text,
-                        re.IGNORECASE,
-                    )
-                    if trigger_pattern:
-                        extracted_name = trigger_pattern.group(1)
-                        if self._is_valid_identifier(extracted_name):
-                            trigger_name = extracted_name
+                has_create = True
+                has_trigger = True
+
+                # Use regex to extract trigger name - Prioritize Regex over AST for ERROR nodes
+                # This avoids issues where AST structure is broken and unrelated identifiers (like column names)
+                # are picked up as trigger names.
+                trigger_pattern = re.search(
+                    r"CREATE\s+TRIGGER\s+([a-zA-Z_][a-zA-Z0-9_]*)",
+                    trigger_text,
+                    re.IGNORECASE,
+                )
+
+                if trigger_pattern:
+                    extracted_name = trigger_pattern.group(1)
+                    if self._is_valid_identifier(extracted_name):
+                        trigger_name = extracted_name
+
+                # Skip if no valid name found
+                if not trigger_name:
+                    continue
 
                 # Skip invalid trigger names (too short or common SQL keywords)
                 if trigger_name and len(trigger_name) <= 2:
