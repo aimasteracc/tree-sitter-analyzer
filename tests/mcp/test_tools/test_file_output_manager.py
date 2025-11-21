@@ -123,7 +123,8 @@ class TestFileOutputManager:
         saved_path = self.manager.save_to_file(content, filename=filename)
 
         expected_path = Path(self.temp_dir) / filename
-        assert saved_path == str(expected_path)
+        # Normalize paths for Windows compatibility (short vs long path format)
+        assert Path(saved_path).resolve() == expected_path.resolve()
         assert expected_path.exists()
 
         with open(expected_path, encoding="utf-8") as f:
@@ -138,7 +139,8 @@ class TestFileOutputManager:
         saved_path = self.manager.save_to_file(json_content, base_name=base_name)
 
         expected_path = Path(self.temp_dir) / "test_data.json"
-        assert saved_path == str(expected_path)
+        # Normalize paths for Windows compatibility (short vs long path format)
+        assert Path(saved_path).resolve() == expected_path.resolve()
         assert expected_path.exists()
 
         with open(expected_path, encoding="utf-8") as f:
@@ -162,7 +164,8 @@ class TestFileOutputManager:
         saved_path = self.manager.save_to_file(content, filename=filename)
 
         expected_path = Path(self.temp_dir) / filename
-        assert saved_path == str(expected_path)
+        # Normalize paths for Windows compatibility (short vs long path format)
+        assert Path(saved_path).resolve() == expected_path.resolve()
         assert expected_path.exists()
         assert expected_path.parent.exists()
 

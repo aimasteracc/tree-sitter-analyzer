@@ -13,17 +13,19 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-# Add project root to path
+# Add project root to path - needs to be before imports  # noqa: E402
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from tests.format_testing.format_assertions import (
+from tests.format_testing.format_assertions import (  # noqa: E402
     assert_compact_format_compliance,
     assert_csv_format_compliance,
     assert_full_format_compliance,
 )
-from tests.format_testing.schema_validation import validate_format
-from tree_sitter_analyzer.mcp.tools.table_format_tool import TableFormatTool
+from tests.format_testing.schema_validation import validate_format  # noqa: E402
+from tree_sitter_analyzer.mcp.tools.table_format_tool import (  # noqa: E402
+    TableFormatTool,
+)
 
 
 class PreCommitFormatValidator:
@@ -202,7 +204,6 @@ async def main():
     validator = PreCommitFormatValidator()
 
     # Validate each file
-    all_valid = True
     for file_path in args.files:
         if args.verbose:
             print(f"Validating {file_path}...")
@@ -210,7 +211,6 @@ async def main():
         is_valid = await validator.validate_file(file_path)
 
         if not is_valid:
-            all_valid = False
             if args.fail_fast:
                 break
 

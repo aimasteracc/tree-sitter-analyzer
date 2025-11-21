@@ -382,7 +382,9 @@ class TestTypeScriptQueries:
                 has_expected_pattern = any(
                     pattern in query_string for pattern in patterns
                 )
-                assert has_expected_pattern, f"Query {query_name} doesn't contain expected capture group patterns: {patterns}"
+                assert (
+                    has_expected_pattern
+                ), f"Query {query_name} doesn't contain expected capture group patterns: {patterns}"
 
 
 if __name__ == "__main__":

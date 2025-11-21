@@ -144,7 +144,7 @@ class PerformanceTester:
                 self.profiler.start_profiling()
 
                 # Execute test function
-                result = test_function(test_data)
+                test_function(test_data)
 
                 # Get performance metrics
                 metrics = self.profiler.stop_profiling()
@@ -268,8 +268,7 @@ class PerformanceTester:
 
         # Check if performance thresholds are exceeded
         performance_threshold_exceeded = any(
-            time_ms > 10000
-            for time_ms in execution_times  # 10 second threshold
+            time_ms > 10000 for time_ms in execution_times  # 10 second threshold
         )
 
         result = ScalabilityTestResult(
@@ -641,7 +640,7 @@ class FormatPerformanceTester:
         for format_type in format_types:
             test_name = f"format_{language}_{format_type}"
 
-            def test_function(data):
+            def test_function(data, format_type=format_type):
                 return analyzer_function(data, format_type=format_type)
 
             metrics = self.performance_tester.run_performance_test(

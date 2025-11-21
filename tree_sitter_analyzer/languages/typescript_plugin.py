@@ -1035,9 +1035,7 @@ class TypeScriptElementExtractor(ElementExtractor):
         except Exception:
             return None
 
-    def _parse_method_signature_optimized(
-        self, node: "tree_sitter.Node"
-    ) -> (
+    def _parse_method_signature_optimized(self, node: "tree_sitter.Node") -> (
         tuple[
             str | None,
             list[str],

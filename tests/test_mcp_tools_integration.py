@@ -534,8 +534,9 @@ class CoreClass:
 
                     # Verify file exists and is in project directory
                     assert file_path.exists(), f"{tool_name} file not created"
-                    assert str(file_path).startswith(
-                        comprehensive_project
+                    # Normalize paths for Windows compatibility (short vs long path format)
+                    assert file_path.resolve().is_relative_to(
+                        Path(comprehensive_project).resolve()
                     ), f"{tool_name} file not in project directory"
 
         # Verify all files were created in the same base directory
