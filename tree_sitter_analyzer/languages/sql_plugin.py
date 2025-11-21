@@ -110,11 +110,113 @@ class SQLElementExtractor(ElementExtractor):
                 self._extract_sql_functions_enhanced(tree.root_node, sql_elements)
                 self._extract_sql_triggers(tree.root_node, sql_elements)
                 self._extract_sql_indexes(tree.root_node, sql_elements)
+
+                # Post-process to fix platform-specific parsing errors
+                sql_elements = self._validate_and_fix_elements(sql_elements)
+
                 log_debug(f"Extracted {len(sql_elements)} SQL elements with metadata")
             except Exception as e:
                 log_debug(f"Error during enhanced SQL extraction: {e}")
 
         return sql_elements
+
+    def _validate_and_fix_elements(
+        self, elements: list[SQLElement]
+    ) -> list[SQLElement]:
+        """
+        Post-process elements to fix parsing errors caused by platform-specific
+        tree-sitter behavior (e.g. ERROR nodes misidentifying triggers).
+        """
+        import re
+
+        validated = []
+
+        for elem in elements:
+            # Fix Trigger name issues (e.g. macOS "description" bug)
+            if (
+                hasattr(elem, "sql_element_type")
+                and elem.sql_element_type.value == "trigger"
+            ):
+                # Try to re-verify the name from raw text
+                if elem.raw_text:
+                    # Pattern: CREATE TRIGGER trigger_name
+                    match = re.search(
+                        r"CREATE\s+TRIGGER\s+([a-zA-Z_][a-zA-Z0-9_]*)",
+                        elem.raw_text,
+                        re.IGNORECASE,
+                    )
+                    if match:
+                        correct_name = match.group(1)
+                        if elem.name != correct_name and self._is_valid_identifier(
+                            correct_name
+                        ):
+                            log_debug(
+                                f"Fixing trigger name: {elem.name} -> {correct_name}"
+                            )
+                            elem.name = correct_name
+
+            validated.append(elem)
+
+        # Recover missing Views (often missed in ERROR nodes on some platforms)
+        # This is a fallback scan of the entire source code
+        if self.source_code:
+            existing_views = {
+                e.name
+                for e in validated
+                if hasattr(e, "sql_element_type") and e.sql_element_type.value == "view"
+            }
+
+            view_matches = re.finditer(
+                r"^\s*CREATE\s+VIEW\s+(?:IF\s+NOT\s+EXISTS\s+)?(\w+)\s+AS",
+                self.source_code,
+                re.IGNORECASE | re.MULTILINE,
+            )
+
+            for match in view_matches:
+                view_name = match.group(1)
+                if view_name not in existing_views and self._is_valid_identifier(
+                    view_name
+                ):
+                    log_debug(f"Recovering missing view: {view_name}")
+
+                    # Calculate approximate line numbers
+                    start_pos = match.start()
+                    # Count newlines before start_pos
+                    start_line = self.source_code.count("\n", 0, start_pos) + 1
+
+                    # Estimate end line (until next semicolon or empty line)
+                    view_context = self.source_code[start_pos:]
+                    semicolon_match = re.search(r";", view_context)
+                    if semicolon_match:
+                        end_pos = start_pos + semicolon_match.end()
+                        end_line = self.source_code.count("\n", 0, end_pos) + 1
+                    else:
+                        end_line = start_line + 5  # Fallback estimate
+
+                    # Extract source tables roughly
+                    source_tables = []
+                    table_matches = re.findall(
+                        r"(?:FROM|JOIN)\s+([a-zA-Z_][a-zA-Z0-9_]*)",
+                        view_context[
+                            : semicolon_match.end() if semicolon_match else 500
+                        ],
+                        re.IGNORECASE,
+                    )
+                    source_tables.extend(table_matches)
+
+                    view = SQLView(
+                        name=view_name,
+                        start_line=start_line,
+                        end_line=end_line,
+                        raw_text=f"CREATE VIEW {view_name} ...",
+                        language="sql",
+                        source_tables=list(set(source_tables)),
+                        dependencies=list(set(source_tables)),
+                    )
+                    validated.append(view)
+                    existing_views.add(view_name)
+
+        return validated
 
     def extract_functions(
         self, tree: "tree_sitter.Tree", source_code: str
