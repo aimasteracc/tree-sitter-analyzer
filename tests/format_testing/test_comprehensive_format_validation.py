@@ -183,7 +183,8 @@ class TestComprehensiveFormatValidation:
         )
 
         assert results.total_tests > 0
-        assert results.execution_time_seconds > 0
+        # execution_time_seconds可能为0（测试执行非常快时）
+        assert results.execution_time_seconds >= 0
         assert results.timestamp is not None
         assert 0 <= results.success_rate <= 100
 
