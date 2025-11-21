@@ -236,16 +236,18 @@ const arrowFunction = () => {
         """タイムアウト動作テスト"""
         service = QueryService()
 
-        # タイムアウト付き実行
+        # タイムアウト付き実行（Python 3.10互換のためwait_forを使用）
         try:
-            async with asyncio.timeout(10.0):  # 10秒のタイムアウト
-                results = await service.execute_query(
+            results = await asyncio.wait_for(
+                service.execute_query(
                     file_path=sample_python_file,
                     language="python",
                     query_key="function",
-                )
-                assert results is not None
-                # 結果の数は実装依存なので、リストであることのみ確認
+                ),
+                timeout=10.0,  # 10秒のタイムアウト
+            )
+            assert results is not None
+            # 結果の数は実装依存なので、リストであることのみ確認
         except asyncio.TimeoutError:
             pytest.fail("Query execution timed out")
 
