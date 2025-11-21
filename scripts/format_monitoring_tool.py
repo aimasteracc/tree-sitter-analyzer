@@ -19,13 +19,15 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-# Add project root to path
+# Add project root to path - needs to be before imports  # noqa: E402
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from tests.format_testing.golden_master import GoldenMasterManager
-from tests.format_testing.schema_validation import validate_format
-from tree_sitter_analyzer.mcp.tools.table_format_tool import TableFormatTool
+from tests.format_testing.golden_master import GoldenMasterManager  # noqa: E402
+from tests.format_testing.schema_validation import validate_format  # noqa: E402
+from tree_sitter_analyzer.mcp.tools.table_format_tool import (  # noqa: E402
+    TableFormatTool,
+)
 
 
 class FormatMonitoringDatabase:

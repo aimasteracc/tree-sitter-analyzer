@@ -7,8 +7,7 @@ fallback mechanisms, and query execution APIs.
 """
 
 import logging
-from typing import Any
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -199,11 +198,10 @@ class TestCreateQuerySafely:
     def test_successful_query_creation(self):
         """Test successful query creation"""
         with patch("tree_sitter_analyzer.utils.tree_sitter_compat.logger"):
-            import tree_sitter
-            
+
             mock_language = MagicMock()
             result = create_query_safely(mock_language, "(identifier) @name")
-            
+
             # If tree-sitter is installed, should create a query
             assert result is not None or result is None  # Depends on real tree-sitter
 
@@ -212,7 +210,7 @@ class TestCreateQuerySafely:
         with patch("builtins.__import__", side_effect=ImportError("No module")):
             mock_language = MagicMock()
             result = create_query_safely(mock_language, "invalid query")
-            
+
             assert result is None
 
     def test_query_creation_invalid_query(self):
@@ -220,7 +218,7 @@ class TestCreateQuerySafely:
         # This will use real tree-sitter if available
         mock_language = MagicMock()
         mock_language.field_count = 0  # Mock minimal language interface
-        
+
         # Should handle exceptions gracefully
         result = create_query_safely(mock_language, "completely invalid ]][[")
         # May return None if query is invalid
@@ -236,8 +234,7 @@ class TestLogApiInfo:
             log_api_info()
 
         # Should log something about tree-sitter
-        assert any("tree-sitter" in record.message.lower() 
-                   for record in caplog.records)
+        assert any("tree-sitter" in record.message.lower() for record in caplog.records)
 
     def test_log_api_info_callable(self):
         """Test that log_api_info can be called without errors"""
@@ -248,7 +245,7 @@ class TestLogApiInfo:
         """Test that log_api_info logs debug information"""
         with caplog.at_level(logging.DEBUG):
             log_api_info()
-        
+
         # Should have logged something
         assert len(caplog.records) > 0
 
@@ -259,17 +256,17 @@ class TestTreeSitterQueryCompatExecuteQuery:
     def test_execute_query_with_real_tree_sitter(self):
         """Test query execution with real tree-sitter if available"""
         try:
-            import tree_sitter
-            
+            import tree_sitter  # noqa: F401
+
             # Create a minimal mock that has the needed attributes
             mock_language = MagicMock()
             mock_root = MagicMock()
-            
+
             # This should handle gracefully even with mocks
             result = TreeSitterQueryCompat.execute_query(
                 mock_language, "(identifier) @name", mock_root
             )
-            
+
             # Should return a list (may be empty due to mock)
             assert isinstance(result, list)
         except ImportError:
@@ -279,9 +276,7 @@ class TestTreeSitterQueryCompatExecuteQuery:
     def test_execute_query_error_handling(self):
         """Test error handling in query execution"""
         # Use invalid inputs that will cause errors
-        result = TreeSitterQueryCompat.execute_query(
-            None, "invalid", None
-        )
+        result = TreeSitterQueryCompat.execute_query(None, "invalid", None)
 
         # Should return empty list on error
         assert result == []
@@ -292,7 +287,7 @@ class TestTreeSitterQueryCompatExecuteQuery:
             result = TreeSitterQueryCompat.execute_query(
                 MagicMock(), "(identifier)", MagicMock()
             )
-            
+
             assert result == []
 
 
@@ -315,7 +310,7 @@ class TestTreeSitterQueryCompatSafeExecuteQuery:
         """Test safe query execution with custom fallback"""
         mock_language = None  # Will cause error
         root_node = MagicMock()
-        
+
         fallback = [("fallback_node", "fallback_name")]
         result = TreeSitterQueryCompat.safe_execute_query(
             mock_language, "invalid", root_node, fallback_result=fallback
@@ -344,10 +339,10 @@ class TestTreeSitterQueryCompatInternalMethods:
         # Create a query mock
         mock_query = MagicMock()
         root_node = MagicMock()
-        
+
         # This will likely fail without proper tree-sitter, returning empty
         result = TreeSitterQueryCompat._execute_newest_api(mock_query, root_node)
-        
+
         # Should return a list
         assert isinstance(result, list)
 
@@ -358,17 +353,17 @@ class TestTreeSitterQueryCompatInternalMethods:
         mock_capture = MagicMock()
         mock_capture.node = mock_node
         mock_capture.index = 0
-        
+
         mock_match = MagicMock()
         mock_match.captures = [mock_capture]
-        
+
         mock_query.matches.return_value = [mock_match]
         mock_query.capture_names = ["name"]
-        
+
         root_node = MagicMock()
-        
+
         result = TreeSitterQueryCompat._execute_modern_api(mock_query, root_node)
-        
+
         assert len(result) == 1
         assert result[0] == (mock_node, "name")
 
@@ -378,9 +373,9 @@ class TestTreeSitterQueryCompatInternalMethods:
         mock_node = MagicMock()
         mock_query.captures.return_value = [(mock_node, "name")]
         root_node = MagicMock()
-        
+
         result = TreeSitterQueryCompat._execute_legacy_api(mock_query, root_node)
-        
+
         assert len(result) == 1
         assert result[0] == (mock_node, "name")
 
@@ -390,9 +385,9 @@ class TestTreeSitterQueryCompatInternalMethods:
         mock_node = MagicMock()
         mock_query.return_value = [(mock_node, "name")]
         root_node = MagicMock()
-        
+
         result = TreeSitterQueryCompat._execute_old_api(mock_query, root_node)
-        
+
         assert len(result) == 1
         assert result[0] == (mock_node, "name")
 
@@ -400,9 +395,9 @@ class TestTreeSitterQueryCompatInternalMethods:
         """Test _execute_old_api with non-callable query"""
         mock_query = MagicMock(spec=[])  # No callable
         root_node = MagicMock()
-        
+
         result = TreeSitterQueryCompat._execute_old_api(mock_query, root_node)
-        
+
         assert result == []
 
     def test_all_internal_methods_exist(self):
@@ -421,7 +416,7 @@ class TestEdgeCases:
         mock_node = MagicMock()
         mock_node.start_byte = 0
         mock_node.end_byte = 0
-        
+
         result = get_node_text_safe(mock_node, "")
         assert result == ""
 
@@ -431,7 +426,7 @@ class TestEdgeCases:
         mock_node.start_byte = 0
         mock_node.end_byte = 10
         large_source = "x" * 1000000
-        
+
         result = get_node_text_safe(mock_node, large_source)
         assert result == "x" * 10
 
@@ -441,7 +436,7 @@ class TestEdgeCases:
         mock_node.start_byte = 0
         mock_node.end_byte = 3  # "€" is 3 bytes in UTF-8
         source_code = "€100"
-        
+
         result = get_node_text_safe(mock_node, source_code)
         assert isinstance(result, str)
 
@@ -454,7 +449,7 @@ class TestEdgeCases:
         mock_node.start_point = (10, 0)
         mock_node.end_point = (20, 0)
         source_code = "single line"
-        
+
         result = get_node_text_safe(mock_node, source_code)
         assert isinstance(result, str)
 
@@ -479,7 +474,9 @@ class TestCompatibilityScenarios:
     def test_all_api_methods_are_static(self):
         """Test that API methods are static methods"""
         # Static methods can be called without instantiation
-        assert hasattr(TreeSitterQueryCompat.execute_query, "__func__") or callable(TreeSitterQueryCompat.execute_query)
+        assert hasattr(TreeSitterQueryCompat.execute_query, "__func__") or callable(
+            TreeSitterQueryCompat.execute_query
+        )
 
 
 if __name__ == "__main__":

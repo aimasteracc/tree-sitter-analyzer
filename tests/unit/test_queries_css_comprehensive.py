@@ -7,16 +7,17 @@ testing all query patterns, utility functions, and edge cases.
 """
 
 import pytest
+
 from tree_sitter_analyzer.queries.css import (
+    ALL_QUERIES,
     CSS_QUERIES,
     CSS_QUERY_DESCRIPTIONS,
-    ALL_QUERIES,
+    get_all_queries,
+    get_available_css_queries,
     get_css_query,
     get_css_query_description,
     get_query,
-    get_all_queries,
     list_queries,
-    get_available_css_queries,
 )
 
 
@@ -47,7 +48,7 @@ class TestCSSQueries:
 
     def test_all_queries_have_query_string(self):
         """Test that all queries have non-empty query strings"""
-        for query_name, query_string in CSS_QUERIES.items():
+        for _query_name, query_string in CSS_QUERIES.items():
             assert isinstance(query_string, str)
             assert len(query_string.strip()) > 0
 
@@ -278,7 +279,7 @@ class TestGetAllQueries:
     def test_get_all_queries_structure(self):
         """Test structure of returned queries"""
         queries = get_all_queries()
-        for query_name, query_data in queries.items():
+        for _query_name, query_data in queries.items():
             assert isinstance(query_data, dict)
             assert "query" in query_data
             assert "description" in query_data
@@ -342,20 +343,20 @@ class TestALLQueriesIntegration:
 
     def test_all_queries_format(self):
         """Test ALL_QUERIES has correct format"""
-        for query_name, query_data in ALL_QUERIES.items():
+        for _query_name, query_data in ALL_QUERIES.items():
             assert isinstance(query_data, dict)
             assert "query" in query_data
             assert "description" in query_data
 
     def test_all_queries_query_strings_valid(self):
         """Test all query strings are valid"""
-        for query_name, query_data in ALL_QUERIES.items():
+        for _query_name, query_data in ALL_QUERIES.items():
             assert isinstance(query_data["query"], str)
             assert len(query_data["query"].strip()) > 0
 
     def test_all_queries_descriptions_valid(self):
         """Test all descriptions are valid"""
-        for query_name, query_data in ALL_QUERIES.items():
+        for _query_name, query_data in ALL_QUERIES.items():
             assert isinstance(query_data["description"], str)
             assert len(query_data["description"]) > 0
 
@@ -441,7 +442,7 @@ class TestEdgeCases:
 
     def test_query_descriptions_not_empty(self):
         """Test that no query description is empty"""
-        for query_name, description in CSS_QUERY_DESCRIPTIONS.items():
+        for _query_name, description in CSS_QUERY_DESCRIPTIONS.items():
             assert description.strip() != ""
             assert description != "No description"
 

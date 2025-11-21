@@ -298,10 +298,10 @@ class TestJavaScriptPluginEdgeCases:
 
         # Mock to raise exception
         with patch.object(extractor, "_parse_method_signature_optimized") as mock_parse:
-            mock_parse.side_effect = Exception("Test error")
+            mock_parse.side_effect = RuntimeError("Test error")
 
             # Should re-raise the exception for debugging
-            with pytest.raises(Exception):
+            with pytest.raises(RuntimeError):
                 extractor._extract_method_optimized(mock_node)
 
     def test_class_extraction_without_name(self, extractor):

@@ -5,16 +5,16 @@ Tests all methods in tree_sitter_analyzer.languages.markdown_plugin module.
 Target: >85% coverage
 """
 
-import pytest
-from unittest.mock import Mock, AsyncMock, patch, MagicMock
+from unittest.mock import Mock, patch
 
+import pytest
+
+from tree_sitter_analyzer.core.analysis_engine import AnalysisRequest
 from tree_sitter_analyzer.languages.markdown_plugin import (
     MarkdownElement,
     MarkdownElementExtractor,
     MarkdownPlugin,
 )
-from tree_sitter_analyzer.models import CodeElement
-from tree_sitter_analyzer.core.analysis_engine import AnalysisRequest
 
 
 class TestMarkdownElement:
@@ -486,7 +486,10 @@ class TestMarkdownPlugin:
         mock_extract.assert_called_once()
 
     @patch("tree_sitter_analyzer.languages.markdown_plugin.tree_sitter")
-    @patch("tree_sitter_analyzer.languages.markdown_plugin.tree_sitter_markdown", create=True)
+    @patch(
+        "tree_sitter_analyzer.languages.markdown_plugin.tree_sitter_markdown",
+        create=True,
+    )
     def test_get_tree_sitter_language_success(self, mock_tsmarkdown, mock_ts):
         """Test successful tree-sitter language loading"""
         plugin = MarkdownPlugin()
@@ -518,7 +521,6 @@ class TestMarkdownPlugin:
         plugin._language_cache = None  # Reset cache
 
         # Mock the actual import to fail
-        import sys
         original_import = __builtins__["__import__"]
 
         def mock_import(name, *args, **kwargs):
@@ -635,7 +637,9 @@ class TestMarkdownPlugin:
         mock_parser.parse.return_value = mock_tree
         mock_ts.Parser.return_value = mock_parser
 
-        with patch.object(plugin, "get_tree_sitter_language", return_value=mock_language):
+        with patch.object(
+            plugin, "get_tree_sitter_language", return_value=mock_language
+        ):
             with patch.object(plugin, "create_extractor") as mock_create_extractor:
                 mock_extractor = Mock(spec=MarkdownElementExtractor)
                 mock_extractor.extract_headers.return_value = []
@@ -696,7 +700,9 @@ class TestMarkdownPlugin:
         mock_get_query.return_value = "(heading) @header"
         mock_compat.safe_execute_query.return_value = [("header", Mock())]
 
-        with patch.object(plugin, "get_tree_sitter_language", return_value=mock_language):
+        with patch.object(
+            plugin, "get_tree_sitter_language", return_value=mock_language
+        ):
             result = plugin.execute_query(mock_tree, "headers")
 
         assert "captures" in result
@@ -712,7 +718,9 @@ class TestMarkdownPlugin:
 
         mock_get_query.side_effect = KeyError("unknown")
 
-        with patch.object(plugin, "get_tree_sitter_language", return_value=mock_language):
+        with patch.object(
+            plugin, "get_tree_sitter_language", return_value=mock_language
+        ):
             result = plugin.execute_query(mock_tree, "unknown")
 
         assert "error" in result
@@ -911,20 +919,21 @@ class TestMarkdownPluginEdgeCases:
         """Test extracting headers from real markdown"""
         plugin = MarkdownPlugin()
         extractor = plugin.create_extractor()
-        
+
         markdown_content = """# Main Title
 ## Subtitle
 ### Subsection
 #### Level 4
 """
-        
+
         language = plugin.get_tree_sitter_language()
         if language:
             import tree_sitter
+
             parser = tree_sitter.Parser(language)
             tree = parser.parse(markdown_content.encode("utf-8"))
             headers = extractor.extract_headers(tree, markdown_content)
-            
+
             assert len(headers) == 4
             assert headers[0].name == "Main Title"
             assert headers[0].level == 1
@@ -935,7 +944,7 @@ class TestMarkdownPluginEdgeCases:
         """Test extracting code blocks from real markdown"""
         plugin = MarkdownPlugin()
         extractor = plugin.create_extractor()
-        
+
         markdown_content = """```python
 def hello():
     print("world")
@@ -945,14 +954,15 @@ def hello():
 console.log("test");
 ```
 """
-        
+
         language = plugin.get_tree_sitter_language()
         if language:
             import tree_sitter
+
             parser = tree_sitter.Parser(language)
             tree = parser.parse(markdown_content.encode("utf-8"))
             code_blocks = extractor.extract_code_blocks(tree, markdown_content)
-            
+
             assert len(code_blocks) >= 2
             # Check that language info is extracted
             langs = [cb.language_info for cb in code_blocks]
@@ -962,18 +972,19 @@ console.log("test");
         """Test extracting links from real markdown"""
         plugin = MarkdownPlugin()
         extractor = plugin.create_extractor()
-        
+
         markdown_content = """[Google](https://google.com)
 [GitHub](https://github.com "GitHub Site")
 """
-        
+
         language = plugin.get_tree_sitter_language()
         if language:
             import tree_sitter
+
             parser = tree_sitter.Parser(language)
             tree = parser.parse(markdown_content.encode("utf-8"))
             links = extractor.extract_links(tree, markdown_content)
-            
+
             assert len(links) >= 2
             urls = [link.url for link in links]
             assert "https://google.com" in urls
@@ -982,18 +993,19 @@ console.log("test");
         """Test extracting images from real markdown"""
         plugin = MarkdownPlugin()
         extractor = plugin.create_extractor()
-        
+
         markdown_content = """![Alt text](image.png)
 ![Photo](photo.jpg "My Photo")
 """
-        
+
         language = plugin.get_tree_sitter_language()
         if language:
             import tree_sitter
+
             parser = tree_sitter.Parser(language)
             tree = parser.parse(markdown_content.encode("utf-8"))
             images = extractor.extract_images(tree, markdown_content)
-            
+
             assert len(images) >= 2
             alts = [img.alt_text for img in images]
             assert "Alt text" in alts
@@ -1001,8 +1013,8 @@ console.log("test");
     def test_extract_lists(self):
         """Test extracting list elements from markdown"""
         plugin = MarkdownPlugin()
-        extractor = plugin.create_extractor()
-        
+        plugin.create_extractor()
+
         markdown_content = """- Item 1
 - Item 2
   - Nested item
@@ -1010,47 +1022,51 @@ console.log("test");
 1. First
 2. Second
 """
-        
+
         language = plugin.get_tree_sitter_language()
         if language:
             import tree_sitter
+
             parser = tree_sitter.Parser(language)
             tree = parser.parse(markdown_content.encode("utf-8"))
-            
+
             # Extract lists using traverse
             list_items = []
+
             def visit(node):
                 if node.type in ("list_item", "list"):
                     list_items.append(node)
                 for child in node.children:
                     visit(child)
-            
+
             visit(tree.root_node)
             assert len(list_items) > 0
 
     def test_extract_blockquotes(self):
         """Test extracting blockquotes from markdown"""
         plugin = MarkdownPlugin()
-        extractor = plugin.create_extractor()
-        
+        plugin.create_extractor()
+
         markdown_content = """> This is a quote
 > Multiple lines
 """
-        
+
         language = plugin.get_tree_sitter_language()
         if language:
             import tree_sitter
+
             parser = tree_sitter.Parser(language)
             tree = parser.parse(markdown_content.encode("utf-8"))
-            
+
             # Extract blockquotes using traverse
             quotes = []
+
             def visit(node):
                 if node.type == "block_quote":
                     quotes.append(node)
                 for child in node.children:
                     visit(child)
-            
+
             visit(tree.root_node)
             assert len(quotes) > 0
 
@@ -1062,13 +1078,13 @@ console.log("test");
             end_line=1,
             raw_text="# Test Header",
             element_type="header",
-            level=1
+            level=1,
         )
-        
+
         # Test header-specific formatting
         assert element.level == 1
         assert element.name == "Test Header"
-        
+
         # Test link element
         link = MarkdownElement(
             name="Link",
@@ -1077,9 +1093,9 @@ console.log("test");
             raw_text="[Link](url)",
             element_type="link",
             url="https://example.com",
-            title="Example"
+            title="Example",
         )
-        
+
         assert link.url == "https://example.com"
         assert link.title == "Example"
 
@@ -1091,9 +1107,9 @@ console.log("test");
             end_line=8,
             raw_text='```python\nprint("hello")\n```',
             element_type="code_block",
-            language_info="python"
+            language_info="python",
         )
-        
+
         assert code_block.language_info == "python"
 
     def test_image_with_attributes(self):
@@ -1106,9 +1122,9 @@ console.log("test");
             element_type="image",
             alt_text="alt text",
             url="img.png",
-            title="Image Title"
+            title="Image Title",
         )
-        
+
         assert image.alt_text == "alt text"
         assert image.url == "img.png"
         assert image.title == "Image Title"

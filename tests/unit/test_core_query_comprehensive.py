@@ -6,9 +6,7 @@ This module provides comprehensive test coverage for the QueryExecutor class
 and related query functionality.
 """
 
-import logging
-from typing import Any
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -75,7 +73,9 @@ class TestExecuteQuery:
         assert result["captures"] == []
 
     @patch("tree_sitter_analyzer.core.query.TreeSitterQueryCompat.safe_execute_query")
-    def test_execute_query_success(self, mock_safe_execute, executor, mock_tree, mock_language):
+    def test_execute_query_success(
+        self, mock_safe_execute, executor, mock_tree, mock_language
+    ):
         """Test successful query execution."""
         # Setup
         mock_node = MagicMock()
@@ -86,8 +86,14 @@ class TestExecuteQuery:
         mock_node.end_byte = 50
         mock_safe_execute.return_value = [(mock_node, "function")]
 
-        with patch.object(executor._query_loader, "get_query", return_value="(function_definition) @function"):
-            result = executor.execute_query(mock_tree, mock_language, "functions", "def foo(): pass")
+        with patch.object(
+            executor._query_loader,
+            "get_query",
+            return_value="(function_definition) @function",
+        ):
+            result = executor.execute_query(
+                mock_tree, mock_language, "functions", "def foo(): pass"
+            )
 
         assert result["success"] is True
         assert "captures" in result
@@ -96,7 +102,9 @@ class TestExecuteQuery:
         assert "execution_time" in result
 
     @patch("tree_sitter_analyzer.core.query.TreeSitterQueryCompat.safe_execute_query")
-    def test_execute_query_with_language_name_extraction(self, mock_safe_execute, executor, mock_tree):
+    def test_execute_query_with_language_name_extraction(
+        self, mock_safe_execute, executor, mock_tree
+    ):
         """Test query execution with language name extraction."""
         # Language without name attribute
         lang = MagicMock(spec=[])
@@ -108,16 +116,22 @@ class TestExecuteQuery:
 
         assert result["success"] is True
 
-    def test_execute_query_with_query_not_found(self, executor, mock_tree, mock_language):
+    def test_execute_query_with_query_not_found(
+        self, executor, mock_tree, mock_language
+    ):
         """Test execute_query when query is not found."""
         with patch.object(executor._query_loader, "get_query", return_value=None):
-            result = executor.execute_query(mock_tree, mock_language, "nonexistent", "code")
+            result = executor.execute_query(
+                mock_tree, mock_language, "nonexistent", "code"
+            )
 
         assert result["success"] is False
         assert "not found" in result["error"]
 
     @patch("tree_sitter_analyzer.core.query.TreeSitterQueryCompat.safe_execute_query")
-    def test_execute_query_with_execution_error(self, mock_safe_execute, executor, mock_tree, mock_language):
+    def test_execute_query_with_execution_error(
+        self, mock_safe_execute, executor, mock_tree, mock_language
+    ):
         """Test execute_query with query execution error."""
         mock_safe_execute.side_effect = Exception("Query error")
 
@@ -128,14 +142,20 @@ class TestExecuteQuery:
         assert "Query execution failed" in result["error"]
 
     @patch("tree_sitter_analyzer.core.query.TreeSitterQueryCompat.safe_execute_query")
-    def test_execute_query_with_capture_processing_error(self, mock_safe_execute, executor, mock_tree, mock_language):
+    def test_execute_query_with_capture_processing_error(
+        self, mock_safe_execute, executor, mock_tree, mock_language
+    ):
         """Test execute_query with capture processing error."""
         # Return invalid captures that will cause processing error
         mock_safe_execute.return_value = [("invalid", "data", "format")]
 
         with patch.object(executor._query_loader, "get_query", return_value="test"):
-            with patch.object(executor, "_process_captures", side_effect=Exception("Processing error")):
-                result = executor.execute_query(mock_tree, mock_language, "test", "code")
+            with patch.object(
+                executor, "_process_captures", side_effect=Exception("Processing error")
+            ):
+                result = executor.execute_query(
+                    mock_tree, mock_language, "test", "code"
+                )
 
         assert result["success"] is False
         assert "Capture processing failed" in result["error"]
@@ -170,10 +190,17 @@ class TestExecuteQueryWithLanguageName:
         """Create a mock Language object."""
         return MagicMock()
 
-    def test_execute_with_explicit_language_name(self, executor, mock_tree, mock_language):
+    def test_execute_with_explicit_language_name(
+        self, executor, mock_tree, mock_language
+    ):
         """Test query execution with explicit language name."""
-        with patch.object(executor._query_loader, "get_query", return_value="test") as mock_get_query:
-            with patch("tree_sitter_analyzer.core.query.TreeSitterQueryCompat.safe_execute_query", return_value=[]):
+        with patch.object(
+            executor._query_loader, "get_query", return_value="test"
+        ) as mock_get_query:
+            with patch(
+                "tree_sitter_analyzer.core.query.TreeSitterQueryCompat.safe_execute_query",
+                return_value=[],
+            ):
                 result = executor.execute_query_with_language_name(
                     mock_tree, mock_language, "test", "code", "python"
                 )
@@ -181,10 +208,17 @@ class TestExecuteQueryWithLanguageName:
         mock_get_query.assert_called_once_with("python", "test")
         assert result["success"] is True
 
-    def test_execute_with_language_name_normalization(self, executor, mock_tree, mock_language):
+    def test_execute_with_language_name_normalization(
+        self, executor, mock_tree, mock_language
+    ):
         """Test that language name is normalized."""
-        with patch.object(executor._query_loader, "get_query", return_value="test") as mock_get_query:
-            with patch("tree_sitter_analyzer.core.query.TreeSitterQueryCompat.safe_execute_query", return_value=[]):
+        with patch.object(
+            executor._query_loader, "get_query", return_value="test"
+        ) as mock_get_query:
+            with patch(
+                "tree_sitter_analyzer.core.query.TreeSitterQueryCompat.safe_execute_query",
+                return_value=[],
+            ):
                 executor.execute_query_with_language_name(
                     mock_tree, mock_language, "test", "code", "  PYTHON  "
                 )
@@ -229,12 +263,16 @@ class TestExecuteQueryString:
         return MagicMock()
 
     @patch("tree_sitter_analyzer.core.query.TreeSitterQueryCompat.safe_execute_query")
-    def test_execute_query_string_success(self, mock_safe_execute, executor, mock_tree, mock_language):
+    def test_execute_query_string_success(
+        self, mock_safe_execute, executor, mock_tree, mock_language
+    ):
         """Test successful query string execution."""
         mock_safe_execute.return_value = []
         query_string = "(function_definition) @func"
 
-        result = executor.execute_query_string(mock_tree, mock_language, query_string, "code")
+        result = executor.execute_query_string(
+            mock_tree, mock_language, query_string, "code"
+        )
 
         assert result["success"] is True
         assert result["query_string"] == query_string
@@ -253,7 +291,9 @@ class TestExecuteQueryString:
         assert "Language is None" in result["error"]
 
     @patch("tree_sitter_analyzer.core.query.TreeSitterQueryCompat.safe_execute_query")
-    def test_execute_query_string_with_error(self, mock_safe_execute, executor, mock_tree, mock_language):
+    def test_execute_query_string_with_error(
+        self, mock_safe_execute, executor, mock_tree, mock_language
+    ):
         """Test execute_query_string with execution error."""
         mock_safe_execute.side_effect = Exception("Execution error")
 
@@ -289,15 +329,21 @@ class TestExecuteMultipleQueries:
             mock_execute.return_value = {"success": True, "captures": []}
             query_names = ["query1", "query2", "query3"]
 
-            results = executor.execute_multiple_queries(mock_tree, mock_language, query_names, "code")
+            results = executor.execute_multiple_queries(
+                mock_tree, mock_language, query_names, "code"
+            )
 
         assert len(results) == 3
         assert all(name in results for name in query_names)
         assert mock_execute.call_count == 3
 
-    def test_execute_multiple_queries_empty_list(self, executor, mock_tree, mock_language):
+    def test_execute_multiple_queries_empty_list(
+        self, executor, mock_tree, mock_language
+    ):
         """Test executing multiple queries with empty list."""
-        results = executor.execute_multiple_queries(mock_tree, mock_language, [], "code")
+        results = executor.execute_multiple_queries(
+            mock_tree, mock_language, [], "code"
+        )
         assert results == {}
 
 
@@ -317,10 +363,13 @@ class TestProcessCaptures:
         mock_node.end_point = (5, 0)
         mock_node.start_byte = 10
         mock_node.end_byte = 50
-        
+
         captures = [(mock_node, "func")]
-        
-        with patch("tree_sitter_analyzer.core.query.get_node_text_safe", return_value="def foo()"):
+
+        with patch(
+            "tree_sitter_analyzer.core.query.get_node_text_safe",
+            return_value="def foo()",
+        ):
             result = executor._process_captures(captures, "source")
 
         assert len(result) == 1
@@ -338,7 +387,10 @@ class TestProcessCaptures:
 
         captures = [{"node": mock_node, "name": "class_def"}]
 
-        with patch("tree_sitter_analyzer.core.query.get_node_text_safe", return_value="class Foo"):
+        with patch(
+            "tree_sitter_analyzer.core.query.get_node_text_safe",
+            return_value="class Foo",
+        ):
             result = executor._process_captures(captures, "source")
 
         assert len(result) == 1
@@ -363,7 +415,10 @@ class TestProcessCaptures:
         mock_node.type = "test"
         captures = [(mock_node, "test")]
 
-        with patch("tree_sitter_analyzer.core.query.get_node_text_safe", side_effect=Exception("Error")):
+        with patch(
+            "tree_sitter_analyzer.core.query.get_node_text_safe",
+            side_effect=Exception("Error"),
+        ):
             result = executor._process_captures(captures, "source")
 
         # Should still return results, but may have error info
@@ -387,7 +442,10 @@ class TestCreateResultDict:
         mock_node.start_byte = 100
         mock_node.end_byte = 200
 
-        with patch("tree_sitter_analyzer.core.query.get_node_text_safe", return_value="def test()"):
+        with patch(
+            "tree_sitter_analyzer.core.query.get_node_text_safe",
+            return_value="def test()",
+        ):
             result = executor._create_result_dict(mock_node, "func", "source code")
 
         assert result["capture_name"] == "func"
@@ -405,7 +463,10 @@ class TestCreateResultDict:
         mock_node = MagicMock()
         mock_node.type = "test"
 
-        with patch("tree_sitter_analyzer.core.query.get_node_text_safe", side_effect=Exception("Error")):
+        with patch(
+            "tree_sitter_analyzer.core.query.get_node_text_safe",
+            side_effect=Exception("Error"),
+        ):
             result = executor._create_result_dict(mock_node, "test", "source")
 
         assert result["capture_name"] == "test"
@@ -437,10 +498,7 @@ class TestCreateErrorResult:
     def test_create_error_result_with_additional_fields(self, executor):
         """Test creating error result with additional fields."""
         result = executor._create_error_result(
-            "Test error",
-            query_name="test",
-            custom_field="value",
-            another_field=123
+            "Test error", query_name="test", custom_field="value", another_field=123
         )
         assert result["custom_field"] == "value"
         assert result["another_field"] == 123
@@ -457,8 +515,12 @@ class TestGetAvailableQueries:
     def test_get_available_queries_dict_response(self, executor):
         """Test get_available_queries with dict response."""
         mock_queries = {"query1": "...", "query2": "...", "query3": "..."}
-        
-        with patch.object(executor._query_loader, "get_all_queries_for_language", return_value=mock_queries):
+
+        with patch.object(
+            executor._query_loader,
+            "get_all_queries_for_language",
+            return_value=mock_queries,
+        ):
             result = executor.get_available_queries("python")
 
         assert set(result) == {"query1", "query2", "query3"}
@@ -466,22 +528,32 @@ class TestGetAvailableQueries:
     def test_get_available_queries_list_response(self, executor):
         """Test get_available_queries with list response."""
         mock_queries = ["query1", "query2", "query3"]
-        
-        with patch.object(executor._query_loader, "get_all_queries_for_language", return_value=mock_queries):
+
+        with patch.object(
+            executor._query_loader,
+            "get_all_queries_for_language",
+            return_value=mock_queries,
+        ):
             result = executor.get_available_queries("python")
 
         assert result == mock_queries
 
     def test_get_available_queries_with_error(self, executor):
         """Test get_available_queries when error occurs."""
-        with patch.object(executor._query_loader, "get_all_queries_for_language", side_effect=Exception("Error")):
+        with patch.object(
+            executor._query_loader,
+            "get_all_queries_for_language",
+            side_effect=Exception("Error"),
+        ):
             result = executor.get_available_queries("python")
 
         assert result == []
 
     def test_get_available_queries_none_response(self, executor):
         """Test get_available_queries with None response."""
-        with patch.object(executor._query_loader, "get_all_queries_for_language", return_value=None):
+        with patch.object(
+            executor._query_loader, "get_all_queries_for_language", return_value=None
+        ):
             result = executor.get_available_queries("python")
 
         assert result == []
@@ -498,15 +570,21 @@ class TestGetQueryDescription:
     def test_get_query_description_success(self, executor):
         """Test getting query description successfully."""
         expected_desc = "Test description"
-        
-        with patch.object(executor._query_loader, "get_query_description", return_value=expected_desc):
+
+        with patch.object(
+            executor._query_loader, "get_query_description", return_value=expected_desc
+        ):
             result = executor.get_query_description("python", "test_query")
 
         assert result == expected_desc
 
     def test_get_query_description_with_error(self, executor):
         """Test get_query_description when error occurs."""
-        with patch.object(executor._query_loader, "get_query_description", side_effect=Exception("Error")):
+        with patch.object(
+            executor._query_loader,
+            "get_query_description",
+            side_effect=Exception("Error"),
+        ):
             result = executor.get_query_description("python", "test_query")
 
         assert result is None
@@ -524,7 +602,9 @@ class TestValidateQuery:
         """Test successful query validation."""
         # The validate_query method imports get_loader locally
         # We need to patch language_loader.get_loader
-        with patch("tree_sitter_analyzer.language_loader.get_loader") as mock_get_loader:
+        with patch(
+            "tree_sitter_analyzer.language_loader.get_loader"
+        ) as mock_get_loader:
             mock_loader = MagicMock()
             mock_language = MagicMock()
             mock_language.query = MagicMock(return_value=MagicMock())
@@ -538,7 +618,9 @@ class TestValidateQuery:
 
     def test_validate_query_with_invalid_language(self, executor):
         """Test query validation with invalid language."""
-        with patch("tree_sitter_analyzer.language_loader.get_loader") as mock_get_loader:
+        with patch(
+            "tree_sitter_analyzer.language_loader.get_loader"
+        ) as mock_get_loader:
             mock_loader = MagicMock()
             mock_loader.load_language.return_value = None
             mock_get_loader.return_value = mock_loader
@@ -549,7 +631,9 @@ class TestValidateQuery:
 
     def test_validate_query_with_invalid_query(self, executor):
         """Test query validation with invalid query."""
-        with patch("tree_sitter_analyzer.language_loader.get_loader") as mock_get_loader:
+        with patch(
+            "tree_sitter_analyzer.language_loader.get_loader"
+        ) as mock_get_loader:
             mock_loader = MagicMock()
             mock_language = MagicMock()
             mock_language.query.side_effect = Exception("Invalid query")
@@ -572,7 +656,7 @@ class TestQueryStatistics:
     def test_get_query_statistics_initial(self, executor):
         """Test getting initial statistics."""
         stats = executor.get_query_statistics()
-        
+
         assert stats["total_queries"] == 0
         assert stats["successful_queries"] == 0
         assert stats["failed_queries"] == 0
@@ -630,7 +714,10 @@ class TestModuleLevelFunctions:
         """Test get_available_queries without language."""
         mock_loader = MagicMock()
         mock_loader.list_supported_languages.return_value = ["python", "javascript"]
-        mock_loader.list_queries_for_language.side_effect = lambda lang: [f"{lang}_query1", f"{lang}_query2"]
+        mock_loader.list_queries_for_language.side_effect = lambda lang: [
+            f"{lang}_query1",
+            f"{lang}_query2",
+        ]
         mock_get_loader.return_value = mock_loader
 
         result = get_available_queries()
@@ -651,7 +738,9 @@ class TestModuleLevelFunctions:
         """Test module-level get_query_description."""
         # The function does `from ..query_loader import get_query_loader` locally
         # so we need to patch query_loader.get_query_loader
-        with patch("tree_sitter_analyzer.query_loader.get_query_loader") as mock_get_loader:
+        with patch(
+            "tree_sitter_analyzer.query_loader.get_query_loader"
+        ) as mock_get_loader:
             mock_loader = MagicMock()
             mock_loader.get_query_description.return_value = "Test description"
             mock_get_loader.return_value = mock_loader
@@ -662,7 +751,10 @@ class TestModuleLevelFunctions:
 
     def test_get_query_description_with_error(self):
         """Test module-level get_query_description with error."""
-        with patch("tree_sitter_analyzer.query_loader.get_query_loader", side_effect=Exception("Error")):
+        with patch(
+            "tree_sitter_analyzer.query_loader.get_query_loader",
+            side_effect=Exception("Error"),
+        ):
             result = get_query_description("python", "test_query")
 
             assert result is None
@@ -675,7 +767,7 @@ class TestDeprecatedFunctions:
         """Test that get_all_queries_for_language shows deprecation warning."""
         with pytest.warns(DeprecationWarning, match="deprecated"):
             result = get_all_queries_for_language("python")
-        
+
         assert result == []
 
 
@@ -695,7 +787,10 @@ class TestEdgeCases:
         mock_language.name = "python"
 
         with patch.object(executor._query_loader, "get_query", return_value="test"):
-            with patch("tree_sitter_analyzer.core.query.TreeSitterQueryCompat.safe_execute_query", return_value=[]):
+            with patch(
+                "tree_sitter_analyzer.core.query.TreeSitterQueryCompat.safe_execute_query",
+                return_value=[],
+            ):
                 result = executor.execute_query(mock_tree, mock_language, "test", "")
 
         assert result["success"] is True
@@ -709,8 +804,13 @@ class TestEdgeCases:
         long_code = "x = 1\n" * 100000
 
         with patch.object(executor._query_loader, "get_query", return_value="test"):
-            with patch("tree_sitter_analyzer.core.query.TreeSitterQueryCompat.safe_execute_query", return_value=[]):
-                result = executor.execute_query(mock_tree, mock_language, "test", long_code)
+            with patch(
+                "tree_sitter_analyzer.core.query.TreeSitterQueryCompat.safe_execute_query",
+                return_value=[],
+            ):
+                result = executor.execute_query(
+                    mock_tree, mock_language, "test", long_code
+                )
 
         assert result["success"] is True
 
@@ -730,12 +830,11 @@ class TestEdgeCases:
         mock_node2.start_byte = 100
         mock_node2.end_byte = 200
 
-        captures = [
-            (mock_node1, "func"),
-            {"node": mock_node2, "name": "class_def"}
-        ]
+        captures = [(mock_node1, "func"), {"node": mock_node2, "name": "class_def"}]
 
-        with patch("tree_sitter_analyzer.core.query.get_node_text_safe", return_value="test"):
+        with patch(
+            "tree_sitter_analyzer.core.query.get_node_text_safe", return_value="test"
+        ):
             result = executor._process_captures(captures, "source")
 
         assert len(result) == 2

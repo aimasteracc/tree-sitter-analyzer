@@ -173,9 +173,9 @@ class WorkflowMonitor:
             "total_runs": total_runs,
             "successful_runs": successful_runs,
             "failed_runs": failed_runs,
-            "success_rate": (successful_runs / total_runs * 100)
-            if total_runs > 0
-            else 0.0,
+            "success_rate": (
+                (successful_runs / total_runs * 100) if total_runs > 0 else 0.0
+            ),
             "average_duration": average_duration,
             "workflows": workflows,
         }

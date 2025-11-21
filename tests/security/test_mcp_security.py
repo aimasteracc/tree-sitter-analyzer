@@ -394,9 +394,12 @@ class TestProjectBoundaryProtection:
                     if isinstance(result, dict) and not result.get("success", True):
                         continue  # 適切にブロックされた
                     # tempディレクトリ内の場合は許可される可能性がある
+                    # また、テストフィクスチャ自体がtempディレクトリにある場合も許可される
                     if (
                         "temp" in external_path.lower()
                         or "tmp" in external_path.lower()
+                        or "pytest" in external_path.lower()
+                        or "/private/var" in external_path.lower()  # macOS temp dirs
                     ):
                         continue  # tempディレクトリは許可される場合がある
                     # 成功した場合は失敗

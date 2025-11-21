@@ -587,7 +587,11 @@ class TestFileOutputManagerIntegration:
         for tool in tools:
             assert hasattr(tool, "file_output_manager")
             assert tool.file_output_manager is not None
-            assert tool.file_output_manager.project_root == temp_project_dir
+            # Normalize paths for Windows compatibility (short vs long path format)
+            assert (
+                Path(tool.file_output_manager.project_root).resolve()
+                == Path(temp_project_dir).resolve()
+            )
 
     @pytest.mark.asyncio
     async def test_file_output_path_resolution(self, temp_project_dir):
@@ -612,4 +616,7 @@ class TestFileOutputManagerIntegration:
             if "output_file_path" in result:
                 output_path = Path(result["output_file_path"])
                 assert output_path.is_absolute()
-                assert str(output_path).startswith(temp_project_dir)
+                # Normalize paths for Windows compatibility (short vs long path format)
+                assert output_path.resolve().is_relative_to(
+                    Path(temp_project_dir).resolve()
+                )

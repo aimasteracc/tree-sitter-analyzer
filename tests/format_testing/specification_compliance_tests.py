@@ -807,7 +807,9 @@ public class AnalyticsService {
 
             report = validator.get_validation_report()
 
-            assert is_valid, f"{format_type} format specification compliance failed: {report['errors']}"
+            assert (
+                is_valid
+            ), f"{format_type} format specification compliance failed: {report['errors']}"
 
         # Verify that all formats contain the same basic information
         # (though in different structures)

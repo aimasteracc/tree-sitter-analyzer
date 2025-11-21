@@ -5,11 +5,12 @@ Comprehensive tests for tree_sitter_analyzer.cli.commands.summary_command module
 This module provides comprehensive test coverage for the SummaryCommand class.
 """
 
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
-from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 from tree_sitter_analyzer.cli.commands.summary_command import SummaryCommand
-from tree_sitter_analyzer.models import AnalysisResult, CodeElement
+from tree_sitter_analyzer.models import AnalysisResult
 
 
 class TestSummaryCommandInitialization:
@@ -24,6 +25,7 @@ class TestSummaryCommandInitialization:
     def test_inherits_from_base_command(self):
         """Test that SummaryCommand inherits from BaseCommand."""
         from tree_sitter_analyzer.cli.commands.base_command import BaseCommand
+
         assert issubclass(SummaryCommand, BaseCommand)
 
 
@@ -46,7 +48,9 @@ class TestExecuteAsync:
         mock_result.file_path = "test.py"
         mock_result.language = "python"
 
-        with patch.object(command, "analyze_file", new_callable=AsyncMock, return_value=mock_result):
+        with patch.object(
+            command, "analyze_file", new_callable=AsyncMock, return_value=mock_result
+        ):
             with patch.object(command, "_output_summary_analysis"):
                 result = await command.execute_async("python")
 
@@ -55,7 +59,9 @@ class TestExecuteAsync:
     @pytest.mark.asyncio
     async def test_execute_async_with_none_result(self, command):
         """Test execute_async when analyze_file returns None."""
-        with patch.object(command, "analyze_file", new_callable=AsyncMock, return_value=None):
+        with patch.object(
+            command, "analyze_file", new_callable=AsyncMock, return_value=None
+        ):
             result = await command.execute_async("python")
 
         assert result == 1
@@ -68,7 +74,9 @@ class TestExecuteAsync:
         mock_result.file_path = "test.py"
         mock_result.language = "python"
 
-        with patch.object(command, "analyze_file", new_callable=AsyncMock, return_value=mock_result):
+        with patch.object(
+            command, "analyze_file", new_callable=AsyncMock, return_value=mock_result
+        ):
             with patch.object(command, "_output_summary_analysis") as mock_output:
                 await command.execute_async("python")
 
@@ -103,7 +111,9 @@ class TestOutputSummaryAnalysis:
         mock_result.language = "python"
 
         with patch("tree_sitter_analyzer.cli.commands.summary_command.output_section"):
-            with patch("tree_sitter_analyzer.cli.commands.summary_command.is_element_of_type") as mock_is_type:
+            with patch(
+                "tree_sitter_analyzer.cli.commands.summary_command.is_element_of_type"
+            ) as mock_is_type:
                 # Mock is_element_of_type to return appropriate values
                 def side_effect(element, element_type):
                     if element == mock_class and element_type == "class_declaration":
@@ -111,7 +121,7 @@ class TestOutputSummaryAnalysis:
                     if element == mock_method and element_type == "function_definition":
                         return True
                     return False
-                
+
                 mock_is_type.side_effect = side_effect
 
                 with patch.object(command, "_output_text_format") as mock_text_output:
@@ -130,8 +140,12 @@ class TestOutputSummaryAnalysis:
         mock_result.language = "python"
 
         with patch("tree_sitter_analyzer.cli.commands.summary_command.output_section"):
-            with patch("tree_sitter_analyzer.cli.commands.summary_command.is_element_of_type"):
-                with patch("tree_sitter_analyzer.cli.commands.summary_command.output_json") as mock_json:
+            with patch(
+                "tree_sitter_analyzer.cli.commands.summary_command.is_element_of_type"
+            ):
+                with patch(
+                    "tree_sitter_analyzer.cli.commands.summary_command.output_json"
+                ) as mock_json:
                     command._output_summary_analysis(mock_result)
 
                 assert mock_json.called
@@ -162,7 +176,10 @@ class TestOutputSummaryAnalysis:
         mock_result.language = "python"
 
         with patch("tree_sitter_analyzer.cli.commands.summary_command.output_section"):
-            with patch("tree_sitter_analyzer.cli.commands.summary_command.is_element_of_type") as mock_is_type:
+            with patch(
+                "tree_sitter_analyzer.cli.commands.summary_command.is_element_of_type"
+            ) as mock_is_type:
+
                 def side_effect(element, element_type):
                     type_map = {
                         mock_class: "class_declaration",
@@ -181,7 +198,7 @@ class TestOutputSummaryAnalysis:
                 assert mock_text_output.called
                 call_args = mock_text_output.call_args[0]
                 summary_data = call_args[0]
-                
+
                 assert "classes" in summary_data["summary"]
                 assert "methods" in summary_data["summary"]
                 assert "fields" in summary_data["summary"]
@@ -197,7 +214,9 @@ class TestOutputSummaryAnalysis:
         mock_result.language = "python"
 
         with patch("tree_sitter_analyzer.cli.commands.summary_command.output_section"):
-            with patch("tree_sitter_analyzer.cli.commands.summary_command.is_element_of_type"):
+            with patch(
+                "tree_sitter_analyzer.cli.commands.summary_command.is_element_of_type"
+            ):
                 with patch.object(command, "_output_text_format") as mock_text_output:
                     command._output_summary_analysis(mock_result)
 
@@ -217,7 +236,9 @@ class TestOutputSummaryAnalysis:
         mock_result.language = "python"
 
         with patch("tree_sitter_analyzer.cli.commands.summary_command.output_section"):
-            with patch("tree_sitter_analyzer.cli.commands.summary_command.is_element_of_type"):
+            with patch(
+                "tree_sitter_analyzer.cli.commands.summary_command.is_element_of_type"
+            ):
                 with patch.object(command, "_output_text_format") as mock_text_output:
                     command._output_summary_analysis(mock_result)
 
@@ -237,7 +258,9 @@ class TestOutputSummaryAnalysis:
         mock_result.language = "python"
 
         with patch("tree_sitter_analyzer.cli.commands.summary_command.output_section"):
-            with patch("tree_sitter_analyzer.cli.commands.summary_command.is_element_of_type"):
+            with patch(
+                "tree_sitter_analyzer.cli.commands.summary_command.is_element_of_type"
+            ):
                 with patch.object(command, "_output_text_format") as mock_text_output:
                     command._output_summary_analysis(mock_result)
 
@@ -264,9 +287,14 @@ class TestOutputSummaryAnalysis:
 
         with patch("tree_sitter_analyzer.cli.commands.summary_command.output_section"):
             # Import constants to use real values
-            from tree_sitter_analyzer.constants import ELEMENT_TYPE_CLASS, ELEMENT_TYPE_FUNCTION
-            
-            with patch("tree_sitter_analyzer.cli.commands.summary_command.is_element_of_type") as mock_is_type:
+            from tree_sitter_analyzer.constants import (
+                ELEMENT_TYPE_CLASS,
+                ELEMENT_TYPE_FUNCTION,
+            )
+
+            with patch(
+                "tree_sitter_analyzer.cli.commands.summary_command.is_element_of_type"
+            ) as mock_is_type:
                 # Only mock_class should match class type
                 def side_effect(element, element_type):
                     if element == mock_class and element_type == ELEMENT_TYPE_CLASS:
@@ -274,7 +302,7 @@ class TestOutputSummaryAnalysis:
                     if element == mock_method and element_type == ELEMENT_TYPE_FUNCTION:
                         return True
                     return False
-                
+
                 mock_is_type.side_effect = side_effect
 
                 with patch.object(command, "_output_text_format") as mock_text_output:
@@ -282,7 +310,7 @@ class TestOutputSummaryAnalysis:
 
                 call_args = mock_text_output.call_args[0]
                 summary_data = call_args[0]
-                
+
                 # Should only have classes, not methods (since only classes were requested)
                 assert "classes" in summary_data["summary"]
                 assert len(summary_data["summary"]["classes"]) == 1
@@ -312,11 +340,13 @@ class TestOutputTextFormat:
                     {"name": "Class1"},
                     {"name": "Class2"},
                 ]
-            }
+            },
         }
         requested_types = ["classes"]
 
-        with patch("tree_sitter_analyzer.cli.commands.summary_command.output_data") as mock_output:
+        with patch(
+            "tree_sitter_analyzer.cli.commands.summary_command.output_data"
+        ) as mock_output:
             command._output_text_format(summary_data, requested_types)
 
             # Check that output_data was called with expected values
@@ -337,11 +367,13 @@ class TestOutputTextFormat:
                     {"name": "method1"},
                     {"name": "method2"},
                 ]
-            }
+            },
         }
         requested_types = ["methods"]
 
-        with patch("tree_sitter_analyzer.cli.commands.summary_command.output_data") as mock_output:
+        with patch(
+            "tree_sitter_analyzer.cli.commands.summary_command.output_data"
+        ) as mock_output:
             command._output_text_format(summary_data, requested_types)
 
             calls = [str(call) for call in mock_output.call_args_list]
@@ -358,11 +390,13 @@ class TestOutputTextFormat:
                 "fields": [
                     {"name": "field1"},
                 ]
-            }
+            },
         }
         requested_types = ["fields"]
 
-        with patch("tree_sitter_analyzer.cli.commands.summary_command.output_data") as mock_output:
+        with patch(
+            "tree_sitter_analyzer.cli.commands.summary_command.output_data"
+        ) as mock_output:
             command._output_text_format(summary_data, requested_types)
 
             calls = [str(call) for call in mock_output.call_args_list]
@@ -379,11 +413,13 @@ class TestOutputTextFormat:
                     {"name": "os"},
                     {"name": "sys"},
                 ]
-            }
+            },
         }
         requested_types = ["imports"]
 
-        with patch("tree_sitter_analyzer.cli.commands.summary_command.output_data") as mock_output:
+        with patch(
+            "tree_sitter_analyzer.cli.commands.summary_command.output_data"
+        ) as mock_output:
             command._output_text_format(summary_data, requested_types)
 
             calls = [str(call) for call in mock_output.call_args_list]
@@ -401,11 +437,13 @@ class TestOutputTextFormat:
                 "methods": [{"name": "my_method"}],
                 "fields": [{"name": "my_field"}],
                 "imports": [{"name": "os"}],
-            }
+            },
         }
         requested_types = ["classes", "methods", "fields", "imports"]
 
-        with patch("tree_sitter_analyzer.cli.commands.summary_command.output_data") as mock_output:
+        with patch(
+            "tree_sitter_analyzer.cli.commands.summary_command.output_data"
+        ) as mock_output:
             command._output_text_format(summary_data, requested_types)
 
             calls = [str(call) for call in mock_output.call_args_list]
@@ -419,31 +457,33 @@ class TestOutputTextFormat:
         summary_data = {
             "file_path": "test.py",
             "language": "python",
-            "summary": {
-                "classes": []
-            }
+            "summary": {"classes": []},
         }
         requested_types = ["classes"]
 
-        with patch("tree_sitter_analyzer.cli.commands.summary_command.output_data") as mock_output:
+        with patch(
+            "tree_sitter_analyzer.cli.commands.summary_command.output_data"
+        ) as mock_output:
             command._output_text_format(summary_data, requested_types)
 
             calls = [str(call) for call in mock_output.call_args_list]
             # Should show 0 items
-            assert any("0 items" in str(call) or "(0 items)" in str(call) for call in calls)
+            assert any(
+                "0 items" in str(call) or "(0 items)" in str(call) for call in calls
+            )
 
     def test_output_text_format_with_unknown_type(self, command):
         """Test text format output with unknown type."""
         summary_data = {
             "file_path": "test.py",
             "language": "python",
-            "summary": {
-                "unknown_type": [{"name": "test"}]
-            }
+            "summary": {"unknown_type": [{"name": "test"}]},
         }
         requested_types = ["unknown_type"]
 
-        with patch("tree_sitter_analyzer.cli.commands.summary_command.output_data") as mock_output:
+        with patch(
+            "tree_sitter_analyzer.cli.commands.summary_command.output_data"
+        ) as mock_output:
             command._output_text_format(summary_data, requested_types)
 
             # Should still output with the unknown type name
@@ -461,16 +501,20 @@ class TestOutputTextFormat:
                     {"name": "Class2"},
                     {"name": "Class3"},
                 ]
-            }
+            },
         }
         requested_types = ["classes"]
 
-        with patch("tree_sitter_analyzer.cli.commands.summary_command.output_data") as mock_output:
+        with patch(
+            "tree_sitter_analyzer.cli.commands.summary_command.output_data"
+        ) as mock_output:
             command._output_text_format(summary_data, requested_types)
 
             calls = [str(call) for call in mock_output.call_args_list]
             # Should show count
-            assert any("3 items" in str(call) or "(3 items)" in str(call) for call in calls)
+            assert any(
+                "3 items" in str(call) or "(3 items)" in str(call) for call in calls
+            )
 
 
 class TestEdgeCases:
@@ -495,7 +539,10 @@ class TestEdgeCases:
         mock_result.language = "python"
 
         with patch("tree_sitter_analyzer.cli.commands.summary_command.output_section"):
-            with patch("tree_sitter_analyzer.cli.commands.summary_command.is_element_of_type", return_value=True):
+            with patch(
+                "tree_sitter_analyzer.cli.commands.summary_command.is_element_of_type",
+                return_value=True,
+            ):
                 with patch.object(command, "_output_text_format") as mock_text_output:
                     command._output_summary_analysis(mock_result)
 
@@ -521,7 +568,10 @@ class TestEdgeCases:
         mock_result.language = "python"
 
         with patch("tree_sitter_analyzer.cli.commands.summary_command.output_section"):
-            with patch("tree_sitter_analyzer.cli.commands.summary_command.is_element_of_type", return_value=True):
+            with patch(
+                "tree_sitter_analyzer.cli.commands.summary_command.is_element_of_type",
+                return_value=True,
+            ):
                 with patch.object(command, "_output_text_format") as mock_text_output:
                     command._output_summary_analysis(mock_result)
 
@@ -542,7 +592,10 @@ class TestEdgeCases:
         mock_result.language = "python"
 
         with patch("tree_sitter_analyzer.cli.commands.summary_command.output_section"):
-            with patch("tree_sitter_analyzer.cli.commands.summary_command.is_element_of_type", return_value=True):
+            with patch(
+                "tree_sitter_analyzer.cli.commands.summary_command.is_element_of_type",
+                return_value=True,
+            ):
                 with patch.object(command, "_output_text_format") as mock_text_output:
                     command._output_summary_analysis(mock_result)
 

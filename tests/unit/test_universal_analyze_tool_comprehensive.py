@@ -6,9 +6,10 @@ This test module provides comprehensive coverage for the UniversalAnalyzeTool cl
 including initialization, argument validation, execution, and edge cases.
 """
 
-import pytest
-from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
 from tree_sitter_analyzer.mcp.tools.universal_analyze_tool import UniversalAnalyzeTool
 from tree_sitter_analyzer.mcp.utils.error_handler import AnalysisError
 
@@ -216,8 +217,12 @@ class TestExecution:
             await tool.execute(args)
 
     @pytest.mark.asyncio
-    @patch("tree_sitter_analyzer.mcp.tools.universal_analyze_tool.detect_language_from_file")
-    @patch("tree_sitter_analyzer.mcp.tools.universal_analyze_tool.is_language_supported")
+    @patch(
+        "tree_sitter_analyzer.mcp.tools.universal_analyze_tool.detect_language_from_file"
+    )
+    @patch(
+        "tree_sitter_analyzer.mcp.tools.universal_analyze_tool.is_language_supported"
+    )
     async def test_execute_basic_analysis_python(
         self, mock_supported, mock_detect, tmp_path
     ):
@@ -239,7 +244,9 @@ class TestExecution:
             "query_results": {},
         }
 
-        with patch.object(tool.analysis_engine, "analyze", AsyncMock(return_value=mock_result)):
+        with patch.object(
+            tool.analysis_engine, "analyze", AsyncMock(return_value=mock_result)
+        ):
             args = {"file_path": str(test_file), "analysis_type": "basic"}
             result = await tool.execute(args)
 
@@ -250,8 +257,12 @@ class TestExecution:
             assert "metrics" in result
 
     @pytest.mark.asyncio
-    @patch("tree_sitter_analyzer.mcp.tools.universal_analyze_tool.detect_language_from_file")
-    @patch("tree_sitter_analyzer.mcp.tools.universal_analyze_tool.is_language_supported")
+    @patch(
+        "tree_sitter_analyzer.mcp.tools.universal_analyze_tool.detect_language_from_file"
+    )
+    @patch(
+        "tree_sitter_analyzer.mcp.tools.universal_analyze_tool.is_language_supported"
+    )
     async def test_execute_detailed_analysis(
         self, mock_supported, mock_detect, tmp_path
     ):
@@ -272,7 +283,9 @@ class TestExecution:
             "query_results": {"functions": []},
         }
 
-        with patch.object(tool.analysis_engine, "analyze", AsyncMock(return_value=mock_result)):
+        with patch.object(
+            tool.analysis_engine, "analyze", AsyncMock(return_value=mock_result)
+        ):
             args = {"file_path": str(test_file), "analysis_type": "detailed"}
             result = await tool.execute(args)
 
@@ -280,8 +293,12 @@ class TestExecution:
             assert "metrics" in result
 
     @pytest.mark.asyncio
-    @patch("tree_sitter_analyzer.mcp.tools.universal_analyze_tool.detect_language_from_file")
-    @patch("tree_sitter_analyzer.mcp.tools.universal_analyze_tool.is_language_supported")
+    @patch(
+        "tree_sitter_analyzer.mcp.tools.universal_analyze_tool.detect_language_from_file"
+    )
+    @patch(
+        "tree_sitter_analyzer.mcp.tools.universal_analyze_tool.is_language_supported"
+    )
     async def test_execute_with_include_ast(
         self, mock_supported, mock_detect, tmp_path
     ):
@@ -302,7 +319,9 @@ class TestExecution:
             "ast_info": {"node_count": 10},
         }
 
-        with patch.object(tool.analysis_engine, "analyze", AsyncMock(return_value=mock_result)):
+        with patch.object(
+            tool.analysis_engine, "analyze", AsyncMock(return_value=mock_result)
+        ):
             args = {
                 "file_path": str(test_file),
                 "analysis_type": "basic",
@@ -313,8 +332,12 @@ class TestExecution:
             assert "ast_info" in result
 
     @pytest.mark.asyncio
-    @patch("tree_sitter_analyzer.mcp.tools.universal_analyze_tool.detect_language_from_file")
-    @patch("tree_sitter_analyzer.mcp.tools.universal_analyze_tool.is_language_supported")
+    @patch(
+        "tree_sitter_analyzer.mcp.tools.universal_analyze_tool.detect_language_from_file"
+    )
+    @patch(
+        "tree_sitter_analyzer.mcp.tools.universal_analyze_tool.is_language_supported"
+    )
     async def test_execute_with_include_queries(
         self, mock_supported, mock_detect, tmp_path
     ):
@@ -334,7 +357,9 @@ class TestExecution:
             "line_count": 2,
         }
 
-        with patch.object(tool.analysis_engine, "analyze", AsyncMock(return_value=mock_result)):
+        with patch.object(
+            tool.analysis_engine, "analyze", AsyncMock(return_value=mock_result)
+        ):
             args = {
                 "file_path": str(test_file),
                 "analysis_type": "basic",
@@ -345,8 +370,12 @@ class TestExecution:
             assert "available_queries" in result
 
     @pytest.mark.asyncio
-    @patch("tree_sitter_analyzer.mcp.tools.universal_analyze_tool.detect_language_from_file")
-    @patch("tree_sitter_analyzer.mcp.tools.universal_analyze_tool.is_language_supported")
+    @patch(
+        "tree_sitter_analyzer.mcp.tools.universal_analyze_tool.detect_language_from_file"
+    )
+    @patch(
+        "tree_sitter_analyzer.mcp.tools.universal_analyze_tool.is_language_supported"
+    )
     async def test_execute_structure_analysis(
         self, mock_supported, mock_detect, tmp_path
     ):
@@ -367,7 +396,9 @@ class TestExecution:
             "structure": {},
         }
 
-        with patch.object(tool.analysis_engine, "analyze", AsyncMock(return_value=mock_result)):
+        with patch.object(
+            tool.analysis_engine, "analyze", AsyncMock(return_value=mock_result)
+        ):
             args = {"file_path": str(test_file), "analysis_type": "structure"}
             result = await tool.execute(args)
 
@@ -375,8 +406,12 @@ class TestExecution:
             assert "structure" in result
 
     @pytest.mark.asyncio
-    @patch("tree_sitter_analyzer.mcp.tools.universal_analyze_tool.detect_language_from_file")
-    @patch("tree_sitter_analyzer.mcp.tools.universal_analyze_tool.is_language_supported")
+    @patch(
+        "tree_sitter_analyzer.mcp.tools.universal_analyze_tool.detect_language_from_file"
+    )
+    @patch(
+        "tree_sitter_analyzer.mcp.tools.universal_analyze_tool.is_language_supported"
+    )
     async def test_execute_metrics_analysis(
         self, mock_supported, mock_detect, tmp_path
     ):
@@ -397,7 +432,9 @@ class TestExecution:
             "structure": {},
         }
 
-        with patch.object(tool.analysis_engine, "analyze", AsyncMock(return_value=mock_result)):
+        with patch.object(
+            tool.analysis_engine, "analyze", AsyncMock(return_value=mock_result)
+        ):
             args = {"file_path": str(test_file), "analysis_type": "metrics"}
             result = await tool.execute(args)
 
@@ -516,8 +553,12 @@ class TestEdgeCases:
 
         tool = UniversalAnalyzeTool(str(tmp_path))
 
-        with patch("tree_sitter_analyzer.mcp.tools.universal_analyze_tool.detect_language_from_file") as mock_detect:
-            with patch("tree_sitter_analyzer.mcp.tools.universal_analyze_tool.is_language_supported") as mock_supported:
+        with patch(
+            "tree_sitter_analyzer.mcp.tools.universal_analyze_tool.detect_language_from_file"
+        ) as mock_detect:
+            with patch(
+                "tree_sitter_analyzer.mcp.tools.universal_analyze_tool.is_language_supported"
+            ) as mock_supported:
                 mock_detect.return_value = "python"
                 mock_supported.return_value = True
 
@@ -544,8 +585,12 @@ class TestEdgeCases:
 
         tool = UniversalAnalyzeTool(str(tmp_path))
 
-        with patch("tree_sitter_analyzer.mcp.tools.universal_analyze_tool.detect_language_from_file") as mock_detect:
-            with patch("tree_sitter_analyzer.mcp.tools.universal_analyze_tool.is_language_supported") as mock_supported:
+        with patch(
+            "tree_sitter_analyzer.mcp.tools.universal_analyze_tool.detect_language_from_file"
+        ) as mock_detect:
+            with patch(
+                "tree_sitter_analyzer.mcp.tools.universal_analyze_tool.is_language_supported"
+            ) as mock_supported:
                 mock_detect.return_value = "python"
                 mock_supported.return_value = True
 
@@ -573,8 +618,12 @@ class TestEdgeCases:
 
         tool = UniversalAnalyzeTool(str(tmp_path))
 
-        with patch("tree_sitter_analyzer.mcp.tools.universal_analyze_tool.detect_language_from_file") as mock_detect:
-            with patch("tree_sitter_analyzer.mcp.tools.universal_analyze_tool.is_language_supported") as mock_supported:
+        with patch(
+            "tree_sitter_analyzer.mcp.tools.universal_analyze_tool.detect_language_from_file"
+        ) as mock_detect:
+            with patch(
+                "tree_sitter_analyzer.mcp.tools.universal_analyze_tool.is_language_supported"
+            ) as mock_supported:
                 mock_detect.return_value = "python"
                 mock_supported.return_value = True
 

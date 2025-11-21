@@ -327,7 +327,8 @@ class TestFileOutputManagerClassMethods:
             # (Fallback testing is complex due to import mechanics)
             manager = FileOutputManager.get_managed_instance(temp_dir)
             assert isinstance(manager, FileOutputManager)
-            assert manager.project_root == temp_dir
+            # Normalize paths for Windows compatibility (short vs long path format)
+            assert Path(manager.project_root).resolve() == Path(temp_dir).resolve()
 
             # Verify it's using factory (should be same instance on second call)
             manager2 = FileOutputManager.get_managed_instance(temp_dir)
@@ -407,5 +408,12 @@ class TestIntegrationWithExistingCode:
             assert tool1.file_output_manager is tool2.file_output_manager
 
             # And both should work correctly
-            assert tool1.file_output_manager.project_root == temp_dir
-            assert tool2.file_output_manager.project_root == temp_dir
+            # Normalize paths for Windows compatibility (short vs long path format)
+            assert (
+                Path(tool1.file_output_manager.project_root).resolve()
+                == Path(temp_dir).resolve()
+            )
+            assert (
+                Path(tool2.file_output_manager.project_root).resolve()
+                == Path(temp_dir).resolve()
+            )

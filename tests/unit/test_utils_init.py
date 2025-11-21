@@ -4,8 +4,6 @@ Tests for Utils Module Initialization (utils/__init__.py)
 Tests for all exported functions/classes, module imports, and re-exports.
 """
 
-import pytest
-
 from tree_sitter_analyzer.utils import (
     LoggingContext,
     QuietMode,
@@ -73,10 +71,10 @@ class TestImportability:
     def test_all_exports_importable(self) -> None:
         """Test that all items in __all__ can be imported."""
         from tree_sitter_analyzer import utils
-        
+
         # Get __all__ list
         all_exports = getattr(utils, "__all__", [])
-        
+
         # Verify all items are present
         for item in all_exports:
             assert hasattr(utils, item), f"{item} not found in utils module"
@@ -89,7 +87,7 @@ class TestImportability:
             log_info,
             logger,
         )
-        
+
         assert TreeSitterQueryCompat is not None
         assert log_info is not None
         assert logger is not None
@@ -144,13 +142,13 @@ class TestLoggerInstances:
     def test_logger_is_logger_instance(self) -> None:
         """Test logger is a Logger instance."""
         import logging
-        
+
         assert isinstance(logger, logging.Logger)
 
     def test_perf_logger_is_logger_instance(self) -> None:
         """Test perf_logger is a Logger instance."""
         import logging
-        
+
         assert isinstance(perf_logger, logging.Logger)
 
     def test_logger_has_name(self) -> None:
@@ -170,7 +168,7 @@ class TestModuleAttributes:
     def test_module_has_all_attribute(self) -> None:
         """Test module has __all__ attribute."""
         from tree_sitter_analyzer import utils
-        
+
         assert hasattr(utils, "__all__")
         assert isinstance(utils.__all__, list)
         assert len(utils.__all__) > 0
@@ -178,7 +176,7 @@ class TestModuleAttributes:
     def test_all_attribute_completeness(self) -> None:
         """Test __all__ contains expected items."""
         from tree_sitter_analyzer import utils
-        
+
         expected_items = [
             "TreeSitterQueryCompat",
             "get_node_text_safe",
@@ -200,7 +198,7 @@ class TestModuleAttributes:
             "logger",
             "perf_logger",
         ]
-        
+
         for item in expected_items:
             assert item in utils.__all__, f"{item} not in __all__"
 
@@ -211,7 +209,7 @@ class TestImportSources:
     def test_logging_imports_from_logging_module(self) -> None:
         """Test logging functions come from logging module."""
         from tree_sitter_analyzer.utils import logging as utils_logging
-        
+
         # Verify logging module is accessible
         assert hasattr(utils_logging, "log_info")
         assert hasattr(utils_logging, "log_error")
@@ -219,7 +217,7 @@ class TestImportSources:
     def test_compat_imports_from_compat_module(self) -> None:
         """Test compat functions come from tree_sitter_compat module."""
         from tree_sitter_analyzer.utils import tree_sitter_compat
-        
+
         # Verify compat module is accessible
         assert hasattr(tree_sitter_compat, "TreeSitterQueryCompat")
         assert hasattr(tree_sitter_compat, "get_node_text_safe")
@@ -231,14 +229,14 @@ class TestModuleDocstring:
     def test_module_has_docstring(self) -> None:
         """Test module has a docstring."""
         from tree_sitter_analyzer import utils
-        
+
         assert utils.__doc__ is not None
         assert len(utils.__doc__) > 0
 
     def test_docstring_describes_purpose(self) -> None:
         """Test docstring describes module purpose."""
         from tree_sitter_analyzer import utils
-        
+
         docstring = utils.__doc__.lower()
         assert "util" in docstring or "package" in docstring
 
@@ -249,15 +247,12 @@ class TestNoExtraExports:
     def test_all_public_items_in_all(self) -> None:
         """Test that public items (not starting with _) are in __all__."""
         from tree_sitter_analyzer import utils
-        
-        public_items = [
-            name for name in dir(utils)
-            if not name.startswith("_")
-        ]
-        
+
+        public_items = [name for name in dir(utils) if not name.startswith("_")]
+
         # These are submodules, not items to export
         submodules = ["logging", "tree_sitter_compat"]
-        
+
         for item in public_items:
             if item in submodules:
                 continue
@@ -271,17 +266,18 @@ class TestImportPerformance:
         """Test that importing the module doesn't raise exceptions."""
         # This test passes if the import at the top of the file succeeds
         from tree_sitter_analyzer import utils
-        
+
         assert utils is not None
 
     def test_reimport_is_safe(self) -> None:
         """Test that reimporting the module is safe."""
         import importlib
+
         from tree_sitter_analyzer import utils
-        
+
         # Should not raise
         importlib.reload(utils)
-        
+
         # Should still be importable
         assert hasattr(utils, "log_info")
 

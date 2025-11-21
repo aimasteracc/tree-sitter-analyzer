@@ -138,8 +138,8 @@ class TableCommand(BaseCommand):
         imports = []
 
         # Try to get package from analysis_result.package attribute first
-        package_obj = getattr(analysis_result, 'package', None)
-        if package_obj and hasattr(package_obj, 'name'):
+        package_obj = getattr(analysis_result, "package", None)
+        if package_obj and hasattr(package_obj, "name"):
             package_name = str(package_obj.name)
         else:
             # Fall back to default or scanning elements

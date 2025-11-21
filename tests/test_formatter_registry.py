@@ -265,7 +265,9 @@ class TestFormatterRegistry:
             for record in caplog.records
             if record.levelno >= logging.WARNING
         )
-        assert warning_found, f"Warning not found in logs. Captured records: {[r.message for r in caplog.records]}"
+        assert (
+            warning_found
+        ), f"Warning not found in logs. Captured records: {[r.message for r in caplog.records]}"
 
 
 class TestBuiltinFormatters:
