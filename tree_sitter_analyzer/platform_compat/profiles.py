@@ -34,6 +34,13 @@ class BehaviorProfile:
     behaviors: dict[str, ParsingBehavior]
     adaptation_rules: list[str]
 
+    def __post_init__(self):
+        """Ensure behaviors are ParsingBehavior objects."""
+        if self.behaviors:
+            for key, value in self.behaviors.items():
+                if isinstance(value, dict):
+                    self.behaviors[key] = ParsingBehavior(**value)
+
     @classmethod
     def load(
         cls, platform_key: str, base_path: Path | None = None

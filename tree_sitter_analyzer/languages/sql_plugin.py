@@ -1906,7 +1906,8 @@ class SQLElementExtractor(ElementExtractor):
     ) -> None:
         """Extract CREATE TRIGGER statements with enhanced metadata."""
         for node in self._traverse_nodes(root_node):
-            if node.type == "ERROR":
+            # Handle both correctly parsed triggers and ERROR nodes that might contain triggers
+            if node.type == "create_trigger_statement" or node.type == "ERROR":
                 trigger_name = None
                 table_name = None
                 trigger_timing = None
@@ -1960,8 +1961,8 @@ class SQLElementExtractor(ElementExtractor):
                 # Extract trigger metadata from text
                 if has_create and has_trigger and trigger_name:
                     trigger_text = self._get_node_text(node)
-                    self._extract_trigger_metadata(
-                        trigger_text, trigger_timing, trigger_event, table_name
+                    trigger_timing, trigger_event, table_name = (
+                        self._extract_trigger_metadata(trigger_text)
                     )
 
                     try:
@@ -1987,29 +1988,32 @@ class SQLElementExtractor(ElementExtractor):
     def _extract_trigger_metadata(
         self,
         trigger_text: str,
-        timing: str | None,
-        event: str | None,
-        table_name: str | None,
-    ) -> None:
+    ) -> tuple[str | None, str | None, str | None]:
         """Extract trigger timing, event, and target table."""
         import re
+
+        timing = None
+        event = None
+        table_name = None
 
         # Extract timing (BEFORE/AFTER)
         timing_match = re.search(r"(BEFORE|AFTER)", trigger_text, re.IGNORECASE)
         if timing_match:
-            _timing = timing_match.group(1).upper()  # Reserved for future use
+            timing = timing_match.group(1).upper()
 
         # Extract event (INSERT/UPDATE/DELETE)
         event_match = re.search(r"(INSERT|UPDATE|DELETE)", trigger_text, re.IGNORECASE)
         if event_match:
-            _event = event_match.group(1).upper()  # Reserved for future use
+            event = event_match.group(1).upper()
 
         # Extract target table
         table_match = re.search(
             r"ON\s+([a-zA-Z_][a-zA-Z0-9_]*)", trigger_text, re.IGNORECASE
         )
         if table_match:
-            _table_name = table_match.group(1)  # Reserved for future use
+            table_name = table_match.group(1)
+
+        return timing, event, table_name
 
     def _extract_sql_indexes(
         self, root_node: "tree_sitter.Node", sql_elements: list[SQLElement]
