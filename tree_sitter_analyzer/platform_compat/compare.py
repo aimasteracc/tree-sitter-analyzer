@@ -188,15 +188,29 @@ if __name__ == "__main__":
         # We need to load from specific files
         import json
 
-        from .profiles import BehaviorProfile
+        from .profiles import BehaviorProfile, ParsingBehavior
 
-        with open(path_a, encoding="utf-8") as f:
-            data_a = json.load(f)
-            profile_a = BehaviorProfile(**data_a)
+        def load_profile_from_file(path: Path) -> BehaviorProfile:
+            with open(path, encoding="utf-8") as f:
+                data = json.load(f)
 
-        with open(path_b, encoding="utf-8") as f:
-            data_b = json.load(f)
-            profile_b = BehaviorProfile(**data_b)
+            # Convert behaviors dict to ParsingBehavior objects
+            behaviors = {}
+            for key, b_data in data.get("behaviors", {}).items():
+                if isinstance(b_data, dict):
+                    behaviors[key] = ParsingBehavior(**b_data)
+                else:
+                    behaviors[key] = b_data
+
+            return BehaviorProfile(
+                schema_version=data.get("schema_version", "1.0.0"),
+                platform_key=data["platform_key"],
+                behaviors=behaviors,
+                adaptation_rules=data.get("adaptation_rules", []),
+            )
+
+        profile_a = load_profile_from_file(path_a)
+        profile_b = load_profile_from_file(path_b)
 
         comparison = compare_profiles(profile_a, profile_b)
         report = generate_diff_report(comparison)
