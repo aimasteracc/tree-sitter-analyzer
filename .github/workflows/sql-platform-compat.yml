@@ -75,8 +75,9 @@ jobs:
             sys.exit(0)
 
         print(f"Comparing {current_profile} with {baseline_profile}...")
+        # Use uv run to ensure dependencies are available
         result = subprocess.run(
-            [sys.executable, "-m", "tree_sitter_analyzer.platform_compat.compare", str(baseline_profile), str(current_profile), "--fail-on-diff"],
+            ["uv", "run", "python", "-m", "tree_sitter_analyzer.platform_compat.compare", str(baseline_profile), str(current_profile), "--fail-on-diff"],
             capture_output=True,
             text=True
         )
