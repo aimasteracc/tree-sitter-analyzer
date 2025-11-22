@@ -9,7 +9,7 @@
 | active_users | view | 37-44 | - | - |
 | order_summary | view | 47-55 | - | - |
 | get_user_orders | procedure | 58-68 | (user_id_param) | - |
-| update_product_stock | procedure | 71-86 | (product_id_param, _change) | - |
+| update_product_stock | procedure | 71-86 | (product_id_param, quantity_change) | - |
 | calculate_order_total | function | 89-101 | (order_id_param) | - |
 | is_user_active | function | 104-116 | (user_id_param) | - |
 | update_order_total | trigger | 119-156 | - | order_items |
@@ -44,7 +44,7 @@
 **Parameters**: user_id_param INT
 
 ### update_product_stock (71-86)
-**Parameters**: product_id_param INT, _change INT
+**Parameters**: product_id_param INT, quantity_change INT
 
 ## Functions
 ### calculate_order_total (89-101)

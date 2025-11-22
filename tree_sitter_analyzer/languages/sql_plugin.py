@@ -1665,8 +1665,9 @@ class SQLElementExtractor(ElementExtractor):
 
         # Look for parameter patterns like: IN param_name TYPE
         # Only search within the parameter section to avoid SQL statement content
+        # Ensure IN/OUT/INOUT is followed by space to avoid ambiguity
         param_matches = re.findall(
-            r"(?:IN|OUT|INOUT)?\s*([a-zA-Z_][a-zA-Z0-9_]*)\s+([A-Z]+(?:\([^)]*\))?)",
+            r"(?:(?:IN|OUT|INOUT)\s+)?([a-zA-Z_][a-zA-Z0-9_]*)\s+([A-Z]+(?:\([^)]*\))?)",
             param_section,
             re.IGNORECASE,
         )
