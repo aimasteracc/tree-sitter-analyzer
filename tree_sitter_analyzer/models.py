@@ -784,6 +784,9 @@ class SQLTrigger(SQLElement):
 
     sql_element_type: SQLElementType = SQLElementType.TRIGGER
     element_type: str = "trigger"
+    table_name: str | None = None
+    trigger_timing: str | None = None
+    trigger_event: str | None = None
 
 
 @dataclass(frozen=False)

@@ -661,6 +661,18 @@ uv run python -m tree_sitter_analyzer --show-common-queries
 
 # Show query language support
 uv run python -m tree_sitter_analyzer --show-query-languages
+
+#### 🗄️ SQL Cross-Platform Commands
+
+```bash
+# Show current platform SQL parsing capabilities
+uv run tree-sitter-analyzer --sql-platform-info
+
+# Record a custom SQL parsing profile for your environment
+uv run tree-sitter-analyzer --record-sql-profile
+
+# Compare two SQL profiles to identify differences
+uv run tree-sitter-analyzer --compare-sql-profiles windows-3.13 linux-3.10
 ```
 
 ---
@@ -675,6 +687,7 @@ uv run python -m tree_sitter_analyzer --show-query-languages
 | **🔗 AI Assistant Integration** | MCP Protocol Support | **Claude Desktop** - Full MCP support<br>**Cursor IDE** - Built-in MCP integration<br>**Roo Code** - MCP protocol support<br>**Other MCP-compatible tools** - Universal MCP server | Standard MCP protocol<br>Plug-and-play design<br>Cross-platform compatibility |
 | **🌍 Multi-language Support** | Enterprise Language Engine | **Java** - Complete support, including Spring, JPA frameworks<br>**Python** - Complete support, including type annotations, decorators<br>**SQL** - **🆕 Enhanced Complete Support**, including tables, views, stored procedures, functions, triggers, indexes with specialized database-focused output formatting<br>**JavaScript** - Enterprise-grade support, including ES6+, React/Vue/Angular, JSX<br>**TypeScript** - **Complete support**, including interfaces, types, decorators, TSX/JSX, framework detection<br>**HTML** - **🆕 Complete support**, including DOM structure, element classification, attribute extraction<br>**CSS** - **🆕 Complete support**, including selector analysis, property classification, style rules<br>**Markdown** - **Complete support**, including headers, code blocks, links, images, tables, task lists, blockquotes<br><br>**Note**: Currently 8 languages have complete plugin implementations (Java, Python, SQL, JavaScript, TypeScript, HTML, CSS, Markdown). Languages such as C/C++, Rust, Go are defined but not yet implemented. | Framework-aware parsing<br>Syntax extension support<br>Continuous language updates |
 | **📁 Advanced File Search** | fd+ripgrep Integration | **ListFilesTool** - Intelligent file discovery with multiple filtering conditions<br>**SearchContentTool** - Intelligent content search using regular expressions<br>**FindAndGrepTool** - Combined discovery and search, two-stage workflow | Rust-based high-performance tools<br>Parallel processing capabilities<br>Intelligent cache optimization |
+| **🖥️ Cross-Platform SQL** | Adaptive Parsing Engine | **Platform Detection** - Auto-detects OS quirks<br>**Profile Recording** - Captures local behavior<br>**Smart Adaptation** - Normalizes AST differences | Write once, parse everywhere<br>Zero-config defaults<br>Self-healing capabilities |
 | **🏗️ Unified Element System** | Revolutionary Architecture Design | **Single element list** - Unified management of all code elements (classes, methods, fields, imports, packages)<br>**Consistent element types** - Each element has an `element_type` attribute<br>**Simplified API** - Clearer interfaces and reduced complexity<br>**Better maintainability** - Single source of truth for all code elements | Unified data model<br>Type safety guarantees<br>Extensible design |
 
 ---

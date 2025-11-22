@@ -198,6 +198,24 @@ def create_argument_parser() -> argparse.ArgumentParser:
         help="Explicitly specify language (auto-detected from extension if omitted)",
     )
 
+    # SQL Platform Compatibility options
+    parser.add_argument(
+        "--sql-platform-info",
+        action="store_true",
+        help="Show current SQL platform detection details",
+    )
+    parser.add_argument(
+        "--record-sql-profile",
+        action="store_true",
+        help="Record a new SQL behavior profile for the current platform",
+    )
+    parser.add_argument(
+        "--compare-sql-profiles",
+        nargs=2,
+        metavar=("PROFILE1", "PROFILE2"),
+        help="Compare two SQL behavior profiles",
+    )
+
     # Project options
     parser.add_argument(
         "--project-root",
@@ -274,6 +292,116 @@ def handle_special_commands(args: argparse.Namespace) -> int | None:
                 output_list(f"  {query}")
         else:
             output_info("No common queries found.")
+        return 0
+
+    # SQL Platform Compatibility Commands
+    if args.sql_platform_info:
+        from tree_sitter_analyzer.platform_compat.detector import PlatformDetector
+        from tree_sitter_analyzer.platform_compat.profiles import BehaviorProfile
+
+        info = PlatformDetector.detect()
+        output_list(
+            [
+                "SQL Platform Information:",
+                f"  OS Name: {info.os_name}",
+                f"  OS Version: {info.os_version}",
+                f"  Python Version: {info.python_version}",
+                f"  Platform Key: {info.platform_key}",
+                "",
+            ]
+        )
+
+        profile = BehaviorProfile.load(info.platform_key)
+        if profile:
+            output_list(
+                [
+                    f"Loaded Profile: {info.platform_key}",
+                    f"  Schema Version: {profile.schema_version}",
+                    f"  Behaviors Recorded: {len(profile.behaviors)}",
+                    f"  Adaptation Rules: {', '.join(profile.adaptation_rules) if profile.adaptation_rules else 'None'}",
+                ]
+            )
+        else:
+            output_list(
+                [
+                    f"No profile found for {info.platform_key}",
+                    "  Using default adaptation rules.",
+                ]
+            )
+        return 0
+
+    if args.record_sql_profile:
+        from pathlib import Path
+
+        from tree_sitter_analyzer.platform_compat.recorder import BehaviorRecorder
+
+        output_info("Starting SQL behavior recording...")
+        try:
+            recorder = BehaviorRecorder()
+            profile = recorder.record_all()
+
+            # Default output directory
+            output_dir = Path("tests/platform_profiles")
+            output_dir.mkdir(parents=True, exist_ok=True)
+
+            profile.save(output_dir)
+            output_info(f"Recorded profile for {profile.platform_key}")
+            output_info(f"Saved to {output_dir}")
+        except Exception as e:
+            output_error(f"Failed to record profile: {e}")
+            return 1
+        return 0
+
+    if args.compare_sql_profiles:
+        import json
+        from pathlib import Path
+
+        from tree_sitter_analyzer.platform_compat.compare import (
+            compare_profiles,
+            generate_diff_report,
+        )
+        from tree_sitter_analyzer.platform_compat.profiles import BehaviorProfile
+
+        p1_path = Path(args.compare_sql_profiles[0])
+        p2_path = Path(args.compare_sql_profiles[1])
+
+        if not p1_path.exists():
+            output_error(f"Profile not found: {p1_path}")
+            return 1
+        if not p2_path.exists():
+            output_error(f"Profile not found: {p2_path}")
+            return 1
+
+        try:
+            from tree_sitter_analyzer.platform_compat.profiles import ParsingBehavior
+
+            def load_profile(path):
+                with open(path, encoding="utf-8") as f:
+                    data = json.load(f)
+                    # Manual deserialization of nested objects
+                    behaviors = {}
+                    for key, b_data in data.get("behaviors", {}).items():
+                        if isinstance(b_data, dict):
+                            behaviors[key] = ParsingBehavior(**b_data)
+                        else:
+                            behaviors[key] = b_data
+
+                    return BehaviorProfile(
+                        schema_version=data.get("schema_version", "1.0.0"),
+                        platform_key=data["platform_key"],
+                        behaviors=behaviors,
+                        adaptation_rules=data.get("adaptation_rules", []),
+                    )
+
+            p1 = load_profile(p1_path)
+            p2 = load_profile(p2_path)
+
+            comparison = compare_profiles(p1, p2)
+            report = generate_diff_report(comparison)
+            print(report)
+        except Exception as e:
+            output_error(f"Error comparing profiles: {e}")
+            return 1
         return 0
 
     return None

@@ -1,0 +1,28 @@
+{
+  "mcpServers": {
+    "multi-agent-dialogue": {
+      "command": "uv",
+      "args": [
+        "run",
+        "python",
+        "-m",
+        "multi_agent_dialogue.mcp_server"
+      ],
+      "env": {
+        "MAD_SERVER_URL": "ws://localhost:8765/ws",
+        "MAD_AGENT_TYPE": "kiro",
+        "MAD_AGENT_ID": "kiro-agent-2",
+        "MAD_MODEL_NAME": "claude-4-5-sonnet",
+        "MAD_CAPABILITIES": "code,chat,review"
+      },
+      "disabled": false,
+      "autoApprove": [
+        "send_message",
+        "join_session",
+        "request_interrupt",
+        "get_connection_status",
+        "get_messages"
+      ]
+    }
+  }
+}

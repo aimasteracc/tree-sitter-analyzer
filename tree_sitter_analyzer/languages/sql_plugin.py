@@ -39,6 +39,9 @@ from ..models import (
     SQLView,
     Variable,
 )
+from ..platform_compat.adapter import CompatibilityAdapter
+from ..platform_compat.detector import PlatformDetector
+from ..platform_compat.profiles import BehaviorProfile
 from ..plugins.base import ElementExtractor, LanguagePlugin
 from ..utils import log_debug, log_error
 
@@ -59,7 +62,7 @@ class SQLElementExtractor(ElementExtractor):
     CREATE TRIGGER, and CREATE INDEX statements.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, diagnostic_mode: bool = False) -> None:
         """
         Initialize the SQL element extractor.
 
@@ -69,6 +72,8 @@ class SQLElementExtractor(ElementExtractor):
         super().__init__()
         self.source_code: str = ""
         self.content_lines: list[str] = []
+        self.diagnostic_mode = diagnostic_mode
+        self.platform_info = None
 
         # Performance optimization caches
         # Cache node text to avoid repeated extraction
@@ -77,6 +82,13 @@ class SQLElementExtractor(ElementExtractor):
         self._processed_nodes: set[int] = set()
         # File encoding for safe text extraction
         self._file_encoding: str | None = None
+
+        # Platform compatibility
+        self.adapter: CompatibilityAdapter | None = None
+
+    def set_adapter(self, adapter: CompatibilityAdapter) -> None:
+        """Set the compatibility adapter."""
+        self.adapter = adapter
 
     def extract_sql_elements(
         self, tree: "tree_sitter.Tree", source_code: str
@@ -111,12 +123,36 @@ class SQLElementExtractor(ElementExtractor):
                 self._extract_sql_triggers(tree.root_node, sql_elements)
                 self._extract_sql_indexes(tree.root_node, sql_elements)
 
+                # Apply platform compatibility adapter if available
+                if self.adapter:
+                    if self.diagnostic_mode:
+                        log_debug(
+                            f"Diagnostic: Before adaptation: {[e.name for e in sql_elements]}"
+                        )
+
+                    sql_elements = self.adapter.adapt_elements(
+                        sql_elements, self.source_code
+                    )
+
+                    if self.diagnostic_mode:
+                        log_debug(
+                            f"Diagnostic: After adaptation: {[e.name for e in sql_elements]}"
+                        )
+
                 # Post-process to fix platform-specific parsing errors
                 sql_elements = self._validate_and_fix_elements(sql_elements)
 
                 log_debug(f"Extracted {len(sql_elements)} SQL elements with metadata")
             except Exception as e:
-                log_debug(f"Error during enhanced SQL extraction: {e}")
+                log_error(
+                    f"Error during enhanced SQL extraction on {self.platform_info}: {e}"
+                )
+                log_error(
+                    "Suggestion: Check platform compatibility documentation or enable diagnostic mode for more details."
+                )
+                # Return empty list or partial results to allow other languages to continue
+                if not sql_elements:
+                    sql_elements = []
 
         return sql_elements
 
@@ -2138,7 +2174,7 @@ class SQLPlugin(LanguagePlugin):
     tree-sitter-sql package to be installed (available as optional dependency).
     """
 
-    def __init__(self) -> None:
+    def __init__(self, diagnostic_mode: bool = False) -> None:
         """
         Initialize the SQL language plugin.
 
@@ -2146,10 +2182,47 @@ class SQLPlugin(LanguagePlugin):
         loading. The plugin supports .sql file extensions.
         """
         super().__init__()
-        self.extractor = SQLElementExtractor()
+        self.diagnostic_mode = diagnostic_mode
+        self.extractor = SQLElementExtractor(diagnostic_mode=diagnostic_mode)
         self.language = "sql"  # Add language property for test compatibility
         self.supported_extensions = self.get_file_extensions()
         self._cached_language: Any | None = None  # Cache for tree-sitter language
+
+        # Platform compatibility initialization
+        self.platform_info = None
+        try:
+            self.platform_info = PlatformDetector.detect()
+            self.extractor.platform_info = self.platform_info
+
+            platform_info = self.platform_info
+            profile = BehaviorProfile.load(platform_info.platform_key)
+
+            if self.diagnostic_mode:
+                log_debug(f"Diagnostic: Platform detected: {platform_info}")
+                if profile:
+                    log_debug(
+                        f"Diagnostic: Loaded SQL behavior profile for {platform_info.platform_key}"
+                    )
+                    log_debug(f"Diagnostic: Profile rules: {profile.adaptation_rules}")
+                else:
+                    log_debug(
+                        f"Diagnostic: No SQL behavior profile found for {platform_info.platform_key}"
+                    )
+            elif profile:
+                log_debug(
+                    f"Loaded SQL behavior profile for {platform_info.platform_key}"
+                )
+            else:
+                log_debug(
+                    f"No SQL behavior profile found for {platform_info.platform_key}, using defaults"
+                )
+
+            self.adapter = CompatibilityAdapter(profile)
+            self.extractor.set_adapter(self.adapter)
+        except Exception as e:
+            log_error(f"Failed to initialize SQL platform compatibility: {e}")
+            self.adapter = CompatibilityAdapter(None)  # Use default adapter
+            self.extractor.set_adapter(self.adapter)
 
     def get_language_name(self) -> str:
         """Get the language name."""
@@ -2162,6 +2235,34 @@ class SQLPlugin(LanguagePlugin):
     def create_extractor(self) -> ElementExtractor:
         """Create a new element extractor instance."""
         return SQLElementExtractor()
+
+    def extract_elements(self, tree: Any, source_code: str) -> dict[str, list[Any]]:
+        """
+        Legacy method for extracting elements.
+        Maintained for backward compatibility and testing.
+
+        Args:
+            tree: Tree-sitter AST tree
+            source_code: Source code string
+
+        Returns:
+            Dictionary with keys 'functions', 'classes', 'variables', 'imports'
+        """
+        elements = self.extractor.extract_sql_elements(tree, source_code)
+
+        result = {"functions": [], "classes": [], "variables": [], "imports": []}
+
+        for element in elements:
+            if element.element_type in ["function", "procedure", "trigger"]:
+                result["functions"].append(element)
+            elif element.element_type in ["class", "table", "view"]:
+                result["classes"].append(element)
+            elif element.element_type in ["variable", "index"]:
+                result["variables"].append(element)
+            elif element.element_type == "import":
+                result["imports"].append(element)
+
+        return result
 
     async def analyze_file(
         self, file_path: str, request: "AnalysisRequest"
@@ -2322,39 +2423,5 @@ class SQLPlugin(LanguagePlugin):
 
             return self._cached_language
         except ImportError as e:
-            log_error(f"tree-sitter-sql not available: {e}")
+            log_error(f"Failed to import tree-sitter-sql: {e}")
             return None
-        except Exception as e:
-            log_error(f"Failed to load tree-sitter language for SQL: {e}")
-            return None
-
-    def extract_elements(self, tree: Any | None, source_code: str) -> dict[str, Any]:
-        """
-        Extract all elements from SQL code for test compatibility.
-
-        Convenience method that extracts all element types and returns them
-        in a dictionary format. Used primarily for testing and compatibility
-        with existing test infrastructure.
-
-        Args:
-            tree: Tree-sitter AST tree, or None
-            source_code: Original SQL source code
-
-        Returns:
-            Dictionary with keys: functions, classes, variables, imports
-            Each value is a list of extracted elements
-        """
-        if tree is None:
-            return {
-                "functions": [],
-                "classes": [],
-                "variables": [],
-                "imports": [],
-            }
-
-        return {
-            "functions": self.extractor.extract_functions(tree, source_code),
-            "classes": self.extractor.extract_classes(tree, source_code),
-            "variables": self.extractor.extract_variables(tree, source_code),
-            "imports": self.extractor.extract_imports(tree, source_code),
-        }

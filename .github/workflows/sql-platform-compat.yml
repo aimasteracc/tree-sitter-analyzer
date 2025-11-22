@@ -1,0 +1,88 @@
+name: SQL Platform Compatibility
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  workflow_dispatch:
+
+jobs:
+  test-compatibility:
+    name: Test Compatibility (${{ matrix.os }}, Python ${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v3
+
+    - name: Install dependencies
+      run: |
+        uv sync --all-extras --dev
+
+    - name: Run Platform Compatibility Tests
+      run: |
+        uv run python -m pytest tests/platform_compat/ -v
+        uv run python -m pytest tests/test_sql_function_extraction_properties.py -v
+
+    - name: Record SQL Behavior Profile
+      run: |
+        uv run python -m tree_sitter_analyzer.platform_compat.record --output-dir tests/platform_profiles
+
+    - name: Upload Profile Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: profile-${{ matrix.os }}-${{ matrix.python-version }}
+        path: tests/platform_profiles/
+
+    - name: Compare with Baseline
+      shell: python
+      run: |
+        import sys
+        import os
+        import platform
+        from pathlib import Path
+        import subprocess
+
+        # Detect current platform key (same logic as detector)
+        os_name = platform.system().lower()
+        if os_name == "darwin": os_name = "macos"
+        python_version = f"{sys.version_info.major}.{sys.version_info.minor}"
+
+        # Paths
+        base_dir = Path("tests/platform_profiles")
+        current_profile = base_dir / os_name / python_version / "profile.json"
+        baseline_profile = base_dir / "baseline" / os_name / python_version / "profile.json"
+
+        if not current_profile.exists():
+            print(f"Error: Generated profile not found at {current_profile}")
+            sys.exit(1)
+
+        if not baseline_profile.exists():
+            print(f"No baseline found at {baseline_profile}. Skipping comparison.")
+            sys.exit(0)
+
+        print(f"Comparing {current_profile} with {baseline_profile}...")
+        result = subprocess.run(
+            [sys.executable, "-m", "tree_sitter_analyzer.platform_compat.compare", str(baseline_profile), str(current_profile), "--fail-on-diff"],
+            capture_output=True,
+            text=True
+        )
+
+        print(result.stdout)
+        print(result.stderr)
+
+        if result.returncode != 0:
+            sys.exit(result.returncode)
