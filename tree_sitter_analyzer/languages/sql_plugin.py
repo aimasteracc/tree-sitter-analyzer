@@ -902,35 +902,40 @@ class SQLElementExtractor(ElementExtractor):
                 # Check if the text contains PROCEDURE
                 if has_create and "PROCEDURE" in node_text_upper:
                     # Extract procedure name from the text (preserve original case)
-                    proc_name = None
-
-                    # Try to extract from pattern: CREATE PROCEDURE name(
+                    # Use finditer to find ALL procedures in the ERROR node
                     import re
 
-                    match = re.search(
+                    matches = re.finditer(
                         r"CREATE\s+PROCEDURE\s+([a-zA-Z_][a-zA-Z0-9_]*)",
                         node_text,
                         re.IGNORECASE,
                     )
-                    if match:
+
+                    for match in matches:
                         proc_name = match.group(1)
 
-                    if proc_name:
-                        try:
-                            start_line = node.start_point[0] + 1
-                            end_line = node.end_point[0] + 1
-                            raw_text = self._get_node_text(node)
+                        if proc_name:
+                            try:
+                                # Calculate start line based on match position
+                                newlines_before = node_text[: match.start()].count("\n")
+                                start_line = node.start_point[0] + 1 + newlines_before
+                                end_line = node.end_point[0] + 1
 
-                            func = Function(
-                                name=proc_name,
-                                start_line=start_line,
-                                end_line=end_line,
-                                raw_text=raw_text,
-                                language="sql",
-                            )
-                            functions.append(func)
-                        except Exception as e:
-                            log_debug(f"Failed to extract procedure: {e}")
+                                # Use specific text for this procedure if possible,
+                                # but for legacy extraction we often just use the whole node text
+                                # or we could slice it. For now, keeping whole node text is safer for legacy
+                                raw_text = self._get_node_text(node)
+
+                                func = Function(
+                                    name=proc_name,
+                                    start_line=start_line,
+                                    end_line=end_line,
+                                    raw_text=raw_text,
+                                    language="sql",
+                                )
+                                functions.append(func)
+                            except Exception as e:
+                                log_debug(f"Failed to extract procedure: {e}")
 
     def _extract_sql_functions(
         self, root_node: "tree_sitter.Node", functions: list[Function]
@@ -1596,17 +1601,15 @@ class SQLElementExtractor(ElementExtractor):
                         break
 
                 if has_create and "PROCEDURE" in node_text_upper:
-                    proc_name = None
-                    parameters = []
-                    dependencies = []
-
                     # Extract procedure name
-                    match = re.search(
+                    # Use finditer to find ALL procedures in the ERROR node
+                    matches = re.finditer(
                         r"CREATE\s+PROCEDURE\s+([a-zA-Z_][a-zA-Z0-9_]*)",
                         node_text,
                         re.IGNORECASE,
                     )
-                    if match:
+
+                    for match in matches:
                         proc_name = match.group(1)
 
                         # Check if this procedure was already extracted by regex
@@ -1619,15 +1622,33 @@ class SQLElementExtractor(ElementExtractor):
 
                         if not already_extracted:
                             # Extract parameters
-                            self._extract_procedure_parameters(node_text, parameters)
+                            # Note: This extracts parameters from the WHOLE node text, which might be wrong
+                            # if there are multiple procedures. Ideally we should slice the text.
+                            # But _extract_procedure_parameters parses the whole text.
+                            # For now, we use the text starting from the match.
+                            current_proc_text = node_text[match.start() :]
+
+                            # Reset parameters and dependencies for each procedure
+                            parameters = []
+                            dependencies = []
+
+                            self._extract_procedure_parameters(
+                                current_proc_text, parameters
+                            )
 
                             # Extract dependencies (table references)
+                            # This still uses the whole node for dependencies, which is hard to fix without
+                            # proper parsing, but acceptable for fallback.
                             self._extract_procedure_dependencies(node, dependencies)
 
                             try:
-                                start_line = node.start_point[0] + 1
+                                # Calculate start line
+                                newlines_before = node_text[: match.start()].count("\n")
+                                start_line = node.start_point[0] + 1 + newlines_before
                                 end_line = node.end_point[0] + 1
-                                raw_text = self._get_node_text(node)
+
+                                # Use current_proc_text as raw_text
+                                raw_text = current_proc_text
 
                                 procedure = SQLProcedure(
                                     name=proc_name,
@@ -1920,56 +1941,74 @@ class SQLElementExtractor(ElementExtractor):
                 # Check for CREATE TRIGGER keywords first to avoid unnecessary processing
                 import re
 
-                if not re.search(r"CREATE\s+TRIGGER", trigger_text, re.IGNORECASE):
+                # Use DOTALL to match across newlines
+                if not re.search(
+                    r"CREATE\s+TRIGGER", trigger_text, re.IGNORECASE | re.DOTALL
+                ):
                     continue
-
-                has_create = True
-                has_trigger = True
 
                 # Use regex to extract trigger name - Prioritize Regex over AST for ERROR nodes
                 # This avoids issues where AST structure is broken and unrelated identifiers (like column names)
                 # are picked up as trigger names.
-                trigger_pattern = re.search(
+                # Use finditer to find ALL triggers in the node (handling multiple triggers in one ERROR node)
+                trigger_matches = re.finditer(
                     r"CREATE\s+TRIGGER\s+([a-zA-Z_][a-zA-Z0-9_]*)",
                     trigger_text,
-                    re.IGNORECASE,
+                    re.IGNORECASE | re.DOTALL,
                 )
 
-                if trigger_pattern:
-                    extracted_name = trigger_pattern.group(1)
-                    if self._is_valid_identifier(extracted_name):
-                        trigger_name = extracted_name
+                for match in trigger_matches:
+                    trigger_name = match.group(1)
 
-                # Skip if no valid name found
-                if not trigger_name:
-                    continue
+                    if not self._is_valid_identifier(trigger_name):
+                        continue
 
-                # Skip invalid trigger names (too short or common SQL keywords)
-                if trigger_name and len(trigger_name) <= 2:
-                    trigger_name = None
+                    # Skip invalid trigger names (too short or common SQL keywords)
+                    if len(trigger_name) <= 2:
+                        continue
 
-                # Skip common SQL keywords that might be incorrectly identified
-                if trigger_name and trigger_name.upper() in (
-                    "KEY",
-                    "AUTO_INCREMENT",
-                    "PRIMARY",
-                    "FOREIGN",
-                    "INDEX",
-                    "UNIQUE",
-                ):
-                    trigger_name = None
+                    # Skip common SQL keywords that might be incorrectly identified
+                    if trigger_name.upper() in (
+                        "KEY",
+                        "AUTO_INCREMENT",
+                        "PRIMARY",
+                        "FOREIGN",
+                        "INDEX",
+                        "UNIQUE",
+                    ):
+                        continue
 
-                # Extract trigger metadata from text
-                if has_create and has_trigger and trigger_name:
-                    trigger_text = self._get_node_text(node)
+                    # Check for duplicates
+                    if any(
+                        e.name == trigger_name and isinstance(e, SQLTrigger)
+                        for e in sql_elements
+                    ):
+                        continue
+
+                    # Extract trigger metadata from text
+                    # Use text starting from the match to ensure we get metadata for THIS trigger
+                    # (in case of multiple triggers in one node)
+                    current_trigger_text = trigger_text[match.start() :]
                     trigger_timing, trigger_event, table_name = (
-                        self._extract_trigger_metadata(trigger_text)
+                        self._extract_trigger_metadata(current_trigger_text)
                     )
 
                     try:
-                        start_line = node.start_point[0] + 1
+                        # Calculate start line based on match position
+                        # node.start_point[0] is 0-indexed line number
+                        # We add newlines found before the match
+                        newlines_before = trigger_text[: match.start()].count("\n")
+                        start_line = node.start_point[0] + 1 + newlines_before
+
+                        # End line is harder to estimate, default to node end line
                         end_line = node.end_point[0] + 1
-                        raw_text = self._get_node_text(node)
+
+                        # If there's another match, we could use its start line as this one's end line?
+                        # For now, using node end line is safe (though potentially large for the first trigger)
+
+                        # Use current_trigger_text as raw_text to ensure correct name validation later
+                        # (and to avoid including previous triggers in the raw text)
+                        raw_text = current_trigger_text
 
                         trigger = SQLTrigger(
                             name=trigger_name,

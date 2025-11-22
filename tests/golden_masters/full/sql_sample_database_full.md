@@ -13,6 +13,7 @@
 | calculate_order_total | function | 89-101 | (order_id_param) | - |
 | is_user_active | function | 104-116 | (user_id_param) | - |
 | update_order_total | trigger | 119-156 | - | order_items |
+| log_user_changes | trigger | 133-156 | - | users |
 | idx_users_email | index | 151-151 | users(email) | users |
 | idx_users_status | index | 152-152 | users(status) | users |
 | idx_orders_user_id | index | 153-153 | orders(user_id) | orders |
@@ -60,6 +61,11 @@
 **Event**: AFTER UPDATE
 **Target Table**: order_items
 **Dependencies**: order_items
+
+### log_user_changes (133-156)
+**Event**: AFTER UPDATE
+**Target Table**: users
+**Dependencies**: users
 
 ## Indexes
 ### idx_users_email (151-151)
