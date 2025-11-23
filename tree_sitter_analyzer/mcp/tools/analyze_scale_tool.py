@@ -740,7 +740,9 @@ class AnalyzeScaleTool(BaseMCPTool):
             "scale_category": (
                 "small"
                 if file_metrics["total_lines"] < 100
-                else "medium" if file_metrics["total_lines"] < 1000 else "large"
+                else "medium"
+                if file_metrics["total_lines"] < 1000
+                else "large"
             ),
             "analysis_recommendations": {
                 "suitable_for_full_analysis": file_metrics["total_lines"] < 1000,

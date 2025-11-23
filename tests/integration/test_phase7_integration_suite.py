@@ -113,7 +113,9 @@ class IntegrationTestReporter:
             status_icon = (
                 "✅"
                 if stats["failed"] == 0
-                else "⚠️" if stats["failed"] < stats["total"] / 2 else "❌"
+                else "⚠️"
+                if stats["failed"] < stats["total"] / 2
+                else "❌"
             )
 
             print(f"{status_icon} {category.upper()}:")

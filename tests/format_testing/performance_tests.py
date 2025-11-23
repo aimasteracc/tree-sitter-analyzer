@@ -163,7 +163,7 @@ class PerformanceTester:
                 element_count = self._estimate_element_count(test_data)
 
                 result_metrics = PerformanceMetrics(
-                    test_name=f"{test_name}_iteration_{i+1}",
+                    test_name=f"{test_name}_iteration_{i + 1}",
                     execution_time_ms=metrics["execution_time_ms"],
                     memory_usage_mb=metrics["memory_usage_mb"],
                     peak_memory_mb=metrics["peak_memory_mb"],
@@ -180,7 +180,7 @@ class PerformanceTester:
 
             except Exception as e:
                 error_metrics = PerformanceMetrics(
-                    test_name=f"{test_name}_iteration_{i+1}",
+                    test_name=f"{test_name}_iteration_{i + 1}",
                     execution_time_ms=0,
                     memory_usage_mb=0,
                     peak_memory_mb=0,
@@ -268,7 +268,8 @@ class PerformanceTester:
 
         # Check if performance thresholds are exceeded
         performance_threshold_exceeded = any(
-            time_ms > 10000 for time_ms in execution_times  # 10 second threshold
+            time_ms > 10000
+            for time_ms in execution_times  # 10 second threshold
         )
 
         result = ScalabilityTestResult(

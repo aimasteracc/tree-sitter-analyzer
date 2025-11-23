@@ -8,11 +8,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from tree_sitter_analyzer.cli.commands.list_files_cli import (
-    _build_parser,
-    _run,
-    main,
-)
+from tree_sitter_analyzer.cli.commands.list_files_cli import _build_parser, _run, main
 
 
 class TestBuildParser:
@@ -303,7 +299,6 @@ class TestRunFunction:
                 "tree_sitter_analyzer.cli.commands.list_files_cli.output_data"
             ) as mock_output,
         ):
-
             mock_detect.return_value = "/project/root"
             mock_tool = AsyncMock()
             mock_tool.execute = AsyncMock(return_value=mock_result)
@@ -357,7 +352,6 @@ class TestRunFunction:
                 "tree_sitter_analyzer.cli.commands.list_files_cli.output_data"
             ) as mock_output,
         ):
-
             mock_detect.return_value = "/custom/root"
             mock_tool = AsyncMock()
             mock_tool.execute = AsyncMock(return_value={"files": []})
@@ -404,7 +398,6 @@ class TestRunFunction:
             patch("tree_sitter_analyzer.cli.commands.list_files_cli.set_output_mode"),
             patch("tree_sitter_analyzer.cli.commands.list_files_cli.output_data"),
         ):
-
             mock_detect.return_value = "/project/root"
             mock_tool = AsyncMock()
             mock_tool.execute = AsyncMock(return_value={})
@@ -468,7 +461,6 @@ class TestRunFunction:
                 "tree_sitter_analyzer.cli.commands.list_files_cli.output_error"
             ) as mock_error,
         ):
-
             mock_detect.return_value = "/project/root"
             mock_tool = AsyncMock()
             mock_tool.execute = AsyncMock(side_effect=RuntimeError("Test error"))
@@ -514,7 +506,6 @@ class TestRunFunction:
             patch("tree_sitter_analyzer.cli.commands.list_files_cli.set_output_mode"),
             patch("tree_sitter_analyzer.cli.commands.list_files_cli.output_data"),
         ):
-
             mock_detect.return_value = "/custom/path"
             mock_tool = AsyncMock()
             mock_tool.execute = AsyncMock(return_value={})
@@ -560,7 +551,6 @@ class TestRunFunction:
             patch("tree_sitter_analyzer.cli.commands.list_files_cli.set_output_mode"),
             patch("tree_sitter_analyzer.cli.commands.list_files_cli.output_data"),
         ):
-
             mock_detect.return_value = "/project/root"
             mock_tool = AsyncMock()
             mock_tool.execute = AsyncMock(
@@ -592,7 +582,6 @@ class TestMainFunction:
             patch("tree_sitter_analyzer.cli.commands.list_files_cli.output_data"),
             pytest.raises(SystemExit) as exc_info,
         ):
-
             mock_detect.return_value = "/project/root"
             mock_tool = AsyncMock()
             mock_tool.execute = AsyncMock(return_value={})
@@ -618,7 +607,6 @@ class TestMainFunction:
             patch("tree_sitter_analyzer.cli.commands.list_files_cli.output_error"),
             pytest.raises(SystemExit) as exc_info,
         ):
-
             mock_detect.return_value = "/project/root"
             mock_tool = AsyncMock()
             mock_tool.execute = AsyncMock(side_effect=RuntimeError("Test error"))
@@ -643,7 +631,6 @@ class TestMainFunction:
             patch("tree_sitter_analyzer.cli.commands.list_files_cli.set_output_mode"),
             pytest.raises(SystemExit) as exc_info,
         ):
-
             mock_detect.return_value = "/project/root"
             mock_tool = AsyncMock()
             mock_tool.execute = AsyncMock(side_effect=KeyboardInterrupt())
@@ -704,7 +691,6 @@ class TestEdgeCases:
             patch("tree_sitter_analyzer.cli.commands.list_files_cli.set_output_mode"),
             patch("tree_sitter_analyzer.cli.commands.list_files_cli.output_data"),
         ):
-
             mock_detect.return_value = "/project/root"
             mock_tool = AsyncMock()
             mock_tool.execute = AsyncMock(return_value={})
@@ -750,7 +736,6 @@ class TestEdgeCases:
             patch("tree_sitter_analyzer.cli.commands.list_files_cli.set_output_mode"),
             patch("tree_sitter_analyzer.cli.commands.list_files_cli.output_data"),
         ):
-
             mock_detect.return_value = "/project/root"
             mock_tool = AsyncMock()
             mock_tool.execute = AsyncMock(return_value={})
@@ -798,7 +783,6 @@ class TestEdgeCases:
                 "tree_sitter_analyzer.cli.commands.list_files_cli.output_data"
             ) as mock_output,
         ):
-
             mock_detect.return_value = "/project/root"
             mock_tool = AsyncMock()
             mock_tool.execute = AsyncMock(return_value={"files": [], "count": 0})

@@ -602,9 +602,9 @@ END;
             "SET",
         ]
         for keyword in body_keywords:
-            assert keyword.lower() not in [
-                name.lower() for name in function_names
-            ], f"Keyword '{keyword}' from function body should not be extracted as a function"
+            assert (
+                keyword.lower() not in [name.lower() for name in function_names]
+            ), f"Keyword '{keyword}' from function body should not be extracted as a function"
 
     @settings(max_examples=100)
     @given(
@@ -908,9 +908,9 @@ END;
         assert (
             invalid_name not in function_names
         ), f"Invalid identifier '{invalid_name}' should not be extracted as a function name"
-        assert invalid_name.lower() not in [
-            name.lower() for name in function_names
-        ], f"Invalid identifier '{invalid_name}' (case-insensitive) should not be extracted as a function name"
+        assert (
+            invalid_name.lower() not in [name.lower() for name in function_names]
+        ), f"Invalid identifier '{invalid_name}' (case-insensitive) should not be extracted as a function name"
 
         # The extraction should result in 0 functions since the name is invalid
         assert (
@@ -1100,9 +1100,9 @@ END;
         assert (
             invalid_name not in function_names
         ), f"Invalid function name '{invalid_name}' should not be extracted"
-        assert invalid_name.lower() not in [
-            name.lower() for name in function_names
-        ], f"Invalid function name '{invalid_name}' (case-insensitive) should not be extracted"
+        assert (
+            invalid_name.lower() not in [name.lower() for name in function_names]
+        ), f"Invalid function name '{invalid_name}' (case-insensitive) should not be extracted"
 
         # Should extract exactly 1 function (the valid one)
         assert (
@@ -1283,8 +1283,8 @@ END;
         ]
 
         # Property: Number of extracted functions should equal number of CREATE FUNCTION declarations
-        assert len(function_names) == len(
-            valid_func_names
+        assert (
+            len(function_names) == len(valid_func_names)
         ), f"Expected {len(valid_func_names)} functions, got {len(function_names)}: {function_names}"
 
         # Verify all expected functions are present
@@ -1658,7 +1658,7 @@ END;
         for i, result in enumerate(all_results[1:], start=1):
             assert (
                 result == first_result
-            ), f"Run {i+1} produced different results than run 1.\nRun 1: {first_result}\nRun {i+1}: {result}"
+            ), f"Run {i + 1} produced different results than run 1.\nRun 1: {first_result}\nRun {i + 1}: {result}"
 
         # Verify that we got the expected functions
         extracted_names = [name for name, _, _ in first_result]

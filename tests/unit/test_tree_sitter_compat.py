@@ -198,7 +198,6 @@ class TestCreateQuerySafely:
     def test_successful_query_creation(self):
         """Test successful query creation"""
         with patch("tree_sitter_analyzer.utils.tree_sitter_compat.logger"):
-
             mock_language = MagicMock()
             result = create_query_safely(mock_language, "(identifier) @name")
 

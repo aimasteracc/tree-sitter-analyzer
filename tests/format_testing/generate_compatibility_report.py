@@ -75,12 +75,12 @@ def generate_html_report(metadata: dict) -> str:
             <div class="stat-value">✓</div>
             <div>All Tests Passed</div>
         </div>
-        <p>Version: {metadata['version']}</p>
-        <p>Timestamp: {metadata['timestamp']}</p>
+        <p>Version: {metadata["version"]}</p>
+        <p>Timestamp: {metadata["timestamp"]}</p>
     </div>
 
     <div class="footer">
-        <p>Generated on {metadata['timestamp']}</p>
+        <p>Generated on {metadata["timestamp"]}</p>
         <p>Tree-Sitter Analyzer - Format Compatibility Testing</p>
     </div>
 </body>

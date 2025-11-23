@@ -61,6 +61,7 @@ class CompatibilityAdapter:
             "fix_function_name_keywords": FixFunctionNameKeywordsRule(),
             "fix_trigger_name_description": FixTriggerNameDescriptionRule(),
             "remove_phantom_triggers": RemovePhantomTriggersRule(),
+            "remove_phantom_functions": RemovePhantomFunctionsRule(),
             "recover_views_from_errors": RecoverViewsFromErrorsRule(),
         }
 
@@ -148,9 +149,33 @@ class FixFunctionNameKeywordsRule:
             return element
 
         # List of keywords that might be incorrectly extracted as names
-        keywords = {"FUNCTION", "PROCEDURE", "CREATE", "OR", "REPLACE"}
+        keywords = {
+            "FUNCTION",
+            "PROCEDURE",
+            "CREATE",
+            "OR",
+            "REPLACE",
+            "AUTO_INCREMENT",
+            "KEY",
+            "PRIMARY",
+            "FOREIGN",
+        }
 
+        # Check if name is a keyword OR if we should verify the name generally
+        # This covers cases where the name is just wrong (e.g. garbage) but not necessarily a keyword
+        should_fix = False
         if element.name.upper() in keywords:
+            should_fix = True
+        else:
+            # General verification: check if the name matches what's in the CREATE statement
+            # If the extracted name doesn't match the regex-extracted name, we should fix it
+            match = re.search(r"FUNCTION\s+([\w]+)", element.raw_text, re.IGNORECASE)
+            if match:
+                correct_name = match.group(1)
+                if element.name != correct_name:
+                    should_fix = True
+
+        if should_fix:
             # Try to extract name from raw_text
             # Pattern: CREATE [OR REPLACE] FUNCTION name ...
             # Use \w+ to match unicode word characters
@@ -208,7 +233,36 @@ class RemovePhantomTriggersRule:
         if isinstance(element, SQLTrigger):
             # Check if raw_text actually contains CREATE TRIGGER
             # Phantom triggers often appear in comments or unrelated code
-            if "CREATE TRIGGER" not in element.raw_text.upper():
+            # Use regex to handle variable whitespace
+            if not re.search(r"CREATE\s+TRIGGER", element.raw_text, re.IGNORECASE):
+                # It might be a phantom
+                logger.debug(
+                    f"Removing phantom trigger: {element.name} (raw_text: {element.raw_text[:50]}...)"
+                )
+                return None
+        return element
+
+
+class RemovePhantomFunctionsRule:
+    """
+    Rule: remove_phantom_functions
+    Detects elements where type doesn't match content (phantom functions).
+    """
+
+    @property
+    def rule_id(self) -> str:
+        return "remove_phantom_functions"
+
+    @property
+    def description(self) -> str:
+        return "Remove phantom functions with mismatched content"
+
+    def apply(self, element: SQLElement, context: dict) -> SQLElement | None:
+        if isinstance(element, SQLFunction):
+            # Check if raw_text actually contains CREATE FUNCTION
+            # Phantom functions often appear in comments or unrelated code
+            # Use regex to handle variable whitespace
+            if not re.search(r"CREATE\s+FUNCTION", element.raw_text, re.IGNORECASE):
                 # It might be a phantom
                 return None
         return element
@@ -239,7 +293,11 @@ class RecoverViewsFromErrorsRule:
         # Simple regex to find CREATE VIEW statements
         # This is a fallback mechanism
         # Use \w+ to match unicode word characters
-        view_pattern = re.compile(r"CREATE\s+VIEW\s+([\w]+)\s+AS", re.IGNORECASE)
+        # Updated to handle IF NOT EXISTS and multiline matching
+        view_pattern = re.compile(
+            r"^\s*CREATE\s+VIEW\s+(?:IF\s+NOT\s+EXISTS\s+)?([\w]+)\s+AS",
+            re.IGNORECASE | re.MULTILINE,
+        )
 
         for match in view_pattern.finditer(source_code):
             view_name = match.group(1)

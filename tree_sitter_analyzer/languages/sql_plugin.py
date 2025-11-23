@@ -1789,15 +1789,35 @@ class SQLElementExtractor(ElementExtractor):
 
                 # Find the end of the function (look for END; or END$$)
                 end_line = start_line
+                nesting_level = 0
+
                 for j in range(i + 1, len(lines)):
-                    if lines[j].strip().upper() in ["END;", "END$", "END"]:
-                        end_line = j + 1
-                        inside_function = False
-                        break
-                    elif lines[j].strip().upper().startswith("END;"):
-                        end_line = j + 1
-                        inside_function = False
-                        break
+                    line_stripped = lines[j].strip().upper()
+
+                    # Skip comments to avoid false positives
+                    if line_stripped.startswith("--") or line_stripped.startswith("#"):
+                        continue
+
+                    # Handle nesting of BEGIN ... END blocks
+                    # This is a heuristic: if we see BEGIN, we expect a matching END;
+                    # We use word boundaries to avoid matching BEGIN in other contexts if possible
+                    if re.search(r"\bBEGIN\b", line_stripped):
+                        nesting_level += 1
+
+                    is_end = False
+                    if line_stripped in ["END;", "END$", "END"]:
+                        is_end = True
+                    elif line_stripped.startswith("END;"):
+                        is_end = True
+
+                    if is_end:
+                        if nesting_level > 0:
+                            nesting_level -= 1
+
+                        if nesting_level == 0:
+                            end_line = j + 1
+                            inside_function = False
+                            break
 
                 # Extract the full function text
                 func_lines = lines[i:end_line]
@@ -2319,153 +2339,67 @@ class SQLPlugin(LanguagePlugin):
         an AnalysisResult with all extracted information.
 
         Args:
-            file_path: Path to the SQL file to analyze
-            request: Analysis request configuration
+            file_path: Path to the file to analyze
+            request: Analysis request object
 
         Returns:
-            AnalysisResult containing extracted elements, line counts, and metadata.
-            Returns error result if tree-sitter-sql is not available or parsing fails.
+            AnalysisResult object containing extracted elements
         """
+        from ..core.parser import Parser
         from ..models import AnalysisResult
 
-        if not TREE_SITTER_AVAILABLE:
-            return AnalysisResult(
-                file_path=file_path,
-                language=self.get_language_name(),
-                success=False,
-                error_message="Tree-sitter library not available.",
-            )
-
         try:
-            # Read the file content using safe encoding detection
-            from ..encoding_utils import read_file_safe
+            # Read file content
+            with open(file_path, encoding="utf-8") as f:
+                source_code = f.read()
 
-            file_content, detected_encoding = read_file_safe(file_path)
+            # Parse using core parser
+            parser = Parser()
+            parse_result = parser.parse_code(source_code, "sql", file_path)
 
-            # Get tree-sitter language and parse
-            language = self.get_tree_sitter_language()
-            if language is None:
-                # Return empty result if language loading fails
+            if not parse_result.success:
                 return AnalysisResult(
                     file_path=file_path,
                     language="sql",
-                    line_count=len(file_content.split("\n")),
+                    line_count=len(source_code.splitlines()),
                     elements=[],
-                    source_code=file_content,
+                    node_count=0,
+                    query_results={},
+                    source_code=source_code,
                     success=False,
-                    error_message="tree-sitter-sql not available. Install with: pip install tree-sitter-analyzer[sql]",
+                    error_message=parse_result.error_message,
                 )
 
-            # Parse the code
-            parser = tree_sitter.Parser()
-
-            # Set language using the appropriate method
-            if hasattr(parser, "set_language"):
-                parser.set_language(language)
-            elif hasattr(parser, "language"):
-                parser.language = language
-            else:
-                try:
-                    parser = tree_sitter.Parser(language)
-                except Exception as e:
-                    log_error(f"Failed to create parser with language: {e}")
-                    return AnalysisResult(
-                        file_path=file_path,
-                        language="sql",
-                        line_count=len(file_content.split("\n")),
-                        elements=[],
-                        source_code=file_content,
-                        error_message=f"Parser creation failed: {e}",
-                        success=False,
-                    )
-
-            tree = parser.parse(file_content.encode("utf-8"))
-
-            # Extract SQL elements using enhanced extractor
-            all_elements = self.extractor.extract_sql_elements(tree, file_content)
-
-            # Count nodes in the AST tree
-            node_count = (
-                self._count_tree_nodes(tree.root_node) if tree and tree.root_node else 0
+            # Extract elements
+            elements = self.extractor.extract_sql_elements(
+                parse_result.tree, source_code
             )
 
+            # Create result
             return AnalysisResult(
                 file_path=file_path,
                 language="sql",
-                line_count=len(file_content.split("\n")),
-                elements=all_elements,
-                node_count=node_count,
-                source_code=file_content,
+                line_count=len(source_code.splitlines()),
+                elements=elements,
+                node_count=parse_result.tree.root_node.end_byte
+                if parse_result.tree
+                else 0,
+                query_results={},
+                source_code=source_code,
+                success=True,
+                error_message=None,
             )
 
         except Exception as e:
-            log_error(f"Error analyzing SQL file {file_path}: {e}")
-            # Return empty result on error
+            log_error(f"Failed to analyze SQL file {file_path}: {e}")
             return AnalysisResult(
                 file_path=file_path,
                 language="sql",
                 line_count=0,
                 elements=[],
+                node_count=0,
+                query_results={},
                 source_code="",
-                error_message=str(e),
                 success=False,
+                error_message=str(e),
             )
-
-    def _count_tree_nodes(self, node: Any) -> int:
-        """
-        Recursively count nodes in the AST tree.
-
-        Args:
-            node: Tree-sitter node
-
-        Returns:
-            Total number of nodes
-        """
-        if node is None:
-            return 0
-
-        count = 1  # Count current node
-        if hasattr(node, "children"):
-            for child in node.children:
-                count += self._count_tree_nodes(child)
-        return count
-
-    def get_tree_sitter_language(self) -> Any | None:
-        """
-        Get the tree-sitter language for SQL.
-
-        Loads and caches the tree-sitter-sql language object. Returns None
-        if tree-sitter-sql is not installed, allowing graceful degradation.
-
-        Returns:
-            Tree-sitter Language object for SQL, or None if not available
-        """
-        if self._cached_language is not None:
-            return self._cached_language
-
-        try:
-            # tree-sitter-sql is an optional dependency
-            import tree_sitter_sql
-
-            # Get the language function result
-            caps_or_lang = tree_sitter_sql.language()
-
-            # Convert to proper Language object if needed
-            if hasattr(caps_or_lang, "__class__") and "Language" in str(
-                type(caps_or_lang)
-            ):
-                # Already a Language object
-                self._cached_language = caps_or_lang
-            else:
-                # PyCapsule - convert to Language object
-                try:
-                    # Use modern tree-sitter API - PyCapsule should be passed to Language constructor
-                    self._cached_language = tree_sitter.Language(caps_or_lang)
-                except Exception as e:
-                    log_error(f"Failed to create Language object from PyCapsule: {e}")
-                    return None
-
-            return self._cached_language
-        except ImportError as e:
-            log_error(f"Failed to import tree-sitter-sql: {e}")
-            return None

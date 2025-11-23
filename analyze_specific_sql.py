@@ -96,9 +96,9 @@ SELECT id, name FROM test_table WHERE id > 0;
         return
 
     for construct_name, sql_code in test_cases.items():
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print(f"Analyzing: {construct_name}")
-        print(f"{'='*60}")
+        print(f"{'=' * 60}")
         print(f"SQL Code:\n{sql_code.strip()}")
         print("\nAST Structure:")
         print("-" * 40)

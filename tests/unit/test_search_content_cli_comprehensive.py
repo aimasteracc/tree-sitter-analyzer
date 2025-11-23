@@ -463,7 +463,6 @@ class TestRunFunction:
                 "tree_sitter_analyzer.cli.commands.search_content_cli.output_data"
             ) as mock_output,
         ):
-
             mock_detect.return_value = "/project/root"
             mock_tool = AsyncMock()
             mock_tool.execute = AsyncMock(return_value=mock_result)
@@ -528,7 +527,6 @@ class TestRunFunction:
             ),
             patch("tree_sitter_analyzer.cli.commands.search_content_cli.output_data"),
         ):
-
             mock_detect.return_value = "/project/root"
             mock_tool = AsyncMock()
             mock_tool.execute = AsyncMock(return_value={})
@@ -587,7 +585,6 @@ class TestRunFunction:
                 "tree_sitter_analyzer.cli.commands.search_content_cli.output_data"
             ) as mock_output,
         ):
-
             mock_detect.return_value = "/custom/root"
             mock_tool = AsyncMock()
             mock_tool.execute = AsyncMock(return_value={"result": "text"})
@@ -643,7 +640,6 @@ class TestRunFunction:
             ),
             patch("tree_sitter_analyzer.cli.commands.search_content_cli.output_data"),
         ):
-
             mock_detect.return_value = "/project/root"
             mock_tool = AsyncMock()
             mock_tool.execute = AsyncMock(return_value={})
@@ -721,7 +717,6 @@ class TestRunFunction:
                 "tree_sitter_analyzer.cli.commands.search_content_cli.output_data"
             ) as mock_output,
         ):
-
             mock_detect.return_value = "/project/root"
             mock_tool = AsyncMock()
             mock_tool.execute = AsyncMock(return_value=42)  # Integer result
@@ -778,7 +773,6 @@ class TestRunFunction:
                 "tree_sitter_analyzer.cli.commands.search_content_cli.output_error"
             ) as mock_error,
         ):
-
             mock_detect.return_value = "/project/root"
             mock_tool = AsyncMock()
             mock_tool.execute = AsyncMock(side_effect=RuntimeError("Test error"))
@@ -833,7 +827,6 @@ class TestRunFunction:
             ),
             patch("tree_sitter_analyzer.cli.commands.search_content_cli.output_data"),
         ):
-
             mock_detect.return_value = "/custom/path"
             mock_tool = AsyncMock()
             mock_tool.execute = AsyncMock(return_value={})
@@ -866,7 +859,6 @@ class TestMainFunction:
             patch("tree_sitter_analyzer.cli.commands.search_content_cli.output_data"),
             pytest.raises(SystemExit) as exc_info,
         ):
-
             mock_detect.return_value = "/project/root"
             mock_tool = AsyncMock()
             mock_tool.execute = AsyncMock(return_value={})
@@ -894,7 +886,6 @@ class TestMainFunction:
             patch("tree_sitter_analyzer.cli.commands.search_content_cli.output_error"),
             pytest.raises(SystemExit) as exc_info,
         ):
-
             mock_detect.return_value = "/project/root"
             mock_tool = AsyncMock()
             mock_tool.execute = AsyncMock(side_effect=RuntimeError("Test error"))
@@ -921,7 +912,6 @@ class TestMainFunction:
             ),
             pytest.raises(SystemExit) as exc_info,
         ):
-
             mock_detect.return_value = "/project/root"
             mock_tool = AsyncMock()
             mock_tool.execute = AsyncMock(side_effect=KeyboardInterrupt())
@@ -991,7 +981,6 @@ class TestEdgeCases:
             ),
             patch("tree_sitter_analyzer.cli.commands.search_content_cli.output_data"),
         ):
-
             mock_detect.return_value = "/project/root"
             mock_tool = AsyncMock()
             mock_tool.execute = AsyncMock(return_value={})
@@ -1049,7 +1038,6 @@ class TestEdgeCases:
                 "tree_sitter_analyzer.cli.commands.search_content_cli.output_data"
             ) as mock_output,
         ):
-
             mock_detect.return_value = "/project/root"
             mock_tool = AsyncMock()
             mock_tool.execute = AsyncMock(return_value={"matches": 0, "files": []})

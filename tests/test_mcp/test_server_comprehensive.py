@@ -864,9 +864,7 @@ class TestMCPServerUtilities:
                 mock_parse.return_value = mock_args
 
                 with patch("tree_sitter_analyzer.mcp.server.PathClass") as mock_path:
-                    mock_path.cwd.return_value.joinpath.return_value.exists.return_value = (
-                        True
-                    )
+                    mock_path.cwd.return_value.joinpath.return_value.exists.return_value = True
 
                     with patch(
                         "tree_sitter_analyzer.mcp.server.TreeSitterAnalyzerMCPServer"

@@ -232,9 +232,7 @@ def upload_with_uv() -> bool:
             cmd = ["uv", "publish"]
             print("Running: uv publish (using .pypirc)")
 
-            result = subprocess.run(
-                cmd, capture_output=True, text=True
-            )  # nosec B607, B603
+            result = subprocess.run(cmd, capture_output=True, text=True)  # nosec B607, B603
 
             if result.returncode == 0:
                 print("✅ Successfully uploaded to PyPI using .pypirc!")
@@ -289,9 +287,7 @@ def upload_with_uv() -> bool:
         cmd = ["uv", "publish"]
         print("Running: uv publish (using token)")
 
-        result = subprocess.run(
-            cmd, env=env, capture_output=True, text=True
-        )  # nosec B607, B603
+        result = subprocess.run(cmd, env=env, capture_output=True, text=True)  # nosec B607, B603
 
         if result.returncode == 0:
             print("✅ Successfully uploaded to PyPI!")

@@ -540,9 +540,7 @@ class TestQueryServiceManualExecution:
         """Test manual query execution with plugin support"""
         # Mock plugin
         mock_plugin = Mock()
-        mock_plugin.execute_query_strategy.return_value = (
-            []
-        )  # Plugin strategy returns empty
+        mock_plugin.execute_query_strategy.return_value = []  # Plugin strategy returns empty
         mock_plugin.get_element_categories.return_value = {
             "functions": ["function_definition"]
         }

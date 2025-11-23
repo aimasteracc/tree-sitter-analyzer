@@ -100,14 +100,14 @@ def assert_analysis_result_valid(
 
     # Check specific values if provided
     if expected_language:
-        assert result["language"] == expected_language, (
-            f"Expected language '{expected_language}', " f"got '{result['language']}'"
-        )
+        assert (
+            result["language"] == expected_language
+        ), f"Expected language '{expected_language}', got '{result['language']}'"
 
     if expected_file:
-        assert result["file"] == expected_file, (
-            f"Expected file '{expected_file}', " f"got '{result['file']}'"
-        )
+        assert (
+            result["file"] == expected_file
+        ), f"Expected file '{expected_file}', got '{result['file']}'"
 
     # Check success status
     if require_success:
@@ -183,9 +183,9 @@ def assert_list_contains_dicts_with_key(
 
     if expected_values is not None:
         actual_values = {item[key] for item in items}
-        assert actual_values == expected_values, (
-            f"Values don't match. Expected: {expected_values}, " f"Got: {actual_values}"
-        )
+        assert (
+            actual_values == expected_values
+        ), f"Values don't match. Expected: {expected_values}, Got: {actual_values}"
 
 
 def assert_query_result_valid(
@@ -258,9 +258,9 @@ def assert_file_output_valid(
     assert_has_keys(output, ["format", "content"], ["success", "error", "path"])
 
     if expected_format:
-        assert output["format"] == expected_format, (
-            f"Expected format '{expected_format}', " f"got '{output['format']}'"
-        )
+        assert (
+            output["format"] == expected_format
+        ), f"Expected format '{expected_format}', got '{output['format']}'"
 
     # Content should not be empty
     assert output["content"], "Output content is empty"
@@ -313,10 +313,9 @@ def assert_error_message_contains(
         ... )
     """
     for substring in expected_substrings:
-        assert substring in error_msg, (
-            f"Error message missing expected substring '{substring}'. "
-            f"Got: {error_msg}"
-        )
+        assert (
+            substring in error_msg
+        ), f"Error message missing expected substring '{substring}'. Got: {error_msg}"
 
 
 def assert_performance_acceptable(
@@ -338,9 +337,9 @@ def assert_performance_acceptable(
     Example:
         >>> assert_performance_acceptable(0.5, 1.0, "file analysis")
     """
-    assert elapsed_time <= max_time, (
-        f"{operation} took {elapsed_time:.2f}s, " f"expected <= {max_time:.2f}s"
-    )
+    assert (
+        elapsed_time <= max_time
+    ), f"{operation} took {elapsed_time:.2f}s, expected <= {max_time:.2f}s"
 
 
 # Export all helpers

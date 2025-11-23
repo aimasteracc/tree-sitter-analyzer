@@ -195,15 +195,15 @@ def compare_with_golden_master(
         for i in range(max_lines):
             if i >= len(golden_lines):
                 if diff_shown < 20:
-                    diff_lines.append(f"Line {i+1}: + {current_lines[i]!r}")
+                    diff_lines.append(f"Line {i + 1}: + {current_lines[i]!r}")
                     diff_shown += 1
             elif i >= len(current_lines):
                 if diff_shown < 20:
-                    diff_lines.append(f"Line {i+1}: - {golden_lines[i]!r}")
+                    diff_lines.append(f"Line {i + 1}: - {golden_lines[i]!r}")
                     diff_shown += 1
             elif golden_lines[i] != current_lines[i]:
                 if diff_shown < 20:
-                    diff_lines.append(f"Line {i+1}:")
+                    diff_lines.append(f"Line {i + 1}:")
                     diff_lines.append(f"  Golden: {golden_lines[i]!r}")
                     diff_lines.append(f"  Current: {current_lines[i]!r}")
                     diff_shown += 1
