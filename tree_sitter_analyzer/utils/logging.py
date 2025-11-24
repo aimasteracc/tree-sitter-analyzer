@@ -192,10 +192,10 @@ class SafeStreamHandler(logging.StreamHandler):
             super().emit(record)
         except (ValueError, OSError, AttributeError, UnicodeError):
             # Silently ignore I/O errors during shutdown or pytest capture
-            pass
+            pass  # nosec
         except Exception:
             # For any other unexpected errors, silently ignore to prevent test failures
-            pass
+            pass  # nosec
 
 
 def setup_safe_logging_shutdown() -> None:

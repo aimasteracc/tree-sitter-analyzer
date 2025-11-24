@@ -1255,7 +1255,7 @@ class TypeScriptElementExtractor(ElementExtractor):
                             import_names.extend(self._extract_import_names(child))
                             break
                 except Exception:
-                    pass
+                    pass  # nosec
 
             # If no module path found, return None for edge case tests
             if not module_path and not import_names:

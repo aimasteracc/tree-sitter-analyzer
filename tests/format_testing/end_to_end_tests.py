@@ -594,7 +594,7 @@ def create_processor(processor_type: str, config: Dict[str, Any]) -> DataProcess
 
         except Exception as e:
             # Should fail gracefully
-            assert isinstance(e, (RuntimeError, ValueError))
+            assert isinstance(e, RuntimeError | ValueError)
 
         finally:
             comment_file.unlink()

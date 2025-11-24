@@ -82,11 +82,7 @@ class TestImportability:
     def test_direct_import_from_utils(self) -> None:
         """Test direct import from utils works."""
         # This import should not raise
-        from tree_sitter_analyzer.utils import (
-            TreeSitterQueryCompat,
-            log_info,
-            logger,
-        )
+        from tree_sitter_analyzer.utils import TreeSitterQueryCompat, log_info, logger
 
         assert TreeSitterQueryCompat is not None
         assert log_info is not None

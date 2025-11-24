@@ -470,6 +470,9 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["B011"]
 
+[tool.ruff.lint.isort]
+known-first-party = ["tree_sitter_analyzer"]
+
 [tool.bandit]
 exclude_dirs = ["tests", "archived_files"]
 skips = ["B101", "B601"]

@@ -30,7 +30,6 @@ class TestCLIMainModule:
         # Reload to trigger the if __name__ == "__main__" block
         # Note: This won't actually trigger it, so we need a different approach
         # We can test that the import is correct instead
-
         # Verify the module has imported main from cli_main
         assert hasattr(tree_sitter_analyzer.cli.__main__, "main")
 

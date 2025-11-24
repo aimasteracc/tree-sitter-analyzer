@@ -374,7 +374,7 @@ class FormatMonitor:
         output = result["table_output"]
 
         # Calculate output hash for regression detection
-        output_hash = hashlib.md5(output.encode("utf-8")).hexdigest()
+        output_hash = hashlib.md5(output.encode("utf-8")).hexdigest()  # nosec
 
         # Validate format compliance
         validation_result = self._validate_format_compliance(output, format_type)

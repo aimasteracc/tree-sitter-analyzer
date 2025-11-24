@@ -72,5 +72,3 @@
   always_run: true
   require_serial: true
   additional_dependencies: []
-  require_serial: true
-  additional_dependencies: []

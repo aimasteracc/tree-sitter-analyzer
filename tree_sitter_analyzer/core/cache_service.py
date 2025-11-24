@@ -330,4 +330,4 @@ class CacheService:
                     self._l3_cache.clear()
         except Exception:
             # Silently ignore all errors during shutdown to prevent ImportError
-            pass
+            pass  # nosec
