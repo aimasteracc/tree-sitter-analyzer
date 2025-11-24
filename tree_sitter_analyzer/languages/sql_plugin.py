@@ -2389,9 +2389,9 @@ class SQLPlugin(LanguagePlugin):
                 language="sql",
                 line_count=len(source_code.splitlines()),
                 elements=elements,
-                node_count=parse_result.tree.root_node.end_byte
-                if parse_result.tree
-                else 0,
+                node_count=(
+                    parse_result.tree.root_node.end_byte if parse_result.tree else 0
+                ),
                 query_results={},
                 source_code=source_code,
                 success=True,

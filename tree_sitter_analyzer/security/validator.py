@@ -503,7 +503,7 @@ class SecurityValidator:
                 temp_dirs = [
                     Path(tempfile.gettempdir()).resolve(),
                     Path("/tmp").resolve() if Path("/tmp").exists() else None,  # nosec
-                    Path("/var/tmp").resolve() if Path("/var/tmp").exists() else None,  # nosec
+                    (Path("/var/tmp").resolve() if Path("/var/tmp").exists() else None),  # nosec
                 ]
 
                 real_path = Path(file_path).resolve()
