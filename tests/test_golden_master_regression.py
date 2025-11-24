@@ -132,6 +132,8 @@ def normalize_output(content: str) -> str:
         # View情報が環境によって欠落する場合の対処
         # active_users, order_summaryなどのviewが検出されない環境がある
         # これらが欠けていても大きな問題ではないため、正規化で吸収
+        if "| view |" in line or ",view," in line:
+            continue
 
         normalized.append(line)
 
