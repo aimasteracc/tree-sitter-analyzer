@@ -2288,6 +2288,30 @@ class SQLPlugin(LanguagePlugin):
             self.adapter = CompatibilityAdapter(None)  # Use default adapter
             self.extractor.set_adapter(self.adapter)
 
+    def get_tree_sitter_language(self) -> Any:
+        """
+        Get the tree-sitter language object for SQL.
+
+        Returns:
+            The tree-sitter language object.
+
+        Raises:
+            RuntimeError: If tree-sitter-sql is not installed.
+        """
+        if self._cached_language:
+            return self._cached_language
+
+        try:
+            import tree_sitter
+            import tree_sitter_sql
+
+            self._cached_language = tree_sitter.Language(tree_sitter_sql.language())
+            return self._cached_language
+        except ImportError as e:
+            raise RuntimeError(
+                "tree-sitter-sql is required for SQL analysis but not installed."
+            ) from e
+
     def get_language_name(self) -> str:
         """Get the language name."""
         return "sql"

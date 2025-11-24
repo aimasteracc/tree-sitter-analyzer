@@ -495,4 +495,5 @@ dev = [
     "types-toml>=0.10.8.20240310",
     "types-requests>=2.32.4.20250913",
     "mypy==1.18.2",
+    "hypothesis>=6.0.0",
 ]
