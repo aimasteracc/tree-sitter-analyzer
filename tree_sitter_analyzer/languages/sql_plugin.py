@@ -1014,96 +1014,80 @@ class SQLElementExtractor(ElementExtractor):
         for node in self._traverse_nodes(root_node):
             if node.type == "ERROR":
                 # Check if this ERROR node contains CREATE TRIGGER
-                has_create = False
-                has_trigger = False
-                trigger_name = None
-                found_trigger_keyword = False
+                # Since multiple triggers might be lumped into one ERROR node,
+                # we need to scan all children or use regex.
+                # Using regex on the node text is more robust for ERROR nodes.
 
-                # Traverse children in order to find the trigger name right after CREATE TRIGGER
-                for child in node.children:
-                    if child.type == "keyword_create":
-                        has_create = True
-                    elif child.type == "keyword_trigger":
-                        has_trigger = True
-                        found_trigger_keyword = True
-                    elif (
-                        child.type == "object_reference"
-                        and found_trigger_keyword
-                        and not trigger_name
-                    ):
-                        # This should be the trigger name (first object_reference after TRIGGER keyword)
-                        for subchild in child.children:
-                            if subchild.type == "identifier":
-                                extracted_name = self._get_node_text(subchild).strip()
-                                # Validate the identifier
-                                if extracted_name and self._is_valid_identifier(
-                                    extracted_name
-                                ):
-                                    trigger_name = extracted_name
-                                break
-                        break  # Stop after finding the first object_reference after TRIGGER
+                node_text = self._get_node_text(node)
+                if not node_text:
+                    continue
 
-                # Skip common SQL keywords that might be incorrectly identified
-                if trigger_name and trigger_name.upper() in (
-                    "KEY",
-                    "AUTO_INCREMENT",
-                    "PRIMARY",
-                    "FOREIGN",
-                    "INDEX",
-                    "UNIQUE",
-                    "PRICE",
-                    "QUANTITY",
-                    "TOTAL",
-                    "SUM",
-                    "COUNT",
-                    "AVG",
-                    "MAX",
-                    "MIN",
-                ):
-                    trigger_name = None
-
-                # Fallback: Parse from raw text if AST parsing failed or returned suspicious name
-                if (has_create and has_trigger) and not trigger_name:
+                node_text_upper = node_text.upper()
+                if "CREATE" in node_text_upper and "TRIGGER" in node_text_upper:
                     import re
 
-                    node_text = self._get_node_text(node)
-                    # Look for pattern: CREATE TRIGGER <name>
-                    match = re.search(
-                        r"CREATE\s+TRIGGER\s+(\w+)", node_text, re.IGNORECASE
+                    # Regex to find CREATE TRIGGER statements
+                    # Matches: CREATE TRIGGER [IF NOT EXISTS] trigger_name
+                    matches = re.finditer(
+                        r"CREATE\s+TRIGGER\s+(?:IF\s+NOT\s+EXISTS\s+)?([a-zA-Z_][a-zA-Z0-9_]*)",
+                        node_text,
+                        re.IGNORECASE,
                     )
-                    if match:
-                        potential_name = match.group(1).strip()
-                        if self._is_valid_identifier(
-                            potential_name
-                        ) and potential_name.upper() not in (
-                            "ON",
-                            "AFTER",
-                            "BEFORE",
-                            "INSERT",
-                            "UPDATE",
-                            "DELETE",
-                            "FOR",
-                            "EACH",
-                            "ROW",
-                        ):
-                            trigger_name = potential_name
 
-                if has_create and has_trigger and trigger_name:
-                    try:
-                        start_line = node.start_point[0] + 1
-                        end_line = node.end_point[0] + 1
-                        raw_text = self._get_node_text(node)
+                    for match in matches:
+                        trigger_name = match.group(1)
 
-                        func = Function(
-                            name=trigger_name,
-                            start_line=start_line,
-                            end_line=end_line,
-                            raw_text=raw_text,
-                            language="sql",
-                        )
-                        functions.append(func)
-                    except Exception as e:
-                        log_debug(f"Failed to extract trigger: {e}")
+                        if trigger_name and self._is_valid_identifier(trigger_name):
+                            # Skip common SQL keywords
+                            if trigger_name.upper() in (
+                                "KEY",
+                                "AUTO_INCREMENT",
+                                "PRIMARY",
+                                "FOREIGN",
+                                "INDEX",
+                                "UNIQUE",
+                                "PRICE",
+                                "QUANTITY",
+                                "TOTAL",
+                                "SUM",
+                                "COUNT",
+                                "AVG",
+                                "MAX",
+                                "MIN",
+                                "CONSTRAINT",
+                                "CHECK",
+                                "DEFAULT",
+                                "REFERENCES",
+                                "ON",
+                                "UPDATE",
+                                "DELETE",
+                                "INSERT",
+                                "BEFORE",
+                                "AFTER",
+                                "INSTEAD",
+                                "OF",
+                            ):
+                                continue
+
+                            try:
+                                # Calculate start line based on match position
+                                newlines_before = node_text[: match.start()].count("\n")
+                                start_line = node.start_point[0] + 1 + newlines_before
+                                end_line = node.end_point[0] + 1
+
+                                # Use the whole error node text as raw text for now
+                                raw_text = node_text
+
+                                func = Function(
+                                    name=trigger_name,
+                                    start_line=start_line,
+                                    end_line=end_line,
+                                    raw_text=raw_text,
+                                    language="sql",
+                                )
+                                functions.append(func)
+                            except Exception as e:
+                                log_debug(f"Failed to extract trigger: {e}")
 
     def _extract_indexes(
         self, root_node: "tree_sitter.Node", variables: list[Variable]
