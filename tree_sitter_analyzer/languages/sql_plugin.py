@@ -1974,8 +1974,10 @@ class SQLElementExtractor(ElementExtractor):
         """Extract CREATE TRIGGER statements with enhanced metadata."""
         import re
 
-        # Get the full source code to calculate accurate line numbers
-        source_code = self._get_node_text(root_node)
+        # Use self.source_code which is set by parent method _extract_sql_elements
+        # This is more reliable than _get_node_text(root_node) which may fail
+        # on some platforms due to encoding or byte offset issues
+        source_code = self.source_code
 
         if not source_code:
             log_debug("WARNING: source_code is empty in _extract_sql_triggers")
