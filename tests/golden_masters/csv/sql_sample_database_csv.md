@@ -4,11 +4,12 @@ orders,table,16-23,5 columns,
 products,table,26-34,7 columns,
 active_users,view,37-44,,
 order_summary,view,47-55,,
-get_user_orders,procedure,58-68,9 parameters,
-update_product_stock,procedure,71-86,11 parameters,
-calculate_order_total,function,89-101,12 parameters,
-is_user_active,function,104-116,12 parameters,
-update_order_total,trigger,119-156,,
+get_user_orders,procedure,58-68,1 parameters,
+update_product_stock,procedure,71-86,2 parameters,
+calculate_order_total,function,89-101,1 parameters,
+is_user_active,function,104-116,1 parameters,
+update_order_total,trigger,119-156,,order_items
+log_user_changes,trigger,133-156,,users
 idx_users_email,index,151-151,email,users
 idx_users_status,index,152-152,status,users
 idx_orders_user_id,index,153-153,user_id,orders
