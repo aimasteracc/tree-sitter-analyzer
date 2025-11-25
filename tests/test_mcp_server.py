@@ -35,7 +35,7 @@ class TestMCPServerBasic:
 
         assert server.name == "tree-sitter-analyzer-mcp"
         # 版本号应与主体一致
-        assert server.version == MCP_INFO["version"]
+        assert server.version.startswith(MCP_INFO["version"])
 
     @patch("tree_sitter_analyzer.mcp.server.MCP_AVAILABLE", True)
     @patch("tree_sitter_analyzer.mcp.server.get_analysis_engine")

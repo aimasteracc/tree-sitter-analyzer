@@ -333,9 +333,9 @@ async def main():
     failed = 0
 
     for test_name, test_func in tests:
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print(f"测试: {test_name}")
-        print(f"{'='*60}")
+        print(f"{'=' * 60}")
         try:
             await test_func()
             passed += 1
@@ -349,9 +349,9 @@ async def main():
             print(f"⚠️ 测试出错: {test_name}")
             print(f"   错误: {e}")
 
-    print(f"\n{'='*80}")
+    print(f"\n{'=' * 80}")
     print(f"测试结果汇总: {passed}个通过, {failed}个失败/出错")
-    print(f"{'='*80}")
+    print(f"{'=' * 80}")
 
     return failed == 0
 

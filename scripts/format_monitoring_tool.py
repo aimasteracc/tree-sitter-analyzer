@@ -19,13 +19,15 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-# Add project root to path
+# Add project root to path - needs to be before imports  # noqa: E402
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from tests.format_testing.golden_master import GoldenMasterManager
-from tests.format_testing.schema_validation import validate_format
-from tree_sitter_analyzer.mcp.tools.table_format_tool import TableFormatTool
+from tests.format_testing.golden_master import GoldenMasterManager  # noqa: E402
+from tests.format_testing.schema_validation import validate_format  # noqa: E402
+from tree_sitter_analyzer.mcp.tools.table_format_tool import (  # noqa: E402
+    TableFormatTool,
+)
 
 
 class FormatMonitoringDatabase:
@@ -372,7 +374,7 @@ class FormatMonitor:
         output = result["table_output"]
 
         # Calculate output hash for regression detection
-        output_hash = hashlib.md5(output.encode("utf-8")).hexdigest()
+        output_hash = hashlib.md5(output.encode("utf-8")).hexdigest()  # nosec
 
         # Validate format compliance
         validation_result = self._validate_format_compliance(output, format_type)
@@ -661,20 +663,20 @@ class FormatMonitor:
 <body>
     <div class="header">
         <h1>Format Monitoring Dashboard</h1>
-        <p>Generated: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC</p>
+        <p>Generated: {datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")} UTC</p>
     </div>
 
     <div class="section">
         <h2>Summary</h2>
-        <p>Active Regressions: <span class="{'error' if reports['summary']['summary']['active_regressions'] > 0 else 'success'}">{reports['summary']['summary']['active_regressions']}</span></p>
-        <p>Monitored Formats: {', '.join(reports['summary']['summary']['monitored_formats'])}</p>
+        <p>Active Regressions: <span class="{"error" if reports["summary"]["summary"]["active_regressions"] > 0 else "success"}">{reports["summary"]["summary"]["active_regressions"]}</span></p>
+        <p>Monitored Formats: {", ".join(reports["summary"]["summary"]["monitored_formats"])}</p>
     </div>
 
     <div class="section">
         <h2>Recent Regressions</h2>
         <table>
             <tr><th>File</th><th>Format</th><th>Type</th><th>Severity</th><th>Description</th></tr>
-            {''.join(f'<tr><td>{r["file_path"]}</td><td>{r["format_type"]}</td><td>{r["regression_type"]}</td><td class="{r["severity"]}">{r["severity"]}</td><td>{r["description"]}</td></tr>' for r in reports['summary']['recent_regressions'])}
+            {"".join(f'<tr><td>{r["file_path"]}</td><td>{r["format_type"]}</td><td>{r["regression_type"]}</td><td class="{r["severity"]}">{r["severity"]}</td><td>{r["description"]}</td></tr>' for r in reports["summary"]["recent_regressions"])}
         </table>
     </div>
 
@@ -682,7 +684,7 @@ class FormatMonitor:
         <h2>Performance Overview</h2>
         <table>
             <tr><th>Format</th><th>Avg Processing Time (ms)</th><th>Sample Count</th></tr>
-            {''.join(f'<tr><td>{fmt}</td><td>{data["avg_processing_time"]:.1f}</td><td>{data["sample_count"]}</td></tr>' for fmt, data in reports['summary']['performance_overview'].items())}
+            {"".join(f"<tr><td>{fmt}</td><td>{data['avg_processing_time']:.1f}</td><td>{data['sample_count']}</td></tr>" for fmt, data in reports["summary"]["performance_overview"].items())}
         </table>
     </div>
 </body>

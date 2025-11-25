@@ -878,7 +878,7 @@ public class ContractTestService {
         expected_methods = 11  # Based on ContractTestService methods
         assert (
             full_method_count >= expected_methods - 2
-        ), f"Expected at least {expected_methods-2} methods, got {full_method_count}"
+        ), f"Expected at least {expected_methods - 2} methods, got {full_method_count}"
 
     @pytest.mark.asyncio
     @pytest.mark.skip(
@@ -929,7 +929,7 @@ public class ContractTestService {
         expected_fields = 4  # Based on ContractTestService fields
         assert (
             full_field_count >= expected_fields - 1
-        ), f"Expected at least {expected_fields-1} fields, got {full_field_count}"
+        ), f"Expected at least {expected_fields - 1} fields, got {full_field_count}"
 
     @pytest.mark.asyncio
     async def test_parameter_encoding_contract(

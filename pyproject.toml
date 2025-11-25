@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "tree-sitter-analyzer"
-version = "1.9.15"
+version = "1.9.16"
 description = "AI-era enterprise-grade code analysis tool with comprehensive HTML/CSS support, dynamic plugin architecture, and MCP integration"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -68,6 +68,9 @@ dependencies = [
     "tree-sitter-typescript>=0.23.2",
     "deepdiff>=6.7.1",
     "tree-sitter-c-sharp>=0.23.1",
+    "tree-sitter-sql>=0.3.11",
+    "tree-sitter-php>=0.24.1",
+    "tree-sitter-ruby>=0.23.1",
 ]
 
 # Add C# to optional dependencies
@@ -149,6 +152,7 @@ dev = [
     "pytest-cov>=4.0.0",
     "pytest-asyncio>=1.1.0",
     "pytest-mock>=3.14.1",
+    "hypothesis>=6.0.0",
     "black>=24.0.0",
     "ruff>=0.5.0",
     "mypy>=1.17.0",
@@ -438,7 +442,7 @@ directory = "htmlcov"
 # MCP server configuration
 [tool.mcp]
 server_name = "tree-sitter-analyzer"
-server_version = "1.9.15"
+server_version = "1.9.16"
 description = "AI-era enterprise-grade code analysis MCP server with comprehensive HTML/CSS support and multi-language capabilities"
 capabilities = [
     "check_code_scale",
@@ -469,6 +473,9 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["B011"]
 
+[tool.ruff.lint.isort]
+known-first-party = ["tree_sitter_analyzer"]
+
 [tool.bandit]
 exclude_dirs = ["tests", "archived_files"]
 skips = ["B101", "B601"]
@@ -491,4 +498,5 @@ dev = [
     "types-toml>=0.10.8.20240310",
     "types-requests>=2.32.4.20250913",
     "mypy==1.18.2",
+    "hypothesis>=6.0.0",
 ]

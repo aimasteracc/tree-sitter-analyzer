@@ -109,7 +109,7 @@ def verify_golden_masters(
                 output = run_analyzer(sample_file, format_name)
                 outputs.append(output)
             except subprocess.CalledProcessError as e:
-                print(f"  ✗ Run {i+1} failed for {format_name}: {e}", file=sys.stderr)
+                print(f"  ✗ Run {i + 1} failed for {format_name}: {e}", file=sys.stderr)
                 return False
 
         # Check if all outputs are identical
@@ -122,16 +122,16 @@ def verify_golden_masters(
             # Show differences
             for i in range(1, len(outputs)):
                 if outputs[i] != outputs[0]:
-                    print(f"    Difference between run 1 and run {i+1}:")
+                    print(f"    Difference between run 1 and run {i + 1}:")
                     lines1 = outputs[0].split("\n")
                     lines2 = outputs[i].split("\n")
                     for j, (line1, line2) in enumerate(
                         zip(lines1, lines2, strict=False)
                     ):
                         if line1 != line2:
-                            print(f"      Line {j+1}:")
+                            print(f"      Line {j + 1}:")
                             print(f"        Run 1: {line1!r}")
-                            print(f"        Run {i+1}: {line2!r}")
+                            print(f"        Run {i + 1}: {line2!r}")
                             break
 
     return all_consistent
@@ -146,9 +146,9 @@ def update_test_file(language: str, sample_file: str, output_base_name: str) -> 
         sample_file: Path to sample file
         output_base_name: Base name for output files
     """
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print("Next Steps:")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
     print("\n1. Add test cases to tests/test_golden_master_regression.py:")
     print(
         f"""
@@ -164,7 +164,7 @@ def update_test_file(language: str, sample_file: str, output_base_name: str) -> 
     print("   - Fix the plugin to ensure deterministic output")
     print("   - Regenerate golden masters after fixing")
     print("   - Temporarily disable tests with TODO comment")
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
 
 
 def main():

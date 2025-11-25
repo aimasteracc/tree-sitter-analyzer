@@ -45,7 +45,7 @@ class OutputFormatValidator:
             if current_locale and current_locale.startswith("ja"):
                 return "ja"
         except Exception:
-            pass
+            pass  # nosec
 
         # Default to English
         return "en"

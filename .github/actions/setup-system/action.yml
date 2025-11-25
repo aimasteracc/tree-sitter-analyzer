@@ -1,0 +1,67 @@
+# Composite System Setup Action
+#
+# Purpose: Consistent system dependency installation across all workflows
+# Installs: fd and ripgrep on Linux, macOS, and Windows
+# Creates: Symlink for fdfind → fd on Ubuntu
+
+name: 'Setup System Dependencies'
+description: 'Install fd and ripgrep system dependencies for all platforms'
+
+inputs:
+  os:
+    description: 'Operating system (ubuntu-latest, windows-latest, macos-13)'
+    required: true
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Install system dependencies (Linux)
+      if: inputs.os == 'ubuntu-latest'
+      run: |
+        echo "Installing fd and ripgrep on Linux..."
+        sudo apt-get update
+        sudo apt-get install -y fd-find ripgrep
+
+        # Create symlink for fd command (Ubuntu packages it as fdfind)
+        sudo ln -sf /usr/bin/fdfind /usr/bin/fd
+
+        # Verify installation
+        echo "Verifying installation..."
+        fd --version || { echo "❌ fd installation failed"; exit 1; }
+        rg --version || { echo "❌ ripgrep installation failed"; exit 1; }
+        echo "✅ System dependencies installed successfully on Linux"
+      shell: bash
+
+    - name: Install system dependencies (macOS)
+      if: inputs.os == 'macos-13'
+      run: |
+        echo "Installing fd and ripgrep on macOS..."
+        brew install fd ripgrep
+
+        # Verify installation
+        echo "Verifying installation..."
+        fd --version || { echo "❌ fd installation failed"; exit 1; }
+        rg --version || { echo "❌ ripgrep installation failed"; exit 1; }
+        echo "✅ System dependencies installed successfully on macOS"
+      shell: bash
+
+    - name: Install system dependencies (Windows)
+      if: inputs.os == 'windows-latest'
+      run: |
+        Write-Host "Installing fd and ripgrep on Windows..."
+        choco install fd ripgrep -y
+
+        # Verify installation
+        Write-Host "Verifying installation..."
+        fd --version
+        if ($LASTEXITCODE -ne 0) {
+          Write-Host "❌ fd installation failed"
+          exit 1
+        }
+        rg --version
+        if ($LASTEXITCODE -ne 0) {
+          Write-Host "❌ ripgrep installation failed"
+          exit 1
+        }
+        Write-Host "✅ System dependencies installed successfully on Windows"
+      shell: powershell

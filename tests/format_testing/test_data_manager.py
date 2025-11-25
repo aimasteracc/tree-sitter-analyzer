@@ -136,7 +136,7 @@ class FormatTestDataGenerator:
         templates = self.language_templates[language]
 
         classes = []
-        for i in range(element_counts.get("classes", 3)):
+        for _i in range(element_counts.get("classes", 3)):
             class_name = self._generate_name("Class")
             methods = []
             fields = []
@@ -145,7 +145,7 @@ class FormatTestDataGenerator:
             methods_per_class = element_counts.get("methods", 10) // element_counts.get(
                 "classes", 3
             )
-            for j in range(methods_per_class):
+            for _j in range(methods_per_class):
                 method_name = self._generate_name("method")
                 methods.append(templates["method"].format(method_name=method_name))
 
@@ -153,7 +153,7 @@ class FormatTestDataGenerator:
             fields_per_class = element_counts.get("fields", 6) // element_counts.get(
                 "classes", 3
             )
-            for k in range(fields_per_class):
+            for _k in range(fields_per_class):
                 field_name = self._generate_name("field")
                 fields.append(templates["field"].format(field_name=field_name))
 
@@ -931,7 +931,7 @@ class TestDataValidator:
                         counts["methods"] += 1
                     elif isinstance(node, ast.Assign):
                         counts["fields"] += len(node.targets)
-            except:
+            except (SyntaxError, ValueError):
                 pass
 
         elif language == "java":
@@ -1014,7 +1014,7 @@ class FormatTestDataManager:
 
         # Generate new test data if none found
         test_data = self.generator.generate_test_data(language, complexity)
-        test_id = self.repository.store_test_data(test_data)
+        self.repository.store_test_data(test_data)
         return test_data
 
     def validate_repository(self) -> dict[str, Any]:

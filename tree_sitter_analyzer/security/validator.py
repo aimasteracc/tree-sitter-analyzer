@@ -383,11 +383,11 @@ class SecurityValidator:
                     return bool(attributes & FILE_ATTRIBUTE_REPARSE_POINT)
 
             except (ImportError, AttributeError, OSError):
-                pass
+                pass  # nosec
 
         except Exception:
             # If any error occurs, assume it's not a junction for safety
-            pass
+            pass  # nosec
 
         return False
 
@@ -411,7 +411,7 @@ class SecurityValidator:
 
         except Exception:
             # If any error occurs, assume no junctions for safety
-            pass
+            pass  # nosec
 
         return False
 
@@ -502,8 +502,8 @@ class SecurityValidator:
                 # Allow access to common temporary directories
                 temp_dirs = [
                     Path(tempfile.gettempdir()).resolve(),
-                    Path("/tmp").resolve() if Path("/tmp").exists() else None,
-                    Path("/var/tmp").resolve() if Path("/var/tmp").exists() else None,
+                    Path("/tmp").resolve() if Path("/tmp").exists() else None,  # nosec
+                    (Path("/var/tmp").resolve() if Path("/var/tmp").exists() else None),  # nosec
                 ]
 
                 real_path = Path(file_path).resolve()

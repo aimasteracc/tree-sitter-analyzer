@@ -11,13 +11,13 @@ Modules:
 
 Usage:
     from tests.fixtures import coverage_helpers, data_generators, assertion_helpers
-    
+
     # Create mock data
     node = coverage_helpers.create_mock_node("function_definition")
-    
+
     # Generate test code
     code = data_generators.generate_python_function("my_func")
-    
+
     # Use custom assertions
     assertion_helpers.assert_analysis_result_valid(result)
 """

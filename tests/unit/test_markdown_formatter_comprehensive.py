@@ -8,8 +8,6 @@ Target: >85% coverage
 import json
 from unittest.mock import Mock, patch
 
-import pytest
-
 from tree_sitter_analyzer.formatters.markdown_formatter import MarkdownFormatter
 
 
@@ -272,9 +270,7 @@ class TestFormatStructure:
         analysis_result = {
             "file_path": "test.md",
             "line_count": 100,
-            "elements": [
-                {"type": "link", "text": "Link", "url": "http://example.com"}
-            ],
+            "elements": [{"type": "link", "text": "Link", "url": "http://example.com"}],
         }
 
         result = formatter.format_structure(analysis_result)

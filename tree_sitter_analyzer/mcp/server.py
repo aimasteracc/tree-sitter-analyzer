@@ -56,6 +56,7 @@ from ..constants import (
     is_element_of_type,
 )
 from ..core.analysis_engine import get_analysis_engine
+from ..platform_compat.detector import PlatformDetector
 from ..project_detector import detect_project_root
 from ..security import SecurityValidator
 from ..utils import setup_logger
@@ -97,7 +98,7 @@ class TreeSitterAnalyzerMCPServer:
 
         try:
             logger.info("Starting MCP server initialization...")
-        except Exception:
+        except Exception:  # nosec
             # Gracefully handle logging failures during initialization
             pass
 
@@ -137,12 +138,26 @@ class TreeSitterAnalyzerMCPServer:
         self.name = MCP_INFO["name"]
         self.version = MCP_INFO["version"]
 
+        # Add platform info to version for better diagnostics
+        try:
+            platform_info = PlatformDetector.detect()
+            self.version = f"{self.version} ({platform_info.platform_key})"
+            try:
+                logger.info(f"Running on platform: {platform_info}")
+            except Exception:  # nosec
+                pass
+        except Exception as e:
+            try:
+                logger.warning(f"Failed to detect platform: {e}")
+            except Exception:  # nosec
+                pass
+
         self._initialization_complete = True
         try:
             logger.info(
                 f"MCP server initialization complete: {self.name} v{self.version}"
             )
-        except Exception:
+        except Exception:  # nosec
             # Gracefully handle logging failures during initialization
             pass
 

@@ -144,7 +144,7 @@ class PerformanceTester:
                 self.profiler.start_profiling()
 
                 # Execute test function
-                result = test_function(test_data)
+                test_function(test_data)
 
                 # Get performance metrics
                 metrics = self.profiler.stop_profiling()
@@ -163,7 +163,7 @@ class PerformanceTester:
                 element_count = self._estimate_element_count(test_data)
 
                 result_metrics = PerformanceMetrics(
-                    test_name=f"{test_name}_iteration_{i+1}",
+                    test_name=f"{test_name}_iteration_{i + 1}",
                     execution_time_ms=metrics["execution_time_ms"],
                     memory_usage_mb=metrics["memory_usage_mb"],
                     peak_memory_mb=metrics["peak_memory_mb"],
@@ -180,7 +180,7 @@ class PerformanceTester:
 
             except Exception as e:
                 error_metrics = PerformanceMetrics(
-                    test_name=f"{test_name}_iteration_{i+1}",
+                    test_name=f"{test_name}_iteration_{i + 1}",
                     execution_time_ms=0,
                     memory_usage_mb=0,
                     peak_memory_mb=0,
@@ -641,7 +641,7 @@ class FormatPerformanceTester:
         for format_type in format_types:
             test_name = f"format_{language}_{format_type}"
 
-            def test_function(data):
+            def test_function(data, format_type=format_type):
                 return analyzer_function(data, format_type=format_type)
 
             metrics = self.performance_tester.run_performance_test(

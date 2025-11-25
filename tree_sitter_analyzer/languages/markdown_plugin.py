@@ -21,9 +21,8 @@ except ImportError:
 
 from ..core.analysis_engine import AnalysisRequest
 from ..encoding_utils import extract_text_slice, safe_encode
-from ..models import AnalysisResult
+from ..models import AnalysisResult, CodeElement
 from ..models import Class as ModelClass
-from ..models import CodeElement
 from ..models import Function as ModelFunction
 from ..models import Import as ModelImport
 from ..models import Variable as ModelVariable

@@ -1,7 +1,9 @@
 """Tests for C# plugin functionality."""
 
-import pytest
 from pathlib import Path
+
+import pytest
+
 from tree_sitter_analyzer.languages.csharp_plugin import CSharpPlugin
 
 
@@ -76,14 +78,13 @@ class TestCSharpIntegration:
         assert ".cs" in extensions
 
     @pytest.mark.skipif(
-        not Path("examples/Sample.cs").exists(),
-        reason="C# sample file not found"
+        not Path("examples/Sample.cs").exists(), reason="C# sample file not found"
     )
     def test_analyze_sample_file(self):
         """Test analysis of example C# file."""
-        plugin = CSharpPlugin()
+        CSharpPlugin()
         sample_path = Path("examples/Sample.cs")
-        with open(sample_path, "r", encoding="utf-8") as f:
+        with open(sample_path, encoding="utf-8") as f:
             code = f.read()
         # Just verify it can be read without errors
         assert len(code) > 0

@@ -4,10 +4,7 @@
 from __future__ import annotations
 
 import argparse
-import asyncio
-from pathlib import Path
-from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -25,20 +22,23 @@ class TestBuildParser:
         """Test parser is created successfully."""
         parser = _build_parser()
         assert isinstance(parser, argparse.ArgumentParser)
-        assert "find_and_grep" in parser.description.lower() or "search" in parser.description.lower()
+        assert (
+            "find_and_grep" in parser.description.lower()
+            or "search" in parser.description.lower()
+        )
 
     def test_required_arguments(self) -> None:
         """Test required arguments are enforced."""
         parser = _build_parser()
-        
+
         # Missing all required args should raise
         with pytest.raises(SystemExit):
             parser.parse_args([])
-        
+
         # Missing --query should raise
         with pytest.raises(SystemExit):
             parser.parse_args(["--roots", "root1"])
-        
+
         # Missing --roots should raise
         with pytest.raises(SystemExit):
             parser.parse_args(["--query", "test"])
@@ -47,7 +47,7 @@ class TestBuildParser:
         """Test minimal valid argument set."""
         parser = _build_parser()
         args = parser.parse_args(["--roots", "root1", "--query", "test"])
-        
+
         assert args.roots == ["root1"]
         assert args.query == "test"
         assert args.output_format == "json"
@@ -56,60 +56,85 @@ class TestBuildParser:
     def test_multiple_roots(self) -> None:
         """Test multiple search roots."""
         parser = _build_parser()
-        args = parser.parse_args(["--roots", "root1", "root2", "root3", "--query", "test"])
-        
+        args = parser.parse_args(
+            ["--roots", "root1", "root2", "root3", "--query", "test"]
+        )
+
         assert args.roots == ["root1", "root2", "root3"]
 
     def test_output_format_options(self) -> None:
         """Test output format choices."""
         parser = _build_parser()
-        
+
         # JSON format
-        args = parser.parse_args(["--roots", "root1", "--query", "test", "--output-format", "json"])
+        args = parser.parse_args(
+            ["--roots", "root1", "--query", "test", "--output-format", "json"]
+        )
         assert args.output_format == "json"
-        
+
         # Text format
-        args = parser.parse_args(["--roots", "root1", "--query", "test", "--output-format", "text"])
+        args = parser.parse_args(
+            ["--roots", "root1", "--query", "test", "--output-format", "text"]
+        )
         assert args.output_format == "text"
-        
+
         # Invalid format should raise
         with pytest.raises(SystemExit):
-            parser.parse_args(["--roots", "root1", "--query", "test", "--output-format", "xml"])
+            parser.parse_args(
+                ["--roots", "root1", "--query", "test", "--output-format", "xml"]
+            )
 
     def test_quiet_flag(self) -> None:
         """Test quiet flag."""
         parser = _build_parser()
-        
+
         args = parser.parse_args(["--roots", "root1", "--query", "test", "--quiet"])
         assert args.quiet is True
-        
+
         args = parser.parse_args(["--roots", "root1", "--query", "test"])
         assert args.quiet is False
 
     def test_fd_options(self) -> None:
         """Test fd-specific options."""
         parser = _build_parser()
-        
-        args = parser.parse_args([
-            "--roots", "root1",
-            "--query", "test",
-            "--pattern", "*.py",
-            "--glob",
-            "--types", "python", "javascript",
-            "--extensions", "py", "js",
-            "--exclude", "node_modules", "__pycache__",
-            "--depth", "5",
-            "--follow-symlinks",
-            "--hidden",
-            "--no-ignore",
-            "--size", "+1M",
-            "--changed-within", "1week",
-            "--changed-before", "2023-01-01",
-            "--full-path-match",
-            "--file-limit", "1000",
-            "--sort", "mtime",
-        ])
-        
+
+        args = parser.parse_args(
+            [
+                "--roots",
+                "root1",
+                "--query",
+                "test",
+                "--pattern",
+                "*.py",
+                "--glob",
+                "--types",
+                "python",
+                "javascript",
+                "--extensions",
+                "py",
+                "js",
+                "--exclude",
+                "node_modules",
+                "__pycache__",
+                "--depth",
+                "5",
+                "--follow-symlinks",
+                "--hidden",
+                "--no-ignore",
+                "--size",
+                "+1M",
+                "--changed-within",
+                "1week",
+                "--changed-before",
+                "2023-01-01",
+                "--full-path-match",
+                "--file-limit",
+                "1000",
+                "--sort",
+                "mtime",
+            ]
+        )
+
         assert args.pattern == "*.py"
         assert args.glob is True
         assert args.types == ["python", "javascript"]
@@ -129,29 +154,43 @@ class TestBuildParser:
     def test_rg_options(self) -> None:
         """Test ripgrep-specific options."""
         parser = _build_parser()
-        
-        args = parser.parse_args([
-            "--roots", "root1",
-            "--query", "test",
-            "--case", "insensitive",
-            "--fixed-strings",
-            "--word",
-            "--multiline",
-            "--include-globs", "*.py", "*.js",
-            "--exclude-globs", "*.txt",
-            "--max-filesize", "1M",
-            "--context-before", "3",
-            "--context-after", "5",
-            "--encoding", "utf-8",
-            "--max-count", "100",
-            "--timeout-ms", "5000",
-            "--count-only-matches",
-            "--summary-only",
-            "--optimize-paths",
-            "--group-by-file",
-            "--total-only",
-        ])
-        
+
+        args = parser.parse_args(
+            [
+                "--roots",
+                "root1",
+                "--query",
+                "test",
+                "--case",
+                "insensitive",
+                "--fixed-strings",
+                "--word",
+                "--multiline",
+                "--include-globs",
+                "*.py",
+                "*.js",
+                "--exclude-globs",
+                "*.txt",
+                "--max-filesize",
+                "1M",
+                "--context-before",
+                "3",
+                "--context-after",
+                "5",
+                "--encoding",
+                "utf-8",
+                "--max-count",
+                "100",
+                "--timeout-ms",
+                "5000",
+                "--count-only-matches",
+                "--summary-only",
+                "--optimize-paths",
+                "--group-by-file",
+                "--total-only",
+            ]
+        )
+
         assert args.case == "insensitive"
         assert args.fixed_strings is True
         assert args.word is True
@@ -173,28 +212,37 @@ class TestBuildParser:
     def test_case_options(self) -> None:
         """Test case sensitivity options."""
         parser = _build_parser()
-        
+
         for case_val in ["smart", "insensitive", "sensitive"]:
-            args = parser.parse_args(["--roots", "root1", "--query", "test", "--case", case_val])
+            args = parser.parse_args(
+                ["--roots", "root1", "--query", "test", "--case", case_val]
+            )
             assert args.case == case_val
 
     def test_sort_options(self) -> None:
         """Test sort options."""
         parser = _build_parser()
-        
+
         for sort_val in ["path", "mtime", "size"]:
-            args = parser.parse_args(["--roots", "root1", "--query", "test", "--sort", sort_val])
+            args = parser.parse_args(
+                ["--roots", "root1", "--query", "test", "--sort", sort_val]
+            )
             assert args.sort == sort_val
 
     def test_project_root_option(self) -> None:
         """Test project root option."""
         parser = _build_parser()
-        
-        args = parser.parse_args([
-            "--roots", "root1",
-            "--query", "test",
-            "--project-root", "/path/to/project",
-        ])
+
+        args = parser.parse_args(
+            [
+                "--roots",
+                "root1",
+                "--query",
+                "test",
+                "--project-root",
+                "/path/to/project",
+            ]
+        )
         assert args.project_root == "/path/to/project"
 
 
@@ -243,21 +291,30 @@ class TestRunFunction:
             group_by_file=False,
             total_only=False,
         )
-        
+
         mock_result = {"matches": 5, "files": ["file1.py", "file2.py"]}
-        
-        with patch("tree_sitter_analyzer.cli.commands.find_and_grep_cli.detect_project_root") as mock_detect, \
-             patch("tree_sitter_analyzer.cli.commands.find_and_grep_cli.FindAndGrepTool") as mock_tool_class, \
-             patch("tree_sitter_analyzer.cli.commands.find_and_grep_cli.set_output_mode") as mock_set_output, \
-             patch("tree_sitter_analyzer.cli.commands.find_and_grep_cli.output_data") as mock_output:
-            
+
+        with (
+            patch(
+                "tree_sitter_analyzer.cli.commands.find_and_grep_cli.detect_project_root"
+            ) as mock_detect,
+            patch(
+                "tree_sitter_analyzer.cli.commands.find_and_grep_cli.FindAndGrepTool"
+            ) as mock_tool_class,
+            patch(
+                "tree_sitter_analyzer.cli.commands.find_and_grep_cli.set_output_mode"
+            ) as mock_set_output,
+            patch(
+                "tree_sitter_analyzer.cli.commands.find_and_grep_cli.output_data"
+            ) as mock_output,
+        ):
             mock_detect.return_value = "/project/root"
             mock_tool = AsyncMock()
             mock_tool.execute = AsyncMock(return_value=mock_result)
             mock_tool_class.return_value = mock_tool
-            
+
             result = await _run(args)
-            
+
             assert result == 0
             mock_detect.assert_called_once()
             mock_set_output.assert_called_once_with(quiet=False, json_output=True)
@@ -307,19 +364,28 @@ class TestRunFunction:
             group_by_file=False,
             total_only=False,
         )
-        
-        with patch("tree_sitter_analyzer.cli.commands.find_and_grep_cli.detect_project_root") as mock_detect, \
-             patch("tree_sitter_analyzer.cli.commands.find_and_grep_cli.FindAndGrepTool") as mock_tool_class, \
-             patch("tree_sitter_analyzer.cli.commands.find_and_grep_cli.set_output_mode") as mock_set_output, \
-             patch("tree_sitter_analyzer.cli.commands.find_and_grep_cli.output_data") as mock_output:
-            
+
+        with (
+            patch(
+                "tree_sitter_analyzer.cli.commands.find_and_grep_cli.detect_project_root"
+            ) as mock_detect,
+            patch(
+                "tree_sitter_analyzer.cli.commands.find_and_grep_cli.FindAndGrepTool"
+            ) as mock_tool_class,
+            patch(
+                "tree_sitter_analyzer.cli.commands.find_and_grep_cli.set_output_mode"
+            ) as mock_set_output,
+            patch(
+                "tree_sitter_analyzer.cli.commands.find_and_grep_cli.output_data"
+            ) as mock_output,
+        ):
             mock_detect.return_value = "/custom/root"
             mock_tool = AsyncMock()
             mock_tool.execute = AsyncMock(return_value={"result": "text"})
             mock_tool_class.return_value = mock_tool
-            
+
             result = await _run(args)
-            
+
             assert result == 0
             mock_set_output.assert_called_once_with(quiet=True, json_output=False)
             mock_output.assert_called_once_with({"result": "text"}, "text")
@@ -366,19 +432,26 @@ class TestRunFunction:
             group_by_file=False,
             total_only=False,
         )
-        
-        with patch("tree_sitter_analyzer.cli.commands.find_and_grep_cli.detect_project_root") as mock_detect, \
-             patch("tree_sitter_analyzer.cli.commands.find_and_grep_cli.FindAndGrepTool") as mock_tool_class, \
-             patch("tree_sitter_analyzer.cli.commands.find_and_grep_cli.set_output_mode"), \
-             patch("tree_sitter_analyzer.cli.commands.find_and_grep_cli.output_data"):
-            
+
+        with (
+            patch(
+                "tree_sitter_analyzer.cli.commands.find_and_grep_cli.detect_project_root"
+            ) as mock_detect,
+            patch(
+                "tree_sitter_analyzer.cli.commands.find_and_grep_cli.FindAndGrepTool"
+            ) as mock_tool_class,
+            patch(
+                "tree_sitter_analyzer.cli.commands.find_and_grep_cli.set_output_mode"
+            ),
+            patch("tree_sitter_analyzer.cli.commands.find_and_grep_cli.output_data"),
+        ):
             mock_detect.return_value = "/project/root"
             mock_tool = AsyncMock()
             mock_tool.execute = AsyncMock(return_value={})
             mock_tool_class.return_value = mock_tool
-            
+
             await _run(args)
-            
+
             # Check the payload passed to execute
             call_args = mock_tool.execute.call_args[0][0]
             assert call_args["roots"] == ["root1", "root2"]
@@ -441,19 +514,26 @@ class TestRunFunction:
             group_by_file=True,
             total_only=True,
         )
-        
-        with patch("tree_sitter_analyzer.cli.commands.find_and_grep_cli.detect_project_root") as mock_detect, \
-             patch("tree_sitter_analyzer.cli.commands.find_and_grep_cli.FindAndGrepTool") as mock_tool_class, \
-             patch("tree_sitter_analyzer.cli.commands.find_and_grep_cli.set_output_mode"), \
-             patch("tree_sitter_analyzer.cli.commands.find_and_grep_cli.output_data"):
-            
+
+        with (
+            patch(
+                "tree_sitter_analyzer.cli.commands.find_and_grep_cli.detect_project_root"
+            ) as mock_detect,
+            patch(
+                "tree_sitter_analyzer.cli.commands.find_and_grep_cli.FindAndGrepTool"
+            ) as mock_tool_class,
+            patch(
+                "tree_sitter_analyzer.cli.commands.find_and_grep_cli.set_output_mode"
+            ),
+            patch("tree_sitter_analyzer.cli.commands.find_and_grep_cli.output_data"),
+        ):
             mock_detect.return_value = "/project/root"
             mock_tool = AsyncMock()
             mock_tool.execute = AsyncMock(return_value={})
             mock_tool_class.return_value = mock_tool
-            
+
             await _run(args)
-            
+
             # Check the payload passed to execute
             call_args = mock_tool.execute.call_args[0][0]
             assert call_args["case"] == "insensitive"
@@ -516,19 +596,28 @@ class TestRunFunction:
             group_by_file=False,
             total_only=False,
         )
-        
-        with patch("tree_sitter_analyzer.cli.commands.find_and_grep_cli.detect_project_root") as mock_detect, \
-             patch("tree_sitter_analyzer.cli.commands.find_and_grep_cli.FindAndGrepTool") as mock_tool_class, \
-             patch("tree_sitter_analyzer.cli.commands.find_and_grep_cli.set_output_mode"), \
-             patch("tree_sitter_analyzer.cli.commands.find_and_grep_cli.output_data") as mock_output:
-            
+
+        with (
+            patch(
+                "tree_sitter_analyzer.cli.commands.find_and_grep_cli.detect_project_root"
+            ) as mock_detect,
+            patch(
+                "tree_sitter_analyzer.cli.commands.find_and_grep_cli.FindAndGrepTool"
+            ) as mock_tool_class,
+            patch(
+                "tree_sitter_analyzer.cli.commands.find_and_grep_cli.set_output_mode"
+            ),
+            patch(
+                "tree_sitter_analyzer.cli.commands.find_and_grep_cli.output_data"
+            ) as mock_output,
+        ):
             mock_detect.return_value = "/project/root"
             mock_tool = AsyncMock()
             mock_tool.execute = AsyncMock(return_value=42)  # Integer result
             mock_tool_class.return_value = mock_tool
-            
+
             result = await _run(args)
-            
+
             assert result == 0
             mock_output.assert_called_once_with(42, "json")
 
@@ -574,19 +663,28 @@ class TestRunFunction:
             group_by_file=False,
             total_only=False,
         )
-        
-        with patch("tree_sitter_analyzer.cli.commands.find_and_grep_cli.detect_project_root") as mock_detect, \
-             patch("tree_sitter_analyzer.cli.commands.find_and_grep_cli.FindAndGrepTool") as mock_tool_class, \
-             patch("tree_sitter_analyzer.cli.commands.find_and_grep_cli.set_output_mode"), \
-             patch("tree_sitter_analyzer.cli.commands.find_and_grep_cli.output_error") as mock_error:
-            
+
+        with (
+            patch(
+                "tree_sitter_analyzer.cli.commands.find_and_grep_cli.detect_project_root"
+            ) as mock_detect,
+            patch(
+                "tree_sitter_analyzer.cli.commands.find_and_grep_cli.FindAndGrepTool"
+            ) as mock_tool_class,
+            patch(
+                "tree_sitter_analyzer.cli.commands.find_and_grep_cli.set_output_mode"
+            ),
+            patch(
+                "tree_sitter_analyzer.cli.commands.find_and_grep_cli.output_error"
+            ) as mock_error,
+        ):
             mock_detect.return_value = "/project/root"
             mock_tool = AsyncMock()
             mock_tool.execute = AsyncMock(side_effect=RuntimeError("Test error"))
             mock_tool_class.return_value = mock_tool
-            
+
             result = await _run(args)
-            
+
             assert result == 1
             mock_error.assert_called_once_with("Test error")
 
@@ -632,19 +730,26 @@ class TestRunFunction:
             group_by_file=False,
             total_only=False,
         )
-        
-        with patch("tree_sitter_analyzer.cli.commands.find_and_grep_cli.detect_project_root") as mock_detect, \
-             patch("tree_sitter_analyzer.cli.commands.find_and_grep_cli.FindAndGrepTool") as mock_tool_class, \
-             patch("tree_sitter_analyzer.cli.commands.find_and_grep_cli.set_output_mode"), \
-             patch("tree_sitter_analyzer.cli.commands.find_and_grep_cli.output_data"):
-            
+
+        with (
+            patch(
+                "tree_sitter_analyzer.cli.commands.find_and_grep_cli.detect_project_root"
+            ) as mock_detect,
+            patch(
+                "tree_sitter_analyzer.cli.commands.find_and_grep_cli.FindAndGrepTool"
+            ) as mock_tool_class,
+            patch(
+                "tree_sitter_analyzer.cli.commands.find_and_grep_cli.set_output_mode"
+            ),
+            patch("tree_sitter_analyzer.cli.commands.find_and_grep_cli.output_data"),
+        ):
             mock_detect.return_value = "/custom/path"
             mock_tool = AsyncMock()
             mock_tool.execute = AsyncMock(return_value={})
             mock_tool_class.return_value = mock_tool
-            
+
             await _run(args)
-            
+
             mock_detect.assert_called_once_with(None, "/custom/path")
             mock_tool_class.assert_called_once_with("/custom/path")
 
@@ -655,70 +760,93 @@ class TestMainFunction:
     def test_main_success(self) -> None:
         """Test main function with successful execution."""
         test_args = ["--roots", "root1", "--query", "test"]
-        
-        with patch("sys.argv", ["find_and_grep_cli.py"] + test_args), \
-             patch("tree_sitter_analyzer.cli.commands.find_and_grep_cli.detect_project_root") as mock_detect, \
-             patch("tree_sitter_analyzer.cli.commands.find_and_grep_cli.FindAndGrepTool") as mock_tool_class, \
-             patch("tree_sitter_analyzer.cli.commands.find_and_grep_cli.set_output_mode"), \
-             patch("tree_sitter_analyzer.cli.commands.find_and_grep_cli.output_data"), \
-             pytest.raises(SystemExit) as exc_info:
-            
+
+        with (
+            patch("sys.argv", ["find_and_grep_cli.py"] + test_args),
+            patch(
+                "tree_sitter_analyzer.cli.commands.find_and_grep_cli.detect_project_root"
+            ) as mock_detect,
+            patch(
+                "tree_sitter_analyzer.cli.commands.find_and_grep_cli.FindAndGrepTool"
+            ) as mock_tool_class,
+            patch(
+                "tree_sitter_analyzer.cli.commands.find_and_grep_cli.set_output_mode"
+            ),
+            patch("tree_sitter_analyzer.cli.commands.find_and_grep_cli.output_data"),
+            pytest.raises(SystemExit) as exc_info,
+        ):
             mock_detect.return_value = "/project/root"
             mock_tool = AsyncMock()
             mock_tool.execute = AsyncMock(return_value={})
             mock_tool_class.return_value = mock_tool
-            
+
             main()
-        
+
         assert exc_info.value.code == 0
 
     def test_main_error(self) -> None:
         """Test main function with error."""
         test_args = ["--roots", "root1", "--query", "test"]
-        
-        with patch("sys.argv", ["find_and_grep_cli.py"] + test_args), \
-             patch("tree_sitter_analyzer.cli.commands.find_and_grep_cli.detect_project_root") as mock_detect, \
-             patch("tree_sitter_analyzer.cli.commands.find_and_grep_cli.FindAndGrepTool") as mock_tool_class, \
-             patch("tree_sitter_analyzer.cli.commands.find_and_grep_cli.set_output_mode"), \
-             patch("tree_sitter_analyzer.cli.commands.find_and_grep_cli.output_error"), \
-             pytest.raises(SystemExit) as exc_info:
-            
+
+        with (
+            patch("sys.argv", ["find_and_grep_cli.py"] + test_args),
+            patch(
+                "tree_sitter_analyzer.cli.commands.find_and_grep_cli.detect_project_root"
+            ) as mock_detect,
+            patch(
+                "tree_sitter_analyzer.cli.commands.find_and_grep_cli.FindAndGrepTool"
+            ) as mock_tool_class,
+            patch(
+                "tree_sitter_analyzer.cli.commands.find_and_grep_cli.set_output_mode"
+            ),
+            patch("tree_sitter_analyzer.cli.commands.find_and_grep_cli.output_error"),
+            pytest.raises(SystemExit) as exc_info,
+        ):
             mock_detect.return_value = "/project/root"
             mock_tool = AsyncMock()
             mock_tool.execute = AsyncMock(side_effect=RuntimeError("Test error"))
             mock_tool_class.return_value = mock_tool
-            
+
             main()
-        
+
         assert exc_info.value.code == 1
 
     def test_main_keyboard_interrupt(self) -> None:
         """Test main function handles keyboard interrupt."""
         test_args = ["--roots", "root1", "--query", "test"]
-        
-        with patch("sys.argv", ["find_and_grep_cli.py"] + test_args), \
-             patch("tree_sitter_analyzer.cli.commands.find_and_grep_cli.detect_project_root") as mock_detect, \
-             patch("tree_sitter_analyzer.cli.commands.find_and_grep_cli.FindAndGrepTool") as mock_tool_class, \
-             patch("tree_sitter_analyzer.cli.commands.find_and_grep_cli.set_output_mode"), \
-             pytest.raises(SystemExit) as exc_info:
-            
+
+        with (
+            patch("sys.argv", ["find_and_grep_cli.py"] + test_args),
+            patch(
+                "tree_sitter_analyzer.cli.commands.find_and_grep_cli.detect_project_root"
+            ) as mock_detect,
+            patch(
+                "tree_sitter_analyzer.cli.commands.find_and_grep_cli.FindAndGrepTool"
+            ) as mock_tool_class,
+            patch(
+                "tree_sitter_analyzer.cli.commands.find_and_grep_cli.set_output_mode"
+            ),
+            pytest.raises(SystemExit) as exc_info,
+        ):
             mock_detect.return_value = "/project/root"
             mock_tool = AsyncMock()
             mock_tool.execute = AsyncMock(side_effect=KeyboardInterrupt())
             mock_tool_class.return_value = mock_tool
-            
+
             main()
-        
+
         assert exc_info.value.code == 1
 
     def test_main_invalid_arguments(self) -> None:
         """Test main function with invalid arguments."""
         test_args = ["--invalid-arg"]
-        
-        with patch("sys.argv", ["find_and_grep_cli.py"] + test_args), \
-             pytest.raises(SystemExit) as exc_info:
+
+        with (
+            patch("sys.argv", ["find_and_grep_cli.py"] + test_args),
+            pytest.raises(SystemExit) as exc_info,
+        ):
             main()
-        
+
         assert exc_info.value.code != 0
 
 
@@ -767,19 +895,26 @@ class TestEdgeCases:
             group_by_file=False,
             total_only=False,
         )
-        
-        with patch("tree_sitter_analyzer.cli.commands.find_and_grep_cli.detect_project_root") as mock_detect, \
-             patch("tree_sitter_analyzer.cli.commands.find_and_grep_cli.FindAndGrepTool") as mock_tool_class, \
-             patch("tree_sitter_analyzer.cli.commands.find_and_grep_cli.set_output_mode"), \
-             patch("tree_sitter_analyzer.cli.commands.find_and_grep_cli.output_data"):
-            
+
+        with (
+            patch(
+                "tree_sitter_analyzer.cli.commands.find_and_grep_cli.detect_project_root"
+            ) as mock_detect,
+            patch(
+                "tree_sitter_analyzer.cli.commands.find_and_grep_cli.FindAndGrepTool"
+            ) as mock_tool_class,
+            patch(
+                "tree_sitter_analyzer.cli.commands.find_and_grep_cli.set_output_mode"
+            ),
+            patch("tree_sitter_analyzer.cli.commands.find_and_grep_cli.output_data"),
+        ):
             mock_detect.return_value = "/project/root"
             mock_tool = AsyncMock()
             mock_tool.execute = AsyncMock(return_value={})
             mock_tool_class.return_value = mock_tool
-            
+
             await _run(args)
-            
+
             call_args = mock_tool.execute.call_args[0][0]
             assert call_args["depth"] == 0
 
@@ -825,19 +960,26 @@ class TestEdgeCases:
             group_by_file=False,
             total_only=False,
         )
-        
-        with patch("tree_sitter_analyzer.cli.commands.find_and_grep_cli.detect_project_root") as mock_detect, \
-             patch("tree_sitter_analyzer.cli.commands.find_and_grep_cli.FindAndGrepTool") as mock_tool_class, \
-             patch("tree_sitter_analyzer.cli.commands.find_and_grep_cli.set_output_mode"), \
-             patch("tree_sitter_analyzer.cli.commands.find_and_grep_cli.output_data"):
-            
+
+        with (
+            patch(
+                "tree_sitter_analyzer.cli.commands.find_and_grep_cli.detect_project_root"
+            ) as mock_detect,
+            patch(
+                "tree_sitter_analyzer.cli.commands.find_and_grep_cli.FindAndGrepTool"
+            ) as mock_tool_class,
+            patch(
+                "tree_sitter_analyzer.cli.commands.find_and_grep_cli.set_output_mode"
+            ),
+            patch("tree_sitter_analyzer.cli.commands.find_and_grep_cli.output_data"),
+        ):
             mock_detect.return_value = "/project/root"
             mock_tool = AsyncMock()
             mock_tool.execute = AsyncMock(return_value={})
             mock_tool_class.return_value = mock_tool
-            
+
             await _run(args)
-            
+
             call_args = mock_tool.execute.call_args[0][0]
             assert call_args["context_before"] == 0
             assert call_args["context_after"] == 0
@@ -884,26 +1026,35 @@ class TestEdgeCases:
             group_by_file=False,
             total_only=False,
         )
-        
-        with patch("tree_sitter_analyzer.cli.commands.find_and_grep_cli.detect_project_root") as mock_detect, \
-             patch("tree_sitter_analyzer.cli.commands.find_and_grep_cli.FindAndGrepTool") as mock_tool_class, \
-             patch("tree_sitter_analyzer.cli.commands.find_and_grep_cli.set_output_mode"), \
-             patch("tree_sitter_analyzer.cli.commands.find_and_grep_cli.output_data") as mock_output:
-            
+
+        with (
+            patch(
+                "tree_sitter_analyzer.cli.commands.find_and_grep_cli.detect_project_root"
+            ) as mock_detect,
+            patch(
+                "tree_sitter_analyzer.cli.commands.find_and_grep_cli.FindAndGrepTool"
+            ) as mock_tool_class,
+            patch(
+                "tree_sitter_analyzer.cli.commands.find_and_grep_cli.set_output_mode"
+            ),
+            patch(
+                "tree_sitter_analyzer.cli.commands.find_and_grep_cli.output_data"
+            ) as mock_output,
+        ):
             mock_detect.return_value = "/project/root"
             mock_tool = AsyncMock()
             mock_tool.execute = AsyncMock(return_value={"matches": 0, "files": []})
             mock_tool_class.return_value = mock_tool
-            
+
             result = await _run(args)
-            
+
             assert result == 0
             mock_output.assert_called_once_with({"matches": 0, "files": []}, "json")
 
     def test_parser_help(self) -> None:
         """Test parser help output."""
         parser = _build_parser()
-        
+
         # Should not raise
         help_str = parser.format_help()
         assert "roots" in help_str.lower()

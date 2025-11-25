@@ -305,6 +305,9 @@ comprehensive_test_results/
 
 # Golden masters are version controlled for regression testing
 # tests/golden_masters/ is tracked
+# But exclude incorrectly named golden master files
+tests/golden_masters/*/golden_master_python_*.md
+tests/golden_masters/*/golden_master_python_*.csv
 
 # Temporary test files at root (should be moved to tests/)
 /test*.md
@@ -313,3 +316,6 @@ comprehensive_test_results/
 /test_class.py
 /debug*.py
 /sample_json.json
+
+# Debug artifacts
+tests/debug_artifacts/

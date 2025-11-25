@@ -183,7 +183,8 @@ class TestComprehensiveFormatValidation:
         )
 
         assert results.total_tests > 0
-        assert results.execution_time_seconds > 0
+        # execution_time_seconds可能为0（测试执行非常快时）
+        assert results.execution_time_seconds >= 0
         assert results.timestamp is not None
         assert 0 <= results.success_rate <= 100
 
@@ -349,8 +350,10 @@ class TestComprehensiveFormatValidation:
         """Test integration with real tree-sitter-analyzer components if available"""
         try:
             # Try to import real analyzer components
-            from tree_sitter_analyzer.core.analysis_engine import AnalysisEngine
-            from tree_sitter_analyzer.formatters.formatter_factory import (
+            from tree_sitter_analyzer.core.analysis_engine import (  # noqa: F401
+                AnalysisEngine,
+            )
+            from tree_sitter_analyzer.formatters.formatter_factory import (  # noqa: F401
                 FormatterFactory,
             )
 
@@ -364,7 +367,7 @@ class TestComprehensiveFormatValidation:
                 enable_cross_component_tests=False,
             )
 
-            suite = ComprehensiveFormatTestSuite(config)
+            ComprehensiveFormatTestSuite(config)
 
             # Simple test with real components would go here
             # This is a placeholder for when real integration is needed

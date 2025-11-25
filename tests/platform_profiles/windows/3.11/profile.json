@@ -1,0 +1,132 @@
+{
+  "schema_version": "1.0.0",
+  "platform_key": "windows-3.11",
+  "behaviors": {
+    "simple_table": {
+      "construct_id": "simple_table",
+      "node_type": "program",
+      "element_count": 0,
+      "attributes": [
+        "col:email",
+        "col:id",
+        "col:username"
+      ],
+      "has_error": false,
+      "known_issues": []
+    },
+    "complex_table": {
+      "construct_id": "complex_table",
+      "node_type": "program",
+      "element_count": 0,
+      "attributes": [
+        "col:order_date",
+        "col:order_id",
+        "col:total_amount",
+        "col:user_id"
+      ],
+      "has_error": true,
+      "known_issues": []
+    },
+    "view_with_join": {
+      "construct_id": "view_with_join",
+      "node_type": "program",
+      "element_count": 0,
+      "attributes": [],
+      "has_error": false,
+      "known_issues": []
+    },
+    "stored_procedure": {
+      "construct_id": "stored_procedure",
+      "node_type": "program",
+      "element_count": 0,
+      "attributes": [],
+      "has_error": true,
+      "known_issues": []
+    },
+    "function_with_params": {
+      "construct_id": "function_with_params",
+      "node_type": "program",
+      "element_count": 0,
+      "attributes": [],
+      "has_error": true,
+      "known_issues": []
+    },
+    "trigger_before_insert": {
+      "construct_id": "trigger_before_insert",
+      "node_type": "program",
+      "element_count": 0,
+      "attributes": [],
+      "has_error": true,
+      "known_issues": []
+    },
+    "index_unique": {
+      "construct_id": "index_unique",
+      "node_type": "program",
+      "element_count": 0,
+      "attributes": [],
+      "has_error": false,
+      "known_issues": []
+    },
+    "function_with_select": {
+      "construct_id": "function_with_select",
+      "node_type": "program",
+      "element_count": 0,
+      "attributes": [],
+      "has_error": true,
+      "known_issues": []
+    },
+    "trigger_with_description": {
+      "construct_id": "trigger_with_description",
+      "node_type": "program",
+      "element_count": 0,
+      "attributes": [],
+      "has_error": true,
+      "known_issues": []
+    },
+    "function_with_auto_increment": {
+      "construct_id": "function_with_auto_increment",
+      "node_type": "program",
+      "element_count": 0,
+      "attributes": [
+        "col:id"
+      ],
+      "has_error": true,
+      "known_issues": []
+    },
+    "view_in_error_node": {
+      "construct_id": "view_in_error_node",
+      "node_type": "program",
+      "element_count": 0,
+      "attributes": [],
+      "has_error": false,
+      "known_issues": []
+    },
+    "phantom_trigger": {
+      "construct_id": "phantom_trigger",
+      "node_type": "program",
+      "element_count": 0,
+      "attributes": [
+        "col:id"
+      ],
+      "has_error": false,
+      "known_issues": []
+    },
+    "procedure_with_comments": {
+      "construct_id": "procedure_with_comments",
+      "node_type": "program",
+      "element_count": 0,
+      "attributes": [],
+      "has_error": true,
+      "known_issues": []
+    },
+    "index_on_expression": {
+      "construct_id": "index_on_expression",
+      "node_type": "program",
+      "element_count": 0,
+      "attributes": [],
+      "has_error": false,
+      "known_issues": []
+    }
+  },
+  "adaptation_rules": []
+}

@@ -11,7 +11,8 @@
 | update_product_stock | procedure | 71-86 | 2 params |
 | calculate_order_total | function | 89-101 | 1 params, -> DECIMAL(10, 2) |
 | is_user_active | function | 104-116 | 1 params, -> BOOLEAN |
-| update_order_total | trigger | 119-156 | trigger |
+| update_order_total | trigger | 119-130 | AFTER UPDATE, on order_items |
+| log_user_changes | trigger | 133-148 | AFTER UPDATE, on users |
 | idx_users_email | index | 151-151 | on users, (email) |
 | idx_users_status | index | 152-152 | on users, (status) |
 | idx_orders_user_id | index | 153-153 | on orders, (user_id) |

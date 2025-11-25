@@ -9,10 +9,11 @@
 | active_users | view | 37-44 | - | - |
 | order_summary | view | 47-55 | - | - |
 | get_user_orders | procedure | 58-68 | (user_id_param) | - |
-| update_product_stock | procedure | 71-86 | (product_id_param, _change) | - |
+| update_product_stock | procedure | 71-86 | (product_id_param, quantity_change) | - |
 | calculate_order_total | function | 89-101 | (order_id_param) | - |
 | is_user_active | function | 104-116 | (user_id_param) | - |
-| update_order_total | trigger | 119-156 | - | - |
+| update_order_total | trigger | 119-130 | - | order_items |
+| log_user_changes | trigger | 133-148 | - | users |
 | idx_users_email | index | 151-151 | users(email) | users |
 | idx_users_status | index | 152-152 | users(status) | users |
 | idx_orders_user_id | index | 153-153 | orders(user_id) | orders |
@@ -44,7 +45,7 @@
 **Parameters**: user_id_param INT
 
 ### update_product_stock (71-86)
-**Parameters**: product_id_param INT, _change INT
+**Parameters**: product_id_param INT, quantity_change INT
 
 ## Functions
 ### calculate_order_total (89-101)
@@ -56,7 +57,15 @@
 **Returns**: BOOLEAN
 
 ## Triggers
-### update_order_total (119-156)
+### update_order_total (119-130)
+**Event**: AFTER UPDATE
+**Target Table**: order_items
+**Dependencies**: order_items
+
+### log_user_changes (133-148)
+**Event**: AFTER UPDATE
+**Target Table**: users
+**Dependencies**: users
 
 ## Indexes
 ### idx_users_email (151-151)

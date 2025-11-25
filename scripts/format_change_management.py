@@ -17,11 +17,11 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-# Add project root to path
+# Add project root to path - needs to be before imports  # noqa: E402
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from tests.format_testing.golden_master import GoldenMasterManager
+from tests.format_testing.golden_master import GoldenMasterManager  # noqa: E402
 
 
 class FormatChangeDatabase:
@@ -506,7 +506,7 @@ class FormatChangeManager:
             new_version = "1.0.0"
 
         # Create backup of current format specification
-        backup_path = self._backup_current_format(format_type, new_version)
+        self._backup_current_format(format_type, new_version)
 
         # Calculate specification hash (simplified - would hash actual spec file)
         spec_hash = hashlib.md5(
@@ -514,9 +514,7 @@ class FormatChangeManager:
         ).hexdigest()
 
         # Create new format version
-        version_id = self.db.create_format_version(
-            format_type, new_version, request_id, spec_hash
-        )
+        self.db.create_format_version(format_type, new_version, request_id, spec_hash)
 
         # Update change request status
         self.db.update_change_request_status(request_id, "implemented", implementer)
@@ -713,7 +711,7 @@ def main():
     rollback_parser.add_argument("--reason", required=True, help="Rollback reason")
 
     # List pending requests
-    list_parser = subparsers.add_parser("list", help="List pending requests")
+    subparsers.add_parser("list", help="List pending requests")
 
     # Generate report
     report_parser = subparsers.add_parser("report", help="Generate change report")

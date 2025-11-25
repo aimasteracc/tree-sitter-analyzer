@@ -158,7 +158,7 @@ class RegressionReportGenerator:
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Format Regression Report - {self.report_data['timestamp']}</title>
+    <title>Format Regression Report - {self.report_data["timestamp"]}</title>
     <style>
         body {{ font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 20px; background-color: #f5f5f5; }}
         .container {{ max-width: 1200px; margin: 0 auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }}
@@ -190,22 +190,22 @@ class RegressionReportGenerator:
 
         <div class="summary">
             <h2>📊 Summary</h2>
-            <p><strong>Generated:</strong> {self.report_data['timestamp']}</p>
-            <p><strong>Total Test Failures:</strong> {len(self.report_data['test_failures'])}</p>
-            <p><strong>Format Changes Detected:</strong> {len(self.report_data['format_changes'])}</p>
-            <p><strong>Recommendations:</strong> {len(self.report_data['recommendations'])}</p>
+            <p><strong>Generated:</strong> {self.report_data["timestamp"]}</p>
+            <p><strong>Total Test Failures:</strong> {len(self.report_data["test_failures"])}</p>
+            <p><strong>Format Changes Detected:</strong> {len(self.report_data["format_changes"])}</p>
+            <p><strong>Recommendations:</strong> {len(self.report_data["recommendations"])}</p>
         </div>
 
         <h2>🔧 Environment Information</h2>
         <table>
             <tr><th>Property</th><th>Value</th></tr>
-            <tr><td>Git Commit</td><td>{self.report_data['git_info'].get('commit', 'N/A')}</td></tr>
-            <tr><td>Git Branch</td><td>{self.report_data['git_info'].get('branch', 'N/A')}</td></tr>
-            <tr><td>Author</td><td>{self.report_data['git_info'].get('author', 'N/A')}</td></tr>
-            <tr><td>Commit Message</td><td>{self.report_data['git_info'].get('message', 'N/A')}</td></tr>
-            <tr><td>Python Version</td><td>{self.report_data['environment']['python_version']}</td></tr>
-            <tr><td>Platform</td><td>{self.report_data['environment']['platform']}</td></tr>
-            <tr><td>CI Environment</td><td>{self.report_data['environment']['ci_environment']}</td></tr>
+            <tr><td>Git Commit</td><td>{self.report_data["git_info"].get("commit", "N/A")}</td></tr>
+            <tr><td>Git Branch</td><td>{self.report_data["git_info"].get("branch", "N/A")}</td></tr>
+            <tr><td>Author</td><td>{self.report_data["git_info"].get("author", "N/A")}</td></tr>
+            <tr><td>Commit Message</td><td>{self.report_data["git_info"].get("message", "N/A")}</td></tr>
+            <tr><td>Python Version</td><td>{self.report_data["environment"]["python_version"]}</td></tr>
+            <tr><td>Platform</td><td>{self.report_data["environment"]["platform"]}</td></tr>
+            <tr><td>CI Environment</td><td>{self.report_data["environment"]["ci_environment"]}</td></tr>
         </table>
 
         {self._generate_failures_section()}
@@ -238,14 +238,14 @@ class RegressionReportGenerator:
         for failure in self.report_data["test_failures"]:
             html += f"""
             <div class="failure">
-                <h3>{failure['test_name']}</h3>
-                <p><strong>Failure Type:</strong> {failure['failure_type']}</p>
+                <h3>{failure["test_name"]}</h3>
+                <p><strong>Failure Type:</strong> {failure["failure_type"]}</p>
                 <p><strong>Expected:</strong></p>
-                <div class="code">{failure['expected']}</div>
+                <div class="code">{failure["expected"]}</div>
                 <p><strong>Actual:</strong></p>
-                <div class="code">{failure['actual']}</div>
-                {f'<p><strong>Diff:</strong></p><div class="diff">{failure["diff"]}</div>' if failure.get('diff') else ''}
-                <p class="timestamp">Failed at: {failure['timestamp']}</p>
+                <div class="code">{failure["actual"]}</div>
+                {f'<p><strong>Diff:</strong></p><div class="diff">{failure["diff"]}</div>' if failure.get("diff") else ""}
+                <p class="timestamp">Failed at: {failure["timestamp"]}</p>
             </div>
             """
         return html
@@ -260,11 +260,11 @@ class RegressionReportGenerator:
             impact_class = f"impact-{change['impact_level']}"
             html += f"""
             <div class="change {impact_class}">
-                <h3>{change['format_type']} Format Change</h3>
-                <p><strong>Impact Level:</strong> {change['impact_level'].upper()}</p>
-                <p><strong>Description:</strong> {change['change_description']}</p>
-                <p><strong>Affected Components:</strong> {', '.join(change['affected_components'])}</p>
-                <p class="timestamp">Detected at: {change['timestamp']}</p>
+                <h3>{change["format_type"]} Format Change</h3>
+                <p><strong>Impact Level:</strong> {change["impact_level"].upper()}</p>
+                <p><strong>Description:</strong> {change["change_description"]}</p>
+                <p><strong>Affected Components:</strong> {", ".join(change["affected_components"])}</p>
+                <p class="timestamp">Detected at: {change["timestamp"]}</p>
             </div>
             """
         return html
@@ -279,9 +279,9 @@ class RegressionReportGenerator:
             priority_class = f"priority-{rec['priority']}"
             html += f"""
             <div class="recommendation {priority_class}">
-                <p><strong>Priority:</strong> {rec['priority'].upper()}</p>
-                <p>{rec['recommendation']}</p>
-                <p class="timestamp">Added at: {rec['timestamp']}</p>
+                <p><strong>Priority:</strong> {rec["priority"].upper()}</p>
+                <p>{rec["recommendation"]}</p>
+                <p class="timestamp">Added at: {rec["timestamp"]}</p>
             </div>
             """
         return html

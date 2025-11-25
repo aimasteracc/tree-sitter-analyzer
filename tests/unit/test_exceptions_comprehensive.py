@@ -5,7 +5,6 @@ Tests for all custom exception types and exception handling utilities.
 """
 
 from pathlib import Path
-from typing import Any
 
 import pytest
 
@@ -30,7 +29,6 @@ from tree_sitter_analyzer.exceptions import (
     ValidationError,
     create_error_response,
     create_mcp_error_response,
-    handle_exception,
     handle_exceptions,
     mcp_exception_handler,
     safe_execute,
@@ -104,9 +102,7 @@ class TestAnalysisError:
 
     def test_analysis_error_with_all_params(self) -> None:
         """Test AnalysisError with all parameters."""
-        exc = AnalysisError(
-            "Analysis failed", file_path="/test.py", language="python"
-        )
+        exc = AnalysisError("Analysis failed", file_path="/test.py", language="python")
         assert exc.context["file_path"] == "/test.py"
         assert exc.context["language"] == "python"
 
@@ -260,7 +256,9 @@ class TestSecurityExceptions:
 
     def test_path_traversal_error(self) -> None:
         """Test PathTraversalError exception."""
-        exc = PathTraversalError("Path traversal detected", attempted_path="../etc/passwd")
+        exc = PathTraversalError(
+            "Path traversal detected", attempted_path="../etc/passwd"
+        )
         assert exc.security_type == "path_traversal"
         assert exc.attempted_path == "../etc/passwd"
         assert exc.context["attempted_path"] == "../etc/passwd"

@@ -568,7 +568,9 @@ class PythonTableFormatter(BaseTableFormatter):
                 if isinstance(p, dict):
                     param_type = p.get("type", "Any")
                     if param_type == "Any" or param_type is None:
-                        param_types.append("Any")  # Keep "Any" as is for missing type info
+                        param_types.append(
+                            "Any"
+                        )  # Keep "Any" as is for missing type info
                     else:
                         param_types.append(
                             param_type

@@ -24,14 +24,12 @@ class TestCLIMainModule:
     def test_main_delegates_to_cli_main(self, mock_main: MagicMock) -> None:
         """Test that __main__.py properly delegates to cli_main.main()."""
         # Execute the module
-        import importlib
 
         import tree_sitter_analyzer.cli.__main__
 
         # Reload to trigger the if __name__ == "__main__" block
         # Note: This won't actually trigger it, so we need a different approach
         # We can test that the import is correct instead
-
         # Verify the module has imported main from cli_main
         assert hasattr(tree_sitter_analyzer.cli.__main__, "main")
 
@@ -85,7 +83,7 @@ class TestCLIMainModule:
 
     def test_module_can_be_imported_without_execution(self) -> None:
         """Test that importing the module doesn't execute main()."""
-        with patch("tree_sitter_analyzer.cli_main.main") as mock_main:
+        with patch("tree_sitter_analyzer.cli_main.main"):
             # Import the module (not as __main__)
             import importlib
 

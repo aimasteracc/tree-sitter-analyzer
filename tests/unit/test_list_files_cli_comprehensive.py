@@ -4,16 +4,11 @@
 from __future__ import annotations
 
 import argparse
-import asyncio
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from tree_sitter_analyzer.cli.commands.list_files_cli import (
-    _build_parser,
-    _run,
-    main,
-)
+from tree_sitter_analyzer.cli.commands.list_files_cli import _build_parser, _run, main
 
 
 class TestBuildParser:
@@ -23,12 +18,14 @@ class TestBuildParser:
         """Test parser is created successfully."""
         parser = _build_parser()
         assert isinstance(parser, argparse.ArgumentParser)
-        assert "list" in parser.description.lower() or "fd" in parser.description.lower()
+        assert (
+            "list" in parser.description.lower() or "fd" in parser.description.lower()
+        )
 
     def test_required_arguments(self) -> None:
         """Test required arguments are enforced."""
         parser = _build_parser()
-        
+
         # Missing roots should raise
         with pytest.raises(SystemExit):
             parser.parse_args([])
@@ -37,7 +34,7 @@ class TestBuildParser:
         """Test minimal valid argument set."""
         parser = _build_parser()
         args = parser.parse_args(["root1"])
-        
+
         assert args.roots == ["root1"]
         assert args.output_format == "json"
         assert args.quiet is False
@@ -46,21 +43,21 @@ class TestBuildParser:
         """Test multiple search roots."""
         parser = _build_parser()
         args = parser.parse_args(["root1", "root2", "root3"])
-        
+
         assert args.roots == ["root1", "root2", "root3"]
 
     def test_output_format_options(self) -> None:
         """Test output format choices."""
         parser = _build_parser()
-        
+
         # JSON format
         args = parser.parse_args(["root1", "--output-format", "json"])
         assert args.output_format == "json"
-        
+
         # Text format
         args = parser.parse_args(["root1", "--output-format", "text"])
         assert args.output_format == "text"
-        
+
         # Invalid format should raise
         with pytest.raises(SystemExit):
             parser.parse_args(["root1", "--output-format", "xml"])
@@ -68,10 +65,10 @@ class TestBuildParser:
     def test_quiet_flag(self) -> None:
         """Test quiet flag."""
         parser = _build_parser()
-        
+
         args = parser.parse_args(["root1", "--quiet"])
         assert args.quiet is True
-        
+
         args = parser.parse_args(["root1"])
         assert args.quiet is False
 
@@ -84,10 +81,10 @@ class TestBuildParser:
     def test_glob_flag(self) -> None:
         """Test glob flag."""
         parser = _build_parser()
-        
+
         args = parser.parse_args(["root1", "--glob"])
         assert args.glob is True
-        
+
         args = parser.parse_args(["root1"])
         assert args.glob is False
 
@@ -106,7 +103,9 @@ class TestBuildParser:
     def test_exclude_option(self) -> None:
         """Test exclude option."""
         parser = _build_parser()
-        args = parser.parse_args(["root1", "--exclude", "node_modules", "__pycache__", ".git"])
+        args = parser.parse_args(
+            ["root1", "--exclude", "node_modules", "__pycache__", ".git"]
+        )
         assert args.exclude == ["node_modules", "__pycache__", ".git"]
 
     def test_depth_option(self) -> None:
@@ -118,30 +117,30 @@ class TestBuildParser:
     def test_follow_symlinks_flag(self) -> None:
         """Test follow-symlinks flag."""
         parser = _build_parser()
-        
+
         args = parser.parse_args(["root1", "--follow-symlinks"])
         assert args.follow_symlinks is True
-        
+
         args = parser.parse_args(["root1"])
         assert args.follow_symlinks is False
 
     def test_hidden_flag(self) -> None:
         """Test hidden flag."""
         parser = _build_parser()
-        
+
         args = parser.parse_args(["root1", "--hidden"])
         assert args.hidden is True
-        
+
         args = parser.parse_args(["root1"])
         assert args.hidden is False
 
     def test_no_ignore_flag(self) -> None:
         """Test no-ignore flag."""
         parser = _build_parser()
-        
+
         args = parser.parse_args(["root1", "--no-ignore"])
         assert args.no_ignore is True
-        
+
         args = parser.parse_args(["root1"])
         assert args.no_ignore is False
 
@@ -166,10 +165,10 @@ class TestBuildParser:
     def test_full_path_match_flag(self) -> None:
         """Test full-path-match flag."""
         parser = _build_parser()
-        
+
         args = parser.parse_args(["root1", "--full-path-match"])
         assert args.full_path_match is True
-        
+
         args = parser.parse_args(["root1"])
         assert args.full_path_match is False
 
@@ -182,10 +181,10 @@ class TestBuildParser:
     def test_count_only_flag(self) -> None:
         """Test count-only flag."""
         parser = _build_parser()
-        
+
         args = parser.parse_args(["root1", "--count-only"])
         assert args.count_only is True
-        
+
         args = parser.parse_args(["root1"])
         assert args.count_only is False
 
@@ -198,29 +197,43 @@ class TestBuildParser:
     def test_all_options_together(self) -> None:
         """Test all options can be used together."""
         parser = _build_parser()
-        
-        args = parser.parse_args([
-            "root1", "root2",
-            "--output-format", "text",
-            "--quiet",
-            "--pattern", "*.py",
-            "--glob",
-            "--types", "python",
-            "--extensions", "py",
-            "--exclude", "__pycache__",
-            "--depth", "3",
-            "--follow-symlinks",
-            "--hidden",
-            "--no-ignore",
-            "--size", "+1K",
-            "--changed-within", "1day",
-            "--changed-before", "2023-12-31",
-            "--full-path-match",
-            "--limit", "50",
-            "--count-only",
-            "--project-root", "/project",
-        ])
-        
+
+        args = parser.parse_args(
+            [
+                "root1",
+                "root2",
+                "--output-format",
+                "text",
+                "--quiet",
+                "--pattern",
+                "*.py",
+                "--glob",
+                "--types",
+                "python",
+                "--extensions",
+                "py",
+                "--exclude",
+                "__pycache__",
+                "--depth",
+                "3",
+                "--follow-symlinks",
+                "--hidden",
+                "--no-ignore",
+                "--size",
+                "+1K",
+                "--changed-within",
+                "1day",
+                "--changed-before",
+                "2023-12-31",
+                "--full-path-match",
+                "--limit",
+                "50",
+                "--count-only",
+                "--project-root",
+                "/project",
+            ]
+        )
+
         assert args.roots == ["root1", "root2"]
         assert args.output_format == "text"
         assert args.quiet is True
@@ -269,21 +282,30 @@ class TestRunFunction:
             limit=None,
             count_only=False,
         )
-        
+
         mock_result = {"files": ["file1.py", "file2.py"], "success": True}
-        
-        with patch("tree_sitter_analyzer.cli.commands.list_files_cli.detect_project_root") as mock_detect, \
-             patch("tree_sitter_analyzer.cli.commands.list_files_cli.ListFilesTool") as mock_tool_class, \
-             patch("tree_sitter_analyzer.cli.commands.list_files_cli.set_output_mode") as mock_set_output, \
-             patch("tree_sitter_analyzer.cli.commands.list_files_cli.output_data") as mock_output:
-            
+
+        with (
+            patch(
+                "tree_sitter_analyzer.cli.commands.list_files_cli.detect_project_root"
+            ) as mock_detect,
+            patch(
+                "tree_sitter_analyzer.cli.commands.list_files_cli.ListFilesTool"
+            ) as mock_tool_class,
+            patch(
+                "tree_sitter_analyzer.cli.commands.list_files_cli.set_output_mode"
+            ) as mock_set_output,
+            patch(
+                "tree_sitter_analyzer.cli.commands.list_files_cli.output_data"
+            ) as mock_output,
+        ):
             mock_detect.return_value = "/project/root"
             mock_tool = AsyncMock()
             mock_tool.execute = AsyncMock(return_value=mock_result)
             mock_tool_class.return_value = mock_tool
-            
+
             result = await _run(args)
-            
+
             assert result == 0
             mock_detect.assert_called_once()
             mock_set_output.assert_called_once_with(quiet=False, json_output=True)
@@ -315,19 +337,28 @@ class TestRunFunction:
             limit=None,
             count_only=False,
         )
-        
-        with patch("tree_sitter_analyzer.cli.commands.list_files_cli.detect_project_root") as mock_detect, \
-             patch("tree_sitter_analyzer.cli.commands.list_files_cli.ListFilesTool") as mock_tool_class, \
-             patch("tree_sitter_analyzer.cli.commands.list_files_cli.set_output_mode") as mock_set_output, \
-             patch("tree_sitter_analyzer.cli.commands.list_files_cli.output_data") as mock_output:
-            
+
+        with (
+            patch(
+                "tree_sitter_analyzer.cli.commands.list_files_cli.detect_project_root"
+            ) as mock_detect,
+            patch(
+                "tree_sitter_analyzer.cli.commands.list_files_cli.ListFilesTool"
+            ) as mock_tool_class,
+            patch(
+                "tree_sitter_analyzer.cli.commands.list_files_cli.set_output_mode"
+            ) as mock_set_output,
+            patch(
+                "tree_sitter_analyzer.cli.commands.list_files_cli.output_data"
+            ) as mock_output,
+        ):
             mock_detect.return_value = "/custom/root"
             mock_tool = AsyncMock()
             mock_tool.execute = AsyncMock(return_value={"files": []})
             mock_tool_class.return_value = mock_tool
-            
+
             result = await _run(args)
-            
+
             assert result == 0
             mock_set_output.assert_called_once_with(quiet=True, json_output=False)
             mock_output.assert_called_once_with({"files": []}, "text")
@@ -356,19 +387,24 @@ class TestRunFunction:
             limit=500,
             count_only=True,
         )
-        
-        with patch("tree_sitter_analyzer.cli.commands.list_files_cli.detect_project_root") as mock_detect, \
-             patch("tree_sitter_analyzer.cli.commands.list_files_cli.ListFilesTool") as mock_tool_class, \
-             patch("tree_sitter_analyzer.cli.commands.list_files_cli.set_output_mode"), \
-             patch("tree_sitter_analyzer.cli.commands.list_files_cli.output_data"):
-            
+
+        with (
+            patch(
+                "tree_sitter_analyzer.cli.commands.list_files_cli.detect_project_root"
+            ) as mock_detect,
+            patch(
+                "tree_sitter_analyzer.cli.commands.list_files_cli.ListFilesTool"
+            ) as mock_tool_class,
+            patch("tree_sitter_analyzer.cli.commands.list_files_cli.set_output_mode"),
+            patch("tree_sitter_analyzer.cli.commands.list_files_cli.output_data"),
+        ):
             mock_detect.return_value = "/project/root"
             mock_tool = AsyncMock()
             mock_tool.execute = AsyncMock(return_value={})
             mock_tool_class.return_value = mock_tool
-            
+
             await _run(args)
-            
+
             # Check the payload passed to execute
             call_args = mock_tool.execute.call_args[0][0]
             assert call_args["roots"] == ["root1", "root2"]
@@ -412,19 +448,26 @@ class TestRunFunction:
             limit=None,
             count_only=False,
         )
-        
-        with patch("tree_sitter_analyzer.cli.commands.list_files_cli.detect_project_root") as mock_detect, \
-             patch("tree_sitter_analyzer.cli.commands.list_files_cli.ListFilesTool") as mock_tool_class, \
-             patch("tree_sitter_analyzer.cli.commands.list_files_cli.set_output_mode"), \
-             patch("tree_sitter_analyzer.cli.commands.list_files_cli.output_error") as mock_error:
-            
+
+        with (
+            patch(
+                "tree_sitter_analyzer.cli.commands.list_files_cli.detect_project_root"
+            ) as mock_detect,
+            patch(
+                "tree_sitter_analyzer.cli.commands.list_files_cli.ListFilesTool"
+            ) as mock_tool_class,
+            patch("tree_sitter_analyzer.cli.commands.list_files_cli.set_output_mode"),
+            patch(
+                "tree_sitter_analyzer.cli.commands.list_files_cli.output_error"
+            ) as mock_error,
+        ):
             mock_detect.return_value = "/project/root"
             mock_tool = AsyncMock()
             mock_tool.execute = AsyncMock(side_effect=RuntimeError("Test error"))
             mock_tool_class.return_value = mock_tool
-            
+
             result = await _run(args)
-            
+
             assert result == 1
             mock_error.assert_called_once_with("Test error")
 
@@ -452,19 +495,24 @@ class TestRunFunction:
             limit=None,
             count_only=False,
         )
-        
-        with patch("tree_sitter_analyzer.cli.commands.list_files_cli.detect_project_root") as mock_detect, \
-             patch("tree_sitter_analyzer.cli.commands.list_files_cli.ListFilesTool") as mock_tool_class, \
-             patch("tree_sitter_analyzer.cli.commands.list_files_cli.set_output_mode"), \
-             patch("tree_sitter_analyzer.cli.commands.list_files_cli.output_data"):
-            
+
+        with (
+            patch(
+                "tree_sitter_analyzer.cli.commands.list_files_cli.detect_project_root"
+            ) as mock_detect,
+            patch(
+                "tree_sitter_analyzer.cli.commands.list_files_cli.ListFilesTool"
+            ) as mock_tool_class,
+            patch("tree_sitter_analyzer.cli.commands.list_files_cli.set_output_mode"),
+            patch("tree_sitter_analyzer.cli.commands.list_files_cli.output_data"),
+        ):
             mock_detect.return_value = "/custom/path"
             mock_tool = AsyncMock()
             mock_tool.execute = AsyncMock(return_value={})
             mock_tool_class.return_value = mock_tool
-            
+
             await _run(args)
-            
+
             mock_detect.assert_called_once_with(None, "/custom/path")
             mock_tool_class.assert_called_once_with("/custom/path")
 
@@ -492,19 +540,26 @@ class TestRunFunction:
             limit=None,
             count_only=False,
         )
-        
-        with patch("tree_sitter_analyzer.cli.commands.list_files_cli.detect_project_root") as mock_detect, \
-             patch("tree_sitter_analyzer.cli.commands.list_files_cli.ListFilesTool") as mock_tool_class, \
-             patch("tree_sitter_analyzer.cli.commands.list_files_cli.set_output_mode"), \
-             patch("tree_sitter_analyzer.cli.commands.list_files_cli.output_data"):
-            
+
+        with (
+            patch(
+                "tree_sitter_analyzer.cli.commands.list_files_cli.detect_project_root"
+            ) as mock_detect,
+            patch(
+                "tree_sitter_analyzer.cli.commands.list_files_cli.ListFilesTool"
+            ) as mock_tool_class,
+            patch("tree_sitter_analyzer.cli.commands.list_files_cli.set_output_mode"),
+            patch("tree_sitter_analyzer.cli.commands.list_files_cli.output_data"),
+        ):
             mock_detect.return_value = "/project/root"
             mock_tool = AsyncMock()
-            mock_tool.execute = AsyncMock(return_value={"files": ["file1.py"]})  # No success key
+            mock_tool.execute = AsyncMock(
+                return_value={"files": ["file1.py"]}
+            )  # No success key
             mock_tool_class.return_value = mock_tool
-            
+
             result = await _run(args)
-            
+
             assert result == 0
 
 
@@ -514,70 +569,87 @@ class TestMainFunction:
     def test_main_success(self) -> None:
         """Test main function with successful execution."""
         test_args = ["root1"]
-        
-        with patch("sys.argv", ["list_files_cli.py"] + test_args), \
-             patch("tree_sitter_analyzer.cli.commands.list_files_cli.detect_project_root") as mock_detect, \
-             patch("tree_sitter_analyzer.cli.commands.list_files_cli.ListFilesTool") as mock_tool_class, \
-             patch("tree_sitter_analyzer.cli.commands.list_files_cli.set_output_mode"), \
-             patch("tree_sitter_analyzer.cli.commands.list_files_cli.output_data"), \
-             pytest.raises(SystemExit) as exc_info:
-            
+
+        with (
+            patch("sys.argv", ["list_files_cli.py"] + test_args),
+            patch(
+                "tree_sitter_analyzer.cli.commands.list_files_cli.detect_project_root"
+            ) as mock_detect,
+            patch(
+                "tree_sitter_analyzer.cli.commands.list_files_cli.ListFilesTool"
+            ) as mock_tool_class,
+            patch("tree_sitter_analyzer.cli.commands.list_files_cli.set_output_mode"),
+            patch("tree_sitter_analyzer.cli.commands.list_files_cli.output_data"),
+            pytest.raises(SystemExit) as exc_info,
+        ):
             mock_detect.return_value = "/project/root"
             mock_tool = AsyncMock()
             mock_tool.execute = AsyncMock(return_value={})
             mock_tool_class.return_value = mock_tool
-            
+
             main()
-        
+
         assert exc_info.value.code == 0
 
     def test_main_error(self) -> None:
         """Test main function with error."""
         test_args = ["root1"]
-        
-        with patch("sys.argv", ["list_files_cli.py"] + test_args), \
-             patch("tree_sitter_analyzer.cli.commands.list_files_cli.detect_project_root") as mock_detect, \
-             patch("tree_sitter_analyzer.cli.commands.list_files_cli.ListFilesTool") as mock_tool_class, \
-             patch("tree_sitter_analyzer.cli.commands.list_files_cli.set_output_mode"), \
-             patch("tree_sitter_analyzer.cli.commands.list_files_cli.output_error"), \
-             pytest.raises(SystemExit) as exc_info:
-            
+
+        with (
+            patch("sys.argv", ["list_files_cli.py"] + test_args),
+            patch(
+                "tree_sitter_analyzer.cli.commands.list_files_cli.detect_project_root"
+            ) as mock_detect,
+            patch(
+                "tree_sitter_analyzer.cli.commands.list_files_cli.ListFilesTool"
+            ) as mock_tool_class,
+            patch("tree_sitter_analyzer.cli.commands.list_files_cli.set_output_mode"),
+            patch("tree_sitter_analyzer.cli.commands.list_files_cli.output_error"),
+            pytest.raises(SystemExit) as exc_info,
+        ):
             mock_detect.return_value = "/project/root"
             mock_tool = AsyncMock()
             mock_tool.execute = AsyncMock(side_effect=RuntimeError("Test error"))
             mock_tool_class.return_value = mock_tool
-            
+
             main()
-        
+
         assert exc_info.value.code == 1
 
     def test_main_keyboard_interrupt(self) -> None:
         """Test main function handles keyboard interrupt."""
         test_args = ["root1"]
-        
-        with patch("sys.argv", ["list_files_cli.py"] + test_args), \
-             patch("tree_sitter_analyzer.cli.commands.list_files_cli.detect_project_root") as mock_detect, \
-             patch("tree_sitter_analyzer.cli.commands.list_files_cli.ListFilesTool") as mock_tool_class, \
-             patch("tree_sitter_analyzer.cli.commands.list_files_cli.set_output_mode"), \
-             pytest.raises(SystemExit) as exc_info:
-            
+
+        with (
+            patch("sys.argv", ["list_files_cli.py"] + test_args),
+            patch(
+                "tree_sitter_analyzer.cli.commands.list_files_cli.detect_project_root"
+            ) as mock_detect,
+            patch(
+                "tree_sitter_analyzer.cli.commands.list_files_cli.ListFilesTool"
+            ) as mock_tool_class,
+            patch("tree_sitter_analyzer.cli.commands.list_files_cli.set_output_mode"),
+            pytest.raises(SystemExit) as exc_info,
+        ):
             mock_detect.return_value = "/project/root"
             mock_tool = AsyncMock()
             mock_tool.execute = AsyncMock(side_effect=KeyboardInterrupt())
             mock_tool_class.return_value = mock_tool
-            
+
             main()
-        
+
         assert exc_info.value.code == 1
 
     def test_main_invalid_arguments(self) -> None:
         """Test main function with invalid arguments."""
         test_args = ["--invalid-arg"]
-        
-        with patch("sys.argv", ["list_files_cli.py"] + test_args), \
-             pytest.raises(SystemExit) as exc_info:
+
+        with (
+            patch("sys.argv", ["list_files_cli.py"] + test_args),
+            pytest.raises(SystemExit) as exc_info,
+        ):
             main()
-        
+
         assert exc_info.value.code != 0
 
 
@@ -608,19 +680,24 @@ class TestEdgeCases:
             limit=None,
             count_only=False,
         )
-        
-        with patch("tree_sitter_analyzer.cli.commands.list_files_cli.detect_project_root") as mock_detect, \
-             patch("tree_sitter_analyzer.cli.commands.list_files_cli.ListFilesTool") as mock_tool_class, \
-             patch("tree_sitter_analyzer.cli.commands.list_files_cli.set_output_mode"), \
-             patch("tree_sitter_analyzer.cli.commands.list_files_cli.output_data"):
-            
+
+        with (
+            patch(
+                "tree_sitter_analyzer.cli.commands.list_files_cli.detect_project_root"
+            ) as mock_detect,
+            patch(
+                "tree_sitter_analyzer.cli.commands.list_files_cli.ListFilesTool"
+            ) as mock_tool_class,
+            patch("tree_sitter_analyzer.cli.commands.list_files_cli.set_output_mode"),
+            patch("tree_sitter_analyzer.cli.commands.list_files_cli.output_data"),
+        ):
             mock_detect.return_value = "/project/root"
             mock_tool = AsyncMock()
             mock_tool.execute = AsyncMock(return_value={})
             mock_tool_class.return_value = mock_tool
-            
+
             await _run(args)
-            
+
             call_args = mock_tool.execute.call_args[0][0]
             assert call_args["depth"] == 0
 
@@ -648,19 +725,24 @@ class TestEdgeCases:
             limit=0,  # Zero limit
             count_only=False,
         )
-        
-        with patch("tree_sitter_analyzer.cli.commands.list_files_cli.detect_project_root") as mock_detect, \
-             patch("tree_sitter_analyzer.cli.commands.list_files_cli.ListFilesTool") as mock_tool_class, \
-             patch("tree_sitter_analyzer.cli.commands.list_files_cli.set_output_mode"), \
-             patch("tree_sitter_analyzer.cli.commands.list_files_cli.output_data"):
-            
+
+        with (
+            patch(
+                "tree_sitter_analyzer.cli.commands.list_files_cli.detect_project_root"
+            ) as mock_detect,
+            patch(
+                "tree_sitter_analyzer.cli.commands.list_files_cli.ListFilesTool"
+            ) as mock_tool_class,
+            patch("tree_sitter_analyzer.cli.commands.list_files_cli.set_output_mode"),
+            patch("tree_sitter_analyzer.cli.commands.list_files_cli.output_data"),
+        ):
             mock_detect.return_value = "/project/root"
             mock_tool = AsyncMock()
             mock_tool.execute = AsyncMock(return_value={})
             mock_tool_class.return_value = mock_tool
-            
+
             await _run(args)
-            
+
             call_args = mock_tool.execute.call_args[0][0]
             assert call_args["limit"] == 0
 
@@ -688,26 +770,33 @@ class TestEdgeCases:
             limit=None,
             count_only=False,
         )
-        
-        with patch("tree_sitter_analyzer.cli.commands.list_files_cli.detect_project_root") as mock_detect, \
-             patch("tree_sitter_analyzer.cli.commands.list_files_cli.ListFilesTool") as mock_tool_class, \
-             patch("tree_sitter_analyzer.cli.commands.list_files_cli.set_output_mode"), \
-             patch("tree_sitter_analyzer.cli.commands.list_files_cli.output_data") as mock_output:
-            
+
+        with (
+            patch(
+                "tree_sitter_analyzer.cli.commands.list_files_cli.detect_project_root"
+            ) as mock_detect,
+            patch(
+                "tree_sitter_analyzer.cli.commands.list_files_cli.ListFilesTool"
+            ) as mock_tool_class,
+            patch("tree_sitter_analyzer.cli.commands.list_files_cli.set_output_mode"),
+            patch(
+                "tree_sitter_analyzer.cli.commands.list_files_cli.output_data"
+            ) as mock_output,
+        ):
             mock_detect.return_value = "/project/root"
             mock_tool = AsyncMock()
             mock_tool.execute = AsyncMock(return_value={"files": [], "count": 0})
             mock_tool_class.return_value = mock_tool
-            
+
             result = await _run(args)
-            
+
             assert result == 0
             mock_output.assert_called_once_with({"files": [], "count": 0}, "json")
 
     def test_parser_help(self) -> None:
         """Test parser help output."""
         parser = _build_parser()
-        
+
         # Should not raise
         help_str = parser.format_help()
         assert "roots" in help_str.lower() or "root" in help_str.lower()

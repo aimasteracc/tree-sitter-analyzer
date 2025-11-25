@@ -1,6 +1,10 @@
 version = 1
 revision = 2
 requires-python = ">=3.10"
+resolution-markers = [
+    "python_full_version >= '3.10.2'",
+    "python_full_version < '3.10.2'",
+]
 
 [[package]]
 name = "annotated-types"
@@ -645,6 +649,38 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/0f/4c/751061ffa58615a32c31b2d82e8482be8dd4a89154f003147acee90f2be9/httpx_sse-0.4.3.tar.gz", hash = "sha256:9b1ed0127459a66014aec3c56bebd93da3c1bc8bb6618c8082039a44889a755d", size = 15943, upload-time = "2025-10-10T21:48:22.271Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/d2/fd/6668e5aec43ab844de6fc74927e155a3b37bf40d7c3790e49fc0406b6578/httpx_sse-0.4.3-py3-none-any.whl", hash = "sha256:0ac1c9fe3c0afad2e0ebb25a934a59f4c7823b60792691f779fad2c5568830fc", size = 8960, upload-time = "2025-10-10T21:48:21.158Z" },
+]
+
+[[package]]
+name = "hypothesis"
+version = "6.148.1"
+source = { registry = "https://pypi.org/simple" }
+resolution-markers = [
+    "python_full_version < '3.10.2'",
+]
+dependencies = [
+    { name = "exceptiongroup", marker = "python_full_version < '3.10.2'" },
+    { name = "sortedcontainers", marker = "python_full_version < '3.10.2'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/fd/5f/b08ad8dc0a79c3828dd137b4f55243f5d0342b02e963f5298dcb3bec7021/hypothesis-6.148.1.tar.gz", hash = "sha256:98851429bd89b0c8835e8ebca6705c28dec56517576e5606fc3b841ddb0dc1c7", size = 468664, upload-time = "2025-11-16T07:58:37.959Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/a4/39/a4f6a711970e6c23be35b967907f766064e27945f5b44855a00fa14af3bb/hypothesis-6.148.1-py3-none-any.whl", hash = "sha256:2cca1a20e8fcd230da86bb6d9f3e940a052caef0d4327c12b5694d164ea0f89e", size = 535684, upload-time = "2025-11-16T07:58:36.175Z" },
+]
+
+[[package]]
+name = "hypothesis"
+version = "6.148.2"
+source = { registry = "https://pypi.org/simple" }
+resolution-markers = [
+    "python_full_version >= '3.10.2'",
+]
+dependencies = [
+    { name = "exceptiongroup", marker = "python_full_version >= '3.10.2' and python_full_version < '3.11'" },
+    { name = "sortedcontainers", marker = "python_full_version >= '3.10.2'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/4a/99/a3c6eb3fdd6bfa01433d674b0f12cd9102aa99630689427422d920aea9c6/hypothesis-6.148.2.tar.gz", hash = "sha256:07e65d34d687ddff3e92a3ac6b43966c193356896813aec79f0a611c5018f4b1", size = 469984, upload-time = "2025-11-18T20:21:17.047Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/b1/d2/c2673aca0127e204965e0e9b3b7a0e91e9b12993859ac8758abd22669b89/hypothesis-6.148.2-py3-none-any.whl", hash = "sha256:bf8ddc829009da73b321994b902b1964bcc3e5c3f0ed9a1c1e6a1631ab97c5fa", size = 536986, upload-time = "2025-11-18T20:21:15.212Z" },
 ]
 
 [[package]]
@@ -1898,6 +1934,15 @@ wheels = [
 ]
 
 [[package]]
+name = "sortedcontainers"
+version = "2.4.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/e8/c4/ba2f8066cceb6f23394729afe52f3bf7adec04bf9ed2c820b39e19299111/sortedcontainers-2.4.0.tar.gz", hash = "sha256:25caa5a06cc30b6b83d11423433f65d1f9d76c4c6a0c90e3379eaa43b9bfdb88", size = 30594, upload-time = "2021-05-16T22:03:42.897Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/32/46/9cb0e58b2deb7f82b84065f37f3bffeb12413f947f9388e4cac22c4621ce/sortedcontainers-2.4.0-py2.py3-none-any.whl", hash = "sha256:a163dcaede0f1c021485e957a39245190e74249897e2ae4b2aa38595db237ee0", size = 29575, upload-time = "2021-05-16T22:03:41.177Z" },
+]
+
+[[package]]
 name = "sse-starlette"
 version = "3.0.2"
 source = { registry = "https://pypi.org/simple" }
@@ -2025,7 +2070,7 @@ wheels = [
 
 [[package]]
 name = "tree-sitter-analyzer"
-version = "1.9.15"
+version = "1.9.16"
 source = { editable = "." }
 dependencies = [
     { name = "cachetools" },
@@ -2041,7 +2086,10 @@ dependencies = [
     { name = "tree-sitter-java" },
     { name = "tree-sitter-javascript" },
     { name = "tree-sitter-markdown" },
+    { name = "tree-sitter-php" },
     { name = "tree-sitter-python" },
+    { name = "tree-sitter-ruby" },
+    { name = "tree-sitter-sql" },
     { name = "tree-sitter-typescript" },
 ]
 
@@ -2108,6 +2156,8 @@ css = [
 ]
 dev = [
     { name = "black" },
+    { name = "hypothesis", version = "6.148.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10.2'" },
+    { name = "hypothesis", version = "6.148.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10.2'" },
     { name = "isort" },
     { name = "memory-profiler" },
     { name = "mypy" },
@@ -2244,6 +2294,8 @@ dev = [
     { name = "bandit" },
     { name = "black" },
     { name = "build" },
+    { name = "hypothesis", version = "6.148.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10.2'" },
+    { name = "hypothesis", version = "6.148.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10.2'" },
     { name = "isort" },
     { name = "mypy" },
     { name = "pre-commit" },
@@ -2274,6 +2326,7 @@ requires-dist = [
     { name = "httpx", marker = "extra == 'all'", specifier = ">=0.27.0,<1.0.0" },
     { name = "httpx", marker = "extra == 'full'", specifier = ">=0.27.0,<1.0.0" },
     { name = "httpx", marker = "extra == 'mcp'", specifier = ">=0.27.0,<1.0.0" },
+    { name = "hypothesis", marker = "extra == 'dev'", specifier = ">=6.0.0" },
     { name = "isort", marker = "extra == 'all'", specifier = ">=5.13.0" },
     { name = "isort", marker = "extra == 'dev'", specifier = ">=5.13.0" },
     { name = "isort", marker = "extra == 'full'", specifier = ">=5.13.0" },
@@ -2382,6 +2435,7 @@ requires-dist = [
     { name = "tree-sitter-markdown", marker = "extra == 'full'", specifier = ">=0.3.1" },
     { name = "tree-sitter-markdown", marker = "extra == 'integration'", specifier = ">=0.3.1" },
     { name = "tree-sitter-markdown", marker = "extra == 'markdown'", specifier = ">=0.3.1" },
+    { name = "tree-sitter-php", specifier = ">=0.24.1" },
     { name = "tree-sitter-php", marker = "extra == 'all-languages'", specifier = ">=0.23.0,<0.25.0" },
     { name = "tree-sitter-php", marker = "extra == 'php'", specifier = ">=0.23.0,<0.25.0" },
     { name = "tree-sitter-php", marker = "extra == 'test'", specifier = ">=0.23.0,<0.25.0" },
@@ -2394,6 +2448,7 @@ requires-dist = [
     { name = "tree-sitter-python", marker = "extra == 'popular'", specifier = ">=0.23.0,<0.25.0" },
     { name = "tree-sitter-python", marker = "extra == 'python'", specifier = ">=0.23.0,<0.25.0" },
     { name = "tree-sitter-python", marker = "extra == 'test'", specifier = ">=0.23.0" },
+    { name = "tree-sitter-ruby", specifier = ">=0.23.1" },
     { name = "tree-sitter-ruby", marker = "extra == 'all-languages'", specifier = ">=0.23.0,<0.25.0" },
     { name = "tree-sitter-ruby", marker = "extra == 'ruby'", specifier = ">=0.23.0,<0.25.0" },
     { name = "tree-sitter-ruby", marker = "extra == 'test'", specifier = ">=0.23.0,<0.25.0" },
@@ -2403,6 +2458,7 @@ requires-dist = [
     { name = "tree-sitter-rust", marker = "extra == 'full'", specifier = ">=0.20.0,<0.25.0" },
     { name = "tree-sitter-rust", marker = "extra == 'rust'", specifier = ">=0.20.0,<0.25.0" },
     { name = "tree-sitter-rust", marker = "extra == 'systems'", specifier = ">=0.20.0,<0.25.0" },
+    { name = "tree-sitter-sql", specifier = ">=0.3.11" },
     { name = "tree-sitter-sql", marker = "extra == 'all'", specifier = ">=0.3.11,<0.4.0" },
     { name = "tree-sitter-sql", marker = "extra == 'all-languages'", specifier = ">=0.3.11,<0.4.0" },
     { name = "tree-sitter-sql", marker = "extra == 'sql'", specifier = ">=0.3.11,<0.4.0" },
@@ -2426,6 +2482,7 @@ dev = [
     { name = "bandit", specifier = ">=1.7.0" },
     { name = "black", specifier = ">=24.0.0" },
     { name = "build", specifier = ">=1.2.2.post1" },
+    { name = "hypothesis", specifier = ">=6.0.0" },
     { name = "isort", specifier = ">=5.13.0" },
     { name = "mypy", specifier = "==1.18.2" },
     { name = "pre-commit", specifier = ">=4.2.0" },
