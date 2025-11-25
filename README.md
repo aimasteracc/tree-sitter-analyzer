@@ -4,7 +4,7 @@
 
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-4510%20passed-brightgreen.svg)](#quality-assurance)
+[![Tests](https://img.shields.io/badge/tests-4520%20passed-brightgreen.svg)](#quality-assurance)
 [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer)
 [![Quality](https://img.shields.io/badge/quality-enterprise%20grade-blue.svg)](#quality-assurance)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
@@ -64,7 +64,7 @@ Tree-sitter Analyzer is an enterprise-grade code analysis tool designed for the 
 **Note:** Currently, only the above 11 languages have complete plugin implementations. Languages such as C/C++, Rust, Go, JSON are defined in `LanguageDetector` but do not have functional plugin implementations at this time.
 
 ### 🏆 Production Ready
-- **4,510 Tests** - 100% pass rate, enterprise-grade quality assurance
+- **4,520 Tests** - 100% pass rate, enterprise-grade quality assurance
 - **High Coverage** - Comprehensive test coverage
 - **Cross-platform Support** - Compatible with Windows, macOS, Linux
 - **Continuous Maintenance** - Active development and community support
@@ -695,7 +695,7 @@ uv run tree-sitter-analyzer --compare-sql-profiles windows-3.13 linux-3.10
 ## 8. 🏆 Quality Assurance
 
 ### 📊 Quality Metrics
-- **4,510 tests** - 100% pass rate ✅
+- **4,520 tests** - 100% pass rate ✅
 - **High code coverage** - Comprehensive test suite
 - **Zero test failures** - Production ready
 - **Cross-platform support** - Windows, macOS, Linux
