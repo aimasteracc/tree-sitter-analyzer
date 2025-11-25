@@ -171,7 +171,7 @@ class TestWorkflowProperties:
                         if "ripgrep" in run_cmd.lower() or "rg" in run_cmd.lower():
                             dependencies.append("ripgrep")
 
-        return list(set(dependencies))
+        return sorted(set(dependencies))
 
     def extract_test_markers(self, workflow: dict[str, Any]) -> list[str]:
         """Extract pytest markers from workflow."""

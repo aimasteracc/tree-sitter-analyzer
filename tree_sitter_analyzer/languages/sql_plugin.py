@@ -321,8 +321,8 @@ class SQLElementExtractor(ElementExtractor):
                         end_line=end_line,
                         raw_text=f"CREATE VIEW {view_name} ...",
                         language="sql",
-                        source_tables=list(set(source_tables)),
-                        dependencies=list(set(source_tables)),
+                        source_tables=sorted(set(source_tables)),
+                        dependencies=sorted(set(source_tables)),
                     )
                     validated.append(view)
                     existing_views.add(view_name)
@@ -1404,8 +1404,8 @@ class SQLElementExtractor(ElementExtractor):
                         end_line=end_line,
                         raw_text=f"CREATE VIEW {view_name} ...",
                         language="sql",
-                        source_tables=list(set(source_tables)),
-                        dependencies=list(set(source_tables)),
+                        source_tables=sorted(set(source_tables)),
+                        dependencies=sorted(set(source_tables)),
                     )
                     sql_elements.append(view)
 

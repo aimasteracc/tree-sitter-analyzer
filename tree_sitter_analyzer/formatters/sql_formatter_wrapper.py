@@ -533,7 +533,7 @@ class SQLFormatterWrapper(BaseFormatter):
         source_tables.extend(from_matches)
         source_tables.extend(join_matches)
 
-        return {"source_tables": list(set(source_tables)), "columns": []}
+        return {"source_tables": sorted(set(source_tables)), "columns": []}
 
     def _extract_procedure_info(self, raw_text: str, proc_name: str) -> dict:
         """Extract procedure information from CREATE PROCEDURE statement"""
@@ -627,7 +627,7 @@ class SQLFormatterWrapper(BaseFormatter):
         return {
             "parameters": parameters,
             "return_type": return_type,
-            "dependencies": list(set(dependencies)),
+            "dependencies": sorted(set(dependencies)),
         }
 
     def _extract_trigger_info(self, raw_text: str, trigger_name: str) -> dict:
