@@ -860,6 +860,47 @@ class SQLElementExtractor(ElementExtractor):
                         start_line = node.start_point[0] + 1
                         end_line = node.end_point[0] + 1
 
+                        # Fix for truncated view definitions (single-line misparsing)
+                        # When tree-sitter misparses a view as a single line (e.g. lines 47-47),
+                        # we need to expand the range to include the actual query definition.
+                        # We look for the next semicolon or empty line to find the true end.
+                        if start_line == end_line and self.source_code:
+                            # This logic is similar to the recovery logic in _validate_and_fix_elements
+                            # Find where the view definition actually ends
+                            current_line_idx = start_line - 1
+
+                            # Scan forward for semicolon to find end of statement
+                            found_end = False
+                            for i in range(current_line_idx, len(self.content_lines)):
+                                line = self.content_lines[i]
+                                if ";" in line:
+                                    end_line = i + 1
+                                    found_end = True
+                                    break
+
+                            # If no semicolon found within reasonable range, use a fallback
+                            if not found_end:
+                                # Look for empty line as separator or next CREATE statement
+                                for i in range(
+                                    current_line_idx + 1,
+                                    min(len(self.content_lines), current_line_idx + 50),
+                                ):
+                                    line = self.content_lines[i].strip()
+                                    if not line or line.upper().startswith("CREATE "):
+                                        end_line = i  # End before this line
+                                        found_end = True
+                                        break
+
+                            # Update raw_text to cover the full range
+                            # Re-extract text for the corrected range
+                            if found_end and end_line > start_line:
+                                raw_text = "\n".join(
+                                    self.content_lines[current_line_idx:end_line]
+                                )
+                                log_debug(
+                                    f"Corrected view span for {view_name}: {start_line}-{end_line}"
+                                )
+
                         cls = Class(
                             name=view_name,
                             start_line=start_line,
