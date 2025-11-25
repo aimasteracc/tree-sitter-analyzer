@@ -32,16 +32,18 @@ permissions:
   pull-requests: write
 
 jobs:
-  test:
-    name: Run Test Suite
-    uses: ./.github/workflows/reusable-test.yml
-    with:
-      python-version: "3.11"
-      upload-coverage: true
-    secrets: inherit
+  # Note: Test suite is already run by ci.yml on push to develop branch
+  # Commenting out to avoid duplicate test runs
+  # test:
+  #   name: Run Test Suite
+  #   uses: ./.github/workflows/reusable-test.yml
+  #   with:
+  #     python-version: "3.11"
+  #     upload-coverage: true
+  #   secrets: inherit
 
   build:
-    needs: test
+    # needs: test  # Removed dependency since tests run in ci.yml
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -75,7 +77,7 @@ jobs:
 
 
   create-release-pr:
-    needs: [test, build]
+    needs: [build]  # Removed 'test' dependency since tests run in ci.yml
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/develop'
     continue-on-error: true
