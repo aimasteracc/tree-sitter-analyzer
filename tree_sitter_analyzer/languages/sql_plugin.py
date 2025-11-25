@@ -1931,104 +1931,91 @@ class SQLElementExtractor(ElementExtractor):
         self, root_node: "tree_sitter.Node", sql_elements: list[SQLElement]
     ) -> None:
         """Extract CREATE TRIGGER statements with enhanced metadata."""
-        for node in self._traverse_nodes(root_node):
-            # Handle both correctly parsed triggers and ERROR nodes that might contain triggers
-            # Also check for any node type containing "trigger" to be more robust across grammar versions
-            if "trigger" in node.type or node.type == "ERROR":
-                trigger_name = None
-                table_name = None
-                trigger_timing = None
-                trigger_event = None
+        import re
 
-                # Get node text once
-                trigger_text = self._get_node_text(node)
+        # Get the full source code to calculate accurate line numbers
+        source_code = self._get_node_text(root_node)
 
-                # Check for CREATE TRIGGER keywords first to avoid unnecessary processing
-                import re
+        if not source_code:
+            log_debug("WARNING: source_code is empty in _extract_sql_triggers")
+            return
 
-                # Use DOTALL to match across newlines
-                if not re.search(
-                    r"CREATE\s+TRIGGER", trigger_text, re.IGNORECASE | re.DOTALL
-                ):
-                    continue
+        # Track processed triggers by name to avoid duplicates
+        processed_triggers = set()
 
-                # Use regex to extract trigger name - Prioritize Regex over AST for ERROR nodes
-                # This avoids issues where AST structure is broken and unrelated identifiers (like column names)
-                # are picked up as trigger names.
-                # Use finditer to find ALL triggers in the node (handling multiple triggers in one ERROR node)
-                trigger_matches = re.finditer(
-                    r"CREATE\s+TRIGGER\s+([a-zA-Z_][a-zA-Z0-9_]*)",
-                    trigger_text,
-                    re.IGNORECASE | re.DOTALL,
+        # Use regex on the full source to find all triggers with accurate positions
+        trigger_pattern = re.compile(
+            r"CREATE\s+TRIGGER\s+([a-zA-Z_][a-zA-Z0-9_]*)", re.IGNORECASE | re.MULTILINE
+        )
+
+        trigger_matches = list(trigger_pattern.finditer(source_code))
+        log_debug(f"Found {len(trigger_matches)} CREATE TRIGGER statements in source")
+
+        for match in trigger_matches:
+            trigger_name = match.group(1)
+
+            # Skip if already processed
+            if trigger_name in processed_triggers:
+                continue
+
+            if not self._is_valid_identifier(trigger_name):
+                continue
+
+            # Skip invalid trigger names (too short or common SQL keywords)
+            if len(trigger_name) <= 2:
+                continue
+
+            # Skip common SQL keywords that might be incorrectly identified
+            if trigger_name.upper() in (
+                "KEY",
+                "AUTO_INCREMENT",
+                "PRIMARY",
+                "FOREIGN",
+                "INDEX",
+                "UNIQUE",
+            ):
+                continue
+
+            # Mark as processed
+            processed_triggers.add(trigger_name)
+
+            # Calculate start line (1-indexed)
+            start_line = source_code[: match.start()].count("\n") + 1
+
+            # Find the end of this trigger statement (looking for the END keyword followed by semicolon)
+            trigger_start_pos = match.start()
+            # Search for END; after the trigger definition
+            end_pattern = re.compile(r"\bEND\s*;", re.IGNORECASE)
+            end_match = end_pattern.search(source_code, trigger_start_pos)
+
+            if end_match:
+                end_line = source_code[: end_match.end()].count("\n") + 1
+                trigger_text = source_code[trigger_start_pos : end_match.end()]
+            else:
+                # Fallback: use a reasonable default
+                end_line = start_line + 20
+                trigger_text = source_code[trigger_start_pos : trigger_start_pos + 500]
+
+            # Extract trigger metadata from the extracted text
+            trigger_timing, trigger_event, table_name = self._extract_trigger_metadata(
+                trigger_text
+            )
+
+            try:
+                trigger = SQLTrigger(
+                    name=trigger_name,
+                    start_line=start_line,
+                    end_line=end_line,
+                    raw_text=trigger_text,
+                    language="sql",
+                    table_name=table_name,
+                    trigger_timing=trigger_timing,
+                    trigger_event=trigger_event,
+                    dependencies=[table_name] if table_name else [],
                 )
-
-                for match in trigger_matches:
-                    trigger_name = match.group(1)
-
-                    if not self._is_valid_identifier(trigger_name):
-                        continue
-
-                    # Skip invalid trigger names (too short or common SQL keywords)
-                    if len(trigger_name) <= 2:
-                        continue
-
-                    # Skip common SQL keywords that might be incorrectly identified
-                    if trigger_name.upper() in (
-                        "KEY",
-                        "AUTO_INCREMENT",
-                        "PRIMARY",
-                        "FOREIGN",
-                        "INDEX",
-                        "UNIQUE",
-                    ):
-                        continue
-
-                    # Check for duplicates
-                    if any(
-                        e.name == trigger_name and isinstance(e, SQLTrigger)
-                        for e in sql_elements
-                    ):
-                        continue
-
-                    # Extract trigger metadata from text
-                    # Use text starting from the match to ensure we get metadata for THIS trigger
-                    # (in case of multiple triggers in one node)
-                    current_trigger_text = trigger_text[match.start() :]
-                    trigger_timing, trigger_event, table_name = (
-                        self._extract_trigger_metadata(current_trigger_text)
-                    )
-
-                    try:
-                        # Calculate start line based on match position
-                        # node.start_point[0] is 0-indexed line number
-                        # We add newlines found before the match
-                        newlines_before = trigger_text[: match.start()].count("\n")
-                        start_line = node.start_point[0] + 1 + newlines_before
-
-                        # End line is harder to estimate, default to node end line
-                        end_line = node.end_point[0] + 1
-
-                        # If there's another match, we could use its start line as this one's end line?
-                        # For now, using node end line is safe (though potentially large for the first trigger)
-
-                        # Use current_trigger_text as raw_text to ensure correct name validation later
-                        # (and to avoid including previous triggers in the raw text)
-                        raw_text = current_trigger_text
-
-                        trigger = SQLTrigger(
-                            name=trigger_name,
-                            start_line=start_line,
-                            end_line=end_line,
-                            raw_text=raw_text,
-                            language="sql",
-                            table_name=table_name,
-                            trigger_timing=trigger_timing,
-                            trigger_event=trigger_event,
-                            dependencies=[table_name] if table_name else [],
-                        )
-                        sql_elements.append(trigger)
-                    except Exception as e:
-                        log_debug(f"Failed to extract enhanced trigger: {e}")
+                sql_elements.append(trigger)
+            except Exception as e:
+                log_debug(f"Failed to extract enhanced trigger: {e}")
 
     def _extract_trigger_metadata(
         self,

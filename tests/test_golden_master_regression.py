@@ -17,7 +17,19 @@ import pytest
 
 def run_analyzer(input_file: str, table_format: str = "full") -> str:
     """アナライザーを実行して出力を取得"""
-    cmd = ["uv", "run", "tree-sitter-analyzer", input_file, "--table", table_format]
+    import sys
+
+    # Use the Python interpreter from the current environment
+    python_exe = sys.executable
+
+    cmd = [
+        python_exe,
+        "-m",
+        "tree_sitter_analyzer",
+        input_file,
+        "--table",
+        table_format,
+    ]
 
     result = subprocess.run(
         cmd, capture_output=True, text=True, encoding="utf-8", check=True
@@ -61,13 +73,6 @@ def normalize_output(content: str) -> str:
         line = re.sub(r"\(list\[int \| float\]\)", "(Any)", line)
         line = re.sub(r"\(list\[Animal\]\)", "(Any)", line)
 
-        # SQL trigger名の正規化 - 環境によって解析が異なる場合がある
-        # "INT" が trigger名として誤認識される問題の回避
-        if "| INT | trigger |" in line:
-            # 既知のtrigger名にマップ（行番号から推測）
-            if "119-156" in line or "119-148" in line or "119-" in line:
-                line = re.sub(r"\| INT \|", "| update_order_total |", line)
-
         # SQL型名・列名の誤検出を除去 - TEXT, INT, VARCHAR, order_date等がfunction/triggerとして誤認識される
         sql_type_keywords = [
             "TEXT",
@@ -101,11 +106,26 @@ def normalize_output(content: str) -> str:
         # 複数のスキップ条件をチェック
         skip_line = False
 
-        # 1. テーブル行でSQL型・列名がfunctionとして誤検出
+        # 1. テーブル行でSQL型・列名がfunctionやtriggerとして誤検出
+        # 注: 依存関係やテーブル参照は除外しない（例: "on order_items"）
         for keyword in sql_type_keywords + sql_column_names:
+            # Check for function misdetection
             if f"| {keyword} | function |" in line or f"{keyword},function," in line:
                 skip_line = True
                 break
+            # Check for trigger misdetection (but not as a dependency)
+            # Only skip if it's in the name column, not in details/dependencies
+            if f"| {keyword} | trigger |" in line or f"{keyword},trigger," in line:
+                # Make sure it's not just mentioned in the dependencies column
+                # Compact format: "| name | type | lines | details |"
+                # CSV format: "name,type,lines,params,dependencies"
+                parts = line.split("|") if "|" in line else line.split(",")
+                if len(parts) >= 2:
+                    # Check if keyword is in the name field (first or second column)
+                    name_field = parts[1].strip() if "|" in line else parts[0].strip()
+                    if name_field == keyword:
+                        skip_line = True
+                        break
 
         # 2. Full formatの詳細セクションでSQL型名が誤検出（例: "### INT (104-115)"）
         if not skip_line and line.startswith("### "):
