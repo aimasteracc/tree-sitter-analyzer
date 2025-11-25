@@ -40,16 +40,19 @@ class TestSetupLogger:
         assert test_logger is not None
         assert isinstance(test_logger, logging.Logger)
 
+    @patch.dict(os.environ, {"LOG_LEVEL": ""}, clear=False)
     def test_setup_logger_with_string_level_debug(self):
         """Test logger setup with string DEBUG level"""
         test_logger = setup_logger("test_string_debug", level="DEBUG")
         assert test_logger.level == logging.DEBUG
 
+    @patch.dict(os.environ, {"LOG_LEVEL": ""}, clear=False)
     def test_setup_logger_with_string_level_info(self):
         """Test logger setup with string INFO level"""
         test_logger = setup_logger("test_string_info", level="INFO")
         assert test_logger.level == logging.INFO
 
+    @patch.dict(os.environ, {"LOG_LEVEL": ""}, clear=False)
     def test_setup_logger_with_string_level_warning(self):
         """Test logger setup with string WARNING level"""
         test_logger = setup_logger("test_string_warning", level="WARNING")
@@ -60,6 +63,7 @@ class TestSetupLogger:
         test_logger = setup_logger("test_string_error", level="ERROR")
         assert test_logger.level == logging.ERROR
 
+    @patch.dict(os.environ, {"LOG_LEVEL": ""}, clear=False)
     def test_setup_logger_with_invalid_string_level(self):
         """Test logger setup with invalid string level defaults to WARNING"""
         test_logger = setup_logger("test_invalid_level", level="INVALID")

@@ -165,13 +165,12 @@ class TestCIWorkflowConsistency:
             test_job.get("secrets") == "inherit"
         ), "Test job must inherit secrets for CODECOV_TOKEN"
 
-        # Verify develop workflow also uses the same reusable workflow
-        develop_jobs = develop_workflow.get("jobs", {})
-        assert "test" in develop_jobs, "Develop workflow must have a test job"
-        develop_test_job = develop_jobs["test"]
-        assert develop_test_job.get("uses") == test_job.get(
-            "uses"
-        ), "CI and develop workflows must use the same reusable test workflow"
+        # Note: develop-automation.yml no longer has a test job.
+        # Tests for develop branch are handled by ci.yml which runs on push to develop.
+        # Only verify that ci.yml runs on develop branch.
+        ci_on = ci_workflow.get("on", ci_workflow.get(True, {}))
+        push_branches = ci_on.get("push", {}).get("branches", [])
+        assert "develop" in push_branches, "CI workflow must run on develop branch"
 
         # Verify release workflow also uses the same reusable workflow
         release_jobs = release_workflow.get("jobs", {})

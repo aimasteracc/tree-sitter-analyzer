@@ -117,21 +117,13 @@ class TestDevelopWorkflowConsistency:
         - Dependency installation flags (--all-extras)
 
         Validates: Requirements 1.1, 1.2, 1.3, 1.4, 1.5
+
+        Note: develop-automation.yml no longer has a test job.
+        Tests for develop branch are handled by ci.yml workflow.
         """
-        # Verify develop workflow uses reusable test workflow
+        # Verify develop workflow has build job (test is handled by ci.yml)
         jobs = develop_workflow.get("jobs", {})
-        assert "test" in jobs, "Develop workflow must have a test job"
-
-        test_job = jobs["test"]
-        assert "uses" in test_job, "Test job must use reusable workflow"
-        assert (
-            "./.github/workflows/reusable-test.yml" in test_job["uses"]
-        ), "Test job must use reusable-test.yml"
-
-        # Verify secrets are inherited
-        assert (
-            test_job.get("secrets") == "inherit"
-        ), "Test job must inherit secrets for CODECOV_TOKEN"
+        assert "build" in jobs, "Develop workflow must have a build job"
 
         # Extract test matrix from reusable workflow
         test_matrix = self.extract_test_matrix(reusable_test_workflow)
@@ -230,33 +222,24 @@ class TestDevelopWorkflowConsistency:
 
         This ensures the refactoring was successful and the workflow
         maintains backward compatibility.
+
+        Note: Tests for develop branch now run via ci.yml, so develop-automation.yml
+        no longer has a test job. It only has build and create-release-pr jobs.
         """
         jobs = develop_workflow.get("jobs", {})
 
-        # Verify test job uses reusable workflow
-        assert "test" in jobs, "Develop workflow must have test job"
-        test_job = jobs["test"]
-        assert "uses" in test_job, "Test job must use reusable workflow"
-        assert (
-            "reusable-test.yml" in test_job["uses"]
-        ), "Test job must reference reusable-test.yml"
-
-        # Verify build job still exists and depends on test
+        # Verify build job still exists
         assert "build" in jobs, "Develop workflow must have build job"
-        build_job = jobs["build"]
-        assert "needs" in build_job, "Build job must have dependencies"
-        assert "test" in build_job["needs"], "Build job must depend on test job"
 
-        # Verify PR creation job exists and depends on both test and build
+        # Verify PR creation job exists and depends on build
         assert (
             "create-release-pr" in jobs
         ), "Develop workflow must have create-release-pr job"
         pr_job = jobs["create-release-pr"]
         assert "needs" in pr_job, "PR job must have dependencies"
         needs = pr_job["needs"]
-        assert (
-            "test" in needs and "build" in needs
-        ), "PR job must depend on both test and build jobs"
+        # PR job now only depends on build (test is handled by ci.yml)
+        assert "build" in needs, "PR job must depend on build job"
 
     def test_develop_workflow_maintains_pr_creation_logic(
         self, develop_workflow: dict[str, Any]
