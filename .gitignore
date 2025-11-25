@@ -313,3 +313,6 @@ comprehensive_test_results/
 /test_class.py
 /debug*.py
 /sample_json.json
+
+# Debug artifacts
+tests/debug_artifacts/
