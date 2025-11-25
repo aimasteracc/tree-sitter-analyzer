@@ -1933,7 +1933,8 @@ class SQLElementExtractor(ElementExtractor):
         """Extract CREATE TRIGGER statements with enhanced metadata."""
         for node in self._traverse_nodes(root_node):
             # Handle both correctly parsed triggers and ERROR nodes that might contain triggers
-            if node.type == "create_trigger_statement" or node.type == "ERROR":
+            # Also check for any node type containing "trigger" to be more robust across grammar versions
+            if "trigger" in node.type or node.type == "ERROR":
                 trigger_name = None
                 table_name = None
                 trigger_timing = None
