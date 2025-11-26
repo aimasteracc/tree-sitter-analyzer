@@ -14,6 +14,7 @@ from .python_formatter import PythonTableFormatter
 from .ruby_formatter import RubyTableFormatter
 from .sql_formatter_wrapper import SQLFormatterWrapper
 from .typescript_formatter import TypeScriptTableFormatter
+from .yaml_formatter import YAMLFormatter
 
 
 class LanguageFormatterFactory:
@@ -37,6 +38,8 @@ class LanguageFormatterFactory:
         "php": PHPTableFormatter,  # PHP files use PHP formatter
         "ruby": RubyTableFormatter,  # Ruby files use Ruby formatter
         "rb": RubyTableFormatter,  # Ruby alias
+        "yaml": YAMLFormatter,  # YAML files use YAML formatter
+        "yml": YAMLFormatter,  # YAML alias
     }
 
     @classmethod

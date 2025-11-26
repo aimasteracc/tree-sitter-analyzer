@@ -1,0 +1,46 @@
+---
+# Application configuration
+# This is a comprehensive YAML example for testing
+
+app:
+  name: "MyApp"
+  version: 1.0
+  debug: true
+
+database:
+  host: localhost
+  port: 5432
+  credentials: &db_creds
+    username: admin
+    password: secret
+
+cache:
+  enabled: true
+  credentials: *db_creds
+
+servers:
+  - name: web1
+    port: 8080
+  - name: web2
+    port: 8081
+
+features:
+  - authentication
+  - logging
+  - monitoring
+
+settings:
+  timeout: 30
+  retries: 3
+  nullable_value: ~
+  empty_value: null
+
+---
+# Second document - metadata
+metadata:
+  created: 2024-01-01
+  author: ~
+  tags:
+    - config
+    - yaml
+    - test

@@ -81,6 +81,9 @@ class LanguageDetector:
         ".json": "json",
         ".jsonc": "json",
         ".json5": "json",
+        # YAML系
+        ".yaml": "yaml",
+        ".yml": "yaml",
     }
 
     # Ambiguous extensions (map to multiple languages)

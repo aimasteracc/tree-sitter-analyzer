@@ -60,8 +60,9 @@ Tree-sitter Analyzer is an enterprise-grade code analysis tool designed for the 
 | **HTML** | Complete Support | DOM structure analysis, element classification, attribute extraction, hierarchical relationships |
 | **CSS** | Complete Support | Selector analysis, property classification, style rule extraction, intelligent categorization |
 | **Markdown** | Complete Support | Headers, code blocks, links, images, tables, task lists, blockquotes |
+| **YAML** | 🆕 Complete Support | Mappings, sequences, anchors, aliases, multi-document support, comments |
 
-**Note:** Currently, only the above 11 languages have complete plugin implementations. Languages such as C/C++, Rust, Go, JSON are defined in `LanguageDetector` but do not have functional plugin implementations at this time.
+**Note:** Currently, only the above 12 languages have complete plugin implementations. Languages such as C/C++, Rust, Go, JSON are defined in `LanguageDetector` but do not have functional plugin implementations at this time.
 
 ### 🏆 Production Ready
 - **4,668 Tests** - 100% pass rate, enterprise-grade quality assurance

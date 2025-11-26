@@ -797,3 +797,44 @@ class SQLIndex(SQLElement):
     element_type: str = "index"
     indexed_columns: list[str] = field(default_factory=list)
     is_unique: bool = False
+
+
+@dataclass(frozen=False)
+class YAMLElement(CodeElement):
+    """
+    YAML要素を表現するデータモデル。
+
+    Attributes:
+        element_type: 要素タイプ (mapping, sequence, scalar, anchor, alias, comment, document)
+        key: マッピングのキー
+        value: スカラー値（複合構造の場合はNone）
+        value_type: 値の型 (string, number, boolean, null, mapping, sequence)
+        anchor_name: アンカー名 (&name)
+        alias_target: エイリアスの参照先名（展開しない）
+        nesting_level: AST上の論理的な深さ
+        document_index: マルチドキュメントYAMLでのドキュメントインデックス
+        child_count: 複合構造の子要素数
+    """
+
+    language: str = "yaml"
+    element_type: str = "yaml"
+    key: str | None = None
+    value: str | None = None
+    value_type: str | None = None
+    anchor_name: str | None = None
+    alias_target: str | None = None
+    nesting_level: int = 0
+    document_index: int = 0
+    child_count: int | None = None
+
+    def to_summary_item(self) -> dict[str, Any]:
+        """Return dictionary for summary item with YAML-specific information."""
+        return {
+            "name": self.name,
+            "type": self.element_type,
+            "lines": {"start": self.start_line, "end": self.end_line},
+            "key": self.key,
+            "value_type": self.value_type,
+            "nesting_level": self.nesting_level,
+            "document_index": self.document_index,
+        }

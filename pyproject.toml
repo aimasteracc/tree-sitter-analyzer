@@ -71,6 +71,7 @@ dependencies = [
     "tree-sitter-sql>=0.3.11",
     "tree-sitter-php>=0.24.1",
     "tree-sitter-ruby>=0.23.1",
+    "tree-sitter-yaml>=0.7.0",  # YAML language support with YAMLElement data model
 ]
 
 # Add C# to optional dependencies
@@ -97,6 +98,7 @@ sql = ["tree-sitter-sql>=0.3.11,<0.4.0"]   # SQL language support for database s
 csharp = ["tree-sitter-c-sharp>=0.23.1"]  # C# language support for .NET applications
 php = ["tree-sitter-php>=0.23.0,<0.25.0"]  # PHP language support for web applications
 ruby = ["tree-sitter-ruby>=0.23.0,<0.25.0"]  # Ruby language support for Rails and scripting
+yaml = ["tree-sitter-yaml>=0.7.0"]  # YAML language support for configuration files
 
 # Language bundles for convenience
 web = [
@@ -135,6 +137,7 @@ all-languages = [
     "tree-sitter-c-sharp>=0.23.1",  # C# language support for .NET applications
     "tree-sitter-php>=0.23.0,<0.25.0",  # PHP language support for web applications
     "tree-sitter-ruby>=0.23.0,<0.25.0",  # Ruby language support for Rails and scripting
+    "tree-sitter-yaml>=0.7.0",  # YAML language support for configuration files
 ]
 
 # MCP server support
@@ -285,6 +288,7 @@ csharp = "tree_sitter_analyzer.languages.csharp_plugin:CSharpPlugin"
 sql = "tree_sitter_analyzer.languages.sql_plugin:SQLPlugin"
 php = "tree_sitter_analyzer.languages.php_plugin:PHPPlugin"
 ruby = "tree_sitter_analyzer.languages.ruby_plugin:RubyPlugin"
+yaml = "tree_sitter_analyzer.languages.yaml_plugin:YAMLPlugin"
 
 [project.urls]
 Homepage = "https://github.com/aimasteracc/tree-sitter-analyzer"
