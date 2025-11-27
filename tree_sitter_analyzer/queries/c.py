@@ -3,26 +3,11 @@
 C Language Queries
 
 Tree-sitter queries specific to C language constructs.
-Covers functions, structs, unions, enums, variables, and preprocessor directives.
+Covers functions, structs, unions, enums, and preprocessor directives.
 """
 
 # C-specific query library
 C_QUERIES: dict[str, str] = {
-    # --- Preprocessor ---
-    "include": """
-    (preproc_include) @include
-    """,
-    "define": """
-    (preproc_def) @define
-    """,
-    "ifdef": """
-    (preproc_ifdef) @ifdef
-    """,
-    "ifndef": """
-    (preproc_ifdef
-      name: (identifier) @name
-      (#match? @name ".*")) @ifndef
-    """,
     # --- Functions ---
     "function": """
     (function_definition) @function
@@ -31,35 +16,27 @@ C_QUERIES: dict[str, str] = {
     (declaration
       declarator: (function_declarator)) @function_declaration
     """,
-    # --- Types ---
-    "struct": """
-    (struct_specifier
-      body: (field_declaration_list)) @struct
-    """,
-    "union": """
-    (union_specifier
-      body: (field_declaration_list)) @union
-    """,
-    "enum": """
-    (enum_specifier
-      body: (enumerator_list)) @enum
-    """,
-    "typedef": """
-    (type_definition) @typedef
-    """,
-    # --- Variables ---
-    "global_var": """
-    (translation_unit
-      (declaration) @global_var)
-    """,
-    "field": """
-    (field_declaration) @field
-    """,
-    # --- Name-only Extraction ---
     "function_name": """
     (function_definition
       declarator: (function_declarator
         declarator: (identifier) @function_name))
+    """,
+    "static_function": """
+    (function_definition
+      (storage_class_specifier) @storage
+      (#eq? @storage "static")) @static_function
+    """,
+    "inline_function": """
+    (function_definition
+      (storage_class_specifier) @storage
+      (#eq? @storage "inline")) @inline_function
+    """,
+    # --- Structs and Unions ---
+    "struct": """
+    (struct_specifier) @struct
+    """,
+    "union": """
+    (union_specifier) @union
     """,
     "struct_name": """
     (struct_specifier
@@ -69,67 +46,210 @@ C_QUERIES: dict[str, str] = {
     (union_specifier
       name: (type_identifier) @union_name)
     """,
+    "typedef_struct": """
+    (type_definition
+      type: (struct_specifier) @struct_type
+      declarator: (type_identifier) @typedef_name) @typedef_struct
+    """,
+    # --- Enums ---
+    "enum": """
+    (enum_specifier) @enum
+    """,
     "enum_name": """
     (enum_specifier
       name: (type_identifier) @enum_name)
     """,
-    # --- Detailed Queries ---
-    "function_with_params": """
-    (function_definition
-      declarator: (function_declarator
-        declarator: (identifier) @name
-        parameters: (parameter_list) @params)
-      body: (compound_statement) @body) @function_with_params
+    "enum_constant": """
+    (enumerator) @enum_constant
     """,
-    "struct_with_fields": """
-    (struct_specifier
-      name: (type_identifier) @name
-      body: (field_declaration_list) @fields) @struct_with_fields
+    # --- Variables and Fields ---
+    "field": """
+    (field_declaration) @field
+    """,
+    "variable": """
+    (declaration) @variable
+    """,
+    "static_variable": """
+    (declaration
+      (storage_class_specifier) @storage
+      (#eq? @storage "static")) @static_variable
+    """,
+    "const_variable": """
+    (declaration
+      (type_qualifier) @qualifier
+      (#eq? @qualifier "const")) @const_variable
+    """,
+    "extern_variable": """
+    (declaration
+      (storage_class_specifier) @storage
+      (#eq? @storage "extern")) @extern_variable
+    """,
+    "global_variable": """
+    (translation_unit
+      (declaration) @global_variable)
+    """,
+    # --- Includes and Preprocessor ---
+    "include": """
+    (preproc_include) @include
+    """,
+    "system_include": """
+    (preproc_include
+      path: (system_lib_string) @system_include)
+    """,
+    "local_include": """
+    (preproc_include
+      path: (string_literal) @local_include)
+    """,
+    "define": """
+    (preproc_def) @define
+    """,
+    "define_name": """
+    (preproc_def
+      name: (identifier) @define_name)
+    """,
+    "ifdef": """
+    (preproc_ifdef) @ifdef
+    """,
+    "ifndef": """
+    (preproc_ifdef) @ifndef
+    (#match? @ifndef "ifndef")
+    """,
+    "macro_function": """
+    (preproc_function_def) @macro_function
+    """,
+    "pragma": """
+    (preproc_call) @pragma
+    (#match? @pragma "^#pragma")
+    """,
+    # --- Type Definitions ---
+    "typedef": """
+    (type_definition) @typedef
+    """,
+    "typedef_name": """
+    (type_definition
+      declarator: (type_identifier) @typedef_name)
+    """,
+    # --- Pointer Types ---
+    "pointer_type": """
+    (pointer_declarator) @pointer_type
+    """,
+    "array_type": """
+    (array_declarator) @array_type
     """,
     # --- Control Flow ---
-    "if": """
-    (if_statement) @if
+    "if_statement": """
+    (if_statement) @if_statement
     """,
-    "for": """
-    (for_statement) @for
+    "for_statement": """
+    (for_statement) @for_statement
     """,
-    "while": """
-    (while_statement) @while
+    "while_statement": """
+    (while_statement) @while_statement
     """,
-    "switch": """
-    (switch_statement) @switch
+    "do_statement": """
+    (do_statement) @do_statement
+    """,
+    "switch_statement": """
+    (switch_statement) @switch_statement
+    """,
+    "case_statement": """
+    (case_statement) @case_statement
+    """,
+    "goto_statement": """
+    (goto_statement) @goto_statement
+    """,
+    "return_statement": """
+    (return_statement) @return_statement
+    """,
+    # --- Labels ---
+    "label": """
+    (labeled_statement) @label
     """,
     # --- Comments ---
     "comment": """
     (comment) @comment
     """,
+    "block_comment": """
+    (comment) @block_comment
+    (#match? @block_comment "^/\\*")
+    """,
+    "line_comment": """
+    (comment) @line_comment
+    (#match? @line_comment "^//")
+    """,
+    # --- String Literals ---
+    "string_literal": """
+    (string_literal) @string_literal
+    """,
+    # --- Function Calls ---
+    "function_call": """
+    (call_expression) @function_call
+    """,
+    "function_call_name": """
+    (call_expression
+      function: (identifier) @function_call_name)
+    """,
+    # --- Sizeof and Alignof ---
+    "sizeof": """
+    (sizeof_expression) @sizeof
+    """,
+    # --- Cast Expressions ---
+    "cast": """
+    (cast_expression) @cast
+    """,
 }
 
 # Query descriptions
 C_QUERY_DESCRIPTIONS: dict[str, str] = {
-    "include": "Extract #include preprocessor directives",
-    "define": "Extract #define preprocessor macros",
-    "ifdef": "Extract #ifdef preprocessor conditionals",
-    "ifndef": "Extract #ifndef preprocessor conditionals",
     "function": "Extract C function definitions",
     "function_declaration": "Extract C function declarations",
-    "struct": "Extract C struct definitions",
-    "union": "Extract C union definitions",
-    "enum": "Extract C enum definitions",
+    "function_name": "Extract C function names only",
+    "static_function": "Extract C static functions",
+    "inline_function": "Extract C inline functions",
+    "struct": "Extract C struct declarations",
+    "union": "Extract C union declarations",
+    "struct_name": "Extract C struct names only",
+    "union_name": "Extract C union names only",
+    "typedef_struct": "Extract C typedef struct patterns",
+    "enum": "Extract C enum declarations",
+    "enum_name": "Extract C enum names only",
+    "enum_constant": "Extract C enum constants",
+    "field": "Extract C struct/union fields",
+    "variable": "Extract C variable declarations",
+    "static_variable": "Extract C static variables",
+    "const_variable": "Extract C const variables",
+    "extern_variable": "Extract C extern variables",
+    "global_variable": "Extract C global variables",
+    "include": "Extract C include directives",
+    "system_include": "Extract C system includes",
+    "local_include": "Extract C local includes",
+    "define": "Extract C preprocessor defines",
+    "define_name": "Extract C define names only",
+    "ifdef": "Extract C preprocessor ifdef blocks",
+    "ifndef": "Extract C preprocessor ifndef blocks",
+    "macro_function": "Extract C macro functions",
+    "pragma": "Extract C pragma directives",
     "typedef": "Extract C typedef declarations",
-    "global_var": "Extract global variable declarations",
-    "field": "Extract struct/union field declarations",
-    "function_name": "Extract function names only",
-    "struct_name": "Extract struct names only",
-    "union_name": "Extract union names only",
-    "enum_name": "Extract enum names only",
-    "function_with_params": "Extract function definitions with parameters",
-    "struct_with_fields": "Extract struct definitions with fields",
-    "if": "Extract if statements",
-    "for": "Extract for statements",
-    "while": "Extract while statements",
-    "switch": "Extract switch statements",
-    "comment": "Extract comments",
+    "typedef_name": "Extract C typedef names only",
+    "pointer_type": "Extract C pointer types",
+    "array_type": "Extract C array types",
+    "if_statement": "Extract C if statements",
+    "for_statement": "Extract C for loops",
+    "while_statement": "Extract C while loops",
+    "do_statement": "Extract C do-while loops",
+    "switch_statement": "Extract C switch statements",
+    "case_statement": "Extract C case statements",
+    "goto_statement": "Extract C goto statements",
+    "return_statement": "Extract C return statements",
+    "label": "Extract C labeled statements",
+    "comment": "Extract C comments",
+    "block_comment": "Extract C block comments",
+    "line_comment": "Extract C line comments",
+    "string_literal": "Extract C string literals",
+    "function_call": "Extract C function calls",
+    "function_call_name": "Extract C function call names only",
+    "sizeof": "Extract C sizeof expressions",
+    "cast": "Extract C cast expressions",
 }
 
 
@@ -167,7 +287,7 @@ def get_c_query_description(name: str) -> str:
 
 
 # Convert to ALL_QUERIES format for dynamic loader compatibility
-ALL_QUERIES: dict[str, dict[str, str]] = {}
+ALL_QUERIES = {}
 for query_name, query_string in C_QUERIES.items():
     description = C_QUERY_DESCRIPTIONS.get(query_name, "No description")
     ALL_QUERIES[query_name] = {"query": query_string, "description": description}
@@ -180,22 +300,17 @@ ALL_QUERIES["functions"] = {
 
 ALL_QUERIES["classes"] = {
     "query": C_QUERIES["struct"],
-    "description": "Search all struct definitions (alias for struct)",
+    "description": "Search all struct declarations (alias for struct in C)",
 }
 
-ALL_QUERIES["structs"] = {
-    "query": C_QUERIES["struct"],
-    "description": "Search all struct definitions (alias for struct)",
+ALL_QUERIES["imports"] = {
+    "query": C_QUERIES["include"],
+    "description": "Search all include directives (alias for include)",
 }
 
-ALL_QUERIES["unions"] = {
-    "query": C_QUERIES["union"],
-    "description": "Search all union definitions (alias for union)",
-}
-
-ALL_QUERIES["enums"] = {
-    "query": C_QUERIES["enum"],
-    "description": "Search all enum definitions (alias for enum)",
+ALL_QUERIES["variables"] = {
+    "query": C_QUERIES["variable"],
+    "description": "Search all variable declarations (alias for variable)",
 }
 
 
@@ -208,12 +323,12 @@ def get_query(name: str) -> str:
     )
 
 
-def get_all_queries() -> dict[str, dict[str, str]]:
+def get_all_queries() -> dict:
     """Get all available queries."""
     return ALL_QUERIES
 
 
-def list_queries() -> list[str]:
+def list_queries() -> list:
     """List all available query names."""
     return list(ALL_QUERIES.keys())
 
