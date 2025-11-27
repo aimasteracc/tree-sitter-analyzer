@@ -99,6 +99,9 @@ csharp = ["tree-sitter-c-sharp>=0.23.1"]  # C# language support for .NET applica
 php = ["tree-sitter-php>=0.23.0,<0.25.0"]  # PHP language support for web applications
 ruby = ["tree-sitter-ruby>=0.23.0,<0.25.0"]  # Ruby language support for Rails and scripting
 yaml = ["tree-sitter-yaml>=0.7.0"]  # YAML language support for configuration files
+kotlin = [
+    "tree-sitter-kotlin>=0.3.0",
+]  # Kotlin language support for Android and JVM applications
 
 # Language bundles for convenience
 web = [
@@ -130,6 +133,7 @@ all-languages = [
     "tree-sitter-cpp>=0.23.4,<0.25.0",
     "tree-sitter-rust>=0.20.0,<0.25.0",
     "tree-sitter-go>=0.20.0,<0.25.0",
+    "tree-sitter-kotlin>=0.3.0",  # Kotlin language support for Android and JVM applications
     "tree-sitter-markdown>=0.3.1",
     "tree-sitter-html>=0.23.0,<0.25.0",
     "tree-sitter-css>=0.23.0,<0.25.0",
@@ -289,6 +293,9 @@ sql = "tree_sitter_analyzer.languages.sql_plugin:SQLPlugin"
 php = "tree_sitter_analyzer.languages.php_plugin:PHPPlugin"
 ruby = "tree_sitter_analyzer.languages.ruby_plugin:RubyPlugin"
 yaml = "tree_sitter_analyzer.languages.yaml_plugin:YAMLPlugin"
+go = "tree_sitter_analyzer.languages.go_plugin:GoPlugin"
+rust = "tree_sitter_analyzer.languages.rust_plugin:RustPlugin"
+kotlin = "tree_sitter_analyzer.languages.kotlin_plugin:KotlinPlugin"
 
 [project.urls]
 Homepage = "https://github.com/aimasteracc/tree-sitter-analyzer"

@@ -5,13 +5,16 @@ Factory for creating language-specific formatters for different output types.
 
 from .base_formatter import BaseFormatter
 from .csharp_formatter import CSharpTableFormatter
+from .go_formatter import GoTableFormatter
 from .html_formatter import HtmlFormatter
 from .java_formatter import JavaTableFormatter
 from .javascript_formatter import JavaScriptTableFormatter
+from .kotlin_formatter import KotlinTableFormatter
 from .markdown_formatter import MarkdownFormatter
 from .php_formatter import PHPTableFormatter
 from .python_formatter import PythonTableFormatter
 from .ruby_formatter import RubyTableFormatter
+from .rust_formatter import RustTableFormatter
 from .sql_formatter_wrapper import SQLFormatterWrapper
 from .typescript_formatter import TypeScriptTableFormatter
 from .yaml_formatter import YAMLFormatter
@@ -29,6 +32,9 @@ class LanguageFormatterFactory:
         "python": PythonTableFormatter,  # Python files use Python formatter
         "py": PythonTableFormatter,  # Python alias
         "java": JavaTableFormatter,  # Java files use Java formatter
+        "kotlin": KotlinTableFormatter,  # Kotlin files use Kotlin formatter
+        "kt": KotlinTableFormatter,  # Kotlin alias
+        "kts": KotlinTableFormatter,  # Kotlin script alias
         "javascript": JavaScriptTableFormatter,  # JavaScript files use JavaScript formatter
         "js": JavaScriptTableFormatter,  # JavaScript alias
         "typescript": TypeScriptTableFormatter,  # TypeScript files use TypeScript formatter
@@ -38,6 +44,9 @@ class LanguageFormatterFactory:
         "php": PHPTableFormatter,  # PHP files use PHP formatter
         "ruby": RubyTableFormatter,  # Ruby files use Ruby formatter
         "rb": RubyTableFormatter,  # Ruby alias
+        "rust": RustTableFormatter,  # Rust files use Rust formatter
+        "rs": RustTableFormatter,  # Rust alias
+        "go": GoTableFormatter,  # Go files use Go formatter
         "yaml": YAMLFormatter,  # YAML files use YAML formatter
         "yml": YAMLFormatter,  # YAML alias
     }

@@ -354,8 +354,18 @@ class TableCommand(BaseCommand):
             for param in params:
                 if isinstance(param, str):
                     param = param.strip()
-                    if language == "python":
-                        # Python format: "name: type"
+                    # Languages using "name: type" syntax
+                    TYPE_SUFFIX_LANGUAGES = {
+                        "python",
+                        "rust",
+                        "kotlin",
+                        "typescript",
+                        "ts",
+                        "scala",
+                    }
+
+                    if language.lower() in TYPE_SUFFIX_LANGUAGES:
+                        # Format: "name: type"
                         if ":" in param:
                             parts = param.split(":", 1)
                             param_name = parts[0].strip()

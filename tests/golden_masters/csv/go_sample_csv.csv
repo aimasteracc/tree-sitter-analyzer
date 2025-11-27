@@ -1,0 +1,28 @@
+Type,Name,Signature,Visibility,Lines,Complexity,Doc
+Field,ErrNotFound,ErrNotFound:None,public,21-21,,-
+Field,DefaultTimeout,DefaultTimeout:None,public,24-24,,-
+Field,MaxRetries,MaxRetries:None,public,28-28,,-
+Field,RetryInterval,RetryInterval:None,public,29-29,,-
+Field,StatusPending,StatusPending:Status,public,37-37,,-
+Field,StatusRunning,StatusRunning:None,public,38-38,,-
+Field,StatusCompleted,StatusCompleted:None,public,39-39,,-
+Field,StatusFailed,StatusFailed:None,public,40-40,,-
+Field,lastErr,lastErr:error,private,281-281,,-
+Method,NewService,"(string:name, *Config:config):*Service",public,80-86,1,-
+Method,Name,():string,public,89-91,1,-
+Method,IsRunning,():bool,public,94-98,1,-
+Method,Start,(context.Context:ctx):error,public,101-114,1,-
+Method,run,(context.Context:ctx):,private,117-132,1,-
+Method,tick,(time.Time:t):,private,135-139,1,-
+Method,Stop,():error,public,142-153,1,-
+Method,stop,():,private,156-160,1,-
+Method,ProcessData,"(context.Context:ctx, []byte:input <-chan):(<-chan []byte, <-chan error)",public,163-193,1,-
+Method,process,([]byte:data):[]byte,private,196-203,1,-
+Method,NewWorkerPool,(int:workers):*WorkerPool,public,213-218,1,-
+Method,Start,():,public,221-226,1,-
+Method,worker,():,private,229-234,1,-
+Method,Submit,(func():job):,public,237-239,1,-
+Method,Shutdown,():,public,242-245,1,-
+Method,Chain,():Middleware,public,257-264,1,-
+Method,WithTimeout,(time.Duration:timeout):Middleware,public,267-275,1,-
+Method,WithRetry,(int:maxRetries):Middleware,public,278-293,1,-
