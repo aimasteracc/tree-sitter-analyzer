@@ -183,7 +183,7 @@
   - **Validates: Requirements 6.1**
   - Test that invalid YAML returns error result without crashing
 
-- [-] 3.4 Write property test for encoding resilience
+- [x] 3.4 Write property test for encoding resilience
 
   - **Property 13: Encoding Resilience**
   - **Validates: Requirements 6.2**
