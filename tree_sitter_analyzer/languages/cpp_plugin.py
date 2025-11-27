@@ -180,8 +180,8 @@ class CppElementExtractor(ElementExtractor):
         element_type: str,
     ) -> None:
         """Iterative node traversal and extraction with caching"""
-        if not root_node:
-            return  # type: ignore[unreachable]
+        if root_node is None:
+            return
 
         target_node_types = set(extractors.keys())
         container_node_types = {
@@ -1062,9 +1062,3 @@ class CppPlugin(LanguagePlugin):
                 "imports": [],
                 "packages": [],
             }
-
-    def supports_file(self, file_path: str) -> bool:
-        """Check if this plugin supports the given file."""
-        return any(
-            file_path.lower().endswith(ext) for ext in self.get_file_extensions()
-        )

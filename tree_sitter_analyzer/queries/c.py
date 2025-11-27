@@ -171,7 +171,7 @@ C_QUERIES: dict[str, str] = {
     """,
     "block_comment": """
     (comment) @block_comment
-    (#match? @block_comment "^/\\\\*")
+    (#match? @block_comment "^/\\*")
     """,
     "line_comment": """
     (comment) @line_comment

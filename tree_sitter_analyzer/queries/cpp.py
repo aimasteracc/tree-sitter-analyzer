@@ -188,7 +188,7 @@ CPP_QUERIES: dict[str, str] = {
     """,
     "block_comment": """
     (comment) @block_comment
-    (#match? @block_comment "^/\\\\*")
+    (#match? @block_comment "^/\\*")
     """,
     # --- Operator Overloading ---
     "operator_overload": """
