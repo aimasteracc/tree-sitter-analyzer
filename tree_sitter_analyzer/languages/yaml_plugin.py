@@ -213,6 +213,37 @@ class YAMLElementExtractor(ElementExtractor):
             nodes.extend(self._traverse_nodes(child))
         return nodes
 
+    def _count_document_children(self, document_node: "tree_sitter.Node") -> int:
+        """Count meaningful children in a document (top-level mappings).
+
+        This counts the number of top-level key-value pairs in the document,
+        which is more meaningful than counting AST nodes.
+        """
+        count = 0
+        for child in document_node.children:
+            # Skip document markers and comments
+            if child.type in ("---", "...", "comment"):
+                continue
+            # For block_node, count the mappings inside
+            if child.type == "block_node":
+                for subchild in child.children:
+                    if subchild.type == "block_mapping":
+                        # Count the mapping pairs
+                        count += len(
+                            [
+                                c
+                                for c in subchild.children
+                                if c.type == "block_mapping_pair"
+                            ]
+                        )
+                    elif subchild.type in ("block_sequence", "flow_sequence"):
+                        count += 1
+            elif child.type == "block_mapping":
+                count += len(
+                    [c for c in child.children if c.type == "block_mapping_pair"]
+                )
+        return count
+
     def _extract_documents(
         self, root_node: "tree_sitter.Node", elements: list[YAMLElement]
     ) -> None:
@@ -225,10 +256,9 @@ class YAMLElementExtractor(ElementExtractor):
                     raw_text = self._get_node_text(node)
                     doc_index = self._get_document_index(node)
 
-                    # Count child elements
-                    child_count = len(
-                        [c for c in node.children if c.type not in ("comment",)]
-                    )
+                    # Count meaningful child elements (top-level mappings)
+                    # Exclude document markers (---) and comments
+                    child_count = self._count_document_children(node)
 
                     element = YAMLElement(
                         name=f"Document {doc_index}",

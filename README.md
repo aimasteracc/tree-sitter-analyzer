@@ -120,6 +120,37 @@ rg --version
 
 ---
 
+## 🚀 Coming Soon: YAML Language Support! 🆕
+
+**Complete YAML language support** is coming in the next release:
+
+- **Structure Extraction**: Mappings (key-value pairs), sequences (lists), scalar values
+- **Advanced Features**:
+  - Anchor (&anchor) and alias (*alias) detection
+  - Multi-document support (--- separators)
+  - Comment extraction
+  - Nesting level calculation
+- **Scalar Type Identification**: Automatic identification of strings, numbers, booleans, null
+- **YAML Formatter**: Dedicated output formatter supporting summary, structure, advanced analysis, and table formats
+- **Tree-sitter Query Support**: Complex YAML pattern analysis
+- **Full Integration**: Available in CLI, API, and MCP interfaces
+
+Perfect for DevOps engineers and developers working with Kubernetes, Docker Compose, Ansible, and other YAML configuration files!
+
+---
+
+## 🎉 What's New in v1.9.16
+
+### Bug Fixes & Stability Improvements
+
+- **SQL Source Code Extraction**: Improved reliability in SQLElementExtractor
+- **SQL Single-line Parsing**: Fixed view definition parsing issues
+- **SQL Trigger Line Number Extraction**: Fixed with cleanup of redundant golden master files
+- **SQL Parameter Extraction Regex**: Improved to resolve CI failures
+- **Cross-platform Compatibility**: Enhanced SQL analysis robustness
+
+---
+
 ## 🎉 What's New in v1.9.10
 
 ### PHP & Ruby Language Support Added! 🆕

@@ -27,6 +27,7 @@ repos:
       - id: end-of-file-fixer
         exclude: \.md$
       - id: check-yaml
+        args: [--allow-multiple-documents]
       - id: check-json
         exclude: ^examples/.*\.(json|summary\.json)$
       - id: check-toml

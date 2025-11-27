@@ -30,7 +30,7 @@ def yaml_simple_mapping(draw):
     """Generate simple YAML mapping content."""
     num_keys = draw(st.integers(min_value=1, max_value=10))
     lines = []
-    for i in range(num_keys):
+    for _i in range(num_keys):
         key = draw(
             st.text(
                 alphabet=st.characters(
@@ -66,7 +66,7 @@ def yaml_simple_sequence(draw):
     """Generate simple YAML sequence content."""
     num_items = draw(st.integers(min_value=1, max_value=10))
     lines = []
-    for i in range(num_items):
+    for _i in range(num_items):
         item = draw(
             st.one_of(
                 st.text(
@@ -90,7 +90,7 @@ def yaml_with_comments(draw):
     """Generate YAML content with comments."""
     num_lines = draw(st.integers(min_value=2, max_value=8))
     lines = []
-    for i in range(num_lines):
+    for _i in range(num_lines):
         if draw(st.booleans()):
             # Add a comment
             comment_text = draw(
@@ -270,7 +270,9 @@ class TestYAMLElementMetadataProperties:
                 expected_text = "\n".join(source_lines[start_idx:end_idx])
 
                 # Property: raw_text should match expected text from source
-                assert element.raw_text == expected_text, (
+                # Note: tree-sitter may strip trailing whitespace from nodes,
+                # so we compare stripped versions
+                assert element.raw_text.rstrip() == expected_text.rstrip(), (
                     f"Element '{element.name}' raw_text does not match source. "
                     f"Expected: '{expected_text}', Got: '{element.raw_text}'"
                 )

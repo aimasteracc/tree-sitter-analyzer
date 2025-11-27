@@ -229,6 +229,14 @@ class YAMLFormatter(BaseFormatter):
         self, analysis_result: dict[str, Any], table_type: str = "full"
     ) -> str:
         """Format table output for YAML files."""
+        if table_type == "compact":
+            return self._format_compact(analysis_result)
+        elif table_type == "csv":
+            return self._format_csv(analysis_result)
+        return self._format_full(analysis_result)
+
+    def _format_full(self, analysis_result: dict[str, Any]) -> str:
+        """Format full table output for YAML files."""
         file_path = analysis_result.get("file_path", "")
         elements = analysis_result.get("elements", [])
 
@@ -324,6 +332,81 @@ class YAMLFormatter(BaseFormatter):
                 line = c.get("start_line", 0)
                 output.append(f"| {content} | {line} |")
             output.append("")
+
+        return "\n".join(output)
+
+    def _format_compact(self, analysis_result: dict[str, Any]) -> str:
+        """Format compact table output for YAML files."""
+        file_path = analysis_result.get("file_path", "")
+        elements = analysis_result.get("elements", [])
+
+        # Count elements by type
+        documents = [e for e in elements if e.get("element_type") == "document"]
+        mappings = [e for e in elements if e.get("element_type") == "mapping"]
+        sequences = [e for e in elements if e.get("element_type") == "sequence"]
+        anchors = [e for e in elements if e.get("element_type") == "anchor"]
+        aliases = [e for e in elements if e.get("element_type") == "alias"]
+        comments = [e for e in elements if e.get("element_type") == "comment"]
+
+        output = [f"# YAML Analysis: {file_path} (Compact)\n"]
+
+        # Summary table
+        output.append("## Summary\n")
+        output.append("| Element Type | Count |")
+        output.append("|--------------|-------|")
+        output.append(f"| Documents | {len(documents)} |")
+        output.append(f"| Mappings | {len(mappings)} |")
+        output.append(f"| Sequences | {len(sequences)} |")
+        output.append(f"| Anchors | {len(anchors)} |")
+        output.append(f"| Aliases | {len(aliases)} |")
+        output.append(f"| Comments | {len(comments)} |")
+        output.append(f"| **Total** | **{len(elements)}** |")
+        output.append("")
+
+        # Top-level mappings only
+        top_level_mappings = [m for m in mappings if m.get("nesting_level", 0) == 1]
+        if top_level_mappings:
+            output.append("## Top-Level Keys\n")
+            output.append("| Key | Value Type | Line |")
+            output.append("|-----|------------|------|")
+            for m in top_level_mappings:
+                key = m.get("key", "")[:30]
+                vtype = m.get("value_type", "")
+                line = m.get("start_line", 0)
+                output.append(f"| {key} | {vtype} | {line} |")
+            output.append("")
+
+        # Anchors and Aliases
+        if anchors or aliases:
+            output.append("## References\n")
+            output.append("| Type | Name/Target | Line |")
+            output.append("|------|-------------|------|")
+            for a in anchors:
+                output.append(
+                    f"| Anchor | &{a.get('anchor_name', '')} | {a.get('start_line', 0)} |"
+                )
+            for a in aliases:
+                output.append(
+                    f"| Alias | *{a.get('alias_target', '')} | {a.get('start_line', 0)} |"
+                )
+            output.append("")
+
+        return "\n".join(output)
+
+    def _format_csv(self, analysis_result: dict[str, Any]) -> str:
+        """Format CSV output for YAML files."""
+        elements = analysis_result.get("elements", [])
+
+        output = ["name,element_type,value_type,nesting_level,start_line,end_line"]
+
+        for e in elements:
+            name = e.get("name", "").replace(",", ";")
+            element_type = e.get("element_type", "")
+            value_type = e.get("value_type", "") or ""
+            nesting = e.get("nesting_level", 0)
+            start = e.get("start_line", 0)
+            end = e.get("end_line", 0)
+            output.append(f"{name},{element_type},{value_type},{nesting},{start},{end}")
 
         return "\n".join(output)
 
