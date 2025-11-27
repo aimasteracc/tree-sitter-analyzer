@@ -285,6 +285,8 @@ csharp = "tree_sitter_analyzer.languages.csharp_plugin:CSharpPlugin"
 sql = "tree_sitter_analyzer.languages.sql_plugin:SQLPlugin"
 php = "tree_sitter_analyzer.languages.php_plugin:PHPPlugin"
 ruby = "tree_sitter_analyzer.languages.ruby_plugin:RubyPlugin"
+cpp = "tree_sitter_analyzer.languages.cpp_plugin:CppPlugin"
+c = "tree_sitter_analyzer.languages.c_plugin:CPlugin"
 
 [project.urls]
 Homepage = "https://github.com/aimasteracc/tree-sitter-analyzer"
