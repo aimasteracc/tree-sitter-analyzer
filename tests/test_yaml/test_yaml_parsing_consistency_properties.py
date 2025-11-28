@@ -31,7 +31,7 @@ def simple_yaml_content(draw):
     """Generate simple valid YAML content."""
     num_keys = draw(st.integers(min_value=1, max_value=10))
     lines = []
-    for i in range(num_keys):
+    for _i in range(num_keys):
         key = draw(
             st.text(
                 alphabet=st.characters(
@@ -67,7 +67,7 @@ def yaml_with_sequences(draw):
     """Generate YAML content with sequences."""
     num_items = draw(st.integers(min_value=1, max_value=8))
     lines = ["items:"]
-    for i in range(num_items):
+    for _i in range(num_items):
         item = draw(
             st.text(
                 alphabet=st.characters(
@@ -101,7 +101,7 @@ def yaml_with_nested_structures(draw):
     num_children = draw(st.integers(min_value=1, max_value=5))
     lines = [f"{parent_key}:"]
 
-    for i in range(num_children):
+    for _i in range(num_children):
         child_key = draw(
             st.text(
                 alphabet=st.characters(
@@ -138,7 +138,7 @@ def yaml_with_comments(draw):
     num_keys = draw(st.integers(min_value=1, max_value=5))
     lines = ["# Configuration file"]
 
-    for i in range(num_keys):
+    for _i in range(num_keys):
         key = draw(
             st.text(
                 alphabet=st.characters(
@@ -173,11 +173,11 @@ def yaml_with_multi_documents(draw):
     num_docs = draw(st.integers(min_value=2, max_value=4))
     documents = []
 
-    for doc_idx in range(num_docs):
+    for _doc_idx in range(num_docs):
         num_keys = draw(st.integers(min_value=1, max_value=3))
         lines = ["---"]
 
-        for i in range(num_keys):
+        for _i in range(num_keys):
             key = draw(
                 st.text(
                     alphabet=st.characters(

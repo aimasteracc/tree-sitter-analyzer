@@ -30,7 +30,7 @@ def yaml_mapping_content(draw):
     """Generate YAML content with mappings."""
     num_keys = draw(st.integers(min_value=1, max_value=10))
     lines = []
-    for i in range(num_keys):
+    for _i in range(num_keys):
         key = draw(
             st.text(
                 alphabet=st.characters(
@@ -66,7 +66,7 @@ def yaml_sequence_content(draw):
     """Generate YAML content with sequences."""
     num_items = draw(st.integers(min_value=1, max_value=10))
     lines = []
-    for i in range(num_items):
+    for _i in range(num_items):
         item = draw(
             st.one_of(
                 st.text(

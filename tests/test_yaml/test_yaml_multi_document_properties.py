@@ -31,12 +31,12 @@ def yaml_multi_document_content(draw):
     num_documents = draw(st.integers(min_value=2, max_value=5))
     documents = []
 
-    for doc_idx in range(num_documents):
+    for _doc_idx in range(num_documents):
         # Generate content for each document
         num_keys = draw(st.integers(min_value=1, max_value=5))
         lines = []
 
-        for i in range(num_keys):
+        for _i in range(num_keys):
             key = draw(
                 st.text(
                     alphabet=st.characters(
@@ -122,7 +122,7 @@ class TestYAMLMultiDocumentProperties:
         documents = [e for e in elements if e.element_type == "document"]
 
         # Count expected documents (number of --- separators + 1)
-        expected_doc_count = yaml_content.count("---") + 1
+        _expected_doc_count = yaml_content.count("---") + 1  # noqa: F841
 
         # Property: Number of extracted documents should match expected count
         assert len(documents) >= 1, (
