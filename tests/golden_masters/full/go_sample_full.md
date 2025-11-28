@@ -17,6 +17,27 @@ import ""sync""
 import ""time""
 ```
 
+## Structs
+| Name | Visibility | Lines | Embedded | Doc |
+|------|------------|-------|----------|-----|
+| Config | exported | 44-50 | - | - |
+| Service | exported | 71-77 | - | - |
+| WorkerPool | exported | 206-210 | - | - |
+
+## Interfaces
+| Name | Visibility | Lines | Doc |
+|------|------------|-------|-----|
+| Reader | exported | 53-56 | - |
+| Writer | exported | 59-62 | - |
+| ReadWriter | exported | 65-68 | - |
+
+## Type Aliases
+| Name | Visibility | Lines |
+|------|------------|-------|
+| Status | exported | 33-33 |
+| Handler | exported | 251-251 |
+| Middleware | exported | 254-254 |
+
 ## Functions
 | Func | Signature | Vis | Lines | Doc |
 |------|-----------|-----|-------|-----|

@@ -63,9 +63,9 @@ class GoTableFormatter(BaseTableFormatter):
 
         # Types (Structs, Interfaces, Type Aliases)
         classes = data.get("classes", [])
-        structs = [c for c in classes if c.get("class_type") == "struct"]
-        interfaces = [c for c in classes if c.get("class_type") == "interface"]
-        type_aliases = [c for c in classes if c.get("class_type") == "type_alias"]
+        structs = [c for c in classes if c.get("type") == "struct"]
+        interfaces = [c for c in classes if c.get("type") == "interface"]
+        type_aliases = [c for c in classes if c.get("type") == "type_alias"]
 
         if structs:
             lines.append("## Structs")

@@ -412,7 +412,7 @@ class AnalysisResult:
             "classes": [
                 {
                     "name": cls.name,
-                    "class_type": getattr(cls, "class_type", "class"),
+                    "type": getattr(cls, "class_type", "class"),
                     "package": getattr(cls, "package_name", None),
                 }
                 for cls in classes
