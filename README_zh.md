@@ -52,7 +52,7 @@ winget install sharkdp.fd BurntSushi.ripgrep.MSVC  # Windows
 ### 验证安装
 
 ```bash
-uv run tree-sitter-analyzer --version
+uv run tree-sitter-analyzer --show-supported-languages
 ```
 
 ---

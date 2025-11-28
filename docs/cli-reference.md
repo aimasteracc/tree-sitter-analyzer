@@ -24,7 +24,7 @@ uv run tree-sitter-analyzer <file_path> [options]
 | Option | Description |
 |--------|-------------|
 | `--help` | Show help message |
-| `--version` | Show version number |
+| `--show-supported-languages` | Show supported languages |
 | `--language <lang>` | Specify programming language (auto-detected by default) |
 | `--output-format <format>` | Output format: `json`, `text` |
 
@@ -220,8 +220,8 @@ uv run find-and-grep --roots . --query "public.*static.*void" --extensions java 
 # Show help
 uv run tree-sitter-analyzer --help
 
-# Show version
-uv run tree-sitter-analyzer --version
+# Show supported languages
+uv run tree-sitter-analyzer --show-supported-languages
 ```
 
 ### Language Support Information

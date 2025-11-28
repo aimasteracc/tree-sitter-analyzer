@@ -191,7 +191,7 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 
 ```bash
 # Check version
-uv run tree-sitter-analyzer --version
+uv run tree-sitter-analyzer --show-supported-languages
 
 # View help
 uv run tree-sitter-analyzer --help
