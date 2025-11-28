@@ -126,14 +126,14 @@
 
 ### docs/ File Model
 
-| File | Content | Source |
-|------|---------|--------|
-| installation.md | 完整安装指南（所有平台、所有方式） | README 2.📋 Prerequisites |
-| cli-reference.md | 完整 CLI 命令参考 | README 6.⚡ Complete CLI Commands |
-| mcp-tools.md | MCP 工具详细文档 | README 5.🤖 Complete MCP Tool List |
-| smart-workflow.md | SMART 工作流详解 | README 4.📖 Usage Workflow |
-| features.md | 功能特性详解 | README 7.🛠️ Core Features |
-| architecture.md | 项目架构文档 | 新建 |
+| File | Content | Source | Action |
+|------|---------|--------|--------|
+| installation.md | 完整安装指南（所有平台、所有方式） | README 2.📋 Prerequisites | 新建 |
+| cli-reference.md | 完整 CLI 命令参考 | README 6.⚡ Complete CLI Commands | 新建 |
+| api/mcp_tools_specification.md | MCP 工具详细文档 | 现有文档 + README 5.🤖 | 更新扩展 |
+| smart-workflow.md | SMART 工作流详解 | README 4.📖 Usage Workflow | 新建 |
+| features.md | 功能特性详解 | README 7.🛠️ Core Features | 更新扩展 |
+| architecture.md | 项目架构文档 | 新建 | 新建 |
 
 ## Correctness Properties
 

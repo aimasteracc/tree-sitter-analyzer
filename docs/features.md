@@ -1,6 +1,43 @@
 # Tree-sitter Analyzer Features
 
-This document provides a comprehensive overview of the language-specific features supported by Tree-sitter Analyzer.
+This document provides a comprehensive overview of the features and language support in Tree-sitter Analyzer.
+
+## Feature Overview
+
+| Feature Category | Key Capabilities | Core Benefits |
+|------------------|------------------|---------------|
+| **🤖 Deep AI Integration** | MCP Protocol Support, SMART Workflow, Token Limitation Breaking | Native support for Claude Desktop, Cursor, Roo Code |
+| **🔍 Powerful Search** | Intelligent File Discovery, Precise Content Search, Two-Stage Search | fd + ripgrep based high-performance search |
+| **📊 Intelligent Analysis** | Fast Structure Analysis, Precise Code Extraction, Complexity Analysis | Enterprise-grade parsing without full file reading |
+
+## Enterprise Capabilities
+
+### Token Optimization
+
+For AI assistants with token limits, Tree-sitter Analyzer provides multiple optimization strategies:
+
+| Strategy | Option | Token Reduction |
+|----------|--------|-----------------|
+| Count Only | `count_only=true` | ~70% |
+| Summary Only | `summary_only=true` | ~80% |
+| File Output | `suppress_output=true` + `output_file` | ~95% |
+| Group by File | `group_by_file=true` | ~60% |
+| Total Only | `total_only=true` | ~90% |
+
+### Security Features
+
+- **Project Boundary Protection**: Automatic security boundaries preventing access outside project
+- **Path Traversal Prevention**: Blocks `../` and symbolic link attacks
+- **Input Validation**: Sanitizes all user inputs
+- **Error Sanitization**: Removes sensitive information from error messages
+
+### Cross-Platform Support
+
+| Platform | Status | Notes |
+|----------|--------|-------|
+| Windows | ✅ Full Support | PowerShell and CMD |
+| macOS | ✅ Full Support | Native and Homebrew |
+| Linux | ✅ Full Support | All major distributions |
 
 ## Supported Languages
 

@@ -1,62 +1,62 @@
-# 新しい言語サポート追加チェックリスト
+# New Language Support Checklist
 
-このドキュメントは、Tree-sitter Analyzerに新しいプログラミング言語のサポートを追加する際に必要な手順をまとめたものです。
+This document outlines the steps required to add support for a new programming language to Tree-sitter Analyzer.
 
-## 📋 必須チェックリスト
+## 📋 Required Checklist
 
-### 1. 言語プラグインの実装
+### 1. Implement Language Plugin
 
-- [ ] `tree_sitter_analyzer/languages/{language}_plugin.py` を作成
-  - [ ] `LanguagePlugin` クラスを継承
-  - [ ] `get_language_name()` を実装
-  - [ ] `get_file_extensions()` を実装
-  - [ ] `create_extractor()` を実装
-  - [ ] `get_supported_element_types()` を実装
-  - [ ] `get_queries()` を実装
-  - [ ] `analyze_file()` を実装
+- [ ] Create `tree_sitter_analyzer/languages/{language}_plugin.py`
+  - [ ] Inherit from `LanguagePlugin` class
+  - [ ] Implement `get_language_name()`
+  - [ ] Implement `get_file_extensions()`
+  - [ ] Implement `create_extractor()`
+  - [ ] Implement `get_supported_element_types()`
+  - [ ] Implement `get_queries()`
+  - [ ] Implement `analyze_file()`
 
-### 2. 要素抽出器の実装
+### 2. Implement Element Extractor
 
-- [ ] `{Language}ElementExtractor` クラスを作成
-  - [ ] `ElementExtractor` を継承
-  - [ ] 言語固有の要素抽出メソッドを実装
+- [ ] Create `{Language}ElementExtractor` class
+  - [ ] Inherit from `ElementExtractor`
+  - [ ] Implement language-specific extraction methods
 
-### 3. クエリ定義
+### 3. Define Queries
 
-- [ ] `tree_sitter_analyzer/queries/{language}.py` を作成
-  - [ ] 言語固有のTree-sitterクエリを定義
+- [ ] Create `tree_sitter_analyzer/queries/{language}.py`
+  - [ ] Define language-specific Tree-sitter queries
 
-### 4. フォーマッターの実装
+### 4. Implement Formatter
 
-- [ ] `tree_sitter_analyzer/formatters/{language}_formatter.py` を作成
-  - [ ] `BaseFormatter` を継承
-  - [ ] `format_summary()` を実装
-  - [ ] `format_structure()` を実装
-  - [ ] `format_advanced()` を実装
-  - [ ] `format_table()` を実装
+- [ ] Create `tree_sitter_analyzer/formatters/{language}_formatter.py`
+  - [ ] Inherit from `BaseFormatter`
+  - [ ] Implement `format_summary()`
+  - [ ] Implement `format_structure()`
+  - [ ] Implement `format_advanced()`
+  - [ ] Implement `format_table()`
 
-### 5. フォーマッターの登録
+### 5. Register Formatter
 
-- [ ] `tree_sitter_analyzer/formatters/formatter_registry.py` にフォーマッターを登録
+- [ ] Register formatter in `tree_sitter_analyzer/formatters/formatter_registry.py`
 
-### 6. サンプルファイルの作成
+### 6. Create Sample File
 
-- [ ] `examples/sample.{ext}` または `examples/Sample.{Ext}` を作成
-  - [ ] 言語の主要な機能を網羅したサンプルコード
+- [ ] Create `examples/sample.{ext}` or `examples/Sample.{Ext}`
+  - [ ] Include sample code covering major language features
 
-### 7. 単体テストの作成
+### 7. Create Unit Tests
 
-- [ ] `tests/test_{language}/test_{language}_plugin.py` を作成
-  - [ ] プラグインの基本機能テスト
-  - [ ] 要素抽出テスト
-  - [ ] エッジケーステスト
+- [ ] Create `tests/test_{language}/test_{language}_plugin.py`
+  - [ ] Basic plugin functionality tests
+  - [ ] Element extraction tests
+  - [ ] Edge case tests
 
-### 8. ⭐ ゴールデンマスターテストの追加（重要！）
+### 8. ⭐ Add Golden Master Tests (Critical!)
 
-- [ ] `tests/golden_masters/full/{language}_sample_{name}_full.md` を作成
-- [ ] `tests/golden_masters/compact/{language}_sample_{name}_compact.md` を作成（オプション）
-- [ ] `tests/golden_masters/csv/{language}_sample_{name}_csv.csv` を作成（オプション）
-- [ ] `tests/test_golden_master_regression.py` にテストケースを追加
+- [ ] Create `tests/golden_masters/full/{language}_sample_{name}_full.md`
+- [ ] Create `tests/golden_masters/compact/{language}_sample_{name}_compact.md` (optional)
+- [ ] Create `tests/golden_masters/csv/{language}_sample_{name}_csv.csv` (optional)
+- [ ] Add test cases to `tests/test_golden_master_regression.py`
   ```python
   # {Language} tests
   ("examples/sample.{ext}", "{language}_sample", "full"),
@@ -64,52 +64,52 @@
   ("examples/sample.{ext}", "{language}_sample", "csv"),
   ```
 
-> **⚠️ 教訓**: ゴールデンマスターテストは、将来の変更によるリグレッションを防ぐために非常に重要です。
-> 新しい言語を追加する際は、必ずゴールデンマスターテストを作成してください。
+> **⚠️ Lesson Learned**: Golden master tests are crucial for preventing regressions from future changes.
+> Always create golden master tests when adding a new language.
 
-### 9. プロパティベーステストの作成（推奨）
+### 9. Create Property-Based Tests (Recommended)
 
-- [ ] `tests/test_{language}/test_{language}_properties.py` を作成
-  - [ ] 言語固有のプロパティテスト
+- [ ] Create `tests/test_{language}/test_{language}_properties.py`
+  - [ ] Language-specific property tests
 
-### 10. 依存関係の追加
+### 10. Add Dependencies
 
-- [ ] `pyproject.toml` に tree-sitter-{language} を追加
+- [ ] Add tree-sitter-{language} to `pyproject.toml`
   ```toml
   [project.optional-dependencies]
   {language} = ["tree-sitter-{language}>=x.x.x"]
   ```
 
-### 11. ドキュメントの更新
+### 11. Update Documentation
 
-- [ ] `README.md` の言語サポート表を更新
-- [ ] `README_zh.md` の言語サポート表を更新
-- [ ] `README_ja.md` の言語サポート表を更新
-- [ ] `CHANGELOG.md` に新機能として記載
+- [ ] Update language support table in `README.md`
+- [ ] Update language support table in `README_zh.md`
+- [ ] Update language support table in `README_ja.md`
+- [ ] Add entry to `CHANGELOG.md`
 
-### 12. Entry Pointsの登録（必要に応じて）
+### 12. Register Entry Points (if needed)
 
-- [ ] `pyproject.toml` の `[project.entry-points]` セクションを更新
+- [ ] Update `[project.entry-points]` section in `pyproject.toml`
 
-## 📁 ファイル構造の例
+## 📁 File Structure Example
 
 ```
 tree_sitter_analyzer/
 ├── languages/
-│   └── {language}_plugin.py      # 言語プラグイン
+│   └── {language}_plugin.py      # Language plugin
 ├── formatters/
-│   └── {language}_formatter.py   # フォーマッター
+│   └── {language}_formatter.py   # Formatter
 └── queries/
-    └── {language}.py             # クエリ定義
+    └── {language}.py             # Query definitions
 
 examples/
-└── sample.{ext}                  # サンプルファイル
+└── sample.{ext}                  # Sample file
 
 tests/
 ├── test_{language}/
 │   ├── test_{language}_plugin.py
 │   ├── test_{language}_properties.py
-│   └── test_{language}_golden_master.py  # 言語固有のゴールデンマスターテスト
+│   └── test_{language}_golden_master.py  # Language-specific golden master tests
 └── golden_masters/
     ├── full/
     │   └── {language}_sample_full.md
@@ -119,56 +119,56 @@ tests/
         └── {language}_sample_csv.csv
 ```
 
-## 🔍 テスト実行コマンド
+## 🔍 Test Commands
 
 ```bash
-# 言語固有のテストを実行
+# Run language-specific tests
 uv run pytest tests/test_{language}/ -v
 
-# ゴールデンマスターテストを実行
+# Run golden master tests
 uv run pytest tests/test_golden_master_regression.py -v -k "{language}"
 
-# 全テストを実行
+# Run all tests
 uv run pytest tests/ -v
 ```
 
-## 📝 参考実装
+## 📝 Reference Implementations
 
-以下の言語実装を参考にしてください：
+Use these language implementations as references:
 
-- **Java**: `tree_sitter_analyzer/languages/java_plugin.py` - 最も完全な実装
-- **Python**: `tree_sitter_analyzer/languages/python_plugin.py` - シンプルな実装
-- **SQL**: `tree_sitter_analyzer/languages/sql_plugin.py` - 専用フォーマッター付き
-- **YAML**: `tree_sitter_analyzer/languages/yaml_plugin.py` - 非同期解析の例
-- **HTML/CSS**: `tree_sitter_analyzer/languages/html_plugin.py` - マークアップ言語の例
+- **Java**: `tree_sitter_analyzer/languages/java_plugin.py` - Most complete implementation
+- **Python**: `tree_sitter_analyzer/languages/python_plugin.py` - Simple implementation
+- **SQL**: `tree_sitter_analyzer/languages/sql_plugin.py` - With dedicated formatter
+- **YAML**: `tree_sitter_analyzer/languages/yaml_plugin.py` - Async parsing example
+- **HTML/CSS**: `tree_sitter_analyzer/languages/html_plugin.py` - Markup language example
 
-## ⚠️ よくある問題と解決策
+## ⚠️ Common Issues and Solutions
 
-### 1. CLIでフォーマッターが使用されない
+### 1. Formatter Not Used in CLI
 
-**問題**: `--table` コマンドで言語固有のフォーマッターが呼び出されない
+**Problem**: Language-specific formatter not called with `--table` command
 
-**解決策**: 
-- `formatter_registry.py` にフォーマッターを登録
-- `table_command.py` の `LANGUAGE_FORMATTER_CONFIG` に言語を追加
+**Solution**: 
+- Register formatter in `formatter_registry.py`
+- Add language to `LANGUAGE_FORMATTER_CONFIG` in `table_command.py`
 
-### 2. ゴールデンマスターテストが失敗する
+### 2. Golden Master Tests Failing
 
-**問題**: 環境によって出力が異なる
+**Problem**: Output differs between environments
 
-**解決策**:
-- `normalize_output()` 関数で環境依存の部分を正規化
-- 行末の空白や改行コードを統一
+**Solution**:
+- Use `normalize_output()` function to normalize environment-dependent parts
+- Standardize trailing whitespace and line endings
 
-### 3. tree-sitter パーサーが見つからない
+### 3. Tree-sitter Parser Not Found
 
-**問題**: `ImportError: tree-sitter-{language} not installed`
+**Problem**: `ImportError: tree-sitter-{language} not installed`
 
-**解決策**:
-- `pyproject.toml` に依存関係を追加
-- `uv sync --extra {language}` を実行
+**Solution**:
+- Add dependency to `pyproject.toml`
+- Run `uv sync --extra {language}`
 
 ---
 
-**最終更新**: 2025-11-27
-**作成理由**: YAML言語サポート追加時にゴールデンマスターテストが漏れていたため、今後の教訓として作成
+**Last Updated**: 2025-11-27
+**Created**: As a lesson learned when golden master tests were missing during YAML language support addition

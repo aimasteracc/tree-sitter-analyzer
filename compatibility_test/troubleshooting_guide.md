@@ -27,7 +27,7 @@
 1. **手動でのサーバー起動テスト**:
    ```bash
    # バージョン1.9.2の場合
-   uv run --with tree-sitter-analyzer[mcp]==1.9.2 python -m tree_sitter_analyzer.mcp.server
+   uvx --from tree-sitter-analyzer[mcp]==1.9.2 tree-sitter-analyzer-mcp
    ```
 
 2. **依存関係の再インストール**:
