@@ -1114,14 +1114,10 @@ Tree-sitter Analyzer MCPサーバーは、AI統合コード解析のための8�
 {
   "mcpServers": {
     "tree-sitter-analyzer": {
-      "command": "uv",
+      "command": "uvx",
       "args": [
-        "run",
-        "--with",
-        "tree-sitter-analyzer[mcp]",
-        "python",
-        "-m",
-        "tree_sitter_analyzer.mcp.server"
+        "--from", "tree-sitter-analyzer[mcp]",
+        "tree-sitter-analyzer-mcp"
       ]
     }
   }
@@ -1135,8 +1131,11 @@ Tree-sitter Analyzer MCPサーバーは、AI統合コード解析のための8�
   "mcp": {
     "servers": {
       "tree-sitter-analyzer": {
-        "command": "python",
-        "args": ["-m", "tree_sitter_analyzer.mcp.server"],
+        "command": "uvx",
+        "args": [
+          "--from", "tree-sitter-analyzer[mcp]",
+          "tree-sitter-analyzer-mcp"
+        ],
         "env": {
           "PROJECT_ROOT": "${workspaceFolder}"
         }
@@ -1151,7 +1150,7 @@ Tree-sitter Analyzer MCPサーバーは、AI統合コード解析のための8�
 ```yaml
 mcp_servers:
   - name: tree-sitter-analyzer
-    command: python -m tree_sitter_analyzer.mcp.server
+    command: uvx --from tree-sitter-analyzer[mcp] tree-sitter-analyzer-mcp
     working_directory: ${workspace}
     capabilities:
       - tools

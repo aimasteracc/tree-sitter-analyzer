@@ -1,0 +1,82 @@
+---
+# Application configuration
+# This is a comprehensive YAML example for testing
+
+app:
+  name: "MyApp"
+  version: 1.0
+  debug: true
+
+database:
+  host: localhost
+  port: 5432
+  credentials: &db_creds
+    username: admin
+    password: secret
+
+cache:
+  enabled: true
+  credentials: *db_creds
+
+# Merge key example (<<: *anchor)
+defaults: &defaults
+  adapter: postgres
+  pool: 5
+
+development:
+  <<: *defaults
+  database: dev_db
+
+production:
+  <<: *defaults
+  database: prod_db
+  pool: 10
+
+servers:
+  - name: web1
+    port: 8080
+  - name: web2
+    port: 8081
+
+features:
+  - authentication
+  - logging
+  - monitoring
+
+settings:
+  timeout: 30
+  retries: 3
+  nullable_value: ~
+  empty_value: null
+
+# Block scalar examples
+description: |
+  This is a multi-line
+  block scalar with
+  literal style.
+
+summary: >
+  This is a folded
+  block scalar that
+  becomes one line.
+
+# Flow style examples
+flow_mapping: {key1: value1, key2: value2}
+flow_sequence: [item1, item2, item3]
+
+# Nested structures
+nested:
+  level1:
+    level2:
+      level3:
+        deep_value: "deeply nested"
+
+---
+# Second document - metadata
+metadata:
+  created: 2024-01-01
+  author: ~
+  tags:
+    - config
+    - yaml
+    - test

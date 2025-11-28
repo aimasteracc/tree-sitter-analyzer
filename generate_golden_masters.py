@@ -99,6 +99,24 @@ def main():
     else:
         print("  ⚠ sample_database.sql not found - skipping")
 
+    # sample.rs - Rust sample
+    sample_rs = "examples/sample.rs"
+    if Path(sample_rs).exists():
+        generate_golden_master(sample_rs, "full", "rust_sample_full")
+        generate_golden_master(sample_rs, "compact", "rust_sample_compact")
+        generate_golden_master(sample_rs, "csv", "rust_sample_csv")
+    else:
+        print("  ⚠ sample.rs not found - skipping")
+
+    # Sample.kt - Kotlin sample
+    sample_kt = "examples/Sample.kt"
+    if Path(sample_kt).exists():
+        generate_golden_master(sample_kt, "full", "kotlin_sample_full")
+        generate_golden_master(sample_kt, "compact", "kotlin_sample_compact")
+        generate_golden_master(sample_kt, "csv", "kotlin_sample_csv")
+    else:
+        print("  ⚠ Sample.kt not found - skipping")
+
     print()
     print("=" * 60)
     print("Golden Master Generation Complete")

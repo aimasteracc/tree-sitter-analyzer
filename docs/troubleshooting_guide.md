@@ -21,10 +21,10 @@
    {
      "mcpServers": {
        "tree-sitter-analyzer": {
-         "command": "uv",
+         "command": "uvx",
          "args": [
-           "run", "--with", "tree-sitter-analyzer[mcp]",
-           "python", "-m", "tree_sitter_analyzer.mcp.server"
+           "--from", "tree-sitter-analyzer[mcp]",
+           "tree-sitter-analyzer-mcp"
          ],
          "env": {
            "TREE_SITTER_ANALYZER_ENABLE_FILE_LOG": "true",

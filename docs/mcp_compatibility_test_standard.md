@@ -75,7 +75,7 @@ tree-sitter-analyzer/
 比較したい2つのバージョン（以下、vA, vB）に対して、それぞれサーバー設定を定義します。
 
 - **サーバー名**: `tree-sitter-analyzer-vA`, `tree-sitter-analyzer-vB` のように、バージョンを明記します。
-- **コマンド**: `uv run --with tree-sitter-analyzer[mcp]=={VERSION}` を使用して、特定のバージョンをインストール・実行します。
+- **コマンド**: `uvx --from tree-sitter-analyzer[mcp]=={VERSION} tree-sitter-analyzer-mcp` を使用して、特定のバージョンをインストール・実行します。
 - **環境変数 `TREE_SITTER_OUTPUT_PATH`**: 各バージョンの出力が混在しないよう、バージョン固有のパス（例: `.analysis-vA`）を指定します。
 - **有効/無効フラグ `disabled`**: テスト実行時に、スクリプトがこのフラグを切り替えます。
 

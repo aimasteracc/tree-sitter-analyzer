@@ -1,0 +1,241 @@
+
+--- Advanced Analysis Results ---
+{
+  "file_path": "examples/sample_config.yaml",
+  "language": "yaml",
+  "line_count": 46,
+  "element_count": 38,
+  "node_count": 38,
+  "elements": [
+    {
+      "name": "Document 0",
+      "type": "document",
+      "start_line": 1,
+      "end_line": 36
+    },
+    {
+      "name": "Document 1",
+      "type": "document",
+      "start_line": 38,
+      "end_line": 47
+    },
+    {
+      "name": "mapping",
+      "type": "mapping",
+      "start_line": 5,
+      "end_line": 8
+    },
+    {
+      "name": "mapping",
+      "type": "mapping",
+      "start_line": 6,
+      "end_line": 6
+    },
+    {
+      "name": "mapping",
+      "type": "mapping",
+      "start_line": 7,
+      "end_line": 7
+    },
+    {
+      "name": "mapping",
+      "type": "mapping",
+      "start_line": 8,
+      "end_line": 8
+    },
+    {
+      "name": "mapping",
+      "type": "mapping",
+      "start_line": 10,
+      "end_line": 15
+    },
+    {
+      "name": "mapping",
+      "type": "mapping",
+      "start_line": 11,
+      "end_line": 11
+    },
+    {
+      "name": "mapping",
+      "type": "mapping",
+      "start_line": 12,
+      "end_line": 12
+    },
+    {
+      "name": "mapping",
+      "type": "mapping",
+      "start_line": 13,
+      "end_line": 15
+    },
+    {
+      "name": "mapping",
+      "type": "mapping",
+      "start_line": 14,
+      "end_line": 14
+    },
+    {
+      "name": "mapping",
+      "type": "mapping",
+      "start_line": 15,
+      "end_line": 15
+    },
+    {
+      "name": "mapping",
+      "type": "mapping",
+      "start_line": 17,
+      "end_line": 19
+    },
+    {
+      "name": "mapping",
+      "type": "mapping",
+      "start_line": 18,
+      "end_line": 18
+    },
+    {
+      "name": "mapping",
+      "type": "mapping",
+      "start_line": 19,
+      "end_line": 19
+    },
+    {
+      "name": "mapping",
+      "type": "mapping",
+      "start_line": 21,
+      "end_line": 25
+    },
+    {
+      "name": "mapping",
+      "type": "mapping",
+      "start_line": 22,
+      "end_line": 22
+    },
+    {
+      "name": "mapping",
+      "type": "mapping",
+      "start_line": 23,
+      "end_line": 23
+    },
+    {
+      "name": "mapping",
+      "type": "mapping",
+      "start_line": 24,
+      "end_line": 24
+    },
+    {
+      "name": "mapping",
+      "type": "mapping",
+      "start_line": 25,
+      "end_line": 25
+    },
+    {
+      "name": "mapping",
+      "type": "mapping",
+      "start_line": 27,
+      "end_line": 30
+    },
+    {
+      "name": "mapping",
+      "type": "mapping",
+      "start_line": 32,
+      "end_line": 36
+    },
+    {
+      "name": "mapping",
+      "type": "mapping",
+      "start_line": 33,
+      "end_line": 33
+    },
+    {
+      "name": "mapping",
+      "type": "mapping",
+      "start_line": 34,
+      "end_line": 34
+    },
+    {
+      "name": "mapping",
+      "type": "mapping",
+      "start_line": 35,
+      "end_line": 35
+    },
+    {
+      "name": "mapping",
+      "type": "mapping",
+      "start_line": 36,
+      "end_line": 36
+    },
+    {
+      "name": "mapping",
+      "type": "mapping",
+      "start_line": 40,
+      "end_line": 47
+    },
+    {
+      "name": "mapping",
+      "type": "mapping",
+      "start_line": 41,
+      "end_line": 41
+    },
+    {
+      "name": "mapping",
+      "type": "mapping",
+      "start_line": 42,
+      "end_line": 42
+    },
+    {
+      "name": "mapping",
+      "type": "mapping",
+      "start_line": 43,
+      "end_line": 47
+    },
+    {
+      "name": "sequence",
+      "type": "sequence",
+      "start_line": 22,
+      "end_line": 25
+    },
+    {
+      "name": "sequence",
+      "type": "sequence",
+      "start_line": 28,
+      "end_line": 30
+    },
+    {
+      "name": "sequence",
+      "type": "sequence",
+      "start_line": 44,
+      "end_line": 47
+    },
+    {
+      "name": "&db_creds",
+      "type": "anchor",
+      "start_line": 13,
+      "end_line": 13
+    },
+    {
+      "name": "*db_creds",
+      "type": "alias",
+      "start_line": 19,
+      "end_line": 19
+    },
+    {
+      "name": "Application configuration",
+      "type": "comment",
+      "start_line": 2,
+      "end_line": 2
+    },
+    {
+      "name": "This is a comprehensive YAML example for testing",
+      "type": "comment",
+      "start_line": 3,
+      "end_line": 3
+    },
+    {
+      "name": "Second document - metadata",
+      "type": "comment",
+      "start_line": 39,
+      "end_line": 39
+    }
+  ],
+  "success": true,
+  "analysis_time": 0.0
+}

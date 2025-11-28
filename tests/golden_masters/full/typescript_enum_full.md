@@ -36,7 +36,7 @@
 ### Constructors
 | Constructor | Signature | Vis | Lines | Cx | Doc |
 |-------------|-----------|-----|-------|----|----|
-| constructor | (string:public name:, number:public age:):any | + | 42-42 | 1 | - |
+| constructor | (public name:string, public age:number):any | + | 42-42 | 1 | - |
 
 ### Public Methods
 | Method | Signature | Vis | Lines | Cx | Doc |

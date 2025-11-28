@@ -271,6 +271,18 @@ class TestGoldenMasterRegression:
             ("examples/Sample.rb", "ruby_sample", "full"),
             ("examples/Sample.rb", "ruby_sample", "compact"),
             ("examples/Sample.rb", "ruby_sample", "csv"),
+            # Rust tests
+            ("examples/sample.rs", "rust_sample", "full"),
+            ("examples/sample.rs", "rust_sample", "compact"),
+            # Kotlin tests
+            ("examples/Sample.kt", "kotlin_sample", "full"),
+            ("examples/Sample.kt", "kotlin_sample", "compact"),
+            ("examples/Sample.kt", "kotlin_sample", "csv"),
+            ("examples/sample.rs", "rust_sample", "csv"),
+            # Go tests
+            ("examples/sample.go", "go_sample", "full"),
+            ("examples/sample.go", "go_sample", "compact"),
+            ("examples/sample.go", "go_sample", "csv"),
         ],
     )
     def test_golden_master_comparison(
