@@ -141,7 +141,23 @@ def kotlin_class_nodes(draw):
         mods_node.type = "modifiers"
         mods_node.text = " ".join(mods_text).encode("utf-8")
 
-    node.children = []  # Populate if needed for text-based check
+    # Create keyword child node for class/interface/object detection
+    # tree-sitter-kotlin includes 'class' or 'interface' keyword as child node
+    children = []
+    if kind == "interface":
+        keyword_node = MagicMock()
+        keyword_node.type = "interface"
+        children.append(keyword_node)
+    elif kind == "class":
+        keyword_node = MagicMock()
+        keyword_node.type = "class"
+        children.append(keyword_node)
+    elif kind == "object":
+        keyword_node = MagicMock()
+        keyword_node.type = "object"
+        children.append(keyword_node)
+
+    node.children = children
 
     # Mock text for interface check
     full_text = f"{visibility} {kind} {name}"

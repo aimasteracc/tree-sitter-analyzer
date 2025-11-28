@@ -327,13 +327,17 @@ class KotlinElementExtractor(ElementExtractor):
                 elif "internal" in mods:
                     visibility = "internal"
 
-            # Detect interface
+            # Detect interface by checking for 'interface' keyword child node
+            # tree-sitter-kotlin parses both class and interface as class_declaration
+            # but includes 'interface' or 'class' keyword as a child node
             if kind == "class":
-                # Check if it has 'interface' keyword or is interface type?
-                # In Kotlin grammar: class_declaration includes 'class' or 'interface' keyword
-                text = self._get_node_text(node)
-                if text.startswith("interface ") or " interface " in text[:50]:
-                    kind = "interface"
+                for child in node.children:
+                    if child.type == "interface":
+                        kind = "interface"
+                        break
+                    elif child.type == "class":
+                        # Explicitly a class, not interface
+                        break
 
             raw_text = self._get_node_text(node)
 
