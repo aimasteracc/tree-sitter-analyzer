@@ -56,10 +56,28 @@
 
 ### 📚 ドキュメント
 
-- **新しい言語サポート追加チェックリスト**: `docs/new-language-support-checklist.md` を作成
-  - 新しい言語サポート追加時の必須手順をまとめたチェックリスト
-  - ゴールデンマスターテストの重要性を強調
-  - よくある問題と解決策を記載
+- **README大規模リストラクチャリング**: README.mdを980行から約250行に削減
+  - 詳細ドキュメントを `docs/` ディレクトリに分離
+  - 新規作成: `docs/installation.md`, `docs/cli-reference.md`, `docs/smart-workflow.md`, `docs/architecture.md`
+  - GIFデモ用プレースホルダー追加: `docs/assets/demo-placeholder.md`
+
+- **コントリビューターガイドの国際化**:
+  - `docs/CONTRIBUTING.md` を英語化（コントリビューター向け）
+  - `docs/ja/CONTRIBUTING_ja.md` を日本語版として保存（メンテナー参照用）
+  - `docs/new-language-support-checklist.md` を英語化
+
+- **MCP設定をuvxフォーマットに統一**:
+  - 全ドキュメントで `uvx --from tree-sitter-analyzer[mcp] tree-sitter-analyzer-mcp` 形式に更新
+  - 対象: installation.md, troubleshooting_guide.md, mcp_tools_specification.md, クイックスタートガイド
+
+- **GitFlow分岐戦略の追加**: CONTRIBUTING.mdにブランチ戦略とmain保護ルールを追加
+
+- **README構造テストの追加**: `tests/test_readme/` に自動テストを追加
+  - 行数制限検証
+  - 多言語README一貫性チェック
+  - ドキュメントリンク有効性検証
+
+- **CLI --version フラグ修正**: 存在しない `--version` を `--show-supported-languages` に置換
 
 ---
 
