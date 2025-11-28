@@ -16,15 +16,8 @@
 
 ## ✨ What's New in v1.9.17
 
-### 🆕 New Language Support
-- **Go**: Packages, functions, methods, structs, interfaces, goroutine/channel patterns
-- **Rust**: Modules, functions, structs, enums, traits, impl blocks, macros, async functions
-- **Kotlin**: Classes, data/sealed classes, objects, interfaces, suspend functions, coroutines
-- **YAML**: Mappings, sequences, anchors/aliases, multi-document support
-
-### 🧪 Quality
+- **New Languages**: Go, Rust, Kotlin, YAML support added with full feature extraction
 - **4,864 tests** with 100% pass rate
-- Enhanced test infrastructure and organization
 
 📖 **[Full Changelog](CHANGELOG.md)** for complete version history.
 
