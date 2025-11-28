@@ -267,6 +267,9 @@ class GoElementExtractor(ElementExtractor):
                 return None
 
             name = self._get_node_text(name_node)
+            if not name:
+                return None
+
             start_line = node.start_point[0] + 1
             end_line = node.end_point[0] + 1
 
@@ -308,6 +311,9 @@ class GoElementExtractor(ElementExtractor):
                 return None
 
             name = self._get_node_text(name_node)
+            if not name:
+                return None
+
             start_line = node.start_point[0] + 1
             end_line = node.end_point[0] + 1
 
@@ -400,6 +406,9 @@ class GoElementExtractor(ElementExtractor):
                 return None
 
             name = self._get_node_text(name_node)
+            if not name:
+                return None
+
             start_line = node.start_point[0] + 1
             end_line = node.end_point[0] + 1
 
@@ -581,6 +590,10 @@ class GoElementExtractor(ElementExtractor):
 
         docs: list[str] = []
         line_idx = start_line - 1
+
+        # Ensure line_idx is within valid range
+        if line_idx >= len(self.content_lines):
+            line_idx = len(self.content_lines) - 1
 
         while line_idx >= 0:
             line = self.content_lines[line_idx].strip()

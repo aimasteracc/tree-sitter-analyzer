@@ -297,7 +297,7 @@ def test_is_supported_supported_languages(language_detector, language):
     assert language_detector.is_supported(language) is True
 
 
-@pytest.mark.parametrize("language", ["swift", "kotlin", "scala", "unknown"])
+@pytest.mark.parametrize("language", ["swift", "scala", "unknown"])
 def test_is_supported_unsupported_languages(language_detector, language):
     """Test support status for unsupported languages"""
     assert language_detector.is_supported(language) is False

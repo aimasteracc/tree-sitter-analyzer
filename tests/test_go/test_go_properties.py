@@ -51,33 +51,30 @@ def go_types(draw: st.DrawFn) -> str:
 def go_function_nodes(draw: st.DrawFn) -> dict:
     """Generates a mock tree-sitter node representing a Go function."""
     # Generate name with first letter determining visibility
+    # Go exported/unexported is based on ASCII uppercase/lowercase
     is_exported = draw(st.booleans())
     if is_exported:
-        name = draw(
+        # Start with uppercase ASCII letter, followed by alphanumeric
+        first_char = draw(st.sampled_from("ABCDEFGHIJKLMNOPQRSTUVWXYZ"))
+        rest = draw(
             st.text(
-                min_size=1,
-                max_size=20,
-                alphabet=st.characters(
-                    whitelist_categories=("Lu", "Ll", "Nd"), min_codepoint=65
-                ),
+                min_size=0,
+                max_size=19,
+                alphabet="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789",
             )
         )
-        # Ensure first letter is uppercase for exported
-        if name and name[0].islower():
-            name = name[0].upper() + name[1:]
+        name = first_char + rest
     else:
-        name = draw(
+        # Start with lowercase ASCII letter, followed by alphanumeric
+        first_char = draw(st.sampled_from("abcdefghijklmnopqrstuvwxyz"))
+        rest = draw(
             st.text(
-                min_size=1,
-                max_size=20,
-                alphabet=st.characters(
-                    whitelist_categories=("Ll", "Nd"), min_codepoint=97
-                ),
+                min_size=0,
+                max_size=19,
+                alphabet="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789",
             )
         )
-        # Ensure first letter is lowercase for unexported
-        if name and name[0].isupper():
-            name = name[0].lower() + name[1:]
+        name = first_char + rest
 
     if not name:
         name = "testFunc" if not is_exported else "TestFunc"
@@ -130,31 +127,30 @@ def go_function_nodes(draw: st.DrawFn) -> dict:
 @st.composite
 def go_method_nodes(draw: st.DrawFn) -> dict:
     """Generates a mock tree-sitter node representing a Go method."""
+    # Go exported/unexported is based on ASCII uppercase/lowercase
     is_exported = draw(st.booleans())
     if is_exported:
-        name = draw(
+        # Start with uppercase ASCII letter, followed by alphanumeric
+        first_char = draw(st.sampled_from("ABCDEFGHIJKLMNOPQRSTUVWXYZ"))
+        rest = draw(
             st.text(
-                min_size=1,
-                max_size=20,
-                alphabet=st.characters(
-                    whitelist_categories=("Lu", "Ll", "Nd"), min_codepoint=65
-                ),
+                min_size=0,
+                max_size=19,
+                alphabet="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789",
             )
         )
-        if name and name[0].islower():
-            name = name[0].upper() + name[1:]
+        name = first_char + rest
     else:
-        name = draw(
+        # Start with lowercase ASCII letter, followed by alphanumeric
+        first_char = draw(st.sampled_from("abcdefghijklmnopqrstuvwxyz"))
+        rest = draw(
             st.text(
-                min_size=1,
-                max_size=20,
-                alphabet=st.characters(
-                    whitelist_categories=("Ll", "Nd"), min_codepoint=97
-                ),
+                min_size=0,
+                max_size=19,
+                alphabet="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789",
             )
         )
-        if name and name[0].isupper():
-            name = name[0].lower() + name[1:]
+        name = first_char + rest
 
     if not name:
         name = "testMethod" if not is_exported else "TestMethod"
@@ -206,31 +202,30 @@ def go_method_nodes(draw: st.DrawFn) -> dict:
 @st.composite
 def go_struct_nodes(draw: st.DrawFn) -> dict:
     """Generates a mock tree-sitter node representing a Go struct."""
+    # Go exported/unexported is based on ASCII uppercase/lowercase
     is_exported = draw(st.booleans())
     if is_exported:
-        name = draw(
+        # Start with uppercase ASCII letter, followed by alphanumeric
+        first_char = draw(st.sampled_from("ABCDEFGHIJKLMNOPQRSTUVWXYZ"))
+        rest = draw(
             st.text(
-                min_size=1,
-                max_size=20,
-                alphabet=st.characters(
-                    whitelist_categories=("Lu", "Ll", "Nd"), min_codepoint=65
-                ),
+                min_size=0,
+                max_size=19,
+                alphabet="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789",
             )
         )
-        if name and name[0].islower():
-            name = name[0].upper() + name[1:]
+        name = first_char + rest
     else:
-        name = draw(
+        # Start with lowercase ASCII letter, followed by alphanumeric
+        first_char = draw(st.sampled_from("abcdefghijklmnopqrstuvwxyz"))
+        rest = draw(
             st.text(
-                min_size=1,
-                max_size=20,
-                alphabet=st.characters(
-                    whitelist_categories=("Ll", "Nd"), min_codepoint=97
-                ),
+                min_size=0,
+                max_size=19,
+                alphabet="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789",
             )
         )
-        if name and name[0].isupper():
-            name = name[0].lower() + name[1:]
+        name = first_char + rest
 
     if not name:
         name = "testStruct" if not is_exported else "TestStruct"
@@ -270,31 +265,30 @@ def go_struct_nodes(draw: st.DrawFn) -> dict:
 @st.composite
 def go_interface_nodes(draw: st.DrawFn) -> dict:
     """Generates a mock tree-sitter node representing a Go interface."""
+    # Go exported/unexported is based on ASCII uppercase/lowercase
     is_exported = draw(st.booleans())
     if is_exported:
-        name = draw(
+        # Start with uppercase ASCII letter, followed by alphanumeric
+        first_char = draw(st.sampled_from("ABCDEFGHIJKLMNOPQRSTUVWXYZ"))
+        rest = draw(
             st.text(
-                min_size=1,
-                max_size=20,
-                alphabet=st.characters(
-                    whitelist_categories=("Lu", "Ll", "Nd"), min_codepoint=65
-                ),
+                min_size=0,
+                max_size=19,
+                alphabet="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789",
             )
         )
-        if name and name[0].islower():
-            name = name[0].upper() + name[1:]
+        name = first_char + rest
     else:
-        name = draw(
+        # Start with lowercase ASCII letter, followed by alphanumeric
+        first_char = draw(st.sampled_from("abcdefghijklmnopqrstuvwxyz"))
+        rest = draw(
             st.text(
-                min_size=1,
-                max_size=20,
-                alphabet=st.characters(
-                    whitelist_categories=("Ll", "Nd"), min_codepoint=97
-                ),
+                min_size=0,
+                max_size=19,
+                alphabet="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789",
             )
         )
-        if name and name[0].isupper():
-            name = name[0].lower() + name[1:]
+        name = first_char + rest
 
     if not name:
         name = "testInterface" if not is_exported else "TestInterface"

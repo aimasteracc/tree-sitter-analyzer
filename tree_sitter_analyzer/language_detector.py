@@ -24,6 +24,8 @@ class LanguageDetector:
         ".jsx": "jsx",
         ".ts": "typescript",
         ".tsx": "typescript",  # TSX files are TypeScript with JSX
+        ".mts": "typescript",  # ES module TypeScript
+        ".cts": "typescript",  # CommonJS TypeScript
         ".mjs": "javascript",
         ".cjs": "javascript",
         # Python系
@@ -45,6 +47,7 @@ class LanguageDetector:
         ".rb": "ruby",
         ".php": "php",
         ".kt": "kotlin",
+        ".kts": "kotlin",
         ".swift": "swift",
         ".cs": "csharp",
         ".vb": "vbnet",
@@ -134,6 +137,8 @@ class LanguageDetector:
             ".jsx": ("javascript", 0.8),
             ".ts": ("typescript", 0.9),
             ".tsx": ("typescript", 0.8),
+            ".mts": ("typescript", 0.9),
+            ".cts": ("typescript", 0.9),
             ".py": ("python", 0.9),
             ".pyw": ("python", 0.8),
             ".c": ("c", 0.9),
@@ -149,6 +154,7 @@ class LanguageDetector:
             ".rb": ("ruby", 0.9),
             ".swift": ("swift", 0.9),
             ".kt": ("kotlin", 0.9),
+            ".kts": ("kotlin", 0.9),
             ".scala": ("scala", 0.9),
             ".clj": ("clojure", 0.9),
             ".hs": ("haskell", 0.9),
