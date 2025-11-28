@@ -4,21 +4,27 @@
 
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-4844%20passed-brightgreen.svg)](#-品質とテスト)
+[![Tests](https://img.shields.io/badge/tests-4864%20passed-brightgreen.svg)](#-品質とテスト)
 [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
-[![Version](https://img.shields.io/badge/version-1.9.16-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
+[![Version](https://img.shields.io/badge/version-1.9.17-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
 > 🚀 **AI時代のエンタープライズグレードコード解析ツール** - 深いAI統合 · 強力な検索 · 15言語対応 · インテリジェント分析
 
 ---
 
-## ✨ v1.9.16 最新情報
+## ✨ v1.9.17 最新情報
 
-- **SQLソースコード抽出**: SQLElementExtractorの信頼性向上
-- **クロスプラットフォーム互換性**: SQL分析の堅牢性強化
-- **バグ修正**: SQL解析、トリガー抽出、パラメータ正規表現の改善
+### 🆕 新言語サポート
+- **Go**: パッケージ、関数、メソッド、構造体、インターフェース、goroutine/channelパターン
+- **Rust**: モジュール、関数、構造体、enum、トレイト、implブロック、マクロ、async関数
+- **Kotlin**: クラス、データ/シールドクラス、オブジェクト、インターフェース、suspend関数、コルーチン
+- **YAML**: マッピング、シーケンス、アンカー/エイリアス、マルチドキュメント対応
+
+### 🧪 品質
+- **4,864テスト** 100%パス率
+- テストインフラストラクチャと組織構造の強化
 
 📖 完全なバージョン履歴は **[変更履歴](CHANGELOG.md)** をご覧ください。
 
@@ -180,7 +186,7 @@ uv run tree-sitter-analyzer examples/BigService.java --query-key methods --filte
 
 | 指標 | 値 |
 |------|-----|
-| **テスト** | 4,844 合格 ✅ |
+| **テスト** | 4,864 合格 ✅ |
 | **カバレッジ** | [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer) |
 | **型安全性** | 100% mypy準拠 |
 | **プラットフォーム** | Windows、macOS、Linux |

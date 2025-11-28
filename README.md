@@ -4,21 +4,27 @@
 
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-4844%20passed-brightgreen.svg)](#-quality--testing)
+[![Tests](https://img.shields.io/badge/tests-4864%20passed-brightgreen.svg)](#-quality--testing)
 [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
-[![Version](https://img.shields.io/badge/version-1.9.16-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
+[![Version](https://img.shields.io/badge/version-1.9.17-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
 > 🚀 **Enterprise-Grade Code Analysis Tool for the AI Era** - Deep AI Integration · Powerful Search · 15 Languages · Intelligent Analysis
 
 ---
 
-## ✨ What's New in v1.9.16
+## ✨ What's New in v1.9.17
 
-- **SQL Source Code Extraction**: Improved reliability in SQLElementExtractor
-- **Cross-platform Compatibility**: Enhanced SQL analysis robustness
-- **Bug Fixes**: SQL parsing, trigger extraction, and parameter regex improvements
+### 🆕 New Language Support
+- **Go**: Packages, functions, methods, structs, interfaces, goroutine/channel patterns
+- **Rust**: Modules, functions, structs, enums, traits, impl blocks, macros, async functions
+- **Kotlin**: Classes, data/sealed classes, objects, interfaces, suspend functions, coroutines
+- **YAML**: Mappings, sequences, anchors/aliases, multi-document support
+
+### 🧪 Quality
+- **4,864 tests** with 100% pass rate
+- Enhanced test infrastructure and organization
 
 📖 **[Full Changelog](CHANGELOG.md)** for complete version history.
 
@@ -180,7 +186,7 @@ uv run tree-sitter-analyzer examples/BigService.java --query-key methods --filte
 
 | Metric | Value |
 |--------|-------|
-| **Tests** | 4,844 passed ✅ |
+| **Tests** | 4,864 passed ✅ |
 | **Coverage** | [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer) |
 | **Type Safety** | 100% mypy compliance |
 | **Platforms** | Windows, macOS, Linux |

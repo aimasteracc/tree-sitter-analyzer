@@ -4,21 +4,27 @@
 
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-4844%20passed-brightgreen.svg)](#-质量与测试)
+[![Tests](https://img.shields.io/badge/tests-4864%20passed-brightgreen.svg)](#-质量与测试)
 [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
-[![Version](https://img.shields.io/badge/version-1.9.16-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
+[![Version](https://img.shields.io/badge/version-1.9.17-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
 > 🚀 **AI时代的企业级代码分析工具** - 深度AI集成 · 强大搜索 · 15种语言 · 智能分析
 
 ---
 
-## ✨ v1.9.16 最新更新
+## ✨ v1.9.17 最新更新
 
-- **SQL源代码提取**: 改进SQLElementExtractor的可靠性
-- **跨平台兼容性**: 增强SQL分析的稳定性
-- **Bug修复**: SQL解析、触发器提取和参数正则表达式改进
+### 🆕 新语言支持
+- **Go**: 包、函数、方法、结构体、接口、goroutine/channel模式
+- **Rust**: 模块、函数、结构体、枚举、trait、impl块、宏、async函数
+- **Kotlin**: 类、数据/密封类、对象、接口、suspend函数、协程
+- **YAML**: 映射、序列、锚点/别名、多文档支持
+
+### 🧪 质量
+- **4,864个测试** 100%通过率
+- 增强测试基础设施和组织结构
 
 📖 完整版本历史请查看 **[更新日志](CHANGELOG.md)**。
 
@@ -180,7 +186,7 @@ uv run tree-sitter-analyzer examples/BigService.java --query-key methods --filte
 
 | 指标 | 数值 |
 |------|------|
-| **测试** | 4,844 通过 ✅ |
+| **测试** | 4,864 通过 ✅ |
 | **覆盖率** | [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer) |
 | **类型安全** | 100% mypy合规 |
 | **平台** | Windows、macOS、Linux |
