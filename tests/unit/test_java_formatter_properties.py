@@ -181,7 +181,7 @@ class TestFormatterOutputCompletenessProperties:
             assert class_name in result, \
                 f"Class name '{class_name}' should appear in formatted output"
 
-    @settings(max_examples=100)
+    @settings(max_examples=100, suppress_health_check=[HealthCheck.too_slow])
     @given(data=java_analysis_result())
     def test_property_2_full_table_contains_all_field_names(self, data: dict):
         """
@@ -202,7 +202,7 @@ class TestFormatterOutputCompletenessProperties:
                 assert field_name in result, \
                     f"Field name '{field_name}' should appear in formatted output"
 
-    @settings(max_examples=100)
+    @settings(max_examples=100, suppress_health_check=[HealthCheck.too_slow])
     @given(data=java_analysis_result())
     def test_property_2_full_table_contains_all_method_names(self, data: dict):
         """
@@ -223,7 +223,7 @@ class TestFormatterOutputCompletenessProperties:
                 assert method_name in result, \
                     f"Method name '{method_name}' should appear in formatted output"
 
-    @settings(max_examples=100)
+    @settings(max_examples=100, suppress_health_check=[HealthCheck.too_slow])
     @given(data=java_analysis_result())
     def test_property_2_full_table_contains_field_types(self, data: dict):
         """
@@ -244,7 +244,7 @@ class TestFormatterOutputCompletenessProperties:
                 assert field_type in result, \
                     f"Field type '{field_type}' should appear in formatted output"
 
-    @settings(max_examples=100)
+    @settings(max_examples=100, suppress_health_check=[HealthCheck.too_slow])
     @given(data=java_analysis_result())
     def test_property_2_compact_table_contains_all_method_names(self, data: dict):
         """
@@ -265,7 +265,7 @@ class TestFormatterOutputCompletenessProperties:
                 assert method_name in result, \
                     f"Method name '{method_name}' should appear in compact formatted output"
 
-    @settings(max_examples=100)
+    @settings(max_examples=100, suppress_health_check=[HealthCheck.too_slow])
     @given(data=java_analysis_result())
     def test_property_2_imports_appear_in_output(self, data: dict):
         """
@@ -286,7 +286,7 @@ class TestFormatterOutputCompletenessProperties:
                 assert statement in result, \
                     f"Import statement '{statement}' should appear in formatted output"
 
-    @settings(max_examples=100)
+    @settings(max_examples=100, suppress_health_check=[HealthCheck.too_slow])
     @given(data=java_analysis_result())
     def test_property_2_package_name_appears_in_output(self, data: dict):
         """
@@ -306,7 +306,7 @@ class TestFormatterOutputCompletenessProperties:
             assert package_name in result, \
                 f"Package name '{package_name}' should appear in formatted output"
 
-    @settings(max_examples=100)
+    @settings(max_examples=100, suppress_health_check=[HealthCheck.too_slow])
     @given(data=java_analysis_result())
     def test_property_2_csv_format_contains_all_elements(self, data: dict):
         """
@@ -334,7 +334,7 @@ class TestFormatterOutputCompletenessProperties:
                 assert method_name in result, \
                     f"Method name '{method_name}' should appear in CSV output"
 
-    @settings(max_examples=100)
+    @settings(max_examples=100, suppress_health_check=[HealthCheck.too_slow])
     @given(data=java_analysis_result())
     def test_property_2_json_format_preserves_all_data(self, data: dict):
         """
@@ -390,7 +390,7 @@ class TestFormatterAnnotationHandlingProperties:
     **Validates: Requirements 2.2, 10.2**
     """
 
-    @settings(max_examples=100)
+    @settings(max_examples=100, suppress_health_check=[HealthCheck.too_slow])
     @given(
         class_name=java_identifier,
         visibility_val=visibility,
@@ -449,7 +449,7 @@ class TestFormatterGenericTypeHandlingProperties:
     **Validates: Requirements 2.3, 10.2**
     """
 
-    @settings(max_examples=100)
+    @settings(max_examples=100, suppress_health_check=[HealthCheck.too_slow])
     @given(
         method_name=java_identifier,
         return_type=java_type,
@@ -499,7 +499,7 @@ class TestFormatterGenericTypeHandlingProperties:
         assert method_name in result, \
             f"Method name '{method_name}' should appear in output"
 
-    @settings(max_examples=100)
+    @settings(max_examples=100, suppress_health_check=[HealthCheck.too_slow])
     @given(
         type_name=st.sampled_from([
             "List<String>", "Map<String,Object>", "Set<Integer>",
@@ -539,7 +539,7 @@ class TestFormatterEdgeCaseProperties:
     **Validates: Requirements 2.1, 2.2, 2.3, 10.2**
     """
 
-    @settings(max_examples=100)
+    @settings(max_examples=100, suppress_health_check=[HealthCheck.too_slow])
     @given(
         num_classes=st.integers(min_value=1, max_value=5),
         num_methods=st.integers(min_value=0, max_value=10),
@@ -624,7 +624,7 @@ class TestFormatterEdgeCaseProperties:
             assert f"field{i}" in result, \
                 f"field{i} should appear in output"
 
-    @settings(max_examples=100)
+    @settings(max_examples=100, suppress_health_check=[HealthCheck.too_slow])
     @given(
         enum_name=java_identifier,
         constants=st.lists(java_identifier, min_size=1, max_size=5, unique=True),
