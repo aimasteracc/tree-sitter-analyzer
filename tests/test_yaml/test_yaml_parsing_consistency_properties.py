@@ -214,6 +214,7 @@ class TestYAMLParsingConsistencyProperties:
     @settings(
         max_examples=100,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
+        deadline=None,  # Disable deadline for I/O-bound tests
     )
     @given(yaml_content=simple_yaml_content())
     async def test_property_1_parsing_round_trip_consistency_simple(

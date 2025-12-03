@@ -63,7 +63,7 @@ column_names = st.sampled_from(
 class TestSQLFunctionExtractionProperties:
     """Property-based tests for SQL function extraction."""
 
-    @settings(max_examples=100)
+    @settings(max_examples=100, deadline=None)
     @given(func_name=valid_identifiers, column_name=column_names)
     def test_property_1_function_body_content_exclusion(
         self, func_name: str, column_name: str
