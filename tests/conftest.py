@@ -118,3 +118,34 @@ This is a test project for tree-sitter-analyzer.
     )
 
     return tmp_path
+
+
+@pytest.fixture(autouse=True)
+async def cleanup_asyncio_tasks():
+    """
+    Clean up asyncio tasks after each test to prevent 'NoneType' object has no attribute '_PENDING'
+    error on Python 3.10 during shutdown.
+    """
+    yield
+    
+    # Get all tasks
+    import asyncio
+    try:
+        tasks = asyncio.all_tasks()
+    except RuntimeError:
+        # No event loop running
+        return
+        
+    # Cancel all tasks except the current one
+    current_task = asyncio.current_task()
+    tasks = [t for t in tasks if t is not current_task]
+    
+    if not tasks:
+        return
+        
+    # Cancel tasks
+    for task in tasks:
+        task.cancel()
+        
+    # Wait for tasks to complete
+    await asyncio.gather(*tasks, return_exceptions=True)
