@@ -27,6 +27,7 @@ from tree_sitter_analyzer.exceptions import (
     SecurityError,
     TreeSitterAnalyzerError,
     ValidationError,
+    _sanitize_error_context,
     create_error_response,
     create_mcp_error_response,
     handle_exceptions,
@@ -610,3 +611,104 @@ class TestExceptionInheritance:
         assert issubclass(MCPResourceError, MCPError)
         assert issubclass(MCPTimeoutError, MCPError)
         assert issubclass(MCPValidationError, ValidationError)
+
+
+class TestSanitizeErrorContext:
+    """Test _sanitize_error_context function for edge cases."""
+
+    def test_sanitize_long_string_value(self) -> None:
+        """Test that long string values are truncated."""
+        long_string = "x" * 600  # More than 500 characters
+        context = {"long_data": long_string}
+        result = _sanitize_error_context(context)
+
+        assert "[TRUNCATED]" in result["long_data"]
+        assert len(result["long_data"]) < len(long_string)
+        # Should be 500 chars + "...[TRUNCATED]"
+        assert result["long_data"].startswith("x" * 100)
+
+    def test_sanitize_long_list_value(self) -> None:
+        """Test that long list values are truncated."""
+        long_list = list(range(20))  # More than 10 items
+        context = {"long_list": long_list}
+        result = _sanitize_error_context(context)
+
+        assert len(result["long_list"]) == 11  # 10 items + "[TRUNCATED]"
+        assert result["long_list"][-1] == "...[TRUNCATED]"
+        assert result["long_list"][0] == 0
+        assert result["long_list"][9] == 9
+
+    def test_sanitize_long_tuple_value(self) -> None:
+        """Test that long tuple values are truncated."""
+        long_tuple = tuple(range(15))  # More than 10 items
+        context = {"long_tuple": long_tuple}
+        result = _sanitize_error_context(context)
+
+        assert len(result["long_tuple"]) == 11  # 10 items + "[TRUNCATED]"
+        assert result["long_tuple"][-1] == "...[TRUNCATED]"
+
+    def test_sanitize_large_nested_dict(self) -> None:
+        """Test that large nested dictionaries are truncated."""
+        large_dict = {f"key_{i}": f"value_{i}" for i in range(25)}  # More than 20 items
+        context = {"nested": large_dict}
+        result = _sanitize_error_context(context)
+
+        # Should have truncated the nested dict
+        assert "__truncated__" in result["nested"]
+        assert result["nested"]["__truncated__"] is True
+        # Should have at most 20 items + __truncated__ key
+        assert len(result["nested"]) <= 21
+
+    def test_sanitize_sensitive_keys(self) -> None:
+        """Test that sensitive keys are redacted."""
+        context = {
+            "password": "secret123",
+            "api_key": "abc123",
+            "access_token": "token456",
+            "private_key": "key789",
+            "session_id": "session123",
+            "file_path": "normal_value",  # Not a sensitive key
+        }
+        result = _sanitize_error_context(context)
+
+        assert result["password"] == "***REDACTED***"
+        assert result["api_key"] == "***REDACTED***"
+        assert result["access_token"] == "***REDACTED***"
+        assert result["private_key"] == "***REDACTED***"
+        assert result["session_id"] == "***REDACTED***"
+        assert result["file_path"] == "normal_value"
+
+    def test_sanitize_normal_values_unchanged(self) -> None:
+        """Test that normal values are not modified."""
+        context = {
+            "file": "test.py",
+            "line": 42,
+            "short_list": [1, 2, 3],
+            "small_dict": {"a": 1, "b": 2},
+        }
+        result = _sanitize_error_context(context)
+
+        assert result["file"] == "test.py"
+        assert result["line"] == 42
+        assert result["short_list"] == [1, 2, 3]
+        assert result["small_dict"] == {"a": 1, "b": 2}
+
+    def test_sanitize_empty_context(self) -> None:
+        """Test sanitization of empty context."""
+        result = _sanitize_error_context({})
+        assert result == {}
+
+    def test_sanitize_mixed_context(self) -> None:
+        """Test sanitization with mixed content types."""
+        context = {
+            "password": "secret",  # Should be redacted
+            "long_string": "y" * 600,  # Should be truncated
+            "long_list": list(range(15)),  # Should be truncated
+            "normal": "value",  # Should be unchanged
+        }
+        result = _sanitize_error_context(context)
+
+        assert result["password"] == "***REDACTED***"
+        assert "[TRUNCATED]" in result["long_string"]
+        assert result["long_list"][-1] == "...[TRUNCATED]"
+        assert result["normal"] == "value"

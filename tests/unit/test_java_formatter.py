@@ -463,6 +463,14 @@ class TestTypeShortening:
         result = formatter._shorten_type("CustomType")
         assert result == "CustomType"
 
+    def test_shorten_empty_array_type(self):
+        """Test shortening empty array type (edge case)"""
+        formatter = JavaTableFormatter()
+
+        # Test array with empty base type
+        result = formatter._shorten_type("[]")
+        assert result == "O[]"
+
 
 class TestVisibilityConversion:
     """Test visibility indicator conversion"""
@@ -705,6 +713,182 @@ class TestJavaDocHandling:
         result = formatter._format_full_table(data)
 
         assert isinstance(result, str)
+
+
+class TestPrivateMethods:
+    """Test private method formatting"""
+
+    def test_format_private_methods(self):
+        """Test formatting class with private methods"""
+        formatter = JavaTableFormatter()
+        data = {
+            "package": {"name": "com.example"},
+            "classes": [
+                {
+                    "name": "TestClass",
+                    "type": "class",
+                    "visibility": "public",
+                    "line_range": {"start": 1, "end": 30},
+                }
+            ],
+            "imports": [],
+            "methods": [
+                {
+                    "name": "privateHelper",
+                    "visibility": "private",
+                    "return_type": "void",
+                    "parameters": [],
+                    "is_constructor": False,
+                    "line_range": {"start": 15, "end": 20},
+                    "complexity_score": 2,
+                    "javadoc": "Private helper method",
+                }
+            ],
+            "fields": [],
+            "statistics": {"method_count": 1, "field_count": 0},
+        }
+
+        result = formatter._format_full_table(data)
+
+        assert "## Private Methods" in result
+        assert "privateHelper" in result
+
+    def test_format_mixed_visibility_methods(self):
+        """Test formatting class with both public and private methods"""
+        formatter = JavaTableFormatter()
+        data = {
+            "package": {"name": "com.example"},
+            "classes": [
+                {
+                    "name": "TestClass",
+                    "type": "class",
+                    "visibility": "public",
+                    "line_range": {"start": 1, "end": 50},
+                }
+            ],
+            "imports": [],
+            "methods": [
+                {
+                    "name": "publicMethod",
+                    "visibility": "public",
+                    "return_type": "String",
+                    "parameters": [],
+                    "is_constructor": False,
+                    "line_range": {"start": 10, "end": 15},
+                    "complexity_score": 1,
+                    "javadoc": "",
+                },
+                {
+                    "name": "privateMethod",
+                    "visibility": "private",
+                    "return_type": "void",
+                    "parameters": [{"type": "int", "name": "x"}],
+                    "is_constructor": False,
+                    "line_range": {"start": 20, "end": 25},
+                    "complexity_score": 3,
+                    "javadoc": "",
+                },
+            ],
+            "fields": [],
+            "statistics": {"method_count": 2, "field_count": 0},
+        }
+
+        result = formatter._format_full_table(data)
+
+        assert "## Public Methods" in result
+        assert "## Private Methods" in result
+        assert "publicMethod" in result
+        assert "privateMethod" in result
+
+
+class TestCompactTableMultipleClasses:
+    """Test compact table formatting with multiple classes"""
+
+    def test_format_compact_multiple_classes_with_package(self):
+        """Test compact format with multiple classes and package"""
+        formatter = JavaTableFormatter()
+        data = {
+            "package": {"name": "com.example"},
+            "file_path": "path/to/MultiClass.java",
+            "classes": [
+                {
+                    "name": "ClassA",
+                    "type": "class",
+                    "visibility": "public",
+                    "line_range": {"start": 1, "end": 10},
+                },
+                {
+                    "name": "ClassB",
+                    "type": "class",
+                    "visibility": "public",
+                    "line_range": {"start": 11, "end": 20},
+                },
+            ],
+            "imports": [],
+            "methods": [],
+            "fields": [],
+            "statistics": {"method_count": 0, "field_count": 0},
+        }
+
+        result = formatter._format_compact_table(data)
+
+        assert "# com.example.MultiClass.java" in result
+        assert "## Info" in result
+
+    def test_format_compact_multiple_classes_no_package(self):
+        """Test compact format with multiple classes without package"""
+        formatter = JavaTableFormatter()
+        data = {
+            "file_path": "path/to/MultiClass.java",
+            "classes": [
+                {
+                    "name": "ClassA",
+                    "type": "class",
+                    "visibility": "public",
+                    "line_range": {"start": 1, "end": 10},
+                },
+                {
+                    "name": "ClassB",
+                    "type": "class",
+                    "visibility": "public",
+                    "line_range": {"start": 11, "end": 20},
+                },
+            ],
+            "imports": [],
+            "methods": [],
+            "fields": [],
+            "statistics": {"method_count": 0, "field_count": 0},
+        }
+
+        result = formatter._format_compact_table(data)
+
+        # Should use filename without package
+        assert "# MultiClass.java" in result
+        assert "## Info" in result
+
+    def test_format_compact_single_class_no_package(self):
+        """Test compact format with single class without package"""
+        formatter = JavaTableFormatter()
+        data = {
+            "classes": [
+                {
+                    "name": "SingleClass",
+                    "type": "class",
+                    "visibility": "public",
+                    "line_range": {"start": 1, "end": 20},
+                }
+            ],
+            "imports": [],
+            "methods": [],
+            "fields": [],
+            "statistics": {"method_count": 0, "field_count": 0},
+        }
+
+        result = formatter._format_compact_table(data)
+
+        # Should use class name without package
+        assert "# SingleClass" in result
+        assert "## Info" in result
 
 
 class TestEdgeCases:

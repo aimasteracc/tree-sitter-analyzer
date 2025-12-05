@@ -336,5 +336,5 @@ class QueryService:
         """
         # CPU集約的でない単純なファイル読み込みなので、
         # run_in_executorを使用して非同期化
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, read_file_safe, file_path)
