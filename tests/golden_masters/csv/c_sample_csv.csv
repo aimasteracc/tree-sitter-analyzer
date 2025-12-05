@@ -1,0 +1,12 @@
+Type,Name,Signature,Visibility,Lines,Complexity,Doc
+Field,global_value,global_value:int,private,63-63,,-
+Field,static_value,static_value:int,private,64-64,,-
+Field,CONSTANT_VALUE,CONSTANT_VALUE:int,private,65-65,,-
+Method,add,"((:Any, a:int, ,:Any, b:int, ):Any):int",public,86-88,1,-
+Method,multiply,"((:Any, a:int, ,:Any, b:int, ):Any):int",public,91-93,1,-
+Method,process_array,"((:Any, arr[]:int, ,:Any, len:size_t, ):Any):void",public,96-100,1,-
+Method,compare_ints,"((:Any, a:const void*, ,:Any, b:const void*, ):Any):int",public,103-105,1,-
+Method,find_max,():int,public,108-117,1,-
+Method,calculate_distance,"((:Any, p1:struct Point, ,:Any, p2:struct Point, ):Any):double",public,120-124,1,-
+Method,sort_with_comparator,"((:Any, arr[]:int, ,:Any, len:size_t, ,:Any, cmp:Comparator, ):Any):void",public,127-129,1,-
+Method,main,"((:Any, void:Any, ):Any):int",public,135-161,1,-

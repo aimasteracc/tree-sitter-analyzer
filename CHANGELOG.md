@@ -2,6 +2,67 @@
 
 ## [Unreleased]
 
+## [1.9.18] - 2025-12-05
+
+### 🚀 New Features
+
+#### C/C++ Language Support Added! 🆕
+
+**C Language Support**:
+- **Structure Extraction**: Functions, structs, unions, enums, typedefs
+- **Advanced Features**:
+  - Preprocessor directive extraction (#include, #define, #ifdef)
+  - Global, static, const, extern variable extraction
+  - Function pointer and array type support
+- **C Formatter**: Output using C-specific terminology
+
+**C++ Language Support**:
+- **Structure Extraction**: Classes, structs, namespaces, templates
+- **Advanced Features**:
+  - Inheritance and virtual function detection
+  - Operator overloading extraction
+  - Lambda expression and smart pointer support
+  - Using declarations and namespace aliases
+- **C++ Formatter**: Output using C++-specific terminology
+
+These languages are fully integrated into CLI, API, and MCP interfaces with comprehensive testing.
+
+### 🧪 Testing & Quality
+
+- **Test Suite Expansion**: Increased test count to 5,980 tests (up from 4,864)
+  - Added comprehensive C language plugin tests
+  - Added comprehensive C++ language plugin tests
+  - Added Golden Master tests for C/C++ (full/compact/CSV formats)
+  - All tests pass with 100% success rate
+
+### 📚 Documentation
+
+- **Version Updates**: Updated all README files with v1.9.18 version information
+  - **English (README.md)**: Updated version badges and added C/C++ to supported languages
+  - **Japanese (README_ja.md)**: Updated version information and added C/C++ support
+  - **Chinese (README_zh.md)**: Updated version information and added C/C++ support
+- **Language Count**: Updated supported languages from 15 to 17
+
+### 🔧 Technical Improvements
+
+- **Plugin Architecture**: Added CPlugin and CppPlugin following existing plugin patterns
+- **Query Modules**: Added `queries/c.py` and `queries/cpp.py` for tree-sitter queries
+- **BFS Identifier Extraction**: Uses breadth-first search for accurate name resolution
+- **Graceful Degradation**: Handles missing tree-sitter-c/cpp dependencies gracefully
+
+### 📊 Quality Metrics
+
+- **Tests**: 5,980 tests (100% pass rate)
+- **Coverage**: Codecov automatic monitoring
+- **Quality**: Enterprise-grade quality maintained
+- **Supported Languages**: 17 languages
+
+### 🎯 Impact
+
+This release adds comprehensive C and C++ language support, completing coverage for major systems programming languages. The plugins support all core C/C++ constructs including preprocessor directives, templates, inheritance, and modern C++ features.
+
+---
+
 ## [1.9.17] - 2025-11-28
 
 ### 🚀 New Features

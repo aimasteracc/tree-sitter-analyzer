@@ -176,6 +176,20 @@ LANGUAGE_FORMATTER_CONFIG: dict[str, dict[str, str]] = {
         "csv": "legacy",
         "json": "legacy",
     },
+    "c": {
+        "table": "legacy",
+        "compact": "legacy",
+        "full": "legacy",
+        "csv": "legacy",
+        "json": "legacy",
+    },
+    "cpp": {
+        "table": "legacy",
+        "compact": "legacy",
+        "full": "legacy",
+        "csv": "legacy",
+        "json": "legacy",
+    },
 }
 
 # Default strategy for unknown languages

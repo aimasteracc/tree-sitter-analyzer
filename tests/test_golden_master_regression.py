@@ -283,6 +283,14 @@ class TestGoldenMasterRegression:
             ("examples/sample.go", "go_sample", "full"),
             ("examples/sample.go", "go_sample", "compact"),
             ("examples/sample.go", "go_sample", "csv"),
+            # C tests
+            ("examples/sample.c", "c_sample", "full"),
+            ("examples/sample.c", "c_sample", "compact"),
+            ("examples/sample.c", "c_sample", "csv"),
+            # C++ tests
+            ("examples/sample.cpp", "cpp_sample", "full"),
+            ("examples/sample.cpp", "cpp_sample", "compact"),
+            ("examples/sample.cpp", "cpp_sample", "csv"),
         ],
     )
     def test_golden_master_comparison(
