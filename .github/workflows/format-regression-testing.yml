@@ -126,7 +126,27 @@ jobs:
       run: |
         git config --local user.email "action@github.com"
         git config --local user.name "GitHub Action"
+
+        # Check if there are any changes to commit
+        if git diff --quiet && git diff --staged --quiet; then
+          echo "No changes to commit"
+          exit 0
+        fi
+
+        # Stage golden master changes
         git add tests/golden_masters/
+
+        # Stash any other unstaged changes before rebase
+        git stash --include-untracked || true
+
+        # Commit if there are staged changes
         git diff --staged --quiet || git commit -m "Update format baselines [skip ci]"
-        git pull --rebase
-        git push
+
+        # Pull with rebase
+        git pull --rebase || true
+
+        # Push changes
+        git push || echo "Push failed, may need manual intervention"
+
+        # Restore stashed changes (if any)
+        git stash pop || true
