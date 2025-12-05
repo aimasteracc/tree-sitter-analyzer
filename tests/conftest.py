@@ -120,6 +120,15 @@ This is a test project for tree-sitter-analyzer.
     return tmp_path
 
 
+def pytest_sessionfinish(session, exitstatus):
+    """
+    Force garbage collection at the end of the session to ensure
+    asyncio tasks are cleaned up while the interpreter is still fully operational.
+    """
+    import gc
+    gc.collect()
+
+
 @pytest.fixture(autouse=True)
 async def cleanup_asyncio_tasks():
     """
@@ -131,13 +140,16 @@ async def cleanup_asyncio_tasks():
     # Get all tasks
     import asyncio
     try:
-        tasks = asyncio.all_tasks()
+        # Get the running loop if possible
+        loop = asyncio.get_running_loop()
     except RuntimeError:
         # No event loop running
         return
         
+    tasks = asyncio.all_tasks(loop)
+    
     # Cancel all tasks except the current one
-    current_task = asyncio.current_task()
+    current_task = asyncio.current_task(loop)
     tasks = [t for t in tasks if t is not current_task]
     
     if not tasks:
@@ -148,4 +160,8 @@ async def cleanup_asyncio_tasks():
         task.cancel()
         
     # Wait for tasks to complete
-    await asyncio.gather(*tasks, return_exceptions=True)
+    # We use a timeout to avoid hanging if a task ignores cancellation
+    try:
+        await asyncio.wait_for(asyncio.gather(*tasks, return_exceptions=True), timeout=2.0)
+    except asyncio.TimeoutError:
+        pass
