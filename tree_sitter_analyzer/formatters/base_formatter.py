@@ -90,7 +90,8 @@ class BaseTableFormatter(ABC):
     def _format_csv(self, data: dict[str, Any]) -> str:
         """CSV format (common implementation)"""
         output = io.StringIO()
-        writer = csv.writer(output, lineterminator="\n")
+        # Set escapechar to handle special characters that cannot be quoted (like null bytes in some envs)
+        writer = csv.writer(output, lineterminator="\n", escapechar="\\")
 
         # Header
         writer.writerow(
@@ -102,9 +103,9 @@ class BaseTableFormatter(ABC):
             writer.writerow(
                 [
                     "Field",
-                    str(field.get("name", "")),
-                    f"{str(field.get('name', ''))}:{str(field.get('type', ''))}",
-                    str(field.get("visibility", "")),
+                    self._clean_csv_text(str(field.get("name", ""))),
+                    self._clean_csv_text(f"{str(field.get('name', ''))}:{str(field.get('type', ''))}"),
+                    self._clean_csv_text(str(field.get("visibility", ""))),
                     f"{field.get('line_range', {}).get('start', 0)}-{field.get('line_range', {}).get('end', 0)}",
                     "",
                     self._clean_csv_text(
@@ -118,9 +119,9 @@ class BaseTableFormatter(ABC):
             writer.writerow(
                 [
                     "Constructor" if method.get("is_constructor", False) else "Method",
-                    str(method.get("name", "")),
+                    self._clean_csv_text(str(method.get("name", ""))),
                     self._clean_csv_text(self._create_full_signature(method)),
-                    str(method.get("visibility", "")),
+                    self._clean_csv_text(str(method.get("visibility", ""))),
                     f"{method.get('line_range', {}).get('start', 0)}-{method.get('line_range', {}).get('end', 0)}",
                     method.get("complexity_score", 0),
                     self._clean_csv_text(
@@ -194,7 +195,8 @@ class BaseTableFormatter(ABC):
         if not text:
             return ""
 
-        cleaned = text.replace("\r\n", " ").replace("\r", " ").replace("\n", " ")
+        # Remove null bytes and normalize whitespace
+        cleaned = text.replace("\0", "").replace("\r\n", " ").replace("\r", " ").replace("\n", " ")
         cleaned = " ".join(cleaned.split())
         cleaned = cleaned.replace('"', '""')
 
