@@ -4,7 +4,9 @@ Factory for creating language-specific formatters for different output types.
 """
 
 from .base_formatter import BaseFormatter
+from .cpp_formatter import CppTableFormatter
 from .csharp_formatter import CSharpTableFormatter
+from .css_formatter import CSSFormatter
 from .go_formatter import GoTableFormatter
 from .html_formatter import HtmlFormatter
 from .java_formatter import JavaTableFormatter
@@ -27,7 +29,7 @@ class LanguageFormatterFactory:
         "markdown": MarkdownFormatter,
         "md": MarkdownFormatter,  # Alias
         "html": HtmlFormatter,
-        "css": HtmlFormatter,  # CSS files also use HTML formatter
+        "css": CSSFormatter,  # CSS files use CSS formatter
         "sql": SQLFormatterWrapper,  # SQL-specific formatter
         "python": PythonTableFormatter,  # Python files use Python formatter
         "py": PythonTableFormatter,  # Python alias
@@ -49,6 +51,15 @@ class LanguageFormatterFactory:
         "go": GoTableFormatter,  # Go files use Go formatter
         "yaml": YAMLFormatter,  # YAML files use YAML formatter
         "yml": YAMLFormatter,  # YAML alias
+        "c": CppTableFormatter,  # C files use C/C++ formatter
+        "h": CppTableFormatter,  # C header files
+        "cpp": CppTableFormatter,  # C++ files use C/C++ formatter
+        "cxx": CppTableFormatter,
+        "cc": CppTableFormatter,
+        "hpp": CppTableFormatter,
+        "hxx": CppTableFormatter,
+        "h++": CppTableFormatter,
+        "c++": CppTableFormatter,
     }
 
     @classmethod

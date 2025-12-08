@@ -525,3 +525,155 @@ class TestCPluginIntegration:
 
         for non_c_file in non_c_files:
             assert plugin.is_applicable(non_c_file) is False
+
+
+class TestCPluginLegacyTests:
+    """Legacy test cases using FakeNode from original test_c directory"""
+
+    class FakeNode:
+        """Fake node implementation for legacy tests"""
+
+        def __init__(
+            self,
+            type_,
+            text,
+            start_line=0,
+            start_col=0,
+            end_line=None,
+            end_col=None,
+            children=None,
+            fields=None,
+            start_byte=None,
+            end_byte=None,
+        ):
+            self.type = type_
+            self._text = text
+            self.children = children or []
+            self.start_point = (start_line, start_col)
+            end_line = end_line if end_line is not None else start_line
+            end_col = end_col if end_col is not None else (start_col + len(text))
+            self.end_point = (end_line, end_col)
+            self.start_byte = 0 if start_byte is None else start_byte
+            self.end_byte = (
+                (self.start_byte + len(text)) if end_byte is None else end_byte
+            )
+            self._fields = fields or {}
+            self.parent = None  # Add parent attribute
+
+        def child_by_field_name(self, name):
+            return self._fields.get(name)
+
+    @staticmethod
+    def make_tree(root):
+        """Create a simple tree with root node"""
+        from types import SimpleNamespace
+
+        return SimpleNamespace(root_node=root)
+
+    def test_plugin_metadata_legacy(self) -> None:
+        """Test plugin metadata (legacy test)"""
+        p = CPlugin()
+        assert p.get_language_name() == "c"
+        assert ".c" in p.get_file_extensions()
+
+    def test_extractor_covers_elements_legacy(self) -> None:
+        """Test extractor covers all element types with FakeNode (legacy test)"""
+        source = "#include <stdio.h>\nint add(int a,int b){return a+b;}\nstruct S {int x;};\nint v=0;\n"
+        extractor = CElementExtractor()
+
+        fn_text = "int add(int a,int b){return a+b;}"
+        fn_start = source.find(fn_text)
+        ident_add = self.FakeNode(
+            "identifier", "add", start_byte=fn_start + fn_text.find("add")
+        )
+        params_text = "(int a,int b)"
+        params = self.FakeNode(
+            "parameters",
+            params_text,
+            start_byte=fn_start + fn_text.find(params_text),
+            children=[
+                self.FakeNode("identifier", "a"),
+                self.FakeNode("identifier", "b"),
+            ],
+        )
+        decl = self.FakeNode(
+            "declarator",
+            "add(int a,int b)",
+            start_byte=fn_start + fn_text.find("add"),
+            children=[ident_add, params],
+            fields={"parameters": params},
+        )
+        type_node = self.FakeNode("type", "int", start_byte=fn_start)
+        fn = self.FakeNode(
+            "function_definition",
+            fn_text,
+            start_line=1,
+            start_byte=fn_start,
+            fields={"declarator": decl, "type": type_node},
+        )
+
+        struct_text = "struct S {int x;};"
+        struct_start = source.find(struct_text)
+        struct_name = self.FakeNode(
+            "type_identifier", "S", start_byte=struct_start + struct_text.find("S")
+        )
+        struct_node = self.FakeNode(
+            "struct_specifier",
+            struct_text,
+            start_line=2,
+            start_byte=struct_start,
+            children=[struct_name],
+        )
+
+        var_text = "int v=0;"
+        var_start = source.find(var_text)
+        decl_name = self.FakeNode(
+            "identifier", "v", start_byte=var_start + var_text.find("v")
+        )
+        init_decl = self.FakeNode(
+            "init_declarator",
+            "v=0",
+            start_byte=var_start + var_text.find("v"),
+            children=[decl_name],
+        )
+        decl_specs = self.FakeNode("declaration_specifiers", "int", start_byte=var_start)
+        var_decl = self.FakeNode(
+            "declaration",
+            var_text,
+            start_line=3,
+            start_byte=var_start,
+            children=[init_decl],
+            fields={"declaration_specifiers": decl_specs},
+        )
+
+        inc_text = "#include <stdio.h>"
+        inc = self.FakeNode(
+            "preproc_include", inc_text, start_line=0, start_byte=source.find(inc_text)
+        )
+
+        root = self.FakeNode("root", source, children=[inc, fn, struct_node, var_decl])
+        tree = self.make_tree(root)
+
+        funcs = extractor.extract_functions(tree, source)
+        assert isinstance(funcs, list)
+
+        classes = extractor.extract_classes(tree, source)
+        assert isinstance(classes, list)
+
+        vars_ = extractor.extract_variables(tree, source)
+        assert isinstance(vars_, list)
+
+        imps = extractor.extract_imports(tree, source)
+        assert any(i.import_statement.startswith("#include") for i in imps)
+
+    @pytest.mark.asyncio
+    async def test_analyze_file_runs_legacy(self) -> None:
+        """Test analyze_file runs successfully on example file (legacy test)"""
+        from types import SimpleNamespace
+
+        p = CPlugin()
+        path = os.path.join("examples", "sample.c")
+        ar = SimpleNamespace()
+
+        out = await p.analyze_file(path, ar)
+        assert out is not None

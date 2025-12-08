@@ -314,16 +314,24 @@ class MarkdownFormatter(BaseFormatter):
         self, analysis_result: dict[str, Any], table_type: str = "full"
     ) -> str:
         """Format table output for Markdown files"""
+        if table_type == "compact":
+            return self._format_compact(analysis_result)
+        elif table_type == "csv":
+            return self._format_csv(analysis_result)
+        else:
+            return self._format_full(analysis_result)
+
+    def _format_full(self, analysis_result: dict[str, Any]) -> str:
+        """Format full table output for Markdown files"""
         file_path = analysis_result.get("file_path", "")
         elements = analysis_result.get("elements", [])
 
-        # Get document title from first header
-        headers = [e for e in elements if e.get("type") == "heading"]
-        title = (
-            headers[0].get("text", "").strip() if headers else file_path.split("/")[-1]
-        )
+        # Extract filename from path
+        filename = file_path.split("/")[-1].split("\\")[-1]
+        if filename.endswith((".md", ".markdown")):
+            filename = filename.rsplit(".", 1)[0]
 
-        output = [f"# {title}\n"]
+        output = [f"# {filename}\n"]
 
         # Document Overview
         output.append("## Document Overview\n")
@@ -336,6 +344,7 @@ class MarkdownFormatter(BaseFormatter):
         output.append("")
 
         # Headers Section
+        headers = [e for e in elements if e.get("type") == "heading"]
         if headers:
             output.append("## Document Structure\n")
             output.append("| Level | Header | Line |")
@@ -723,3 +732,108 @@ class MarkdownFormatter(BaseFormatter):
             inline_images_count + ref_images_count + image_ref_defs_used
         )
         return counts
+
+    def _format_compact(self, analysis_result: dict[str, Any]) -> str:
+        """Format compact table output for Markdown files"""
+        file_path = analysis_result.get("file_path", "")
+        elements = analysis_result.get("elements", [])
+
+        # Count element types
+        headers = [e for e in elements if e.get("type") == "heading"]
+        links = [e for e in elements if e.get("type") in ["link", "autolink", "reference_link"]]
+        images = self._collect_images(elements)
+        code_blocks = [e for e in elements if e.get("type") == "code_block"]
+        lists = [e for e in elements if e.get("type") in ["list", "task_list"]]
+        tables = [e for e in elements if e.get("type") == "table"]
+
+        # Extract filename from path
+        filename = file_path.split("/")[-1].split("\\")[-1]
+        if filename.endswith((".md", ".markdown")):
+            filename = filename.rsplit(".", 1)[0]
+
+        output = [f"# {filename}\n"]
+        output.append("## Summary\n")
+        output.append("| Element Type | Count |")
+        output.append("|--------------|-------|")
+        output.append(f"| Headers | {len(headers)} |")
+        output.append(f"| Links | {len(links)} |")
+        output.append(f"| Images | {len(images)} |")
+        output.append(f"| Code Blocks | {len(code_blocks)} |")
+        output.append(f"| Lists | {len(lists)} |")
+        output.append(f"| Tables | {len(tables)} |")
+        output.append(f"| **Total** | **{len(elements)}** |")
+        output.append("")
+        
+        # Show headers
+        if headers:
+            output.append("## Document Structure\n")
+            output.append("| Level | Header | Line |")
+            output.append("|-------|--------|------|")
+            for header in headers[:20]:  # Limit to top 20
+                level = "#" * header.get("level", 1)
+                text = header.get("text", "").strip()[:50]  # Truncate long headers
+                line = header.get("line_range", {}).get("start", "")
+                output.append(f"| {level} | {text} | {line} |")
+            if len(headers) > 20:
+                output.append(f"| ... | ({len(headers) - 20} more) | |")
+            output.append("")
+        
+        return "\n".join(output)
+
+    def _format_csv(self, analysis_result: dict[str, Any]) -> str:
+        """Format CSV output for Markdown files"""
+        import csv
+        import io
+        
+        elements = analysis_result.get("elements", [])
+        
+        output = io.StringIO()
+        writer = csv.writer(output, lineterminator="\n")
+        
+        # Write header
+        writer.writerow([
+            "Type",
+            "Text/URL/Language",
+            "Level/Count",
+            "Start Line",
+            "End Line"
+        ])
+        
+        # Write data rows
+        for element in elements:
+            elem_type = element.get("type", "unknown")
+            start_line = element.get("line_range", {}).get("start", 0)
+            end_line = element.get("line_range", {}).get("end", 0)
+            
+            if elem_type == "heading":
+                text = element.get("text", "")[:50]
+                level = element.get("level", 1)
+                writer.writerow([elem_type, text, level, start_line, end_line])
+            elif elem_type in ["link", "autolink", "reference_link"]:
+                url = element.get("url", "")
+                text = element.get("text", "")[:30]
+                writer.writerow([elem_type, f"{text} -> {url}", "-", start_line, end_line])
+            elif elem_type == "image":
+                url = element.get("url", "")
+                alt = element.get("alt", "")[:30]
+                writer.writerow([elem_type, f"{alt} -> {url}", "-", start_line, end_line])
+            elif elem_type == "code_block":
+                language = element.get("language", "")
+                line_count = element.get("line_count", 0)
+                writer.writerow([elem_type, language, line_count, start_line, end_line])
+            elif elem_type in ["list", "task_list"]:
+                list_type = element.get("list_type", "")
+                item_count = element.get("item_count", 0)
+                writer.writerow([elem_type, list_type, item_count, start_line, end_line])
+            elif elem_type == "table":
+                cols = element.get("column_count", 0)
+                rows = element.get("row_count", 0)
+                writer.writerow([elem_type, f"{cols}x{rows}", "-", start_line, end_line])
+            else:
+                name = element.get("name", "")[:50]
+                writer.writerow([elem_type, name, "-", start_line, end_line])
+        
+        csv_content = output.getvalue()
+        output.close()
+        return csv_content.rstrip("\n")
+

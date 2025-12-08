@@ -316,6 +316,20 @@ class AnalysisEngine:
             List of extracted code elements
         """
         try:
+            # For plugins with custom extract_elements that return a list (e.g., Markdown, HTML, CSS)
+            # Use that directly
+            if plugin and hasattr(plugin, "extract_elements"):
+                try:
+                    plugin_elements = plugin.extract_elements(
+                        parse_result.tree, parse_result.source_code or ""
+                    )
+                    # Only use if it returns a list (not dict)
+                    if isinstance(plugin_elements, list) and plugin_elements:
+                        return plugin_elements
+                except Exception:
+                    # If extract_elements fails or returns wrong type, fall through to standard extraction
+                    pass
+            
             if plugin and hasattr(plugin, "create_extractor"):
                 extractor = plugin.create_extractor()
                 if extractor:
