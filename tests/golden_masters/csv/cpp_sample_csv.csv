@@ -1,38 +1,47 @@
 Type,Name,Signature,Visibility,Lines,Complexity,Doc
-Field,PI,PI:double,private,21-21,,-
+Field,PI,PI:double,public,21-21,,-
+Field,x,x:int,public,63-63,,-
+Field,y,y:int,public,64-64,,-
+Field,width_,width_:double,private,123-123,,-
+Field,height_,height_:double,private,124-124,,-
+Field,instance_count_,instance_count_:int,private,127-127,,-
+Field,radius_,radius_:double,private,156-156,,-
 Field,static_value,static_value:int,private,170-170,,-
-Field,APP_NAME,APP_NAME:string,private,171-171,,-
-Field,MAX_SIZE,MAX_SIZE:int,private,172-172,,-
-Method,max,"((:Any, a:T, ,:Any, b:T, ):Any):T",public,25-27,1,-
-Method,Container,"((:Any, ):Any):",public,33-33,1,-
-Method,Container,"((:Any, value:T, ):Any):",public,34-34,1,-
-Method,Container,"((:Any, ):Any):",public,35-35,1,-
-Method,get,"((:Any, ):Any):T",public,37-37,1,-
-Method,set,"((:Any, value:T, ):Any):void",public,38-41,1,-
-Method,distance,"((:Any, ):Any):double",public,67-69,1,-
-Method,Shape,"((:Any, ):Any):",public,75-75,1,-
-Method,name,"((:Any, ):Any):string",public,82-82,1,-
-Method,Rectangle,"((:Any, w:double, ,:Any, h:double, ):Any):",public,89-89,1,-
-Method,Rectangle,"((:Any, other:const Rectangle&, ):Any):",public,92-92,1,-
-Method,Rectangle,"((:Any, other:Rectangle&&, ):Any):",public,95-98,1,-
-Method,Rectangle,"((:Any, ):Any):",public,101-101,1,-
-Method,area,"((:Any, ):Any):double",public,104-104,1,-
-Method,perimeter,"((:Any, ):Any):double",public,105-105,1,-
-Method,name,"((:Any, ):Any):string",public,106-106,1,-
-Method,width,"((:Any, ):Any):double",public,109-109,1,-
-Method,height,"((:Any, ):Any):double",public,110-110,1,-
-Method,Rectangle,"((:Any, other:const Rectangle&, ):Any):bool",public,113-115,1,-
-Method,square,"((:Any, side:double, ):Any):Rectangle",public,118-120,1,-
-Method,Printable,"((:Any, ):Any):",public,137-137,1,-
-Method,Circle,"((:Any, r:double, ):Any):",public,142-142,1,-
-Method,area,"((:Any, ):Any):double",public,144-144,1,-
-Method,perimeter,"((:Any, ):Any):double",public,145-145,1,-
-Method,name,"((:Any, ):Any):string",public,146-146,1,-
-Method,print,"((:Any, ):Any):void",public,148-150,1,-
-Method,ostream,():ostream,public,160-163,1,-
-Method,swap_values,"((:Any, a:T&, ,:Any, b:T&, ):Any):void",public,176-180,1,-
-Method,add,"((:Any, a:int, ,:Any, 0:int b =, ):Any):int",public,185-187,1,-
-Method,add,"((:Any, a:double, ,:Any, b:double, ):Any):double",public,190-192,1,-
-Method,process,"((:Any, vec:vector<int>&, ,:Any, transformer:function<int(int)>, ):Any):void",public,195-199,1,-
-Method,create_shape,"((:Any, type:const string&, ,:Any, size:double, ):Any):unique_ptr<Shape>",public,202-208,1,-
-Method,main,"((:Any, ):Any):int",public,211-256,1,-
+Field,APP_NAME,APP_NAME:string,public,171-171,,-
+Field,MAX_SIZE,MAX_SIZE:int,public,172-172,,-
+Method,max,"(a:T, b:T):T",public,25-27,2,-
+Method,Container,():void,public,33-33,1,-
+Method,Container,(value:T):void,public,34-34,1,-
+Method,~Container,():void,public,35-35,1,-
+Method,get,():T,public,37-37,2,-
+Method,set,(value:T):void,public,38-41,1,-
+Method,distance,():double,public,67-69,1,-
+Method,~Shape,():void,public,75-75,1,-
+Method,area,():double,public,78-78,1,-
+Method,perimeter,():double,public,79-79,1,-
+Method,name,():string,public,82-82,1,-
+Method,Rectangle,"(w:double, h:double):void",public,89-89,1,-
+Method,Rectangle,(other:const Rectangle&):void,public,92-92,1,-
+Method,Rectangle,(other:Rectangle&&):void,public,95-98,1,-
+Method,~Rectangle,():void,public,101-101,1,-
+Method,area,():double,public,104-104,1,-
+Method,perimeter,():double,public,105-105,1,-
+Method,name,():string,public,106-106,1,-
+Method,width,():double,public,109-109,1,-
+Method,height,():double,public,110-110,1,-
+Method,operator==,(other:const Rectangle&):bool,public,113-115,1,-
+Method,square,(side:double):Rectangle [static],public,118-120,1,-
+Method,print,():void,public,136-136,1,-
+Method,~Printable,():void,public,137-137,1,-
+Method,Circle,(r:double):void,public,142-142,1,-
+Method,area,():double,public,144-144,1,-
+Method,perimeter,():double,public,145-145,1,-
+Method,name,():string,public,146-146,1,-
+Method,print,():void,public,148-150,1,-
+Method,operator<<,"(os:ostream&, c:const Circle&):ostream&",public,160-163,1,-
+Method,swap_values,"(a:T&, b:T&):void",public,176-180,1,-
+Method,add,"(a:int, 0:int b =):int",public,185-187,1,-
+Method,add,"(a:double, b:double):double",public,190-192,1,-
+Method,process,"(vec:vector<int>&, transformer:function<int(int)>):void",public,195-199,2,-
+Method,create_shape,"(type:const string&, size:double):unique_ptr<Shape>",public,202-208,2,-
+Method,main,():int,public,211-256,3,-

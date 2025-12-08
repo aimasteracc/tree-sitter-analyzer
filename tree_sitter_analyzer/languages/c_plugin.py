@@ -53,6 +53,7 @@ class CElementExtractor(ElementExtractor):
         # Use optimized traversal for function types
         extractors = {
             "function_definition": self._extract_function_optimized,
+            "preproc_function_def": self._extract_macro_function,
         }
 
         self._traverse_and_extract_iterative(
@@ -100,6 +101,7 @@ class CElementExtractor(ElementExtractor):
         extractors = {
             "field_declaration": self._extract_field_optimized,
             "declaration": self._extract_variable_declaration,
+            "preproc_def": self._extract_macro_definition,
         }
 
         self._traverse_and_extract_iterative(
@@ -527,6 +529,13 @@ class CElementExtractor(ElementExtractor):
                         modifiers.append(mod)
                 elif child.type == "field_identifier":
                     field_names.append(self._get_node_text_optimized(child))
+                elif child.type == "array_declarator":
+                    # Handle array fields (e.g. char name[50])
+                    for grandchild in child.children:
+                        if grandchild.type == "field_identifier":
+                            field_names.append(self._get_node_text_optimized(grandchild))
+                    # Append [] to type to indicate array
+                    field_type = field_type + "[]" if field_type else "[]"
                 elif child.type == "field_declaration_list":
                     # Nested struct/union, skip
                     pass
@@ -553,6 +562,9 @@ class CElementExtractor(ElementExtractor):
                 return fields
 
             raw_text = self._get_node_text_optimized(node)
+            
+            # In C, struct/union fields are always public (no access control)
+            visibility = "public"
 
             for field_name in field_names:
                 field = Variable(
@@ -564,6 +576,7 @@ class CElementExtractor(ElementExtractor):
                     variable_type=field_type,
                     modifiers=modifiers,
                     is_constant="const" in modifiers,
+                    visibility=visibility,
                 )
                 fields.append(field)
 
@@ -629,6 +642,11 @@ class CElementExtractor(ElementExtractor):
                 return variables
 
             raw_text = self._get_node_text_optimized(node)
+            
+            # C global variables visibility:
+            # - static = private (internal linkage)
+            # - non-static = public (external linkage)
+            visibility = "private" if "static" in modifiers else "public"
 
             for var_name in var_names:
                 variable = Variable(
@@ -641,6 +659,7 @@ class CElementExtractor(ElementExtractor):
                     modifiers=modifiers,
                     is_static="static" in modifiers,
                     is_constant="const" in modifiers,
+                    visibility=visibility,
                 )
                 variables.append(variable)
 
@@ -725,6 +744,76 @@ class CElementExtractor(ElementExtractor):
                         )
 
         return imports
+
+    def _extract_macro_definition(self, node: "tree_sitter.Node") -> list[Variable]:
+        """Extract macro definitions as constants"""
+        variables: list[Variable] = []
+        try:
+            start_line = node.start_point[0] + 1
+            end_line = node.end_point[0] + 1
+
+            name = None
+
+            for child in node.children:
+                if child.type == "identifier":
+                    name = self._get_node_text_optimized(child)
+                    break
+
+            if name:
+                raw_text = self._get_node_text_optimized(node)
+                var = Variable(
+                    name=name,
+                    start_line=start_line,
+                    end_line=end_line,
+                    raw_text=raw_text,
+                    language="c",
+                    variable_type="macro",
+                    modifiers=["const", "macro"],
+                    is_constant=True,
+                    visibility="public",
+                )
+                variables.append(var)
+        except Exception as e:
+            log_debug(f"Failed to extract macro: {e}")
+
+        return variables
+
+    def _extract_macro_function(self, node: "tree_sitter.Node") -> Function | None:
+        """Extract macro function definition"""
+        try:
+            start_line = node.start_point[0] + 1
+            end_line = node.end_point[0] + 1
+
+            name = None
+            params: list[str] = []
+
+            for child in node.children:
+                if child.type == "identifier":
+                    name = self._get_node_text_optimized(child)
+                elif child.type == "preproc_params":
+                    for grandchild in child.children:
+                        if grandchild.type == "identifier":
+                            params.append(self._get_node_text_optimized(grandchild))
+                        elif grandchild.type == "variadic_parameter": # Handle ...
+                            params.append("...")
+
+            if name:
+                return Function(
+                    name=name,
+                    start_line=start_line,
+                    end_line=end_line,
+                    raw_text=self._get_node_text_optimized(node),
+                    language="c",
+                    parameters=params,
+                    return_type="macro",
+                    modifiers=["macro"],
+                    visibility="public",
+                    complexity_score=1,
+                )
+        except Exception as e:
+            log_debug(f"Failed to extract macro function: {e}")
+            return None
+        return None
 
     def _calculate_complexity_optimized(self, node: "tree_sitter.Node") -> int:
         """Calculate cyclomatic complexity"""

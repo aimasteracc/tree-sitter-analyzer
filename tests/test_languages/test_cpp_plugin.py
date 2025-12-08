@@ -507,3 +507,190 @@ class TestCppPluginIntegration:
 
         for non_cpp_file in non_cpp_files:
             assert plugin.is_applicable(non_cpp_file) is False
+
+
+class TestCppPluginLegacyTests:
+    """Legacy test cases using FakeNode from original test_cpp directory"""
+
+    class FakeNode:
+        """Fake node implementation for legacy tests"""
+
+        def __init__(
+            self,
+            type_,
+            text,
+            start_line=0,
+            start_col=0,
+            end_line=None,
+            end_col=None,
+            children=None,
+            fields=None,
+            start_byte=None,
+            end_byte=None,
+        ):
+            self.type = type_
+            self._text = text
+            self.children = children or []
+            self.start_point = (start_line, start_col)
+            end_line = end_line if end_line is not None else start_line
+            end_col = end_col if end_col is not None else (start_col + len(text))
+            self.end_point = (end_line, end_col)
+            self.start_byte = 0 if start_byte is None else start_byte
+            self.end_byte = (
+                (self.start_byte + len(text)) if end_byte is None else end_byte
+            )
+            self._fields = fields or {}
+            self.parent = None  # Add parent attribute
+
+        def child_by_field_name(self, name):
+            return self._fields.get(name)
+
+    @staticmethod
+    def make_tree(root):
+        """Create a simple tree with root node"""
+        from types import SimpleNamespace
+
+        return SimpleNamespace(root_node=root)
+
+    def test_plugin_metadata_legacy(self) -> None:
+        """Test plugin metadata (legacy test)"""
+        p = CppPlugin()
+        assert p.get_language_name() == "cpp"
+        assert ".cpp" in p.get_file_extensions()
+
+    def test_extractor_covers_elements_legacy(self) -> None:
+        """Test extractor covers all element types with FakeNode (legacy test)"""
+        source = "#include <iostream>\nusing namespace std;\nstruct V {int x;};\nclass G {public: int m(int t){return t;}};\nint v=1;\n"
+        extractor = CppElementExtractor()
+
+        fn_text = "int m(int t){return t;}"
+        fn_start = source.find(fn_text)
+        ident_m = self.FakeNode(
+            "identifier", "m", start_byte=fn_start + fn_text.find("m")
+        )
+        params_text = "(int t)"
+        params = self.FakeNode(
+            "parameters",
+            params_text,
+            start_byte=fn_start + fn_text.find(params_text),
+            children=[self.FakeNode("identifier", "t")],
+        )
+        decl = self.FakeNode(
+            "declarator",
+            "m(int t)",
+            start_byte=fn_start + fn_text.find("m"),
+            children=[ident_m, params],
+            fields={"parameters": params},
+        )
+        type_node = self.FakeNode("type", "int", start_byte=fn_start)
+        fn = self.FakeNode(
+            "function_definition",
+            fn_text,
+            start_line=3,
+            start_byte=fn_start,
+            fields={"declarator": decl, "type": type_node},
+        )
+
+        class_text = "class G {public: int m(int t){return t;}};"
+        class_start = source.find(class_text)
+        class_name = self.FakeNode(
+            "type_identifier", "G", start_byte=class_start + class_text.find("G")
+        )
+        class_node = self.FakeNode(
+            "class_specifier",
+            class_text,
+            start_line=3,
+            start_byte=class_start,
+            children=[class_name],
+        )
+
+        struct_text = "struct V {int x;};"
+        struct_start = source.find(struct_text)
+        struct_name = self.FakeNode(
+            "type_identifier", "V", start_byte=struct_start + struct_text.find("V")
+        )
+        struct_node = self.FakeNode(
+            "struct_specifier",
+            struct_text,
+            start_line=2,
+            start_byte=struct_start,
+            children=[struct_name],
+        )
+
+        using_decl = self.FakeNode(
+            "using_declaration",
+            "using namespace std;",
+            start_line=1,
+            start_byte=source.find("using namespace std;"),
+        )
+        ns_def = self.FakeNode(
+            "namespace_definition",
+            "namespace demo {}",
+            start_line=0,
+            start_byte=source.find("namespace demo {}")
+            if "namespace demo {}" in source
+            else 0,
+        )
+        inc = self.FakeNode(
+            "preproc_include",
+            "#include <iostream>",
+            start_line=0,
+            start_byte=source.find("#include <iostream>"),
+        )
+
+        var_text = "int v=1;"
+        var_start = source.find(var_text)
+        decl_name = self.FakeNode(
+            "identifier", "v", start_byte=var_start + var_text.find("v")
+        )
+        init_decl = self.FakeNode(
+            "init_declarator",
+            "v=1",
+            start_byte=var_start + var_text.find("v"),
+            children=[decl_name],
+        )
+        decl_specs = self.FakeNode(
+            "declaration_specifiers", "int", start_byte=var_start
+        )
+        var_decl = self.FakeNode(
+            "declaration",
+            var_text,
+            start_line=4,
+            start_byte=var_start,
+            children=[init_decl],
+            fields={"declaration_specifiers": decl_specs},
+        )
+
+        root = self.FakeNode(
+            "root",
+            source,
+            children=[ns_def, inc, using_decl, struct_node, class_node, fn, var_decl],
+        )
+        tree = self.make_tree(root)
+
+        funcs = extractor.extract_functions(tree, source)
+        assert isinstance(funcs, list)
+
+        classes = extractor.extract_classes(tree, source)
+        assert isinstance(classes, list)
+
+        vars_ = extractor.extract_variables(tree, source)
+        assert isinstance(vars_, list)
+
+        imps = extractor.extract_imports(tree, source)
+        texts = [i.import_statement for i in imps if hasattr(i, "import_statement")]
+        assert (
+            any(x.startswith("#include") for x in texts)
+            or any("using" in x for x in texts)
+            or any("namespace" in x for x in texts)
+        )
+
+    @pytest.mark.asyncio
+    async def test_analyze_file_runs_legacy(self) -> None:
+        """Test analyze_file runs successfully on example file (legacy test)"""
+        from types import SimpleNamespace
+
+        p = CppPlugin()
+        path = os.path.join("examples", "sample.cpp")
+        out = await p.analyze_file(path, SimpleNamespace())
+        assert out is not None
