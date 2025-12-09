@@ -15,7 +15,7 @@ Created a unified test file that validates all correctness properties defined in
 - **Tests**: All branch workflows use identical test configurations
 - **Checks**:
   - Python versions: 3.10, 3.11, 3.12, 3.13
-  - Operating systems: ubuntu-latest, windows-latest, macos-13
+  - Operating systems: ubuntu-latest, windows-latest, macos-latest
   - All workflows use reusable-test.yml
   - Secrets are properly inherited
 

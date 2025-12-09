@@ -135,7 +135,7 @@ class TestDevelopWorkflowConsistency:
         ), f"Python versions must be {expected_python_versions}"
 
         # Verify operating systems
-        expected_os = ["ubuntu-latest", "windows-latest", "macos-13"]
+        expected_os = ["ubuntu-latest", "windows-latest", "macos-latest"]
         assert (
             test_matrix["os"] == expected_os
         ), f"Operating systems must be {expected_os}"

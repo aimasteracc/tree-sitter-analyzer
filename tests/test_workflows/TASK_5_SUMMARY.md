@@ -31,7 +31,7 @@ Task 5 successfully refactored the `ci.yml` workflow to use reusable workflow co
 1. **Property 1: Test Configuration Consistency**
    - Verifies CI workflow uses same reusable test workflow as other branches
    - Validates Python versions (3.10, 3.11, 3.12, 3.13)
-   - Validates operating systems (ubuntu-latest, windows-latest, macos-13)
+   - Validates operating systems (ubuntu-latest, windows-latest, macos-latest)
    - Validates --all-extras flag usage
    - **Validates: Requirements 1.1, 1.2, 1.3, 1.4**
 
@@ -177,7 +177,7 @@ python tests/test_workflows/validate_ci_workflow.py
 **Validation**: 
 - ✅ CI workflow uses same reusable-test.yml as other branches
 - ✅ Same Python versions (3.10, 3.11, 3.12, 3.13)
-- ✅ Same operating systems (ubuntu-latest, windows-latest, macos-13)
+- ✅ Same operating systems (ubuntu-latest, windows-latest, macos-latest)
 - ✅ Same --all-extras flag usage
 
 ### Requirement 1.5
