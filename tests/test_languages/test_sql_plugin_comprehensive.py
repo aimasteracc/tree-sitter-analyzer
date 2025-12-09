@@ -14,27 +14,19 @@ Tests cover:
 - Edge cases and error handling
 """
 
-import asyncio
 import os
 import tempfile
-from typing import Any
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 
 import pytest
 
 from tree_sitter_analyzer.languages.sql_plugin import SQLElementExtractor, SQLPlugin
 from tree_sitter_analyzer.models import (
-    Class,
-    Function,
-    Import,
     SQLElement,
     SQLElementType,
     SQLTable,
     SQLTrigger,
-    SQLView,
-    Variable,
 )
-
 
 # Check if tree-sitter-sql is available
 try:
@@ -115,15 +107,31 @@ class TestSQLElementExtractorUnit:
         assert not extractor._is_valid_identifier("has(paren")
         assert not extractor._is_valid_identifier("a" * 200)  # Too long
 
-    def test_is_valid_identifier_sql_keywords(self, extractor: SQLElementExtractor) -> None:
+    def test_is_valid_identifier_sql_keywords(
+        self, extractor: SQLElementExtractor
+    ) -> None:
         """Test that SQL keywords are rejected."""
         keywords = [
-            "SELECT", "FROM", "WHERE", "INSERT", "UPDATE", "DELETE",
-            "CREATE", "TABLE", "VIEW", "NULL",
-            "PRIMARY", "KEY", "NOT", "FOREIGN", "REFERENCES",
+            "SELECT",
+            "FROM",
+            "WHERE",
+            "INSERT",
+            "UPDATE",
+            "DELETE",
+            "CREATE",
+            "TABLE",
+            "VIEW",
+            "NULL",
+            "PRIMARY",
+            "KEY",
+            "NOT",
+            "FOREIGN",
+            "REFERENCES",
         ]
         for kw in keywords:
-            assert not extractor._is_valid_identifier(kw), f"Keyword {kw} should be invalid"
+            assert not extractor._is_valid_identifier(
+                kw
+            ), f"Keyword {kw} should be invalid"
 
     def test_is_valid_identifier_quoted(self, extractor: SQLElementExtractor) -> None:
         """Test quoted identifiers."""
@@ -149,7 +157,8 @@ class TestSQLElementExtractorUnit:
         text2 = extractor._get_node_text(mock_node)
 
         assert text1 == text2
-        assert id(mock_node) in extractor._node_text_cache
+        # Cache uses (start_byte, end_byte) tuple as key
+        assert (mock_node.start_byte, mock_node.end_byte) in extractor._node_text_cache
 
     def test_get_node_text_multiline(self, extractor: SQLElementExtractor) -> None:
         """Test multiline node text extraction."""
@@ -217,7 +226,9 @@ class TestSQLElementExtractorUnit:
 
     # ==================== Validate and Fix Elements Tests ====================
 
-    def test_validate_removes_phantom_triggers(self, extractor: SQLElementExtractor) -> None:
+    def test_validate_removes_phantom_triggers(
+        self, extractor: SQLElementExtractor
+    ) -> None:
         """Test removal of phantom trigger elements."""
         phantom = SQLTrigger(
             name="fake_trigger",

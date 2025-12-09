@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
 """Additional Kotlin plugin coverage tests targeting 75%+."""
 
+from unittest.mock import Mock
+
 import pytest
-from unittest.mock import Mock, patch, MagicMock
 
 from tree_sitter_analyzer.languages.kotlin_plugin import KotlinPlugin
-from tree_sitter_analyzer.models import Class, Function, Variable, Import
 
 # Check if tree-sitter-kotlin is available
 try:
-    import tree_sitter_kotlin
     import tree_sitter
+    import tree_sitter_kotlin
+
     TREE_SITTER_KOTLIN_AVAILABLE = True
 except ImportError:
     TREE_SITTER_KOTLIN_AVAILABLE = False
@@ -39,7 +40,9 @@ class TestKotlinPluginBasics:
         assert plugin.get_language_name() == "kotlin"
 
 
-@pytest.mark.skipif(not TREE_SITTER_KOTLIN_AVAILABLE, reason="tree-sitter-kotlin not installed")
+@pytest.mark.skipif(
+    not TREE_SITTER_KOTLIN_AVAILABLE, reason="tree-sitter-kotlin not installed"
+)
 class TestKotlinPluginExtraction:
     """Test Kotlin element extraction."""
 
@@ -268,7 +271,7 @@ fun calculate(a: Int, b: Int, operation: (Int, Int) -> Int): Int {
         funcs = result["functions"]
         calc_func = next((f for f in funcs if f.name == "calculate"), None)
         if calc_func:
-            assert hasattr(calc_func, 'parameters') or True
+            assert hasattr(calc_func, "parameters") or True
 
     def test_extract_extension_function(self, plugin, parser):
         """Test extracting extension function."""
@@ -330,12 +333,12 @@ class Person(
 class Person {
     val name: String
     val age: Int
-    
+
     constructor(name: String) {
         this.name = name
         this.age = 0
     }
-    
+
     constructor(name: String, age: Int) {
         this.name = name
         this.age = age
@@ -352,7 +355,7 @@ class Person {
 abstract class Shape {
     abstract fun area(): Double
     abstract fun perimeter(): Double
-    
+
     fun describe(): String = "I am a shape"
 }
 """
@@ -380,7 +383,7 @@ class Outer {
     class Nested {
         fun nestedMethod(): String = "nested"
     }
-    
+
     inner class Inner {
         fun innerMethod(): String = "inner"
     }
@@ -414,7 +417,9 @@ typealias Handler = (Int, String) -> Boolean
         assert isinstance(result, dict)
 
 
-@pytest.mark.skipif(not TREE_SITTER_KOTLIN_AVAILABLE, reason="tree-sitter-kotlin not installed")
+@pytest.mark.skipif(
+    not TREE_SITTER_KOTLIN_AVAILABLE, reason="tree-sitter-kotlin not installed"
+)
 class TestKotlinPluginAnalyzeFile:
     """Test analyze_file method."""
 
@@ -426,7 +431,7 @@ class TestKotlinPluginAnalyzeFile:
     async def test_analyze_file_success(self, plugin, tmp_path):
         """Test successful file analysis."""
         from tree_sitter_analyzer.core.analysis_engine import AnalysisRequest
-        
+
         kt_file = tmp_path / "test.kt"
         kt_file.write_text("""
 package com.example
@@ -437,7 +442,7 @@ class TestClass {
 """)
         request = AnalysisRequest(file_path=str(kt_file))
         result = await plugin.analyze_file(str(kt_file), request)
-        
+
         assert result is not None
         assert result.language == "kotlin"
 
@@ -445,7 +450,7 @@ class TestClass {
     async def test_analyze_file_with_imports(self, plugin, tmp_path):
         """Test file analysis with imports."""
         from tree_sitter_analyzer.core.analysis_engine import AnalysisRequest
-        
+
         kt_file = tmp_path / "imports.kt"
         kt_file.write_text("""
 package com.example
@@ -458,7 +463,7 @@ class ImportTest {
 """)
         request = AnalysisRequest(file_path=str(kt_file))
         result = await plugin.analyze_file(str(kt_file), request)
-        
+
         assert result is not None
         assert result.language == "kotlin"
 
@@ -466,16 +471,18 @@ class ImportTest {
     async def test_analyze_file_error_handling(self, plugin):
         """Test file analysis error handling."""
         from tree_sitter_analyzer.core.analysis_engine import AnalysisRequest
-        
+
         # Non-existent file - just check it doesn't crash
         request = AnalysisRequest(file_path="/nonexistent/path/file.kt")
         result = await plugin.analyze_file("/nonexistent/path/file.kt", request)
-        
+
         # Should return a result even for error cases
         assert result is not None
 
 
-@pytest.mark.skipif(not TREE_SITTER_KOTLIN_AVAILABLE, reason="tree-sitter-kotlin not installed")
+@pytest.mark.skipif(
+    not TREE_SITTER_KOTLIN_AVAILABLE, reason="tree-sitter-kotlin not installed"
+)
 class TestKotlinDocstring:
     """Test docstring extraction."""
 
@@ -519,7 +526,9 @@ data class User(val id: Int, val name: String)
         assert "classes" in result
 
 
-@pytest.mark.skipif(not TREE_SITTER_KOTLIN_AVAILABLE, reason="tree-sitter-kotlin not installed")
+@pytest.mark.skipif(
+    not TREE_SITTER_KOTLIN_AVAILABLE, reason="tree-sitter-kotlin not installed"
+)
 class TestKotlinComplexCode:
     """Test extraction with complex Kotlin code."""
 
@@ -565,15 +574,15 @@ data class User(
 class UserRepositoryImpl(
     private val database: Database
 ) : UserRepository {
-    
+
     private val cache = mutableMapOf<Int, User>()
-    
+
     override suspend fun findById(id: Int): User? = withContext(Dispatchers.IO) {
         cache[id] ?: database.query("SELECT * FROM users WHERE id = ?", id)
             ?.let { User(it.id, it.name, it.email) }
             ?.also { cache[id] = it }
     }
-    
+
     override suspend fun save(user: User): Boolean = withContext(Dispatchers.IO) {
         try {
             database.execute("INSERT INTO users VALUES (?, ?, ?)", user.id, user.name, user.email)
@@ -583,15 +592,15 @@ class UserRepositoryImpl(
             false
         }
     }
-    
+
     override suspend fun delete(id: Int): Boolean = withContext(Dispatchers.IO) {
         cache.remove(id)
         database.execute("DELETE FROM users WHERE id = ?", id) > 0
     }
-    
+
     companion object {
         private const val TAG = "UserRepositoryImpl"
-        
+
         fun create(database: Database): UserRepository = UserRepositoryImpl(database)
     }
 }
@@ -621,11 +630,11 @@ inline fun <T, R> Result<T>.map(transform: (T) -> R): Result<R> = when (this) {
 """
         tree = parser.parse(code.encode("utf-8"))
         result = plugin.extract_elements(tree, code)
-        
+
         assert "classes" in result
         assert "functions" in result
         assert "imports" in result
-        
+
         class_names = [c.name for c in result["classes"]]
         assert "User" in class_names or "UserRepository" in class_names
 
@@ -661,19 +670,19 @@ fun CoroutineScope.launchDataFetch() = launch {
         code = """
 class HtmlBuilder {
     private val elements = mutableListOf<String>()
-    
+
     fun head(init: HeadBuilder.() -> Unit) {
         elements.add("<head>")
         HeadBuilder().apply(init)
         elements.add("</head>")
     }
-    
+
     fun body(init: BodyBuilder.() -> Unit) {
         elements.add("<body>")
         BodyBuilder().apply(init)
         elements.add("</body>")
     }
-    
+
     fun build(): String = elements.joinToString("\\n")
 }
 
@@ -734,7 +743,7 @@ class TestKotlinPluginEdgeCases:
         mock_child1.children = []
         mock_child2.children = []
         mock_node.children = [mock_child1, mock_child2]
-        
+
         count = plugin._count_tree_nodes(mock_node)
         assert count == 3  # Root + 2 children
 

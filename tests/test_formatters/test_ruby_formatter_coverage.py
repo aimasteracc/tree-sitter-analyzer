@@ -2,6 +2,7 @@
 """Tests for Ruby formatter to improve coverage."""
 
 import pytest
+
 from tree_sitter_analyzer.formatters.ruby_formatter import RubyTableFormatter
 
 

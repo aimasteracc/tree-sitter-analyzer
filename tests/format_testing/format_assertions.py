@@ -441,9 +441,7 @@ class FormatComplianceAssertions:
             current_lines = set(current_output.split("\n"))
 
             missing_lines = reference_lines - current_lines
-            assert (
-                not missing_lines
-            ), f"Format regression: missing lines in {format_type} format: {missing_lines}"
+            assert not missing_lines, f"Format regression: missing lines in {format_type} format: {missing_lines}"
 
     @staticmethod
     def _assert_element_count_consistency(

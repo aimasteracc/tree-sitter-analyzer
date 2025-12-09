@@ -5,11 +5,13 @@ from pathlib import Path
 import pytest
 import tree_sitter
 
-from tree_sitter_analyzer.languages.csharp_plugin import CSharpPlugin, CSharpElementExtractor
-
+from tree_sitter_analyzer.languages.csharp_plugin import (
+    CSharpElementExtractor,
+    CSharpPlugin,
+)
 
 # Sample C# code snippets for testing
-SIMPLE_CLASS_CODE = '''
+SIMPLE_CLASS_CODE = """
 using System;
 using System.Collections.Generic;
 
@@ -19,22 +21,22 @@ namespace MyApp.Models
     {
         private string _name;
         public int Age { get; set; }
-        
+
         public Person(string name, int age)
         {
             _name = name;
             Age = age;
         }
-        
+
         public string GetName()
         {
             return _name;
         }
     }
 }
-'''
+"""
 
-INTERFACE_CODE = '''
+INTERFACE_CODE = """
 using System;
 
 namespace MyApp.Interfaces
@@ -46,9 +48,9 @@ namespace MyApp.Interfaces
         void Delete(int id);
     }
 }
-'''
+"""
 
-ASYNC_METHOD_CODE = '''
+ASYNC_METHOD_CODE = """
 using System;
 using System.Threading.Tasks;
 
@@ -61,7 +63,7 @@ namespace MyApp.Services
             await Task.Delay(100);
             return "data";
         }
-        
+
         public async Task ProcessAsync(int count)
         {
             for (int i = 0; i < count; i++)
@@ -71,9 +73,9 @@ namespace MyApp.Services
         }
     }
 }
-'''
+"""
 
-COMPLEX_CLASS_CODE = '''
+COMPLEX_CLASS_CODE = """
 using System;
 using System.Linq;
 using static System.Math;
@@ -85,62 +87,62 @@ namespace MyApp.Domain
     {
         public TId Id { get; protected set; }
         public DateTime CreatedAt { get; private set; }
-        
+
         protected BaseEntity()
         {
             CreatedAt = DateTime.UtcNow;
         }
     }
-    
+
     [Obsolete("Use NewOrder instead")]
     public class Order : BaseEntity<int>
     {
         private readonly List<OrderItem> _items = new();
         public const decimal TaxRate = 0.15m;
         public static int OrderCount { get; private set; }
-        
+
         public IReadOnlyList<OrderItem> Items => _items.AsReadOnly();
-        
+
         public event EventHandler<OrderEventArgs> OrderPlaced;
-        
+
         public Order() : base()
         {
             OrderCount++;
         }
-        
+
         public decimal CalculateTotal()
         {
             var subtotal = _items.Sum(i => i.Price * i.Quantity);
             return subtotal * (1 + TaxRate);
         }
-        
+
         public void AddItem(OrderItem item)
         {
             if (item == null)
                 throw new ArgumentNullException(nameof(item));
             _items.Add(item);
         }
-        
+
         protected virtual void OnOrderPlaced()
         {
             OrderPlaced?.Invoke(this, new OrderEventArgs());
         }
     }
-    
+
     public record OrderItem(string Name, decimal Price, int Quantity);
-    
+
     public struct Point
     {
         public int X { get; init; }
         public int Y { get; init; }
-        
+
         public Point(int x, int y)
         {
             X = x;
             Y = y;
         }
     }
-    
+
     public enum OrderStatus
     {
         Pending,
@@ -149,25 +151,25 @@ namespace MyApp.Domain
         Delivered
     }
 }
-'''
+"""
 
-PROPERTY_VARIATIONS_CODE = '''
+PROPERTY_VARIATIONS_CODE = """
 namespace MyApp.Properties
 {
     public class PropertyExample
     {
         // Auto-property
         public string Name { get; set; }
-        
+
         // Read-only auto-property
         public int Id { get; }
-        
+
         // Init-only property
         public string Code { get; init; }
-        
+
         // Computed property
         public bool IsValid => !string.IsNullOrEmpty(Name);
-        
+
         // Full property
         private int _count;
         public int Count
@@ -179,7 +181,7 @@ namespace MyApp.Properties
                     _count = value;
             }
         }
-        
+
         // Indexer
         private string[] _data = new string[10];
         public string this[int index]
@@ -189,9 +191,9 @@ namespace MyApp.Properties
         }
     }
 }
-'''
+"""
 
-CONTROL_FLOW_CODE = '''
+CONTROL_FLOW_CODE = """
 namespace MyApp.Logic
 {
     public class Calculator
@@ -199,7 +201,7 @@ namespace MyApp.Logic
         public int Calculate(int value)
         {
             int result = 0;
-            
+
             if (value > 0)
             {
                 for (int i = 0; i < value; i++)
@@ -227,7 +229,7 @@ namespace MyApp.Logic
                         break;
                 }
             }
-            
+
             try
             {
                 result = result / (value + 1);
@@ -240,12 +242,12 @@ namespace MyApp.Logic
             {
                 // Cleanup
             }
-            
+
             return result;
         }
     }
 }
-'''
+"""
 
 
 def get_tree_for_code(code: str, plugin: CSharpPlugin):
@@ -344,7 +346,7 @@ class TestCSharpClassExtraction:
         plugin = CSharpPlugin()
         tree = get_tree_for_code(SIMPLE_CLASS_CODE, plugin)
         classes = plugin.extractor.extract_classes(tree, SIMPLE_CLASS_CODE)
-        
+
         assert len(classes) == 1
         cls = classes[0]
         assert cls.name == "Person"
@@ -356,7 +358,7 @@ class TestCSharpClassExtraction:
         plugin = CSharpPlugin()
         tree = get_tree_for_code(INTERFACE_CODE, plugin)
         classes = plugin.extractor.extract_classes(tree, INTERFACE_CODE)
-        
+
         assert len(classes) == 1
         iface = classes[0]
         assert iface.name == "IRepository"
@@ -367,7 +369,7 @@ class TestCSharpClassExtraction:
         plugin = CSharpPlugin()
         tree = get_tree_for_code(COMPLEX_CLASS_CODE, plugin)
         classes = plugin.extractor.extract_classes(tree, COMPLEX_CLASS_CODE)
-        
+
         # Should find BaseEntity, Order, OrderItem (record), Point (struct), OrderStatus (enum)
         class_names = [c.name for c in classes]
         assert "BaseEntity" in class_names
@@ -378,7 +380,7 @@ class TestCSharpClassExtraction:
         plugin = CSharpPlugin()
         tree = get_tree_for_code(COMPLEX_CLASS_CODE, plugin)
         classes = plugin.extractor.extract_classes(tree, COMPLEX_CLASS_CODE)
-        
+
         # Find Order class (has Obsolete attribute)
         order_class = next((c for c in classes if c.name == "Order"), None)
         assert order_class is not None
@@ -388,7 +390,7 @@ class TestCSharpClassExtraction:
         plugin = CSharpPlugin()
         tree = get_tree_for_code(COMPLEX_CLASS_CODE, plugin)
         classes = plugin.extractor.extract_classes(tree, COMPLEX_CLASS_CODE)
-        
+
         base_entity = next((c for c in classes if c.name == "BaseEntity"), None)
         assert base_entity is not None
         assert "abstract" in base_entity.modifiers
@@ -398,7 +400,7 @@ class TestCSharpClassExtraction:
         plugin = CSharpPlugin()
         tree = get_tree_for_code(INTERFACE_CODE, plugin)
         classes = plugin.extractor.extract_classes(tree, INTERFACE_CODE)
-        
+
         repo = next((c for c in classes if c.name == "IRepository"), None)
         assert repo is not None
         # Generic type parameters should be captured in raw text
@@ -409,7 +411,7 @@ class TestCSharpClassExtraction:
         plugin = CSharpPlugin()
         tree = get_tree_for_code(SIMPLE_CLASS_CODE, plugin)
         classes = plugin.extractor.extract_classes(tree, SIMPLE_CLASS_CODE)
-        
+
         person_class = classes[0]
         # Methods may be extracted separately or as part of class
         # Check that GetName appears in the class raw text at minimum
@@ -420,10 +422,14 @@ class TestCSharpClassExtraction:
         plugin = CSharpPlugin()
         tree = get_tree_for_code(SIMPLE_CLASS_CODE, plugin)
         classes = plugin.extractor.extract_classes(tree, SIMPLE_CLASS_CODE)
-        
+
         person_class = classes[0]
         # Constructor should be in methods list
-        constructor_names = [m.name for m in person_class.methods if "Person" in m.name or m.name == "__init__"]
+        constructor_names = [
+            m.name
+            for m in person_class.methods
+            if "Person" in m.name or m.name == "__init__"
+        ]
         assert len(constructor_names) >= 0  # Might be 0 if not extracted
 
     def test_extract_empty_tree(self):
@@ -450,7 +456,7 @@ class TestCSharpFunctionExtraction:
         plugin = CSharpPlugin()
         tree = get_tree_for_code(SIMPLE_CLASS_CODE, plugin)
         functions = plugin.extractor.extract_functions(tree, SIMPLE_CLASS_CODE)
-        
+
         # Should find GetName method and constructor
         func_names = [f.name for f in functions]
         assert "GetName" in func_names
@@ -460,7 +466,7 @@ class TestCSharpFunctionExtraction:
         plugin = CSharpPlugin()
         tree = get_tree_for_code(ASYNC_METHOD_CODE, plugin)
         functions = plugin.extractor.extract_functions(tree, ASYNC_METHOD_CODE)
-        
+
         func_names = [f.name for f in functions]
         assert "FetchDataAsync" in func_names or "ProcessAsync" in func_names
 
@@ -469,7 +475,7 @@ class TestCSharpFunctionExtraction:
         plugin = CSharpPlugin()
         tree = get_tree_for_code(SIMPLE_CLASS_CODE, plugin)
         functions = plugin.extractor.extract_functions(tree, SIMPLE_CLASS_CODE)
-        
+
         get_name = next((f for f in functions if f.name == "GetName"), None)
         assert get_name is not None
         # GetName has no parameters
@@ -480,11 +486,11 @@ class TestCSharpFunctionExtraction:
         plugin = CSharpPlugin()
         tree = get_tree_for_code(COMPLEX_CLASS_CODE, plugin)
         functions = plugin.extractor.extract_functions(tree, COMPLEX_CLASS_CODE)
-        
+
         add_item = next((f for f in functions if f.name == "AddItem"), None)
         assert add_item is not None
         # Should have 'item' parameter
-        param_names = [p.name if hasattr(p, 'name') else p for p in add_item.parameters]
+        param_names = [p.name if hasattr(p, "name") else p for p in add_item.parameters]
         assert len(param_names) >= 0  # Parameter extraction may vary
 
     def test_extract_constructor(self):
@@ -492,9 +498,11 @@ class TestCSharpFunctionExtraction:
         plugin = CSharpPlugin()
         tree = get_tree_for_code(SIMPLE_CLASS_CODE, plugin)
         functions = plugin.extractor.extract_functions(tree, SIMPLE_CLASS_CODE)
-        
+
         # Check if constructor is extracted (may be named Person or .ctor)
-        constructors = [f for f in functions if f.name == "Person" or ".ctor" in str(f.raw_text)]
+        constructors = [
+            f for f in functions if f.name == "Person" or ".ctor" in str(f.raw_text)
+        ]
         # Constructor should exist
         assert len(constructors) >= 0  # Extraction behavior may vary
 
@@ -503,8 +511,10 @@ class TestCSharpFunctionExtraction:
         plugin = CSharpPlugin()
         tree = get_tree_for_code(COMPLEX_CLASS_CODE, plugin)
         functions = plugin.extractor.extract_functions(tree, COMPLEX_CLASS_CODE)
-        
-        calculate_total = next((f for f in functions if f.name == "CalculateTotal"), None)
+
+        calculate_total = next(
+            (f for f in functions if f.name == "CalculateTotal"), None
+        )
         assert calculate_total is not None
         assert "public" in calculate_total.modifiers
 
@@ -513,10 +523,15 @@ class TestCSharpFunctionExtraction:
         plugin = CSharpPlugin()
         tree = get_tree_for_code(COMPLEX_CLASS_CODE, plugin)
         functions = plugin.extractor.extract_functions(tree, COMPLEX_CLASS_CODE)
-        
-        on_order_placed = next((f for f in functions if f.name == "OnOrderPlaced"), None)
+
+        on_order_placed = next(
+            (f for f in functions if f.name == "OnOrderPlaced"), None
+        )
         assert on_order_placed is not None
-        assert "protected" in on_order_placed.modifiers or "virtual" in on_order_placed.modifiers
+        assert (
+            "protected" in on_order_placed.modifiers
+            or "virtual" in on_order_placed.modifiers
+        )
 
     def test_extract_functions_empty_tree(self):
         """Test function extraction with empty tree."""
@@ -529,7 +544,7 @@ class TestCSharpFunctionExtraction:
         plugin = CSharpPlugin()
         tree = get_tree_for_code(CONTROL_FLOW_CODE, plugin)
         functions = plugin.extractor.extract_functions(tree, CONTROL_FLOW_CODE)
-        
+
         calculate = next((f for f in functions if f.name == "Calculate"), None)
         assert calculate is not None
         # Method with if/for/while/switch should have higher complexity_score
@@ -544,7 +559,7 @@ class TestCSharpVariableExtraction:
         plugin = CSharpPlugin()
         tree = get_tree_for_code(SIMPLE_CLASS_CODE, plugin)
         variables = plugin.extractor.extract_variables(tree, SIMPLE_CLASS_CODE)
-        
+
         # Should find _name field
         var_names = [v.name for v in variables]
         assert "_name" in var_names
@@ -554,7 +569,7 @@ class TestCSharpVariableExtraction:
         plugin = CSharpPlugin()
         tree = get_tree_for_code(COMPLEX_CLASS_CODE, plugin)
         variables = plugin.extractor.extract_variables(tree, COMPLEX_CLASS_CODE)
-        
+
         tax_rate = next((v for v in variables if v.name == "TaxRate"), None)
         assert tax_rate is not None
         assert tax_rate.is_constant is True or "const" in tax_rate.modifiers
@@ -564,7 +579,7 @@ class TestCSharpVariableExtraction:
         plugin = CSharpPlugin()
         tree = get_tree_for_code(COMPLEX_CLASS_CODE, plugin)
         variables = plugin.extractor.extract_variables(tree, COMPLEX_CLASS_CODE)
-        
+
         items = next((v for v in variables if v.name == "_items"), None)
         assert items is not None
         assert "readonly" in items.modifiers or items.raw_text is not None
@@ -574,17 +589,19 @@ class TestCSharpVariableExtraction:
         plugin = CSharpPlugin()
         tree = get_tree_for_code(SIMPLE_CLASS_CODE, plugin)
         variables = plugin.extractor.extract_variables(tree, SIMPLE_CLASS_CODE)
-        
+
         name_field = next((v for v in variables if v.name == "_name"), None)
         assert name_field is not None
-        assert name_field.variable_type == "string" or "string" in str(name_field.raw_text)
+        assert name_field.variable_type == "string" or "string" in str(
+            name_field.raw_text
+        )
 
     def test_extract_event_field(self):
         """Test extraction of event field."""
         plugin = CSharpPlugin()
         tree = get_tree_for_code(COMPLEX_CLASS_CODE, plugin)
         variables = plugin.extractor.extract_variables(tree, COMPLEX_CLASS_CODE)
-        
+
         # Event should be extracted as variable
         event_field = next((v for v in variables if v.name == "OrderPlaced"), None)
         # Event may or may not be extracted depending on implementation
@@ -602,7 +619,7 @@ class TestCSharpVariableExtraction:
         plugin = CSharpPlugin()
         tree = get_tree_for_code(COMPLEX_CLASS_CODE, plugin)
         variables = plugin.extractor.extract_variables(tree, COMPLEX_CLASS_CODE)
-        
+
         order_count = next((v for v in variables if v.name == "OrderCount"), None)
         # Static properties might be extracted differently
         if order_count:
@@ -617,7 +634,7 @@ class TestCSharpImportExtraction:
         plugin = CSharpPlugin()
         tree = get_tree_for_code(SIMPLE_CLASS_CODE, plugin)
         imports = plugin.extractor.extract_imports(tree, SIMPLE_CLASS_CODE)
-        
+
         import_names = [i.name for i in imports]
         assert "System" in import_names
         assert "System.Collections.Generic" in import_names
@@ -627,7 +644,7 @@ class TestCSharpImportExtraction:
         plugin = CSharpPlugin()
         tree = get_tree_for_code(COMPLEX_CLASS_CODE, plugin)
         imports = plugin.extractor.extract_imports(tree, COMPLEX_CLASS_CODE)
-        
+
         # Should find static using for System.Math
         static_imports = [i for i in imports if i.is_static]
         assert len(static_imports) >= 0  # May have static import
@@ -643,7 +660,7 @@ class TestCSharpImportExtraction:
         plugin = CSharpPlugin()
         tree = get_tree_for_code(SIMPLE_CLASS_CODE, plugin)
         imports = plugin.extractor.extract_imports(tree, SIMPLE_CLASS_CODE)
-        
+
         assert all(i.start_line > 0 for i in imports)
         assert all(i.end_line >= i.start_line for i in imports)
 
@@ -656,7 +673,7 @@ class TestCSharpPropertyExtraction:
         plugin = CSharpPlugin()
         tree = get_tree_for_code(SIMPLE_CLASS_CODE, plugin)
         classes = plugin.extractor.extract_classes(tree, SIMPLE_CLASS_CODE)
-        
+
         person_class = classes[0]
         # Age should be a property
         assert "Age" in str(person_class.raw_text)
@@ -666,7 +683,7 @@ class TestCSharpPropertyExtraction:
         plugin = CSharpPlugin()
         tree = get_tree_for_code(PROPERTY_VARIATIONS_CODE, plugin)
         classes = plugin.extractor.extract_classes(tree, PROPERTY_VARIATIONS_CODE)
-        
+
         assert len(classes) == 1
         prop_class = classes[0]
         # Should capture various property patterns
@@ -682,7 +699,7 @@ class TestCSharpComplexityCalculation:
         plugin = CSharpPlugin()
         tree = get_tree_for_code(CONTROL_FLOW_CODE, plugin)
         functions = plugin.extractor.extract_functions(tree, CONTROL_FLOW_CODE)
-        
+
         calculate = next((f for f in functions if f.name == "Calculate"), None)
         assert calculate is not None
         # if, else if, else, for, while, switch, try/catch all add complexity
@@ -693,7 +710,7 @@ class TestCSharpComplexityCalculation:
         plugin = CSharpPlugin()
         tree = get_tree_for_code(SIMPLE_CLASS_CODE, plugin)
         functions = plugin.extractor.extract_functions(tree, SIMPLE_CLASS_CODE)
-        
+
         get_name = next((f for f in functions if f.name == "GetName"), None)
         assert get_name is not None
         # Simple return statement should have low complexity
@@ -708,7 +725,7 @@ class TestCSharpNamespaceHandling:
         plugin = CSharpPlugin()
         tree = get_tree_for_code(SIMPLE_CLASS_CODE, plugin)
         classes = plugin.extractor.extract_classes(tree, SIMPLE_CLASS_CODE)
-        
+
         person_class = classes[0]
         # Namespace should be in full_qualified_name
         assert person_class.full_qualified_name == "MyApp.Models.Person"
@@ -718,7 +735,7 @@ class TestCSharpNamespaceHandling:
         plugin = CSharpPlugin()
         tree = get_tree_for_code(COMPLEX_CLASS_CODE, plugin)
         classes = plugin.extractor.extract_classes(tree, COMPLEX_CLASS_CODE)
-        
+
         # All classes should have full qualified name with namespace
         for cls in classes:
             if cls.full_qualified_name:
@@ -741,7 +758,7 @@ class TestCSharpExtractorHelpers:
         plugin = CSharpPlugin()
         tree = get_tree_for_code(SIMPLE_CLASS_CODE, plugin)
         extractor = CSharpElementExtractor()
-        
+
         nodes = list(extractor._traverse_iterative(tree.root_node))
         assert len(nodes) > 0
         # Should traverse all nodes in the tree
@@ -749,17 +766,17 @@ class TestCSharpExtractorHelpers:
     def test_cache_invalidation(self):
         """Test that source code is properly set between extractions."""
         extractor = CSharpElementExtractor()
-        
+
         # After new extraction with different source, source should be updated
         plugin = CSharpPlugin()
         tree = get_tree_for_code(SIMPLE_CLASS_CODE, plugin)
         extractor.extract_classes(tree, SIMPLE_CLASS_CODE)
-        
+
         # Source code should be properly set
         assert extractor.source_code == SIMPLE_CLASS_CODE
-        
+
         # Reset caches method should exist
-        assert hasattr(extractor, '_reset_caches')
+        assert hasattr(extractor, "_reset_caches")
 
 
 class TestCSharpPluginAnalyzeFile:
@@ -778,10 +795,10 @@ class TestCSharpPluginAnalyzeFile:
         # Create temporary C# file
         cs_file = tmp_path / "Test.cs"
         cs_file.write_text(SIMPLE_CLASS_CODE, encoding="utf-8")
-        
+
         plugin = CSharpPlugin()
         result = await plugin.analyze_file(str(cs_file), None)
-        
+
         assert result.success is not False or result.error_message is None
         assert result.language == "csharp"
         assert result.file_path == str(cs_file)
@@ -806,12 +823,12 @@ class TestCSharpIntegration:
         """Test complete extraction workflow."""
         plugin = CSharpPlugin()
         tree = get_tree_for_code(COMPLEX_CLASS_CODE, plugin)
-        
+
         classes = plugin.extractor.extract_classes(tree, COMPLEX_CLASS_CODE)
         functions = plugin.extractor.extract_functions(tree, COMPLEX_CLASS_CODE)
         variables = plugin.extractor.extract_variables(tree, COMPLEX_CLASS_CODE)
         imports = plugin.extractor.extract_imports(tree, COMPLEX_CLASS_CODE)
-        
+
         assert len(classes) > 0
         assert len(functions) > 0
         assert len(imports) > 0
@@ -823,18 +840,20 @@ class TestCSharpIntegration:
         plugin = CSharpPlugin()
         tree = get_tree_for_code(COMPLEX_CLASS_CODE, plugin)
         classes = plugin.extractor.extract_classes(tree, COMPLEX_CLASS_CODE)
-        
+
         # OrderItem is a record
         class_names = [c.name for c in classes]
         # Record should be extracted as class-like structure
-        assert "OrderItem" in class_names or any("record" in str(c.raw_text) for c in classes)
+        assert "OrderItem" in class_names or any(
+            "record" in str(c.raw_text) for c in classes
+        )
 
     def test_struct_extraction(self):
         """Test extraction of C# struct."""
         plugin = CSharpPlugin()
         tree = get_tree_for_code(COMPLEX_CLASS_CODE, plugin)
         classes = plugin.extractor.extract_classes(tree, COMPLEX_CLASS_CODE)
-        
+
         # Point is a struct
         point = next((c for c in classes if c.name == "Point"), None)
         assert point is not None or any("struct" in str(c.raw_text) for c in classes)
@@ -844,10 +863,12 @@ class TestCSharpIntegration:
         plugin = CSharpPlugin()
         tree = get_tree_for_code(COMPLEX_CLASS_CODE, plugin)
         classes = plugin.extractor.extract_classes(tree, COMPLEX_CLASS_CODE)
-        
+
         # OrderStatus is an enum
         class_names = [c.name for c in classes]
-        assert "OrderStatus" in class_names or any("enum" in str(c.raw_text) for c in classes)
+        assert "OrderStatus" in class_names or any(
+            "enum" in str(c.raw_text) for c in classes
+        )
 
     @pytest.mark.skipif(
         not Path("examples/Sample.cs").exists(), reason="C# sample file not found"

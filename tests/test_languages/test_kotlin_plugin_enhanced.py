@@ -17,7 +17,6 @@ Tests cover additional cases not in the existing test file:
 """
 
 import pytest
-from unittest.mock import MagicMock, AsyncMock, patch
 
 # Skip if tree_sitter_kotlin not available
 pytest.importorskip("tree_sitter_kotlin")
@@ -61,7 +60,7 @@ fun launchExample() {
 """
         tree = kotlin_parser.parse(code.encode("utf-8"))
         functions = extractor.extract_functions(tree, code)
-        
+
         assert len(functions) >= 1
         func_names = [f.name for f in functions]
         assert "launchExample" in func_names
@@ -79,7 +78,7 @@ suspend fun fetchTwoUsersAsync(): Pair<User, User> = coroutineScope {
 """
         tree = kotlin_parser.parse(code.encode("utf-8"))
         functions = extractor.extract_functions(tree, code)
-        
+
         assert len(functions) >= 1
 
     def test_extract_flow_function(self, extractor, kotlin_parser):
@@ -96,7 +95,7 @@ fun numberFlow(): Flow<Int> = flow {
 """
         tree = kotlin_parser.parse(code.encode("utf-8"))
         functions = extractor.extract_functions(tree, code)
-        
+
         assert len(functions) >= 1
         func_names = [f.name for f in functions]
         assert "numberFlow" in func_names
@@ -128,7 +127,7 @@ sealed class Result<out T> {
 """
         tree = kotlin_parser.parse(code.encode("utf-8"))
         classes = extractor.extract_classes(tree, code)
-        
+
         assert len(classes) >= 1
         class_names = [c.name for c in classes]
         assert "Result" in class_names
@@ -143,7 +142,7 @@ sealed interface Error {
 """
         tree = kotlin_parser.parse(code.encode("utf-8"))
         classes = extractor.extract_classes(tree, code)
-        
+
         # May or may not detect sealed interface depending on implementation
         assert isinstance(classes, list)
 
@@ -174,7 +173,7 @@ inline fun measureTime(block: () -> Unit): Long {
 """
         tree = kotlin_parser.parse(code.encode("utf-8"))
         functions = extractor.extract_functions(tree, code)
-        
+
         assert len(functions) >= 1
         func_names = [f.name for f in functions]
         assert "measureTime" in func_names
@@ -188,7 +187,7 @@ inline fun <reified T> isOfType(value: Any): Boolean {
 """
         tree = kotlin_parser.parse(code.encode("utf-8"))
         functions = extractor.extract_functions(tree, code)
-        
+
         assert len(functions) >= 1
 
     def test_extract_crossinline_function(self, extractor, kotlin_parser):
@@ -200,7 +199,7 @@ inline fun createRunnable(crossinline body: () -> Unit): Runnable {
 """
         tree = kotlin_parser.parse(code.encode("utf-8"))
         functions = extractor.extract_functions(tree, code)
-        
+
         assert len(functions) >= 1
 
 
@@ -231,7 +230,7 @@ class MyClass {
 """
         tree = kotlin_parser.parse(code.encode("utf-8"))
         classes = extractor.extract_classes(tree, code)
-        
+
         assert len(classes) >= 1
         class_names = [c.name for c in classes]
         assert "MyClass" in class_names
@@ -247,7 +246,7 @@ class MyService {
 """
         tree = kotlin_parser.parse(code.encode("utf-8"))
         classes = extractor.extract_classes(tree, code)
-        
+
         assert len(classes) >= 1
 
 
@@ -275,7 +274,7 @@ class Box<T>(val value: T) {
 """
         tree = kotlin_parser.parse(code.encode("utf-8"))
         classes = extractor.extract_classes(tree, code)
-        
+
         assert len(classes) >= 1
         class_names = [c.name for c in classes]
         assert "Box" in class_names
@@ -289,7 +288,7 @@ fun <T> singletonList(item: T): List<T> {
 """
         tree = kotlin_parser.parse(code.encode("utf-8"))
         functions = extractor.extract_functions(tree, code)
-        
+
         assert len(functions) >= 1
 
     def test_extract_bounded_generic(self, extractor, kotlin_parser):
@@ -301,7 +300,7 @@ class NumberBox<T : Number>(val value: T) {
 """
         tree = kotlin_parser.parse(code.encode("utf-8"))
         classes = extractor.extract_classes(tree, code)
-        
+
         assert len(classes) >= 1
 
     def test_extract_variance_annotations(self, extractor, kotlin_parser):
@@ -317,7 +316,7 @@ class Consumer<in T> {
 """
         tree = kotlin_parser.parse(code.encode("utf-8"))
         classes = extractor.extract_classes(tree, code)
-        
+
         assert len(classes) >= 2
 
 
@@ -348,7 +347,7 @@ class HeavyObject {
 """
         tree = kotlin_parser.parse(code.encode("utf-8"))
         classes = extractor.extract_classes(tree, code)
-        
+
         assert len(classes) >= 1
         class_names = [c.name for c in classes]
         assert "HeavyObject" in class_names
@@ -366,7 +365,7 @@ class User {
 """
         tree = kotlin_parser.parse(code.encode("utf-8"))
         classes = extractor.extract_classes(tree, code)
-        
+
         assert len(classes) >= 1
 
 
@@ -395,7 +394,7 @@ class AnnotatedClass {}
 """
         tree = kotlin_parser.parse(code.encode("utf-8"))
         classes = extractor.extract_classes(tree, code)
-        
+
         # Should detect Fancy as annotation class or AnnotatedClass
         assert len(classes) >= 1
 
@@ -414,7 +413,7 @@ fun newFunction(param: String) {
 """
         tree = kotlin_parser.parse(code.encode("utf-8"))
         functions = extractor.extract_functions(tree, code)
-        
+
         assert len(functions) >= 2
 
 
@@ -444,7 +443,7 @@ class Outer {
 """
         tree = kotlin_parser.parse(code.encode("utf-8"))
         classes = extractor.extract_classes(tree, code)
-        
+
         assert len(classes) >= 1
         class_names = [c.name for c in classes]
         assert "Outer" in class_names
@@ -454,7 +453,7 @@ class Outer {
         code = """
 class Outer {
     private val bar: Int = 1
-    
+
     inner class Inner {
         fun foo() = bar
     }
@@ -462,7 +461,7 @@ class Outer {
 """
         tree = kotlin_parser.parse(code.encode("utf-8"))
         classes = extractor.extract_classes(tree, code)
-        
+
         assert len(classes) >= 1
 
 
@@ -490,7 +489,7 @@ enum class Direction {
 """
         tree = kotlin_parser.parse(code.encode("utf-8"))
         classes = extractor.extract_classes(tree, code)
-        
+
         assert len(classes) >= 1
         class_names = [c.name for c in classes]
         assert "Direction" in class_names
@@ -502,13 +501,13 @@ enum class Color(val rgb: Int) {
     RED(0xFF0000),
     GREEN(0x00FF00),
     BLUE(0x0000FF);
-    
+
     fun containsRed() = (rgb and 0xFF0000) != 0
 }
 """
         tree = kotlin_parser.parse(code.encode("utf-8"))
         classes = extractor.extract_classes(tree, code)
-        
+
         assert len(classes) >= 1
         class_names = [c.name for c in classes]
         assert "Color" in class_names
@@ -565,11 +564,11 @@ class UserRepository {
     companion object {
         const val TAG = "UserRepository"
     }
-    
+
     suspend fun fetchUser(id: Int): Result<User> {
         return Result.Success(User(id, "name"))
     }
-    
+
     fun userFlow(): Flow<User> = flow {
         emit(User(1, "test"))
     }
@@ -583,7 +582,7 @@ fun main() {
 """
         tree = kotlin_parser.parse(code.encode("utf-8"))
         result = plugin.extract_elements(tree, code)
-        
+
         assert isinstance(result, dict)
         assert "classes" in result
         assert "functions" in result
@@ -592,7 +591,7 @@ fun main() {
     def test_extract_elements_with_none_tree(self, plugin):
         """Test extract_elements with None tree."""
         result = plugin.extract_elements(None, "")
-        
+
         assert isinstance(result, dict)
         assert "classes" in result
         assert "functions" in result
@@ -617,10 +616,10 @@ class TestKotlinExtractorHelpers:
         """Test _get_node_text method."""
         code = "fun test() {}"
         tree = kotlin_parser.parse(code.encode("utf-8"))
-        
+
         extractor.source_code = code
         extractor.content_lines = code.split("\n")
-        
+
         text = extractor._get_node_text(tree.root_node)
         assert isinstance(text, str)
         assert "fun" in text
@@ -636,7 +635,7 @@ import kotlinx.coroutines.*
 """
         tree = kotlin_parser.parse(code.encode("utf-8"))
         imports = extractor.extract_imports(tree, code)
-        
+
         assert isinstance(imports, list)
         assert len(imports) >= 0  # May or may not extract depending on implementation
 
@@ -652,7 +651,7 @@ fun test() {
 """
         tree = kotlin_parser.parse(code.encode("utf-8"))
         variables = extractor.extract_variables(tree, code)
-        
+
         assert isinstance(variables, list)
         # Variables may or may not be detected at top level
 
@@ -676,10 +675,10 @@ class TestKotlinEdgeCases:
         """Test extraction from empty file."""
         code = ""
         tree = kotlin_parser.parse(code.encode("utf-8"))
-        
+
         functions = extractor.extract_functions(tree, code)
         classes = extractor.extract_classes(tree, code)
-        
+
         assert len(functions) == 0
         assert len(classes) == 0
 
@@ -694,10 +693,10 @@ class TestKotlinEdgeCases:
  */
 """
         tree = kotlin_parser.parse(code.encode("utf-8"))
-        
+
         functions = extractor.extract_functions(tree, code)
         classes = extractor.extract_classes(tree, code)
-        
+
         assert len(functions) == 0
         assert len(classes) == 0
 
@@ -708,11 +707,11 @@ fun incomplete(
 class missing {
 """
         tree = kotlin_parser.parse(code.encode("utf-8"))
-        
+
         # Should not crash
         functions = extractor.extract_functions(tree, code)
         classes = extractor.extract_classes(tree, code)
-        
+
         assert isinstance(functions, list)
         assert isinstance(classes, list)
 
@@ -728,10 +727,10 @@ class Données {
 }
 """
         tree = kotlin_parser.parse(code.encode("utf-8"))
-        
+
         functions = extractor.extract_functions(tree, code)
         classes = extractor.extract_classes(tree, code)
-        
+
         # Should handle unicode gracefully
         assert isinstance(functions, list)
         assert isinstance(classes, list)
@@ -750,9 +749,9 @@ class Level1 {
 }
 """
         tree = kotlin_parser.parse(code.encode("utf-8"))
-        
+
         classes = extractor.extract_classes(tree, code)
-        
+
         assert len(classes) >= 1
         class_names = [c.name for c in classes]
         assert "Level1" in class_names
@@ -765,9 +764,9 @@ fun add(a: Double, b: Double): Double = a + b
 fun add(a: String, b: String): String = a + b
 """
         tree = kotlin_parser.parse(code.encode("utf-8"))
-        
+
         functions = extractor.extract_functions(tree, code)
-        
+
         # Should extract all overloaded functions
         assert len(functions) >= 3
         assert all(f.name == "add" for f in functions)

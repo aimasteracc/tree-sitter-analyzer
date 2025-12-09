@@ -12,13 +12,9 @@ Requirements: 5.1 - Parser error recovery and partial result handling
 import os
 import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, Mock, patch
-
-import pytest
+from unittest.mock import MagicMock, patch
 
 from tree_sitter_analyzer.core.engine import AnalysisEngine
-from tree_sitter_analyzer.core.parser import ParseResult
-from tree_sitter_analyzer.models import AnalysisResult
 
 
 class TestAnalysisEngineAnalyzeFileErrorPaths:
@@ -35,7 +31,9 @@ class TestAnalysisEngineAnalyzeFileErrorPaths:
         try:
             # Mock parser to raise an unexpected exception
             with patch.object(
-                engine.parser, "parse_file", side_effect=RuntimeError("Unexpected error")
+                engine.parser,
+                "parse_file",
+                side_effect=RuntimeError("Unexpected error"),
             ):
                 result = engine.analyze_file(temp_path)
 

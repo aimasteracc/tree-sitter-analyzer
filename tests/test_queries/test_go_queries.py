@@ -1,16 +1,17 @@
 """Tests for Go query definitions."""
 
 import pytest
+
 from tree_sitter_analyzer.queries.go import (
+    ALL_QUERIES,
     GO_QUERIES,
     GO_QUERY_DESCRIPTIONS,
-    ALL_QUERIES,
+    get_all_queries,
+    get_available_go_queries,
     get_go_query,
     get_go_query_description,
     get_query,
-    get_all_queries,
     list_queries,
-    get_available_go_queries,
 )
 
 
@@ -119,7 +120,9 @@ class TestGoQueryDescriptions:
     def test_all_queries_have_descriptions(self):
         """All queries should have descriptions."""
         for query_name in GO_QUERIES.keys():
-            assert query_name in GO_QUERY_DESCRIPTIONS, f"Query '{query_name}' has no description"
+            assert (
+                query_name in GO_QUERY_DESCRIPTIONS
+            ), f"Query '{query_name}' has no description"
 
 
 class TestGetGoQuery:

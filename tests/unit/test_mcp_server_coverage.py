@@ -11,11 +11,9 @@ import asyncio
 import json
 import tempfile
 from pathlib import Path
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import Mock, patch
 
 import pytest
-
-from tree_sitter_analyzer import __version__
 
 
 class TestToolCallHandlers:
@@ -72,13 +70,18 @@ public class Sample {
             def decorator(func):
                 handlers[name] = func
                 return func
+
             return decorator
 
-        with patch("tree_sitter_analyzer.interfaces.mcp_server.Server") as mock_server_class:
+        with patch(
+            "tree_sitter_analyzer.interfaces.mcp_server.Server"
+        ) as mock_server_class:
             mock_server = Mock()
             mock_server.list_tools.return_value = capture_decorator("list_tools")
             mock_server.call_tool.return_value = capture_decorator("call_tool")
-            mock_server.list_resources.return_value = capture_decorator("list_resources")
+            mock_server.list_resources.return_value = capture_decorator(
+                "list_resources"
+            )
             mock_server.read_resource.return_value = capture_decorator("read_resource")
             mock_server_class.return_value = mock_server
 
@@ -116,13 +119,18 @@ public class Sample {
             def decorator(func):
                 handlers[name] = func
                 return func
+
             return decorator
 
-        with patch("tree_sitter_analyzer.interfaces.mcp_server.Server") as mock_server_class:
+        with patch(
+            "tree_sitter_analyzer.interfaces.mcp_server.Server"
+        ) as mock_server_class:
             mock_server = Mock()
             mock_server.list_tools.return_value = capture_decorator("list_tools")
             mock_server.call_tool.return_value = capture_decorator("call_tool")
-            mock_server.list_resources.return_value = capture_decorator("list_resources")
+            mock_server.list_resources.return_value = capture_decorator(
+                "list_resources"
+            )
             mock_server.read_resource.return_value = capture_decorator("read_resource")
             mock_server_class.return_value = mock_server
 
@@ -134,10 +142,10 @@ public class Sample {
         asyncio.set_event_loop(loop)
         try:
             result = loop.run_until_complete(
-                call_tool_handler("analyze_code", {
-                    "source_code": "def hello(): pass",
-                    "language": "python"
-                })
+                call_tool_handler(
+                    "analyze_code",
+                    {"source_code": "def hello(): pass", "language": "python"},
+                )
             )
             assert len(result) == 1
             result_data = json.loads(result[0].text)
@@ -159,13 +167,18 @@ public class Sample {
             def decorator(func):
                 handlers[name] = func
                 return func
+
             return decorator
 
-        with patch("tree_sitter_analyzer.interfaces.mcp_server.Server") as mock_server_class:
+        with patch(
+            "tree_sitter_analyzer.interfaces.mcp_server.Server"
+        ) as mock_server_class:
             mock_server = Mock()
             mock_server.list_tools.return_value = capture_decorator("list_tools")
             mock_server.call_tool.return_value = capture_decorator("call_tool")
-            mock_server.list_resources.return_value = capture_decorator("list_resources")
+            mock_server.list_resources.return_value = capture_decorator(
+                "list_resources"
+            )
             mock_server.read_resource.return_value = capture_decorator("read_resource")
             mock_server_class.return_value = mock_server
 
@@ -199,13 +212,18 @@ public class Sample {
             def decorator(func):
                 handlers[name] = func
                 return func
+
             return decorator
 
-        with patch("tree_sitter_analyzer.interfaces.mcp_server.Server") as mock_server_class:
+        with patch(
+            "tree_sitter_analyzer.interfaces.mcp_server.Server"
+        ) as mock_server_class:
             mock_server = Mock()
             mock_server.list_tools.return_value = capture_decorator("list_tools")
             mock_server.call_tool.return_value = capture_decorator("call_tool")
-            mock_server.list_resources.return_value = capture_decorator("list_resources")
+            mock_server.list_resources.return_value = capture_decorator(
+                "list_resources"
+            )
             mock_server.read_resource.return_value = capture_decorator("read_resource")
             mock_server_class.return_value = mock_server
 
@@ -217,10 +235,10 @@ public class Sample {
         asyncio.set_event_loop(loop)
         try:
             result = loop.run_until_complete(
-                call_tool_handler("execute_query", {
-                    "file_path": sample_python_file,
-                    "query_name": "functions"
-                })
+                call_tool_handler(
+                    "execute_query",
+                    {"file_path": sample_python_file, "query_name": "functions"},
+                )
             )
             assert len(result) == 1
             result_data = json.loads(result[0].text)
@@ -242,13 +260,18 @@ public class Sample {
             def decorator(func):
                 handlers[name] = func
                 return func
+
             return decorator
 
-        with patch("tree_sitter_analyzer.interfaces.mcp_server.Server") as mock_server_class:
+        with patch(
+            "tree_sitter_analyzer.interfaces.mcp_server.Server"
+        ) as mock_server_class:
             mock_server = Mock()
             mock_server.list_tools.return_value = capture_decorator("list_tools")
             mock_server.call_tool.return_value = capture_decorator("call_tool")
-            mock_server.list_resources.return_value = capture_decorator("list_resources")
+            mock_server.list_resources.return_value = capture_decorator(
+                "list_resources"
+            )
             mock_server.read_resource.return_value = capture_decorator("read_resource")
             mock_server_class.return_value = mock_server
 
@@ -282,13 +305,18 @@ public class Sample {
             def decorator(func):
                 handlers[name] = func
                 return func
+
             return decorator
 
-        with patch("tree_sitter_analyzer.interfaces.mcp_server.Server") as mock_server_class:
+        with patch(
+            "tree_sitter_analyzer.interfaces.mcp_server.Server"
+        ) as mock_server_class:
             mock_server = Mock()
             mock_server.list_tools.return_value = capture_decorator("list_tools")
             mock_server.call_tool.return_value = capture_decorator("call_tool")
-            mock_server.list_resources.return_value = capture_decorator("list_resources")
+            mock_server.list_resources.return_value = capture_decorator(
+                "list_resources"
+            )
             mock_server.read_resource.return_value = capture_decorator("read_resource")
             mock_server_class.return_value = mock_server
 
@@ -324,13 +352,18 @@ public class Sample {
             def decorator(func):
                 handlers[name] = func
                 return func
+
             return decorator
 
-        with patch("tree_sitter_analyzer.interfaces.mcp_server.Server") as mock_server_class:
+        with patch(
+            "tree_sitter_analyzer.interfaces.mcp_server.Server"
+        ) as mock_server_class:
             mock_server = Mock()
             mock_server.list_tools.return_value = capture_decorator("list_tools")
             mock_server.call_tool.return_value = capture_decorator("call_tool")
-            mock_server.list_resources.return_value = capture_decorator("list_resources")
+            mock_server.list_resources.return_value = capture_decorator(
+                "list_resources"
+            )
             mock_server.read_resource.return_value = capture_decorator("read_resource")
             mock_server_class.return_value = mock_server
 
@@ -366,13 +399,18 @@ public class Sample {
             def decorator(func):
                 handlers[name] = func
                 return func
+
             return decorator
 
-        with patch("tree_sitter_analyzer.interfaces.mcp_server.Server") as mock_server_class:
+        with patch(
+            "tree_sitter_analyzer.interfaces.mcp_server.Server"
+        ) as mock_server_class:
             mock_server = Mock()
             mock_server.list_tools.return_value = capture_decorator("list_tools")
             mock_server.call_tool.return_value = capture_decorator("call_tool")
-            mock_server.list_resources.return_value = capture_decorator("list_resources")
+            mock_server.list_resources.return_value = capture_decorator(
+                "list_resources"
+            )
             mock_server.read_resource.return_value = capture_decorator("read_resource")
             mock_server_class.return_value = mock_server
 
@@ -406,13 +444,18 @@ public class Sample {
             def decorator(func):
                 handlers[name] = func
                 return func
+
             return decorator
 
-        with patch("tree_sitter_analyzer.interfaces.mcp_server.Server") as mock_server_class:
+        with patch(
+            "tree_sitter_analyzer.interfaces.mcp_server.Server"
+        ) as mock_server_class:
             mock_server = Mock()
             mock_server.list_tools.return_value = capture_decorator("list_tools")
             mock_server.call_tool.return_value = capture_decorator("call_tool")
-            mock_server.list_resources.return_value = capture_decorator("list_resources")
+            mock_server.list_resources.return_value = capture_decorator(
+                "list_resources"
+            )
             mock_server.read_resource.return_value = capture_decorator("read_resource")
             mock_server_class.return_value = mock_server
 
@@ -423,9 +466,7 @@ public class Sample {
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         try:
-            result = loop.run_until_complete(
-                call_tool_handler("unknown_tool", {})
-            )
+            result = loop.run_until_complete(call_tool_handler("unknown_tool", {}))
             assert len(result) == 1
             result_data = json.loads(result[0].text)
             assert "error" in result_data
@@ -448,13 +489,18 @@ public class Sample {
             def decorator(func):
                 handlers[name] = func
                 return func
+
             return decorator
 
-        with patch("tree_sitter_analyzer.interfaces.mcp_server.Server") as mock_server_class:
+        with patch(
+            "tree_sitter_analyzer.interfaces.mcp_server.Server"
+        ) as mock_server_class:
             mock_server = Mock()
             mock_server.list_tools.return_value = capture_decorator("list_tools")
             mock_server.call_tool.return_value = capture_decorator("call_tool")
-            mock_server.list_resources.return_value = capture_decorator("list_resources")
+            mock_server.list_resources.return_value = capture_decorator(
+                "list_resources"
+            )
             mock_server.read_resource.return_value = capture_decorator("read_resource")
             mock_server_class.return_value = mock_server
 
@@ -507,13 +553,18 @@ class TestResourceHandlers:
             def decorator(func):
                 handlers[name] = func
                 return func
+
             return decorator
 
-        with patch("tree_sitter_analyzer.interfaces.mcp_server.Server") as mock_server_class:
+        with patch(
+            "tree_sitter_analyzer.interfaces.mcp_server.Server"
+        ) as mock_server_class:
             mock_server = Mock()
             mock_server.list_tools.return_value = capture_decorator("list_tools")
             mock_server.call_tool.return_value = capture_decorator("call_tool")
-            mock_server.list_resources.return_value = capture_decorator("list_resources")
+            mock_server.list_resources.return_value = capture_decorator(
+                "list_resources"
+            )
             mock_server.read_resource.return_value = capture_decorator("read_resource")
             mock_server_class.return_value = mock_server
 
@@ -547,13 +598,18 @@ class TestResourceHandlers:
             def decorator(func):
                 handlers[name] = func
                 return func
+
             return decorator
 
-        with patch("tree_sitter_analyzer.interfaces.mcp_server.Server") as mock_server_class:
+        with patch(
+            "tree_sitter_analyzer.interfaces.mcp_server.Server"
+        ) as mock_server_class:
             mock_server = Mock()
             mock_server.list_tools.return_value = capture_decorator("list_tools")
             mock_server.call_tool.return_value = capture_decorator("call_tool")
-            mock_server.list_resources.return_value = capture_decorator("list_resources")
+            mock_server.list_resources.return_value = capture_decorator(
+                "list_resources"
+            )
             mock_server.read_resource.return_value = capture_decorator("read_resource")
             mock_server_class.return_value = mock_server
 
@@ -586,13 +642,18 @@ class TestResourceHandlers:
             def decorator(func):
                 handlers[name] = func
                 return func
+
             return decorator
 
-        with patch("tree_sitter_analyzer.interfaces.mcp_server.Server") as mock_server_class:
+        with patch(
+            "tree_sitter_analyzer.interfaces.mcp_server.Server"
+        ) as mock_server_class:
             mock_server = Mock()
             mock_server.list_tools.return_value = capture_decorator("list_tools")
             mock_server.call_tool.return_value = capture_decorator("call_tool")
-            mock_server.list_resources.return_value = capture_decorator("list_resources")
+            mock_server.list_resources.return_value = capture_decorator(
+                "list_resources"
+            )
             mock_server.read_resource.return_value = capture_decorator("read_resource")
             mock_server_class.return_value = mock_server
 
@@ -625,13 +686,18 @@ class TestResourceHandlers:
             def decorator(func):
                 handlers[name] = func
                 return func
+
             return decorator
 
-        with patch("tree_sitter_analyzer.interfaces.mcp_server.Server") as mock_server_class:
+        with patch(
+            "tree_sitter_analyzer.interfaces.mcp_server.Server"
+        ) as mock_server_class:
             mock_server = Mock()
             mock_server.list_tools.return_value = capture_decorator("list_tools")
             mock_server.call_tool.return_value = capture_decorator("call_tool")
-            mock_server.list_resources.return_value = capture_decorator("list_resources")
+            mock_server.list_resources.return_value = capture_decorator(
+                "list_resources"
+            )
             mock_server.read_resource.return_value = capture_decorator("read_resource")
             mock_server_class.return_value = mock_server
 
@@ -665,13 +731,18 @@ class TestResourceHandlers:
             def decorator(func):
                 handlers[name] = func
                 return func
+
             return decorator
 
-        with patch("tree_sitter_analyzer.interfaces.mcp_server.Server") as mock_server_class:
+        with patch(
+            "tree_sitter_analyzer.interfaces.mcp_server.Server"
+        ) as mock_server_class:
             mock_server = Mock()
             mock_server.list_tools.return_value = capture_decorator("list_tools")
             mock_server.call_tool.return_value = capture_decorator("call_tool")
-            mock_server.list_resources.return_value = capture_decorator("list_resources")
+            mock_server.list_resources.return_value = capture_decorator(
+                "list_resources"
+            )
             mock_server.read_resource.return_value = capture_decorator("read_resource")
             mock_server_class.return_value = mock_server
 
@@ -705,13 +776,18 @@ class TestResourceHandlers:
             def decorator(func):
                 handlers[name] = func
                 return func
+
             return decorator
 
-        with patch("tree_sitter_analyzer.interfaces.mcp_server.Server") as mock_server_class:
+        with patch(
+            "tree_sitter_analyzer.interfaces.mcp_server.Server"
+        ) as mock_server_class:
             mock_server = Mock()
             mock_server.list_tools.return_value = capture_decorator("list_tools")
             mock_server.call_tool.return_value = capture_decorator("call_tool")
-            mock_server.list_resources.return_value = capture_decorator("list_resources")
+            mock_server.list_resources.return_value = capture_decorator(
+                "list_resources"
+            )
             mock_server.read_resource.return_value = capture_decorator("read_resource")
             mock_server_class.return_value = mock_server
 
@@ -750,13 +826,18 @@ class TestListToolsHandler:
             def decorator(func):
                 handlers[name] = func
                 return func
+
             return decorator
 
-        with patch("tree_sitter_analyzer.interfaces.mcp_server.Server") as mock_server_class:
+        with patch(
+            "tree_sitter_analyzer.interfaces.mcp_server.Server"
+        ) as mock_server_class:
             mock_server = Mock()
             mock_server.list_tools.return_value = capture_decorator("list_tools")
             mock_server.call_tool.return_value = capture_decorator("call_tool")
-            mock_server.list_resources.return_value = capture_decorator("list_resources")
+            mock_server.list_resources.return_value = capture_decorator(
+                "list_resources"
+            )
             mock_server.read_resource.return_value = capture_decorator("read_resource")
             mock_server_class.return_value = mock_server
 

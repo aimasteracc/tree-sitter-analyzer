@@ -2,6 +2,7 @@
 """Tests for C# formatter to improve coverage."""
 
 import pytest
+
 from tree_sitter_analyzer.formatters.csharp_formatter import CSharpTableFormatter
 
 

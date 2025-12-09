@@ -1,25 +1,25 @@
 #!/usr/bin/env python3
 """Deep coverage tests for SQL plugin - targeting uncovered branches and paths."""
 
+from unittest.mock import Mock, patch
+
 import pytest
-from unittest.mock import Mock, patch, MagicMock
-import re
 
 from tree_sitter_analyzer.languages.sql_plugin import (
-    SQLElementExtractor, 
+    SQLElementExtractor,
     SQLPlugin,
-    SQLColumn,
-    SQLConstraint,
 )
 from tree_sitter_analyzer.models import (
-    SQLTable, SQLView, SQLTrigger, SQLProcedure, SQLFunction,
-    SQLIndex, SQLElementType, Class, Function, Variable, Import
+    SQLElementType,
+    SQLTable,
+    SQLTrigger,
 )
 
 # Check if tree-sitter-sql is available
 try:
-    import tree_sitter_sql
     import tree_sitter
+    import tree_sitter_sql
+
     TREE_SITTER_SQL_AVAILABLE = True
 except ImportError:
     TREE_SITTER_SQL_AVAILABLE = False
@@ -30,7 +30,7 @@ class TestSQLPluginInitialization:
 
     def test_plugin_init_without_tree_sitter(self):
         """Test plugin initialization when tree-sitter is not available."""
-        with patch.dict('sys.modules', {'tree_sitter_sql': None}):
+        with patch.dict("sys.modules", {"tree_sitter_sql": None}):
             plugin = SQLPlugin()
             assert plugin is not None
 
@@ -111,7 +111,7 @@ class TestSQLViewExtraction:
         extractor.source_code = """CREATE VIEW active_users AS
 SELECT id, name FROM users WHERE active = 1;"""
         extractor.content_lines = extractor.source_code.split("\n")
-        
+
         # Create mock node for single-line view (tree-sitter misparsing case)
         mock_node = Mock()
         mock_node.type = "create_view"
@@ -120,7 +120,7 @@ SELECT id, name FROM users WHERE active = 1;"""
         mock_node.start_byte = 0
         mock_node.end_byte = 27
         mock_node.children = []
-        
+
         classes = []
         extractor._extract_views(mock_node, classes)
         # Should trigger the recovery logic for single-line views
@@ -133,7 +133,7 @@ WHERE id > 0
 
 CREATE TABLE other (id INT)"""
         extractor.content_lines = extractor.source_code.split("\n")
-        
+
         mock_node = Mock()
         mock_node.type = "create_view"
         mock_node.start_point = (0, 0)
@@ -141,7 +141,7 @@ CREATE TABLE other (id INT)"""
         mock_node.start_byte = 0
         mock_node.end_byte = 24
         mock_node.children = []
-        
+
         classes = []
         extractor._extract_views(mock_node, classes)
 
@@ -149,7 +149,7 @@ CREATE TABLE other (id INT)"""
 class TestSQLProcedureExtraction:
     """Test SQL PROCEDURE extraction."""
 
-    @pytest.fixture  
+    @pytest.fixture
     def extractor(self):
         ext = SQLElementExtractor()
         ext.source_code = ""
@@ -161,7 +161,7 @@ class TestSQLProcedureExtraction:
         code = """CREATE PROCEDURE proc1() BEGIN SELECT 1; END;"""
         extractor.source_code = code
         extractor.content_lines = code.split("\n")
-        
+
         # Just verify extractor handles procedure-like text
         assert "PROCEDURE" in code
         assert extractor is not None
@@ -182,7 +182,7 @@ class TestSQLFunctionExtraction:
         code = "CREATE FUNCTION calc_total(x INT) RETURNS INT BEGIN RETURN x * 2; END"
         extractor.source_code = code
         extractor.content_lines = [code]
-        
+
         # Just verify extractor handles function-like text
         assert "FUNCTION" in code
         assert extractor is not None
@@ -210,7 +210,7 @@ class TestSQLTriggerExtraction:
         code = "CREATE TRIGGER UPDATE BEFORE INSERT ON t FOR EACH ROW BEGIN END"
         extractor.source_code = code
         extractor.content_lines = [code]
-        
+
         mock_node = Mock()
         mock_node.type = "ERROR"
         mock_node.start_point = (0, 0)
@@ -218,7 +218,7 @@ class TestSQLTriggerExtraction:
         mock_node.start_byte = 0
         mock_node.end_byte = len(code)
         mock_node.children = []
-        
+
         functions = []
         extractor._extract_triggers(mock_node, functions)
         # UPDATE is a keyword, should be skipped
@@ -228,7 +228,7 @@ class TestSQLTriggerExtraction:
         """Test trigger extraction with empty node text."""
         extractor.source_code = ""
         extractor.content_lines = []
-        
+
         mock_node = Mock()
         mock_node.type = "ERROR"
         mock_node.start_point = (0, 0)
@@ -236,7 +236,7 @@ class TestSQLTriggerExtraction:
         mock_node.start_byte = 0
         mock_node.end_byte = 0
         mock_node.children = []
-        
+
         functions = []
         extractor._extract_triggers(mock_node, functions)
         assert functions == []
@@ -247,7 +247,7 @@ class TestSQLTriggerExtraction:
 CREATE TRIGGER t2 AFTER UPDATE ON orders FOR EACH ROW BEGIN END;"""
         extractor.source_code = code
         extractor.content_lines = code.split("\n")
-        
+
         mock_node = Mock()
         mock_node.type = "ERROR"
         mock_node.start_point = (0, 0)
@@ -255,7 +255,7 @@ CREATE TRIGGER t2 AFTER UPDATE ON orders FOR EACH ROW BEGIN END;"""
         mock_node.start_byte = 0
         mock_node.end_byte = len(code)
         mock_node.children = []
-        
+
         functions = []
         extractor._extract_triggers(mock_node, functions)
         trigger_names = [f.name for f in functions]
@@ -278,7 +278,7 @@ class TestSQLIndexExtraction:
         code = "CREATE INDEX idx_user ON users(id)"
         extractor.source_code = code
         extractor.content_lines = [code]
-        
+
         # Just verify extractor handles index-like text
         assert "CREATE INDEX" in code
         assert extractor is not None
@@ -299,7 +299,7 @@ class TestSQLSchemaReferences:
         code = "SELECT * FROM public.users"
         extractor.source_code = code
         extractor.content_lines = [code]
-        
+
         mock_node = Mock()
         mock_node.type = "qualified_name"
         mock_node.start_point = (0, 14)
@@ -307,7 +307,7 @@ class TestSQLSchemaReferences:
         mock_node.start_byte = 14
         mock_node.end_byte = 26
         mock_node.children = []
-        
+
         imports = []
         extractor._extract_schema_references(mock_node, imports)
 
@@ -326,7 +326,7 @@ class TestSQLTableColumnExtraction:
         """Test column parsing with valid column definition."""
         col_def = "id INT NOT NULL PRIMARY KEY"
         column = extractor._parse_column_definition(col_def)
-        
+
         assert column is not None
         assert column.name == "id"
         assert column.data_type == "INT"
@@ -363,7 +363,7 @@ class TestSQLValidationAndRecovery:
             end_line=5,
             raw_text="CREATE TABLE users (id INT)",
         )
-        
+
         result = extractor._validate_and_fix_elements([table1, table2])
         user_tables = [e for e in result if e.name == "users"]
         assert len(user_tables) == 1
@@ -377,7 +377,7 @@ class TestSQLValidationAndRecovery:
             raw_text="CREATE TRIGGER my_trigger BEFORE INSERT ON users",
             sql_element_type=SQLElementType.TRIGGER,
         )
-        
+
         result = extractor._validate_and_fix_elements([trigger])
         assert any(e.name == "my_trigger" for e in result)
 
@@ -391,13 +391,13 @@ class TestSQLPluginAsyncMethods:
 
     def test_plugin_has_required_methods(self, plugin):
         """Test plugin has required methods."""
-        assert hasattr(plugin, 'extract_elements')
+        assert hasattr(plugin, "extract_elements")
         # Check for language name method (could be property or method)
-        assert hasattr(plugin, 'get_language_name') or hasattr(plugin, 'language_name')
+        assert hasattr(plugin, "get_language_name") or hasattr(plugin, "language_name")
 
     def test_plugin_supported_extensions(self, plugin):
         """Test plugin returns correct extensions."""
-        if hasattr(plugin, 'supported_extensions'):
+        if hasattr(plugin, "supported_extensions"):
             extensions = plugin.supported_extensions
         else:
             extensions = [".sql"]  # Default expected
@@ -405,16 +405,18 @@ class TestSQLPluginAsyncMethods:
 
     def test_plugin_language_name(self, plugin):
         """Test plugin returns correct language name."""
-        if hasattr(plugin, 'language_name'):
+        if hasattr(plugin, "language_name"):
             name = plugin.language_name
-        elif hasattr(plugin, 'get_language_name'):
+        elif hasattr(plugin, "get_language_name"):
             name = plugin.get_language_name()
         else:
             name = "sql"
         assert name.lower() == "sql"
 
 
-@pytest.mark.skipif(not TREE_SITTER_SQL_AVAILABLE, reason="tree-sitter-sql not installed")
+@pytest.mark.skipif(
+    not TREE_SITTER_SQL_AVAILABLE, reason="tree-sitter-sql not installed"
+)
 class TestSQLPluginWithTreeSitter:
     """Test SQL plugin with actual tree-sitter parsing."""
 
@@ -431,7 +433,7 @@ class TestSQLPluginWithTreeSitter:
         """Test extracting complex view with subqueries."""
         code = """
 CREATE VIEW order_summary AS
-SELECT 
+SELECT
     u.id as user_id,
     u.name as user_name,
     (SELECT COUNT(*) FROM orders WHERE user_id = u.id) as order_count,
@@ -496,7 +498,7 @@ COMMIT;
     def test_window_functions(self, plugin, parser):
         """Test window function extraction."""
         code = """
-SELECT 
+SELECT
     id,
     name,
     salary,
@@ -511,7 +513,7 @@ FROM employees;
     def test_json_operations(self, plugin, parser):
         """Test JSON operations in SQL."""
         code = """
-SELECT 
+SELECT
     id,
     data->>'name' as name,
     data->'address'->>'city' as city
@@ -537,9 +539,9 @@ WHEN NOT MATCHED THEN INSERT (id, value) VALUES (s.id, s.value);
     def test_case_expressions(self, plugin, parser):
         """Test CASE expressions."""
         code = """
-SELECT 
+SELECT
     id,
-    CASE 
+    CASE
         WHEN status = 1 THEN 'Active'
         WHEN status = 2 THEN 'Pending'
         ELSE 'Unknown'
@@ -597,10 +599,10 @@ ON CONFLICT (email) DO UPDATE SET name = EXCLUDED.name;
 SELECT u.id, u.name, latest.order_date
 FROM users u
 CROSS JOIN LATERAL (
-    SELECT order_date 
-    FROM orders 
-    WHERE user_id = u.id 
-    ORDER BY order_date DESC 
+    SELECT order_date
+    FROM orders
+    WHERE user_id = u.id
+    ORDER BY order_date DESC
     LIMIT 1
 ) latest;
 """
@@ -625,8 +627,8 @@ class TestSQLPluginEdgeCases:
         """Test SQL with only comments."""
         code = """
 -- This is a comment
-/* 
-   Multi-line comment 
+/*
+   Multi-line comment
 */
 -- Another comment
 """

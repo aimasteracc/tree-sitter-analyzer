@@ -104,7 +104,9 @@ class BaseTableFormatter(ABC):
                 [
                     "Field",
                     self._clean_csv_text(str(field.get("name", ""))),
-                    self._clean_csv_text(f"{str(field.get('name', ''))}:{str(field.get('type', ''))}"),
+                    self._clean_csv_text(
+                        f"{str(field.get('name', ''))}:{str(field.get('type', ''))}"
+                    ),
                     self._clean_csv_text(str(field.get("visibility", ""))),
                     f"{field.get('line_range', {}).get('start', 0)}-{field.get('line_range', {}).get('end', 0)}",
                     "",
@@ -196,7 +198,12 @@ class BaseTableFormatter(ABC):
             return ""
 
         # Remove null bytes and normalize whitespace
-        cleaned = text.replace("\0", "").replace("\r\n", " ").replace("\r", " ").replace("\n", " ")
+        cleaned = (
+            text.replace("\0", "")
+            .replace("\r\n", " ")
+            .replace("\r", " ")
+            .replace("\n", " ")
+        )
         cleaned = " ".join(cleaned.split())
         cleaned = cleaned.replace('"', '""')
 

@@ -11,29 +11,22 @@ Tests that exception chains preserve all original cause information.
 from typing import Any
 
 import pytest
-from hypothesis import given, settings, strategies as st
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
 from tree_sitter_analyzer.exceptions import (
     AnalysisError,
-    ConfigurationError,
-    FileHandlingError,
     LanguageNotSupportedError,
     MCPError,
     MCPResourceError,
     MCPTimeoutError,
-    MCPToolError,
-    MCPValidationError,
-    ParseError,
-    PluginError,
     QueryError,
-    SecurityError,
     TreeSitterAnalyzerError,
     ValidationError,
     create_error_response,
     create_mcp_error_response,
     handle_exceptions,
 )
-
 
 # Strategies for generating test data
 safe_text = st.text(
@@ -111,7 +104,9 @@ class TestExceptionContextPreservationProperty:
     @given(
         message=safe_text,
         file_path=st.one_of(st.none(), safe_text),
-        language=st.one_of(st.none(), st.sampled_from(["python", "java", "javascript"])),
+        language=st.one_of(
+            st.none(), st.sampled_from(["python", "java", "javascript"])
+        ),
     )
     @settings(max_examples=100)
     def test_analysis_error_preserves_file_and_language_context(
@@ -257,7 +252,9 @@ class TestExceptionContextPreservationProperty:
         message=safe_text,
         query_name=st.one_of(st.none(), safe_text),
         query_string=st.one_of(st.none(), safe_text),
-        language=st.one_of(st.none(), st.sampled_from(["python", "java", "javascript"])),
+        language=st.one_of(
+            st.none(), st.sampled_from(["python", "java", "javascript"])
+        ),
     )
     @settings(max_examples=100)
     def test_query_error_preserves_all_query_context(
@@ -322,7 +319,9 @@ class TestExceptionContextPreservationProperty:
     @given(
         message=safe_text,
         resource_uri=st.one_of(st.none(), safe_text),
-        resource_type=st.one_of(st.none(), st.sampled_from(["file", "directory", "url"])),
+        resource_type=st.one_of(
+            st.none(), st.sampled_from(["file", "directory", "url"])
+        ),
         access_mode=st.one_of(st.none(), st.sampled_from(["read", "write", "execute"])),
     )
     @settings(max_examples=100)
@@ -478,4 +477,3 @@ class TestExceptionChainWithDecorator:
         assert exc_info.value.__cause__ is not None
         assert isinstance(exc_info.value.__cause__, ValueError)
         assert str(exc_info.value.__cause__) == original_message
-

@@ -10,37 +10,79 @@ and types from the analysis result.
 **Validates: Requirements 2.1, 2.2, 2.3, 10.2**
 """
 
-import pytest
-from hypothesis import given, settings, assume, HealthCheck
+from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
 from tree_sitter_analyzer.formatters.java_formatter import JavaTableFormatter
 
-
 # Strategy for generating valid Java identifiers (simplified for performance)
-java_identifier = st.sampled_from([
-    "TestClass", "MyClass", "Service", "Controller", "Repository",
-    "User", "Order", "Product", "Item", "Config", "Handler", "Manager",
-    "name", "value", "data", "result", "count", "index", "status",
-    "getName", "setValue", "process", "execute", "validate", "create",
-    "field1", "field2", "method1", "method2", "param1", "param2",
-])
+java_identifier = st.sampled_from(
+    [
+        "TestClass",
+        "MyClass",
+        "Service",
+        "Controller",
+        "Repository",
+        "User",
+        "Order",
+        "Product",
+        "Item",
+        "Config",
+        "Handler",
+        "Manager",
+        "name",
+        "value",
+        "data",
+        "result",
+        "count",
+        "index",
+        "status",
+        "getName",
+        "setValue",
+        "process",
+        "execute",
+        "validate",
+        "create",
+        "field1",
+        "field2",
+        "method1",
+        "method2",
+        "param1",
+        "param2",
+    ]
+)
 
 # Strategy for generating package names (simplified)
-package_name = st.sampled_from([
-    "com.example", "com.test", "org.sample", "net.app",
-    "com.example.service", "com.example.model", "com.example.util",
-])
+package_name = st.sampled_from(
+    [
+        "com.example",
+        "com.test",
+        "org.sample",
+        "net.app",
+        "com.example.service",
+        "com.example.model",
+        "com.example.util",
+    ]
+)
 
 # Strategy for generating Java types
-java_primitive_types = st.sampled_from([
-    "int", "long", "double", "float", "boolean", "byte", "short", "char", "void"
-])
+java_primitive_types = st.sampled_from(
+    ["int", "long", "double", "float", "boolean", "byte", "short", "char", "void"]
+)
 
-java_common_types = st.sampled_from([
-    "String", "Object", "Integer", "Long", "Double", "Boolean",
-    "List<String>", "Map<String,Object>", "Set<Integer>",
-])
+java_common_types = st.sampled_from(
+    [
+        "String",
+        "Object",
+        "Integer",
+        "Long",
+        "Double",
+        "Boolean",
+        "List<String>",
+        "Map<String,Object>",
+        "Set<Integer>",
+    ]
+)
 
 java_type = st.one_of(java_primitive_types, java_common_types, java_identifier)
 
@@ -93,12 +135,14 @@ def java_field(draw):
 def java_method(draw, is_constructor=None):
     if is_constructor is None:
         is_constructor = draw(st.booleans())
-    
+
     # Note: The formatter only displays public and private methods in the full table
     # Protected and package methods are not shown (potential bug in formatter)
     return {
         "name": draw(java_identifier),
-        "visibility": draw(method_visibility),  # Only public/private for full table display
+        "visibility": draw(
+            method_visibility
+        ),  # Only public/private for full table display
         "return_type": None if is_constructor else draw(java_type),
         "parameters": draw(parameters),
         "is_constructor": is_constructor,
@@ -138,7 +182,7 @@ def java_analysis_result(draw):
     fields = draw(st.lists(java_field(), min_size=0, max_size=5))
     methods = draw(st.lists(java_method(), min_size=0, max_size=5))
     imports = draw(st.lists(java_import(), min_size=0, max_size=5))
-    
+
     return {
         "package": {"name": draw(package_name)},
         "file_path": f"{draw(java_identifier)}.java",
@@ -161,7 +205,9 @@ class TestFormatterOutputCompletenessProperties:
     **Validates: Requirements 2.1, 2.2, 2.3, 10.2**
     """
 
-    @settings(max_examples=50, suppress_health_check=[HealthCheck.too_slow], derandomize=True)
+    @settings(
+        max_examples=50, suppress_health_check=[HealthCheck.too_slow], derandomize=True
+    )
     @given(data=java_analysis_result())
     def test_property_2_full_table_contains_all_class_names(self, data: dict):
         """
@@ -178,10 +224,13 @@ class TestFormatterOutputCompletenessProperties:
         # Property: All class names should appear in the output
         for class_info in data.get("classes", []):
             class_name = class_info.get("name", "")
-            assert class_name in result, \
-                f"Class name '{class_name}' should appear in formatted output"
+            assert (
+                class_name in result
+            ), f"Class name '{class_name}' should appear in formatted output"
 
-    @settings(max_examples=50, suppress_health_check=[HealthCheck.too_slow], derandomize=True)
+    @settings(
+        max_examples=50, suppress_health_check=[HealthCheck.too_slow], derandomize=True
+    )
     @given(data=java_analysis_result())
     def test_property_2_full_table_contains_all_field_names(self, data: dict):
         """
@@ -199,10 +248,13 @@ class TestFormatterOutputCompletenessProperties:
         for field in data.get("fields", []):
             field_name = field.get("name", "")
             if field_name:  # Only check non-empty names
-                assert field_name in result, \
-                    f"Field name '{field_name}' should appear in formatted output"
+                assert (
+                    field_name in result
+                ), f"Field name '{field_name}' should appear in formatted output"
 
-    @settings(max_examples=50, suppress_health_check=[HealthCheck.too_slow], derandomize=True)
+    @settings(
+        max_examples=50, suppress_health_check=[HealthCheck.too_slow], derandomize=True
+    )
     @given(data=java_analysis_result())
     def test_property_2_full_table_contains_all_method_names(self, data: dict):
         """
@@ -220,10 +272,13 @@ class TestFormatterOutputCompletenessProperties:
         for method in data.get("methods", []):
             method_name = method.get("name", "")
             if method_name:  # Only check non-empty names
-                assert method_name in result, \
-                    f"Method name '{method_name}' should appear in formatted output"
+                assert (
+                    method_name in result
+                ), f"Method name '{method_name}' should appear in formatted output"
 
-    @settings(max_examples=50, suppress_health_check=[HealthCheck.too_slow], derandomize=True)
+    @settings(
+        max_examples=50, suppress_health_check=[HealthCheck.too_slow], derandomize=True
+    )
     @given(data=java_analysis_result())
     def test_property_2_full_table_contains_field_types(self, data: dict):
         """
@@ -241,10 +296,13 @@ class TestFormatterOutputCompletenessProperties:
         for field in data.get("fields", []):
             field_type = field.get("type", "")
             if field_type:  # Only check non-empty types
-                assert field_type in result, \
-                    f"Field type '{field_type}' should appear in formatted output"
+                assert (
+                    field_type in result
+                ), f"Field type '{field_type}' should appear in formatted output"
 
-    @settings(max_examples=50, suppress_health_check=[HealthCheck.too_slow], derandomize=True)
+    @settings(
+        max_examples=50, suppress_health_check=[HealthCheck.too_slow], derandomize=True
+    )
     @given(data=java_analysis_result())
     def test_property_2_compact_table_contains_all_method_names(self, data: dict):
         """
@@ -262,10 +320,13 @@ class TestFormatterOutputCompletenessProperties:
         for method in data.get("methods", []):
             method_name = method.get("name", "")
             if method_name:  # Only check non-empty names
-                assert method_name in result, \
-                    f"Method name '{method_name}' should appear in compact formatted output"
+                assert (
+                    method_name in result
+                ), f"Method name '{method_name}' should appear in compact formatted output"
 
-    @settings(max_examples=50, suppress_health_check=[HealthCheck.too_slow], derandomize=True)
+    @settings(
+        max_examples=50, suppress_health_check=[HealthCheck.too_slow], derandomize=True
+    )
     @given(data=java_analysis_result())
     def test_property_2_imports_appear_in_output(self, data: dict):
         """
@@ -283,10 +344,13 @@ class TestFormatterOutputCompletenessProperties:
         for imp in data.get("imports", []):
             statement = imp.get("statement", "")
             if statement:  # Only check non-empty statements
-                assert statement in result, \
-                    f"Import statement '{statement}' should appear in formatted output"
+                assert (
+                    statement in result
+                ), f"Import statement '{statement}' should appear in formatted output"
 
-    @settings(max_examples=50, suppress_health_check=[HealthCheck.too_slow], derandomize=True)
+    @settings(
+        max_examples=50, suppress_health_check=[HealthCheck.too_slow], derandomize=True
+    )
     @given(data=java_analysis_result())
     def test_property_2_package_name_appears_in_output(self, data: dict):
         """
@@ -303,10 +367,13 @@ class TestFormatterOutputCompletenessProperties:
         # Property: Package name should appear in the output
         package_name = data.get("package", {}).get("name", "")
         if package_name and package_name != "unknown":
-            assert package_name in result, \
-                f"Package name '{package_name}' should appear in formatted output"
+            assert (
+                package_name in result
+            ), f"Package name '{package_name}' should appear in formatted output"
 
-    @settings(max_examples=50, suppress_health_check=[HealthCheck.too_slow], derandomize=True)
+    @settings(
+        max_examples=50, suppress_health_check=[HealthCheck.too_slow], derandomize=True
+    )
     @given(data=java_analysis_result())
     def test_property_2_csv_format_contains_all_elements(self, data: dict):
         """
@@ -324,17 +391,21 @@ class TestFormatterOutputCompletenessProperties:
         for field in data.get("fields", []):
             field_name = field.get("name", "")
             if field_name:
-                assert field_name in result, \
-                    f"Field name '{field_name}' should appear in CSV output"
+                assert (
+                    field_name in result
+                ), f"Field name '{field_name}' should appear in CSV output"
 
         # Property: All method names should appear in CSV output
         for method in data.get("methods", []):
             method_name = method.get("name", "")
             if method_name:
-                assert method_name in result, \
-                    f"Method name '{method_name}' should appear in CSV output"
+                assert (
+                    method_name in result
+                ), f"Method name '{method_name}' should appear in CSV output"
 
-    @settings(max_examples=50, suppress_health_check=[HealthCheck.too_slow], derandomize=True)
+    @settings(
+        max_examples=50, suppress_health_check=[HealthCheck.too_slow], derandomize=True
+    )
     @given(data=java_analysis_result())
     def test_property_2_json_format_preserves_all_data(self, data: dict):
         """
@@ -346,7 +417,7 @@ class TestFormatterOutputCompletenessProperties:
         **Validates: Requirements 2.3, 10.2**
         """
         import json
-        
+
         formatter = JavaTableFormatter()
         result = formatter._format_json(data)
 
@@ -357,28 +428,19 @@ class TestFormatterOutputCompletenessProperties:
         # Property: All class names should be preserved
         for class_info in data.get("classes", []):
             class_name = class_info.get("name", "")
-            found = any(
-                c.get("name") == class_name 
-                for c in parsed.get("classes", [])
-            )
+            found = any(c.get("name") == class_name for c in parsed.get("classes", []))
             assert found, f"Class '{class_name}' should be preserved in JSON output"
 
         # Property: All field names should be preserved
         for field in data.get("fields", []):
             field_name = field.get("name", "")
-            found = any(
-                f.get("name") == field_name 
-                for f in parsed.get("fields", [])
-            )
+            found = any(f.get("name") == field_name for f in parsed.get("fields", []))
             assert found, f"Field '{field_name}' should be preserved in JSON output"
 
         # Property: All method names should be preserved
         for method in data.get("methods", []):
             method_name = method.get("name", "")
-            found = any(
-                m.get("name") == method_name 
-                for m in parsed.get("methods", [])
-            )
+            found = any(m.get("name") == method_name for m in parsed.get("methods", []))
             assert found, f"Method '{method_name}' should be preserved in JSON output"
 
 
@@ -390,7 +452,9 @@ class TestFormatterAnnotationHandlingProperties:
     **Validates: Requirements 2.2, 10.2**
     """
 
-    @settings(max_examples=50, suppress_health_check=[HealthCheck.too_slow], derandomize=True)
+    @settings(
+        max_examples=50, suppress_health_check=[HealthCheck.too_slow], derandomize=True
+    )
     @given(
         class_name=java_identifier,
         visibility_val=visibility,
@@ -410,12 +474,14 @@ class TestFormatterAnnotationHandlingProperties:
         formatter = JavaTableFormatter()
         data = {
             "package": {"name": "com.example"},
-            "classes": [{
-                "name": class_name,
-                "type": class_type,
-                "visibility": visibility_val,
-                "line_range": {"start": 1, "end": 10},
-            }],
+            "classes": [
+                {
+                    "name": class_name,
+                    "type": class_type,
+                    "visibility": visibility_val,
+                    "line_range": {"start": 1, "end": 10},
+                }
+            ],
             "imports": [],
             "methods": [],
             "fields": [],
@@ -425,8 +491,9 @@ class TestFormatterAnnotationHandlingProperties:
         result = formatter._format_full_table(data)
 
         # Property: Class name should appear in output
-        assert class_name in result, \
-            f"Class name '{class_name}' should appear in output"
+        assert (
+            class_name in result
+        ), f"Class name '{class_name}' should appear in output"
 
         # Property: Visibility should appear in output (either as word or symbol)
         visibility_symbols = {
@@ -437,8 +504,7 @@ class TestFormatterAnnotationHandlingProperties:
         }
         expected_symbols = visibility_symbols.get(visibility_val, [visibility_val])
         found = any(sym in result for sym in expected_symbols)
-        assert found, \
-            f"Visibility '{visibility_val}' should appear in output as one of {expected_symbols}"
+        assert found, f"Visibility '{visibility_val}' should appear in output as one of {expected_symbols}"
 
 
 class TestFormatterGenericTypeHandlingProperties:
@@ -449,7 +515,9 @@ class TestFormatterGenericTypeHandlingProperties:
     **Validates: Requirements 2.3, 10.2**
     """
 
-    @settings(max_examples=50, suppress_health_check=[HealthCheck.too_slow], derandomize=True)
+    @settings(
+        max_examples=50, suppress_health_check=[HealthCheck.too_slow], derandomize=True
+    )
     @given(
         method_name=java_identifier,
         return_type=java_type,
@@ -467,28 +535,32 @@ class TestFormatterGenericTypeHandlingProperties:
         **Validates: Requirements 2.2, 2.3, 10.2**
         """
         formatter = JavaTableFormatter()
-        
+
         params = [{"name": f"param{i}", "type": t} for i, t in enumerate(param_types)]
-        
+
         data = {
             "package": {"name": "com.example"},
-            "classes": [{
-                "name": "TestClass",
-                "type": "class",
-                "visibility": "public",
-                "line_range": {"start": 1, "end": 50},
-            }],
+            "classes": [
+                {
+                    "name": "TestClass",
+                    "type": "class",
+                    "visibility": "public",
+                    "line_range": {"start": 1, "end": 50},
+                }
+            ],
             "imports": [],
-            "methods": [{
-                "name": method_name,
-                "visibility": "public",
-                "return_type": return_type,
-                "parameters": params,
-                "is_constructor": False,
-                "line_range": {"start": 10, "end": 20},
-                "complexity_score": 1,
-                "javadoc": "",
-            }],
+            "methods": [
+                {
+                    "name": method_name,
+                    "visibility": "public",
+                    "return_type": return_type,
+                    "parameters": params,
+                    "is_constructor": False,
+                    "line_range": {"start": 10, "end": 20},
+                    "complexity_score": 1,
+                    "javadoc": "",
+                }
+            ],
             "fields": [],
             "statistics": {"method_count": 1, "field_count": 0},
         }
@@ -496,15 +568,23 @@ class TestFormatterGenericTypeHandlingProperties:
         result = formatter._format_full_table(data)
 
         # Property: Method name should appear in output
-        assert method_name in result, \
-            f"Method name '{method_name}' should appear in output"
+        assert (
+            method_name in result
+        ), f"Method name '{method_name}' should appear in output"
 
-    @settings(max_examples=50, suppress_health_check=[HealthCheck.too_slow], derandomize=True)
+    @settings(
+        max_examples=50, suppress_health_check=[HealthCheck.too_slow], derandomize=True
+    )
     @given(
-        type_name=st.sampled_from([
-            "List<String>", "Map<String,Object>", "Set<Integer>",
-            "Optional<String>", "Collection<Object>",
-        ]),
+        type_name=st.sampled_from(
+            [
+                "List<String>",
+                "Map<String,Object>",
+                "Set<Integer>",
+                "Optional<String>",
+                "Collection<Object>",
+            ]
+        ),
     )
     def test_property_2_generic_type_shortening_consistency(self, type_name: str):
         """
@@ -522,13 +602,15 @@ class TestFormatterGenericTypeHandlingProperties:
         assert result, f"Shortened type for '{type_name}' should not be empty"
 
         # Property: Result should be a string
-        assert isinstance(result, str), \
-            f"Shortened type should be a string, got {type(result)}"
+        assert isinstance(
+            result, str
+        ), f"Shortened type should be a string, got {type(result)}"
 
         # Property: Generic brackets should be preserved
         if "<" in type_name:
-            assert "<" in result, \
-                f"Generic brackets should be preserved in '{result}' for type '{type_name}'"
+            assert (
+                "<" in result
+            ), f"Generic brackets should be preserved in '{result}' for type '{type_name}'"
 
 
 class TestFormatterEdgeCaseProperties:
@@ -539,7 +621,9 @@ class TestFormatterEdgeCaseProperties:
     **Validates: Requirements 2.1, 2.2, 2.3, 10.2**
     """
 
-    @settings(max_examples=50, suppress_health_check=[HealthCheck.too_slow], derandomize=True)
+    @settings(
+        max_examples=50, suppress_health_check=[HealthCheck.too_slow], derandomize=True
+    )
     @given(
         num_classes=st.integers(min_value=1, max_value=5),
         num_methods=st.integers(min_value=0, max_value=10),
@@ -557,7 +641,7 @@ class TestFormatterEdgeCaseProperties:
         **Validates: Requirements 2.1, 2.2, 10.2**
         """
         formatter = JavaTableFormatter()
-        
+
         classes = [
             {
                 "name": f"Class{i}",
@@ -567,7 +651,7 @@ class TestFormatterEdgeCaseProperties:
             }
             for i in range(num_classes)
         ]
-        
+
         methods = [
             {
                 "name": f"method{i}",
@@ -581,7 +665,7 @@ class TestFormatterEdgeCaseProperties:
             }
             for i in range(num_methods)
         ]
-        
+
         fields = [
             {
                 "name": f"field{i}",
@@ -593,7 +677,7 @@ class TestFormatterEdgeCaseProperties:
             }
             for i in range(num_fields)
         ]
-        
+
         data = {
             "package": {"name": "com.example"},
             "file_path": "Test.java",
@@ -611,20 +695,19 @@ class TestFormatterEdgeCaseProperties:
 
         # Property: All class names should appear
         for i in range(num_classes):
-            assert f"Class{i}" in result, \
-                f"Class{i} should appear in output"
+            assert f"Class{i}" in result, f"Class{i} should appear in output"
 
         # Property: All method names should appear
         for i in range(num_methods):
-            assert f"method{i}" in result, \
-                f"method{i} should appear in output"
+            assert f"method{i}" in result, f"method{i} should appear in output"
 
         # Property: All field names should appear
         for i in range(num_fields):
-            assert f"field{i}" in result, \
-                f"field{i} should appear in output"
+            assert f"field{i}" in result, f"field{i} should appear in output"
 
-    @settings(max_examples=50, suppress_health_check=[HealthCheck.too_slow], derandomize=True)
+    @settings(
+        max_examples=50, suppress_health_check=[HealthCheck.too_slow], derandomize=True
+    )
     @given(
         enum_name=java_identifier,
         constants=st.lists(java_identifier, min_size=1, max_size=5, unique=True),
@@ -641,16 +724,18 @@ class TestFormatterEdgeCaseProperties:
         **Validates: Requirements 2.1, 10.2**
         """
         formatter = JavaTableFormatter()
-        
+
         data = {
             "package": {"name": "com.example"},
-            "classes": [{
-                "name": enum_name,
-                "type": "enum",
-                "visibility": "public",
-                "line_range": {"start": 1, "end": 20},
-                "constants": constants,
-            }],
+            "classes": [
+                {
+                    "name": enum_name,
+                    "type": "enum",
+                    "visibility": "public",
+                    "line_range": {"start": 1, "end": 20},
+                    "constants": constants,
+                }
+            ],
             "imports": [],
             "methods": [],
             "fields": [],
@@ -660,10 +745,7 @@ class TestFormatterEdgeCaseProperties:
         result = formatter._format_full_table(data)
 
         # Property: Enum name should appear in output
-        assert enum_name in result, \
-            f"Enum name '{enum_name}' should appear in output"
+        assert enum_name in result, f"Enum name '{enum_name}' should appear in output"
 
         # Property: "enum" type should be indicated
-        assert "enum" in result.lower(), \
-            "Enum type should be indicated in output"
-
+        assert "enum" in result.lower(), "Enum type should be indicated in output"

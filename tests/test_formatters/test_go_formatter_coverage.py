@@ -2,6 +2,7 @@
 """Tests for Go formatter to improve coverage."""
 
 import pytest
+
 from tree_sitter_analyzer.formatters.go_formatter import GoTableFormatter
 
 
@@ -400,7 +401,9 @@ class TestGoTableFormatterHelperMethods:
     def test_extract_doc_summary(self):
         """Test _extract_doc_summary."""
         formatter = GoTableFormatter("full")
-        result = formatter._extract_doc_summary("This is a long docstring that should be truncated")
+        result = formatter._extract_doc_summary(
+            "This is a long docstring that should be truncated"
+        )
         assert len(result) <= 50 or "..." not in result
 
     def test_extract_doc_summary_empty(self):

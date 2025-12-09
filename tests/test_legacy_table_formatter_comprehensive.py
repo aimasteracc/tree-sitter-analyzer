@@ -100,7 +100,9 @@ class TestFullTableFormat:
 
         assert "| Extends | Person |" in result
 
-    def test_format_class_with_implements(self, formatter: LegacyTableFormatter) -> None:
+    def test_format_class_with_implements(
+        self, formatter: LegacyTableFormatter
+    ) -> None:
         """Test formatting class with implements."""
         data = {
             "classes": [
@@ -359,11 +361,26 @@ class TestCompactTableFormat:
                 }
             ],
             "methods": [
-                {"name": "test1", "return_type": "void", "visibility": "public", "line_range": {"start": 10}},
-                {"name": "test2", "return_type": "String", "visibility": "private", "line_range": {"start": 20}},
+                {
+                    "name": "test1",
+                    "return_type": "void",
+                    "visibility": "public",
+                    "line_range": {"start": 10},
+                },
+                {
+                    "name": "test2",
+                    "return_type": "String",
+                    "visibility": "private",
+                    "line_range": {"start": 20},
+                },
             ],
             "fields": [
-                {"name": "field1", "type": "int", "visibility": "private", "line_range": {"start": 5}},
+                {
+                    "name": "field1",
+                    "type": "int",
+                    "visibility": "private",
+                    "line_range": {"start": 5},
+                },
             ],
         }
         result = formatter.format_structure(data)
@@ -372,7 +389,9 @@ class TestCompactTableFormat:
         assert "| Methods | 2 |" in result
         assert "| Fields | 1 |" in result
 
-    def test_compact_format_methods_table(self, formatter: LegacyTableFormatter) -> None:
+    def test_compact_format_methods_table(
+        self, formatter: LegacyTableFormatter
+    ) -> None:
         """Test compact format methods table (simplified)."""
         data = {
             "classes": [{"name": "Test"}],
@@ -522,7 +541,9 @@ class TestCSVFormat:
         assert "a:int" in result
         assert "b:int" in result
 
-    def test_csv_format_string_parameters(self, formatter: LegacyTableFormatter) -> None:
+    def test_csv_format_string_parameters(
+        self, formatter: LegacyTableFormatter
+    ) -> None:
         """Test CSV format with string-style parameters."""
         data = {
             "classes": [],

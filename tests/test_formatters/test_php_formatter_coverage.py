@@ -2,6 +2,7 @@
 """Tests for PHP formatter to improve coverage."""
 
 import pytest
+
 from tree_sitter_analyzer.formatters.php_formatter import PHPTableFormatter
 
 
@@ -406,7 +407,10 @@ class TestPHPTableFormatterHelperMethods:
     def test_extract_namespace_from_method_metadata(self):
         """Test _extract_namespace from method metadata."""
         formatter = PHPTableFormatter("full")
-        data = {"classes": [], "methods": [{"metadata": {"namespace": "MethodNamespace"}}]}
+        data = {
+            "classes": [],
+            "methods": [{"metadata": {"namespace": "MethodNamespace"}}],
+        }
         result = formatter._extract_namespace(data)
         assert result == "MethodNamespace"
 
