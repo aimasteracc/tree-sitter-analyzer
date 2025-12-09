@@ -73,7 +73,7 @@ Verify:
 Check that tests run on all platforms:
 - ✓ ubuntu-latest (Python 3.10, 3.11, 3.12, 3.13)
 - ✓ windows-latest (Python 3.11, 3.12, 3.13)
-- ✓ macos-13 (Python 3.11, 3.12, 3.13)
+- ✓ macos-latest (Python 3.11, 3.12, 3.13)
 
 ### Step 5: Verify Coverage Upload
 

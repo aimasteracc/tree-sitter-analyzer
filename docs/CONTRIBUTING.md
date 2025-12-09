@@ -233,7 +233,7 @@ Configure in GitHub repository Settings → Branches → Branch protection rules
 ### Test Environment
 
 - **Python versions**: 3.10, 3.11, 3.12, 3.13
-- **OS platforms**: ubuntu-latest, windows-latest, macos-13
+- **OS platforms**: ubuntu-latest, windows-latest, macos-latest
 - **System dependencies**: fd, ripgrep
 - **Quality checks**: mypy, black, ruff, isort, bandit, pydocstyle
 

@@ -182,7 +182,7 @@ class TestHotfixWorkflowConsistency:
         ), f"Test matrix must include Python versions {expected_python_versions}"
 
         # Verify operating systems
-        expected_os = ["ubuntu-latest", "windows-latest", "macos-13"]
+        expected_os = ["ubuntu-latest", "windows-latest", "macos-latest"]
         actual_os = matrix.get("os", [])
         assert (
             actual_os == expected_os

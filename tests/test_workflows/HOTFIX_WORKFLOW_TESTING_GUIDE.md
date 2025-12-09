@@ -119,9 +119,9 @@ Compare the hotfix workflow execution with a recent release workflow execution:
    ├─ Test Matrix (windows-latest, Python 3.11) - PASSED
    ├─ Test Matrix (windows-latest, Python 3.12) - PASSED
    ├─ Test Matrix (windows-latest, Python 3.13) - PASSED
-   ├─ Test Matrix (macos-13, Python 3.11) - PASSED
-   ├─ Test Matrix (macos-13, Python 3.12) - PASSED
-   └─ Test Matrix (macos-13, Python 3.13) - PASSED
+   ├─ Test Matrix (macos-latest, Python 3.11) - PASSED
+   ├─ Test Matrix (macos-latest, Python 3.12) - PASSED
+   └─ Test Matrix (macos-latest, Python 3.13) - PASSED
 
 ✅ Build and Deploy Job
    ├─ Build package - PASSED

@@ -92,7 +92,11 @@ def verify_reusable_test_workflow():
                     if "os" not in matrix:
                         errors.append("Missing os in matrix")
                     else:
-                        expected_os = ["ubuntu-latest", "windows-latest", "macos-13"]
+                        expected_os = [
+                            "ubuntu-latest",
+                            "windows-latest",
+                            "macos-latest",
+                        ]
                         if matrix["os"] != expected_os:
                             errors.append(
                                 f"OS matrix should be {expected_os}, got {matrix['os']}"
@@ -240,7 +244,7 @@ def verify_composite_action():
                 if "if" in step:
                     if "ubuntu-latest" in step["if"]:
                         has_linux = True
-                    if "macos-13" in step["if"]:
+                    if "macos-" in step["if"] or "macos-latest" in step["if"]:
                         has_macos = True
                     if "windows-latest" in step["if"]:
                         has_windows = True

@@ -107,7 +107,7 @@ These tests validate **all requirements** (1.1-7.5) and ensure:
 
 - ✅ Consistent test configurations across all branches
 - ✅ Identical Python versions (3.10, 3.11, 3.12, 3.13)
-- ✅ Identical operating systems (ubuntu-latest, windows-latest, macos-13)
+- ✅ Identical operating systems (ubuntu-latest, windows-latest, macos-latest)
 - ✅ All-extras installation flag usage
 - ✅ Quality check presence and consistency
 - ✅ Coverage configuration standardization

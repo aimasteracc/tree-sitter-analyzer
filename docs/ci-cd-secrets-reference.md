@@ -135,7 +135,7 @@ env:
 **Values**:
 - `ubuntu-latest`
 - `windows-latest`
-- `macos-13`
+- `macos-latest`
 
 **Used By**: All test jobs
 
