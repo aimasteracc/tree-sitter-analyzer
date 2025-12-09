@@ -164,10 +164,11 @@ class TestMarkdownElementExtractor:
         mock_node = Mock()
         mock_node.start_byte = 0
         mock_node.end_byte = 8
-        node_id = id(mock_node)
+        # Use position-based cache key (start_byte, end_byte)
+        cache_key = (mock_node.start_byte, mock_node.end_byte)
 
         # Cache the result
-        extractor._node_text_cache[node_id] = "# Header"
+        extractor._node_text_cache[cache_key] = "# Header"
 
         result = extractor._get_node_text_optimized(mock_node)
 

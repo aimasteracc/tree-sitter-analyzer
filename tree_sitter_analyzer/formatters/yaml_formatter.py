@@ -240,7 +240,12 @@ class YAMLFormatter(BaseFormatter):
         file_path = analysis_result.get("file_path", "")
         elements = analysis_result.get("elements", [])
 
-        output = [f"# YAML Analysis: {file_path}\n"]
+        # Extract filename from path
+        filename = file_path.split("/")[-1].split("\\")[-1]
+        if filename.endswith((".yaml", ".yml")):
+            filename = filename.rsplit(".", 1)[0]
+
+        output = [f"# {filename}\n"]
 
         # Document Overview
         output.append("## Document Overview\n")
@@ -348,7 +353,12 @@ class YAMLFormatter(BaseFormatter):
         aliases = [e for e in elements if e.get("element_type") == "alias"]
         comments = [e for e in elements if e.get("element_type") == "comment"]
 
-        output = [f"# YAML Analysis: {file_path} (Compact)\n"]
+        # Extract filename from path
+        filename = file_path.split("/")[-1].split("\\")[-1]
+        if filename.endswith((".yaml", ".yml")):
+            filename = filename.rsplit(".", 1)[0]
+
+        output = [f"# {filename}\n"]
 
         # Summary table
         output.append("## Summary\n")

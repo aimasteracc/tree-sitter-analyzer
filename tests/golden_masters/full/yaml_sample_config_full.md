@@ -1,4 +1,4 @@
-# YAML Analysis: examples/sample_config.yaml
+# sample_config
 
 ## Document Overview
 

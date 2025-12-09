@@ -1,0 +1,317 @@
+Name,Tag,Element Class,Start Line,End Line,Attributes,Children Count,Language
+html,html,structure,2,524,lang=ja,2,html
+head,head,metadata,3,25,,9,html
+meta,meta,metadata,4,5,charset=UTF-8,0,html
+meta,meta,metadata,5,6,"name=viewport; content=width=device-width, initial-scale=1.0",0,html
+meta,meta,metadata,6,7,name=description; content=HTML5包括的サンプル - Tree-sitter Analyzerのテスト用,0,html
+meta,meta,metadata,7,8,"name=keywords; content=HTML5, サンプル, テスト, tree-sitter",0,html
+meta,meta,metadata,8,9,name=author; content=Tree-sitter Analyzer Team,0,html
+title,title,metadata,9,9,,0,html
+link,link,metadata,10,11,rel=stylesheet; href=comprehensive_sample.css,0,html
+link,link,metadata,11,12,rel=icon; type=image/x-icon; href=/favicon.ico,0,html
+style,style,metadata,12,24,,0,html
+body,body,structure,26,523,,6,html
+header,header,structure,28,45,class=main-header,1,html
+nav,nav,structure,29,44,class=navigation; role=navigation; aria-label=メインナビゲーション,3,html
+div,div,structure,30,32,class=nav-brand,1,html
+h1,h1,heading,31,31,,1,html
+a,a,text,31,31,href=#home,0,html
+ul,ul,list,33,38,class=nav-menu,4,html
+li,li,list,34,34,,1,html
+a,a,text,34,34,href=#about; class=nav-link,0,html
+li,li,list,35,35,,1,html
+a,a,text,35,35,href=#features; class=nav-link,0,html
+li,li,list,36,36,,1,html
+a,a,text,36,36,href=#examples; class=nav-link,0,html
+li,li,list,37,37,,1,html
+a,a,text,37,37,href=#contact; class=nav-link,0,html
+button,button,form,39,43,class=menu-toggle; aria-label=メニュー切り替え,3,html
+span,span,structure,40,40,,0,html
+span,span,structure,41,41,,0,html
+span,span,structure,42,42,,0,html
+main,main,structure,48,399,class=main-content,7,html
+section,section,structure,50,59,id=home; class=hero-section,1,html
+div,div,structure,51,58,class=container,3,html
+h1,h1,heading,52,52,class=hero-title,0,html
+p,p,text,53,53,class=hero-subtitle,1,html
+mark,mark,text,53,53,class=highlight,0,html
+div,div,structure,54,57,class=hero-actions,2,html
+button,button,form,55,55,class=btn btn-primary; onclick=showAlert(),0,html
+a,a,text,56,56,href=#features; class=btn btn-secondary,0,html
+section,section,structure,62,93,id=about; class=about-section,1,html
+div,div,structure,63,92,class=container,2,html
+header,header,structure,64,67,,2,html
+h2,h2,heading,65,65,,0,html
+p,p,text,66,66,class=section-subtitle,0,html
+article,article,structure,69,91,class=about-content,5,html
+h3,h3,heading,70,70,,0,html
+p,p,text,71,71,,1,html
+strong,strong,text,71,71,,0,html
+p,p,text,72,72,,0,html
+details,details,unknown,74,85,,2,html
+summary,summary,unknown,75,75,,0,html
+ul,ul,list,76,84,,7,html
+li,li,list,77,77,,1,html
+em,em,text,77,77,,0,html
+li,li,list,78,78,,1,html
+strong,strong,text,78,78,,0,html
+li,li,list,79,79,,1,html
+code,code,unknown,79,79,,0,html
+li,li,list,80,80,,0,html
+li,li,list,81,81,,0,html
+li,li,list,82,82,,0,html
+li,li,list,83,83,,0,html
+blockquote,blockquote,unknown,87,90,cite=https://developer.mozilla.org/ja/docs/Web/HTML,2,html
+p,p,text,88,88,,0,html
+footer,footer,structure,89,89,,1,html
+cite,cite,unknown,89,89,,0,html
+section,section,structure,96,116,id=features; class=features-section,1,html
+div,div,structure,97,115,class=container,2,html
+h2,h2,heading,98,98,,0,html
+div,div,structure,101,114,class=features-grid,3,html
+div,div,structure,102,105,class=feature-card,2,html
+h3,h3,heading,103,103,,0,html
+p,p,text,104,104,,0,html
+div,div,structure,106,109,class=feature-card,2,html
+h3,h3,heading,107,107,,0,html
+p,p,text,108,108,,0,html
+div,div,structure,110,113,class=feature-card,2,html
+h3,h3,heading,111,111,,0,html
+p,p,text,112,112,,0,html
+section,section,structure,119,226,id=contact; class=form-section,1,html
+div,div,structure,120,225,class=container,2,html
+h2,h2,heading,121,121,,0,html
+form,form,form,123,224,class=contact-form; action=/submit; method=post; enctype=multipart/form-data,3,html
+fieldset,fieldset,form,124,151,,6,html
+legend,legend,form,125,125,,0,html
+div,div,structure,127,130,class=form-group,2,html
+label,label,form,128,128,for=name,1,html
+span,span,structure,128,128,class=required,0,html
+input,input,form,129,130,type=text; id=name; name=name; required; placeholder=山田太郎,0,html
+div,div,structure,132,135,class=form-group,2,html
+label,label,form,133,133,for=email,1,html
+span,span,structure,133,133,class=required,0,html
+input,input,form,134,135,type=email; id=email; name=email; required; placeholder=example@email.com,0,html
+div,div,structure,137,140,class=form-group,2,html
+label,label,form,138,138,for=phone,0,html
+input,input,form,139,140,type=tel; id=phone; name=phone; pattern=[0-9]{3}-[0-9]{4}-[0-9]{4}; placeholder=090-1234-5678,0,html
+div,div,structure,142,145,class=form-group,2,html
+label,label,form,143,143,for=birthdate,0,html
+input,input,form,144,145,type=date; id=birthdate; name=birthdate,0,html
+div,div,structure,147,150,class=form-group,2,html
+label,label,form,148,148,for=website,0,html
+input,input,form,149,150,type=url; id=website; name=website; placeholder=https://example.com,0,html
+fieldset,fieldset,form,153,218,,7,html
+legend,legend,form,154,154,,0,html
+div,div,structure,156,170,class=form-group,2,html
+label,label,form,157,157,for=category,0,html
+select,select,form,158,169,id=category; name=category,3,html
+option,option,form,159,159,value,0,html
+optgroup,optgroup,form,160,164,label=技術関連,3,html
+option,option,form,161,161,value=bug,0,html
+option,option,form,162,162,value=feature,0,html
+option,option,form,163,163,value=support,0,html
+optgroup,optgroup,form,165,168,label=その他,2,html
+option,option,form,166,166,value=general,0,html
+option,option,form,167,167,value=feedback,0,html
+div,div,structure,172,184,class=form-group,2,html
+label,label,form,173,173,for=priority,0,html
+div,div,structure,174,183,class=radio-group,6,html
+input,input,form,175,176,type=radio; id=low; name=priority; value=low,0,html
+label,label,form,176,176,for=low,0,html
+input,input,form,178,179,type=radio; id=medium; name=priority; value=medium; checked,0,html
+label,label,form,179,179,for=medium,0,html
+input,input,form,181,182,type=radio; id=high; name=priority; value=high,0,html
+label,label,form,182,182,for=high,0,html
+div,div,structure,186,201,class=form-group,2,html
+label,label,form,187,187,for=features,0,html
+div,div,structure,188,200,class=checkbox-group,8,html
+input,input,form,189,190,type=checkbox; id=html-analysis; name=features; value=html,0,html
+label,label,form,190,190,for=html-analysis,0,html
+input,input,form,192,193,type=checkbox; id=css-analysis; name=features; value=css,0,html
+label,label,form,193,193,for=css-analysis,0,html
+input,input,form,195,196,type=checkbox; id=js-analysis; name=features; value=javascript,0,html
+label,label,form,196,196,for=js-analysis,0,html
+input,input,form,198,199,type=checkbox; id=mcp-integration; name=features; value=mcp,0,html
+label,label,form,199,199,for=mcp-integration,0,html
+div,div,structure,203,206,class=form-group,2,html
+label,label,form,204,204,for=message,0,html
+textarea,textarea,form,205,205,id=message; name=message; rows=5; placeholder=ご質問やご要望をお聞かせください...,0,html
+div,div,structure,208,211,class=form-group,2,html
+label,label,form,209,209,for=attachment,0,html
+input,input,form,210,211,"type=file; id=attachment; name=attachment; accept=.txt,.pdf,.doc,.docx",0,html
+div,div,structure,213,217,class=form-group,3,html
+label,label,form,214,214,for=experience,0,html
+input,input,form,215,216,type=range; id=experience; name=experience; min=1; max=10; value=5,0,html
+output,output,unknown,216,216,for=experience,0,html
+div,div,structure,220,223,class=form-actions,2,html
+button,button,form,221,221,type=submit; class=btn btn-primary,0,html
+button,button,form,222,222,type=reset; class=btn btn-secondary,0,html
+section,section,structure,229,267,id=media; class=media-section,1,html
+div,div,structure,230,266,class=container,2,html
+h2,h2,heading,231,231,,0,html
+div,div,structure,233,265,class=media-grid,3,html
+figure,figure,unknown,235,242,class=media-item,2,html
+picture,picture,media,236,240,,3,html
+source,source,media,237,238,media=(min-width: 800px); srcset=large-image.webp; type=image/webp,0,html
+source,source,media,238,239,media=(min-width: 400px); srcset=medium-image.webp; type=image/webp,0,html
+img,img,media,239,240,src=small-image.jpg; alt=Tree-sitter Analyzerのロゴ; loading=lazy,0,html
+figcaption,figcaption,unknown,241,241,,0,html
+figure,figure,unknown,245,254,class=media-item,2,html
+video,video,media,246,252,controls; width=400; height=300; poster=video-poster.jpg,5,html
+source,source,media,247,248,src=demo-video.mp4; type=video/mp4,0,html
+source,source,media,248,249,src=demo-video.webm; type=video/webm,0,html
+track,track,media,249,250,kind=subtitles; src=subtitles-ja.vtt; srclang=ja; label=日本語,0,html
+track,track,media,250,251,kind=subtitles; src=subtitles-en.vtt; srclang=en; label=English,0,html
+p,p,text,251,251,,0,html
+figcaption,figcaption,unknown,253,253,,0,html
+figure,figure,unknown,257,264,class=media-item,2,html
+audio,audio,media,258,262,controls,3,html
+source,source,media,259,260,src=demo-audio.mp3; type=audio/mpeg,0,html
+source,source,media,260,261,src=demo-audio.ogg; type=audio/ogg,0,html
+p,p,text,261,261,,0,html
+figcaption,figcaption,unknown,263,263,,0,html
+section,section,structure,270,333,id=data; class=table-section,1,html
+div,div,structure,271,332,class=container,2,html
+h2,h2,heading,272,272,,0,html
+table,table,table,274,331,class=data-table,4,html
+caption,caption,table,275,275,,0,html
+thead,thead,table,276,283,,1,html
+tr,tr,table,277,282,,4,html
+th,th,table,278,278,scope=col,0,html
+th,th,table,279,279,scope=col,0,html
+th,th,table,280,280,scope=col,0,html
+th,th,table,281,281,scope=col,0,html
+tbody,tbody,table,284,323,,7,html
+tr,tr,table,285,290,,4,html
+th,th,table,286,286,scope=row; rowspan=3,0,html
+td,td,table,287,287,,1,html
+code,code,unknown,287,287,,0,html
+td,td,table,288,288,,0,html
+td,td,table,289,289,class=frequency high,0,html
+tr,tr,table,291,295,,3,html
+td,td,table,292,292,,1,html
+code,code,unknown,292,292,,0,html
+td,td,table,293,293,,0,html
+td,td,table,294,294,class=frequency high,0,html
+tr,tr,table,296,300,,3,html
+td,td,table,297,297,,1,html
+code,code,unknown,297,297,,0,html
+td,td,table,298,298,,0,html
+td,td,table,299,299,class=frequency high,0,html
+tr,tr,table,301,306,,4,html
+th,th,table,302,302,scope=row; rowspan=2,0,html
+td,td,table,303,303,,1,html
+code,code,unknown,303,303,,0,html
+td,td,table,304,304,,0,html
+td,td,table,305,305,class=frequency high,0,html
+tr,tr,table,307,311,,3,html
+td,td,table,308,308,,1,html
+code,code,unknown,308,308,,0,html
+td,td,table,309,309,,0,html
+td,td,table,310,310,class=frequency high,0,html
+tr,tr,table,312,317,,4,html
+th,th,table,313,313,scope=row; rowspan=2,0,html
+td,td,table,314,314,,1,html
+code,code,unknown,314,314,,0,html
+td,td,table,315,315,,0,html
+td,td,table,316,316,class=frequency medium,0,html
+tr,tr,table,318,322,,3,html
+td,td,table,319,319,,1,html
+code,code,unknown,319,319,,0,html
+td,td,table,320,320,,0,html
+td,td,table,321,321,class=frequency medium,0,html
+tfoot,tfoot,table,324,330,,1,html
+tr,tr,table,325,329,,1,html
+td,td,table,326,328,colspan=4,1,html
+small,small,text,327,327,,0,html
+section,section,structure,336,398,id=lists; class=lists-section,1,html
+div,div,structure,337,397,class=container,2,html
+h2,h2,heading,338,338,,0,html
+div,div,structure,340,396,class=lists-grid,3,html
+div,div,structure,342,361,class=list-item,2,html
+h3,h3,heading,343,343,,0,html
+ul,ul,list,344,360,,3,html
+li,li,list,345,351,,1,html
+ul,ul,list,346,350,,3,html
+li,li,list,347,347,,0,html
+li,li,list,348,348,,0,html
+li,li,list,349,349,,0,html
+li,li,list,352,358,,1,html
+ul,ul,list,353,357,,3,html
+li,li,list,354,354,,0,html
+li,li,list,355,355,,0,html
+li,li,list,356,356,,0,html
+li,li,list,359,359,,0,html
+div,div,structure,364,377,class=list-item,2,html
+h3,h3,heading,365,365,,0,html
+ol,ol,list,366,376,,4,html
+li,li,list,367,372,,1,html
+ol,ol,list,368,371,type=a,2,html
+li,li,list,369,369,,0,html
+li,li,list,370,370,,0,html
+li,li,list,373,373,,0,html
+li,li,list,374,374,,0,html
+li,li,list,375,375,,0,html
+div,div,structure,380,395,class=list-item,2,html
+h3,h3,heading,381,381,,0,html
+dl,dl,list,382,394,,8,html
+dt,dt,list,383,383,,0,html
+dd,dd,list,384,384,,0,html
+dt,dt,list,386,386,,0,html
+dd,dd,list,387,387,,0,html
+dt,dt,list,389,389,,0,html
+dd,dd,list,390,390,,0,html
+dt,dt,list,392,392,,0,html
+dd,dd,list,393,393,,0,html
+aside,aside,structure,402,421,class=sidebar,2,html
+div,div,structure,403,412,class=widget,2,html
+h3,h3,heading,404,404,,0,html
+nav,nav,structure,405,411,,1,html
+ul,ul,list,406,410,,3,html
+li,li,list,407,407,,1,html
+a,a,text,407,407,href=https://github.com/aimasteracc/tree-sitter-analyzer; target=_blank; rel=noopener,0,html
+li,li,list,408,408,,1,html
+a,a,text,408,408,href=https://pypi.org/project/tree-sitter-analyzer/; target=_blank; rel=noopener,0,html
+li,li,list,409,409,,1,html
+a,a,text,409,409,href=https://tree-sitter.github.io/tree-sitter/; target=_blank; rel=noopener,0,html
+div,div,structure,414,420,class=widget,2,html
+h3,h3,heading,415,415,,0,html
+div,div,structure,416,419,class=news-item,2,html
+time,time,unknown,417,417,datetime=2025-10-13,0,html
+p,p,text,418,418,,0,html
+footer,footer,structure,424,464,class=main-footer,1,html
+div,div,structure,425,463,class=container,2,html
+div,div,structure,426,452,class=footer-content,3,html
+div,div,structure,427,433,class=footer-section,3,html
+h4,h4,heading,428,428,,0,html
+p,p,text,429,429,,0,html
+address,address,unknown,430,432,,1,html
+p,p,text,431,431,,1,html
+a,a,text,431,431,href=mailto:contact@example.com,0,html
+div,div,structure,435,442,class=footer-section,2,html
+h4,h4,heading,436,436,,0,html
+ul,ul,list,437,441,,3,html
+li,li,list,438,438,,1,html
+a,a,text,438,438,href=#getting-started,0,html
+li,li,list,439,439,,1,html
+a,a,text,439,439,href=#api-reference,0,html
+li,li,list,440,440,,1,html
+a,a,text,440,440,href=#examples,0,html
+div,div,structure,444,451,class=footer-section,2,html
+h4,h4,heading,445,445,,0,html
+ul,ul,list,446,450,,3,html
+li,li,list,447,447,,1,html
+a,a,text,447,447,href=#discussions,0,html
+li,li,list,448,448,,1,html
+a,a,text,448,448,href=#issues,0,html
+li,li,list,449,449,,1,html
+a,a,text,449,449,href=#contributing,0,html
+div,div,structure,454,462,class=footer-bottom,2,html
+p,p,text,455,455,,0,html
+p,p,text,456,461,,1,html
+small,small,text,457,460,,2,html
+abbr,abbr,unknown,458,458,title=HyperText Markup Language version 5,0,html
+a,a,text,459,459,href=#top,0,html
+script,script,metadata,467,505,,0,html
+script,script,metadata,508,522,type=application/ld+json,0,html
