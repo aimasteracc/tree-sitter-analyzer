@@ -13,6 +13,7 @@ from typing import Any
 from ...core.query_service import QueryService
 from ...language_detector import detect_language_from_file
 from ..utils.file_output_manager import FileOutputManager
+from ..utils.format_helper import format_for_file_output
 from .base_tool import BaseMCPTool
 
 logger = logging.getLogger(__name__)
@@ -72,11 +73,17 @@ class QueryTool(BaseMCPTool):
                         "type": "string",
                         "description": "Filter expression to refine results (e.g., 'name=main', 'name=~get*,public=true')",
                     },
-                    "output_format": {
+                    "result_format": {
                         "type": "string",
                         "enum": ["json", "summary"],
                         "default": "json",
-                        "description": "Output format",
+                        "description": "Result format for query results",
+                    },
+                    "output_format": {
+                        "type": "string",
+                        "enum": ["json", "toon"],
+                        "description": "Output format: 'json' (default) or 'toon' (50-70% token reduction)",
+                        "default": "json",
                     },
                     "output_file": {
                         "type": "string",
@@ -157,9 +164,10 @@ class QueryTool(BaseMCPTool):
 
             # Get query parameters (already validated above)
             filter_expression = arguments.get("filter")
-            output_format = arguments.get("output_format", "json")
+            result_format = arguments.get("result_format", "json")
             output_file = arguments.get("output_file")
             suppress_output = arguments.get("suppress_output", False)
+            output_format = arguments.get("output_format", "json")
 
             if query_key and query_string:
                 return {
@@ -191,7 +199,7 @@ class QueryTool(BaseMCPTool):
                 }
 
             # Format output
-            if output_format == "summary":
+            if result_format == "summary":
                 formatted_result = self._format_summary(
                     results, query_key or "custom", language
                 )
@@ -208,8 +216,6 @@ class QueryTool(BaseMCPTool):
             # Handle file output if requested
             if output_file:
                 try:
-                    import json
-
                     # Generate base name from original file path if not provided
                     if not output_file or output_file.strip() == "":
                         base_name = (
@@ -218,14 +224,14 @@ class QueryTool(BaseMCPTool):
                     else:
                         base_name = output_file
 
-                    # Convert result to JSON string for file output
-                    json_content = json.dumps(
-                        formatted_result, indent=2, ensure_ascii=False
+                    # Format content based on output_format
+                    formatted_content, _ = format_for_file_output(
+                        formatted_result, output_format
                     )
 
                     # Save to file with automatic extension detection
                     saved_file_path = self.file_output_manager.save_to_file(
-                        content=json_content, base_name=base_name
+                        content=formatted_content, base_name=base_name
                     )
 
                     # Add file output info to result
@@ -423,12 +429,19 @@ class QueryTool(BaseMCPTool):
             if not isinstance(filter_expr, str):
                 raise ValueError("filter must be a string")
 
+        if "result_format" in arguments:
+            result_format = arguments["result_format"]
+            if not isinstance(result_format, str):
+                raise ValueError("result_format must be a string")
+            if result_format not in ["json", "summary"]:
+                raise ValueError("result_format must be one of: json, summary")
+
         if "output_format" in arguments:
             output_format = arguments["output_format"]
             if not isinstance(output_format, str):
                 raise ValueError("output_format must be a string")
-            if output_format not in ["json", "summary"]:
-                raise ValueError("output_format must be one of: json, summary")
+            if output_format not in ["json", "toon"]:
+                raise ValueError("output_format must be one of: json, toon")
 
         # Validate output_file if provided
         if "output_file" in arguments:

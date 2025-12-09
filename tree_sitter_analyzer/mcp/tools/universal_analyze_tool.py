@@ -90,6 +90,12 @@ class UniversalAnalyzeTool(BaseMCPTool):
                         "description": "Include available query information",
                         "default": False,
                     },
+                    "output_format": {
+                        "type": "string",
+                        "enum": ["json", "toon"],
+                        "description": "Output format: 'json' (default) or 'toon' (50-70% token reduction)",
+                        "default": "json",
+                    },
                 },
                 "required": ["file_path"],
                 "additionalProperties": False,

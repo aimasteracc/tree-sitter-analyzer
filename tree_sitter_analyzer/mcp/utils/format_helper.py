@@ -1,0 +1,147 @@
+#!/usr/bin/env python3
+"""
+Format Helper for MCP Tools
+
+Provides utility functions for formatting MCP tool output in different formats
+(JSON, TOON) with consistent behavior across all tools.
+"""
+
+import json
+from typing import Any
+
+from ...utils import setup_logger
+
+logger = setup_logger(__name__)
+
+
+def format_output(data: dict[str, Any], output_format: str = "json") -> str:
+    """
+    Format data according to the specified output format.
+
+    Args:
+        data: Dictionary data to format
+        output_format: Output format ('json' or 'toon')
+
+    Returns:
+        Formatted string representation of the data
+    """
+    if output_format == "toon":
+        return format_as_toon(data)
+    else:
+        return format_as_json(data)
+
+
+def format_as_json(data: dict[str, Any]) -> str:
+    """
+    Format data as JSON string.
+
+    Args:
+        data: Dictionary data to format
+
+    Returns:
+        JSON formatted string
+    """
+    return json.dumps(data, indent=2, ensure_ascii=False)
+
+
+def format_as_toon(data: dict[str, Any]) -> str:
+    """
+    Format data as TOON string.
+
+    Args:
+        data: Dictionary data to format
+
+    Returns:
+        TOON formatted string
+    """
+    try:
+        from ...formatters.toon_formatter import ToonFormatter
+
+        formatter = ToonFormatter()
+        return formatter.format(data)
+    except ImportError as e:
+        logger.warning(f"ToonFormatter not available, falling back to JSON: {e}")
+        return format_as_json(data)
+    except Exception as e:
+        logger.warning(f"TOON formatting failed, falling back to JSON: {e}")
+        return format_as_json(data)
+
+
+def get_formatter(output_format: str = "json") -> Any:
+    """
+    Get a formatter instance for the specified format.
+
+    Args:
+        output_format: Output format ('json' or 'toon')
+
+    Returns:
+        Formatter instance with format() method
+    """
+    if output_format == "toon":
+        try:
+            from ...formatters.toon_formatter import ToonFormatter
+
+            return ToonFormatter()
+        except ImportError:
+            logger.warning("ToonFormatter not available, using JSON formatter")
+            return JsonFormatter()
+    return JsonFormatter()
+
+
+class JsonFormatter:
+    """Simple JSON formatter implementing the format() interface."""
+
+    def format(self, data: Any) -> str:
+        """Format data as JSON string."""
+        return json.dumps(data, indent=2, ensure_ascii=False)
+
+
+def apply_output_format(
+    result: dict[str, Any],
+    output_format: str = "json",
+    return_formatted_string: bool = False,
+) -> dict[str, Any] | str:
+    """
+    Apply output format to a result dictionary.
+
+    This function can either:
+    1. Return the original dict (for MCP protocol compatibility)
+    2. Return a formatted string (for file output or direct display)
+
+    Args:
+        result: Result dictionary from MCP tool execution
+        output_format: Output format ('json' or 'toon')
+        return_formatted_string: If True, return formatted string instead of dict
+
+    Returns:
+        Either the original dict or a formatted string
+    """
+    if return_formatted_string:
+        return format_output(result, output_format)
+    else:
+        # For MCP protocol, we return the dict as-is
+        # The format is applied when saving to file or displaying
+        return result
+
+
+def format_for_file_output(
+    data: dict[str, Any], output_format: str = "json"
+) -> tuple[str, str]:
+    """
+    Format data for file output and return content with appropriate extension.
+
+    Args:
+        data: Dictionary data to format
+        output_format: Output format ('json' or 'toon')
+
+    Returns:
+        Tuple of (formatted_content, file_extension)
+    """
+    if output_format == "toon":
+        content = format_as_toon(data)
+        extension = ".toon"
+    else:
+        content = format_as_json(data)
+        extension = ".json"
+
+    return content, extension

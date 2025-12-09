@@ -351,6 +351,12 @@ class AnalyzeScaleTool(BaseMCPTool):
                     "description": "Include LLM analysis guidance",
                     "default": True,
                 },
+                "output_format": {
+                    "type": "string",
+                    "enum": ["json", "toon"],
+                    "description": "Output format: 'json' (default) or 'toon' (50-70% token reduction)",
+                    "default": "json",
+                },
             },
             "required": ["file_path"],
             "additionalProperties": False,

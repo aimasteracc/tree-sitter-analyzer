@@ -14,6 +14,7 @@ from typing import Any
 
 from ..utils.error_handler import handle_mcp_errors
 from ..utils.file_output_manager import FileOutputManager
+from ..utils.format_helper import format_for_file_output
 from ..utils.gitignore_detector import get_default_detector
 from ..utils.search_cache import get_default_cache
 from . import fd_rg_utils
@@ -199,6 +200,12 @@ Choose output format parameters based on your needs to minimize token usage and 
                         "type": "boolean",
                         "description": "Enable parallel processing for multiple root directories to improve performance. Default: True",
                         "default": True,
+                    },
+                    "output_format": {
+                        "type": "string",
+                        "enum": ["json", "toon"],
+                        "description": "Output format: 'json' (default) or 'toon' (50-70% token reduction)",
+                        "default": "json",
                     },
                 },
                 "required": ["query"],
@@ -644,15 +651,16 @@ Choose output format parameters based on your needs to minimize token usage and 
             output_file = arguments.get("output_file")
             suppress_output = arguments.get("suppress_output", False)
 
+            # Get output format
+            output_format = arguments.get("output_format", "json")
+
             # Handle file output if requested
             if output_file:
                 try:
-                    # Save full result to file
-                    import json
-
-                    json_content = json.dumps(result, indent=2, ensure_ascii=False)
+                    # Format content based on output_format
+                    formatted_content, _ = format_for_file_output(result, output_format)
                     file_path = self.file_output_manager.save_to_file(
-                        content=json_content, base_name=output_file
+                        content=formatted_content, base_name=output_file
                     )
 
                     # If suppress_output is True, return minimal response
@@ -708,16 +716,15 @@ Choose output format parameters based on your needs to minimize token usage and 
             # Handle output suppression and file output for summary results
             output_file = arguments.get("output_file")
             suppress_output = arguments.get("suppress_output", False)
+            output_format = arguments.get("output_format", "json")
 
             # Handle file output if requested
             if output_file:
                 try:
-                    # Save full result to file
-                    import json
-
-                    json_content = json.dumps(result, indent=2, ensure_ascii=False)
+                    # Format content based on output_format
+                    formatted_content, _ = format_for_file_output(result, output_format)
                     file_path = self.file_output_manager.save_to_file(
-                        content=json_content, base_name=output_file
+                        content=formatted_content, base_name=output_file
                     )
 
                     # If suppress_output is True, return minimal response
@@ -769,6 +776,7 @@ Choose output format parameters based on your needs to minimize token usage and 
         # Handle output suppression and file output
         output_file = arguments.get("output_file")
         suppress_output = arguments.get("suppress_output", False)
+        output_format = arguments.get("output_format", "json")
 
         # Always add results to the base result for caching
         result["results"] = matches
@@ -791,14 +799,14 @@ Choose output format parameters based on your needs to minimize token usage and 
                     ),
                 }
 
-                # Convert to JSON for file output
-                import json
-
-                json_content = json.dumps(file_content, indent=2, ensure_ascii=False)
+                # Format content based on output_format
+                formatted_content, _ = format_for_file_output(
+                    file_content, output_format
+                )
 
                 # Save to file
                 saved_file_path = self.file_output_manager.save_to_file(
-                    content=json_content, base_name=output_file
+                    content=formatted_content, base_name=output_file
                 )
 
                 result["output_file"] = output_file

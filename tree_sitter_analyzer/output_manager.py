@@ -15,9 +15,67 @@ from .utils import log_error, log_warning
 class OutputManager:
     """Manages different types of output for CLI"""
 
-    def __init__(self, quiet: bool = False, json_output: bool = False):
+    SUPPORTED_FORMATS = ["json", "yaml", "csv", "table", "toon"]
+
+    def __init__(
+        self,
+        quiet: bool = False,
+        json_output: bool = False,
+        output_format: str = "json",
+    ):
         self.quiet = quiet
         self.json_output = json_output
+        self.output_format = output_format if not json_output else "json"
+        self._formatter_registry: dict[str, Any] = self._init_formatters()
+
+    def _init_formatters(self) -> dict[str, Any]:
+        """
+        Initialize format registry with unified Formatter interface.
+
+        All formatters must implement a format(data: Any) -> str method.
+        This can be either a callable or an object with a .format() method.
+
+        Returns:
+            Dictionary mapping format names to formatter instances
+        """
+        formatters: dict[str, Any] = {}
+
+        # JSON formatter (built-in)
+        class JsonFormatter:
+            """Simple JSON formatter implementing the Formatter protocol."""
+
+            def format(self, data: Any) -> str:
+                if isinstance(data, str):
+                    return data
+                return json.dumps(data, indent=2, ensure_ascii=False)
+
+        formatters["json"] = JsonFormatter()
+
+        # TOON formatter (if available)
+        try:
+            from .formatters.toon_formatter import ToonFormatter
+
+            formatters["toon"] = ToonFormatter()
+        except ImportError:
+            pass
+
+        # YAML formatter (if available)
+        try:
+            import yaml
+
+            class YamlFormatter:
+                """YAML formatter implementing the Formatter protocol."""
+
+                def format(self, data: Any) -> str:
+                    if isinstance(data, str):
+                        return data
+                    return yaml.dump(data, default_flow_style=False, allow_unicode=True)
+
+            formatters["yaml"] = YamlFormatter()
+        except ImportError:
+            pass
+
+        return formatters
 
     def info(self, message: str) -> None:
         """Output informational message to user"""
@@ -56,12 +114,41 @@ class OutputManager:
         """Output success message (alias for success)"""
         self.success(message)
 
-    def data(self, data: Any, format_type: str = "json") -> None:
-        """Output structured data"""
-        if self.json_output or format_type == "json":
-            print(json.dumps(data, indent=2, ensure_ascii=False))
+    def data(self, data: Any, format_type: str | None = None) -> None:
+        """
+        Output structured data in specified format.
+
+        Uses the unified Formatter interface - no runtime type checks needed.
+
+        Args:
+            data: Data to output
+            format_type: Format to use (json, toon, yaml, etc.)
+                        If None, uses self.output_format
+        """
+        fmt = format_type or self.output_format
+
+        # Legacy compatibility: if json_output flag is set, force JSON
+        if self.json_output:
+            fmt = "json"
+
+        # Try using registered formatter
+        formatter = self._formatter_registry.get(fmt)
+        if formatter:
+            # Check if formatter has .format() method or is callable
+            if hasattr(formatter, "format"):
+                output = formatter.format(data)
+            elif callable(formatter):
+                output = formatter(data)
+            else:
+                # Fallback to JSON
+                output = json.dumps(data, indent=2, ensure_ascii=False)
+            print(output)
         else:
-            self._format_data(data)
+            # Fallback to legacy behavior
+            if fmt == "json":
+                print(json.dumps(data, indent=2, ensure_ascii=False))
+            else:
+                self._format_data(data)
 
     def _format_data(self, data: Any) -> None:
         """Format data for human-readable output"""
