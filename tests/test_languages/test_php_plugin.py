@@ -3,11 +3,10 @@
 import pytest
 import tree_sitter
 
-from tree_sitter_analyzer.languages.php_plugin import PHPPlugin, PHPElementExtractor
-
+from tree_sitter_analyzer.languages.php_plugin import PHPElementExtractor, PHPPlugin
 
 # Sample PHP code snippets for testing
-SIMPLE_CLASS_CODE = '''<?php
+SIMPLE_CLASS_CODE = """<?php
 namespace App\\Models;
 
 use App\\Contracts\\UserInterface;
@@ -16,29 +15,29 @@ use App\\Traits\\HasTimestamps;
 class User implements UserInterface
 {
     use HasTimestamps;
-    
+
     private string $name;
     private int $age;
-    
+
     public function __construct(string $name, int $age)
     {
         $this->name = $name;
         $this->age = $age;
     }
-    
+
     public function getName(): string
     {
         return $this->name;
     }
-    
+
     public function getAge(): int
     {
         return $this->age;
     }
 }
-'''
+"""
 
-INTERFACE_CODE = '''<?php
+INTERFACE_CODE = """<?php
 namespace App\\Contracts;
 
 interface UserInterface
@@ -46,29 +45,29 @@ interface UserInterface
     public function getName(): string;
     public function getAge(): int;
 }
-'''
+"""
 
-TRAIT_CODE = '''<?php
+TRAIT_CODE = """<?php
 namespace App\\Traits;
 
 trait HasTimestamps
 {
     private ?\\DateTime $createdAt = null;
     private ?\\DateTime $updatedAt = null;
-    
+
     public function getCreatedAt(): ?\\DateTime
     {
         return $this->createdAt;
     }
-    
+
     public function setCreatedAt(\\DateTime $createdAt): void
     {
         $this->createdAt = $createdAt;
     }
 }
-'''
+"""
 
-ENUM_CODE = '''<?php
+ENUM_CODE = """<?php
 namespace App\\Enums;
 
 enum UserStatus: string
@@ -76,7 +75,7 @@ enum UserStatus: string
     case Active = 'active';
     case Inactive = 'inactive';
     case Pending = 'pending';
-    
+
     public function label(): string
     {
         return match($this) {
@@ -86,9 +85,9 @@ enum UserStatus: string
         };
     }
 }
-'''
+"""
 
-ATTRIBUTE_CODE = '''<?php
+ATTRIBUTE_CODE = """<?php
 namespace App\\Controllers;
 
 use App\\Attributes\\Route;
@@ -103,15 +102,15 @@ class UserController
     {
         return [];
     }
-    
+
     #[Route('POST', '/')]
     public function store(array $data): void
     {
     }
 }
-'''
+"""
 
-COMPLEX_CLASS_CODE = '''<?php
+COMPLEX_CLASS_CODE = """<?php
 namespace App\\Services;
 
 use App\\Repositories\\UserRepository;
@@ -121,7 +120,7 @@ use Psr\\Log\\LoggerInterface;
 abstract class BaseService
 {
     protected LoggerInterface $logger;
-    
+
     public function __construct(LoggerInterface $logger)
     {
         $this->logger = $logger;
@@ -133,9 +132,9 @@ final class UserService extends BaseService
     private UserRepository $repository;
     public const MAX_USERS = 1000;
     public static int $instanceCount = 0;
-    
+
     private readonly string $serviceName;
-    
+
     public function __construct(
         LoggerInterface $logger,
         UserRepository $repository
@@ -145,31 +144,31 @@ final class UserService extends BaseService
         $this->serviceName = 'UserService';
         self::$instanceCount++;
     }
-    
+
     public function createUser(array $data): int
     {
         $this->logger->info('Creating user', $data);
         return $this->repository->create($data);
     }
-    
+
     protected function validateUser(array $data): bool
     {
         return !empty($data['name']);
     }
-    
+
     private function generateId(): string
     {
         return uniqid();
     }
-    
+
     public static function getInstanceCount(): int
     {
         return self::$instanceCount;
     }
 }
-'''
+"""
 
-FUNCTION_CODE = '''<?php
+FUNCTION_CODE = """<?php
 namespace App\\Helpers;
 
 function formatDate(\\DateTime $date): string
@@ -185,9 +184,9 @@ function calculateTotal(array $items): float
     }
     return $total;
 }
-'''
+"""
 
-USE_STATEMENTS_CODE = '''<?php
+USE_STATEMENTS_CODE = """<?php
 namespace App\\Controllers;
 
 use App\\Models\\User;
@@ -195,7 +194,7 @@ use App\\Models\\Post as BlogPost;
 use App\\Services\\{UserService, PostService};
 use function App\\Helpers\\formatDate;
 use const App\\Constants\\APP_VERSION;
-'''
+"""
 
 
 def get_tree_for_code(code: str, plugin: PHPPlugin):
@@ -254,7 +253,7 @@ class TestPHPClassExtraction:
         tree = get_tree_for_code(SIMPLE_CLASS_CODE, plugin)
         extractor = plugin.create_extractor()
         classes = extractor.extract_classes(tree, SIMPLE_CLASS_CODE)
-        
+
         assert len(classes) == 1
         cls = classes[0]
         assert "User" in cls.name
@@ -266,7 +265,7 @@ class TestPHPClassExtraction:
         tree = get_tree_for_code(INTERFACE_CODE, plugin)
         extractor = plugin.create_extractor()
         classes = extractor.extract_classes(tree, INTERFACE_CODE)
-        
+
         assert len(classes) == 1
         iface = classes[0]
         assert "UserInterface" in iface.name
@@ -278,7 +277,7 @@ class TestPHPClassExtraction:
         tree = get_tree_for_code(TRAIT_CODE, plugin)
         extractor = plugin.create_extractor()
         classes = extractor.extract_classes(tree, TRAIT_CODE)
-        
+
         assert len(classes) == 1
         trait = classes[0]
         assert "HasTimestamps" in trait.name
@@ -290,7 +289,7 @@ class TestPHPClassExtraction:
         tree = get_tree_for_code(ENUM_CODE, plugin)
         extractor = plugin.create_extractor()
         classes = extractor.extract_classes(tree, ENUM_CODE)
-        
+
         assert len(classes) == 1
         enum = classes[0]
         assert "UserStatus" in enum.name
@@ -302,7 +301,7 @@ class TestPHPClassExtraction:
         tree = get_tree_for_code(COMPLEX_CLASS_CODE, plugin)
         extractor = plugin.create_extractor()
         classes = extractor.extract_classes(tree, COMPLEX_CLASS_CODE)
-        
+
         class_names = [c.name for c in classes]
         assert any("BaseService" in name for name in class_names)
         assert any("UserService" in name for name in class_names)
@@ -313,7 +312,7 @@ class TestPHPClassExtraction:
         tree = get_tree_for_code(COMPLEX_CLASS_CODE, plugin)
         extractor = plugin.create_extractor()
         classes = extractor.extract_classes(tree, COMPLEX_CLASS_CODE)
-        
+
         base_service = next((c for c in classes if "BaseService" in c.name), None)
         assert base_service is not None
         assert base_service.is_abstract is True
@@ -324,7 +323,7 @@ class TestPHPClassExtraction:
         tree = get_tree_for_code(COMPLEX_CLASS_CODE, plugin)
         extractor = plugin.create_extractor()
         classes = extractor.extract_classes(tree, COMPLEX_CLASS_CODE)
-        
+
         user_service = next((c for c in classes if "UserService" in c.name), None)
         assert user_service is not None
         assert "final" in user_service.modifiers
@@ -335,7 +334,7 @@ class TestPHPClassExtraction:
         tree = get_tree_for_code(SIMPLE_CLASS_CODE, plugin)
         extractor = plugin.create_extractor()
         classes = extractor.extract_classes(tree, SIMPLE_CLASS_CODE)
-        
+
         user = classes[0]
         # Class should have interface information
         assert "UserInterface" in user.interfaces or "UserInterface" in str(user)
@@ -346,7 +345,7 @@ class TestPHPClassExtraction:
         tree = get_tree_for_code(COMPLEX_CLASS_CODE, plugin)
         extractor = plugin.create_extractor()
         classes = extractor.extract_classes(tree, COMPLEX_CLASS_CODE)
-        
+
         user_service = next((c for c in classes if "UserService" in c.name), None)
         assert user_service is not None
         # Superclass extraction may not be fully implemented
@@ -368,7 +367,7 @@ class TestPHPClassExtraction:
         tree = get_tree_for_code(ATTRIBUTE_CODE, plugin)
         extractor = plugin.create_extractor()
         classes = extractor.extract_classes(tree, ATTRIBUTE_CODE)
-        
+
         assert len(classes) == 1
         controller = classes[0]
         assert "UserController" in controller.name
@@ -385,7 +384,7 @@ class TestPHPFunctionExtraction:
         tree = get_tree_for_code(SIMPLE_CLASS_CODE, plugin)
         extractor = plugin.create_extractor()
         functions = extractor.extract_functions(tree, SIMPLE_CLASS_CODE)
-        
+
         func_names = [f.name for f in functions]
         assert any("__construct" in name for name in func_names)
         assert any("getName" in name for name in func_names)
@@ -397,7 +396,7 @@ class TestPHPFunctionExtraction:
         tree = get_tree_for_code(FUNCTION_CODE, plugin)
         extractor = plugin.create_extractor()
         functions = extractor.extract_functions(tree, FUNCTION_CODE)
-        
+
         func_names = [f.name for f in functions]
         assert any("formatDate" in name for name in func_names)
         assert any("calculateTotal" in name for name in func_names)
@@ -408,15 +407,15 @@ class TestPHPFunctionExtraction:
         tree = get_tree_for_code(COMPLEX_CLASS_CODE, plugin)
         extractor = plugin.create_extractor()
         functions = extractor.extract_functions(tree, COMPLEX_CLASS_CODE)
-        
+
         create_user = next((f for f in functions if "createUser" in f.name), None)
         assert create_user is not None
         assert create_user.visibility == "public"
-        
+
         validate_user = next((f for f in functions if "validateUser" in f.name), None)
         assert validate_user is not None
         assert validate_user.visibility == "protected"
-        
+
         generate_id = next((f for f in functions if "generateId" in f.name), None)
         assert generate_id is not None
         assert generate_id.visibility == "private"
@@ -427,8 +426,10 @@ class TestPHPFunctionExtraction:
         tree = get_tree_for_code(COMPLEX_CLASS_CODE, plugin)
         extractor = plugin.create_extractor()
         functions = extractor.extract_functions(tree, COMPLEX_CLASS_CODE)
-        
-        get_instance_count = next((f for f in functions if "getInstanceCount" in f.name), None)
+
+        get_instance_count = next(
+            (f for f in functions if "getInstanceCount" in f.name), None
+        )
         assert get_instance_count is not None
         assert get_instance_count.is_static is True
 
@@ -438,7 +439,7 @@ class TestPHPFunctionExtraction:
         tree = get_tree_for_code(SIMPLE_CLASS_CODE, plugin)
         extractor = plugin.create_extractor()
         functions = extractor.extract_functions(tree, SIMPLE_CLASS_CODE)
-        
+
         constructor = next((f for f in functions if "__construct" in f.name), None)
         assert constructor is not None
         assert len(constructor.parameters) == 2
@@ -449,7 +450,7 @@ class TestPHPFunctionExtraction:
         tree = get_tree_for_code(SIMPLE_CLASS_CODE, plugin)
         extractor = plugin.create_extractor()
         functions = extractor.extract_functions(tree, SIMPLE_CLASS_CODE)
-        
+
         get_name = next((f for f in functions if "getName" in f.name), None)
         assert get_name is not None
         assert get_name.return_type == "string" or "string" in str(get_name.return_type)
@@ -460,7 +461,7 @@ class TestPHPFunctionExtraction:
         tree = get_tree_for_code(INTERFACE_CODE, plugin)
         extractor = plugin.create_extractor()
         functions = extractor.extract_functions(tree, INTERFACE_CODE)
-        
+
         func_names = [f.name for f in functions]
         assert any("getName" in name for name in func_names)
         assert any("getAge" in name for name in func_names)
@@ -471,7 +472,7 @@ class TestPHPFunctionExtraction:
         tree = get_tree_for_code(TRAIT_CODE, plugin)
         extractor = plugin.create_extractor()
         functions = extractor.extract_functions(tree, TRAIT_CODE)
-        
+
         func_names = [f.name for f in functions]
         assert any("getCreatedAt" in name for name in func_names)
         assert any("setCreatedAt" in name for name in func_names)
@@ -482,7 +483,7 @@ class TestPHPFunctionExtraction:
         tree = get_tree_for_code(ENUM_CODE, plugin)
         extractor = plugin.create_extractor()
         functions = extractor.extract_functions(tree, ENUM_CODE)
-        
+
         func_names = [f.name for f in functions]
         assert any("label" in name for name in func_names)
 
@@ -505,7 +506,7 @@ class TestPHPVariableExtraction:
         tree = get_tree_for_code(SIMPLE_CLASS_CODE, plugin)
         extractor = plugin.create_extractor()
         variables = extractor.extract_variables(tree, SIMPLE_CLASS_CODE)
-        
+
         var_names = [v.name for v in variables]
         assert any("name" in name for name in var_names)
         assert any("age" in name for name in var_names)
@@ -516,7 +517,7 @@ class TestPHPVariableExtraction:
         tree = get_tree_for_code(COMPLEX_CLASS_CODE, plugin)
         extractor = plugin.create_extractor()
         variables = extractor.extract_variables(tree, COMPLEX_CLASS_CODE)
-        
+
         # Check for any constants or variables
         # Constant extraction may vary based on tree-sitter-php version
         assert isinstance(variables, list)
@@ -532,7 +533,7 @@ class TestPHPVariableExtraction:
         tree = get_tree_for_code(COMPLEX_CLASS_CODE, plugin)
         extractor = plugin.create_extractor()
         variables = extractor.extract_variables(tree, COMPLEX_CLASS_CODE)
-        
+
         instance_count = next((v for v in variables if "instanceCount" in v.name), None)
         assert instance_count is not None
         assert instance_count.is_static is True
@@ -543,7 +544,7 @@ class TestPHPVariableExtraction:
         tree = get_tree_for_code(COMPLEX_CLASS_CODE, plugin)
         extractor = plugin.create_extractor()
         variables = extractor.extract_variables(tree, COMPLEX_CLASS_CODE)
-        
+
         service_name = next((v for v in variables if "serviceName" in v.name), None)
         assert service_name is not None
         assert "readonly" in service_name.modifiers or service_name.is_final
@@ -554,10 +555,12 @@ class TestPHPVariableExtraction:
         tree = get_tree_for_code(SIMPLE_CLASS_CODE, plugin)
         extractor = plugin.create_extractor()
         variables = extractor.extract_variables(tree, SIMPLE_CLASS_CODE)
-        
+
         name_prop = next((v for v in variables if "name" in v.name), None)
         assert name_prop is not None
-        assert name_prop.variable_type == "string" or "string" in str(name_prop.variable_type)
+        assert name_prop.variable_type == "string" or "string" in str(
+            name_prop.variable_type
+        )
 
     def test_extract_protected_property(self):
         """Test extraction of protected property."""
@@ -565,7 +568,7 @@ class TestPHPVariableExtraction:
         tree = get_tree_for_code(COMPLEX_CLASS_CODE, plugin)
         extractor = plugin.create_extractor()
         variables = extractor.extract_variables(tree, COMPLEX_CLASS_CODE)
-        
+
         logger = next((v for v in variables if "logger" in v.name), None)
         assert logger is not None
         assert logger.visibility == "protected"
@@ -589,7 +592,7 @@ class TestPHPImportExtraction:
         tree = get_tree_for_code(SIMPLE_CLASS_CODE, plugin)
         extractor = plugin.create_extractor()
         imports = extractor.extract_imports(tree, SIMPLE_CLASS_CODE)
-        
+
         # Use statement extraction should return a list
         assert isinstance(imports, list)
         # We expect to find some imports
@@ -601,9 +604,11 @@ class TestPHPImportExtraction:
         tree = get_tree_for_code(USE_STATEMENTS_CODE, plugin)
         extractor = plugin.create_extractor()
         imports = extractor.extract_imports(tree, USE_STATEMENTS_CODE)
-        
+
         # Check for aliased import
-        aliased = next((i for i in imports if i.alias == "BlogPost" or "BlogPost" in str(i)), None)
+        aliased = next(
+            (i for i in imports if i.alias == "BlogPost" or "BlogPost" in str(i)), None
+        )
         # May be extracted depending on tree-sitter-php version
         assert len(imports) >= 0
 
@@ -622,7 +627,7 @@ class TestPHPImportExtraction:
         tree = get_tree_for_code(SIMPLE_CLASS_CODE, plugin)
         extractor = plugin.create_extractor()
         imports = extractor.extract_imports(tree, SIMPLE_CLASS_CODE)
-        
+
         assert all(i.start_line > 0 for i in imports)
         assert all(i.end_line >= i.start_line for i in imports)
 
@@ -635,10 +640,10 @@ class TestPHPNamespaceHandling:
         plugin = PHPPlugin()
         tree = get_tree_for_code(SIMPLE_CLASS_CODE, plugin)
         extractor = plugin.create_extractor()
-        
+
         # Extract namespace by extracting classes (which triggers namespace extraction)
         classes = extractor.extract_classes(tree, SIMPLE_CLASS_CODE)
-        
+
         # Namespace should be in the full qualified name
         user_class = classes[0]
         assert "App\\Models" in user_class.full_qualified_name
@@ -649,7 +654,7 @@ class TestPHPNamespaceHandling:
         tree = get_tree_for_code(INTERFACE_CODE, plugin)
         extractor = plugin.create_extractor()
         classes = extractor.extract_classes(tree, INTERFACE_CODE)
-        
+
         interface = classes[0]
         assert interface.full_qualified_name == "App\\Contracts\\UserInterface"
 
@@ -662,14 +667,14 @@ class TestPHPExtractorHelpers:
         extractor = PHPElementExtractor()
         extractor._node_text_cache[(0, 10)] = "test"
         extractor._reset_caches()
-        
+
         assert len(extractor._node_text_cache) == 0
         assert len(extractor._processed_nodes) == 0
 
     def test_determine_visibility_public(self):
         """Test visibility determination."""
         extractor = PHPElementExtractor()
-        
+
         assert extractor._determine_visibility(["public"]) == "public"
         assert extractor._determine_visibility(["private"]) == "private"
         assert extractor._determine_visibility(["protected"]) == "protected"
@@ -692,10 +697,10 @@ class TestPHPPluginAnalyzeFile:
         # Create temporary PHP file
         php_file = tmp_path / "Test.php"
         php_file.write_text(SIMPLE_CLASS_CODE, encoding="utf-8")
-        
+
         plugin = PHPPlugin()
         result = await plugin.analyze_file(str(php_file), None)
-        
+
         assert result.success is True
         assert result.language == "php"
         assert result.file_path == str(php_file)
@@ -722,12 +727,12 @@ class TestPHPIntegration:
         plugin = PHPPlugin()
         tree = get_tree_for_code(COMPLEX_CLASS_CODE, plugin)
         extractor = plugin.create_extractor()
-        
+
         classes = extractor.extract_classes(tree, COMPLEX_CLASS_CODE)
         functions = extractor.extract_functions(tree, COMPLEX_CLASS_CODE)
         variables = extractor.extract_variables(tree, COMPLEX_CLASS_CODE)
         imports = extractor.extract_imports(tree, COMPLEX_CLASS_CODE)
-        
+
         assert len(classes) > 0
         assert len(functions) > 0
         assert len(variables) > 0
@@ -737,6 +742,6 @@ class TestPHPIntegration:
         """Test node counting functionality."""
         plugin = PHPPlugin()
         tree = get_tree_for_code(SIMPLE_CLASS_CODE, plugin)
-        
+
         count = plugin._count_nodes(tree.root_node)
         assert count > 0

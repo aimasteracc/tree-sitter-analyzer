@@ -2,23 +2,22 @@
 """Additional SQL plugin coverage tests targeting uncovered branches."""
 
 import pytest
-from unittest.mock import Mock, patch, MagicMock
-import re
 
 from tree_sitter_analyzer.languages.sql_plugin import (
     SQLElementExtractor,
     SQLPlugin,
-    SQLColumn,
 )
 from tree_sitter_analyzer.models import (
-    SQLTable, SQLView, SQLTrigger, SQLProcedure, SQLFunction,
-    SQLIndex, SQLElementType, Class, Function
+    SQLElementType,
+    SQLTable,
+    SQLTrigger,
 )
 
 # Check if tree-sitter-sql is available
 try:
-    import tree_sitter_sql
     import tree_sitter
+    import tree_sitter_sql
+
     TREE_SITTER_SQL_AVAILABLE = True
 except ImportError:
     TREE_SITTER_SQL_AVAILABLE = False
@@ -48,9 +47,28 @@ class TestSQLExtractorBranchCoverage:
 
     def test_is_valid_identifier_sql_keywords(self, extractor):
         """Test SQL keywords are invalid."""
-        keywords = ["SELECT", "INSERT", "UPDATE", "DELETE", "FROM", "WHERE",
-                   "JOIN", "ON", "AND", "OR", "NOT", "NULL", "CREATE", "DROP",
-                   "ALTER", "TABLE", "INDEX", "VIEW", "TRIGGER", "PROCEDURE"]
+        keywords = [
+            "SELECT",
+            "INSERT",
+            "UPDATE",
+            "DELETE",
+            "FROM",
+            "WHERE",
+            "JOIN",
+            "ON",
+            "AND",
+            "OR",
+            "NOT",
+            "NULL",
+            "CREATE",
+            "DROP",
+            "ALTER",
+            "TABLE",
+            "INDEX",
+            "VIEW",
+            "TRIGGER",
+            "PROCEDURE",
+        ]
         for kw in keywords:
             assert not extractor._is_valid_identifier(kw)
             assert not extractor._is_valid_identifier(kw.lower())
@@ -117,7 +135,9 @@ class TestSQLExtractorBranchCoverage:
         assert len(defs) == 3
 
 
-@pytest.mark.skipif(not TREE_SITTER_SQL_AVAILABLE, reason="tree-sitter-sql not installed")
+@pytest.mark.skipif(
+    not TREE_SITTER_SQL_AVAILABLE, reason="tree-sitter-sql not installed"
+)
 class TestSQLPluginExtractionBranches:
     """Test extraction branches with actual tree-sitter."""
 
@@ -395,9 +415,9 @@ class TestSQLPluginValidation:
             raw_text="CREATE TABLE users (id INT)",
             sql_element_type=SQLElementType.TABLE,
         )
-        
+
         result = extractor._validate_and_fix_elements([table1, table2])
-        user_tables = [e for e in result if getattr(e, 'name', '') == "users"]
+        user_tables = [e for e in result if getattr(e, "name", "") == "users"]
         assert len(user_tables) == 1
 
     def test_validate_removes_phantom_triggers(self, extractor):
@@ -409,9 +429,11 @@ class TestSQLPluginValidation:
             raw_text="CREATE FUNCTION my_func() RETURNS INT",
             sql_element_type=SQLElementType.TRIGGER,
         )
-        
+
         result = extractor._validate_and_fix_elements([phantom])
-        triggers = [e for e in result if isinstance(e, SQLTrigger) and e.name == "not_a_trigger"]
+        triggers = [
+            e for e in result if isinstance(e, SQLTrigger) and e.name == "not_a_trigger"
+        ]
         assert len(triggers) == 0
 
     def test_validate_keeps_valid_trigger(self, extractor):
@@ -423,9 +445,11 @@ class TestSQLPluginValidation:
             raw_text="CREATE TRIGGER valid_trigger BEFORE INSERT ON users",
             sql_element_type=SQLElementType.TRIGGER,
         )
-        
+
         result = extractor._validate_and_fix_elements([valid])
-        triggers = [e for e in result if isinstance(e, SQLTrigger) and e.name == "valid_trigger"]
+        triggers = [
+            e for e in result if isinstance(e, SQLTrigger) and e.name == "valid_trigger"
+        ]
         assert len(triggers) == 1
 
 
@@ -518,7 +542,9 @@ class TestSQLColumnDetails:
 
     def test_parse_column_inline_foreign_key(self, extractor):
         """Test parsing column with inline foreign key."""
-        col_def = "user_id INT REFERENCES users(id) ON DELETE CASCADE ON UPDATE SET NULL"
+        col_def = (
+            "user_id INT REFERENCES users(id) ON DELETE CASCADE ON UPDATE SET NULL"
+        )
         column = extractor._parse_column_definition(col_def)
         assert column is not None
         assert column.name == "user_id"
@@ -526,7 +552,9 @@ class TestSQLColumnDetails:
         assert "users(id)" in column.foreign_key_reference
 
 
-@pytest.mark.skipif(not TREE_SITTER_SQL_AVAILABLE, reason="tree-sitter-sql not installed")
+@pytest.mark.skipif(
+    not TREE_SITTER_SQL_AVAILABLE, reason="tree-sitter-sql not installed"
+)
 class TestSQLPluginIntegration:
     """Integration tests for SQL plugin."""
 
@@ -588,7 +616,7 @@ CREATE INDEX idx_orders_status ON orders(status);
 
 -- View for order summary
 CREATE VIEW order_summary AS
-SELECT 
+SELECT
     o.id as order_id,
     u.email as user_email,
     o.total_amount,
@@ -621,10 +649,10 @@ END;
 """
         tree = parser.parse(code.encode("utf-8"))
         result = plugin.extract_elements(tree, code)
-        
+
         assert "classes" in result
         table_names = [c.name for c in result["classes"]]
-        
+
         # Should extract tables
         assert "users" in table_names
         assert "profiles" in table_names

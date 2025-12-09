@@ -1,14 +1,15 @@
 """Tests for the plugins base module."""
 
+from unittest.mock import MagicMock
+
 import pytest
-from unittest.mock import MagicMock, AsyncMock, patch
+
 from tree_sitter_analyzer.plugins.base import (
-    ElementExtractor,
-    LanguagePlugin,
     DefaultExtractor,
     DefaultLanguagePlugin,
+    ElementExtractor,
+    LanguagePlugin,
 )
-from tree_sitter_analyzer.models import Function, Class, Variable, Import
 
 
 class TestElementExtractorAbstract:
@@ -130,12 +131,12 @@ class TestDefaultExtractorNodeText:
         """_extract_node_text should extract text using byte positions."""
         extractor = DefaultExtractor()
         source_code = "def hello(): pass"
-        
+
         # Create mock node with byte positions
         mock_node = MagicMock()
         mock_node.start_byte = 0
         mock_node.end_byte = 3
-        
+
         result = extractor._extract_node_text(mock_node, source_code)
         assert result == "def"
 
@@ -143,7 +144,7 @@ class TestDefaultExtractorNodeText:
         """_extract_node_text should return empty string if no byte attributes."""
         extractor = DefaultExtractor()
         mock_node = MagicMock(spec=[])  # No attributes
-        
+
         result = extractor._extract_node_text(mock_node, source_code="hello")
         assert result == ""
 
@@ -151,15 +152,15 @@ class TestDefaultExtractorNodeText:
         """_extract_node_text should handle unicode characters."""
         extractor = DefaultExtractor()
         source_code = "def 日本語(): pass"
-        
+
         mock_node = MagicMock()
         # Position for 日本語
         source_bytes = source_code.encode("utf-8")
-        start = source_bytes.find("日".encode("utf-8"))
-        end = start + len("日本語".encode("utf-8"))
+        start = source_bytes.find("日".encode())
+        end = start + len("日本語".encode())
         mock_node.start_byte = start
         mock_node.end_byte = end
-        
+
         result = extractor._extract_node_text(mock_node, source_code)
         assert result == "日本語"
 
@@ -171,30 +172,30 @@ class TestDefaultExtractorNodeName:
         """_extract_node_name should find identifier in children."""
         extractor = DefaultExtractor()
         source_code = "def hello(): pass"
-        
+
         # Create mock identifier child
         mock_child = MagicMock()
         mock_child.type = "identifier"
         mock_child.start_byte = 4
         mock_child.end_byte = 9
-        
+
         # Create mock node with children
         mock_node = MagicMock()
         mock_node.children = [mock_child]
         mock_node.start_point = (0, 4)
-        
+
         result = extractor._extract_node_name(mock_node, source_code)
         assert result == "hello"
 
     def test_extract_node_name_fallback(self):
         """_extract_node_name should use fallback when no identifier found."""
         extractor = DefaultExtractor()
-        
+
         # Create mock node without identifier children
         mock_node = MagicMock()
         mock_node.children = []
         mock_node.start_point = (10, 5)
-        
+
         result = extractor._extract_node_name(mock_node, "")
         assert result == "element_10_5"
 
@@ -206,14 +207,14 @@ class TestDefaultExtractorExtraction:
         """extract_functions should return empty list for empty tree."""
         extractor = DefaultExtractor()
         mock_tree = MagicMock(spec=[])  # No root_node
-        
+
         result = extractor.extract_functions(mock_tree, "")
         assert result == []
 
     def test_extract_functions_with_tree(self):
         """extract_functions should extract functions from tree."""
         extractor = DefaultExtractor()
-        
+
         # Create mock function node
         mock_func_node = MagicMock()
         mock_func_node.type = "function_definition"
@@ -222,15 +223,15 @@ class TestDefaultExtractorExtraction:
         mock_func_node.end_point = (2, 0)
         mock_func_node.start_byte = 0
         mock_func_node.end_byte = 20
-        
+
         # Create mock root node
         mock_root = MagicMock()
         mock_root.type = "module"
         mock_root.children = [mock_func_node]
-        
+
         mock_tree = MagicMock()
         mock_tree.root_node = mock_root
-        
+
         result = extractor.extract_functions(mock_tree, "def hello(): pass")
         assert len(result) >= 0  # May or may not extract depending on traversal
 
@@ -238,7 +239,7 @@ class TestDefaultExtractorExtraction:
         """extract_classes should return empty list for empty tree."""
         extractor = DefaultExtractor()
         mock_tree = MagicMock(spec=[])
-        
+
         result = extractor.extract_classes(mock_tree, "")
         assert result == []
 
@@ -246,7 +247,7 @@ class TestDefaultExtractorExtraction:
         """extract_variables should return empty list for empty tree."""
         extractor = DefaultExtractor()
         mock_tree = MagicMock(spec=[])
-        
+
         result = extractor.extract_variables(mock_tree, "")
         assert result == []
 
@@ -254,7 +255,7 @@ class TestDefaultExtractorExtraction:
         """extract_imports should return empty list for empty tree."""
         extractor = DefaultExtractor()
         mock_tree = MagicMock(spec=[])
-        
+
         result = extractor.extract_imports(mock_tree, "")
         assert result == []
 
@@ -266,7 +267,7 @@ class TestDefaultExtractorDefaultMethods:
         """extract_packages should return empty list by default."""
         extractor = DefaultExtractor()
         mock_tree = MagicMock()
-        
+
         result = extractor.extract_packages(mock_tree, "")
         assert result == []
 
@@ -274,7 +275,7 @@ class TestDefaultExtractorDefaultMethods:
         """extract_annotations should return empty list by default."""
         extractor = DefaultExtractor()
         mock_tree = MagicMock()
-        
+
         result = extractor.extract_annotations(mock_tree, "")
         assert result == []
 
@@ -282,7 +283,7 @@ class TestDefaultExtractorDefaultMethods:
         """extract_html_elements should return empty list by default."""
         extractor = DefaultExtractor()
         mock_tree = MagicMock()
-        
+
         result = extractor.extract_html_elements(mock_tree, "")
         assert result == []
 
@@ -290,14 +291,14 @@ class TestDefaultExtractorDefaultMethods:
         """extract_css_rules should return empty list by default."""
         extractor = DefaultExtractor()
         mock_tree = MagicMock()
-        
+
         result = extractor.extract_css_rules(mock_tree, "")
         assert result == []
 
     def test_get_language_hint_returns_unknown(self):
         """_get_language_hint should return 'unknown' by default."""
         extractor = DefaultExtractor()
-        
+
         result = extractor._get_language_hint()
         assert result == "unknown"
 
@@ -309,7 +310,7 @@ class TestDefaultExtractorAllElements:
         """extract_all_elements should combine all element types."""
         extractor = DefaultExtractor()
         mock_tree = MagicMock(spec=[])  # Empty tree
-        
+
         result = extractor.extract_all_elements(mock_tree, "")
         assert isinstance(result, list)
 
@@ -390,7 +391,7 @@ class TestDefaultLanguagePlugin:
         """get_plugin_info should return plugin information."""
         plugin = DefaultLanguagePlugin()
         info = plugin.get_plugin_info()
-        
+
         assert info["language"] == "generic"
         assert ".txt" in info["extensions"]
         assert ".md" in info["extensions"]
@@ -417,13 +418,13 @@ class TestDefaultLanguagePluginAnalyze:
     async def test_analyze_file_returns_result(self, tmp_path):
         """analyze_file should return AnalysisResult."""
         plugin = DefaultLanguagePlugin()
-        
+
         # Create a temporary file
         test_file = tmp_path / "test.txt"
         test_file.write_text("Hello world")
-        
+
         result = await plugin.analyze_file(str(test_file), MagicMock())
-        
+
         # Should return some result (may succeed or fail depending on engine)
         assert result is not None
 
@@ -431,10 +432,10 @@ class TestDefaultLanguagePluginAnalyze:
     async def test_analyze_file_handles_error(self):
         """analyze_file should handle errors gracefully."""
         plugin = DefaultLanguagePlugin()
-        
+
         # Try to analyze a non-existent file
         result = await plugin.analyze_file("/nonexistent/path/to/file.txt", MagicMock())
-        
+
         # Should return a result with error
         assert result is not None
         # The result should indicate failure

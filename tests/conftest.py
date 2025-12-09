@@ -126,6 +126,7 @@ def pytest_sessionfinish(session, exitstatus):
     asyncio tasks are cleaned up while the interpreter is still fully operational.
     """
     import gc
+
     gc.collect()
 
 
@@ -136,32 +137,35 @@ async def cleanup_asyncio_tasks():
     error on Python 3.10 during shutdown.
     """
     yield
-    
+
     # Get all tasks
     import asyncio
+
     try:
         # Get the running loop if possible
         loop = asyncio.get_running_loop()
     except RuntimeError:
         # No event loop running
         return
-        
+
     tasks = asyncio.all_tasks(loop)
-    
+
     # Cancel all tasks except the current one
     current_task = asyncio.current_task(loop)
     tasks = [t for t in tasks if t is not current_task]
-    
+
     if not tasks:
         return
-        
+
     # Cancel tasks
     for task in tasks:
         task.cancel()
-        
+
     # Wait for tasks to complete
     # We use a timeout to avoid hanging if a task ignores cancellation
     try:
-        await asyncio.wait_for(asyncio.gather(*tasks, return_exceptions=True), timeout=2.0)
+        await asyncio.wait_for(
+            asyncio.gather(*tasks, return_exceptions=True), timeout=2.0
+        )
     except asyncio.TimeoutError:
         pass

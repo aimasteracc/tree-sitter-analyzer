@@ -13,47 +13,101 @@ equivalent data structures.
 import json
 
 import pytest
-from hypothesis import given, settings, HealthCheck
+from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
+from tree_sitter_analyzer.formatters.java_formatter import JavaTableFormatter
 from tree_sitter_analyzer.models import (
     AnalysisResult,
     Class,
     Function,
-    Variable,
     Import,
-    Package,
     JavaPackage,
+    Package,
+    Variable,
 )
-from tree_sitter_analyzer.formatters.java_formatter import JavaTableFormatter
-
 
 # ========================================
 # Hypothesis Strategies for Code Elements
 # ========================================
 
 # Strategy for generating valid identifiers
-identifier = st.sampled_from([
-    "TestClass", "MyClass", "Service", "Controller", "Repository",
-    "User", "Order", "Product", "Item", "Config", "Handler", "Manager",
-    "name", "value", "data", "result", "count", "index", "status",
-    "getName", "setValue", "process", "execute", "validate", "create",
-    "field1", "field2", "method1", "method2", "param1", "param2",
-    "MyService", "DataProcessor", "EventHandler", "RequestMapper",
-])
+identifier = st.sampled_from(
+    [
+        "TestClass",
+        "MyClass",
+        "Service",
+        "Controller",
+        "Repository",
+        "User",
+        "Order",
+        "Product",
+        "Item",
+        "Config",
+        "Handler",
+        "Manager",
+        "name",
+        "value",
+        "data",
+        "result",
+        "count",
+        "index",
+        "status",
+        "getName",
+        "setValue",
+        "process",
+        "execute",
+        "validate",
+        "create",
+        "field1",
+        "field2",
+        "method1",
+        "method2",
+        "param1",
+        "param2",
+        "MyService",
+        "DataProcessor",
+        "EventHandler",
+        "RequestMapper",
+    ]
+)
 
 # Strategy for package names
-package_name = st.sampled_from([
-    "com.example", "com.test", "org.sample", "net.app",
-    "com.example.service", "com.example.model", "com.example.util",
-])
+package_name = st.sampled_from(
+    [
+        "com.example",
+        "com.test",
+        "org.sample",
+        "net.app",
+        "com.example.service",
+        "com.example.model",
+        "com.example.util",
+    ]
+)
 
 # Strategy for Java types
-java_type = st.sampled_from([
-    "int", "long", "double", "float", "boolean", "byte", "short", "char", "void",
-    "String", "Object", "Integer", "Long", "Double", "Boolean",
-    "List<String>", "Map<String,Object>", "Set<Integer>",
-])
+java_type = st.sampled_from(
+    [
+        "int",
+        "long",
+        "double",
+        "float",
+        "boolean",
+        "byte",
+        "short",
+        "char",
+        "void",
+        "String",
+        "Object",
+        "Integer",
+        "Long",
+        "Double",
+        "Boolean",
+        "List<String>",
+        "Map<String,Object>",
+        "Set<Integer>",
+    ]
+)
 
 # Strategy for visibility
 visibility = st.sampled_from(["public", "private", "protected", "package"])
@@ -75,12 +129,18 @@ def function_element(draw):
         language="java",
         docstring=draw(st.text(min_size=0, max_size=50)) or None,
         element_type="function",
-        parameters=draw(st.lists(st.text(min_size=1, max_size=20), min_size=0, max_size=3)),
+        parameters=draw(
+            st.lists(st.text(min_size=1, max_size=20), min_size=0, max_size=3)
+        ),
         return_type=draw(java_type),
-        modifiers=draw(st.lists(
-            st.sampled_from(["static", "final", "abstract", "synchronized"]),
-            min_size=0, max_size=2, unique=True
-        )),
+        modifiers=draw(
+            st.lists(
+                st.sampled_from(["static", "final", "abstract", "synchronized"]),
+                min_size=0,
+                max_size=2,
+                unique=True,
+            )
+        ),
         is_async=draw(st.booleans()),
         is_static=draw(st.booleans()),
         is_private=draw(st.booleans()),
@@ -108,10 +168,14 @@ def class_element(draw):
         package_name=draw(package_name) if draw(st.booleans()) else None,
         superclass=draw(identifier) if draw(st.booleans()) else None,
         interfaces=draw(st.lists(identifier, min_size=0, max_size=3)),
-        modifiers=draw(st.lists(
-            st.sampled_from(["public", "abstract", "final"]),
-            min_size=0, max_size=2, unique=True
-        )),
+        modifiers=draw(
+            st.lists(
+                st.sampled_from(["public", "abstract", "final"]),
+                min_size=0,
+                max_size=2,
+                unique=True,
+            )
+        ),
         visibility=draw(visibility),
     )
 
@@ -129,10 +193,14 @@ def variable_element(draw):
         docstring=draw(st.text(min_size=0, max_size=50)) or None,
         element_type="variable",
         variable_type=draw(java_type),
-        modifiers=draw(st.lists(
-            st.sampled_from(["static", "final", "volatile"]),
-            min_size=0, max_size=2, unique=True
-        )),
+        modifiers=draw(
+            st.lists(
+                st.sampled_from(["static", "final", "volatile"]),
+                min_size=0,
+                max_size=2,
+                unique=True,
+            )
+        ),
         is_constant=draw(st.booleans()),
         is_static=draw(st.booleans()),
         visibility=draw(visibility),
@@ -182,7 +250,7 @@ def analysis_result(draw):
     methods = draw(st.lists(function_element(), min_size=0, max_size=5))
     fields = draw(st.lists(variable_element(), min_size=0, max_size=5))
     imports = draw(st.lists(import_element(), min_size=0, max_size=5))
-    
+
     # Create package element
     pkg = Package(
         name=pkg_name,
@@ -192,10 +260,10 @@ def analysis_result(draw):
         language="java",
         element_type="package",
     )
-    
+
     # Combine all elements
     elements = [pkg] + list(classes) + list(methods) + list(fields) + list(imports)
-    
+
     return AnalysisResult(
         file_path=f"src/{draw(identifier)}.java",
         language="java",
@@ -215,78 +283,94 @@ def analysis_result(draw):
 @st.composite
 def java_formatter_data(draw):
     """Generate data in the format expected by JavaTableFormatter."""
-    classes = draw(st.lists(
-        st.fixed_dictionaries({
-            "name": identifier,
-            "type": st.sampled_from(["class", "interface", "enum", "record"]),
-            "visibility": visibility,
-            "line_range": st.builds(
-                lambda s, l: {"start": s, "end": s + l},
-                s=st.integers(min_value=1, max_value=100),
-                l=st.integers(min_value=10, max_value=100),
+    classes = draw(
+        st.lists(
+            st.fixed_dictionaries(
+                {
+                    "name": identifier,
+                    "type": st.sampled_from(["class", "interface", "enum", "record"]),
+                    "visibility": visibility,
+                    "line_range": st.builds(
+                        lambda s, l: {"start": s, "end": s + l},
+                        s=st.integers(min_value=1, max_value=100),
+                        l=st.integers(min_value=10, max_value=100),
+                    ),
+                }
             ),
-        }),
-        min_size=1,
-        max_size=3,
-    ))
-    
-    methods = draw(st.lists(
-        st.fixed_dictionaries({
-            "name": identifier,
-            "visibility": st.sampled_from(["public", "private"]),
-            "return_type": java_type,
-            "parameters": st.lists(
-                st.fixed_dictionaries({
+            min_size=1,
+            max_size=3,
+        )
+    )
+
+    methods = draw(
+        st.lists(
+            st.fixed_dictionaries(
+                {
+                    "name": identifier,
+                    "visibility": st.sampled_from(["public", "private"]),
+                    "return_type": java_type,
+                    "parameters": st.lists(
+                        st.fixed_dictionaries(
+                            {
+                                "name": identifier,
+                                "type": java_type,
+                            }
+                        ),
+                        min_size=0,
+                        max_size=3,
+                    ),
+                    "is_constructor": st.booleans(),
+                    "line_range": st.builds(
+                        lambda s, l: {"start": s, "end": s + l},
+                        s=st.integers(min_value=1, max_value=100),
+                        l=st.integers(min_value=1, max_value=20),
+                    ),
+                    "complexity_score": st.integers(min_value=1, max_value=20),
+                    "javadoc": st.text(min_size=0, max_size=50),
+                }
+            ),
+            min_size=0,
+            max_size=5,
+        )
+    )
+
+    fields = draw(
+        st.lists(
+            st.fixed_dictionaries(
+                {
                     "name": identifier,
                     "type": java_type,
-                }),
-                min_size=0,
-                max_size=3,
+                    "visibility": visibility,
+                    "modifiers": st.lists(
+                        st.sampled_from(["static", "final", "volatile"]),
+                        min_size=0,
+                        max_size=2,
+                        unique=True,
+                    ),
+                    "line_range": st.builds(
+                        lambda s: {"start": s, "end": s},
+                        s=st.integers(min_value=1, max_value=100),
+                    ),
+                    "javadoc": st.text(min_size=0, max_size=50),
+                }
             ),
-            "is_constructor": st.booleans(),
-            "line_range": st.builds(
-                lambda s, l: {"start": s, "end": s + l},
-                s=st.integers(min_value=1, max_value=100),
-                l=st.integers(min_value=1, max_value=20),
+            min_size=0,
+            max_size=5,
+        )
+    )
+
+    imports = draw(
+        st.lists(
+            st.builds(
+                lambda pkg, cls: {"statement": f"import {pkg}.{cls};"},
+                pkg=package_name,
+                cls=identifier,
             ),
-            "complexity_score": st.integers(min_value=1, max_value=20),
-            "javadoc": st.text(min_size=0, max_size=50),
-        }),
-        min_size=0,
-        max_size=5,
-    ))
-    
-    fields = draw(st.lists(
-        st.fixed_dictionaries({
-            "name": identifier,
-            "type": java_type,
-            "visibility": visibility,
-            "modifiers": st.lists(
-                st.sampled_from(["static", "final", "volatile"]),
-                min_size=0,
-                max_size=2,
-                unique=True,
-            ),
-            "line_range": st.builds(
-                lambda s: {"start": s, "end": s},
-                s=st.integers(min_value=1, max_value=100),
-            ),
-            "javadoc": st.text(min_size=0, max_size=50),
-        }),
-        min_size=0,
-        max_size=5,
-    ))
-    
-    imports = draw(st.lists(
-        st.builds(
-            lambda pkg, cls: {"statement": f"import {pkg}.{cls};"},
-            pkg=package_name,
-            cls=identifier,
-        ),
-        min_size=0,
-        max_size=5,
-    ))
-    
+            min_size=0,
+            max_size=5,
+        )
+    )
+
     return {
         "package": {"name": draw(package_name)},
         "file_path": f"{draw(identifier)}.java",
@@ -304,6 +388,7 @@ def java_formatter_data(draw):
 # ========================================
 # Property Tests for Serialization Round-Trip
 # ========================================
+
 
 class TestSerializationRoundTripProperties:
     """
@@ -326,18 +411,17 @@ class TestSerializationRoundTripProperties:
         """
         # Serialize to dict
         serialized = result.to_dict()
-        
+
         # Property: Serialized result should be a dictionary
         assert isinstance(serialized, dict), "to_dict() should return a dictionary"
-        
+
         # Property: Serialized result should be JSON-serializable
         json_str = json.dumps(serialized)
         assert isinstance(json_str, str), "Serialized dict should be JSON-serializable"
-        
+
         # Property: JSON deserialization should produce equivalent dict
         deserialized = json.loads(json_str)
-        assert deserialized == serialized, \
-            "JSON round-trip should preserve data"
+        assert deserialized == serialized, "JSON round-trip should preserve data"
 
     @settings(max_examples=100, suppress_health_check=[HealthCheck.too_slow])
     @given(result=analysis_result())
@@ -352,26 +436,31 @@ class TestSerializationRoundTripProperties:
         """
         # Serialize using to_json (alias for to_dict)
         serialized = result.to_json()
-        
+
         # Property: Should be JSON-serializable
         json_str = json.dumps(serialized)
         deserialized = json.loads(json_str)
-        
+
         # Property: Round-trip should preserve all keys
-        assert set(serialized.keys()) == set(deserialized.keys()), \
-            "All keys should be preserved in round-trip"
-        
+        assert set(serialized.keys()) == set(
+            deserialized.keys()
+        ), "All keys should be preserved in round-trip"
+
         # Property: Round-trip should preserve file_path
-        assert serialized["file_path"] == deserialized["file_path"], \
-            "file_path should be preserved"
-        
+        assert (
+            serialized["file_path"] == deserialized["file_path"]
+        ), "file_path should be preserved"
+
         # Property: Round-trip should preserve success status
-        assert serialized["success"] == deserialized["success"], \
-            "success status should be preserved"
+        assert (
+            serialized["success"] == deserialized["success"]
+        ), "success status should be preserved"
 
     @settings(max_examples=100, suppress_health_check=[HealthCheck.too_slow])
     @given(result=analysis_result())
-    def test_property_1_analysis_result_to_mcp_format_roundtrip(self, result: AnalysisResult):
+    def test_property_1_analysis_result_to_mcp_format_roundtrip(
+        self, result: AnalysisResult
+    ):
         """
         **Feature: test-coverage-improvement, Property 1: Serialization Round-Trip Consistency**
 
@@ -382,26 +471,31 @@ class TestSerializationRoundTripProperties:
         """
         # Serialize to MCP format
         mcp_format = result.to_mcp_format()
-        
+
         # Property: MCP format should be a dictionary
-        assert isinstance(mcp_format, dict), "to_mcp_format() should return a dictionary"
-        
+        assert isinstance(
+            mcp_format, dict
+        ), "to_mcp_format() should return a dictionary"
+
         # Property: MCP format should be JSON-serializable
         json_str = json.dumps(mcp_format)
         deserialized = json.loads(json_str)
-        
+
         # Property: Round-trip should preserve structure
         assert "file_path" in deserialized, "file_path should be in MCP format"
         assert "structure" in deserialized, "structure should be in MCP format"
         assert "metadata" in deserialized, "metadata should be in MCP format"
-        
+
         # Property: Round-trip should preserve file_path
-        assert mcp_format["file_path"] == deserialized["file_path"], \
-            "file_path should be preserved in MCP format round-trip"
+        assert (
+            mcp_format["file_path"] == deserialized["file_path"]
+        ), "file_path should be preserved in MCP format round-trip"
 
     @settings(max_examples=100, suppress_health_check=[HealthCheck.too_slow])
     @given(result=analysis_result())
-    def test_property_1_analysis_result_summary_dict_roundtrip(self, result: AnalysisResult):
+    def test_property_1_analysis_result_summary_dict_roundtrip(
+        self, result: AnalysisResult
+    ):
         """
         **Feature: test-coverage-improvement, Property 1: Serialization Round-Trip Consistency**
 
@@ -412,21 +506,23 @@ class TestSerializationRoundTripProperties:
         """
         # Serialize to summary dict
         summary = result.to_summary_dict()
-        
+
         # Property: Summary should be a dictionary
         assert isinstance(summary, dict), "to_summary_dict() should return a dictionary"
-        
+
         # Property: Summary should be JSON-serializable
         json_str = json.dumps(summary)
         deserialized = json.loads(json_str)
-        
+
         # Property: Round-trip should preserve file_path
-        assert summary["file_path"] == deserialized["file_path"], \
-            "file_path should be preserved in summary round-trip"
-        
+        assert (
+            summary["file_path"] == deserialized["file_path"]
+        ), "file_path should be preserved in summary round-trip"
+
         # Property: Round-trip should preserve summary_elements list
-        assert len(summary["summary_elements"]) == len(deserialized["summary_elements"]), \
-            "summary_elements count should be preserved"
+        assert len(summary["summary_elements"]) == len(
+            deserialized["summary_elements"]
+        ), "summary_elements count should be preserved"
 
     @settings(max_examples=100, suppress_health_check=[HealthCheck.too_slow])
     @given(data=java_formatter_data())
@@ -440,29 +536,33 @@ class TestSerializationRoundTripProperties:
         **Validates: Requirements 2.4, 6.4, 10.3**
         """
         formatter = JavaTableFormatter()
-        
+
         # Serialize to JSON using formatter
         json_output = formatter._format_json(data)
-        
+
         # Property: JSON output should be valid JSON
         deserialized = json.loads(json_output)
-        
+
         # Property: Round-trip should preserve package name
         if data.get("package", {}).get("name"):
-            assert deserialized.get("package", {}).get("name") == data["package"]["name"], \
-                "Package name should be preserved in JSON round-trip"
-        
+            assert (
+                deserialized.get("package", {}).get("name") == data["package"]["name"]
+            ), "Package name should be preserved in JSON round-trip"
+
         # Property: Round-trip should preserve class count
-        assert len(deserialized.get("classes", [])) == len(data.get("classes", [])), \
-            "Class count should be preserved in JSON round-trip"
-        
+        assert len(deserialized.get("classes", [])) == len(
+            data.get("classes", [])
+        ), "Class count should be preserved in JSON round-trip"
+
         # Property: Round-trip should preserve method count
-        assert len(deserialized.get("methods", [])) == len(data.get("methods", [])), \
-            "Method count should be preserved in JSON round-trip"
-        
+        assert len(deserialized.get("methods", [])) == len(
+            data.get("methods", [])
+        ), "Method count should be preserved in JSON round-trip"
+
         # Property: Round-trip should preserve field count
-        assert len(deserialized.get("fields", [])) == len(data.get("fields", [])), \
-            "Field count should be preserved in JSON round-trip"
+        assert len(deserialized.get("fields", [])) == len(
+            data.get("fields", [])
+        ), "Field count should be preserved in JSON round-trip"
 
     @settings(max_examples=100, suppress_health_check=[HealthCheck.too_slow])
     @given(data=java_formatter_data())
@@ -475,21 +575,24 @@ class TestSerializationRoundTripProperties:
         **Validates: Requirements 2.4, 6.4, 10.3**
         """
         formatter = JavaTableFormatter()
-        
+
         # Serialize to JSON
         json_output = formatter._format_json(data)
         deserialized = json.loads(json_output)
-        
+
         # Property: All class names should be preserved
         original_class_names = {c["name"] for c in data.get("classes", [])}
         deserialized_class_names = {c["name"] for c in deserialized.get("classes", [])}
-        
-        assert original_class_names == deserialized_class_names, \
-            f"All class names should be preserved. Original: {original_class_names}, Got: {deserialized_class_names}"
+
+        assert (
+            original_class_names == deserialized_class_names
+        ), f"All class names should be preserved. Original: {original_class_names}, Got: {deserialized_class_names}"
 
     @settings(max_examples=100, suppress_health_check=[HealthCheck.too_slow])
     @given(data=java_formatter_data())
-    def test_property_1_java_formatter_json_preserves_all_method_names(self, data: dict):
+    def test_property_1_java_formatter_json_preserves_all_method_names(
+        self, data: dict
+    ):
         """
         **Feature: test-coverage-improvement, Property 1: Serialization Round-Trip Consistency**
 
@@ -498,17 +601,18 @@ class TestSerializationRoundTripProperties:
         **Validates: Requirements 2.4, 6.4, 10.3**
         """
         formatter = JavaTableFormatter()
-        
+
         # Serialize to JSON
         json_output = formatter._format_json(data)
         deserialized = json.loads(json_output)
-        
+
         # Property: All method names should be preserved
         original_method_names = {m["name"] for m in data.get("methods", [])}
         deserialized_method_names = {m["name"] for m in deserialized.get("methods", [])}
-        
-        assert original_method_names == deserialized_method_names, \
-            f"All method names should be preserved. Original: {original_method_names}, Got: {deserialized_method_names}"
+
+        assert (
+            original_method_names == deserialized_method_names
+        ), f"All method names should be preserved. Original: {original_method_names}, Got: {deserialized_method_names}"
 
     @settings(max_examples=100, suppress_health_check=[HealthCheck.too_slow])
     @given(data=java_formatter_data())
@@ -521,17 +625,18 @@ class TestSerializationRoundTripProperties:
         **Validates: Requirements 2.4, 6.4, 10.3**
         """
         formatter = JavaTableFormatter()
-        
+
         # Serialize to JSON
         json_output = formatter._format_json(data)
         deserialized = json.loads(json_output)
-        
+
         # Property: All field names should be preserved
         original_field_names = {f["name"] for f in data.get("fields", [])}
         deserialized_field_names = {f["name"] for f in deserialized.get("fields", [])}
-        
-        assert original_field_names == deserialized_field_names, \
-            f"All field names should be preserved. Original: {original_field_names}, Got: {deserialized_field_names}"
+
+        assert (
+            original_field_names == deserialized_field_names
+        ), f"All field names should be preserved. Original: {original_field_names}, Got: {deserialized_field_names}"
 
 
 class TestSerializationDataIntegrityProperties:
@@ -544,7 +649,9 @@ class TestSerializationDataIntegrityProperties:
 
     @settings(max_examples=100, suppress_health_check=[HealthCheck.too_slow])
     @given(result=analysis_result())
-    def test_property_1_serialization_preserves_element_counts(self, result: AnalysisResult):
+    def test_property_1_serialization_preserves_element_counts(
+        self, result: AnalysisResult
+    ):
         """
         **Feature: test-coverage-improvement, Property 1: Serialization Round-Trip Consistency**
 
@@ -554,27 +661,31 @@ class TestSerializationDataIntegrityProperties:
         """
         # Get summary before serialization
         summary_before = result.get_summary()
-        
+
         # Serialize and deserialize
         serialized = result.to_dict()
         json_str = json.dumps(serialized)
         deserialized = json.loads(json_str)
-        
+
         # Property: Class count should be preserved
-        assert len(deserialized.get("classes", [])) == summary_before["class_count"], \
-            "Class count should be preserved after serialization"
-        
+        assert (
+            len(deserialized.get("classes", [])) == summary_before["class_count"]
+        ), "Class count should be preserved after serialization"
+
         # Property: Method count should be preserved
-        assert len(deserialized.get("methods", [])) == summary_before["method_count"], \
-            "Method count should be preserved after serialization"
-        
+        assert (
+            len(deserialized.get("methods", [])) == summary_before["method_count"]
+        ), "Method count should be preserved after serialization"
+
         # Property: Field count should be preserved
-        assert len(deserialized.get("fields", [])) == summary_before["field_count"], \
-            "Field count should be preserved after serialization"
-        
+        assert (
+            len(deserialized.get("fields", [])) == summary_before["field_count"]
+        ), "Field count should be preserved after serialization"
+
         # Property: Import count should be preserved
-        assert len(deserialized.get("imports", [])) == summary_before["import_count"], \
-            "Import count should be preserved after serialization"
+        assert (
+            len(deserialized.get("imports", [])) == summary_before["import_count"]
+        ), "Import count should be preserved after serialization"
 
     @settings(max_examples=100, suppress_health_check=[HealthCheck.too_slow])
     @given(result=analysis_result())
@@ -590,18 +701,19 @@ class TestSerializationDataIntegrityProperties:
         serialized = result.to_dict()
         json_str = json.dumps(serialized)
         deserialized = json.loads(json_str)
-        
+
         # Property: file_path should be preserved
-        assert deserialized["file_path"] == result.file_path, \
-            "file_path should be preserved"
-        
+        assert (
+            deserialized["file_path"] == result.file_path
+        ), "file_path should be preserved"
+
         # Property: success should be preserved
-        assert deserialized["success"] == result.success, \
-            "success should be preserved"
-        
+        assert deserialized["success"] == result.success, "success should be preserved"
+
         # Property: analysis_time should be preserved (with float tolerance)
-        assert abs(deserialized["analysis_time"] - result.analysis_time) < 0.0001, \
-            "analysis_time should be preserved"
+        assert (
+            abs(deserialized["analysis_time"] - result.analysis_time) < 0.0001
+        ), "analysis_time should be preserved"
 
     @settings(max_examples=100, suppress_health_check=[HealthCheck.too_slow])
     @given(data=java_formatter_data())
@@ -614,10 +726,10 @@ class TestSerializationDataIntegrityProperties:
         **Validates: Requirements 2.4, 6.4, 10.3**
         """
         formatter = JavaTableFormatter()
-        
+
         # Use format_table with json type
         json_output = formatter.format_table(data, table_type="json")
-        
+
         # Property: Output should be valid JSON
         try:
             parsed = json.loads(json_output)
@@ -636,10 +748,10 @@ class TestSerializationDataIntegrityProperties:
         **Validates: Requirements 2.4, 6.4, 10.3**
         """
         formatter = JavaTableFormatter()
-        
+
         # Use format_advanced with json format
         json_output = formatter.format_advanced(data, output_format="json")
-        
+
         # Property: Output should be valid JSON
         try:
             parsed = json.loads(json_output)

@@ -265,6 +265,7 @@ class TestQueryExecutorProcessCapturesErrorPaths:
 
     def test_process_captures_outer_exception(self, executor):
         """Test _process_captures when outer iteration fails."""
+
         # Create a mock that raises exception when iterated
         class FailingIterable:
             def __iter__(self):
@@ -296,6 +297,7 @@ class TestQueryExecutorGetAvailableQueriesErrorPaths:
 
     def test_get_available_queries_type_error(self, executor):
         """Test get_available_queries when TypeError occurs."""
+
         # Create a mock that raises TypeError when converted to list
         class NonListable:
             def __iter__(self):
@@ -392,7 +394,9 @@ class TestQueryExecutorStatisticsTracking:
         lang.name = "python"
         return lang
 
-    def test_failed_queries_counter_incremented(self, executor, mock_tree, mock_language):
+    def test_failed_queries_counter_incremented(
+        self, executor, mock_tree, mock_language
+    ):
         """Test that failed_queries counter is incremented on unexpected error."""
         initial_failed = executor._execution_stats["failed_queries"]
 
@@ -415,9 +419,7 @@ class TestQueryExecutorStatisticsTracking:
             executor, "_create_error_result", side_effect=Exception("Error")
         ):
             try:
-                executor.execute_query_string(
-                    mock_tree, mock_language, "test", "code"
-                )
+                executor.execute_query_string(mock_tree, mock_language, "test", "code")
             except Exception:
                 pass
 

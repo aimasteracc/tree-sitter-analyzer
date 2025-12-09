@@ -2,20 +2,22 @@
 """Additional Kotlin tests to reach 75%+ coverage."""
 
 import pytest
-from unittest.mock import Mock, patch, MagicMock
 
 from tree_sitter_analyzer.languages.kotlin_plugin import KotlinPlugin
 
 # Check if tree-sitter-kotlin is available
 try:
-    import tree_sitter_kotlin
     import tree_sitter
+    import tree_sitter_kotlin
+
     TREE_SITTER_KOTLIN_AVAILABLE = True
 except ImportError:
     TREE_SITTER_KOTLIN_AVAILABLE = False
 
 
-@pytest.mark.skipif(not TREE_SITTER_KOTLIN_AVAILABLE, reason="tree-sitter-kotlin not installed")
+@pytest.mark.skipif(
+    not TREE_SITTER_KOTLIN_AVAILABLE, reason="tree-sitter-kotlin not installed"
+)
 class TestKotlinExtractionBranches:
     """Test uncovered branches in Kotlin extraction."""
 
@@ -82,7 +84,7 @@ class Example {
     var counter: Int = 0
         get() = field
         set(value) { field = value }
-    
+
     val computed: Int
         get() = counter * 2
 }
@@ -188,7 +190,7 @@ class Outer {
     class StaticNested {
         fun method() = "nested"
     }
-    
+
     inner class Inner {
         fun method() = this@Outer.toString()
     }
@@ -206,10 +208,10 @@ class Example {
     private fun privateMethod() {}
     protected fun protectedMethod() {}
     internal fun internalMethod() {}
-    
+
     suspend fun suspendMethod() {}
     inline fun inlineMethod() {}
-    
+
     private suspend fun privateSuspend() {}
 }
 """
@@ -219,7 +221,9 @@ class Example {
         assert "classes" in result
 
 
-@pytest.mark.skipif(not TREE_SITTER_KOTLIN_AVAILABLE, reason="tree-sitter-kotlin not installed")
+@pytest.mark.skipif(
+    not TREE_SITTER_KOTLIN_AVAILABLE, reason="tree-sitter-kotlin not installed"
+)
 class TestKotlinDocstringExtraction:
     """Test KDoc/docstring extraction."""
 
@@ -237,7 +241,7 @@ class TestKotlinDocstringExtraction:
         code = """
 /**
  * Calculates the sum of two numbers.
- * 
+ *
  * @param a First number
  * @param b Second number
  * @return Sum of a and b
@@ -253,7 +257,7 @@ fun add(a: Int, b: Int): Int = a + b
         code = """
 /**
  * Represents a user in the system.
- * 
+ *
  * @property id Unique identifier
  * @property name User's full name
  * @constructor Creates a new user
@@ -270,7 +274,7 @@ class User(val id: Int, val name: String)
 class Config {
     /** The application name */
     val appName: String = "MyApp"
-    
+
     /** Maximum retry count */
     var maxRetries: Int = 3
 }
@@ -280,7 +284,9 @@ class Config {
         assert "classes" in result
 
 
-@pytest.mark.skipif(not TREE_SITTER_KOTLIN_AVAILABLE, reason="tree-sitter-kotlin not installed")
+@pytest.mark.skipif(
+    not TREE_SITTER_KOTLIN_AVAILABLE, reason="tree-sitter-kotlin not installed"
+)
 class TestKotlinTreeSitterLanguage:
     """Test tree-sitter language handling."""
 
@@ -292,7 +298,7 @@ class TestKotlinTreeSitterLanguage:
         """Test that tree-sitter language is cached."""
         lang1 = plugin.get_tree_sitter_language()
         lang2 = plugin.get_tree_sitter_language()
-        
+
         # Should be the same cached instance
         assert lang1 is lang2
 
@@ -322,7 +328,9 @@ class TestKotlinPluginWithoutTreeSitter:
         assert isinstance(result, dict)
 
 
-@pytest.mark.skipif(not TREE_SITTER_KOTLIN_AVAILABLE, reason="tree-sitter-kotlin not installed")
+@pytest.mark.skipif(
+    not TREE_SITTER_KOTLIN_AVAILABLE, reason="tree-sitter-kotlin not installed"
+)
 class TestKotlinParserSetup:
     """Test parser setup variations."""
 
@@ -334,18 +342,20 @@ class TestKotlinParserSetup:
     async def test_analyze_with_different_parser_apis(self, plugin, tmp_path):
         """Test analyze_file with parser that has different API."""
         from tree_sitter_analyzer.core.analysis_engine import AnalysisRequest
-        
+
         kt_file = tmp_path / "test.kt"
         kt_file.write_text("class Test")
-        
+
         request = AnalysisRequest(file_path=str(kt_file))
         result = await plugin.analyze_file(str(kt_file), request)
-        
+
         assert result is not None
         assert result.language == "kotlin"
 
 
-@pytest.mark.skipif(not TREE_SITTER_KOTLIN_AVAILABLE, reason="tree-sitter-kotlin not installed")
+@pytest.mark.skipif(
+    not TREE_SITTER_KOTLIN_AVAILABLE, reason="tree-sitter-kotlin not installed"
+)
 class TestKotlinEdgeCases:
     """Test edge cases in Kotlin extraction."""
 

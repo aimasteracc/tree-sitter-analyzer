@@ -10,18 +10,17 @@ regardless of the underlying tree-sitter version being used.
 **Validates: Requirements 1.1, 1.4**
 """
 
-import pytest
-from hypothesis import given, settings, assume
-from hypothesis import strategies as st
-from unittest.mock import MagicMock, patch
 import sys
+from unittest.mock import MagicMock, patch
+
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
 from tree_sitter_analyzer.utils.tree_sitter_compat import (
     TreeSitterQueryCompat,
     create_query_safely,
     get_node_text_safe,
 )
-
 
 # Strategy for generating valid capture names (alphanumeric identifiers)
 capture_names = st.text(
@@ -76,7 +75,9 @@ class TestTreeSitterVersionCompatibilityProperties:
         **Validates: Requirements 1.1, 1.4**
         """
         # Skip empty or invalid capture names
-        capture_name_list = [name for name in capture_name_list if name and name[0].isalpha()]
+        capture_name_list = [
+            name for name in capture_name_list if name and name[0].isalpha()
+        ]
         if not capture_name_list:
             capture_name_list = ["default_capture"]
 
@@ -92,15 +93,17 @@ class TestTreeSitterVersionCompatibilityProperties:
 
         # Setup QueryCursor behavior with generated captures
         mock_cursor = mock_tree_sitter.QueryCursor.return_value
-        mock_nodes = [MagicMock(name=f"node_{i}") for i in range(len(capture_name_list))]
-        
+        mock_nodes = [
+            MagicMock(name=f"node_{i}") for i in range(len(capture_name_list))
+        ]
+
         # Build captures_dict: {capture_name: [node]}
         captures_dict = {}
         for i, name in enumerate(capture_name_list):
             if name not in captures_dict:
                 captures_dict[name] = []
             captures_dict[name].append(mock_nodes[i])
-        
+
         mock_cursor.matches.return_value = [(0, captures_dict)]
 
         with patch.dict(sys.modules, {"tree_sitter": mock_tree_sitter}):
@@ -113,15 +116,23 @@ class TestTreeSitterVersionCompatibilityProperties:
 
             # Property: Each item should be a tuple of (node, capture_name)
             for item in results:
-                assert isinstance(item, tuple), f"Each item should be a tuple, got {type(item)}"
-                assert len(item) == 2, f"Each tuple should have 2 elements, got {len(item)}"
+                assert isinstance(
+                    item, tuple
+                ), f"Each item should be a tuple, got {type(item)}"
+                assert (
+                    len(item) == 2
+                ), f"Each tuple should have 2 elements, got {len(item)}"
                 node, capture_name = item
-                assert isinstance(capture_name, str), f"Capture name should be a string, got {type(capture_name)}"
+                assert isinstance(
+                    capture_name, str
+                ), f"Capture name should be a string, got {type(capture_name)}"
 
             # Property: All capture names should be in the result
             result_capture_names = [item[1] for item in results]
             for name in capture_name_list:
-                assert name in result_capture_names, f"Capture name '{name}' should be in results"
+                assert (
+                    name in result_capture_names
+                ), f"Capture name '{name}' should be in results"
 
     @settings(max_examples=100)
     @given(
@@ -139,7 +150,9 @@ class TestTreeSitterVersionCompatibilityProperties:
         **Validates: Requirements 1.1, 1.4**
         """
         # Skip empty or invalid capture names
-        capture_name_list = [name for name in capture_name_list if name and name[0].isalpha()]
+        capture_name_list = [
+            name for name in capture_name_list if name and name[0].isalpha()
+        ]
         if not capture_name_list:
             capture_name_list = ["default_capture"]
 
@@ -178,14 +191,21 @@ class TestTreeSitterVersionCompatibilityProperties:
 
             # Property: Each item should be a tuple of (node, capture_name)
             for item in results:
-                assert isinstance(item, tuple), f"Each item should be a tuple, got {type(item)}"
-                assert len(item) == 2, f"Each tuple should have 2 elements, got {len(item)}"
+                assert isinstance(
+                    item, tuple
+                ), f"Each item should be a tuple, got {type(item)}"
+                assert (
+                    len(item) == 2
+                ), f"Each tuple should have 2 elements, got {len(item)}"
                 node, capture_name = item
-                assert isinstance(capture_name, str), f"Capture name should be a string, got {type(capture_name)}"
+                assert isinstance(
+                    capture_name, str
+                ), f"Capture name should be a string, got {type(capture_name)}"
 
             # Property: Number of results should match number of captures
-            assert len(results) == len(capture_name_list), \
-                f"Expected {len(capture_name_list)} results, got {len(results)}"
+            assert len(results) == len(
+                capture_name_list
+            ), f"Expected {len(capture_name_list)} results, got {len(results)}"
 
     @settings(max_examples=100)
     @given(
@@ -203,7 +223,9 @@ class TestTreeSitterVersionCompatibilityProperties:
         **Validates: Requirements 1.1, 1.4**
         """
         # Skip empty or invalid capture names
-        capture_name_list = [name for name in capture_name_list if name and name[0].isalpha()]
+        capture_name_list = [
+            name for name in capture_name_list if name and name[0].isalpha()
+        ]
         if not capture_name_list:
             capture_name_list = ["default_capture"]
 
@@ -237,14 +259,21 @@ class TestTreeSitterVersionCompatibilityProperties:
 
             # Property: Each item should be a tuple of (node, capture_name)
             for item in results:
-                assert isinstance(item, tuple), f"Each item should be a tuple, got {type(item)}"
-                assert len(item) == 2, f"Each tuple should have 2 elements, got {len(item)}"
+                assert isinstance(
+                    item, tuple
+                ), f"Each item should be a tuple, got {type(item)}"
+                assert (
+                    len(item) == 2
+                ), f"Each tuple should have 2 elements, got {len(item)}"
                 node, capture_name = item
-                assert isinstance(capture_name, str), f"Capture name should be a string, got {type(capture_name)}"
+                assert isinstance(
+                    capture_name, str
+                ), f"Capture name should be a string, got {type(capture_name)}"
 
             # Property: Number of results should match number of captures
-            assert len(results) == len(capture_name_list), \
-                f"Expected {len(capture_name_list)} results, got {len(results)}"
+            assert len(results) == len(
+                capture_name_list
+            ), f"Expected {len(capture_name_list)} results, got {len(results)}"
 
     @settings(max_examples=100)
     @given(
@@ -267,7 +296,7 @@ class TestTreeSitterVersionCompatibilityProperties:
         source_bytes = source_code.encode("utf-8")
         if start_byte > end_byte:
             start_byte, end_byte = end_byte, start_byte
-        
+
         # Clamp to valid range
         start_byte = min(start_byte, len(source_bytes))
         end_byte = min(end_byte, len(source_bytes))
@@ -283,7 +312,9 @@ class TestTreeSitterVersionCompatibilityProperties:
 
         # Property: Result should be extractable from source
         if start_byte <= end_byte <= len(source_bytes):
-            expected = source_bytes[start_byte:end_byte].decode("utf-8", errors="replace")
+            expected = source_bytes[start_byte:end_byte].decode(
+                "utf-8", errors="replace"
+            )
             assert result == expected, f"Expected '{expected}', got '{result}'"
 
     @settings(max_examples=100)
@@ -309,8 +340,12 @@ class TestTreeSitterVersionCompatibilityProperties:
         result_bytes = get_node_text_safe(mock_node_bytes, "ignored_source")
 
         # Property: Result should be a string
-        assert isinstance(result_bytes, str), f"Result should be a string, got {type(result_bytes)}"
-        assert result_bytes == source_code, f"Expected '{source_code}', got '{result_bytes}'"
+        assert isinstance(
+            result_bytes, str
+        ), f"Result should be a string, got {type(result_bytes)}"
+        assert (
+            result_bytes == source_code
+        ), f"Expected '{source_code}', got '{result_bytes}'"
 
         # Test with string text attribute
         mock_node_str = MagicMock()
@@ -320,17 +355,24 @@ class TestTreeSitterVersionCompatibilityProperties:
         result_str = get_node_text_safe(mock_node_str, "ignored_source")
 
         # Property: Result should be a string
-        assert isinstance(result_str, str), f"Result should be a string, got {type(result_str)}"
-        assert result_str == source_code, f"Expected '{source_code}', got '{result_str}'"
+        assert isinstance(
+            result_str, str
+        ), f"Result should be a string, got {type(result_str)}"
+        assert (
+            result_str == source_code
+        ), f"Expected '{source_code}', got '{result_str}'"
 
         # Property: Both methods should return the same result
-        assert result_bytes == result_str, \
-            f"Bytes and string text attributes should return same result: '{result_bytes}' vs '{result_str}'"
+        assert (
+            result_bytes == result_str
+        ), f"Bytes and string text attributes should return same result: '{result_bytes}' vs '{result_str}'"
 
     @settings(max_examples=100)
     @given(
         fallback_captures=st.lists(
-            st.tuples(st.text(min_size=1, max_size=10), st.text(min_size=1, max_size=10)),
+            st.tuples(
+                st.text(min_size=1, max_size=10), st.text(min_size=1, max_size=10)
+            ),
             min_size=0,
             max_size=5,
         ),
@@ -362,19 +404,18 @@ class TestTreeSitterVersionCompatibilityProperties:
             )
 
             # Property: Result should be the fallback
-            assert result == fallback_result, \
-                f"Expected fallback result, got {result}"
+            assert result == fallback_result, f"Expected fallback result, got {result}"
 
             # Property: Result should be a list
-            assert isinstance(result, list), f"Result should be a list, got {type(result)}"
+            assert isinstance(
+                result, list
+            ), f"Result should be a list, got {type(result)}"
 
     @settings(max_examples=100)
     @given(
         query_string=st.text(min_size=1, max_size=100),
     )
-    def test_property_14_create_query_safely_consistency(
-        self, query_string: str
-    ):
+    def test_property_14_create_query_safely_consistency(self, query_string: str):
         """
         **Feature: test-coverage-improvement, Property 14: Tree-sitter Version Compatibility**
 
@@ -392,7 +433,7 @@ class TestTreeSitterVersionCompatibilityProperties:
 
         with patch.dict(sys.modules, {"tree_sitter": mock_tree_sitter}):
             result = create_query_safely(mock_language, query_string)
-            
+
             # Property: Result should be the query object
             assert result == mock_query, f"Expected query object, got {result}"
 
@@ -402,7 +443,7 @@ class TestTreeSitterVersionCompatibilityProperties:
 
         with patch.dict(sys.modules, {"tree_sitter": mock_tree_sitter_fail}):
             result = create_query_safely(mock_language, query_string)
-            
+
             # Property: Result should be None on failure
             assert result is None, f"Expected None on failure, got {result}"
 
@@ -423,12 +464,16 @@ class TestTreeSitterVersionCompatibilityProperties:
         **Validates: Requirements 1.1, 1.4**
         """
         # Skip empty or invalid capture names
-        capture_name_list = [name for name in capture_name_list if name and name[0].isalpha()]
+        capture_name_list = [
+            name for name in capture_name_list if name and name[0].isalpha()
+        ]
         if not capture_name_list:
             capture_name_list = ["default_capture"]
 
         # Create consistent mock nodes for all API versions
-        mock_nodes = [MagicMock(name=f"node_{i}") for i in range(len(capture_name_list))]
+        mock_nodes = [
+            MagicMock(name=f"node_{i}") for i in range(len(capture_name_list))
+        ]
 
         # Test newest API
         mock_query_newest = MagicMock()
@@ -462,7 +507,9 @@ class TestTreeSitterVersionCompatibilityProperties:
 
         # Test legacy API
         mock_query_legacy = MagicMock()
-        mock_captures = [(mock_nodes[i], name) for i, name in enumerate(capture_name_list)]
+        mock_captures = [
+            (mock_nodes[i], name) for i, name in enumerate(capture_name_list)
+        ]
         mock_query_legacy.captures.return_value = mock_captures
 
         result_legacy = TreeSitterQueryCompat._execute_legacy_api(
@@ -475,8 +522,9 @@ class TestTreeSitterVersionCompatibilityProperties:
         assert isinstance(result_legacy, list), "Legacy API result should be a list"
 
         # Property: Modern and legacy should have same number of results
-        assert len(result_modern) == len(result_legacy), \
-            f"Modern ({len(result_modern)}) and legacy ({len(result_legacy)}) should have same count"
+        assert (
+            len(result_modern) == len(result_legacy)
+        ), f"Modern ({len(result_modern)}) and legacy ({len(result_legacy)}) should have same count"
 
         # Property: All results should have consistent tuple format
         for result_list, api_name in [
@@ -484,10 +532,16 @@ class TestTreeSitterVersionCompatibilityProperties:
             (result_legacy, "legacy"),
         ]:
             for item in result_list:
-                assert isinstance(item, tuple), f"{api_name} API: Each item should be a tuple"
-                assert len(item) == 2, f"{api_name} API: Each tuple should have 2 elements"
+                assert isinstance(
+                    item, tuple
+                ), f"{api_name} API: Each item should be a tuple"
+                assert (
+                    len(item) == 2
+                ), f"{api_name} API: Each tuple should have 2 elements"
                 node, capture_name = item
-                assert isinstance(capture_name, str), f"{api_name} API: Capture name should be string"
+                assert isinstance(
+                    capture_name, str
+                ), f"{api_name} API: Capture name should be string"
 
 
 class TestTreeSitterCompatEdgeCases:
@@ -500,7 +554,9 @@ class TestTreeSitterCompatEdgeCases:
 
     @settings(max_examples=100)
     @given(
-        source_lines=st.lists(st.text(min_size=0, max_size=50), min_size=1, max_size=20),
+        source_lines=st.lists(
+            st.text(min_size=0, max_size=50), min_size=1, max_size=20
+        ),
         start_line=line_positions,
         end_line=line_positions,
         start_col=column_positions,
@@ -523,19 +579,25 @@ class TestTreeSitterCompatEdgeCases:
         **Validates: Requirements 1.1, 1.4**
         """
         source_code = "\n".join(source_lines)
-        
+
         # Clamp line numbers to valid range
         max_line = len(source_lines) - 1
         start_line = min(start_line, max_line)
         end_line = min(end_line, max_line)
-        
+
         if start_line > end_line:
             start_line, end_line = end_line, start_line
 
         # Clamp column numbers
         if source_lines:
-            start_col = min(start_col, len(source_lines[start_line]) if start_line < len(source_lines) else 0)
-            end_col = min(end_col, len(source_lines[end_line]) if end_line < len(source_lines) else 0)
+            start_col = min(
+                start_col,
+                len(source_lines[start_line]) if start_line < len(source_lines) else 0,
+            )
+            end_col = min(
+                end_col,
+                len(source_lines[end_line]) if end_line < len(source_lines) else 0,
+            )
 
         mock_node = MagicMock()
         del mock_node.start_byte
@@ -555,9 +617,7 @@ class TestTreeSitterCompatEdgeCases:
     @given(
         error_message=st.text(min_size=1, max_size=100),
     )
-    def test_property_14_error_handling_consistency(
-        self, error_message: str
-    ):
+    def test_property_14_error_handling_consistency(self, error_message: str):
         """
         **Feature: test-coverage-improvement, Property 14: Tree-sitter Version Compatibility**
 
@@ -579,4 +639,6 @@ class TestTreeSitterCompatEdgeCases:
 
             # Property: Result should be an empty list on error
             assert result == [], f"Expected empty list on error, got {result}"
-            assert isinstance(result, list), f"Result should be a list, got {type(result)}"
+            assert isinstance(
+                result, list
+            ), f"Result should be a list, got {type(result)}"

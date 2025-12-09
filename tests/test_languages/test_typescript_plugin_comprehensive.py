@@ -53,7 +53,8 @@ class TestTypeScriptElementExtractorComprehensive:
         # Second call should use cache
         text2 = extractor._get_node_text_optimized(mock_node)
         assert text1 == text2
-        assert id(mock_node) in extractor._node_text_cache
+        # Cache uses (start_byte, end_byte) tuple as key
+        assert (mock_node.start_byte, mock_node.end_byte) in extractor._node_text_cache
 
     def test_get_node_text_optimized_fallback(self, extractor, mock_node):
         """Test node text extraction fallback mechanism"""

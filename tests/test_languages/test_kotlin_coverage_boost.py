@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Targeted tests to boost Kotlin plugin coverage to 75%+."""
 
+from unittest.mock import Mock
+
 import pytest
-from unittest.mock import Mock, patch, MagicMock
 
 pytest.importorskip("tree_sitter_kotlin")
 
@@ -285,14 +286,14 @@ class Broken {
         """Test node text extraction edge cases."""
         extractor.source_code = "fun test() {}"
         extractor.content_lines = extractor.source_code.split("\n")
-        
+
         # Mock node with unusual positions
         mock_node = Mock()
         mock_node.start_point = (0, 0)
         mock_node.end_point = (0, 13)
         mock_node.start_byte = 0
         mock_node.end_byte = 13
-        
+
         text = extractor._get_node_text(mock_node)
         assert isinstance(text, str)
 
@@ -302,7 +303,7 @@ class Broken {
 fun test() {}
 """
         tree = parser.parse(code.encode("utf-8"))
-        
+
         # Should not crash
         functions = extractor.extract_functions(tree, code)
         assert isinstance(functions, list)
@@ -364,15 +365,15 @@ class TestKotlinExtractorInternalMethods:
         code = """
 class Service {
     private val data = mutableListOf<String>()
-    
+
     fun add(item: String) {
         data.add(item)
     }
-    
+
     fun remove(item: String): Boolean {
         return data.remove(item)
     }
-    
+
     fun clear() {
         data.clear()
     }
@@ -426,11 +427,11 @@ class Circle(val radius: Double) : Shape() {
         code = """
 object DatabaseManager {
     private var connection: Connection? = null
-    
+
     fun connect(url: String) {
         // Connect logic
     }
-    
+
     fun disconnect() {
         connection = null
     }
@@ -452,18 +453,18 @@ class TestKotlinTextExtractionEdgeCases:
         """Test cached node text retrieval."""
         extractor.source_code = "val x = 1"
         extractor.content_lines = ["val x = 1"]
-        
+
         mock_node = Mock()
         mock_node.start_byte = 0
         mock_node.end_byte = 9
         mock_node.start_point = (0, 0)
         mock_node.end_point = (0, 9)
-        
+
         # First call
         text1 = extractor._get_node_text(mock_node)
         # Second call should use cache
         text2 = extractor._get_node_text(mock_node)
-        
+
         assert text1 == text2
 
     def test_get_node_text_multiline(self, extractor):
@@ -473,13 +474,13 @@ class TestKotlinTextExtractionEdgeCases:
 }"""
         extractor.source_code = code
         extractor.content_lines = code.split("\n")
-        
+
         mock_node = Mock()
         mock_node.start_byte = 0
         mock_node.end_byte = len(code)
         mock_node.start_point = (0, 0)
         mock_node.end_point = (2, 1)
-        
+
         text = extractor._get_node_text(mock_node)
         assert "fun test" in text
 
@@ -487,13 +488,13 @@ class TestKotlinTextExtractionEdgeCases:
         """Test text extraction with out of bounds position."""
         extractor.source_code = "short"
         extractor.content_lines = ["short"]
-        
+
         mock_node = Mock()
         mock_node.start_byte = 100
         mock_node.end_byte = 200
         mock_node.start_point = (10, 0)
         mock_node.end_point = (10, 50)
-        
+
         text = extractor._get_node_text(mock_node)
         assert text == ""
 
@@ -514,11 +515,11 @@ class TestKotlinExtractorExceptionPaths:
         """Test _extract_function returns None on error."""
         extractor.source_code = ""
         extractor.content_lines = []
-        
+
         # Create a mock node that will cause an exception
         mock_node = Mock()
         mock_node.start_point = Mock(side_effect=Exception("test error"))
-        
+
         result = extractor._extract_function(mock_node)
         assert result is None
 
@@ -526,10 +527,10 @@ class TestKotlinExtractorExceptionPaths:
         """Test _extract_class returns None on error."""
         extractor.source_code = ""
         extractor.content_lines = []
-        
+
         mock_node = Mock()
         mock_node.start_point = Mock(side_effect=Exception("test error"))
-        
+
         result = extractor._extract_class(mock_node)
         assert result is None
 
@@ -537,10 +538,10 @@ class TestKotlinExtractorExceptionPaths:
         """Test _extract_property returns None on error."""
         extractor.source_code = ""
         extractor.content_lines = []
-        
+
         mock_node = Mock()
         mock_node.start_point = Mock(side_effect=Exception("test error"))
-        
+
         result = extractor._extract_property(mock_node)
         assert result is None
 
@@ -548,10 +549,10 @@ class TestKotlinExtractorExceptionPaths:
         """Test _extract_import returns None on error."""
         extractor.source_code = ""
         extractor.content_lines = []
-        
+
         mock_node = Mock()
         mock_node.start_point = Mock(side_effect=Exception("test error"))
-        
+
         result = extractor._extract_import(mock_node)
         assert result is None
 
@@ -559,13 +560,13 @@ class TestKotlinExtractorExceptionPaths:
         """Test import with unparseable name."""
         extractor.source_code = "import"
         extractor.content_lines = ["import"]
-        
+
         mock_node = Mock()
         mock_node.start_point = (0, 0)
         mock_node.end_point = (0, 6)
         mock_node.start_byte = 0
         mock_node.end_byte = 6
-        
+
         result = extractor._extract_import(mock_node)
         if result:
             assert result.name == "unknown"

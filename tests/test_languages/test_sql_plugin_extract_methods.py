@@ -1,25 +1,28 @@
 #!/usr/bin/env python3
 """Tests for SQL plugin extract methods to boost coverage."""
 
+from unittest.mock import Mock
+
 import pytest
-from unittest.mock import Mock, patch
 
 from tree_sitter_analyzer.languages.sql_plugin import (
     SQLElementExtractor,
     SQLPlugin,
 )
-from tree_sitter_analyzer.models import Class, Function, Variable, Import
 
 # Check if tree-sitter-sql is available
 try:
-    import tree_sitter_sql
     import tree_sitter
+    import tree_sitter_sql
+
     TREE_SITTER_SQL_AVAILABLE = True
 except ImportError:
     TREE_SITTER_SQL_AVAILABLE = False
 
 
-@pytest.mark.skipif(not TREE_SITTER_SQL_AVAILABLE, reason="tree-sitter-sql not installed")
+@pytest.mark.skipif(
+    not TREE_SITTER_SQL_AVAILABLE, reason="tree-sitter-sql not installed"
+)
 class TestSQLExtractorMethods:
     """Test individual extract methods of SQL extractor."""
 
@@ -161,7 +164,9 @@ SELECT * FROM schema1.table1 JOIN schema2.table2 ON schema1.table1.id = schema2.
         assert imports == []
 
 
-@pytest.mark.skipif(not TREE_SITTER_SQL_AVAILABLE, reason="tree-sitter-sql not installed")
+@pytest.mark.skipif(
+    not TREE_SITTER_SQL_AVAILABLE, reason="tree-sitter-sql not installed"
+)
 class TestSQLValidationRecovery:
     """Test validation and recovery paths."""
 
@@ -176,7 +181,7 @@ CREATE TABLE users (id INT);
 CREATE VIEW active_users AS SELECT * FROM users WHERE active = 1;
 """
         extractor.content_lines = extractor.source_code.split("\n")
-        
+
         # Empty list should trigger recovery
         result = extractor._validate_and_fix_elements([])
         # View may or may not be recovered depending on regex matching
@@ -184,8 +189,8 @@ CREATE VIEW active_users AS SELECT * FROM users WHERE active = 1;
 
     def test_validate_preserves_valid_views(self, extractor):
         """Test valid views are preserved."""
-        from tree_sitter_analyzer.models import SQLView, SQLElementType
-        
+        from tree_sitter_analyzer.models import SQLElementType, SQLView
+
         view = SQLView(
             name="my_view",
             start_line=1,
@@ -194,15 +199,15 @@ CREATE VIEW active_users AS SELECT * FROM users WHERE active = 1;
             sql_element_type=SQLElementType.VIEW,
             source_tables=["users"],
         )
-        
+
         result = extractor._validate_and_fix_elements([view])
-        view_names = [e.name for e in result if hasattr(e, 'name')]
+        view_names = [e.name for e in result if hasattr(e, "name")]
         assert "my_view" in view_names
 
     def test_validate_removes_invalid_triggers(self, extractor):
         """Test invalid triggers are removed."""
-        from tree_sitter_analyzer.models import SQLTrigger, SQLElementType
-        
+        from tree_sitter_analyzer.models import SQLElementType, SQLTrigger
+
         # Trigger with function content should be removed
         bad_trigger = SQLTrigger(
             name="bad",
@@ -211,13 +216,15 @@ CREATE VIEW active_users AS SELECT * FROM users WHERE active = 1;
             raw_text="CREATE FUNCTION bad() RETURNS INT",  # Wrong content
             sql_element_type=SQLElementType.TRIGGER,
         )
-        
+
         result = extractor._validate_and_fix_elements([bad_trigger])
         trigger_names = [e.name for e in result if isinstance(e, SQLTrigger)]
         assert "bad" not in trigger_names
 
 
-@pytest.mark.skipif(not TREE_SITTER_SQL_AVAILABLE, reason="tree-sitter-sql not installed")
+@pytest.mark.skipif(
+    not TREE_SITTER_SQL_AVAILABLE, reason="tree-sitter-sql not installed"
+)
 class TestSQLEnhancedExtraction:
     """Test enhanced SQL extraction methods."""
 
@@ -243,7 +250,7 @@ CREATE TABLE products (
         tree = parser.parse(code.encode("utf-8"))
         extractor.source_code = code
         extractor.content_lines = code.split("\n")
-        
+
         sql_elements = []
         extractor._extract_sql_tables(tree.root_node, sql_elements)
         assert isinstance(sql_elements, list)
@@ -260,7 +267,7 @@ GROUP BY u.id, u.name;
         tree = parser.parse(code.encode("utf-8"))
         extractor.source_code = code
         extractor.content_lines = code.split("\n")
-        
+
         sql_elements = []
         extractor._extract_sql_views(tree.root_node, sql_elements)
         assert isinstance(sql_elements, list)
@@ -278,7 +285,7 @@ END;
         tree = parser.parse(code.encode("utf-8"))
         extractor.source_code = code
         extractor.content_lines = code.split("\n")
-        
+
         sql_elements = []
         extractor._extract_sql_procedures(tree.root_node, sql_elements)
         assert isinstance(sql_elements, list)
@@ -295,7 +302,7 @@ END;
         tree = parser.parse(code.encode("utf-8"))
         extractor.source_code = code
         extractor.content_lines = code.split("\n")
-        
+
         sql_elements = []
         extractor._extract_sql_functions_enhanced(tree.root_node, sql_elements)
         assert isinstance(sql_elements, list)
@@ -314,7 +321,7 @@ END;
         tree = parser.parse(code.encode("utf-8"))
         extractor.source_code = code
         extractor.content_lines = code.split("\n")
-        
+
         sql_elements = []
         extractor._extract_sql_triggers(tree.root_node, sql_elements)
         assert isinstance(sql_elements, list)
@@ -329,7 +336,7 @@ CREATE INDEX idx_composite ON orders(user_id, status, created_at);
         tree = parser.parse(code.encode("utf-8"))
         extractor.source_code = code
         extractor.content_lines = code.split("\n")
-        
+
         sql_elements = []
         extractor._extract_sql_indexes(tree.root_node, sql_elements)
         assert isinstance(sql_elements, list)
@@ -366,7 +373,9 @@ class TestSQLPluginExtractElements:
         assert isinstance(result, dict)
 
 
-@pytest.mark.skipif(not TREE_SITTER_SQL_AVAILABLE, reason="tree-sitter-sql not installed")
+@pytest.mark.skipif(
+    not TREE_SITTER_SQL_AVAILABLE, reason="tree-sitter-sql not installed"
+)
 class TestSQLPluginWithParser:
     """Test SQLPlugin with tree-sitter parser."""
 
@@ -391,7 +400,7 @@ CREATE TRIGGER trig1 BEFORE INSERT ON users FOR EACH ROW BEGIN END;
 """
         tree = parser.parse(code.encode("utf-8"))
         result = plugin.extract_elements(tree, code)
-        
+
         assert "classes" in result
         assert "functions" in result
         assert "variables" in result
@@ -416,9 +425,11 @@ SELEC * FROM users;  -- Another error
         # Generate large SQL file
         tables = []
         for i in range(50):
-            tables.append(f"CREATE TABLE table_{i} (id INT PRIMARY KEY, data VARCHAR(100));")
+            tables.append(
+                f"CREATE TABLE table_{i} (id INT PRIMARY KEY, data VARCHAR(100));"
+            )
         code = "\n".join(tables)
-        
+
         tree = parser.parse(code.encode("utf-8"))
         result = plugin.extract_elements(tree, code)
         assert isinstance(result, dict)
@@ -438,13 +449,13 @@ class TestSQLNodeTextExtraction:
         """Test text extraction for single line."""
         extractor.source_code = "SELECT * FROM users"
         extractor.content_lines = ["SELECT * FROM users"]
-        
+
         mock_node = Mock()
         mock_node.start_byte = 0
         mock_node.end_byte = 6
         mock_node.start_point = (0, 0)
         mock_node.end_point = (0, 6)
-        
+
         text = extractor._get_node_text(mock_node)
         assert "SELECT" in text or text == ""  # May fail based on encoding
 
@@ -452,13 +463,13 @@ class TestSQLNodeTextExtraction:
         """Test text extraction for multiline."""
         extractor.source_code = "SELECT *\nFROM users\nWHERE id = 1"
         extractor.content_lines = extractor.source_code.split("\n")
-        
+
         mock_node = Mock()
         mock_node.start_byte = 0
         mock_node.end_byte = len(extractor.source_code)
         mock_node.start_point = (0, 0)
         mock_node.end_point = (2, 12)
-        
+
         text = extractor._get_node_text(mock_node)
         assert isinstance(text, str)
 
@@ -466,18 +477,18 @@ class TestSQLNodeTextExtraction:
         """Test that node text is cached."""
         extractor.source_code = "SELECT 1"
         extractor.content_lines = ["SELECT 1"]
-        
+
         mock_node = Mock()
         mock_node.start_byte = 0
         mock_node.end_byte = 8
         mock_node.start_point = (0, 0)
         mock_node.end_point = (0, 8)
-        
+
         # First call
         text1 = extractor._get_node_text(mock_node)
         # Second call should use cache
         text2 = extractor._get_node_text(mock_node)
-        
+
         assert text1 == text2
-        # Node ID should be in cache
-        assert id(mock_node) in extractor._node_text_cache
+        # Cache uses (start_byte, end_byte) tuple as key
+        assert (mock_node.start_byte, mock_node.end_byte) in extractor._node_text_cache

@@ -1,16 +1,17 @@
 """Tests for Rust query definitions."""
 
 import pytest
+
 from tree_sitter_analyzer.queries.rust import (
+    ALL_QUERIES,
     RUST_QUERIES,
     RUST_QUERY_DESCRIPTIONS,
-    ALL_QUERIES,
+    get_all_queries,
+    get_available_rust_queries,
+    get_query,
     get_rust_query,
     get_rust_query_description,
-    get_query,
-    get_all_queries,
     list_queries,
-    get_available_rust_queries,
 )
 
 
@@ -119,7 +120,9 @@ class TestRustQueryDescriptions:
     def test_all_queries_have_descriptions(self):
         """All queries should have descriptions."""
         for query_name in RUST_QUERIES.keys():
-            assert query_name in RUST_QUERY_DESCRIPTIONS, f"Query '{query_name}' has no description"
+            assert (
+                query_name in RUST_QUERY_DESCRIPTIONS
+            ), f"Query '{query_name}' has no description"
 
 
 class TestGetRustQuery:

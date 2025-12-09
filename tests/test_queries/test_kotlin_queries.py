@@ -29,8 +29,16 @@ class TestKotlinQueries:
     def test_kotlin_query_keys(self):
         """Test that essential queries exist."""
         expected_keys = [
-            "package", "class", "object", "interface", "function",
-            "lambda", "property", "val", "var", "annotation"
+            "package",
+            "class",
+            "object",
+            "interface",
+            "function",
+            "lambda",
+            "property",
+            "val",
+            "var",
+            "annotation",
         ]
         for key in expected_keys:
             assert key in KOTLIN_QUERIES, f"Missing query: {key}"
@@ -71,7 +79,7 @@ class TestGetKotlinQuery:
         """Test that nonexistent query raises ValueError."""
         with pytest.raises(ValueError) as exc_info:
             get_kotlin_query("nonexistent_query")
-        
+
         assert "nonexistent_query" in str(exc_info.value)
         assert "Available:" in str(exc_info.value)
 
@@ -132,7 +140,7 @@ class TestGetQuery:
         """Test that nonexistent query raises ValueError."""
         with pytest.raises(ValueError) as exc_info:
             get_query("nonexistent")
-        
+
         assert "not found" in str(exc_info.value)
 
 

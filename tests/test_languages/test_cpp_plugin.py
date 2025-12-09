@@ -13,7 +13,7 @@ from unittest.mock import Mock, patch
 import pytest
 
 from tree_sitter_analyzer.languages.cpp_plugin import CppElementExtractor, CppPlugin
-from tree_sitter_analyzer.models import Class, Function, Import
+from tree_sitter_analyzer.models import Class, Function
 from tree_sitter_analyzer.plugins.base import ElementExtractor, LanguagePlugin
 
 
@@ -155,9 +155,7 @@ const std::string Calculator::VERSION = "1.0";
 
         assert isinstance(imports, list)
 
-    def test_extract_function_optimized(
-        self, extractor: CppElementExtractor
-    ) -> None:
+    def test_extract_function_optimized(self, extractor: CppElementExtractor) -> None:
         """Test optimized function extraction"""
         mock_node = Mock()
         mock_node.type = "function_definition"

@@ -1,62 +1,59 @@
 """Tests for Ruby plugin functionality."""
 
-from pathlib import Path
-
 import pytest
 import tree_sitter
 
-from tree_sitter_analyzer.languages.ruby_plugin import RubyPlugin, RubyElementExtractor
-
+from tree_sitter_analyzer.languages.ruby_plugin import RubyElementExtractor, RubyPlugin
 
 # Sample Ruby code snippets for testing
-SIMPLE_CLASS_CODE = '''
+SIMPLE_CLASS_CODE = """
 require 'json'
 require_relative 'base_model'
 
 class Person
   attr_accessor :name, :age
   attr_reader :id
-  
+
   def initialize(name, age)
     @name = name
     @age = age
     @id = generate_id
   end
-  
+
   def greet
     "Hello, #{@name}!"
   end
-  
+
   private
-  
+
   def generate_id
     SecureRandom.uuid
   end
 end
-'''
+"""
 
-MODULE_CODE = '''
+MODULE_CODE = """
 module MyApp
   module Services
     class UserService
       VERSION = "1.0.0"
-      
+
       def self.find_user(id)
         # Find user by id
       end
-      
+
       def create_user(attributes)
         User.new(attributes)
       end
     end
   end
 end
-'''
+"""
 
-INHERITANCE_CODE = '''
+INHERITANCE_CODE = """
 class Animal
   attr_accessor :name
-  
+
   def speak
     raise NotImplementedError
   end
@@ -66,7 +63,7 @@ class Dog < Animal
   def speak
     "Woof!"
   end
-  
+
   def fetch(item)
     "Fetching #{item}"
   end
@@ -77,37 +74,37 @@ class Cat < Animal
     "Meow!"
   end
 end
-'''
+"""
 
-CONSTANTS_CODE = '''
+CONSTANTS_CODE = """
 class Configuration
   MAX_USERS = 100
   DEFAULT_TIMEOUT = 30
   API_VERSION = "2.0"
-  
+
   @@instance_count = 0
-  
+
   def initialize
     @@instance_count += 1
     @settings = {}
   end
-  
+
   def self.instance_count
     @@instance_count
   end
 end
-'''
+"""
 
-SINGLETON_METHODS_CODE = '''
+SINGLETON_METHODS_CODE = """
 class MathUtils
   def self.add(a, b)
     a + b
   end
-  
+
   def self.multiply(a, b)
     a * b
   end
-  
+
   class << self
     def divide(a, b)
       return 0 if b == 0
@@ -115,25 +112,25 @@ class MathUtils
     end
   end
 end
-'''
+"""
 
-BLOCK_PARAMS_CODE = '''
+BLOCK_PARAMS_CODE = """
 class DataProcessor
   def process(items, &block)
     items.map(&block)
   end
-  
+
   def filter(*args, **kwargs)
     # Filter with args and kwargs
   end
-  
+
   def transform(data, options = {})
     # Transform data with options
   end
 end
-'''
+"""
 
-REQUIRE_STATEMENTS_CODE = '''
+REQUIRE_STATEMENTS_CODE = """
 require 'bundler/setup'
 require 'rails'
 require_relative '../lib/helpers'
@@ -144,7 +141,7 @@ class Application
     # Application logic
   end
 end
-'''
+"""
 
 
 def get_tree_for_code(code: str, plugin: RubyPlugin):
@@ -203,7 +200,7 @@ class TestRubyClassExtraction:
         tree = get_tree_for_code(SIMPLE_CLASS_CODE, plugin)
         extractor = plugin.create_extractor()
         classes = extractor.extract_classes(tree, SIMPLE_CLASS_CODE)
-        
+
         assert len(classes) == 1
         cls = classes[0]
         assert cls.name == "Person"
@@ -215,7 +212,7 @@ class TestRubyClassExtraction:
         tree = get_tree_for_code(MODULE_CODE, plugin)
         extractor = plugin.create_extractor()
         classes = extractor.extract_classes(tree, MODULE_CODE)
-        
+
         class_names = [c.name for c in classes]
         # Should find MyApp, Services, UserService
         assert "MyApp" in class_names or any("MyApp" in str(c) for c in classes)
@@ -226,7 +223,7 @@ class TestRubyClassExtraction:
         tree = get_tree_for_code(INHERITANCE_CODE, plugin)
         extractor = plugin.create_extractor()
         classes = extractor.extract_classes(tree, INHERITANCE_CODE)
-        
+
         dog_class = next((c for c in classes if c.name == "Dog"), None)
         assert dog_class is not None
         # Superclass might be extracted differently - check it exists
@@ -238,7 +235,7 @@ class TestRubyClassExtraction:
         tree = get_tree_for_code(INHERITANCE_CODE, plugin)
         extractor = plugin.create_extractor()
         classes = extractor.extract_classes(tree, INHERITANCE_CODE)
-        
+
         class_names = [c.name for c in classes]
         assert "Animal" in class_names
         assert "Dog" in class_names
@@ -250,7 +247,7 @@ class TestRubyClassExtraction:
         tree = get_tree_for_code(SIMPLE_CLASS_CODE, plugin)
         extractor = plugin.create_extractor()
         classes = extractor.extract_classes(tree, SIMPLE_CLASS_CODE)
-        
+
         assert all(c.start_line > 0 for c in classes)
         assert all(c.end_line >= c.start_line for c in classes)
 
@@ -260,7 +257,7 @@ class TestRubyClassExtraction:
         tree = get_tree_for_code("", plugin)
         extractor = plugin.create_extractor()
         classes = extractor.extract_classes(tree, "")
-        
+
         assert classes == []
 
 
@@ -273,7 +270,7 @@ class TestRubyFunctionExtraction:
         tree = get_tree_for_code(SIMPLE_CLASS_CODE, plugin)
         extractor = plugin.create_extractor()
         functions = extractor.extract_functions(tree, SIMPLE_CLASS_CODE)
-        
+
         func_names = [f.name for f in functions]
         # Should find initialize, greet, generate_id, and attr_ methods
         assert any("initialize" in name for name in func_names)
@@ -285,7 +282,7 @@ class TestRubyFunctionExtraction:
         tree = get_tree_for_code(SINGLETON_METHODS_CODE, plugin)
         extractor = plugin.create_extractor()
         functions = extractor.extract_functions(tree, SINGLETON_METHODS_CODE)
-        
+
         func_names = [f.name for f in functions]
         # Should find class methods
         assert any("add" in name for name in func_names)
@@ -297,7 +294,7 @@ class TestRubyFunctionExtraction:
         tree = get_tree_for_code(SIMPLE_CLASS_CODE, plugin)
         extractor = plugin.create_extractor()
         functions = extractor.extract_functions(tree, SIMPLE_CLASS_CODE)
-        
+
         # attr_accessor creates getter/setter methods
         func_names = [f.name for f in functions]
         assert any("name" in name for name in func_names) or len(functions) > 0
@@ -308,7 +305,7 @@ class TestRubyFunctionExtraction:
         tree = get_tree_for_code(SIMPLE_CLASS_CODE, plugin)
         extractor = plugin.create_extractor()
         functions = extractor.extract_functions(tree, SIMPLE_CLASS_CODE)
-        
+
         initialize_method = next((f for f in functions if "initialize" in f.name), None)
         assert initialize_method is not None
         # Should have name and age parameters
@@ -320,7 +317,7 @@ class TestRubyFunctionExtraction:
         tree = get_tree_for_code(BLOCK_PARAMS_CODE, plugin)
         extractor = plugin.create_extractor()
         functions = extractor.extract_functions(tree, BLOCK_PARAMS_CODE)
-        
+
         filter_method = next((f for f in functions if "filter" in f.name), None)
         assert filter_method is not None
 
@@ -330,7 +327,7 @@ class TestRubyFunctionExtraction:
         tree = get_tree_for_code(SINGLETON_METHODS_CODE, plugin)
         extractor = plugin.create_extractor()
         functions = extractor.extract_functions(tree, SINGLETON_METHODS_CODE)
-        
+
         # Singleton methods should be marked as static
         singleton_methods = [f for f in functions if f.is_static]
         assert len(singleton_methods) >= 0  # May vary by extraction
@@ -341,7 +338,7 @@ class TestRubyFunctionExtraction:
         tree = get_tree_for_code("", plugin)
         extractor = plugin.create_extractor()
         functions = extractor.extract_functions(tree, "")
-        
+
         assert functions == []
 
 
@@ -354,7 +351,7 @@ class TestRubyVariableExtraction:
         tree = get_tree_for_code(CONSTANTS_CODE, plugin)
         extractor = plugin.create_extractor()
         variables = extractor.extract_variables(tree, CONSTANTS_CODE)
-        
+
         var_names = [v.name for v in variables]
         # Should find MAX_USERS, DEFAULT_TIMEOUT, API_VERSION
         assert any("MAX_USERS" in name for name in var_names) or len(variables) > 0
@@ -365,7 +362,7 @@ class TestRubyVariableExtraction:
         tree = get_tree_for_code(CONSTANTS_CODE, plugin)
         extractor = plugin.create_extractor()
         variables = extractor.extract_variables(tree, CONSTANTS_CODE)
-        
+
         constants = [v for v in variables if v.is_constant]
         # Should have constant variables
         assert len(constants) >= 0
@@ -376,7 +373,7 @@ class TestRubyVariableExtraction:
         tree = get_tree_for_code(CONSTANTS_CODE, plugin)
         extractor = plugin.create_extractor()
         variables = extractor.extract_variables(tree, CONSTANTS_CODE)
-        
+
         # @@instance_count should be extracted
         var_names = [v.name for v in variables]
         assert any("instance_count" in name for name in var_names) or len(variables) > 0
@@ -387,7 +384,7 @@ class TestRubyVariableExtraction:
         tree = get_tree_for_code(CONSTANTS_CODE, plugin)
         extractor = plugin.create_extractor()
         variables = extractor.extract_variables(tree, CONSTANTS_CODE)
-        
+
         assert all(v.start_line > 0 for v in variables)
         assert all(v.end_line >= v.start_line for v in variables)
 
@@ -397,7 +394,7 @@ class TestRubyVariableExtraction:
         tree = get_tree_for_code("", plugin)
         extractor = plugin.create_extractor()
         variables = extractor.extract_variables(tree, "")
-        
+
         assert variables == []
 
 
@@ -410,7 +407,7 @@ class TestRubyImportExtraction:
         tree = get_tree_for_code(REQUIRE_STATEMENTS_CODE, plugin)
         extractor = plugin.create_extractor()
         imports = extractor.extract_imports(tree, REQUIRE_STATEMENTS_CODE)
-        
+
         import_names = [i.name for i in imports]
         assert "bundler/setup" in import_names
         assert "rails" in import_names
@@ -421,7 +418,7 @@ class TestRubyImportExtraction:
         tree = get_tree_for_code(REQUIRE_STATEMENTS_CODE, plugin)
         extractor = plugin.create_extractor()
         imports = extractor.extract_imports(tree, REQUIRE_STATEMENTS_CODE)
-        
+
         import_names = [i.name for i in imports]
         assert "../lib/helpers" in import_names
 
@@ -431,7 +428,7 @@ class TestRubyImportExtraction:
         tree = get_tree_for_code(REQUIRE_STATEMENTS_CODE, plugin)
         extractor = plugin.create_extractor()
         imports = extractor.extract_imports(tree, REQUIRE_STATEMENTS_CODE)
-        
+
         import_names = [i.name for i in imports]
         assert "config.rb" in import_names
 
@@ -441,7 +438,7 @@ class TestRubyImportExtraction:
         tree = get_tree_for_code(REQUIRE_STATEMENTS_CODE, plugin)
         extractor = plugin.create_extractor()
         imports = extractor.extract_imports(tree, REQUIRE_STATEMENTS_CODE)
-        
+
         assert all(i.start_line > 0 for i in imports)
         assert all(i.end_line >= i.start_line for i in imports)
 
@@ -451,7 +448,7 @@ class TestRubyImportExtraction:
         tree = get_tree_for_code("", plugin)
         extractor = plugin.create_extractor()
         imports = extractor.extract_imports(tree, "")
-        
+
         assert imports == []
 
     def test_extract_simple_require(self):
@@ -460,7 +457,7 @@ class TestRubyImportExtraction:
         tree = get_tree_for_code(SIMPLE_CLASS_CODE, plugin)
         extractor = plugin.create_extractor()
         imports = extractor.extract_imports(tree, SIMPLE_CLASS_CODE)
-        
+
         import_names = [i.name for i in imports]
         assert "json" in import_names
         assert "base_model" in import_names
@@ -475,9 +472,9 @@ class TestRubyExtractorHelpers:
         extractor._node_text_cache["test"] = "value"
         extractor._processed_nodes.add(1)
         extractor.current_module = "TestModule"
-        
+
         extractor._reset_caches()
-        
+
         assert len(extractor._node_text_cache) == 0
         assert len(extractor._processed_nodes) == 0
         assert extractor.current_module == ""
@@ -495,14 +492,14 @@ class TestRubyExtractorHelpers:
         tree = get_tree_for_code("class Test; end", plugin)
         extractor = plugin.create_extractor()
         extractor.source_code = "class Test; end"
-        
+
         # First call should cache
         root_node = tree.root_node
         text1 = extractor._get_node_text_optimized(root_node)
-        
+
         # Second call should use cache
         text2 = extractor._get_node_text_optimized(root_node)
-        
+
         assert text1 == text2
 
 
@@ -522,10 +519,10 @@ class TestRubyPluginAnalyzeFile:
         # Create temporary Ruby file
         rb_file = tmp_path / "test.rb"
         rb_file.write_text(SIMPLE_CLASS_CODE, encoding="utf-8")
-        
+
         plugin = RubyPlugin()
         result = await plugin.analyze_file(str(rb_file), None)
-        
+
         assert result.success is True
         assert result.language == "ruby"
         assert result.file_path == str(rb_file)
@@ -536,10 +533,10 @@ class TestRubyPluginAnalyzeFile:
         """Test that node count is returned."""
         rb_file = tmp_path / "test.rb"
         rb_file.write_text(SIMPLE_CLASS_CODE, encoding="utf-8")
-        
+
         plugin = RubyPlugin()
         result = await plugin.analyze_file(str(rb_file), None)
-        
+
         assert result.node_count > 0
 
 
@@ -563,12 +560,12 @@ class TestRubyIntegration:
         plugin = RubyPlugin()
         tree = get_tree_for_code(SIMPLE_CLASS_CODE, plugin)
         extractor = plugin.create_extractor()
-        
+
         classes = extractor.extract_classes(tree, SIMPLE_CLASS_CODE)
         functions = extractor.extract_functions(tree, SIMPLE_CLASS_CODE)
         variables = extractor.extract_variables(tree, SIMPLE_CLASS_CODE)
         imports = extractor.extract_imports(tree, SIMPLE_CLASS_CODE)
-        
+
         assert len(classes) > 0
         assert len(functions) > 0
         assert len(imports) > 0
@@ -578,10 +575,10 @@ class TestRubyIntegration:
         plugin = RubyPlugin()
         tree = get_tree_for_code(MODULE_CODE, plugin)
         extractor = plugin.create_extractor()
-        
+
         classes = extractor.extract_classes(tree, MODULE_CODE)
         functions = extractor.extract_functions(tree, MODULE_CODE)
-        
+
         # Should find modules and nested classes
         assert len(classes) >= 1
         # Should find methods
@@ -592,13 +589,13 @@ class TestRubyIntegration:
         plugin = RubyPlugin()
         tree = get_tree_for_code(INHERITANCE_CODE, plugin)
         extractor = plugin.create_extractor()
-        
+
         classes = extractor.extract_classes(tree, INHERITANCE_CODE)
-        
+
         # Check inheritance
         dog = next((c for c in classes if c.name == "Dog"), None)
         cat = next((c for c in classes if c.name == "Cat"), None)
-        
+
         assert dog is not None
         assert cat is not None
         # Superclass extraction may vary - check it's not None

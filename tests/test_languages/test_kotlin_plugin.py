@@ -1,7 +1,8 @@
 """Tests for Kotlin language plugin."""
 
+from unittest.mock import MagicMock
+
 import pytest
-from unittest.mock import MagicMock, AsyncMock, patch
 
 # Skip if tree_sitter_kotlin not available
 pytest.importorskip("tree_sitter_kotlin")
@@ -40,9 +41,9 @@ class TestKotlinElementExtractorFunctions:
     @pytest.fixture
     def kotlin_parser(self):
         """Create Kotlin parser."""
-        import tree_sitter_kotlin
         import tree_sitter
-        
+        import tree_sitter_kotlin
+
         language = tree_sitter.Language(tree_sitter_kotlin.language())
         parser = tree_sitter.Parser(language)
         return parser
@@ -56,7 +57,7 @@ fun hello() {
 """
         tree = kotlin_parser.parse(code.encode("utf-8"))
         functions = extractor.extract_functions(tree, code)
-        
+
         assert len(functions) >= 1
         func = functions[0]
         assert func.name == "hello"
@@ -71,11 +72,13 @@ fun greet(name: String, age: Int) {
 """
         tree = kotlin_parser.parse(code.encode("utf-8"))
         functions = extractor.extract_functions(tree, code)
-        
+
         assert len(functions) >= 1
         func = functions[0]
         assert func.name == "greet"
-        assert len(func.parameters) >= 0  # May or may not extract params depending on implementation
+        assert (
+            len(func.parameters) >= 0
+        )  # May or may not extract params depending on implementation
 
     def test_extract_function_with_return_type(self, extractor, kotlin_parser):
         """Should extract function with return type."""
@@ -86,7 +89,7 @@ fun add(a: Int, b: Int): Int {
 """
         tree = kotlin_parser.parse(code.encode("utf-8"))
         functions = extractor.extract_functions(tree, code)
-        
+
         assert len(functions) >= 1
         func = functions[0]
         assert func.name == "add"
@@ -100,7 +103,7 @@ suspend fun fetchData(): String {
 """
         tree = kotlin_parser.parse(code.encode("utf-8"))
         functions = extractor.extract_functions(tree, code)
-        
+
         assert len(functions) >= 1
         func = functions[0]
         assert func.name == "fetchData"
@@ -114,7 +117,7 @@ private fun helper() {
 """
         tree = kotlin_parser.parse(code.encode("utf-8"))
         functions = extractor.extract_functions(tree, code)
-        
+
         assert len(functions) >= 1
 
     def test_extract_extension_function(self, extractor, kotlin_parser):
@@ -126,7 +129,7 @@ fun String.hello() {
 """
         tree = kotlin_parser.parse(code.encode("utf-8"))
         functions = extractor.extract_functions(tree, code)
-        
+
         assert len(functions) >= 1
 
 
@@ -141,9 +144,9 @@ class TestKotlinElementExtractorClasses:
     @pytest.fixture
     def kotlin_parser(self):
         """Create Kotlin parser."""
-        import tree_sitter_kotlin
         import tree_sitter
-        
+        import tree_sitter_kotlin
+
         language = tree_sitter.Language(tree_sitter_kotlin.language())
         parser = tree_sitter.Parser(language)
         return parser
@@ -157,7 +160,7 @@ class Person {
 """
         tree = kotlin_parser.parse(code.encode("utf-8"))
         classes = extractor.extract_classes(tree, code)
-        
+
         assert len(classes) >= 1
         cls = classes[0]
         assert cls.name == "Person"
@@ -170,7 +173,7 @@ data class User(val name: String, val age: Int)
 """
         tree = kotlin_parser.parse(code.encode("utf-8"))
         classes = extractor.extract_classes(tree, code)
-        
+
         assert len(classes) >= 1
         cls = classes[0]
         assert cls.name == "User"
@@ -184,7 +187,7 @@ class Student : Person() {
 """
         tree = kotlin_parser.parse(code.encode("utf-8"))
         classes = extractor.extract_classes(tree, code)
-        
+
         assert len(classes) >= 1
 
     def test_extract_object_declaration(self, extractor, kotlin_parser):
@@ -198,7 +201,7 @@ object Singleton {
 """
         tree = kotlin_parser.parse(code.encode("utf-8"))
         classes = extractor.extract_classes(tree, code)
-        
+
         assert len(classes) >= 1
         obj = classes[0]
         assert obj.name == "Singleton"
@@ -214,7 +217,7 @@ class MyClass {
 """
         tree = kotlin_parser.parse(code.encode("utf-8"))
         classes = extractor.extract_classes(tree, code)
-        
+
         assert len(classes) >= 1
 
     def test_extract_sealed_class(self, extractor, kotlin_parser):
@@ -227,7 +230,7 @@ sealed class Result {
 """
         tree = kotlin_parser.parse(code.encode("utf-8"))
         classes = extractor.extract_classes(tree, code)
-        
+
         assert len(classes) >= 1
 
 
@@ -242,9 +245,9 @@ class TestKotlinElementExtractorVariables:
     @pytest.fixture
     def kotlin_parser(self):
         """Create Kotlin parser."""
-        import tree_sitter_kotlin
         import tree_sitter
-        
+        import tree_sitter_kotlin
+
         language = tree_sitter.Language(tree_sitter_kotlin.language())
         parser = tree_sitter.Parser(language)
         return parser
@@ -256,7 +259,7 @@ val name: String = "John"
 """
         tree = kotlin_parser.parse(code.encode("utf-8"))
         variables = extractor.extract_variables(tree, code)
-        
+
         assert len(variables) >= 1
         var = variables[0]
         # Name extraction may vary
@@ -269,7 +272,7 @@ var count: Int = 0
 """
         tree = kotlin_parser.parse(code.encode("utf-8"))
         variables = extractor.extract_variables(tree, code)
-        
+
         assert len(variables) >= 1
 
     def test_extract_const_val(self, extractor, kotlin_parser):
@@ -279,7 +282,7 @@ const val MAX_SIZE = 100
 """
         tree = kotlin_parser.parse(code.encode("utf-8"))
         variables = extractor.extract_variables(tree, code)
-        
+
         assert len(variables) >= 1
 
     def test_extract_lateinit_var(self, extractor, kotlin_parser):
@@ -289,7 +292,7 @@ lateinit var adapter: ListAdapter
 """
         tree = kotlin_parser.parse(code.encode("utf-8"))
         variables = extractor.extract_variables(tree, code)
-        
+
         assert len(variables) >= 1
 
 
@@ -304,9 +307,9 @@ class TestKotlinElementExtractorImports:
     @pytest.fixture
     def kotlin_parser(self):
         """Create Kotlin parser."""
-        import tree_sitter_kotlin
         import tree_sitter
-        
+        import tree_sitter_kotlin
+
         language = tree_sitter.Language(tree_sitter_kotlin.language())
         parser = tree_sitter.Parser(language)
         return parser
@@ -318,7 +321,7 @@ import kotlin.collections.List
 """
         tree = kotlin_parser.parse(code.encode("utf-8"))
         imports = extractor.extract_imports(tree, code)
-        
+
         # Import extraction may not be fully implemented
         assert isinstance(imports, list)
 
@@ -331,7 +334,7 @@ import java.util.Date
 """
         tree = kotlin_parser.parse(code.encode("utf-8"))
         imports = extractor.extract_imports(tree, code)
-        
+
         # Import extraction may not be fully implemented
         assert isinstance(imports, list)
 
@@ -342,7 +345,7 @@ import kotlin.collections.ArrayList as KList
 """
         tree = kotlin_parser.parse(code.encode("utf-8"))
         imports = extractor.extract_imports(tree, code)
-        
+
         # Import extraction may not be fully implemented
         assert isinstance(imports, list)
 
@@ -358,9 +361,9 @@ class TestKotlinElementExtractorPackages:
     @pytest.fixture
     def kotlin_parser(self):
         """Create Kotlin parser."""
-        import tree_sitter_kotlin
         import tree_sitter
-        
+        import tree_sitter_kotlin
+
         language = tree_sitter.Language(tree_sitter_kotlin.language())
         parser = tree_sitter.Parser(language)
         return parser
@@ -374,7 +377,7 @@ class MyClass {}
 """
         tree = kotlin_parser.parse(code.encode("utf-8"))
         packages = extractor.extract_packages(tree, code)
-        
+
         # May or may not extract packages depending on implementation
         assert isinstance(packages, list)
 
@@ -385,7 +388,7 @@ class MyClass {}
 """
         tree = kotlin_parser.parse(code.encode("utf-8"))
         packages = extractor.extract_packages(tree, code)
-        
+
         assert isinstance(packages, list)
 
 
@@ -430,7 +433,7 @@ class TestKotlinPlugin:
         """get_plugin_info should return plugin information."""
         plugin = KotlinPlugin()
         info = plugin.get_plugin_info()
-        
+
         assert info["language"] == "kotlin"
         assert ".kt" in info["extensions"]
 
@@ -438,7 +441,7 @@ class TestKotlinPlugin:
         """get_supported_element_types should return standard types."""
         plugin = KotlinPlugin()
         types = plugin.get_supported_element_types()
-        
+
         assert "function" in types
         assert "class" in types
 
@@ -463,12 +466,12 @@ fun main() {
     println("Hello")
 }
 """)
-        
+
         mock_request = MagicMock()
         mock_request.file_path = str(kt_file)
-        
+
         result = await plugin.analyze_file(str(kt_file), mock_request)
-        
+
         # Should return an AnalysisResult (successful or not)
         assert result is not None
 
@@ -483,12 +486,12 @@ class Person(val name: String) {
     }
 }
 """)
-        
+
         mock_request = MagicMock()
         mock_request.file_path = str(kt_file)
-        
+
         result = await plugin.analyze_file(str(kt_file), mock_request)
-        
+
         assert result is not None
 
 
@@ -503,9 +506,9 @@ class TestKotlinComplexExtraction:
     @pytest.fixture
     def kotlin_parser(self):
         """Create Kotlin parser."""
-        import tree_sitter_kotlin
         import tree_sitter
-        
+        import tree_sitter_kotlin
+
         language = tree_sitter.Language(tree_sitter_kotlin.language())
         parser = tree_sitter.Parser(language)
         return parser
@@ -526,11 +529,11 @@ data class User(
 
 class UserRepository {
     private val users = mutableListOf<User>()
-    
+
     fun addUser(user: User) {
         users.add(user)
     }
-    
+
     suspend fun fetchUsers(): List<User> {
         return users.toList()
     }
@@ -543,11 +546,11 @@ object UserFactory {
 }
 """
         tree = kotlin_parser.parse(code.encode("utf-8"))
-        
+
         functions = extractor.extract_functions(tree, code)
         classes = extractor.extract_classes(tree, code)
         imports = extractor.extract_imports(tree, code)
-        
+
         assert len(functions) >= 2  # addUser, fetchUsers, createUser
         assert len(classes) >= 2  # User, UserRepository, UserFactory
         # Import extraction may not be fully implemented
@@ -562,7 +565,7 @@ fun <T> identity(value: T): T {
 """
         tree = kotlin_parser.parse(code.encode("utf-8"))
         functions = extractor.extract_functions(tree, code)
-        
+
         assert len(functions) >= 1
 
     def test_extract_interface(self, extractor, kotlin_parser):
@@ -575,7 +578,7 @@ interface Repository<T> {
 """
         tree = kotlin_parser.parse(code.encode("utf-8"))
         classes = extractor.extract_classes(tree, code)
-        
+
         # Interface might be extracted as class or separately
         assert isinstance(classes, list)
 
@@ -588,5 +591,5 @@ enum class Color {
 """
         tree = kotlin_parser.parse(code.encode("utf-8"))
         classes = extractor.extract_classes(tree, code)
-        
+
         assert isinstance(classes, list)

@@ -586,7 +586,6 @@ class UserConfig {
         mock_node = Mock()
         mock_node.start_byte = 0
         mock_node.end_byte = 10
-        node_id = id(mock_node)
 
         # Set up extractor state
         extractor.content_lines = ["test content line"]
@@ -601,7 +600,11 @@ class UserConfig {
             # First call should extract and cache
             result1 = extractor._get_node_text_optimized(mock_node)
             assert result1 == "test text"
-            assert node_id in extractor._node_text_cache
+            # Cache uses (start_byte, end_byte) tuple as key
+            assert (
+                mock_node.start_byte,
+                mock_node.end_byte,
+            ) in extractor._node_text_cache
 
             # Second call should use cache
             result2 = extractor._get_node_text_optimized(mock_node)
@@ -1085,10 +1088,13 @@ class UserConfig {
         """Test field batch processing with caching"""
         field_node = Mock()
         field_node.type = "field_declaration"
+        # Set up position attributes for position-based caching
+        field_node.start_byte = 0
+        field_node.end_byte = 30
 
-        # Set up cache
-        node_id = id(field_node)
-        cache_key = (node_id, "field")
+        # Set up cache with position-based key
+        node_key = (field_node.start_byte, field_node.end_byte)
+        cache_key = (node_key, "field")
         cached_fields = [
             Variable(
                 name="cached_field",

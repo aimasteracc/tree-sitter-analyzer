@@ -7,7 +7,6 @@ focusing on analysis types, metrics extraction, and validation.
 Requirements: 3.2
 """
 
-import asyncio
 import tempfile
 from pathlib import Path
 
@@ -40,14 +39,14 @@ import sys
 
 class Calculator:
     '''A simple calculator class.'''
-    
+
     def __init__(self):
         self.value = 0
-    
+
     def add(self, a, b):
         '''Add two numbers.'''
         return a + b
-    
+
     def multiply(self, a, b):
         '''Multiply two numbers.'''
         return a * b
@@ -69,15 +68,15 @@ import java.util.List;
 
 public class Sample {
     private int value;
-    
+
     public Sample() {
         this.value = 0;
     }
-    
+
     public int add(int a, int b) {
         return a + b;
     }
-    
+
     public int multiply(int a, int b) {
         return a * b;
     }
@@ -88,12 +87,9 @@ public class Sample {
     @pytest.mark.asyncio
     async def test_execute_basic_analysis(self, tool, sample_python_file):
         """Test basic analysis type."""
-        args = {
-            "file_path": sample_python_file,
-            "analysis_type": "basic"
-        }
+        args = {"file_path": sample_python_file, "analysis_type": "basic"}
         result = await tool.execute(args)
-        
+
         assert isinstance(result, dict)
         assert "file_path" in result
         assert result.get("analysis_type") == "basic"
@@ -102,12 +98,9 @@ public class Sample {
     @pytest.mark.asyncio
     async def test_execute_detailed_analysis(self, tool, sample_python_file):
         """Test detailed analysis type."""
-        args = {
-            "file_path": sample_python_file,
-            "analysis_type": "detailed"
-        }
+        args = {"file_path": sample_python_file, "analysis_type": "detailed"}
         result = await tool.execute(args)
-        
+
         assert isinstance(result, dict)
         assert "file_path" in result
         assert result.get("analysis_type") == "detailed"
@@ -115,12 +108,9 @@ public class Sample {
     @pytest.mark.asyncio
     async def test_execute_structure_analysis(self, tool, sample_python_file):
         """Test structure analysis type."""
-        args = {
-            "file_path": sample_python_file,
-            "analysis_type": "structure"
-        }
+        args = {"file_path": sample_python_file, "analysis_type": "structure"}
         result = await tool.execute(args)
-        
+
         assert isinstance(result, dict)
         assert "file_path" in result
         assert result.get("analysis_type") == "structure"
@@ -128,12 +118,9 @@ public class Sample {
     @pytest.mark.asyncio
     async def test_execute_metrics_analysis(self, tool, sample_python_file):
         """Test metrics analysis type."""
-        args = {
-            "file_path": sample_python_file,
-            "analysis_type": "metrics"
-        }
+        args = {"file_path": sample_python_file, "analysis_type": "metrics"}
         result = await tool.execute(args)
-        
+
         assert isinstance(result, dict)
         assert "file_path" in result
         assert result.get("analysis_type") == "metrics"
@@ -141,12 +128,9 @@ public class Sample {
     @pytest.mark.asyncio
     async def test_execute_with_include_ast(self, tool, sample_python_file):
         """Test analysis with include_ast option."""
-        args = {
-            "file_path": sample_python_file,
-            "include_ast": True
-        }
+        args = {"file_path": sample_python_file, "include_ast": True}
         result = await tool.execute(args)
-        
+
         assert isinstance(result, dict)
         assert "file_path" in result
         # AST info may or may not be present depending on analyzer
@@ -154,12 +138,9 @@ public class Sample {
     @pytest.mark.asyncio
     async def test_execute_with_include_queries(self, tool, sample_python_file):
         """Test analysis with include_queries option."""
-        args = {
-            "file_path": sample_python_file,
-            "include_queries": True
-        }
+        args = {"file_path": sample_python_file, "include_queries": True}
         result = await tool.execute(args)
-        
+
         assert isinstance(result, dict)
         assert "file_path" in result
         assert "available_queries" in result
@@ -167,12 +148,9 @@ public class Sample {
     @pytest.mark.asyncio
     async def test_execute_java_file_basic(self, tool, sample_java_file):
         """Test Java file analysis with basic type."""
-        args = {
-            "file_path": sample_java_file,
-            "analysis_type": "basic"
-        }
+        args = {"file_path": sample_java_file, "analysis_type": "basic"}
         result = await tool.execute(args)
-        
+
         assert isinstance(result, dict)
         assert "file_path" in result
         assert result.get("language") == "java"
@@ -180,60 +158,45 @@ public class Sample {
     @pytest.mark.asyncio
     async def test_execute_java_file_detailed(self, tool, sample_java_file):
         """Test Java file analysis with detailed type."""
-        args = {
-            "file_path": sample_java_file,
-            "analysis_type": "detailed"
-        }
+        args = {"file_path": sample_java_file, "analysis_type": "detailed"}
         result = await tool.execute(args)
-        
+
         assert isinstance(result, dict)
         assert "file_path" in result
 
     @pytest.mark.asyncio
     async def test_execute_java_file_structure(self, tool, sample_java_file):
         """Test Java file analysis with structure type."""
-        args = {
-            "file_path": sample_java_file,
-            "analysis_type": "structure"
-        }
+        args = {"file_path": sample_java_file, "analysis_type": "structure"}
         result = await tool.execute(args)
-        
+
         assert isinstance(result, dict)
         assert "file_path" in result
 
     @pytest.mark.asyncio
     async def test_execute_java_file_metrics(self, tool, sample_java_file):
         """Test Java file analysis with metrics type."""
-        args = {
-            "file_path": sample_java_file,
-            "analysis_type": "metrics"
-        }
+        args = {"file_path": sample_java_file, "analysis_type": "metrics"}
         result = await tool.execute(args)
-        
+
         assert isinstance(result, dict)
         assert "file_path" in result
 
     @pytest.mark.asyncio
     async def test_execute_java_with_include_ast(self, tool, sample_java_file):
         """Test Java file analysis with include_ast option."""
-        args = {
-            "file_path": sample_java_file,
-            "include_ast": True
-        }
+        args = {"file_path": sample_java_file, "include_ast": True}
         result = await tool.execute(args)
-        
+
         assert isinstance(result, dict)
         assert "file_path" in result
 
     @pytest.mark.asyncio
     async def test_execute_java_with_include_queries(self, tool, sample_java_file):
         """Test Java file analysis with include_queries option."""
-        args = {
-            "file_path": sample_java_file,
-            "include_queries": True
-        }
+        args = {"file_path": sample_java_file, "include_queries": True}
         result = await tool.execute(args)
-        
+
         assert isinstance(result, dict)
         assert "file_path" in result
         assert "available_queries" in result
@@ -324,12 +287,12 @@ class TestUniversalAnalyzeToolConfiguration:
     def test_get_tool_definition(self, tool):
         """Test get_tool_definition returns valid schema."""
         definition = tool.get_tool_definition()
-        
+
         assert isinstance(definition, dict)
         assert definition["name"] == "analyze_code_universal"
         assert "description" in definition
         assert "inputSchema" in definition
-        
+
         schema = definition["inputSchema"]
         assert schema["type"] == "object"
         assert "properties" in schema
@@ -346,6 +309,7 @@ class TestUniversalAnalyzeToolConfiguration:
             assert tool.analysis_engine is not None
         finally:
             import shutil
+
             shutil.rmtree(new_temp_dir, ignore_errors=True)
 
 
@@ -367,15 +331,12 @@ class TestUniversalAnalyzeToolErrorHandling:
     async def test_execute_invalid_analysis_type(self, tool, temp_dir):
         """Test execute with invalid analysis_type."""
         from tree_sitter_analyzer.mcp.utils.error_handler import AnalysisError
-        
+
         file_path = Path(temp_dir) / "test.py"
         file_path.write_text("def hello(): pass")
-        
-        args = {
-            "file_path": str(file_path),
-            "analysis_type": "invalid_type"
-        }
-        
+
+        args = {"file_path": str(file_path), "analysis_type": "invalid_type"}
+
         with pytest.raises(AnalysisError):
             await tool.execute(args)
 
@@ -383,15 +344,12 @@ class TestUniversalAnalyzeToolErrorHandling:
     async def test_execute_unsupported_language(self, tool, temp_dir):
         """Test execute with unsupported language."""
         from tree_sitter_analyzer.mcp.utils.error_handler import AnalysisError
-        
+
         file_path = Path(temp_dir) / "test.xyz"
         file_path.write_text("some content")
-        
-        args = {
-            "file_path": str(file_path),
-            "language": "unsupported_lang"
-        }
-        
+
+        args = {"file_path": str(file_path), "language": "unsupported_lang"}
+
         with pytest.raises(AnalysisError):
             await tool.execute(args)
 
@@ -399,12 +357,12 @@ class TestUniversalAnalyzeToolErrorHandling:
     async def test_execute_unknown_file_extension(self, tool, temp_dir):
         """Test execute with unknown file extension."""
         from tree_sitter_analyzer.mcp.utils.error_handler import AnalysisError
-        
+
         file_path = Path(temp_dir) / "test.unknown"
         file_path.write_text("some content")
-        
+
         args = {"file_path": str(file_path)}
-        
+
         with pytest.raises(AnalysisError):
             await tool.execute(args)
 
@@ -413,12 +371,9 @@ class TestUniversalAnalyzeToolErrorHandling:
         """Test execute with explicitly specified language."""
         file_path = Path(temp_dir) / "test.txt"
         file_path.write_text("def hello(): pass")
-        
-        args = {
-            "file_path": str(file_path),
-            "language": "python"
-        }
-        
+
+        args = {"file_path": str(file_path), "language": "python"}
+
         result = await tool.execute(args)
         assert isinstance(result, dict)
         assert result.get("language") == "python"

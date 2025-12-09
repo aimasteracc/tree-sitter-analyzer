@@ -13,7 +13,7 @@ from unittest.mock import Mock, patch
 import pytest
 
 from tree_sitter_analyzer.languages.c_plugin import CElementExtractor, CPlugin
-from tree_sitter_analyzer.models import Class, Function, Import
+from tree_sitter_analyzer.models import Class, Function
 from tree_sitter_analyzer.plugins.base import ElementExtractor, LanguagePlugin
 
 
@@ -105,9 +105,7 @@ static void internal_function(void) {
 
         assert isinstance(functions, list)
 
-    def test_extract_functions_no_language(
-        self, extractor: CElementExtractor
-    ) -> None:
+    def test_extract_functions_no_language(self, extractor: CElementExtractor) -> None:
         """Test function extraction when language is not available"""
         mock_tree = Mock()
         mock_tree.language = None
@@ -156,9 +154,7 @@ static void internal_function(void) {
 
         assert isinstance(imports, list)
 
-    def test_extract_function_optimized(
-        self, extractor: CElementExtractor
-    ) -> None:
+    def test_extract_function_optimized(self, extractor: CElementExtractor) -> None:
         """Test optimized function extraction"""
         mock_node = Mock()
         mock_node.type = "function_definition"
@@ -228,9 +224,7 @@ static void internal_function(void) {
 
         assert isinstance(result, list)
 
-    def test_calculate_complexity_optimized(
-        self, extractor: CElementExtractor
-    ) -> None:
+    def test_calculate_complexity_optimized(self, extractor: CElementExtractor) -> None:
         """Test complexity calculation"""
         simple_node = Mock()
         simple_node.type = "return_statement"
@@ -411,9 +405,7 @@ class TestCPluginErrorHandling:
         assert isinstance(functions, list)
         assert len(functions) == 0
 
-    def test_extract_classes_with_exception(
-        self, extractor: CElementExtractor
-    ) -> None:
+    def test_extract_classes_with_exception(self, extractor: CElementExtractor) -> None:
         """Test class extraction with exception"""
         mock_tree = Mock()
         mock_tree.language = None
@@ -636,7 +628,9 @@ class TestCPluginLegacyTests:
             start_byte=var_start + var_text.find("v"),
             children=[decl_name],
         )
-        decl_specs = self.FakeNode("declaration_specifiers", "int", start_byte=var_start)
+        decl_specs = self.FakeNode(
+            "declaration_specifiers", "int", start_byte=var_start
+        )
         var_decl = self.FakeNode(
             "declaration",
             var_text,
