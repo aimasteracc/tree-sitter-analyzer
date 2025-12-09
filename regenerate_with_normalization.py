@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """重新生成使用归一化计数的 Golden Master 文件"""
+
+import re
 import subprocess
 import sys
-import re
 from pathlib import Path
 
 
@@ -14,19 +15,25 @@ def normalize_markdown_counts(content: str) -> str:
     for line in lines:
         # Normalize Total Elements count (varies 65-75)
         if "| Total Elements |" in line:
-            match = re.search(r'(\|\s+Total Elements\s+\|\s+)(\d+)(\s+\|)', line)
+            match = re.search(r"(\|\s+Total Elements\s+\|\s+)(\d+)(\s+\|)", line)
             if match:
                 count = int(match.group(2))
                 if 60 <= count <= 80:  # Wider range to handle more variance
-                    line = re.sub(r'(\|\s+Total Elements\s+\|\s+)\d+(\s+\|)', r'\1~68\2', line)
+                    line = re.sub(
+                        r"(\|\s+Total Elements\s+\|\s+)\d+(\s+\|)", r"\1~68\2", line
+                    )
 
         # Normalize **Total** count for compact format
         if "| **Total** |" in line:
-            match = re.search(r'(\|\s+\*\*Total\*\*\s+\|\s+\*\*)(\d+)(\*\*\s+\|)', line)
+            match = re.search(r"(\|\s+\*\*Total\*\*\s+\|\s+\*\*)(\d+)(\*\*\s+\|)", line)
             if match:
                 count = int(match.group(2))
                 if 60 <= count <= 80:  # Wider range
-                    line = re.sub(r'(\|\s+\*\*Total\*\*\s+\|\s+\*\*)\d+(\*\*\s+\|)', r'\1~68\2', line)
+                    line = re.sub(
+                        r"(\|\s+\*\*Total\*\*\s+\|\s+\*\*)\d+(\*\*\s+\|)",
+                        r"\1~68\2",
+                        line,
+                    )
 
         normalized.append(line)
 
@@ -43,11 +50,11 @@ def regenerate_golden_master(input_file: str, output_file: str, table_format: st
         "--table",
         table_format,
     ]
-    
+
     result = subprocess.run(
         cmd, capture_output=True, text=True, encoding="utf-8", check=True
     )
-    
+
     content = result.stdout
 
     # 对 Markdown 文件应用归一化 (处理元素计数抖动)
@@ -58,7 +65,7 @@ def regenerate_golden_master(input_file: str, output_file: str, table_format: st
     output_path = Path(output_file)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(content, encoding="utf-8")
-    
+
     print(f"✓ 生成: {output_file}")
 
 
@@ -66,42 +73,94 @@ def main():
     """重新生成所有需要修复的 Golden Master 文件"""
     files_to_generate = [
         # Markdown files (with count normalization)
-        ("examples/test_markdown.md", "tests/golden_masters/full/markdown_test_full.md", "full"),
-        ("examples/test_markdown.md", "tests/golden_masters/compact/markdown_test_compact.md", "compact"),
-        ("examples/test_markdown.md", "tests/golden_masters/csv/markdown_test_csv.csv", "csv"),
+        (
+            "examples/test_markdown.md",
+            "tests/golden_masters/full/markdown_test_full.md",
+            "full",
+        ),
+        (
+            "examples/test_markdown.md",
+            "tests/golden_masters/compact/markdown_test_compact.md",
+            "compact",
+        ),
+        (
+            "examples/test_markdown.md",
+            "tests/golden_masters/csv/markdown_test_csv.csv",
+            "csv",
+        ),
         # C++ files
         ("examples/sample.cpp", "tests/golden_masters/full/cpp_sample_full.md", "full"),
-        ("examples/sample.cpp", "tests/golden_masters/compact/cpp_sample_compact.md", "compact"),
+        (
+            "examples/sample.cpp",
+            "tests/golden_masters/compact/cpp_sample_compact.md",
+            "compact",
+        ),
         ("examples/sample.cpp", "tests/golden_masters/csv/cpp_sample_csv.csv", "csv"),
         # CSS files
-        ("examples/comprehensive_sample.css", "tests/golden_masters/compact/css_comprehensive_sample_compact.md", "compact"),
-        ("examples/comprehensive_sample.css", "tests/golden_masters/csv/css_comprehensive_sample_csv.csv", "csv"),
-        ("examples/comprehensive_sample.css", "tests/golden_masters/full/css_comprehensive_sample_full.md", "full"),
+        (
+            "examples/comprehensive_sample.css",
+            "tests/golden_masters/compact/css_comprehensive_sample_compact.md",
+            "compact",
+        ),
+        (
+            "examples/comprehensive_sample.css",
+            "tests/golden_masters/csv/css_comprehensive_sample_csv.csv",
+            "csv",
+        ),
+        (
+            "examples/comprehensive_sample.css",
+            "tests/golden_masters/full/css_comprehensive_sample_full.md",
+            "full",
+        ),
         # HTML files
-        ("examples/comprehensive_sample.html", "tests/golden_masters/compact/html_comprehensive_sample_compact.md", "compact"),
-        ("examples/comprehensive_sample.html", "tests/golden_masters/csv/html_comprehensive_sample_csv.csv", "csv"),
-        ("examples/comprehensive_sample.html", "tests/golden_masters/full/html_comprehensive_sample_full.md", "full"),
+        (
+            "examples/comprehensive_sample.html",
+            "tests/golden_masters/compact/html_comprehensive_sample_compact.md",
+            "compact",
+        ),
+        (
+            "examples/comprehensive_sample.html",
+            "tests/golden_masters/csv/html_comprehensive_sample_csv.csv",
+            "csv",
+        ),
+        (
+            "examples/comprehensive_sample.html",
+            "tests/golden_masters/full/html_comprehensive_sample_full.md",
+            "full",
+        ),
         # YAML files
-        ("examples/sample_config.yaml", "tests/golden_masters/compact/yaml_sample_config_compact.md", "compact"),
-        ("examples/sample_config.yaml", "tests/golden_masters/full/yaml_sample_config_full.md", "full"),
-        ("examples/sample_config.yaml", "tests/golden_masters/csv/yaml_sample_config_csv.csv", "csv"),
+        (
+            "examples/sample_config.yaml",
+            "tests/golden_masters/compact/yaml_sample_config_compact.md",
+            "compact",
+        ),
+        (
+            "examples/sample_config.yaml",
+            "tests/golden_masters/full/yaml_sample_config_full.md",
+            "full",
+        ),
+        (
+            "examples/sample_config.yaml",
+            "tests/golden_masters/csv/yaml_sample_config_csv.csv",
+            "csv",
+        ),
     ]
 
     print("开始重新生成 Golden Master 文件（带归一化）...\n")
-    
+
     for input_file, output_file, table_format in files_to_generate:
         try:
             regenerate_golden_master(input_file, output_file, table_format)
         except Exception as e:
             print(f"✗ 错误: {output_file} - {e}")
             import traceback
+
             traceback.print_exc()
             return 1
-    
+
     print("\n✅ 所有 Golden Master 文件已成功重新生成！")
     return 0
 
 
 if __name__ == "__main__":
     sys.exit(main())
-

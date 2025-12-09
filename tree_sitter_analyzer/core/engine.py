@@ -329,7 +329,7 @@ class AnalysisEngine:
                 except Exception:
                     # If extract_elements fails or returns wrong type, fall through to standard extraction
                     pass
-            
+
             if plugin and hasattr(plugin, "create_extractor"):
                 extractor = plugin.create_extractor()
                 if extractor:

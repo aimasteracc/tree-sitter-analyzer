@@ -25,11 +25,11 @@ class CppTableFormatter(BaseTableFormatter):
         # Title Logic
         # If we have a package/namespace, show it
         if package_name and package_name != "unknown":
-             # If pure C, package might be empty. If C++, might be namespace.
-             lines.append(f"# {file_name}")
+            # If pure C, package might be empty. If C++, might be namespace.
+            lines.append(f"# {file_name}")
         else:
-             lines.append(f"# {file_name}")
-        
+            lines.append(f"# {file_name}")
+
         lines.append("")
 
         # Namespaces (Packages)
@@ -67,7 +67,9 @@ class CppTableFormatter(BaseTableFormatter):
             for class_info in classes:
                 name = str(class_info.get("name", "Unknown"))
                 class_type = str(class_info.get("type", "class"))
-                visibility = str(class_info.get("visibility", "public")) # C/C++ default public for structs
+                visibility = str(
+                    class_info.get("visibility", "public")
+                )  # C/C++ default public for structs
                 line_range = class_info.get("line_range", {})
                 lines_str = f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
 
@@ -156,7 +158,9 @@ class CppTableFormatter(BaseTableFormatter):
 
         return "\n".join(lines)
 
-    def _format_class_details(self, class_info: dict[str, Any], data: dict[str, Any]) -> list[str]:
+    def _format_class_details(
+        self, class_info: dict[str, Any], data: dict[str, Any]
+    ) -> list[str]:
         """Format details for a single class"""
         lines = []
         name = str(class_info.get("name", "Unknown"))
@@ -164,15 +168,21 @@ class CppTableFormatter(BaseTableFormatter):
         lines_str = f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
 
         lines.append(f"## {name} ({lines_str})")
-        
+
         # Get methods/fields for this class
         class_methods = [
-            m for m in data.get("methods", [])
-            if line_range.get("start", 0) <= m.get("line_range", {}).get("start", 0) <= line_range.get("end", 0)
+            m
+            for m in data.get("methods", [])
+            if line_range.get("start", 0)
+            <= m.get("line_range", {}).get("start", 0)
+            <= line_range.get("end", 0)
         ]
         class_fields = [
-            f for f in data.get("fields", [])
-            if line_range.get("start", 0) <= f.get("line_range", {}).get("start", 0) <= line_range.get("end", 0)
+            f
+            for f in data.get("fields", [])
+            if line_range.get("start", 0)
+            <= f.get("line_range", {}).get("start", 0)
+            <= line_range.get("end", 0)
         ]
 
         if class_fields:
@@ -186,17 +196,32 @@ class CppTableFormatter(BaseTableFormatter):
                 mod_f = ",".join(field.get("modifiers", []))
                 line_f = field.get("line_range", {}).get("start", 0)
                 doc_f = str(field.get("javadoc", "")) or "-"
-                lines.append(f"| {name_f} | {type_f} | {vis_f} | {mod_f} | {line_f} | {doc_f} |")
+                lines.append(
+                    f"| {name_f} | {type_f} | {vis_f} | {mod_f} | {line_f} | {doc_f} |"
+                )
             lines.append("")
 
         if class_methods:
-             # Just list all methods for simplicity, or split by visibility?
-             # C structs usually public. C++ classes mixed.
-             # Let's split by Private/Public like Java for consistency
-            public_methods = [m for m in class_methods if "public" in m.get("modifiers", []) or m.get("visibility") == "public"]
-            private_methods = [m for m in class_methods if "private" in m.get("modifiers", []) or m.get("visibility") == "private"]
+            # Just list all methods for simplicity, or split by visibility?
+            # C structs usually public. C++ classes mixed.
+            # Let's split by Private/Public like Java for consistency
+            public_methods = [
+                m
+                for m in class_methods
+                if "public" in m.get("modifiers", []) or m.get("visibility") == "public"
+            ]
+            private_methods = [
+                m
+                for m in class_methods
+                if "private" in m.get("modifiers", [])
+                or m.get("visibility") == "private"
+            ]
             # Others?
-            other_methods = [m for m in class_methods if m not in public_methods and m not in private_methods]
+            other_methods = [
+                m
+                for m in class_methods
+                if m not in public_methods and m not in private_methods
+            ]
 
             if public_methods:
                 lines.append("### Public Methods")
@@ -205,7 +230,7 @@ class CppTableFormatter(BaseTableFormatter):
                 for m in public_methods:
                     lines.append(self._format_method_row(m))
                 lines.append("")
-            
+
             if private_methods:
                 lines.append("### Private Methods")
                 lines.append("| Method | Signature | Vis | Lines | Cx | Doc |")
@@ -238,16 +263,16 @@ class CppTableFormatter(BaseTableFormatter):
         stats = data.get("statistics") or {}
         package_name = (data.get("package") or {}).get("name", "unknown")
         language = data.get("language", "").lower()
-        
+
         lines.append("## Info")
         lines.append("| Property | Value |")
         lines.append("|----------|-------|")
-        
+
         # Only show Package for C++ (which has namespaces)
         # C language doesn't have packages, so skip this row
         if language in ("cpp", "c++") or (package_name and package_name != "unknown"):
             lines.append(f"| Package | {package_name} |")
-        
+
         lines.append(f"| Methods | {stats.get('method_count', 0)} |")
         lines.append(f"| Fields | {stats.get('field_count', 0)} |")
         lines.append("")
@@ -300,17 +325,17 @@ class CppTableFormatter(BaseTableFormatter):
         """Create compact method signature"""
         params = method.get("parameters", [])
         param_types = []
-        
+
         for p in params:
             if isinstance(p, dict):
                 # Dict format: {"name": "a", "type": "int"}
                 type_str = p.get("type", "Any")
                 name_str = p.get("name", "")
-                
+
                 # Check if name implies array (e.g. arr[])
                 if "[]" in name_str:
                     type_str += "[]"
-                
+
                 # Check if name implies pointer (e.g. *ptr)
                 # If TableCommand parsed "int *ptr" -> type="int", name="*ptr"
                 if name_str.startswith("*") and not type_str.endswith("*"):
@@ -329,24 +354,24 @@ class CppTableFormatter(BaseTableFormatter):
                         # Last token is name, everything before is type
                         type_str = " ".join(tokens[:-1])
                         name_part = tokens[-1]
-                        
+
                         # Check if name part implies array (e.g. arr[])
                         if "[]" in name_part:
                             type_str += "[]"
-                        
+
                         # Check if name part implies pointer (e.g. *ptr)
                         if name_part.startswith("*") and not type_str.endswith("*"):
-                             type_str += "*"
+                            type_str += "*"
                     else:
                         # Only one token, might be type-only or name-only
                         type_str = tokens[0] if tokens else "Any"
             else:
                 type_str = "Any"
-            
+
             # DEBUG
             # print(f"DEBUG: type_str='{type_str}' shortened='{self._shorten_type(type_str)}'")
             param_types.append(self._shorten_type(type_str))
-        
+
         params_str = ",".join(param_types)
         return_type = self._shorten_type(method.get("return_type", "void"))
 
@@ -356,16 +381,21 @@ class CppTableFormatter(BaseTableFormatter):
         """Shorten type name for C/C++ compact display"""
         if type_name is None:
             return "void"
-        
+
         s = str(type_name).strip()
-        
+
         # Keep pointers, references, arrays as-is (important info)
         if any(x in s for x in ["*", "&", "["]):
             return s
-        
+
         # Remove const/volatile/static qualifiers for brevity
-        s = s.replace("const ", "").replace("volatile ", "").replace("static ", "").strip()
-        
+        s = (
+            s.replace("const ", "")
+            .replace("volatile ", "")
+            .replace("static ", "")
+            .strip()
+        )
+
         # Shorten common primitive types
         type_map = {
             "int": "i",
@@ -379,7 +409,7 @@ class CppTableFormatter(BaseTableFormatter):
             "size_t": "size_t",
             "string": "str",
         }
-        
+
         return type_map.get(s, s)  # Return shortened or original
 
     def format_table(
@@ -407,7 +437,7 @@ class CppTableFormatter(BaseTableFormatter):
         """
         # Convert analysis result to structure format (with namespace extraction)
         formatted_data = self._convert_analysis_result_to_format(analysis_result)
-        
+
         # Format based on table type
         if table_type == "full":
             return self._format_full_table(formatted_data)
@@ -417,8 +447,10 @@ class CppTableFormatter(BaseTableFormatter):
             return self._format_csv(formatted_data)
         else:
             return self._format_full_table(formatted_data)
-    
-    def _convert_analysis_result_to_format(self, analysis_result: Any) -> dict[str, Any]:
+
+    def _convert_analysis_result_to_format(
+        self, analysis_result: Any
+    ) -> dict[str, Any]:
         """
         Convert AnalysisResult to the format expected by C++ formatters.
         Extracts all namespaces (C++ specific) and categorizes elements.
@@ -427,21 +459,20 @@ class CppTableFormatter(BaseTableFormatter):
             ELEMENT_TYPE_CLASS,
             ELEMENT_TYPE_FUNCTION,
             ELEMENT_TYPE_IMPORT,
-            ELEMENT_TYPE_PACKAGE,
             ELEMENT_TYPE_VARIABLE,
             get_element_type,
         )
         from ..models import Package
-        
+
         classes = []
         methods = []
         fields = []
         imports = []
         packages = []  # For C++ namespaces
-        
-        language = analysis_result.language
+
+        _language = analysis_result.language  # noqa: F841 - stored for potential future use
         package_name = "unknown"  # Default for C/C++
-        
+
         # Process each element
         for i, element in enumerate(analysis_result.elements):
             try:
@@ -450,43 +481,57 @@ class CppTableFormatter(BaseTableFormatter):
                 if isinstance(element, Package):
                     element_name = getattr(element, "name", None)
                     raw_text = getattr(element, "raw_text", "")
-                    
+
                     # Additional validation: raw_text should contain "namespace" keyword for C++
                     # This helps filter out misidentified elements
                     is_likely_namespace = (
-                        not raw_text or  # If no raw_text, trust the Package instance
-                        "namespace" in raw_text.lower()  # Or raw_text contains "namespace"
+                        not raw_text  # If no raw_text, trust the Package instance
+                        or "namespace"
+                        in raw_text.lower()  # Or raw_text contains "namespace"
                     )
-                    
+
                     if element_name and is_likely_namespace:
                         namespace_name = str(element_name).strip()
-                        
+
                         # Reject obviously invalid names:
                         # - Single letters (likely template parameters: T, U, V, or variables: x, y, z)
                         # - Common type names that are definitely not namespaces
                         if len(namespace_name) == 1:
                             continue
-                        
-                        common_type_names = {"int", "double", "float", "char", "bool", "void"}
+
+                        common_type_names = {
+                            "int",
+                            "double",
+                            "float",
+                            "char",
+                            "bool",
+                            "void",
+                        }
                         if namespace_name.lower() in common_type_names:
                             continue
-                        
+
                         # Must be a valid identifier and have reasonable length (at least 2 characters)
-                        if namespace_name and namespace_name.isidentifier() and len(namespace_name) >= 2:
+                        if (
+                            namespace_name
+                            and namespace_name.isidentifier()
+                            and len(namespace_name) >= 2
+                        ):
                             package_name = namespace_name
-                            packages.append({
-                                "name": namespace_name,
-                                "line_range": {
-                                    "start": getattr(element, "start_line", 0),
-                                    "end": getattr(element, "end_line", 0),
-                                },
-                            })
+                            packages.append(
+                                {
+                                    "name": namespace_name,
+                                    "line_range": {
+                                        "start": getattr(element, "start_line", 0),
+                                        "end": getattr(element, "end_line", 0),
+                                    },
+                                }
+                            )
                     continue  # Skip to next element, already processed as Package
-                
+
                 # For non-Package elements, use get_element_type() for categorization
                 element_type = get_element_type(element)
                 element_name = getattr(element, "name", None)
-                
+
                 if element_type == ELEMENT_TYPE_CLASS:
                     classes.append(self._convert_class_element(element, i))
                 elif element_type == ELEMENT_TYPE_FUNCTION:
@@ -498,7 +543,7 @@ class CppTableFormatter(BaseTableFormatter):
             except Exception:
                 # Skip problematic elements silently
                 continue
-        
+
         return {
             "file_path": analysis_result.file_path,
             "language": analysis_result.language,
@@ -516,14 +561,14 @@ class CppTableFormatter(BaseTableFormatter):
                 "import_count": len(imports),
             },
         }
-    
+
     def _convert_class_element(self, element: Any, index: int) -> dict[str, Any]:
         """Convert class element to table format."""
         element_name = getattr(element, "name", None)
         final_name = element_name if element_name else f"UnknownClass_{index}"
         class_type = getattr(element, "class_type", "class")
         visibility = getattr(element, "visibility", "public")
-        
+
         return {
             "name": final_name,
             "type": class_type,
@@ -533,11 +578,11 @@ class CppTableFormatter(BaseTableFormatter):
                 "end": getattr(element, "end_line", 0),
             },
         }
-    
+
     def _convert_function_element(self, element: Any) -> dict[str, Any]:
         """Convert function element to table format."""
         params = getattr(element, "parameters", [])
-        
+
         # Parse parameters from string format to dict format for consistency
         # C++ parameters are in "type name" format (e.g., "int a", "T* ptr")
         processed_params = []
@@ -549,16 +594,18 @@ class CppTableFormatter(BaseTableFormatter):
                 last_space_idx = param.rfind(" ")
                 if last_space_idx != -1:
                     param_type = param[:last_space_idx].strip()
-                    param_name = param[last_space_idx + 1:].strip()
-                    
+                    param_name = param[last_space_idx + 1 :].strip()
+
                     # Handle array notation: name might be "arr[]"
                     # In this case, move [] to type
                     if "[]" in param_name:
                         param_type += "[]"
                         param_name = param_name.replace("[]", "")
-                    
+
                     if param_type and param_name:
-                        processed_params.append({"name": param_name, "type": param_type})
+                        processed_params.append(
+                            {"name": param_name, "type": param_type}
+                        )
                     else:
                         # Fallback: treat entire string as type
                         processed_params.append({"name": "param", "type": param})
@@ -569,9 +616,9 @@ class CppTableFormatter(BaseTableFormatter):
                 processed_params.append(param)
             else:
                 processed_params.append({"name": str(param), "type": "Any"})
-        
+
         visibility = getattr(element, "visibility", "public")
-        
+
         return {
             "name": getattr(element, "name", str(element)),
             "visibility": visibility,
@@ -586,12 +633,12 @@ class CppTableFormatter(BaseTableFormatter):
             },
             "javadoc": "",
         }
-    
+
     def _convert_variable_element(self, element: Any) -> dict[str, Any]:
         """Convert variable element to table format."""
         field_type = getattr(element, "variable_type", "")
         visibility = getattr(element, "visibility", "public")
-        
+
         return {
             "name": getattr(element, "name", str(element)),
             "type": field_type,
@@ -603,19 +650,23 @@ class CppTableFormatter(BaseTableFormatter):
             },
             "javadoc": "",
         }
-    
+
     def _convert_import_element(self, element: Any) -> dict[str, Any]:
         """Convert import element to table format."""
         raw_text = getattr(element, "raw_text", "")
-        statement = raw_text if raw_text else f"#include {getattr(element, 'name', str(element))}"
-        
+        statement = (
+            raw_text
+            if raw_text
+            else f"#include {getattr(element, 'name', str(element))}"
+        )
+
         return {
             "statement": statement,
             "raw_text": statement,
             "name": getattr(element, "name", str(element)),
             "module_name": getattr(element, "module_name", ""),
         }
-    
+
     def format_structure(self, analysis_result: dict[str, Any]) -> str:
         """Format structure analysis output"""
         return super().format_structure(analysis_result)
@@ -633,8 +684,8 @@ class CppTableFormatter(BaseTableFormatter):
 
     def _format_json(self, data: dict[str, Any]) -> str:
         import json
+
         try:
             return json.dumps(data, indent=2, ensure_ascii=False)
         except (TypeError, ValueError) as e:
             return f"# JSON serialization error: {e}\\n"
-
