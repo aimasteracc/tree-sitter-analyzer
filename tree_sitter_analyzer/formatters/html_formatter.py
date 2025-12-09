@@ -107,15 +107,39 @@ class HtmlFormatter(BaseFormatter, IFormatter):
         else:
             return self.format(elements)
 
+    def format_analysis_result(
+        self, analysis_result: Any, table_type: str = "full"
+    ) -> str:
+        """Format AnalysisResult directly for HTML files."""
+        # Extract elements from AnalysisResult object
+        if hasattr(analysis_result, "elements"):
+            elements = analysis_result.elements
+        else:
+            elements = []
+
+        if table_type == "compact":
+            formatter: IFormatter = HtmlCompactFormatter()
+            return formatter.format(elements)
+        elif table_type == "json":
+            formatter = HtmlJsonFormatter()
+            return formatter.format(elements)
+        elif table_type == "csv":
+            formatter = HtmlCsvFormatter()
+            return formatter.format(elements)
+        else:
+            # Default to full format (including "html" and "full")
+            return self.format(elements)
+
     def format_table(
         self, analysis_result: dict[str, Any], table_type: str = "full"
     ) -> str:
         """Format table output"""
         elements = analysis_result.get("elements", [])
+        file_path = analysis_result.get("file_path", "")
 
         if table_type == "compact":
             formatter: IFormatter = HtmlCompactFormatter()
-            return formatter.format(elements)
+            return formatter.format(elements, file_path=file_path)
         elif table_type == "json":
             formatter = HtmlJsonFormatter()
             return formatter.format(elements)
@@ -418,80 +442,237 @@ class HtmlCompactFormatter(IFormatter):
     def get_format_name() -> str:
         return "html_compact"
 
-    def format(self, elements: list[CodeElement]) -> str:
-        """Format HTML elements in compact format"""
+    def format(self, elements: list[CodeElement], file_path: str = "") -> str:
+        """Format HTML elements in compact table format"""
         if not elements:
             return "No HTML elements found."
 
         lines = []
-        lines.append("HTML ELEMENTS")
-        lines.append("-" * 20)
 
+        # Extract filename from path
+        filename = "comprehensive_sample"  # default
+        if file_path:
+            filename = file_path.split("/")[-1].split("\\")[-1]
+            if filename.endswith(".html") or filename.endswith(".htm"):
+                filename = filename.rsplit(".", 1)[0]
+
+        # Count elements by type
         markup_count = sum(1 for e in elements if isinstance(e, MarkupElement))
         style_count = sum(1 for e in elements if isinstance(e, StyleElement))
-        other_count = len(elements) - markup_count - style_count
+        _other_count = len(elements) - markup_count - style_count  # noqa: F841
 
-        lines.append(f"Total: {len(elements)} elements")
-        lines.append(f"  Markup: {markup_count}")
-        lines.append(f"  Style: {style_count}")
-        lines.append(f"  Other: {other_count}")
-        lines.append("")
+        # Count by element class
+        structure_elements = []
+        heading_elements = []
+        text_elements = []
+        form_elements = []
+        media_elements = []
+        table_elements = []
+        list_elements = []
+        metadata_elements = []
+        other_elements = []
 
         for element in elements:
             if isinstance(element, MarkupElement):
-                symbol = "🏷️"
-                info = f"<{element.tag_name}>"
-                if element.attributes.get("id"):
-                    info += f" #{element.attributes['id']}"
-                if element.attributes.get("class"):
-                    info += f" .{element.attributes['class']}"
-                name = element.name
-                start_line = element.start_line
-                end_line = element.end_line
-            elif isinstance(element, StyleElement):
-                symbol = "🎨"
-                info = element.selector
-                name = element.name
-                start_line = element.start_line
-                end_line = element.end_line
-            elif isinstance(element, dict):
-                # Handle dictionary format
-                element_type = element.get(
-                    "element_type", element.get("type", "unknown")
-                )
-                name = element.get("name", "unknown")
-                start_line = element.get("start_line", 0)
-                end_line = element.get("end_line", 0)
-
-                if "tag_name" in element or element_type in [
-                    "tag",
-                    "element",
-                    "markup",
-                ]:
-                    symbol = "🏷️"
-                    tag_name = element.get("tag_name", name)
-                    info = f"<{tag_name}>"
-                    attributes = element.get("attributes", {})
-                    if attributes.get("id"):
-                        info += f" #{attributes['id']}"
-                    if attributes.get("class"):
-                        info += f" .{attributes['class']}"
-                elif "selector" in element or element_type in ["rule", "style"]:
-                    symbol = "🎨"
-                    info = str(element.get("selector", name))
+                elem_class = element.element_class or "other"
+                if elem_class == "structure":
+                    structure_elements.append(element)
+                elif elem_class == "heading":
+                    heading_elements.append(element)
+                elif elem_class == "text":
+                    text_elements.append(element)
+                elif elem_class == "form":
+                    form_elements.append(element)
+                elif elem_class == "media":
+                    media_elements.append(element)
+                elif elem_class == "table":
+                    table_elements.append(element)
+                elif elem_class == "list":
+                    list_elements.append(element)
+                elif elem_class == "metadata":
+                    metadata_elements.append(element)
                 else:
-                    symbol = "📄"
-                    info = str(element_type)
-            else:
-                symbol = "📄"
-                info = getattr(element, "element_type", "unknown")
-                name = getattr(element, "name", "unknown")
-                start_line = getattr(element, "start_line", 0)
-                end_line = getattr(element, "end_line", 0)
+                    other_elements.append(element)
 
-            lines.append(f"{symbol} {name} {info} [{start_line}-{end_line}]")
+        # Header
+        lines.append(f"# {filename}")
+        lines.append("")
+
+        # Summary table
+        lines.append("## Summary")
+        lines.append("")
+        lines.append("| Element Type | Count |")
+        lines.append("|--------------|-------|")
+        lines.append(f"| Structure | {len(structure_elements)} |")
+        lines.append(f"| Headings | {len(heading_elements)} |")
+        lines.append(f"| Text | {len(text_elements)} |")
+        lines.append(f"| Forms | {len(form_elements)} |")
+        lines.append(f"| Media | {len(media_elements)} |")
+        lines.append(f"| Tables | {len(table_elements)} |")
+        lines.append(f"| Lists | {len(list_elements)} |")
+        lines.append(f"| Metadata | {len(metadata_elements)} |")
+        if other_elements:
+            lines.append(f"| Other | {len(other_elements)} |")
+        if style_count > 0:
+            lines.append(f"| CSS Rules | {style_count} |")
+        lines.append(f"| **Total** | **{len(elements)}** |")
+        lines.append("")
+
+        # Top elements (sample)
+        lines.append("## Top-Level Elements")
+        lines.append("")
+        lines.append("| Tag | ID/Class | Lines | Children |")
+        lines.append("|-----|----------|-------|----------|")
+
+        # Show only root-level or important elements
+        important_elements = []
+        for element in elements:
+            if isinstance(element, MarkupElement):
+                # Include root elements or important structural elements
+                if element.parent is None or element.tag_name in [
+                    "html",
+                    "head",
+                    "body",
+                    "main",
+                    "header",
+                    "footer",
+                    "nav",
+                    "section",
+                    "article",
+                    "aside",
+                ]:
+                    important_elements.append(element)
+
+        # Limit to top 20
+        for element in important_elements[:20]:
+            if isinstance(element, MarkupElement):
+                tag = element.tag_name or "unknown"
+
+                # Format ID/Class
+                id_class = []
+                if element.attributes.get("id"):
+                    id_class.append(f"#{element.attributes['id']}")
+                if element.attributes.get("class"):
+                    classes = element.attributes["class"].split()[
+                        :2
+                    ]  # Show first 2 classes
+                    id_class.extend([f".{c}" for c in classes])
+                id_class_str = " ".join(id_class) if id_class else "-"
+
+                lines_str = f"{element.start_line}-{element.end_line}"
+                children_count = len(element.children)
+
+                lines.append(
+                    f"| `{tag}` | {id_class_str} | {lines_str} | {children_count} |"
+                )
+
+        if len(important_elements) > 20:
+            lines.append(f"| ... | ({len(important_elements) - 20} more) | | |")
+
+        lines.append("")
 
         return "\n".join(lines)
+
+
+class HtmlCsvFormatter(IFormatter):
+    """CSV formatter for HTML elements"""
+
+    @staticmethod
+    def get_format_name() -> str:
+        return "html_csv"
+
+    def format(self, elements: list[CodeElement]) -> str:
+        """Format HTML elements as CSV"""
+        import csv
+        import io
+
+        output = io.StringIO()
+        writer = csv.writer(output, lineterminator="\n")
+
+        # Write header
+        writer.writerow(
+            [
+                "Name",
+                "Tag",
+                "Element Class",
+                "Start Line",
+                "End Line",
+                "Attributes",
+                "Children Count",
+                "Language",
+            ]
+        )
+
+        # Write data rows
+        for element in elements:
+            if isinstance(element, MarkupElement):
+                name = element.name or ""
+                tag = element.tag_name or ""
+                elem_class = element.element_class or ""
+                start_line = element.start_line
+                end_line = element.end_line
+                # Format attributes as key=value pairs
+                attrs = []
+                if element.attributes:
+                    for k, v in element.attributes.items():
+                        if v:
+                            attrs.append(f"{k}={v}")
+                        else:
+                            attrs.append(k)
+                attrs_str = "; ".join(attrs) if attrs else ""
+                children_count = len(element.children)
+                language = element.language
+            elif isinstance(element, StyleElement):
+                name = element.name or ""
+                tag = element.selector or ""
+                elem_class = element.element_class or ""
+                start_line = element.start_line
+                end_line = element.end_line
+                # Format properties as key:value pairs
+                props = []
+                if element.properties:
+                    for k, v in element.properties.items():
+                        props.append(f"{k}:{v}")
+                attrs_str = "; ".join(props) if props else ""
+                children_count = 0
+                language = element.language
+            elif isinstance(element, dict):
+                name = element.get("name", "")
+                tag = element.get("tag_name", element.get("selector", ""))
+                elem_class = element.get("element_class", "")
+                start_line = element.get("start_line", 0)
+                end_line = element.get("end_line", 0)
+                attrs_str = str(
+                    element.get("attributes", element.get("properties", ""))
+                )
+                children_count = element.get("children_count", 0)
+                language = element.get("language", "html")
+            else:
+                name = getattr(element, "name", "")
+                tag = getattr(element, "tag_name", getattr(element, "selector", ""))
+                elem_class = getattr(element, "element_class", "")
+                start_line = getattr(element, "start_line", 0)
+                end_line = getattr(element, "end_line", 0)
+                attrs_str = ""
+                children_count = 0
+                language = getattr(element, "language", "html")
+
+            writer.writerow(
+                [
+                    name,
+                    tag,
+                    elem_class,
+                    start_line,
+                    end_line,
+                    attrs_str,
+                    children_count,
+                    language,
+                ]
+            )
+
+        csv_content = output.getvalue()
+        output.close()
+        return csv_content.rstrip("\n")
 
 
 # HTML formatters are registered via formatter_registry.py

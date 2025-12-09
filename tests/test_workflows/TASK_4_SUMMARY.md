@@ -55,7 +55,7 @@ jobs:
    - Validates: Requirements 3.1, 3.2
    - Ensures test matrix matches release workflow
    - Verifies Python versions: 3.10, 3.11, 3.12, 3.13
-   - Verifies OS platforms: ubuntu-latest, windows-latest, macos-13
+   - Verifies OS platforms: ubuntu-latest, windows-latest, macos-latest
 
 **Additional Tests**:
 - Reusable workflow component usage

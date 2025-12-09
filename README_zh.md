@@ -4,20 +4,20 @@
 
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-4864%20passed-brightgreen.svg)](#-质量与测试)
+[![Tests](https://img.shields.io/badge/tests-6058%20passed-brightgreen.svg)](#-质量与测试)
 [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
-[![Version](https://img.shields.io/badge/version-1.9.17-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
+[![Version](https://img.shields.io/badge/version-1.9.18-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
-> 🚀 **AI时代的企业级代码分析工具** - 深度AI集成 · 强大搜索 · 15种语言 · 智能分析
+> 🚀 **AI时代的企业级代码分析工具** - 深度AI集成 · 强大搜索 · 17种语言 · 智能分析
 
 ---
 
-## ✨ v1.9.17 最新更新
+## ✨ v1.9.18 最新更新
 
-- **新语言支持**: 添加Go、Rust、Kotlin、YAML完整支持
-- **4,864个测试** 100%通过率
+- **新语言支持**: 添加C/C++完整支持（函数、结构体、类、枚举、联合体、预处理器指令）
+- **5,980个测试** 100%通过率
 
 📖 完整版本历史请查看 **[更新日志](CHANGELOG.md)**。
 
@@ -146,6 +146,8 @@ uv run tree-sitter-analyzer examples/BigService.java --query-key methods --filte
 | **Python** | ✅ 完整支持 | 类型注解、装饰器 |
 | **TypeScript** | ✅ 完整支持 | 接口、类型、TSX/JSX |
 | **JavaScript** | ✅ 完整支持 | ES6+、React/Vue/Angular |
+| **C** | ✅ 完整支持 | 函数、结构体、联合体、枚举、预处理器 |
+| **C++** | ✅ 完整支持 | 类、模板、命名空间、继承 |
 | **C#** | ✅ 完整支持 | Records、async/await、属性 |
 | **SQL** | ✅ 增强支持 | 表、视图、存储过程、触发器 |
 | **HTML** | ✅ 完整支持 | DOM结构、元素分类 |
@@ -179,7 +181,7 @@ uv run tree-sitter-analyzer examples/BigService.java --query-key methods --filte
 
 | 指标 | 数值 |
 |------|------|
-| **测试** | 4,864 通过 ✅ |
+| **测试** | 5,980 通过 ✅ |
 | **覆盖率** | [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer) |
 | **类型安全** | 100% mypy合规 |
 | **平台** | Windows、macOS、Linux |

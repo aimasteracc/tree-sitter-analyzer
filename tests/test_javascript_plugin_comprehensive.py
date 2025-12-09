@@ -464,7 +464,6 @@ class TestJavaScriptCaching:
     def test_node_text_caching(self, extractor, mocker):
         """Test node text caching"""
         mock_node = mocker.MagicMock()
-        node_id = id(mock_node)
 
         # Mock the node properties
         mock_node.start_byte = 0
@@ -479,7 +478,8 @@ class TestJavaScriptCaching:
         text2 = extractor._get_node_text_optimized(mock_node)
 
         assert text1 == text2
-        assert node_id in extractor._node_text_cache
+        # Cache uses (start_byte, end_byte) tuple as key
+        assert (mock_node.start_byte, mock_node.end_byte) in extractor._node_text_cache
 
     def test_jsdoc_caching(self, extractor):
         """Test JSDoc caching"""

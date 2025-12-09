@@ -71,7 +71,7 @@ upload-coverage: true    # Whether to upload coverage to Codecov
 
 **Test Matrix**:
 - **Python Versions**: 3.10, 3.11, 3.12, 3.13
-- **Operating Systems**: ubuntu-latest, windows-latest, macos-13
+- **Operating Systems**: ubuntu-latest, windows-latest, macos-latest
 - **Exclusions**: Windows and macOS skip Python 3.10 for optimization
 
 ### 2. Reusable Quality Check Workflow
@@ -297,12 +297,12 @@ All branch workflows use the same test matrix to ensure consistency:
 strategy:
   fail-fast: false
   matrix:
-    os: [ubuntu-latest, windows-latest, macos-13]
+    os: [ubuntu-latest, windows-latest, macos-latest]
     python-version: ["3.10", "3.11", "3.12", "3.13"]
     exclude:
       - os: windows-latest
         python-version: "3.10"
-      - os: macos-13
+      - os: macos-latest
         python-version: "3.10"
 ```
 

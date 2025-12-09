@@ -266,7 +266,7 @@ matrix:
 # ci.yml
 matrix:
   python-version: ["3.10", "3.11"]
-  os: [ubuntu-latest, macos-13]
+  os: [ubuntu-latest, macos-latest]
 ```
 
 **After**: Unified matrix across all branches
@@ -275,11 +275,11 @@ matrix:
 # All workflows use the same matrix
 matrix:
   python-version: ["3.10", "3.11", "3.12", "3.13"]
-  os: [ubuntu-latest, windows-latest, macos-13]
+  os: [ubuntu-latest, windows-latest, macos-latest]
   exclude:
     - os: windows-latest
       python-version: "3.10"
-    - os: macos-13
+    - os: macos-latest
       python-version: "3.10"
 ```
 

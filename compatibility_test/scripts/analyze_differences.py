@@ -450,9 +450,9 @@ class DifferenceAnalyzer:
                     if not analysis.get("is_identical_raw") and analysis.get(
                         "is_identical_normalized"
                     ):
-                        results["summary"][
-                            "performance_changes"
-                        ] += 1  # Or a more specific count
+                        results["summary"]["performance_changes"] += (
+                            1  # Or a more specific count
+                        )
 
         return results
 

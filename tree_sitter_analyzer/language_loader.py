@@ -40,6 +40,15 @@ class LanguageLoader:
         "sql": "tree_sitter_sql",
         "csharp": "tree_sitter_c_sharp",
         "cs": "tree_sitter_c_sharp",  # C# alias
+        # Web languages
+        "html": "tree_sitter_html",
+        "css": "tree_sitter_css",
+        "yaml": "tree_sitter_yaml",
+        "yml": "tree_sitter_yaml",  # YAML alias
+        # Additional languages
+        "php": "tree_sitter_php",
+        "ruby": "tree_sitter_ruby",
+        "kotlin": "tree_sitter_kotlin",
     }
 
     # TypeScript特別処理（TypeScriptとTSX）

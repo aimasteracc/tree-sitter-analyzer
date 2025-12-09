@@ -58,12 +58,12 @@ class CSharpElementExtractor(ElementExtractor):
         self.content_lines: list[str] = []
         self.current_namespace: str = ""
 
-        # Performance optimization caches
-        self._node_text_cache: dict[int, str] = {}
-        self._processed_nodes: set[int] = set()
-        self._element_cache: dict[tuple[int, str], Any] = {}
+        # Performance optimization caches - use position-based keys for deterministic caching
+        self._node_text_cache: dict[tuple[int, int], str] = {}
+        self._processed_nodes: set[tuple[int, int]] = set()
+        self._element_cache: dict[tuple[tuple[int, int], str], Any] = {}
         self._file_encoding: str | None = None
-        self._attribute_cache: dict[int, list[dict[str, Any]]] = {}
+        self._attribute_cache: dict[tuple[int, int], list[dict[str, Any]]] = {}
 
     def _reset_caches(self) -> None:
         """Reset all internal caches for a new file analysis."""
@@ -164,9 +164,10 @@ class CSharpElementExtractor(ElementExtractor):
         Returns:
             List of attribute dictionaries with name, line, and text
         """
-        node_id = id(node)
-        if node_id in self._attribute_cache:
-            return self._attribute_cache[node_id]
+        # Use position-based cache key for deterministic behavior
+        cache_key = (node.start_byte, node.end_byte)
+        if cache_key in self._attribute_cache:
+            return self._attribute_cache[cache_key]
 
         attributes: list[dict[str, Any]] = []
 
@@ -187,7 +188,7 @@ class CSharpElementExtractor(ElementExtractor):
             prev_sibling = prev_sibling.prev_sibling
 
         attributes.reverse()  # Restore original order
-        self._attribute_cache[node_id] = attributes
+        self._attribute_cache[cache_key] = attributes
         return attributes
 
     def _extract_type_name(self, type_node: Optional["tree_sitter.Node"]) -> str:

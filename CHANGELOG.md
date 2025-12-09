@@ -2,6 +2,87 @@
 
 ## [Unreleased]
 
+## [1.9.18] - 2025-12-09
+
+### 🏗️ CI/CD Improvements
+
+#### macOS Runner Migration
+- **GitHub Actions Update**: Migrated from deprecated `macos-13` to `macos-latest`
+  - Updated `.github/workflows/reusable-test.yml` test matrix
+  - Updated `.github/actions/setup-system/action.yml` for flexible macOS version support
+  - Changed condition checks to use `startsWith(matrix.os, 'macos-')` for future compatibility
+- **Documentation Updates**: Updated all CI/CD related documentation
+  - English and Japanese CONTRIBUTING guides
+  - CI/CD overview, troubleshooting, and migration guides
+  - Test workflow documentation
+- **Test Updates**: Updated all workflow consistency tests to expect `macos-latest`
+- **Compliance**: Addresses GitHub Actions deprecation (macOS 13 end-of-life: December 8, 2025)
+
+### 🚀 New Features
+
+#### C/C++ Language Support Added! 🆕
+
+**C Language Support**:
+- **Structure Extraction**: Functions, structs, unions, enums, typedefs
+- **Advanced Features**:
+  - Preprocessor directive extraction (#include, #define, #ifdef)
+  - Global, static, const, extern variable extraction
+  - Function pointer and array type support
+- **C Formatter**: Output using C-specific terminology
+
+**C++ Language Support**:
+- **Structure Extraction**: Classes, structs, namespaces, templates
+- **Advanced Features**:
+  - Inheritance and virtual function detection
+  - Operator overloading extraction
+  - Lambda expression and smart pointer support
+  - Using declarations and namespace aliases
+- **C++ Formatter**: Output using C++-specific terminology
+
+These languages are fully integrated into CLI, API, and MCP interfaces with comprehensive testing.
+
+### 🧪 Testing & Quality
+
+- **Test Suite Expansion**: Test count reaches 6,058 tests (up from 5,980)
+  - Added comprehensive C language plugin tests
+  - Added comprehensive C++ language plugin tests
+  - Added Golden Master tests for C/C++ (full/compact/CSV formats)
+  - All tests pass with 100% success rate
+- **Stability Improvements**: 
+  - Fixed cache key tests to use position-based keys
+  - Normalized line endings for CSV files
+  - Stabilized node text caching across all language plugins
+  - Resolved golden master test failures for markdown
+
+### 📚 Documentation
+
+- **Version Updates**: Updated all README files with v1.9.18 version information
+  - **English (README.md)**: Updated version badges and added C/C++ to supported languages
+  - **Japanese (README_ja.md)**: Updated version information and added C/C++ support
+  - **Chinese (README_zh.md)**: Updated version information and added C/C++ support
+- **Language Count**: Updated supported languages from 15 to 17
+- **CI/CD Documentation**: Comprehensive updates for macOS runner migration
+
+### 🔧 Technical Improvements
+
+- **Plugin Architecture**: Added CPlugin and CppPlugin following existing plugin patterns
+- **Query Modules**: Added `queries/c.py` and `queries/cpp.py` for tree-sitter queries
+- **BFS Identifier Extraction**: Uses breadth-first search for accurate name resolution
+- **Graceful Degradation**: Handles missing tree-sitter-c/cpp dependencies gracefully
+
+### 📊 Quality Metrics
+
+- **Tests**: 5,980 tests (100% pass rate)
+- **Coverage**: Codecov automatic monitoring
+- **Quality**: Enterprise-grade quality maintained
+- **Supported Languages**: 17 languages
+
+### 🎯 Impact
+
+This release adds comprehensive C and C++ language support, completing coverage for major systems programming languages. The plugins support all core C/C++ constructs including preprocessor directives, templates, inheritance, and modern C++ features.
+
+---
+
 ## [1.9.17] - 2025-11-28
 
 ### 🚀 New Features

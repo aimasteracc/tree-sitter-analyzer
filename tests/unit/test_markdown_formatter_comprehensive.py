@@ -477,10 +477,13 @@ class TestFormatTable:
 
         result = formatter.format_table(analysis_result)
 
-        assert "# Test Document" in result
+        # Title uses filename without extension
+        assert "# test" in result
         assert "## Document Overview" in result
         assert "test.md" in result
         assert "| Total Lines | 50 |" in result
+        # Check that header is in document structure
+        assert "Test Document" in result
 
     def test_format_table_headers_section(self):
         """Test headers section in table"""
@@ -855,7 +858,8 @@ class TestFormatTable:
 
         result = formatter.format_table(analysis_result)
 
-        assert "# document.md" in result
+        # Title uses filename without extension
+        assert "# document" in result
 
     def test_format_table_long_content_truncation(self):
         """Test that long content is truncated properly"""

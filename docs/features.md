@@ -43,7 +43,52 @@ For AI assistants with token limits, Tree-sitter Analyzer provides multiple opti
 
 ### Systems Programming Languages
 
-#### Go 🆕
+#### C 🆕
+
+**Full Support** - Complete C language analysis with C-specific features.
+
+| Feature Category | Supported Elements | Notes |
+|------------------|-------------------|-------|
+| **Functions** | Function definitions | Parameters, return types |
+| **Types** | Struct definitions | Field names and types |
+| | Union definitions | Field names and types |
+| | Enum definitions | Enumerator values |
+| | Typedefs | Type aliases |
+| **Declarations** | Global variables | Static, const, extern |
+| | Function pointers | Complex type support |
+| **Preprocessor** | #include directives | Header file tracking |
+| | #define macros | Macro detection |
+| | Conditional compilation | #ifdef/#ifndef |
+
+**Formatter Terminology:**
+- Uses C-specific terms: `function`, `struct`, `union`, `enum`, `typedef`
+- Scope: `global`, `static`, `extern`
+
+#### C++ 🆕
+
+**Full Support** - Complete C++ language analysis with C++-specific features.
+
+| Feature Category | Supported Elements | Notes |
+|------------------|-------------------|-------|
+| **Classes** | Class definitions | Public/private/protected sections |
+| **Functions** | Function declarations | Constructors, destructors |
+| | Operator overloading | Custom operators |
+| | Virtual functions | Inheritance support |
+| **Types** | Struct definitions | With member functions |
+| | Enum/enum class | C++11 scoped enums |
+| **Templates** | Function templates | Type parameters |
+| | Class templates | Template classes |
+| **Namespaces** | Namespace definitions | Nested namespaces |
+| **Declarations** | Using declarations | Type aliases |
+| | Using namespace | Namespace imports |
+| **Modern C++** | Lambda expressions | Capture clauses |
+| | Smart pointers | unique_ptr, shared_ptr |
+
+**Formatter Terminology:**
+- Uses C++-specific terms: `class`, `struct`, `namespace`, `template`
+- Visibility: `public`, `protected`, `private`
+
+#### Go
 
 **Full Support** - Complete Go language analysis with Go-specific features.
 

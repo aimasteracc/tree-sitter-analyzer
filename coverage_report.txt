@@ -1,0 +1,54 @@
+============================= test session starts =============================
+platform win32 -- Python 3.12.9, pytest-8.4.2, pluggy-1.6.0
+benchmark: 5.1.0 (defaults: timer=time.perf_counter disable_gc=False min_rounds=5 min_time=0.000005 max_time=1.0 calibration_precision=10 warmup=False warmup_iterations=100000)
+rootdir: C:\git-private\tree-sitter-analyzer
+configfile: pytest.ini
+testpaths: tests
+plugins: anyio-4.11.0, hypothesis-6.148.2, asyncio-1.2.0, benchmark-5.1.0, cov-7.0.0, mock-3.15.1
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 5094 items
+
+tests\format_testing\test_comprehensive_format_validation.py ........... [  0%]
+.s....                                                                   [  0%]
+tests\format_testing\test_framework_validation.py ....                   [  0%]
+tests\format_testing\test_real_integration.py ....                       [  0%]
+tests\integration\test_language_detection_properties.py .........        [  0%]
+tests\integration\test_phase7_end_to_end.py ....                         [  0%]
+tests\integration\test_phase7_integration_suite.py .....                 [  0%]
+tests\integration\test_phase7_performance_integration.py .......         [  0%]
+tests\integration\test_phase7_security_integration.py .........          [  1%]
+tests\mcp\test_error_handling_remaining_tools.py .......                 [  1%]
+tests\mcp\test_integration.py ....                                       [  1%]
+tests\mcp\test_resources\test_code_file_resource.py ..............       [  1%]
+tests\mcp\test_resources\test_project_stats_resource.py ................ [  1%]
+..                                                                       [  2%]
+tests\mcp\test_resources\test_resource_integration.py .............      [  2%]
+tests\mcp\test_server.py .........                                       [  2%]
+tests\mcp\test_tools\test_analyze_scale_tool.py ..................       [  2%]
+tests\mcp\test_tools\test_file_output_manager.py .....................   [  3%]
+tests\mcp\test_tools\test_read_partial_tool.py ............              [  3%]
+tests\mcp\test_tools\test_table_format_tool.py ..................        [  3%]
+tests\mcp\test_user_story_1_integration.py .......                       [  3%]
+tests\mcp\test_user_story_2_integration.py ...............               [  4%]
+tests\mcp\test_user_story_3_integration.py .................             [  4%]
+tests\mcp\test_user_story_4_integration.py ................              [  4%]
+tests\performance\test_mcp_performance.py .....s.s.s.                    [  5%]
+tests\platform_compat\test_adapter_properties.py .....                   [  5%]
+tests\platform_compat\test_cache.py ....                                 [  5%]
+tests\platform_compat\test_compare_properties.py ..                      [  5%]
+tests\platform_compat\test_detector_properties.py ..                     [  5%]
+tests\platform_compat\test_equivalence_properties.py .                   [  5%]
+tests\platform_compat\test_fixtures_properties.py .                      [  5%]
+tests\platform_compat\test_integration_properties.py ...                 [  5%]
+tests\platform_compat\test_mcp_capabilities.py .                         [  5%]
+tests\platform_compat\test_profiles_properties.py ..                     [  5%]
+tests\platform_compat\test_recorder_properties.py ...                    [  5%]
+tests\platform_compat\test_report_properties.py .                        [  5%]
+tests\security\test_mcp_security.py ....................                 [  5%]
+tests\test_analyze_scale_tool_cli_compatible.py ........................ [  6%]
+..........                                                               [  6%]
+tests\test_analyze_scale_tool_file_output.py ...............             [  6%]
+tests\test_api.py ............................                           [  7%]
+tests\test_async_performance.py .............                            [  7%]
+tests\test_async_query_service.py ...............                        [  8%]
+tests\test_cache_format_compatibility_bug.py ......                      [  8%]

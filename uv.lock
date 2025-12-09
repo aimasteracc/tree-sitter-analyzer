@@ -2070,7 +2070,7 @@ wheels = [
 
 [[package]]
 name = "tree-sitter-analyzer"
-version = "1.9.17"
+version = "1.9.18"
 source = { editable = "." }
 dependencies = [
     { name = "cachetools" },
@@ -2079,6 +2079,7 @@ dependencies = [
     { name = "mcp" },
     { name = "psutil" },
     { name = "tree-sitter" },
+    { name = "tree-sitter-c" },
     { name = "tree-sitter-c-sharp" },
     { name = "tree-sitter-cpp" },
     { name = "tree-sitter-css" },
@@ -2390,6 +2391,7 @@ requires-dist = [
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.5.0" },
     { name = "ruff", marker = "extra == 'full'", specifier = ">=0.5.0" },
     { name = "tree-sitter", specifier = ">=0.25.0" },
+    { name = "tree-sitter-c", specifier = ">=0.20.0,<0.25.0" },
     { name = "tree-sitter-c", marker = "extra == 'all'", specifier = ">=0.20.0,<0.25.0" },
     { name = "tree-sitter-c", marker = "extra == 'all-languages'", specifier = ">=0.20.0,<0.25.0" },
     { name = "tree-sitter-c", marker = "extra == 'c'", specifier = ">=0.20.0,<0.25.0" },

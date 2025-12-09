@@ -554,21 +554,19 @@ class TestHtmlCompactFormatter:
         """Test compact formatting of mixed elements"""
         result = self.formatter.format(self.test_elements)
 
-        # Check header
-        assert "HTML ELEMENTS" in result
-        assert "-" * 20 in result
+        # Check header and summary table format
+        assert "## Summary" in result
+        assert "| Element Type | Count |" in result
 
-        # Check summary
-        assert "Total: 4 elements" in result
-        assert "Markup: 2" in result
-        assert "Style: 1" in result
-        assert "Other: 1" in result
+        # Check element counts in table
+        assert "| Structure | 1 |" in result
+        assert "| Media | 1 |" in result
+        assert "| CSS Rules | 1 |" in result
+        assert "| **Total** | **4** |" in result
 
-        # Check element lines with symbols
-        assert "🏷️ div <div> #main .container [1-5]" in result
-        assert "🏷️ img <img> [7-7]" in result
-        assert "🎨 .container .container [10-15]" in result
-        assert "📄 init function [20-25]" in result
+        # Check top-level elements table
+        assert "## Top-Level Elements" in result
+        assert "| Tag | ID/Class | Lines | Children |" in result
 
     def test_format_markup_element_with_attributes(self):
         """Test compact formatting of MarkupElement with attributes"""
@@ -584,8 +582,9 @@ class TestHtmlCompactFormatter:
 
         result = self.formatter.format([element])
 
-        # Check that ID and class are included
-        assert "🏷️ button <button> #submit-btn .btn-primary [1-1]" in result
+        # Check that element is in top-level table
+        assert "| `button` |" in result
+        assert "| Forms | 1 |" in result
 
     def test_format_markup_element_without_attributes(self):
         """Test compact formatting of MarkupElement without attributes"""
@@ -601,8 +600,9 @@ class TestHtmlCompactFormatter:
 
         result = self.formatter.format([element])
 
-        # Check basic format without attributes
-        assert "🏷️ br <br> [1-1]" in result
+        # Check element is in summary table
+        assert "| Text | 1 |" in result
+        assert "| **Total** | **1** |" in result
 
     def test_format_style_element(self):
         """Test compact formatting of StyleElement"""
@@ -618,7 +618,9 @@ class TestHtmlCompactFormatter:
 
         result = self.formatter.format([element])
 
-        assert "🎨 #header #header [5-10]" in result
+        # Check CSS rule in summary
+        assert "| CSS Rules | 1 |" in result
+        assert "| **Total** | **1** |" in result
 
     def test_format_other_element(self):
         """Test compact formatting of other CodeElement"""
@@ -628,7 +630,8 @@ class TestHtmlCompactFormatter:
 
         result = self.formatter.format([element])
 
-        assert "📄 config variable [1-1]" in result
+        # Non-markup elements should still be counted in total
+        assert "| **Total** | **1** |" in result
 
     def test_format_empty_list(self):
         """Test compact formatting of empty list"""
@@ -655,10 +658,10 @@ class TestHtmlCompactFormatter:
         all_elements = markup_elements + style_elements + other_elements
         result = self.formatter.format(all_elements)
 
-        assert "Total: 6 elements" in result
-        assert "Markup: 2" in result
-        assert "Style: 1" in result
-        assert "Other: 3" in result
+        # Check total count in new table format
+        assert "| **Total** | **6** |" in result
+        # Check CSS rules count
+        assert "| CSS Rules | 1 |" in result
 
 
 class TestHtmlFormatterRegistration:
@@ -719,7 +722,9 @@ class TestHtmlFormatterEdgeCases:
 
         compact_formatter = HtmlCompactFormatter()
         result = compact_formatter.format([malformed])
-        assert "malformed" in result
+        # Compact formatter uses table format, check that it doesn't crash
+        assert "## Summary" in result
+        assert "| **Total** | **1** |" in result
 
     def test_formatter_with_none_values(self):
         """Test formatters with None values"""

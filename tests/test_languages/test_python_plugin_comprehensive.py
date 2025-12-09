@@ -225,7 +225,6 @@ def __magic_method__(self, other):
         mock_node = Mock()
         mock_node.start_byte = 0
         mock_node.end_byte = 10
-        node_id = id(mock_node)
 
         # Set up extractor state
         extractor.content_lines = ["test content line"]
@@ -240,7 +239,11 @@ def __magic_method__(self, other):
             # First call should extract and cache
             result1 = extractor._get_node_text_optimized(mock_node)
             assert result1 == "test text"
-            assert node_id in extractor._node_text_cache
+            # Cache uses (start_byte, end_byte) tuple as key
+            assert (
+                mock_node.start_byte,
+                mock_node.end_byte,
+            ) in extractor._node_text_cache
 
             # Second call should use cache
             result2 = extractor._get_node_text_optimized(mock_node)

@@ -15,6 +15,7 @@
 *.html text eol=lf
 *.css text eol=lf
 *.sh text eol=lf
+*.csv text eol=lf
 *.bat text eol=crlf
 
 # Declare files that will always have CRLF line endings on checkout

@@ -40,10 +40,10 @@ class JavaScriptElementExtractor(ElementExtractor):
         self.imports: list[str] = []
         self.exports: list[dict[str, Any]] = []
 
-        # Performance optimization caches
-        self._node_text_cache: dict[int, str] = {}
-        self._processed_nodes: set[int] = set()
-        self._element_cache: dict[tuple[int, str], Any] = {}
+        # Performance optimization caches - use position-based keys for deterministic caching
+        self._node_text_cache: dict[tuple[int, int], str] = {}
+        self._processed_nodes: set[tuple[int, int]] = set()
+        self._element_cache: dict[tuple[tuple[int, int], str], Any] = {}
         self._file_encoding: str | None = None
         self._jsdoc_cache: dict[int, str] = {}
         self._complexity_cache: dict[int, int] = {}
@@ -290,11 +290,12 @@ class JavaScriptElementExtractor(ElementExtractor):
         log_debug(f"Iterative traversal processed {processed_nodes} nodes")
 
     def _get_node_text_optimized(self, node: "tree_sitter.Node") -> str:
-        """Get node text with optimized caching"""
-        node_id = id(node)
+        """Get node text with optimized caching using position-based keys"""
+        # Use position-based cache key for deterministic behavior
+        cache_key = (node.start_byte, node.end_byte)
 
-        if node_id in self._node_text_cache:
-            return self._node_text_cache[node_id]
+        if cache_key in self._node_text_cache:
+            return self._node_text_cache[cache_key]
 
         try:
             start_byte = node.start_byte
@@ -304,7 +305,7 @@ class JavaScriptElementExtractor(ElementExtractor):
             content_bytes = safe_encode("\n".join(self.content_lines), encoding)
             text = extract_text_slice(content_bytes, start_byte, end_byte, encoding)
 
-            self._node_text_cache[node_id] = text
+            self._node_text_cache[cache_key] = text
             return text
         except Exception as e:
             log_error(f"Error in _get_node_text_optimized: {e}")

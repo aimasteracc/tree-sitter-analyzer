@@ -216,7 +216,7 @@ class TestWorkflowProperties:
 
         # Expected configuration
         expected_python_versions = ["3.10", "3.11", "3.12", "3.13"]
-        expected_os = ["ubuntu-latest", "windows-latest", "macos-13"]
+        expected_os = ["ubuntu-latest", "windows-latest", "macos-latest"]
 
         # Verify test matrix configuration
         assert (
@@ -453,7 +453,7 @@ class TestWorkflowProperties:
 
         # Expected configuration
         expected_python_versions = ["3.10", "3.11", "3.12", "3.13"]
-        expected_os = ["ubuntu-latest", "windows-latest", "macos-13"]
+        expected_os = ["ubuntu-latest", "windows-latest", "macos-latest"]
 
         # Verify Python versions
         assert (

@@ -15,7 +15,7 @@
         "MAD_MODEL_NAME": "claude-4-5-sonnet",
         "MAD_CAPABILITIES": "code,chat,review"
       },
-      "disabled": false,
+      "disabled": true,
       "autoApprove": [
         "send_message",
         "join_session",

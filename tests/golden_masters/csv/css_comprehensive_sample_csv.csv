@@ -1,0 +1,370 @@
+name,element_type,selector,property_count,start_line,end_line
+:root,css_rule,:root,38,7,61
+*;
+*::before;
+*::after,css_rule,*;
+*::before;
+*::after,1,68,72
+*,css_rule,*,2,75,78
+article;
+aside;
+details;
+figcaption;
+figure;
+footer;
+header;
+hgroup;
+main;
+nav;
+section;
+summary,css_rule,article;
+aside;
+details;
+figcaption;
+figure;
+footer;
+header;
+hgroup;
+main;
+nav;
+section;
+summary,1,81,94
+html,css_rule,html,5,101,107
+body,css_rule,body,7,110,118
+h1; h2; h3; h4; h5; h6,css_rule,h1; h2; h3; h4; h5; h6,5,125,131
+h1,css_rule,h1,2,133,136
+h2,css_rule,h2,1,138,140
+h3,css_rule,h3,1,142,144
+h4,css_rule,h4,1,146,148
+h5,css_rule,h5,1,150,152
+h6,css_rule,h6,1,154,156
+p,css_rule,p,2,159,162
+strong;
+b,css_rule,strong;
+b,1,165,168
+em;
+i,css_rule,em;
+i,1,170,173
+mark,css_rule,mark,4,176,181
+code;
+kbd;
+pre;
+samp,css_rule,code;
+kbd;
+pre;
+samp,2,184,190
+code,css_rule,code,4,192,197
+pre,css_rule,pre,6,199,206
+pre code,css_rule,pre code,3,208,212
+blockquote,css_rule,blockquote,5,215,221
+blockquote p:last-child,css_rule,blockquote p:last-child,1,223,225
+blockquote footer,css_rule,blockquote footer,3,227,231
+blockquote footer::before,css_rule,blockquote footer::before,1,233,235
+a,css_rule,a,3,241,245
+a:hover;
+a:focus,css_rule,a:hover;
+a:focus,2,247,251
+a:focus,css_rule,a:focus,2,253,256
+a[target="_blank"]::after,css_rule,a[target="_blank"]::after,3,259,263
+ul;
+ol,css_rule,ul;
+ol,2,269,273
+li,css_rule,li,1,275,277
+ul ul;
+ol ol;
+ul ol;
+ol ul,css_rule,ul ul;
+ol ol;
+ul ol;
+ol ul,2,280,286
+dl,css_rule,dl,1,289,291
+dt,css_rule,dt,2,293,296
+dd,css_rule,dd,2,298,301
+table,css_rule,table,7,307,315
+caption,css_rule,caption,4,317,322
+th;
+td,css_rule,th;
+td,3,324,329
+th,css_rule,th,3,331,335
+tbody tr:hover,css_rule,tbody tr:hover,1,337,339
+.frequency.high,css_rule,.frequency.high,2,342,345
+.frequency.medium,css_rule,.frequency.medium,2,347,350
+.frequency.low,css_rule,.frequency.low,2,352,355
+fieldset,css_rule,fieldset,4,362,367
+legend,css_rule,legend,3,369,373
+.form-group,css_rule,.form-group,1,376,378
+label,css_rule,label,4,381,386
+.required,css_rule,.required,1,388,390
+input[type="text"];
+input[type="email"];
+input[type="tel"];
+input[type="url"];
+input[type="password"];
+input[type="number"];
+input[type="date"];
+input[type="time"];
+input[type="datetime-local"];
+input[type="search"];
+textarea;
+select,css_rule,input[type="text"];
+input[type="email"];
+input[type="tel"];
+input[type="url"];
+input[type="password"];
+input[type="number"];
+input[type="date"];
+input[type="time"];
+input[type="datetime-local"];
+input[type="search"];
+textarea;
+select,8,393,413
+input:focus;
+textarea:focus;
+select:focus,css_rule,input:focus;
+textarea:focus;
+select:focus,3,415,421
+input:invalid;
+textarea:invalid;
+select:invalid,css_rule,input:invalid;
+textarea:invalid;
+select:invalid,1,423,427
+::placeholder,css_rule,::placeholder,2,430,433
+textarea,css_rule,textarea,2,436,439
+select,css_rule,select,6,442,449
+.radio-group;
+.checkbox-group,css_rule,.radio-group;
+.checkbox-group,3,452,457
+input[type="radio"];
+input[type="checkbox"],css_rule,input[type="radio"];
+input[type="checkbox"],2,459,463
+input[type="range"],css_rule,input[type="range"],6,466,473
+input[type="range"]::-webkit-slider-thumb,css_rule,input[type="range"]::-webkit-slider-thumb,7,475,483
+input[type="range"]::-moz-range-thumb,css_rule,input[type="range"]::-moz-range-thumb,6,485,492
+input[type="file"],css_rule,input[type="file"],4,495,500
+input[type="file"]:hover,css_rule,input[type="file"]:hover,1,502,504
+.btn,css_rule,.btn,13,510,524
+.btn:focus,css_rule,.btn:focus,2,526,529
+.btn:disabled,css_rule,.btn:disabled,2,531,534
+.btn-primary,css_rule,.btn-primary,3,537,541
+.btn-primary:hover,css_rule,.btn-primary:hover,2,543,546
+.btn-secondary,css_rule,.btn-secondary,3,548,552
+.btn-secondary:hover,css_rule,.btn-secondary:hover,2,554,557
+.btn-success,css_rule,.btn-success,3,559,563
+.btn-danger,css_rule,.btn-danger,3,565,569
+.btn-sm,css_rule,.btn-sm,2,572,575
+.btn-lg,css_rule,.btn-lg,2,577,580
+.container,css_rule,.container,4,587,592
+.grid,css_rule,.grid,2,595,598
+.grid-cols-1,css_rule,.grid-cols-1,1,600,602
+.grid-cols-2,css_rule,.grid-cols-2,1,604,606
+.grid-cols-3,css_rule,.grid-cols-3,1,608,610
+.grid-cols-4,css_rule,.grid-cols-4,1,612,614
+.flex,css_rule,.flex,1,617,619
+.flex-col,css_rule,.flex-col,1,621,623
+.flex-wrap,css_rule,.flex-wrap,1,625,627
+.items-center,css_rule,.items-center,1,629,631
+.justify-center,css_rule,.justify-center,1,633,635
+.justify-between,css_rule,.justify-between,1,637,639
+.main-header,css_rule,.main-header,5,645,651
+.navigation,css_rule,.navigation,4,653,658
+.nav-brand h1,css_rule,.nav-brand h1,2,660,663
+.nav-brand a,css_rule,.nav-brand a,2,665,668
+.nav-menu,css_rule,.nav-menu,5,670,676
+.nav-link,css_rule,.nav-link,6,678,685
+.nav-link:hover,css_rule,.nav-link:hover,2,687,690
+.menu-toggle,css_rule,.menu-toggle,6,693,700
+.menu-toggle span,css_rule,.menu-toggle span,5,702,708
+.main-content,css_rule,.main-content,1,714,716
+.hero-section,css_rule,.hero-section,4,719,724
+.hero-title,css_rule,.hero-title,3,726,730
+.hero-subtitle,css_rule,.hero-subtitle,3,732,736
+.hero-actions,css_rule,.hero-actions,4,738,743
+section,css_rule,section,1,746,748
+section:nth-child(even),css_rule,section:nth-child(even),1,750,752
+.section-subtitle,css_rule,.section-subtitle,3,754,758
+.features-grid,css_rule,.features-grid,4,761,766
+.feature-card,css_rule,.feature-card,5,768,774
+.feature-card:hover,css_rule,.feature-card:hover,2,776,779
+.feature-card h3,css_rule,.feature-card h3,2,781,784
+.lists-grid,css_rule,.lists-grid,3,787,791
+.list-item,css_rule,.list-item,4,793,798
+.media-grid,css_rule,.media-grid,3,801,805
+.media-item,css_rule,.media-item,1,807,809
+.media-item img;
+.media-item video;
+.media-item audio,css_rule,.media-item img;
+.media-item video;
+.media-item audio,3,811,817
+figcaption,css_rule,figcaption,3,819,823
+.sidebar,css_rule,.sidebar,4,829,834
+.widget,css_rule,.widget,1,836,838
+.widget:last-child,css_rule,.widget:last-child,1,840,842
+.widget h3,css_rule,.widget h3,4,844,849
+.widget ul,css_rule,.widget ul,2,851,854
+.widget li,css_rule,.widget li,1,856,858
+.news-item,css_rule,.news-item,4,860,865
+.news-item time,css_rule,.news-item time,3,867,871
+.main-footer,css_rule,.main-footer,4,877,882
+.footer-content,css_rule,.footer-content,4,884,889
+.footer-section h4,css_rule,.footer-section h4,2,891,894
+.footer-section ul,css_rule,.footer-section ul,2,896,899
+.footer-section li,css_rule,.footer-section li,1,901,903
+.footer-section a,css_rule,.footer-section a,3,905,909
+.footer-section a:hover,css_rule,.footer-section a:hover,1,911,913
+.footer-bottom,css_rule,.footer-bottom,4,915,920
+@keyframes,css_rule,@keyframes,0,927,936
+.fade-in,css_rule,.fade-in,1,938,940
+@keyframes,css_rule,@keyframes,0,943,952
+.slide-in-left,css_rule,.slide-in-left,1,954,956
+@keyframes,css_rule,@keyframes,0,959,966
+.pulse,css_rule,.pulse,1,968,970
+@keyframes,css_rule,@keyframes,0,973,980
+.spin,css_rule,.spin,1,982,984
+@keyframes,css_rule,@keyframes,0,987,1000
+.bounce,css_rule,.bounce,1,1002,1004
+.hidden,css_rule,.hidden,1,1011,1013
+.visible,css_rule,.visible,1,1015,1017
+.invisible,css_rule,.invisible,1,1019,1021
+.text-left,css_rule,.text-left,1,1024,1026
+.text-center,css_rule,.text-center,1,1028,1030
+.text-right,css_rule,.text-right,1,1032,1034
+.text-justify,css_rule,.text-justify,1,1036,1038
+.text-primary,css_rule,.text-primary,1,1041,1043
+.text-secondary,css_rule,.text-secondary,1,1045,1047
+.text-success,css_rule,.text-success,1,1049,1051
+.text-danger,css_rule,.text-danger,1,1053,1055
+.text-warning,css_rule,.text-warning,1,1057,1059
+.text-info,css_rule,.text-info,1,1061,1063
+.text-light,css_rule,.text-light,1,1065,1067
+.text-dark,css_rule,.text-dark,1,1069,1071
+.text-white,css_rule,.text-white,1,1073,1075
+.bg-primary,css_rule,.bg-primary,1,1078,1080
+.bg-secondary,css_rule,.bg-secondary,1,1082,1084
+.bg-success,css_rule,.bg-success,1,1086,1088
+.bg-danger,css_rule,.bg-danger,1,1090,1092
+.bg-warning,css_rule,.bg-warning,1,1094,1096
+.bg-info,css_rule,.bg-info,1,1098,1100
+.bg-light,css_rule,.bg-light,1,1102,1104
+.bg-dark,css_rule,.bg-dark,1,1106,1108
+.bg-white,css_rule,.bg-white,1,1110,1112
+.m-0,css_rule,.m-0,1,1115,1115
+.m-1,css_rule,.m-1,1,1116,1116
+.m-2,css_rule,.m-2,1,1117,1117
+.m-3,css_rule,.m-3,1,1118,1118
+.m-4,css_rule,.m-4,1,1119,1119
+.m-5,css_rule,.m-5,1,1120,1120
+.p-0,css_rule,.p-0,1,1122,1122
+.p-1,css_rule,.p-1,1,1123,1123
+.p-2,css_rule,.p-2,1,1124,1124
+.p-3,css_rule,.p-3,1,1125,1125
+.p-4,css_rule,.p-4,1,1126,1126
+.p-5,css_rule,.p-5,1,1127,1127
+.border,css_rule,.border,1,1130,1132
+.border-top,css_rule,.border-top,1,1134,1136
+.border-bottom,css_rule,.border-bottom,1,1138,1140
+.border-left,css_rule,.border-left,1,1142,1144
+.border-right,css_rule,.border-right,1,1146,1148
+.border-0,css_rule,.border-0,1,1150,1152
+.rounded,css_rule,.rounded,1,1155,1157
+.rounded-sm,css_rule,.rounded-sm,1,1159,1161
+.rounded-lg,css_rule,.rounded-lg,1,1163,1165
+.rounded-full,css_rule,.rounded-full,1,1167,1169
+.shadow,css_rule,.shadow,1,1172,1174
+.shadow-sm,css_rule,.shadow-sm,1,1176,1178
+.shadow-lg,css_rule,.shadow-lg,1,1180,1182
+.shadow-none,css_rule,.shadow-none,1,1184,1186
+@media,css_rule,@media,0,1193,1250
+.container,css_rule,.container,1,1194,1196
+.hero-title,css_rule,.hero-title,1,1198,1200
+.hero-subtitle,css_rule,.hero-subtitle,1,1202,1204
+.hero-actions,css_rule,.hero-actions,2,1206,1209
+.features-grid;
+    .lists-grid;
+    .media-grid,css_rule,.features-grid;
+    .lists-grid;
+    .media-grid,1,1211,1215
+.nav-menu,css_rule,.nav-menu,9,1217,1227
+.nav-menu.active,css_rule,.nav-menu.active,1,1229,1231
+.menu-toggle,css_rule,.menu-toggle,1,1233,1235
+.footer-content,css_rule,.footer-content,2,1237,1240
+table,css_rule,table,1,1242,1244
+th;
+    td,css_rule,th;
+    td,1,1246,1249
+@media,css_rule,@media,0,1253,1265
+.features-grid,css_rule,.features-grid,1,1254,1256
+.lists-grid,css_rule,.lists-grid,1,1258,1260
+.media-grid,css_rule,.media-grid,1,1262,1264
+@media,css_rule,@media,0,1268,1281
+.sidebar,css_rule,.sidebar,3,1269,1273
+.main-content,css_rule,.main-content,4,1275,1280
+@media,css_rule,@media,0,1284,1292
+.container,css_rule,.container,1,1285,1287
+.features-grid,css_rule,.features-grid,1,1289,1291
+@media,css_rule,@media,0,1295,1339
+:root,css_rule,:root,2,1296,1299
+body,css_rule,body,2,1301,1304
+.main-header,css_rule,.main-header,1,1306,1308
+.feature-card;
+    .list-item,css_rule,.feature-card;
+    .list-item,2,1310,1314
+table,css_rule,table,1,1316,1318
+th,css_rule,th,1,1320,1322
+input;
+    textarea;
+    select,css_rule,input;
+    textarea;
+    select,3,1324,1330
+.sidebar,css_rule,.sidebar,1,1332,1334
+.news-item,css_rule,.news-item,1,1336,1338
+@media,css_rule,@media,0,1342,1395
+*,css_rule,*,4,1343,1348
+a;
+    a:visited,css_rule,a;
+    a:visited,1,1350,1353
+a[href]:after,css_rule,a[href]:after,1,1355,1357
+abbr[title]:after,css_rule,abbr[title]:after,1,1359,1361
+.main-header;
+    .sidebar;
+    .main-footer,css_rule,.main-header;
+    .sidebar;
+    .main-footer,1,1363,1367
+.main-content,css_rule,.main-content,3,1369,1373
+h1; h2; h3,css_rule,h1; h2; h3,1,1375,1377
+blockquote;
+    tr;
+    img,css_rule,blockquote;
+    tr;
+    img,1,1379,1383
+p;
+    h2;
+    h3,css_rule,p;
+    h2;
+    h3,2,1385,1390
+thead,css_rule,thead,1,1392,1394
+@media,css_rule,@media,0,1398,1416
+:root,css_rule,:root,6,1399,1406
+a,css_rule,a,1,1408,1410
+button;
+    .btn,css_rule,button;
+    .btn,1,1412,1415
+@media,css_rule,@media,0,1419,1428
+*;
+    *::before;
+    *::after,css_rule,*;
+    *::before;
+    *::after,4,1420,1427
+.btn-primary,css_rule,.btn-primary,1,1435,1438
+.text-primary,css_rule,.text-primary,1,1440,1443
+.feature-card;
+.btn,css_rule,.feature-card;
+.btn,1,1450,1453
+@font-face,css_rule,@font-face,0,1456,1460
+img,css_rule,img,3,1463,1467
+html,css_rule,html,1,1470,1472
+@supports (scroll-behavior: smooth) {
+    html {
+ ,css_rule,@supports (scroll-behavior: smooth) {
+    html {
+ ,0,1474,1478
+html,css_rule,html,1,1475,1477
