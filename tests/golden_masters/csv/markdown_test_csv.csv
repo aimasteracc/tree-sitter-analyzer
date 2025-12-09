@@ -34,6 +34,7 @@ link,Inline link -> https://example.com,-,22,22
 link,Link with title -> https://example.com,-,23,23
 image,Alt text -> image.png,-,32,34
 image,Image with title -> image.png,-,32,34
+image_reference_definition,Image Reference Definition: img1,-,36,37
 ,"[ref1]: https://reference.example.com ""Reference L",-,28,29
 ,"[img1]: reference-image.png ""Reference Image""
 ",-,36,37

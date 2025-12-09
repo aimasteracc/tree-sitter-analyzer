@@ -28,7 +28,7 @@ class KotlinElementExtractor(ElementExtractor):
         self.current_file: str = ""
         self.source_code: str = ""
         self.content_lines: list[str] = []
-        self._node_text_cache: dict[int, str] = {}
+        self._node_text_cache: dict[tuple[int, int], str] = {}
 
     def extract_functions(
         self, tree: "tree_sitter.Tree", source_code: str
@@ -452,10 +452,10 @@ class KotlinElementExtractor(ElementExtractor):
             return None
 
     def _get_node_text(self, node: "tree_sitter.Node") -> str:
-        """Get node text with caching"""
-        node_id = id(node)
-        if node_id in self._node_text_cache:
-            return self._node_text_cache[node_id]
+        """Get node text with caching using position-based keys"""
+        cache_key = (node.start_byte, node.end_byte)
+        if cache_key in self._node_text_cache:
+            return self._node_text_cache[cache_key]
 
         try:
             start_byte = node.start_byte
@@ -463,7 +463,7 @@ class KotlinElementExtractor(ElementExtractor):
             encoding = "utf-8"
             content_bytes = safe_encode("\n".join(self.content_lines), encoding)
             text = extract_text_slice(content_bytes, start_byte, end_byte, encoding)
-            self._node_text_cache[node_id] = text
+            self._node_text_cache[cache_key] = text
             return text
         except Exception:
             return ""

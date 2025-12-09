@@ -32,10 +32,10 @@ class JavaElementExtractor(ElementExtractor):
         self.content_lines: list[str] = []
         self.imports: list[str] = []
 
-        # Performance optimization caches (from AdvancedAnalyzer)
-        self._node_text_cache: dict[int, str] = {}
-        self._processed_nodes: set[int] = set()
-        self._element_cache: dict[tuple[int, str], Any] = {}
+        # Performance optimization caches - use position-based keys for deterministic caching
+        self._node_text_cache: dict[tuple[int, int], str] = {}
+        self._processed_nodes: set[tuple[int, int]] = set()
+        self._element_cache: dict[tuple[tuple[int, int], str], Any] = {}
         self._file_encoding: str | None = None
         self._annotation_cache: dict[int, list[dict[str, Any]]] = {}
         self._signature_cache: dict[int, str] = {}
@@ -421,16 +421,17 @@ class JavaElementExtractor(ElementExtractor):
     def _process_field_batch(
         self, batch: list["tree_sitter.Node"], extractors: dict, results: list[Any]
     ) -> None:
-        """Process field nodes with caching (from AdvancedAnalyzer)"""
+        """Process field nodes with caching using position-based keys"""
         for node in batch:
-            node_id = id(node)
+            # Use position-based key for deterministic behavior
+            node_key = (node.start_byte, node.end_byte)
 
             # Skip if already processed
-            if node_id in self._processed_nodes:
+            if node_key in self._processed_nodes:
                 continue
 
             # Check element cache first
-            cache_key = (node_id, "field")
+            cache_key = (node_key, "field")
             if cache_key in self._element_cache:
                 elements = self._element_cache[cache_key]
                 if elements:
@@ -438,7 +439,7 @@ class JavaElementExtractor(ElementExtractor):
                         results.extend(elements)
                     else:
                         results.append(elements)
-                self._processed_nodes.add(node_id)
+                self._processed_nodes.add(node_key)
                 continue
 
             # Extract and cache
@@ -451,15 +452,16 @@ class JavaElementExtractor(ElementExtractor):
                         results.extend(elements)
                     else:
                         results.append(elements)
-                self._processed_nodes.add(node_id)
+                self._processed_nodes.add(node_key)
 
     def _get_node_text_optimized(self, node: "tree_sitter.Node") -> str:
-        """Get node text with optimized caching (from AdvancedAnalyzer)"""
-        node_id = id(node)
+        """Get node text with optimized caching using position-based keys"""
+        # Use position-based cache key for deterministic behavior
+        cache_key = (node.start_byte, node.end_byte)
 
         # Check cache first
-        if node_id in self._node_text_cache:
-            return self._node_text_cache[node_id]
+        if cache_key in self._node_text_cache:
+            return self._node_text_cache[cache_key]
 
         try:
             # Use encoding utilities for text extraction
@@ -470,7 +472,7 @@ class JavaElementExtractor(ElementExtractor):
             content_bytes = safe_encode("\n".join(self.content_lines), encoding)
             text = extract_text_slice(content_bytes, start_byte, end_byte, encoding)
 
-            self._node_text_cache[node_id] = text
+            self._node_text_cache[cache_key] = text
             return text
         except Exception as e:
             log_error(f"Error in _get_node_text_optimized: {e}")

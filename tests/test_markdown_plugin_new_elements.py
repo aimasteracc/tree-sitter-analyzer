@@ -380,7 +380,8 @@ class TestMarkdownPluginNewElementsIntegration:
         mock_extractor.extract_text_formatting.return_value = [mock_element]
         mock_extractor.extract_footnotes.return_value = [mock_element]
 
-        with patch.object(self.plugin, "get_extractor", return_value=mock_extractor):
+        # extract_elements uses create_extractor(), not get_extractor()
+        with patch.object(self.plugin, "create_extractor", return_value=mock_extractor):
             elements = self.plugin.extract_elements(mock_tree, "test content")
 
             # Should include all element types that return results
