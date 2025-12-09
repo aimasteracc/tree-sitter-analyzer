@@ -1,16 +1,18 @@
 #!/usr/bin/env python3
 """Additional tests to boost SQL plugin coverage to 70%+."""
 
+from unittest.mock import Mock
+
 import pytest
-from unittest.mock import Mock, patch, MagicMock
 
 from tree_sitter_analyzer.languages.sql_plugin import SQLElementExtractor, SQLPlugin
-from tree_sitter_analyzer.models import SQLTable, SQLView, SQLTrigger, SQLElementType
+from tree_sitter_analyzer.models import SQLElementType, SQLTable, SQLTrigger
 
 # Check if tree-sitter-sql is available
 try:
-    import tree_sitter_sql
     import tree_sitter
+    import tree_sitter_sql
+
     TREE_SITTER_SQL_AVAILABLE = True
 except ImportError:
     TREE_SITTER_SQL_AVAILABLE = False
@@ -32,10 +34,12 @@ class TestSQLExtractorValidation:
             raw_text="CREATE FUNCTION not_trigger ...",
             sql_element_type=SQLElementType.TRIGGER,
         )
-        
+
         result = extractor._validate_and_fix_elements([phantom])
         # Phantom trigger should be removed
-        assert not any(e.name == "bad_trigger" and isinstance(e, SQLTrigger) for e in result)
+        assert not any(
+            e.name == "bad_trigger" and isinstance(e, SQLTrigger) for e in result
+        )
 
     def test_validate_valid_trigger_kept(self, extractor):
         """Test valid trigger is kept."""
@@ -46,7 +50,7 @@ class TestSQLExtractorValidation:
             raw_text="CREATE TRIGGER real_trigger BEFORE INSERT ON t",
             sql_element_type=SQLElementType.TRIGGER,
         )
-        
+
         result = extractor._validate_and_fix_elements([valid])
         assert any(e.name == "real_trigger" for e in result)
 
@@ -59,7 +63,7 @@ class TestSQLExtractorValidation:
             raw_text="CREATE TABLE users (id INT)",
             sql_element_type=SQLElementType.TABLE,
         )
-        
+
         result = extractor._validate_and_fix_elements([table])
         assert any(e.name == "users" for e in result)
 
@@ -70,7 +74,7 @@ CREATE TABLE users (id INT);
 CREATE VIEW active_users AS SELECT * FROM users WHERE active = 1;
 """
         extractor.content_lines = extractor.source_code.split("\n")
-        
+
         # Empty list - should try to recover views from source
         result = extractor._validate_and_fix_elements([])
         # May or may not recover depending on regex
@@ -89,31 +93,32 @@ class TestSQLExtractorNodeMethods:
         extractor.source_code = "SELECT * FROM users"
         extractor.content_lines = ["SELECT * FROM users"]
         extractor._reset_caches()
-        
+
         mock_node = Mock()
         mock_node.start_byte = 0
         mock_node.end_byte = 19
         mock_node.start_point = (0, 0)
         mock_node.end_point = (0, 19)
-        
+
         text1 = extractor._get_node_text(mock_node)
         text2 = extractor._get_node_text(mock_node)
-        
+
         assert text1 == text2
-        assert id(mock_node) in extractor._node_text_cache
+        # Cache uses position-based key (start_byte, end_byte)
+        assert (mock_node.start_byte, mock_node.end_byte) in extractor._node_text_cache
 
     def test_get_node_text_multiline(self, extractor):
         """Test multiline text extraction."""
         extractor.source_code = "SELECT *\nFROM users\nWHERE id = 1"
         extractor.content_lines = extractor.source_code.split("\n")
         extractor._reset_caches()
-        
+
         mock_node = Mock()
         mock_node.start_byte = 0
         mock_node.end_byte = 33
         mock_node.start_point = (0, 0)
         mock_node.end_point = (2, 12)
-        
+
         text = extractor._get_node_text(mock_node)
         assert isinstance(text, str)
 
@@ -122,13 +127,13 @@ class TestSQLExtractorNodeMethods:
         extractor.source_code = "short"
         extractor.content_lines = ["short"]
         extractor._reset_caches()
-        
+
         mock_node = Mock()
         mock_node.start_byte = 100
         mock_node.end_byte = 200
         mock_node.start_point = (10, 0)
         mock_node.end_point = (10, 50)
-        
+
         text = extractor._get_node_text(mock_node)
         assert text == ""
 
@@ -138,14 +143,14 @@ class TestSQLExtractorNodeMethods:
         child1 = Mock()
         child2 = Mock()
         grandchild = Mock()
-        
+
         grandchild.children = []
         child1.children = [grandchild]
         child2.children = []
         root.children = [child1, child2]
-        
+
         nodes = list(extractor._traverse_nodes(root))
-        
+
         assert root in nodes
         assert child1 in nodes
         assert child2 in nodes
@@ -178,7 +183,9 @@ class TestSQLExtractorNodeMethods:
         assert not extractor._is_valid_identifier("a" * 200)
 
 
-@pytest.mark.skipif(not TREE_SITTER_SQL_AVAILABLE, reason="tree-sitter-sql not installed")
+@pytest.mark.skipif(
+    not TREE_SITTER_SQL_AVAILABLE, reason="tree-sitter-sql not installed"
+)
 class TestSQLPluginExtractionPaths:
     """Test various extraction paths."""
 
@@ -229,7 +236,7 @@ CREATE PROCEDURE calculate_total(IN order_id INT)
 BEGIN
     DECLARE total DECIMAL(10,2);
     DECLARE tax DECIMAL(10,2);
-    
+
     SELECT SUM(price) INTO total FROM order_items WHERE order_id = order_id;
     SET tax = total * 0.1;
     UPDATE orders SET total = total + tax WHERE id = order_id;
@@ -371,7 +378,9 @@ class TestSQLExtractorDiagnosticMode:
         assert extractor.adapter is mock_adapter
 
 
-@pytest.mark.skipif(not TREE_SITTER_SQL_AVAILABLE, reason="tree-sitter-sql not installed")
+@pytest.mark.skipif(
+    not TREE_SITTER_SQL_AVAILABLE, reason="tree-sitter-sql not installed"
+)
 class TestSQLComplexQueries:
     """Test complex SQL query handling."""
 
@@ -405,7 +414,7 @@ JOIN user_totals ut ON u.id = ut.user_id;
         """Test window function."""
         code = """
 CREATE VIEW ranked_users AS
-SELECT 
+SELECT
     name,
     total_orders,
     ROW_NUMBER() OVER (ORDER BY total_orders DESC) as rank
@@ -419,9 +428,9 @@ FROM users;
         """Test CASE expression."""
         code = """
 CREATE VIEW user_status AS
-SELECT 
+SELECT
     name,
-    CASE 
+    CASE
         WHEN last_login > DATE_SUB(NOW(), INTERVAL 7 DAY) THEN 'active'
         WHEN last_login > DATE_SUB(NOW(), INTERVAL 30 DAY) THEN 'inactive'
         ELSE 'dormant'

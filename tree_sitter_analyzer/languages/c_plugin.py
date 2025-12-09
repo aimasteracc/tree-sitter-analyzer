@@ -32,10 +32,10 @@ class CElementExtractor(ElementExtractor):
         self.content_lines: list[str] = []
         self.includes: list[str] = []
 
-        # Performance optimization caches
-        self._node_text_cache: dict[int, str] = {}
-        self._processed_nodes: set[int] = set()
-        self._element_cache: dict[tuple[int, str], Any] = {}
+        # Performance optimization caches - use position-based keys for deterministic caching
+        self._node_text_cache: dict[tuple[int, int], str] = {}
+        self._processed_nodes: set[tuple[int, int]] = set()
+        self._element_cache: dict[tuple[tuple[int, int], str], Any] = {}
         self._file_encoding: str | None = None
         self._comment_cache: dict[int, str] = {}
         self._complexity_cache: dict[int, int] = {}
@@ -226,11 +226,12 @@ class CElementExtractor(ElementExtractor):
         log_debug(f"Iterative traversal processed {processed_nodes} nodes")
 
     def _get_node_text_optimized(self, node: "tree_sitter.Node") -> str:
-        """Get node text with optimized caching"""
-        node_id = id(node)
+        """Get node text with optimized caching using position-based keys"""
+        # Use position-based cache key for deterministic behavior
+        cache_key = (node.start_byte, node.end_byte)
 
-        if node_id in self._node_text_cache:
-            return self._node_text_cache[node_id]
+        if cache_key in self._node_text_cache:
+            return self._node_text_cache[cache_key]
 
         try:
             start_byte = node.start_byte
@@ -240,7 +241,7 @@ class CElementExtractor(ElementExtractor):
             content_bytes = safe_encode("\n".join(self.content_lines), encoding)
             text = extract_text_slice(content_bytes, start_byte, end_byte, encoding)
 
-            self._node_text_cache[node_id] = text
+            self._node_text_cache[cache_key] = text
             return text
         except Exception as e:
             log_error(f"Error in _get_node_text_optimized: {e}")
@@ -269,9 +270,7 @@ class CElementExtractor(ElementExtractor):
                 log_error(f"Fallback text extraction also failed: {fallback_error}")
                 return ""
 
-    def _extract_function_optimized(
-        self, node: "tree_sitter.Node"
-    ) -> Function | None:
+    def _extract_function_optimized(self, node: "tree_sitter.Node") -> Function | None:
         """Extract function information optimized"""
         try:
             start_line = node.start_point[0] + 1
@@ -401,7 +400,11 @@ class CElementExtractor(ElementExtractor):
                     struct_name = self._get_node_text_optimized(child)
 
             # If anonymous, check if parent is type_definition for typedef name
-            if not struct_name and node.parent and node.parent.type == "type_definition":
+            if (
+                not struct_name
+                and node.parent
+                and node.parent.type == "type_definition"
+            ):
                 for sibling in node.parent.children:
                     if sibling.type == "type_identifier":
                         struct_name = self._get_node_text_optimized(sibling)
@@ -533,7 +536,9 @@ class CElementExtractor(ElementExtractor):
                     # Handle array fields (e.g. char name[50])
                     for grandchild in child.children:
                         if grandchild.type == "field_identifier":
-                            field_names.append(self._get_node_text_optimized(grandchild))
+                            field_names.append(
+                                self._get_node_text_optimized(grandchild)
+                            )
                     # Append [] to type to indicate array
                     field_type = field_type + "[]" if field_type else "[]"
                 elif child.type == "field_declaration_list":
@@ -562,7 +567,7 @@ class CElementExtractor(ElementExtractor):
                 return fields
 
             raw_text = self._get_node_text_optimized(node)
-            
+
             # In C, struct/union fields are always public (no access control)
             visibility = "public"
 
@@ -585,9 +590,7 @@ class CElementExtractor(ElementExtractor):
 
         return fields
 
-    def _extract_variable_declaration(
-        self, node: "tree_sitter.Node"
-    ) -> list[Variable]:
+    def _extract_variable_declaration(self, node: "tree_sitter.Node") -> list[Variable]:
         """Extract variable declarations (not struct members)"""
         # Skip if parent is a struct/union body
         if node.parent and node.parent.type == "field_declaration_list":
@@ -626,23 +629,19 @@ class CElementExtractor(ElementExtractor):
                 elif child.type == "init_declarator":
                     for grandchild in child.children:
                         if grandchild.type == "identifier":
-                            var_names.append(
-                                self._get_node_text_optimized(grandchild)
-                            )
+                            var_names.append(self._get_node_text_optimized(grandchild))
                 elif child.type == "pointer_declarator":
                     # Handle pointer declarations
                     for grandchild in child.children:
                         if grandchild.type == "identifier":
-                            var_names.append(
-                                self._get_node_text_optimized(grandchild)
-                            )
+                            var_names.append(self._get_node_text_optimized(grandchild))
                             var_type = var_type + "*" if var_type else "*"
 
             if not var_type or not var_names:
                 return variables
 
             raw_text = self._get_node_text_optimized(node)
-            
+
             # C global variables visibility:
             # - static = private (internal linkage)
             # - non-static = public (external linkage)
@@ -794,7 +793,7 @@ class CElementExtractor(ElementExtractor):
                     for grandchild in child.children:
                         if grandchild.type == "identifier":
                             params.append(self._get_node_text_optimized(grandchild))
-                        elif grandchild.type == "variadic_parameter": # Handle ...
+                        elif grandchild.type == "variadic_parameter":  # Handle ...
                             params.append("...")
 
             if name:

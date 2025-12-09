@@ -141,9 +141,9 @@ class TestMarkdownElementExtractor:
         mock_node.start_byte = 0
         mock_node.end_byte = 5
 
-        # Set up cache
-        node_id = id(mock_node)
-        self.extractor._node_text_cache[node_id] = "cached"
+        # Set up cache with position-based key (start_byte, end_byte)
+        cache_key = (mock_node.start_byte, mock_node.end_byte)
+        self.extractor._node_text_cache[cache_key] = "cached"
 
         result = self.extractor._get_node_text_optimized(mock_node)
         assert result == "cached"
@@ -507,7 +507,8 @@ class TestMarkdownPlugin:
         mock_extractor.extract_text_formatting.return_value = [Mock()]
         mock_extractor.extract_footnotes.return_value = [Mock()]
 
-        with patch.object(self.plugin, "get_extractor", return_value=mock_extractor):
+        # extract_elements uses create_extractor(), not get_extractor()
+        with patch.object(self.plugin, "create_extractor", return_value=mock_extractor):
             elements = self.plugin.extract_elements(mock_tree, "test content")
 
             assert len(elements) == 12  # All extraction methods called
@@ -530,7 +531,8 @@ class TestMarkdownPlugin:
         mock_extractor = Mock()
         mock_extractor.extract_headers.side_effect = Exception("Test error")
 
-        with patch.object(self.plugin, "get_extractor", return_value=mock_extractor):
+        # extract_elements uses create_extractor(), not get_extractor()
+        with patch.object(self.plugin, "create_extractor", return_value=mock_extractor):
             elements = self.plugin.extract_elements(mock_tree, "test content")
             assert elements == []
 

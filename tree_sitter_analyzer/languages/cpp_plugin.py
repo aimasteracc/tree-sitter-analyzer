@@ -33,10 +33,10 @@ class CppElementExtractor(ElementExtractor):
         self.content_lines: list[str] = []
         self.includes: list[str] = []
 
-        # Performance optimization caches
-        self._node_text_cache: dict[int, str] = {}
-        self._processed_nodes: set[int] = set()
-        self._element_cache: dict[tuple[int, str], Any] = {}
+        # Performance optimization caches - use position-based keys for deterministic caching
+        self._node_text_cache: dict[tuple[int, int], str] = {}
+        self._processed_nodes: set[tuple[int, int]] = set()
+        self._element_cache: dict[tuple[tuple[int, int], str], Any] = {}
         self._file_encoding: str | None = None
         self._comment_cache: dict[int, str] = {}
         self._complexity_cache: dict[int, int] = {}
@@ -171,9 +171,7 @@ class CppElementExtractor(ElementExtractor):
         log_debug(f"Extracted {len(imports)} C++ includes")
         return imports
 
-    def extract_packages(
-        self, tree: "tree_sitter.Tree", source_code: str
-    ) -> list[Any]:
+    def extract_packages(self, tree: "tree_sitter.Tree", source_code: str) -> list[Any]:
         """Extract C++ namespace declarations"""
         from ..models import Package
 
@@ -254,7 +252,11 @@ class CppElementExtractor(ElementExtractor):
             # Process target nodes
             if node_type in target_node_types:
                 # Use stable node identifier instead of id() which may vary for wrapper objects
-                node_key = (current_node.start_byte, current_node.end_byte, current_node.type)
+                node_key = (
+                    current_node.start_byte,
+                    current_node.end_byte,
+                    current_node.type,
+                )
 
                 if node_key in self._processed_nodes:
                     continue
@@ -290,11 +292,12 @@ class CppElementExtractor(ElementExtractor):
         log_debug(f"Iterative traversal processed {processed_nodes} nodes")
 
     def _get_node_text_optimized(self, node: "tree_sitter.Node") -> str:
-        """Get node text with optimized caching"""
-        node_id = id(node)
+        """Get node text with optimized caching using position-based keys"""
+        # Use position-based cache key for deterministic behavior
+        cache_key = (node.start_byte, node.end_byte)
 
-        if node_id in self._node_text_cache:
-            return self._node_text_cache[node_id]
+        if cache_key in self._node_text_cache:
+            return self._node_text_cache[cache_key]
 
         try:
             start_byte = node.start_byte
@@ -304,7 +307,7 @@ class CppElementExtractor(ElementExtractor):
             content_bytes = safe_encode("\n".join(self.content_lines), encoding)
             text = extract_text_slice(content_bytes, start_byte, end_byte, encoding)
 
-            self._node_text_cache[node_id] = text
+            self._node_text_cache[cache_key] = text
             return text
         except Exception as e:
             log_error(f"Error in _get_node_text_optimized: {e}")
@@ -333,9 +336,7 @@ class CppElementExtractor(ElementExtractor):
                 log_error(f"Fallback text extraction also failed: {fallback_error}")
                 return ""
 
-    def _extract_function_optimized(
-        self, node: "tree_sitter.Node"
-    ) -> Function | None:
+    def _extract_function_optimized(self, node: "tree_sitter.Node") -> Function | None:
         """Extract function information optimized"""
         try:
             start_line = node.start_point[0] + 1
@@ -358,7 +359,9 @@ class CppElementExtractor(ElementExtractor):
 
             # Determine visibility (check if function is global or class member)
             is_global = self._is_global_scope(node)
-            visibility = self._determine_visibility(modifiers, is_global=is_global, node=node)
+            visibility = self._determine_visibility(
+                modifiers, is_global=is_global, node=node
+            )
 
             # Extract comments/documentation
             docstring = self._extract_comment_for_line(start_line)
@@ -391,7 +394,7 @@ class CppElementExtractor(ElementExtractor):
     ) -> Function | None:
         """
         Extract function declaration from field_declaration (pure virtual functions, etc).
-        
+
         Example: virtual double area() const = 0;
         """
         try:
@@ -401,31 +404,38 @@ class CppElementExtractor(ElementExtractor):
                 if child.type == "function_declarator":
                     has_function_declarator = True
                     break
-            
+
             if not has_function_declarator:
                 return None
-            
+
             start_line = node.start_point[0] + 1
             end_line = node.end_point[0] + 1
-            
+
             name = None
             return_type = "void"
             parameters: list[str] = []
             modifiers: list[str] = []
-            
+
             # Check for pure virtual (= 0) or deleted/defaulted
-            is_pure_virtual = False
-            is_deleted = False
-            is_defaulted = False
-            
+
             for child in node.children:
                 if child.type == "virtual":
                     modifiers.append("virtual")
-                elif child.type in ["primitive_type", "type_identifier", "qualified_identifier", "template_type"]:
+                elif child.type in [
+                    "primitive_type",
+                    "type_identifier",
+                    "qualified_identifier",
+                    "template_type",
+                ]:
                     return_type = self._get_node_text_optimized(child)
                 elif child.type == "function_declarator":
                     for grandchild in child.children:
-                        if grandchild.type in ["field_identifier", "identifier", "destructor_name", "operator_name"]:
+                        if grandchild.type in [
+                            "field_identifier",
+                            "identifier",
+                            "destructor_name",
+                            "operator_name",
+                        ]:
                             name = self._get_node_text_optimized(grandchild)
                         elif grandchild.type == "parameter_list":
                             parameters = self._extract_parameters(grandchild)
@@ -433,32 +443,34 @@ class CppElementExtractor(ElementExtractor):
                             mod = self._get_node_text_optimized(grandchild)
                             if mod:
                                 modifiers.append(mod)
-                elif child.type == "number_literal" and self._get_node_text_optimized(child) == "0":
+                elif (
+                    child.type == "number_literal"
+                    and self._get_node_text_optimized(child) == "0"
+                ):
                     # Check if previous sibling is '=' to confirm pure virtual
-                    is_pure_virtual = True
                     if "pure_virtual" not in modifiers:
                         modifiers.append("pure_virtual")
                 elif child.type == "delete_method_clause":
-                    is_deleted = True
                     if "deleted" not in modifiers:
                         modifiers.append("deleted")
                 elif child.type == "default_method_clause":
-                    is_defaulted = True
                     if "default" not in modifiers:
                         modifiers.append("default")
-            
+
             if not name:
                 return None
-            
+
             raw_text = self._get_node_text_optimized(node)
-            
+
             # Determine visibility
             is_global = self._is_global_scope(node)
-            visibility = self._determine_visibility(modifiers, is_global=is_global, node=node)
-            
+            visibility = self._determine_visibility(
+                modifiers, is_global=is_global, node=node
+            )
+
             # Extract comments
             docstring = self._extract_comment_for_line(start_line)
-            
+
             return Function(
                 name=name,
                 start_line=start_line,
@@ -518,9 +530,7 @@ class CppElementExtractor(ElementExtractor):
             log_debug(f"Failed to extract function declaration: {e}")
             return None
 
-    def _extract_template_function(
-        self, node: "tree_sitter.Node"
-    ) -> Function | None:
+    def _extract_template_function(self, node: "tree_sitter.Node") -> Function | None:
         """Extract template function definition"""
         try:
             # Find the actual function definition inside the template
@@ -572,7 +582,12 @@ class CppElementExtractor(ElementExtractor):
                     for grandchild in child.children:
                         if grandchild.type == "function_declarator":
                             for ggchild in grandchild.children:
-                                if ggchild.type in ["identifier", "field_identifier", "operator_name", "destructor_name"]:
+                                if ggchild.type in [
+                                    "identifier",
+                                    "field_identifier",
+                                    "operator_name",
+                                    "destructor_name",
+                                ]:
                                     name = self._get_node_text_optimized(ggchild)
                                 elif ggchild.type == "parameter_list":
                                     parameters = self._extract_parameters(ggchild)
@@ -582,7 +597,11 @@ class CppElementExtractor(ElementExtractor):
                     for grandchild in child.children:
                         if grandchild.type == "function_declarator":
                             for ggchild in grandchild.children:
-                                if ggchild.type in ["identifier", "field_identifier", "operator_name"]:
+                                if ggchild.type in [
+                                    "identifier",
+                                    "field_identifier",
+                                    "operator_name",
+                                ]:
                                     name = self._get_node_text_optimized(ggchild)
                                 elif ggchild.type == "parameter_list":
                                     parameters = self._extract_parameters(ggchild)
@@ -791,10 +810,12 @@ class CppElementExtractor(ElementExtractor):
                 return fields
 
             raw_text = self._get_node_text_optimized(node)
-            
+
             # Determine visibility (check if field/variable is global or class member)
             is_global = self._is_global_scope(node)
-            visibility = self._determine_visibility(modifiers, is_global=is_global, node=node)
+            visibility = self._determine_visibility(
+                modifiers, is_global=is_global, node=node
+            )
 
             for field_name in field_names:
                 field = Variable(
@@ -816,9 +837,7 @@ class CppElementExtractor(ElementExtractor):
 
         return fields
 
-    def _extract_variable_declaration(
-        self, node: "tree_sitter.Node"
-    ) -> list[Variable]:
+    def _extract_variable_declaration(self, node: "tree_sitter.Node") -> list[Variable]:
         """Extract variable declarations (not class members)"""
         # Skip if parent is a class/struct body
         if node.parent and node.parent.type == "field_declaration_list":
@@ -855,18 +874,18 @@ class CppElementExtractor(ElementExtractor):
                 elif child.type == "init_declarator":
                     for grandchild in child.children:
                         if grandchild.type == "identifier":
-                            var_names.append(
-                                self._get_node_text_optimized(grandchild)
-                            )
+                            var_names.append(self._get_node_text_optimized(grandchild))
 
             if not var_type or not var_names:
                 return variables
 
             raw_text = self._get_node_text_optimized(node)
-            
+
             # Determine visibility (check if variable is global or local)
             is_global = self._is_global_scope(node)
-            visibility = self._determine_visibility(modifiers, is_global=is_global, node=node)
+            visibility = self._determine_visibility(
+                modifiers, is_global=is_global, node=node
+            )
 
             for var_name in var_names:
                 variable = Variable(
@@ -996,16 +1015,20 @@ class CppElementExtractor(ElementExtractor):
     def _is_global_scope(self, node: "tree_sitter.Node") -> bool:
         """
         Check if a node is in global scope (not inside a class/struct/union).
-        
+
         Args:
             node: The tree-sitter node to check
-            
+
         Returns:
             True if the node is in global scope, False if inside a class/struct/union
         """
         current = node.parent
         while current is not None:
-            if current.type in ("class_specifier", "struct_specifier", "union_specifier"):
+            if current.type in (
+                "class_specifier",
+                "struct_specifier",
+                "union_specifier",
+            ):
                 return False
             current = current.parent
         return True
@@ -1013,13 +1036,13 @@ class CppElementExtractor(ElementExtractor):
     def _get_access_specifier(self, node: "tree_sitter.Node") -> str | None:
         """
         Get the current access specifier for a class member.
-        
+
         Searches backwards through siblings to find the most recent access_specifier.
         Returns None if not in a class context or no specifier found.
-        
+
         Args:
             node: The tree-sitter node (function/field definition)
-            
+
         Returns:
             "public", "private", "protected", or None
         """
@@ -1027,14 +1050,14 @@ class CppElementExtractor(ElementExtractor):
         parent = node.parent
         if not parent or parent.type != "field_declaration_list":
             return None
-        
+
         # Find which child we are
         siblings = list(parent.children)
         try:
             node_index = siblings.index(node)
         except ValueError:
             return None
-        
+
         # Search backwards for access_specifier
         for i in range(node_index - 1, -1, -1):
             sibling = siblings[i]
@@ -1042,7 +1065,7 @@ class CppElementExtractor(ElementExtractor):
                 spec_text = self._get_node_text_optimized(sibling).strip().rstrip(":")
                 if spec_text in ("public", "private", "protected"):
                     return spec_text
-        
+
         # No explicit specifier found, determine default based on parent class type
         # Need to find if parent is class (default private) or struct (default public)
         class_node = parent.parent
@@ -1050,27 +1073,27 @@ class CppElementExtractor(ElementExtractor):
             if class_node.type == "class_specifier":
                 return "private"  # C++ class default
             elif class_node.type in ("struct_specifier", "union_specifier"):
-                return "public"   # C++ struct/union default
-        
+                return "public"  # C++ struct/union default
+
         return None  # Fallback
 
     def _determine_visibility(
-        self, 
-        modifiers: list[str], 
+        self,
+        modifiers: list[str],
         is_global: bool = False,
-        node: "tree_sitter.Node | None" = None
+        node: "tree_sitter.Node | None" = None,
     ) -> str:
         """
         Determine visibility from modifiers and context.
-        
+
         Args:
             modifiers: List of modifier keywords
             is_global: True if this is a global function/variable (not a class member)
             node: The tree-sitter node (used to check access specifier in class context)
-        
+
         Returns:
             Visibility string: "public", "private", or "protected"
-        
+
         Note:
             - Global functions/variables are public by default (external linkage)
             - Global static functions/variables are private (internal linkage)
@@ -1084,17 +1107,17 @@ class CppElementExtractor(ElementExtractor):
             return "private"
         elif "protected" in modifiers:
             return "protected"
-        
+
         # Check for static global (internal linkage = private)
         if "static" in modifiers and is_global:
             return "private"
-        
+
         # If node provided and in class context, check access specifier
         if node and not is_global:
             access_spec = self._get_access_specifier(node)
             if access_spec:
                 return access_spec
-        
+
         # Default visibility depends on context
         return "public" if is_global else "private"
 

@@ -34,5 +34,5 @@ from functools import reduce
 ### Public Methods
 | Method | Signature | Vis | Lines | Cx | Doc |
 |--------|-----------|-----|-------|----|----|
-| __init__ | (self:Any, name:str):Any [static] | + | 67-69 | 1 | - |
-| make_sound | (self:Any):str [static] | + | 71-73 | 1 | - |
+| __init__ | (self:Any, name:str):Any | + | 67-69 | 1 | - |
+| make_sound | (self:Any):str | + | 71-73 | 1 | - |

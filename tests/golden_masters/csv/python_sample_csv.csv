@@ -5,8 +5,8 @@ Method,describe,(self:Any):str,public,43-45,1,-
 Method,__init__,"(self:Any, name:str):Any",public,51-53,1,-
 Method,make_sound,(self:Any):str,public,55-57,1,-
 Method,fetch,"(self:Any, item:str):str",public,59-61,1,-
-Method,__init__,"(self:Any, name:str):Any [static]",public,67-69,1,-
-Method,make_sound,(self:Any):str [static],public,71-73,1,-
+Method,__init__,"(self:Any, name:str):Any",public,67-69,1,-
+Method,make_sound,(self:Any):str,public,71-73,1,-
 Method,fetch_data,"(url:str):dict[str, any]",public,81-87,3,-
 Method,process_animals,"(animals:list[Animal]):dict[str, list[str]]",public,90-103,4,-
 Method,calculate_statistics,"(numbers:list[int | float]):dict[str, float]",public,106-117,3,-

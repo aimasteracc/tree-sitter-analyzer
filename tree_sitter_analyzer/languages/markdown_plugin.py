@@ -87,11 +87,12 @@ class MarkdownElementExtractor(ElementExtractor):
         self.content_lines: list[str] = []
 
         # Performance optimization caches - cleared for each extraction
-        self._node_text_cache: dict[int, str] = {}
-        self._processed_nodes: set[int] = set()
-        self._element_cache: dict[tuple[int, str], Any] = {}
+        # Use position-based keys (start_byte, end_byte) for deterministic caching
+        self._node_text_cache: dict[tuple[int, int], str] = {}
+        self._processed_nodes: set[tuple[int, int]] = set()
+        self._element_cache: dict[tuple[tuple[int, int], str], Any] = {}
         self._file_encoding: str | None = None
-        
+
         # Extraction tracking - must be reset for each file
         self._extracted_links: set[str] = set()
         self._extracted_images: set[tuple[str, str]] = set()
@@ -442,17 +443,18 @@ class MarkdownElementExtractor(ElementExtractor):
         self._processed_nodes.clear()
         self._element_cache.clear()
         # Critical: Reset extraction tracking to prevent cross-call pollution
-        if hasattr(self, '_extracted_links'):
+        if hasattr(self, "_extracted_links"):
             self._extracted_links.clear()
-        if hasattr(self, '_extracted_images'):
+        if hasattr(self, "_extracted_images"):
             self._extracted_images.clear()
 
     def _get_node_text_optimized(self, node: "tree_sitter.Node") -> str:
-        """Get node text with optimized caching"""
-        node_id = id(node)
+        """Get node text with optimized caching using position-based keys"""
+        # Use position-based cache key for deterministic behavior
+        cache_key = (node.start_byte, node.end_byte)
 
-        if node_id in self._node_text_cache:
-            return self._node_text_cache[node_id]
+        if cache_key in self._node_text_cache:
+            return self._node_text_cache[cache_key]
 
         try:
             start_byte = node.start_byte
@@ -463,7 +465,7 @@ class MarkdownElementExtractor(ElementExtractor):
             text = extract_text_slice(content_bytes, start_byte, end_byte, encoding)
 
             if text:
-                self._node_text_cache[node_id] = text
+                self._node_text_cache[cache_key] = text
                 return text
         except Exception as e:
             log_error(f"Error in _get_node_text_optimized: {e}")
@@ -484,7 +486,7 @@ class MarkdownElementExtractor(ElementExtractor):
                 start_col = max(0, min(start_point[1], len(line)))
                 end_col = max(start_col, min(end_point[1], len(line)))
                 result: str = line[start_col:end_col]
-                self._node_text_cache[node_id] = result
+                self._node_text_cache[cache_key] = result
                 return result
             else:
                 lines = []
@@ -507,7 +509,7 @@ class MarkdownElementExtractor(ElementExtractor):
                         else:
                             lines.append(line)
                 result = "\n".join(lines)
-                self._node_text_cache[node_id] = result
+                self._node_text_cache[cache_key] = result
                 return result
         except Exception as fallback_error:
             log_error(f"Fallback text extraction also failed: {fallback_error}")
@@ -746,10 +748,10 @@ class MarkdownElementExtractor(ElementExtractor):
                             continue
 
                         # Calculate accurate line number based on match position
-                        text_before_match = raw_text[:match.start()]
-                        newlines_before = text_before_match.count('\n')
+                        text_before_match = raw_text[: match.start()]
+                        newlines_before = text_before_match.count("\n")
                         start_line = node.start_point[0] + 1 + newlines_before
-                        
+
                         # Duplicate check: process same text and reference combination only once
                         ref_link_key = (text, ref, start_line)
 
@@ -810,8 +812,8 @@ class MarkdownElementExtractor(ElementExtractor):
                             self._extracted_links.add(autolink_signature)
 
                         # Calculate accurate line number based on match position within the text
-                        text_before_match = raw_text[:match.start()]
-                        newlines_before = text_before_match.count('\n')
+                        text_before_match = raw_text[: match.start()]
+                        newlines_before = text_before_match.count("\n")
                         start_line = node.start_point[0] + 1 + newlines_before
                         end_line = start_line
 
@@ -896,10 +898,10 @@ class MarkdownElementExtractor(ElementExtractor):
 
                     for match in matches:
                         alt_text = match.group(1) or ""
-                        
+
                         # Calculate accurate line number based on match position
-                        text_before_match = raw_text[:match.start()]
-                        newlines_before = text_before_match.count('\n')
+                        text_before_match = raw_text[: match.start()]
+                        newlines_before = text_before_match.count("\n")
                         start_line = node.start_point[0] + 1 + newlines_before
                         end_line = start_line
 
@@ -1246,8 +1248,8 @@ class MarkdownElementExtractor(ElementExtractor):
                         tag_name = tag_match.group(1) if tag_match else "HTML"
 
                         # Calculate accurate line number based on match position
-                        text_before_match = raw_text[:match.start()]
-                        newlines_before = text_before_match.count('\n')
+                        text_before_match = raw_text[: match.start()]
+                        newlines_before = text_before_match.count("\n")
                         start_line = node.start_point[0] + 1 + newlines_before
                         end_line = start_line
 
@@ -1340,10 +1342,10 @@ class MarkdownElementExtractor(ElementExtractor):
 
                     for match in matches:
                         content = match.group(1) or ""
-                        
+
                         # Calculate accurate line number based on match position
-                        text_before_match = raw_text[:match.start()]
-                        newlines_before = text_before_match.count('\n')
+                        text_before_match = raw_text[: match.start()]
+                        newlines_before = text_before_match.count("\n")
                         start_line = node.start_point[0] + 1 + newlines_before
                         end_line = start_line
 
@@ -1380,10 +1382,10 @@ class MarkdownElementExtractor(ElementExtractor):
 
                     for match in matches:
                         content = match.group(1) or ""
-                        
+
                         # Calculate accurate line number based on match position
-                        text_before_match = raw_text[:match.start()]
-                        newlines_before = text_before_match.count('\n')
+                        text_before_match = raw_text[: match.start()]
+                        newlines_before = text_before_match.count("\n")
                         start_line = node.start_point[0] + 1 + newlines_before
                         end_line = start_line
 
@@ -1842,14 +1844,16 @@ class MarkdownPlugin(LanguagePlugin):
                 elements.extend(extractor.extract_html_elements(tree, source_code))
                 elements.extend(extractor.extract_text_formatting(tree, source_code))
                 elements.extend(extractor.extract_footnotes(tree, source_code))
-                
+
                 # Sort by line number and element type for fully deterministic output
-                elements.sort(key=lambda e: (
-                    getattr(e, "start_line", 0),
-                    getattr(e, "end_line", 0),
-                    getattr(e, "element_type", ""),
-                    getattr(e, "name", "")
-                ))
+                elements.sort(
+                    key=lambda e: (
+                        getattr(e, "start_line", 0),
+                        getattr(e, "end_line", 0),
+                        getattr(e, "element_type", ""),
+                        getattr(e, "name", ""),
+                    )
+                )
         except Exception as e:
             log_error(f"Failed to extract elements: {e}")
 

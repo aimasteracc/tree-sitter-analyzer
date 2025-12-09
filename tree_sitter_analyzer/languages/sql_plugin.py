@@ -75,11 +75,11 @@ class SQLElementExtractor(ElementExtractor):
         self.diagnostic_mode = diagnostic_mode
         self.platform_info = None
 
-        # Performance optimization caches
+        # Performance optimization caches - use position-based keys for deterministic caching
         # Cache node text to avoid repeated extraction
-        self._node_text_cache: dict[int, str] = {}
+        self._node_text_cache: dict[tuple[int, int], str] = {}
         # Track processed nodes to avoid duplicate processing
-        self._processed_nodes: set[int] = set()
+        self._processed_nodes: set[tuple[int, int]] = set()
         # File encoding for safe text extraction
         self._file_encoding: str | None = None
 
@@ -483,10 +483,11 @@ class SQLElementExtractor(ElementExtractor):
         Returns:
             Text content of the node, or empty string if extraction fails
         """
-        node_id = id(node)
+        # Use position-based cache key for deterministic behavior
+        cache_key = (node.start_byte, node.end_byte)
 
-        if node_id in self._node_text_cache:
-            return self._node_text_cache[node_id]
+        if cache_key in self._node_text_cache:
+            return self._node_text_cache[cache_key]
 
         try:
             start_byte = node.start_byte
@@ -496,7 +497,7 @@ class SQLElementExtractor(ElementExtractor):
             text = extract_text_slice(content_bytes, start_byte, end_byte, encoding)
 
             if text:
-                self._node_text_cache[node_id] = text
+                self._node_text_cache[cache_key] = text
                 return text
         except Exception as e:
             log_debug(f"Error in _get_node_text: {e}")
@@ -517,7 +518,7 @@ class SQLElementExtractor(ElementExtractor):
                 start_col = max(0, min(start_point[1], len(line)))
                 end_col = max(start_col, min(end_point[1], len(line)))
                 result: str = line[start_col:end_col]
-                self._node_text_cache[node_id] = result
+                self._node_text_cache[cache_key] = result
                 return result
             else:
                 lines = []
@@ -539,7 +540,7 @@ class SQLElementExtractor(ElementExtractor):
                         else:
                             lines.append(line)
                 result = "\n".join(lines)
-                self._node_text_cache[node_id] = result
+                self._node_text_cache[cache_key] = result
                 return result
         except Exception as fallback_error:
             log_debug(f"Fallback text extraction also failed: {fallback_error}")
