@@ -2,7 +2,21 @@
 
 ## [Unreleased]
 
-## [1.9.18] - 2025-12-05
+## [1.9.18] - 2025-12-09
+
+### 🏗️ CI/CD Improvements
+
+#### macOS Runner Migration
+- **GitHub Actions Update**: Migrated from deprecated `macos-13` to `macos-latest`
+  - Updated `.github/workflows/reusable-test.yml` test matrix
+  - Updated `.github/actions/setup-system/action.yml` for flexible macOS version support
+  - Changed condition checks to use `startsWith(matrix.os, 'macos-')` for future compatibility
+- **Documentation Updates**: Updated all CI/CD related documentation
+  - English and Japanese CONTRIBUTING guides
+  - CI/CD overview, troubleshooting, and migration guides
+  - Test workflow documentation
+- **Test Updates**: Updated all workflow consistency tests to expect `macos-latest`
+- **Compliance**: Addresses GitHub Actions deprecation (macOS 13 end-of-life: December 8, 2025)
 
 ### 🚀 New Features
 
@@ -29,11 +43,16 @@ These languages are fully integrated into CLI, API, and MCP interfaces with comp
 
 ### 🧪 Testing & Quality
 
-- **Test Suite Expansion**: Increased test count to 5,980 tests (up from 4,864)
+- **Test Suite Expansion**: Test count reaches 6,058 tests (up from 5,980)
   - Added comprehensive C language plugin tests
   - Added comprehensive C++ language plugin tests
   - Added Golden Master tests for C/C++ (full/compact/CSV formats)
   - All tests pass with 100% success rate
+- **Stability Improvements**: 
+  - Fixed cache key tests to use position-based keys
+  - Normalized line endings for CSV files
+  - Stabilized node text caching across all language plugins
+  - Resolved golden master test failures for markdown
 
 ### 📚 Documentation
 
@@ -42,6 +61,7 @@ These languages are fully integrated into CLI, API, and MCP interfaces with comp
   - **Japanese (README_ja.md)**: Updated version information and added C/C++ support
   - **Chinese (README_zh.md)**: Updated version information and added C/C++ support
 - **Language Count**: Updated supported languages from 15 to 17
+- **CI/CD Documentation**: Comprehensive updates for macOS runner migration
 
 ### 🔧 Technical Improvements
 

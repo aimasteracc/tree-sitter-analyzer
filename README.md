@@ -4,7 +4,7 @@
 
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-5980%20passed-brightgreen.svg)](#-quality--testing)
+[![Tests](https://img.shields.io/badge/tests-6058%20passed-brightgreen.svg)](#-quality--testing)
 [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
 [![Version](https://img.shields.io/badge/version-1.9.18-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
@@ -17,7 +17,7 @@
 ## ✨ What's New in v1.9.18
 
 - **New Languages**: C/C++ support added with full feature extraction for functions, structs, classes, enums, unions, and preprocessor directives
-- **5,980 tests** with 100% pass rate
+- **6,058 tests** with 100% pass rate
 
 📖 **[Full Changelog](CHANGELOG.md)** for complete version history.
 
@@ -181,7 +181,7 @@ uv run tree-sitter-analyzer examples/BigService.java --query-key methods --filte
 
 | Metric | Value |
 |--------|-------|
-| **Tests** | 5,980 passed ✅ |
+| **Tests** | 6,058 passed ✅ |
 | **Coverage** | [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer) |
 | **Type Safety** | 100% mypy compliance |
 | **Platforms** | Windows, macOS, Linux |
