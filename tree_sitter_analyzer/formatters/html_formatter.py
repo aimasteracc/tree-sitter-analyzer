@@ -459,7 +459,7 @@ class HtmlCompactFormatter(IFormatter):
         # Count elements by type
         markup_count = sum(1 for e in elements if isinstance(e, MarkupElement))
         style_count = sum(1 for e in elements if isinstance(e, StyleElement))
-        other_count = len(elements) - markup_count - style_count
+        _other_count = len(elements) - markup_count - style_count  # noqa: F841
 
         # Count by element class
         structure_elements = []
@@ -497,7 +497,7 @@ class HtmlCompactFormatter(IFormatter):
         # Header
         lines.append(f"# {filename}")
         lines.append("")
-        
+
         # Summary table
         lines.append("## Summary")
         lines.append("")
@@ -517,44 +517,58 @@ class HtmlCompactFormatter(IFormatter):
             lines.append(f"| CSS Rules | {style_count} |")
         lines.append(f"| **Total** | **{len(elements)}** |")
         lines.append("")
-        
+
         # Top elements (sample)
         lines.append("## Top-Level Elements")
         lines.append("")
         lines.append("| Tag | ID/Class | Lines | Children |")
         lines.append("|-----|----------|-------|----------|")
-        
+
         # Show only root-level or important elements
         important_elements = []
         for element in elements:
             if isinstance(element, MarkupElement):
                 # Include root elements or important structural elements
-                if (element.parent is None or 
-                    element.tag_name in ["html", "head", "body", "main", "header", "footer", "nav", "section", "article", "aside"]):
+                if element.parent is None or element.tag_name in [
+                    "html",
+                    "head",
+                    "body",
+                    "main",
+                    "header",
+                    "footer",
+                    "nav",
+                    "section",
+                    "article",
+                    "aside",
+                ]:
                     important_elements.append(element)
-        
+
         # Limit to top 20
         for element in important_elements[:20]:
             if isinstance(element, MarkupElement):
                 tag = element.tag_name or "unknown"
-                
+
                 # Format ID/Class
                 id_class = []
                 if element.attributes.get("id"):
                     id_class.append(f"#{element.attributes['id']}")
                 if element.attributes.get("class"):
-                    classes = element.attributes["class"].split()[:2]  # Show first 2 classes
+                    classes = element.attributes["class"].split()[
+                        :2
+                    ]  # Show first 2 classes
                     id_class.extend([f".{c}" for c in classes])
                 id_class_str = " ".join(id_class) if id_class else "-"
-                
+
                 lines_str = f"{element.start_line}-{element.end_line}"
                 children_count = len(element.children)
-                
-                lines.append(f"| `{tag}` | {id_class_str} | {lines_str} | {children_count} |")
-        
+
+                lines.append(
+                    f"| `{tag}` | {id_class_str} | {lines_str} | {children_count} |"
+                )
+
         if len(important_elements) > 20:
             lines.append(f"| ... | ({len(important_elements) - 20} more) | | |")
-        
+
         lines.append("")
 
         return "\n".join(lines)
@@ -628,7 +642,9 @@ class HtmlCsvFormatter(IFormatter):
                 elem_class = element.get("element_class", "")
                 start_line = element.get("start_line", 0)
                 end_line = element.get("end_line", 0)
-                attrs_str = str(element.get("attributes", element.get("properties", "")))
+                attrs_str = str(
+                    element.get("attributes", element.get("properties", ""))
+                )
                 children_count = element.get("children_count", 0)
                 language = element.get("language", "html")
             else:

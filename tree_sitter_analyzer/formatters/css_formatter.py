@@ -28,15 +28,10 @@ class CSSFormatter(BaseFormatter):
         at_rules = [e for e in elements if self._is_at_rule(e)]
 
         # Count selectors by type
-        id_selectors = [
-            r for r in rules if self._get_selector(r).startswith("#")
-        ]
-        class_selectors = [
-            r for r in rules if self._get_selector(r).startswith(".")
-        ]
+        id_selectors = [r for r in rules if self._get_selector(r).startswith("#")]
+        class_selectors = [r for r in rules if self._get_selector(r).startswith(".")]
         element_selectors = [
-            r for r in rules
-            if not self._get_selector(r).startswith((".", "#", "@"))
+            r for r in rules if not self._get_selector(r).startswith((".", "#", "@"))
         ]
 
         summary = {
@@ -278,16 +273,10 @@ class CSSFormatter(BaseFormatter):
         at_rules = [e for e in elements if self._is_at_rule(e)]
 
         # Count selector types
-        id_selectors = [
-            r for r in rules if self._get_selector(r).startswith("#")
-        ]
-        class_selectors = [
-            r for r in rules if self._get_selector(r).startswith(".")
-        ]
+        id_selectors = [r for r in rules if self._get_selector(r).startswith("#")]
+        class_selectors = [r for r in rules if self._get_selector(r).startswith(".")]
         element_selectors = [
-            r
-            for r in rules
-            if not self._get_selector(r).startswith((".", "#", "@"))
+            r for r in rules if not self._get_selector(r).startswith((".", "#", "@"))
         ]
 
         # Extract filename from path
@@ -453,4 +442,3 @@ class CSSFormatter(BaseFormatter):
         if isinstance(element, dict):
             return element.get("end_line", 0)
         return getattr(element, "end_line", 0)
-

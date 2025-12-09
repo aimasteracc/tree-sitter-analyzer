@@ -740,7 +740,11 @@ class MarkdownFormatter(BaseFormatter):
 
         # Count element types
         headers = [e for e in elements if e.get("type") == "heading"]
-        links = [e for e in elements if e.get("type") in ["link", "autolink", "reference_link"]]
+        links = [
+            e
+            for e in elements
+            if e.get("type") in ["link", "autolink", "reference_link"]
+        ]
         images = self._collect_images(elements)
         code_blocks = [e for e in elements if e.get("type") == "code_block"]
         lists = [e for e in elements if e.get("type") in ["list", "task_list"]]
@@ -763,7 +767,7 @@ class MarkdownFormatter(BaseFormatter):
         output.append(f"| Tables | {len(tables)} |")
         output.append(f"| **Total** | **{len(elements)}** |")
         output.append("")
-        
+
         # Show headers
         if headers:
             output.append("## Document Structure\n")
@@ -777,34 +781,30 @@ class MarkdownFormatter(BaseFormatter):
             if len(headers) > 20:
                 output.append(f"| ... | ({len(headers) - 20} more) | |")
             output.append("")
-        
+
         return "\n".join(output)
 
     def _format_csv(self, analysis_result: dict[str, Any]) -> str:
         """Format CSV output for Markdown files"""
         import csv
         import io
-        
+
         elements = analysis_result.get("elements", [])
-        
+
         output = io.StringIO()
         writer = csv.writer(output, lineterminator="\n")
-        
+
         # Write header
-        writer.writerow([
-            "Type",
-            "Text/URL/Language",
-            "Level/Count",
-            "Start Line",
-            "End Line"
-        ])
-        
+        writer.writerow(
+            ["Type", "Text/URL/Language", "Level/Count", "Start Line", "End Line"]
+        )
+
         # Write data rows
         for element in elements:
             elem_type = element.get("type", "unknown")
             start_line = element.get("line_range", {}).get("start", 0)
             end_line = element.get("line_range", {}).get("end", 0)
-            
+
             if elem_type == "heading":
                 text = element.get("text", "")[:50]
                 level = element.get("level", 1)
@@ -812,11 +812,15 @@ class MarkdownFormatter(BaseFormatter):
             elif elem_type in ["link", "autolink", "reference_link"]:
                 url = element.get("url", "")
                 text = element.get("text", "")[:30]
-                writer.writerow([elem_type, f"{text} -> {url}", "-", start_line, end_line])
+                writer.writerow(
+                    [elem_type, f"{text} -> {url}", "-", start_line, end_line]
+                )
             elif elem_type == "image":
                 url = element.get("url", "")
                 alt = element.get("alt", "")[:30]
-                writer.writerow([elem_type, f"{alt} -> {url}", "-", start_line, end_line])
+                writer.writerow(
+                    [elem_type, f"{alt} -> {url}", "-", start_line, end_line]
+                )
             elif elem_type == "code_block":
                 language = element.get("language", "")
                 line_count = element.get("line_count", 0)
@@ -824,16 +828,19 @@ class MarkdownFormatter(BaseFormatter):
             elif elem_type in ["list", "task_list"]:
                 list_type = element.get("list_type", "")
                 item_count = element.get("item_count", 0)
-                writer.writerow([elem_type, list_type, item_count, start_line, end_line])
+                writer.writerow(
+                    [elem_type, list_type, item_count, start_line, end_line]
+                )
             elif elem_type == "table":
                 cols = element.get("column_count", 0)
                 rows = element.get("row_count", 0)
-                writer.writerow([elem_type, f"{cols}x{rows}", "-", start_line, end_line])
+                writer.writerow(
+                    [elem_type, f"{cols}x{rows}", "-", start_line, end_line]
+                )
             else:
                 name = element.get("name", "")[:50]
                 writer.writerow([elem_type, name, "-", start_line, end_line])
-        
+
         csv_content = output.getvalue()
         output.close()
         return csv_content.rstrip("\n")
-
