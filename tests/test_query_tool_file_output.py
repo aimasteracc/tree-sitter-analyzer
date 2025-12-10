@@ -271,6 +271,7 @@ if (typeof module !== 'undefined') {
                 "result_format": "summary",
                 "output_file": "query_functions_summary",
                 "suppress_output": False,
+                "output_format": "json",
             }
 
             result = await query_tool.execute(arguments)
@@ -311,6 +312,7 @@ if (typeof module !== 'undefined') {
                 "query_key": "classes",
                 "output_file": "query_classes_suppressed",
                 "suppress_output": True,
+                "output_format": "json",
             }
 
             result = await query_tool.execute(arguments)
@@ -647,7 +649,7 @@ if (typeof module !== 'undefined') {
         # Check output_format parameter
         assert "output_format" in properties
         assert properties["output_format"]["enum"] == ["json", "toon"]
-        assert properties["output_format"]["default"] == "json"
+        assert properties["output_format"]["default"] == "toon"
 
     @pytest.mark.asyncio
     async def test_language_auto_detection(self, query_tool, temp_project_dir):
@@ -723,6 +725,7 @@ if (typeof module !== 'undefined') {
                 "result_format": "summary",
                 "output_file": "comprehensive_query",
                 "suppress_output": True,
+                "output_format": "json",
             }
 
             result = await query_tool.execute(arguments)

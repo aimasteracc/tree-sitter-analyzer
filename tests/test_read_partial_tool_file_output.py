@@ -171,6 +171,7 @@ public class Sample {
             "format": "json",
             "output_file": "partial_json",
             "suppress_output": False,
+            "output_format": "json",
         }
 
         result = await read_partial_tool.execute(arguments)
@@ -301,6 +302,7 @@ public class Sample {
             "format": "json",
             "output_file": "partial_column_range",
             "suppress_output": False,
+            "output_format": "json",
         }
 
         result = await read_partial_tool.execute(arguments)
@@ -378,6 +380,7 @@ public class Sample {
             "format": "json",
             "output_file": "java_partial",
             "suppress_output": False,
+            "output_format": "json",
         }
 
         result = await read_partial_tool.execute(arguments)
@@ -586,6 +589,7 @@ public class Sample {
             "format": "json",
             "output_file": "comprehensive_extract",
             "suppress_output": True,
+            "output_format": "json",
         }
 
         result = await read_partial_tool.execute(arguments)

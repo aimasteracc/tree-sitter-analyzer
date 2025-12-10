@@ -110,6 +110,7 @@ public class Test {
                 "query": "hello",
                 "output_file": "search_results",
                 "suppress_output": False,
+                "output_format": "json",
             }
 
             result = await search_content_tool.execute(arguments)
@@ -295,6 +296,7 @@ public class Test {
         # Test JSON format
         arguments["format"] = "json"
         arguments["output_file"] = "partial_json"
+        arguments["output_format"] = "json"
 
         result = await read_partial_tool.execute(arguments)
 
@@ -355,6 +357,7 @@ public class Test {
                 "query_key": "functions",
                 "output_file": "query_results",
                 "suppress_output": False,
+                "output_format": "json",
             }
 
             result = await query_tool.execute(arguments)
