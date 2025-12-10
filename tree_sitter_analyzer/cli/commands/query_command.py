@@ -11,6 +11,14 @@ from ...core.query_service import QueryService
 from ...output_manager import output_data, output_error, output_info, output_json
 from .base_command import BaseCommand
 
+# TOON formatter for CLI output
+try:
+    from ...formatters.toon_formatter import ToonFormatter
+
+    _toon_available = True
+except ImportError:
+    _toon_available = False
+
 
 class QueryCommand(BaseCommand):
     """Command for executing queries."""
@@ -94,6 +102,10 @@ class QueryCommand(BaseCommand):
         if results:
             if self.args.output_format == "json":
                 output_json(results)
+            elif self.args.output_format == "toon" and _toon_available:
+                use_tabs = getattr(self.args, "toon_use_tabs", False)
+                formatter = ToonFormatter(use_tabs=use_tabs)
+                print(formatter.format(results))
             else:
                 for i, query_result in enumerate(results, 1):
                     output_data(

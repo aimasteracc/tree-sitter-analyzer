@@ -41,27 +41,32 @@ class TableCommand(BaseCommand):
             if not analysis_result:
                 return 1
 
-            # Get appropriate formatter using FormatterSelector (explicit configuration)
-            from ...formatters.formatter_selector import FormatterSelector
-
             table_type = getattr(self.args, "table", "full")
-            formatter = FormatterSelector.get_formatter(
-                analysis_result.language,
-                table_type,
-                include_javadoc=getattr(self.args, "include_javadoc", False),
-            )
 
-            # Check if formatter has a method to handle AnalysisResult directly
-            if hasattr(formatter, "format_analysis_result"):
-                formatted_output = formatter.format_analysis_result(
-                    analysis_result, table_type
-                )
+            # Handle TOON format separately
+            if table_type == "toon":
+                formatted_output = self._format_as_toon(analysis_result)
             else:
-                # Convert to structure format that the formatter expects
-                formatted_data = self._convert_to_structure_format(
-                    analysis_result, language
+                # Get appropriate formatter using FormatterSelector (explicit configuration)
+                from ...formatters.formatter_selector import FormatterSelector
+
+                formatter = FormatterSelector.get_formatter(
+                    analysis_result.language,
+                    table_type,
+                    include_javadoc=getattr(self.args, "include_javadoc", False),
                 )
-                formatted_output = formatter.format_structure(formatted_data)
+
+                # Check if formatter has a method to handle AnalysisResult directly
+                if hasattr(formatter, "format_analysis_result"):
+                    formatted_output = formatter.format_analysis_result(
+                        analysis_result, table_type
+                    )
+                else:
+                    # Convert to structure format that the formatter expects
+                    formatted_data = self._convert_to_structure_format(
+                        analysis_result, language
+                    )
+                    formatted_output = formatter.format_structure(formatted_data)
 
             self._output_table(formatted_output)
             return 0
@@ -69,6 +74,108 @@ class TableCommand(BaseCommand):
         except Exception as e:
             output_error(f"An error occurred during table format analysis: {e}")
             return 1
+
+    def _format_as_toon(self, analysis_result: Any) -> str:
+        """Format analysis result as TOON."""
+        from ...formatters.toon_formatter import ToonFormatter
+
+        use_tabs = getattr(self.args, "toon_use_tabs", False)
+        formatter = ToonFormatter(use_tabs=use_tabs)
+
+        # Convert to structure format for TOON
+        structure_data = self._convert_to_toon_format(analysis_result)
+        return formatter.format(structure_data)
+
+    def _convert_to_toon_format(self, analysis_result: Any) -> dict[str, Any]:
+        """Convert AnalysisResult to TOON-friendly format with position info."""
+        classes = []
+        methods = []
+        fields = []
+        imports = []
+
+        for element in analysis_result.elements:
+            element_type = get_element_type(element)
+
+            if element_type == ELEMENT_TYPE_CLASS:
+                classes.append(
+                    {
+                        "name": getattr(element, "name", "unknown"),
+                        "visibility": getattr(element, "visibility", "public"),
+                        "line_range": (
+                            getattr(element, "start_line", 0),
+                            getattr(element, "end_line", 0),
+                        ),
+                    }
+                )
+            elif element_type == ELEMENT_TYPE_FUNCTION:
+                methods.append(
+                    {
+                        "name": getattr(element, "name", "unknown"),
+                        "visibility": getattr(element, "visibility", "public"),
+                        "line_range": (
+                            getattr(element, "start_line", 0),
+                            getattr(element, "end_line", 0),
+                        ),
+                    }
+                )
+            elif element_type == ELEMENT_TYPE_VARIABLE:
+                fields.append(
+                    {
+                        "name": getattr(element, "name", "unknown"),
+                        "type": getattr(element, "type_annotation", ""),
+                        "line_range": (
+                            getattr(element, "start_line", 0),
+                            getattr(element, "end_line", 0),
+                        ),
+                    }
+                )
+            elif element_type == ELEMENT_TYPE_IMPORT:
+                imports.append(
+                    {
+                        "name": getattr(element, "name", "unknown"),
+                        "is_static": getattr(element, "is_static", False),
+                        "is_wildcard": getattr(element, "is_wildcard", False),
+                        "statement": getattr(element, "import_statement", ""),
+                        "line_range": (
+                            getattr(element, "start_line", 0),
+                            getattr(element, "end_line", 0),
+                        ),
+                    }
+                )
+
+        # Get package info
+        packages = [
+            e
+            for e in analysis_result.elements
+            if get_element_type(e) == ELEMENT_TYPE_PACKAGE
+        ]
+        package_info = None
+        if packages:
+            pkg = packages[0]
+            package_info = {
+                "name": getattr(pkg, "name", ""),
+                "line_range": (
+                    getattr(pkg, "start_line", 0),
+                    getattr(pkg, "end_line", 0),
+                ),
+            }
+
+        return {
+            "file_path": analysis_result.file_path,
+            "language": analysis_result.language,
+            "package": package_info,
+            "classes": classes,
+            "methods": methods,
+            "fields": fields,
+            "imports": imports,
+            "statistics": {
+                "class_count": len(classes),
+                "method_count": len(methods),
+                "field_count": len(fields),
+                "import_count": len(imports),
+                "total_lines": analysis_result.line_count,
+            },
+        }
 
     def _convert_to_formatter_format(self, analysis_result: Any) -> dict[str, Any]:
         """Convert AnalysisResult to format expected by formatters."""

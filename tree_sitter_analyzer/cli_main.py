@@ -158,14 +158,24 @@ def create_argument_parser() -> argparse.ArgumentParser:
     # Output format options
     parser.add_argument(
         "--output-format",
-        choices=["json", "text"],
+        choices=["json", "text", "toon"],
         default="json",
-        help="Specify output format",
+        help="Specify output format: 'json' (default), 'text', or 'toon' (50-70%% token reduction)",
+    )
+    parser.add_argument(
+        "--format",
+        choices=["json", "toon"],
+        help="Alias for --output-format (json or toon)",
+    )
+    parser.add_argument(
+        "--toon-use-tabs",
+        action="store_true",
+        help="Use tab delimiters instead of commas in TOON format (further compression)",
     )
     parser.add_argument(
         "--table",
-        choices=["full", "compact", "csv", "json"],
-        help="Output in table format",
+        choices=["full", "compact", "csv", "json", "toon"],
+        help="Output in table format (toon format provides 50-70%% token reduction)",
     )
     parser.add_argument(
         "--include-javadoc",
@@ -418,6 +428,10 @@ def main() -> None:
 
     parser = create_argument_parser()
     args = parser.parse_args()
+
+    # Handle --format alias for --output-format
+    if hasattr(args, "format") and args.format:
+        args.output_format = args.format
 
     # Configure all logging to ERROR level to prevent output contamination
     logging.getLogger().setLevel(logging.ERROR)

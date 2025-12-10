@@ -293,7 +293,7 @@ console.log(MathUtils.add(5, 3));
             arguments = {
                 "file_path": sample_python_file,
                 "query_key": "functions",
-                "output_format": "summary",
+                "result_format": "summary",  # result_format, not output_format
                 "output_file": "query_summary",
                 "suppress_output": False,
             }
