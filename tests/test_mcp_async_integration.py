@@ -527,6 +527,7 @@ class Class_{i}:
                     "file_path": sample_code_file,
                     "query_key": "function",
                     "output_file": output_file,
+                    "output_format": "json",
                 }
             )
 
