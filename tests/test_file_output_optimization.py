@@ -62,7 +62,7 @@ async def test_search_content_with_output_file_and_suppress_output(
         mock_run_command,
     )
 
-    # Test with output_file and suppress_output
+    # Test with output_file and suppress_output (use JSON output_format)
     output_file = "search_results.json"
     result = await tool.execute(
         {
@@ -70,6 +70,7 @@ async def test_search_content_with_output_file_and_suppress_output(
             "query": "calculate_total",
             "output_file": output_file,
             "suppress_output": True,
+            "output_format": "json",
         }
     )
 
@@ -140,7 +141,7 @@ async def test_find_and_grep_with_output_file_and_suppress_output(
         mock_run_command,
     )
 
-    # Test with output_file and suppress_output
+    # Test with output_file and suppress_output (use JSON output_format)
     output_file = "find_and_grep_results.json"
     result = await tool.execute(
         {
@@ -150,6 +151,7 @@ async def test_find_and_grep_with_output_file_and_suppress_output(
             "query": "calculate_total",
             "output_file": output_file,
             "suppress_output": True,
+            "output_format": "json",
         }
     )
 
@@ -210,7 +212,7 @@ async def test_search_content_output_file_without_suppress_output(
         mock_run_command,
     )
 
-    # Test with output_file but suppress_output=False
+    # Test with output_file but suppress_output=False (use JSON output_format)
     output_file = "search_results_full.json"
     result = await tool.execute(
         {
@@ -218,6 +220,7 @@ async def test_search_content_output_file_without_suppress_output(
             "query": "process_data",
             "output_file": output_file,
             "suppress_output": False,
+            "output_format": "json",
         }
     )
 
@@ -277,7 +280,7 @@ async def test_find_and_grep_output_file_auto_extension_detection(
         mock_run_command,
     )
 
-    # Test with output_file without extension
+    # Test with output_file without extension (use JSON output_format)
     output_file = "analysis_results"
     result = await tool.execute(
         {
@@ -287,6 +290,7 @@ async def test_find_and_grep_output_file_auto_extension_detection(
             "query": "data",
             "output_file": output_file,
             "suppress_output": True,
+            "output_format": "json",
         }
     )
 
@@ -355,13 +359,14 @@ async def test_search_content_large_results_token_optimization(monkeypatch, tmp_
         mock_run_command,
     )
 
-    # Test with suppress_output to save tokens (only one format parameter allowed)
+    # Test with suppress_output to save tokens (use JSON output_format)
     result = await tool.execute(
         {
             "roots": [str(tmp_path)],
             "query": "function",
             "output_file": "large_results.json",
             "suppress_output": True,
+            "output_format": "json",
         }
     )
 
@@ -436,7 +441,7 @@ async def test_find_and_grep_combined_optimization_features(monkeypatch, tmp_pat
         mock_run_command,
     )
 
-    # Test with multiple optimization features
+    # Test with multiple optimization features (use JSON output_format)
     result = await tool.execute(
         {
             "roots": [str(tmp_path)],
@@ -450,6 +455,7 @@ async def test_find_and_grep_combined_optimization_features(monkeypatch, tmp_pat
             "summary_only": True,
             "output_file": "optimized_search.json",
             "suppress_output": True,
+            "output_format": "json",
         }
     )
 
@@ -570,7 +576,7 @@ async def test_list_files_with_output_file_and_suppress_output(monkeypatch, tmp_
         mock_run_command,
     )
 
-    # Test with output_file and suppress_output
+    # Test with output_file and suppress_output (use JSON output_format)
     output_file = "file_list_results.json"
     result = await tool.execute(
         {
@@ -578,6 +584,7 @@ async def test_list_files_with_output_file_and_suppress_output(monkeypatch, tmp_
             "extensions": ["py", "txt"],
             "output_file": output_file,
             "suppress_output": True,
+            "output_format": "json",
         }
     )
 
@@ -622,7 +629,7 @@ async def test_list_files_count_only_with_output_file(monkeypatch, tmp_path):
         mock_run_command,
     )
 
-    # Test count_only mode with output_file and suppress_output
+    # Test count_only mode with output_file and suppress_output (use JSON output_format)
     output_file = "count_results.json"
     result = await tool.execute(
         {
@@ -631,6 +638,7 @@ async def test_list_files_count_only_with_output_file(monkeypatch, tmp_path):
             "count_only": True,
             "output_file": output_file,
             "suppress_output": True,
+            "output_format": "json",
         }
     )
 
@@ -673,7 +681,7 @@ async def test_list_files_output_file_without_suppress_output(monkeypatch, tmp_p
         mock_run_command,
     )
 
-    # Test with output_file but suppress_output=False
+    # Test with output_file but suppress_output=False (use JSON output_format)
     output_file = "list_results_full.json"
     result = await tool.execute(
         {
@@ -681,6 +689,7 @@ async def test_list_files_output_file_without_suppress_output(monkeypatch, tmp_p
             "extensions": ["md"],
             "output_file": output_file,
             "suppress_output": False,
+            "output_format": "json",
         }
     )
 
@@ -717,7 +726,7 @@ async def test_list_files_large_results_token_optimization(monkeypatch, tmp_path
         mock_run_command,
     )
 
-    # Test with suppress_output to save tokens
+    # Test with suppress_output to save tokens (use JSON output_format)
     result = await tool.execute(
         {
             "roots": [str(tmp_path)],
@@ -726,6 +735,7 @@ async def test_list_files_large_results_token_optimization(monkeypatch, tmp_path
             "extensions": ["txt"],
             "output_file": "large_file_list.json",
             "suppress_output": True,
+            "output_format": "json",
         }
     )
 
