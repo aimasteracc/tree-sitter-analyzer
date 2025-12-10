@@ -21,6 +21,7 @@ from ...constants import (
 from ...core.analysis_engine import AnalysisRequest, get_analysis_engine
 from ...language_detector import detect_language_from_file
 from ...utils import setup_logger
+from ..utils.format_helper import apply_toon_format_to_response
 from .base_tool import BaseMCPTool
 
 # Set up logging
@@ -385,6 +386,7 @@ class AnalyzeScaleTool(BaseMCPTool):
         # include_complexity = arguments.get("include_complexity", True)  # Not used currently
         include_details = arguments.get("include_details", False)
         include_guidance = arguments.get("include_guidance", True)
+        output_format = arguments.get("output_format", "json")
 
         # Security validation BEFORE path resolution to catch symlinks
         is_valid, error_msg = self.security_validator.validate_file_path(file_path)
@@ -441,7 +443,10 @@ class AnalyzeScaleTool(BaseMCPTool):
                 # Handle JSON files specially - they don't need structural analysis
                 if language == "json":
                     return self._create_json_file_analysis(
-                        resolved_file_path, file_metrics, include_guidance
+                        resolved_file_path,
+                        file_metrics,
+                        include_guidance,
+                        output_format,
                     )
 
                 # Use appropriate analyzer based on language
@@ -652,7 +657,8 @@ class AnalyzeScaleTool(BaseMCPTool):
                     f"~{file_metrics['estimated_tokens']} tokens"
                 )
 
-                return result
+                # Apply TOON format to direct output if requested
+                return apply_toon_format_to_response(result, output_format)
 
         except Exception as e:
             logger.error(f"Error analyzing {file_path}: {e}")
@@ -711,7 +717,11 @@ class AnalyzeScaleTool(BaseMCPTool):
         return True
 
     def _create_json_file_analysis(
-        self, file_path: str, file_metrics: dict[str, Any], include_guidance: bool
+        self,
+        file_path: str,
+        file_metrics: dict[str, Any],
+        include_guidance: bool,
+        output_format: str = "json",
     ) -> dict[str, Any]:
         """
         Create analysis result for JSON files.
@@ -720,6 +730,7 @@ class AnalyzeScaleTool(BaseMCPTool):
             file_path: Path to the JSON file
             file_metrics: Basic file metrics
             include_guidance: Whether to include guidance
+            output_format: Output format ('json' or 'toon')
 
         Returns:
             Analysis result for JSON file
@@ -765,7 +776,8 @@ class AnalyzeScaleTool(BaseMCPTool):
                 "analysis_focus": "Data structure and configuration values",
             }
 
-        return result
+        # Apply TOON format to direct output if requested
+        return apply_toon_format_to_response(result, output_format)
 
     def get_tool_definition(self) -> dict[str, Any]:
         """

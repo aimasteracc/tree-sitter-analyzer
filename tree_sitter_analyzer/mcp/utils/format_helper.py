@@ -145,3 +145,54 @@ def format_for_file_output(
         extension = ".json"
 
     return content, extension
+
+
+def apply_toon_format_to_response(
+    result: dict[str, Any], output_format: str = "json"
+) -> dict[str, Any]:
+    """
+    Apply TOON format to MCP tool response if requested.
+
+    When output_format is 'toon', wraps the result in a TOON-formatted string
+    under the 'toon_content' key while preserving essential metadata.
+
+    Args:
+        result: Original result dictionary from MCP tool
+        output_format: Output format ('json' or 'toon')
+
+    Returns:
+        Modified result dict with TOON content if requested, otherwise original
+    """
+    if output_format != "toon":
+        return result
+
+    try:
+        # Format the full result as TOON
+        toon_content = format_as_toon(result)
+
+        # Return a response that includes TOON content
+        toon_response: dict[str, Any] = {
+            "success": result.get("success", True),
+            "format": "toon",
+            "toon_content": toon_content,
+        }
+
+        # Preserve essential metadata for MCP protocol
+        if "count" in result:
+            toon_response["count"] = result["count"]
+        if "file_path" in result:
+            toon_response["file_path"] = result["file_path"]
+        if "output_file_path" in result:
+            toon_response["output_file_path"] = result["output_file_path"]
+        if "file_saved" in result:
+            toon_response["file_saved"] = result["file_saved"]
+        if "error" in result:
+            toon_response["error"] = result["error"]
+        if "message" in result:
+            toon_response["message"] = result["message"]
+
+        return toon_response
+
+    except Exception as e:
+        logger.warning(f"Failed to apply TOON format, returning JSON: {e}")
+        return result

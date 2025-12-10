@@ -14,7 +14,7 @@ from typing import Any
 
 from ..utils.error_handler import handle_mcp_errors
 from ..utils.file_output_manager import FileOutputManager
-from ..utils.format_helper import format_for_file_output
+from ..utils.format_helper import apply_toon_format_to_response, format_for_file_output
 from ..utils.gitignore_detector import get_default_detector
 from ..utils.search_cache import get_default_cache
 from . import fd_rg_utils
@@ -845,4 +845,5 @@ Choose output format parameters based on your needs to minimize token usage and 
         if self.cache and cache_key:
             self.cache.set(cache_key, result)
 
-        return result
+        # Apply TOON format to direct output if requested
+        return apply_toon_format_to_response(result, output_format)

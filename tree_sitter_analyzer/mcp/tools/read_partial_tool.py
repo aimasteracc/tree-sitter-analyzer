@@ -13,7 +13,7 @@ from typing import Any
 from ...file_handler import read_file_partial
 from ...utils import setup_logger
 from ..utils.file_output_manager import FileOutputManager
-from ..utils.format_helper import format_for_file_output
+from ..utils.format_helper import apply_toon_format_to_response, format_for_file_output
 from .base_tool import BaseMCPTool
 
 # Set up logging
@@ -346,7 +346,8 @@ class ReadPartialTool(BaseMCPTool):
                         result["file_save_error"] = str(e)
                         result["file_saved"] = False
 
-                return result
+                # Apply TOON format to direct output if requested
+                return apply_toon_format_to_response(result, output_format)
 
         except Exception as e:
             logger.error(f"Error reading partial content from {file_path}: {e}")

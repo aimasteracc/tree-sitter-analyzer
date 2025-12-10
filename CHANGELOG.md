@@ -2,6 +2,36 @@
 
 ## [Unreleased]
 
+## [1.9.20] - 2025-12-10
+
+### 🐛 Bug Fixes
+
+#### MCP Tools TOON Output Fix
+- **Fixed TOON Format Direct Output**: MCP tools now properly apply TOON format to direct output responses (not just file output)
+- **New `apply_toon_format_to_response()` Function**: Added centralized function in `format_helper.py` for consistent TOON formatting
+- **All MCP Tools Updated**:
+  - `query_tool`: TOON format applied to query results
+  - `list_files_tool`: TOON format applied to file listing results
+  - `search_content_tool`: TOON format applied to search results
+  - `find_and_grep_tool`: TOON format applied to grep results
+  - `read_partial_tool`: TOON format applied to partial read results
+  - `analyze_scale_tool`: TOON format applied to scale analysis results
+  - `table_format_tool`: TOON format applied to table format results
+  - `universal_analyze_tool`: TOON format applied to universal analysis results
+- **Response Format**: When `output_format=toon`, response includes:
+  - `format: "toon"` indicator
+  - `toon_content`: TOON-formatted string of the full result
+  - Essential metadata preserved (success, count, file_path, etc.)
+- **Backward Compatibility**: JSON format (default) behavior unchanged
+
+### 📊 Quality Metrics
+
+- **Tests**: All MCP tests passing (213 tests)
+- **Coverage**: Codecov automatic monitoring
+- **Quality**: Enterprise-grade quality maintained
+
+---
+
 ## [1.9.19] - 2025-12-10
 
 ### 🚀 New Features

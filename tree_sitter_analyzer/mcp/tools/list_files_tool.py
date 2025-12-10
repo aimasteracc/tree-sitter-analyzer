@@ -14,7 +14,7 @@ from typing import Any
 
 from ..utils.error_handler import handle_mcp_errors
 from ..utils.file_output_manager import FileOutputManager
-from ..utils.format_helper import format_for_file_output
+from ..utils.format_helper import apply_toon_format_to_response, format_for_file_output
 from ..utils.gitignore_detector import get_default_detector
 from . import fd_rg_utils
 from .base_tool import BaseMCPTool
@@ -323,7 +323,8 @@ class ListFilesTool(BaseMCPTool):
                     logger.warning(f"Failed to save output file: {e}")
                     result["output_file_error"] = str(e)  # type: ignore[assignment]
 
-            return result
+            # Apply TOON format to direct output if requested
+            return apply_toon_format_to_response(result, output_format)
 
         # Truncate defensively even if fd didn't
         truncated = False
@@ -419,4 +420,5 @@ class ListFilesTool(BaseMCPTool):
                 logger.warning(f"Failed to save output file: {e}")
                 final_result["output_file_error"] = str(e)
 
-        return final_result
+        # Apply TOON format to direct output if requested
+        return apply_toon_format_to_response(final_result, output_format)
