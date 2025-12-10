@@ -24,6 +24,7 @@ from ...language_detector import detect_language_from_file
 from ...utils import setup_logger
 from ..utils import get_performance_monitor
 from ..utils.file_output_manager import FileOutputManager
+from ..utils.format_helper import apply_toon_format_to_response
 from .base_tool import BaseMCPTool
 
 # Set up logging
@@ -393,6 +394,7 @@ class TableFormatTool(BaseMCPTool):
             language = args.get("language")
             output_file = args.get("output_file")
             suppress_output = args.get("suppress_output", False)
+            output_format = args.get("output_format", "json")
 
             # Security validation BEFORE path resolution to catch symlinks
             is_valid, error_msg = self.security_validator.validate_file_path(file_path)
@@ -550,7 +552,8 @@ class TableFormatTool(BaseMCPTool):
                         result["file_save_error"] = str(e)
                         result["file_saved"] = False
 
-                return result
+                # Apply TOON format to direct output if requested
+                return apply_toon_format_to_response(result, output_format)
 
         except Exception as e:
             self.logger.error(f"Error in code structure analysis tool: {e}")

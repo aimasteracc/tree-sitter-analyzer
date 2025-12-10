@@ -22,6 +22,7 @@ from ...language_detector import detect_language_from_file, is_language_supporte
 from ...mcp.utils import get_performance_monitor
 from ...utils import setup_logger
 from ..utils.error_handler import handle_mcp_errors
+from ..utils.format_helper import apply_toon_format_to_response
 from .base_tool import BaseMCPTool
 
 # Set up logging
@@ -124,6 +125,7 @@ class UniversalAnalyzeTool(BaseMCPTool):
         file_path = arguments["file_path"]
         language = arguments.get("language")
         analysis_type = arguments.get("analysis_type", "basic")
+        output_format = arguments.get("output_format", "json")
 
         # Resolve file path to absolute path
         resolved_file_path = self.path_resolver.resolve(file_path)
@@ -198,7 +200,8 @@ class UniversalAnalyzeTool(BaseMCPTool):
                     )
 
                 logger.info(f"Successfully analyzed {resolved_file_path}")
-                return result
+                # Apply TOON format to direct output if requested
+                return apply_toon_format_to_response(result, output_format)
 
         except Exception as e:
             logger.error(f"Error analyzing {resolved_file_path}: {e}")

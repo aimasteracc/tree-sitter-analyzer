@@ -13,7 +13,7 @@ from typing import Any
 from ...core.query_service import QueryService
 from ...language_detector import detect_language_from_file
 from ..utils.file_output_manager import FileOutputManager
-from ..utils.format_helper import format_for_file_output
+from ..utils.format_helper import apply_toon_format_to_response, format_for_file_output
 from .base_tool import BaseMCPTool
 
 logger = logging.getLogger(__name__)
@@ -270,7 +270,8 @@ class QueryTool(BaseMCPTool):
 
                 return minimal_result
             else:
-                return formatted_result
+                # Apply TOON format to direct output if requested
+                return apply_toon_format_to_response(formatted_result, output_format)
 
         except Exception as e:
             from ..utils.error_handler import AnalysisError
