@@ -350,6 +350,7 @@ if __name__ == "__main__":
                 "include_complexity": True,
                 "include_details": False,
                 "include_guidance": True,
+                "output_format": "json",  # Use JSON format for test assertions
             }
 
             result = await analyze_scale_tool.execute(arguments)
@@ -405,7 +406,11 @@ if __name__ == "__main__":
         ) as mock_analyze:
             mock_analyze.return_value = self.create_mock_analysis_result("java")
 
-            arguments = {"file_path": str(java_file), "include_details": True}
+            arguments = {
+                "file_path": str(java_file),
+                "include_details": True,
+                "output_format": "json",  # Use JSON format for test assertions
+            }
 
             result = await analyze_scale_tool.execute(arguments)
 
@@ -432,7 +437,11 @@ if __name__ == "__main__":
             mock_result.elements = []
             mock_analyze.return_value = mock_result
 
-            arguments = {"file_path": str(python_file), "language": "python"}
+            arguments = {
+                "file_path": str(python_file),
+                "language": "python",
+                "output_format": "json",  # Use JSON format for test assertions
+            }
 
             result = await analyze_scale_tool.execute(arguments)
 
@@ -451,8 +460,9 @@ if __name__ == "__main__":
             mock_analyze.return_value = self.create_mock_analysis_result("java")
 
             arguments = {
-                "file_path": str(java_file)
+                "file_path": str(java_file),
                 # No language specified - should auto-detect
+                "output_format": "json",  # Use JSON format for test assertions
             }
 
             result = await analyze_scale_tool.execute(arguments)
@@ -472,7 +482,11 @@ if __name__ == "__main__":
         ) as mock_analyze:
             mock_analyze.return_value = self.create_mock_analysis_result("java")
 
-            arguments = {"file_path": str(java_file), "include_complexity": True}
+            arguments = {
+                "file_path": str(java_file),
+                "include_complexity": True,
+                "output_format": "json",  # Use JSON format for test assertions
+            }
 
             result = await analyze_scale_tool.execute(arguments)
 
@@ -495,7 +509,11 @@ if __name__ == "__main__":
         ) as mock_analyze:
             mock_analyze.return_value = self.create_mock_analysis_result("java")
 
-            arguments = {"file_path": str(java_file), "include_guidance": True}
+            arguments = {
+                "file_path": str(java_file),
+                "include_guidance": True,
+                "output_format": "json",  # Use JSON format for test assertions
+            }
 
             result = await analyze_scale_tool.execute(arguments)
 
@@ -625,7 +643,10 @@ if __name__ == "__main__":
         ) as mock_analyze:
             mock_analyze.return_value = self.create_mock_analysis_result("java")
 
-            arguments = {"file_path": str(java_file)}
+            arguments = {
+                "file_path": str(java_file),
+                "output_format": "json",  # Use JSON format for test assertions
+            }
 
             result = await analyze_scale_tool.execute(arguments)
 
@@ -684,6 +705,7 @@ if __name__ == "__main__":
                 "include_complexity": True,
                 "include_details": True,
                 "include_guidance": True,
+                "output_format": "json",  # Use JSON format for test assertions
             }
 
             result = await analyze_scale_tool.execute(arguments)

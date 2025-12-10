@@ -87,13 +87,14 @@ console.log(MathUtils.add(5, 3));
         """Test extract_code_section tool with file output functionality"""
         tool = ReadPartialTool(temp_dir)
 
-        # Test with file output enabled
+        # Test with file output enabled (use JSON output_format for test assertions)
         arguments = {
             "file_path": sample_python_file,
             "start_line": 1,
             "end_line": 4,
             "output_file": "extract_test",
             "suppress_output": False,
+            "output_format": "json",
         }
 
         result = await tool.execute(arguments)
@@ -125,13 +126,14 @@ console.log(MathUtils.add(5, 3));
         """Test extract_code_section tool with output suppression"""
         tool = ReadPartialTool(temp_dir)
 
-        # Test with output suppressed
+        # Test with output suppressed (use JSON output_format for test assertions)
         arguments = {
             "file_path": sample_python_file,
             "start_line": 6,
             "end_line": 10,
             "output_file": "extract_suppressed",
             "suppress_output": True,
+            "output_format": "json",
         }
 
         result = await tool.execute(arguments)
@@ -289,13 +291,14 @@ console.log(MathUtils.add(5, 3));
         ) as mock_execute:
             mock_execute.return_value = mock_results
 
-            # Test with summary format and file output
+            # Test with summary format and file output (use JSON output_format for assertions)
             arguments = {
                 "file_path": sample_python_file,
                 "query_key": "functions",
                 "result_format": "summary",  # result_format, not output_format
                 "output_file": "query_summary",
                 "suppress_output": False,
+                "output_format": "json",
             }
 
             result = await tool.execute(arguments)
@@ -385,6 +388,7 @@ console.log(MathUtils.add(5, 3));
                 "end_line": 4,
                 "output_file": "error_test",
                 "suppress_output": False,
+                "output_format": "json",  # Use JSON format for test assertions
             }
 
             result = await tool.execute(arguments)
