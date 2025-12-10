@@ -2,6 +2,30 @@
 
 ## [Unreleased]
 
+## [1.9.21] - 2025-12-10
+
+### 🚀 Breaking Changes
+
+#### Default Output Format Changed to TOON
+- **All MCP tools now default to TOON format** instead of JSON
+- TOON format provides 50-70% token reduction + ~10% additional savings from path normalization
+- To use JSON format, explicitly set `output_format: "json"`
+
+### ✨ New Features
+
+#### Path Normalization for Token Optimization
+- **Windows path normalization**: Backslashes (`\`) automatically converted to forward slashes (`/`)
+- **Additional ~10% token savings** for path-heavy outputs
+- Applied automatically in TOON format encoding
+- Strict path detection to avoid false positives (only file paths are normalized)
+
+### 📊 Token Savings Summary
+- **TOON format**: 50-70% reduction vs JSON
+- **Path normalization**: Additional ~10% reduction
+- **Combined**: Up to 75% total token savings for Windows file operations
+
+---
+
 ## [1.9.20] - 2025-12-10
 
 ### 🐛 Bug Fixes

@@ -94,8 +94,8 @@ class UniversalAnalyzeTool(BaseMCPTool):
                     "output_format": {
                         "type": "string",
                         "enum": ["json", "toon"],
-                        "description": "Output format: 'json' (default) or 'toon' (50-70% token reduction)",
-                        "default": "json",
+                        "description": "Output format: 'toon' (default, 50-70% token reduction) or 'json'",
+                        "default": "toon",
                     },
                 },
                 "required": ["file_path"],
@@ -125,7 +125,7 @@ class UniversalAnalyzeTool(BaseMCPTool):
         file_path = arguments["file_path"]
         language = arguments.get("language")
         analysis_type = arguments.get("analysis_type", "basic")
-        output_format = arguments.get("output_format", "json")
+        output_format = arguments.get("output_format", "toon")
 
         # Resolve file path to absolute path
         resolved_file_path = self.path_resolver.resolve(file_path)

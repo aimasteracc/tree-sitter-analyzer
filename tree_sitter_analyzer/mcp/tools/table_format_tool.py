@@ -96,8 +96,8 @@ class TableFormatTool(BaseMCPTool):
                 "output_format": {
                     "type": "string",
                     "enum": ["json", "toon"],
-                    "description": "Output format for metadata: 'json' (default) or 'toon' (50-70% token reduction)",
-                    "default": "json",
+                    "description": "Output format for metadata: 'toon' (default, 50-70% token reduction) or 'json'",
+                    "default": "toon",
                 },
             },
             "required": ["file_path"],
@@ -394,7 +394,7 @@ class TableFormatTool(BaseMCPTool):
             language = args.get("language")
             output_file = args.get("output_file")
             suppress_output = args.get("suppress_output", False)
-            output_format = args.get("output_format", "json")
+            output_format = args.get("output_format", "toon")
 
             # Security validation BEFORE path resolution to catch symlinks
             is_valid, error_msg = self.security_validator.validate_file_path(file_path)
