@@ -477,7 +477,7 @@ class TestWorkflowProperties:
         Property 9: Test Marker Consistency
 
         For any test execution command in any branch workflow, the pytest markers
-        should be identical (e.g., -m "not requires_ripgrep or not requires_fd").
+        should be identical (e.g., -m "not (requires_ripgrep or requires_fd)").
 
         Validates: Requirements 3.5
         """
