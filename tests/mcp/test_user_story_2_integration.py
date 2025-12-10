@@ -414,13 +414,14 @@ temp/
     @pytest.mark.asyncio
     async def test_extract_code_section_basic(self, extract_tool):
         """T010-1: extract_code_section基本機能テスト"""
-        # DataProcessorクラスの抽出
+        # DataProcessorクラスの抽出 (use JSON output_format for test assertions)
         result = await extract_tool.execute(
             {
                 "file_path": "src/main.py",
                 "start_line": 9,
                 "end_line": 20,
                 "format": "text",
+                "output_format": "json",
             }
         )
 
@@ -433,12 +434,14 @@ temp/
     @pytest.mark.asyncio
     async def test_extract_code_section_json_format(self, extract_tool):
         """T010-2: extract_code_section JSON形式出力テスト"""
+        # Use JSON output_format for test assertions
         result = await extract_tool.execute(
             {
                 "file_path": "src/main.py",
                 "start_line": 23,
                 "end_line": 30,
                 "format": "json",
+                "output_format": "json",
             }
         )
 
@@ -450,8 +453,9 @@ temp/
     @pytest.mark.asyncio
     async def test_list_files_basic_search(self, list_files_tool):
         """T010-3: list_files基本検索テスト"""
+        # Use JSON output_format for test assertions
         result = await list_files_tool.execute(
-            {"roots": ["."], "pattern": "*.py", "glob": True}
+            {"roots": ["."], "pattern": "*.py", "glob": True, "output_format": "json"}
         )
 
         assert result["success"] is True
@@ -465,12 +469,14 @@ temp/
     @pytest.mark.asyncio
     async def test_list_files_advanced_filtering(self, list_files_tool):
         """T010-4: list_files高度フィルタリングテスト"""
+        # Use JSON output_format for test assertions
         result = await list_files_tool.execute(
             {
                 "roots": ["src/", "tests/"],
                 "extensions": ["py", "js"],
                 "types": ["f"],
                 "exclude": ["__pycache__", "*.tmp"],
+                "output_format": "json",
             }
         )
 
@@ -484,7 +490,10 @@ temp/
     @pytest.mark.asyncio
     async def test_list_files_count_only(self, list_files_tool):
         """T010-5: list_filesカウントモードテスト"""
-        result = await list_files_tool.execute({"roots": ["."], "count_only": True})
+        # Use JSON output_format for test assertions
+        result = await list_files_tool.execute(
+            {"roots": ["."], "count_only": True, "output_format": "json"}
+        )
 
         assert result["success"] is True
         assert result["count_only"] is True
@@ -494,7 +503,10 @@ temp/
     @pytest.mark.asyncio
     async def test_search_content_basic(self, search_tool):
         """T010-6: search_content基本検索テスト"""
-        result = await search_tool.execute({"query": "class", "roots": ["src/"]})
+        # Use JSON output_format for test assertions
+        result = await search_tool.execute(
+            {"query": "class", "roots": ["src/"], "output_format": "json"}
+        )
 
         assert result["success"] is True
         assert result["count"] >= 2  # DataProcessor, FileManager
@@ -509,8 +521,14 @@ temp/
     @pytest.mark.asyncio
     async def test_search_content_regex_pattern(self, search_tool):
         """T010-7: search_content正規表現パターンテスト"""
+        # Use JSON output_format for test assertions
         result = await search_tool.execute(
-            {"query": "def\\s+\\w+\\(", "roots": ["src/"], "case": "sensitive"}
+            {
+                "query": "def\\s+\\w+\\(",
+                "roots": ["src/"],
+                "case": "sensitive",
+                "output_format": "json",
+            }
         )
 
         assert result["success"] is True
@@ -551,18 +569,23 @@ temp/
     ):
         """T010-10: ワークフロー統合テスト - ファイル発見→検索→抽出"""
 
-        # Step 1: Python ファイルを発見
+        # Step 1: Python ファイルを発見 (use JSON output_format for test assertions)
         files_result = await list_files_tool.execute(
-            {"roots": ["src/"], "extensions": ["py"], "types": ["f"]}
+            {
+                "roots": ["src/"],
+                "extensions": ["py"],
+                "types": ["f"],
+                "output_format": "json",
+            }
         )
 
         assert files_result["success"] is True
         python_files = [f["path"] for f in files_result["results"]]
         assert len(python_files) >= 1
 
-        # Step 2: クラス定義を検索
+        # Step 2: クラス定義を検索 (use JSON output_format for test assertions)
         search_result = await search_tool.execute(
-            {"query": "class\\s+\\w+", "files": python_files}
+            {"query": "class\\s+\\w+", "files": python_files, "output_format": "json"}
         )
 
         assert search_result["success"] is True
@@ -573,11 +596,13 @@ temp/
         class_file = class_match["file"]
         class_line = class_match["line"]
 
+        # Use JSON output_format for test assertions
         extract_result = await extract_tool.execute(
             {
                 "file_path": class_file,
                 "start_line": class_line,
                 "end_line": class_line + 10,
+                "output_format": "json",
             }
         )
 
@@ -588,9 +613,15 @@ temp/
     async def test_workflow_todo_analysis(self, search_tool, extract_tool):
         """T010-11: ワークフロー統合テスト - TODO分析"""
 
-        # Step 1: TODO項目を検索
+        # Step 1: TODO項目を検索 (use JSON output_format for test assertions)
         todo_result = await search_tool.execute(
-            {"query": "TODO", "roots": ["."], "context_before": 1, "context_after": 2}
+            {
+                "query": "TODO",
+                "roots": ["."],
+                "context_before": 1,
+                "context_after": 2,
+                "output_format": "json",
+            }
         )
 
         assert todo_result["success"] is True
@@ -601,13 +632,14 @@ temp/
             file_path = match["file"]
             line_num = match["line"]
 
-            # TODO周辺のより広いコンテキストを抽出
+            # TODO周辺のより広いコンテキストを抽出 (use JSON output_format)
             context_result = await extract_tool.execute(
                 {
                     "file_path": file_path,
                     "start_line": max(1, line_num - 3),
                     "end_line": line_num + 5,
                     "format": "text",
+                    "output_format": "json",
                 }
             )
 
@@ -620,12 +652,13 @@ temp/
     ):
         """T010-12: ワークフロー統合テスト - 設定ファイル分析"""
 
-        # Step 1: 設定ファイルを発見
+        # Step 1: 設定ファイルを発見 (use JSON output_format for test assertions)
         config_files = await list_files_tool.execute(
             {
                 "roots": ["config/"],
                 "extensions": ["json", "yaml", "yml", "toml"],
                 "types": ["f"],
+                "output_format": "json",
             }
         )
 
@@ -635,17 +668,18 @@ temp/
         # Step 2: 設定値を検索
         for config_file in config_files["results"]:
             if config_file["ext"] == "json":
-                # JSON設定ファイル内の特定設定を検索
+                # JSON設定ファイル内の特定設定を検索 (use JSON output_format)
                 setting_search = await search_tool.execute(
                     {
                         "query": '"debug"',
                         "files": [config_file["path"]],
                         "fixed_strings": True,
+                        "output_format": "json",
                     }
                 )
 
                 if setting_search["success"] and setting_search["count"] > 0:
-                    # 設定周辺のコンテキストを抽出
+                    # 設定周辺のコンテキストを抽出 (use JSON output_format)
                     match = setting_search["results"][0]
                     context = await extract_tool.execute(
                         {
@@ -653,6 +687,7 @@ temp/
                             "start_line": max(1, match["line"] - 2),
                             "end_line": match["line"] + 2,
                             "format": "text",
+                            "output_format": "json",
                         }
                     )
 
@@ -720,13 +755,14 @@ temp/
     ):
         """T010-15: ファイル出力統合テスト"""
 
-        # search_contentでファイル出力
+        # search_contentでファイル出力 (use JSON output_format for test assertions)
         search_result = await search_tool.execute(
             {
                 "query": "class",
                 "roots": ["src/"],
                 "output_file": "search_results",
                 "suppress_output": True,
+                "output_format": "json",
             }
         )
 
@@ -738,7 +774,7 @@ temp/
         assert "file_saved" in search_result
         assert search_result["output_file"] == "search_results"
 
-        # extract_code_sectionでファイル出力
+        # extract_code_sectionでファイル出力 (use JSON output_format for test assertions)
         extract_result = await extract_tool.execute(
             {
                 "file_path": "src/main.py",
@@ -746,6 +782,7 @@ temp/
                 "end_line": 20,
                 "output_file": "extracted_code",
                 "suppress_output": True,
+                "output_format": "json",
             }
         )
 
