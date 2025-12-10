@@ -268,7 +268,7 @@ if (typeof module !== 'undefined') {
             arguments = {
                 "file_path": str(python_file),
                 "query_key": "functions",
-                "output_format": "summary",
+                "result_format": "summary",
                 "output_file": "query_functions_summary",
                 "suppress_output": False,
             }
@@ -646,7 +646,7 @@ if (typeof module !== 'undefined') {
 
         # Check output_format parameter
         assert "output_format" in properties
-        assert properties["output_format"]["enum"] == ["json", "summary"]
+        assert properties["output_format"]["enum"] == ["json", "toon"]
         assert properties["output_format"]["default"] == "json"
 
     @pytest.mark.asyncio
@@ -720,7 +720,7 @@ if (typeof module !== 'undefined') {
                 "language": "python",
                 "query_key": "functions",
                 "filter": "name=~.*",
-                "output_format": "summary",
+                "result_format": "summary",
                 "output_file": "comprehensive_query",
                 "suppress_output": True,
             }
