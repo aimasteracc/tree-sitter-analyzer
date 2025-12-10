@@ -82,58 +82,62 @@ def nested_hello():
     async def test_basic_file_output(self, find_and_grep_tool, temp_project_dir):
         """Test basic file output functionality"""
         with patch(
-            "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture"
-        ) as mock_run:
-            # Mock fd output (file discovery)
-            fd_output = f"{temp_project_dir}/test1.py\n{temp_project_dir}/test2.js\n"
-            # Mock ripgrep output (content search)
-            rg_output = b"""{"type":"match","data":{"path":{"text":"test1.py"},"lines":{"text":"def hello_world():"},"line_number":2,"absolute_offset":1,"submatches":[{"match":{"text":"hello"},"start":4,"end":9}]}}
+            "tree_sitter_analyzer.mcp.tools.fd_rg_utils.get_missing_commands"
+        ) as mock_get_missing:
+            mock_get_missing.return_value = []
+            with patch(
+                "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture"
+            ) as mock_run:
+                # Mock fd output (file discovery)
+                fd_output = f"{temp_project_dir}/test1.py\n{temp_project_dir}/test2.js\n"
+                # Mock ripgrep output (content search)
+                rg_output = b"""{"type":"match","data":{"path":{"text":"test1.py"},"lines":{"text":"def hello_world():"},"line_number":2,"absolute_offset":1,"submatches":[{"match":{"text":"hello"},"start":4,"end":9}]}}
 {"type":"match","data":{"path":{"text":"test2.js"},"lines":{"text":"function helloWorld() {"},"line_number":1,"absolute_offset":0,"submatches":[{"match":{"text":"hello"},"start":9,"end":14}]}}
 """
 
-            # First call for fd, second call for rg
-            mock_run.side_effect = [
-                (0, fd_output.encode(), b""),  # fd result
-                (0, rg_output, b""),  # rg result
-            ]
+                # First call for fd, second call for rg
+                mock_run.side_effect = [
+                    (0, fd_output.encode(), b""),  # fd result
+                    (0, rg_output, b""),  # rg result
+                ]
 
-            arguments = {
-                "roots": [temp_project_dir],
-                "query": "hello",
-                "extensions": ["py", "js"],
-                "output_file": "find_grep_basic",
-                "suppress_output": False,
-                "output_format": "json",
-            }
+                arguments = {
+                    "roots": [temp_project_dir],
+                    "query": "hello",
+                    "extensions": ["py", "js"],
+                    "output_file": "find_grep_basic",
+                    "suppress_output": False,
+                    "output_format": "json",
+                }
 
-            result = await find_and_grep_tool.execute(arguments)
+                result = await find_and_grep_tool.execute(arguments)
 
-            # Check basic result structure
-            assert result["success"] is True
-            assert "count" in result
-            assert "results" in result
-            assert "meta" in result
+                # Check basic result structure
+                assert result["success"] is True
+                assert "count" in result
+                assert "results" in result
+                assert "meta" in result
 
-            # Check file output
-            assert "output_file" in result
-            assert "file_saved" in result
-            assert "Results saved to" in result["file_saved"]
+                # Check file output
+                assert "output_file" in result
+                assert "file_saved" in result
+                assert "Results saved to" in result["file_saved"]
 
-            # Extract and verify file path
-            file_path = result["file_saved"].split("Results saved to ")[1]
-            output_file = Path(file_path)
-            assert output_file.exists()
+                # Extract and verify file path
+                file_path = result["file_saved"].split("Results saved to ")[1]
+                output_file = Path(file_path)
+                assert output_file.exists()
 
-            # Verify file content
-            with open(output_file, encoding="utf-8") as f:
-                saved_content = json.loads(f.read())
+                # Verify file content
+                with open(output_file, encoding="utf-8") as f:
+                    saved_content = json.loads(f.read())
 
-            assert "success" in saved_content
-            assert "results" in saved_content
-            assert "count" in saved_content
-            assert "files" in saved_content
-            assert "summary" in saved_content
-            assert "meta" in saved_content
+                assert "success" in saved_content
+                assert "results" in saved_content
+                assert "count" in saved_content
+                assert "files" in saved_content
+                assert "summary" in saved_content
+                assert "meta" in saved_content
 
     @pytest.mark.asyncio
     async def test_suppress_output_functionality(
