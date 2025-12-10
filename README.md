@@ -4,20 +4,22 @@
 
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-6058%20passed-brightgreen.svg)](#-quality--testing)
+[![Tests](https://img.shields.io/badge/tests-6297%20passed-brightgreen.svg)](#-quality--testing)
 [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
-[![Version](https://img.shields.io/badge/version-1.9.18-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
+[![Version](https://img.shields.io/badge/version-1.9.19-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
 > 🚀 **Enterprise-Grade Code Analysis Tool for the AI Era** - Deep AI Integration · Powerful Search · 17 Languages · Intelligent Analysis
 
 ---
 
-## ✨ What's New in v1.9.18
+## ✨ What's New in v1.9.19
 
-- **New Languages**: C/C++ support added with full feature extraction for functions, structs, classes, enums, unions, and preprocessor directives
-- **6,058 tests** with 100% pass rate
+- **TOON Format Integration**: Token-optimized AI output format for significantly reduced token consumption (up to 70% savings)
+- **Enhanced MCP Tools**: All search and analysis tools now support TOON format output
+- **CLI TOON Support**: Full command-line support for TOON format across all commands
+- **6,297 tests** with 100% pass rate
 
 📖 **[Full Changelog](CHANGELOG.md)** for complete version history.
 

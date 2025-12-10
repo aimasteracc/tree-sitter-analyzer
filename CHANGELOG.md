@@ -2,6 +2,87 @@
 
 ## [Unreleased]
 
+## [1.9.19] - 2025-12-10
+
+### 🚀 New Features
+
+#### TOON Format Integration - Token-Optimized AI Output 🆕
+
+**TOON (Token-Optimized Output Notation) Format**:
+- **Significant Token Reduction**: Up to 70% savings in AI conversation token consumption
+- **AI-Native Design**: Optimized output format specifically designed for AI model consumption
+- **Human Readable**: Maintains readability while being compact and efficient
+- **Golden Master Tests**: 17 language-specific TOON format test files for regression testing
+
+**MCP Tool Enhancements**:
+- **query_tool**: Added `output_format` parameter supporting "json", "markdown", "toon" formats
+- **list_files_tool**: Added TOON format support for file listing output
+- **search_content_tool**: Added TOON format support for search results
+- **find_and_grep_tool**: Added TOON format support for grep results
+- **read_partial_tool**: Added TOON format support for partial file reading
+- **analyze_scale_tool**: Added TOON format support for code scale analysis
+- **table_format_tool**: Added TOON format support for table output
+- **universal_analyze_tool**: Added TOON format support for universal analysis
+
+**CLI Enhancements**:
+- **All Commands**: Added `--output-format toon` option across all CLI commands
+- **structure command**: Full TOON format support for code structure output
+- **summary command**: TOON format support for summary output
+- **query command**: TOON format support for query results
+- **advanced command**: TOON format support for advanced analysis
+- **partial-read command**: TOON format support for partial file reading
+- **table command**: TOON format support for table output
+
+**Technical Implementation**:
+- **ToonFormatter**: New formatter class for TOON format output generation
+- **ToonEncoder**: Comprehensive encoder for all data types (lists, dicts, code elements)
+- **format_helper.py**: Centralized format handling utilities for MCP tools
+- **Output Manager Integration**: Seamless integration with existing output management
+
+### 🧪 Testing & Quality
+
+- **Test Suite Expansion**: Test count reaches 6,297 tests (up from 6,058)
+  - Added comprehensive TOON formatter tests
+  - Added TOON encoder coverage boost tests
+  - Added MCP tools TOON integration tests
+  - Added CLI TOON integration tests
+  - Added error handling tests for TOON format
+  - Added Golden Master regression tests for 17 languages
+  - All tests pass with 100% success rate
+- **Documentation**: Added comprehensive TOON format guide in English and Japanese
+
+### 📚 Documentation
+
+- **TOON Format Guide**: Added `docs/toon-format-guide.md` (English)
+- **Japanese TOON Guide**: Added `docs/ja/toon-format-guide.md`
+- **Version Updates**: Updated all README files with v1.9.19 version information
+  - **English (README.md)**: Updated version badges and TOON feature description
+  - **Japanese (README_ja.md)**: Updated version information and TOON features
+  - **Chinese (README_zh.md)**: Updated version information and TOON features
+
+### 🔧 Technical Improvements
+
+- **Format Helper Module**: New `mcp/utils/format_helper.py` for centralized format handling
+- **Output Manager Enhancement**: Extended to support TOON format across all output paths
+- **Example Scripts**: Added `examples/toon_demo.py` and `examples/toon_token_benchmark.py`
+
+### 📊 Quality Metrics
+
+- **Tests**: 6,297 tests (100% pass rate)
+- **Coverage**: Codecov automatic monitoring
+- **Quality**: Enterprise-grade quality maintained
+- **Supported Languages**: 17 languages with TOON format support
+
+### 🎯 Impact
+
+This release introduces TOON (Token-Optimized Output Notation) format, a revolutionary output format designed specifically for AI model consumption. TOON format provides:
+- **70% token reduction** in typical code analysis outputs
+- **Improved AI context efficiency** for large codebase analysis
+- **Backward compatibility** with existing JSON and Markdown outputs
+- **Full integration** across all MCP tools and CLI commands
+
+---
+
 ## [1.9.18] - 2025-12-09
 
 ### 🏗️ CI/CD Improvements
