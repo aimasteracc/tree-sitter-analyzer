@@ -1,0 +1,83 @@
+file_path: examples/Sample.rb
+language: ruby
+package: null
+classes:
+  [5]{name,visibility,line_range(a,b)}:
+    Authentication,public,(5,139)
+    User,public,(9,88)
+    AdminUser,public,(91,116)
+    Session,public,(119,138)
+    UserRepository,public,(142,184)
+methods:
+  [33]{name,visibility,line_range(a,b)}:
+    User#username,public,(18,18)
+    User#email,public,(18,18)
+    User#id,public,(19,19)
+    User#created_at,public,(19,19)
+    User#password_hash,public,(20,20)
+    User#initialize,public,(26,33)
+    User#authenticate,public,(36,40)
+    User#update_profile,public,(43,47)
+    User#active?,public,(50,52)
+    User#deactivate!,public,(55,58)
+    User.instance_count,public,(61,63)
+    User.find_by_email,public,(66,69)
+    User.create_with_password,public,(72,76)
+    User#validate_email,public,(81,83)
+    User#generate_token,public,(85,87)
+    AdminUser#permissions,public,(92,92)
+    AdminUser#initialize,public,(94,97)
+    AdminUser#has_permission?,public,(99,101)
+    AdminUser#grant_permission,public,(103,105)
+    AdminUser#revoke_permission,public,(107,109)
+    AdminUser#update_profile,public,(112,115)
+    Session.start,public,(121,127)
+    Session.valid?,public,(130,132)
+    Session.generate_session_token,public,(135,137)
+    UserRepository#initialize,public,(143,146)
+    UserRepository#find,public,(148,154)
+    UserRepository#save,public,(156,162)
+    UserRepository#delete,public,(164,167)
+    UserRepository#insert,public,(171,176)
+    UserRepository#update,public,(178,183)
+    create_user,public,(187,189)
+    hash_password,public,(191,193)
+    with_transaction,public,(205,214)
+fields:
+  [25]{name,type,line_range(a,b)}:
+    "User::STATUS_ACTIVE",,(13,13)
+    "User::STATUS_INACTIVE",,(14,14)
+    "User::MAX_LOGIN_ATTEMPTS",,(15,15)
+    instance_count,,(23,23)
+    username,,(27,27)
+    email,,(28,28)
+    created_at,,(29,29)
+    password_hash,,(30,30)
+    last_login_at,,(31,31)
+    email,,(44,44)
+    username,,(45,45)
+    status,,(56,56)
+    deactivated_at,,(57,57)
+    user,,(73,73)
+    user.password_hash,,(74,74)
+    permissions,,(96,96)
+    permissions,,(114,114)
+    database,,(144,144)
+    cache,,(145,145)
+    user,,(151,151)
+    "cache[id]",,(152,152)
+    validate_email,,(196,196)
+    format_username,,(197,197)
+    log_action,,(200,202)
+    user,,(218,218)
+imports:
+  [3]{name,is_static,is_wildcard,statement,line_range(a,b)}:
+    date,false,false,,(1,1)
+    json,false,false,,(2,2)
+    concerns/timestampable,false,false,,(3,3)
+statistics:
+  class_count: 5
+  method_count: 33
+  field_count: 25
+  import_count: 3
+  total_lines: 0

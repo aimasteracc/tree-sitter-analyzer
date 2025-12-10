@@ -39,9 +39,9 @@ def _build_parser() -> argparse.ArgumentParser:
     # Output
     parser.add_argument(
         "--output-format",
-        choices=["json", "text"],
+        choices=["json", "text", "toon"],
         default="json",
-        help="Output format (default: json)",
+        help="Output format: 'json' (default), 'text', or 'toon' (50-70%% token reduction)",
     )
     parser.add_argument(
         "--quiet",

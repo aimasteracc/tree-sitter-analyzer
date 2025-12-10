@@ -147,20 +147,20 @@ class TestCLIAdvancedOptions:
 
         output = mock_stdout.getvalue()
 
-        # Parse the output to extract element counts
+        # Parse the output to extract element counts (text format without quotes)
         lines = output.split("\n")
         element_counts = {}
 
         for line in lines:
             line = line.strip()
-            if line.startswith('"Classes: '):
-                element_counts["classes"] = int(line.split(": ")[1].rstrip('"'))
-            elif line.startswith('"Methods: '):
-                element_counts["methods"] = int(line.split(": ")[1].rstrip('"'))
-            elif line.startswith('"Fields: '):
-                element_counts["fields"] = int(line.split(": ")[1].rstrip('"'))
-            elif line.startswith('"Imports: '):
-                element_counts["imports"] = int(line.split(": ")[1].rstrip('"'))
+            if line.startswith("Classes: "):
+                element_counts["classes"] = int(line.split(": ")[1])
+            elif line.startswith("Methods: "):
+                element_counts["methods"] = int(line.split(": ")[1])
+            elif line.startswith("Fields: "):
+                element_counts["fields"] = int(line.split(": ")[1])
+            elif line.startswith("Imports: "):
+                element_counts["imports"] = int(line.split(": ")[1])
 
         # Verify expected counts for the sample file
         assert (

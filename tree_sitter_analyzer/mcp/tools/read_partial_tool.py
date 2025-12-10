@@ -13,6 +13,7 @@ from typing import Any
 from ...file_handler import read_file_partial
 from ...utils import setup_logger
 from ..utils.file_output_manager import FileOutputManager
+from ..utils.format_helper import format_for_file_output
 from .base_tool import BaseMCPTool
 
 # Set up logging
@@ -82,6 +83,12 @@ class ReadPartialTool(BaseMCPTool):
                     "description": "When true and output_file is specified, suppress partial_content_result in response to save tokens",
                     "default": False,
                 },
+                "output_format": {
+                    "type": "string",
+                    "enum": ["json", "toon"],
+                    "description": "Output format: 'json' (default) or 'toon' (50-70% token reduction)",
+                    "default": "json",
+                },
             },
             "required": ["file_path", "start_line"],
         }
@@ -114,7 +121,8 @@ class ReadPartialTool(BaseMCPTool):
         end_column = arguments.get("end_column")
         output_file = arguments.get("output_file")
         suppress_output = arguments.get("suppress_output", False)
-        output_format = arguments.get("format", "text")
+        content_format = arguments.get("format", "text")
+        output_format = arguments.get("output_format", "json")
 
         # Security validation BEFORE path resolution to catch symlinks
         is_valid, error_msg = self.security_validator.validate_file_path(
@@ -269,7 +277,7 @@ class ReadPartialTool(BaseMCPTool):
 
                 # Only include partial_content_result if not suppressed or no output file specified
                 if not suppress_output or not output_file:
-                    if output_format == "json":
+                    if content_format == "json":
                         # For JSON format, return structured data with exact line count
                         lines = content.split("\n") if content else []
 
@@ -308,12 +316,17 @@ class ReadPartialTool(BaseMCPTool):
                             base_name = output_file
 
                         # Determine what content to save based on format preference
-                        if output_format == "raw":
+                        if content_format == "raw":
                             # Save only the extracted code content (no metadata)
                             content_to_save = content
-                        elif output_format == "json":
-                            # Save structured JSON data
-                            content_to_save = json_output
+                        elif content_format == "json":
+                            # Save structured JSON data (optionally in TOON format)
+                            if output_format == "toon":
+                                content_to_save, _ = format_for_file_output(
+                                    result_data, "toon"
+                                )
+                            else:
+                                content_to_save = json_output
                         else:  # format == "text" (default)
                             # Save CLI-compatible format with headers
                             content_to_save = cli_output

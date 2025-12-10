@@ -14,6 +14,7 @@ from typing import Any
 
 from ..utils.error_handler import handle_mcp_errors
 from ..utils.file_output_manager import FileOutputManager
+from ..utils.format_helper import format_for_file_output
 from ..utils.gitignore_detector import get_default_detector
 from . import fd_rg_utils
 from .base_tool import BaseMCPTool
@@ -216,6 +217,12 @@ class FindAndGrepTool(BaseMCPTool):
                         "type": "boolean",
                         "description": "When true and output_file is specified, suppress detailed output in response to save tokens",
                         "default": False,
+                    },
+                    "output_format": {
+                        "type": "string",
+                        "enum": ["json", "toon"],
+                        "description": "Output format: 'json' (default) or 'toon' (50-70% token reduction)",
+                        "default": "json",
                     },
                 },
                 "required": ["roots", "query"],
@@ -497,18 +504,17 @@ class FindAndGrepTool(BaseMCPTool):
                 # Handle output suppression and file output for grouped results
                 output_file = arguments.get("output_file")
                 suppress_output = arguments.get("suppress_output", False)
+                output_format = arguments.get("output_format", "json")
 
                 # Handle file output if requested
                 if output_file:
                     try:
-                        # Save full result to file
-                        import json
-
-                        json_content = json.dumps(
-                            grouped_result, indent=2, ensure_ascii=False
+                        # Format content based on output_format
+                        formatted_content, _ = format_for_file_output(
+                            grouped_result, output_format
                         )
                         file_path = self.file_output_manager.save_to_file(
-                            content=json_content, base_name=output_file
+                            content=formatted_content, base_name=output_file
                         )
 
                         # If suppress_output is True, return minimal response
@@ -560,16 +566,17 @@ class FindAndGrepTool(BaseMCPTool):
                 # Handle output suppression and file output for summary results
                 output_file = arguments.get("output_file")
                 suppress_output = arguments.get("suppress_output", False)
+                output_format = arguments.get("output_format", "json")
 
                 # Handle file output if requested
                 if output_file:
                     try:
-                        # Save full result to file
-                        import json
-
-                        json_content = json.dumps(result, indent=2, ensure_ascii=False)
+                        # Format content based on output_format
+                        formatted_content, _ = format_for_file_output(
+                            result, output_format
+                        )
                         file_path = self.file_output_manager.save_to_file(
-                            content=json_content, base_name=output_file
+                            content=formatted_content, base_name=output_file
                         )
 
                         # If suppress_output is True, return minimal response
@@ -620,6 +627,9 @@ class FindAndGrepTool(BaseMCPTool):
                 if not suppress_output or not output_file:
                     result["results"] = matches
 
+                # Get output format
+                output_format = arguments.get("output_format", "json")
+
                 # Handle file output if requested
                 if output_file:
                     try:
@@ -637,15 +647,12 @@ class FindAndGrepTool(BaseMCPTool):
                             "meta": result["meta"],
                         }
 
-                        # Convert to JSON for file output
-                        # Save full result to file using FileOutputManager
-                        import json
-
-                        json_content = json.dumps(
-                            file_content, indent=2, ensure_ascii=False
+                        # Format content based on output_format
+                        formatted_content, _ = format_for_file_output(
+                            file_content, output_format
                         )
                         file_path = self.file_output_manager.save_to_file(
-                            content=json_content, base_name=output_file
+                            content=formatted_content, base_name=output_file
                         )
 
                         # Check if suppress_output is enabled

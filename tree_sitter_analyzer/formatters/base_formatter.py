@@ -16,6 +16,30 @@ class BaseFormatter(ABC):
     def __init__(self) -> None:
         pass
 
+    def format(self, data: Any) -> str:
+        """
+        Unified format method for OutputManager compatibility.
+
+        This method provides a common interface that OutputManager can call
+        without needing to know the specific formatter implementation.
+
+        Default implementation delegates to format_structure for dict data.
+        Subclasses can override this to provide custom dispatching logic.
+
+        Args:
+            data: The data to format (AnalysisResult, dict, or other types)
+
+        Returns:
+            Formatted string representation
+        """
+        if isinstance(data, dict):
+            return self.format_structure(data)
+        else:
+            # Fallback: convert to string
+            import json
+
+            return json.dumps(data, indent=2, ensure_ascii=False)
+
     @abstractmethod
     def format_summary(self, analysis_result: dict[str, Any]) -> str:
         """Format summary output"""

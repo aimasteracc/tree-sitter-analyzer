@@ -92,6 +92,12 @@ class TableFormatTool(BaseMCPTool):
                     "suppress table_output in response to save tokens",
                     "default": False,
                 },
+                "output_format": {
+                    "type": "string",
+                    "enum": ["json", "toon"],
+                    "description": "Output format for metadata: 'json' (default) or 'toon' (50-70% token reduction)",
+                    "default": "json",
+                },
             },
             "required": ["file_path"],
             "additionalProperties": False,

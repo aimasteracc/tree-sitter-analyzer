@@ -14,6 +14,7 @@ from typing import Any
 
 from ..utils.error_handler import handle_mcp_errors
 from ..utils.file_output_manager import FileOutputManager
+from ..utils.format_helper import format_for_file_output
 from ..utils.gitignore_detector import get_default_detector
 from . import fd_rg_utils
 from .base_tool import BaseMCPTool
@@ -119,6 +120,12 @@ class ListFilesTool(BaseMCPTool):
                         "type": "boolean",
                         "description": "When true and output_file is specified, suppress detailed output in response to save tokens",
                         "default": False,
+                    },
+                    "output_format": {
+                        "type": "string",
+                        "enum": ["json", "toon"],
+                        "description": "Output format: 'json' (default) or 'toon' (50-70% token reduction)",
+                        "default": "json",
                     },
                 },
                 "required": ["roots"],
@@ -273,6 +280,7 @@ class ListFilesTool(BaseMCPTool):
             # Handle file output for count_only mode
             output_file = arguments.get("output_file")
             suppress_output = arguments.get("suppress_output", False)
+            output_format = arguments.get("output_format", "json")
 
             if output_file:
                 file_manager = FileOutputManager(self.project_root)
@@ -293,13 +301,12 @@ class ListFilesTool(BaseMCPTool):
                 }
 
                 try:
-                    import json
-
-                    json_content = json.dumps(
-                        file_content, indent=2, ensure_ascii=False
+                    # Format content based on output_format
+                    formatted_content, _ = format_for_file_output(
+                        file_content, output_format
                     )
                     saved_path = file_manager.save_to_file(
-                        content=json_content, base_name=output_file
+                        content=formatted_content, base_name=output_file
                     )
                     result["output_file"] = saved_path  # type: ignore[assignment]
 
@@ -361,6 +368,7 @@ class ListFilesTool(BaseMCPTool):
         # Handle file output for detailed results
         output_file = arguments.get("output_file")
         suppress_output = arguments.get("suppress_output", False)
+        output_format = arguments.get("output_format", "json")
 
         if output_file:
             file_manager = FileOutputManager(self.project_root)
@@ -390,11 +398,12 @@ class ListFilesTool(BaseMCPTool):
             }
 
             try:
-                import json
-
-                json_content = json.dumps(file_content, indent=2, ensure_ascii=False)
+                # Format content based on output_format
+                formatted_content, _ = format_for_file_output(
+                    file_content, output_format
+                )
                 saved_path = file_manager.save_to_file(
-                    content=json_content, base_name=output_file
+                    content=formatted_content, base_name=output_file
                 )
                 final_result["output_file"] = saved_path
 

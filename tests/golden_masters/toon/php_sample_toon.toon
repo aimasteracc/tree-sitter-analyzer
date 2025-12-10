@@ -1,0 +1,51 @@
+file_path: examples/Sample.php
+language: php
+package: null
+classes:
+  [5]{name,visibility,line_range(a,b)}:
+    "App\\Models\\User",public,(13,120)
+    "App\\Models\\AdminUser",public,(125,146)
+    "App\\Models\\UserRepositoryInterface",public,(151,156)
+    "App\\Models\\Loggable",public,(161,177)
+    "App\\Models\\UserStatus",public,(182,198)
+methods:
+  [21]{name,visibility,line_range(a,b)}:
+    "User::__construct",public,(36,42)
+    "User::getId",public,(47,50)
+    "User::setId",public,(55,58)
+    "User::getUsername",public,(63,66)
+    "User::authenticate",public,(71,75)
+    "User::updateProfile",public,(80,86)
+    "User::__get",public,(91,94)
+    "User::__set",public,(99,102)
+    "User::getInstanceCount",public,(107,110)
+    "User::findByEmail",public,(115,119)
+    "AdminUser::__construct",public,(129,133)
+    "AdminUser::hasPermission",public,(135,138)
+    "AdminUser::grantPermission",public,(140,145)
+    "UserRepositoryInterface::find",public,(153,153)
+    "UserRepositoryInterface::save",public,(154,154)
+    "UserRepositoryInterface::delete",public,(155,155)
+    "Loggable::log",public,(165,171)
+    "Loggable::getLogs",public,(173,176)
+    label,public,(189,197)
+    "App\\Models\\createUser",public,(203,206)
+    "App\\Models\\hashPassword",public,(211,214)
+fields:
+  [9]{name,type,line_range(a,b)}:
+    "User::id",,(25,25)
+    "User::username",,(26,26)
+    "User::email",,(27,27)
+    "User::passwordHash",,(28,28)
+    "User::createdAt",,(29,29)
+    "User::lastLoginAt",,(30,30)
+    "User::instanceCount",,(31,31)
+    "AdminUser::permissions",,(127,127)
+    "Loggable::logs",,(163,163)
+imports: []
+statistics:
+  class_count: 5
+  method_count: 21
+  field_count: 9
+  import_count: 0
+  total_lines: 0

@@ -26,6 +26,16 @@ from .error_handler import (
     handle_mcp_errors,
 )
 
+# Export format helper utilities
+from .format_helper import (
+    apply_output_format,
+    format_as_json,
+    format_as_toon,
+    format_for_file_output,
+    format_output,
+    get_formatter,
+)
+
 # Export path resolver utilities
 from .path_resolver import PathResolver, resolve_path
 
@@ -105,6 +115,13 @@ __all__ = [
     # Path resolution
     "PathResolver",
     "resolve_path",
+    # Format helpers
+    "format_output",
+    "format_as_json",
+    "format_as_toon",
+    "format_for_file_output",
+    "apply_output_format",
+    "get_formatter",
     # Backward compatibility
     "get_cache_manager",
     "get_performance_monitor",

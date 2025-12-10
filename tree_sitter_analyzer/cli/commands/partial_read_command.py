@@ -11,6 +11,14 @@ from ...file_handler import read_file_partial
 from ...output_manager import output_data, output_json, output_section
 from .base_command import BaseCommand
 
+# TOON formatter for CLI output
+try:
+    from ...formatters.toon_formatter import ToonFormatter
+
+    _toon_available = True
+except ImportError:
+    _toon_available = False
+
 if TYPE_CHECKING:
     pass
 
@@ -123,6 +131,11 @@ class PartialReadCommand(BaseCommand):
         if output_format == "json":
             # Pure JSON output
             output_json(result_data)
+        elif output_format == "toon" and _toon_available:
+            # TOON output
+            use_tabs = getattr(self.args, "toon_use_tabs", False)
+            formatter = ToonFormatter(use_tabs=use_tabs)
+            print(formatter.format(result_data))
         else:
             # Human-readable format with header
             output_section("Partial Read Result")

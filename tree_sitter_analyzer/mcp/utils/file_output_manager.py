@@ -143,7 +143,7 @@ class FileOutputManager:
             content: Content to analyze
 
         Returns:
-            Detected content type ('json', 'csv', 'markdown', or 'text')
+            Detected content type ('json', 'csv', 'markdown', 'toon', or 'text')
         """
         content_stripped = content.strip()
 
@@ -154,6 +154,14 @@ class FileOutputManager:
                 return "json"
             except (json.JSONDecodeError, ValueError):
                 pass
+
+        # Check for TOON format (YAML-like with array table syntax)
+        # TOON characteristics:
+        # - Lines with "key: value" format (YAML-like)
+        # - Array table headers like "[count]{schema}:"
+        # - No JSON braces/brackets at start
+        if self._is_toon_format(content_stripped):
+            return "toon"
 
         # Check for CSV (simple heuristic)
         lines = content_stripped.split("\n")
@@ -187,12 +195,56 @@ class FileOutputManager:
         # Default to text
         return "text"
 
+    def _is_toon_format(self, content: str) -> bool:
+        """
+        Detect if content is in TOON format.
+
+        TOON format characteristics:
+        - Lines with "key: value" format (YAML-like)
+        - Array table headers like "[count]{schema}:"
+        - No JSON braces/brackets at start
+
+        Args:
+            content: Content to check
+
+        Returns:
+            True if content appears to be TOON format
+        """
+        import re
+
+        lines = content.split("\n")
+        if not lines:
+            return False
+
+        # TOON array table pattern: [count]{field1,field2,...}:
+        toon_array_pattern = re.compile(r"^\s*\[\d+\]\{[^}]+\}:\s*$")
+
+        # TOON key-value pattern: key: value (but not JSON-like)
+        toon_kv_pattern = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*:\s*.+$")
+
+        toon_indicators = 0
+        for line in lines[:20]:  # Check first 20 lines
+            line = line.strip()
+            if not line:
+                continue
+
+            # Check for TOON array table header
+            if toon_array_pattern.match(line):
+                return True  # Strong indicator
+
+            # Check for TOON key-value format
+            if toon_kv_pattern.match(line):
+                toon_indicators += 1
+
+        # If we have multiple key-value lines and no JSON indicators, likely TOON
+        return toon_indicators >= 2
+
     def get_file_extension(self, content_type: str) -> str:
         """
         Get file extension for content type.
 
         Args:
-            content_type: Content type ('json', 'csv', 'markdown', 'text')
+            content_type: Content type ('json', 'csv', 'markdown', 'toon', 'text')
 
         Returns:
             File extension including the dot
@@ -201,6 +253,7 @@ class FileOutputManager:
             "json": ".json",
             "csv": ".csv",
             "markdown": ".md",
+            "toon": ".toon",
             "text": ".txt",
         }
         return extension_map.get(content_type, ".txt")
