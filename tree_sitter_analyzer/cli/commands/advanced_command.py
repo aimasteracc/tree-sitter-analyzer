@@ -17,6 +17,14 @@ from ...constants import (
 from ...output_manager import output_data, output_json, output_section
 from .base_command import BaseCommand
 
+# TOON formatter for CLI output
+try:
+    from ...formatters.toon_formatter import ToonFormatter
+
+    _toon_available = True
+except ImportError:
+    _toon_available = False
+
 if TYPE_CHECKING:
     from ...models import AnalysisResult
 
@@ -151,6 +159,10 @@ class AdvancedCommand(BaseCommand):
         output_section("Statistics")
         if self.args.output_format == "json":
             output_json(stats)
+        elif self.args.output_format == "toon" and _toon_available:
+            use_tabs = getattr(self.args, "toon_use_tabs", False)
+            formatter = ToonFormatter(use_tabs=use_tabs)
+            print(formatter.format(stats))
         else:
             for key, value in stats.items():
                 output_data(f"{key}: {value}")
@@ -158,26 +170,30 @@ class AdvancedCommand(BaseCommand):
     def _output_full_analysis(self, analysis_result: "AnalysisResult") -> None:
         """Output full analysis results."""
         output_section("Advanced Analysis Results")
+        result_dict = {
+            "file_path": analysis_result.file_path,
+            "language": analysis_result.language,
+            "line_count": analysis_result.line_count,
+            "element_count": len(analysis_result.elements),
+            "node_count": analysis_result.node_count,
+            "elements": [
+                {
+                    "name": getattr(element, "name", str(element)),
+                    "type": get_element_type(element),
+                    "start_line": getattr(element, "start_line", 0),
+                    "end_line": getattr(element, "end_line", 0),
+                }
+                for element in analysis_result.elements
+            ],
+            "success": analysis_result.success,
+            "analysis_time": analysis_result.analysis_time,
+        }
         if self.args.output_format == "json":
-            result_dict = {
-                "file_path": analysis_result.file_path,
-                "language": analysis_result.language,
-                "line_count": analysis_result.line_count,
-                "element_count": len(analysis_result.elements),
-                "node_count": analysis_result.node_count,
-                "elements": [
-                    {
-                        "name": getattr(element, "name", str(element)),
-                        "type": get_element_type(element),
-                        "start_line": getattr(element, "start_line", 0),
-                        "end_line": getattr(element, "end_line", 0),
-                    }
-                    for element in analysis_result.elements
-                ],
-                "success": analysis_result.success,
-                "analysis_time": analysis_result.analysis_time,
-            }
             output_json(result_dict)
+        elif self.args.output_format == "toon" and _toon_available:
+            use_tabs = getattr(self.args, "toon_use_tabs", False)
+            formatter = ToonFormatter(use_tabs=use_tabs)
+            print(formatter.format(result_dict))
         else:
             self._output_text_analysis(analysis_result)
 

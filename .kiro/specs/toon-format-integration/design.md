@@ -396,24 +396,29 @@ use_tabs=True の場合、スキーマヘッダーと値行の両方でタブ区
 
 ### 現在の実装状態
 
-現在の実装では、基本的なエラーハンドリングのみが実装されています。
+堅牢なエラーハンドリングが実装されています。
 
 | 機能 | 状態 |
 |------|------|
 | 基本的な型変換 | ✅ 実装済み |
 | 空データ処理 | ✅ 実装済み |
-| ToonEncodeError例外 | ❌ 未実装 |
-| JSONフォールバック | ❌ 未実装 |
-| 循環参照検出 | ❌ 未実装 |
+| ToonEncodeError例外 | ✅ 実装済み |
+| JSONフォールバック | ✅ 実装済み |
+| 循環参照検出 | ✅ 実装済み |
+| 最大ネスト深度制限 | ✅ 実装済み (default: 100) |
+| イテレーティブ実装 | ✅ 実装済み（再帰を排除） |
 
-### 計画中のエラーハンドリング
+### エラーハンドリング実装
 
-#### ToonEncodeError 例外（未実装）
+#### ToonEncodeError 例外
 
 ```python
 class ToonEncodeError(Exception):
-    """TOON encoding error"""
-    pass
+    """TOON encoding error with detailed context"""
+    def __init__(self, message: str, path: list[str] | None = None, value: Any = None):
+        self.path = path or []
+        self.value = value
+        super().__init__(message)
 
 # 使用例
 try:
@@ -423,15 +428,15 @@ except ToonEncodeError as e:
     output = json.dumps(data)
 ```
 
-#### 未サポートのデータ型（計画）
+#### 未サポートのデータ型
 
 - カスタムクラス: `str()` 変換を試行
 - バイナリデータ: Base64エンコード
 - 循環参照: `ToonEncodeError` を送出
 
-#### フォールバック動作（計画）
+#### フォールバック動作
 
-1. TOON エンコード失敗 → JSON フォールバック
+1. TOON エンコード失敗 → JSON フォールバック（自動）
 2. 不正な形式指定 → `ValueError` を送出
 3. 空データ → 空文字列を返す
 
@@ -499,11 +504,12 @@ tests/
 
 | 最適化戦略 | 状態 | 説明 |
 |-----------|------|------|
-| 基本エンコード | ✅ 実装済み | 再帰的エンコード処理 |
+| イテレーティブ実装 | ✅ 実装済み | 明示的スタックで再帰を排除 |
 | スキーマ推論 | ✅ 実装済み | 最初のアイテムからスキーマを推論 |
-| スキーマキャッシング | ❌ 未実装 | 同型配列のスキーマ推論結果をキャッシュ |
-| ストリーミング | ❌ 未実装 | 大規模データセット用の `encode_lines()` ジェネレータ |
-| 遅延評価 | ❌ 未実装 | 必要になるまでフォーマット変換を遅延 |
+| メモリ効率 | ✅ 実装済み | 明示的スタックで使用量を予測可能に |
+| スキーマキャッシング | ❌ 未実装（オプション） | 同型配列のスキーマ推論結果をキャッシュ |
+| ストリーミング | ❌ 未実装（オプション） | 大規模データセット用の `encode_lines()` ジェネレータ |
+| 遅延評価 | ❌ 未実装（オプション） | 必要になるまでフォーマット変換を遅延 |
 
 ### ベンチマーク目標
 
@@ -519,19 +525,30 @@ tests/
 
 | コンポーネント | ファイル | 状態 |
 |---------------|---------|------|
-| ToonEncoder | `formatters/toon_encoder.py` | ✅ 実装済み |
+| ToonEncoder | `formatters/toon_encoder.py` | ✅ 実装済み（イテレーティブ実装） |
 | ToonFormatter | `formatters/toon_formatter.py` | ✅ 実装済み |
 | BaseFormatter拡張 | `formatters/base_formatter.py` | ✅ 更新済み |
 | OutputManager統合 | `output_manager.py` | ✅ 更新済み |
-| 統合テスト | `test_toon_formatter_integration.py` | ✅ 37 tests |
+| ToonEncodeError例外 | `formatters/toon_encoder.py` | ✅ 実装済み |
+| JSONフォールバック | `formatters/toon_formatter.py` | ✅ 実装済み |
+| 循環参照検出 | `formatters/toon_encoder.py` | ✅ 実装済み |
+| 最大ネスト深度制限 | `formatters/toon_encoder.py` | ✅ 実装済み |
+| MCP Tools統合 | `mcp/tools/*.py` (8ツール) | ✅ 実装済み |
+| CLI統合 | `cli_main.py`, `cli/commands/*.py` | ✅ 実装済み |
+| 統合テスト (基礎) | `test_toon_formatter_integration.py` | ✅ 37 tests |
+| エラーハンドリングテスト | `test_toon_error_handling.py` | ✅ 23 tests |
+| MCP統合テスト | `mcp/test_toon_mcp_integration.py` | ✅ 24 tests |
+| CLI統合テスト | `cli/test_toon_cli_integration.py` | ✅ 14 tests |
+| ゴールデンマスタテスト | `golden_masters/toon/` | ✅ 18言語対応 |
+| ドキュメント（英語） | `docs/toon-format-guide.md` | ✅ 作成済み |
+| ドキュメント（日本語） | `docs/ja/toon-format-guide.md` | ✅ 作成済み |
+| デモスクリプト | `examples/toon_demo.py` | ✅ 作成済み |
+| ベンチマーク | `examples/toon_token_benchmark.py` | ✅ 50.6%削減達成 |
 
-### 未完了項目 ❌
+### 未完了項目 ❌ （オプション）
 
 | コンポーネント | 状態 |
 |---------------|------|
-| ToonEncodeError例外 | ❌ 未実装 |
-| JSONフォールバック | ❌ 未実装 |
-| 循環参照検出 | ❌ 未実装 |
-| パフォーマンス最適化 | ❌ 未実装 |
-| MCP Tools統合 | ❌ 未着手 |
-| CLI統合 | ❌ 未着手 |
+| スキーマキャッシング | ❌ 未実装（オプション） |
+| ストリーミングエンコード | ❌ 未実装（オプション） |
+| 遅延評価 | ❌ 未実装（オプション） |

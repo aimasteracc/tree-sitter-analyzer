@@ -18,6 +18,14 @@ from ...constants import (
 from ...output_manager import output_data, output_json, output_section
 from .base_command import BaseCommand
 
+# TOON formatter for CLI output
+try:
+    from ...formatters.toon_formatter import ToonFormatter
+
+    _toon_available = True
+except ImportError:
+    _toon_available = False
+
 if TYPE_CHECKING:
     from ...models import AnalysisResult
 
@@ -42,6 +50,10 @@ class StructureCommand(BaseCommand):
 
         if self.args.output_format == "json":
             output_json(structure_dict)
+        elif self.args.output_format == "toon" and _toon_available:
+            use_tabs = getattr(self.args, "toon_use_tabs", False)
+            formatter = ToonFormatter(use_tabs=use_tabs)
+            print(formatter.format(structure_dict))
         else:
             self._output_text_format(structure_dict)
 
@@ -82,27 +94,57 @@ class StructureCommand(BaseCommand):
             "package": (
                 {
                     "name": packages[0].name,
-                    "line_range": {
-                        "start": packages[0].start_line,
-                        "end": packages[0].end_line,
-                    },
+                    "line_range": (
+                        packages[0].start_line,
+                        packages[0].end_line,
+                    ),
                 }
                 if packages
                 else None
             ),
-            "classes": [{"name": getattr(c, "name", "unknown")} for c in classes],
-            "methods": [{"name": getattr(m, "name", "unknown")} for m in methods],
-            "fields": [{"name": getattr(f, "name", "unknown")} for f in fields],
+            "classes": [
+                {
+                    "name": getattr(c, "name", "unknown"),
+                    "visibility": getattr(c, "visibility", ""),
+                    "line_range": (
+                        getattr(c, "start_line", 0),
+                        getattr(c, "end_line", 0),
+                    ),
+                }
+                for c in classes
+            ],
+            "methods": [
+                {
+                    "name": getattr(m, "name", "unknown"),
+                    "visibility": getattr(m, "visibility", ""),
+                    "line_range": (
+                        getattr(m, "start_line", 0),
+                        getattr(m, "end_line", 0),
+                    ),
+                }
+                for m in methods
+            ],
+            "fields": [
+                {
+                    "name": getattr(f, "name", "unknown"),
+                    "type": getattr(f, "type_annotation", ""),
+                    "line_range": (
+                        getattr(f, "start_line", 0),
+                        getattr(f, "end_line", 0),
+                    ),
+                }
+                for f in fields
+            ],
             "imports": [
                 {
                     "name": getattr(i, "name", "unknown"),
                     "is_static": getattr(i, "is_static", False),
                     "is_wildcard": getattr(i, "is_wildcard", False),
                     "statement": getattr(i, "import_statement", ""),
-                    "line_range": {
-                        "start": getattr(i, "start_line", 0),
-                        "end": getattr(i, "end_line", 0),
-                    },
+                    "line_range": (
+                        getattr(i, "start_line", 0),
+                        getattr(i, "end_line", 0),
+                    ),
                 }
                 for i in imports
             ],

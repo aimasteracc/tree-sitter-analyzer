@@ -614,7 +614,7 @@ asyncio.run(main())
             {
                 "file_path": "src/DataManager.ts",
                 "query_key": "interfaces",
-                "output_format": "summary",
+                "result_format": "summary",  # result_format, not output_format
             }
         )
 
@@ -746,7 +746,7 @@ asyncio.run(main())
                 "file_path": relative_path,
                 "language": "python",
                 "query_key": "functions",
-                "output_format": "summary",
+                "result_format": "summary",  # result_format, not output_format
             }
         )
 
@@ -807,7 +807,7 @@ asyncio.run(main())
                 {
                     "file_path": case["file"],
                     "query_key": case["query"],
-                    "output_format": "summary",
+                    "result_format": "summary",  # result_format, not output_format
                 }
             )
 
@@ -907,7 +907,7 @@ asyncio.run(main())
             {
                 "file_path": "docs/API_Reference.md",
                 "query_key": "headers",
-                "output_format": "summary",
+                "result_format": "summary",  # result_format, not output_format
             }
         )
 
@@ -975,7 +975,7 @@ asyncio.run(main())
             {
                 "file_path": "src/analytics_engine.py",
                 "query_key": "classes",
-                "output_format": "summary",
+                "result_format": "summary",  # result_format, not output_format
             }
         )
 

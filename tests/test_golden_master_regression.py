@@ -427,5 +427,220 @@ class TestGoldenMasterRegression:
         assert "| Test | class | public |" in output
 
 
+class TestToonGoldenMasterRegression:
+    """TOON フォーマットゴールデンマスターリグレッションテスト"""
+
+    @staticmethod
+    def run_toon_analyzer(input_file: str) -> str:
+        """TOON フォーマットでアナライザーを実行 (--table toon)"""
+        import sys
+
+        python_exe = sys.executable
+        cmd = [
+            python_exe,
+            "-m",
+            "tree_sitter_analyzer",
+            input_file,
+            "--table",
+            "toon",
+        ]
+
+        result = subprocess.run(
+            cmd, capture_output=True, text=True, encoding="utf-8", check=True
+        )
+        return result.stdout
+
+    @staticmethod
+    def normalize_toon_output(content: str) -> str:
+        """
+        TOON 出力を正規化して、可変部分を除去
+        """
+        import re
+
+        # 改行コードを統一
+        content = content.replace("\r\n", "\n")
+        content = content.rstrip("\n") + "\n"
+
+        lines = content.split("\n")
+        normalized = []
+
+        for line in lines:
+            line = line.rstrip()
+
+            # タイムスタンプを正規化
+            if "timestamp:" in line:
+                line = re.sub(r"timestamp: [\d.]+", "timestamp: <NORMALIZED>", line)
+
+            # analysis_time を正規化
+            if "analysis_time:" in line:
+                line = re.sub(
+                    r"analysis_time: [\d.]+", "analysis_time: <NORMALIZED>", line
+                )
+
+            normalized.append(line)
+
+        return "\n".join(normalized).rstrip("\n") + "\n"
+
+    def compare_toon_golden_master(
+        self, input_file: str, golden_name: str
+    ) -> tuple[bool, str]:
+        """TOON ゴールデンマスターとの比較"""
+        golden_path = Path("tests/golden_masters/toon") / f"{golden_name}_toon.toon"
+
+        if not golden_path.exists():
+            return False, f"Golden master not found: {golden_path}"
+
+        golden_content = golden_path.read_text(encoding="utf-8")
+
+        try:
+            current_content = self.run_toon_analyzer(input_file)
+        except subprocess.CalledProcessError as e:
+            return False, f"Failed to run analyzer: {e}"
+
+        golden_normalized = self.normalize_toon_output(golden_content)
+        current_normalized = self.normalize_toon_output(current_content)
+
+        if golden_normalized == current_normalized:
+            return True, "Output matches golden master"
+        else:
+            # 差分を生成
+            diff_lines = []
+            golden_lines = golden_normalized.split("\n")
+            current_lines = current_normalized.split("\n")
+
+            max_lines = max(len(golden_lines), len(current_lines))
+            diff_count = 0
+
+            for i in range(max_lines):
+                if i >= len(golden_lines) or i >= len(current_lines):
+                    diff_count += 1
+                elif golden_lines[i] != current_lines[i]:
+                    diff_count += 1
+
+            diff_shown = 0
+            for i in range(max_lines):
+                if i >= len(golden_lines):
+                    if diff_shown < 20:
+                        diff_lines.append(f"Line {i + 1}: + {current_lines[i]!r}")
+                        diff_shown += 1
+                elif i >= len(current_lines):
+                    if diff_shown < 20:
+                        diff_lines.append(f"Line {i + 1}: - {golden_lines[i]!r}")
+                        diff_shown += 1
+                elif golden_lines[i] != current_lines[i]:
+                    if diff_shown < 20:
+                        diff_lines.append(f"Line {i + 1}:")
+                        diff_lines.append(f"  Golden: {golden_lines[i]!r}")
+                        diff_lines.append(f"  Current: {current_lines[i]!r}")
+                        diff_shown += 1
+
+            if diff_count > 20:
+                diff_lines.append(f"... ({diff_count - 20} more differences)")
+
+            diff_message = (
+                f"TOON output differs from golden master ({diff_count} differences):\n"
+                f"Golden lines: {len(golden_lines)}, Current lines: {len(current_lines)}\n"
+            )
+            diff_message += "\n".join(diff_lines)
+
+            return False, diff_message
+
+    @pytest.mark.parametrize(
+        "input_file,golden_name",
+        [
+            # Python tests
+            ("examples/sample.py", "python_sample"),
+            # Java tests
+            ("examples/Sample.java", "java_sample"),
+            ("examples/BigService.java", "java_bigservice"),
+            # TypeScript tests
+            ("tests/test_data/test_enum.ts", "typescript_enum"),
+            # JavaScript tests
+            ("tests/test_data/test_class.js", "javascript_class"),
+            # Go tests
+            ("examples/sample.go", "go_sample"),
+            # Rust tests
+            ("examples/sample.rs", "rust_sample"),
+            # Kotlin tests
+            ("examples/Sample.kt", "kotlin_sample"),
+            # C# tests
+            ("examples/Sample.cs", "csharp_sample"),
+            # PHP tests
+            ("examples/Sample.php", "php_sample"),
+            # Ruby tests
+            ("examples/Sample.rb", "ruby_sample"),
+            # C tests
+            ("examples/sample.c", "c_sample"),
+            # C++ tests
+            ("examples/sample.cpp", "cpp_sample"),
+            # YAML tests
+            ("examples/sample_config.yaml", "yaml_sample_config"),
+            # HTML tests
+            ("examples/comprehensive_sample.html", "html_comprehensive_sample"),
+            # CSS tests
+            ("examples/comprehensive_sample.css", "css_comprehensive_sample"),
+            # Markdown tests
+            ("examples/test_markdown.md", "markdown_test"),
+            # SQL tests
+            ("examples/sample_database.sql", "sql_sample_database"),
+        ],
+    )
+    def test_toon_golden_master_comparison(self, input_file: str, golden_name: str):
+        """TOON ゴールデンマスターとの比較テスト"""
+        input_path = Path(input_file)
+
+        if not input_path.exists():
+            pytest.skip(f"Input file not found: {input_file}")
+
+        matches, message = self.compare_toon_golden_master(input_file, golden_name)
+
+        assert matches, message
+
+    def test_toon_format_consistency(self):
+        """TOON フォーマットの一貫性を確認"""
+        output = self.run_toon_analyzer("examples/sample.py")
+
+        # TOON フォーマットの特徴を確認
+        assert "file_path:" in output, "Should have file_path key"
+        assert "language:" in output, "Should have language key"
+        assert "classes:" in output, "Should have classes section"
+        assert "methods:" in output, "Should have methods section"
+        assert "{name," in output, "Should use array table format with schema"
+        assert "line_range(a,b)" in output, "Should have compact line_range format"
+
+    def test_toon_token_reduction(self):
+        """TOON フォーマットのトークン削減を確認"""
+
+        # JSON 出力を取得
+        import sys
+
+        python_exe = sys.executable
+        json_cmd = [
+            python_exe,
+            "-m",
+            "tree_sitter_analyzer",
+            "examples/sample.py",
+            "--structure",
+            "--format",
+            "json",
+        ]
+        json_result = subprocess.run(
+            json_cmd, capture_output=True, text=True, encoding="utf-8", check=True
+        )
+        json_output = json_result.stdout
+
+        # TOON 出力を取得
+        toon_output = self.run_toon_analyzer("examples/sample.py")
+
+        # トークン削減率を計算（文字数ベース）
+        json_chars = len(json_output)
+        toon_chars = len(toon_output)
+
+        reduction = (1 - toon_chars / json_chars) * 100 if json_chars else 0
+
+        # 少なくとも 20% の削減があることを確認
+        assert reduction > 20, f"Token reduction should be > 20%, got {reduction:.1f}%"
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

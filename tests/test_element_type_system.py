@@ -133,20 +133,20 @@ public class SampleClass {
 
         output = mock_stdout.getvalue()
 
-        # Parse element counts from output
+        # Parse element counts from output (text format without quotes)
         lines = output.split("\n")
         element_counts = {}
 
         for line in lines:
             line = line.strip()
-            if line.startswith('"Classes: '):
-                element_counts["classes"] = int(line.split(": ")[1].rstrip('"'))
-            elif line.startswith('"Methods: '):
-                element_counts["methods"] = int(line.split(": ")[1].rstrip('"'))
-            elif line.startswith('"Fields: '):
-                element_counts["fields"] = int(line.split(": ")[1].rstrip('"'))
-            elif line.startswith('"Imports: '):
-                element_counts["imports"] = int(line.split(": ")[1].rstrip('"'))
+            if line.startswith("Classes: "):
+                element_counts["classes"] = int(line.split(": ")[1])
+            elif line.startswith("Methods: "):
+                element_counts["methods"] = int(line.split(": ")[1])
+            elif line.startswith("Fields: "):
+                element_counts["fields"] = int(line.split(": ")[1])
+            elif line.startswith("Imports: "):
+                element_counts["imports"] = int(line.split(": ")[1])
 
         # Verify expected counts for the sample file
         assert (
@@ -253,22 +253,22 @@ public class SampleClass {
 
         advanced_output = mock_stdout.getvalue()
 
-        # Parse advanced output
+        # Parse advanced output (text format without quotes)
         advanced_counts = {}
         for line in advanced_output.split("\n"):
             line = line.strip()
-            if line.startswith('"Classes: '):
+            if line.startswith("Classes: "):
                 with contextlib.suppress(ValueError, IndexError):
-                    advanced_counts["classes"] = int(line.split(": ")[1].rstrip('"'))
-            elif line.startswith('"Methods: '):
+                    advanced_counts["classes"] = int(line.split(": ")[1])
+            elif line.startswith("Methods: "):
                 with contextlib.suppress(ValueError, IndexError):
-                    advanced_counts["methods"] = int(line.split(": ")[1].rstrip('"'))
-            elif line.startswith('"Fields: '):
+                    advanced_counts["methods"] = int(line.split(": ")[1])
+            elif line.startswith("Fields: "):
                 with contextlib.suppress(ValueError, IndexError):
-                    advanced_counts["fields"] = int(line.split(": ")[1].rstrip('"'))
-            elif line.startswith('"Imports: '):
+                    advanced_counts["fields"] = int(line.split(": ")[1])
+            elif line.startswith("Imports: "):
                 with contextlib.suppress(ValueError, IndexError):
-                    advanced_counts["imports"] = int(line.split(": ")[1].rstrip('"'))
+                    advanced_counts["imports"] = int(line.split(": ")[1])
 
         # Test table command
         monkeypatch.setattr(
@@ -370,20 +370,20 @@ public class EmptyClass {
 
         output = mock_stdout.getvalue()
 
-        # Parse element counts
+        # Parse element counts (text format without quotes)
         lines = output.split("\n")
         element_counts = {}
 
         for line in lines:
             line = line.strip()
-            if line.startswith('"Classes: '):
-                element_counts["classes"] = int(line.split(": ")[1].rstrip('"'))
-            elif line.startswith('"Methods: '):
-                element_counts["methods"] = int(line.split(": ")[1].rstrip('"'))
-            elif line.startswith('"Fields: '):
-                element_counts["fields"] = int(line.split(": ")[1].rstrip('"'))
-            elif line.startswith('"Imports: '):
-                element_counts["imports"] = int(line.split(": ")[1].rstrip('"'))
+            if line.startswith("Classes: "):
+                element_counts["classes"] = int(line.split(": ")[1])
+            elif line.startswith("Methods: "):
+                element_counts["methods"] = int(line.split(": ")[1])
+            elif line.startswith("Fields: "):
+                element_counts["fields"] = int(line.split(": ")[1])
+            elif line.startswith("Imports: "):
+                element_counts["imports"] = int(line.split(": ")[1])
 
         # For an empty class, we should have 1 class, 0 methods, 0 fields, 0 imports
         assert element_counts.get("classes", 0) == 1, "Empty class should have 1 class"

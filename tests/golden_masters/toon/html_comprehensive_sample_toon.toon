@@ -1,0 +1,13 @@
+file_path: examples/comprehensive_sample.html
+language: html
+package: null
+classes: []
+methods: []
+fields: []
+imports: []
+statistics:
+  class_count: 0
+  method_count: 0
+  field_count: 0
+  import_count: 0
+  total_lines: 524

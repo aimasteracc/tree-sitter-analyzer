@@ -1,0 +1,25 @@
+file_path: tests/test_data/test_class.js
+language: javascript
+package: null
+classes:
+  [3]{name,visibility,line_range(a,b)}:
+    Animal,public,(3,11)
+    Dog,public,(13,26)
+    Cat,public,(29,37)
+methods:
+  [7]{name,visibility,line_range(a,b)}:
+    constructor,public,(4,6)
+    speak,public,(8,10)
+    constructor,public,(14,17)
+    speak,public,(19,21)
+    getBreed,public,(23,25)
+    constructor,public,(30,32)
+    speak,public,(34,36)
+fields: []
+imports: []
+statistics:
+  class_count: 3
+  method_count: 7
+  field_count: 0
+  import_count: 0
+  total_lines: 37

@@ -1,0 +1,46 @@
+file_path: examples/Sample.cs
+language: csharp
+package: null
+classes:
+  [4]{name,visibility,line_range(a,b)}:
+    User,public,(10,65)
+    IUserRepository,public,(70,77)
+    UserRole,public,(82,88)
+    UserSettings,public,(93,105)
+methods:
+  [19]{name,visibility,line_range(a,b)}:
+    Id,public,(18,22)
+    Name,public,(24,24)
+    Email,public,(25,25)
+    CreatedAt,public,(26,26)
+    PhoneNumber,public,(29,29)
+    DisplayName,public,(32,32)
+    User,public,(35,41)
+    UpdateEmail,public,(44,52)
+    IsValid,public,(54,59)
+    ToString,public,(61,64)
+    GetById,private,(72,72)
+    GetAll,private,(73,73)
+    Add,private,(74,74)
+    Update,private,(75,75)
+    Delete,private,(76,76)
+    EmailNotifications,public,(95,95)
+    SmsNotifications,public,(96,96)
+    Theme,public,(97,97)
+    UserSettings,public,(99,104)
+fields:
+  [3]{name,type,line_range(a,b)}:
+    _id,,(13,13)
+    _createdBy,,(14,14)
+    MaxNameLength,,(15,15)
+imports:
+  [3]{name,is_static,is_wildcard,statement,line_range(a,b)}:
+    System,false,false,,(1,1)
+    System.Collections.Generic,false,false,,(2,2)
+    System.Linq,false,false,,(3,3)
+statistics:
+  class_count: 4
+  method_count: 19
+  field_count: 3
+  import_count: 3
+  total_lines: 107

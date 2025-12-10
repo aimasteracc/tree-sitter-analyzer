@@ -6,10 +6,14 @@ High-level formatter for converting analysis results and MCP responses
 to TOON format, optimized for LLM consumption with 50-70% token reduction.
 """
 
+import logging
 from typing import Any
 
 from .base_formatter import BaseFormatter
-from .toon_encoder import ToonEncoder
+from .toon_encoder import ToonEncodeError, ToonEncoder
+
+# Logger for TOON formatter
+logger = logging.getLogger(__name__)
 
 
 class ToonFormatter(BaseFormatter):
@@ -28,6 +32,7 @@ class ToonFormatter(BaseFormatter):
         use_tabs: bool = False,
         compact_arrays: bool = True,
         include_metadata: bool = True,
+        fallback_to_json: bool = True,
     ):
         """
         Initialize TOON formatter.
@@ -36,11 +41,13 @@ class ToonFormatter(BaseFormatter):
             use_tabs: Use tab delimiters instead of commas (further optimization)
             compact_arrays: Use CSV-style compact arrays for homogeneous data
             include_metadata: Include file metadata in output
+            fallback_to_json: Fall back to JSON on encoding errors
         """
         self.use_tabs = use_tabs
         self.compact_arrays = compact_arrays
         self.include_metadata = include_metadata
-        self.encoder = ToonEncoder(use_tabs=use_tabs)
+        self.fallback_to_json = fallback_to_json
+        self.encoder = ToonEncoder(use_tabs=use_tabs, fallback_to_json=fallback_to_json)
 
     def format(self, data: Any) -> str:
         """
@@ -50,8 +57,35 @@ class ToonFormatter(BaseFormatter):
         This method enables OutputManager to call formatter.format(data)
         without needing to know the specific formatter implementation.
 
+        On encoding errors, falls back to JSON if fallback_to_json is True.
+
         Args:
             data: The data to format (AnalysisResult, dict, or other types)
+
+        Returns:
+            TOON-formatted string (or JSON on fallback)
+        """
+        try:
+            return self._format_internal(data)
+        except ToonEncodeError as e:
+            logger.error(f"TOON formatting failed: {e}")
+            if self.fallback_to_json:
+                logger.warning("Falling back to JSON format")
+                return self.encoder._fallback_to_json(data)
+            raise
+        except Exception as e:
+            logger.error(f"Unexpected error during TOON formatting: {e}", exc_info=True)
+            if self.fallback_to_json:
+                logger.warning("Falling back to JSON format")
+                return self.encoder._fallback_to_json(data)
+            raise ToonEncodeError("Formatting failed", data=data, cause=e) from e
+
+    def _format_internal(self, data: Any) -> str:
+        """
+        Internal format method without error handling wrapper.
+
+        Args:
+            data: The data to format
 
         Returns:
             TOON-formatted string
@@ -252,3 +286,57 @@ class ToonFormatter(BaseFormatter):
             "visibility": getattr(method, "visibility", ""),
             "lines": f"{getattr(method, 'start_line', 0)}-{getattr(method, 'end_line', 0)}",
         }
+
+    @staticmethod
+    def is_toon_content(content: str) -> bool:
+        """
+        Detect if content is in TOON format.
+
+        Used by FileOutputManager to determine content type.
+
+        Args:
+            content: String content to check
+
+        Returns:
+            True if content appears to be TOON format
+        """
+        if not content or not content.strip():
+            return False
+
+        lines = content.strip().split("\n")
+        if not lines:
+            return False
+
+        # TOON format indicators:
+        # 1. Lines with "key: value" pattern (not JSON)
+        # 2. Array table headers like "[N]{field1,field2}:"
+        # 3. Nested structure with indentation
+
+        # Check if it looks like JSON first
+        first_char = content.strip()[0]
+        if first_char in "{[":
+            return False
+
+        # Check for TOON patterns
+        toon_patterns = 0
+        for line in lines[:10]:  # Check first 10 lines
+            stripped = line.strip()
+            if not stripped:
+                continue
+
+            # Key-value pattern: "key: value"
+            if (
+                ":" in stripped
+                and not stripped.startswith("{")
+                and not stripped.startswith('"')
+            ):
+                parts = stripped.split(":", 1)
+                if len(parts) == 2 and parts[0].strip():
+                    toon_patterns += 1
+
+            # Array table header: "[N]{...}:"
+            if stripped.startswith("[") and "]{" in stripped and stripped.endswith(":"):
+                toon_patterns += 2
+
+        # Need at least 2 TOON patterns to confirm
+        return toon_patterns >= 2
