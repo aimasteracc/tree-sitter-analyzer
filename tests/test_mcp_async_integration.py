@@ -134,7 +134,7 @@ class Class_{i}:
         tool = QueryTool(project_root=os.getcwd())
 
         result = await tool.execute(
-            {"file_path": sample_code_file, "query_key": "function"}
+            {"file_path": sample_code_file, "query_key": "function", "output_format": "json"}
         )
 
         assert result["success"] is True
@@ -157,7 +157,7 @@ class Class_{i}:
         tool = QueryTool(project_root=os.getcwd())
 
         result = await tool.execute(
-            {"file_path": sample_code_file, "query_key": "class"}
+            {"file_path": sample_code_file, "query_key": "class", "output_format": "json"}
         )
 
         assert result["success"] is True
