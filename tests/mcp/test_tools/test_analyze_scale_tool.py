@@ -137,9 +137,13 @@ public class SampleClass {
             temp_path = f.name
 
         try:
-            # Execute analysis
+            # Execute analysis (use JSON format for test assertions)
             result = await self.tool.execute(
-                {"file_path": temp_path, "include_guidance": True}
+                {
+                    "file_path": temp_path,
+                    "include_guidance": True,
+                    "output_format": "json",
+                }
             )
 
             # Test result structure
@@ -209,9 +213,13 @@ public class SampleClass {
             temp_path = f.name
 
         try:
-            # Execute analysis without guidance
+            # Execute analysis without guidance (use JSON format for test assertions)
             result = await self.tool.execute(
-                {"file_path": temp_path, "include_guidance": False}
+                {
+                    "file_path": temp_path,
+                    "include_guidance": False,
+                    "output_format": "json",
+                }
             )
 
             # Should not include guidance
@@ -234,9 +242,13 @@ public class SampleClass {
             temp_path = f.name
 
         try:
-            # Execute analysis with details
+            # Execute analysis with details (use JSON format for test assertions)
             result = await self.tool.execute(
-                {"file_path": temp_path, "include_details": True}
+                {
+                    "file_path": temp_path,
+                    "include_details": True,
+                    "output_format": "json",
+                }
             )
 
             # Should include detailed analysis
@@ -383,7 +395,10 @@ public class SimpleClass {
             temp_path = f.name
 
         try:
-            result = await self.tool.execute({"file_path": temp_path})
+            # Use JSON format for test assertions
+            result = await self.tool.execute(
+                {"file_path": temp_path, "output_format": "json"}
+            )
 
             # Test that AdvancedAnalyzer integration works
             assert "summary" in result
@@ -414,8 +429,10 @@ public class Test {
             temp_path = f.name
 
         try:
-            # Don't specify language - should be auto-detected
-            result = await self.tool.execute({"file_path": temp_path})
+            # Don't specify language - should be auto-detected (use JSON format for test assertions)
+            result = await self.tool.execute(
+                {"file_path": temp_path, "output_format": "json"}
+            )
 
             # Test that language was detected
             assert result["language"] == "java"
@@ -446,8 +463,10 @@ public class PerfTest {
             temp_path = f.name
 
         try:
-            # Execute analysis - should not raise any performance monitoring errors
-            result = await self.tool.execute({"file_path": temp_path})
+            # Execute analysis - should not raise any performance monitoring errors (use JSON format)
+            result = await self.tool.execute(
+                {"file_path": temp_path, "output_format": "json"}
+            )
 
             # Test that analysis completed successfully
             assert "file_metrics" in result
