@@ -540,13 +540,14 @@ asyncio.run(main())
         """基本的なコード抽出機能のテスト"""
         extract_tool = tools["extract"]
 
-        # Java クラス定義の抽出
+        # Java クラス定義の抽出 (use JSON output_format for test assertions)
         result = await extract_tool.execute(
             {
                 "file_path": "src/ComplexService.java",
                 "start_line": 10,
                 "end_line": 20,
                 "format": "text",
+                "output_format": "json",
             }
         )
 
@@ -561,12 +562,14 @@ asyncio.run(main())
         """JSON形式でのコード抽出テスト"""
         extract_tool = tools["extract"]
 
+        # Use JSON output_format for test assertions
         result = await extract_tool.execute(
             {
                 "file_path": "src/DataManager.ts",
                 "start_line": 1,
                 "end_line": 30,
                 "format": "json",
+                "output_format": "json",
             }
         )
 
@@ -610,11 +613,13 @@ asyncio.run(main())
         """TypeScriptインターフェースクエリテスト"""
         query_tool = tools["query"]
 
+        # Use JSON output_format for test assertions
         result = await query_tool.execute(
             {
                 "file_path": "src/DataManager.ts",
                 "query_key": "interfaces",
                 "result_format": "summary",  # result_format, not output_format
+                "output_format": "json",
             }
         )
 
@@ -723,7 +728,7 @@ asyncio.run(main())
         extract_tool = tools["extract"]
         query_tool = tools["query"]
 
-        # Step 1: 大きなファイルから特定部分を抽出
+        # Step 1: 大きなファイルから特定部分を抽出 (use JSON output_format)
         extract_result = await extract_tool.execute(
             {
                 "file_path": "src/analytics_engine.py",
@@ -731,13 +736,14 @@ asyncio.run(main())
                 "end_line": 100,
                 "format": "raw",
                 "output_file": "extracted_section",
+                "output_format": "json",
             }
         )
 
         assert extract_result["success"] is True
         assert extract_result["file_saved"] is True
 
-        # Step 2: 抽出されたファイルをクエリ
+        # Step 2: 抽出されたファイルをクエリ (use JSON output_format)
         extracted_file = extract_result["output_file_path"]
         relative_path = str(Path(extracted_file).relative_to(temp_project))
 
@@ -747,6 +753,7 @@ asyncio.run(main())
                 "language": "python",
                 "query_key": "functions",
                 "result_format": "summary",  # result_format, not output_format
+                "output_format": "json",
             }
         )
 
@@ -803,11 +810,13 @@ asyncio.run(main())
 
         results = []
         for case in test_cases:
+            # Use JSON output_format for test assertions
             result = await query_tool.execute(
                 {
                     "file_path": case["file"],
                     "query_key": case["query"],
                     "result_format": "summary",  # result_format, not output_format
+                    "output_format": "json",
                 }
             )
 
@@ -833,13 +842,14 @@ asyncio.run(main())
         """ファイル出力とトークン最適化テスト"""
         query_tool = tools["query"]
 
-        # 大きな結果をファイル出力し、suppress_outputでトークン節約
+        # 大きな結果をファイル出力し、suppress_outputでトークン節約 (use JSON output_format)
         result = await query_tool.execute(
             {
                 "file_path": "src/analytics_engine.py",
                 "query_key": "functions",
                 "output_file": "functions_analysis",
                 "suppress_output": True,
+                "output_format": "json",
             }
         )
 
@@ -902,12 +912,13 @@ asyncio.run(main())
         """Markdownファイル解析テスト"""
         query_tool = tools["query"]
 
-        # Markdownヘッダーの検索
+        # Markdownヘッダーの検索 (use JSON output_format for test assertions)
         result = await query_tool.execute(
             {
                 "file_path": "docs/API_Reference.md",
                 "query_key": "headers",
                 "result_format": "summary",  # result_format, not output_format
+                "output_format": "json",
             }
         )
 
@@ -970,19 +981,20 @@ asyncio.run(main())
         extract_tool = tools["extract"]
         query_tool = tools["query"]
 
-        # Step 1: 複雑なファイルの構造解析
+        # Step 1: 複雑なファイルの構造解析 (use JSON output_format for test assertions)
         structure_result = await query_tool.execute(
             {
                 "file_path": "src/analytics_engine.py",
                 "query_key": "classes",
                 "result_format": "summary",  # result_format, not output_format
+                "output_format": "json",
             }
         )
 
         assert structure_result["success"] is True
         class_count = structure_result["total_count"]
 
-        # Step 2: 特定クラスの詳細抽出
+        # Step 2: 特定クラスの詳細抽出 (use JSON output_format)
         extract_result = await extract_tool.execute(
             {
                 "file_path": "src/analytics_engine.py",
@@ -990,6 +1002,7 @@ asyncio.run(main())
                 "end_line": 150,
                 "format": "json",
                 "output_file": "class_details",
+                "output_format": "json",
             }
         )
 

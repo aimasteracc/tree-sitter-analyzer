@@ -211,13 +211,14 @@ This will find all Java files and count TODO comments.
     async def test_find_and_grep_tool_basic(self, mcp_server, temp_project):
         """T016: find_and_grep ツールの基本機能テスト"""
 
-        # Java ファイルを検索してTODOコメントを探す
+        # Java ファイルを検索してTODOコメントを探す (use JSON output_format for test assertions)
         result = await mcp_server.find_and_grep_tool.execute(
             {
                 "roots": [temp_project],
                 "extensions": ["java"],
                 "query": "TODO",
                 "case": "insensitive",
+                "output_format": "json",
             }
         )
 
@@ -243,13 +244,14 @@ This will find all Java files and count TODO comments.
         """find_and_grep ツールの2段階検索テスト"""
 
         # 第1段階: Pythonファイルを見つける
-        # 第2段階: その中で特定の関数を検索
+        # 第2段階: その中で特定の関数を検索 (use JSON output_format for test assertions)
         result = await mcp_server.find_and_grep_tool.execute(
             {
                 "roots": [temp_project],
                 "extensions": ["py"],
                 "query": "def find_java_files",
                 "case": "sensitive",
+                "output_format": "json",
             }
         )
 
@@ -415,7 +417,7 @@ This will find all Java files and count TODO comments.
         assert overview["total_files"] > 0
         assert "java" in overview["languages"]
 
-        # Step 2: TODOコメントを検索
+        # Step 2: TODOコメントを検索 (use JSON output_format for test assertions)
         search_result = await mcp_server.find_and_grep_tool.execute(
             {
                 "roots": [temp_project],
@@ -423,6 +425,7 @@ This will find all Java files and count TODO comments.
                 "case": "insensitive",
                 "context_before": 1,
                 "context_after": 1,
+                "output_format": "json",
             }
         )
 
@@ -458,13 +461,14 @@ This will find all Java files and count TODO comments.
         assert java_stats is not None
         assert java_stats["file_count"] >= 2
 
-        # Step 2: Javaファイルでpublicメソッドを検索
+        # Step 2: Javaファイルでpublicメソッドを検索 (use JSON output_format)
         search_result = await mcp_server.find_and_grep_tool.execute(
             {
                 "roots": [temp_project],
                 "extensions": ["java"],
                 "query": "public.*\\(",
                 "case": "sensitive",
+                "output_format": "json",
             }
         )
 
@@ -517,9 +521,14 @@ public class NewService {
         # ファイル数が増加していることを確認
         assert updated_stats["total_files"] >= initial_file_count
 
-        # Step 5: 新しいファイルが検索できることを確認
+        # Step 5: 新しいファイルが検索できることを確認 (use JSON output_format)
         search_result = await mcp_server.find_and_grep_tool.execute(
-            {"roots": [temp_project], "query": "NewService", "case": "sensitive"}
+            {
+                "roots": [temp_project],
+                "query": "NewService",
+                "case": "sensitive",
+                "output_format": "json",
+            }
         )
 
         assert len(search_result["results"]) > 0
@@ -593,11 +602,16 @@ public class NewService {
     async def test_concurrent_access_integration(self, mcp_server, temp_project):
         """並行アクセス統合テスト"""
 
-        # 複数の操作を並行実行
+        # 複数の操作を並行実行 (use JSON output_format for test assertions)
         tasks = [
             # 検索操作
             mcp_server.find_and_grep_tool.execute(
-                {"roots": [temp_project], "query": "public", "extensions": ["java"]}
+                {
+                    "roots": [temp_project],
+                    "query": "public",
+                    "extensions": ["java"],
+                    "output_format": "json",
+                }
             ),
             # ファイルアクセス（絶対パス使用）
             mcp_server.code_file_resource.read_resource(
@@ -607,7 +621,12 @@ public class NewService {
             mcp_server.project_stats_resource.read_resource("code://stats/overview"),
             # 別の検索
             mcp_server.find_and_grep_tool.execute(
-                {"roots": [temp_project], "query": "TODO", "case": "insensitive"}
+                {
+                    "roots": [temp_project],
+                    "query": "TODO",
+                    "case": "insensitive",
+                    "output_format": "json",
+                }
             ),
         ]
 
