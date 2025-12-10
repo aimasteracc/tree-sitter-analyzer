@@ -623,12 +623,13 @@ class FindAndGrepTool(BaseMCPTool):
                 output_file = arguments.get("output_file")
                 suppress_output = arguments.get("suppress_output", False)
 
-                # Add results to response unless suppressed
-                if not suppress_output or not output_file:
-                    result["results"] = matches
-
                 # Get output format
                 output_format = arguments.get("output_format", "toon")
+
+                # Add results to response unless suppressed
+                # Only suppress results if both suppress_output is True AND output_file is provided
+                if not (suppress_output and output_file):
+                    result["results"] = matches
 
                 # Handle file output if requested
                 if output_file:

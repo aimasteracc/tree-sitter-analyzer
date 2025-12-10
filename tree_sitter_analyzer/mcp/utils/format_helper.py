@@ -153,8 +153,9 @@ def apply_toon_format_to_response(
     """
     Apply TOON format to MCP tool response if requested.
 
-    When output_format is 'toon', wraps the result in a TOON-formatted string
-    under the 'toon_content' key while preserving essential metadata.
+    When output_format is 'toon', adds a TOON-formatted string
+    under the 'toon_content' key while preserving all original fields
+    for backward compatibility.
 
     Args:
         result: Original result dictionary from MCP tool
@@ -170,26 +171,11 @@ def apply_toon_format_to_response(
         # Format the full result as TOON
         toon_content = format_as_toon(result)
 
-        # Return a response that includes TOON content
-        toon_response: dict[str, Any] = {
-            "success": result.get("success", True),
-            "format": "toon",
-            "toon_content": toon_content,
-        }
-
-        # Preserve essential metadata for MCP protocol
-        if "count" in result:
-            toon_response["count"] = result["count"]
-        if "file_path" in result:
-            toon_response["file_path"] = result["file_path"]
-        if "output_file_path" in result:
-            toon_response["output_file_path"] = result["output_file_path"]
-        if "file_saved" in result:
-            toon_response["file_saved"] = result["file_saved"]
-        if "error" in result:
-            toon_response["error"] = result["error"]
-        if "message" in result:
-            toon_response["message"] = result["message"]
+        # Create a copy of the original result and add TOON content
+        # This preserves all original fields for backward compatibility
+        toon_response = result.copy()
+        toon_response["format"] = "toon"
+        toon_response["toon_content"] = toon_content
 
         return toon_response
 
