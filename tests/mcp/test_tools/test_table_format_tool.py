@@ -147,7 +147,11 @@ public class TestClass {
             return_value=mock_structure_data,
         )
 
-        arguments = {"file_path": self.test_file_path, "format_type": "full"}
+        arguments = {
+            "file_path": self.test_file_path,
+            "format_type": "full",
+            "output_format": "json",  # Use JSON format for test assertions
+        }
 
         result = await self.tool.execute(arguments)
 
@@ -228,6 +232,7 @@ public class TestClass {
             "file_path": self.test_file_path,
             "format_type": "compact",
             "language": "java",
+            "output_format": "json",  # Use JSON format for test assertions
         }
 
         result = await self.tool.execute(arguments)
@@ -319,7 +324,11 @@ public class TestClass {
 
         # Test different formats - now using real LegacyTableFormatter
         for format_type in ["full", "compact", "csv"]:
-            arguments = {"file_path": self.test_file_path, "format_type": format_type}
+            arguments = {
+                "file_path": self.test_file_path,
+                "format_type": format_type,
+                "output_format": "json",  # Use JSON format for test assertions
+            }
 
             result = await self.tool.execute(arguments)
             assert result["format_type"] == format_type
@@ -388,6 +397,7 @@ public class TestClass {
             "file_path": self.test_file_path,
             "format_type": "full",
             "output_file": "test_analysis",
+            "output_format": "json",  # Use JSON format for test assertions
         }
 
         result = await self.tool.execute(arguments)
@@ -476,6 +486,7 @@ public class TestClass {
             "file_path": self.test_file_path,
             "format_type": "full",
             "output_file": "test_analysis",
+            "output_format": "json",  # Use JSON format for test assertions
         }
 
         result = await self.tool.execute(arguments)
