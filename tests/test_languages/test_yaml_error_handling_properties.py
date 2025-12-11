@@ -640,6 +640,7 @@ class TestYAMLErrorHandlingProperties:
     @settings(
         max_examples=50,
         suppress_health_check=[HealthCheck.function_scoped_fixture],
+        deadline=None,  # Disable deadline for this test due to file I/O variability
     )
     @given(
         valid_prefix=st.text(

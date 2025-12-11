@@ -339,6 +339,7 @@ class CoreClass:
             "format": "raw",
             "output_file": "extracted_class",
             "suppress_output": False,
+            "output_format": "json",
         }
 
         extract_result = await all_tools["read_partial"].execute(extract_args)

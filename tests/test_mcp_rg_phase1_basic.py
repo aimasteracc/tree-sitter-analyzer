@@ -273,7 +273,9 @@ async def test_rg_09_search_content_exec_roots_basic_match_parsing(
         "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture", fake_run
     )
 
-    result = await tool.execute({"roots": [str(tmp_path)], "query": "hello"})
+    result = await tool.execute(
+        {"roots": [str(tmp_path)], "query": "hello", "output_format": "json"}
+    )
     assert result["success"] is True
     assert result["count"] == 1
     assert result["results"][0]["file"] == str(f)
@@ -326,7 +328,9 @@ async def test_rg_10_search_content_exec_files_list_uses_parent_dirs(
         "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture", fake_run
     )
 
-    result = await tool.execute({"files": [str(f)], "query": "a"})
+    result = await tool.execute(
+        {"files": [str(f)], "query": "a", "output_format": "json"}
+    )
     assert result["success"] is True
     assert result["count"] == 1
     assert result["results"][0]["file"] == str(f)

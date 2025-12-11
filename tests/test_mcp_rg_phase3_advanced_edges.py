@@ -96,7 +96,9 @@ async def test_rg_28_fd_empty_list_returns_empty(monkeypatch, tmp_path):
         "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture", fake_run
     )
 
-    res = await tool.execute({"roots": [str(tmp_path)], "query": "x"})
+    res = await tool.execute(
+        {"roots": [str(tmp_path)], "query": "x", "output_format": "json"}
+    )
     assert res["success"] is True
     assert res["count"] == 0
     assert res["meta"]["searched_file_count"] == 0
@@ -116,7 +118,9 @@ async def test_rg_29_fd_error_bubbles(monkeypatch, tmp_path):
         "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture", fake_run
     )
 
-    res = await tool.execute({"roots": [str(tmp_path)], "query": "x"})
+    res = await tool.execute(
+        {"roots": [str(tmp_path)], "query": "x", "output_format": "json"}
+    )
     assert res["success"] is False
     assert res["error"]
     assert res["returncode"] == 2
@@ -136,7 +140,9 @@ async def test_rg_30_rg_error_bubbles(monkeypatch, tmp_path):
         "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture", fake_run
     )
 
-    res = await tool.execute({"roots": [str(tmp_path)], "query": "x"})
+    res = await tool.execute(
+        {"roots": [str(tmp_path)], "query": "x", "output_format": "json"}
+    )
     assert res["success"] is False
     assert res["returncode"] == 2
 
@@ -340,7 +346,9 @@ async def test_rg_39_no_ignore_auto_detection(monkeypatch, tmp_path):
         "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture", fake_run
     )
 
-    res = await tool.execute({"roots": [str(tmp_path)], "query": "x"})
+    res = await tool.execute(
+        {"roots": [str(tmp_path)], "query": "x", "output_format": "json"}
+    )
     assert res["success"] is True
 
 
@@ -376,7 +384,9 @@ async def test_rg_40_parse_multiple_json_events(monkeypatch, tmp_path):
         "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture", fake_run
     )
 
-    res = await tool.execute({"roots": [str(tmp_path)], "query": "x"})
+    res = await tool.execute(
+        {"roots": [str(tmp_path)], "query": "x", "output_format": "json"}
+    )
     assert res["success"] is True
     assert res["count"] == 3
 
@@ -410,7 +420,9 @@ async def test_rg_41_match_text_normalized(monkeypatch, tmp_path):
         "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture", fake_run
     )
 
-    res = await tool.execute({"roots": [str(tmp_path)], "query": "x"})
+    res = await tool.execute(
+        {"roots": [str(tmp_path)], "query": "x", "output_format": "json"}
+    )
     assert res["success"] is True
     assert res["results"][0]["text"] == "a b c"
 
@@ -429,7 +441,14 @@ async def test_rg_42_find_and_grep_sort_by_path(monkeypatch, tmp_path):
         "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture", fake_run
     )
 
-    res = await tool.execute({"roots": [str(tmp_path)], "query": "x", "sort": "path"})
+    res = await tool.execute(
+        {
+            "roots": [str(tmp_path)],
+            "query": "x",
+            "sort": "path",
+            "output_format": "json",
+        }
+    )
     assert res["success"] is True
     assert res["meta"]["searched_file_count"] == 2
 
@@ -453,6 +472,13 @@ async def test_rg_43_find_and_grep_sort_by_size(monkeypatch, tmp_path):
         "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture", fake_run
     )
 
-    res = await tool.execute({"roots": [str(tmp_path)], "query": "x", "sort": "size"})
+    res = await tool.execute(
+        {
+            "roots": [str(tmp_path)],
+            "query": "x",
+            "sort": "size",
+            "output_format": "json",
+        }
+    )
     assert res["success"] is True
     assert res["meta"]["searched_file_count"] == 2
