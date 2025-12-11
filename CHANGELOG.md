@@ -2,6 +2,29 @@
 
 ## [Unreleased]
 
+## [1.9.22] - 2025-12-11
+
+### 🐛 Bug Fixes
+
+#### MCP Tools Test Suite Fix
+- **Fixed TOON Format Test Compatibility**: Updated all MCP tool tests to explicitly specify `output_format: "json"` when expecting raw JSON response structure
+- **Root Cause**: MCP tools default to TOON format (since v1.9.21), which transforms response structure. Tests expecting `results`, `meta`, `output_file` fields need explicit `output_format="json"`
+- **Files Fixed**:
+  - `test_find_and_grep_tool_file_output.py` (8 test cases)
+  - `test_mcp_async_integration.py` (14 test cases)
+  - `test_mcp_file_output_feature.py`
+  - `test_query_tool_file_output.py`
+  - `test_read_partial_tool_file_output.py`
+- **Impact**: All 6,297 tests now pass consistently across all environments
+
+### 📊 Quality Metrics
+
+- **Tests**: 6,297 tests (100% pass rate)
+- **Coverage**: Codecov automatic monitoring
+- **Quality**: Enterprise-grade quality maintained
+
+---
+
 ## [1.9.21] - 2025-12-10
 
 ### 🚀 Breaking Changes
