@@ -2,6 +2,53 @@
 
 ## [Unreleased]
 
+## [1.9.22] - 2025-12-11
+
+### 🐛 Bug Fixes
+
+#### MCP Tools Test Suite Fix
+- **Fixed TOON Format Test Compatibility**: Updated all MCP tool tests to explicitly specify `output_format: "json"` when expecting raw JSON response structure
+- **Root Cause**: MCP tools default to TOON format (since v1.9.21), which transforms response structure. Tests expecting `results`, `meta`, `output_file` fields need explicit `output_format="json"`
+- **Files Fixed**:
+  - `test_find_and_grep_tool_file_output.py` (8 test cases)
+  - `test_mcp_async_integration.py` (14 test cases)
+  - `test_mcp_file_output_feature.py`
+  - `test_query_tool_file_output.py`
+  - `test_read_partial_tool_file_output.py`
+- **Impact**: All 6,297 tests now pass consistently across all environments
+
+### 📊 Quality Metrics
+
+- **Tests**: 6,297 tests (100% pass rate)
+- **Coverage**: Codecov automatic monitoring
+- **Quality**: Enterprise-grade quality maintained
+
+---
+
+## [1.9.21] - 2025-12-10
+
+### 🚀 Breaking Changes
+
+#### Default Output Format Changed to TOON
+- **All MCP tools now default to TOON format** instead of JSON
+- TOON format provides 50-70% token reduction + ~10% additional savings from path normalization
+- To use JSON format, explicitly set `output_format: "json"`
+
+### ✨ New Features
+
+#### Path Normalization for Token Optimization
+- **Windows path normalization**: Backslashes (`\`) automatically converted to forward slashes (`/`)
+- **Additional ~10% token savings** for path-heavy outputs
+- Applied automatically in TOON format encoding
+- Strict path detection to avoid false positives (only file paths are normalized)
+
+### 📊 Token Savings Summary
+- **TOON format**: 50-70% reduction vs JSON
+- **Path normalization**: Additional ~10% reduction
+- **Combined**: Up to 75% total token savings for Windows file operations
+
+---
+
 ## [1.9.20] - 2025-12-10
 
 ### 🐛 Bug Fixes

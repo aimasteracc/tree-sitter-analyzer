@@ -355,8 +355,8 @@ class AnalyzeScaleTool(BaseMCPTool):
                 "output_format": {
                     "type": "string",
                     "enum": ["json", "toon"],
-                    "description": "Output format: 'json' (default) or 'toon' (50-70% token reduction)",
-                    "default": "json",
+                    "description": "Output format: 'toon' (default, 50-70% token reduction) or 'json'",
+                    "default": "toon",
                 },
             },
             "required": ["file_path"],
@@ -386,7 +386,7 @@ class AnalyzeScaleTool(BaseMCPTool):
         # include_complexity = arguments.get("include_complexity", True)  # Not used currently
         include_details = arguments.get("include_details", False)
         include_guidance = arguments.get("include_guidance", True)
-        output_format = arguments.get("output_format", "json")
+        output_format = arguments.get("output_format", "toon")
 
         # Security validation BEFORE path resolution to catch symlinks
         is_valid, error_msg = self.security_validator.validate_file_path(file_path)
@@ -721,7 +721,7 @@ class AnalyzeScaleTool(BaseMCPTool):
         file_path: str,
         file_metrics: dict[str, Any],
         include_guidance: bool,
-        output_format: str = "json",
+        output_format: str = "toon",
     ) -> dict[str, Any]:
         """
         Create analysis result for JSON files.

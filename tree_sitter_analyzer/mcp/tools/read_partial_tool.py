@@ -86,8 +86,8 @@ class ReadPartialTool(BaseMCPTool):
                 "output_format": {
                     "type": "string",
                     "enum": ["json", "toon"],
-                    "description": "Output format: 'json' (default) or 'toon' (50-70% token reduction)",
-                    "default": "json",
+                    "description": "Output format: 'toon' (default, 50-70% token reduction) or 'json'",
+                    "default": "toon",
                 },
             },
             "required": ["file_path", "start_line"],
@@ -122,7 +122,7 @@ class ReadPartialTool(BaseMCPTool):
         output_file = arguments.get("output_file")
         suppress_output = arguments.get("suppress_output", False)
         content_format = arguments.get("format", "text")
-        output_format = arguments.get("output_format", "json")
+        output_format = arguments.get("output_format", "toon")
 
         # Security validation BEFORE path resolution to catch symlinks
         is_valid, error_msg = self.security_validator.validate_file_path(

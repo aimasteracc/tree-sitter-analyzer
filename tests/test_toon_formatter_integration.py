@@ -93,9 +93,12 @@ class TestToonEncoder:
 
         # Verify escape sequences are present
         assert "\\n" in result  # Escaped newline
+        # Path may be normalized (C:/Users) or escaped (C:\\Users)
         assert (
-            "\\\\Users" in result or "\\\\\\\\Users" in result
-        )  # Escaped backslash (Windows path)
+            "\\\\Users" in result  # Escaped backslash (Windows path)
+            or "\\\\\\\\Users" in result  # Double escaped
+            or "C:/Users" in result  # Normalized path (forward slashes)
+        )
         assert '\\"Hello\\"' in result  # Escaped quotes
 
     def test_encode_dict_simple(self):

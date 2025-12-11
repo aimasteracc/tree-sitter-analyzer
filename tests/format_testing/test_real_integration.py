@@ -67,13 +67,17 @@ class Calculator:
         # Create TableFormatTool
         tool = TableFormatTool(project_root=temp_dir)
 
-        # Test all format types
+        # Test all format types (use JSON output_format for test assertions)
         for format_type in ["full", "compact", "csv"]:
             print(f"\n🧪 Testing {format_type} format...")
 
-            # Execute tool
+            # Execute tool with JSON output_format for direct key access
             result = await tool.execute(
-                {"file_path": str(python_file), "format_type": format_type}
+                {
+                    "file_path": str(python_file),
+                    "format_type": format_type,
+                    "output_format": "json",
+                }
             )
 
             # Validate basic result structure
@@ -119,11 +123,15 @@ class Calculator:
 
         tool = TableFormatTool(project_root=temp_dir)
 
-        # Generate all formats
+        # Generate all formats (use JSON output_format for test assertions)
         formats = {}
         for format_type in ["full", "compact", "csv"]:
             result = await tool.execute(
-                {"file_path": str(python_file), "format_type": format_type}
+                {
+                    "file_path": str(python_file),
+                    "format_type": format_type,
+                    "output_format": "json",
+                }
             )
             formats[format_type] = result["table_output"]
 
@@ -155,9 +163,13 @@ class Calculator:
         async def run_validation():
             tool = TableFormatTool(project_root=temp_dir)
 
-            # Test markdown validation
+            # Test markdown validation (use JSON output_format for test assertions)
             markdown_result = await tool.execute(
-                {"file_path": str(python_file), "format_type": "full"}
+                {
+                    "file_path": str(python_file),
+                    "format_type": "full",
+                    "output_format": "json",
+                }
             )
 
             markdown_validator = MarkdownTableValidator()
@@ -178,9 +190,13 @@ class Calculator:
             else:
                 print("✅ Markdown validation passed")
 
-            # Test CSV validation
+            # Test CSV validation (use JSON output_format for test assertions)
             csv_result = await tool.execute(
-                {"file_path": str(python_file), "format_type": "csv"}
+                {
+                    "file_path": str(python_file),
+                    "format_type": "csv",
+                    "output_format": "json",
+                }
             )
 
             csv_validator = CSVFormatValidator()

@@ -103,6 +103,7 @@ def nested_hello():
                 "extensions": ["py", "js"],
                 "output_file": "find_grep_basic",
                 "suppress_output": False,
+                "output_format": "json",
             }
 
             result = await find_and_grep_tool.execute(arguments)
@@ -153,6 +154,7 @@ def nested_hello():
                 "query": "hello",
                 "output_file": "find_grep_suppressed",
                 "suppress_output": True,
+                "output_format": "json",
             }
 
             result = await find_and_grep_tool.execute(arguments)
@@ -198,6 +200,7 @@ def nested_hello():
                 "group_by_file": True,
                 "output_file": "find_grep_grouped",
                 "suppress_output": False,
+                "output_format": "json",
             }
 
             result = await find_and_grep_tool.execute(arguments)
@@ -241,6 +244,7 @@ def nested_hello():
                 "summary_only": True,
                 "output_file": "find_grep_summary",
                 "suppress_output": True,
+                "output_format": "json",
             }
 
             result = await find_and_grep_tool.execute(arguments)
@@ -342,6 +346,7 @@ def nested_hello():
                 "exclude": ["*.md"],
                 "output_file": "find_grep_filtered",
                 "suppress_output": False,
+                "output_format": "json",
             }
 
             result = await find_and_grep_tool.execute(arguments)
@@ -375,6 +380,7 @@ def nested_hello():
                     "query": "hello",
                     "output_file": "error_test",
                     "suppress_output": False,
+                    "output_format": "json",
                 }
 
                 result = await find_and_grep_tool.execute(arguments)
@@ -476,6 +482,7 @@ def nested_hello():
                 "query": "hello",
                 "sort": "path",
                 "output_file": "sorted_results",
+                "output_format": "json",
             }
 
             result = await find_and_grep_tool.execute(arguments)
@@ -537,6 +544,7 @@ def nested_hello():
                 "summary_only": True,
                 "output_file": "complex_workflow",
                 "suppress_output": True,
+                "output_format": "json",
             }
 
             result = await find_and_grep_tool.execute(arguments)

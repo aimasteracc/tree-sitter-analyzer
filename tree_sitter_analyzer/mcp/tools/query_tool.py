@@ -82,8 +82,8 @@ class QueryTool(BaseMCPTool):
                     "output_format": {
                         "type": "string",
                         "enum": ["json", "toon"],
-                        "description": "Output format: 'json' (default) or 'toon' (50-70% token reduction)",
-                        "default": "json",
+                        "description": "Output format: 'toon' (default, 50-70% token reduction) or 'json'",
+                        "default": "toon",
                     },
                     "output_file": {
                         "type": "string",
@@ -167,7 +167,7 @@ class QueryTool(BaseMCPTool):
             result_format = arguments.get("result_format", "json")
             output_file = arguments.get("output_file")
             suppress_output = arguments.get("suppress_output", False)
-            output_format = arguments.get("output_format", "json")
+            output_format = arguments.get("output_format", "toon")
 
             if query_key and query_string:
                 return {

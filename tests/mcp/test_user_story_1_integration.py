@@ -467,12 +467,13 @@ if __name__ == '__main__':
     async def test_complete_analysis_workflow(self):
         """Test complete analysis workflow: scale → structure → integration"""
 
-        # Step 1: Analyze code scale
+        # Step 1: Analyze code scale (use JSON format for test assertions)
         scale_args = {
             "file_path": self.test_files["java"],
             "include_complexity": True,
             "include_details": False,
             "include_guidance": True,
+            "output_format": "json",
         }
 
         scale_result = await self.scale_tool.execute(scale_args)
@@ -487,11 +488,12 @@ if __name__ == '__main__':
         assert summary["classes"] >= 1
         assert summary["methods"] >= 3
 
-        # Step 2: Analyze code structure
+        # Step 2: Analyze code structure (use JSON format for test assertions)
         structure_args = {
             "file_path": self.test_files["java"],
             "format_type": "full",
             "language": "java",
+            "output_format": "json",
         }
 
         structure_result = await self.table_tool.execute(structure_args)
@@ -522,11 +524,12 @@ if __name__ == '__main__':
     async def test_large_file_token_optimization(self):
         """Test token optimization strategy for large files"""
 
-        # Step 1: Scale analysis to determine strategy
+        # Step 1: Scale analysis to determine strategy (use JSON format for test assertions)
         scale_args = {
             "file_path": self.test_files["py_large"],
             "include_complexity": True,
             "include_details": False,
+            "output_format": "json",
         }
 
         scale_result = await self.scale_tool.execute(scale_args)
@@ -536,10 +539,11 @@ if __name__ == '__main__':
         assert file_metrics["total_lines"] > 100  # Should be a large file
 
         # Step 2: Structure analysis with token optimization
-        # Test without output_file first to verify basic functionality
+        # Test without output_file first to verify basic functionality (use JSON format)
         structure_args = {
             "file_path": self.test_files["py_large"],
             "format_type": "compact",  # Use compact format for large files
+            "output_format": "json",
         }
 
         structure_result = await self.table_tool.execute(structure_args)
@@ -620,8 +624,10 @@ if __name__ == '__main__':
         for lang_key, expectations in test_cases.items():
             file_path = self.test_files[lang_key]
 
-            # Scale analysis
-            scale_result = await self.scale_tool.execute({"file_path": file_path})
+            # Scale analysis (use JSON format for test assertions)
+            scale_result = await self.scale_tool.execute(
+                {"file_path": file_path, "output_format": "json"}
+            )
 
             assert scale_result["language"] == expectations["expected_lang"]
 
@@ -629,9 +635,13 @@ if __name__ == '__main__':
             if scale_result["summary"]["classes"] > 0:
                 assert scale_result["summary"]["classes"] >= expectations["min_classes"]
 
-            # Structure analysis
+            # Structure analysis (use JSON format for test assertions)
             structure_result = await self.table_tool.execute(
-                {"file_path": file_path, "format_type": "compact"}
+                {
+                    "file_path": file_path,
+                    "format_type": "compact",
+                    "output_format": "json",
+                }
             )
 
             assert structure_result["language"] == expectations["expected_lang"]
@@ -681,9 +691,13 @@ if __name__ == '__main__':
     async def test_user_story_acceptance_criteria(self):
         """Test User Story 1 acceptance criteria"""
 
-        # US1-AC1: Developers can quickly assess code scale and complexity
+        # US1-AC1: Developers can quickly assess code scale and complexity (use JSON format)
         scale_result = await self.scale_tool.execute(
-            {"file_path": self.test_files["java"], "include_complexity": True}
+            {
+                "file_path": self.test_files["java"],
+                "include_complexity": True,
+                "output_format": "json",
+            }
         )
 
         # Should provide comprehensive metrics
@@ -691,9 +705,13 @@ if __name__ == '__main__':
         assert "summary" in scale_result
         assert "structural_overview" in scale_result
 
-        # US1-AC2: Developers can generate detailed structure documentation
+        # US1-AC2: Developers can generate detailed structure documentation (use JSON format)
         structure_result = await self.table_tool.execute(
-            {"file_path": self.test_files["java"], "format_type": "full"}
+            {
+                "file_path": self.test_files["java"],
+                "format_type": "full",
+                "output_format": "json",
+            }
         )
 
         # Should provide detailed structure table
@@ -717,17 +735,22 @@ if __name__ == '__main__':
         # This test serves as the checkpoint for User Story 1 completion
         # It verifies that both tools work independently and together
 
-        # Independent functionality test
+        # Independent functionality test (use JSON format for test assertions)
         scale_result = await self.scale_tool.execute(
             {
                 "file_path": self.test_files["java"],
                 "include_complexity": True,
                 "include_details": True,
+                "output_format": "json",
             }
         )
 
         structure_result = await self.table_tool.execute(
-            {"file_path": self.test_files["java"], "format_type": "json"}
+            {
+                "file_path": self.test_files["java"],
+                "format_type": "json",
+                "output_format": "json",
+            }
         )
 
         # Verify both tools produce valid, complete results

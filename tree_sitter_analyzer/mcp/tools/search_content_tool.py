@@ -204,8 +204,8 @@ Choose output format parameters based on your needs to minimize token usage and 
                     "output_format": {
                         "type": "string",
                         "enum": ["json", "toon"],
-                        "description": "Output format: 'json' (default) or 'toon' (50-70% token reduction)",
-                        "default": "json",
+                        "description": "Output format: 'toon' (default, 50-70% token reduction) or 'json'",
+                        "default": "toon",
                     },
                 },
                 "required": ["query"],
@@ -652,7 +652,7 @@ Choose output format parameters based on your needs to minimize token usage and 
             suppress_output = arguments.get("suppress_output", False)
 
             # Get output format
-            output_format = arguments.get("output_format", "json")
+            output_format = arguments.get("output_format", "toon")
 
             # Handle file output if requested
             if output_file:
@@ -716,7 +716,7 @@ Choose output format parameters based on your needs to minimize token usage and 
             # Handle output suppression and file output for summary results
             output_file = arguments.get("output_file")
             suppress_output = arguments.get("suppress_output", False)
-            output_format = arguments.get("output_format", "json")
+            output_format = arguments.get("output_format", "toon")
 
             # Handle file output if requested
             if output_file:
@@ -776,7 +776,7 @@ Choose output format parameters based on your needs to minimize token usage and 
         # Handle output suppression and file output
         output_file = arguments.get("output_file")
         suppress_output = arguments.get("suppress_output", False)
-        output_format = arguments.get("output_format", "json")
+        output_format = arguments.get("output_format", "toon")
 
         # Always add results to the base result for caching
         result["results"] = matches

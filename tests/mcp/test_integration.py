@@ -330,18 +330,23 @@ module.exports = { Calculator, createCalculator };
         assert isinstance(elements["total"], int)
         assert elements["total"] >= 0
 
-        # Test structure analysis (Step 2)
+        # Test structure analysis (Step 2) - use JSON format for test assertions
         structure_result = await self.server.table_format_tool.execute(
-            {"file_path": java_file, "format_type": "full"}
+            {"file_path": java_file, "format_type": "full", "output_format": "json"}
         )
 
         assert "table_output" in structure_result
         assert structure_result["language"] == "java"
         assert "metadata" in structure_result
 
-        # Test partial reading (Step 3)
+        # Test partial reading (Step 3) - use JSON format for test assertions
         partial_result = await self.server.read_partial_tool.execute(
-            {"file_path": java_file, "start_line": 1, "end_line": 10}
+            {
+                "file_path": java_file,
+                "start_line": 1,
+                "end_line": 10,
+                "output_format": "json",
+            }
         )
 
         assert "partial_content_result" in partial_result

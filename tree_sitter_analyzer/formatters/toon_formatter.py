@@ -33,6 +33,7 @@ class ToonFormatter(BaseFormatter):
         compact_arrays: bool = True,
         include_metadata: bool = True,
         fallback_to_json: bool = True,
+        normalize_paths: bool = True,
     ):
         """
         Initialize TOON formatter.
@@ -42,12 +43,19 @@ class ToonFormatter(BaseFormatter):
             compact_arrays: Use CSV-style compact arrays for homogeneous data
             include_metadata: Include file metadata in output
             fallback_to_json: Fall back to JSON on encoding errors
+            normalize_paths: Convert Windows backslashes to forward slashes
+                           for ~10% token reduction in path-heavy outputs
         """
         self.use_tabs = use_tabs
         self.compact_arrays = compact_arrays
         self.include_metadata = include_metadata
         self.fallback_to_json = fallback_to_json
-        self.encoder = ToonEncoder(use_tabs=use_tabs, fallback_to_json=fallback_to_json)
+        self.normalize_paths = normalize_paths
+        self.encoder = ToonEncoder(
+            use_tabs=use_tabs,
+            fallback_to_json=fallback_to_json,
+            normalize_paths=normalize_paths,
+        )
 
     def format(self, data: Any) -> str:
         """
