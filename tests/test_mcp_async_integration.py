@@ -134,7 +134,11 @@ class Class_{i}:
         tool = QueryTool(project_root=os.getcwd())
 
         result = await tool.execute(
-            {"file_path": sample_code_file, "query_key": "function", "output_format": "json"}
+            {
+                "file_path": sample_code_file,
+                "query_key": "function",
+                "output_format": "json",
+            }
         )
 
         assert result["success"] is True
@@ -157,7 +161,11 @@ class Class_{i}:
         tool = QueryTool(project_root=os.getcwd())
 
         result = await tool.execute(
-            {"file_path": sample_code_file, "query_key": "class", "output_format": "json"}
+            {
+                "file_path": sample_code_file,
+                "query_key": "class",
+                "output_format": "json",
+            }
         )
 
         assert result["success"] is True
@@ -182,6 +190,7 @@ class Class_{i}:
                 "file_path": sample_javascript_file,
                 "language": "javascript",
                 "query_key": "function",
+                "output_format": "json",
             }
         )
 
@@ -230,6 +239,7 @@ class Class_{i}:
                 "file_path": sample_code_file,
                 "language": "python",
                 "query_string": "(function_definition name: (identifier) @function)",
+                "output_format": "json",
             }
         )
 
@@ -248,6 +258,7 @@ class Class_{i}:
                 "file_path": sample_code_file,
                 "query_key": "function",
                 "filter": "name=example_function",
+                "output_format": "json",
             }
         )
 
@@ -273,7 +284,11 @@ class Class_{i}:
 
         # 言語を指定せずに実行
         result = await tool.execute(
-            {"file_path": sample_code_file, "query_key": "function"}
+            {
+                "file_path": sample_code_file,
+                "query_key": "function",
+                "output_format": "json",
+            }
         )
 
         assert result["success"] is True
@@ -286,7 +301,11 @@ class Class_{i}:
         tool = QueryTool(project_root=os.getcwd())
 
         result = await tool.execute(
-            {"file_path": "nonexistent_file.py", "query_key": "function"}
+            {
+                "file_path": "nonexistent_file.py",
+                "query_key": "function",
+                "output_format": "json",
+            }
         )
 
         assert result["success"] is False
@@ -310,6 +329,7 @@ class Class_{i}:
                 "file_path": sample_code_file,
                 "language": "invalid_language",
                 "query_key": "function",
+                "output_format": "json",
             }
         )
 
@@ -330,7 +350,11 @@ class Class_{i}:
         tool = QueryTool(project_root=os.getcwd())
 
         result = await tool.execute(
-            {"file_path": sample_code_file, "query_key": "invalid_query_key"}
+            {
+                "file_path": sample_code_file,
+                "query_key": "invalid_query_key",
+                "output_format": "json",
+            }
         )
 
         # 無効なクエリキーの場合、エラーになるか空結果を返すかは実装依存
@@ -353,6 +377,7 @@ class Class_{i}:
                 "file_path": sample_code_file,
                 "language": "python",
                 "query_string": "((invalid query syntax",
+                "output_format": "json",
             }
         )
 
@@ -373,9 +398,27 @@ class Class_{i}:
         tool = QueryTool(project_root=os.getcwd())
 
         tasks = [
-            tool.execute({"file_path": sample_code_file, "query_key": "function"}),
-            tool.execute({"file_path": sample_code_file, "query_key": "class"}),
-            tool.execute({"file_path": sample_code_file, "query_key": "function"}),
+            tool.execute(
+                {
+                    "file_path": sample_code_file,
+                    "query_key": "function",
+                    "output_format": "json",
+                }
+            ),
+            tool.execute(
+                {
+                    "file_path": sample_code_file,
+                    "query_key": "class",
+                    "output_format": "json",
+                }
+            ),
+            tool.execute(
+                {
+                    "file_path": sample_code_file,
+                    "query_key": "function",
+                    "output_format": "json",
+                }
+            ),
         ]
 
         results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -409,6 +452,7 @@ class Class_{i}:
                     "file_path": sample_code_file,
                     "language": "python",
                     "query_key": "function",
+                    "output_format": "json",
                 }
             ),
             tool.execute(
@@ -416,6 +460,7 @@ class Class_{i}:
                     "file_path": sample_javascript_file,
                     "language": "javascript",
                     "query_key": "function",
+                    "output_format": "json",
                 }
             ),
         ]
@@ -440,7 +485,11 @@ class Class_{i}:
         tool = QueryTool(project_root=os.getcwd())
 
         result = await tool.execute(
-            {"file_path": large_code_file, "query_key": "function"}
+            {
+                "file_path": large_code_file,
+                "query_key": "function",
+                "output_format": "json",
+            }
         )
 
         assert result["success"] is True
@@ -458,7 +507,11 @@ class Class_{i}:
         start_time = time.time()
 
         result = await tool.execute(
-            {"file_path": sample_code_file, "query_key": "function"}
+            {
+                "file_path": sample_code_file,
+                "query_key": "function",
+                "output_format": "json",
+            }
         )
 
         end_time = time.time()
@@ -479,7 +532,13 @@ class Class_{i}:
 
         # 10個の並行タスクを実行
         tasks = [
-            tool.execute({"file_path": sample_code_file, "query_key": "function"})
+            tool.execute(
+                {
+                    "file_path": sample_code_file,
+                    "query_key": "function",
+                    "output_format": "json",
+                }
+            )
             for _ in range(10)
         ]
 
