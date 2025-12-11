@@ -51,7 +51,12 @@ class TestReadPartialToolEdgeCases:
         with open(single_line_file, "w") as f:
             f.write("Single line content")
 
-        args = {"file_path": single_line_file, "start_line": 1, "end_line": 1}
+        args = {
+            "file_path": single_line_file,
+            "start_line": 1,
+            "end_line": 1,
+            "output_format": "json",
+        }
 
         result = await tool.execute(args)
         assert isinstance(result, dict)
@@ -71,6 +76,7 @@ class TestReadPartialToolEdgeCases:
             "file_path": test_file,
             "start_line": 1,
             "end_line": 1000,  # Request more lines than exist
+            "output_format": "json",
         }
 
         result = await tool.execute(args)
@@ -131,7 +137,12 @@ Line 5: 日本語テスト"""
         with open(unicode_file, "w", encoding="utf-8") as f:
             f.write(unicode_content)
 
-        args = {"file_path": unicode_file, "start_line": 1, "end_line": 5}
+        args = {
+            "file_path": unicode_file,
+            "start_line": 1,
+            "end_line": 5,
+            "output_format": "json",
+        }
 
         result = await tool.execute(args)
         assert isinstance(result, dict)
@@ -145,7 +156,12 @@ Line 5: 日本語テスト"""
         with open(binary_file, "wb") as f:
             f.write(b"\x00\x01\x02\x03\x04\x05")
 
-        args = {"file_path": binary_file, "start_line": 1, "end_line": 5}
+        args = {
+            "file_path": binary_file,
+            "start_line": 1,
+            "end_line": 5,
+            "output_format": "json",
+        }
 
         try:
             result = await tool.execute(args)
@@ -345,7 +361,12 @@ class TestReadPartialToolPerformance:
         ]
 
         for start, end in test_ranges:
-            args = {"file_path": large_file, "start_line": start, "end_line": end}
+            args = {
+                "file_path": large_file,
+                "start_line": start,
+                "end_line": end,
+                "output_format": "json",
+            }
 
             result = await tool.execute(args)
             assert isinstance(result, dict)
@@ -447,7 +468,12 @@ if __name__ == "__main__":
         ]
 
         for start, end in test_cases:
-            args = {"file_path": source_file, "start_line": start, "end_line": end}
+            args = {
+                "file_path": source_file,
+                "start_line": start,
+                "end_line": end,
+                "output_format": "json",
+            }
 
             result = await tool.execute(args)
             assert isinstance(result, dict)
@@ -469,7 +495,12 @@ if __name__ == "__main__":
             with open(file_path, "w") as f:
                 f.write(content)
 
-            args = {"file_path": file_path, "start_line": 1, "end_line": 3}
+            args = {
+                "file_path": file_path,
+                "start_line": 1,
+                "end_line": 3,
+                "output_format": "json",
+            }
 
             result = await tool.execute(args)
             assert isinstance(result, dict)

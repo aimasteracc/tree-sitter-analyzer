@@ -69,7 +69,9 @@ async def test_list_files_exec_happy_path(monkeypatch, tmp_path):
         "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture", fake_run
     )
 
-    result = await tool.execute({"roots": [str(tmp_path)], "extensions": ["py"]})
+    result = await tool.execute(
+        {"roots": [str(tmp_path)], "extensions": ["py"], "output_format": "json"}
+    )
     assert result["success"] is True
     assert result["count"] >= 0
     assert any(x["path"].endswith("a.py") for x in result["results"])
@@ -104,7 +106,9 @@ async def test_search_content_exec_files_list(monkeypatch, tmp_path):
         "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture", fake_run
     )
 
-    result = await tool.execute({"files": [str(f1)], "query": "hello"})
+    result = await tool.execute(
+        {"files": [str(f1)], "query": "hello", "output_format": "json"}
+    )
     assert result["success"] is True
     assert result["count"] == 1
     assert result["results"][0]["line"] == 1  # Updated field name
@@ -179,6 +183,7 @@ async def test_list_files_exclude(monkeypatch, tmp_path):
             "glob": True,
             "pattern": "*.py",
             "exclude": ["excluded/"],
+            "output_format": "json",
         }
     )
     assert result["success"] is True
@@ -221,6 +226,7 @@ async def test_search_content_globs(monkeypatch, tmp_path):
             "query": "import",
             "include_globs": ["*.py"],
             "exclude_globs": ["*_test.py"],
+            "output_format": "json",
         }
     )
     assert result["success"] is True
@@ -272,6 +278,7 @@ async def test_find_and_grep_multiline_case_insensitive(monkeypatch, tmp_path):
             "query": 'class \\w+\\([^\\)]*\\):\\n    """[^"]*"""',
             "case": "insensitive",
             "multiline": True,
+            "output_format": "json",
         }
     )
     assert result["success"] is True
@@ -502,7 +509,9 @@ file5.py
         "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture", fake_run
     )
 
-    result = await tool.execute({"roots": [str(tmp_path)], "count_only": True})
+    result = await tool.execute(
+        {"roots": [str(tmp_path)], "count_only": True, "output_format": "json"}
+    )
 
     assert result["success"] is True
     assert result["count_only"] is True
@@ -576,7 +585,7 @@ async def test_list_files_error_handling(monkeypatch, tmp_path):
         "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture", fake_run
     )
 
-    result = await tool.execute({"roots": [str(tmp_path)]})
+    result = await tool.execute({"roots": [str(tmp_path)], "output_format": "json"})
 
     assert result["success"] is False
     assert result["error"] == "fd: command failed"
@@ -596,7 +605,9 @@ async def test_search_content_error_handling(monkeypatch, tmp_path):
         "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture", fake_run
     )
 
-    result = await tool.execute({"roots": [str(tmp_path)], "query": "[invalid"})
+    result = await tool.execute(
+        {"roots": [str(tmp_path)], "query": "[invalid", "output_format": "json"}
+    )
 
     assert result["success"] is False
     assert result["error"] == "rg: invalid regex"
@@ -643,7 +654,12 @@ async def test_find_and_grep_optimize_paths(monkeypatch, tmp_path):
 
     # Test with path optimization enabled
     result = await tool.execute(
-        {"roots": [str(tmp_path)], "query": "hello", "optimize_paths": True}
+        {
+            "roots": [str(tmp_path)],
+            "query": "hello",
+            "optimize_paths": True,
+            "output_format": "json",
+        }
     )
 
     assert result["success"] is True
@@ -672,7 +688,9 @@ async def test_find_and_grep_error_handling(monkeypatch, tmp_path):
         "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture", fake_run
     )
 
-    result = await tool.execute({"roots": [str(tmp_path)], "query": "test"})
+    result = await tool.execute(
+        {"roots": [str(tmp_path)], "query": "test", "output_format": "json"}
+    )
 
     assert result["success"] is False
     assert result["error"] == "fd: permission denied"
@@ -864,12 +882,19 @@ async def test_list_files_with_pattern_and_no_pattern(monkeypatch, tmp_path):
     )
 
     # Test with pattern
-    await tool.execute({"roots": [str(tmp_path)], "pattern": "*.py", "glob": True})
+    await tool.execute(
+        {
+            "roots": [str(tmp_path)],
+            "pattern": "*.py",
+            "glob": True,
+            "output_format": "json",
+        }
+    )
     assert "*.py" in captured_commands[0]
 
     # Test without pattern (should use '.' as default pattern)
     captured_commands.clear()
-    await tool.execute({"roots": [str(tmp_path)]})
+    await tool.execute({"roots": [str(tmp_path)], "output_format": "json"})
     assert (
         "." in captured_commands[0]
     )  # Should have default pattern when pattern is None
@@ -1071,7 +1096,9 @@ async def test_search_content_with_files_parameter(monkeypatch, tmp_path):
         "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture", fake_run
     )
 
-    result = await tool.execute({"files": [str(test_file)], "query": "import"})
+    result = await tool.execute(
+        {"files": [str(test_file)], "query": "import", "output_format": "json"}
+    )
 
     assert result["success"] is True
     assert result["count"] == 1
@@ -1107,7 +1134,9 @@ async def test_list_files_with_size_filters(monkeypatch, tmp_path):
         "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture", fake_run
     )
 
-    result = await tool.execute({"roots": [str(tmp_path)], "size": ["+500B"]})
+    result = await tool.execute(
+        {"roots": [str(tmp_path)], "size": ["+500B"], "output_format": "json"}
+    )
 
     assert result["success"] is True
     assert result["count"] == 1
@@ -1226,7 +1255,7 @@ async def test_list_files_metadata_fields(monkeypatch, tmp_path):
         "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture", fake_run
     )
 
-    result = await tool.execute({"roots": [str(tmp_path)]})
+    result = await tool.execute({"roots": [str(tmp_path)], "output_format": "json"})
 
     assert result["success"] is True
     assert "elapsed_ms" in result
@@ -1876,7 +1905,9 @@ async def test_fd_01_simple_search(tmp_path, monkeypatch):
     )
 
     # Test basic search functionality
-    result1 = await tool.execute({"roots": [str(tmp_path)], "pattern": "a.foo"})
+    result1 = await tool.execute(
+        {"roots": [str(tmp_path)], "pattern": "a.foo", "output_format": "json"}
+    )
     assert result1["success"] is True
     assert result1["count"] >= 0  # Allow zero results
 
@@ -2467,7 +2498,9 @@ async def test_fd_16_empty_pattern(tmp_path, monkeypatch):
     )
 
     # Test empty pattern
-    result = await tool.execute({"roots": [str(tmp_path)], "pattern": ""})
+    result = await tool.execute(
+        {"roots": [str(tmp_path)], "pattern": "", "output_format": "json"}
+    )
 
     assert result["success"] is True
     assert result["count"] >= 2
@@ -2508,7 +2541,9 @@ async def test_fd_17_regex_searches(tmp_path, monkeypatch):
     )
 
     # Test regex pattern
-    result = await tool.execute({"roots": [str(tmp_path)], "pattern": "test.*\\.txt"})
+    result = await tool.execute(
+        {"roots": [str(tmp_path)], "pattern": "test.*\\.txt", "output_format": "json"}
+    )
 
     assert result["success"] is True
     assert result["count"] >= 2
@@ -2551,13 +2586,17 @@ async def test_fd_18_smart_case_search(tmp_path, monkeypatch):
     )
 
     # Test smart case with lowercase (should match all)
-    result1 = await tool.execute({"roots": [str(tmp_path)], "pattern": "test"})
+    result1 = await tool.execute(
+        {"roots": [str(tmp_path)], "pattern": "test", "output_format": "json"}
+    )
 
     assert result1["success"] is True
     assert result1["count"] >= 2
 
     # Test smart case with mixed case (should be exact)
-    result2 = await tool.execute({"roots": [str(tmp_path)], "pattern": "Test"})
+    result2 = await tool.execute(
+        {"roots": [str(tmp_path)], "pattern": "Test", "output_format": "json"}
+    )
 
     assert result2["success"] is True
     assert result2["count"] >= 1
@@ -2598,7 +2637,9 @@ async def test_fd_19_case_sensitive_search(tmp_path, monkeypatch):
     )
 
     # Test case sensitive search
-    result = await tool.execute({"roots": [str(tmp_path)], "pattern": "test"})
+    result = await tool.execute(
+        {"roots": [str(tmp_path)], "pattern": "test", "output_format": "json"}
+    )
 
     assert result["success"] is True
     assert result["count"] >= 0
@@ -4068,7 +4109,12 @@ async def test_fd_51_print0_output_simulation(tmp_path, monkeypatch):
 
     # Test structured output (our equivalent of print0)
     result = await tool.execute(
-        {"roots": [str(tmp_path)], "pattern": "*", "glob": True}
+        {
+            "roots": [str(tmp_path)],
+            "pattern": "*",
+            "glob": True,
+            "output_format": "json",
+        }
     )
 
     assert result["success"] is True
@@ -4107,7 +4153,13 @@ async def test_fd_52_absolute_path_output(tmp_path, monkeypatch):
 
     # Test absolute paths
     result1 = await tool.execute(
-        {"roots": [str(tmp_path)], "pattern": "*", "glob": True, "absolute": True}
+        {
+            "roots": [str(tmp_path)],
+            "pattern": "*",
+            "glob": True,
+            "absolute": True,
+            "output_format": "json",
+        }
     )
 
     assert result1["success"] is True
@@ -4119,7 +4171,13 @@ async def test_fd_52_absolute_path_output(tmp_path, monkeypatch):
 
     # Test relative paths
     result2 = await tool.execute(
-        {"roots": [str(tmp_path)], "pattern": "*", "glob": True, "absolute": False}
+        {
+            "roots": [str(tmp_path)],
+            "pattern": "*",
+            "glob": True,
+            "absolute": False,
+            "output_format": "json",
+        }
     )
 
     assert result2["success"] is True
@@ -4211,7 +4269,12 @@ async def test_fd_55_custom_path_separator(tmp_path, monkeypatch):
 
     # Test path separator handling
     result = await tool.execute(
-        {"roots": [str(tmp_path)], "pattern": "*", "glob": True}
+        {
+            "roots": [str(tmp_path)],
+            "pattern": "*",
+            "glob": True,
+            "output_format": "json",
+        }
     )
 
     assert result["success"] is True
@@ -4307,7 +4370,12 @@ async def test_fd_58_format_output_structured(tmp_path, monkeypatch):
 
     # Test structured JSON format (our default)
     result = await tool.execute(
-        {"roots": [str(tmp_path)], "pattern": "*", "glob": True}
+        {
+            "roots": [str(tmp_path)],
+            "pattern": "*",
+            "glob": True,
+            "output_format": "json",
+        }
     )
 
     assert result["success"] is True
@@ -5261,7 +5329,12 @@ async def test_fd_86_list_details_advanced(tmp_path, monkeypatch):
 
     # Test detailed listing
     result = await tool.execute(
-        {"roots": [str(tmp_path)], "pattern": "*", "glob": True}
+        {
+            "roots": [str(tmp_path)],
+            "pattern": "*",
+            "glob": True,
+            "output_format": "json",
+        }
     )
 
     assert result["success"] is True
@@ -5329,7 +5402,9 @@ async def test_fd_88_number_parsing_errors(tmp_path, monkeypatch):
     assert result1["success"] is True or result1["success"] is False
 
     # Test with valid parameters
-    result2 = await tool.execute({"roots": [str(tmp_path)], "pattern": "*", "depth": 1})
+    result2 = await tool.execute(
+        {"roots": [str(tmp_path)], "pattern": "*", "depth": 1, "output_format": "json"}
+    )
 
     assert result2["success"] is True or result2["success"] is False
 
@@ -5413,7 +5488,9 @@ async def test_fd_91_invalid_cwd(tmp_path, monkeypatch):
 
     # Test with invalid directory (should be handled by tool validation)
     try:
-        result = await tool.execute({"roots": [str(nonexistent_path)], "pattern": "*"})
+        result = await tool.execute(
+            {"roots": [str(nonexistent_path)], "pattern": "*", "output_format": "json"}
+        )
         # If successful, that's fine
         assert result["success"] is True or result["success"] is False
     except Exception:
@@ -5543,6 +5620,7 @@ async def test_fd_94_hyperlink_output_advanced(tmp_path, monkeypatch):
             "pattern": "*",
             "glob": True,
             "absolute": True,  # Ensure absolute paths for hyperlinks
+            "output_format": "json",
         }
     )
 

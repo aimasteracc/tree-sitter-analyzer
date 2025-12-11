@@ -165,6 +165,11 @@ async def _run(args: argparse.Namespace) -> int:
     if args.total_only:
         payload["total_only"] = True
 
+    # Pass output_format to MCP tool to ensure consistent formatting
+    # CLI uses "json" as default, MCP tool uses "toon" as default
+    # We need to explicitly pass the CLI's output_format to override MCP default
+    payload["output_format"] = args.output_format
+
     try:
         result = await tool.execute(payload)
         output_data(result, args.output_format)

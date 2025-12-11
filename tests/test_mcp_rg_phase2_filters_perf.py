@@ -209,7 +209,14 @@ async def test_rg_17_timeout_forwarded(monkeypatch, tmp_path):
         "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture", fake_run
     )
 
-    await tool.execute({"roots": [str(tmp_path)], "query": "x", "timeout_ms": 1234})
+    await tool.execute(
+        {
+            "roots": [str(tmp_path)],
+            "query": "x",
+            "timeout_ms": 1234,
+            "output_format": "json",
+        }
+    )
     assert seen_timeout["val"] == 1234
 
 
@@ -379,7 +386,12 @@ async def test_rg_22_optimize_paths(monkeypatch, tmp_path):
     )
 
     res = await tool.execute(
-        {"roots": [str(tmp_path)], "query": "print", "optimize_paths": True}
+        {
+            "roots": [str(tmp_path)],
+            "query": "print",
+            "optimize_paths": True,
+            "output_format": "json",
+        }
     )
     assert res["success"] is True
     # Optimized file path should not be the full absolute path when common prefix exists
@@ -398,7 +410,9 @@ async def test_rg_23_no_matches_rc1(monkeypatch, tmp_path):
         "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture", fake_run
     )
 
-    res = await tool.execute({"roots": [str(tmp_path)], "query": "neverfind"})
+    res = await tool.execute(
+        {"roots": [str(tmp_path)], "query": "neverfind", "output_format": "json"}
+    )
     assert res["success"] is True
     assert res["count"] == 0
 
@@ -464,6 +478,8 @@ async def test_rg_25_json_parser_ignores_non_match(monkeypatch, tmp_path):
         "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture", fake_run
     )
 
-    res = await tool.execute({"roots": [str(tmp_path)], "query": "x"})
+    res = await tool.execute(
+        {"roots": [str(tmp_path)], "query": "x", "output_format": "json"}
+    )
     assert res["success"] is True
     assert res["count"] == 1

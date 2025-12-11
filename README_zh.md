@@ -4,22 +4,21 @@
 
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-6297%20passed-brightgreen.svg)](#-质量与测试)
+[![Tests](https://img.shields.io/badge/tests-6301%20passed-brightgreen.svg)](#-质量与测试)
 [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
-[![Version](https://img.shields.io/badge/version-1.9.22-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
+[![Version](https://img.shields.io/badge/version-1.9.23-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
 > 🚀 **AI时代的企业级代码分析工具** - 深度AI集成 · 强大搜索 · 17种语言 · 智能分析
 
 ---
 
-## ✨ v1.9.19 最新更新
+## ✨ v1.9.23 最新更新
 
-- **TOON格式集成**: 面向AI的Token优化输出格式，显著降低Token消耗（最高可节省70%）
-- **增强的MCP工具**: 所有搜索和分析工具现支持TOON格式输出
-- **CLI TOON支持**: 所有命令完整支持TOON格式命令行
-- **6,297个测试** 100%通过率
+- **TOON格式Token优化修复**: 修复TOON响应中的冗余数据 - 现正确删除冗余JSON字段以最大化Token节省
+- **CLI/MCP一致性**: 修复CLI搜索工具正确传递输出格式到MCP工具
+- **6,301个测试** 100%通过率
 
 📖 完整版本历史请查看 **[更新日志](CHANGELOG.md)**。
 

@@ -49,7 +49,9 @@ async def test_rg_67_binary_file_handling(monkeypatch, tmp_path):
     )
 
     # Should just succeed with count 0
-    res = await tool.execute({"roots": [str(tmp_path)], "query": "x"})
+    res = await tool.execute(
+        {"roots": [str(tmp_path)], "query": "x", "output_format": "json"}
+    )
     assert res["success"] is True and res["count"] == 0
 
 
@@ -232,7 +234,9 @@ async def test_rg_75_normal_mode_returns_results_array(monkeypatch, tmp_path):
         "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture", fake_run
     )
 
-    res = await tool.execute({"roots": [str(tmp_path)], "query": "x"})
+    res = await tool.execute(
+        {"roots": [str(tmp_path)], "query": "x", "output_format": "json"}
+    )
     assert res["success"] is True and isinstance(res.get("results", []), list)
 
 
@@ -249,7 +253,9 @@ async def test_rg_76_malformed_json_lines_are_skipped(monkeypatch, tmp_path):
         "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture", fake_run
     )
 
-    res = await tool.execute({"roots": [str(tmp_path)], "query": "x"})
+    res = await tool.execute(
+        {"roots": [str(tmp_path)], "query": "x", "output_format": "json"}
+    )
     assert res["success"] is True
 
 
@@ -281,7 +287,9 @@ async def test_rg_77_cache_hit_field_present(monkeypatch, tmp_path):
         "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture", fake_run_once
     )
 
-    await tool.execute({"roots": [str(tmp_path)], "query": "x"})
+    await tool.execute(
+        {"roots": [str(tmp_path)], "query": "x", "output_format": "json"}
+    )
 
     # Second run - simulate cache return by preventing subprocess; tool should return cached
     async def fake_run_fail(cmd, input_data=None, timeout_ms=None):
@@ -291,7 +299,9 @@ async def test_rg_77_cache_hit_field_present(monkeypatch, tmp_path):
         "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture", fake_run_fail
     )
 
-    res2 = await tool.execute({"roots": [str(tmp_path)], "query": "x"})
+    res2 = await tool.execute(
+        {"roots": [str(tmp_path)], "query": "x", "output_format": "json"}
+    )
     assert res2.get("cache_hit") is True
 
 
@@ -362,7 +372,12 @@ async def test_rg_79_optimize_paths_has_effect(monkeypatch, tmp_path):
     )
 
     res = await tool.execute(
-        {"roots": [str(tmp_path)], "query": "x", "optimize_paths": True}
+        {
+            "roots": [str(tmp_path)],
+            "query": "x",
+            "optimize_paths": True,
+            "output_format": "json",
+        }
     )
     assert res["success"] is True
     assert "..." in res["results"][0]["file"] or not res["results"][0][

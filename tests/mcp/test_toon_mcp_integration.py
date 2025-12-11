@@ -10,6 +10,7 @@ import pytest
 
 from tree_sitter_analyzer.mcp.utils.file_output_manager import FileOutputManager
 from tree_sitter_analyzer.mcp.utils.format_helper import (
+    apply_toon_format_to_response,
     format_as_json,
     format_as_toon,
     format_for_file_output,
@@ -254,6 +255,95 @@ class TestMCPToolSchemaValidation:
         properties = definition["inputSchema"]["properties"]
         assert "output_format" in properties
         assert properties["output_format"]["enum"] == ["json", "toon"]
+
+
+class TestApplyToonFormatToResponse:
+    """Test apply_toon_format_to_response function behavior."""
+
+    def test_json_format_returns_original(self):
+        """Test that JSON format returns the original result unchanged."""
+        result = {
+            "success": True,
+            "count": 5,
+            "results": [{"name": "item1"}, {"name": "item2"}],
+        }
+        response = apply_toon_format_to_response(result, "json")
+
+        # Should return original result unchanged
+        assert response == result
+        assert "results" in response
+        assert "toon_content" not in response
+
+    def test_toon_format_removes_redundant_fields(self):
+        """Test that TOON format removes redundant data fields."""
+        result = {
+            "success": True,
+            "count": 5,
+            "elapsed_ms": 100,
+            "results": [{"name": "item1"}, {"name": "item2"}],
+        }
+        response = apply_toon_format_to_response(result, "toon")
+
+        # Should NOT contain redundant fields
+        assert "results" not in response
+
+        # Should contain metadata and TOON content
+        assert response["format"] == "toon"
+        assert "toon_content" in response
+        assert response["success"] is True
+        assert response["count"] == 5
+        assert response["elapsed_ms"] == 100
+
+    def test_toon_format_removes_all_redundant_fields(self):
+        """Test that all redundant field types are removed."""
+        result = {
+            "success": True,
+            "results": [{"a": 1}],
+            "matches": [{"b": 2}],
+            "content": "some content",
+            "partial_content_result": {"lines": []},
+            "analysis_result": {"data": {}},
+            "data": {"nested": "data"},
+            "items": [1, 2, 3],
+            "files": ["a.py", "b.py"],
+            "lines": ["line1", "line2"],
+        }
+        response = apply_toon_format_to_response(result, "toon")
+
+        # All redundant fields should be removed
+        assert "results" not in response
+        assert "matches" not in response
+        assert "content" not in response
+        assert "partial_content_result" not in response
+        assert "analysis_result" not in response
+        assert "data" not in response
+        assert "items" not in response
+        assert "files" not in response
+        assert "lines" not in response
+
+        # TOON content should be present
+        assert "toon_content" in response
+        assert response["format"] == "toon"
+
+    def test_toon_content_contains_full_data(self):
+        """Test that toon_content contains all original data in TOON format."""
+        result = {
+            "success": True,
+            "count": 2,
+            "results": [
+                {"name": "method1", "lines": 10},
+                {"name": "method2", "lines": 20},
+            ],
+        }
+        response = apply_toon_format_to_response(result, "toon")
+
+        toon_content = response["toon_content"]
+
+        # TOON content should contain the data
+        assert "success: true" in toon_content
+        assert "count: 2" in toon_content
+        assert "method1" in toon_content
+        assert "method2" in toon_content
 
 
 class TestToonFormatTokenReduction:

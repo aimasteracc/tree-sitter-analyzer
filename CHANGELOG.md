@@ -1,6 +1,44 @@
 # Changelog
 
-## [Unreleased]
+## [1.9.23] - 2025-12-11
+
+### 🐛 Bug Fixes
+
+#### TOON Format Token Optimization Fix
+- **Fixed redundant data in TOON responses**: When `output_format=toon`, the response now properly removes redundant data fields (`results`, `matches`, `content`, etc.) to maximize token savings
+- **Root Cause**: Previously, TOON format responses included both the original JSON data fields AND the `toon_content`, defeating the purpose of token optimization
+- **New Behavior**: TOON responses now contain only:
+  - `format: "toon"` indicator
+  - `toon_content`: TOON-formatted string containing all data
+  - Essential metadata (success, count, elapsed_ms, truncated, etc.)
+- **Removed Redundant Fields**: `results`, `matches`, `content`, `partial_content_result`, `analysis_result`, `data`, `items`, `files`, `lines`
+- **Impact**: Significant token savings when using TOON format - no more duplicate data
+
+#### CLI and MCP Output Format Consistency Fix
+- **Fixed CLI search tools not passing output_format to MCP tools**: CLI search commands (`search_content_cli`, `list_files_cli`, `find_and_grep_cli`) now explicitly pass `output_format` to MCP tools
+- **Root Cause**: CLI tools were not passing `output_format` parameter, causing MCP tools to use default `toon` format while CLI expected `json`
+- **Fixed double TOON conversion**: `OutputManager.data()` now detects already-formatted TOON responses and avoids re-conversion
+- **Files Fixed**:
+  - `cli/commands/search_content_cli.py`: Added `output_format` to payload
+  - `cli/commands/list_files_cli.py`: Added `output_format` to payload
+  - `cli/commands/find_and_grep_cli.py`: Added `output_format` to payload
+  - `output_manager.py`: Added detection for pre-formatted TOON responses
+
+### 🧪 Tests Added
+
+- **TestApplyToonFormatToResponse**: 4 new test cases validating TOON response structure
+  - `test_json_format_returns_original`: Verifies JSON format returns unchanged
+  - `test_toon_format_removes_redundant_fields`: Verifies redundant fields are removed
+  - `test_toon_format_removes_all_redundant_fields`: Comprehensive redundant field check
+  - `test_toon_content_contains_full_data`: Verifies toon_content contains all data
+
+### 📊 Quality Metrics
+
+- **Tests**: 6,301 tests (100% pass rate)
+- **Coverage**: Codecov automatic monitoring
+- **Quality**: Enterprise-grade quality maintained
+
+---
 
 ## [1.9.22] - 2025-12-11
 

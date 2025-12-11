@@ -131,6 +131,22 @@ class OutputManager:
         if self.json_output:
             fmt = "json"
 
+        # Check if data is already TOON-formatted from MCP tool
+        # MCP tools return dict with "format": "toon" and "toon_content" when TOON is requested
+        if (
+            isinstance(data, dict)
+            and data.get("format") == "toon"
+            and "toon_content" in data
+        ):
+            if fmt == "toon":
+                # Already TOON formatted - just print the toon_content
+                print(data["toon_content"])
+                return
+            elif fmt == "json":
+                # User wants JSON but got TOON response - output as JSON
+                print(json.dumps(data, indent=2, ensure_ascii=False))
+                return
+
         # Try using registered formatter
         formatter = self._formatter_registry.get(fmt)
         if formatter:

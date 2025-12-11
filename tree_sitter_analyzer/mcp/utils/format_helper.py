@@ -153,9 +153,9 @@ def apply_toon_format_to_response(
     """
     Apply TOON format to MCP tool response if requested.
 
-    When output_format is 'toon', adds a TOON-formatted string
-    under the 'toon_content' key while preserving all original fields
-    for backward compatibility.
+    When output_format is 'toon', formats the result as TOON and removes
+    redundant data fields (results, matches, content, etc.) to maximize
+    token savings. Only metadata fields are preserved alongside toon_content.
 
     Args:
         result: Original result dictionary from MCP tool
@@ -171,11 +171,29 @@ def apply_toon_format_to_response(
         # Format the full result as TOON
         toon_content = format_as_toon(result)
 
-        # Create a copy of the original result and add TOON content
-        # This preserves all original fields for backward compatibility
-        toon_response = result.copy()
-        toon_response["format"] = "toon"
-        toon_response["toon_content"] = toon_content
+        # Create minimal response with only metadata and TOON content
+        # Remove redundant data fields to maximize token savings
+        redundant_fields = {
+            "results",
+            "matches",
+            "content",
+            "partial_content_result",
+            "analysis_result",
+            "data",
+            "items",
+            "files",
+            "lines",
+        }
+
+        toon_response: dict[str, Any] = {
+            "format": "toon",
+            "toon_content": toon_content,
+        }
+
+        # Preserve only metadata fields (not redundant data)
+        for key, value in result.items():
+            if key not in redundant_fields:
+                toon_response[key] = value
 
         return toon_response
 
