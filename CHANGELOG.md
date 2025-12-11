@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [1.9.23] - 2025-12-11
 
 ### 🐛 Bug Fixes
 
@@ -31,6 +31,12 @@
   - `test_toon_format_removes_redundant_fields`: Verifies redundant fields are removed
   - `test_toon_format_removes_all_redundant_fields`: Comprehensive redundant field check
   - `test_toon_content_contains_full_data`: Verifies toon_content contains all data
+
+### 📊 Quality Metrics
+
+- **Tests**: 6,301 tests (100% pass rate)
+- **Coverage**: Codecov automatic monitoring
+- **Quality**: Enterprise-grade quality maintained
 
 ---
 
