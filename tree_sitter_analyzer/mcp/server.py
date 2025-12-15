@@ -69,6 +69,7 @@ from .tools.query_tool import QueryTool
 from .tools.read_partial_tool import ReadPartialTool
 from .tools.search_content_tool import SearchContentTool
 from .tools.table_format_tool import TableFormatTool
+from .utils.shared_cache import get_shared_cache
 
 # Import UniversalAnalyzeTool at module level for test compatibility
 try:
@@ -212,7 +213,16 @@ class TreeSitterAnalyzerMCPServer:
             resolved_path = file_path
 
         # Security validation
-        is_valid, error_msg = self.security_validator.validate_file_path(resolved_path)
+        shared_cache = get_shared_cache()
+        cached = shared_cache.get_security_validation(
+            resolved_path, project_root=base_root
+        )
+        if cached is None:
+            cached = self.security_validator.validate_file_path(resolved_path)
+            shared_cache.set_security_validation(
+                resolved_path, cached, project_root=base_root
+            )
+        is_valid, error_msg = cached
         if not is_valid:
             raise ValueError(f"Invalid file path: {error_msg}")
 
@@ -513,12 +523,37 @@ class TreeSitterAnalyzerMCPServer:
                     f"MCP tool call: {name} with args: {list(arguments.keys())}"
                 )
 
-                # Validate file path security
+                # Validate file path security (server-side early rejection for compatibility)
+                # Note: Tools also validate paths, but they use shared caching to avoid redundant work.
                 if "file_path" in arguments:
                     file_path = arguments["file_path"]
-                    is_valid, error_msg = self.security_validator.validate_file_path(
-                        file_path
+
+                    # Best-effort resolve against project root for boundary enforcement
+                    base_root = getattr(
+                        getattr(self.security_validator, "boundary_manager", None),
+                        "project_root",
+                        None,
                     )
+                    if not PathClass(file_path).is_absolute() and base_root:
+                        resolved_candidate = str(
+                            (PathClass(base_root) / file_path).resolve()
+                        )
+                    else:
+                        resolved_candidate = file_path
+
+                    shared_cache = get_shared_cache()
+                    cached = shared_cache.get_security_validation(
+                        resolved_candidate, project_root=base_root
+                    )
+                    if cached is None:
+                        cached = self.security_validator.validate_file_path(
+                            resolved_candidate
+                        )
+                        shared_cache.set_security_validation(
+                            resolved_candidate, cached, project_root=base_root
+                        )
+
+                    is_valid, error_msg = cached
                     if not is_valid:
                         raise ValueError(
                             f"Invalid or unsafe file path: {error_msg or file_path}"
@@ -686,6 +721,9 @@ class TreeSitterAnalyzerMCPServer:
         Args:
             project_path: Path to the project directory
         """
+        # Invalidate shared caches once when the project root changes.
+        get_shared_cache().clear()
+
         # Update project stats resource
         self.project_stats_resource.set_project_path(project_path)
 

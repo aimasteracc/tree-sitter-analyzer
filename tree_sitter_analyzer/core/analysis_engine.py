@@ -247,7 +247,7 @@ class UnifiedAnalysisEngine:
         log_debug("Loading plugins using PluginManager...")
 
         try:
-            # PluginManagerの自動ロード機能を使用
+            # Use PluginManager's auto-load feature
             loaded_plugins = self._plugin_manager.load_plugins()
 
             final_languages = [plugin.get_language_name() for plugin in loaded_plugins]
@@ -370,7 +370,7 @@ class UnifiedAnalysisEngine:
         Returns:
             Hashed cache key
         """
-        # 一意なキーを生成するための文字列を構築
+        # Build string to generate unique key
         key_components = [
             request.file_path,
             str(request.language),
@@ -381,7 +381,7 @@ class UnifiedAnalysisEngine:
 
         key_string = ":".join(key_components)
 
-        # SHA256でハッシュ化
+        # Hash with SHA256
         return hashlib.sha256(key_string.encode("utf-8")).hexdigest()
 
     def _detect_language(self, file_path: str) -> str:
@@ -394,11 +394,29 @@ class UnifiedAnalysisEngine:
         Returns:
             Detected language name
         """
-        # 簡易的な拡張子ベース検出
+        # Extension based detection using plugins
         from pathlib import Path
 
-        ext = Path(file_path).suffix
+        ext = Path(file_path).suffix.lower()
 
+        # Check all loaded plugins
+        for plugin in self._plugin_manager.get_all_plugins().values():
+            extensions: list[str] | None = None
+            try:
+                extensions = plugin.get_file_extensions()
+            except Exception as e:
+                # Skip plugins that cannot report their supported extensions
+                log_debug(f"Language detection: plugin extensions unavailable: {e}")
+
+            if not extensions:
+                continue
+
+            if ext in [e.lower() for e in extensions]:
+                detected = plugin.get_language_name()
+                log_debug(f"Language detection: {file_path} -> {detected}")
+                return detected
+
+        # Fallback map for common languages if plugin not loaded
         language_map = {
             ".java": "java",
             ".py": "python",
@@ -413,8 +431,8 @@ class UnifiedAnalysisEngine:
             ".sql": "sql",
         }
 
-        detected = language_map.get(ext.lower(), "unknown")
-        log_debug(f"Language detection: {file_path} -> {detected}")
+        detected = language_map.get(ext, "unknown")
+        log_debug(f"Language detection (fallback): {file_path} -> {detected}")
         return detected
 
     def clear_cache(self) -> None:
@@ -496,7 +514,7 @@ class UnifiedAnalysisEngine:
 
         Resets metrics collected by performance monitoring. Used in tests/debugging.
         """
-        # 新しいパフォーマンスモニターインスタンスを作成してリセット
+        # Create new performance monitor instance to reset
         self._performance_monitor = PerformanceMonitor()
         log_info("Performance metrics cleared")
 
@@ -522,11 +540,11 @@ class UnifiedAnalysisEngine:
 
         Performs no cleanup; use cleanup() explicitly when needed.
         """
-        # デストラクタでは何もしない（非同期コンテキストでの問題を避けるため）
+        # Do nothing in destructor (to avoid issues in async contexts)
         pass
 
 
-# 簡易的なプラグイン実装（テスト用）
+# Simple plugin implementation (for testing)
 class MockLanguagePlugin:
     """Mock plugin for testing"""
 
@@ -551,15 +569,15 @@ class MockLanguagePlugin:
         """Mock analysis implementation"""
         log_info(f"Mock analysis for {file_path} ({self.language})")
 
-        # 簡易的な解析結果を返す
+        # Return simple analysis result
         return AnalysisResult(
             file_path=file_path,
-            line_count=10,  # 新しいアーキテクチャ用
-            elements=[],  # 新しいアーキテクチャ用
-            node_count=5,  # 新しいアーキテクチャ用
-            query_results={},  # 新しいアーキテクチャ用
-            source_code="// Mock source code",  # 新しいアーキテクチャ用
-            language=self.language,  # 言語を設定
+            line_count=10,  # For new architecture
+            elements=[],  # For new architecture
+            node_count=5,  # For new architecture
+            query_results={},  # For new architecture
+            source_code="// Mock source code",  # For new architecture
+            language=self.language,  # Set language
             package=None,
             analysis_time=0.1,
             success=True,

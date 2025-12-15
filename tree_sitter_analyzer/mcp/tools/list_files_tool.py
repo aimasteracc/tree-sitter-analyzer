@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, TypedDict
 
 from ..utils.error_handler import handle_mcp_errors
 from ..utils.file_output_manager import FileOutputManager
@@ -20,6 +20,31 @@ from . import fd_rg_utils
 from .base_tool import BaseMCPTool
 
 logger = logging.getLogger(__name__)
+
+
+class ListFilesArguments(TypedDict, total=False):
+    """Arguments for list_files tool"""
+
+    roots: list[str]
+    pattern: str
+    glob: bool
+    types: list[str]
+    extensions: list[str]
+    exclude: list[str]
+    depth: int
+    follow_symlinks: bool
+    hidden: bool
+    no_ignore: bool
+    size: list[str]
+    changed_within: str
+    changed_before: str
+    full_path_match: bool
+    absolute: bool
+    limit: int
+    count_only: bool
+    output_file: str
+    suppress_output: bool
+    output_format: str
 
 
 class ListFilesTool(BaseMCPTool):

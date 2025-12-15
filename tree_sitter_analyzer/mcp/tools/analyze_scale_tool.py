@@ -388,27 +388,9 @@ class AnalyzeScaleTool(BaseMCPTool):
         include_guidance = arguments.get("include_guidance", True)
         output_format = arguments.get("output_format", "toon")
 
-        # Security validation BEFORE path resolution to catch symlinks
-        is_valid, error_msg = self.security_validator.validate_file_path(file_path)
-        if not is_valid:
-            logger.warning(
-                f"Security validation failed for file path: {file_path} - {error_msg}"
-            )
-            raise ValueError(f"Invalid file path: {error_msg}")
-
-        # Resolve file path to absolute path
-        resolved_file_path = self.path_resolver.resolve(file_path)
+        # Resolve + security validation with shared caching to avoid redundant checks
+        resolved_file_path = self.resolve_and_validate_file_path(file_path)
         logger.info(f"Analyzing file: {file_path} (resolved to: {resolved_file_path})")
-
-        # Additional security validation on resolved path
-        is_valid, error_msg = self.security_validator.validate_file_path(
-            resolved_file_path
-        )
-        if not is_valid:
-            logger.warning(
-                f"Security validation failed for resolved path: {resolved_file_path} - {error_msg}"
-            )
-            raise ValueError(f"Invalid resolved path: {error_msg}")
 
         # Sanitize inputs
         if language:

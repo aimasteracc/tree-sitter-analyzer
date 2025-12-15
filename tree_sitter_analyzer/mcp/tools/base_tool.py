@@ -12,6 +12,7 @@ from typing import Any
 from ...security import SecurityValidator
 from ...utils import setup_logger
 from ..utils.path_resolver import PathResolver
+from ..utils.shared_cache import get_shared_cache
 
 # Set up logging
 logger = setup_logger(__name__)
@@ -49,9 +50,49 @@ class BaseMCPTool(ABC):
         self.project_root = project_path
         self.security_validator = SecurityValidator(project_path)
         self.path_resolver = PathResolver(project_path)
+        # Invalidate shared caches when the project root changes to avoid cross-project pollution.
+        get_shared_cache().clear()
         logger.info(
             f"{self.__class__.__name__} project path updated to: {project_path}"
         )
+
+    def resolve_and_validate_file_path(self, file_path: str) -> str:
+        """
+        Resolve a file path and validate it with caching to avoid redundant checks.
+
+        This method is designed to be the single entry point used by tools that operate on
+        `arguments["file_path"]`.
+        """
+        shared_cache = get_shared_cache()
+        project_root = self.project_root
+
+        # Resolve with shared cache (avoid repeating PathResolver.resolve across tools)
+        resolved = shared_cache.get_resolved_path(file_path, project_root=project_root)
+        if not resolved:
+            try:
+                resolved = self.path_resolver.resolve(file_path)
+            except Exception as e:
+                # Normalize resolver failures to ValueError for tool callers
+                raise ValueError(f"Invalid file path: {e}") from e
+            shared_cache.set_resolved_path(
+                file_path, resolved, project_root=project_root
+            )
+
+        # Validate resolved path with shared cache (avoid repeating SecurityValidator.validate_file_path)
+        cached = shared_cache.get_security_validation(
+            resolved, project_root=project_root
+        )
+        if cached is None:
+            cached = self.security_validator.validate_file_path(resolved)
+            shared_cache.set_security_validation(
+                resolved, cached, project_root=project_root
+            )
+
+        is_valid, error_msg = cached
+        if not is_valid:
+            raise ValueError(f"Invalid file path: {error_msg}")
+
+        return resolved
 
     @abstractmethod
     def get_tool_definition(self) -> Any:

@@ -78,37 +78,32 @@ async def _run(args: argparse.Namespace) -> int:
         "roots": list(args.roots),
     }
 
-    # Optional mappings
-    if args.pattern:
-        payload["pattern"] = args.pattern
-    if args.glob:
-        payload["glob"] = True
-    if args.types:
-        payload["types"] = args.types
-    if args.extensions:
-        payload["extensions"] = args.extensions
-    if args.exclude:
-        payload["exclude"] = args.exclude
-    if args.depth is not None:
-        payload["depth"] = int(args.depth)
-    if args.follow_symlinks:
-        payload["follow_symlinks"] = True
-    if args.hidden:
-        payload["hidden"] = True
-    if args.no_ignore:
-        payload["no_ignore"] = True
-    if args.size:
-        payload["size"] = args.size
-    if args.changed_within:
-        payload["changed_within"] = args.changed_within
-    if args.changed_before:
-        payload["changed_before"] = args.changed_before
-    if args.full_path_match:
-        payload["full_path_match"] = True
-    if args.limit is not None:
-        payload["limit"] = int(args.limit)
-    if args.count_only:
-        payload["count_only"] = True
+    # Map CLI arguments to tool payload
+    arg_mapping = {
+        "pattern": "pattern",
+        "glob": "glob",
+        "types": "types",
+        "extensions": "extensions",
+        "exclude": "exclude",
+        "depth": "depth",
+        "follow_symlinks": "follow_symlinks",
+        "hidden": "hidden",
+        "no_ignore": "no_ignore",
+        "size": "size",
+        "changed_within": "changed_within",
+        "changed_before": "changed_before",
+        "full_path_match": "full_path_match",
+        "limit": "limit",
+        "count_only": "count_only",
+    }
+
+    for cli_arg, payload_key in arg_mapping.items():
+        val = getattr(args, cli_arg, None)
+        if val is not None and val is not False:
+            if cli_arg in ["depth", "limit"]:
+                payload[payload_key] = int(val)
+            else:
+                payload[payload_key] = val
 
     # Pass output_format to MCP tool to ensure consistent formatting
     # CLI uses "json" as default, MCP tool uses "toon" as default
