@@ -7,7 +7,6 @@ complexity, size, and structure through the MCP protocol.
 Enhanced for LLM-friendly analysis workflow.
 """
 
-import re
 from pathlib import Path
 from typing import Any
 
@@ -21,6 +20,7 @@ from ...constants import (
 from ...core.analysis_engine import AnalysisRequest, get_analysis_engine
 from ...language_detector import detect_language_from_file
 from ...utils import setup_logger
+from ..utils.file_metrics import compute_file_metrics
 from ..utils.format_helper import apply_toon_format_to_response
 from .base_tool import BaseMCPTool
 
@@ -55,58 +55,24 @@ class AnalyzeScaleTool(BaseMCPTool):
         self.analysis_engine = get_analysis_engine(project_path)
         logger.info(f"AnalyzeScaleTool project path updated to: {project_path}")
 
-    def _calculate_file_metrics(self, file_path: str) -> dict[str, Any]:
+    def _calculate_file_metrics(
+        self, file_path: str, language: str | None = None
+    ) -> dict[str, Any]:
         """
-        Calculate basic file metrics including line counts and estimated token count.
+        Calculate file metrics using the unified implementation.
 
-        Args:
-            file_path: Path to the file to analyze
-
-        Returns:
-            Dictionary containing file metrics
+        Note: This retains the method name for backward compatibility within the tool,
+        but delegates the computation to the shared module.
         """
         try:
-            from ...encoding_utils import read_file_safe
-
-            content, _ = read_file_safe(file_path)
-
-            lines = content.split("\n")
-            total_lines = len(lines)
-
-            # Count different types of lines
-            code_lines = 0
-            comment_lines = 0
-            blank_lines = 0
-
-            for line in lines:
-                stripped = line.strip()
-                if not stripped:
-                    blank_lines += 1
-                elif (
-                    stripped.startswith("//")
-                    or stripped.startswith("/*")
-                    or stripped.startswith("*")
-                ):
-                    comment_lines += 1
-                else:
-                    code_lines += 1
-
-            # Estimate token count (rough approximation)
-            # Split by common delimiters and count non-empty tokens
-            tokens = re.findall(r"\b\w+\b|[^\w\s]", content)
-            estimated_tokens = len([t for t in tokens if t.strip()])
-
-            # Calculate file size
-            file_size = len(content.encode("utf-8"))
-
+            metrics = compute_file_metrics(
+                file_path, language=language, project_root=self.project_root
+            )
+            # Keep historical convenience field
+            file_size_bytes = int(metrics.get("file_size_bytes", 0))
             return {
-                "total_lines": total_lines,
-                "code_lines": code_lines,
-                "comment_lines": comment_lines,
-                "blank_lines": blank_lines,
-                "estimated_tokens": estimated_tokens,
-                "file_size_bytes": file_size,
-                "file_size_kb": round(file_size / 1024, 2),
+                **metrics,
+                "file_size_kb": round(file_size_bytes / 1024, 2),
             }
         except Exception as e:
             logger.error(f"Error calculating file metrics for {file_path}: {e}")
@@ -420,7 +386,9 @@ class AnalyzeScaleTool(BaseMCPTool):
                 "analyze_code_scale_enhanced"
             ):
                 # Calculate basic file metrics
-                file_metrics = self._calculate_file_metrics(resolved_file_path)
+                file_metrics = self._calculate_file_metrics(
+                    resolved_file_path, language
+                )
 
                 # Handle JSON files specially - they don't need structural analysis
                 if language == "json":

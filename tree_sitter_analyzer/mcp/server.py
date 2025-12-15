@@ -69,6 +69,7 @@ from .tools.query_tool import QueryTool
 from .tools.read_partial_tool import ReadPartialTool
 from .tools.search_content_tool import SearchContentTool
 from .tools.table_format_tool import TableFormatTool
+from .utils.file_metrics import compute_file_metrics
 from .utils.shared_cache import get_shared_cache
 
 # Import UniversalAnalyzeTool at module level for test compatibility
@@ -284,8 +285,10 @@ class TreeSitterAnalyzerMCPServer:
             + packages_count
         )
 
-        # Calculate accurate file metrics including comments and blank lines
-        file_metrics = self._calculate_file_metrics(resolved_path, language)
+        # Calculate unified file metrics (cached by content hash)
+        file_metrics = compute_file_metrics(
+            resolved_path, language=language, project_root=base_root
+        )
         lines_code = file_metrics["code_lines"]
         lines_comment = file_metrics["comment_lines"]
         lines_blank = file_metrics["blank_lines"]
@@ -360,108 +363,29 @@ class TreeSitterAnalyzerMCPServer:
         else:
             raise ValueError(f"Unknown resource URI: {uri}")
 
+    # NOTE: File metrics calculation has been unified into `mcp/utils/file_metrics.py`.
+    # Kept only as a placeholder to avoid referencing removed implementation in older code paths.
     def _calculate_file_metrics(self, file_path: str, language: str) -> dict[str, Any]:
-        """
-        Calculate accurate file metrics including line counts, comments, and blank lines.
-
-        Args:
-            file_path: Path to the file to analyze
-            language: Programming language
-
-        Returns:
-            Dictionary containing file metrics
-        """
         try:
-            from ..encoding_utils import read_file_safe
-
-            content, _ = read_file_safe(file_path)
-
-            lines = content.split("\n")
-            total_lines = len(lines)
-
-            # Remove empty line at the end if file ends with newline
-            if lines and not lines[-1]:
-                total_lines -= 1
-
-            # Count different types of lines
-            code_lines = 0
-            comment_lines = 0
-            blank_lines = 0
-            in_multiline_comment = False
-
-            for line in lines:
-                stripped = line.strip()
-
-                # Check for blank lines first
-                if not stripped:
-                    blank_lines += 1
-                    continue
-
-                # Check if we're in a multi-line comment
-                if in_multiline_comment:
-                    comment_lines += 1
-                    # Check if this line ends the multi-line comment
-                    if "*/" in stripped:
-                        in_multiline_comment = False
-                    continue
-
-                # Check for multi-line comment start
-                if stripped.startswith("/**") or stripped.startswith("/*"):
-                    comment_lines += 1
-                    # Check if this line also ends the comment
-                    if "*/" not in stripped:
-                        in_multiline_comment = True
-                    continue
-
-                # Check for single-line comments
-                if stripped.startswith("//"):
-                    comment_lines += 1
-                    continue
-
-                # Check for JavaDoc continuation lines (lines starting with * but not */)
-                if stripped.startswith("*") and not stripped.startswith("*/"):
-                    comment_lines += 1
-                    continue
-
-                # Check for other comment types based on language
-                if (
-                    language == "python"
-                    and stripped.startswith("#")
-                    or language == "sql"
-                    and stripped.startswith("--")
-                ):
-                    comment_lines += 1
-                    continue
-                elif language in ["html", "xml"] and stripped.startswith("<!--"):
-                    comment_lines += 1
-                    if "-->" not in stripped:
-                        in_multiline_comment = True
-                    continue
-
-                # If not a comment, it's code
-                code_lines += 1
-
-            # Ensure the sum equals total_lines (handle any rounding errors)
-            calculated_total = code_lines + comment_lines + blank_lines
-            if calculated_total != total_lines:
-                # Adjust code_lines to match total
-                code_lines = total_lines - comment_lines - blank_lines
-                # Ensure code_lines is not negative
-                code_lines = max(0, code_lines)
-
-            return {
-                "total_lines": total_lines,
-                "code_lines": code_lines,
-                "comment_lines": comment_lines,
-                "blank_lines": blank_lines,
-            }
+            base_root = getattr(
+                getattr(self.security_validator, "boundary_manager", None),
+                "project_root",
+                None,
+            )
+            return compute_file_metrics(
+                file_path, language=language, project_root=base_root
+            )
         except Exception as e:
+            # Backward compatible behavior for tests/older call paths: return zeroed metrics.
             logger.error(f"Error calculating file metrics for {file_path}: {e}")
             return {
                 "total_lines": 0,
                 "code_lines": 0,
                 "comment_lines": 0,
                 "blank_lines": 0,
+                "estimated_tokens": 0,
+                "file_size_bytes": 0,
+                "content_hash": "",
             }
 
     def create_server(self) -> Server:
