@@ -602,6 +602,58 @@ class TestTreeSitterAnalyzerMCPServerToolHandling:
 
     @patch("tree_sitter_analyzer.mcp.server.MCP_AVAILABLE", True)
     @pytest.mark.asyncio
+    async def test_handle_call_tool_extract_code_section_batch_requests(
+        self, mock_server_with_tools
+    ):
+        """Test extract_code_section tool call with batch requests[] (no file_path/start_line required at server layer)."""
+        server = mock_server_with_tools
+        server.read_partial_tool.execute.return_value = {
+            "format": "toon",
+            "toon_content": "BATCH",
+            "success": True,
+            "count_files": 1,
+            "count_sections": 1,
+        }
+
+        with patch("tree_sitter_analyzer.mcp.server.Server") as mock_server_class:
+            mock_server = Mock()
+            captured_handlers = {}
+
+            def capture_decorator(name):
+                def decorator(func):
+                    captured_handlers[name] = func
+                    return func
+
+                return decorator
+
+            mock_server.call_tool.return_value = capture_decorator("call_tool")
+            mock_server_class.return_value = mock_server
+
+            server.create_server()
+
+            assert (
+                "call_tool" in captured_handlers
+            ), "call_tool handler was not registered"
+            call_tool_handler = captured_handlers["call_tool"]
+
+            arguments = {
+                "requests": [
+                    {
+                        "file_path": "test.py",
+                        "sections": [{"start_line": 1, "end_line": 2, "label": "x"}],
+                    }
+                ]
+            }
+            result = await call_tool_handler("extract_code_section", arguments)
+
+            server.read_partial_tool.execute.assert_called_once_with(arguments)
+            assert len(result) == 1
+            response_data = json.loads(result[0].text)
+            assert response_data["format"] == "toon"
+            assert response_data["toon_content"] == "BATCH"
+
+    @patch("tree_sitter_analyzer.mcp.server.MCP_AVAILABLE", True)
+    @pytest.mark.asyncio
     async def test_handle_call_tool_set_project_path(
         self, mock_server_with_tools, temp_project_dir
     ):

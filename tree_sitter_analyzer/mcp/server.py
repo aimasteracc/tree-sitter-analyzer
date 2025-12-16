@@ -506,22 +506,37 @@ class TreeSitterAnalyzerMCPServer:
                     result = await self.table_format_tool.execute(full_args)
 
                 elif name == "extract_code_section":
-                    if "file_path" not in arguments or "start_line" not in arguments:
-                        raise ValueError(
-                            "file_path and start_line parameters are required"
-                        )
+                    # Design principle: keep server routing thin; tool owns schema/validation.
+                    # Support both:
+                    # - single mode: file_path + start_line (+ end_line/columns)
+                    # - batch mode: requests[] (multi-file x multi-range)
+                    if "requests" in arguments and arguments["requests"] is not None:
+                        # Pass through as-is; ReadPartialTool handles exclusivity, limits, security validation, and TOON policy.
+                        result = await self.read_partial_tool.execute(arguments)
+                    else:
+                        # Backward-compatible single-mode validation (keep legacy error semantics)
+                        if (
+                            "file_path" not in arguments
+                            or "start_line" not in arguments
+                        ):
+                            raise ValueError(
+                                "file_path and start_line parameters are required"
+                            )
 
-                    full_args = {
-                        "file_path": arguments["file_path"],
-                        "start_line": arguments["start_line"],
-                        "end_line": arguments.get("end_line"),
-                        "start_column": arguments.get("start_column"),
-                        "end_column": arguments.get("end_column"),
-                        "format": arguments.get("format", "text"),
-                        "output_file": arguments.get("output_file"),
-                        "suppress_output": arguments.get("suppress_output", False),
-                    }
-                    result = await self.read_partial_tool.execute(full_args)
+                        full_args = {
+                            "file_path": arguments["file_path"],
+                            "start_line": arguments["start_line"],
+                            "end_line": arguments.get("end_line"),
+                            "start_column": arguments.get("start_column"),
+                            "end_column": arguments.get("end_column"),
+                            "format": arguments.get("format", "text"),
+                            "output_file": arguments.get("output_file"),
+                            "suppress_output": arguments.get("suppress_output", False),
+                            "output_format": arguments.get("output_format", "toon"),
+                            "allow_truncate": arguments.get("allow_truncate", False),
+                            "fail_fast": arguments.get("fail_fast", False),
+                        }
+                        result = await self.read_partial_tool.execute(full_args)
 
                 elif name == "set_project_path":
                     project_path = arguments.get("project_path")
