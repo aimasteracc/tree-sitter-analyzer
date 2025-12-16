@@ -485,12 +485,8 @@ class TreeSitterAnalyzerMCPServer:
 
                 # Handle tool calls with simplified parameter handling
                 if name == "check_code_scale":
-                    # Ensure file_path is provided
-                    if "file_path" not in arguments:
-                        raise ValueError("file_path parameter is required")
-
-                    # Use the original _analyze_code_scale method for backward compatibility
-                    result = await self._analyze_code_scale(arguments)
+                    # Delegate to analyze_scale_tool which handles both single and batch modes
+                    result = await self.analyze_scale_tool.execute(arguments)
 
                 elif name == "analyze_code_structure":
                     if "file_path" not in arguments:
