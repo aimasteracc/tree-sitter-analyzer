@@ -433,7 +433,10 @@ class TestYAMLErrorHandlingProperties:
     @pytest.mark.asyncio
     @settings(
         max_examples=50,
-        suppress_health_check=[HealthCheck.function_scoped_fixture],
+        suppress_health_check=[
+            HealthCheck.function_scoped_fixture,
+            HealthCheck.too_slow,
+        ],
     )
     @given(
         invalid_content=st.one_of(

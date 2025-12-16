@@ -237,7 +237,7 @@ class TreeSitterAnalyzerMCPServer:
 
         # Detect language if not specified
         if not language:
-            language = detect_language_from_file(resolved_path)
+            language = detect_language_from_file(resolved_path, project_root=base_root)
 
         # Create analysis request
         request = AnalysisRequest(

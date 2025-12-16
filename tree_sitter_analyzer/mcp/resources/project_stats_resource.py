@@ -173,7 +173,9 @@ class ProjectStatsResource:
             True if the file is a supported code file
         """
         try:
-            language = detect_language_from_file(str(file_path))
+            language = detect_language_from_file(
+                str(file_path), project_root=self._project_path
+            )
             return is_language_supported(language)
         except Exception:
             return False
@@ -189,7 +191,9 @@ class ProjectStatsResource:
             Detected language name
         """
         try:
-            return detect_language_from_file(str(file_path))
+            return detect_language_from_file(
+                str(file_path), project_root=self._project_path
+            )
         except Exception:
             return "unknown"
 

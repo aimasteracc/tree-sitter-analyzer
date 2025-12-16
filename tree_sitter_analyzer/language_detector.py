@@ -501,7 +501,9 @@ class LanguageDetector:
 detector = LanguageDetector()
 
 
-def detect_language_from_file(file_path: str) -> str:
+def detect_language_from_file(
+    file_path: str, *, project_root: str | None = None
+) -> str:
     """
     Detect language from path (simple API)
 
@@ -515,13 +517,78 @@ def detect_language_from_file(file_path: str) -> str:
     if not file_path or not isinstance(file_path, str):
         return "unknown"
 
-    # Create a fresh instance to ensure latest configuration
-    fresh_detector = LanguageDetector()
-    result = fresh_detector.detect_from_extension(file_path)
+    # Normalize to absolute path for caching (do not require file to exist).
+    # If project_root is provided and file_path is relative, resolve against project_root.
+    try:
+        p = Path(file_path).expanduser()
+        if project_root and not p.is_absolute():
+            abs_path = str((Path(project_root).expanduser() / p).resolve())
+        else:
+            abs_path = str(p.resolve())
+    except Exception:
+        abs_path = file_path
+
+    # Best-practice cache: (project_root, abs_path) -> {language, mtime_ns}
+    # If we cannot stat (missing file / permission), do NOT cache.
+    mtime_ns: int | None = None
+    try:
+        import os
+
+        if os.path.exists(abs_path):
+            mtime_ns = os.stat(abs_path).st_mtime_ns
+    except (PermissionError, OSError):
+        mtime_ns = None
+
+    if mtime_ns is not None:
+        try:
+            from .mcp.utils.shared_cache import get_shared_cache
+
+            shared_cache = get_shared_cache()
+            cached = shared_cache.get_language_meta(abs_path, project_root=project_root)
+            if (
+                cached
+                and cached.get("mtime_ns") == mtime_ns
+                and isinstance(cached.get("language"), str)
+            ):
+                cached_lang = cached["language"]
+                return cached_lang if cached_lang.strip() else "unknown"
+        except (ImportError, ModuleNotFoundError):
+            # MCP cache is optional (e.g., when using the core library without MCP).
+            cached = None
+        except Exception as e:
+            # Cache failures must not break language detection
+            import logging
+
+            logging.getLogger(__name__).debug(
+                "Language cache lookup failed for %s: %s", abs_path, e
+            )
+
+    # Cache miss: use the global detector (fast, avoids per-call initialization costs)
+    result = detector.detect_from_extension(abs_path)
 
     # Ensure result is valid
     if not result or result.strip() == "":
         return "unknown"
+
+    # Store to cache (including unknown) only when we could stat the file
+    if mtime_ns is not None:
+        try:
+            from .mcp.utils.shared_cache import get_shared_cache
+
+            get_shared_cache().set_language_meta(
+                abs_path,
+                {"language": result, "mtime_ns": mtime_ns},
+                project_root=project_root,
+            )
+        except (ImportError, ModuleNotFoundError):
+            # MCP cache is optional (e.g., when using the core library without MCP).
+            pass
+        except Exception as e:
+            import logging
+
+            logging.getLogger(__name__).debug(
+                "Language cache store failed for %s: %s", abs_path, e
+            )
 
     return result
 

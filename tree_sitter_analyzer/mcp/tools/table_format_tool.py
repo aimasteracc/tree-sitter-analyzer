@@ -448,7 +448,9 @@ class TableFormatTool(BaseMCPTool):
 
             # Detect language if not provided
             if not language:
-                language = detect_language_from_file(resolved_path)
+                language = detect_language_from_file(
+                    resolved_path, project_root=self.project_root
+                )
 
             # Use performance monitoring
             monitor = get_performance_monitor()

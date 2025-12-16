@@ -157,7 +157,9 @@ class UniversalAnalyzeTool(BaseMCPTool):
 
         # Detect language if not specified
         if not language:
-            language = detect_language_from_file(resolved_file_path)
+            language = detect_language_from_file(
+                resolved_file_path, project_root=self.project_root
+            )
             if language == "unknown":
                 raise ValueError(
                     f"Could not detect language for file: {resolved_file_path}"

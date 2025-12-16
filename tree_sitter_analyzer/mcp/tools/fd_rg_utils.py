@@ -30,7 +30,17 @@ RG_TIMEOUT_HARD_CAP_MS = 30000
 
 def check_external_command(command: str) -> bool:
     """Check if an external command is available in the system PATH."""
-    return shutil.which(command) is not None
+    # On Windows, repeated shutil.which() calls can be surprisingly expensive.
+    # Cache results for the lifetime of the process (safe for tests/tools).
+    cached = _COMMAND_EXISTS_CACHE.get(command)
+    if cached is not None:
+        return cached
+    exists = shutil.which(command) is not None
+    _COMMAND_EXISTS_CACHE[command] = exists
+    return exists
+
+
+_COMMAND_EXISTS_CACHE: dict[str, bool] = {}
 
 
 def get_missing_commands() -> list[str]:

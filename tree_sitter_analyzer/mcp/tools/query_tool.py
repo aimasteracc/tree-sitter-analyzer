@@ -178,7 +178,9 @@ class QueryTool(BaseMCPTool):
             # Detect language
             language = arguments.get("language")
             if not language:
-                language = detect_language_from_file(resolved_file_path)
+                language = detect_language_from_file(
+                    resolved_file_path, project_root=self.project_root
+                )
                 if not language:
                     return {
                         "success": False,

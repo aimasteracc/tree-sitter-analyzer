@@ -8,6 +8,7 @@ Safely list files/directories based on name patterns and constraints, using fd.
 from __future__ import annotations
 
 import logging
+import os
 import time
 from pathlib import Path
 from typing import Any, TypedDict
@@ -231,6 +232,13 @@ class ListFilesTool(BaseMCPTool):
             fd_rg_utils.MAX_RESULTS_HARD_CAP,
         )
 
+        # Performance optimization:
+        # If extensions are specified and types are not, we can safely restrict to files.
+        # This avoids expensive per-result is_dir() stats in Python.
+        effective_types = arguments.get("types")
+        if effective_types is None and arguments.get("extensions"):
+            effective_types = ["f"]
+
         # Smart .gitignore detection
         no_ignore = bool(arguments.get("no_ignore", False))
         if not no_ignore:
@@ -253,7 +261,7 @@ class ListFilesTool(BaseMCPTool):
         cmd = fd_rg_utils.build_fd_command(
             pattern=arguments.get("pattern"),
             glob=bool(arguments.get("glob", False)),
-            types=arguments.get("types"),
+            types=effective_types,
             extensions=arguments.get("extensions"),
             exclude=arguments.get("exclude"),
             depth=arguments.get("depth"),
@@ -358,22 +366,28 @@ class ListFilesTool(BaseMCPTool):
             truncated = True
 
         results: list[dict[str, Any]] = []
+        types_only_files = effective_types == ["f"]
         for p in lines:
             try:
-                path_obj = Path(p)
-                is_dir = path_obj.is_dir()
+                # fd already returned absolute paths (-a). Avoid Path.resolve() per entry.
+                path_str = p
+                path_obj = Path(path_str)
                 ext = path_obj.suffix[1:] if path_obj.suffix else None
+
+                # When fd is restricted to files, we can avoid an extra stat for is_dir.
+                is_dir = False if types_only_files else path_obj.is_dir()
                 size_bytes = None
                 mtime = None
                 try:
-                    if not is_dir and path_obj.exists():
-                        size_bytes = path_obj.stat().st_size
-                        mtime = int(path_obj.stat().st_mtime)
+                    if not is_dir:
+                        st = os.stat(path_str)
+                        size_bytes = st.st_size
+                        mtime = int(st.st_mtime)
                 except (OSError, ValueError):  # nosec B110
                     pass
                 results.append(
                     {
-                        "path": str(path_obj.resolve()),
+                        "path": path_str,
                         "is_dir": is_dir,
                         "size_bytes": size_bytes,
                         "mtime": mtime,

@@ -8,6 +8,7 @@ scalars, anchors, aliases, and comments.
 """
 
 import logging
+import threading
 from typing import TYPE_CHECKING, Any
 
 from ..models import AnalysisResult, CodeElement
@@ -27,6 +28,12 @@ try:
     import tree_sitter_yaml as ts_yaml
 
     YAML_AVAILABLE = True
+    # Pre-initialize YAML language at import time to avoid per-test/per-call cold-start costs.
+    # This keeps Hypothesis deadline-based property tests stable.
+    YAML_LANGUAGE = tree_sitter.Language(ts_yaml.language())
+    YAML_PARSER = tree_sitter.Parser()
+    YAML_PARSER.language = YAML_LANGUAGE
+    _YAML_PARSER_LOCK = threading.Lock()
 except ImportError:
     YAML_AVAILABLE = False
     log_warning("tree-sitter-yaml not installed, YAML support disabled")
@@ -652,15 +659,10 @@ class YAMLPlugin(LanguagePlugin):
             # Read file content with encoding detection
             content, encoding = read_file_safe(file_path)
 
-            # Get YAML language
-            YAML_LANGUAGE = tree_sitter.Language(ts_yaml.language())
-
-            # Create parser
-            parser = tree_sitter.Parser()
-            parser.language = YAML_LANGUAGE
-
             # Parse the YAML content
-            tree = parser.parse(content.encode("utf-8"))
+            # tree-sitter Parser is not guaranteed to be thread-safe across concurrent calls.
+            with _YAML_PARSER_LOCK:
+                tree = YAML_PARSER.parse(content.encode("utf-8"))
 
             # Extract elements using the extractor
             extractor = self.create_extractor()

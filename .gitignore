@@ -319,3 +319,8 @@ tests/golden_masters/*/golden_master_python_*.csv
 
 # Debug artifacts
 tests/debug_artifacts/
+
+# Generated TOON outputs at repo root (local artifacts)
+/output.toon
+/test_mcp_output.toon
+/test_mcp_suppress_output.toon

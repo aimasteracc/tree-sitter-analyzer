@@ -19,6 +19,7 @@ class SharedCache:
 
     def _initialize(self) -> None:
         self._language_cache: dict[str, str] = {}
+        self._language_meta_cache: dict[str, dict[str, Any]] = {}
         self._security_cache: dict[str, tuple[bool, str]] = {}
         self._metrics_cache: dict[str, dict[str, Any]] = {}
         self._resolved_paths: dict[str, str] = {}
@@ -47,6 +48,20 @@ class SharedCache:
         self._language_cache[self._make_key("language", file_path, project_root)] = (
             language
         )
+
+    def get_language_meta(
+        self, abs_path: str, project_root: str | None = None
+    ) -> dict[str, Any] | None:
+        return self._language_meta_cache.get(
+            self._make_key("language_meta", abs_path, project_root)
+        )
+
+    def set_language_meta(
+        self, abs_path: str, meta: dict[str, Any], project_root: str | None = None
+    ) -> None:
+        self._language_meta_cache[
+            self._make_key("language_meta", abs_path, project_root)
+        ] = meta
 
     def get_security_validation(
         self, file_path: str, project_root: str | None = None
