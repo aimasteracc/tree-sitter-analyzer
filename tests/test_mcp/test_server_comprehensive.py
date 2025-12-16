@@ -488,9 +488,15 @@ class TestTreeSitterAnalyzerMCPServerToolHandling:
 
     @patch("tree_sitter_analyzer.mcp.server.MCP_AVAILABLE", True)
     @pytest.mark.asyncio
-    async def test_handle_call_tool_check_code_scale(self, mock_server_with_tools):
+    async def test_handle_call_tool_check_code_scale(
+        self, mock_server_with_tools, temp_project_dir
+    ):
         """Test check_code_scale tool call."""
         server = mock_server_with_tools
+
+        # Create a test file
+        test_file = Path(temp_project_dir) / "test.py"
+        test_file.write_text("def hello():\n    pass\n")
 
         with patch("tree_sitter_analyzer.mcp.server.Server") as mock_server_class:
             mock_server = Mock()
@@ -518,7 +524,7 @@ class TestTreeSitterAnalyzerMCPServerToolHandling:
             # Mock the _analyze_code_scale method
             server._analyze_code_scale = AsyncMock(return_value={"result": "success"})
 
-            arguments = {"file_path": "test.py"}
+            arguments = {"file_path": str(test_file)}
             result = await call_tool_handler("check_code_scale", arguments)
 
             assert len(result) == 1
