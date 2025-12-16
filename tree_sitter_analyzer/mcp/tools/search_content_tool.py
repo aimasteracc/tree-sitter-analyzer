@@ -14,7 +14,11 @@ from typing import Any
 
 from ..utils.error_handler import handle_mcp_errors
 from ..utils.file_output_manager import FileOutputManager
-from ..utils.format_helper import apply_toon_format_to_response, format_for_file_output
+from ..utils.format_helper import (
+    apply_toon_format_to_response,
+    attach_toon_content_to_response,
+    format_for_file_output,
+)
 from ..utils.gitignore_detector import get_default_detector
 from ..utils.search_cache import get_default_cache
 from . import fd_rg_utils
@@ -347,6 +351,10 @@ Choose output format parameters based on your needs to minimize token usage and 
             }
 
         self.validate_arguments(arguments)
+        # NOTE: MCP tool responses are structured objects. When output_format="toon",
+        # we return {"format":"toon","toon_content":"..."} to reduce tokens while
+        # remaining JSON/protocol compatible.
+        output_format = arguments.get("output_format", "toon")
 
         roots = arguments.get("roots")
         files = arguments.get("files")
@@ -620,6 +628,8 @@ Choose output format parameters based on your needs to minimize token usage and 
             if self.cache and cache_key:
                 self.cache.set(cache_key, result)
 
+            if output_format == "toon":
+                return attach_toon_content_to_response(result)
             return result
 
         # Handle normal mode
@@ -651,9 +661,6 @@ Choose output format parameters based on your needs to minimize token usage and 
             output_file = arguments.get("output_file")
             suppress_output = arguments.get("suppress_output", False)
 
-            # Get output format
-            output_format = arguments.get("output_format", "toon")
-
             # Handle file output if requested
             if output_file:
                 try:
@@ -674,6 +681,8 @@ Choose output format parameters based on your needs to minimize token usage and 
                         # Cache the full result, not the minimal one
                         if self.cache and cache_key:
                             self.cache.set(cache_key, result)
+                        if output_format == "toon":
+                            return attach_toon_content_to_response(minimal_result)
                         return minimal_result
                     else:
                         # Include file info in full response
@@ -694,12 +703,16 @@ Choose output format parameters based on your needs to minimize token usage and 
                 # Cache the full result, not the minimal one
                 if self.cache and cache_key:
                     self.cache.set(cache_key, result)
+                if output_format == "toon":
+                    return attach_toon_content_to_response(minimal_result)
                 return minimal_result
 
             # Cache the result
             if self.cache and cache_key:
                 self.cache.set(cache_key, result)
 
+            if output_format == "toon":
+                return attach_toon_content_to_response(result)
             return result
 
         # Handle summary mode
@@ -716,8 +729,6 @@ Choose output format parameters based on your needs to minimize token usage and 
             # Handle output suppression and file output for summary results
             output_file = arguments.get("output_file")
             suppress_output = arguments.get("suppress_output", False)
-            output_format = arguments.get("output_format", "toon")
-
             # Handle file output if requested
             if output_file:
                 try:
@@ -738,6 +749,8 @@ Choose output format parameters based on your needs to minimize token usage and 
                         # Cache the full result, not the minimal one
                         if self.cache and cache_key:
                             self.cache.set(cache_key, result)
+                        if output_format == "toon":
+                            return attach_toon_content_to_response(minimal_result)
                         return minimal_result
                     else:
                         # Include file info in full response
@@ -758,12 +771,16 @@ Choose output format parameters based on your needs to minimize token usage and 
                 # Cache the full result, not the minimal one
                 if self.cache and cache_key:
                     self.cache.set(cache_key, result)
+                if output_format == "toon":
+                    return attach_toon_content_to_response(minimal_result)
                 return minimal_result
 
             # Cache the result
             if self.cache and cache_key:
                 self.cache.set(cache_key, result)
 
+            if output_format == "toon":
+                return attach_toon_content_to_response(result)
             return result
 
         result = {

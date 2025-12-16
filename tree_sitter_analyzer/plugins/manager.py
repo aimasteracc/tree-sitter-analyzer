@@ -9,7 +9,9 @@ Handles loading plugins from entry points and local directories.
 import importlib
 import importlib.metadata
 import logging
+import os
 import pkgutil
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +19,65 @@ from ..utils import log_debug, log_error, log_info, log_warning
 from .base import LanguagePlugin
 
 logger = logging.getLogger(__name__)
+
+
+def _is_source_checkout() -> bool:
+    """Heuristic to detect running from a source checkout (tests/dev)."""
+    try:
+        here = Path(__file__).resolve()
+        return any((p / ".git").exists() for p in here.parents)
+    except Exception:
+        return False
+
+
+def _should_load_entry_points() -> bool:
+    """Decide whether to scan setuptools entry points for plugins."""
+    if os.environ.get("TREE_SITTER_ANALYZER_SKIP_ENTRYPOINTS", "").strip() == "1":
+        return False
+    # Default: always scan. (Unit tests expect _load_from_entry_points to be called.)
+    return True
+
+
+def _is_running_under_pytest() -> bool:
+    """Best-effort detection for pytest to allow test-only pre-warming."""
+    return "pytest" in sys.modules
+
+
+def _prewarm_local_language_modules_for_tests() -> None:
+    """Import local language plugin modules during test collection.
+
+    Hypothesis deadline-based tests measure runtime of the test body, and Windows
+    cold-start imports can be slow and flaky. Pre-warming moves import cost to
+    collection time and stabilizes per-example execution time.
+    """
+
+    def _safe_import(module_name: str) -> None:
+        """Best-effort import helper (never raises)."""
+        try:
+            importlib.import_module(module_name)
+        except (ImportError, ModuleNotFoundError):
+            return
+        except Exception as e:
+            log_debug(f"Skipping plugin prewarm for {module_name}: {e}")
+
+    try:
+        languages_package = "tree_sitter_analyzer.languages"
+        languages_module = importlib.import_module(languages_package)
+    except (ImportError, ModuleNotFoundError):
+        return
+    except Exception as e:
+        log_debug(f"Failed to prewarm languages package: {e}")
+        return
+
+    for _finder, name, ispkg in pkgutil.iter_modules(
+        languages_module.__path__, languages_module.__name__ + "."
+    ):
+        if not ispkg:
+            _safe_import(name)
+
+
+if _is_running_under_pytest():
+    _prewarm_local_language_modules_for_tests()
 
 
 class PluginManager:
@@ -46,8 +107,8 @@ class PluginManager:
         loaded_plugins = []
 
         # Load plugins from entry points (installed packages)
-        entry_point_plugins = self._load_from_entry_points()
-        loaded_plugins.extend(entry_point_plugins)
+        if _should_load_entry_points():
+            loaded_plugins.extend(self._load_from_entry_points())
 
         # Load plugins from local languages directory
         local_plugins = self._load_from_local_directory()

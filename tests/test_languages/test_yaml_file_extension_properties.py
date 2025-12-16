@@ -9,6 +9,7 @@ Tests correctness properties to ensure:
 - The plugin manager returns YAMLPlugin for yaml language
 """
 
+import os
 import tempfile
 from pathlib import Path
 
@@ -112,7 +113,9 @@ class TestYAMLFileExtensionProperties:
             extension in extensions
         ), f"YAMLPlugin must handle '{extension}' extension"
 
-    @settings(max_examples=50, deadline=500)
+    # Windows cold-start imports can be highly variable; disable Hypothesis deadline there
+    # to avoid flaky timing failures unrelated to correctness.
+    @settings(max_examples=50, deadline=None if os.name == "nt" else 500)
     @given(
         filename=filename_strategy,
         extension=st.sampled_from([".yaml", ".yml"]),

@@ -14,7 +14,11 @@ from typing import Any
 
 from ..utils.error_handler import handle_mcp_errors
 from ..utils.file_output_manager import FileOutputManager
-from ..utils.format_helper import apply_toon_format_to_response, format_for_file_output
+from ..utils.format_helper import (
+    apply_toon_format_to_response,
+    attach_toon_content_to_response,
+    format_for_file_output,
+)
 from ..utils.gitignore_detector import get_default_detector
 from . import fd_rg_utils
 from .base_tool import BaseMCPTool
@@ -268,6 +272,7 @@ class FindAndGrepTool(BaseMCPTool):
             }
 
         self.validate_arguments(arguments)
+        output_format = arguments.get("output_format", "toon")
         roots = self._validate_roots(arguments["roots"])  # absolute validated
 
         # fd step
@@ -451,7 +456,7 @@ class FindAndGrepTool(BaseMCPTool):
             count_data = fd_rg_utils.parse_rg_count_output(rg_out)
             total_matches = count_data.pop("__total__", 0)
 
-            return {
+            result = {
                 "success": True,
                 "count_only": True,
                 "total_matches": total_matches,
@@ -463,6 +468,9 @@ class FindAndGrepTool(BaseMCPTool):
                     "rg_elapsed_ms": rg_elapsed_ms,
                 },
             }
+            if output_format == "toon":
+                return attach_toon_content_to_response(result)
+            return result
         else:
             # Parse full match details
             matches = fd_rg_utils.parse_rg_json_lines_to_matches(rg_out)
@@ -546,6 +554,8 @@ class FindAndGrepTool(BaseMCPTool):
                     }
                     return minimal_result
 
+                if output_format == "toon":
+                    return attach_toon_content_to_response(grouped_result)
                 return grouped_result
 
             # Check if summary_only mode is requested

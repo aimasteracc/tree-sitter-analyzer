@@ -200,3 +200,21 @@ def apply_toon_format_to_response(
     except Exception as e:
         logger.warning(f"Failed to apply TOON format, returning JSON: {e}")
         return result
+
+
+def attach_toon_content_to_response(result: dict[str, Any]) -> dict[str, Any]:
+    """
+    Attach TOON formatted content to a response *without removing* any existing fields.
+
+    This is useful for structured outputs (e.g. group_by_file) where callers/tests rely
+    on the original JSON structure, while still allowing clients to display TOON.
+    """
+    try:
+        toon_content = format_as_toon(result)
+        enriched = result.copy()
+        enriched["format"] = "toon"
+        enriched["toon_content"] = toon_content
+        return enriched
+    except Exception as e:
+        logger.warning(f"Failed to attach TOON content, returning JSON: {e}")
+        return result

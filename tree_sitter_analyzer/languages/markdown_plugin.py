@@ -1616,11 +1616,14 @@ class MarkdownPlugin(LanguagePlugin):
         """Get the Tree-sitter language object for Markdown"""
         if self._language_cache is None:
             try:
-                import tree_sitter
+                # Import markdown bindings first so a failure there doesn't require importing
+                # the core tree_sitter module (helps avoid unraisable finalizer issues in tests).
                 import tree_sitter_markdown as tsmarkdown
 
-                # Use modern tree-sitter-markdown API
                 language_capsule = tsmarkdown.language()
+
+                import tree_sitter
+
                 self._language_cache = tree_sitter.Language(language_capsule)
             except ImportError:
                 log_error("tree-sitter-markdown not available")
