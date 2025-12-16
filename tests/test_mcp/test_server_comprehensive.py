@@ -521,16 +521,20 @@ class TestTreeSitterAnalyzerMCPServerToolHandling:
             ), "call_tool handler was not registered"
             call_tool_handler = captured_handlers["call_tool"]
 
-            # Mock the _analyze_code_scale method
-            server._analyze_code_scale = AsyncMock(return_value={"result": "success"})
-
+            # Don't mock _analyze_code_scale - let it run with the real file
             arguments = {"file_path": str(test_file)}
             result = await call_tool_handler("check_code_scale", arguments)
 
             assert len(result) == 1
             assert result[0].type == "text"
             response_data = json.loads(result[0].text)
-            assert response_data == {"result": "success"}
+
+            # Verify the response contains expected fields
+            assert "success" in response_data
+            assert response_data["success"] is True
+            assert "file_path" in response_data
+            assert "language" in response_data
+            assert response_data["language"] == "python"
 
     @patch("tree_sitter_analyzer.mcp.server.MCP_AVAILABLE", True)
     @pytest.mark.asyncio
