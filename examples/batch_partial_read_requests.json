@@ -1,0 +1,18 @@
+{
+  "requests": [
+    {
+      "file_path": "examples/sample.py",
+      "sections": [
+        { "start_line": 1, "end_line": 40, "label": "sample_py_head" },
+        { "start_line": 120, "end_line": 170, "label": "sample_py_mid" }
+      ]
+    },
+    {
+      "file_path": "examples/BigService.java",
+      "sections": [
+        { "start_line": 1, "end_line": 60, "label": "bigservice_head" },
+        { "start_line": 200, "end_line": 260, "label": "bigservice_mid" }
+      ]
+    }
+  ]
+}

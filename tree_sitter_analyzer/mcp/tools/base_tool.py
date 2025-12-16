@@ -66,6 +66,27 @@ class BaseMCPTool(ABC):
         shared_cache = get_shared_cache()
         project_root = self.project_root
 
+        # Validate the original input path first (pre-resolution).
+        # This is critical for:
+        # - null byte detection (avoid resolver OS errors)
+        # - traversal patterns in the raw string
+        # - symlink/junction checks relative to project_root (base_path)
+        cached_orig = shared_cache.get_security_validation(
+            file_path, project_root=project_root
+        )
+        if cached_orig is None:
+            cached_orig = self.security_validator.validate_file_path(
+                file_path, base_path=project_root
+            )
+            shared_cache.set_security_validation(
+                file_path, cached_orig, project_root=project_root
+            )
+        is_valid, error_msg = cached_orig
+        if not is_valid:
+            raise ValueError(
+                f"Invalid file path: Security validation failed: {error_msg}"
+            )
+
         # Resolve with shared cache (avoid repeating PathResolver.resolve across tools)
         resolved = shared_cache.get_resolved_path(file_path, project_root=project_root)
         if not resolved:
@@ -83,14 +104,18 @@ class BaseMCPTool(ABC):
             resolved, project_root=project_root
         )
         if cached is None:
-            cached = self.security_validator.validate_file_path(resolved)
+            cached = self.security_validator.validate_file_path(
+                resolved, base_path=project_root
+            )
             shared_cache.set_security_validation(
                 resolved, cached, project_root=project_root
             )
 
         is_valid, error_msg = cached
         if not is_valid:
-            raise ValueError(f"Invalid file path: {error_msg}")
+            raise ValueError(
+                f"Invalid file path: Security validation failed: {error_msg}"
+            )
 
         return resolved
 
