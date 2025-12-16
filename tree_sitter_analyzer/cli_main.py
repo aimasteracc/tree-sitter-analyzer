@@ -2,6 +2,7 @@
 """CLI Main Module - Entry point for command-line interface."""
 
 import argparse
+import asyncio
 import logging
 import os
 import sys
@@ -246,6 +247,14 @@ def create_argument_parser() -> argparse.ArgumentParser:
         help="Enable partial file reading mode",
     )
     parser.add_argument(
+        "--partial-read-requests-json",
+        help="Batch partial read: JSON string containing either {'requests': [...]} or a list of requests[]",
+    )
+    parser.add_argument(
+        "--partial-read-requests-file",
+        help="Batch partial read: path to a JSON file containing either {'requests': [...]} or a list of requests[]",
+    )
+    parser.add_argument(
         "--start-line", type=int, help="Starting line number for reading (1-based)"
     )
     parser.add_argument(
@@ -257,6 +266,32 @@ def create_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--end-column", type=int, help="Ending column number for reading (0-based)"
     )
+    parser.add_argument(
+        "--allow-truncate",
+        action="store_true",
+        help="Batch mode: allow truncating results to fit limits (default: fail on limit exceed)",
+    )
+    parser.add_argument(
+        "--fail-fast",
+        action="store_true",
+        help="Batch mode: stop on first error (default: partial success)",
+    )
+
+    # Batch metrics options (spec unification with MCP tool arguments)
+    parser.add_argument(
+        "--metrics-only",
+        action="store_true",
+        help="Batch metrics: compute file metrics only (no structural analysis). Requires --file-paths or --files-from.",
+    )
+    parser.add_argument(
+        "--file-paths",
+        nargs="+",
+        help="Batch metrics: list of file paths (space-separated). Example: --file-paths a.py b.py",
+    )
+    parser.add_argument(
+        "--files-from",
+        help="Batch metrics: read file paths from a text file (one path per line)",
+    )
 
     return parser
 
@@ -264,7 +299,128 @@ def create_argument_parser() -> argparse.ArgumentParser:
 def handle_special_commands(args: argparse.Namespace) -> int | None:
     """Handle special commands that don't fit the normal pattern."""
 
-    # Validate partial read options
+    def _effective_output_format() -> str:
+        # --format is an alias for json/toon; --output-format supports json/text/toon
+        fmt = getattr(args, "format", None) or getattr(args, "output_format", "json")
+        return str(fmt)
+
+    def _tool_output_format() -> str:
+        # Tools only accept json/toon; map text -> toon for batch modes.
+        fmt = _effective_output_format()
+        return "toon" if fmt in {"toon", "text"} else "json"
+
+    def _load_requests_payload() -> list[dict[str, Any]]:
+        # Local import avoids rare closure/scoping issues in some execution contexts.
+        import json as _json
+
+        if getattr(args, "partial_read_requests_json", None):
+            raw = args.partial_read_requests_json
+        elif getattr(args, "partial_read_requests_file", None):
+            with open(args.partial_read_requests_file, encoding="utf-8") as f:
+                raw = f.read()
+        else:
+            raise ValueError("No batch requests source provided")
+
+        payload = _json.loads(raw)
+        if isinstance(payload, dict) and "requests" in payload:
+            reqs = payload["requests"]
+        else:
+            reqs = payload
+        if not isinstance(reqs, list):
+            raise ValueError(
+                "Batch requests must be a list or {'requests': [...]} JSON"
+            )
+        return reqs
+
+    def _load_file_paths() -> list[str]:
+        paths: list[str] = []
+        if getattr(args, "file_paths", None):
+            paths.extend([str(p) for p in args.file_paths])
+        if getattr(args, "files_from", None):
+            with open(args.files_from, encoding="utf-8") as f:
+                for line in f.read().splitlines():
+                    s = line.strip()
+                    if s:
+                        paths.append(s)
+        # De-dup while preserving order
+        seen: set[str] = set()
+        unique: list[str] = []
+        for p in paths:
+            if p not in seen:
+                unique.append(p)
+                seen.add(p)
+        return unique
+
+    # Batch partial read (unified with MCP tool arguments)
+    if (
+        hasattr(args, "partial_read")
+        and args.partial_read
+        and (
+            getattr(args, "partial_read_requests_json", None)
+            or getattr(args, "partial_read_requests_file", None)
+        )
+    ):
+        try:
+            from tree_sitter_analyzer.mcp.tools.read_partial_tool import ReadPartialTool
+
+            requests_list = _load_requests_payload()
+            project_root = getattr(args, "project_root", None) or os.getcwd()
+            tool = ReadPartialTool(project_root=project_root)
+            tool_args: dict[str, Any] = {
+                "requests": requests_list,
+                "output_format": _tool_output_format(),
+                "format": "text",
+                "allow_truncate": bool(getattr(args, "allow_truncate", False)),
+                "fail_fast": bool(getattr(args, "fail_fast", False)),
+            }
+            result = asyncio.run(tool.execute(tool_args))
+
+            fmt = _effective_output_format()
+            if fmt == "toon":
+                print(result.get("toon_content", ""))
+            else:
+                # json or text: print the returned dict as JSON (text is mapped for batch modes)
+                from tree_sitter_analyzer.output_manager import output_json
+
+                output_json(result)
+            return 0 if result.get("success", False) else 1
+        except Exception as e:
+            output_error(f"Batch partial read failed: {e}")
+            return 1
+
+    # Batch metrics (unified with MCP tool arguments)
+    if getattr(args, "metrics_only", False):
+        file_paths = _load_file_paths()
+        if not file_paths:
+            output_error("--metrics-only requires --file-paths or --files-from")
+            return 1
+        try:
+            from tree_sitter_analyzer.mcp.tools.analyze_scale_tool import (
+                AnalyzeScaleTool,
+            )
+
+            project_root = getattr(args, "project_root", None) or os.getcwd()
+            tool = AnalyzeScaleTool(project_root=project_root)
+            tool_args = {
+                "file_paths": file_paths,
+                "metrics_only": True,
+                "output_format": _tool_output_format(),
+            }
+            result = asyncio.run(tool.execute(tool_args))
+
+            fmt = _effective_output_format()
+            if fmt == "toon":
+                print(result.get("toon_content", ""))
+            else:
+                from tree_sitter_analyzer.output_manager import output_json
+
+                output_json(result)
+            return 0 if result.get("success", False) else 1
+        except Exception as e:
+            output_error(f"Batch metrics failed: {e}")
+            return 1
+
+    # Validate partial read options (single-range mode)
     if hasattr(args, "partial_read") and args.partial_read:
         if args.start_line is None:
             output_error("--start-line is required")

@@ -7,6 +7,7 @@
 - **出力形式**: **デフォルトは TOON**、`output_format="toon"` のとき **JSON詳細（results/sections/content等）を返さない**
 - **制限**: 上限超過は **デフォルト fail**、`allow_truncate=true` のときのみ truncate を許可
 - **互換性**: 既存の単一入力は維持し、`requests[]` と単一指定は **排他**
+- **仕様統一（CLI/API）**: CLI でも同等のバッチ入力を受けられるようにし、内部的に MCP ツール実装を呼び出す（入口差による挙動差を最小化）
 
 ---
 
@@ -125,6 +126,7 @@
 - **既存クライアント互換性**:
   - 既存の単一入力の挙動は変更しない
   - 追加引数は後方互換（未指定でも動く）
+  - CLI は単発実装を維持しつつ、バッチは MCP ツール引数と揃える（`--partial-read-requests-*` / `--metrics-only --file-paths/--files-from`）
 
 ---
 

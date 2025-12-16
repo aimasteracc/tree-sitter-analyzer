@@ -25,6 +25,21 @@ MCP 作業では「同一ファイルから複数箇所を抜きたい」「複�
 
 ---
 
+## CLI（コマンドライン）との仕様統一（追加）
+
+CLI は既存の単発実装（`--partial-read` 等）を維持しつつ、バッチ仕様を **MCP ツールの引数スキーマに揃える**形で追加します。
+
+- **Batch partial read（extract）**:
+  - `--partial-read --partial-read-requests-json '<json>'`
+  - `--partial-read --partial-read-requests-file <path>`
+- **Batch metrics**:
+  - `--metrics-only --file-paths a.py b.py ...`
+  - `--metrics-only --files-from <list.txt>`
+
+出力は CLI 側の `--output-format toon/json` に合わせ、内部的には `ReadPartialTool.execute()` / `AnalyzeScaleTool.execute()` を呼ぶ（= 仕様/制限/TOONポリシーはツール側に集約）。
+
+---
+
 ## 入出力仕様（案）
 
 ### 1) `extract_code_section` バッチ入力（追加）
