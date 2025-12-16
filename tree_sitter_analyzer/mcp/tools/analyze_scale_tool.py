@@ -295,6 +295,16 @@ class AnalyzeScaleTool(BaseMCPTool):
         return {
             "type": "object",
             "properties": {
+                "file_paths": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Batch mode: list of file paths to compute metrics for (requires metrics_only=true)",
+                },
+                "metrics_only": {
+                    "type": "boolean",
+                    "description": "Batch mode: when true, compute file metrics only (no structural analysis)",
+                    "default": False,
+                },
                 "file_path": {
                     "type": "string",
                     "description": "Path to the code file to analyze",
@@ -325,7 +335,10 @@ class AnalyzeScaleTool(BaseMCPTool):
                     "default": "toon",
                 },
             },
-            "required": ["file_path"],
+            "oneOf": [
+                {"required": ["file_path"]},
+                {"required": ["file_paths"]},
+            ],
             "additionalProperties": False,
         }
 
@@ -343,7 +356,11 @@ class AnalyzeScaleTool(BaseMCPTool):
             ValueError: If required arguments are missing or invalid
             FileNotFoundError: If the specified file doesn't exist
         """
-        # Validate required arguments
+        # Batch metrics mode
+        if "file_paths" in arguments and arguments["file_paths"] is not None:
+            return await self._execute_metrics_batch(arguments)
+
+        # Single mode: Validate required arguments
         if "file_path" not in arguments:
             raise ValueError("file_path is required")
 
@@ -616,6 +633,82 @@ class AnalyzeScaleTool(BaseMCPTool):
             logger.error(f"Error analyzing {file_path}: {e}")
             raise
 
+    async def _execute_metrics_batch(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        """
+        Batch metrics mode (no structural analysis).
+
+        Contract:
+        - Default output_format is TOON.
+        - When output_format='toon', response MUST NOT include detailed JSON fields like results.
+        """
+        output_format = arguments.get("output_format", "toon")
+        metrics_only = bool(arguments.get("metrics_only", False))
+        file_paths = arguments.get("file_paths")
+
+        if not metrics_only:
+            raise ValueError(
+                "metrics_only must be true when using file_paths batch mode"
+            )
+        if not isinstance(file_paths, list) or not file_paths:
+            raise ValueError("file_paths must be a non-empty list of strings")
+
+        max_files = 200
+        if len(file_paths) > max_files:
+            raise ValueError(
+                f"Too many files: {len(file_paths)} > max_files={max_files}"
+            )
+
+        import asyncio
+
+        sem = asyncio.Semaphore(4)
+
+        async def _one(fp: str) -> dict[str, Any]:
+            async with sem:
+                if not isinstance(fp, str) or not fp.strip():
+                    return {
+                        "file_path": fp,
+                        "error": "file_path must be a non-empty string",
+                    }
+                try:
+                    resolved = self.resolve_and_validate_file_path(fp)
+                except ValueError as e:
+                    return {"file_path": fp, "error": str(e)}
+
+                if not Path(resolved).exists():
+                    return {
+                        "file_path": fp,
+                        "resolved_path": resolved,
+                        "error": "Invalid file path: file does not exist",
+                    }
+
+                lang = detect_language_from_file(
+                    resolved, project_root=self.project_root
+                )
+                if lang == "unknown":
+                    lang = None
+
+                metrics = self._calculate_file_metrics(resolved, lang)
+                return {
+                    "file_path": fp,
+                    "resolved_path": resolved,
+                    "language": lang or "unknown",
+                    "metrics": metrics,
+                }
+
+        per_file = await asyncio.gather(*[_one(fp) for fp in file_paths])
+        errors = [x for x in per_file if "error" in x]
+        ok = [x for x in per_file if "error" not in x]
+
+        response: dict[str, Any] = {
+            "success": len(ok) > 0,
+            "count_files": len(file_paths),
+            "count_ok": len(ok),
+            "count_errors": len(errors),
+            "limits": {"max_files": max_files, "concurrency": 4},
+            "results": per_file,
+        }
+        return apply_toon_format_to_response(response, output_format)
+
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
         """
         Validate tool arguments against the schema.
@@ -629,13 +722,24 @@ class AnalyzeScaleTool(BaseMCPTool):
         Raises:
             ValueError: If arguments are invalid
         """
-        schema = self.get_tool_schema()
-        required_fields = schema.get("required", [])
+        # Batch mode validation
+        if "file_paths" in arguments and arguments["file_paths"] is not None:
+            if "file_path" in arguments:
+                raise ValueError("file_paths is mutually exclusive with file_path")
+            file_paths = arguments["file_paths"]
+            if not isinstance(file_paths, list) or not file_paths:
+                raise ValueError("file_paths must be a non-empty list")
+            if not isinstance(arguments.get("metrics_only", False), bool):
+                raise ValueError("metrics_only must be a boolean")
+            if arguments.get("metrics_only", False) is not True:
+                raise ValueError(
+                    "metrics_only must be true when using file_paths batch mode"
+                )
+            return True
 
-        # Check required fields
-        for field in required_fields:
-            if field not in arguments:
-                raise ValueError(f"Required field '{field}' is missing")
+        # Single mode requires file_path
+        if "file_path" not in arguments:
+            raise ValueError("Required field 'file_path' is missing")
 
         # Validate file_path
         if "file_path" in arguments:

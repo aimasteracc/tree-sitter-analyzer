@@ -593,7 +593,11 @@ if __name__ == "__main__":
 
         # Check required parameters
         assert "file_path" in properties
-        assert schema["required"] == ["file_path"]
+        assert "oneOf" in schema
+        assert any(
+            "required" in opt and "file_path" in opt["required"]
+            for opt in schema["oneOf"]
+        )
 
         # Check optional parameters
         assert "language" in properties
