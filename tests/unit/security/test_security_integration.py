@@ -62,16 +62,16 @@ class TestClass:
         engine = get_analysis_engine(project_root)
 
         # Valid file should work
-        result = await engine.analyze_file(self.test_file)
+        result = engine.analyze_file(self.test_file)
         assert result.success
 
         # Invalid path should be rejected
         with pytest.raises(ValueError, match="Invalid file path"):
-            await engine.analyze_file("../../../etc/passwd")
+            engine.analyze_file("../../../etc/passwd")
 
         # Path traversal should be rejected
         with pytest.raises(ValueError, match="Invalid file path"):
-            await engine.analyze_file(self.temp_dir + "/../../../etc/passwd")
+            engine.analyze_file(self.temp_dir + "/../../../etc/passwd")
 
     @pytest.mark.asyncio
     async def test_mcp_tools_security_integration(self):
@@ -280,7 +280,7 @@ class TestClass:
 
         # Measure time with security validation
         start_time = time.time()
-        result = await engine.analyze_file(self.test_file)
+        result = engine.analyze_file(self.test_file)
         end_time = time.time()
 
         security_time = end_time - start_time

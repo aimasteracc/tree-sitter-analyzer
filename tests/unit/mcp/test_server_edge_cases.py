@@ -134,7 +134,7 @@ class TestMCPServerCodeAnalysisEdgeCases:
         # Should raise UnsupportedLanguageError for binary files
         with pytest.raises(Exception) as exc_info:
             await server._analyze_code_scale(arguments)
-        assert "not supported" in str(exc_info.value)
+        assert "Unsupported language" in str(exc_info.value)
 
     @pytest.mark.asyncio
     async def test_analyze_large_file(self, temp_project_dir, large_file):
@@ -163,7 +163,7 @@ class TestMCPServerCodeAnalysisEdgeCases:
         # Should raise UnsupportedLanguageError for invalid language
         with pytest.raises(Exception) as exc_info:
             await server._analyze_code_scale(arguments)
-        assert "not supported" in str(exc_info.value)
+        assert "Unsupported language" in str(exc_info.value)
 
     @pytest.mark.asyncio
     async def test_analyze_with_malformed_code(self, temp_project_dir):

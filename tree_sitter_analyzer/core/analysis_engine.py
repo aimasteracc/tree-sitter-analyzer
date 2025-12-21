@@ -288,6 +288,16 @@ class UnifiedAnalysisEngine:
         """
         log_debug(f"Starting async analysis for {request.file_path}")
 
+        # Security validation (performed early to reject malicious paths regardless of existence)
+        is_valid, error_msg = self._security_validator.validate_file_path(
+            request.file_path
+        )
+        if not is_valid:
+            log_error(
+                f"Security validation failed for file path: {request.file_path} - {error_msg}"
+            )
+            raise ValueError(f"Invalid file path: {error_msg}")
+
         # Cache check (shared across CLI/MCP)
         cache_key = self._generate_cache_key(request)
         cached_result = await self._cache_service.get(cache_key)
@@ -321,16 +331,6 @@ class UnifiedAnalysisEngine:
             return self._create_empty_result(
                 request.file_path, language, parse_result.error_message
             )
-
-        # Security validation
-        is_valid, error_msg = self._security_validator.validate_file_path(
-            request.file_path
-        )
-        if not is_valid:
-            log_error(
-                f"Security validation failed for file path: {request.file_path} - {error_msg}"
-            )
-            raise ValueError(f"Invalid file path: {error_msg}")
 
         # Get plugin
         plugin = self._get_language_plugin(language)
@@ -782,6 +782,8 @@ class UnifiedAnalysisEngine:
         """Sync version of analyze_file for compatibility"""
         result = self.analyze_file_sync(file_path, language, queries)
         if not result.success and result.error_message:
+            if "Invalid file path" in result.error_message:
+                raise ValueError(result.error_message)
             if "File not found" in result.error_message:
                 raise FileNotFoundError(result.error_message)
             if "Permission denied" in result.error_message:
