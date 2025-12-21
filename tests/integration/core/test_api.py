@@ -134,7 +134,7 @@ if __name__ == "__main__":
     def test_analyze_file_nonexistent(self) -> None:
         """Test analysis of non-existent file"""
         with pytest.raises(FileNotFoundError):
-            api.analyze_file("/nonexistent/file.java")
+            api.analyze_file("nonexistent_file.java")
 
     def test_analyze_file_with_path_object(self, sample_java_file: str) -> None:
         """Test file analysis with Path object"""

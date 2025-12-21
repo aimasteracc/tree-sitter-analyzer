@@ -129,7 +129,7 @@ class 类名:
 
     def test_analyze_file_with_nonexistent_file(self, engine):
         """Test analyzing a non-existent file."""
-        nonexistent_file = "/path/that/does/not/exist.py"
+        nonexistent_file = "nonexistent_path/file.py"
 
         with pytest.raises((FileNotFoundError, AnalysisError)):
             engine.analyze_file(nonexistent_file)
