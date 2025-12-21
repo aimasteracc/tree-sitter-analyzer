@@ -140,6 +140,8 @@ class LanguageLoader:
             else:
                 if hasattr(module, "language"):
                     language_func = module.language
+                elif hasattr(module, f"language_{language}"):
+                    language_func = getattr(module, f"language_{language}")
                 else:
                     return None
 
