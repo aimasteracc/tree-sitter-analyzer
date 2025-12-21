@@ -7,12 +7,15 @@ optimizations including file-based encoding caching to reduce redundant
 chardet.detect() calls.
 """
 
+import importlib.util
 import os
 import sys
 import threading
 import time
 from pathlib import Path
 from typing import Any
+
+ANYIO_AVAILABLE = importlib.util.find_spec("anyio") is not None
 
 
 # Set up encoding environment early
@@ -338,6 +341,45 @@ class EncodingManager:
             raise e
 
     @classmethod
+    async def read_file_safe_async(cls, file_path: str | Path) -> tuple[str, str]:
+        """
+        Safely read a file asynchronously with automatic encoding detection.
+
+        Args:
+            file_path: Path to the file
+
+        Returns:
+            Tuple of (content, detected_encoding)
+        """
+        if not ANYIO_AVAILABLE:
+            # Fallback to sync if anyio is not available (though it should be)
+            return cls.read_file_safe(file_path)
+
+        from anyio import Path as AsyncPath
+
+        path_obj = AsyncPath(file_path)
+
+        try:
+            # Read raw bytes asynchronously
+            raw_data = await path_obj.read_bytes()
+
+            if not raw_data:
+                return "", cls.DEFAULT_ENCODING
+
+            # Detect and decode (caching uses simple string path)
+            detected_encoding = cls.detect_encoding(raw_data, str(file_path))
+            content = cls.safe_decode(raw_data, detected_encoding)
+
+            # Normalize line endings
+            content = cls.normalize_line_endings(content)
+
+            return content, detected_encoding
+
+        except Exception as e:
+            log_warning(f"Failed to read file async {file_path}: {e}")
+            raise e
+
+    @classmethod
     def write_file_safe(
         cls, file_path: str | Path, content: str, encoding: str | None = None
     ) -> bool:
@@ -440,6 +482,11 @@ def detect_encoding(data: bytes, file_path: str | None = None) -> str:
 def read_file_safe(file_path: str | Path) -> tuple[str, str]:
     """Convenience function for safe file reading"""
     return EncodingManager.read_file_safe(file_path)
+
+
+async def read_file_safe_async(file_path: str | Path) -> tuple[str, str]:
+    """Convenience function for safe file reading (async)"""
+    return await EncodingManager.read_file_safe_async(file_path)
 
 
 def write_file_safe(

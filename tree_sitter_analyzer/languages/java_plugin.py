@@ -9,6 +9,8 @@ Migrated from AdvancedAnalyzer implementation for future independence.
 import re
 from typing import TYPE_CHECKING, Any
 
+import anyio
+
 if TYPE_CHECKING:
     import tree_sitter
 
@@ -1120,9 +1122,9 @@ class JavaPlugin(LanguagePlugin):
 
         try:
             # Read the file content using safe encoding detection
-            from ..encoding_utils import read_file_safe
+            from ..encoding_utils import read_file_safe_async
 
-            file_content, detected_encoding = read_file_safe(file_path)
+            file_content, detected_encoding = await read_file_safe_async(file_path)
 
             # Get tree-sitter language and parse
             language = self.get_tree_sitter_language()
@@ -1134,54 +1136,53 @@ class JavaPlugin(LanguagePlugin):
                     line_count=len(file_content.split("\n")),
                     elements=[],
                     source_code=file_content,
+                    success=False,
+                    error_message="Failed to load tree-sitter language for Java",
                 )
 
-            # Parse the code
-            import tree_sitter
+            # Offload CPU-bound parsing and extraction to worker threads
+            def _analyze_sync():
+                import tree_sitter
 
-            parser = tree_sitter.Parser()
+                parser = tree_sitter.Parser()
 
-            # Set language using the appropriate method
-            if hasattr(parser, "set_language"):
-                parser.set_language(language)
-            elif hasattr(parser, "language"):
-                parser.language = language
-            else:
-                # Try constructor approach as last resort
-                try:
+                # Set language using the appropriate method
+                if hasattr(parser, "set_language"):
+                    parser.set_language(language)
+                elif hasattr(parser, "language"):
+                    parser.language = language
+                else:
+                    # Try constructor approach as last resort
                     parser = tree_sitter.Parser(language)
-                except Exception as e:
-                    log_error(f"Failed to create parser with language: {e}")
-                    return AnalysisResult(
-                        file_path=file_path,
-                        language="java",
-                        line_count=len(file_content.split("\n")),
-                        elements=[],
-                        source_code=file_content,
-                        error_message=f"Parser creation failed: {e}",
-                        success=False,
-                    )
 
-            tree = parser.parse(file_content.encode("utf-8"))
+                tree = parser.parse(file_content.encode("utf-8"))
 
-            # Extract elements using our extractor
-            elements_dict = self.extract_elements(tree, file_content)
+                # Extract elements using our extractor
+                elements_dict = self.extract_elements(tree, file_content)
 
-            # Combine all elements into a single list
-            all_elements = []
-            all_elements.extend(elements_dict.get("functions", []))
-            all_elements.extend(elements_dict.get("classes", []))
-            all_elements.extend(elements_dict.get("variables", []))
-            all_elements.extend(elements_dict.get("imports", []))
-            all_elements.extend(elements_dict.get("packages", []))
+                # Combine all elements into a single list
+                all_elements = []
+                all_elements.extend(elements_dict.get("functions", []))
+                all_elements.extend(elements_dict.get("classes", []))
+                all_elements.extend(elements_dict.get("variables", []))
+                all_elements.extend(elements_dict.get("imports", []))
+                all_elements.extend(elements_dict.get("packages", []))
 
-            # Get package info if available
-            packages = elements_dict.get("packages", [])
-            package = packages[0] if packages else None
+                # Extract packages and annotations if available
+                packages = elements_dict.get("packages", [])
+                package = packages[0] if packages else None
 
-            # Count nodes in the AST tree
-            node_count = (
-                self._count_tree_nodes(tree.root_node) if tree and tree.root_node else 0
+                # Count nodes in the AST tree
+                from ..utils.tree_sitter_compat import count_nodes_iterative
+
+                node_count = 0
+                if tree and tree.root_node:
+                    node_count = count_nodes_iterative(tree.root_node)
+
+                return all_elements, node_count, package
+
+            all_elements, node_count, package = await anyio.to_thread.run_sync(
+                _analyze_sync
             )
 
             return AnalysisResult(
@@ -1209,22 +1210,11 @@ class JavaPlugin(LanguagePlugin):
 
     def _count_tree_nodes(self, node: Any) -> int:
         """
-        Recursively count nodes in the AST tree.
-
-        Args:
-            node: Tree-sitter node
-
-        Returns:
-            Total number of nodes
+        Recursively count nodes in the AST tree (Deprecated: use iterative version).
         """
-        if node is None:
-            return 0
+        from ..utils.tree_sitter_compat import count_nodes_iterative
 
-        count = 1  # Count current node
-        if hasattr(node, "children"):
-            for child in node.children:
-                count += self._count_tree_nodes(child)
-        return count
+        return count_nodes_iterative(node)
 
     def get_tree_sitter_language(self) -> Any | None:
         """Get the tree-sitter language for Java."""

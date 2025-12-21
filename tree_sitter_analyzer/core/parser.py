@@ -6,10 +6,13 @@ This module provides the Parser class which handles Tree-sitter parsing
 operations in the new architecture.
 """
 
+import hashlib
 import logging
+import os
 from pathlib import Path
 from typing import Any, NamedTuple
 
+from cachetools import LRUCache
 from tree_sitter import Tree
 
 from ..encoding_utils import EncodingManager
@@ -48,6 +51,9 @@ class Parser:
     using Tree-sitter parsers with proper error handling and encoding support.
     """
 
+    # Class-level cache to share across all Parser instances
+    _cache = LRUCache(maxsize=100)
+
     def __init__(self) -> None:
         """Initialize the Parser with language loader."""
         self._loader = get_loader()
@@ -80,6 +86,23 @@ class Parser:
                     error_message=f"File not found: {file_path_str}",
                 )
 
+            # Check cache first using file metadata for versioning
+            cache_key = None
+            try:
+                stat = os.stat(file_path_str)
+                # Key: path + mtime + size + language
+                key_string = (
+                    f"{file_path_str}:{stat.st_mtime}:{stat.st_size}:{language}"
+                )
+                cache_key = hashlib.sha256(key_string.encode("utf-8")).hexdigest()
+
+                cached = Parser._cache.get(cache_key)
+                if cached:
+                    logger.debug(f"Parser cache hit for {file_path_str}")
+                    return cached
+            except (OSError, TypeError) as e:
+                logger.debug(f"Could not check parser cache for {file_path_str}: {e}")
+
             # Read file content with encoding detection
             try:
                 source_code, detected_encoding = self._encoding_manager.read_file_safe(
@@ -108,7 +131,13 @@ class Parser:
                 )
 
             # Parse the code
-            return self.parse_code(source_code, language, filename=file_path_str)
+            result = self.parse_code(source_code, language, filename=file_path_str)
+
+            # Save to cache if successful
+            if result.success and cache_key:
+                Parser._cache[cache_key] = result
+
+            return result
 
         except Exception as e:
             logger.error(f"Unexpected error parsing file {file_path_str}: {e}")

@@ -4,9 +4,16 @@ Global test configuration and fixtures.
 """
 
 import shutil
+import sys
 from pathlib import Path
 
-import pytest
+# Explicitly add project root to sys.path to ensure strict import resolution
+# regardless of where pytest is invoked from
+PROJECT_ROOT = Path(__file__).parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+import pytest  # noqa: E402
 
 
 def pytest_configure(config):
@@ -169,3 +176,15 @@ async def cleanup_asyncio_tasks():
         )
     except asyncio.TimeoutError:
         pass
+
+
+@pytest.fixture(autouse=True)
+def reset_analysis_engine():
+    """Reset the UnifiedAnalysisEngine singleton after each test."""
+    from tree_sitter_analyzer.core.analysis_engine import UnifiedAnalysisEngine
+
+    # Reset before test
+    UnifiedAnalysisEngine._reset_instance()
+    yield
+    # Reset after test
+    UnifiedAnalysisEngine._reset_instance()

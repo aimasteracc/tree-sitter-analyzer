@@ -12,25 +12,25 @@ from pathlib import Path
 from typing import Any
 
 from . import __version__
-from .core.engine import AnalysisEngine
+from .core.analysis_engine import AnalysisRequest, UnifiedAnalysisEngine
 from .utils import log_error
 
 logger = logging.getLogger(__name__)
 
 # Global engine instance (singleton pattern)
-_engine: AnalysisEngine | None = None
+_engine: UnifiedAnalysisEngine | None = None
 
 
-def get_engine() -> AnalysisEngine:
+def get_engine() -> UnifiedAnalysisEngine:
     """
     Get the global analysis engine instance.
 
     Returns:
-        AnalysisEngine instance
+        UnifiedAnalysisEngine instance
     """
     global _engine
     if _engine is None:
-        _engine = AnalysisEngine()
+        _engine = UnifiedAnalysisEngine()
     return _engine
 
 
@@ -63,8 +63,17 @@ def analyze_file(
     try:
         engine = get_engine()
 
-        # Perform the analysis
-        analysis_result = engine.analyze_file(file_path, language, queries=queries)
+        # Create analysis request
+        request = AnalysisRequest(
+            file_path=str(file_path),
+            language=language,
+            queries=queries,
+            include_elements=include_elements,
+            include_queries=include_queries,
+        )
+
+        # Perform the analysis using sync method
+        analysis_result = engine.analyze_sync(request)
 
         # Convert AnalysisResult to expected API format (same as analyze_code)
         result = {
@@ -202,8 +211,10 @@ def analyze_code(
     try:
         engine = get_engine()
 
-        # Perform the analysis
-        analysis_result = engine.analyze_code(source_code, language)
+        # Perform the analysis using sync method
+        analysis_result = engine.analyze_code_sync(
+            source_code, language, filename="string"
+        )
 
         # Convert AnalysisResult to expected API format
         result = {
@@ -332,14 +343,7 @@ def get_available_queries(language: str) -> list[str]:
     """
     try:
         engine = get_engine()
-        # Try to get plugin and its supported queries
-        plugin = engine._get_language_plugin(language)
-        if plugin and hasattr(plugin, "get_supported_queries"):
-            result = plugin.get_supported_queries()
-            return list(result) if result else []
-        else:
-            # Return default queries
-            return ["class", "method", "field"]
+        return engine.get_available_queries(language)
     except Exception as e:
         log_error(f"Failed to get available queries for {language}: {e}")
         return []
@@ -529,11 +533,7 @@ def _group_captures_by_main_node(
     Group query captures by their main nodes (e.g., @method, @class, @function).
 
     Each group represents one match of the query pattern, with all its sub-captures.
-    For example, a method_with_annotations query returns:
-    - One @method capture (the main node)
-    - One or more @annotation captures
-    - One @name capture
-    These all get grouped together as one "result".
+    Optimized version with O(N log N) complexity.
 
     Args:
         captures: Flat list of all captures from the query
@@ -546,178 +546,53 @@ def _group_captures_by_main_node(
         return []
 
     # Identify the main capture type (method, class, function, etc.)
-    # Usually it's the one with the longest text span or appears first
     main_capture_types = {"method", "class", "function", "interface", "field"}
 
-    # Group by start position - captures that share the same main node position
-    position_groups: dict[tuple[int, int], list[dict[str, Any]]] = {}
+    # Sort captures by start_byte (asc) and end_byte (desc) to handle nesting correctly
+    # Parents will always appear before their children
+    sorted_captures = sorted(
+        captures, key=lambda c: (c.get("start_byte", 0), -c.get("end_byte", 0))
+    )
 
-    for capture in captures:
-        capture_name = capture.get("capture_name", "")
-
-        # Find the main node position for this capture
-        if capture_name in main_capture_types:
-            # This is a main node, use its position as the key
-            pos_key = (capture.get("start_byte", 0), capture.get("end_byte", 0))
-        else:
-            # This is a sub-capture, we'll need to find its parent later
-            # For now, use its own position
-            pos_key = (capture.get("start_byte", 0), capture.get("end_byte", 0))
-
-        if pos_key not in position_groups:
-            position_groups[pos_key] = []
-        position_groups[pos_key].append(capture)
-
-    # Now group captures that belong together
-    # A capture belongs to a main node if it's within the main node's byte range
     results = []
-    main_nodes = []
+    main_node_stack = []  # Stack of (main_node, grouped_captures_dict)
 
-    # First, identify all main nodes
-    for captures_list in position_groups.values():
-        for capture in captures_list:
-            if capture.get("capture_name") in main_capture_types:
-                main_nodes.append(capture)
-
-    # For each main node, find all sub-captures within its range
-    for main_node in main_nodes:
-        main_start = main_node.get("start_byte", 0)
-        main_end = main_node.get("end_byte", 0)
-        main_name = main_node.get("capture_name", "")
-
-        # Collect all captures within this main node's range
-        grouped_captures = {main_name: main_node}
-
-        for captures_list in position_groups.values():
-            for capture in captures_list:
-                capture_start = capture.get("start_byte", 0)
-                capture_end = capture.get("end_byte", 0)
-                capture_name = capture.get("capture_name", "")
-
-                # Skip the main node itself
-                if capture is main_node:
-                    continue
-
-                # Check if this capture is within the main node's range
-                if capture_start >= main_start and capture_end <= main_end:
-                    # Group multiple captures of the same name in a list
-                    if capture_name in grouped_captures:
-                        # Convert to list if not already
-                        if not isinstance(grouped_captures[capture_name], list):
-                            grouped_captures[capture_name] = [
-                                grouped_captures[capture_name]
-                            ]
-                        grouped_captures[capture_name].append(capture)
-                    else:
-                        grouped_captures[capture_name] = capture
-
-        results.append({"captures": grouped_captures})
-
-    return results
-
-
-def _group_captures_by_main_node(
-    captures: list[dict[str, Any]],
-) -> list[dict[str, Any]]:
-    """
-    Group query captures by their main nodes (e.g., @method, @class, @function).
-
-    Each group represents one match of the query pattern, with all its sub-captures.
-    For example, a method_with_annotations query returns:
-    - One @method capture (the main node)
-    - One or more @annotation captures
-    - One @name capture
-    These all get grouped together as one "result".
-
-    Args:
-        captures: Flat list of all captures from the query
-
-    Returns:
-        List of grouped results, where each result has:
-        - 'captures' dict mapping capture names to their data
-        - Top-level fields from the main node (text, start_line, end_line, etc.)
-    """
-    if not captures:
-        return []
-
-    # Identify the main capture type (method, class, function, etc.)
-    # Usually it's the one with the longest text span or appears first
-    main_capture_types = {"method", "class", "function", "interface", "field"}
-
-    # Group by start position - captures that share the same main node position
-    position_groups: dict[tuple[int, int], list[dict[str, Any]]] = {}
-
-    for capture in captures:
+    for capture in sorted_captures:
         capture_name = capture.get("capture_name", "")
+        start = capture.get("start_byte", 0)
+        end = capture.get("end_byte", 0)
 
-        # Find the main node position for this capture
+        # Pop nodes from stack that don't contain the current capture
+        while main_node_stack and main_node_stack[-1][0].get("end_byte", 0) < end:
+            main_node_stack.pop()
+
         if capture_name in main_capture_types:
-            # This is a main node, use its position as the key
-            pos_key = (capture.get("start_byte", 0), capture.get("end_byte", 0))
+            # This is a main node, create a new result group
+            grouped_captures = {capture_name: capture}
+            result = {
+                "captures": grouped_captures,
+                "text": capture.get("text", ""),
+                "start_line": capture.get("line_number", 0),
+                "end_line": capture.get("line_number", 0)
+                + capture.get("text", "").count("\n"),
+                "start_byte": start,
+                "end_byte": end,
+                "node_type": capture.get("node_type", ""),
+            }
+            results.append(result)
+            # Push to stack to allow children to be grouped under it
+            main_node_stack.append((capture, grouped_captures))
         else:
-            # This is a sub-capture, we'll need to find its parent later
-            # For now, use its own position
-            pos_key = (capture.get("start_byte", 0), capture.get("end_byte", 0))
-
-        if pos_key not in position_groups:
-            position_groups[pos_key] = []
-        position_groups[pos_key].append(capture)
-
-    # Now group captures that belong together
-    # A capture belongs to a main node if it's within the main node's byte range
-    results = []
-    main_nodes = []
-
-    # First, identify all main nodes
-    for captures_list in position_groups.values():
-        for capture in captures_list:
-            if capture.get("capture_name") in main_capture_types:
-                main_nodes.append(capture)
-
-    # For each main node, find all sub-captures within its range
-    for main_node in main_nodes:
-        main_start = main_node.get("start_byte", 0)
-        main_end = main_node.get("end_byte", 0)
-        main_name = main_node.get("capture_name", "")
-
-        # Collect all captures within this main node's range
-        grouped_captures = {main_name: main_node}
-
-        for captures_list in position_groups.values():
-            for capture in captures_list:
-                capture_start = capture.get("start_byte", 0)
-                capture_end = capture.get("end_byte", 0)
-                capture_name = capture.get("capture_name", "")
-
-                # Skip the main node itself
-                if capture is main_node:
-                    continue
-
-                # Check if this capture is within the main node's range
-                if capture_start >= main_start and capture_end <= main_end:
-                    # Group multiple captures of the same name in a list
-                    if capture_name in grouped_captures:
-                        # Convert to list if not already
-                        if not isinstance(grouped_captures[capture_name], list):
-                            grouped_captures[capture_name] = [
-                                grouped_captures[capture_name]
-                            ]
-                        grouped_captures[capture_name].append(capture)
-                    else:
-                        grouped_captures[capture_name] = capture
-
-        # Create result with top-level fields from main node
-        result = {
-            "captures": grouped_captures,
-            "text": main_node.get("text", ""),
-            "start_line": main_node.get("line_number", 0),
-            "end_line": main_node.get("line_number", 0)
-            + main_node.get("text", "").count("\n"),
-            "start_byte": main_start,
-            "end_byte": main_end,
-            "node_type": main_node.get("node_type", ""),
-        }
-        results.append(result)
+            # This is a sub-capture. Associate it with the most recent containing main node.
+            if main_node_stack:
+                parent_grouped = main_node_stack[-1][1]
+                if capture_name in parent_grouped:
+                    # Collect multiple sub-captures of same name as a list
+                    if not isinstance(parent_grouped[capture_name], list):
+                        parent_grouped[capture_name] = [parent_grouped[capture_name]]
+                    parent_grouped[capture_name].append(capture)
+                else:
+                    parent_grouped[capture_name] = capture
 
     return results
 

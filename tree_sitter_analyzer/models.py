@@ -390,12 +390,35 @@ class AnalysisResult:
         # Use unified elements list for consistent data structure
         elements = self.elements or []
 
-        # Extract elements by type from unified list using constants
-        classes = [e for e in elements if is_element_of_type(e, ELEMENT_TYPE_CLASS)]
-        methods = [e for e in elements if is_element_of_type(e, ELEMENT_TYPE_FUNCTION)]
-        fields = [e for e in elements if is_element_of_type(e, ELEMENT_TYPE_VARIABLE)]
-        imports = [e for e in elements if is_element_of_type(e, ELEMENT_TYPE_IMPORT)]
-        packages = [e for e in elements if is_element_of_type(e, ELEMENT_TYPE_PACKAGE)]
+        # Single pass grouping for better performance
+        from .constants import (
+            ELEMENT_TYPE_ANNOTATION,
+            ELEMENT_TYPE_CLASS,
+            ELEMENT_TYPE_FUNCTION,
+            ELEMENT_TYPE_IMPORT,
+            ELEMENT_TYPE_VARIABLE,
+            get_element_type,
+        )
+
+        grouped: dict[str, list[CodeElement]] = {
+            ELEMENT_TYPE_CLASS: [],
+            ELEMENT_TYPE_FUNCTION: [],
+            ELEMENT_TYPE_VARIABLE: [],
+            ELEMENT_TYPE_IMPORT: [],
+            ELEMENT_TYPE_PACKAGE: [],
+            ELEMENT_TYPE_ANNOTATION: [],
+        }
+
+        for e in elements:
+            etype = get_element_type(e)
+            if etype in grouped:
+                grouped[etype].append(e)
+
+        classes = grouped[ELEMENT_TYPE_CLASS]
+        methods = grouped[ELEMENT_TYPE_FUNCTION]
+        fields = grouped[ELEMENT_TYPE_VARIABLE]
+        imports = grouped[ELEMENT_TYPE_IMPORT]
+        packages = grouped[ELEMENT_TYPE_PACKAGE]
 
         return {
             "file_path": self.file_path,
@@ -431,7 +454,9 @@ class AnalysisResult:
             ],
             "annotations": [
                 {"name": getattr(ann, "name", str(ann))}
-                for ann in getattr(self, "annotations", [])
+                for ann in (
+                    grouped[ELEMENT_TYPE_ANNOTATION] or getattr(self, "annotations", [])
+                )
             ],
             "analysis_time": self.analysis_time,
             "success": self.success,
@@ -458,14 +483,21 @@ class AnalysisResult:
             "annotations": ELEMENT_TYPE_ANNOTATION,
         }
 
-        for type_name, element_type in type_mapping.items():
-            if "all" in types or type_name in types:
-                type_elements = [
-                    e for e in elements if is_element_of_type(e, element_type)
-                ]
-                for element in type_elements:
-                    # Call each element model's to_summary_item()
-                    summary["summary_elements"].append(element.to_summary_item())
+        # Select relevant types based on input
+        target_types = set()
+        if "all" in types:
+            target_types = set(type_mapping.values())
+        else:
+            for t in types:
+                if t in type_mapping:
+                    target_types.add(type_mapping[t])
+
+        # Single pass filtering
+        from .constants import get_element_type
+
+        for element in elements:
+            if get_element_type(element) in target_types:
+                summary["summary_elements"].append(element.to_summary_item())
 
         return summary
 

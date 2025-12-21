@@ -8,7 +8,7 @@ This module contains the core components of the new architecture:
 - QueryExecutor: Query execution engine
 """
 
-from .engine import AnalysisEngine
+from .analysis_engine import UnifiedAnalysisEngine as AnalysisEngine
 from .parser import Parser, ParseResult
 from .query import QueryExecutor
 

@@ -1,0 +1,364 @@
+#!/usr/bin/env python3
+"""
+Tests for core.analysis_engine
+
+Roo Code compliance:
+- TDD: Test-driven development
+- Type hints: Type hints required for all functions
+- MCP logs: Log output at each step
+- docstring: Google Style docstring
+- Coverage: Target 80% or higher
+"""
+
+
+# Mock functionality now provided by pytest-mock
+
+# Import test targets
+from unittest.mock import MagicMock, patch
+
+import pytest
+
+from tree_sitter_analyzer.core.analysis_engine import (
+    AnalysisRequest,
+    MockLanguagePlugin,
+    UnifiedAnalysisEngine,
+    UnsupportedLanguageError,
+)
+
+
+@pytest.fixture
+def engine():
+    """Unified analysis engine fixture"""
+    engine = UnifiedAnalysisEngine()
+    # Register test plugins
+    engine.register_plugin("java", MockLanguagePlugin("java"))
+    engine.register_plugin("python", MockLanguagePlugin("python"))
+    yield engine
+    # Cleanup
+    engine.clear_cache()
+
+
+class TestUnifiedAnalysisEngine:
+    """Unified analysis engine tests"""
+
+    @pytest.mark.unit
+    def test_singleton_pattern(self) -> None:
+        """Singleton pattern test"""
+        # Arrange & Act
+        engine1 = UnifiedAnalysisEngine()
+        engine2 = UnifiedAnalysisEngine()
+
+        # Assert
+        assert engine1 is engine2  # Same instance
+        assert id(engine1) == id(engine2)
+
+    @pytest.mark.unit
+    def test_initialization(self) -> None:
+        """Initialization test"""
+        # Arrange & Act
+        engine = UnifiedAnalysisEngine()
+
+        # Assert
+        assert engine is not None
+        assert engine._cache_service is not None
+        assert engine._plugin_manager is not None
+        assert engine._performance_monitor is not None
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_analyze_with_cache_hit(self, engine) -> None:
+        """Analysis test with cache hit"""
+        # Arrange
+        request = AnalysisRequest(file_path="test.java", language="java")
+
+        # Set result in cache beforehand
+        cache_key = engine._generate_cache_key(request)
+        from tree_sitter_analyzer.models import AnalysisResult
+
+        expected_result = AnalysisResult(
+            file_path="test.java",
+            package=None,
+            elements=[],
+            analysis_time=0.0,
+            success=True,
+            error_message=None,
+        )
+        await engine._cache_service.set(cache_key, expected_result)
+
+        # Act
+        result = await engine.analyze(request)
+
+        # Assert
+        assert result.file_path == expected_result.file_path
+        assert result.success == expected_result.success
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_analyze_with_cache_miss(self, engine) -> None:
+        """Analysis test with cache miss"""
+        # Arrange
+        request = AnalysisRequest(file_path="test.java", language="java")
+
+        # Act
+        from tree_sitter_analyzer.core.parser import ParseResult
+
+        mock_tree = MagicMock()
+        mock_parse_result = ParseResult(
+            tree=mock_tree,
+            source_code="public class Test {}",
+            language="java",
+            file_path="test.java",
+            success=True,
+            error_message=None,
+        )
+
+        with patch("os.path.exists", return_value=True):
+            with patch.object(
+                engine._parser, "parse_file", return_value=mock_parse_result
+            ):
+                result = await engine.analyze(request)
+
+        # Assert
+        assert result is not None
+        assert result.file_path == "test.java"
+        assert result.success is True
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_analyze_unsupported_language(self, engine) -> None:
+        """Test for unsupported language"""
+        # Arrange
+        request = AnalysisRequest(file_path="test.unknown", language="unknown")
+
+        # Act & Assert
+        with patch("os.path.exists", return_value=True):
+            with pytest.raises(UnsupportedLanguageError) as exc_info:
+                await engine.analyze(request)
+
+        assert "Unsupported language: unknown" in str(exc_info.value)
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_language_detection(self, engine) -> None:
+        """Language auto-detection test"""
+        # Arrange
+        request = AnalysisRequest(file_path="test.java")  # no language
+
+        # Act
+        from tree_sitter_analyzer.core.parser import ParseResult
+
+        mock_tree = MagicMock()
+        mock_parse_result = ParseResult(
+            tree=mock_tree,
+            source_code="public class Test {}",
+            language="java",
+            file_path="test.java",
+            success=True,
+            error_message=None,
+        )
+
+        with patch("os.path.exists", return_value=True):
+            with patch.object(
+                engine._parser, "parse_file", return_value=mock_parse_result
+            ):
+                result = await engine.analyze(request)
+
+        # Assert
+        assert result.file_path == "test.java"
+        assert result.success is True
+
+    @pytest.mark.unit
+    def test_generate_cache_key(self, engine) -> None:
+        """Cache key generation test"""
+        # Arrange
+        request1 = AnalysisRequest(
+            file_path="test.java", language="java", include_complexity=True
+        )
+        request2 = AnalysisRequest(
+            file_path="test.java", language="java", include_complexity=True
+        )
+        request3 = AnalysisRequest(
+            file_path="test.java", language="java", include_complexity=False
+        )
+
+        # Act
+        key1 = engine._generate_cache_key(request1)
+        key2 = engine._generate_cache_key(request2)
+        key3 = engine._generate_cache_key(request3)
+
+        # Assert
+        assert key1 == key2  # Same key for same request
+        assert key1 != key3  # Different key for different request
+        assert isinstance(key1, str)
+        assert len(key1) > 0
+
+    @pytest.mark.unit
+    def test_language_detection_by_extension(self, engine) -> None:
+        """Language detection by extension test"""
+        # Act & Assert
+        assert engine._detect_language("test.java") == "java"
+        assert engine._detect_language("test.py") == "python"
+        assert engine._detect_language("test.js") == "javascript"
+        assert engine._detect_language("test.ts") == "typescript"
+        assert engine._detect_language("test.c") == "c"
+        assert engine._detect_language("test.cpp") == "cpp"
+        assert engine._detect_language("test.rs") == "rust"
+        assert engine._detect_language("test.go") == "go"
+        assert engine._detect_language("test.unknown") == "unknown"
+
+    @pytest.mark.unit
+    def test_plugin_registration(self, engine) -> None:
+        """Plugin registration test"""
+        # Arrange
+        plugin = MockLanguagePlugin("test_lang")
+
+        # Act
+        engine.register_plugin("test_lang", plugin)
+
+        # Assert
+        assert "test_lang" in engine.get_supported_languages()
+        retrieved_plugin = engine._plugin_manager.get_plugin("test_lang")
+        assert retrieved_plugin == plugin
+
+    @pytest.mark.unit
+    def test_cache_stats(self, engine) -> None:
+        """Cache statistics test"""
+        # Act
+        stats = engine.get_cache_stats()
+
+        # Assert
+        assert "hits" in stats
+        assert "misses" in stats
+        assert "hit_rate" in stats
+        assert isinstance(stats["hits"], int)
+        assert isinstance(stats["misses"], int)
+        assert isinstance(stats["hit_rate"], float)
+
+
+class TestAnalysisRequest:
+    """AnalysisRequest tests"""
+
+    @pytest.mark.unit
+    def test_analysis_request_creation(self) -> None:
+        """AnalysisRequest creation test"""
+        # Arrange & Act
+        request = AnalysisRequest(
+            file_path="test.java",
+            language="java",
+            include_complexity=True,
+            include_details=False,
+        )
+
+        # Assert
+        assert request.file_path == "test.java"
+        assert request.language == "java"
+        assert request.include_complexity is True
+        assert request.include_details is False
+
+    @pytest.mark.unit
+    def test_analysis_request_defaults(self) -> None:
+        """AnalysisRequest default values test"""
+        # Arrange & Act
+        request = AnalysisRequest(file_path="test.java")
+
+        # Assert
+        assert request.file_path == "test.java"
+        assert request.language is None
+        assert request.include_complexity is True
+        assert request.include_details is False
+        assert request.format_type == "json"
+
+    @pytest.mark.unit
+    def test_from_mcp_arguments(self) -> None:
+        """Creation from MCP arguments test"""
+        # Arrange
+        mcp_args = {
+            "file_path": "test.java",
+            "language": "java",
+            "include_complexity": False,
+            "include_details": True,
+            "format_type": "table",
+        }
+
+        # Act
+        request = AnalysisRequest.from_mcp_arguments(mcp_args)
+
+        # Assert
+        assert request.file_path == "test.java"
+        assert request.language == "java"
+        assert request.include_complexity is False
+        assert request.include_details is True
+        assert request.format_type == "table"
+
+
+class TestUnifiedAnalysisEngineErrorHandling:
+    """Unified analysis engine error handling tests"""
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_plugin_analysis_error(self) -> None:
+        """Plugin analysis error handling"""
+        # Arrange
+        engine = UnifiedAnalysisEngine()
+
+        # Create mock plugin that raises errors
+        class ErrorPlugin:
+            def get_language_name(self) -> str:
+                return "error_lang"
+
+            def get_file_extensions(self) -> list[str]:
+                return [".error"]
+
+            def create_extractor(self):
+                return None
+
+            async def analyze_file(self, file_path: str, request: AnalysisRequest):
+                raise Exception("Analysis failed")
+
+        engine.register_plugin("error_lang", ErrorPlugin())
+        request = AnalysisRequest(file_path="test.error", language="error_lang")
+
+        # Act & Assert
+        # Mock language support and parse file to bypass validation
+        from tree_sitter_analyzer.core.parser import ParseResult
+
+        mock_parse_result = ParseResult(
+            tree=MagicMock(),
+            source_code="",
+            language="error_lang",
+            file_path="test.error",
+            success=True,
+            error_message=None,
+        )
+        with patch("os.path.exists", return_value=True):
+            with patch.object(
+                engine.language_detector, "is_supported", return_value=True
+            ):
+                with patch.object(
+                    engine._parser, "parse_file", return_value=mock_parse_result
+                ):
+                    with pytest.raises(Exception) as exc_info:
+                        await engine.analyze(request)
+
+        assert "Analysis failed" in str(exc_info.value)
+
+
+class TestMockLanguagePlugin:
+    """MockLanguagePlugin tests"""
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_mock_plugin_analysis(self) -> None:
+        """Mock plugin analysis test"""
+        # Arrange
+        plugin = MockLanguagePlugin("java")
+        request = AnalysisRequest(file_path="test.java", language="java")
+
+        # Act
+        result = await plugin.analyze_file("test.java", request)
+
+        # Assert
+        assert result.file_path == "test.java"
+        assert result.success is True
+        assert result.error_message is None
+        assert result.analysis_time == 0.1

@@ -102,7 +102,7 @@ class AnalyzeScaleToolCLICompatible:
             start_time = time.time()
 
             # Use AdvancedAnalyzer for comprehensive analysis
-            analysis_result = await self.analysis_engine.analyze_file(file_path)
+            analysis_result = await self.analysis_engine.analyze_file_async(file_path)
 
             # Handle potential None result (for testing purposes with mocked engine)
             # This can only happen in tests where the engine is mocked to return None

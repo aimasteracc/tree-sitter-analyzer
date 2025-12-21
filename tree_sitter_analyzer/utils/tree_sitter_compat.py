@@ -287,3 +287,36 @@ def log_api_info() -> None:
 
     except ImportError:
         logger.debug("Tree-sitter library not available")
+
+
+def count_nodes_iterative(root_node: Any) -> int:
+    """
+    Count total number of nodes in a tree using iterative traversal.
+    Prevents recursion limit issues for very large ASTs.
+
+    Args:
+        root_node: The root node of the tree or sub-tree
+
+    Returns:
+        Total number of nodes
+    """
+    if root_node is None:
+        return 0
+
+    count = 0
+    stack = [root_node]
+
+    while stack:
+        node = stack.pop()
+        count += 1
+
+        # Add children to stack
+        if hasattr(node, "children"):
+            try:
+                # Optimized: add children in reverse if we cared about order,
+                # but for counting it doesn't matter.
+                stack.extend(node.children)
+            except (TypeError, AttributeError):
+                # Handle cases where children might not be iterable
+                pass
+    return count

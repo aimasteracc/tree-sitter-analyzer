@@ -11,6 +11,8 @@ Equivalent to Java plugin capabilities for consistent language support.
 import re
 from typing import TYPE_CHECKING, Any, Optional
 
+import anyio
+
 if TYPE_CHECKING:
     import tree_sitter
 
@@ -1533,43 +1535,37 @@ class JavaScriptPlugin(LanguagePlugin):
             )
 
         try:
-            from ..encoding_utils import read_file_safe
+            from ..encoding_utils import read_file_safe_async
 
-            source_code, _ = read_file_safe(file_path)
+            # 1. Non-blocking I/O
+            source_code, _ = await read_file_safe_async(file_path)
 
-            parser = tree_sitter.Parser()
-            parser.language = language
-            tree = parser.parse(bytes(source_code, "utf8"))
+            # 2. Offload CPU-bound parsing and extraction to worker threads
+            def _analyze_sync() -> tuple[list[CodeElement], int]:
+                parser = tree_sitter.Parser()
+                parser.language = language
+                tree = parser.parse(bytes(source_code, "utf8"))
 
-            extractor = self.create_extractor()
-            extractor.current_file = file_path  # Set current file for context
+                extractor = self.create_extractor()
+                extractor.current_file = file_path  # Set current file for context
 
-            elements: list[CodeElement] = []
+                elements: list[CodeElement] = []
 
-            # Extract all element types
-            functions = extractor.extract_functions(tree, source_code)
-            classes = extractor.extract_classes(tree, source_code)
-            variables = extractor.extract_variables(tree, source_code)
-            imports = extractor.extract_imports(tree, source_code)
+                # Extract all element types
+                elements.extend(extractor.extract_functions(tree, source_code))
+                elements.extend(extractor.extract_classes(tree, source_code))
+                elements.extend(extractor.extract_variables(tree, source_code))
+                elements.extend(extractor.extract_imports(tree, source_code))
 
-            # Add exports if extractor supports it
-            if hasattr(extractor, "extract_exports"):
-                # exports = extractor.extract_exports(tree, source_code)
-                # TODO: Add exports to elements when export extraction is fully implemented
-                # elements.extend(exports)
-                pass
-            # else: exports not needed if not supported
+                from ..utils.tree_sitter_compat import count_nodes_iterative
 
-            elements.extend(functions)
-            elements.extend(classes)
-            elements.extend(variables)
-            elements.extend(imports)
+                node_count = 0
+                if tree and tree.root_node:
+                    node_count = count_nodes_iterative(tree.root_node)
 
-            def count_nodes(node: "tree_sitter.Node") -> int:
-                count = 1
-                for child in node.children:
-                    count += count_nodes(child)
-                return count
+                return elements, node_count
+
+            elements, node_count = await anyio.to_thread.run_sync(_analyze_sync)
 
             return AnalysisResult(
                 file_path=file_path,
@@ -1577,7 +1573,7 @@ class JavaScriptPlugin(LanguagePlugin):
                 success=True,
                 elements=elements,
                 line_count=len(source_code.splitlines()),
-                node_count=count_nodes(tree.root_node),
+                node_count=node_count,
             )
         except Exception as e:
             log_error(f"Error analyzing JavaScript file {file_path}: {e}")

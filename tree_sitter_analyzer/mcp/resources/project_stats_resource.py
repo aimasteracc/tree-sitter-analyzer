@@ -355,7 +355,7 @@ class ProjectStatsResource:
                     # Use appropriate analyzer based on language
                     if language == "java":
                         # Use analysis engine for Java
-                        file_analysis = await self.analysis_engine.analyze_file(
+                        file_analysis = await self.analysis_engine.analyze_file_async(
                             str(file_path)
                         )
                         if file_analysis and hasattr(file_analysis, "methods"):

@@ -152,6 +152,7 @@ class ElementExtractor(ABC):
             elements.extend(self.extract_classes(tree, source_code))
             elements.extend(self.extract_variables(tree, source_code))
             elements.extend(self.extract_imports(tree, source_code))
+            elements.extend(self.extract_packages(tree, source_code))
         except Exception as e:
             log_error(f"Failed to extract all elements: {e}")
 
