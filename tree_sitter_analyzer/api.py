@@ -92,7 +92,11 @@ def analyze_file(
             },
         }
 
-        # Add elements if requested and available
+        # If analysis failed but we have a result, return it (e.g. partial results or error message)
+        if not analysis_result.success:
+            if analysis_result.error_message:
+                result["error"] = analysis_result.error_message
+            return result
         if include_elements and hasattr(analysis_result, "elements"):
             elements_list: list[dict[str, Any]] = []
             result["elements"] = elements_list
@@ -229,7 +233,11 @@ def analyze_code(
             },
         }
 
-        # Add elements if requested and available
+        # If analysis failed but we have a result, return it
+        if not analysis_result.success:
+            if analysis_result.error_message:
+                result["error"] = analysis_result.error_message
+            return result
         if include_elements and hasattr(analysis_result, "elements"):
             elements_list: list[dict[str, Any]] = []
             result["elements"] = elements_list
@@ -313,7 +321,12 @@ def analyze_code(
 
     except Exception as e:
         log_error(f"API analyze_code failed: {e}")
-        return {"success": False, "error": str(e)}
+        return {
+            "success": False,
+            "error": str(e),
+            "language_info": {"language": language or "unknown", "detected": False},
+            "ast_info": {"node_count": 0, "line_count": 0},
+        }
 
 
 def get_supported_languages() -> list[str]:

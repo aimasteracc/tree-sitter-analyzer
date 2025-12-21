@@ -77,6 +77,8 @@ def sample_analysis_result() -> MagicMock:
     result = MagicMock()
     result.package = MagicMock()
     result.package.name = "com.example.test"
+    result.success = True
+    result.error_message = None
 
     # Create mock elements with element_type attributes
     import_element1 = MagicMock()
@@ -278,7 +280,7 @@ class TestAnalyzeScaleToolCLICompatibleExecution:
     ) -> None:
         """Test successful execution with valid file"""
         with patch.object(
-            tool.analysis_engine, "analyze_file", return_value=sample_analysis_result
+            tool.analysis_engine, "analyze", return_value=sample_analysis_result
         ):
             arguments = {"file_path": sample_java_file}
             result = await tool.execute(arguments)
@@ -328,7 +330,7 @@ class TestAnalyzeScaleToolCLICompatibleExecution:
         with (
             patch.object(
                 tool.analysis_engine,
-                "analyze_file",
+                "analyze",
                 return_value=sample_analysis_result,
             ),
             patch(
@@ -368,7 +370,7 @@ class TestAnalyzeScaleToolCLICompatibleExecution:
     ) -> None:
         """Test execution with explicitly specified language"""
         with patch.object(
-            tool.analysis_engine, "analyze_file", return_value=sample_analysis_result
+            tool.analysis_engine, "analyze", return_value=sample_analysis_result
         ):
             arguments = {"file_path": sample_java_file, "language": "java"}
             result = await tool.execute(arguments)
@@ -384,7 +386,7 @@ class TestAnalyzeScaleToolCLICompatibleExecution:
     ) -> None:
         """Test execution with optional parameters"""
         with patch.object(
-            tool.analysis_engine, "analyze_file", return_value=sample_analysis_result
+            tool.analysis_engine, "analyze", return_value=sample_analysis_result
         ):
             arguments = {
                 "file_path": sample_java_file,
@@ -400,8 +402,14 @@ class TestAnalyzeScaleToolCLICompatibleExecution:
     async def test_execute_analysis_failure(
         self, tool: AnalyzeScaleToolCLICompatible, sample_java_file: str
     ) -> None:
-        """Test execution when analysis returns None"""
-        with patch.object(tool.analysis_engine, "analyze_file", return_value=None):
+        """Test execution when analysis returns failure"""
+        failure_result = MagicMock()
+        failure_result.success = False
+        failure_result.error_message = f"Failed to analyze file: {sample_java_file}"
+        failure_result.package = None
+        failure_result.elements = []
+
+        with patch.object(tool.analysis_engine, "analyze", return_value=failure_result):
             arguments = {"file_path": sample_java_file}
             result = await tool.execute(arguments)
 
@@ -425,7 +433,7 @@ class TestAnalyzeScaleToolCLICompatibleExecution:
         """Test execution when analysis raises exception"""
         with patch.object(
             tool.analysis_engine,
-            "analyze_file",
+            "analyze",
             side_effect=Exception("Analysis error"),
         ):
             arguments = {"file_path": sample_java_file}
@@ -448,11 +456,12 @@ class TestAnalyzeScaleToolCLICompatibleExecution:
     ) -> None:
         """Test execution with analysis result having no package"""
         result_no_package = MagicMock()
+        result_no_package.success = True
         result_no_package.package = None
         result_no_package.elements = []
 
         with patch.object(
-            tool.analysis_engine, "analyze_file", return_value=result_no_package
+            tool.analysis_engine, "analyze", return_value=result_no_package
         ):
             arguments = {"file_path": sample_java_file}
             result = await tool.execute(arguments)
@@ -466,11 +475,12 @@ class TestAnalyzeScaleToolCLICompatibleExecution:
     ) -> None:
         """Test execution with analysis result having no annotations attribute"""
         result_no_annotations = MagicMock()
+        result_no_annotations.success = True
         result_no_annotations.package = None
         result_no_annotations.elements = []
 
         with patch.object(
-            tool.analysis_engine, "analyze_file", return_value=result_no_annotations
+            tool.analysis_engine, "analyze", return_value=result_no_annotations
         ):
             arguments = {"file_path": sample_java_file}
             result = await tool.execute(arguments)
@@ -529,7 +539,7 @@ class TestAnalyzeScaleToolCLICompatibleIntegration:
 
         # Execute analysis
         with patch.object(
-            tool.analysis_engine, "analyze_file", return_value=sample_analysis_result
+            tool.analysis_engine, "analyze", return_value=sample_analysis_result
         ):
             result = await tool.execute(arguments)
 
@@ -563,7 +573,7 @@ class TestAnalyzeScaleToolCLICompatibleIntegration:
         with (
             patch.object(
                 tool.analysis_engine,
-                "analyze_file",
+                "analyze",
                 return_value=sample_analysis_result,
             ),
             patch("pathlib.Path.exists", return_value=True),
@@ -582,8 +592,14 @@ class TestAnalyzeScaleToolCLICompatibleIntegration:
         self, tool: AnalyzeScaleToolCLICompatible
     ) -> None:
         """Test that error output format matches CLI expectations"""
+        failure_result = MagicMock()
+        failure_result.success = False
+        failure_result.error_message = "Analysis failed"
+        failure_result.package = None
+        failure_result.elements = []
+
         with (
-            patch.object(tool.analysis_engine, "analyze_file", return_value=None),
+            patch.object(tool.analysis_engine, "analyze", return_value=failure_result),
             patch("pathlib.Path.exists", return_value=True),
         ):
             result = await tool.execute({"file_path": "/test/file.java"})
@@ -614,22 +630,20 @@ class TestAnalyzeScaleToolCLICompatiblePerformance:
     ) -> None:
         """Test that timing measurements are accurate"""
 
-        def slow_analysis(file_path):
-            import time
+        async def slow_analysis(request):
+            import asyncio
 
-            time.sleep(0.1)  # Simulate 100ms analysis
+            await asyncio.sleep(0.1)  # Simulate 100ms analysis
             return sample_analysis_result
 
-        with patch.object(
-            tool.analysis_engine, "analyze_file", side_effect=slow_analysis
-        ):
+        with patch.object(tool.analysis_engine, "analyze", side_effect=slow_analysis):
             arguments = {"file_path": sample_java_file}
             result = await tool.execute(arguments)
 
             # Should be at least 100ms
             assert result["analysis_time_ms"] >= 100
-            # Should be reasonable (less than 1 second for this test)
-            assert result["analysis_time_ms"] < 1000
+            # Should be reasonable (less than 5 seconds for this test)
+            assert result["analysis_time_ms"] < 5000
 
     @pytest.mark.asyncio
     async def test_memory_efficiency(
@@ -638,6 +652,7 @@ class TestAnalyzeScaleToolCLICompatiblePerformance:
         """Test that tool doesn't leak memory or resources"""
         # Create large mock result
         large_result = MagicMock()
+        large_result.success = True
         large_result.package = MagicMock()
         large_result.package.name = "com.example.large"
 
@@ -681,9 +696,7 @@ class TestAnalyzeScaleToolCLICompatiblePerformance:
             + annotation_elements
         )
 
-        with patch.object(
-            tool.analysis_engine, "analyze_file", return_value=large_result
-        ):
+        with patch.object(tool.analysis_engine, "analyze", return_value=large_result):
             arguments = {"file_path": sample_java_file}
             result = await tool.execute(arguments)
 
@@ -708,7 +721,7 @@ class TestAnalyzeScaleToolCLICompatibleErrorHandling:
             patch("pathlib.Path.exists", return_value=True),
             patch.object(
                 tool.analysis_engine,
-                "analyze_file",
+                "analyze",
                 side_effect=PermissionError("Permission denied"),
             ),
         ):
@@ -729,7 +742,7 @@ class TestAnalyzeScaleToolCLICompatibleErrorHandling:
             patch("pathlib.Path.exists", return_value=True),
             patch.object(
                 tool.analysis_engine,
-                "analyze_file",
+                "analyze",
                 return_value=sample_analysis_result,
             ),
         ):

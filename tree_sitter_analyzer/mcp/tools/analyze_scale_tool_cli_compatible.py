@@ -8,7 +8,7 @@ that matches the CLI --advanced --statistics output exactly.
 
 import time
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 from ...core.analysis_engine import get_analysis_engine
 from ...language_detector import detect_language_from_file
@@ -101,35 +101,27 @@ class AnalyzeScaleToolCLICompatible:
         try:
             start_time = time.time()
 
-            # Use AdvancedAnalyzer for comprehensive analysis
-            analysis_result = await self.analysis_engine.analyze_file_async(file_path)
+            # Use UnifiedAnalysisEngine's analyze method
+            from ...core.analysis_engine import AnalysisRequest
 
-            # Handle potential None result (for testing purposes with mocked engine)
-            # This can only happen in tests where the engine is mocked to return None
-            # Use cast to tell MyPy this is possible in testing scenarios
-            if cast(Any, analysis_result) is None:
-                return {
-                    "file_path": file_path,
-                    "success": False,
-                    "package_name": None,
-                    "element_counts": {
-                        "imports": 0,
-                        "classes": 0,
-                        "methods": 0,
-                        "fields": 0,
-                        "annotations": 0,
-                    },
-                    "analysis_time_ms": round((time.time() - start_time) * 1000, 2),
-                    "error_message": f"Failed to analyze file: {file_path}",
-                }
-
-            # Calculate analysis time
-            analysis_time_ms = round((time.time() - start_time) * 1000, 2)
+            request = AnalysisRequest(
+                file_path=file_path,
+                language=language,
+                include_complexity=True,
+                include_details=False,
+            )
+            analysis_result = await self.analysis_engine.analyze(request)
 
             # Build CLI-compatible result structure (exact match with CLI --advanced --statistics)
+            # Standardize element type mapping to match CLI expectations
+            element_types = [
+                getattr(e, "element_type", type(e).__name__.lower())
+                for e in analysis_result.elements
+            ]
+
             result = {
                 "file_path": file_path,
-                "success": True,
+                "success": analysis_result.success,
                 "package_name": (
                     analysis_result.package.name
                     if analysis_result.package
@@ -137,63 +129,26 @@ class AnalyzeScaleToolCLICompatible:
                     else None
                 ),
                 "element_counts": {
-                    "imports": len(
-                        [
-                            e
-                            for e in analysis_result.elements
-                            if getattr(e, "element_type", "") == "import"
-                        ]
-                    ),
-                    "classes": len(
-                        [
-                            e
-                            for e in analysis_result.elements
-                            if getattr(e, "element_type", "") == "class"
-                        ]
-                    ),
-                    "methods": len(
-                        [
-                            e
-                            for e in analysis_result.elements
-                            if getattr(e, "element_type", "") == "function"
-                        ]
-                    ),
-                    "fields": len(
-                        [
-                            e
-                            for e in analysis_result.elements
-                            if getattr(e, "element_type", "") == "variable"
-                        ]
-                    ),
-                    "annotations": len(
-                        [
-                            e
-                            for e in analysis_result.elements
-                            if getattr(e, "element_type", "") == "annotation"
-                        ]
-                    ),
+                    "imports": element_types.count("import"),
+                    "classes": element_types.count("class"),
+                    "methods": element_types.count("function")
+                    + element_types.count("method"),
+                    "fields": element_types.count("variable")
+                    + element_types.count("field"),
+                    "annotations": element_types.count("annotation"),
                 },
-                "analysis_time_ms": analysis_time_ms,
-                "error_message": None,
+                "analysis_time_ms": round((time.time() - start_time) * 1000, 2),
+                "error_message": analysis_result.error_message
+                if not analysis_result.success
+                else None,
             }
 
-            classes_count = len(
-                [
-                    e
-                    for e in analysis_result.elements
-                    if getattr(e, "element_type", "") == "class"
-                ]
-            )
-            methods_count = len(
-                [
-                    e
-                    for e in analysis_result.elements
-                    if getattr(e, "element_type", "") == "function"
-                ]
-            )
+            if not result["success"] and not result["error_message"]:
+                result["error_message"] = f"Failed to analyze file: {file_path}"
+
             logger.info(
-                f"Successfully analyzed {file_path}: {classes_count} classes, "
-                f"{methods_count} methods, {analysis_time_ms}ms"
+                f"Successfully analyzed {file_path}: {result['element_counts']['classes']} classes, "
+                f"{result['element_counts']['methods']} methods, {result['analysis_time_ms']}ms"
             )
 
             return result

@@ -448,7 +448,7 @@ class UnifiedAnalysisEngine:
         filename: str | None = None,
     ) -> AnalysisResult:
         """Sync version of analyze_code"""
-        return self._run_sync(self.analyze_code(source_code, language, filename))
+        return self.analyze_code(source_code, language, filename)
 
     async def analyze_file_async(self, file_path: str) -> AnalysisResult:
         """
