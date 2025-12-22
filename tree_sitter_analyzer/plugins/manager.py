@@ -178,14 +178,15 @@ class PluginManager:
         """
         Get a plugin for a specific language, loading it if necessary.
         """
+        lang_lower = language.lower()
         if not self._discovered:
             self.load_plugins()
 
-        if language in self._loaded_plugins:
-            return self._loaded_plugins[language]
+        if lang_lower in self._loaded_plugins:
+            return self._loaded_plugins[lang_lower]
 
         # Try to load from discovered modules
-        module_name = self._plugin_modules.get(language)
+        module_name = self._plugin_modules.get(lang_lower)
         if not module_name:
             # Try some common aliases (e.g., js -> javascript)
             aliases = {
