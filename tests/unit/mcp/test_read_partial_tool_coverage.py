@@ -24,3 +24,5 @@ async def test_read_partial_tool_execute_invalid_params(tool):
     assert isinstance(result, dict)
     assert result.get("success") is False
     assert "error" in result
+    # Verify the error message indicates missing required field
+    assert "file_path" in result.get("error", "")
