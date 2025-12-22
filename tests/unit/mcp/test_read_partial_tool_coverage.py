@@ -18,11 +18,6 @@ def test_read_partial_tool_basic(tool):
 @pytest.mark.asyncio
 async def test_read_partial_tool_execute_invalid_params(tool):
     """Test that execute properly handles invalid parameters."""
-    # execute is async and returns a dict with success=False on error
-    result = await tool.execute({})
-    assert result is not None
-    assert isinstance(result, dict)
-    assert result.get("success") is False
-    assert "error" in result
-    # Verify the error message indicates missing required field
-    assert "file_path" in result.get("error", "")
+    # execute raises ValueError for missing required parameters
+    with pytest.raises(ValueError, match="file_path is required"):
+        await tool.execute({})
