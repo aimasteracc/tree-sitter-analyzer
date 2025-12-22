@@ -15,6 +15,7 @@ def test_read_partial_tool_basic(tool):
     assert tool is not None
 
 
+@pytest.mark.asyncio
 async def test_read_partial_tool_execute_invalid_params(tool):
     """Test that execute properly handles invalid parameters."""
     # execute is async and returns a dict with success=False on error
