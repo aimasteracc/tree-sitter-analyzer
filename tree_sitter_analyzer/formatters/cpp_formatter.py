@@ -540,7 +540,7 @@ class CppTableFormatter(BaseTableFormatter):
                     fields.append(self._convert_variable_element(element))
                 elif element_type == ELEMENT_TYPE_IMPORT:
                     imports.append(self._convert_import_element(element))
-            except Exception:
+            except Exception:  # nosec
                 # Skip problematic elements silently
                 continue
 
