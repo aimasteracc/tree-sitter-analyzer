@@ -17,12 +17,12 @@ from typing import Any
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from tests.format_testing.format_assertions import (  # noqa: E402
+from tests.integration.formatters.format_assertions import (  # noqa: E402
     assert_compact_format_compliance,
     assert_csv_format_compliance,
     assert_full_format_compliance,
 )
-from tests.format_testing.schema_validation import validate_format  # noqa: E402
+from tests.integration.formatters.schema_validation import validate_format  # noqa: E402
 from tree_sitter_analyzer.mcp.tools.table_format_tool import (  # noqa: E402
     TableFormatTool,
 )
