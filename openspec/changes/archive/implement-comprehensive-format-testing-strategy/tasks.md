@@ -74,7 +74,7 @@ Establish a multi-layered testing framework to prevent format regressions and en
   - ⚠️ Create format compliance checks in GitHub Actions (needs configuration)
   - ⚠️ Implement automatic golden master validation (needs golden master updates)
   - ⚠️ Add format specification enforcement to pull request checks (framework ready)
-  - 📝 **Status**: Tools exist in `scripts/` and `tests/format_testing/` but not integrated
+  - 📝 **Status**: Tools exist in `scripts/` and `tests/integration/formatters/` but not integrated
 
 - [✅] **T4.2**: Create format monitoring tools
   - ✅ Build format diff visualization tools

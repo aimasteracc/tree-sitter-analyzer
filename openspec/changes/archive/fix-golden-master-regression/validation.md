@@ -86,7 +86,7 @@
 ### Integration Tests
 - [ ] **Format Testing Suite**
   ```bash
-  pytest tests/format_testing/ -v
+  pytest tests/integration/formatters/ -v
   ```
   - [ ] All format validation tests pass
   - [ ] No regressions in other formats (CSV, JSON)

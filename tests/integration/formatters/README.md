@@ -5,7 +5,7 @@
 ### 1. **全テストの実行**
 ```bash
 # フォーマットテストディレクトリに移動
-cd tests/format_testing
+cd tests/integration/formatters
 
 # 全テストを実行
 python -m pytest -v
@@ -32,7 +32,7 @@ python generate_regression_report.py
 ## 📋 テストフレームワークの構成
 
 ```
-tests/format_testing/
+tests/integration/formatters/
 ├── comprehensive_test_suite.py      # メインテストスイート
 ├── golden_master.py                 # ゴールデンマスターテスト
 ├── schema_validation.py             # スキーマ検証
@@ -147,7 +147,7 @@ print(content)
 "
 
 # 更新（意図的変更の場合のみ）
-python tests/format_testing/update_golden_masters.py --test-name test_name
+python tests/integration/formatters/update_baselines.py --test-name test_name
 ```
 
 #### **問題3: スキーマ検証失敗**

@@ -19,7 +19,7 @@ tree-sitter-analyzer/
 │   │   └── test_class.py       # Python class テスト
 │   └── test_golden_master_regression.py  # リグレッションテスト
 ├── scripts/
-│   └── update_golden_masters.py  # ゴールデンマスター更新スクリプト
+│   └── update_baselines.py  # ゴールデンマスター更新スクリプト
 └── examples/                    # サンプルファイル（テスト入力としても使用）
     ├── Sample.java
     └── BigService.java
@@ -50,7 +50,7 @@ uv run pytest tests/test_golden_master_regression.py::TestGoldenMasterRegression
 #### ステップ4: ゴールデンマスターの更新（必要な場合）
 ```bash
 # 全てのゴールデンマスターを更新
-uv run python scripts/update_golden_masters.py
+uv run python scripts/update_baselines.py
 
 # 更新後、再度テストを実行して確認
 uv run pytest tests/test_golden_master_regression.py -v
@@ -64,8 +64,8 @@ uv run pytest tests/test_golden_master_regression.py -v
 # 例: tests/test_data/new_feature.java
 ```
 
-#### ステップ2: update_golden_masters.py を更新
-`scripts/update_golden_masters.py` の `test_cases` リストに追加：
+#### ステップ2: update_baselines.py を更新
+`scripts/update_baselines.py` の `test_cases` リストに追加：
 ```python
 test_cases = [
     ("examples/Sample.java", "java_sample_fixed"),
@@ -75,7 +75,7 @@ test_cases = [
 
 #### ステップ3: ゴールデンマスターを生成
 ```bash
-uv run python scripts/update_golden_masters.py
+uv run python scripts/update_baselines.py
 ```
 
 #### ステップ4: テストケースを追加
@@ -115,7 +115,7 @@ def test_golden_master_comparison(self, input_file, golden_name, table_format):
    - 必ず原因を調査して修正
 
 2. **ゴールデンマスターを手動編集しない**
-   - 必ず`update_golden_masters.py`を使用
+   - 必ず`update_baselines.py`を使用
 
 3. **一時ファイルをコミットしない**
    - `test*.md`, `debug*.py` などはGit管理外
@@ -125,13 +125,13 @@ def test_golden_master_comparison(self, input_file, golden_name, table_format):
 ### Q: テストが失敗するが、出力は正しい
 A: ゴールデンマスターを更新してください：
 ```bash
-uv run python scripts/update_golden_masters.py
+uv run python scripts/update_baselines.py
 ```
 
 ### Q: 新しい言語サポートを追加した
 A: 以下の手順で対応：
 1. `tests/test_data/`にサンプルファイルを追加
-2. `update_golden_masters.py`にケースを追加
+2. `update_baselines.py`にケースを追加
 3. ゴールデンマスターを生成
 4. テストケースを追加
 

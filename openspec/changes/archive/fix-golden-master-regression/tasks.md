@@ -68,7 +68,7 @@
   - Estimated effort: 10 minutes
 
 - [ ] **Task 4.2**: Run format validation tests
-  - Command: `pytest tests/format_testing/ -v`
+  - Command: `pytest tests/integration/formatters/ -v`
   - Expected: All tests pass
   - Estimated effort: 10 minutes
 

@@ -35,7 +35,7 @@
 
 #### **Layer 1: ゴールデンマスターテスト**
 ```python
-# tests/format_testing/golden_master.py
+# tests/integration/formatters/golden_master.py
 from .golden_master import GoldenMasterTester
 
 tester = GoldenMasterTester("full")
@@ -50,7 +50,7 @@ tester.assert_matches_golden_master(output, "test_case_name")
 
 #### **Layer 2: スキーマ検証**
 ```python
-# tests/format_testing/schema_validation.py
+# tests/integration/formatters/schema_validation.py
 from .schema_validation import MarkdownTableValidator, CSVValidator, JSONValidator
 
 validator = MarkdownTableValidator()
@@ -66,7 +66,7 @@ assert result.is_valid
 
 #### **Layer 3: フォーマット固有アサーション**
 ```python
-# tests/format_testing/format_assertions.py
+# tests/integration/formatters/format_assertions.py
 from .format_assertions import FormatAssertions
 
 assertions = FormatAssertions()
@@ -82,7 +82,7 @@ assertions.assert_valid_csv_format(content)
 
 #### **Layer 4: エンドツーエンド統合テスト**
 ```python
-# tests/format_testing/test_real_integration.py
+# tests/integration/formatters/test_real_integration.py
 # 実際のコードベースでの動作確認
 ```
 
@@ -94,7 +94,7 @@ assertions.assert_valid_csv_format(content)
 
 #### **Layer 5: クロスコンポーネント検証**
 ```python
-# tests/format_testing/test_framework_validation.py
+# tests/integration/formatters/test_framework_validation.py
 # 異なるインターフェース間の一貫性確認
 ```
 
@@ -170,7 +170,7 @@ graph TD
 #### **新機能開発時**
 ```bash
 # 新機能のフォーマット出力をテスト
-cd tests/format_testing
+cd tests/integration/formatters
 python -m pytest test_comprehensive_format_validation.py -v
 ```
 
@@ -185,13 +185,13 @@ python -m pytest test_real_integration.py -v
 #### **完全検証の実行**
 ```bash
 # 全フォーマットテストの実行
-python -m pytest tests/format_testing/ -v --tb=short
+python -m pytest tests/integration/formatters/ -v --tb=short
 ```
 
 #### **パフォーマンステスト**
 ```bash
 # 大規模ファイルでのテスト
-python tests/format_testing/performance_validation.py
+python tests/integration/formatters/performance_tests.py
 ```
 
 ### **3. 問題発生時の対応**
@@ -199,13 +199,13 @@ python tests/format_testing/performance_validation.py
 #### **回帰レポートの確認**
 ```bash
 # 詳細な回帰レポートの生成
-python tests/format_testing/generate_regression_report.py
+python tests/integration/formatters/generate_regression_report.py
 ```
 
 #### **ゴールデンマスターの更新**
 ```bash
 # 意図的な変更の場合のマスター更新
-python tests/format_testing/update_golden_masters.py --confirm
+python tests/integration/formatters/update_baselines.py --confirm
 ```
 
 ## 🔍 監視とアラート
@@ -269,7 +269,7 @@ python tests/format_testing/update_golden_masters.py --confirm
 # 解決手順
 1. 差分を確認: git diff tests/golden_masters/
 2. 意図的変更か確認
-3. 必要に応じて更新: python tests/format_testing/update_golden_masters.py
+3. 必要に応じて更新: python tests/integration/formatters/update_baselines.py
 ```
 
 #### **問題2: スキーマ検証失敗**

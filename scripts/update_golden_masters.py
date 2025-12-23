@@ -6,7 +6,7 @@ Golden Master 更新スクリプト
 リグレッションテストに使用できるようにします。
 
 使用方法:
-    python update_golden_masters.py
+    python update_baselines.py
 """
 
 import subprocess  # nosec B404

@@ -216,7 +216,7 @@ class RegressionReportGenerator:
         <ol>
             <li>Review all test failures and format changes listed above</li>
             <li>Determine if changes are intentional or regressions</li>
-            <li>If intentional, update golden masters: <code>python tests/format_testing/update_golden_masters.py</code></li>
+            <li>If intentional, update golden masters: <code>python tests/integration/formatters/update_baselines.py</code></li>
             <li>If regressions, fix the underlying issues and re-run tests</li>
             <li>Consider adding additional test cases to prevent similar regressions</li>
         </ol>

@@ -535,7 +535,7 @@ class FormatChangeManager:
         backup_path.mkdir(exist_ok=True)
 
         # Backup golden masters
-        golden_master_dir = Path("tests/format_testing/golden_masters")
+        golden_master_dir = Path("tests/integration/formatters/golden_masters")
         if golden_master_dir.exists():
             shutil.copytree(
                 golden_master_dir, backup_path / "golden_masters", dirs_exist_ok=True
@@ -608,7 +608,7 @@ class FormatChangeManager:
         # Restore golden masters
         golden_master_backup = latest_backup / "golden_masters"
         if golden_master_backup.exists():
-            golden_master_dir = Path("tests/format_testing/golden_masters")
+            golden_master_dir = Path("tests/integration/formatters/golden_masters")
             if golden_master_dir.exists():
                 shutil.rmtree(golden_master_dir)
             shutil.copytree(golden_master_backup, golden_master_dir)

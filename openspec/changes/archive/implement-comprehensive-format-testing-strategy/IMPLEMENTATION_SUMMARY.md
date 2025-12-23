@@ -11,7 +11,7 @@ November 6, 2025
 ### ✅ Core Testing Framework (100% Complete)
 
 #### 1. Golden Master Testing Framework
-- **File**: `tests/format_testing/golden_master.py`
+- **File**: `tests/integration/formatters/golden_master.py`
 - **Features**:
   - `GoldenMasterTester`: Compares actual output against reference files
   - `GoldenMasterManager`: Manages multiple format testers
@@ -19,7 +19,7 @@ November 6, 2025
   - Support for creating and updating golden masters
 
 #### 2. Format Assertion Libraries
-- **File**: `tests/format_testing/format_assertions.py`
+- **File**: `tests/integration/formatters/format_assertions.py`
 - **Classes**:
   - `FormatAssertions`: Base assertion class
   - `MarkdownTableAssertions`: Markdown table structure validation
@@ -29,7 +29,7 @@ November 6, 2025
 - **Bug Fix**: TABLE_SEPARATOR_PATTERN corrected from `r"^\|[-:\s]+\|$"` to `r"^\|[\s\-:|]+\|$"`
 
 #### 3. Schema Validation
-- **File**: `tests/format_testing/schema_validation.py`
+- **File**: `tests/integration/formatters/schema_validation.py`
 - **Features**:
   - JSON schema definitions for all formats
   - Markdown table structure validators
@@ -37,7 +37,7 @@ November 6, 2025
   - Format-specific syntax validation
 
 #### 4. Integration Testing
-- **File**: `tests/format_testing/integration_tests.py`
+- **File**: `tests/integration/formatters/integration_tests.py`
 - **Features**:
   - Real implementation testing (no mocks for formatters)
   - End-to-end format validation through complete pipeline
@@ -45,33 +45,33 @@ November 6, 2025
   - Golden master integration
 
 #### 5. End-to-End Testing
-- **File**: `tests/format_testing/end_to_end_tests.py`
+- **File**: `tests/integration/formatters/end_to_end_tests.py`
 - **Features**:
   - Complete flow testing: file → analysis → formatting → output
   - Cross-component validation
   - Multiple language support (Java, Python, TypeScript, JavaScript)
 
 #### 6. Format Monitoring Tools
-- **File**: `tests/format_testing/format_monitor.py`
+- **File**: `tests/integration/formatters/format_monitor.py`
 - **Features**:
   - Format change detection
   - Performance monitoring
   - Quality metrics tracking
 
-- **File**: `tests/format_testing/generate_regression_report.py`
+- **File**: `tests/integration/formatters/generate_regression_report.py`
 - **Features**:
   - Regression report generation
   - Format diff visualization
   - Impact analysis
 
 #### 7. Cross-Component Testing
-- **File**: `tests/format_testing/cross_component_tests.py`
+- **File**: `tests/integration/formatters/cross_component_tests.py`
 - **Features**:
   - CLI vs MCP interface consistency validation
   - FormatterRegistry vs legacy formatter comparison
 
 #### 8. Performance Testing
-- **File**: `tests/format_testing/performance_tests.py`
+- **File**: `tests/integration/formatters/performance_tests.py`
 - **Features**:
   - Large file handling tests
   - Memory usage validation
@@ -99,14 +99,14 @@ November 6, 2025
 ```bash
 # Option 1: Delete and regenerate
 rm -rf tests/golden_masters/*
-pytest tests/format_testing/integration_tests.py --update-golden-masters
+pytest tests/integration/formatters/integration_tests.py --update-golden-masters
 
 # Option 2: Use update script
-python tests/format_testing/update_baselines.py
+python tests/integration/formatters/update_baselines.py
 ```
 
 #### 2. Format Assertions Need Updating
-**File**: `tests/format_testing/format_assertions.py`
+**File**: `tests/integration/formatters/format_assertions.py`
 
 **Issue**: `assert_full_format_compliance()` expects old format structure
 
@@ -130,7 +130,7 @@ expected_sections = [
 **Files Ready**:
 - `scripts/pre_commit_format_validation.py`
 - `scripts/format_monitoring_tool.py`  
-- `tests/format_testing/validate_golden_masters.py`
+- `tests/integration/formatters/validate_golden_masters.py`
 
 **Action Required**:
 1. Add pre-commit hook configuration
@@ -169,21 +169,21 @@ from partially initialized module 'tree_sitter_analyzer.formatters.legacy_format
 ## Files Created/Modified
 
 ### New Files Created
-1. `tests/format_testing/golden_master.py` - Golden master framework
-2. `tests/format_testing/format_assertions.py` - Assertion libraries
-3. `tests/format_testing/schema_validation.py` - Schema validators
-4. `tests/format_testing/integration_tests.py` - Integration tests
-5. `tests/format_testing/end_to_end_tests.py` - E2E tests
-6. `tests/format_testing/format_monitor.py` - Monitoring tools
-7. `tests/format_testing/generate_regression_report.py` - Regression reporting
-8. `tests/format_testing/cross_component_tests.py` - Cross-component tests
-9. `tests/format_testing/performance_tests.py` - Performance tests
-10. `tests/format_testing/comprehensive_test_suite.py` - Test suite orchestration
-11. `tests/format_testing/test_data_manager.py` - Test data management
+1. `tests/integration/formatters/golden_master.py` - Golden master framework
+2. `tests/integration/formatters/format_assertions.py` - Assertion libraries
+3. `tests/integration/formatters/schema_validation.py` - Schema validators
+4. `tests/integration/formatters/integration_tests.py` - Integration tests
+5. `tests/integration/formatters/end_to_end_tests.py` - E2E tests
+6. `tests/integration/formatters/format_monitor.py` - Monitoring tools
+7. `tests/integration/formatters/generate_regression_report.py` - Regression reporting
+8. `tests/integration/formatters/cross_component_tests.py` - Cross-component tests
+9. `tests/integration/formatters/performance_tests.py` - Performance tests
+10. `tests/integration/formatters/comprehensive_test_suite.py` - Test suite orchestration
+11. `tests/integration/formatters/test_data_manager.py` - Test data management
 12. `generate_golden_masters.py` - Golden master generation script
 
 ### Modified Files
-1. `tests/format_testing/format_assertions.py` - Fixed TABLE_SEPARATOR_PATTERN regex
+1. `tests/integration/formatters/format_assertions.py` - Fixed TABLE_SEPARATOR_PATTERN regex
 
 ### Directory Structure
 ```
@@ -275,4 +275,4 @@ The testing framework is production-ready and will prevent future format regress
 
 - **OpenSpec**: `openspec/changes/implement-comprehensive-format-testing-strategy/`
 - **Format Specification**: `openspec/changes/fix-analyze-code-structure-format-regression/v1.6.1.4-format-specification.md`
-- **Test Documentation**: `tests/format_testing/README.md`
+- **Test Documentation**: `tests/integration/formatters/README.md`

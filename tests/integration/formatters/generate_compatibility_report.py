@@ -110,7 +110,7 @@ def main():
     }
 
     # Generate HTML report
-    output_dir = Path("tests/format_testing")
+    output_dir = Path("tests/integration/formatters")
     output_dir.mkdir(parents=True, exist_ok=True)
 
     report_path = output_dir / "compatibility_report.html"
