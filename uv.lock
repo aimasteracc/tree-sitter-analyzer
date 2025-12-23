@@ -1,5 +1,5 @@
 version = 1
-revision = 2
+revision = 3
 requires-python = ">=3.10"
 resolution-markers = [
     "python_full_version >= '3.10.2'",
@@ -2076,6 +2076,7 @@ dependencies = [
     { name = "cachetools" },
     { name = "chardet" },
     { name = "deepdiff" },
+    { name = "jsonschema" },
     { name = "mcp" },
     { name = "psutil" },
     { name = "tree-sitter" },
@@ -2340,6 +2341,7 @@ requires-dist = [
     { name = "isort", marker = "extra == 'all'", specifier = ">=5.13.0" },
     { name = "isort", marker = "extra == 'dev'", specifier = ">=5.13.0" },
     { name = "isort", marker = "extra == 'full'", specifier = ">=5.13.0" },
+    { name = "jsonschema", specifier = ">=4.0.0" },
     { name = "mcp", specifier = ">=1.12.3,<2.0.0" },
     { name = "mcp", marker = "extra == 'all'", specifier = ">=1.12.2" },
     { name = "mcp", marker = "extra == 'full'", specifier = ">=1.12.2" },
