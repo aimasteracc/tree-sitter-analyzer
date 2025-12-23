@@ -35,7 +35,7 @@ jobs:
     - name: Run Platform Compatibility Tests
       run: |
         # Run SQL-specific tests from unit/languages directory
-        uv run python -m pytest tests/unit/languages/test_sql*.py -v --tb=short
+        uv run python -m pytest tests/unit/languages/ -k "test_sql" -v --tb=short
 
     - name: Dump AST for Sample Database
       run: |
