@@ -68,6 +68,7 @@ dependencies = [
     "psutil>=5.9.8",
     "tree-sitter-typescript>=0.23.2",
     "deepdiff>=6.7.1",
+    "jsonschema>=4.0.0",
     "tree-sitter-c-sharp>=0.23.1",
     "tree-sitter-sql>=0.3.11",
     "tree-sitter-php>=0.24.1",

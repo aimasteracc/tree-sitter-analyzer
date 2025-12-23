@@ -3,7 +3,12 @@ from typing import Any
 
 from deepdiff import DeepDiff
 
-from .profiles import BehaviorProfile
+from .profiles import (
+    BehaviorProfile,
+    ParsingBehavior,
+    migrate_profile_schema,
+    validate_profile,
+)
 
 
 @dataclass
@@ -188,11 +193,13 @@ if __name__ == "__main__":
         # We need to load from specific files
         import json
 
-        from .profiles import BehaviorProfile, ParsingBehavior
-
         def load_profile_from_file(path: Path) -> BehaviorProfile:
             with open(path, encoding="utf-8") as f:
                 data = json.load(f)
+
+            # Validate and migrate schema
+            validate_profile(data)
+            data = migrate_profile_schema(data)
 
             # Convert behaviors dict to ParsingBehavior objects
             behaviors = {}
