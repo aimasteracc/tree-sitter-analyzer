@@ -8,10 +8,10 @@ plugins: anyio-4.11.0, hypothesis-6.148.2, asyncio-1.2.0, benchmark-5.1.0, cov-7
 asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
 collected 5094 items
 
-tests\format_testing\test_comprehensive_format_validation.py ........... [  0%]
+tests\integration\formatters\test_comprehensive_format_validation.py ........... [  0%]
 .s....                                                                   [  0%]
-tests\format_testing\test_framework_validation.py ....                   [  0%]
-tests\format_testing\test_real_integration.py ....                       [  0%]
+tests\integration\formatters\test_framework_validation.py ....                   [  0%]
+tests\integration\formatters\test_real_integration.py ....                       [  0%]
 tests\integration\test_language_detection_properties.py .........        [  0%]
 tests\integration\test_phase7_end_to_end.py ....                         [  0%]
 tests\integration\test_phase7_integration_suite.py .....                 [  0%]

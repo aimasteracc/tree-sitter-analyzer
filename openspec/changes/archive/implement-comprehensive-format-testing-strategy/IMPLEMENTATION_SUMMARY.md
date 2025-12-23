@@ -188,7 +188,7 @@ from partially initialized module 'tree_sitter_analyzer.formatters.legacy_format
 ### Directory Structure
 ```
 tests/
-├── format_testing/
+├── integration/formatters/
 │   ├── golden_master.py
 │   ├── format_assertions.py
 │   ├── schema_validation.py

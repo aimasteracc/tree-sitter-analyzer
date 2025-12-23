@@ -140,7 +140,7 @@ pip install -e .
 ```bash
 # 差分確認
 python -c "
-from tests.format_testing.golden_master import GoldenMasterTester
+from tests.integration.formatters.golden_master import GoldenMasterTester
 tester = GoldenMasterTester('full')
 content = tester.get_golden_master_content('test_name')
 print(content)
@@ -154,7 +154,7 @@ python tests/integration/formatters/update_baselines.py --test-name test_name
 ```bash
 # 詳細エラー確認
 python -c "
-from tests.format_testing.schema_validation import MarkdownTableValidator
+from tests.integration.formatters.schema_validation import MarkdownTableValidator
 validator = MarkdownTableValidator()
 result = validator.validate(your_content)
 print(f'Valid: {result.is_valid}')
