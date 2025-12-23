@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.10.2] - 2025-12-23
+
+### 🐛 Bug Fixes
+
+#### TOON Format Output Duplication Fix
+- **Fixed**: Removed duplicate `table_output` field in TOON format responses
+  - **Root Cause**: `redundant_fields` set in `format_helper.py` was missing `"table_output"`, causing it to appear both in `toon_content` and as a direct field
+  - **Impact**: `analyze_code_structure` tool with `output_format="toon"` was returning duplicate data, wasting tokens
+  - **Solution**: Added `"table_output"` to `redundant_fields` set in `apply_toon_format_to_response()`
+  - **Files Modified**: `tree_sitter_analyzer/mcp/utils/format_helper.py`
+
+### 🔧 Technical Details
+- **Issue**: TOON format responses included both serialized and direct field versions of `table_output`
+- **Fix**: Updated `redundant_fields` set to include `"table_output"` for proper deduplication
+- **Verification**: MCP tool testing confirmed no duplication in TOON format responses
+
+### 📊 Quality Metrics
+- **Tests**: 6,246 tests (100% pass rate maintained)
+- **Coverage**: 80.33% (maintained)
+- **Breaking Changes**: None - all improvements are backward compatible
+
+---
+
 ## [1.10.1] - 2025-12-23
 
 ### 🐛 Bug Fixes

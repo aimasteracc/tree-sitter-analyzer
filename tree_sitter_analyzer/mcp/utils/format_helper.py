@@ -183,6 +183,7 @@ def apply_toon_format_to_response(
             "items",
             "files",
             "lines",
+            "table_output",  # Remove table_output in TOON format to avoid duplication
         }
 
         toon_response: dict[str, Any] = {
