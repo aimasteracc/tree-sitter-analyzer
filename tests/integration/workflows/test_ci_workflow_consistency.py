@@ -42,6 +42,17 @@ class TestCIWorkflowConsistency:
             return yaml.safe_load(f)
 
     @pytest.fixture
+    def security_scan_workflow(self, workflow_root: Path) -> dict[str, Any]:
+        """Load the security scan workflow YAML."""
+        workflow_path = workflow_root / "security-scan.yml"
+        with open(workflow_path, encoding="utf-8") as f:
+            workflow = yaml.safe_load(f)
+            # Handle YAML parsing 'on' as boolean True
+            if True in workflow and "on" not in workflow:
+                workflow["on"] = workflow.pop(True)
+            return workflow
+
+    @pytest.fixture
     def develop_workflow(self, workflow_root: Path) -> dict[str, Any]:
         """Load the develop workflow for comparison."""
         workflow_path = workflow_root / "develop-automation.yml"
@@ -271,7 +282,7 @@ class TestCIWorkflowConsistency:
         ), "Test job must reference reusable-test.yml"
 
         # Verify CI-specific jobs still exist
-        assert "security-check" in jobs, "CI workflow must have security-check job"
+        # Note: security-check moved to independent workflow
         assert (
             "documentation-check" in jobs
         ), "CI workflow must have documentation-check job"
@@ -285,17 +296,6 @@ class TestCIWorkflowConsistency:
         This ensures consistency with other workflows.
         """
         jobs = ci_workflow.get("jobs", {})
-
-        # Check security-check job
-        security_job = jobs.get("security-check", {})
-        security_steps = security_job.get("steps", [])
-        has_setup_action = any(
-            "./.github/actions/setup-system" in step.get("uses", "")
-            for step in security_steps
-        )
-        assert (
-            has_setup_action
-        ), "Security-check job must use setup-system composite action"
 
         # Check documentation-check job
         doc_job = jobs.get("documentation-check", {})
@@ -318,6 +318,28 @@ class TestCIWorkflowConsistency:
         assert (
             has_setup_action
         ), "Build-check job must use setup-system composite action"
+
+    def test_security_workflow_consistency(
+        self, security_scan_workflow: dict[str, Any]
+    ):
+        """
+        Verify that security scan workflow is consistent with project standards.
+        """
+        jobs = security_scan_workflow.get("jobs", {})
+        assert (
+            "security-check" in jobs
+        ), "Security workflow must have security-check job"
+
+        # Check security-check job uses setup-system action
+        security_job = jobs.get("security-check", {})
+        security_steps = security_job.get("steps", [])
+        has_setup_action = any(
+            "./.github/actions/setup-system" in step.get("uses", "")
+            for step in security_steps
+        )
+        assert (
+            has_setup_action
+        ), "Security-check job must use setup-system composite action"
 
     def test_ci_workflow_all_extras_consistency(self, ci_workflow: dict[str, Any]):
         """
