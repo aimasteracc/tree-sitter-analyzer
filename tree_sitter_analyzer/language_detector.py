@@ -118,8 +118,10 @@ class LanguageDetector:
         "python",
         "c",
         "cpp",
+        "csharp",
         "rust",
         "go",
+        "kotlin",
         "php",
         "ruby",
         "markdown",
@@ -127,6 +129,7 @@ class LanguageDetector:
         "css",
         "json",
         "sql",
+        "yaml",
     }
 
     def __init__(self) -> None:
