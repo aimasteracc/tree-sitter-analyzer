@@ -4,21 +4,23 @@
 
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-6301%20passed-brightgreen.svg)](#-品質とテスト)
+[![Tests](https://img.shields.io/badge/tests-6246%20passed-brightgreen.svg)](#-品質とテスト)
 [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
-[![Version](https://img.shields.io/badge/version-1.9.23-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
+[![Version](https://img.shields.io/badge/version-1.10.0-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
 > 🚀 **AI時代のエンタープライズグレードコード解析ツール** - 深いAI統合 · 強力な検索 · 17言語対応 · インテリジェント分析
 
 ---
 
-## ✨ v1.9.23 最新情報
+## ✨ v1.10.0 最新情報
 
-- **TOONフォーマットトークン最適化修正**: TOONレスポンスの冗長データを修正 - トークン節約を最大化するために冗長JSONフィールドを適切に削除
-- **CLI/MCP一貫性**: CLIサーチツールがMCPツールに出力フォーマットを正しく渡すよう修正
-- **6,301テスト** 100%パス率
+- **フォーマット変更管理システム**: フォーマット変更検出と動作プロファイル比較機能を追加
+- **言語サポート強化**: Go、Rust、Kotlinがコア依存関係に昇格
+- **C++フォーマッター**: C++コードフォーマット機能を追加
+- **プロジェクトガバナンス**: CODE_OF_CONDUCT.mdとGOVERNANCE.mdを追加
+- **6,246テスト** 100%パス率、80.33%カバレッジ
 
 📖 完全なバージョン履歴は **[変更履歴](CHANGELOG.md)** をご覧ください。
 
@@ -182,7 +184,7 @@ uv run tree-sitter-analyzer examples/BigService.java --query-key methods --filte
 
 | 指標 | 値 |
 |------|-----|
-| **テスト** | 5,980 合格 ✅ |
+| **テスト** | 6,246 合格 ✅ |
 | **カバレッジ** | [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer) |
 | **型安全性** | 100% mypy準拠 |
 | **プラットフォーム** | Windows、macOS、Linux |

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "tree-sitter-analyzer"
-version = "1.9.23"
+version = "1.10.0"
 description = "AI-era enterprise-grade code analysis tool with comprehensive HTML/CSS support, dynamic plugin architecture, and MCP integration"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -74,6 +74,9 @@ dependencies = [
     "tree-sitter-php>=0.24.1",
     "tree-sitter-ruby>=0.23.1",
     "tree-sitter-yaml>=0.7.0",  # YAML language support with YAMLElement data model
+    "tree-sitter-go>=0.20.0,<0.25.0",  # Go language support
+    "tree-sitter-rust>=0.20.0,<0.25.0",  # Rust language support
+    "tree-sitter-kotlin>=0.3.0",  # Kotlin language support
 ]
 
 # Add C# to optional dependencies
@@ -459,7 +462,7 @@ directory = "htmlcov"
 # MCP server configuration
 [tool.mcp]
 server_name = "tree-sitter-analyzer"
-server_version = "1.9.23"
+server_version = "1.10.0"
 description = "AI-era enterprise-grade code analysis MCP server with comprehensive HTML/CSS support and multi-language capabilities"
 capabilities = [
     "check_code_scale",
