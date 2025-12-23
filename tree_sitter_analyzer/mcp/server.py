@@ -498,6 +498,7 @@ class TreeSitterAnalyzerMCPServer:
                         "language": arguments.get("language"),
                         "output_file": arguments.get("output_file"),
                         "suppress_output": arguments.get("suppress_output", False),
+                        "output_format": arguments.get("output_format", "toon"),
                     }
                     result = await self.table_format_tool.execute(full_args)
 

@@ -173,17 +173,19 @@ def apply_toon_format_to_response(
 
         # Create minimal response with only metadata and TOON content
         # Remove redundant data fields to maximize token savings
+        # These fields are already included in toon_content, so keeping them
+        # would duplicate data and waste tokens
         redundant_fields = {
-            "results",
-            "matches",
-            "content",
-            "partial_content_result",
-            "analysis_result",
-            "data",
-            "items",
-            "files",
-            "lines",
-            "table_output",  # Remove table_output in TOON format to avoid duplication
+            "results",           # Search/query results
+            "matches",           # Search matches
+            "content",           # File content
+            "partial_content_result",  # Partial read results
+            "analysis_result",   # Code analysis results
+            "data",              # Generic data field
+            "items",             # List items
+            "files",             # File listings
+            "lines",             # Line content
+            "table_output",      # Formatted table output
         }
 
         toon_response: dict[str, Any] = {

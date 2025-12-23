@@ -11,6 +11,13 @@
   - **Solution**: Added `"table_output"` to `redundant_fields` set in `apply_toon_format_to_response()`
   - **Files Modified**: `tree_sitter_analyzer/mcp/utils/format_helper.py`
 
+#### MCP Server Output Format Parameter Fix
+- **Fixed**: MCP server now correctly passes `output_format` parameter to `analyze_code_structure` tool
+  - **Root Cause**: Server was not forwarding `output_format` from client arguments to the tool
+  - **Impact**: Users could not specify `output_format="json"` - it was always ignored and defaulted to `"toon"`
+  - **Solution**: Added `output_format` parameter forwarding in server's `analyze_code_structure` handler
+  - **Files Modified**: `tree_sitter_analyzer/mcp/server.py`
+
 ### 🔧 Technical Details
 - **Issue**: TOON format responses included both serialized and direct field versions of `table_output`
 - **Fix**: Updated `redundant_fields` set to include `"table_output"` for proper deduplication
