@@ -38,23 +38,11 @@ jobs:
 
     - name: Run format regression tests
       run: |
-        uv run python -m pytest tests/format_testing/ -v --tb=short
+        uv run python -m pytest tests/integration/formatters/ tests/unit/formatters/ -v --tb=short -k "format"
 
     - name: Run format validation on real codebase
       run: |
-        uv run python -m pytest tests/format_testing/test_real_integration.py -v
-
-    - name: Generate format regression report
-      if: failure()
-      run: |
-        uv run python tests/format_testing/generate_regression_report.py
-
-    - name: Upload regression report
-      if: failure()
-      uses: actions/upload-artifact@v4
-      with:
-        name: format-regression-report-${{ matrix.python-version }}
-        path: tests/format_testing/regression_report.html
+        uv run python -m pytest tests/integration/formatters/test_real_integration.py -v
 
   version-compatibility-check:
     runs-on: ubuntu-latest
@@ -77,23 +65,9 @@ jobs:
       run: |
         uv sync --all-extras --dev
 
-    - name: Run cross-version format compatibility test
+    - name: Run format compatibility tests
       run: |
-        uv run python tests/format_testing/cross_version_compatibility.py
-
-    - name: Validate golden masters against previous version
-      run: |
-        uv run python tests/format_testing/validate_golden_masters.py --previous-version
-
-    - name: Generate compatibility report
-      run: |
-        uv run python tests/format_testing/generate_compatibility_report.py
-
-    - name: Upload compatibility report
-      uses: actions/upload-artifact@v4
-      with:
-        name: version-compatibility-report
-        path: tests/format_testing/compatibility_report.html
+        uv run python -m pytest tests/unit/formatters/test_format_regression_v1_6_1_4.py -v
 
   format-monitoring:
     runs-on: ubuntu-latest
@@ -114,15 +88,11 @@ jobs:
       run: |
         uv sync --all-extras --dev
 
-    - name: Run format monitoring
+    - name: Run format validation tests
       run: |
-        uv run python tests/format_testing/format_monitor.py --baseline
+        uv run python -m pytest tests/integration/formatters/test_comprehensive_format_validation.py -v
 
-    - name: Update format baselines
-      run: |
-        uv run python tests/format_testing/update_baselines.py
-
-    - name: Commit updated baselines
+    - name: Update golden masters if needed
       run: |
         git config --local user.email "action@github.com"
         git config --local user.name "GitHub Action"
