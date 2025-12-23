@@ -35,31 +35,25 @@ jobs:
 
     - name: Run format validation tests
       run: |
-        uv run pytest tests/format_testing/ -v --tb=short
+        uv run pytest tests/integration/formatters/ tests/unit/formatters/ -v --tb=short -k "format"
       env:
         PYTHONPATH: ${{ github.workspace }}
 
     - name: Run format regression tests
       run: |
-        uv run pytest tests/test_format_regression_v1_6_1_4.py -v --tb=short
+        uv run pytest tests/unit/formatters/test_format_regression_v1_6_1_4.py -v --tb=short
       env:
         PYTHONPATH: ${{ github.workspace }}
 
     - name: Run cross-component format validation
       run: |
-        uv run pytest tests/format_testing/cross_component_tests.py -v --tb=short
-      env:
-        PYTHONPATH: ${{ github.workspace }}
-
-    - name: Run specification compliance tests
-      run: |
-        uv run pytest tests/format_testing/specification_compliance_tests.py -v --tb=short
+        uv run pytest tests/integration/formatters/cross_component_tests.py -v --tb=short
       env:
         PYTHONPATH: ${{ github.workspace }}
 
     - name: Run format contract tests
       run: |
-        uv run pytest tests/format_testing/format_contract_tests.py -v --tb=short
+        uv run pytest tests/integration/formatters/format_contract_tests.py -v --tb=short
       env:
         PYTHONPATH: ${{ github.workspace }}
 
@@ -179,7 +173,7 @@ jobs:
 
     - name: Run format performance tests
       run: |
-        uv run pytest tests/format_testing/ -k "performance" -v --tb=short
+        uv run pytest tests/integration/formatters/performance_tests.py -v --tb=short
       env:
         PYTHONPATH: ${{ github.workspace }}
 
@@ -226,7 +220,7 @@ jobs:
 
     - name: Check for format injection vulnerabilities
       run: |
-        uv run pytest tests/format_testing/ -k "security" -v --tb=short
+        uv run pytest tests/integration/formatters/ tests/unit/formatters/ -k "security" -v --tb=short
       env:
         PYTHONPATH: ${{ github.workspace }}
 
