@@ -127,19 +127,9 @@ class UniversalAnalyzeTool(BaseMCPTool):
         analysis_type = arguments.get("analysis_type", "basic")
         output_format = arguments.get("output_format", "toon")
 
-        # Resolve file path to absolute path
-        resolved_file_path = self.path_resolver.resolve(file_path)
+        # Resolve and validate file path using unified logic with caching
+        resolved_file_path = self.resolve_and_validate_file_path(file_path)
         logger.info(f"Analyzing file: {file_path} (resolved to: {resolved_file_path})")
-
-        # Security validation using resolved path
-        is_valid, error_msg = self.security_validator.validate_file_path(
-            resolved_file_path
-        )
-        if not is_valid:
-            logger.warning(
-                f"Security validation failed for file path: {resolved_file_path} - {error_msg}"
-            )
-            raise ValueError(f"Invalid file path: {error_msg}")
 
         # Sanitize inputs
         if language:

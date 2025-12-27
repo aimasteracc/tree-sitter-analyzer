@@ -224,13 +224,11 @@ Choose output format parameters based on your needs to minimize token usage and 
     def _validate_roots(self, roots: list[str]) -> list[str]:
         validated: list[str] = []
         for r in roots:
-            resolved = self.path_resolver.resolve(r)
-            is_valid, error = self.security_validator.validate_directory_path(
-                resolved, must_exist=True
-            )
-            if not is_valid:
-                raise ValueError(f"Invalid root '{r}': {error}")
-            validated.append(resolved)
+            try:
+                resolved = self.resolve_and_validate_directory_path(r)
+                validated.append(resolved)
+            except ValueError as e:
+                raise ValueError(f"Invalid root '{r}': {e}") from e
         return validated
 
     def _validate_files(self, files: list[str]) -> list[str]:
@@ -238,13 +236,13 @@ Choose output format parameters based on your needs to minimize token usage and 
         for p in files:
             if not isinstance(p, str) or not p.strip():
                 raise ValueError("files entries must be non-empty strings")
-            resolved = self.path_resolver.resolve(p)
-            ok, err = self.security_validator.validate_file_path(resolved)
-            if not ok:
-                raise ValueError(f"Invalid file path '{p}': {err}")
-            if not Path(resolved).exists() or not Path(resolved).is_file():
-                raise ValueError(f"File not found: {p}")
-            validated.append(resolved)
+            try:
+                resolved = self.resolve_and_validate_file_path(p)
+                if not Path(resolved).exists() or not Path(resolved).is_file():
+                    raise ValueError(f"File not found: {p}")
+                validated.append(resolved)
+            except ValueError as e:
+                raise ValueError(f"Invalid file path '{p}': {e}") from e
         return validated
 
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:

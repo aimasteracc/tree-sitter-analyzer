@@ -20,10 +20,12 @@ import psutil
 import pytest
 
 from tree_sitter_analyzer.mcp.server import TreeSitterAnalyzerMCPServer
+from tree_sitter_analyzer.mcp.tools.analyze_code_structure_tool import (
+    AnalyzeCodeStructureTool as TableFormatTool,
+)
 from tree_sitter_analyzer.mcp.tools.analyze_scale_tool import AnalyzeScaleTool
 from tree_sitter_analyzer.mcp.tools.list_files_tool import ListFilesTool
 from tree_sitter_analyzer.mcp.tools.search_content_tool import SearchContentTool
-from tree_sitter_analyzer.mcp.tools.table_format_tool import TableFormatTool
 
 
 class PerformanceProfiler:

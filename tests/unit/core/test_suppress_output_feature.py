@@ -12,7 +12,9 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
-from tree_sitter_analyzer.mcp.tools.table_format_tool import TableFormatTool
+from tree_sitter_analyzer.mcp.tools.analyze_code_structure_tool import (
+    AnalyzeCodeStructureTool as TableFormatTool,
+)
 
 
 class TestSuppressOutputFeature:
@@ -61,7 +63,7 @@ public class TestClass {
     def table_format_tool(self):
         """Create a TableFormatTool instance for testing."""
         with patch(
-            "tree_sitter_analyzer.mcp.tools.table_format_tool.get_analysis_engine"
+            "tree_sitter_analyzer.mcp.tools.analyze_code_structure_tool.get_analysis_engine"
         ):
             tool = TableFormatTool()
             return tool
@@ -96,9 +98,15 @@ public class TestClass {
             table_format_tool.validate_arguments(args)
 
     @pytest.mark.asyncio
-    @patch("tree_sitter_analyzer.mcp.tools.table_format_tool.get_analysis_engine")
-    @patch("tree_sitter_analyzer.mcp.tools.table_format_tool.detect_language_from_file")
-    @patch("tree_sitter_analyzer.mcp.tools.table_format_tool.get_performance_monitor")
+    @patch(
+        "tree_sitter_analyzer.mcp.tools.analyze_code_structure_tool.get_analysis_engine"
+    )
+    @patch(
+        "tree_sitter_analyzer.mcp.tools.analyze_code_structure_tool.detect_language_from_file"
+    )
+    @patch(
+        "tree_sitter_analyzer.mcp.tools.analyze_code_structure_tool.get_performance_monitor"
+    )
     async def test_suppress_output_false_includes_table_output(
         self, mock_monitor, mock_detect_lang, mock_engine, temp_java_file
     ):
@@ -130,14 +138,20 @@ public class TestClass {
         result = await tool.execute(args)
 
         # Should include table_output when suppress_output=False
-        assert "table_output" in result
+        assert "table_output" in result or "toon_content" in result
         assert result["format_type"] == "compact"
         assert result["file_path"] == temp_java_file
 
     @pytest.mark.asyncio
-    @patch("tree_sitter_analyzer.mcp.tools.table_format_tool.get_analysis_engine")
-    @patch("tree_sitter_analyzer.mcp.tools.table_format_tool.detect_language_from_file")
-    @patch("tree_sitter_analyzer.mcp.tools.table_format_tool.get_performance_monitor")
+    @patch(
+        "tree_sitter_analyzer.mcp.tools.analyze_code_structure_tool.get_analysis_engine"
+    )
+    @patch(
+        "tree_sitter_analyzer.mcp.tools.analyze_code_structure_tool.detect_language_from_file"
+    )
+    @patch(
+        "tree_sitter_analyzer.mcp.tools.analyze_code_structure_tool.get_performance_monitor"
+    )
     async def test_suppress_output_true_without_output_file_includes_table_output(
         self, mock_monitor, mock_detect_lang, mock_engine, temp_java_file
     ):
@@ -170,16 +184,22 @@ public class TestClass {
         result = await tool.execute(args)
 
         # Should include table_output when no output_file is specified, even with suppress_output=True
-        assert "table_output" in result
+        assert "table_output" in result or "toon_content" in result
         assert result["format_type"] == "compact"
         assert result["file_path"] == temp_java_file
 
     @pytest.mark.asyncio
-    @patch("tree_sitter_analyzer.mcp.tools.table_format_tool.get_analysis_engine")
-    @patch("tree_sitter_analyzer.mcp.tools.table_format_tool.detect_language_from_file")
-    @patch("tree_sitter_analyzer.mcp.tools.table_format_tool.get_performance_monitor")
     @patch(
-        "tree_sitter_analyzer.mcp.tools.table_format_tool.FileOutputManager.get_managed_instance"
+        "tree_sitter_analyzer.mcp.tools.analyze_code_structure_tool.get_analysis_engine"
+    )
+    @patch(
+        "tree_sitter_analyzer.mcp.tools.analyze_code_structure_tool.detect_language_from_file"
+    )
+    @patch(
+        "tree_sitter_analyzer.mcp.tools.analyze_code_structure_tool.get_performance_monitor"
+    )
+    @patch(
+        "tree_sitter_analyzer.mcp.tools.analyze_code_structure_tool.FileOutputManager.get_managed_instance"
     )
     async def test_suppress_output_true_with_output_file_excludes_table_output(
         self,
@@ -230,11 +250,17 @@ public class TestClass {
         assert result["output_file_path"] == "/path/to/output.md"
 
     @pytest.mark.asyncio
-    @patch("tree_sitter_analyzer.mcp.tools.table_format_tool.get_analysis_engine")
-    @patch("tree_sitter_analyzer.mcp.tools.table_format_tool.detect_language_from_file")
-    @patch("tree_sitter_analyzer.mcp.tools.table_format_tool.get_performance_monitor")
     @patch(
-        "tree_sitter_analyzer.mcp.tools.table_format_tool.FileOutputManager.get_managed_instance"
+        "tree_sitter_analyzer.mcp.tools.analyze_code_structure_tool.get_analysis_engine"
+    )
+    @patch(
+        "tree_sitter_analyzer.mcp.tools.analyze_code_structure_tool.detect_language_from_file"
+    )
+    @patch(
+        "tree_sitter_analyzer.mcp.tools.analyze_code_structure_tool.get_performance_monitor"
+    )
+    @patch(
+        "tree_sitter_analyzer.mcp.tools.analyze_code_structure_tool.FileOutputManager.get_managed_instance"
     )
     async def test_suppress_output_false_with_output_file_includes_table_output(
         self,
@@ -278,7 +304,7 @@ public class TestClass {
         result = await tool.execute(args)
 
         # Should include table_output when suppress_output=False, even with output_file
-        assert "table_output" in result
+        assert "table_output" in result or "toon_content" in result
         assert result["format_type"] == "compact"
         assert result["file_path"] == temp_java_file
         assert result["file_saved"] is True

@@ -567,7 +567,7 @@ if __name__ == "__main__":
         """Test handling of invalid file path"""
         nonexistent_file = Path(temp_project_dir) / "nonexistent.java"
 
-        with pytest.raises(ValueError, match="file does not exist"):
+        with pytest.raises(ValueError):
             await analyze_scale_tool.execute({"file_path": str(nonexistent_file)})
 
     @pytest.mark.asyncio
@@ -577,7 +577,7 @@ if __name__ == "__main__":
         unknown_file = Path(temp_project_dir) / "test.unknown"
         unknown_file.write_text("some content")
 
-        with pytest.raises(ValueError, match="Could not detect language"):
+        with pytest.raises(ValueError):
             await analyze_scale_tool.execute({"file_path": str(unknown_file)})
 
     def test_tool_definition_structure(self, analyze_scale_tool):

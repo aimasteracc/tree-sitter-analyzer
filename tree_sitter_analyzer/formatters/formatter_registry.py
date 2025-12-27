@@ -347,7 +347,18 @@ def register_builtin_formatters() -> None:
     """Register all built-in formatters"""
     FormatterRegistry.register_formatter(JsonFormatter)
 
-    # Register legacy formatters for backward compatibility (v1.6.1.4 format restoration)
+    # Fallback to simple formatters first to avoid circular import issues during initialization
+    FormatterRegistry.register_formatter(CsvFormatter)
+    FormatterRegistry.register_formatter(FullFormatter)
+    FormatterRegistry.register_formatter(CompactFormatter)
+
+    # Attempt to register legacy formatters for backward compatibility (v1.6.1.4 format restoration)
+    # This is handled separately to avoid circular dependencies
+    _register_legacy_formatters_safe()
+
+
+def _register_legacy_formatters_safe() -> None:
+    """Register legacy formatters safely to avoid circular imports"""
     try:
         from .legacy_formatter_adapters import (
             LegacyCompactFormatter,
@@ -363,14 +374,11 @@ def register_builtin_formatters() -> None:
         logger.info("Registered legacy formatters for v1.6.1.4 compatibility")
     except ImportError as e:
         logger.warning(f"Failed to register legacy formatters: {e}")
-        # Fallback to broken v1.9.4 formatters (should not happen in normal operation)
-        FormatterRegistry.register_formatter(CsvFormatter)
-        FormatterRegistry.register_formatter(FullFormatter)
-        FormatterRegistry.register_formatter(CompactFormatter)
 
-    # NOTE: HTML formatters are intentionally excluded from analyze_code_structure
-    # as they are not part of the v1.6.1.4 specification and cause format regression.
-    # HTML formatters can still be registered separately for other tools if needed.
+
+# NOTE: HTML formatters are intentionally excluded from analyze_code_structure
+# as they are not part of the v1.6.1.4 specification and cause format regression.
+# HTML formatters can still be registered separately for other tools if needed.
 
 
 # Auto-register built-in formatters when module is imported

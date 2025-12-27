@@ -17,13 +17,15 @@ from typing import Any
 import psutil
 import pytest
 
+from tree_sitter_analyzer.mcp.tools.analyze_code_structure_tool import (
+    AnalyzeCodeStructureTool as TableFormatTool,
+)
 from tree_sitter_analyzer.mcp.tools.analyze_scale_tool import AnalyzeScaleTool
 from tree_sitter_analyzer.mcp.tools.find_and_grep_tool import FindAndGrepTool
 from tree_sitter_analyzer.mcp.tools.list_files_tool import ListFilesTool
 from tree_sitter_analyzer.mcp.tools.query_tool import QueryTool
 from tree_sitter_analyzer.mcp.tools.read_partial_tool import ReadPartialTool
 from tree_sitter_analyzer.mcp.tools.search_content_tool import SearchContentTool
-from tree_sitter_analyzer.mcp.tools.table_format_tool import TableFormatTool
 
 
 class PerformanceMonitor:

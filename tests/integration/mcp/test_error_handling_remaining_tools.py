@@ -16,10 +16,12 @@ from pathlib import Path
 import pytest
 
 from tree_sitter_analyzer.mcp.server import TreeSitterAnalyzerMCPServer
+from tree_sitter_analyzer.mcp.tools.analyze_code_structure_tool import (
+    AnalyzeCodeStructureTool as TableFormatTool,
+)
 from tree_sitter_analyzer.mcp.tools.analyze_scale_tool import AnalyzeScaleTool
 from tree_sitter_analyzer.mcp.tools.find_and_grep_tool import FindAndGrepTool
 from tree_sitter_analyzer.mcp.tools.query_tool import QueryTool
-from tree_sitter_analyzer.mcp.tools.table_format_tool import TableFormatTool
 from tree_sitter_analyzer.mcp.utils.error_handler import AnalysisError
 
 
@@ -115,11 +117,11 @@ public class Example {
     async def test_analyze_code_structure_error_handling(self, table_tool):
         """analyze_code_structure ツールのエラーハンドリングテスト"""
 
-        # 存在しないファイル - FileNotFoundError を期待
+        # 存在しないファイル - ValueError を期待
         try:
             await table_tool.execute({"file_path": "nonexistent_file.py"})
-            assert False, "Expected FileNotFoundError for nonexistent file"
-        except FileNotFoundError as e:
+            assert False, "Expected ValueError for nonexistent file"
+        except ValueError as e:
             assert "File not found" in str(e) or "nonexistent_file.py" in str(e)
 
         # 必須パラメータ不足
@@ -266,7 +268,7 @@ public class Example {
         # エラーメッセージが有用な情報を含むことを確認
         test_cases = [
             (scale_tool, {"file_path": "nonexistent.py"}, ValueError),
-            (table_tool, {"file_path": "nonexistent.py"}, FileNotFoundError),
+            (table_tool, {"file_path": "nonexistent.py"}, ValueError),
             # query_tool は存在しないファイルでもエラーにならない場合があるのでスキップ
         ]
 

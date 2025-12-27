@@ -108,6 +108,31 @@ class BaseMCPTool(ABC):
 
         return resolved
 
+    def resolve_and_validate_directory_path(self, dir_path: str) -> str:
+        """
+        Resolve a directory path and validate it.
+
+        Args:
+            dir_path: Path to the directory
+
+        Returns:
+            Resolved absolute path
+
+        Raises:
+            ValueError: If directory path is invalid or unsafe
+        """
+        # Resolve path
+        resolved = self.path_resolver.resolve(dir_path)
+
+        # Security validation for directory
+        is_valid, error_msg = self.security_validator.validate_directory_path(
+            resolved, must_exist=True
+        )
+        if not is_valid:
+            raise ValueError(f"Invalid directory path: {error_msg}")
+
+        return resolved
+
     @abstractmethod
     def get_tool_definition(self) -> Any:
         """

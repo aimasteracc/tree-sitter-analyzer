@@ -138,29 +138,11 @@ class QueryTool(BaseMCPTool):
                     operation="query_code",
                 )
 
-            # Security validation BEFORE path resolution to catch symlinks
-            is_valid, error_msg = self.security_validator.validate_file_path(file_path)
-            if not is_valid:
-                return {
-                    "success": False,
-                    "error": f"Invalid or unsafe file path: {error_msg or file_path}",
-                }
-
-            # Resolve file path to absolute path
-            resolved_file_path = self.path_resolver.resolve(file_path)
+            # Resolve and validate file path using unified logic with caching
+            resolved_file_path = self.resolve_and_validate_file_path(file_path)
             logger.info(
                 f"Querying file: {file_path} (resolved to: {resolved_file_path})"
             )
-
-            # Additional security validation on resolved path
-            is_valid, error_msg = self.security_validator.validate_file_path(
-                resolved_file_path
-            )
-            if not is_valid:
-                return {
-                    "success": False,
-                    "error": f"Invalid or unsafe resolved path: {error_msg or resolved_file_path}",
-                }
 
             # Get query parameters (already validated above)
             filter_expression = arguments.get("filter")

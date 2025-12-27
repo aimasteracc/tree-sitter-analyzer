@@ -8,10 +8,12 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from tree_sitter_analyzer.mcp.tools.analyze_code_structure_tool import (
+    AnalyzeCodeStructureTool,
+)
 from tree_sitter_analyzer.mcp.tools.analyze_scale_tool import AnalyzeScaleTool
 from tree_sitter_analyzer.mcp.tools.query_tool import QueryTool
 from tree_sitter_analyzer.mcp.tools.read_partial_tool import ReadPartialTool
-from tree_sitter_analyzer.mcp.tools.table_format_tool import TableFormatTool
 from tree_sitter_analyzer.mcp.tools.universal_analyze_tool import UniversalAnalyzeTool
 
 
@@ -33,7 +35,7 @@ class TestMCPToolsPathResolution(unittest.TestCase):
         self.analyze_scale_tool = AnalyzeScaleTool(self.project_root)
         self.query_tool = QueryTool(self.project_root)
         self.read_partial_tool = ReadPartialTool(self.project_root)
-        self.table_format_tool = TableFormatTool(self.project_root)
+        self.analyze_code_structure_tool = AnalyzeCodeStructureTool(self.project_root)
         self.universal_analyze_tool = UniversalAnalyzeTool(self.project_root)
 
     def tearDown(self):
@@ -70,12 +72,12 @@ class TestMCPToolsPathResolution(unittest.TestCase):
         expected_root = str(Path(self.project_root).resolve())
         self.assertEqual(actual_root, expected_root)
 
-    def test_table_format_tool_uses_path_resolver(self):
-        """Test that TableFormatTool uses PathResolver."""
-        self.assertIsNotNone(self.table_format_tool.path_resolver)
+    def test_analyze_code_structure_tool_uses_path_resolver(self):
+        """Test that AnalyzeCodeStructureTool uses PathResolver."""
+        self.assertIsNotNone(self.analyze_code_structure_tool.path_resolver)
         # Use Path.resolve() for proper normalization
         actual_root = str(
-            Path(self.table_format_tool.path_resolver.project_root).resolve()
+            Path(self.analyze_code_structure_tool.path_resolver.project_root).resolve()
         )
         expected_root = str(Path(self.project_root).resolve())
         self.assertEqual(actual_root, expected_root)
@@ -99,7 +101,7 @@ class TestMCPToolsPathResolution(unittest.TestCase):
             self.analyze_scale_tool.path_resolver.resolve(relative_path),
             self.query_tool.path_resolver.resolve(relative_path),
             self.read_partial_tool.path_resolver.resolve(relative_path),
-            self.table_format_tool.path_resolver.resolve(relative_path),
+            self.analyze_code_structure_tool.path_resolver.resolve(relative_path),
             self.universal_analyze_tool.path_resolver.resolve(relative_path),
         ]
 
@@ -186,7 +188,7 @@ public class Test {
             AnalyzeScaleTool(self.project_root),
             QueryTool(self.project_root),
             ReadPartialTool(self.project_root),
-            TableFormatTool(self.project_root),
+            AnalyzeCodeStructureTool(self.project_root),
             UniversalAnalyzeTool(self.project_root),
         ]
 

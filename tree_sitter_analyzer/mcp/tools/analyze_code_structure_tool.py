@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Table Format Tool for MCP
+Code Structure Analysis Tool for MCP
 
-This tool provides code structure analysis and table formatting through the
-MCP protocol, converting analysis results into structured table formats.
+This tool analyzes code structure and generates detailed overview tables
+(classes, methods, fields) with line positions for large files.
 """
 
 from pathlib import Path
@@ -31,7 +31,7 @@ from .base_tool import BaseMCPTool
 logger = setup_logger(__name__)
 
 
-class TableFormatTool(BaseMCPTool):
+class AnalyzeCodeStructureTool(BaseMCPTool):
     """
     MCP Tool for code structure analysis and table formatting.
 
@@ -40,7 +40,7 @@ class TableFormatTool(BaseMCPTool):
     """
 
     def __init__(self, project_root: str | None = None) -> None:
-        """Initialize the table format tool."""
+        """Initialize the analyze code structure tool."""
         super().__init__(project_root)
         self.analysis_engine = get_analysis_engine(project_root)
         self.file_output_manager = FileOutputManager.get_managed_instance(project_root)
@@ -56,7 +56,7 @@ class TableFormatTool(BaseMCPTool):
         super().set_project_path(project_path)
         self.analysis_engine = get_analysis_engine(project_path)
         self.file_output_manager = FileOutputManager.get_managed_instance(project_path)
-        logger.info(f"TableFormatTool project path updated to: {project_path}")
+        logger.info(f"AnalyzeCodeStructureTool project path updated to: {project_path}")
 
     def get_tool_schema(self) -> dict[str, Any]:
         """
@@ -328,66 +328,11 @@ class TableFormatTool(BaseMCPTool):
             },
         }
 
-    def _write_output_file(
-        self, output_file: str, content: str, format_type: str
-    ) -> str:
-        """
-        Write output content to file with automatic extension detection.
-
-        Args:
-            output_file: Base filename for output
-            content: Content to write
-            format_type: Format type (full, compact, csv, json)
-
-        Returns:
-            Full path of the written file
-        """
-        from pathlib import Path
-
-        # Determine file extension based on format type
-        extension_map = {
-            "full": ".md",
-            "compact": ".md",
-            "csv": ".csv",
-            "json": ".json",
-        }
-
-        # Get the appropriate extension
-        extension = extension_map.get(format_type, ".txt")
-
-        # Add extension if not already present
-        if not output_file.endswith(extension):
-            output_file = output_file + extension
-
-        # Resolve output path relative to project root
-        output_path = self.path_resolver.resolve(output_file)
-
-        # Security validation for output path
-        is_valid, error_msg = self.security_validator.validate_file_path(output_path)
-        if not is_valid:
-            raise ValueError(f"Invalid output file path: {error_msg}")
-
-        # Ensure output directory exists
-        output_dir = Path(output_path).parent
-        output_dir.mkdir(parents=True, exist_ok=True)
-
-        # Write content to file
-        try:
-            from ...encoding_utils import write_file_safe
-
-            write_file_safe(output_path, content)
-            self.logger.info(f"Output written to file: {output_path}")
-            return output_path
-        except Exception as e:
-            self.logger.error(f"Failed to write output file {output_path}: {e}")
-            raise RuntimeError(f"Failed to write output file: {e}") from e
-
     async def execute(self, args: dict[str, Any]) -> dict[str, Any]:
         """Execute code structure analysis tool."""
         try:
             # Validate arguments first
-            if "file_path" not in args:
-                raise ValueError("file_path is required")
+            self.validate_arguments(args)
 
             file_path = args["file_path"]
             format_type = args.get("format_type", "full")
@@ -396,55 +341,26 @@ class TableFormatTool(BaseMCPTool):
             suppress_output = args.get("suppress_output", False)
             output_format = args.get("output_format", "toon")
 
-            # Security validation BEFORE path resolution to catch symlinks
-            is_valid, error_msg = self.security_validator.validate_file_path(file_path)
-            if not is_valid:
-                self.logger.warning(
-                    f"Security validation failed for file path: {file_path} - "
-                    f"{error_msg}"
-                )
-                raise ValueError(f"Invalid file path: {error_msg}")
+            # Use unified resolution and validation
+            resolved_path = self.resolve_and_validate_file_path(file_path)
 
-            # Resolve file path using common path resolver
-            resolved_path = self.path_resolver.resolve(file_path)
-
-            # Additional security validation on resolved path
-            is_valid, error_msg = self.security_validator.validate_file_path(
-                resolved_path
-            )
-            if not is_valid:
-                self.logger.warning(
-                    f"Security validation failed for resolved path: "
-                    f"{resolved_path} - {error_msg}"
-                )
-                raise ValueError(f"Invalid resolved path: {error_msg}")
-
-            # Sanitize format_type input
+            # Sanitize inputs
             if format_type:
                 format_type = self.security_validator.sanitize_input(
                     format_type, max_length=50
                 )
-
-            # Sanitize language input
             if language:
                 language = self.security_validator.sanitize_input(
                     language, max_length=50
                 )
-
-            # Sanitize output_file input
             if output_file:
                 output_file = self.security_validator.sanitize_input(
                     output_file, max_length=255
                 )
 
-            # Sanitize suppress_output input (boolean, validate type)
-            if suppress_output is not None and not isinstance(suppress_output, bool):
-                raise ValueError("suppress_output must be a boolean")
-
             # Validate file exists
             if not Path(resolved_path).exists():
-                # Tests expect FileNotFoundError here
-                raise FileNotFoundError(f"File not found: {file_path}")
+                raise ValueError(f"Invalid file path: File not found: {file_path}")
 
             # Detect language if not provided
             if not language:
@@ -498,12 +414,7 @@ class TableFormatTool(BaseMCPTool):
                     raise ValueError(f"Unsupported format type: {format_type}")
 
                 # Ensure output format matches CLI exactly
-                # Fix line ending differences: normalize to Unix-style LF (\n)
                 table_output = table_output.replace("\r\n", "\n").replace("\r", "\n")
-
-                # CLI uses sys.stdout.buffer.write() which doesn't add trailing newline
-                # Ensure MCP output matches this behavior exactly
-                # Remove any trailing whitespace and newlines to match CLI output
                 table_output = table_output.rstrip()
 
                 # Extract metadata from structure dict
@@ -524,11 +435,12 @@ class TableFormatTool(BaseMCPTool):
                     "file_path": file_path,
                     "language": language,
                     "metadata": metadata,
+                    "table_output": table_output,
                 }
 
-                # Include table_output if not suppressed or no output file
-                if not suppress_output or not output_file:
-                    result["table_output"] = table_output
+                # Include table_output in response if needed
+                if suppress_output and output_file:
+                    del result["table_output"]
 
                 # Handle file output if requested
                 if output_file:
@@ -580,4 +492,4 @@ class TableFormatTool(BaseMCPTool):
 
 
 # Tool instance for easy access
-table_format_tool = TableFormatTool()
+analyze_code_structure_tool = AnalyzeCodeStructureTool()

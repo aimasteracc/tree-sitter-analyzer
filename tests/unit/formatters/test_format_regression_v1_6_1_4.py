@@ -290,7 +290,9 @@ class TestMCPToolFormatRegression:
 
     def test_tool_schema_format_restriction(self):
         """Test that MCP tool schema only allows v1.6.1.4 formats"""
-        from tree_sitter_analyzer.mcp.tools.table_format_tool import TableFormatTool
+        from tree_sitter_analyzer.mcp.tools.analyze_code_structure_tool import (
+            AnalyzeCodeStructureTool as TableFormatTool,
+        )
 
         tool = TableFormatTool()
         schema = tool.get_tool_schema()
@@ -307,7 +309,9 @@ class TestMCPToolFormatRegression:
 
     def test_tool_validation_rejects_html_formats(self):
         """Test that tool validation rejects HTML formats"""
-        from tree_sitter_analyzer.mcp.tools.table_format_tool import TableFormatTool
+        from tree_sitter_analyzer.mcp.tools.analyze_code_structure_tool import (
+            AnalyzeCodeStructureTool as TableFormatTool,
+        )
 
         tool = TableFormatTool()
 

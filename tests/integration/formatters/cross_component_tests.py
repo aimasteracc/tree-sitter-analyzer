@@ -23,7 +23,9 @@ import pytest
 
 from tree_sitter_analyzer.core import AnalysisEngine
 from tree_sitter_analyzer.formatters.formatter_factory import TableFormatterFactory
-from tree_sitter_analyzer.mcp.tools.table_format_tool import TableFormatTool
+from tree_sitter_analyzer.mcp.tools.analyze_code_structure_tool import (
+    AnalyzeCodeStructureTool as TableFormatTool,
+)
 
 from .schema_validation import validate_format
 

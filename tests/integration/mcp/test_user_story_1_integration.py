@@ -21,8 +21,10 @@ import time
 
 import pytest
 
+from tree_sitter_analyzer.mcp.tools.analyze_code_structure_tool import (
+    AnalyzeCodeStructureTool as TableFormatTool,
+)
 from tree_sitter_analyzer.mcp.tools.analyze_scale_tool import AnalyzeScaleTool
-from tree_sitter_analyzer.mcp.tools.table_format_tool import TableFormatTool
 
 
 class TestUserStory1Integration:
@@ -748,7 +750,7 @@ if __name__ == '__main__':
         structure_result = await self.table_tool.execute(
             {
                 "file_path": self.test_files["java"],
-                "format_type": "json",
+                "format_type": "full",
                 "output_format": "json",
             }
         )

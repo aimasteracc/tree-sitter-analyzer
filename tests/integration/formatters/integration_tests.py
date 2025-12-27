@@ -15,7 +15,9 @@ from tree_sitter_analyzer.formatters.legacy_formatter_adapters import (
     LegacyCsvFormatter,
     LegacyFullFormatter,
 )
-from tree_sitter_analyzer.mcp.tools.table_format_tool import TableFormatTool
+from tree_sitter_analyzer.mcp.tools.analyze_code_structure_tool import (
+    AnalyzeCodeStructureTool as TableFormatTool,
+)
 from tree_sitter_analyzer.models import CodeElement
 
 from .format_assertions import (
