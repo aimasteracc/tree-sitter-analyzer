@@ -3,7 +3,7 @@
 Additional tests to boost MCP tools coverage.
 
 Covers: query_tool.py, analyze_scale_tool.py, read_partial_tool.py,
-        table_format_tool.py, and related utilities.
+        analyze_code_structure_tool.py, and related utilities.
 """
 
 import tempfile
@@ -397,15 +397,17 @@ def standalone_function():
         assert "error" in result or result.get("success") is False
 
 
-class TestTableFormatToolCoverage:
-    """Test TableFormatTool for coverage boost."""
+class TestAnalyzeCodeStructureToolCoverage:
+    """Test AnalyzeCodeStructureTool for coverage boost."""
 
     @pytest.fixture
-    def table_format_tool(self):
-        """Create TableFormatTool instance."""
-        from tree_sitter_analyzer.mcp.tools.table_format_tool import TableFormatTool
+    def analyze_code_structure_tool(self):
+        """Create AnalyzeCodeStructureTool instance."""
+        from tree_sitter_analyzer.mcp.tools.analyze_code_structure_tool import (
+            AnalyzeCodeStructureTool,
+        )
 
-        return TableFormatTool()
+        return AnalyzeCodeStructureTool()
 
     @pytest.fixture
     def temp_python_file(self):
@@ -425,67 +427,75 @@ def function_two(): pass
             yield f.name
         Path(f.name).unlink(missing_ok=True)
 
-    def test_get_tool_definition(self, table_format_tool):
+    def test_get_tool_definition(self, analyze_code_structure_tool):
         """Test get_tool_definition returns valid schema."""
-        definition = table_format_tool.get_tool_definition()
-        # TableFormatTool uses analyze_code_structure as tool name
+        definition = analyze_code_structure_tool.get_tool_definition()
+        # AnalyzeCodeStructureTool uses analyze_code_structure as tool name
         assert definition["name"] == "analyze_code_structure"
         assert "inputSchema" in definition
 
-    def test_set_project_path(self, table_format_tool):
+    def test_set_project_path(self, analyze_code_structure_tool):
         """Test set_project_path updates components."""
-        table_format_tool.set_project_path("/tmp/new_project")
-        assert table_format_tool.project_root == "/tmp/new_project"
+        analyze_code_structure_tool.set_project_path("/tmp/new_project")
+        assert analyze_code_structure_tool.project_root == "/tmp/new_project"
 
     @pytest.mark.asyncio
-    async def test_execute_full_format(self, table_format_tool, temp_python_file):
+    async def test_execute_full_format(
+        self, analyze_code_structure_tool, temp_python_file
+    ):
         """Test execute with full format."""
-        result = await table_format_tool.execute(
+        result = await analyze_code_structure_tool.execute(
             {
                 "file_path": temp_python_file,
-                "table_type": "full",
+                "format_type": "full",
             }
         )
         assert "success" in result or "table" in result or "content" in result
 
     @pytest.mark.asyncio
-    async def test_execute_compact_format(self, table_format_tool, temp_python_file):
+    async def test_execute_compact_format(
+        self, analyze_code_structure_tool, temp_python_file
+    ):
         """Test execute with compact format."""
-        result = await table_format_tool.execute(
+        result = await analyze_code_structure_tool.execute(
             {
                 "file_path": temp_python_file,
-                "table_type": "compact",
+                "format_type": "compact",
             }
         )
         assert "success" in result or "table" in result or "content" in result
 
     @pytest.mark.asyncio
-    async def test_execute_csv_format(self, table_format_tool, temp_python_file):
+    async def test_execute_csv_format(
+        self, analyze_code_structure_tool, temp_python_file
+    ):
         """Test execute with CSV format."""
-        result = await table_format_tool.execute(
+        result = await analyze_code_structure_tool.execute(
             {
                 "file_path": temp_python_file,
-                "table_type": "csv",
+                "format_type": "csv",
             }
         )
         assert "success" in result or "table" in result or "content" in result
 
     @pytest.mark.asyncio
-    async def test_execute_toon_format(self, table_format_tool, temp_python_file):
+    async def test_execute_toon_format(
+        self, analyze_code_structure_tool, temp_python_file
+    ):
         """Test execute with TOON format."""
-        result = await table_format_tool.execute(
+        result = await analyze_code_structure_tool.execute(
             {
                 "file_path": temp_python_file,
-                "table_type": "toon",
+                "output_format": "toon",
             }
         )
         assert "success" in result or "table" in result or "content" in result
 
     @pytest.mark.asyncio
-    async def test_execute_nonexistent_file(self, table_format_tool):
+    async def test_execute_nonexistent_file(self, analyze_code_structure_tool):
         """Test execute with nonexistent file raises ValueError."""
         with pytest.raises(ValueError, match="Invalid"):
-            await table_format_tool.execute(
+            await analyze_code_structure_tool.execute(
                 {
                     "file_path": "nonexistent_file_that_does_not_exist.py",
                 }

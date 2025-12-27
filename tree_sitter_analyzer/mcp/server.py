@@ -62,13 +62,13 @@ from ..security import SecurityValidator
 from ..utils import setup_logger
 from . import MCP_INFO
 from .resources import CodeFileResource, ProjectStatsResource
+from .tools.analyze_code_structure_tool import AnalyzeCodeStructureTool
 from .tools.analyze_scale_tool import AnalyzeScaleTool
 from .tools.find_and_grep_tool import FindAndGrepTool
 from .tools.list_files_tool import ListFilesTool
 from .tools.query_tool import QueryTool
 from .tools.read_partial_tool import ReadPartialTool
 from .tools.search_content_tool import SearchContentTool
-from .tools.table_format_tool import TableFormatTool
 from .utils.file_metrics import compute_file_metrics
 from .utils.shared_cache import get_shared_cache
 
@@ -111,7 +111,12 @@ class TreeSitterAnalyzerMCPServer:
         # Initialize MCP tools with security validation (core tools + fd/rg tools)
         self.query_tool = QueryTool(project_root)  # query_code
         self.read_partial_tool = ReadPartialTool(project_root)  # extract_code_section
-        self.table_format_tool = TableFormatTool(project_root)  # analyze_code_structure
+        self.analyze_code_structure_tool = AnalyzeCodeStructureTool(
+            project_root
+        )  # analyze_code_structure
+        self.table_format_tool = (
+            self.analyze_code_structure_tool
+        )  # Alias for backward compatibility
         self.analyze_scale_tool = AnalyzeScaleTool(project_root)  # check_code_scale
         # New fd/rg tools
         self.list_files_tool = ListFilesTool(project_root)  # list_files
@@ -176,7 +181,8 @@ class TreeSitterAnalyzerMCPServer:
 
     async def _analyze_code_scale(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """
-        Analyze code scale and complexity metrics using the analysis engine directly.
+        Legacy method for analyzing code scale.
+        Used by existing tests that mock server internals.
         """
         # For initialization-specific tests, we should raise MCPError instead of RuntimeError
         if not self._initialization_complete:
@@ -202,7 +208,7 @@ class TreeSitterAnalyzerMCPServer:
         include_complexity = arguments.get("include_complexity", True)
         include_details = arguments.get("include_details", False)
 
-        # Resolve relative path against project root for consistent behavior
+        # Use PathClass which is mocked in some tests
         base_root = getattr(
             getattr(self.security_validator, "boundary_manager", None),
             "project_root",
@@ -227,19 +233,19 @@ class TreeSitterAnalyzerMCPServer:
         if not is_valid:
             raise ValueError(f"Invalid file path: {error_msg}")
 
-        # Use analysis engine directly
-        from ..core.analysis_engine import AnalysisRequest
-        from ..language_detector import detect_language_from_file
-
-        # Validate file exists
+        # Use PathClass for existence check to respect mocks
         if not PathClass(resolved_path).exists():
             raise FileNotFoundError(f"File not found: {file_path}")
 
         # Detect language if not specified
+        from ..language_detector import detect_language_from_file
+
         if not language:
             language = detect_language_from_file(resolved_path, project_root=base_root)
 
         # Create analysis request
+        from ..core.analysis_engine import AnalysisRequest
+
         request = AnalysisRequest(
             file_path=resolved_path,
             language=language,
@@ -339,6 +345,17 @@ class TreeSitterAnalyzerMCPServer:
 
         return result
 
+    def _calculate_file_metrics(self, file_path: str, language: str) -> dict[str, Any]:
+        """Legacy wrapper for file metrics calculation."""
+        base_root = getattr(
+            getattr(self.security_validator, "boundary_manager", None),
+            "project_root",
+            None,
+        )
+        return compute_file_metrics(
+            file_path, language=language, project_root=base_root
+        )
+
     async def _read_resource(self, uri: str) -> dict[str, Any]:
         """
         Read a resource by URI.
@@ -363,31 +380,6 @@ class TreeSitterAnalyzerMCPServer:
         else:
             raise ValueError(f"Unknown resource URI: {uri}")
 
-    # NOTE: File metrics calculation has been unified into `mcp/utils/file_metrics.py`.
-    # Kept only as a placeholder to avoid referencing removed implementation in older code paths.
-    def _calculate_file_metrics(self, file_path: str, language: str) -> dict[str, Any]:
-        try:
-            base_root = getattr(
-                getattr(self.security_validator, "boundary_manager", None),
-                "project_root",
-                None,
-            )
-            return compute_file_metrics(
-                file_path, language=language, project_root=base_root
-            )
-        except Exception as e:
-            # Backward compatible behavior for tests/older call paths: return zeroed metrics.
-            logger.error(f"Error calculating file metrics for {file_path}: {e}")
-            return {
-                "total_lines": 0,
-                "code_lines": 0,
-                "comment_lines": 0,
-                "blank_lines": 0,
-                "estimated_tokens": 0,
-                "file_size_bytes": 0,
-                "content_hash": "",
-            }
-
     def create_server(self) -> Server:
         """
         Create and configure the MCP server.
@@ -408,7 +400,7 @@ class TreeSitterAnalyzerMCPServer:
 
             tools = [
                 Tool(**self.analyze_scale_tool.get_tool_definition()),
-                Tool(**self.table_format_tool.get_tool_definition()),
+                Tool(**self.analyze_code_structure_tool.get_tool_definition()),
                 Tool(**self.read_partial_tool.get_tool_definition()),
                 Tool(
                     name="set_project_path",
@@ -492,14 +484,7 @@ class TreeSitterAnalyzerMCPServer:
                     if "file_path" not in arguments:
                         raise ValueError("file_path parameter is required")
 
-                    full_args = {
-                        "file_path": arguments["file_path"],
-                        "format_type": arguments.get("format_type", "full"),
-                        "language": arguments.get("language"),
-                        "output_file": arguments.get("output_file"),
-                        "suppress_output": arguments.get("suppress_output", False),
-                    }
-                    result = await self.table_format_tool.execute(full_args)
+                    result = await self.table_format_tool.execute(arguments)
 
                 elif name == "extract_code_section":
                     # Design principle: keep server routing thin; tool owns schema/validation.
@@ -665,7 +650,7 @@ class TreeSitterAnalyzerMCPServer:
         # Update all MCP tools (all inherit from BaseMCPTool)
         self.query_tool.set_project_path(project_path)
         self.read_partial_tool.set_project_path(project_path)
-        self.table_format_tool.set_project_path(project_path)
+        self.analyze_code_structure_tool.set_project_path(project_path)
         self.analyze_scale_tool.set_project_path(project_path)
         self.list_files_tool.set_project_path(project_path)
         self.search_content_tool.set_project_path(project_path)

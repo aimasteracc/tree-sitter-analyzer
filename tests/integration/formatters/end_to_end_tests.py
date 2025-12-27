@@ -11,7 +11,9 @@ from pathlib import Path
 import pytest
 
 from tree_sitter_analyzer.api import analyze_code_structure
-from tree_sitter_analyzer.mcp.tools.table_format_tool import TableFormatTool
+from tree_sitter_analyzer.mcp.tools.analyze_code_structure_tool import (
+    AnalyzeCodeStructureTool as TableFormatTool,
+)
 
 from .format_assertions import (
     FormatComplianceAssertions,

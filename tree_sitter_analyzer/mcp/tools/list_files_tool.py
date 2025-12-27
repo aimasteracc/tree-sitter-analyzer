@@ -166,14 +166,12 @@ class ListFilesTool(BaseMCPTool):
         for r in roots:
             if not isinstance(r, str) or not r.strip():
                 raise ValueError("root entries must be non-empty strings")
-            # Resolve and enforce boundary
-            resolved = self.path_resolver.resolve(r)
-            is_valid, error = self.security_validator.validate_directory_path(
-                resolved, must_exist=True
-            )
-            if not is_valid:
-                raise ValueError(f"Invalid root '{r}': {error}")
-            validated.append(resolved)
+            # Resolve and validate using unified logic
+            try:
+                resolved = self.resolve_and_validate_directory_path(r)
+                validated.append(resolved)
+            except ValueError as e:
+                raise ValueError(f"Invalid root '{r}': {e}") from e
         return validated
 
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:

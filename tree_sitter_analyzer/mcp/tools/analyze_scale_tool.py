@@ -381,7 +381,7 @@ class AnalyzeScaleTool(BaseMCPTool):
 
         # Validate file exists
         if not Path(resolved_file_path).exists():
-            raise ValueError("Invalid file path: file does not exist")
+            raise ValueError(f"Invalid file path: File not found: {file_path}")
 
         # Detect language if not specified
         if not language:
@@ -390,7 +390,7 @@ class AnalyzeScaleTool(BaseMCPTool):
             )
             if language == "unknown":
                 raise ValueError(
-                    f"Could not detect language for file: {resolved_file_path}"
+                    f"Invalid file path: Unsupported language for file: {resolved_file_path}"
                 )
 
         logger.info(
@@ -681,7 +681,7 @@ class AnalyzeScaleTool(BaseMCPTool):
                         "error": "Invalid file path: file does not exist",
                     }
 
-                lang = detect_language_from_file(
+                lang: str | None = detect_language_from_file(
                     resolved, project_root=self.project_root
                 )
                 if lang == "unknown":

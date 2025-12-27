@@ -221,7 +221,9 @@ class TestMCPToolSchemaValidation:
 
     def test_table_format_tool_schema(self):
         """Test analyze_code_structure tool has output_format parameter."""
-        from tree_sitter_analyzer.mcp.tools.table_format_tool import TableFormatTool
+        from tree_sitter_analyzer.mcp.tools.analyze_code_structure_tool import (
+            AnalyzeCodeStructureTool as TableFormatTool,
+        )
 
         tool = TableFormatTool()
         definition = tool.get_tool_definition()

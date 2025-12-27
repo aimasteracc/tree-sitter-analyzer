@@ -11,7 +11,9 @@ from pathlib import Path
 
 import pytest
 
-from tree_sitter_analyzer.mcp.tools.table_format_tool import TableFormatTool
+from tree_sitter_analyzer.mcp.tools.analyze_code_structure_tool import (
+    AnalyzeCodeStructureTool as TableFormatTool,
+)
 
 
 class TestTableFormatTool:
@@ -170,7 +172,7 @@ public class TestClass {
         """Test execute with missing file_path argument."""
         arguments = {"format_type": "full"}
 
-        with pytest.raises(ValueError, match="file_path is required"):
+        with pytest.raises(ValueError, match="Required field 'file_path' is missing"):
             await self.tool.execute(arguments)
 
     @pytest.mark.asyncio
@@ -186,7 +188,7 @@ public class TestClass {
         mocker.patch("pathlib.Path.exists", return_value=False)
         arguments = {"file_path": "nonexistent.java"}
 
-        with pytest.raises(FileNotFoundError):
+        with pytest.raises(ValueError, match="File not found"):
             await self.tool.execute(arguments)
 
     @pytest.mark.asyncio
@@ -449,7 +451,7 @@ public class TestClass {
 
         # Mock FormatterRegistry to ensure it uses our mock formatter
         mock_formatter_registry = mocker.patch(
-            "tree_sitter_analyzer.mcp.tools.table_format_tool.FormatterRegistry"
+            "tree_sitter_analyzer.mcp.tools.analyze_code_structure_tool.FormatterRegistry"
         )
         mock_formatter_registry.is_format_supported.return_value = True
         mock_formatter = mocker.MagicMock()

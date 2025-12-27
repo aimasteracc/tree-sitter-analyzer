@@ -24,7 +24,7 @@ class TestMCPCapabilities:
                 patch("tree_sitter_analyzer.mcp.server.SecurityValidator"),
                 patch("tree_sitter_analyzer.mcp.server.QueryTool"),
                 patch("tree_sitter_analyzer.mcp.server.ReadPartialTool"),
-                patch("tree_sitter_analyzer.mcp.server.TableFormatTool"),
+                patch("tree_sitter_analyzer.mcp.server.AnalyzeCodeStructureTool"),
                 patch("tree_sitter_analyzer.mcp.server.AnalyzeScaleTool"),
                 patch("tree_sitter_analyzer.mcp.server.ListFilesTool"),
                 patch("tree_sitter_analyzer.mcp.server.SearchContentTool"),

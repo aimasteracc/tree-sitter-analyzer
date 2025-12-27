@@ -237,13 +237,11 @@ class FindAndGrepTool(BaseMCPTool):
     def _validate_roots(self, roots: list[str]) -> list[str]:
         validated: list[str] = []
         for r in roots:
-            resolved = self.path_resolver.resolve(r)
-            ok, err = self.security_validator.validate_directory_path(
-                resolved, must_exist=True
-            )
-            if not ok:
-                raise ValueError(f"Invalid root '{r}': {err}")
-            validated.append(resolved)
+            try:
+                resolved = self.resolve_and_validate_directory_path(r)
+                validated.append(resolved)
+            except ValueError as e:
+                raise ValueError(f"Invalid root '{r}': {e}") from e
         return validated
 
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:

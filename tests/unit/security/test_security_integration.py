@@ -14,9 +14,11 @@ import pytest
 from tree_sitter_analyzer.cli.commands.base_command import BaseCommand
 from tree_sitter_analyzer.cli.commands.query_command import QueryCommand
 from tree_sitter_analyzer.core.analysis_engine import get_analysis_engine
+from tree_sitter_analyzer.mcp.tools.analyze_code_structure_tool import (
+    AnalyzeCodeStructureTool as TableFormatTool,
+)
 from tree_sitter_analyzer.mcp.tools.analyze_scale_tool import AnalyzeScaleTool
 from tree_sitter_analyzer.mcp.tools.read_partial_tool import ReadPartialTool
-from tree_sitter_analyzer.mcp.tools.table_format_tool import TableFormatTool
 from tree_sitter_analyzer.mcp.tools.universal_analyze_tool import UniversalAnalyzeTool
 from tree_sitter_analyzer.security import SecurityValidator
 
