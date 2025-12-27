@@ -760,9 +760,14 @@ public class ContractTestService {
                     "file_path": str(file_path),
                     "format_type": format_type,
                     "language": "java",
+                    "output_format": "json",
                 }
             )
-            outputs[format_type] = result["table_output"]
+            outputs[format_type] = (
+                result["table_output"]
+                if "table_output" in result
+                else result.get("content", "")
+            )
 
         # Validate information consistency
         is_consistent = contract_validator.validate_information_consistency(
@@ -806,9 +811,14 @@ public class ContractTestService {
                     "file_path": str(file_path),
                     "format_type": format_type,
                     "language": "java",
+                    "output_format": "json",
                 }
             )
-            outputs[format_type] = result["table_output"]
+            outputs[format_type] = (
+                result["table_output"]
+                if "table_output" in result
+                else result.get("content", "")
+            )
 
         # Validate format contracts
         is_valid = contract_validator.validate_format_contracts(
@@ -840,26 +850,47 @@ public class ContractTestService {
 
         # Generate outputs
         full_result = await tool.execute(
-            {"file_path": str(file_path), "format_type": "full", "language": "java"}
+            {
+                "file_path": str(file_path),
+                "format_type": "full",
+                "language": "java",
+                "output_format": "json",
+            }
         )
 
         compact_result = await tool.execute(
-            {"file_path": str(file_path), "format_type": "compact", "language": "java"}
+            {
+                "file_path": str(file_path),
+                "format_type": "compact",
+                "language": "java",
+                "output_format": "json",
+            }
         )
 
         csv_result = await tool.execute(
-            {"file_path": str(file_path), "format_type": "csv", "language": "java"}
+            {
+                "file_path": str(file_path),
+                "format_type": "csv",
+                "language": "java",
+                "output_format": "json",
+            }
         )
 
         # Extract method information
         full_info = contract_validator._extract_full_format_info(
             full_result["table_output"]
+            if "table_output" in full_result
+            else full_result.get("content", "")
         )
         compact_info = contract_validator._extract_compact_format_info(
             compact_result["table_output"]
+            if "table_output" in compact_result
+            else compact_result.get("content", "")
         )
         csv_info = contract_validator._extract_csv_format_info(
             csv_result["table_output"]
+            if "table_output" in csv_result
+            else csv_result.get("content", "")
         )
 
         # Count methods
@@ -902,9 +933,14 @@ public class ContractTestService {
                     "file_path": str(file_path),
                     "format_type": format_type,
                     "language": "java",
+                    "output_format": "json",
                 }
             )
-            outputs[format_type] = result["table_output"]
+            outputs[format_type] = (
+                result["table_output"]
+                if "table_output" in result
+                else result.get("content", "")
+            )
 
         # Extract field information
         full_info = contract_validator._extract_full_format_info(outputs["full"])
@@ -944,10 +980,19 @@ public class ContractTestService {
 
         # Generate CSV output (which has explicit parameter encoding)
         csv_result = await tool.execute(
-            {"file_path": str(file_path), "format_type": "csv", "language": "java"}
+            {
+                "file_path": str(file_path),
+                "format_type": "csv",
+                "language": "java",
+                "output_format": "json",
+            }
         )
 
-        csv_output = csv_result["table_output"]
+        csv_output = (
+            csv_result["table_output"]
+            if "table_output" in csv_result
+            else csv_result.get("content", "")
+        )
 
         # Validate parameter encoding
         try:
@@ -983,9 +1028,14 @@ public class ContractTestService {
                     "file_path": str(file_path),
                     "format_type": format_type,
                     "language": "java",
+                    "output_format": "json",
                 }
             )
-            outputs[format_type] = result["table_output"]
+            outputs[format_type] = (
+                result["table_output"]
+                if "table_output" in result
+                else result.get("content", "")
+            )
 
         # Extract access modifier information
         full_info = contract_validator._extract_full_format_info(outputs["full"])
@@ -1043,9 +1093,14 @@ public class ContractTestService {
                     "file_path": str(file_path),
                     "format_type": format_type,
                     "language": "java",
+                    "output_format": "json",
                 }
             )
-            outputs[format_type] = result["table_output"]
+            outputs[format_type] = (
+                result["table_output"]
+                if "table_output" in result
+                else result.get("content", "")
+            )
 
         # Extract line number information
         full_info = contract_validator._extract_full_format_info(outputs["full"])
@@ -1115,9 +1170,14 @@ public class ContractTestService {
                     "file_path": str(file_path),
                     "format_type": format_type,
                     "language": "java",
+                    "output_format": "json",
                 }
             )
-            current_outputs[format_type] = result["table_output"]
+            current_outputs[format_type] = (
+                result["table_output"]
+                if "table_output" in result
+                else result.get("content", "")
+            )
 
         # Validate that outputs follow expected structure
         # (This simulates checking against previous version outputs)
@@ -1165,9 +1225,14 @@ public class ContractTestService {
                     "file_path": str(file_path),
                     "format_type": format_type,
                     "language": "java",
+                    "output_format": "json",
                 }
             )
-            outputs[format_type] = result["table_output"]
+            outputs[format_type] = (
+                result["table_output"]
+                if "table_output" in result
+                else result.get("content", "")
+            )
 
         # Validate complete data integrity
         is_consistent = contract_validator.validate_information_consistency(
