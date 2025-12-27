@@ -23,8 +23,8 @@ from tests.integration.formatters.format_assertions import (  # noqa: E402
     assert_full_format_compliance,
 )
 from tests.integration.formatters.schema_validation import validate_format  # noqa: E402
-from tree_sitter_analyzer.mcp.tools.table_format_tool import (  # noqa: E402
-    TableFormatTool,
+from tree_sitter_analyzer.mcp.tools.analyze_code_structure_tool import (  # noqa: E402
+    AnalyzeCodeStructureTool,
 )
 
 
@@ -57,7 +57,7 @@ class PreCommitFormatValidator:
                     return True  # Skip unsupported languages
 
                 # Test all format types
-                tool = TableFormatTool(project_root=temp_dir)
+                tool = AnalyzeCodeStructureTool(project_root=temp_dir)
 
                 for format_type in ["full", "compact", "csv"]:
                     try:
