@@ -175,11 +175,9 @@ class QueryExecutor:
             processed_captures: list[dict[str, Any]] = []
 
             # Use the provided language name
-            language_name = (
-                language_name.strip().lower() if language_name else "unknown"
-            )
+            lang_name = language_name.strip().lower() if language_name else "unknown"
 
-            query_string = self._query_loader.get_query(language_name, query_name)
+            query_string = self._query_loader.get_query(lang_name, query_name)
             if query_string is None:
                 return self._create_error_result(
                     f"Query '{query_name}' not found", query_name=query_name
@@ -257,6 +255,7 @@ class QueryExecutor:
 
             # Create and execute the query using modern API
             try:
+                # Use query_string directly
                 captures = TreeSitterQueryCompat.safe_execute_query(
                     language, query_string, tree.root_node, fallback_result=[]
                 )
