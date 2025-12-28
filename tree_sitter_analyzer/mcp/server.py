@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-MCP Server implementation for Tree-sitter Analyzer (Fixed Version)
+MCP Server implementation for Tree-sitter Analyzer (Refactored)
 
 This module provides the main MCP server that exposes tree-sitter analyzer
 functionality through the Model Context Protocol.

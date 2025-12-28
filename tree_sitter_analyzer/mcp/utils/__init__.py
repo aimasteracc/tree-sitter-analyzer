@@ -58,7 +58,6 @@ MCP_UTILS_CAPABILITIES = {
 
 # Import unified services for backward compatibility
 try:
-    from ...core.analysis_engine import UnifiedAnalysisEngine
     from ...core.cache_service import CacheService as UnifiedCacheService
 
     # Provide backward compatibility aliases
@@ -85,8 +84,10 @@ try:
         return BackwardCompatibleCacheManager()
 
     def get_performance_monitor() -> Any:
-        """Backward compatibility: Get unified analysis engine for performance monitoring"""
-        return UnifiedAnalysisEngine()
+        """Backward compatibility: Get unified performance monitor"""
+        from ...core.performance import PerformanceMonitor
+
+        return PerformanceMonitor()
 
 except ImportError:
     # Fallback if core services are not available
