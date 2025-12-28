@@ -78,7 +78,7 @@ jobs:
       id: test-coverage
       run: |
         echo "### 📊 Test Coverage Report" >> $GITHUB_STEP_SUMMARY
-        uv run pytest tests/ -v --tb=short --maxfail=10 \
+        uv run pytest tests/ -n auto -v --tb=short --maxfail=10 \
           --cov=tree_sitter_analyzer --cov-report=xml --cov-report=term-missing \
           -m "not requires_ripgrep or not requires_fd" > pytest-output.txt 2>&1 || touch test_failed
 
@@ -96,7 +96,7 @@ jobs:
     - name: Run Tests (no coverage)
       if: matrix.os != 'ubuntu-latest' || matrix.python-version != inputs.python-version
       run: |
-        uv run pytest tests/ -v --tb=short --maxfail=10 \
+        uv run pytest tests/ -n auto -v --tb=short --maxfail=10 \
           -m "not requires_ripgrep or not requires_fd"
       shell: bash
 
