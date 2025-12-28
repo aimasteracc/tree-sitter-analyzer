@@ -384,7 +384,7 @@ class YAMLElementExtractor(ElementExtractor):
                     pass
 
     def _extract_value_info(
-        self, node: "tree_sitter.Node"
+        self, node: "tree_sitter.Node | None"
     ) -> tuple[str | None, str | None, int | None]:
         """Extract value information from a node.
 
