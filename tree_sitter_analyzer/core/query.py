@@ -41,7 +41,7 @@ class QueryExecutor:
     def execute_query(
         self,
         tree: Tree | None,
-        language: Language,
+        language: Language | None,
         query_name: str,
         source_code: str,
     ) -> dict[str, Any]:
@@ -140,7 +140,7 @@ class QueryExecutor:
     def execute_query_with_language_name(
         self,
         tree: Tree | None,
-        language: Language,
+        language: Language | None,
         query_name: str,
         source_code: str,
         language_name: str,
@@ -171,7 +171,6 @@ class QueryExecutor:
                     "Language is None", query_name=query_name
                 )
 
-            # Process captures if we found a query string
             processed_captures: list[dict[str, Any]] = []
 
             # Use the provided language name
@@ -226,7 +225,7 @@ class QueryExecutor:
     def execute_query_string(
         self,
         tree: Tree | None,
-        language: Language,
+        language: Language | None,
         query_string: str,
         source_code: str,
     ) -> dict[str, Any]:
@@ -256,6 +255,7 @@ class QueryExecutor:
             # Create and execute the query using modern API
             try:
                 # Use query_string directly
+                # Final clean up of unreachable code
                 captures = TreeSitterQueryCompat.safe_execute_query(
                     language, query_string, tree.root_node, fallback_result=[]
                 )
