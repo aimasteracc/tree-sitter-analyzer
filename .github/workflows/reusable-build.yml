@@ -28,18 +28,15 @@ jobs:
       - name: Set up Python 3.11
         run: uv python install 3.11
 
-      - name: Install build dependencies
-        run: uv pip install build twine
-
       - name: Build package
         run: |
           echo "### 📦 Build Summary" >> $GITHUB_STEP_SUMMARY
-          uv run python -m build
+          uv run --with build python -m build
           echo "✅ Package built successfully" >> $GITHUB_STEP_SUMMARY
 
       - name: Validate package
         run: |
-          uv run twine check dist/*
+          uv run --with twine twine check dist/*
           echo "✅ Twine validation passed" >> $GITHUB_STEP_SUMMARY
 
       - name: List artifacts

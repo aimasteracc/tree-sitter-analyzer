@@ -36,13 +36,10 @@ jobs:
       - name: Set up Python 3.11
         run: uv python install 3.11
 
-      - name: Install upload dependencies
-        run: uv pip install twine
-
       - name: Publish to PyPI
         run: |
           echo "### 🚀 Deployment Summary" >> $GITHUB_STEP_SUMMARY
-          uv run twine upload dist/*
+          uv run --with twine twine upload dist/*
           echo "✅ Package published to PyPI successfully" >> $GITHUB_STEP_SUMMARY
         env:
           TWINE_USERNAME: __token__ # pragma: allowlist secret

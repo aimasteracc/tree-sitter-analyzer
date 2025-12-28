@@ -55,6 +55,5 @@ jobs:
       - name: Run Bandit
         run: |
           uv sync --all-extras
-          uv pip install bandit
-          uv run bandit -r tree_sitter_analyzer/ -f json -o bandit-results.json || true
+          uv run --with bandit bandit -r tree_sitter_analyzer/ -f json -o bandit-results.json || true
           echo "✅ Bandit security scan completed" >> $GITHUB_STEP_SUMMARY
