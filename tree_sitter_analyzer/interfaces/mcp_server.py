@@ -10,15 +10,20 @@ import asyncio
 import json
 import logging
 import sys
-from typing import Any
+from typing import Any, cast
 
 from .. import __version__
 
 try:
     from mcp.server import Server
     from mcp.server.models import InitializationOptions
-    from mcp.server.stdio import stdio_server
-    from mcp.types import Resource, TextContent, Tool
+    from mcp.server.stdio import stdio_server as _stdio_server
+
+    stdio_server = _stdio_server
+    from mcp.types import AnyUrl, Resource, TextContent, Tool
+
+    def to_anyurl(url: str) -> AnyUrl:
+        return cast(AnyUrl, url)
 
     MCP_AVAILABLE = True
 except ImportError:
@@ -54,8 +59,13 @@ except ImportError:
     class TextContent:  # type: ignore
         pass
 
-    def stdio_server() -> Any:
+    def _fallback_stdio_server() -> Any:
         pass
+
+    stdio_server = _fallback_stdio_server
+
+    def to_anyurl(url: str) -> str:  # type: ignore
+        return url
 
 
 from .. import api
@@ -350,13 +360,13 @@ class TreeSitterAnalyzerMCPServer:
             """List available resources."""
             return [
                 Resource(
-                    uri="code://file/{file_path}",
+                    uri=to_anyurl("code://file/{file_path}"),
                     name="Code File Analysis",
                     description="Access to code file content and analysis",
                     mimeType="application/json",
                 ),
                 Resource(
-                    uri="code://stats/{stats_type}",
+                    uri=to_anyurl("code://stats/{stats_type}"),
                     name="Project Statistics",
                     description="Access to project statistics and analysis data",
                     mimeType="application/json",

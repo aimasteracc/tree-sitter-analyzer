@@ -17,7 +17,9 @@ from typing import Any
 try:
     from mcp.server import Server
     from mcp.server.models import InitializationOptions
-    from mcp.server.stdio import stdio_server
+    from mcp.server.stdio import stdio_server as _stdio_server
+
+    stdio_server = _stdio_server
     from mcp.types import Resource, TextContent, Tool
 
     MCP_AVAILABLE = True
@@ -40,8 +42,10 @@ except ImportError:
 
     pass
 
-    def stdio_server() -> Any:
+    def _fallback_stdio_server() -> Any:
         pass
+
+    stdio_server = _fallback_stdio_server
 
 
 import contextlib

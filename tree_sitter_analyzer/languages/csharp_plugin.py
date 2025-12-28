@@ -374,7 +374,7 @@ class CSharpElementExtractor(ElementExtractor):
             return None
 
     def extract_functions(
-        self, tree: "tree_sitter.Tree", source_code: str
+        self, tree: "tree_sitter.Tree | None", source_code: str
     ) -> list[Function]:
         """
         Extract methods, constructors, and properties.
@@ -618,7 +618,7 @@ class CSharpElementExtractor(ElementExtractor):
         return complexity
 
     def extract_variables(
-        self, tree: "tree_sitter.Tree", source_code: str
+        self, tree: "tree_sitter.Tree | None", source_code: str
     ) -> list[Variable]:
         """
         Extract fields, constants, and events.
@@ -774,7 +774,7 @@ class CSharpElementExtractor(ElementExtractor):
         return variables
 
     def extract_imports(
-        self, tree: "tree_sitter.Tree", source_code: str
+        self, tree: "tree_sitter.Tree | None", source_code: str
     ) -> list[Import]:
         """
         Extract using directives.

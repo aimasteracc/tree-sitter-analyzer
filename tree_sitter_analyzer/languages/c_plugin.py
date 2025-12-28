@@ -146,7 +146,7 @@ class CElementExtractor(ElementExtractor):
 
     def _traverse_and_extract_iterative(
         self,
-        root_node: "tree_sitter.Node",
+        root_node: "tree_sitter.Node | None",
         extractors: dict[str, Any],
         results: list[Any],
         element_type: str,

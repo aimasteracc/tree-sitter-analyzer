@@ -388,7 +388,7 @@ class SecurityValidator:
                 path_stat = path.stat()
                 return bool(
                     getattr(path_stat, "st_file_attributes", 0)
-                    & stat.FILE_ATTRIBUTE_REPARSE_POINT
+                    & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
                 )
 
         except Exception:

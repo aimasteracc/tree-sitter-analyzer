@@ -192,16 +192,6 @@ class Parser:
             source_bytes = self._encoding_manager.safe_encode(source_code)
             tree = parser.parse(source_bytes)
 
-            if tree is None:
-                return ParseResult(
-                    tree=None,
-                    source_code=source_code,
-                    language=language,
-                    file_path=filename,
-                    success=False,
-                    error_message="Parsing failed - tree is None",
-                )
-
             logger.debug(f"Successfully parsed {language} code")
             return ParseResult(
                 tree=tree,

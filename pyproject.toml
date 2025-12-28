@@ -518,6 +518,9 @@ dev = [
     "psutil>=5.9.8",
     "types-toml>=0.10.8.20240310",
     "types-requests>=2.32.4.20250913",
+    "types-jsonschema",
+    "types-PyYAML",
+    "types-cachetools",
     "mypy==1.18.2",
     "hypothesis>=6.0.0",
 ]

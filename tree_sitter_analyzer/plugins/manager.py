@@ -13,7 +13,7 @@ import os
 import pkgutil
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from ..utils import log_debug, log_error, log_info, log_warning
 from .base import LanguagePlugin
@@ -222,7 +222,8 @@ class PluginManager:
                     instance = plugin_class()
                     lang = instance.get_language_name()
                     self._loaded_plugins[lang] = instance
-                    return instance
+                    instance_any: Any = instance
+                    return cast(LanguagePlugin, instance_any)
             except Exception as e:
                 log_error(f"Failed to lazily load entry point plugin {lang_lower}: {e}")
 

@@ -212,7 +212,10 @@ class YAMLElementExtractor(ElementExtractor):
                         index += 1
                     sibling = sibling.prev_sibling
                 return index
+            # Use Any type to avoid assignment mismatches on parent
             current = getattr(current, "parent", None)
+            if current is None:
+                break
         return 0
 
     def _traverse_nodes(self, node: "tree_sitter.Node") -> "list[tree_sitter.Node]":
