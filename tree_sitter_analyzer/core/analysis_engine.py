@@ -15,7 +15,7 @@ Roo Code compliance:
 import asyncio
 import hashlib
 import os
-from typing import Protocol
+from typing import Any, Protocol
 
 from ..language_detector import LanguageDetector
 from ..models import AnalysisResult
@@ -55,8 +55,11 @@ class UnifiedAnalysisEngine:
 
     def __init__(self, project_root: str | None = None) -> None:
         """Initialize the engine"""
+        # Use a private flag to ensure init only runs once
         if hasattr(self, "_initialized") and self._initialized:
             return
+
+        from ..language_detector import LanguageDetector
 
         self._cache_service = CacheService()
         self._plugin_manager = PluginManager()
@@ -70,6 +73,10 @@ class UnifiedAnalysisEngine:
         # Auto-load plugins
         self._load_plugins()
         self._initialized = True
+
+    def register_plugin(self, language: str, plugin: Any) -> None:
+        """Register a plugin (compatibility method)"""
+        self._plugin_manager.register_plugin(plugin)
 
     def _load_plugins(self) -> None:
         """Auto-load available plugins"""
@@ -217,6 +224,47 @@ class UnifiedAnalysisEngine:
     def _reset_instance(cls) -> None:
         """Compatibility method for resetting instances"""
         EngineManager.reset_instances()
+
+
+# Simple plugin implementation (for testing) - Re-added for backward compatibility with existing tests
+class MockLanguagePlugin:
+    """Mock plugin for testing"""
+
+    def __init__(self, language: str) -> None:
+        self.language = language
+
+    def get_language_name(self) -> str:
+        """Get language name"""
+        return self.language
+
+    def get_file_extensions(self) -> list[str]:
+        """Get supported file extensions"""
+        return [f".{self.language}"]
+
+    def create_extractor(self) -> None:
+        """Create extractor (mock)"""
+        return None
+
+    async def analyze_file(
+        self, file_path: str, request: AnalysisRequest
+    ) -> AnalysisResult:
+        """Mock analysis implementation"""
+        log_info(f"Mock analysis for {file_path} ({self.language})")
+
+        # Return simple analysis result
+        return AnalysisResult(
+            file_path=file_path,
+            line_count=10,
+            elements=[],
+            node_count=5,
+            query_results={},
+            source_code="// Mock source code",
+            language=self.language,
+            package=None,
+            analysis_time=0.1,
+            success=True,
+            error_message=None,
+        )
 
 
 def get_analysis_engine(project_root: str | None = None) -> UnifiedAnalysisEngine:

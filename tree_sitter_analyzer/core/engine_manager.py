@@ -25,9 +25,13 @@ class EngineManager:
         """Get or create singleton instance of the analysis engine"""
         instance_key = project_root or "default"
 
+        # Double-checked locking to prevent race conditions during initialization
         if instance_key not in cls._instances:
             with cls._lock:
                 if instance_key not in cls._instances:
+                    # Create the instance inside the lock.
+                    # We removed __new__ from UnifiedAnalysisEngine, so this is now safe
+                    # and won't cause recursive deadlocks.
                     instance = engine_class(project_root)
                     cls._instances[instance_key] = instance
 
