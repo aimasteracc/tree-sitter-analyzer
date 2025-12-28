@@ -72,6 +72,7 @@ repos:
           types-PyYAML,
           types-toml,
           types-requests,
+          types-jsonschema,
         ]
 
   # Documentation checks - temporarily disabled for commit

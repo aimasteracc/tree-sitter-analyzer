@@ -40,7 +40,7 @@ except ImportError:
 
     pass
 
-    def stdio_server() -> None:
+    def stdio_server() -> Any:
         pass
 
 

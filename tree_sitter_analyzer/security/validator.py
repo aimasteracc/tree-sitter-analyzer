@@ -371,24 +371,25 @@ class SecurityValidator:
             # Method 1: Using ctypes (fastest, avoids os.stat)
             if HAS_CTYPES:
                 try:
-                    # GetFileAttributesW function
-                    _GetFileAttributesW = ctypes.windll.kernel32.GetFileAttributesW
-                    _GetFileAttributesW.argtypes = [wintypes.LPCWSTR]
-                    _GetFileAttributesW.restype = wintypes.DWORD
+                    _kernel32 = getattr(ctypes, "windll", None)
+                    if _kernel32:
+                        _GetFileAttributesW = _kernel32.kernel32.GetFileAttributesW
+                        _GetFileAttributesW.argtypes = [wintypes.LPCWSTR]
+                        _GetFileAttributesW.restype = wintypes.DWORD
 
-                    attributes = _GetFileAttributesW(str(path))
-                    if attributes != INVALID_FILE_ATTRIBUTES:
-                        return bool(attributes & FILE_ATTRIBUTE_REPARSE_POINT)
+                        attributes = _GetFileAttributesW(str(path))
+                        if attributes != INVALID_FILE_ATTRIBUTES:
+                            return bool(attributes & FILE_ATTRIBUTE_REPARSE_POINT)
                 except (AttributeError, OSError):
                     pass
 
             # Method 2: Fallback to stat if ctypes fails
             if path.exists():
                 path_stat = path.stat()
-                if hasattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT"):
-                    return bool(
-                        path_stat.st_file_attributes & stat.FILE_ATTRIBUTE_REPARSE_POINT
-                    )
+                return bool(
+                    getattr(path_stat, "st_file_attributes", 0)
+                    & stat.FILE_ATTRIBUTE_REPARSE_POINT
+                )
 
         except Exception:
             # If any error occurs, assume it's not a junction for safety

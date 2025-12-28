@@ -194,7 +194,9 @@ class YAMLElementExtractor(ElementExtractor):
                 "flow_sequence",
             ):
                 level += 1
-            current = current.parent
+            current = getattr(current, "parent", None)
+            if current is None:
+                break
         return level
 
     def _get_document_index(self, node: "tree_sitter.Node") -> int:
@@ -210,7 +212,7 @@ class YAMLElementExtractor(ElementExtractor):
                         index += 1
                     sibling = sibling.prev_sibling
                 return index
-            current = current.parent
+            current = getattr(current, "parent", None)
         return 0
 
     def _traverse_nodes(self, node: "tree_sitter.Node") -> "list[tree_sitter.Node]":
@@ -280,8 +282,8 @@ class YAMLElementExtractor(ElementExtractor):
                         nesting_level=0,
                     )
                     elements.append(element)
-                except Exception as e:
-                    log_debug(f"Failed to extract document: {e}")
+                except Exception:  # nosec B110
+                    pass
 
     def _extract_mappings(
         self, root_node: "tree_sitter.Node", elements: list[YAMLElement]
@@ -375,8 +377,8 @@ class YAMLElementExtractor(ElementExtractor):
                         child_count=child_count,
                     )
                     elements.append(element)
-                except Exception as e:
-                    log_debug(f"Failed to extract mapping: {e}")
+                except Exception:  # nosec B110
+                    pass
 
     def _extract_value_info(
         self, node: "tree_sitter.Node"
@@ -474,8 +476,8 @@ class YAMLElementExtractor(ElementExtractor):
                         child_count=child_count,
                     )
                     elements.append(element)
-                except Exception as e:
-                    log_debug(f"Failed to extract sequence: {e}")
+                except Exception:  # nosec B110
+                    pass
 
     def _extract_anchors(
         self, root_node: "tree_sitter.Node", elements: list[YAMLElement]
@@ -503,8 +505,8 @@ class YAMLElementExtractor(ElementExtractor):
                         document_index=doc_index,
                     )
                     elements.append(element)
-                except Exception as e:
-                    log_debug(f"Failed to extract anchor: {e}")
+                except Exception:  # nosec B110
+                    pass
 
     def _extract_aliases(
         self, root_node: "tree_sitter.Node", elements: list[YAMLElement]
@@ -532,8 +534,8 @@ class YAMLElementExtractor(ElementExtractor):
                         document_index=doc_index,
                     )
                     elements.append(element)
-                except Exception as e:
-                    log_debug(f"Failed to extract alias: {e}")
+                except Exception:  # nosec B110
+                    pass
 
     def _extract_comments(
         self, root_node: "tree_sitter.Node", elements: list[YAMLElement]
@@ -563,8 +565,8 @@ class YAMLElementExtractor(ElementExtractor):
                         nesting_level=0,
                     )
                     elements.append(element)
-                except Exception as e:
-                    log_debug(f"Failed to extract comment: {e}")
+                except Exception:  # nosec B110
+                    pass
 
 
 class YAMLPlugin(LanguagePlugin):

@@ -7,7 +7,7 @@ Tree-sitter analysis across multiple programming languages.
 """
 
 from abc import ABC
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING, Any
@@ -27,7 +27,7 @@ if TYPE_CHECKING:
 
 
 # Use dataclass with slots for Python 3.10+
-def dataclass_with_slots(*args: Any, **kwargs: Any) -> Callable[..., Any]:
+def dataclass_with_slots(*args: Any, **kwargs: Any) -> Any:
     return dataclass(*args, slots=True, **kwargs)
 
 

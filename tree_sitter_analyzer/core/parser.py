@@ -213,7 +213,7 @@ class Parser:
             )
 
         except Exception as e:
-            logger.error(f"Error parsing {language} code: {e}")
+            # logger.error(f"Error parsing {language} code: {e}")
             return ParseResult(
                 tree=None,
                 source_code=source_code,

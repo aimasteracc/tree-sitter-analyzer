@@ -36,12 +36,25 @@ except ImportError:
         pass
 
     class Resource:  # type: ignore
-        pass
+        def __init__(
+            self,
+            uri: str,
+            name: str,
+            description: str,
+            mimeType: str,
+        ):
+            """
+            Custom Resource class to fix MyPy issues with mcp library types.
+            """
+            self.uri = uri
+            self.name = name
+            self.description = description
+            self.mimeType = mimeType
 
     class TextContent:  # type: ignore
         pass
 
-    def stdio_server() -> None:
+    def stdio_server() -> Any:
         pass
 
 
@@ -396,10 +409,16 @@ class TreeSitterAnalyzerMCPServer:
         server = self.create_server()
 
         # Initialize server options
+        from mcp.server.models import ServerCapabilities
+        from mcp.types import ResourcesCapability, ToolsCapability
+
         options = InitializationOptions(
             server_name=self.name,
             server_version=self.version,
-            capabilities={"tools": {}, "resources": {}},
+            capabilities=ServerCapabilities(
+                tools=ToolsCapability(listChanged=True),
+                resources=ResourcesCapability(subscribe=True, listChanged=True),
+            ),
         )
 
         log_info(f"Starting MCP server: {self.name} v{self.version}")
