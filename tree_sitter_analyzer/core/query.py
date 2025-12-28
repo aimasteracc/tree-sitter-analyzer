@@ -70,12 +70,6 @@ class QueryExecutor:
                     "Language is None", query_name=query_name
                 )
 
-            # Get the query string with robust language name handling
-            if language is None:
-                return self._create_error_result(
-                    "Language is None", query_name=query_name
-                )
-
             # Try multiple ways to get language name
             language_name = getattr(language, "name", None)
             if not language_name:
@@ -177,6 +171,7 @@ class QueryExecutor:
                     "Language is None", query_name=query_name
                 )
 
+            # Process captures if we found a query string
             processed_captures: list[dict[str, Any]] = []
 
             # Use the provided language name
@@ -189,9 +184,6 @@ class QueryExecutor:
                 return self._create_error_result(
                     f"Query '{query_name}' not found", query_name=query_name
                 )
-
-            # Process captures if we found a query string
-            processed_captures = []
 
             # Create and execute the query using modern API
             try:
@@ -262,9 +254,6 @@ class QueryExecutor:
 
             if language is None:
                 return self._create_error_result("Language is None")
-
-            # Process captures if we found a language
-            processed_captures = []
 
             # Create and execute the query using modern API
             try:
