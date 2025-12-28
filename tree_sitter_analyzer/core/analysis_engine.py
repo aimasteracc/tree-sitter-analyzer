@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Unified Analysis Engine - Common Analysis System for CLI and MCP (Fixed Version)
+Unified Analysis Engine - Common Analysis System for CLI and MCP (Fixed & Optimized)
 
 This module provides a unified engine that serves as the center of all analysis processing.
 It is commonly used by CLI, MCP, and other interfaces.
@@ -59,7 +59,26 @@ class UnifiedAnalysisEngine:
         if getattr(self, "_initialized", False):
             return
 
-        # Lazy imports to avoid circular dependencies
+        # Lazy init attributes
+        self._cache_service = None
+        self._plugin_manager = None
+        self._performance_monitor = None
+        self._language_detector = None
+        self._security_validator = None
+        self._parser = None
+        self._query_executor = None
+        self._project_root = project_root
+
+        # Initial discovery only (no heavy loading)
+        self._load_plugins()
+        self._initialized = True
+
+    def _ensure_initialized(self) -> None:
+        """Ensure all components are lazily initialized only when needed"""
+        if self._cache_service is not None:
+            return
+
+        # Perform heavy imports only once
         from ..language_detector import LanguageDetector
         from ..plugins.manager import PluginManager
         from ..security import SecurityValidator
@@ -71,39 +90,40 @@ class UnifiedAnalysisEngine:
         self._plugin_manager = PluginManager()
         self._performance_monitor = PerformanceMonitor()
         self._language_detector = LanguageDetector()
-        self._security_validator = SecurityValidator(project_root)
+        self._security_validator = SecurityValidator(self._project_root)
         self._parser = Parser()
         self._query_executor = QueryExecutor()
-        self._project_root = project_root
-
-        # Auto-load plugins
-        self._load_plugins()
-        self._initialized = True
 
     def register_plugin(self, language: str, plugin: Any) -> None:
         """Register a plugin (compatibility method)"""
+        self._ensure_initialized()
         self._plugin_manager.register_plugin(plugin)
 
     def clear_cache(self) -> None:
         """Clear the analysis cache (compatibility method)"""
-        self._cache_service.clear()
+        self._ensure_initialized()
+        if self._cache_service:
+            self._cache_service.clear()
 
     def _load_plugins(self) -> None:
-        """Auto-load available plugins"""
+        """Discover available plugins (fast metadata scan)"""
         from ..utils import log_debug, log_error
 
-        log_debug("Loading plugins using PluginManager...")
+        # Minimal init for discovery
+        if self._plugin_manager is None:
+            from ..plugins.manager import PluginManager
+
+            self._plugin_manager = PluginManager()
+
+        log_debug("Discovering plugins using PluginManager...")
         try:
-            loaded_plugins = self._plugin_manager.load_plugins()
-            final_languages = [plugin.get_language_name() for plugin in loaded_plugins]
-            log_debug(
-                f"Successfully loaded {len(final_languages)} plugins: {', '.join(final_languages)}"
-            )
+            self._plugin_manager.load_plugins()
         except Exception as e:
-            log_error(f"Failed to load plugins: {e}")
+            log_error(f"Failed to discover plugins: {e}")
 
     async def analyze(self, request: AnalysisRequest) -> Any:
         """Unified analysis method (Async)"""
+        self._ensure_initialized()
         from ..utils import log_debug, log_error, log_info
 
         log_debug(f"Starting async analysis for {request.file_path}")
@@ -116,19 +136,19 @@ class UnifiedAnalysisEngine:
             log_error(f"Security validation failed: {request.file_path} - {error_msg}")
             raise ValueError(f"Invalid file path: {error_msg}")
 
-        # Language detection (Early detection for backward compatibility with tests)
+        # Language detection
         language = request.language or self._detect_language(request.file_path)
         if not self._language_detector.is_supported(language):
             raise UnsupportedLanguageError(f"Unsupported language: {language}")
 
-        # Cache check (Performed BEFORE existence check to allow cached results for non-existent files in tests)
+        # Cache check
         cache_key = self._generate_cache_key(request)
         cached_result = await self._cache_service.get(cache_key)
         if cached_result:
             log_info(f"Cache hit for {request.file_path}")
             return cached_result
 
-        # File existence check (Only if cache miss)
+        # File existence check
         if not os.path.exists(request.file_path):
             raise FileNotFoundError(f"File not found: {request.file_path}")
 
@@ -161,9 +181,6 @@ class UnifiedAnalysisEngine:
         """Compatibility alias for analyze"""
         if request is None:
             request = AnalysisRequest(file_path=file_path)
-        elif request.file_path != file_path:
-            # Handle mismatch if needed, but usually we just use the provided request
-            pass
         return await self.analyze(request)
 
     async def analyze_file_async(
@@ -184,7 +201,6 @@ class UnifiedAnalysisEngine:
 
         from .request import AnalysisRequest
 
-        # Create default request if not provided
         if request is None:
             request = AnalysisRequest(file_path=filename, language=language)
 
@@ -195,7 +211,6 @@ class UnifiedAnalysisEngine:
             temp_path = tf.name
 
         try:
-            # Create new request with temp path to bypass frozen dataclass
             new_request = AnalysisRequest(
                 file_path=temp_path,
                 language=language,
@@ -207,7 +222,6 @@ class UnifiedAnalysisEngine:
                 format_type=request.format_type,
             )
             result = await self.analyze(new_request)
-            # Restore original path in result
             result.file_path = filename
             return result
         finally:
@@ -261,19 +275,17 @@ class UnifiedAnalysisEngine:
             str(request.include_complexity),
             request.format_type,
         ]
-        # In test environments, os.path.exists might be mocked, but physical file might not exist.
-        # We wrap in try-except to be safe and avoid FileNotFoundError during key generation.
         try:
             if os.path.exists(request.file_path) and os.path.isfile(request.file_path):
                 stat = os.stat(request.file_path)
                 key_components.extend([str(int(stat.st_mtime)), str(stat.st_size)])
         except (OSError, FileNotFoundError):
-            # If we can't get stat, just use the basic components
             pass
         return hashlib.sha256(":".join(key_components).encode("utf-8")).hexdigest()
 
     def _detect_language(self, file_path: str) -> str:
         """Detect language"""
+        self._ensure_initialized()
         try:
             return self._language_detector.detect_from_extension(file_path)
         except Exception:
@@ -296,8 +308,10 @@ class UnifiedAnalysisEngine:
 
     def cleanup(self) -> None:
         """Resource cleanup"""
-        self._cache_service.clear()
-        self._performance_monitor.clear_metrics()
+        if self._cache_service:
+            self._cache_service.clear()
+        if self._performance_monitor:
+            self._performance_monitor.clear_metrics()
         from ..utils import log_debug
 
         log_debug("UnifiedAnalysisEngine cleaned up")
@@ -308,28 +322,58 @@ class UnifiedAnalysisEngine:
 
     def get_supported_languages(self) -> list[str]:
         """Get list of supported languages"""
+        self._ensure_initialized()
         return self._plugin_manager.get_supported_languages()
 
     def get_available_queries(self, language: str) -> list[str]:
         """Get available queries for a language"""
+        self._ensure_initialized()
         return self._query_executor.get_available_queries(language)
 
     def get_cache_stats(self) -> dict[str, Any]:
         """Get cache statistics (compatibility method)"""
+        self._ensure_initialized()
         return self._cache_service.get_stats()
 
     @property
     def language_detector(self) -> Any:
         """Expose language detector"""
+        self._ensure_initialized()
         return self._language_detector
 
     @property
     def plugin_manager(self) -> Any:
         """Expose plugin manager"""
+        self._ensure_initialized()
         return self._plugin_manager
+
+    @property
+    def cache_service(self) -> Any:
+        """Expose cache service"""
+        self._ensure_initialized()
+        return self._cache_service
+
+    @property
+    def parser(self) -> Any:
+        """Expose parser"""
+        self._ensure_initialized()
+        return self._parser
+
+    @property
+    def query_executor(self) -> Any:
+        """Expose query executor"""
+        self._ensure_initialized()
+        return self._query_executor
+
+    @property
+    def security_validator(self) -> Any:
+        """Expose security validator"""
+        self._ensure_initialized()
+        return self._security_validator
 
     def measure_operation(self, operation_name: str) -> PerformanceContext:
         """Measure an operation using the performance monitor"""
+        self._ensure_initialized()
         return self._performance_monitor.measure_operation(operation_name)
 
     @classmethod

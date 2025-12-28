@@ -100,40 +100,31 @@ class PluginManager:
 
     def load_plugins(self) -> list[LanguagePlugin]:
         """
-        Discover and optionally load all available plugins.
-        For performance, we now only discover them here.
+        Discover available plugins without fully loading them for performance.
         They will be lazily loaded in get_plugin().
-
-        Note: Mocked _load_from_entry_points and _load_from_local_directory
-        may return plugin instances, which will be registered for test compatibility.
         """
         if self._discovered:
             return list(self._loaded_plugins.values())
 
-        # Discover/load plugins from entry points
+        # Discover plugins from entry points (only metadata scan)
         if _should_load_entry_points():
-            entry_point_plugins = self._load_from_entry_points()
-            for plugin in entry_point_plugins:
-                lang = plugin.get_language_name()
-                if lang not in self._loaded_plugins:
-                    self.register_plugin(plugin)
+            self._discover_from_entry_points()
 
-        # Discover/load plugins from local languages directory
-        local_plugins = self._load_from_local_directory()
-        for plugin in local_plugins:
-            lang = plugin.get_language_name()
-            if lang not in self._loaded_plugins:
-                self.register_plugin(plugin)
+        # Discover local plugins (only metadata scan)
+        self._discover_from_local_directory()
 
         self._discovered = True
 
-        # Return all loaded plugins (for test compatibility)
+        # Return already loaded plugins (if any, e.g. manually registered)
         return list(self._loaded_plugins.values())
 
     def _discover_from_entry_points(self) -> None:
-        """Discover plugins from setuptools entry points."""
+        """Discover plugins from setuptools entry points without loading classes."""
         try:
+            # We use a special mapping for entry points to load them later
+            self._entry_point_map: dict[str, Any] = {}
             entry_points = importlib.metadata.entry_points()
+
             plugin_entries: Any = []
             if hasattr(entry_points, "select"):
                 plugin_entries = entry_points.select(group=self._entry_point_group)
@@ -141,10 +132,12 @@ class PluginManager:
                 result = entry_points.get(self._entry_point_group)
                 plugin_entries = list(result) if result else []
 
-            for _entry_point in plugin_entries:
-                # For entry points, we usually have to load to know the language
-                # but we can defer it.
-                pass
+            for entry_point in plugin_entries:
+                # We can't know the language without loading,
+                # so we might have to load entry points or use their names as hints
+                lang_hint = entry_point.name.lower()
+                self._entry_point_map[lang_hint] = entry_point
+                log_debug(f"Discovered entry point plugin: {entry_point.name}")
         except Exception as e:
             log_warning(f"Failed to discover plugins from entry points: {e}")
 
@@ -185,35 +178,60 @@ class PluginManager:
         if lang_lower in self._loaded_plugins:
             return self._loaded_plugins[lang_lower]
 
-        # Try to load from discovered modules
+        # Try to load from discovered modules (local)
         module_name = self._plugin_modules.get(lang_lower)
-        if not module_name:
-            # Try some common aliases (e.g., js -> javascript)
-            aliases = {
-                "js": "javascript",
-                "py": "python",
-                "rb": "ruby",
-                "ts": "typescript",
-            }
-            if language in aliases:
-                module_name = self._plugin_modules.get(aliases[language])
+
+        # Try some common aliases (e.g., js -> javascript)
+        aliases = {
+            "js": "javascript",
+            "py": "python",
+            "rb": "ruby",
+            "ts": "typescript",
+        }
+
+        if not module_name and lang_lower in aliases:
+            module_name = self._plugin_modules.get(aliases[lang_lower])
 
         if module_name:
             try:
+                log_debug(
+                    f"Lazily loading local plugin for {lang_lower} from {module_name}"
+                )
                 module = importlib.import_module(module_name)
                 plugin_classes = self._find_plugin_classes(module)
                 for plugin_class in plugin_classes:
                     instance = plugin_class()
                     lang = instance.get_language_name()
                     self._loaded_plugins[lang] = instance
-                    if lang == language or language in aliases:
+                    if lang == lang_lower or (
+                        lang_lower in aliases and lang == aliases[lang_lower]
+                    ):
                         return instance
             except Exception as e:
-                log_error(f"Failed to lazily load plugin {module_name}: {e}")
+                log_error(f"Failed to lazily load local plugin {module_name}: {e}")
 
-        # Fallback: if not found, maybe it was an entry point we haven't loaded
-        # For simplicity in this PR, we'll just return None if not found in local or already loaded
-        return self._loaded_plugins.get(language)
+        # Try to load from discovered entry points
+        if hasattr(self, "_entry_point_map") and lang_lower in self._entry_point_map:
+            try:
+                entry_point = self._entry_point_map[lang_lower]
+                log_debug(
+                    f"Lazily loading entry point plugin for {lang_lower}: {entry_point.name}"
+                )
+                plugin_class = entry_point.load()
+                if issubclass(plugin_class, LanguagePlugin):
+                    instance = plugin_class()
+                    lang = instance.get_language_name()
+                    self._loaded_plugins[lang] = instance
+                    return instance
+            except Exception as e:
+                log_error(f"Failed to lazily load entry point plugin {lang_lower}: {e}")
+
+        # Final check in loaded plugins (case-insensitive)
+        for lang, plugin in self._loaded_plugins.items():
+            if lang.lower() == lang_lower:
+                return plugin
+
+        return None
 
     def _load_from_entry_points(self) -> list[LanguagePlugin]:
         """

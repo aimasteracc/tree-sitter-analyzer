@@ -6,13 +6,28 @@ Provides unified security validation framework inspired by code-index-mcp's
 ValidationHelper but enhanced for tree-sitter analyzer's requirements.
 """
 
+import platform
 import re
+import stat
 from pathlib import Path
+
+try:
+    import ctypes
+    from ctypes import wintypes
+
+    HAS_CTYPES = True
+except ImportError:
+    HAS_CTYPES = False
 
 from ..exceptions import SecurityError
 from ..utils import log_debug, log_warning
 from .boundary_manager import ProjectBoundaryManager
 from .regex_checker import RegexSafetyChecker
+
+# Cache OS info at module level
+IS_WINDOWS = platform.system() == "Windows"
+FILE_ATTRIBUTE_REPARSE_POINT = 0x400
+INVALID_FILE_ATTRIBUTES = 0xFFFFFFFF
 
 
 class SecurityValidator:
@@ -341,6 +356,7 @@ class SecurityValidator:
     def _is_junction_or_reparse_point(self, path: Path) -> bool:
         """
         Check if a path is a Windows junction or reparse point.
+        Optimized version using cached OS info.
 
         Args:
             path: Path to check
@@ -348,46 +364,35 @@ class SecurityValidator:
         Returns:
             True if the path is a junction or reparse point
         """
+        if not IS_WINDOWS:
+            return False
+
         try:
-            import platform
+            # Method 1: Using ctypes (fastest, avoids os.stat)
+            if HAS_CTYPES:
+                try:
+                    # GetFileAttributesW function
+                    _GetFileAttributesW = ctypes.windll.kernel32.GetFileAttributesW
+                    _GetFileAttributesW.argtypes = [wintypes.LPCWSTR]
+                    _GetFileAttributesW.restype = wintypes.DWORD
 
-            if platform.system() != "Windows":
-                return False
+                    attributes = _GetFileAttributesW(str(path))
+                    if attributes != INVALID_FILE_ATTRIBUTES:
+                        return bool(attributes & FILE_ATTRIBUTE_REPARSE_POINT)
+                except (AttributeError, OSError):
+                    pass
 
-            # On Windows, check for reparse points using stat
-            import stat
-
+            # Method 2: Fallback to stat if ctypes fails
             if path.exists():
                 path_stat = path.stat()
-                # Check if it has the reparse point attribute
                 if hasattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT"):
                     return bool(
                         path_stat.st_file_attributes & stat.FILE_ATTRIBUTE_REPARSE_POINT
                     )
 
-            # Alternative method using Windows API
-            try:
-                import ctypes
-                from ctypes import wintypes
-
-                # GetFileAttributesW function
-                _GetFileAttributesW = ctypes.windll.kernel32.GetFileAttributesW
-                _GetFileAttributesW.argtypes = [wintypes.LPCWSTR]
-                _GetFileAttributesW.restype = wintypes.DWORD
-
-                FILE_ATTRIBUTE_REPARSE_POINT = 0x400
-                INVALID_FILE_ATTRIBUTES = 0xFFFFFFFF
-
-                attributes = _GetFileAttributesW(str(path))
-                if attributes != INVALID_FILE_ATTRIBUTES:
-                    return bool(attributes & FILE_ATTRIBUTE_REPARSE_POINT)
-
-            except (ImportError, AttributeError, OSError):
-                pass  # nosec
-
         except Exception:
             # If any error occurs, assume it's not a junction for safety
-            pass  # nosec
+            return False
 
         return False
 

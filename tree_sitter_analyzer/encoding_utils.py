@@ -237,7 +237,8 @@ class EncodingManager:
     @classmethod
     def detect_encoding(cls, data: bytes, file_path: str | None = None) -> str:
         """
-        Detect encoding of byte data with optional file-based caching
+        Detect encoding of byte data with optional file-based caching.
+        Optimized to try UTF-8 first before falling back to expensive detection.
 
         Args:
             data: Bytes to analyze
@@ -256,53 +257,45 @@ class EncodingManager:
                 log_debug(f"Using cached encoding for {file_path}: {cached_encoding}")
                 return cached_encoding
 
-        detected_encoding = cls.DEFAULT_ENCODING
+        # Optimization: Try UTF-8 first (very fast)
+        try:
+            data.decode("utf-8")
+            detected_encoding = "utf-8"
+            if file_path:
+                _encoding_cache.set(file_path, detected_encoding)
+            return detected_encoding
+        except UnicodeDecodeError:
+            pass
 
-        # If chardet is not available, use simple heuristics
-        if not CHARDET_AVAILABLE:
-            try:
-                # Try UTF-8 first
-                data.decode("utf-8")
-                detected_encoding = "utf-8"
-            except UnicodeDecodeError:
-                # Check for BOM
-                if data.startswith(b"\xff\xfe"):
-                    detected_encoding = "utf-16-le"
-                elif data.startswith(b"\xfe\xff"):
-                    detected_encoding = "utf-16-be"
-                elif data.startswith(b"\xef\xbb\xbf"):
-                    detected_encoding = "utf-8-sig"
-                else:
-                    detected_encoding = cls.DEFAULT_ENCODING
+        # Check for BOMs (fast)
+        if data.startswith(b"\xef\xbb\xbf"):
+            detected_encoding = "utf-8-sig"
+        elif data.startswith(b"\xff\xfe"):
+            detected_encoding = "utf-16-le"
+        elif data.startswith(b"\xfe\xff"):
+            detected_encoding = "utf-16-be"
         else:
-            try:
-                # Use chardet for detection
-                detection = chardet.detect(data)
-                if detection and detection["encoding"]:
-                    confidence = detection.get("confidence", 0)
-                    detected_encoding = detection["encoding"].lower()
+            detected_encoding = cls.DEFAULT_ENCODING
 
-                    # Only trust high-confidence detections
-                    if confidence > 0.7:
-                        log_debug(
-                            f"Detected encoding: {detected_encoding} "
-                            f"(confidence: {confidence:.2f})"
-                        )
-                    else:
-                        log_debug(
-                            f"Low confidence encoding detection: {detected_encoding} "
-                            f"(confidence: {confidence:.2f}), using default"
-                        )
-                        detected_encoding = cls.DEFAULT_ENCODING
-
-            except Exception as e:
-                log_debug(f"Encoding detection failed: {e}")
-                detected_encoding = cls.DEFAULT_ENCODING
+            # If chardet is available, use it as fallback
+            if CHARDET_AVAILABLE:
+                try:
+                    # Only analyze first 32KB for performance
+                    sample = data[:32768]
+                    detection = chardet.detect(sample)
+                    if detection and detection["encoding"]:
+                        confidence = detection.get("confidence", 0)
+                        if confidence > 0.7:
+                            detected_encoding = detection["encoding"].lower()
+                            log_debug(
+                                f"Detected encoding via chardet: {detected_encoding} ({confidence:.2f})"
+                            )
+                except Exception as e:
+                    log_debug(f"Chardet detection failed: {e}")
 
         # Cache the result if file_path is provided
-        if file_path and detected_encoding:
+        if file_path:
             _encoding_cache.set(file_path, detected_encoding)
-            log_debug(f"Cached encoding for {file_path}: {detected_encoding}")
 
         return detected_encoding
 

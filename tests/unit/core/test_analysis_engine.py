@@ -60,9 +60,10 @@ class TestUnifiedAnalysisEngine:
 
         # Assert
         assert engine is not None
-        assert engine._cache_service is not None
-        assert engine._plugin_manager is not None
-        assert engine._performance_monitor is not None
+        # Accessing properties triggers lazy initialization
+        assert engine.cache_service is not None
+        assert engine.plugin_manager is not None
+        assert engine.security_validator is not None
 
     @pytest.mark.unit
     @pytest.mark.asyncio
@@ -83,7 +84,7 @@ class TestUnifiedAnalysisEngine:
             success=True,
             error_message=None,
         )
-        await engine._cache_service.set(cache_key, expected_result)
+        await engine.cache_service.set(cache_key, expected_result)
 
         # Act
         result = await engine.analyze(request)
@@ -114,7 +115,7 @@ class TestUnifiedAnalysisEngine:
 
         with patch("os.path.exists", return_value=True):
             with patch.object(
-                engine._parser, "parse_file", return_value=mock_parse_result
+                engine.parser, "parse_file", return_value=mock_parse_result
             ):
                 result = await engine.analyze(request)
 
@@ -159,7 +160,7 @@ class TestUnifiedAnalysisEngine:
 
         with patch("os.path.exists", return_value=True):
             with patch.object(
-                engine._parser, "parse_file", return_value=mock_parse_result
+                engine.parser, "parse_file", return_value=mock_parse_result
             ):
                 result = await engine.analyze(request)
 
@@ -217,7 +218,7 @@ class TestUnifiedAnalysisEngine:
 
         # Assert
         assert "test_lang" in engine.get_supported_languages()
-        retrieved_plugin = engine._plugin_manager.get_plugin("test_lang")
+        retrieved_plugin = engine.plugin_manager.get_plugin("test_lang")
         assert retrieved_plugin == plugin
 
     @pytest.mark.unit
