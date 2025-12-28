@@ -65,7 +65,17 @@ class QueryExecutor:
             if tree is None:
                 return self._create_error_result("Tree is None", query_name=query_name)
 
+            if language is None:
+                return self._create_error_result(
+                    "Language is None", query_name=query_name
+                )
+
             # Get the query string with robust language name handling
+            if language is None:
+                return self._create_error_result(
+                    "Language is None", query_name=query_name
+                )
+
             # Try multiple ways to get language name
             language_name = getattr(language, "name", None)
             if not language_name:
@@ -162,6 +172,11 @@ class QueryExecutor:
             if tree is None:
                 return self._create_error_result("Tree is None", query_name=query_name)
 
+            if language is None:
+                return self._create_error_result(
+                    "Language is None", query_name=query_name
+                )
+
             processed_captures: list[dict[str, Any]] = []
 
             # Use the provided language name
@@ -244,6 +259,9 @@ class QueryExecutor:
             # Validate inputs
             if tree is None:
                 return self._create_error_result("Tree is None")
+
+            if language is None:
+                return self._create_error_result("Language is None")
 
             # Process captures if we found a language
             processed_captures = []
