@@ -12,14 +12,14 @@ import json
 import os
 import sys
 from pathlib import Path as PathClass
-from typing import Any
+from typing import Any, cast
 
 try:
     from mcp.server import Server
     from mcp.server.models import InitializationOptions
     from mcp.server.stdio import stdio_server as _stdio_server
 
-    stdio_server = _stdio_server
+    stdio_server: Any = _stdio_server
     from mcp.types import Resource, TextContent, Tool
 
     MCP_AVAILABLE = True
@@ -346,7 +346,7 @@ class TreeSitterAnalyzerMCPServer:
                     detailed_elements.append({"element": str(elem)})
             result["detailed_elements"] = detailed_elements
 
-        return result  # type: ignore[no-any-return]
+        return cast(dict[str, Any], result)
 
     def _calculate_file_metrics(self, file_path: str, language: str) -> dict[str, Any]:
         """Legacy wrapper for file metrics calculation."""

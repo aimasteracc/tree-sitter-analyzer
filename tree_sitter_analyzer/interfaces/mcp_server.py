@@ -19,7 +19,7 @@ try:
     from mcp.server.models import InitializationOptions
     from mcp.server.stdio import stdio_server as _stdio_server
 
-    stdio_server = _stdio_server
+    stdio_server: Any = _stdio_server
     from mcp.types import AnyUrl, Resource, TextContent, Tool
 
     def to_anyurl(url: str) -> AnyUrl:
@@ -412,7 +412,7 @@ class TreeSitterAnalyzerMCPServer:
 
         self.server = server
         log_info("MCP server created successfully")
-        return server
+        return cast(Server, server)
 
     async def run(self) -> None:
         """Run the MCP server."""

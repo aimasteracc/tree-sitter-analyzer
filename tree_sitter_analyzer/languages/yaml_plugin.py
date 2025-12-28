@@ -9,7 +9,7 @@ scalars, anchors, aliases, and comments.
 
 import logging
 import threading
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from ..models import AnalysisResult, Class, CodeElement, Function, Import, Variable
 from ..plugins.base import ElementExtractor, LanguagePlugin
@@ -132,7 +132,7 @@ class YAMLElementExtractor(ElementExtractor):
         return []
 
     def extract_yaml_elements(
-        self, tree: "tree_sitter.Tree", source_code: str
+        self, tree: "tree_sitter.Tree | None", source_code: str
     ) -> list[YAMLElement]:
         """Extract all YAML elements from the parsed tree.
 
@@ -213,7 +213,7 @@ class YAMLElementExtractor(ElementExtractor):
                     sibling = sibling.prev_sibling
                 return index
             # Use Any type to avoid assignment mismatches on parent
-            current = getattr(current, "parent", None)
+            current = cast(Any, getattr(current, "parent", None))
             if current is None:
                 break
         return 0

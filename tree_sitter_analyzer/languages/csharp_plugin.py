@@ -249,7 +249,7 @@ class CSharpElementExtractor(ElementExtractor):
             stack.extend(reversed(list(node.children)))
 
     def extract_classes(
-        self, tree: "tree_sitter.Tree", source_code: str
+        self, tree: "tree_sitter.Tree | None", source_code: str
     ) -> list[Class]:
         """
         Extract classes, interfaces, records, enums, and structs.
