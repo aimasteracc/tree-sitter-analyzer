@@ -1,0 +1,50 @@
+# Reusable Publish Workflow
+# Standardized PyPI deployment
+
+name: Reusable Publish Workflow
+
+on:
+  workflow_call:
+    inputs:
+      artifact-name:
+        description: "Name of the artifact to download"
+        required: false
+        default: "package-dist"
+        type: string
+    secrets:
+      PYPI_API_TOKEN:
+        required: true
+
+jobs:
+  publish:
+    name: Publish to PyPI
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.artifact-name }}
+          path: dist/
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Set up Python 3.11
+        run: uv python install 3.11
+
+      - name: Install upload dependencies
+        run: uv add twine --dev
+
+      - name: Publish to PyPI
+        run: |
+          echo "### 🚀 Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          uv run twine upload dist/*
+          echo "✅ Package published to PyPI successfully" >> $GITHUB_STEP_SUMMARY
+        env:
+          TWINE_USERNAME: __token__ # pragma: allowlist secret
+          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+          TWINE_NON_INTERACTIVE: true

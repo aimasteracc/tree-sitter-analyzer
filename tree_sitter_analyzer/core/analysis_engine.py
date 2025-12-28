@@ -139,9 +139,8 @@ class UnifiedAnalysisEngine:
         # Language detection
         language = request.language or self._detect_language(request.file_path)
         if language == "unknown":
-            # For "unknown" language, we allow minimal analysis if elements aren't strictly required,
-            # but usually we want to support it. Let's check if it's supported by detector.
-            pass
+            # For "unknown" language, we strictly raise error now to match test expectations
+            raise UnsupportedLanguageError(f"Unsupported language: {language}")
         elif not self._language_detector.is_supported(language):
             raise UnsupportedLanguageError(f"Unsupported language: {language}")
 

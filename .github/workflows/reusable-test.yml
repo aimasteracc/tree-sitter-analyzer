@@ -50,59 +50,50 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
 
     - name: Install uv
       uses: astral-sh/setup-uv@v4
       with:
         version: "latest"
+        enable-cache: true
+        cache-dependency-glob: "uv.lock"
 
     - name: Set up Python ${{ matrix.python-version }}
       run: uv python install ${{ matrix.python-version }}
 
-    - name: Install system dependencies (Linux)
-      if: matrix.os == 'ubuntu-latest'
-      run: |
-        # Install fd and ripgrep for MCP tools
-        sudo apt-get update
-        sudo apt-get install -y fd-find ripgrep
-        # Create symlink for fd command (Ubuntu packages it as fdfind)
-        sudo ln -sf /usr/bin/fdfind /usr/bin/fd
-      shell: bash
-
-    - name: Install system dependencies (macOS)
-      if: startsWith(matrix.os, 'macos-')
-      run: |
-        # Install fd and ripgrep for MCP tools
-        brew install fd ripgrep
-      shell: bash
-
-    - name: Install system dependencies (Windows)
-      if: matrix.os == 'windows-latest'
-      run: |
-        # Install fd and ripgrep for MCP tools
-        choco install fd ripgrep -y
-      shell: powershell
+    - name: Setup System Dependencies
+      uses: ./.github/actions/setup-system
+      with:
+        os: ${{ matrix.os }}
 
     - name: Install dependencies
       run: |
         uv sync --all-extras
       shell: bash
 
-    - name: Run pre-commit quality checks
+    - name: Run Tests with Coverage
       if: matrix.os == 'ubuntu-latest' && matrix.python-version == inputs.python-version
+      id: test-coverage
       run: |
-        uv run python check_quality.py --new-code-only || echo "Quality checks completed with warnings"
-      shell: bash
-
-    - name: Run tests with coverage
-      if: matrix.os == 'ubuntu-latest' && matrix.python-version == inputs.python-version
-      run: |
+        echo "### 📊 Test Coverage Report" >> $GITHUB_STEP_SUMMARY
         uv run pytest tests/ -v --tb=short --maxfail=10 \
           --cov=tree_sitter_analyzer --cov-report=xml --cov-report=term-missing \
-          -m "not requires_ripgrep or not requires_fd"
+          -m "not requires_ripgrep or not requires_fd" > pytest-output.txt 2>&1 || touch test_failed
+
+        cat pytest-output.txt
+        echo '```text' >> $GITHUB_STEP_SUMMARY
+        tail -n 20 pytest-output.txt >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY
+
+        if [ -f test_failed ]; then
+          echo "❌ Tests failed!" >> $GITHUB_STEP_SUMMARY
+          exit 1
+        fi
       shell: bash
 
-    - name: Run tests (no coverage)
+    - name: Run Tests (no coverage)
       if: matrix.os != 'ubuntu-latest' || matrix.python-version != inputs.python-version
       run: |
         uv run pytest tests/ -v --tb=short --maxfail=10 \
@@ -117,6 +108,8 @@ jobs:
       with:
         files: ./coverage.xml
         fail_ci_if_error: false
+        flags: unittests
+        name: codecov-umbrella
 
     - name: Update README statistics
       if: matrix.os == 'ubuntu-latest' && matrix.python-version == inputs.python-version

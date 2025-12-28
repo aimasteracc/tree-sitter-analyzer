@@ -262,77 +262,36 @@ gitGraph
 
 **注意**: 根据实际的自动化工作流，hotfix分支**会**自动触发PyPI发布。但这可能导致版本冲突，建议在使用hotfix分支前确保版本号正确更新。
 
-## 自动化流程
+## 自动化流程 (Authority CI/CD Pipeline)
 
-### Develop 分支自动化 (`develop-automation.yml`)
-当代码推送到 `develop` 分支时，自动执行：
+`tree-sitter-analyzer` 项目实施了企业级的 CI/CD 流水线。我们的 "Authority Pipeline" 建立在模块化、可重用的组件之上，确保每个版本都符合质量、安全和性能的最高标准。
 
-1. **测试作业**：
-   - 使用pytest运行完整测试套件，包含详细回溯和失败限制
-   - 生成覆盖率报告（XML和终端格式）
-   - 上传覆盖率到Codecov
+### 🏗️ 流水线架构
+- **模块化设计**: 所有核心逻辑都封装在 `reusable-*.yml` 工作流中，以确保一致性。
+- **统一质量门禁 (Unified Quality Gate)**: `ci.yml` 中的集中聚合点作为分支健康状况的唯一真实来源。
+- **环境安全**: 部署通过 GitHub Environments 进行管理，限制了机密访问。
+- **高可见性**: 高级步骤摘要提供有关测试结果、代码覆盖率和安全扫描的即时反馈。
 
-2. **构建作业**：
-   - 使用 `python -m build` 构建Python包
-   - 使用 `twine check` 验证包
-   - 上传构建产物（保留1天）
+### 🛡️ 核心工作流
 
-3. **创建发布PR作业**：
-   - 自动创建从develop到main的PR
-   - 包含质量指标和测试结果
-   - 为生产部署做好准备
+#### 1. 统一 CI 协调器 (`ci.yml`)
+在每次推送和拉取请求时执行。它并行协调以下内容：
+- **质量检查**: 同时执行 Ruff (Linting)、MyPy (静态分析) 和 Bandit (安全)。
+- **测试矩阵**: 完整的跨平台 (Linux, Windows, macOS) 和多版本 Python 测试。
+- **构建验证**: Python 包的结构验证。
+- **Quality Gate**: 最终的聚合作业。**这是分支保护规则唯一要求的检查。**
 
-**重要**：develop分支推送**不会**触发PyPI部署。
+#### 2. Develop 自动化 (`develop-automation.yml`)
+促进功能的持续集成：
+- 验证包构建的完整性。
+- 自动创建标准化的拉取请求到 `main` 分支。
 
-### Release 分支自动化 (`release-automation.yml`)
-当代码推送到 `release/v*` 分支时，自动执行：
-
-1. **测试作业**：
-   - 使用pytest运行完整测试套件，包含详细回溯和失败限制
-   - 生成覆盖率报告（XML和终端格式）
-   - 上传覆盖率到Codecov
-
-2. **构建和部署作业**：
-   - 构建Python包
-   - 使用 `twine check` 验证包
-   - **使用 `twine upload` 部署到PyPI**
-
-3. **创建Main PR作业**：
-   - PyPI部署成功后创建到main分支的PR
-   - 标记为关键热修复，准备立即投入生产
-
-### Hotfix 分支自动化 (`hotfix-automation.yml`)
-当代码推送到 `hotfix/*` 分支时，自动执行：
-
-1. **测试作业**：
-   - 使用pytest运行完整测试套件
-   - 生成覆盖率报告
-   - 上传覆盖率到Codecov
-
-2. **构建和部署作业**：
-   - 构建Python包
-   - 使用 `twine check` 验证包
-   - **使用 `twine upload` 部署到PyPI**
-
-3. **创建Main PR作业**：
-   - PyPI部署成功后创建到main分支的PR
-   - 标记为关键热修复，准备立即投入生产
-
-**重要**: 实际上hotfix分支**会**自动触发PyPI部署，与release分支相同。这可能导致版本冲突，建议谨慎使用hotfix分支。
-
-### CI 工作流 (`ci.yml`)
-在所有分支（`main`、`develop`、`hotfix/*`、`feature/*`、`release/*`）和PR上运行：
-
-1. **质量检查作业**：
-   - 多Python版本测试（3.10、3.11、3.12、3.13）
-   - 使用 `check_quality.py` 进行代码质量检查
-
-2. **测试矩阵作业**：
-   - 跨平台测试（Ubuntu、Windows、macOS）
-   - 多Python版本兼容性测试
-
-**PyPI部署策略**：`release/*` 和 `hotfix/*` 分支都会自动部署到PyPI。但需要注意hotfix分支可能导致版本冲突，建议谨慎使用。
+#### 3. Release & Hotfix 交付 (`release-automation.yml`, `hotfix-automation.yml`)
+处理生产就绪代码的安全交付：
+- 执行代码库的详尽验证。
+- **自动化 PyPI 部署**: 安全地发布已验证的包。
+- 通过将更改合并回 `main` 和 `develop` 来完成 GitFlow 周期。
 
 ---
 
-*此中文说明旨在帮助理解 `GITFLOW.md` 中的核心概念。更详细的自动化流程、质量检查和 CI/CD 集成信息，请参阅原始的 [GITFLOW.md](GITFLOW.md) 文件。*
+*我们的 Authority Pipeline 保证每一行代码在到达用户之前都经过测试、验证和保护。*

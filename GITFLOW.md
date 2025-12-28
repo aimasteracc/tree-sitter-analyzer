@@ -249,76 +249,36 @@ The project recommends using automated release workflows, but the manual process
 
 **Note**: According to the actual automated workflow, hotfix branches **do** automatically trigger PyPI releases. However, this may cause version conflicts, so it's recommended to ensure version numbers are correctly updated before using hotfix branches.
 
-## Automation Workflows
+## Automation Workflows (Authority CI/CD Pipeline)
 
-### Develop Branch Automation (`develop-automation.yml`)
-When code is pushed to the `develop` branch, automatically executes:
+The `tree-sitter-analyzer` project implements an enterprise-grade CI/CD pipeline. Our "Authority Pipeline" is built on modular, reusable components that ensure every release meets the highest standards of quality, security, and performance.
 
-1. **Test Job**:
-   - Run complete test suite using pytest with detailed traceback and failure limits
-   - Generate coverage reports (XML and terminal formats)
-   - Upload coverage to Codecov
+### 🏗️ Pipeline Architecture
+- **Modular Design**: All core logic is encapsulated in `reusable-*.yml` workflows to ensure consistency.
+- **Unified Quality Gate**: A centralized aggregation point in `ci.yml` serves as the single source of truth for branch health.
+- **Environment Security**: Deployments are managed through GitHub Environments with restricted secret access.
+- **High Visibility**: Advanced step summaries provide immediate feedback on test results, code coverage, and security scans.
 
-2. **Build Job**:
-   - Build Python package using `python -m build`
-   - Validate package using `twine check`
-   - Upload build artifacts (retained for 1 day)
+### 🛡️ Core Workflows
 
-3. **Create Release PR Job**:
-   - Automatically create PR from develop to main
-   - Include quality metrics and test results
-   - Ready for production deployment
+#### 1. Unified CI Coordinator (`ci.yml`)
+Executed on every push and Pull Request. It orchestrates the following in parallel:
+- **Quality Checks**: Concurrent execution of Ruff (Linting), MyPy (Static Analysis), and Bandit (Security).
+- **Test Matrix**: Full cross-platform (Linux, Windows, macOS) and multi-version Python testing.
+- **Build Validation**: Structural verification of the Python package.
+- **Quality Gate**: The final aggregation job. **This is the only check required by branch protection rules.**
 
-**Important**: Pushes to develop branch do **not** trigger PyPI deployment.
+#### 2. Develop Automation (`develop-automation.yml`)
+Facilitates the continuous integration of features:
+- Verifies package build integrity.
+- Automatically creates standardized Pull Requests to the `main` branch.
 
-### Release Branch Automation (`release-automation.yml`)
-When code is pushed to `release/v*` branches, automatically executes:
-
-1. **Test Job**:
-   - Run complete test suite using pytest with detailed traceback and failure limits
-   - Generate coverage reports (XML and terminal formats)
-   - Upload coverage to Codecov
-
-2. **Build and Deploy Job**:
-   - Build Python package
-   - Validate package using `twine check`
-   - **Deploy to PyPI using `twine upload`**
-
-3. **Create Main PR Job**:
-   - Create PR to main branch after successful PyPI deployment
-   - Marked as critical hotfix, ready for immediate production
-
-### Hotfix Branch Automation (`hotfix-automation.yml`)
-When code is pushed to `hotfix/*` branches, automatically executes:
-
-1. **Test Job**:
-   - Run complete test suite using pytest with detailed traceback and failure limits
-   - Generate coverage reports (XML and terminal formats)
-
-2. **Build and Deploy Job**:
-   - Build Python package
-   - Validate package using `twine check`
-   - **Deploy to PyPI using `twine upload`**
-
-3. **Create Main PR Job**:
-   - Create PR to main branch after successful PyPI deployment
-   - Marked as critical hotfix, ready for immediate production
-
-**Important**: According to the actual automated workflow, hotfix branches **do** automatically trigger PyPI deployment, same as release branches. This may cause version conflicts, so careful use of hotfix branches is recommended.
-
-### CI Workflow (`ci.yml`)
-Runs on all branches (`main`, `develop`, `hotfix/*`, `feature/*`, `release/*`) and PRs:
-
-1. **Quality Check Job**:
-   - Multi-Python version testing (3.10, 3.11, 3.12, 3.13)
-   - Code quality checks using `check_quality.py`
-
-2. **Test Matrix Job**:
-   - Cross-platform testing (Ubuntu, Windows, macOS)
-   - Multi-Python version compatibility testing
-
-**PyPI Deployment Strategy**: Both `release/*` and `hotfix/*` branches automatically deploy to PyPI. However, hotfix branches may cause version conflicts, so careful usage is recommended.
+#### 3. Release & Hotfix Delivery (`release-automation.yml`, `hotfix-automation.yml`)
+Handles the secure delivery of production-ready code:
+- Performs exhaustive validation of the codebase.
+- **Automated PyPI Deployment**: Securely publishes verified packages.
+- Finalizes the GitFlow cycle by merging changes back to `main` and `develop`.
 
 ---
 
-*This English documentation aims to help understand the core concepts in [`GITFLOW.md`](GITFLOW.md). For more detailed information on automation workflows, quality checks, and CI/CD integration, please refer to the original [GITFLOW.md](GITFLOW.md) file.*
+*Our Authority Pipeline guarantees that every line of code is tested, verified, and secured before it reaches our users.*

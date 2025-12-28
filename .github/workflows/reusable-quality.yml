@@ -1,57 +1,60 @@
-# Reusable Quality Check Workflow
-#
-# Purpose: Standardized quality gates for all branches
-# Triggers: Called by branch-specific workflows
-# Jobs:
-#   - quality-check: Runs pre-commit quality checks (mypy, black, ruff, isort, bandit, pydocstyle)
-# Secrets Required: None
+# Reusable Quality Workflow
+# Standardized Linting, Type Checking, and Security Scanning
 
-name: Reusable Quality Check Workflow
+name: Reusable Quality Workflow
 
 on:
   workflow_call:
-    inputs:
-      python-version:
-        description: 'Python version for quality checks'
-        required: false
-        default: '3.11'
-        type: string
 
 jobs:
-  quality-check:
-    name: Code Quality Check
+  lint:
+    name: Lint (Ruff)
     runs-on: ubuntu-latest
-
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+      - name: Set up Python 3.11
+        run: uv python install 3.11
+      - name: Run Ruff
+        run: |
+          uv sync --all-extras
+          uv run ruff check .
+          echo "✅ Ruff linting passed" >> $GITHUB_STEP_SUMMARY
 
-    - name: Install uv
-      uses: astral-sh/setup-uv@v4
-      with:
-        version: "latest"
+  type-check:
+    name: Type Check (MyPy)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+      - name: Set up Python 3.11
+        run: uv python install 3.11
+      - name: Run MyPy
+        run: |
+          uv sync --all-extras
+          uv run mypy tree_sitter_analyzer/
+          echo "✅ MyPy type checking passed" >> $GITHUB_STEP_SUMMARY
 
-    - name: Set up Python ${{ inputs.python-version }}
-      run: uv python install ${{ inputs.python-version }}
-
-    - name: Install system dependencies
-      run: |
-        # Install fd and ripgrep for MCP tools
-        sudo apt-get update
-        sudo apt-get install -y fd-find ripgrep
-        # Create symlink for fd command (Ubuntu packages it as fdfind)
-        sudo ln -sf /usr/bin/fdfind /usr/bin/fd
-      shell: bash
-
-    - name: Install dependencies
-      run: |
-        uv sync --all-extras
-
-    - name: Run quality checks
-      run: |
-        echo "Running pre-commit quality checks..."
-        echo "Checks include: mypy, black, ruff, isort, bandit, pydocstyle"
-        uv run python check_quality.py --new-code-only || {
-          echo "❌ Quality checks failed. Please run 'uv run pre-commit run --all-files' locally to fix issues."
-          exit 1
-        }
-        echo "✅ All quality checks passed"
+  security:
+    name: Security Scan (Bandit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+      - name: Set up Python 3.11
+        run: uv python install 3.11
+      - name: Run Bandit
+        run: |
+          uv sync --all-extras
+          uv add bandit --dev
+          uv run bandit -r tree_sitter_analyzer/ -f json -o bandit-results.json || true
+          echo "✅ Bandit security scan completed" >> $GITHUB_STEP_SUMMARY

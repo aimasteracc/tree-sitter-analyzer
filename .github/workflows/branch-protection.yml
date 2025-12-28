@@ -30,7 +30,7 @@ jobs:
               branch: 'main',
               required_status_checks: {
                 strict: true,
-                contexts: ['test', 'build-and-deploy', 'update-readme']
+                contexts: ['Quality Gate']
               },
               enforce_admins: false,
               required_pull_request_reviews: {

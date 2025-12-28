@@ -1,15 +1,6 @@
 # CI Workflow
-#
 # Purpose: Continuous Integration for all branches
-# Triggers: Push to any branch, PR to main/develop, manual dispatch
-# Jobs:
-#   - test: Comprehensive test suite (reusable workflow)
-#   - security-check: Security scanning
-#   - documentation-check: Documentation validation
-#   - build-check: Package build verification
-# Secrets Required:
-#   - CODECOV_TOKEN: For coverage upload
-# Note: This workflow does NOT include deployment logic
+# High-level coordinator using reusable workflows
 
 name: CI
 
@@ -18,84 +9,56 @@ on:
     branches: [ main, develop, hotfix/*, feature/*, release/* ]
   pull_request:
     branches: [ main, develop ]
-  workflow_dispatch:  # 允许手动触发
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
+  quality-check:
+    name: Code Quality
+    uses: ./.github/workflows/reusable-quality.yml
+    secrets: inherit
+
   test:
     name: Test Suite
+    needs: quality-check
     uses: ./.github/workflows/reusable-test.yml
     secrets: inherit
 
-  documentation-check:
-    name: Documentation Check
+  build:
+    name: Build Verification
+    needs: test
+    uses: ./.github/workflows/reusable-build.yml
+
+  quality-gate:
+    name: Quality Gate
+    needs: [test, quality-check, build]
     runs-on: ubuntu-latest
-
+    if: always()
     steps:
-    - uses: actions/checkout@v4
+      - name: Check Overall Status
+        run: |
+          echo "### 🏆 Final Quality Gate Status" >> $GITHUB_STEP_SUMMARY
+          SUCCESS=true
 
-    - name: Install uv
-      uses: astral-sh/setup-uv@v4
-      with:
-        version: "latest"
+          if [[ "${{ needs.quality-check.result }}" != "success" ]]; then
+            echo "❌ Quality Checks failed" >> $GITHUB_STEP_SUMMARY
+            SUCCESS=false
+          fi
+          if [[ "${{ needs.test.result }}" != "success" ]]; then
+            echo "❌ Test Suite failed" >> $GITHUB_STEP_SUMMARY
+            SUCCESS=false
+          fi
+          if [[ "${{ needs.build.result }}" != "success" ]]; then
+            echo "❌ Build Verification failed" >> $GITHUB_STEP_SUMMARY
+            SUCCESS=false
+          fi
 
-    - name: Set up Python
-      run: uv python install 3.11
-
-    - name: Setup system dependencies
-      uses: ./.github/actions/setup-system
-      with:
-        os: ubuntu-latest
-
-    - name: Install dependencies
-      run: |
-        uv sync --all-extras
-
-    - name: Check README commands
-      run: |
-        # Test README examples
-        uv run python -m tree_sitter_analyzer examples/Sample.java --advanced --output-format=text --quiet || echo "README command 1 completed with warnings"
-        uv run python -m tree_sitter_analyzer examples/Sample.java --table=full --quiet || echo "README command 2 completed with warnings"
-        uv run python -m tree_sitter_analyzer examples/Sample.java --partial-read --start-line 84 --end-line 86 || echo "README command 3 completed with warnings"
-
-    - name: Check MCP setup
-      run: |
-        uv run python -c "import tree_sitter_analyzer; print('MCP setup OK')" || echo "MCP setup completed with warnings"
-
-  build-check:
-    name: Build Check
-    runs-on: ubuntu-latest
-
-    steps:
-    - uses: actions/checkout@v4
-
-    - name: Install uv
-      uses: astral-sh/setup-uv@v4
-      with:
-        version: "latest"
-
-    - name: Set up Python
-      run: uv python install 3.11
-
-    - name: Setup system dependencies
-      uses: ./.github/actions/setup-system
-      with:
-        os: ubuntu-latest
-
-    - name: Install build dependencies
-      run: |
-        uv sync --all-extras
-        uv add build twine
-
-    - name: Build package
-      run: |
-        uv run python -m build
-
-    - name: Check package
-      run: |
-        uv run python -m twine check dist/*
-
-    - name: Test installation from wheel
-      run: |
-        # Test wheel installation directly
-        uv pip install dist/*.whl
-        uv run python -c "import tree_sitter_analyzer; print('Package installation OK')"
+          if [ "$SUCCESS" = true ]; then
+            echo "✅ All systems go! This version meets our authority standards." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ Quality Gate rejected this version." >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
