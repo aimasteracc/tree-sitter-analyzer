@@ -138,7 +138,11 @@ class UnifiedAnalysisEngine:
 
         # Language detection
         language = request.language or self._detect_language(request.file_path)
-        if not self._language_detector.is_supported(language):
+        if language == "unknown":
+            # For "unknown" language, we allow minimal analysis if elements aren't strictly required,
+            # but usually we want to support it. Let's check if it's supported by detector.
+            pass
+        elif not self._language_detector.is_supported(language):
             raise UnsupportedLanguageError(f"Unsupported language: {language}")
 
         # Cache check
@@ -176,23 +180,31 @@ class UnifiedAnalysisEngine:
         return result
 
     async def analyze_file(
-        self, file_path: str, request: AnalysisRequest | None = None
+        self,
+        file_path: str,
+        language: str | None = None,
+        request: AnalysisRequest | None = None,
     ) -> Any:
         """Compatibility alias for analyze"""
         if request is None:
-            request = AnalysisRequest(file_path=file_path)
+            request = AnalysisRequest(file_path=file_path, language=language)
+        elif language:
+            request.language = language
         return await self.analyze(request)
 
     async def analyze_file_async(
-        self, file_path: str, request: AnalysisRequest | None = None
+        self,
+        file_path: str,
+        language: str | None = None,
+        request: AnalysisRequest | None = None,
     ) -> Any:
         """Compatibility alias for analyze"""
-        return await self.analyze_file(file_path, request)
+        return await self.analyze_file(file_path, language, request)
 
     async def analyze_code(
         self,
         code: str,
-        language: str,
+        language: str | None = None,
         filename: str = "string",
         request: AnalysisRequest | None = None,
     ) -> Any:
@@ -201,11 +213,16 @@ class UnifiedAnalysisEngine:
 
         from .request import AnalysisRequest
 
+        # Default language if not provided
+        actual_language = language or "unknown"
+
         if request is None:
-            request = AnalysisRequest(file_path=filename, language=language)
+            request = AnalysisRequest(file_path=filename, language=actual_language)
+        elif language:
+            request.language = language
 
         with tempfile.NamedTemporaryFile(
-            mode="w", suffix=f".{language}", delete=False, encoding="utf-8"
+            mode="w", suffix=f".{actual_language}", delete=False, encoding="utf-8"
         ) as tf:
             tf.write(code)
             temp_path = tf.name
@@ -213,7 +230,7 @@ class UnifiedAnalysisEngine:
         try:
             new_request = AnalysisRequest(
                 file_path=temp_path,
-                language=language,
+                language=actual_language,
                 queries=request.queries,
                 include_elements=request.include_elements,
                 include_queries=request.include_queries,
