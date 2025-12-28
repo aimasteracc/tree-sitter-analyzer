@@ -34,7 +34,7 @@ class BehaviorProfile:
     behaviors: dict[str, ParsingBehavior]
     adaptation_rules: list[str]
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """Ensure behaviors are ParsingBehavior objects."""
         if self.behaviors:
             for key, value in self.behaviors.items():
@@ -184,7 +184,7 @@ class ProfileCache:
     """Thread-safe cache for behavior profiles."""
 
     def __init__(self, maxsize: int = 10, ttl: int = 3600):
-        self._cache = TTLCache(maxsize=maxsize, ttl=ttl)
+        self._cache: TTLCache = TTLCache(maxsize=maxsize, ttl=ttl)
         self._lock = threading.RLock()
         self._hits = 0
         self._misses = 0
@@ -193,7 +193,7 @@ class ProfileCache:
         with self._lock:
             if key in self._cache:
                 self._hits += 1
-                return self._cache[key]
+                return self._cache[key]  # type: ignore[no-any-return]
             self._misses += 1
             return None
 

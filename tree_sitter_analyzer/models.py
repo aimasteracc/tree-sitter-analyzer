@@ -7,7 +7,7 @@ Tree-sitter analysis across multiple programming languages.
 """
 
 from abc import ABC
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING, Any
@@ -28,7 +28,7 @@ if TYPE_CHECKING:
 
 # Use dataclass with slots for Python 3.10+
 def dataclass_with_slots(*args: Any, **kwargs: Any) -> Callable[..., Any]:
-    return dataclass(*args, slots=True, **kwargs)  # type: ignore[no-any-return]
+    return dataclass(*args, slots=True, **kwargs)
 
 
 # ========================================
@@ -67,8 +67,12 @@ class Function(CodeElement):
     is_static: bool = False
     is_private: bool = False
     is_public: bool = True
-    is_constructor: bool = False
+    is_constant: bool = False
     visibility: str = "public"
+    is_suspend: bool | None = None  # Kotlin
+    receiver: str | None = None  # Go
+    receiver_type: str | None = None  # Go
+    is_constructor: bool | None = None  # Java
     element_type: str = "function"
     # Java-specific fields for detailed analysis
     annotations: list[dict[str, Any]] = field(default_factory=list)
@@ -128,6 +132,8 @@ class Variable(CodeElement):
     is_static: bool = False
     visibility: str = "private"
     element_type: str = "variable"
+    is_val: bool | None = None  # Kotlin
+    is_var: bool | None = None  # Kotlin
     initializer: str | None = None
     # Java-specific fields for detailed analysis
     annotations: list[dict[str, Any]] = field(default_factory=list)
@@ -366,7 +372,7 @@ class AnalysisResult:
     file_path: str
     language: str = "unknown"  # Add language field for new architecture compatibility
     line_count: int = 0  # Add line_count for compatibility
-    elements: list[CodeElement] = field(
+    elements: Sequence[CodeElement] = field(
         default_factory=list
     )  # Generic elements for new architecture
     node_count: int = 0  # Node count for new architecture
@@ -384,6 +390,24 @@ class AnalysisResult:
     analysis_time: float = 0.0
     success: bool = True
     error_message: str | None = None
+
+    # Additional language-specific data
+    throws: list[str] | None = None
+    complexity_score: int | None = None
+
+    # Language-specific attributes
+    is_suspend: bool | None = None  # Kotlin
+    receiver: str | None = None  # Go
+    receiver_type: str | None = None  # Go
+    is_constructor: bool | None = None  # Java
+    modules: list[Any] | None = None
+    impls: list[Any] | None = None
+    goroutines: list[Any] | None = None
+    channels: list[Any] | None = None
+    defers: list[Any] | None = None
+
+    def __post_init__(self) -> None:
+        pass
 
     def to_dict(self) -> dict[str, Any]:
         """Convert analysis result to dictionary for serialization using unified elements"""

@@ -217,9 +217,9 @@ class TestMCPExceptions:
     def test_mcp_tool_error_sanitize_params(self):
         """Test MCPToolError parameter sanitization"""
         params = {
-            "password": "secret123",
+            "password": "secret123",  # pragma: allowlist secret
             "normal_param": "value",
-            "api_token": "abc123",
+            "api_token": "abc123",  # pragma: allowlist secret
             "long_value": "x" * 200,
         }
         error = MCPToolError("Tool failed", tool_name="test_tool", input_params=params)

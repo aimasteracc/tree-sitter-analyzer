@@ -8,12 +8,12 @@ index-servers =
 
 [pypi]
 username = __token__
-password = pypi-your-actual-token-here
+password = pypi-your-actual-token-here  # pragma: allowlist secret
 
 [testpypi]
 repository = https://test.pypi.org/legacy/
 username = __token__
-password = pypi-your-test-token-here
+password = pypi-your-test-token-here  # pragma: allowlist secret
 
 # Replace 'pypi-your-actual-token-here' with your real PyPI API token
 # Replace 'pypi-your-test-token-here' with your TestPyPI token

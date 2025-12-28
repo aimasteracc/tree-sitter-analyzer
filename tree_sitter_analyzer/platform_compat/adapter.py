@@ -52,12 +52,12 @@ class CompatibilityAdapter:
         self.rules: list[AdaptationRule] = []
         self._load_rules()
 
-    def _load_rules(self):
+    def _load_rules(self) -> None:
         """Loads adaptation rules based on the profile."""
         # In a real implementation, we might load these dynamically or from a registry.
         # For now, we'll hardcode the available rules and enable them based on the profile.
 
-        available_rules = {
+        available_rules: dict[str, AdaptationRule] = {
             "fix_function_name_keywords": FixFunctionNameKeywordsRule(),
             "fix_trigger_name_description": FixTriggerNameDescriptionRule(),
             "remove_phantom_triggers": RemovePhantomTriggersRule(),
@@ -288,7 +288,7 @@ class RecoverViewsFromErrorsRule:
 
     def generate_elements(self, context: dict) -> list[SQLElement]:
         source_code = context.get("source_code", "")
-        new_elements = []
+        new_elements: list[SQLElement] = []
 
         # Simple regex to find CREATE VIEW statements
         # This is a fallback mechanism

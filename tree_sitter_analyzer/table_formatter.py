@@ -454,7 +454,7 @@ class TableFormatter:
         """Generate title for Java files."""
         if len(classes) == 1:
             # Single class: use package.ClassName format
-            class_name = classes[0].get("name", "Unknown")
+            class_name = str(classes[0].get("name", "Unknown"))
             if package_name and package_name != "unknown":
                 return f"{package_name}.{class_name}"
             return class_name
@@ -472,7 +472,7 @@ class TableFormatter:
         """Generate title for JavaScript/TypeScript files."""
         if classes:
             # Use primary (first) class name
-            return classes[0].get("name", filename)
+            return str(classes[0].get("name", filename))
         return filename
 
     def _generate_default_title(
@@ -480,7 +480,7 @@ class TableFormatter:
     ) -> str:
         """Generate default title for unsupported languages."""
         if len(classes) == 1:
-            class_name = classes[0].get("name", "Unknown")
+            class_name = str(classes[0].get("name", "Unknown"))
             if package_name and package_name != "unknown":
                 return f"{package_name}.{class_name}"
             return class_name

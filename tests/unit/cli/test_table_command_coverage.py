@@ -21,7 +21,7 @@ def test_table_command_execute_async_empty(table_command):
     # TableCommand.execute_async is async, so we need to test it properly
     # Since this is a unit test, we just verify the command object is properly initialized
     assert table_command is not None
-    assert hasattr(table_command, 'execute_async')
+    assert hasattr(table_command, "execute_async")
 
 
 def test_table_command_basic_logic(table_command):

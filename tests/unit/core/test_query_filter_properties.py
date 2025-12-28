@@ -19,6 +19,8 @@ from tree_sitter_analyzer.core.query_filter import QueryFilter
 
 
 # Strategies for generating test data
+# Note: Base64-like strings below are synthetic property test artifacts
+# pragma: allowlist secret
 @st.composite
 def method_name_strategy(draw: st.DrawFn) -> str:
     """Generate valid method names."""

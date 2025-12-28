@@ -334,13 +334,13 @@ class CSSFormatter(BaseFormatter):
 
     def _calculate_complexity(self, rules: list, at_rules: list) -> str:
         """Calculate CSS complexity based on structure."""
-        score = 0
+        score: float = 0
         score += len(rules) * 1
         score += len(at_rules) * 3
 
         # Add property count
         total_props = sum(len(self._get_properties(r)) for r in rules)
-        score += total_props * 0.5
+        score += float(total_props) * 0.5
 
         if score < 50:
             return "Simple"
@@ -390,7 +390,7 @@ class CSSFormatter(BaseFormatter):
             element_type = getattr(element, "element_type", "")
             element_class = getattr(element, "element_class", "")
 
-        return element_type == "rule" or element_class != "at_rule"
+        return bool(element_type == "rule" or element_class != "at_rule")
 
     def _is_at_rule(self, element: Any) -> bool:
         """Check if element is an at-rule."""
@@ -399,46 +399,41 @@ class CSSFormatter(BaseFormatter):
         else:
             element_class = getattr(element, "element_class", "")
 
-        return element_class == "at_rule"
+        return bool(element_class == "at_rule")
 
-    def _get_name(self, element: Any) -> str:
-        """Get element name."""
-        if isinstance(element, dict):
-            return element.get("name", "")
-        return getattr(element, "name", "")
+    def _get_name(self, element: dict[str, Any]) -> str:
+        """Extract name safely"""
+        return str(element.get("name", ""))
 
-    def _get_element_type(self, element: Any) -> str:
-        """Get element type."""
-        if isinstance(element, dict):
-            return element.get("element_type", "")
-        return getattr(element, "element_type", "")
+    def _get_element_type(self, element: dict[str, Any]) -> str:
+        """Extract element type safely"""
+        return str(element.get("element_type", ""))
 
-    def _get_selector(self, element: Any) -> str:
-        """Get selector from element."""
-        if isinstance(element, dict):
-            return element.get("selector", "")
-        return getattr(element, "selector", "")
+    def _get_selector(self, element: dict[str, Any]) -> str:
+        """Extract selector safely"""
+        return str(element.get("selector", ""))
 
-    def _get_properties(self, element: Any) -> dict[str, Any]:
-        """Get properties from element."""
-        if isinstance(element, dict):
-            return element.get("properties", {})
-        return getattr(element, "properties", {})
+    def _get_properties(self, element: dict[str, Any]) -> dict[str, Any]:
+        """Extract properties safely"""
+        props = element.get("properties", {})
+        if isinstance(props, dict):
+            return props
+        return {}
 
-    def _get_element_class(self, element: Any) -> str:
-        """Get element class."""
-        if isinstance(element, dict):
-            return element.get("element_class", "")
-        return getattr(element, "element_class", "")
+    def _get_element_class(self, element: dict[str, Any]) -> str:
+        """Extract element class safely"""
+        return str(element.get("element_class", ""))
 
-    def _get_start_line(self, element: Any) -> int:
-        """Get start line."""
-        if isinstance(element, dict):
-            return element.get("start_line", 0)
-        return getattr(element, "start_line", 0)
+    def _get_start_line(self, element: dict[str, Any]) -> int:
+        """Extract start line safely"""
+        try:
+            return int(element.get("start_line", 0))
+        except (ValueError, TypeError):
+            return 0
 
-    def _get_end_line(self, element: Any) -> int:
-        """Get end line."""
-        if isinstance(element, dict):
-            return element.get("end_line", 0)
-        return getattr(element, "end_line", 0)
+    def _get_end_line(self, element: dict[str, Any]) -> int:
+        """Extract end line safely"""
+        try:
+            return int(element.get("end_line", 0))
+        except (ValueError, TypeError):
+            return 0

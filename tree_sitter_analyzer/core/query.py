@@ -430,11 +430,7 @@ class QueryExecutor:
             queries = self._query_loader.get_all_queries_for_language(language)
             if isinstance(queries, dict):
                 return list(queries.keys())
-            # Handle other iterable types
-            try:  # type: ignore[unreachable]
-                return list(queries) if queries else []
-            except (TypeError, ValueError):
-                return []
+            return list(queries) if queries else []  # type: ignore[unreachable]
         except Exception as e:
             logger.error(f"Error getting available queries for {language}: {e}")
             return []

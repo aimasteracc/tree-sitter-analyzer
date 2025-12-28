@@ -8,7 +8,12 @@ All language plugins must inherit from these base classes.
 
 import logging
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any
+from typing import (
+    TYPE_CHECKING,
+    Any,
+)
+
+from ..platform_compat.detector import PlatformInfo
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -37,6 +42,7 @@ class ElementExtractor(ABC):
     def __init__(self) -> None:
         """Initialize the element extractor."""
         self.current_file: str = ""  # Current file being processed
+        self.platform_info: PlatformInfo | None = None
 
     @abstractmethod
     def extract_functions(
@@ -632,7 +638,7 @@ class DefaultLanguagePlugin(LanguagePlugin):
 
         try:
             engine = UnifiedAnalysisEngine()
-            return await engine.analyze_file(file_path)
+            return await engine.analyze_file(file_path)  # type: ignore[no-any-return]
         except Exception as e:
             log_error(f"Failed to analyze file {file_path}: {e}")
             return AnalysisResult(
@@ -640,9 +646,6 @@ class DefaultLanguagePlugin(LanguagePlugin):
                 language=self.get_language_name(),
                 line_count=0,
                 elements=[],
-                node_count=0,
-                query_results={},
-                source_code="",
-                success=False,
                 error_message=str(e),
+                success=False,
             )

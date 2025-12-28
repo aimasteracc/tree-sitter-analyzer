@@ -59,16 +59,20 @@ repos:
         exclude: ^tests/|^openspec/changes/archive/|^scripts/|^build_standalone\.py$|^check_quality\.py$|^run_regression_tests\.py$|^test_fixes\.py$|^upload_interactive\.py$|^upload_to_pypi\.py$|^examples/
         args: [--format, json]
 
-  # Type checking - temporarily disabled for commit
-  # - repo: https://github.com/pre-commit/mirrors-mypy
-  #   rev: v1.18.2
-  #   hooks:
-  #     - id: mypy
-  #       args: [--ignore-missing-imports, --no-error-summary, --show-error-codes, --explicit-package-bases]
-  #       exclude: ^(examples/|scripts/|compatibility_test/|collect_project_metrics\.py|test_emergency_fix\.py|debug_async_test\.py|run_regression_tests\.py)
-  #       additional_dependencies: [
-  #         types-psutil>=5.9.0,
-  #       ]
+  # Type checking
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.13.0
+    hooks:
+      - id: mypy
+        args: [--ignore-missing-imports, --no-error-summary, --show-error-codes, --explicit-package-bases]
+        exclude: ^(examples/|scripts/|compatibility_test/|collect_project_metrics\.py|test_emergency_fix\.py|debug_async_test\.py|run_regression_tests\.py|generate_golden_masters\.py|check_stability\.py|analyze_specific_sql\.py|upload_interactive\.py|regenerate_with_normalization\.py|llm_code_checker\.py|run_coverage\.py|analyze_coverage_json\.py|verify_workflow_structure\.py|validate_workflows\.py|profile_analysis\.py|upload_to_pypi\.py|check_quality\.py|test_fixes\.py|\.kiro/|openspec/)
+        additional_dependencies: [
+          types-psutil>=5.9.0,
+          types-cachetools,
+          types-PyYAML,
+          types-toml,
+          types-requests,
+        ]
 
   # Documentation checks - temporarily disabled for commit
   # - repo: https://github.com/pycqa/pydocstyle

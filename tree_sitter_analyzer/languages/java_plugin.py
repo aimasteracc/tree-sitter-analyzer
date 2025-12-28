@@ -36,8 +36,8 @@ class JavaElementExtractor(ElementExtractor):
 
         # Performance optimization caches - use position-based keys for deterministic caching
         self._node_text_cache: dict[tuple[int, int], str] = {}
-        self._processed_nodes: set[tuple[int, int]] = set()
-        self._element_cache: dict[tuple[tuple[int, int], str], Any] = {}
+        self._processed_nodes: set[int] = set()
+        self._element_cache: dict[tuple[int, str], Any] = {}
         self._file_encoding: str | None = None
         self._annotation_cache: dict[int, list[dict[str, Any]]] = {}
         self._signature_cache: dict[int, str] = {}
@@ -320,7 +320,7 @@ class JavaElementExtractor(ElementExtractor):
         Uses batch processing for optimal performance
         """
         if not root_node:
-            return  # type: ignore[unreachable]
+            return
 
         # Target node types for extraction
         target_node_types = set(extractors.keys())
@@ -425,15 +425,16 @@ class JavaElementExtractor(ElementExtractor):
     ) -> None:
         """Process field nodes with caching using position-based keys"""
         for node in batch:
-            # Use position-based key for deterministic behavior
-            node_key = (node.start_byte, node.end_byte)
+            # Use stable node identifier
+            node_id = id(node)
+            node_key = node_id  # Maintain variable name for minimal changes
 
             # Skip if already processed
-            if node_key in self._processed_nodes:
+            if node_id in self._processed_nodes:
                 continue
 
             # Check element cache first
-            cache_key = (node_key, "field")
+            cache_key = (node_id, "field")
             if cache_key in self._element_cache:
                 elements = self._element_cache[cache_key]
                 if elements:
@@ -454,7 +455,7 @@ class JavaElementExtractor(ElementExtractor):
                         results.extend(elements)
                     else:
                         results.append(elements)
-                self._processed_nodes.add(node_key)
+                self._processed_nodes.add(node_id)
 
     def _get_node_text_optimized(self, node: "tree_sitter.Node") -> str:
         """Get node text with optimized caching using position-based keys"""
@@ -1141,7 +1142,7 @@ class JavaPlugin(LanguagePlugin):
                 )
 
             # Offload CPU-bound parsing and extraction to worker threads
-            def _analyze_sync():
+            def _analyze_sync() -> tuple[list[Any], int, Any]:
                 import tree_sitter
 
                 parser = tree_sitter.Parser()

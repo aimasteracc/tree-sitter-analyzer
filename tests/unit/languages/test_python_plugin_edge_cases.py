@@ -680,7 +680,7 @@ class TestPythonPluginEdgeCases:
             ("if True: pass", 1),  # Real keyword - but complexity calculation may vary
         ]
 
-        for code, expected_complexity in test_cases:
+        for code, _expected_complexity in test_cases:
             mock_node = Mock()
 
             with patch.object(extractor, "_get_node_text_optimized") as mock_get_text:

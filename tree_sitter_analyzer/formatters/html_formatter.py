@@ -138,11 +138,11 @@ class HtmlFormatter(BaseFormatter, IFormatter):
         file_path = analysis_result.get("file_path", "")
 
         if table_type == "compact":
-            formatter: IFormatter = HtmlCompactFormatter()
-            return formatter.format(elements, file_path=file_path)
+            compact_formatter = HtmlCompactFormatter()
+            return compact_formatter.format(elements, file_path=file_path)
         elif table_type == "json":
-            formatter = HtmlJsonFormatter()
-            return formatter.format(elements)
+            json_formatter = HtmlJsonFormatter()
+            return json_formatter.format(elements)
         else:
             # Default to full format (including "html" and "full")
             return self.format(elements)
@@ -638,7 +638,7 @@ class HtmlCsvFormatter(IFormatter):
                 language = element.language
             elif isinstance(element, dict):
                 name = element.get("name", "")
-                tag = element.get("tag_name", element.get("selector", ""))
+                tag = str(element.get("tag_name", element.get("selector", "")))
                 elem_class = element.get("element_class", "")
                 start_line = element.get("start_line", 0)
                 end_line = element.get("end_line", 0)

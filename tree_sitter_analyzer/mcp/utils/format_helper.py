@@ -176,16 +176,16 @@ def apply_toon_format_to_response(
         # These fields are already included in toon_content, so keeping them
         # would duplicate data and waste tokens
         redundant_fields = {
-            "results",           # Search/query results
-            "matches",           # Search matches
-            "content",           # File content
+            "results",  # Search/query results
+            "matches",  # Search matches
+            "content",  # File content
             "partial_content_result",  # Partial read results
-            "analysis_result",   # Code analysis results
-            "data",              # Generic data field
-            "items",             # List items
-            "files",             # File listings
-            "lines",             # Line content
-            "table_output",      # Formatted table output
+            "analysis_result",  # Code analysis results
+            "data",  # Generic data field
+            "items",  # List items
+            "files",  # File listings
+            "lines",  # Line content
+            "table_output",  # Formatted table output
         }
 
         toon_response: dict[str, Any] = {

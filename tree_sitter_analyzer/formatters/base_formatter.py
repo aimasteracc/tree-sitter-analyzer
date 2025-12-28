@@ -12,9 +12,10 @@ from typing import Any
 class BaseFormatter(ABC):
     """Base class for language-specific formatters"""
 
-    @abstractmethod
     def __init__(self) -> None:
-        pass
+        """Base class for language-specific formatters"""
+        # Base implementation - B027 workaround by adding an operation
+        self._init_timestamp = None
 
     def format(self, data: Any) -> str:
         """
@@ -65,11 +66,36 @@ class BaseFormatter(ABC):
         pass
 
 
-class BaseTableFormatter(ABC):
+class BaseTableFormatter(BaseFormatter):
     """Base class for language-specific table formatters"""
 
-    def __init__(self, format_type: str = "full"):
+    def __init__(self, format_type: str = "full") -> None:
         self.format_type = format_type
+
+    def format_summary(self, analysis_result: dict[str, Any]) -> str:
+        """Default summary implementation for table formatters"""
+        return self._format_compact_table(analysis_result)
+
+    def format_advanced(
+        self, analysis_result: dict[str, Any], output_format: str = "json"
+    ) -> str:
+        """Default advanced implementation for table formatters"""
+        if output_format == "json":
+            import json
+
+            return json.dumps(analysis_result, indent=2, ensure_ascii=False)
+        return self._format_full_table(analysis_result)
+
+    def format_table(
+        self, analysis_result: dict[str, Any], table_type: str = "full"
+    ) -> str:
+        """Format table output"""
+        original_format_type = self.format_type
+        self.format_type = table_type
+        try:
+            return self.format_structure(analysis_result)
+        finally:
+            self.format_type = original_format_type
 
     def _get_platform_newline(self) -> str:
         """Get platform-specific newline code"""

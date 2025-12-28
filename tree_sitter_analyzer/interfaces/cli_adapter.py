@@ -113,7 +113,7 @@ class CLIAdapter:
             elapsed_time = time.time() - start_time
             logger.debug(f"CLI analysis completed: {file_path} in {elapsed_time:.3f}s")
 
-            return result
+            return result  # type: ignore[no-any-return]
 
         except Exception as e:
             logger.error(f"CLI analysis failed for {file_path}: {e}")

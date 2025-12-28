@@ -35,8 +35,8 @@ class CppElementExtractor(ElementExtractor):
 
         # Performance optimization caches - use position-based keys for deterministic caching
         self._node_text_cache: dict[tuple[int, int], str] = {}
-        self._processed_nodes: set[tuple[int, int]] = set()
-        self._element_cache: dict[tuple[tuple[int, int], str], Any] = {}
+        self._processed_nodes: set[int] = set()
+        self._element_cache: dict[tuple[int, str], Any] = {}
         self._file_encoding: str | None = None
         self._comment_cache: dict[int, str] = {}
         self._complexity_cache: dict[int, int] = {}
@@ -251,17 +251,12 @@ class CppElementExtractor(ElementExtractor):
 
             # Process target nodes
             if node_type in target_node_types:
-                # Use stable node identifier instead of id() which may vary for wrapper objects
-                node_key = (
-                    current_node.start_byte,
-                    current_node.end_byte,
-                    current_node.type,
-                )
+                node_id = id(current_node)
 
-                if node_key in self._processed_nodes:
+                if node_id in self._processed_nodes:
                     continue
 
-                cache_key = (node_key, element_type)
+                cache_key = (node_id, element_type)
                 if cache_key in self._element_cache:
                     element = self._element_cache[cache_key]
                     if element:
@@ -269,20 +264,19 @@ class CppElementExtractor(ElementExtractor):
                             results.extend(element)
                         else:
                             results.append(element)
-                    self._processed_nodes.add(node_key)
+                    self._processed_nodes.add(node_id)
                     continue
 
                 # Extract and cache
-                extractor = extractors.get(node_type)
-                if extractor:
-                    element = extractor(current_node)
-                    self._element_cache[cache_key] = element
-                    if element:
-                        if isinstance(element, list):
-                            results.extend(element)
-                        else:
-                            results.append(element)
-                    self._processed_nodes.add(node_key)
+                extractor = extractors[node_type]
+                element = extractor(current_node)
+                self._element_cache[cache_key] = element
+                if element:
+                    if isinstance(element, list):
+                        results.extend(element)
+                    else:
+                        results.append(element)
+                self._processed_nodes.add(node_id)
 
             # Add children to stack (reversed for correct DFS traversal)
             if current_node.children:
@@ -537,8 +531,8 @@ class CppElementExtractor(ElementExtractor):
             for child in node.children:
                 if child.type == "function_definition":
                     # Mark child as processed to prevent double extraction
-                    child_key = (child.start_byte, child.end_byte, child.type)
-                    self._processed_nodes.add(child_key)
+                    child_id = id(child)
+                    self._processed_nodes.add(child_id)
 
                     func = self._extract_function_optimized(child)
                     if func:
@@ -726,8 +720,8 @@ class CppElementExtractor(ElementExtractor):
             for child in node.children:
                 if child.type == "class_specifier":
                     # Mark child as processed to prevent double extraction
-                    child_key = (child.start_byte, child.end_byte, child.type)
-                    self._processed_nodes.add(child_key)
+                    child_id = id(child)
+                    self._processed_nodes.add(child_id)
 
                     cls = self._extract_class_optimized(child)
                     if cls:
@@ -737,8 +731,8 @@ class CppElementExtractor(ElementExtractor):
                         return cls
                 elif child.type == "struct_specifier":
                     # Mark child as processed to prevent double extraction
-                    child_key = (child.start_byte, child.end_byte, child.type)
-                    self._processed_nodes.add(child_key)
+                    child_id = id(child)
+                    self._processed_nodes.add(child_id)
 
                     cls = self._extract_struct_optimized(child)
                     if cls:

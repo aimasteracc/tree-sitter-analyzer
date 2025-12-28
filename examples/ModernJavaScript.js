@@ -38,7 +38,7 @@ class ModernComponent extends React.Component {
 
     // Private fields
     #privateCounter = 0;
-    #secretKey = 'hidden-value';
+    #secretKey = 'hidden-value'; // pragma: allowlist secret
 
     /**
      * Constructor with parameter destructuring

@@ -44,8 +44,8 @@ class PythonElementExtractor(ElementExtractor):
 
         # Performance optimization caches - use position-based keys for deterministic caching
         self._node_text_cache: dict[tuple[int, int], str] = {}
-        self._processed_nodes: set[tuple[int, int]] = set()
-        self._element_cache: dict[tuple[tuple[int, int], str], Any] = {}
+        self._processed_nodes: set[int] = set()
+        self._element_cache: dict[tuple[int, str], Any] = {}
         self._file_encoding: str | None = None
         self._docstring_cache: dict[int, str] = {}
         self._complexity_cache: dict[int, int] = {}
@@ -923,7 +923,7 @@ class PythonElementExtractor(ElementExtractor):
         if self.current_file:
             file_path = os.path.abspath(self.current_file)
             current_dir = os.path.dirname(file_path)
-            package_parts = []
+            package_parts: list[str] = []
 
             # Walk up the directory tree looking for __init__.py
             check_dir = current_dir

@@ -32,7 +32,7 @@ COMMON_HEALTH_CHECKS = [HealthCheck.too_slow, HealthCheck.function_scoped_fixtur
 safe_name = st.text(
     alphabet=st.sampled_from(
         "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-"
-    ),
+    ),  # pragma: allowlist secret
     min_size=1,
     max_size=20,
 ).filter(lambda x: x and not x.startswith("-"))

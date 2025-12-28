@@ -317,7 +317,10 @@ class TestMCPExceptions:
         """Test MCPToolError sanitizes sensitive parameters."""
         exc = MCPToolError(
             "Tool failed",
-            input_params={"password": "secret123", "file": "test.py"},
+            input_params={
+                "password": "secret123",
+                "file": "test.py",
+            },  # pragma: allowlist secret
         )
         assert exc.context["input_params"]["password"] == "***REDACTED***"
         assert exc.context["input_params"]["file"] == "test.py"
@@ -484,7 +487,11 @@ class TestMCPErrorResponse:
         """Test create_mcp_error_response sanitizes sensitive information."""
         exc = MCPError(
             "Failed",
-            context={"password": "secret", "token": "abc123", "file": "test.py"},
+            context={
+                "password": "secret",
+                "token": "abc123",
+                "file": "test.py",
+            },  # pragma: allowlist secret
         )
         response = create_mcp_error_response(exc, sanitize_sensitive=True)
 
@@ -662,11 +669,11 @@ class TestSanitizeErrorContext:
     def test_sanitize_sensitive_keys(self) -> None:
         """Test that sensitive keys are redacted."""
         context = {
-            "password": "secret123",
-            "api_key": "abc123",
-            "access_token": "token456",
-            "private_key": "key789",
-            "session_id": "session123",
+            "password": "secret123",  # pragma: allowlist secret
+            "api_key": "abc123",  # pragma: allowlist secret
+            "access_token": "token456",  # pragma: allowlist secret
+            "private_key": "key789",  # pragma: allowlist secret
+            "session_id": "session123",  # pragma: allowlist secret
             "file_path": "normal_value",  # Not a sensitive key
         }
         result = _sanitize_error_context(context)

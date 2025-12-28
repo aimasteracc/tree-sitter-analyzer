@@ -11,7 +11,7 @@ import logging
 import threading
 from typing import TYPE_CHECKING, Any
 
-from ..models import AnalysisResult, CodeElement
+from ..models import AnalysisResult, Class, CodeElement, Function, Import, Variable
 from ..plugins.base import ElementExtractor, LanguagePlugin
 from ..utils import log_debug, log_error, log_info, log_warning
 
@@ -109,25 +109,25 @@ class YAMLElementExtractor(ElementExtractor):
 
     def extract_functions(
         self, tree: "tree_sitter.Tree", source_code: str
-    ) -> list[CodeElement]:
+    ) -> list[Function]:
         """YAML doesn't have functions, return empty list."""
         return []
 
     def extract_classes(
         self, tree: "tree_sitter.Tree", source_code: str
-    ) -> list[CodeElement]:
+    ) -> list[Class]:
         """YAML doesn't have classes, return empty list."""
         return []
 
     def extract_variables(
         self, tree: "tree_sitter.Tree", source_code: str
-    ) -> list[CodeElement]:
+    ) -> list[Variable]:
         """YAML doesn't have variables, return empty list."""
         return []
 
     def extract_imports(
         self, tree: "tree_sitter.Tree", source_code: str
-    ) -> list[CodeElement]:
+    ) -> list[Import]:
         """YAML doesn't have imports, return empty list."""
         return []
 
@@ -578,7 +578,7 @@ class YAMLPlugin(LanguagePlugin):
         """Return supported file extensions."""
         return [".yaml", ".yml"]
 
-    def create_extractor(self) -> ElementExtractor:
+    def create_extractor(self) -> "YAMLElementExtractor":
         """Create and return a YAML element extractor."""
         return YAMLElementExtractor()
 
@@ -665,8 +665,8 @@ class YAMLPlugin(LanguagePlugin):
                 tree = YAML_PARSER.parse(content.encode("utf-8"))
 
             # Extract elements using the extractor
-            extractor = self.create_extractor()
-            elements = extractor.extract_yaml_elements(tree, content)
+            yaml_extractor = self.create_extractor()
+            elements = yaml_extractor.extract_yaml_elements(tree, content)
 
             log_info(f"Extracted {len(elements)} YAML elements from {file_path}")
 

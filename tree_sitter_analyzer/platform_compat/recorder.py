@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 class BehaviorRecorder:
     """Records SQL parsing behavior on the current platform."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.language = tree_sitter.Language(tree_sitter_sql.language())
         self.parser = tree_sitter.Parser(self.language)
         self.platform_info = PlatformDetector.detect()

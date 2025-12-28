@@ -608,7 +608,7 @@ Choose output format parameters based on your needs to minimize token usage and 
                         "Cross-cached total_only result as count_only_matches for future optimization"
                     )
 
-            return total_matches
+            return int(total_matches)
 
         # Handle count-only mode
         if count_only_matches:

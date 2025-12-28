@@ -61,19 +61,21 @@ class CSharpTableFormatter(BaseTableFormatter):
                 lines_str = f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
 
                 # Count methods/fields within the class range
+                all_methods: list[dict[str, Any]] = data.get("methods", [])
                 class_methods = [
                     m
-                    for m in data.get("methods", [])
-                    if line_range.get("start", 0)
-                    <= m.get("line_range", {}).get("start", 0)
-                    <= line_range.get("end", 0)
+                    for m in all_methods
+                    if int(line_range.get("start", 0))
+                    <= int(m.get("line_range", {}).get("start", 0))
+                    <= int(line_range.get("end", 0))
                 ]
+                all_fields: list[dict[str, Any]] = data.get("fields", [])
                 class_fields = [
                     f
-                    for f in data.get("fields", [])
-                    if line_range.get("start", 0)
-                    <= f.get("line_range", {}).get("start", 0)
-                    <= line_range.get("end", 0)
+                    for f in all_fields
+                    if int(line_range.get("start", 0))
+                    <= int(f.get("line_range", {}).get("start", 0))
+                    <= int(line_range.get("end", 0))
                 ]
 
                 lines.append(
@@ -106,12 +108,15 @@ class CSharpTableFormatter(BaseTableFormatter):
                 for class_info in classes:
                     class_name = class_info.get("name", "Unknown")
                     line_range = class_info.get("line_range", {})
+                    all_methods_grouped: list[dict[str, Any]] = (
+                        methods  # methods is already list[dict]
+                    )
                     class_methods = [
                         m
-                        for m in methods
-                        if line_range.get("start", 0)
-                        <= m.get("line_range", {}).get("start", 0)
-                        <= line_range.get("end", 0)
+                        for m in all_methods_grouped
+                        if int(line_range.get("start", 0))
+                        <= int(m.get("line_range", {}).get("start", 0))
+                        <= int(line_range.get("end", 0))
                     ]
 
                     if class_methods:
@@ -131,12 +136,13 @@ class CSharpTableFormatter(BaseTableFormatter):
                 for class_info in classes:
                     class_name = class_info.get("name", "Unknown")
                     line_range = class_info.get("line_range", {})
+                    all_fields_grouped: list[dict[str, Any]] = fields
                     class_fields = [
                         f
-                        for f in fields
-                        if line_range.get("start", 0)
-                        <= f.get("line_range", {}).get("start", 0)
-                        <= line_range.get("end", 0)
+                        for f in all_fields_grouped
+                        if int(line_range.get("start", 0))
+                        <= int(f.get("line_range", {}).get("start", 0))
+                        <= int(line_range.get("end", 0))
                     ]
 
                     if class_fields:
@@ -269,7 +275,7 @@ class CSharpTableFormatter(BaseTableFormatter):
                 # Extract namespace from full qualified name
                 parts = full_name.rsplit(".", 1)
                 if len(parts) == 2:
-                    return parts[0]
+                    return str(parts[0])
 
         return "unknown"
 

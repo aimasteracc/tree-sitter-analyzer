@@ -62,7 +62,7 @@ class MCPAdapter:
             include_details=kwargs.get("include_details", True),
             format_type=kwargs.get("format_type", "standard"),
         )
-        return await self.engine.analyze(request)
+        return await self.engine.analyze(request)  # type: ignore[no-any-return]
 
     async def get_file_structure_async(
         self, file_path: str, **kwargs: Any

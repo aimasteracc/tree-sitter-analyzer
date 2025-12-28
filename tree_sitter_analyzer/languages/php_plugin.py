@@ -827,8 +827,9 @@ class PHPPlugin(LanguagePlugin):
             Total node count
         """
         count = 1
-        for child in node.children:
-            count += self._count_nodes(child)
+        if node.children:
+            for child in node.children:
+                count += self._count_nodes(child)
         return count
 
     async def _load_file_safe(self, file_path: str) -> str:

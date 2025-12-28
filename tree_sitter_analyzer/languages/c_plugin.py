@@ -34,8 +34,8 @@ class CElementExtractor(ElementExtractor):
 
         # Performance optimization caches - use position-based keys for deterministic caching
         self._node_text_cache: dict[tuple[int, int], str] = {}
-        self._processed_nodes: set[tuple[int, int]] = set()
-        self._element_cache: dict[tuple[tuple[int, int], str], Any] = {}
+        self._processed_nodes: set[int] = set()
+        self._element_cache: dict[tuple[int, str], Any] = {}
         self._file_encoding: str | None = None
         self._comment_cache: dict[int, str] = {}
         self._complexity_cache: dict[int, int] = {}
@@ -207,16 +207,15 @@ class CElementExtractor(ElementExtractor):
                     continue
 
                 # Extract and cache
-                extractor = extractors.get(node_type)
-                if extractor:
-                    element = extractor(current_node)
-                    self._element_cache[cache_key] = element
-                    if element:
-                        if isinstance(element, list):
-                            results.extend(element)
-                        else:
-                            results.append(element)
-                    self._processed_nodes.add(node_id)
+                extractor = extractors[node_type]
+                element = extractor(current_node)
+                self._element_cache[cache_key] = element
+                if element:
+                    if isinstance(element, list):
+                        results.extend(element)
+                    else:
+                        results.append(element)
+                self._processed_nodes.add(node_id)
 
             # Add children to stack (reversed for correct DFS traversal)
             if current_node.children:

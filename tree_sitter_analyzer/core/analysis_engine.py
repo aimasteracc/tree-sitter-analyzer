@@ -12,10 +12,9 @@ import os
 import threading
 from typing import Any, Protocol
 
+from ..models import AnalysisResult
 from .engine_manager import EngineManager
 from .performance import PerformanceContext, PerformanceMonitor
-
-# Import internal components early to avoid late NameErrors during async execution
 from .request import AnalysisRequest
 
 
@@ -60,13 +59,13 @@ class UnifiedAnalysisEngine:
             return
 
         # Lazy init attributes
-        self._cache_service = None
-        self._plugin_manager = None
-        self._performance_monitor = None
-        self._language_detector = None
-        self._security_validator = None
-        self._parser = None
-        self._query_executor = None
+        self._cache_service: Any = None
+        self._plugin_manager: Any = None
+        self._performance_monitor: Any = None
+        self._language_detector: Any = None
+        self._security_validator: Any = None
+        self._parser: Any = None
+        self._query_executor: Any = None
         self._project_root = project_root
 
         # Initial discovery only (no heavy loading)
@@ -75,7 +74,7 @@ class UnifiedAnalysisEngine:
 
     def _ensure_initialized(self) -> None:
         """Ensure all components are lazily initialized only when needed"""
-        if self._cache_service is not None:
+        if self._cache_service is not None and self._parser is not None:
             return
 
         # Perform heavy imports only once
@@ -268,7 +267,13 @@ class UnifiedAnalysisEngine:
             )
             return future.result()
 
-    async def _run_queries(self, request, result, plugin, language):
+    async def _run_queries(
+        self,
+        request: AnalysisRequest,
+        result: AnalysisResult,
+        plugin: "LanguagePlugin",
+        language: Any,
+    ) -> None:
         """Helper to run queries"""
         from ..utils import log_error
 
@@ -280,19 +285,22 @@ class UnifiedAnalysisEngine:
                 )()
                 if ts_language:
                     query_results = {}
-                    for query_name in request.queries:
-                        q_res = self._query_executor.execute_query_with_language_name(
-                            parse_result.tree,
-                            ts_language,
-                            query_name,
-                            parse_result.source_code,
-                            language,
-                        )
-                        query_results[query_name] = (
-                            q_res["captures"]
-                            if isinstance(q_res, dict) and "captures" in q_res
-                            else q_res
-                        )
+                    if request.queries:
+                        for query_name in request.queries:
+                            q_res = (
+                                self._query_executor.execute_query_with_language_name(
+                                    parse_result.tree,
+                                    ts_language,
+                                    query_name,
+                                    parse_result.source_code,
+                                    language,
+                                )
+                            )
+                            query_results[query_name] = (
+                                q_res["captures"]
+                                if isinstance(q_res, dict) and "captures" in q_res
+                                else q_res
+                            )
                     result.query_results = query_results
         except Exception as e:
             log_error(f"Failed to execute queries: {e}")
@@ -317,7 +325,7 @@ class UnifiedAnalysisEngine:
         """Detect language"""
         self._ensure_initialized()
         try:
-            return self._language_detector.detect_from_extension(file_path)
+            return self._language_detector.detect_from_extension(file_path)  # type: ignore[no-any-return]
         except Exception:
             return "unknown"
 
@@ -365,17 +373,17 @@ class UnifiedAnalysisEngine:
     def get_supported_languages(self) -> list[str]:
         """Get list of supported languages"""
         self._ensure_initialized()
-        return self._plugin_manager.get_supported_languages()
+        return self._plugin_manager.get_supported_languages()  # type: ignore[no-any-return]
 
     def get_available_queries(self, language: str) -> list[str]:
         """Get available queries for a language"""
         self._ensure_initialized()
-        return self._query_executor.get_available_queries(language)
+        return self._query_executor.get_available_queries(language)  # type: ignore[no-any-return]
 
     def get_cache_stats(self) -> dict[str, Any]:
         """Get cache statistics (compatibility method)"""
         self._ensure_initialized()
-        return self._cache_service.get_stats()
+        return self._cache_service.get_stats()  # type: ignore[no-any-return]
 
     @property
     def language_detector(self) -> Any:
@@ -416,7 +424,7 @@ class UnifiedAnalysisEngine:
     def measure_operation(self, operation_name: str) -> PerformanceContext:
         """Measure an operation using the performance monitor"""
         self._ensure_initialized()
-        return self._performance_monitor.measure_operation(operation_name)
+        return self._performance_monitor.measure_operation(operation_name)  # type: ignore[no-any-return]
 
     @classmethod
     def _reset_instance(cls) -> None:

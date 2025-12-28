@@ -69,7 +69,9 @@ class OutputManager:
                 def format(self, data: Any) -> str:
                     if isinstance(data, str):
                         return data
-                    return yaml.dump(data, default_flow_style=False, allow_unicode=True)
+                    return str(
+                        yaml.dump(data, default_flow_style=False, allow_unicode=True)
+                    )
 
             formatters["yaml"] = YamlFormatter()
         except ImportError:

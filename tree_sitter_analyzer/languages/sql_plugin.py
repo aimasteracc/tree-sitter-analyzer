@@ -22,6 +22,7 @@ try:
 except ImportError:
     TREE_SITTER_AVAILABLE = False
 
+
 from ..encoding_utils import extract_text_slice, safe_encode
 from ..models import (
     Class,
@@ -79,7 +80,7 @@ class SQLElementExtractor(ElementExtractor):
         # Cache node text to avoid repeated extraction
         self._node_text_cache: dict[tuple[int, int], str] = {}
         # Track processed nodes to avoid duplicate processing
-        self._processed_nodes: set[tuple[int, int]] = set()
+        self._processed_nodes: set[int] = set()
         # File encoding for safe text extraction
         self._file_encoding: str | None = None
 
@@ -204,13 +205,13 @@ class SQLElementExtractor(ElementExtractor):
             if elem_type and elem.raw_text:
                 # Fix Trigger name issues (e.g. macOS "description" bug)
                 if elem_type.value == "trigger":
-                    match = re.search(
+                    trigger_match = re.search(
                         r"CREATE\s+TRIGGER\s+([a-zA-Z_][a-zA-Z0-9_]*)",
                         elem.raw_text,
                         re.IGNORECASE,
                     )
-                    if match:
-                        correct_name = match.group(1)
+                    if trigger_match:
+                        correct_name = trigger_match.group(1)
                         if elem.name != correct_name and self._is_valid_identifier(
                             correct_name
                         ):
@@ -229,13 +230,13 @@ class SQLElementExtractor(ElementExtractor):
                         "FOREIGN",
                     ):
                         # Try to recover correct name
-                        match = re.search(
+                        func_match = re.search(
                             r"CREATE\s+FUNCTION\s+([a-zA-Z_][a-zA-Z0-9_]*)",
                             elem.raw_text,
                             re.IGNORECASE,
                         )
-                        if match:
-                            correct_name = match.group(1)
+                        if func_match:
+                            correct_name = func_match.group(1)
                             log_debug(
                                 f"Fixing garbage function name: {elem.name} -> {correct_name}"
                             )
@@ -245,13 +246,13 @@ class SQLElementExtractor(ElementExtractor):
                             continue
 
                     # General name verification
-                    match = re.search(
+                    gen_match = re.search(
                         r"CREATE\s+FUNCTION\s+([a-zA-Z_][a-zA-Z0-9_]*)",
                         elem.raw_text,
                         re.IGNORECASE,
                     )
-                    if match:
-                        correct_name = match.group(1)
+                    if gen_match:
+                        correct_name = gen_match.group(1)
                         if elem.name != correct_name and self._is_valid_identifier(
                             correct_name
                         ):
@@ -809,14 +810,14 @@ class SQLElementExtractor(ElementExtractor):
 
                 # FIRST: Try regex parsing (most reliable for CREATE VIEW)
                 if raw_text:
-                    # Pattern: CREATE VIEW [IF NOT EXISTS] view_name AS
-                    match = re.search(
+                    # Pattern: CREATE VIEW [IF NOT EXISTS] view_name
+                    view_match = re.search(
                         r"CREATE\s+VIEW\s+(?:IF\s+NOT\s+EXISTS\s+)?(\w+)\s+AS",
                         raw_text,
                         re.IGNORECASE,
                     )
-                    if match:
-                        potential_name = match.group(1).strip()
+                    if view_match:
+                        potential_name = view_match.group(1).strip()
                         if self._is_valid_identifier(potential_name):
                             view_name = potential_name
 
@@ -1210,8 +1211,10 @@ class SQLElementExtractor(ElementExtractor):
         for node in self._traverse_nodes(root_node):
             if node.type == "create_table":
                 table_name = None
-                columns = []
-                constraints = []
+                from ..models import SQLColumn, SQLConstraint
+
+                columns: list[SQLColumn] = []
+                constraints: list[SQLConstraint] = []
 
                 # Extract table name
                 for child in node.children:
@@ -1463,13 +1466,13 @@ class SQLElementExtractor(ElementExtractor):
                     # Pattern: CREATE VIEW [IF NOT EXISTS] view_name AS
                     import re
 
-                    match = re.search(
+                    view_match = re.search(
                         r"CREATE\s+VIEW\s+(?:IF\s+NOT\s+EXISTS\s+)?(\w+)\s+AS",
                         raw_text,
                         re.IGNORECASE,
                     )
-                    if match:
-                        potential_name = match.group(1).strip()
+                    if view_match:
+                        potential_name = view_match.group(1).strip()
                         if self._is_valid_identifier(potential_name):
                             view_name = potential_name
 
@@ -1543,7 +1546,7 @@ class SQLElementExtractor(ElementExtractor):
                     if child.type == "object_reference":
                         for subchild in child.children:
                             if subchild.type == "identifier":
-                                table_name = self._get_node_text(subchild).strip()
+                                table_name = self._get_node_text(child).strip()
                                 if table_name and table_name not in source_tables:
                                     source_tables.append(table_name)
 
@@ -1585,11 +1588,13 @@ class SQLElementExtractor(ElementExtractor):
                     proc_lines = lines[i:end_line]
                     raw_text = "\n".join(proc_lines)
 
-                    parameters = []
-                    dependencies = []
+                    from ..models import SQLParameter
+
+                    proc_parameters: list[SQLParameter] = []
+                    proc_dependencies: list[str] = []
 
                     # Extract parameters and dependencies from the text
-                    self._extract_procedure_parameters(raw_text, parameters)
+                    self._extract_procedure_parameters(raw_text, proc_parameters)
 
                     try:
                         procedure = SQLProcedure(
@@ -1598,8 +1603,8 @@ class SQLElementExtractor(ElementExtractor):
                             end_line=end_line,
                             raw_text=raw_text,
                             language="sql",
-                            parameters=parameters,
-                            dependencies=dependencies,
+                            parameters=proc_parameters,
+                            dependencies=proc_dependencies,
                         )
                         sql_elements.append(procedure)
                         log_debug(
@@ -1655,17 +1660,19 @@ class SQLElementExtractor(ElementExtractor):
                             current_proc_text = node_text[match.start() :]
 
                             # Reset parameters and dependencies for each procedure
-                            parameters = []
-                            dependencies = []
+                            iteration_parameters: list[SQLParameter] = []
+                            iteration_dependencies: list[str] = []
 
                             self._extract_procedure_parameters(
-                                current_proc_text, parameters
+                                current_proc_text, iteration_parameters
                             )
 
                             # Extract dependencies (table references)
                             # This still uses the whole node for dependencies, which is hard to fix without
                             # proper parsing, but acceptable for fallback.
-                            self._extract_procedure_dependencies(node, dependencies)
+                            self._extract_procedure_dependencies(
+                                node, iteration_dependencies
+                            )
 
                             try:
                                 # Calculate start line
@@ -1682,8 +1689,8 @@ class SQLElementExtractor(ElementExtractor):
                                     end_line=end_line,
                                     raw_text=raw_text,
                                     language="sql",
-                                    parameters=parameters,
-                                    dependencies=dependencies,
+                                    parameters=iteration_parameters,
+                                    dependencies=iteration_dependencies,
                                 )
                                 sql_elements.append(procedure)
                             except Exception as e:
@@ -1849,8 +1856,10 @@ class SQLElementExtractor(ElementExtractor):
                 func_lines = lines[i:end_line]
                 raw_text = "\n".join(func_lines)
 
-                parameters = []
-                dependencies = []
+                from ..models import SQLParameter
+
+                parameters: list[SQLParameter] = []
+                dependencies: list[str] = []
                 return_type = None
 
                 # Extract parameters, return type and dependencies from the text
@@ -1889,9 +1898,7 @@ class SQLElementExtractor(ElementExtractor):
         for node in self._traverse_nodes(root_node):
             if node.type == "create_function":
                 func_name = None
-                parameters = []
                 return_type = None
-                dependencies = []
 
                 # Extract function name - only from the FIRST object_reference child
                 # This should be the function name, not references within the function body
@@ -2272,7 +2279,10 @@ class SQLPlugin(LanguagePlugin):
         self.platform_info = None
         try:
             self.platform_info = PlatformDetector.detect()
-            self.extractor.platform_info = self.platform_info
+            from ..plugins.base import ElementExtractor
+
+            if isinstance(self.extractor, ElementExtractor):
+                self.extractor.platform_info = self.platform_info
 
             platform_info = self.platform_info
             profile = BehaviorProfile.load(platform_info.platform_key)
@@ -2354,7 +2364,12 @@ class SQLPlugin(LanguagePlugin):
         """
         elements = self.extractor.extract_sql_elements(tree, source_code)
 
-        result = {"functions": [], "classes": [], "variables": [], "imports": []}
+        result: dict[str, Any] = {
+            "functions": [],
+            "classes": [],
+            "variables": [],
+            "imports": [],
+        }
 
         for element in elements:
             if element.element_type in ["function", "procedure", "trigger"]:
@@ -2411,9 +2426,11 @@ class SQLPlugin(LanguagePlugin):
                 )
 
             # Extract elements
-            elements = self.extractor.extract_sql_elements(
-                parse_result.tree, source_code
-            )
+            elements = []
+            if parse_result.tree:
+                elements = self.extractor.extract_sql_elements(
+                    parse_result.tree, source_code
+                )
 
             # Create result
             return AnalysisResult(
@@ -2434,7 +2451,7 @@ class SQLPlugin(LanguagePlugin):
             log_error(f"Failed to analyze SQL file {file_path}: {e}")
             return AnalysisResult(
                 file_path=file_path,
-                language="sql",
+                language=self.get_language_name(),
                 line_count=0,
                 elements=[],
                 node_count=0,

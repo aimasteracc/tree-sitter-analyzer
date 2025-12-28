@@ -38,10 +38,9 @@ except ImportError:
     class Resource:  # type: ignore
         pass
 
-    class TextContent:  # type: ignore
-        pass
+    pass
 
-    def stdio_server() -> None:  # type: ignore[misc]
+    def stdio_server() -> None:
         pass
 
 
@@ -343,7 +342,7 @@ class TreeSitterAnalyzerMCPServer:
                     detailed_elements.append({"element": str(elem)})
             result["detailed_elements"] = detailed_elements
 
-        return result
+        return result  # type: ignore[no-any-return]
 
     def _calculate_file_metrics(self, file_path: str, language: str) -> dict[str, Any]:
         """Legacy wrapper for file metrics calculation."""
@@ -469,11 +468,12 @@ class TreeSitterAnalyzerMCPServer:
                             resolved_candidate, cached, project_root=base_root
                         )
 
-                    is_valid, error_msg = cached
-                    if not is_valid:
-                        raise ValueError(
-                            f"Invalid or unsafe file path: {error_msg or file_path}"
-                        )
+                    if cached is not None:
+                        is_valid, error_msg = cached
+                        if not is_valid:
+                            raise ValueError(
+                                f"Invalid or unsafe file path: {error_msg or file_path}"
+                            )
 
                 # Handle tool calls with simplified parameter handling
                 if name == "check_code_scale":

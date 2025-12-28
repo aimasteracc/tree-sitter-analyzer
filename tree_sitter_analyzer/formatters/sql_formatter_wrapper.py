@@ -112,6 +112,7 @@ class SQLFormatterWrapper(BaseFormatter):
             language = getattr(element, "language", "sql")
 
             # Create appropriate SQL element based on type with enhanced information extraction
+            sql_element: SQLElement
             if element_type == ELEMENT_TYPE_SQL_TABLE:
                 # Extract table information from raw_text
                 columns_info = self._extract_table_columns(raw_text, name)
@@ -572,8 +573,8 @@ class SQLFormatterWrapper(BaseFormatter):
         table_pattern = r"FROM\s+(\w+)|UPDATE\s+(\w+)|INSERT\s+INTO\s+(\w+)"
         table_matches = re.findall(table_pattern, raw_text, re.IGNORECASE)
 
-        for match in table_matches:
-            for table in match:
+        for tbl_match in table_matches:
+            for table in tbl_match:
                 if table and table not in dependencies:
                     dependencies.append(table)
 
@@ -653,8 +654,8 @@ class SQLFormatterWrapper(BaseFormatter):
         table_pattern = r"FROM\s+(\w+)|UPDATE\s+(\w+)|INSERT\s+INTO\s+(\w+)"
         table_matches = re.findall(table_pattern, raw_text, re.IGNORECASE)
 
-        for match in table_matches:
-            for table in match:
+        for tbl_match in table_matches:
+            for table in tbl_match:
                 if table and table not in dependencies:
                     dependencies.append(table)
 

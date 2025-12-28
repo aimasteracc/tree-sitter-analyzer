@@ -12,7 +12,7 @@ database:
   port: 5432
   credentials: &db_creds
     username: admin
-    password: secret
+    password: secret  # pragma: allowlist secret
 
 cache:
   enabled: true

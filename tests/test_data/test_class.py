@@ -9,7 +9,7 @@ class Animal:
     def __init__(self, name: str):
         self.name = name
         self._age = 0  # Protected convention
-        self.__secret = "hidden"  # Private convention
+        self.__secret = "hidden"  # Private convention (pragma: allowlist secret)
 
     def speak(self) -> str:
         return f"{self.name} makes a sound"

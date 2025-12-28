@@ -13,7 +13,7 @@ from tree_sitter_analyzer.utils import setup_logger
 logger = setup_logger(__name__)
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(
         description="Record SQL behavior profile for current platform"
     )

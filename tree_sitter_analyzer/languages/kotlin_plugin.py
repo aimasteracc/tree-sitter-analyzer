@@ -231,9 +231,7 @@ class KotlinElementExtractor(ElementExtractor):
                                 param_type = self._get_node_text(grandchild)
 
                         if param_name:
-                            parameters.append(
-                                {"name": param_name, "type": param_type or "Any"}
-                            )
+                            parameters.append(f"{param_name}: {param_type or 'Any'}")
 
             # Return type
             return_type = "Unit"

@@ -263,7 +263,7 @@ class PHPTableFormatter(BaseTableFormatter):
                 metadata = class_info.get("metadata", {})
                 namespace = metadata.get("namespace", "")
                 if namespace:
-                    return namespace
+                    return str(namespace)
 
         # Try to get from methods
         methods = data.get("methods", [])
@@ -272,7 +272,7 @@ class PHPTableFormatter(BaseTableFormatter):
                 metadata = method.get("metadata", {})
                 namespace = metadata.get("namespace", "")
                 if namespace:
-                    return namespace
+                    return str(namespace)
 
         return "unknown"
 

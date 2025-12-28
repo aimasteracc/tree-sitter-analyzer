@@ -365,7 +365,7 @@ def handle_special_commands(args: argparse.Namespace) -> int | None:
 
             requests_list = _load_requests_payload()
             project_root = getattr(args, "project_root", None) or os.getcwd()
-            tool = ReadPartialTool(project_root=project_root)
+            read_tool = ReadPartialTool(project_root=project_root)
             tool_args: dict[str, Any] = {
                 "requests": requests_list,
                 "output_format": _tool_output_format(),
@@ -373,7 +373,7 @@ def handle_special_commands(args: argparse.Namespace) -> int | None:
                 "allow_truncate": bool(getattr(args, "allow_truncate", False)),
                 "fail_fast": bool(getattr(args, "fail_fast", False)),
             }
-            result = asyncio.run(tool.execute(tool_args))
+            result = asyncio.run(read_tool.execute(tool_args))
 
             fmt = _effective_output_format()
             if fmt == "toon":
@@ -400,13 +400,13 @@ def handle_special_commands(args: argparse.Namespace) -> int | None:
             )
 
             project_root = getattr(args, "project_root", None) or os.getcwd()
-            tool = AnalyzeScaleTool(project_root=project_root)
+            scale_tool = AnalyzeScaleTool(project_root=project_root)
             tool_args = {
                 "file_paths": file_paths,
                 "metrics_only": True,
                 "output_format": _tool_output_format(),
             }
-            result = asyncio.run(tool.execute(tool_args))
+            result = asyncio.run(scale_tool.execute(tool_args))
 
             fmt = _effective_output_format()
             if fmt == "toon":
@@ -539,18 +539,22 @@ def handle_special_commands(args: argparse.Namespace) -> int | None:
             return 1
 
         try:
-            from tree_sitter_analyzer.platform_compat.profiles import ParsingBehavior
+            from tree_sitter_analyzer.platform_compat.profiles import (
+                BehaviorProfile,
+                ParsingBehavior,
+            )
 
-            def load_profile(path):
+            def load_profile(path: Path) -> BehaviorProfile:
                 with open(path, encoding="utf-8") as f:
                     data = json.load(f)
                     # Manual deserialization of nested objects
-                    behaviors = {}
+                    behaviors: dict[str, ParsingBehavior] = {}
                     for key, b_data in data.get("behaviors", {}).items():
                         if isinstance(b_data, dict):
                             behaviors[key] = ParsingBehavior(**b_data)
-                        else:
-                            behaviors[key] = b_data
+                        # If b_data is not a dict, it's not a valid ParsingBehavior
+                        # and should be skipped or an error raised.
+                        # For now, we'll skip to avoid type errors.
 
                     return BehaviorProfile(
                         schema_version=data.get("schema_version", "1.0.0"),

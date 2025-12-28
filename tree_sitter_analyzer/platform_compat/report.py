@@ -48,7 +48,7 @@ def generate_compatibility_matrix(profiles_dir: Path) -> str:
     profiles.sort(key=lambda p: p.platform_key)
 
     # Collect all constructs
-    all_constructs = set()
+    all_constructs: set[str] = set()
     for p in profiles:
         all_constructs.update(p.behaviors.keys())
     sorted_constructs = sorted(all_constructs)

@@ -403,7 +403,7 @@ def detect_language(file_path: str | Path) -> str:
         if not result or result.strip() == "":
             return "unknown"
 
-        return result
+        return str(result)
     except Exception as e:
         log_error(f"Failed to detect language for {file_path}: {e}")
         return "unknown"
@@ -567,8 +567,10 @@ def _group_captures_by_main_node(
         captures, key=lambda c: (c.get("start_byte", 0), -c.get("end_byte", 0))
     )
 
-    results = []
-    main_node_stack = []  # Stack of (main_node, grouped_captures_dict)
+    results: list[dict[str, Any]] = []
+    main_node_stack: list[
+        tuple[dict[str, Any], dict[str, Any]]
+    ] = []  # Stack of (main_node, grouped_captures_dict)
 
     for capture in sorted_captures:
         capture_name = capture.get("capture_name", "")
@@ -601,9 +603,13 @@ def _group_captures_by_main_node(
                 parent_grouped = main_node_stack[-1][1]
                 if capture_name in parent_grouped:
                     # Collect multiple sub-captures of same name as a list
-                    if not isinstance(parent_grouped[capture_name], list):
-                        parent_grouped[capture_name] = [parent_grouped[capture_name]]
-                    parent_grouped[capture_name].append(capture)
+                    existing = parent_grouped[capture_name]
+                    if isinstance(existing, list):
+                        existing_list = list(existing)
+                        existing_list.append(capture)
+                        parent_grouped[capture_name] = existing_list
+                    else:
+                        parent_grouped[capture_name] = [existing, capture]
                 else:
                     parent_grouped[capture_name] = capture
 

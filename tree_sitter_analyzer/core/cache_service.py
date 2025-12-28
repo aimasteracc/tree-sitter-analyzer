@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any
 
-from cachetools import LRUCache, TTLCache  # type: ignore[import-untyped]
+from cachetools import LRUCache, TTLCache
 
 from ..utils import log_debug, log_info
 

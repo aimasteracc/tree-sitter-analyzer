@@ -315,13 +315,13 @@ class GoTableFormatter(BaseTableFormatter):
         """Extract package name from data"""
         # Try packages list first
         packages = data.get("packages", [])
-        if packages and len(packages) > 0:
-            return packages[0].get("name", "")
+        if packages:
+            return str(packages[0].get("name", ""))
 
-        # Try package dict
-        package = data.get("package", {})
-        if isinstance(package, dict):
-            return package.get("name", "")
+        # Fallback to general package
+        package = data.get("package")
+        if package and isinstance(package, dict):
+            return str(package.get("name", ""))
 
         return ""
 

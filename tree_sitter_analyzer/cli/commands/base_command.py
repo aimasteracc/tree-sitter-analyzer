@@ -138,7 +138,7 @@ class BaseCommand(ABC):
                 output_error(f"Analysis failed: {error_msg}")
                 return None
 
-            return analysis_result
+            return analysis_result  # type: ignore[no-any-return]
 
         except Exception as e:
             output_error(f"An error occurred during analysis: {e}")

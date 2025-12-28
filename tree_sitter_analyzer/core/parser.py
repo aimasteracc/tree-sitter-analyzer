@@ -52,7 +52,7 @@ class Parser:
     """
 
     # Class-level cache to share across all Parser instances
-    _cache = LRUCache(maxsize=100)
+    _cache: LRUCache = LRUCache(maxsize=100)
 
     def __init__(self) -> None:
         """Initialize the Parser with language loader."""
@@ -99,7 +99,7 @@ class Parser:
                 cached = Parser._cache.get(cache_key)
                 if cached:
                     logger.debug(f"Parser cache hit for {file_path_str}")
-                    return cached
+                    return cached  # type: ignore[no-any-return]
             except (OSError, TypeError) as e:
                 logger.debug(f"Could not check parser cache for {file_path_str}: {e}")
 
