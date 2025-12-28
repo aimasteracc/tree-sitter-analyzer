@@ -1093,8 +1093,8 @@ class UserConfig {
         field_node.end_byte = 30
 
         # Set up cache with position-based key
-        node_key = (field_node.start_byte, field_node.end_byte)
-        cache_key = (node_key, "field")
+        # Implementation uses id(node) for stability in batch processing
+        cache_key = (id(field_node), "field")
         cached_fields = [
             Variable(
                 name="cached_field",

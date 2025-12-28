@@ -61,6 +61,7 @@ sequence,sequence,sequence,2,80,83
 *defaults,alias,,2,31,31
 Application configuration,comment,comment,0,2,2
 This is a comprehensive YAML example for testing,comment,comment,0,3,3
+pragma: allowlist secret,comment,comment,0,15,15
 Merge key example (<<: *anchor),comment,comment,0,21,21
 Block scalar examples,comment,comment,0,52,52
 Flow style examples,comment,comment,0,63,63

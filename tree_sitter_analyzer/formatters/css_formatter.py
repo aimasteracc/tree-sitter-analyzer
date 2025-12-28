@@ -401,39 +401,55 @@ class CSSFormatter(BaseFormatter):
 
         return bool(element_class == "at_rule")
 
-    def _get_name(self, element: dict[str, Any]) -> str:
+    def _get_name(self, element: Any) -> str:
         """Extract name safely"""
-        return str(element.get("name", ""))
+        if isinstance(element, dict):
+            return str(element.get("name", ""))
+        return str(getattr(element, "name", ""))
 
-    def _get_element_type(self, element: dict[str, Any]) -> str:
+    def _get_element_type(self, element: Any) -> str:
         """Extract element type safely"""
-        return str(element.get("element_type", ""))
+        if isinstance(element, dict):
+            return str(element.get("element_type", ""))
+        return str(getattr(element, "element_type", ""))
 
-    def _get_selector(self, element: dict[str, Any]) -> str:
+    def _get_selector(self, element: Any) -> str:
         """Extract selector safely"""
-        return str(element.get("selector", ""))
+        if isinstance(element, dict):
+            return str(element.get("selector", ""))
+        return str(getattr(element, "selector", ""))
 
-    def _get_properties(self, element: dict[str, Any]) -> dict[str, Any]:
+    def _get_properties(self, element: Any) -> dict[str, Any]:
         """Extract properties safely"""
-        props = element.get("properties", {})
+        if isinstance(element, dict):
+            props = element.get("properties", {})
+        else:
+            props = getattr(element, "properties", {})
+
         if isinstance(props, dict):
             return props
         return {}
 
-    def _get_element_class(self, element: dict[str, Any]) -> str:
+    def _get_element_class(self, element: Any) -> str:
         """Extract element class safely"""
-        return str(element.get("element_class", ""))
+        if isinstance(element, dict):
+            return str(element.get("element_class", ""))
+        return str(getattr(element, "element_class", ""))
 
-    def _get_start_line(self, element: dict[str, Any]) -> int:
+    def _get_start_line(self, element: Any) -> int:
         """Extract start line safely"""
         try:
-            return int(element.get("start_line", 0))
+            if isinstance(element, dict):
+                return int(element.get("start_line", 0))
+            return int(getattr(element, "start_line", 0))
         except (ValueError, TypeError):
             return 0
 
-    def _get_end_line(self, element: dict[str, Any]) -> int:
+    def _get_end_line(self, element: Any) -> int:
         """Extract end line safely"""
         try:
-            return int(element.get("end_line", 0))
+            if isinstance(element, dict):
+                return int(element.get("end_line", 0))
+            return int(getattr(element, "end_line", 0))
         except (ValueError, TypeError):
             return 0

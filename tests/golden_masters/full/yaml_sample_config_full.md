@@ -7,7 +7,7 @@
 | File | examples/sample_config.yaml |
 | Language | yaml |
 | Total Lines | 82 |
-| Total Elements | 67 |
+| Total Elements | 68 |
 
 ## Documents
 
@@ -100,6 +100,7 @@
 |---------|------|
 | Application configuration | 2 |
 | This is a comprehensive YAML example for testing | 3 |
+| pragma: allowlist secret | 15 |
 | Merge key example (<<: *anchor) | 21 |
 | Block scalar examples | 52 |
 | Flow style examples | 63 |

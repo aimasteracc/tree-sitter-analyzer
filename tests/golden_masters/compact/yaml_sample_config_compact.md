@@ -9,8 +9,8 @@
 | Sequences | 4 |
 | Anchors | 2 |
 | Aliases | 3 |
-| Comments | 7 |
-| **Total** | **67** |
+| Comments | 8 |
+| **Total** | **68** |
 
 ## Top-Level Keys
 
