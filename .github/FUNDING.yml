@@ -1,7 +1,4 @@
 # These are supported funding model platforms
 
 github: [aimasteracc]
-patreon: # Replace with a single Patreon username
-open_collective: # Replace with a single Open Collective username
-tidelift: pypi/tree-sitter-analyzer # Python platform name for Tidelift
-custom: # Replace with up to 4 custom sponsorship URLs e.g., ['link1', 'link2']
+tidelift: pypi/tree-sitter-analyzer

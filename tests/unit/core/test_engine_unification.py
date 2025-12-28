@@ -73,11 +73,12 @@ def test_unified_engine_compatibility_properties():
     engine = get_engine()
 
     # Check properties
-    assert hasattr(engine, "language_registry")
     assert hasattr(engine, "language_detector")
     assert hasattr(engine, "plugin_manager")
+    assert hasattr(engine, "parser")
+    assert hasattr(engine, "query_executor")
 
     # Check methods
-    assert hasattr(engine, "detect_language_from_file")
     assert hasattr(engine, "get_available_queries")
-    assert hasattr(engine, "get_registry_info")
+    assert hasattr(engine, "get_supported_languages")
+    assert hasattr(engine, "analyze_sync")

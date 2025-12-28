@@ -252,7 +252,21 @@ class UnifiedAnalysisEngine:
         request: AnalysisRequest | None = None,
     ) -> Any:
         """Sync version of analyze_code"""
-        return asyncio.run(self.analyze_code(code, language, filename, request))
+        try:
+            # Check if we're already in an event loop
+            asyncio.get_running_loop()
+        except RuntimeError:
+            # No running loop, safe to use asyncio.run()
+            return asyncio.run(self.analyze_code(code, language, filename, request))
+
+        # Already in an event loop - create a new thread to run the async code
+        import concurrent.futures
+
+        with concurrent.futures.ThreadPoolExecutor() as pool:
+            future = pool.submit(
+                asyncio.run, self.analyze_code(code, language, filename, request)
+            )
+            return future.result()
 
     async def _run_queries(self, request, result, plugin, language):
         """Helper to run queries"""
@@ -334,7 +348,19 @@ class UnifiedAnalysisEngine:
 
     def analyze_sync(self, request: AnalysisRequest) -> Any:
         """Sync version of analyze"""
-        return asyncio.run(self.analyze(request))
+        try:
+            # Check if we're already in an event loop
+            asyncio.get_running_loop()
+        except RuntimeError:
+            # No running loop, safe to use asyncio.run()
+            return asyncio.run(self.analyze(request))
+
+        # Already in an event loop - create a new thread to run the async code
+        import concurrent.futures
+
+        with concurrent.futures.ThreadPoolExecutor() as pool:
+            future = pool.submit(asyncio.run, self.analyze(request))
+            return future.result()
 
     def get_supported_languages(self) -> list[str]:
         """Get list of supported languages"""

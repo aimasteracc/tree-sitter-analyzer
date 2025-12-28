@@ -25,27 +25,26 @@ class TestTypeScriptIntegration:
     def test_typescript_plugin_discovery(self):
         """Test that TypeScript plugin can be discovered by the plugin manager"""
         manager = PluginManager()
+        typescript_plugin = TypeScriptPlugin()
 
-        # Mock the local directory loading to include TypeScript plugin
-        with patch.object(manager, "_load_from_local_directory") as mock_load:
-            typescript_plugin = TypeScriptPlugin()
-            mock_load.return_value = [typescript_plugin]
+        # Register the plugin directly (simulates discovery)
+        manager.register_plugin(typescript_plugin)
 
-            plugins = manager.load_plugins()
+        plugins = manager.load_plugins()
 
-            # Find TypeScript plugin
-            ts_plugin = None
-            for plugin in plugins:
-                if plugin.get_language_name() == "typescript":
-                    ts_plugin = plugin
-                    break
+        # Find TypeScript plugin
+        ts_plugin = None
+        for plugin in plugins:
+            if plugin.get_language_name() == "typescript":
+                ts_plugin = plugin
+                break
 
-            assert ts_plugin is not None
-            assert isinstance(ts_plugin, TypeScriptPlugin)
-            assert ts_plugin.get_language_name() == "typescript"
-            assert ".ts" in ts_plugin.get_file_extensions()
-            assert ".tsx" in ts_plugin.get_file_extensions()
-            assert ".d.ts" in ts_plugin.get_file_extensions()
+        assert ts_plugin is not None
+        assert isinstance(ts_plugin, TypeScriptPlugin)
+        assert ts_plugin.get_language_name() == "typescript"
+        assert ".ts" in ts_plugin.get_file_extensions()
+        assert ".tsx" in ts_plugin.get_file_extensions()
+        assert ".d.ts" in ts_plugin.get_file_extensions()
 
     def test_typescript_language_detection(self):
         """Test TypeScript file detection across different extensions"""
@@ -407,18 +406,17 @@ class UserService {
 
         # 2. Plugin discovery
         manager = PluginManager()
-        with patch.object(manager, "_load_from_local_directory") as mock_load:
-            typescript_plugin = TypeScriptPlugin()
-            mock_load.return_value = [typescript_plugin]
-            plugins = manager.load_plugins()
+        typescript_plugin = TypeScriptPlugin()
+        manager.register_plugin(typescript_plugin)
+        plugins = manager.load_plugins()
 
-            ts_plugin = None
-            for plugin in plugins:
-                if plugin.get_language_name() == "typescript":
-                    ts_plugin = plugin
-                    break
+        ts_plugin = None
+        for plugin in plugins:
+            if plugin.get_language_name() == "typescript":
+                ts_plugin = plugin
+                break
 
-            assert ts_plugin is not None
+        assert ts_plugin is not None
 
         # 3. File applicability
         assert ts_plugin.is_applicable(file_path) is True

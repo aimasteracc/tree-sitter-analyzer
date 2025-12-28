@@ -28,7 +28,8 @@ class TestAnalysisEngine:
         assert engine.language_detector is not None
         assert engine.plugin_manager is not None
 
-    def test_analyze_java_file(self, engine):
+    @pytest.mark.asyncio
+    async def test_analyze_java_file(self, engine):
         """Test analyzing a simple Java file."""
         java_code = """
         package com.example;
@@ -43,7 +44,7 @@ class TestAnalysisEngine:
             temp_file = f.name
 
         try:
-            result = engine.analyze_file(temp_file)
+            result = await engine.analyze_file(temp_file)
             assert isinstance(result, AnalysisResult)
             assert result.success
             assert result.language == "java"
@@ -52,7 +53,8 @@ class TestAnalysisEngine:
         finally:
             os.unlink(temp_file)
 
-    def test_analyze_python_code(self, engine):
+    @pytest.mark.asyncio
+    async def test_analyze_python_code(self, engine):
         """Test analyzing a Python code string."""
         python_code = """
 import os
@@ -67,11 +69,11 @@ class Greeter:
     def greet(self, name):
         return f"{self.greeting}, {name}"
 """
-        result = engine.analyze_code(python_code, language="python")
+        result = await engine.analyze_code(python_code, language="python")
         assert isinstance(result, AnalysisResult)
         assert result.success
         assert result.language == "python"
-        assert result.file_path == ""  # 新しいアーキテクチャでは空文字列
+        assert result.file_path == "string"  # Default filename for code analysis
         assert len(result.elements) > 0
 
         element_types = [elem.element_type for elem in result.elements]
@@ -79,35 +81,40 @@ class Greeter:
         assert "function" in element_types
         assert "class" in element_types
 
-    def test_analyze_nonexistent_file(self, engine):
+    @pytest.mark.asyncio
+    async def test_analyze_nonexistent_file(self, engine):
         """Test analysis of a file that does not exist."""
         with pytest.raises(FileNotFoundError):
-            engine.analyze_file("nonexistent_file.java")
+            await engine.analyze_file("nonexistent_file.java")
 
-    def test_analyze_unsupported_language(self, engine):
+    @pytest.mark.asyncio
+    async def test_analyze_unsupported_language(self, engine):
         """Test analysis with an unsupported language."""
-        code = "let x = 1;"
-        # This should not raise an error, but return a result with success=False
-        result = engine.analyze_code(code, language="unsupportedlang")
-        assert not result.success
-        assert "Unsupported language" in result.error_message
+        from tree_sitter_analyzer.core.analysis_engine import UnsupportedLanguageError
 
-    def test_language_detection(self, engine):
+        code = "let x = 1;"
+        # The engine raises UnsupportedLanguageError for unsupported languages
+        with pytest.raises(UnsupportedLanguageError):
+            await engine.analyze_code(code, language="unsupportedlang")
+
+    @pytest.mark.asyncio
+    async def test_language_detection(self, engine):
         """Test automatic language detection from file extension."""
         with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
             f.write("print('hello')")
             temp_file = f.name
 
         try:
-            result = engine.analyze_file(temp_file)
+            result = await engine.analyze_file(temp_file)
             assert result.language == "python"
         finally:
             os.unlink(temp_file)
 
-    def test_malformed_code_handling(self, engine):
+    @pytest.mark.asyncio
+    async def test_malformed_code_handling(self, engine):
         """Test that the engine handles malformed code gracefully."""
         malformed_code = "public class MyClass { void myMethod() { "
-        result = engine.analyze_code(malformed_code, language="java")
+        result = await engine.analyze_code(malformed_code, language="java")
         # Parsing might partially succeed or fail gracefully
         assert isinstance(result, AnalysisResult)
         # Depending on the severity, it might be a success with errors or a failure

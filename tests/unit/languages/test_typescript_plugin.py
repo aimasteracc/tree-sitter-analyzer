@@ -490,23 +490,21 @@ class TestTypeScriptPluginIntegration:
         from tree_sitter_analyzer.plugins.manager import PluginManager
 
         manager = PluginManager()
+        mock_plugin = TypeScriptPlugin()
 
-        # Mock the plugin discovery to avoid dependency issues
-        with patch.object(manager, "_load_from_local_directory") as mock_load:
-            mock_plugin = TypeScriptPlugin()
-            mock_load.return_value = [mock_plugin]
+        # Register the plugin directly (simulates discovery)
+        manager.register_plugin(mock_plugin)
+        plugins = manager.load_plugins()
 
-            plugins = manager.load_plugins()
+        # Find TypeScript plugin
+        typescript_plugin = None
+        for plugin in plugins:
+            if plugin.get_language_name() == "typescript":
+                typescript_plugin = plugin
+                break
 
-            # Find TypeScript plugin
-            typescript_plugin = None
-            for plugin in plugins:
-                if plugin.get_language_name() == "typescript":
-                    typescript_plugin = plugin
-                    break
-
-            assert typescript_plugin is not None
-            assert isinstance(typescript_plugin, TypeScriptPlugin)
+        assert typescript_plugin is not None
+        assert isinstance(typescript_plugin, TypeScriptPlugin)
 
     def test_formatter_integration(self):
         """Test TypeScript formatter integration"""

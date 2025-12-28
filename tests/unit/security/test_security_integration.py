@@ -31,7 +31,7 @@ class TestSecurityIntegration:
         # Reset singleton instance to ensure clean state
         from tree_sitter_analyzer.core.analysis_engine import UnifiedAnalysisEngine
 
-        UnifiedAnalysisEngine._instance = None
+        UnifiedAnalysisEngine._instances = {}
 
         self.temp_dir = tempfile.mkdtemp()
         self.test_file = str(Path(self.temp_dir) / "test.py")
@@ -64,16 +64,16 @@ class TestClass:
         engine = get_analysis_engine(project_root)
 
         # Valid file should work
-        result = engine.analyze_file(self.test_file)
+        result = await engine.analyze_file(self.test_file)
         assert result.success
 
         # Invalid path should be rejected
         with pytest.raises(ValueError, match="Invalid file path"):
-            engine.analyze_file("../../../etc/passwd")
+            await engine.analyze_file("../../../etc/passwd")
 
         # Path traversal should be rejected
         with pytest.raises(ValueError, match="Invalid file path"):
-            engine.analyze_file(self.temp_dir + "/../../../etc/passwd")
+            await engine.analyze_file(self.temp_dir + "/../../../etc/passwd")
 
     @pytest.mark.asyncio
     async def test_mcp_tools_security_integration(self):
@@ -81,7 +81,7 @@ class TestClass:
         # Reset singleton instance to ensure clean state
         from tree_sitter_analyzer.core.analysis_engine import UnifiedAnalysisEngine
 
-        UnifiedAnalysisEngine._instance = None
+        UnifiedAnalysisEngine._instances = {}
 
         # Get parent directory of temp_dir to use as project root
         project_root = str(Path(self.temp_dir).parent)
@@ -148,7 +148,7 @@ class TestClass:
         # Reset singleton instance to ensure clean state
         from tree_sitter_analyzer.core.analysis_engine import UnifiedAnalysisEngine
 
-        UnifiedAnalysisEngine._instance = None
+        UnifiedAnalysisEngine._instances = {}
 
         project_root = str(Path(self.temp_dir).parent)
         scale_tool = AnalyzeScaleTool(project_root)
@@ -244,7 +244,7 @@ class TestClass:
         # All should reject the same malicious paths
         malicious_path = "../../../etc/passwd"
 
-        engine_valid, _ = engine._security_validator.validate_file_path(malicious_path)
+        engine_valid, _ = engine.security_validator.validate_file_path(malicious_path)
         table_valid, _ = table_tool.security_validator.validate_file_path(
             malicious_path
         )
@@ -282,7 +282,7 @@ class TestClass:
 
         # Measure time with security validation
         start_time = time.time()
-        result = engine.analyze_file(self.test_file)
+        result = await engine.analyze_file(self.test_file)
         end_time = time.time()
 
         security_time = end_time - start_time

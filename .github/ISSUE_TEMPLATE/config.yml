@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 💬 Discussions
+    url: https://github.com/aimasteracc/tree-sitter-analyzer/discussions
+    about: Ask questions and discuss ideas with the community
+  - name: 📖 Documentation
+    url: https://github.com/aimasteracc/tree-sitter-analyzer#readme
+    about: Read the documentation before opening an issue
+  - name: 🔍 Search Existing Issues
+    url: https://github.com/aimasteracc/tree-sitter-analyzer/issues
+    about: Check if your issue has already been reported

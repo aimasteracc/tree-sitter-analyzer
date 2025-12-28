@@ -1,0 +1,18 @@
+# Default owners for everything
+* @aimasteracc
+
+# Core analyzer code requires explicit review
+/tree_sitter_analyzer/ @aimasteracc
+
+# CI/CD changes require maintainer review
+/.github/ @aimasteracc
+
+# Plugin architecture changes
+/tree_sitter_analyzer/plugins/ @aimasteracc
+/tree_sitter_analyzer/languages/ @aimasteracc
+
+# Tests require review
+/tests/ @aimasteracc
+
+# Configuration files
+pyproject.toml @aimasteracc

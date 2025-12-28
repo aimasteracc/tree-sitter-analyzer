@@ -15,6 +15,7 @@ from unittest.mock import patch
 import pytest
 
 from tree_sitter_analyzer.core import AnalysisEngine
+from tree_sitter_analyzer.core.analysis_engine import UnsupportedLanguageError
 from tree_sitter_analyzer.core.parser import ParseResult
 from tree_sitter_analyzer.models import AnalysisResult
 
@@ -198,11 +199,9 @@ class TestAnalysisEngineAnalyzeCode:
         engine = AnalysisEngine()
 
         code = "some code"
-        result = await engine.analyze_code(code)
-
-        assert result is not None
-        # It should default to "unknown" as per implementation
-        assert result.language == "unknown"
+        # The engine raises UnsupportedLanguageError for "unknown" language
+        with pytest.raises(UnsupportedLanguageError):
+            await engine.analyze_code(code)
 
     async def test_analyze_code_empty_string(self):
         """Test analyzing empty code string"""

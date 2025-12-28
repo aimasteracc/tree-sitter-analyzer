@@ -10,6 +10,7 @@ partial results without crashing.
 **Validates: Requirements 5.1**
 """
 
+import pytest
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
@@ -430,7 +431,8 @@ class TestEngineErrorRecoveryProperties:
         max_examples=100, suppress_health_check=[HealthCheck.too_slow], deadline=None
     )
     @given(code=python_code_with_syntax_error())
-    def test_property_6_engine_returns_result_for_invalid_python(self, code: str):
+    @pytest.mark.asyncio
+    async def test_property_6_engine_returns_result_for_invalid_python(self, code: str):
         """
         **Feature: test-coverage-improvement, Property 6: Parser Error Recovery**
 
@@ -442,7 +444,7 @@ class TestEngineErrorRecoveryProperties:
         engine = AnalysisEngine()
 
         # Engine should not raise an exception
-        result = engine.analyze_code(code, language="python")
+        result = await engine.analyze_code(code, language="python")
 
         # Property: Result should always be an AnalysisResult
         from tree_sitter_analyzer.models import AnalysisResult
@@ -458,7 +460,8 @@ class TestEngineErrorRecoveryProperties:
         max_examples=100, suppress_health_check=[HealthCheck.too_slow], deadline=None
     )
     @given(code=java_code_with_syntax_error())
-    def test_property_6_engine_returns_result_for_invalid_java(self, code: str):
+    @pytest.mark.asyncio
+    async def test_property_6_engine_returns_result_for_invalid_java(self, code: str):
         """
         **Feature: test-coverage-improvement, Property 6: Parser Error Recovery**
 
@@ -470,7 +473,7 @@ class TestEngineErrorRecoveryProperties:
         engine = AnalysisEngine()
 
         # Engine should not raise an exception
-        result = engine.analyze_code(code, language="java")
+        result = await engine.analyze_code(code, language="java")
 
         # Property: Result should always be an AnalysisResult
         from tree_sitter_analyzer.models import AnalysisResult
@@ -483,7 +486,10 @@ class TestEngineErrorRecoveryProperties:
         max_examples=100, suppress_health_check=[HealthCheck.too_slow], deadline=None
     )
     @given(code=javascript_code_with_syntax_error())
-    def test_property_6_engine_returns_result_for_invalid_javascript(self, code: str):
+    @pytest.mark.asyncio
+    async def test_property_6_engine_returns_result_for_invalid_javascript(
+        self, code: str
+    ):
         """
         **Feature: test-coverage-improvement, Property 6: Parser Error Recovery**
 
@@ -495,7 +501,7 @@ class TestEngineErrorRecoveryProperties:
         engine = AnalysisEngine()
 
         # Engine should not raise an exception
-        result = engine.analyze_code(code, language="javascript")
+        result = await engine.analyze_code(code, language="javascript")
 
         # Property: Result should always be an AnalysisResult
         from tree_sitter_analyzer.models import AnalysisResult
