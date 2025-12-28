@@ -37,7 +37,7 @@ jobs:
         run: uv python install 3.11
 
       - name: Install upload dependencies
-        run: uv add twine --dev
+        run: uv pip install twine
 
       - name: Publish to PyPI
         run: |
