@@ -298,7 +298,7 @@ SQL analysis MUST work through all analysis interfaces.
 
 **Given** a SQL file `schema.sql`
 
-**When** running: `tree-sitter-analyzer analyze schema.sql`
+**When** running: `tree-sitter-analyzer schema.sql --advanced`
 
 **Then**:
 - Command executes successfully

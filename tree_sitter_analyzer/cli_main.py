@@ -100,7 +100,7 @@ def create_argument_parser() -> argparse.ArgumentParser:
     """Create and configure the argument parser."""
     parser = argparse.ArgumentParser(
         description="Analyze code using Tree-sitter and extract structured information.",
-        epilog="Example: tree-sitter-analyzer example.java --table=full",
+        epilog="Example: tree-sitter-analyzer examples/Sample.java --table=full",
     )
 
     # File path

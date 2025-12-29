@@ -59,7 +59,9 @@ class CodeFileResource:
         Returns:
             True if the URI matches the code file pattern
         """
-        return bool(self._uri_pattern.match(uri))
+        # Convert to string to handle AnyUrl type from MCP library
+        uri_str = str(uri)
+        return bool(self._uri_pattern.match(uri_str))
 
     def _extract_file_path(self, uri: str) -> str:
         """
@@ -74,7 +76,9 @@ class CodeFileResource:
         Raises:
             ValueError: If URI format is invalid
         """
-        match = self._uri_pattern.match(uri)
+        # Convert to string to handle AnyUrl type from MCP library
+        uri_str = str(uri)
+        match = self._uri_pattern.match(uri_str)
         if not match:
             raise ValueError(f"Invalid URI format: {uri}")
 

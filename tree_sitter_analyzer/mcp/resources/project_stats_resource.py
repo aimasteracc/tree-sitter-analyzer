@@ -61,7 +61,7 @@ class ProjectStatsResource:
 
     @property
     def project_root(self) -> str | None:
-        """Get the current project root path"""
+        """Get current project root path"""
         return self._project_path
 
     @project_root.setter
@@ -93,7 +93,9 @@ class ProjectStatsResource:
         Returns:
             True if the URI matches the project stats pattern
         """
-        return bool(self._uri_pattern.match(uri))
+        # Convert to string to handle AnyUrl type from MCP library
+        uri_str = str(uri)
+        return bool(self._uri_pattern.match(uri_str))
 
     def _extract_stats_type(self, uri: str) -> str:
         """
@@ -108,7 +110,9 @@ class ProjectStatsResource:
         Raises:
             ValueError: If URI format is invalid
         """
-        match = self._uri_pattern.match(uri)
+        # Convert to string to handle AnyUrl type from MCP library
+        uri_str = str(uri)
+        match = self._uri_pattern.match(uri_str)
         if not match:
             raise ValueError(f"Invalid URI format: {uri}")
 
@@ -164,13 +168,13 @@ class ProjectStatsResource:
 
     def _is_supported_code_file(self, file_path: Path) -> bool:
         """
-        Check if the file is a supported code file using language detection
+        Check if file is a supported code file using language detection
 
         Args:
             file_path: Path to the file
 
         Returns:
-            True if the file is a supported code file
+            True if file is a supported code file
         """
         try:
             language = detect_language_from_file(
@@ -389,7 +393,7 @@ class ProjectStatsResource:
                         complexity = 0
                         if file_analysis_result and file_analysis_result.success:
                             analysis_dict = file_analysis_result.to_dict()
-                            # Assuming complexity is part of the metrics in the new structure
+                            # Assuming complexity is part of metrics in new structure
                             if (
                                 "metrics" in analysis_dict
                                 and "complexity" in analysis_dict["metrics"]
