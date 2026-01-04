@@ -4,6 +4,7 @@
 import json
 import subprocess
 import sys
+import uuid
 from pathlib import Path
 
 import pytest
@@ -61,21 +62,55 @@ def another_function():
 """,
         ]
 
+        # Create files in project directory to pass security validation
+        # Use unique suffix to avoid race conditions in parallel execution
+        test_id = str(uuid.uuid4())[:8]
+        temp_dir = Path("tests") / "temp_cli_test" / test_id
+        temp_dir.mkdir(parents=True, exist_ok=True)
+
         try:
             for i, content in enumerate(contents):
-                test_file = Path(f"test_sample_{i}.py")
+                test_file = temp_dir / f"test_sample_{i}.py"
                 test_file.write_text(content)
                 files.append(str(test_file))
 
             yield files
         finally:
+            # Clean up all files and temporary directory
             for file_path in files:
                 Path(file_path).unlink(missing_ok=True)
+            if temp_dir.exists():
+                # Remove all subdirectories first
+                for item in temp_dir.iterdir():
+                    if item.is_dir():
+                        for sub_item in item.iterdir():
+                            sub_item.unlink(missing_ok=True)
+                        item.rmdir()
+                    else:
+                        item.unlink(missing_ok=True)
+                # Remove temp_cli_test directory
+                try:
+                    temp_dir.rmdir()
+                except OSError:
+                    # Directory might not be empty due to parallel tests
+                    pass
+                # Try to remove parent if empty
+                parent = temp_dir.parent
+                if parent.exists() and not any(parent.iterdir()):
+                    try:
+                        parent.rmdir()
+                    except OSError:
+                        pass
 
     @pytest.fixture
     def sample_javascript_file(self):
         """JavaScriptテストファイル"""
-        test_file = Path("test_sample.js")
+        # Create files in project directory to pass security validation
+        # Use unique suffix to avoid race conditions in parallel execution
+        test_id = str(uuid.uuid4())[:8]
+        temp_dir = Path("tests") / "temp_cli_test_js" / test_id
+        temp_dir.mkdir(parents=True, exist_ok=True)
+        test_file = temp_dir / "test_sample.js"
         try:
             test_file.write_text(
                 """
@@ -106,7 +141,31 @@ async function asyncFunction() {
             )
             yield str(test_file)
         finally:
-            test_file.unlink(missing_ok=True)
+            # Clean up file and temporary directory
+            if test_file.exists():
+                test_file.unlink(missing_ok=True)
+            if temp_dir.exists():
+                # Remove all subdirectories first
+                for item in temp_dir.iterdir():
+                    if item.is_dir():
+                        for sub_item in item.iterdir():
+                            sub_item.unlink(missing_ok=True)
+                        item.rmdir()
+                    else:
+                        item.unlink(missing_ok=True)
+                # Remove temp_cli_test_js directory
+                try:
+                    temp_dir.rmdir()
+                except OSError:
+                    # Directory might not be empty due to parallel tests
+                    pass
+                # Try to remove parent if empty
+                parent = temp_dir.parent
+                if parent.exists() and not any(parent.iterdir()):
+                    try:
+                        parent.rmdir()
+                    except OSError:
+                        pass
 
     def test_basic_cli_execution_python(self, sample_files):
         """基本的なPython CLIクエリ実行テスト"""
@@ -304,7 +363,7 @@ async function asyncFunction() {
             ],
             capture_output=True,
             text=True,
-            timeout=30,
+            timeout=120,  # Increased timeout for parallel test environment
         )
 
         assert result.returncode == 0, f"CLI failed with stderr: {result.stderr}"
@@ -503,7 +562,11 @@ async function asyncFunction() {
     def test_large_file_cli_processing(self):
         """大きなファイルのCLI処理テスト"""
         # 大きなファイルを作成
-        large_file = Path("test_large_cli.py")
+        test_id = str(uuid.uuid4())[:8]
+        large_file = (
+            Path("tests") / "temp_cli_test_large" / test_id / "test_large_cli.py"
+        )
+        large_file.parent.mkdir(parents=True, exist_ok=True)
         try:
             content = ""
             # 100個の関数を持つファイルを生成
@@ -540,6 +603,17 @@ class Class_{i}:
 
         finally:
             large_file.unlink(missing_ok=True)
+            # Clean up directory
+            try:
+                large_file.parent.rmdir()
+            except OSError:
+                pass
+            parent = large_file.parent.parent
+            if parent.exists() and not any(parent.iterdir()):
+                try:
+                    parent.rmdir()
+                except OSError:
+                    pass
 
     def test_cli_performance_baseline(self, sample_files):
         """CLIパフォーマンスベースラインテスト"""

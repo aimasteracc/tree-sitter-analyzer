@@ -650,6 +650,72 @@ Choose output format parameters based on your needs to minimize token usage and 
         if optimize_paths and matches:
             matches = fd_rg_utils.optimize_match_paths(matches)
 
+            # Return optimized results in proper format
+            result = {
+                "success": True,
+                "count": len(matches),
+                "truncated": truncated,
+                "elapsed_ms": elapsed_ms,
+                "results": matches,
+            }
+
+            # Handle output suppression and file output for optimized results
+            output_file = arguments.get("output_file")
+            suppress_output = arguments.get("suppress_output", False)
+
+            # Handle file output if requested
+            if output_file:
+                try:
+                    # Format content based on output_format
+                    formatted_content, _ = format_for_file_output(result, output_format)
+                    file_path = self.file_output_manager.save_to_file(
+                        content=formatted_content, base_name=output_file
+                    )
+
+                    # If suppress_output is True, return minimal response
+                    if suppress_output:
+                        minimal_result = {
+                            "success": result.get("success", True),
+                            "count": result.get("count", 0),
+                            "output_file": output_file,
+                            "file_saved": f"Results saved to {file_path}",
+                        }
+                        # Cache the full result, not the minimal one
+                        if self.cache and cache_key:
+                            self.cache.set(cache_key, result)
+                        if output_format == "toon":
+                            return attach_toon_content_to_response(minimal_result)
+                        return minimal_result
+                    else:
+                        # Include file info in full response
+                        result["output_file"] = output_file
+                        result["file_saved"] = f"Results saved to {file_path}"
+                except Exception as e:
+                    logger.error(f"Failed to save output to file: {e}")
+                    result["file_save_error"] = str(e)
+                    result["file_saved"] = False
+            elif suppress_output:
+                # If suppress_output is True but no output_file, remove detailed results
+                minimal_result = {
+                    "success": result.get("success", True),
+                    "count": result.get("count", 0),
+                    "elapsed_ms": result.get("elapsed_ms", 0),
+                }
+                # Cache the full result, not the minimal one
+                if self.cache and cache_key:
+                    self.cache.set(cache_key, result)
+                if output_format == "toon":
+                    return attach_toon_content_to_response(minimal_result)
+                return minimal_result
+
+            # Cache the result
+            if self.cache and cache_key:
+                self.cache.set(cache_key, result)
+
+            if output_format == "toon":
+                return attach_toon_content_to_response(result)
+            return result
+
         # Apply file grouping if requested (takes priority over other formats)
         group_by_file = arguments.get("group_by_file", False)
         if group_by_file and matches:

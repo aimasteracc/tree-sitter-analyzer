@@ -212,15 +212,15 @@ figcaption,css_rule,figcaption,3,819,823
 .footer-section a,css_rule,.footer-section a,3,905,909
 .footer-section a:hover,css_rule,.footer-section a:hover,1,911,913
 .footer-bottom,css_rule,.footer-bottom,4,915,920
-@keyframes,css_rule,@keyframes,0,927,936
+@keyframes fadeIn,css_rule,@keyframes fadeIn,0,927,936
 .fade-in,css_rule,.fade-in,1,938,940
-@keyframes,css_rule,@keyframes,0,943,952
+@keyframes slideInLeft,css_rule,@keyframes slideInLeft,0,943,952
 .slide-in-left,css_rule,.slide-in-left,1,954,956
-@keyframes,css_rule,@keyframes,0,959,966
+@keyframes pulse,css_rule,@keyframes pulse,0,959,966
 .pulse,css_rule,.pulse,1,968,970
-@keyframes,css_rule,@keyframes,0,973,980
+@keyframes spin,css_rule,@keyframes spin,0,973,980
 .spin,css_rule,.spin,1,982,984
-@keyframes,css_rule,@keyframes,0,987,1000
+@keyframes bounce,css_rule,@keyframes bounce,0,987,1000
 .bounce,css_rule,.bounce,1,1002,1004
 .hidden,css_rule,.hidden,1,1011,1013
 .visible,css_rule,.visible,1,1015,1017
@@ -273,7 +273,7 @@ figcaption,css_rule,figcaption,3,819,823
 .shadow-sm,css_rule,.shadow-sm,1,1176,1178
 .shadow-lg,css_rule,.shadow-lg,1,1180,1182
 .shadow-none,css_rule,.shadow-none,1,1184,1186
-@media,css_rule,@media,0,1193,1250
+@media (max-width: 575.98px),css_rule,@media (max-width: 575.98px),0,1193,1250
 .container,css_rule,.container,1,1194,1196
 .hero-title,css_rule,.hero-title,1,1198,1200
 .hero-subtitle,css_rule,.hero-subtitle,1,1202,1204
@@ -291,17 +291,17 @@ table,css_rule,table,1,1242,1244
 th;
     td,css_rule,th;
     td,1,1246,1249
-@media,css_rule,@media,0,1253,1265
+@media (min-width: 576px) and (max-width: 991.98px),css_rule,@media (min-width: 576px) and (max-width: 991.98px),0,1253,1265
 .features-grid,css_rule,.features-grid,1,1254,1256
 .lists-grid,css_rule,.lists-grid,1,1258,1260
 .media-grid,css_rule,.media-grid,1,1262,1264
-@media,css_rule,@media,0,1268,1281
+@media (min-width: 992px),css_rule,@media (min-width: 992px),0,1268,1281
 .sidebar,css_rule,.sidebar,3,1269,1273
 .main-content,css_rule,.main-content,4,1275,1280
-@media,css_rule,@media,0,1284,1292
+@media (min-width: 1200px),css_rule,@media (min-width: 1200px),0,1284,1292
 .container,css_rule,.container,1,1285,1287
 .features-grid,css_rule,.features-grid,1,1289,1291
-@media,css_rule,@media,0,1295,1339
+@media (prefers-color-scheme: dark),css_rule,@media (prefers-color-scheme: dark),0,1295,1339
 :root,css_rule,:root,2,1296,1299
 body,css_rule,body,2,1301,1304
 .main-header,css_rule,.main-header,1,1306,1308
@@ -317,7 +317,7 @@ input;
     select,3,1324,1330
 .sidebar,css_rule,.sidebar,1,1332,1334
 .news-item,css_rule,.news-item,1,1336,1338
-@media,css_rule,@media,0,1342,1395
+@media print,css_rule,@media print,0,1342,1395
 *,css_rule,*,4,1343,1348
 a;
     a:visited,css_rule,a;
@@ -342,13 +342,13 @@ p;
     h2;
     h3,2,1385,1390
 thead,css_rule,thead,1,1392,1394
-@media,css_rule,@media,0,1398,1416
+@media (prefers-contrast: high),css_rule,@media (prefers-contrast: high),0,1398,1416
 :root,css_rule,:root,6,1399,1406
 a,css_rule,a,1,1408,1410
 button;
     .btn,css_rule,button;
     .btn,1,1412,1415
-@media,css_rule,@media,0,1419,1428
+@media (prefers-reduced-motion: reduce),css_rule,@media (prefers-reduced-motion: reduce),0,1419,1428
 *;
     *::before;
     *::after,css_rule,*;

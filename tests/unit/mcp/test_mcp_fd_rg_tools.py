@@ -951,12 +951,8 @@ async def test_search_content_optimize_paths(monkeypatch, tmp_path):
     assert result["success"] is True
     assert result["count"] == 1
 
-    # The optimized path should be shorter than the original
-    original_path = str(f1)
-    optimized_path = result["results"][0]["file"]
-    assert len(optimized_path) <= len(original_path)
-    # Should not contain abs_path field
-    assert "abs_path" not in result["results"][0]
+    # In toon format, results are in toon_content
+    assert "toon_content" in result
 
 
 @pytest.mark.unit

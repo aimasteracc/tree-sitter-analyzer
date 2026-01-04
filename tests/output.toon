@@ -1,0 +1,15 @@
+--- Partial Read Result ---
+File: C:\Users\aisheng.yu\AppData\Local\Temp\tmp21dnheq9\test.py
+Range: Line 1-2
+Characters read: 17
+{
+  "file_path": "C:\\Users\\aisheng.yu\\AppData\\Local\\Temp\\tmp21dnheq9\\test.py",
+  "range": {
+    "start_line": 1,
+    "end_line": 2,
+    "start_column": null,
+    "end_column": null
+  },
+  "content": "def hello(): pass",
+  "content_length": 17
+}

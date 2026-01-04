@@ -371,6 +371,13 @@ class HtmlPlugin(LanguagePlugin):
     def create_extractor(self) -> ElementExtractor:
         return HtmlElementExtractor()
 
+    def get_tree_sitter_language(self):
+        """Get tree-sitter language object for HTML."""
+        import tree_sitter
+        import tree_sitter_html as ts_html
+
+        return tree_sitter.Language(ts_html.language())
+
     def get_supported_element_types(self) -> list[str]:
         return ["html_element"]
 

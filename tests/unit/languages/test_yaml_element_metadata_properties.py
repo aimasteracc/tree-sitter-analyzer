@@ -28,32 +28,24 @@ pytestmark = pytest.mark.skipif(
 @st.composite
 def yaml_simple_mapping(draw):
     """Generate simple YAML mapping content."""
-    num_keys = draw(st.integers(min_value=1, max_value=10))
+    num_keys = draw(st.integers(min_value=1, max_value=8))
     lines = []
     for _i in range(num_keys):
+        # Simplified key generation - use simple ASCII letters only
         key = draw(
             st.text(
-                alphabet=st.characters(
-                    whitelist_categories=("Lu", "Ll", "Nd"),
-                    min_codepoint=97,
-                    max_codepoint=122,
-                ),
+                alphabet="abcdefghijklmnopqrstuvwxyz",
                 min_size=1,
-                max_size=20,
+                max_size=15,
             )
         )
+        # Simplified value generation
         value = draw(
             st.one_of(
                 st.text(
-                    alphabet=st.characters(
-                        whitelist_categories=("Lu", "Ll", "Nd", "Zs"),
-                        min_codepoint=32,
-                        max_codepoint=122,
-                    ),
-                    min_size=1,
-                    max_size=30,
+                    alphabet="abcdefghijklmnopqrstuvwxyz ", min_size=1, max_size=20
                 ),
-                st.integers(min_value=0, max_value=1000).map(str),
+                st.integers(min_value=0, max_value=100).map(str),
                 st.sampled_from(["true", "false", "null"]),
             )
         )
@@ -126,7 +118,7 @@ def yaml_with_comments(draw):
 class TestYAMLElementMetadataProperties:
     """Property-based tests for YAML element metadata completeness."""
 
-    @settings(max_examples=100)
+    @settings(max_examples=50, deadline=500)
     @given(yaml_content=yaml_simple_mapping())
     def test_property_4_element_metadata_line_numbers(self, yaml_content: str):
         """

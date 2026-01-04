@@ -1,522 +1,640 @@
 #!/usr/bin/env python3
 """
-Tests for tree_sitter_analyzer.core.query module.
-
-This module tests the QueryExecutor class which handles Tree-sitter
-query execution in the new architecture.
+QueryExecutor 单元测试
 """
 
-from unittest.mock import Mock, patch
-
-import pytest
+from unittest.mock import MagicMock, patch
 
 from tree_sitter_analyzer.core.query import QueryExecutor
 
 
-class TestQueryExecutor:
-    """Test cases for QueryExecutor class"""
+class TestQueryExecutorInit:
+    """QueryExecutor初始化测试"""
 
-    @pytest.fixture
-    def query_executor(self) -> QueryExecutor:
-        """Create a QueryExecutor instance for testing"""
-        return QueryExecutor()
+    def test_init(self):
+        """测试QueryExecutor初始化"""
+        executor = QueryExecutor()
+        assert executor._query_loader is not None
+        assert executor._execution_stats == {
+            "total_queries": 0,
+            "successful_queries": 0,
+            "failed_queries": 0,
+            "total_execution_time": 0.0,
+        }
 
-    @pytest.fixture
-    def mock_tree(self) -> Mock:
-        """Create a mock tree-sitter tree"""
-        tree = Mock()
-        root_node = Mock()
-        root_node.children = []
-        tree.root_node = root_node
-        return tree
+    def test_init_creates_query_loader(self):
+        """测试初始化时创建query_loader"""
+        with patch("tree_sitter_analyzer.core.query.get_query_loader") as mock_loader:
+            mock_loader.return_value = MagicMock()
+            executor = QueryExecutor()
+            mock_loader.assert_called_once()
 
-    @pytest.fixture
-    def mock_language(self) -> Mock:
-        """Create a mock tree-sitter language"""
-        language = Mock()
-        return language
 
-    @pytest.fixture
-    def sample_java_code(self) -> str:
-        """Sample Java code for testing"""
-        return """
-public class TestClass {
-    private String name;
+class TestQueryExecutorExecuteQuery:
+    """execute_query方法测试"""
 
-    public TestClass(String name) {
-        this.name = name;
-    }
-
-    public String getName() {
-        return name;
-    }
-
-    public void setName(String name) {
-        this.name = name;
-    }
-}
-"""
-
-    def test_query_executor_initialization(self, query_executor: QueryExecutor) -> None:
-        """Test QueryExecutor initialization"""
-        assert query_executor is not None
-        assert hasattr(query_executor, "execute_query")
-        assert hasattr(query_executor, "execute_query_string")
-
-    def test_execute_query_success(
-        self, query_executor: QueryExecutor, mock_tree: Mock, mock_language: Mock
-    ) -> None:
-        """Test successful query execution"""
-        with patch("tree_sitter_analyzer.query_loader.get_query") as mock_get_query:
-            mock_query = Mock()
-            mock_get_query.return_value = mock_query
-
-            # Mock query captures
-            mock_captures = [
-                {"node": Mock(), "name": "function_name"},
-                {"node": Mock(), "name": "function_body"},
-            ]
-            mock_query.captures.return_value = mock_captures
-
-            result = query_executor.execute_query(
-                mock_tree, mock_language, "functions", "test code"
-            )
-
-            assert isinstance(result, dict)
-            assert "captures" in result
-            assert "query_name" in result
-            assert result["query_name"] == "functions"
-
-    def test_execute_query_no_query_found(
-        self, query_executor: QueryExecutor, mock_tree: Mock, mock_language: Mock
-    ) -> None:
-        """Test query execution when query is not found"""
-        with patch("tree_sitter_analyzer.query_loader.get_query") as mock_get_query:
-            mock_get_query.return_value = None
-
-            result = query_executor.execute_query(
-                mock_tree, mock_language, "nonexistent", "test code"
-            )
-
-            assert isinstance(result, dict)
-            assert result["captures"] == []
-            assert "error" in result
-
-    def test_execute_query_string_success(
-        self, query_executor: QueryExecutor, mock_tree: Mock, mock_language: Mock
-    ) -> None:
-        """Test successful query string execution"""
-        query_string = "(method_declaration name: (identifier) @method-name)"
-
-        with patch("tree_sitter.Language.query") as mock_language_query:
-            mock_query = Mock()
-            mock_language_query.return_value = mock_query
-
-            # Mock query captures
-            mock_captures = [(Mock(), "method-name")]
-            mock_query.captures.return_value = mock_captures
-
-            result = query_executor.execute_query_string(
-                mock_tree, mock_language, query_string, "test code"
-            )
-
-            assert isinstance(result, dict)
-            assert "captures" in result
-            assert "query_string" in result
-
-    def test_execute_query_string_invalid_query(
-        self, query_executor: QueryExecutor, mock_tree: Mock, mock_language: Mock
-    ) -> None:
-        """Test query string execution with invalid query"""
-        invalid_query = "(invalid_syntax"
-
-        # Mock TreeSitterQueryCompat to raise an exception
-        with patch(
-            "tree_sitter_analyzer.core.query.TreeSitterQueryCompat.safe_execute_query"
-        ) as mock_safe_execute:
-            mock_safe_execute.side_effect = Exception("Invalid query syntax")
-            result = query_executor.execute_query_string(
-                mock_tree, mock_language, invalid_query, "test code"
-            )
-
-            assert isinstance(result, dict)
-            assert "error" in result
-            assert "Query execution failed" in result["error"]
-            assert result["captures"] == []
-
-    def test_process_captures_dict_format(self, query_executor: QueryExecutor) -> None:
-        """Test processing captures in dictionary format"""
-        mock_node = Mock()
-        mock_node.start_point = (1, 0)
-        mock_node.end_point = (1, 10)
-        mock_node.text = b"test_method"
-
-        captures = [{"node": mock_node, "name": "method_name"}]
-
-        with patch.object(query_executor, "_create_result_dict") as mock_create_result:
-            mock_create_result.return_value = {"name": "test_method", "type": "method"}
-
-            result = query_executor._process_captures(captures, "test code")
-
-            assert isinstance(result, list)
-            assert len(result) == 1
-
-    def test_process_captures_tuple_format(self, query_executor: QueryExecutor) -> None:
-        """Test processing captures in tuple format (old Tree-sitter API)"""
-        mock_node = Mock()
-        mock_node.start_point = (1, 0)
-        mock_node.end_point = (1, 10)
-        mock_node.text = b"test_method"
-
-        captures = [(mock_node, "method_name")]
-
-        with patch.object(query_executor, "_create_result_dict") as mock_create_result:
-            mock_create_result.return_value = {"name": "test_method", "type": "method"}
-
-            result = query_executor._process_captures(captures, "test code")
-
-            assert isinstance(result, list)
-            assert len(result) == 1
-
-    def test_create_result_dict(self, query_executor: QueryExecutor) -> None:
-        """Test creating result dictionary from node"""
-        mock_node = Mock()
-        mock_node.start_point = (1, 5)
-        mock_node.end_point = (3, 10)
-        mock_node.type = "method_declaration"
-        mock_node.text = b"public void testMethod() {}"
-
-        result = query_executor._create_result_dict(
-            mock_node, "method_name", "test source code"
+    def test_execute_query_with_none_tree(self):
+        """测试tree为None时返回错误"""
+        executor = QueryExecutor()
+        result = executor.execute_query(
+            tree=None,
+            language=MagicMock(),
+            query_name="test",
+            source_code="test code",
         )
-
-        assert isinstance(result, dict)
-        assert "capture_name" in result
-        assert "node_type" in result
-        assert "start_point" in result
-        assert "end_point" in result
-        assert "text" in result
-        assert result["capture_name"] == "method_name"
-        assert result["node_type"] == "method_declaration"
-
-    def test_create_result_dict_with_exception(
-        self, query_executor: QueryExecutor
-    ) -> None:
-        """Test creating result dictionary when node processing fails"""
-        mock_node = Mock()
-        mock_node.start_point = (1, 5)
-        mock_node.end_point = (3, 10)
-        mock_node.type = "method_declaration"
-        mock_node.text = None  # This might cause an exception
-
-        result = query_executor._create_result_dict(
-            mock_node, "method_name", "test source code"
-        )
-
-        # Should handle exceptions gracefully
-        assert isinstance(result, dict)
-        assert "capture_name" in result
-
-    def test_get_available_queries(self, query_executor: QueryExecutor) -> None:
-        """Test getting available queries for a language"""
-        with patch.object(query_executor, "_query_loader") as mock_loader:
-            mock_loader.get_all_queries_for_language.return_value = {
-                "functions": "...",
-                "classes": "...",
-            }
-
-            queries = query_executor.get_available_queries("java")
-
-            assert isinstance(queries, list)
-            assert "functions" in queries
-            assert "classes" in queries
-
-    def test_get_available_queries_unknown_language(
-        self, query_executor: QueryExecutor
-    ) -> None:
-        """Test getting available queries for unknown language"""
-        with patch.object(query_executor, "_query_loader") as mock_loader:
-            mock_loader.get_all_queries_for_language.return_value = {}
-
-            queries = query_executor.get_available_queries("unknown")
-
-            assert isinstance(queries, list)
-            assert len(queries) == 0
-
-    def test_get_query_description(self, query_executor: QueryExecutor) -> None:
-        """Test getting query description"""
-        with patch.object(query_executor, "_query_loader") as mock_loader:
-            mock_loader.get_query_description.return_value = (
-                "Search all function/method declarations (alias for method)"
-            )
-
-            description = query_executor.get_query_description("java", "functions")
-
-            assert (
-                description
-                == "Search all function/method declarations (alias for method)"
-            )
-            mock_loader.get_query_description.assert_called_once_with(
-                "java", "functions"
-            )
-
-    def test_get_query_description_not_found(
-        self, query_executor: QueryExecutor
-    ) -> None:
-        """Test getting description for non-existent query"""
-        with patch.object(query_executor, "_query_loader") as mock_loader:
-            mock_loader.get_query_description.return_value = None
-
-            description = query_executor.get_query_description("java", "nonexistent")
-
-            assert description is None
-            mock_loader.get_query_description.assert_called_once_with(
-                "java", "nonexistent"
-            )
-
-    def test_validate_query_valid(
-        self, query_executor: QueryExecutor, mock_language: Mock
-    ) -> None:
-        """Test validating a valid query"""
-        valid_query = "(method_declaration name: (identifier) @method-name)"
-
-        with patch("tree_sitter.Language.query") as mock_language_query:
-            mock_language_query.return_value = Mock()  # Successful creation
-
-            is_valid = query_executor.validate_query("java", valid_query)
-
-            assert is_valid is True
-
-    def test_validate_query_invalid(
-        self, query_executor: QueryExecutor, mock_language: Mock
-    ) -> None:
-        """Test validating an invalid query"""
-        invalid_query = "(invalid_syntax"
-
-        with patch("tree_sitter.Language.query") as mock_language_query:
-            mock_language_query.side_effect = Exception("Invalid syntax")
-
-            is_valid = query_executor.validate_query("java", invalid_query)
-
-            assert is_valid is False
-
-    def test_execute_multiple_queries(
-        self, query_executor: QueryExecutor, mock_tree: Mock, mock_language: Mock
-    ) -> None:
-        """Test executing multiple queries"""
-        query_names = ["functions", "classes"]
-
-        with patch.object(query_executor, "execute_query") as mock_execute:
-            mock_execute.side_effect = [
-                {"captures": [{"name": "func1"}], "query_name": "functions"},
-                {"captures": [{"name": "class1"}], "query_name": "classes"},
-            ]
-
-            results = query_executor.execute_multiple_queries(
-                mock_tree, mock_language, query_names, "test code"
-            )
-
-            assert isinstance(results, dict)
-            assert "functions" in results
-            assert "classes" in results
-
-    def test_execute_multiple_queries_with_failure(
-        self, query_executor: QueryExecutor, mock_tree: Mock, mock_language: Mock
-    ) -> None:
-        """Test executing multiple queries with some failures"""
-        query_names = ["functions", "invalid_query"]
-
-        with patch.object(query_executor, "execute_query") as mock_execute:
-            mock_execute.side_effect = [
-                {"captures": [{"name": "func1"}], "query_name": "functions"},
-                {
-                    "captures": [],
-                    "error": "Query not found",
-                    "query_name": "invalid_query",
-                },
-            ]
-
-            results = query_executor.execute_multiple_queries(
-                mock_tree, mock_language, query_names, "test code"
-            )
-
-            assert isinstance(results, dict)
-            assert "functions" in results
-            assert "invalid_query" in results
-
-    def test_get_query_statistics(self, query_executor: QueryExecutor) -> None:
-        """Test getting query execution statistics"""
-        # This method might track execution times, success rates, etc.
-        stats = query_executor.get_query_statistics()
-
-        assert isinstance(stats, dict)
-        # The exact structure depends on implementation
-
-
-class TestQueryExecutorErrorHandling:
-    """Test error handling in QueryExecutor"""
-
-    @pytest.fixture
-    def query_executor(self) -> QueryExecutor:
-        """Create a QueryExecutor instance for testing"""
-        return QueryExecutor()
-
-    @pytest.fixture
-    def mock_tree(self) -> Mock:
-        """Create a mock tree-sitter tree"""
-        return Mock()
-
-    @pytest.fixture
-    def mock_language(self) -> Mock:
-        """Create a mock tree-sitter language"""
-        return Mock()
-
-    def test_execute_query_with_none_tree(
-        self, query_executor: QueryExecutor, mock_language: Mock
-    ) -> None:
-        """Test query execution with None tree"""
-        result = query_executor.execute_query(
-            None, mock_language, "functions", "test code"
-        )
-
-        assert isinstance(result, dict)
+        assert result["success"] is False
         assert "error" in result
+        assert result["query_name"] == "test"
+
+    def test_execute_query_with_none_language(self):
+        """测试language为None时返回错误"""
+        executor = QueryExecutor()
+        result = executor.execute_query(
+            tree=MagicMock(),
+            language=None,
+            query_name="test",
+            source_code="test code",
+        )
+        assert result["success"] is False
+        assert "error" in result
+        assert result["query_name"] == "test"
+
+    @patch("tree_sitter_analyzer.core.query.TreeSitterQueryCompat")
+    def test_execute_query_success(self, mock_compat):
+        """测试成功执行查询"""
+        # 设置mock
+        mock_language = MagicMock()
+        mock_language.name = "python"
+        mock_tree = MagicMock()
+        mock_tree.root_node = MagicMock()
+
+        mock_compat.safe_execute_query.return_value = [(MagicMock(), "capture_name")]
+
+        executor = QueryExecutor()
+        result = executor.execute_query(
+            tree=mock_tree,
+            language=mock_language,
+            query_name="classes",
+            source_code="class Test: pass",
+        )
+
+        assert result["success"] is True
+        assert result["query_name"] == "classes"
+        assert "captures" in result
+        assert "execution_time" in result
+        assert executor._execution_stats["total_queries"] == 1
+        assert executor._execution_stats["successful_queries"] == 1
+
+    @patch("tree_sitter_analyzer.core.query.TreeSitterQueryCompat")
+    def test_execute_query_query_not_found(self, mock_compat):
+        """测试查询未找到"""
+        mock_language = MagicMock()
+        mock_language.name = "python"
+        mock_tree = MagicMock()
+        mock_tree.root_node = MagicMock()
+
+        executor = QueryExecutor()
+        result = executor.execute_query(
+            tree=mock_tree,
+            language=mock_language,
+            query_name="nonexistent",
+            source_code="test code",
+        )
+
+        assert result["success"] is False
+        assert "error" in result
+        assert "not found" in result["error"].lower()
+
+    @patch("tree_sitter_analyzer.core.query.TreeSitterQueryCompat")
+    def test_execute_query_updates_stats(self, mock_compat):
+        """测试执行查询更新统计信息"""
+        mock_language = MagicMock()
+        mock_language.name = "python"
+        mock_tree = MagicMock()
+        mock_tree.root_node = MagicMock()
+
+        # モックの戻り値を設定
+        mock_compat.safe_execute_query.return_value = []
+
+        executor = QueryExecutor()
+        executor.execute_query(
+            tree=mock_tree,
+            language=mock_language,
+            query_name="classes",  # 有効なクエリ名を使用
+            source_code="test code",
+        )
+
+        assert executor._execution_stats["total_queries"] == 1
+        assert executor._execution_stats["successful_queries"] == 1
+        assert executor._execution_stats["failed_queries"] == 0
+        # 実行時間は0以上
+        assert executor._execution_stats["total_execution_time"] >= 0
+
+
+class TestQueryExecutorExecuteQueryWithLanguageName:
+    """execute_query_with_language_name方法测试"""
+
+    def test_execute_query_with_language_name_none_tree(self):
+        """测试tree为None时返回错误"""
+        executor = QueryExecutor()
+        result = executor.execute_query_with_language_name(
+            tree=None,
+            language=MagicMock(),
+            query_name="test",
+            source_code="test code",
+            language_name="python",
+        )
+        assert result["success"] is False
+        assert "error" in result
+
+    def test_execute_query_with_language_name_none_language(self):
+        """测试language为None时返回错误"""
+        executor = QueryExecutor()
+        result = executor.execute_query_with_language_name(
+            tree=MagicMock(),
+            language=None,
+            query_name="test",
+            source_code="test code",
+            language_name="python",
+        )
+        assert result["success"] is False
+        assert "error" in result
+
+    @patch("tree_sitter_analyzer.core.query.TreeSitterQueryCompat")
+    def test_execute_query_with_language_name_success(self, mock_compat):
+        """测试成功执行查询（带语言名）"""
+        mock_language = MagicMock()
+        mock_tree = MagicMock()
+        mock_tree.root_node = MagicMock()
+
+        mock_compat.safe_execute_query.return_value = []
+
+        executor = QueryExecutor()
+        result = executor.execute_query_with_language_name(
+            tree=mock_tree,
+            language=mock_language,
+            query_name="classes",
+            source_code="class Test: pass",
+            language_name="python",
+        )
+
+        assert result["success"] is True
+        assert result["query_name"] == "classes"
+        assert "execution_time" in result
+
+
+class TestQueryExecutorExecuteQueryString:
+    """execute_query_string方法测试"""
+
+    def test_execute_query_string_none_tree(self):
+        """测试tree为None时返回错误"""
+        executor = QueryExecutor()
+        result = executor.execute_query_string(
+            tree=None,
+            language=MagicMock(),
+            query_string="(class_definition)",
+            source_code="test code",
+        )
+        assert result["success"] is False
+        assert "error" in result
+
+    def test_execute_query_string_none_language(self):
+        """测试language为None时返回错误"""
+        executor = QueryExecutor()
+        result = executor.execute_query_string(
+            tree=MagicMock(),
+            language=None,
+            query_string="(class_definition)",
+            source_code="test code",
+        )
+        assert result["success"] is False
+        assert "error" in result
+
+    @patch("tree_sitter_analyzer.core.query.TreeSitterQueryCompat")
+    def test_execute_query_string_success(self, mock_compat):
+        """测试成功执行查询字符串"""
+        mock_language = MagicMock()
+        mock_tree = MagicMock()
+        mock_tree.root_node = MagicMock()
+
+        mock_compat.safe_execute_query.return_value = []
+
+        executor = QueryExecutor()
+        result = executor.execute_query_string(
+            tree=mock_tree,
+            language=mock_language,
+            query_string="(class_definition)",
+            source_code="class Test: pass",
+        )
+
+        assert result["success"] is True
+        assert result["query_string"] == "(class_definition)"
+        assert "execution_time" in result
+
+    @patch("tree_sitter_analyzer.core.query.TreeSitterQueryCompat")
+    def test_execute_query_string_updates_stats(self, mock_compat):
+        """测试执行查询字符串更新统计信息"""
+        mock_language = MagicMock()
+        mock_tree = MagicMock()
+        mock_tree.root_node = MagicMock()
+
+        mock_compat.safe_execute_query.return_value = []
+
+        executor = QueryExecutor()
+        executor.execute_query_string(
+            tree=mock_tree,
+            language=mock_language,
+            query_string="(function_definition)",
+            source_code="def test(): pass",
+        )
+
+        assert executor._execution_stats["total_queries"] == 1
+        assert executor._execution_stats["successful_queries"] == 1
+
+
+class TestQueryExecutorExecuteMultipleQueries:
+    """execute_multiple_queries方法测试"""
+
+    @patch("tree_sitter_analyzer.core.query.TreeSitterQueryCompat")
+    def test_execute_multiple_queries(self, mock_compat):
+        """测试执行多个查询"""
+        mock_language = MagicMock()
+        mock_tree = MagicMock()
+        mock_tree.root_node = MagicMock()
+
+        mock_compat.safe_execute_query.return_value = []
+
+        executor = QueryExecutor()
+        results = executor.execute_multiple_queries(
+            tree=mock_tree,
+            language=mock_language,
+            query_names=["classes", "functions"],
+            source_code="test code",
+        )
+
+        assert "classes" in results
+        assert "functions" in results
+        assert len(results) == 2
+        assert executor._execution_stats["total_queries"] == 2
+
+    @patch("tree_sitter_analyzer.core.query.TreeSitterQueryCompat")
+    def test_execute_multiple_queries_empty_list(self, mock_compat):
+        """测试执行空查询列表"""
+        mock_language = MagicMock()
+        mock_tree = MagicMock()
+
+        executor = QueryExecutor()
+        results = executor.execute_multiple_queries(
+            tree=mock_tree,
+            language=mock_language,
+            query_names=[],
+            source_code="test code",
+        )
+
+        assert results == {}
+
+
+class TestQueryExecutorProcessCaptures:
+    """_process_captures方法测试"""
+
+    @patch("tree_sitter_analyzer.core.query.get_node_text_safe")
+    def test_process_captures_tuple_format(self, mock_get_text):
+        """测试处理元组格式的captures"""
+        mock_get_text.return_value = "test_text"
+        executor = QueryExecutor()
+
+        mock_node = MagicMock()
+        mock_node.type = "class_definition"
+        mock_node.start_point = (0, 0)
+        mock_node.end_point = (1, 0)
+        mock_node.start_byte = 0
+        mock_node.end_byte = 10
+
+        captures = [(mock_node, "class")]
+
+        result = executor._process_captures(captures, "source code")
+
+        assert len(result) == 1
+        assert result[0]["capture_name"] == "class"
+        assert result[0]["node_type"] == "class_definition"
+
+    @patch("tree_sitter_analyzer.core.query.get_node_text_safe")
+    def test_process_captures_dict_format(self, mock_get_text):
+        """测试处理字典格式的captures"""
+        mock_get_text.return_value = "test_text"
+        executor = QueryExecutor()
+
+        mock_node = MagicMock()
+        mock_node.type = "function_definition"
+
+        captures = [{"node": mock_node, "name": "function"}]
+
+        result = executor._process_captures(captures, "source code")
+
+        assert len(result) == 1
+        assert result[0]["capture_name"] == "function"
+
+    @patch("tree_sitter_analyzer.core.query.get_node_text_safe")
+    def test_process_captures_none_node(self, mock_get_text):
+        """测试处理None节点"""
+        executor = QueryExecutor()
+
+        captures = [(None, "capture")]
+
+        result = executor._process_captures(captures, "source code")
+
+        assert len(result) == 0
+
+    @patch("tree_sitter_analyzer.core.query.get_node_text_safe")
+    def test_process_captures_multiple(self, mock_get_text):
+        """测试处理多个captures"""
+        mock_get_text.return_value = "text"
+        executor = QueryExecutor()
+
+        mock_node1 = MagicMock()
+        mock_node1.type = "class"
+        mock_node1.start_point = (0, 0)
+
+        mock_node2 = MagicMock()
+        mock_node2.type = "function"
+        mock_node2.start_point = (1, 0)
+
+        captures = [(mock_node1, "class"), (mock_node2, "function")]
+
+        result = executor._process_captures(captures, "source code")
+
+        assert len(result) == 2
+        assert result[0]["capture_name"] == "class"
+        assert result[1]["capture_name"] == "function"
+
+
+class TestQueryExecutorCreateResultDict:
+    """_create_result_dict方法测试"""
+
+    @patch("tree_sitter_analyzer.core.query.get_node_text_safe")
+    def test_create_result_dict(self, mock_get_text):
+        """测试创建结果字典"""
+        mock_get_text.return_value = "class Test: pass"
+        executor = QueryExecutor()
+
+        mock_node = MagicMock()
+        mock_node.type = "class_definition"
+        mock_node.start_point = (0, 0)
+        mock_node.end_point = (1, 0)
+        mock_node.start_byte = 0
+        mock_node.end_byte = 15
+
+        result = executor._create_result_dict(mock_node, "class", "source code")
+
+        assert result["capture_name"] == "class"
+        assert result["node_type"] == "class_definition"
+        assert result["start_point"] == (0, 0)
+        assert result["end_point"] == (1, 0)
+        assert result["start_byte"] == 0
+        assert result["end_byte"] == 15
+        assert result["text"] == "class Test: pass"
+        assert result["line_number"] == 1
+        assert result["column_number"] == 0
+
+    @patch("tree_sitter_analyzer.core.query.get_node_text_safe")
+    def test_create_result_dict_error(self, mock_get_text):
+        """测试创建结果字典时出错"""
+        mock_get_text.side_effect = Exception("Test error")
+        executor = QueryExecutor()
+
+        mock_node = MagicMock()
+
+        result = executor._create_result_dict(mock_node, "capture", "source code")
+
+        assert result["capture_name"] == "capture"
+        assert result["node_type"] == "error"
+        assert "error" in result
+
+
+class TestQueryExecutorCreateErrorResult:
+    """_create_error_result方法测试"""
+
+    def test_create_error_result_basic(self):
+        """测试创建基本错误结果"""
+        executor = QueryExecutor()
+        result = executor._create_error_result("Test error")
+
+        assert result["success"] is False
+        assert result["error"] == "Test error"
         assert result["captures"] == []
 
-    def test_execute_query_with_none_language(
-        self, query_executor: QueryExecutor, mock_tree: Mock
-    ) -> None:
-        """Test query execution with None language"""
-        result = query_executor.execute_query(mock_tree, None, "functions", "test code")
+    def test_create_error_result_with_query_name(self):
+        """测试创建带查询名的错误结果"""
+        executor = QueryExecutor()
+        result = executor._create_error_result("Test error", query_name="test_query")
 
-        assert isinstance(result, dict)
-        assert "error" in result
-        assert result["captures"] == []
+        assert result["success"] is False
+        assert result["error"] == "Test error"
+        assert result["query_name"] == "test_query"
 
-    def test_execute_query_with_exception_in_processing(
-        self, query_executor: QueryExecutor, mock_tree: Mock, mock_language: Mock
-    ) -> None:
-        """Test query execution when processing raises exception"""
-        with patch("tree_sitter_analyzer.query_loader.get_query") as mock_get_query:
-            mock_get_query.return_value = None  # Query not found
+    def test_create_error_result_with_extra_fields(self):
+        """测试创建带额外字段的错误结果"""
+        executor = QueryExecutor()
+        result = executor._create_error_result(
+            "Test error", query_name="test", extra_field="value"
+        )
 
-            result = query_executor.execute_query(
-                mock_tree, mock_language, "method", "test code"
-            )
+        assert result["success"] is False
+        assert result["error"] == "Test error"
+        assert result["query_name"] == "test"
+        assert result["extra_field"] == "value"
 
-            assert isinstance(result, dict)
-            assert "error" in result
-            assert "Query 'method' not found" in result["error"]
 
-    def test_process_captures_with_malformed_data(
-        self, query_executor: QueryExecutor
-    ) -> None:
-        """Test processing captures with malformed data"""
-        # Test with unexpected capture format
-        malformed_captures = [
-            "not a dict or tuple",
-            {"missing_node": True},
-            (None, "name"),
+class TestQueryExecutorGetAvailableQueries:
+    """get_available_queries方法测试"""
+
+    def test_get_available_queries(self):
+        """测试获取可用查询"""
+        executor = QueryExecutor()
+        queries = executor.get_available_queries("python")
+
+        assert isinstance(queries, list)
+        assert len(queries) >= 0
+
+    def test_get_available_queries_empty_language(self):
+        """测试空语言获取查询"""
+        executor = QueryExecutor()
+        queries = executor.get_available_queries("")
+
+        assert isinstance(queries, list)
+        assert len(queries) >= 0
+
+
+class TestQueryExecutorGetQueryDescription:
+    """get_query_description方法测试"""
+
+    def test_get_query_description(self):
+        """测试获取查询描述"""
+        executor = QueryExecutor()
+        description = executor.get_query_description("python", "classes")
+
+        # 描述可能是None或字符串
+        assert description is None or isinstance(description, str)
+
+    def test_get_query_description_nonexistent(self):
+        """测试获取不存在查询的描述"""
+        executor = QueryExecutor()
+        description = executor.get_query_description("python", "nonexistent_query")
+
+        assert description is None
+
+
+class TestQueryExecutorValidateQuery:
+    """validate_query方法测试"""
+
+    @patch("tree_sitter_analyzer.core.query.get_loader")
+    def test_validate_query_success(self, mock_loader):
+        """测试验证查询成功"""
+        mock_lang_loader = MagicMock()
+        mock_language = MagicMock()
+        mock_language.query.return_value = MagicMock()
+
+        mock_lang_loader.load_language.return_value = mock_language
+        mock_loader.return_value = mock_lang_loader
+
+        executor = QueryExecutor()
+        result = executor.validate_query("python", "(class_definition)")
+
+        assert result is True
+
+    @patch("tree_sitter_analyzer.core.query.get_loader")
+    def test_validate_query_invalid(self, mock_loader):
+        """测试验证无效查询"""
+        mock_lang_loader = MagicMock()
+        mock_lang_loader.load_language.return_value = None
+        mock_loader.return_value = mock_lang_loader
+
+        executor = QueryExecutor()
+        result = executor.validate_query("python", "(invalid query")
+
+        assert result is False
+
+
+class TestQueryExecutorGetQueryStatistics:
+    """get_query_statistics方法测试"""
+
+    def test_get_query_statistics_initial(self):
+        """测试初始查询统计信息"""
+        executor = QueryExecutor()
+        stats = executor.get_query_statistics()
+
+        assert stats["total_queries"] == 0
+        assert stats["successful_queries"] == 0
+        assert stats["failed_queries"] == 0
+        assert stats["total_execution_time"] == 0.0
+        assert stats["success_rate"] == 0.0
+        assert stats["average_execution_time"] == 0.0
+
+    @patch("tree_sitter_analyzer.core.query.TreeSitterQueryCompat")
+    def test_get_query_statistics_after_execution(self, mock_compat):
+        """测试执行后的查询统计信息"""
+        mock_language = MagicMock()
+        mock_language.name = "python"
+        mock_tree = MagicMock()
+        mock_tree.root_node = MagicMock()
+
+        # モックの戻り値を設定
+        mock_compat.safe_execute_query.return_value = []
+
+        executor = QueryExecutor()
+        executor.execute_query(
+            tree=mock_tree,
+            language=mock_language,
+            query_name="classes",  # 有効なクエリ名を使用
+            source_code="test code",
+        )
+
+        stats = executor.get_query_statistics()
+
+        assert stats["total_queries"] == 1
+        assert stats["successful_queries"] == 1
+        assert stats["failed_queries"] == 0
+        # 実行時間は0以上
+        assert stats["total_execution_time"] >= 0
+        assert stats["success_rate"] == 1.0
+        assert stats["average_execution_time"] >= 0
+
+
+class TestQueryExecutorResetStatistics:
+    """reset_statistics方法测试"""
+
+    def test_reset_statistics(self):
+        """测试重置统计信息"""
+        executor = QueryExecutor()
+
+        # 手动修改统计信息
+        executor._execution_stats["total_queries"] = 10
+        executor._execution_stats["successful_queries"] = 8
+        executor._execution_stats["failed_queries"] = 2
+        executor._execution_stats["total_execution_time"] = 1.5
+
+        # 重置
+        executor.reset_statistics()
+
+        assert executor._execution_stats["total_queries"] == 0
+        assert executor._execution_stats["successful_queries"] == 0
+        assert executor._execution_stats["failed_queries"] == 0
+        assert executor._execution_stats["total_execution_time"] == 0.0
+
+
+class TestModuleLevelFunctions:
+    """模块级别函数测试"""
+
+    @patch("tree_sitter_analyzer.core.query.get_query_loader")
+    def test_get_available_queries_module_level(self, mock_loader):
+        """测试模块级别get_available_queries函数"""
+        mock_query_loader = MagicMock()
+        mock_query_loader.list_supported_languages.return_value = ["python", "java"]
+        mock_query_loader.list_queries_for_language.side_effect = lambda x: [
+            "classes",
+            "functions",
         ]
+        mock_loader.return_value = mock_query_loader
 
-        result = query_executor._process_captures(malformed_captures, "test code")
+        from tree_sitter_analyzer.core.query import get_available_queries
 
-        # Should handle gracefully and return empty or partial results
-        assert isinstance(result, list)
+        queries = get_available_queries()
 
-    def test_create_result_dict_with_unicode_text(
-        self, query_executor: QueryExecutor
-    ) -> None:
-        """Test creating result dictionary with Unicode text"""
-        mock_node = Mock()
-        mock_node.start_point = (1, 0)
-        mock_node.end_point = (1, 10)
-        mock_node.type = "string_literal"
-        mock_node.text = b"hello"  # Text in bytes
+        assert isinstance(queries, list)
+        assert len(queries) > 0
 
-        result = query_executor._create_result_dict(
-            mock_node, "string_value", "test source"
+    @patch("tree_sitter_analyzer.core.query.get_query_loader")
+    def test_get_available_queries_with_language(self, mock_loader):
+        """测试带语言参数的get_available_queries"""
+        mock_query_loader = MagicMock()
+        mock_query_loader.list_queries_for_language.return_value = [
+            "classes",
+            "functions",
+        ]
+        mock_loader.return_value = mock_query_loader
+
+        from tree_sitter_analyzer.core.query import get_available_queries
+
+        queries = get_available_queries("python")
+
+        assert isinstance(queries, list)
+        assert "classes" in queries
+        assert "functions" in queries
+
+    @patch("tree_sitter_analyzer.core.query.get_query_loader")
+    def test_get_query_description_module_level(self, mock_loader):
+        """测试模块级别get_query_description函数"""
+        mock_query_loader = MagicMock()
+        # 実際のクエリローダーは"Search all class definitions"のような説明を返す
+        # テストの期待値を実際の戻り値に合わせる
+        mock_query_loader.get_query_description.return_value = (
+            "Search all class definitions"
         )
+        mock_loader.return_value = mock_query_loader
 
-        assert isinstance(result, dict)
-        assert "text" in result
-        # Should handle text properly
+        from tree_sitter_analyzer.core.query import get_query_description
 
+        description = get_query_description("python", "classes")
 
-class TestQueryExecutorIntegration:
-    """Integration tests for QueryExecutor"""
-
-    @pytest.fixture
-    def query_executor(self) -> QueryExecutor:
-        """Create a QueryExecutor instance for testing"""
-        return QueryExecutor()
-
-    def test_real_java_query_execution(self, query_executor: QueryExecutor) -> None:
-        """Test query execution with real Java code and tree"""
-        # This would require actual tree-sitter parsing
-        # For now, we'll mock the components but test the integration
-        java_code = """
-public class TestClass {
-    public void testMethod() {
-        System.out.println("Hello");
-    }
-}
-"""
-
-        with (
-            patch("tree_sitter_analyzer.query_loader.get_query") as mock_get_query,
-            patch("tree_sitter_analyzer.query_loader.query_loader") as mock_loader,
-        ):
-            # Mock the query and language
-            mock_query = Mock()
-            mock_get_query.return_value = mock_query
-            mock_query.captures.return_value = []
-
-            mock_language = Mock()
-            mock_loader.create_parser_safely.return_value = Mock()
-
-            # Mock tree
-            mock_tree = Mock()
-
-            result = query_executor.execute_query(
-                mock_tree, mock_language, "functions", java_code
-            )
-
-            assert isinstance(result, dict)
-            assert "query_name" in result
-
-    def test_query_workflow_end_to_end(self, query_executor: QueryExecutor) -> None:
-        """Test complete query workflow from validation to execution"""
-        query_string = "(method_declaration name: (identifier) @method-name)"
-
-        with patch("tree_sitter.Language.query") as mock_language_query:
-            mock_query = Mock()
-            mock_language_query.return_value = mock_query
-            mock_query.captures.return_value = []
-
-            mock_language = Mock()
-            mock_tree = Mock()
-
-            # First validate the query
-            is_valid = query_executor.validate_query("java", query_string)
-            assert is_valid is True
-
-            # Then execute it
-            result = query_executor.execute_query_string(
-                mock_tree, mock_language, query_string, "test code"
-            )
-            assert isinstance(result, dict)
-
-    def test_multiple_language_support(self, query_executor: QueryExecutor) -> None:
-        """Test query execution across multiple languages"""
-        languages = ["java", "python", "javascript"]
-
-        for language in languages:
-            with patch.object(query_executor, "_query_loader") as mock_loader:
-                mock_loader.get_all_queries_for_language.return_value = {
-                    "functions": "...",
-                    "classes": "...",
-                }
-
-                queries = query_executor.get_available_queries(language)
-                assert isinstance(queries, list)
+        # モックが正しく設定されていれば、戻り値が一致する
+        assert description == "Search all class definitions"

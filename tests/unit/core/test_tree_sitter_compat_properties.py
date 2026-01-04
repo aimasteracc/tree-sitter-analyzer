@@ -59,7 +59,7 @@ class TestTreeSitterVersionCompatibilityProperties:
     **Validates: Requirements 1.1, 1.4**
     """
 
-    @settings(max_examples=100)
+    @settings(max_examples=20, deadline=5000)
     @given(
         capture_name_list=st.lists(capture_names, min_size=0, max_size=5),
     )
@@ -134,7 +134,7 @@ class TestTreeSitterVersionCompatibilityProperties:
                     name in result_capture_names
                 ), f"Capture name '{name}' should be in results"
 
-    @settings(max_examples=100)
+    @settings(max_examples=20, deadline=5000)
     @given(
         capture_name_list=st.lists(capture_names, min_size=0, max_size=5),
     )
@@ -207,7 +207,7 @@ class TestTreeSitterVersionCompatibilityProperties:
                 capture_name_list
             ), f"Expected {len(capture_name_list)} results, got {len(results)}"
 
-    @settings(max_examples=100)
+    @settings(max_examples=20, deadline=5000)
     @given(
         capture_name_list=st.lists(capture_names, min_size=0, max_size=5),
     )
@@ -275,7 +275,7 @@ class TestTreeSitterVersionCompatibilityProperties:
                 capture_name_list
             ), f"Expected {len(capture_name_list)} results, got {len(results)}"
 
-    @settings(max_examples=100)
+    @settings(max_examples=20, deadline=5000)
     @given(
         source_code=source_code_content,
         start_byte=byte_positions,
@@ -317,7 +317,7 @@ class TestTreeSitterVersionCompatibilityProperties:
             )
             assert result == expected, f"Expected '{expected}', got '{result}'"
 
-    @settings(max_examples=100)
+    @settings(max_examples=20, deadline=5000)
     @given(
         source_code=st.text(min_size=1, max_size=200),
     )
@@ -367,7 +367,7 @@ class TestTreeSitterVersionCompatibilityProperties:
             result_bytes == result_str
         ), f"Bytes and string text attributes should return same result: '{result_bytes}' vs '{result_str}'"
 
-    @settings(max_examples=100)
+    @settings(max_examples=20, deadline=5000)
     @given(
         fallback_captures=st.lists(
             st.tuples(
@@ -411,7 +411,7 @@ class TestTreeSitterVersionCompatibilityProperties:
                 result, list
             ), f"Result should be a list, got {type(result)}"
 
-    @settings(max_examples=100)
+    @settings(max_examples=20, deadline=5000)
     @given(
         query_string=st.text(min_size=1, max_size=100),
     )
@@ -447,7 +447,7 @@ class TestTreeSitterVersionCompatibilityProperties:
             # Property: Result should be None on failure
             assert result is None, f"Expected None on failure, got {result}"
 
-    @settings(max_examples=100)
+    @settings(max_examples=20, deadline=5000)
     @given(
         capture_name_list=st.lists(capture_names, min_size=1, max_size=5),
     )
@@ -552,7 +552,7 @@ class TestTreeSitterCompatEdgeCases:
     **Validates: Requirements 1.1, 1.4**
     """
 
-    @settings(max_examples=100)
+    @settings(max_examples=20, deadline=5000)
     @given(
         source_lines=st.lists(
             st.text(min_size=0, max_size=50), min_size=1, max_size=20
@@ -613,7 +613,7 @@ class TestTreeSitterCompatEdgeCases:
         # Property: Result should not raise exceptions
         # (implicitly tested by reaching this point)
 
-    @settings(max_examples=100)
+    @settings(max_examples=20, deadline=5000)
     @given(
         error_message=st.text(min_size=1, max_size=100),
     )

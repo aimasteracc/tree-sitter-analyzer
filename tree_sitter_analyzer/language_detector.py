@@ -191,6 +191,9 @@ class LanguageDetector:
             ".json5": ("json", 0.8),  # JSON5 format
             # SQL extensions
             ".sql": ("sql", 0.9),
+            # YAML extensions
+            ".yaml": ("yaml", 0.9),
+            ".yml": ("yaml", 0.9),
         }
 
         # Content-based detection patterns

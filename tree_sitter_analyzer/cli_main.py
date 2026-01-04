@@ -100,7 +100,7 @@ def create_argument_parser() -> argparse.ArgumentParser:
     """Create and configure the argument parser."""
     parser = argparse.ArgumentParser(
         description="Analyze code using Tree-sitter and extract structured information.",
-        epilog="Example: tree-sitter-analyzer examples/Sample.java --table=full",
+        epilog="Example: uv run tree-sitter-analyzer examples/Sample.java --table=full",
     )
 
     # File path
@@ -133,7 +133,8 @@ def create_argument_parser() -> argparse.ArgumentParser:
         help="Display help for query filter syntax",
     )
     parser.add_argument(
-        "--describe-query", help="Display description of specified query key"
+        "--describe-query",
+        help="Display description of specified query key (requires --language or target file)",
     )
     parser.add_argument(
         "--show-supported-languages",
@@ -192,7 +193,7 @@ def create_argument_parser() -> argparse.ArgumentParser:
         "--summary",
         nargs="?",
         const="classes,methods",
-        help="Display summary of specified element types",
+        help="Display summary of specified element types (default: classes,methods)",
     )
     parser.add_argument(
         "--structure",
@@ -200,7 +201,9 @@ def create_argument_parser() -> argparse.ArgumentParser:
         help="Output detailed structure information in JSON format",
     )
     parser.add_argument(
-        "--statistics", action="store_true", help="Display only statistical information"
+        "--statistics",
+        action="store_true",
+        help="Display only statistical information (requires --query-key or --advanced)",
     )
 
     # Language options
@@ -269,7 +272,7 @@ def create_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--allow-truncate",
         action="store_true",
-        help="Batch mode: allow truncating results to fit limits (default: fail on limit exceed)",
+        help="Batch mode: allow truncation of results to fit limits (default: fail on limit exceed)",
     )
     parser.add_argument(
         "--fail-fast",

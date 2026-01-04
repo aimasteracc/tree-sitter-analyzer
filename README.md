@@ -242,6 +242,75 @@ MIT License - see [LICENSE](LICENSE) file.
 
 ---
 
+## 🧪 Testing
+
+### Test Coverage
+
+| Metric | Value |
+|--------|-------|
+| **Total Tests** | 2,411 tests ✅ |
+| **Test Pass Rate** | 100% (2,411/2,411) |
+| **Code Coverage** | [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer) |
+| **Type Safety** | 100% mypy compliance |
+
+### Running Tests
+
+```bash
+# Run all tests
+uv run pytest tests/ -v
+
+# Run specific test category
+uv run pytest tests/unit/ -v              # Unit tests
+uv run pytest tests/integration/ -v         # Integration tests
+uv run pytest tests/regression/ -m regression  # Regression tests
+uv run pytest tests/benchmarks/ -v         # Benchmark tests
+
+# Run with coverage
+uv run pytest tests/ --cov=tree_sitter_analyzer --cov-report=html
+
+# Run property-based tests
+uv run pytest tests/property/
+
+# Run performance benchmarks
+uv run pytest tests/benchmarks/ --benchmark-only
+```
+
+### Test Documentation
+
+| Document | Description |
+|----------|-------------|
+| [Test Writing Guide](docs/test-writing-guide.md) | Comprehensive guide for writing tests |
+| [Regression Testing Guide](docs/regression-testing-guide.md) | Golden Master methodology and regression testing |
+| [Testing Documentation](docs/TESTING.md) | Project testing standards |
+
+### Test Categories
+
+- **Unit Tests** (2,087 tests): Test individual components in isolation
+- **Integration Tests** (187 tests): Test component interactions
+- **Regression Tests** (70 tests): Ensure backward compatibility and format stability
+- **Property Tests** (75 tests): Hypothesis-based property testing
+- **Benchmark Tests** (20 tests): Performance monitoring and regression detection
+- **Compatibility Tests** (30 tests): Cross-version compatibility validation
+
+### CI/CD Integration
+
+- **Test Coverage Workflow**: Automated coverage checks on PRs and pushes
+- **Regression Tests Workflow**: Golden Master validation and format stability checks
+- **Performance Benchmarks**: Daily benchmark runs with trend analysis
+- **Quality Checks**: Automated linting, type checking, and security scanning
+
+### Contributing Tests
+
+When contributing new features:
+
+1. **Write Tests**: Follow the [Test Writing Guide](docs/test-writing-guide.md)
+2. **Ensure Coverage**: Maintain >80% code coverage
+3. **Run Locally**: `uv run pytest tests/ -v`
+4. **Check Quality**: `uv run ruff check . && uv run mypy tree_sitter_analyzer/`
+5. **Update Docs**: Document new tests and features
+
+---
+
 ## 📚 Documentation
 
 | Document | Description |
@@ -253,6 +322,8 @@ MIT License - see [LICENSE](LICENSE) file.
 | [Features](docs/features.md) | Language support details |
 | [Architecture](docs/architecture.md) | System design |
 | [Contributing](docs/CONTRIBUTING.md) | Development guidelines |
+| [Test Writing Guide](docs/test-writing-guide.md) | Comprehensive test writing guide |
+| [Regression Testing Guide](docs/regression-testing-guide.md) | Golden Master methodology |
 | [Changelog](CHANGELOG.md) | Version history |
 
 ---

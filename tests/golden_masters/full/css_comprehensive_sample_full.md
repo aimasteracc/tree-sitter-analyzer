@@ -293,19 +293,19 @@ input[type="checkbo` | box_model | 2 props | 459-463 |
 
 | Type | Name | Lines |
 |------|------|-------|
-| at-rule | `@keyframes` | 927-936 |
-| at-rule | `@keyframes` | 943-952 |
-| at-rule | `@keyframes` | 959-966 |
-| at-rule | `@keyframes` | 973-980 |
-| at-rule | `@keyframes` | 987-1000 |
-| at-rule | `@media` | 1193-1250 |
-| at-rule | `@media` | 1253-1265 |
-| at-rule | `@media` | 1268-1281 |
-| at-rule | `@media` | 1284-1292 |
-| at-rule | `@media` | 1295-1339 |
-| at-rule | `@media` | 1342-1395 |
-| at-rule | `@media` | 1398-1416 |
-| at-rule | `@media` | 1419-1428 |
+| at-rule | `@keyframes fadeIn` | 927-936 |
+| at-rule | `@keyframes slideInLeft` | 943-952 |
+| at-rule | `@keyframes pulse` | 959-966 |
+| at-rule | `@keyframes spin` | 973-980 |
+| at-rule | `@keyframes bounce` | 987-1000 |
+| at-rule | `@media (max-width: 575.98px)` | 1193-1250 |
+| at-rule | `@media (min-width: 576px) and (max-width: 991.98px` | 1253-1265 |
+| at-rule | `@media (min-width: 992px)` | 1268-1281 |
+| at-rule | `@media (min-width: 1200px)` | 1284-1292 |
+| at-rule | `@media (prefers-color-scheme: dark)` | 1295-1339 |
+| at-rule | `@media print` | 1342-1395 |
+| at-rule | `@media (prefers-contrast: high)` | 1398-1416 |
+| at-rule | `@media (prefers-reduced-motion: reduce)` | 1419-1428 |
 | at-rule | `@font-face` | 1456-1460 |
 
 ## Top Properties

@@ -321,14 +321,16 @@ class SearchCache:
 
 # Global cache instance for easy access
 _default_cache = None
+_default_cache_lock = threading.Lock()
 
 
 def get_default_cache() -> SearchCache:
     """Get the default search cache instance"""
     global _default_cache
-    if _default_cache is None:
-        _default_cache = SearchCache()
-    return _default_cache
+    with _default_cache_lock:
+        if _default_cache is None:
+            _default_cache = SearchCache()
+        return _default_cache
 
 
 def configure_cache(max_size: int = 1000, ttl_seconds: int = 3600) -> None:

@@ -8,6 +8,7 @@ and suggests using --no-ignore option when appropriate.
 
 import logging
 import os
+import threading
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -348,11 +349,13 @@ class GitignoreDetector:
 
 # Global instance for easy access
 _default_detector = None
+_default_detector_lock = threading.Lock()
 
 
 def get_default_detector() -> GitignoreDetector:
     """Get the default gitignore detector instance"""
     global _default_detector
-    if _default_detector is None:
-        _default_detector = GitignoreDetector()
-    return _default_detector
+    with _default_detector_lock:
+        if _default_detector is None:
+            _default_detector = GitignoreDetector()
+        return _default_detector

@@ -207,6 +207,157 @@ h1 {
             Path(temp_path).unlink()
 
 
+class TestCssExtractAtRuleName:
+    """Test _extract_at_rule_name method for CSS at-rules."""
+
+    def setup_method(self):
+        """Set up test fixtures"""
+        self.plugin = CssPlugin()
+        self.extractor = self.plugin.create_extractor()
+
+    def _get_parser(self):
+        """Get a configured tree-sitter parser for CSS."""
+        import tree_sitter
+
+        language = self.plugin.get_tree_sitter_language()
+        parser = tree_sitter.Parser()
+        if hasattr(parser, "set_language"):
+            parser.set_language(language)
+        elif hasattr(parser, "language"):
+            parser.language = language
+        else:
+            parser = tree_sitter.Parser(language)
+        return parser
+
+    def test_extract_keyframes_name_with_animation_name(self):
+        """Test that @keyframes extracts the full name including animation name."""
+        css_code = """@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}"""
+        parser = self._get_parser()
+        tree = parser.parse(css_code.encode("utf-8"))
+        elements = self.extractor.extract_css_rules(tree, css_code)
+
+        keyframes = [e for e in elements if e.selector.startswith("@keyframes")]
+        assert len(keyframes) >= 1
+        assert keyframes[0].selector == "@keyframes fadeIn"
+        assert keyframes[0].name == "@keyframes fadeIn"
+
+    def test_extract_media_query_with_full_condition(self):
+        """Test that @media extracts the full condition."""
+        css_code = """@media (max-width: 768px) {
+    body { margin: 0; }
+}"""
+        parser = self._get_parser()
+        tree = parser.parse(css_code.encode("utf-8"))
+        elements = self.extractor.extract_css_rules(tree, css_code)
+
+        media_queries = [e for e in elements if e.selector.startswith("@media")]
+        assert len(media_queries) >= 1
+        assert media_queries[0].selector == "@media (max-width: 768px)"
+        assert media_queries[0].name == "@media (max-width: 768px)"
+
+    def test_extract_media_query_with_screen_and_condition(self):
+        """Test that @media screen and condition extracts correctly."""
+        css_code = """@media screen and (min-width: 1024px) {
+    .container { max-width: 1200px; }
+}"""
+        parser = self._get_parser()
+        tree = parser.parse(css_code.encode("utf-8"))
+        elements = self.extractor.extract_css_rules(tree, css_code)
+
+        media_queries = [e for e in elements if e.selector.startswith("@media")]
+        assert len(media_queries) >= 1
+        assert "screen" in media_queries[0].selector
+        assert "min-width" in media_queries[0].selector
+
+    def test_extract_media_query_with_complex_condition(self):
+        """Test that @media with combined conditions extracts correctly."""
+        css_code = """@media (min-width: 576px) and (max-width: 991.98px) {
+    .grid { columns: 2; }
+}"""
+        parser = self._get_parser()
+        tree = parser.parse(css_code.encode("utf-8"))
+        elements = self.extractor.extract_css_rules(tree, css_code)
+
+        media_queries = [e for e in elements if e.selector.startswith("@media")]
+        assert len(media_queries) >= 1
+        assert "min-width" in media_queries[0].selector
+        assert "max-width" in media_queries[0].selector
+
+    def test_extract_media_query_prefers_color_scheme(self):
+        """Test that @media prefers-color-scheme extracts correctly."""
+        css_code = """@media (prefers-color-scheme: dark) {
+    body { background: #333; }
+}"""
+        parser = self._get_parser()
+        tree = parser.parse(css_code.encode("utf-8"))
+        elements = self.extractor.extract_css_rules(tree, css_code)
+
+        media_queries = [e for e in elements if e.selector.startswith("@media")]
+        assert len(media_queries) >= 1
+        assert "prefers-color-scheme" in media_queries[0].selector
+        assert "dark" in media_queries[0].selector
+
+    def test_extract_media_query_print(self):
+        """Test that @media print extracts correctly."""
+        css_code = """@media print {
+    body { background: white; }
+}"""
+        parser = self._get_parser()
+        tree = parser.parse(css_code.encode("utf-8"))
+        elements = self.extractor.extract_css_rules(tree, css_code)
+
+        media_queries = [e for e in elements if e.selector.startswith("@media")]
+        assert len(media_queries) >= 1
+        assert media_queries[0].selector == "@media print"
+
+    def test_extract_multiple_keyframes(self):
+        """Test that multiple @keyframes are extracted with distinct names."""
+        css_code = """@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes slideIn {
+    from { transform: translateX(-100%); }
+    to { transform: translateX(0); }
+}
+
+@keyframes bounce {
+    0% { transform: translateY(0); }
+    50% { transform: translateY(-20px); }
+    100% { transform: translateY(0); }
+}"""
+        parser = self._get_parser()
+        tree = parser.parse(css_code.encode("utf-8"))
+        elements = self.extractor.extract_css_rules(tree, css_code)
+
+        keyframes = [e for e in elements if e.selector.startswith("@keyframes")]
+        assert len(keyframes) >= 3
+
+        names = [e.name for e in keyframes]
+        assert "@keyframes fadeIn" in names
+        assert "@keyframes slideIn" in names
+        assert "@keyframes bounce" in names
+
+    def test_extract_supports_rule(self):
+        """Test that @supports extracts the full condition."""
+        css_code = """@supports (display: grid) {
+    .container { display: grid; }
+}"""
+        parser = self._get_parser()
+        tree = parser.parse(css_code.encode("utf-8"))
+        elements = self.extractor.extract_css_rules(tree, css_code)
+
+        supports = [e for e in elements if e.selector.startswith("@supports")]
+        # Note: @supports may or may not be fully supported depending on tree-sitter-css
+        # This test documents expected behavior
+        if len(supports) >= 1:
+            assert "display" in supports[0].selector or "grid" in supports[0].selector
+
+
 class TestCssIntegration:
     """Integration tests for CSS plugin"""
 

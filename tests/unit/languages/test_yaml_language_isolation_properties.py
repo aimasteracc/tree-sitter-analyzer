@@ -272,7 +272,7 @@ class TestYAMLLanguageIsolationProperties:
             Path(python_path).unlink(missing_ok=True)
             Path(java_path).unlink(missing_ok=True)
 
-    @settings(max_examples=50)
+    @settings(max_examples=50, deadline=None)  # Disable deadline due to I/O variability
     @given(
         yaml_code=yaml_code_strategy,
     )

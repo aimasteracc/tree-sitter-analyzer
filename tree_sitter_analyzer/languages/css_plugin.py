@@ -273,9 +273,21 @@ class CssElementExtractor(ElementExtractor):
         try:
             node_text = self._extract_node_text(node, source_code)
             if node_text.startswith("@"):
-                # Extract @rule-name part
+                # For @media, @keyframes, etc., extract the full declaration line
+                # Split by { to get the rule declaration
+                if "{" in node_text:
+                    declaration = node_text.split("{")[0].strip()
+                    return declaration
+                # Fallback: extract @rule-name part
                 parts = node_text.split()
                 if parts:
+                    # For @media and @keyframes, include parameters
+                    if parts[0] in ("@media", "@keyframes", "@supports"):
+                        # Return first line or up to first {
+                        first_line = node_text.split("\n")[0].strip()
+                        if "{" in first_line:
+                            return first_line.split("{")[0].strip()
+                        return first_line
                     return parts[0]
             return node_text[:50]  # Truncate for readability
         except Exception:
@@ -315,6 +327,11 @@ class CssElementExtractor(ElementExtractor):
 class CssPlugin(LanguagePlugin):
     """CSS language plugin using tree-sitter-css for true CSS parsing"""
 
+    def __init__(self) -> None:
+        """Initialize CSS plugin with extractor."""
+        super().__init__()
+        self.extractor = CssElementExtractor()
+
     def get_language_name(self) -> str:
         return "css"
 
@@ -323,6 +340,13 @@ class CssPlugin(LanguagePlugin):
 
     def create_extractor(self) -> ElementExtractor:
         return CssElementExtractor()
+
+    def get_tree_sitter_language(self):
+        """Get tree-sitter language object for CSS."""
+        import tree_sitter
+        import tree_sitter_css as ts_css
+
+        return tree_sitter.Language(ts_css.language())
 
     def get_supported_element_types(self) -> list[str]:
         return ["css_rule"]

@@ -241,6 +241,75 @@ MITライセンス - [LICENSE](LICENSE) ファイルをご覧ください。
 
 ---
 
+## 🧪 テスト
+
+### テストカバレッジ
+
+| 指標 | 値 |
+|------|-----|
+| **総テスト数** | 2,411 テスト ✅ |
+| **テスト合格率** | 100% (2,411/2,411) |
+| **コードカバレッジ** | [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer) |
+| **型安全性** | 100% mypy準拠 |
+
+### テストの実行
+
+```bash
+# すべてのテストを実行
+uv run pytest tests/ -v
+
+# 特定のテストカテゴリを実行
+uv run pytest tests/unit/ -v              # 単体テスト
+uv run pytest tests/integration/ -v         # 統合テスト
+uv run pytest tests/regression/ -m regression  # 回帰テスト
+uv run pytest tests/benchmarks/ -v         # ベンチマークテスト
+
+# カバレッジを含めて実行
+uv run pytest tests/ --cov=tree_sitter_analyzer --cov-report=html
+
+# プロパティベーステストを実行
+uv run pytest tests/property/
+
+# パフォーマンスベンチマークを実行
+uv run pytest tests/benchmarks/ --benchmark-only
+```
+
+### テストドキュメント
+
+| ドキュメント | 説明 |
+|--------------|------|
+| [テスト作成ガイド](docs/test-writing-guide.md) | テスト作成の包括的なガイド |
+| [回帰テストガイド](docs/regression-testing-guide.md) | Golden Master手法と回帰テスト |
+| [テストドキュメント](docs/TESTING.md) | プロジェクトのテスト標準 |
+
+### テストカテゴリ
+
+- **単体テスト** (2,087 テスト): 個別のコンポーネントを分離してテスト
+- **統合テスト** (187 テスト): コンポーネント間の相互作用をテスト
+- **回帰テスト** (70 テスト): 下位互換性とフォーマット安定性を確保
+- **プロパティテスト** (75 テスト): Hypothesisベースのプロパティテスト
+- **ベンチマークテスト** (20 テスト): パフォーマンス監視と回帰検出
+- **互換性テスト** (30 テスト): クロスバージョン互換性の検証
+
+### CI/CD統合
+
+- **テストカバレッジワークフロー**: PRとプッシュでの自動カバレッジチェック
+- **回帰テストワークフロー**: Golden Master検証とフォーマット安定性チェック
+- **パフォーマンスベンチマーク**: 日次ベンチマーク実行とトレンド分析
+- **品質チェック**: 自動リンティング、型チェック、セキュリティスキャン
+
+### テストのコントリビュート
+
+新機能をコントリビュートする際：
+
+1. **テストを書く**: [テスト作成ガイド](docs/test-writing-guide.md)に従う
+2. **カバレッジを確保**: 80%以上のコードカバレッジを維持
+3. **ローカルで実行**: `uv run pytest tests/ -v`
+4. **品質をチェック**: `uv run ruff check . && uv run mypy tree_sitter_analyzer/`
+5. **ドキュメントを更新**: 新しいテストと機能を文書化
+
+---
+
 ## 📚 ドキュメント
 
 | ドキュメント | 説明 |
@@ -252,6 +321,8 @@ MITライセンス - [LICENSE](LICENSE) ファイルをご覧ください。
 | [機能](docs/features.md) | 言語サポートの詳細 |
 | [アーキテクチャ](docs/architecture.md) | システム設計 |
 | [コントリビュート](docs/CONTRIBUTING.md) | 開発ガイドライン |
+| [テスト作成ガイド](docs/test-writing-guide.md) | 包括的なテスト作成ガイド |
+| [回帰テストガイド](docs/regression-testing-guide.md) | Golden Master手法 |
 | [変更履歴](CHANGELOG.md) | バージョン履歴 |
 
 ---

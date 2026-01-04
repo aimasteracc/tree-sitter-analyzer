@@ -170,6 +170,20 @@ class YAMLElementExtractor(ElementExtractor):
         log_debug(f"Extracted {len(elements)} YAML elements")
         return elements
 
+    def extract_elements(
+        self, tree: "tree_sitter.Tree | None", source_code: str
+    ) -> list[YAMLElement]:
+        """Alias for extract_yaml_elements for compatibility with tests.
+
+        Args:
+            tree: Parsed tree-sitter tree
+            source_code: Original source code
+
+        Returns:
+            List of YAMLElement objects
+        """
+        return self.extract_yaml_elements(tree, source_code)
+
     def _get_node_text(self, node: "tree_sitter.Node") -> str:
         """Get text content from a tree-sitter node."""
         try:
@@ -291,7 +305,11 @@ class YAMLElementExtractor(ElementExtractor):
     def _extract_mappings(
         self, root_node: "tree_sitter.Node", elements: list[YAMLElement]
     ) -> None:
-        """Extract YAML mappings (key-value pairs)."""
+        """Extract YAML mappings (key-value pairs).
+
+        Note: Mappings with sequence or mapping values are not extracted here,
+        as the sequence/mapping elements themselves will carry the key.
+        """
         for node in self._traverse_nodes(root_node):
             if node.type in ("block_mapping_pair", "flow_pair"):
                 try:
@@ -304,6 +322,7 @@ class YAMLElementExtractor(ElementExtractor):
                     value = None
                     value_type = None
                     child_count = None
+                    anchor_name = None
 
                     # Find key and value nodes
                     # In tree-sitter-yaml, block_mapping_pair has structure:
@@ -322,6 +341,11 @@ class YAMLElementExtractor(ElementExtractor):
                             else:
                                 # This is the value
                                 value_node = child
+                                # Check for anchor in value node
+                                for subchild in child.children:
+                                    if subchild.type == "anchor":
+                                        anchor_text = self._get_node_text(subchild)
+                                        anchor_name = anchor_text.lstrip("&").strip()
                         elif child.type == "key":
                             # Key is wrapped in a "key" node
                             if child.children:
@@ -334,6 +358,15 @@ class YAMLElementExtractor(ElementExtractor):
                                 value_node = child.children[0]
                             else:
                                 value_node = child
+                            # Check for anchor in value
+                            for subchild in child.children:
+                                if subchild.type == "anchor":
+                                    anchor_text = self._get_node_text(subchild)
+                                    anchor_name = anchor_text.lstrip("&").strip()
+                        elif child.type == "anchor":
+                            # Anchor at mapping level
+                            anchor_text = self._get_node_text(child)
+                            anchor_name = anchor_text.lstrip("&").strip()
 
                     # Extract key text - drill down through flow_node/block_node
                     if key_node is not None:
@@ -363,6 +396,9 @@ class YAMLElementExtractor(ElementExtractor):
                                 current
                             )
 
+                    # Always create mapping element for the key-value pair
+                    # Even if value is sequence or mapping, the key itself is important structural information
+
                     nesting_level = self._calculate_nesting_level(node)
                     doc_index = self._get_document_index(node)
 
@@ -378,6 +414,7 @@ class YAMLElementExtractor(ElementExtractor):
                         nesting_level=nesting_level,
                         document_index=doc_index,
                         child_count=child_count,
+                        anchor_name=anchor_name,
                     )
                     elements.append(element)
                 except Exception:  # nosec B110
@@ -405,6 +442,7 @@ class YAMLElementExtractor(ElementExtractor):
             elif text.lower() in ("null", "~", ""):
                 return text if text else None, "null", None
             elif self._is_number(text):
+                # Return "number" for both integer and float to match test expectations
                 return text, "number", None
             else:
                 return text, "string", None
@@ -465,6 +503,40 @@ class YAMLElementExtractor(ElementExtractor):
                     nesting_level = self._calculate_nesting_level(node)
                     doc_index = self._get_document_index(node)
 
+                    # Try to find the key for this sequence by checking parent mapping
+                    key = None
+                    parent = node.parent
+                    while parent is not None:
+                        if parent.type in ("block_mapping_pair", "flow_pair"):
+                            # Find the key node in the parent mapping
+                            for child in parent.children:
+                                if child.type in ("flow_node", "block_node"):
+                                    # Check if this is the key (before colon)
+                                    found_colon = False
+                                    for sibling in parent.children:
+                                        if sibling.type == ":":
+                                            found_colon = True
+                                            break
+                                    if (
+                                        not found_colon
+                                        or child.start_byte
+                                        < parent.children[1].start_byte
+                                    ):
+                                        # This is the key
+                                        current = child
+                                        while (
+                                            current
+                                            and current.type
+                                            in ("flow_node", "block_node")
+                                            and current.children
+                                        ):
+                                            current = current.children[0]
+                                        if current:
+                                            key = self._get_node_text(current).strip()
+                                            break
+                            break
+                        parent = getattr(parent, "parent", None)
+
                     element = YAMLElement(
                         name="sequence",
                         start_line=start_line,
@@ -473,6 +545,7 @@ class YAMLElementExtractor(ElementExtractor):
                         if len(raw_text) > 200
                         else raw_text,
                         element_type="sequence",
+                        key=key,
                         value_type="sequence",
                         nesting_level=nesting_level,
                         document_index=doc_index,
@@ -575,6 +648,11 @@ class YAMLElementExtractor(ElementExtractor):
 class YAMLPlugin(LanguagePlugin):
     """YAML language plugin using tree-sitter-yaml for true YAML parsing."""
 
+    def __init__(self) -> None:
+        """Initialize YAML plugin with extractor."""
+        super().__init__()
+        self.extractor = YAMLElementExtractor()
+
     def get_language_name(self) -> str:
         """Return the language name."""
         return "yaml"
@@ -586,6 +664,12 @@ class YAMLPlugin(LanguagePlugin):
     def create_extractor(self) -> "YAMLElementExtractor":
         """Create and return a YAML element extractor."""
         return YAMLElementExtractor()
+
+    def get_tree_sitter_language(self):
+        """Get tree-sitter language object for YAML."""
+        if not YAML_AVAILABLE:
+            raise ImportError("tree-sitter-yaml not installed")
+        return YAML_LANGUAGE
 
     def get_supported_element_types(self) -> list[str]:
         """Return supported element types."""

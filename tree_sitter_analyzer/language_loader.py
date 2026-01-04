@@ -7,6 +7,7 @@ and lazy loading for optimal performance.
 """
 
 import importlib
+import threading
 from typing import TYPE_CHECKING, Any, Optional
 
 if TYPE_CHECKING:
@@ -253,14 +254,16 @@ class LanguageLoader:
 
 # グローバルインスタンス（最適化：シングルトンパターン）
 _loader_instance = None
+_loader_instance_lock = threading.Lock()
 
 
 def get_loader() -> "LanguageLoader":
     """Get singleton loader instance"""
     global _loader_instance
-    if _loader_instance is None:
-        _loader_instance = LanguageLoader()
-    return _loader_instance
+    with _loader_instance_lock:
+        if _loader_instance is None:
+            _loader_instance = LanguageLoader()
+        return _loader_instance
 
 
 # 後方互換性のため

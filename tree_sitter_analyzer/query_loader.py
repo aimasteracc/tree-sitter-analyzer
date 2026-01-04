@@ -5,6 +5,7 @@ Optimized with enhanced caching and lazy loading for better performance.
 """
 
 import importlib
+import threading
 
 from .utils import log_error
 
@@ -237,14 +238,16 @@ class QueryLoader:
 
 # グローバルインスタンス（シングルトンパターン）
 _query_loader_instance = None
+_query_loader_instance_lock = threading.Lock()
 
 
 def get_query_loader() -> QueryLoader:
     """Get singleton query loader instance."""
     global _query_loader_instance
-    if _query_loader_instance is None:
-        _query_loader_instance = QueryLoader()
-    return _query_loader_instance
+    with _query_loader_instance_lock:
+        if _query_loader_instance is None:
+            _query_loader_instance = QueryLoader()
+        return _query_loader_instance
 
 
 # 後方互換性のため

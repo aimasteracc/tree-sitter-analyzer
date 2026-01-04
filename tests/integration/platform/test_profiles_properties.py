@@ -2,7 +2,7 @@ import json
 import tempfile
 from pathlib import Path
 
-from hypothesis import given
+from hypothesis import given, settings
 from hypothesis import strategies as st
 
 from tree_sitter_analyzer.platform_compat.profiles import (
@@ -37,6 +37,7 @@ def behavior_profile_strategy(draw):
 
 
 class TestProfileProperties:
+    @settings(deadline=None)  # Disable deadline due to I/O variability
     @given(behavior_profile_strategy())
     def test_profile_persistence_correctness(self, profile):
         """
