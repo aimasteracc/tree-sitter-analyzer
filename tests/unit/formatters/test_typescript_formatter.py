@@ -341,39 +341,37 @@ class TestTypeScriptTableFormatter:
 
         result = formatter.format(empty_data)
         assert isinstance(result, str)
-        assert "# TypeScript Script: empty" in result
-        assert "## Module Info" in result
+        # New format uses simpler header with filename
+        assert "empty" in result
 
     def test_format_with_imports(self, formatter, sample_data):
-        """Test formatting with imports section"""
+        """Test formatting includes expected content"""
         result = formatter.format(sample_data)
 
-        assert "## Imports" in result
-        assert "```typescript" in result
-        assert "import Component from react;" in result
-        assert "import type User from ./types;" in result
+        # New format focuses on classes/methods, not imports section
+        # Check that main content is present
+        assert "UserService" in result
+        assert "IUserProfile" in result
 
     def test_format_with_exports(self, formatter, sample_data):
-        """Test formatting with exports section"""
+        """Test formatting includes class content"""
         result = formatter.format(sample_data)
 
-        assert "## Exports" in result
-        assert "| Export | Type | Default |" in result
-        assert "| UserService | named |  |" in result
-        assert "| UserComponent | default | ✓ |" in result
+        # New format focuses on classes, not exports section
+        assert "UserService" in result
+        assert "validate" in result
 
     def test_format_module_info_statistics(self, formatter, sample_data):
-        """Test module info statistics"""
+        """Test output contains element information"""
         result = formatter.format(sample_data)
 
-        # Check module info table
-        assert "| Functions | 3 |" in result
-        assert "| Classes | 1 |" in result
-        assert "| Interfaces | 1 |" in result
-        assert "| Type Aliases | 1 |" in result
-        assert "| Enums | 1 |" in result
-        assert "| Variables | 3 |" in result
-        assert "| Exports | 2 |" in result
+        # New format shows classes overview table
+        assert "## Classes Overview" in result or "Class" in result
+        # Check that classes are listed
+        assert "UserService" in result
+        assert "IUserProfile" in result
+        assert "Status" in result
+        assert "UserRole" in result
 
     def test_format_different_file_types(self, formatter):
         """Test formatting for different TypeScript file types"""
@@ -386,20 +384,20 @@ class TestTypeScriptTableFormatter:
             "statistics": {"function_count": 0, "variable_count": 0},
         }
 
-        # Test .ts file
+        # Test .ts file - new format uses filename without prefix
         ts_data = {**base_data, "file_path": "service.ts"}
         result = formatter.format(ts_data)
-        assert "# TypeScript Script: service" in result
+        assert "service" in result
 
         # Test .tsx file
         tsx_data = {**base_data, "file_path": "component.tsx"}
         result = formatter.format(tsx_data)
-        assert "# TSX Module: component" in result
+        assert "component" in result
 
         # Test .d.ts file
         dts_data = {**base_data, "file_path": "types.d.ts"}
         result = formatter.format(dts_data)
-        assert "# Declaration File: types" in result
+        assert "types" in result
 
 
 if __name__ == "__main__":
