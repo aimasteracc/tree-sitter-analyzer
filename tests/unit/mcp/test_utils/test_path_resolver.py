@@ -209,9 +209,11 @@ class TestPathResolverResolve:
         # Should return as-is on POSIX
         assert result == "C:\\Users\\project"
 
-    def test_resolve_unix_path_on_windows(self, monkeypatch, tmp_path):
+    @pytest.mark.skipif(os.name != "nt", reason="Windows-specific test")
+    def test_resolve_unix_path_on_windows(self, tmp_path):
         """Test Unix absolute path on Windows."""
-        monkeypatch.setattr(os, "name", "nt")
+        # This test can only run on actual Windows because pathlib.Path
+        # cannot instantiate WindowsPath on non-Windows systems
         resolver = PathResolver(str(tmp_path))
         result = resolver.resolve("/usr/local/bin")
         # Should convert to Windows format
