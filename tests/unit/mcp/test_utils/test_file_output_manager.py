@@ -16,6 +16,19 @@ import pytest
 from tree_sitter_analyzer.mcp.utils.file_output_manager import FileOutputManager
 
 
+def _normalize_path(path: str) -> str:
+    """Normalize path to handle Windows short path names (8.3 format).
+
+    On Windows, tempfile paths may use short names like RUNNER~1 while
+    resolved paths use full names like runneradmin. This normalizes
+    both to the same format for comparison.
+    """
+    try:
+        return str(Path(path).resolve())
+    except (OSError, ValueError):
+        return path
+
+
 @pytest.fixture
 def temp_dir():
     """Create a temporary directory for testing."""
@@ -110,7 +123,8 @@ class TestFileOutputManagerSetOutputPath:
         os.makedirs(new_path, exist_ok=True)
 
         manager.set_output_path(new_path)
-        assert manager.get_output_path() == new_path
+        # Use normalized paths for comparison to handle Windows short path names
+        assert _normalize_path(manager.get_output_path()) == _normalize_path(new_path)
 
     def test_set_output_path_not_exists(self, manager):
         """Test set_output_path fails when path doesn't exist."""

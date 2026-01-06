@@ -414,9 +414,12 @@ class TestValidateAbsolutePath:
         validator = SecurityValidator()
 
         with patch.dict(os.environ, {"PYTEST_CURRENT_TEST": "1"}):
-            is_valid, error = validator._validate_absolute_path("/tmp/test.py")
-            # Should be allowed in test environment
-            assert is_valid
+            # Use a platform-appropriate temp path
+            with tempfile.TemporaryDirectory() as temp_dir:
+                test_path = str(Path(temp_dir) / "test.py")
+                is_valid, error = validator._validate_absolute_path(test_path)
+                # Should be allowed in test environment
+                assert is_valid
 
 
 class TestValidatePathTraversal:
@@ -567,11 +570,12 @@ class TestCheckTestEnvironmentAccess:
         validator = SecurityValidator()
 
         with patch.dict(os.environ, {"PYTEST_CURRENT_TEST": "1"}):
-            is_valid, error = validator._check_test_environment_access(
-                "/tmp/test_file.py"
-            )
-            assert is_valid
-            assert error == ""
+            # Use a platform-appropriate temp path
+            with tempfile.TemporaryDirectory() as temp_dir:
+                test_path = str(Path(temp_dir) / "test_file.py")
+                is_valid, error = validator._check_test_environment_access(test_path)
+                assert is_valid
+                assert error == ""
 
 
 class TestIntegration:
