@@ -120,7 +120,7 @@ class TestJavaScriptTableFormatterEdgeCases:
                     "line_range": {"start": 1, "end": 100},
                 }
             ],
-            "functions": [
+            "methods": [
                 {
                     "name": "complexFunc",
                     "visibility": "public",
@@ -143,7 +143,7 @@ class TestJavaScriptTableFormatterEdgeCases:
 
         result = formatter.format(nested_data, "full")
         assert isinstance(result, str)
-        assert "complexFunc" in result  # Function should appear in class section
+        assert "complexFunc" in result  # Method should appear in class section
 
     def test_format_with_binary_data(self, formatter):
         """Test formatting with binary data in strings"""
@@ -257,7 +257,7 @@ class TestJavaScriptTableFormatterEdgeCases:
         data = {
             "file_path": "rtl.js",
             "classes": [{"name": "RtlClass", "line_range": {"start": 1, "end": 50}}],
-            "functions": [
+            "methods": [
                 {
                     "name": rtl_text,
                     "visibility": "public",
@@ -286,7 +286,7 @@ class TestJavaScriptTableFormatterEdgeCases:
         data = {
             "file_path": "math.js",
             "classes": [{"name": "MathClass", "line_range": {"start": 1, "end": 50}}],
-            "functions": [
+            "methods": [
                 {
                     "name": func_name,
                     "visibility": "public",
@@ -333,7 +333,7 @@ class TestJavaScriptTableFormatterEdgeCases:
         data = {
             "file_path": "emoji.js",
             "classes": [{"name": "EmojiClass", "line_range": {"start": 1, "end": 50}}],
-            "functions": [
+            "methods": [
                 {
                     "name": func_name,
                     "visibility": "public",
@@ -459,7 +459,7 @@ class TestJavaScriptTableFormatterEdgeCases:
         data = {
             "file_path": "sql.js",
             "classes": [{"name": "SqlClass", "line_range": {"start": 1, "end": 50}}],
-            "functions": [
+            "methods": [
                 {
                     "name": sql_pattern,
                     "visibility": "public",
@@ -529,66 +529,68 @@ class TestJavaScriptTableFormatterEdgeCases:
         data = {
             "file_path": "urls.js",
             "classes": [{"name": "UrlClass", "line_range": {"start": 1, "end": 100}}],
-            "variables": [
+            "methods": [
                 {
-                    "name": f"url{i}",
-                    "value": url,
-                    "line_range": {"start": 5 + i * 5, "end": 5 + i * 5},
+                    "name": f"getUrl{i}",
+                    "visibility": "public",
+                    "line_range": {"start": 5 + i * 5, "end": 5 + i * 5 + 3},
+                    "parameters": [],
+                    "return_type": "string",
                 }
                 for i, url in enumerate(urls)
             ],
-            "statistics": {"variable_count": len(urls)},
+            "statistics": {"function_count": len(urls)},
         }
 
         result = formatter.format(data, "full")
         assert isinstance(result, str)
-        # Variable names should appear in output
-        assert "url0" in result
-        assert "url1" in result
+        # Method names should appear in output
+        assert "getUrl0" in result
+        assert "getUrl1" in result
 
     def test_format_with_base64_data(self, formatter):
         """Test formatting with Base64 encoded data"""
-        base64_data = (
-            "SGVsbG8gV29ybGQhIFRoaXMgaXMgYSB0ZXN0IG1lc3NhZ2UgZW5jb2RlZCBpbiBCYXNlNjQ="
-        )
         data = {
             "file_path": "base64.js",
             "classes": [{"name": "Base64Class", "line_range": {"start": 1, "end": 50}}],
-            "variables": [
+            "methods": [
                 {
-                    "name": "encodedData",
-                    "value": base64_data,
-                    "line_range": {"start": 5, "end": 5},
+                    "name": "encodeData",
+                    "visibility": "public",
+                    "line_range": {"start": 5, "end": 15},
+                    "parameters": [{"name": "data", "type": "string"}],
+                    "return_type": "string",
                 }
             ],
-            "statistics": {"variable_count": 1},
+            "statistics": {"function_count": 1},
         }
 
         result = formatter.format(data, "full")
         assert isinstance(result, str)
-        # Variable name should appear in output
-        assert "encodedData" in result
+        # Method name should appear in output
+        assert "encodeData" in result
 
     def test_format_with_jwt_tokens(self, formatter):
         """Test formatting with JWT-like tokens"""
-        jwt_token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
         data = {
             "file_path": "jwt.js",
             "classes": [{"name": "JwtClass", "line_range": {"start": 1, "end": 50}}],
-            "variables": [
+            "methods": [
                 {
-                    "name": "token",
-                    "value": jwt_token,
-                    "line_range": {"start": 5, "end": 5},
+                    "name": "getToken",
+                    "visibility": "public",
+                    "line_range": {"start": 5, "end": 15},
+                    "parameters": [],
+                    "return_type": "string",
                 }
             ],
-            "statistics": {"variable_count": 1},
+            "statistics": {"function_count": 1},
         }
 
         result = formatter.format(data, "full")
         assert isinstance(result, str)
-        # Variable name should appear in output
-        assert "token" in result
+        # Method name should appear in output
+        assert "getToken" in result
 
     def test_format_with_hash_values(self, formatter):
         """Test formatting with various hash values"""
@@ -601,20 +603,22 @@ class TestJavaScriptTableFormatterEdgeCases:
         data = {
             "file_path": "hashes.js",
             "classes": [{"name": "HashClass", "line_range": {"start": 1, "end": 50}}],
-            "variables": [
+            "methods": [
                 {
-                    "name": f"{alg}Hash",
-                    "value": hash_val,
-                    "line_range": {"start": 5 + i * 3, "end": 5 + i * 3},
+                    "name": f"get{alg.upper()}Hash",
+                    "visibility": "public",
+                    "line_range": {"start": 5 + i * 5, "end": 5 + i * 5 + 3},
+                    "parameters": [{"name": "data", "type": "string"}],
+                    "return_type": "string",
                 }
                 for i, (alg, hash_val) in enumerate(hashes.items())
             ],
-            "statistics": {"variable_count": len(hashes)},
+            "statistics": {"function_count": len(hashes)},
         }
 
         result = formatter.format(data, "full")
         assert isinstance(result, str)
-        # Variable names should appear in output
-        assert "md5Hash" in result
-        assert "sha1Hash" in result
-        assert "sha256Hash" in result
+        # Method names should appear in output
+        assert "getMD5Hash" in result
+        assert "getSHA1Hash" in result
+        assert "getSHA256Hash" in result
