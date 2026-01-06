@@ -8,7 +8,7 @@ selector parsing, and property analysis.
 """
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from ..models import AnalysisResult, StyleElement
 from ..plugins.base import ElementExtractor, LanguagePlugin
@@ -341,7 +341,7 @@ class CssPlugin(LanguagePlugin):
     def create_extractor(self) -> ElementExtractor:
         return CssElementExtractor()
 
-    def get_tree_sitter_language(self):
+    def get_tree_sitter_language(self) -> Any:
         """Get tree-sitter language object for CSS."""
         import tree_sitter
         import tree_sitter_css as ts_css

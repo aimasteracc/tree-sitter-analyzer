@@ -8,7 +8,7 @@ attribute parsing, and document structure analysis.
 """
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from ..models import AnalysisResult, MarkupElement
 from ..plugins.base import ElementExtractor, LanguagePlugin
@@ -371,7 +371,7 @@ class HtmlPlugin(LanguagePlugin):
     def create_extractor(self) -> ElementExtractor:
         return HtmlElementExtractor()
 
-    def get_tree_sitter_language(self):
+    def get_tree_sitter_language(self) -> Any:
         """Get tree-sitter language object for HTML."""
         import tree_sitter
         import tree_sitter_html as ts_html
