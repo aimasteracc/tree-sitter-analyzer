@@ -162,11 +162,15 @@ class TestTableFormatterFactory:
 
         TableFormatterFactory.register_formatter("java", CustomJavaFormatter)
 
-        # Should create the custom formatter instead of JavaTableFormatter
-        formatter = TableFormatterFactory.create_formatter("java", "full")
+        try:
+            # Should create the custom formatter instead of JavaTableFormatter
+            formatter = TableFormatterFactory.create_formatter("java", "full")
 
-        assert isinstance(formatter, CustomJavaFormatter)
-        assert not isinstance(formatter, JavaTableFormatter)
+            assert isinstance(formatter, CustomJavaFormatter)
+            assert not isinstance(formatter, JavaTableFormatter)
+        finally:
+            # Restore the original Java formatter
+            TableFormatterFactory.register_formatter("java", JavaTableFormatter)
 
     def test_get_supported_languages_includes_registered(self):
         """测试获取支持的语言列表（包括已注册的）"""
