@@ -232,39 +232,50 @@ class TestTypeScriptTableFormatter:
         """Test type aliases section formatting"""
         result = formatter.format(sample_data)
 
-        # New format includes type aliases as part of classes overview
+        # Check type alias is in classes overview table
         assert "Status" in result
         assert "type" in result
+        # Check line range is present
+        assert "2-2" in result
 
     def test_format_enums_section(self, formatter, sample_data):
         """Test enums section formatting"""
         result = formatter.format(sample_data)
 
-        # New format includes enums in classes overview
+        # Check enum is in classes overview table
         assert "UserRole" in result
         assert "enum" in result
+        # Check line range is present
+        assert "47-52" in result
 
     def test_format_classes_section(self, formatter, sample_data):
         """Test classes section formatting"""
         result = formatter.format(sample_data)
 
-        # Check that classes are in the output
+        # Check class info in overview table
         assert "UserService" in result
         assert "class" in result
+        assert "15-45" in result
+        # Check interface is also present
+        assert "IUserProfile" in result
+        assert "interface" in result
 
     def test_format_functions_section(self, formatter, sample_data):
         """Test functions section formatting"""
         result = formatter.format(sample_data)
 
-        # Check that function/method content is included
+        # Check method is in class section
         assert "validate" in result
+        # Check method signature components
+        assert "boolean" in result or "UserProfile" in result
 
     def test_format_variables_section(self, formatter, sample_data):
         """Test variables section formatting"""
         result = formatter.format(sample_data)
 
-        # Check that variables/fields are included
+        # Check field is in class section
         assert "userId" in result
+        assert "string" in result
 
     def test_format_compact_table(self, sample_data):
         """Test compact table formatting"""
@@ -274,9 +285,11 @@ class TestTypeScriptTableFormatter:
         assert isinstance(result, str)
         assert len(result) > 0
 
-        # New format uses simpler headers
+        # Check compact format structure
         assert "UserService" in result
         assert "## Info" in result
+        # Check methods section exists
+        assert "## Methods" in result or "Methods" in result
 
     def test_format_csv(self, sample_data):
         """Test CSV formatting"""
@@ -286,9 +299,15 @@ class TestTypeScriptTableFormatter:
         assert isinstance(result, str)
         assert len(result) > 0
 
-        # Check CSV has headers and data
+        # Check CSV structure
         lines = result.split("\n")
         assert len(lines) > 1  # Should have header + data lines
+        # Check header row contains expected columns
+        header = lines[0]
+        assert "Type" in header or "Name" in header
+        # Check data contains expected elements
+        assert any("validate" in line for line in lines)
+        assert any("userId" in line for line in lines)
 
     def test_get_element_type_name(self, formatter):
         """Test element type name generation - method may not exist in new implementation"""
