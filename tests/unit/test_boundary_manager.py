@@ -414,7 +414,7 @@ class TestEdgeCases:
             manager = ProjectBoundaryManager(project_root=tmp_dir)
 
             allowed_dirs = []
-            for i in range(3):
+            for _i in range(3):
                 with tempfile.TemporaryDirectory() as allowed_dir:
                     manager.add_allowed_directory(allowed_dir)
                     allowed_dirs.append(allowed_dir)

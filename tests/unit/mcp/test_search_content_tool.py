@@ -724,7 +724,7 @@ class TestExecute:
                             "enable_parallel": True,
                         }
 
-                        result = await tool.execute(arguments)
+                        await tool.execute(arguments)
 
                         assert mock_parallel.called
 

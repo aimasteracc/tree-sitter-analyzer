@@ -665,7 +665,7 @@ class YAMLPlugin(LanguagePlugin):
         """Create and return a YAML element extractor."""
         return YAMLElementExtractor()
 
-    def get_tree_sitter_language(self):
+    def get_tree_sitter_language(self) -> Any:
         """Get tree-sitter language object for YAML."""
         if not YAML_AVAILABLE:
             raise ImportError("tree-sitter-yaml not installed")

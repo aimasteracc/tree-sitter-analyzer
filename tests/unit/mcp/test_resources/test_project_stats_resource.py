@@ -218,7 +218,7 @@ class TestIsSupportedCodeFile:
         test_file.write_text("plain text")
         resource._project_path = str(tmp_path)
         # May return False for unsupported file types
-        result = resource._is_supported_code_file(test_file)
+        resource._is_supported_code_file(test_file)
         # Just ensure it doesn't crash
 
 

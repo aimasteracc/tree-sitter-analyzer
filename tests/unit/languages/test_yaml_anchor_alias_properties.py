@@ -190,10 +190,9 @@ class TestYAMLAnchorAliasProperties:
         # Property: Anchors must be extracted
         anchors = [e for e in elements if e.element_type == "anchor"]
 
-        assert len(anchors) >= 1, (
-            f"Expected at least 1 anchor, got {len(anchors)}. "
-            f"Content:\n{yaml_content}"
-        )
+        assert (
+            len(anchors) >= 1
+        ), f"Expected at least 1 anchor, got {len(anchors)}. Content:\n{yaml_content}"
 
         # Property: Anchor must have correct name
         anchor_names = [a.anchor_name for a in anchors]
@@ -258,10 +257,9 @@ class TestYAMLAnchorAliasProperties:
         # Property: Aliases must be extracted
         aliases = [e for e in elements if e.element_type == "alias"]
 
-        assert len(aliases) >= 1, (
-            f"Expected at least 1 alias, got {len(aliases)}. "
-            f"Content:\n{yaml_content}"
-        )
+        assert (
+            len(aliases) >= 1
+        ), f"Expected at least 1 alias, got {len(aliases)}. Content:\n{yaml_content}"
 
         # Property: Alias must have correct target name
         alias_targets = [a.alias_target for a in aliases]
@@ -483,10 +481,9 @@ class TestYAMLAnchorAliasProperties:
         anchors = [e for e in elements if e.element_type == "anchor"]
 
         # Property: Anchor must be found
-        assert len(anchors) >= 1, (
-            f"Expected at least 1 anchor, got {len(anchors)}. "
-            f"Content:\n{yaml_content}"
-        )
+        assert (
+            len(anchors) >= 1
+        ), f"Expected at least 1 anchor, got {len(anchors)}. Content:\n{yaml_content}"
 
         # Property: Anchor name must match expected
         anchor_names = [a.anchor_name for a in anchors]
@@ -563,10 +560,9 @@ class TestYAMLAnchorAliasProperties:
         anchors = [e for e in elements if e.element_type == "anchor"]
 
         # Property: Exactly one anchor should be found
-        assert len(anchors) == 1, (
-            f"Expected exactly 1 anchor, got {len(anchors)}. "
-            f"Content: {yaml_content}"
-        )
+        assert (
+            len(anchors) == 1
+        ), f"Expected exactly 1 anchor, got {len(anchors)}. Content: {yaml_content}"
 
         # Property: Anchor name must match exactly (without &)
         extracted_anchor = anchors[0]
@@ -633,9 +629,9 @@ alias: *{anchor_name}
         aliases = [e for e in elements if e.element_type == "alias"]
 
         # Property: Exactly one alias should be found
-        assert len(aliases) == 1, (
-            f"Expected exactly 1 alias, got {len(aliases)}. " f"Content: {yaml_content}"
-        )
+        assert (
+            len(aliases) == 1
+        ), f"Expected exactly 1 alias, got {len(aliases)}. Content: {yaml_content}"
 
         # Property: Alias target must match anchor name exactly (without *)
         extracted_alias = aliases[0]

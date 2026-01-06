@@ -26,7 +26,7 @@ class TestQueryExecutorInit:
         """测试初始化时创建query_loader"""
         with patch("tree_sitter_analyzer.core.query.get_query_loader") as mock_loader:
             mock_loader.return_value = MagicMock()
-            executor = QueryExecutor()
+            QueryExecutor()
             mock_loader.assert_called_once()
 
 

@@ -220,36 +220,37 @@ def reset_global_singletons():
 
     # Reset MCP-related singletons for parallel test safety
     try:
-        from tree_sitter_analyzer.mcp.utils.search_cache import (
-            _default_cache,
-            clear_cache,
-        )
+        from tree_sitter_analyzer.mcp.utils.search_cache import clear_cache
 
-        _default_cache = None
+        # Clear the cache without importing the singleton variable
         clear_cache()
     except (ImportError, AttributeError):
         pass
 
     try:
-        from tree_sitter_analyzer.mcp.utils.gitignore_detector import (
-            _default_detector,
-        )
+        from tree_sitter_analyzer.mcp.utils import gitignore_detector
 
-        _default_detector = None
+        # Reset detector by setting module attribute
+        if hasattr(gitignore_detector, "_default_detector"):
+            gitignore_detector._default_detector = None  # noqa: SLF001
     except (ImportError, AttributeError):
         pass
 
     try:
-        from tree_sitter_analyzer.language_loader import _loader_instance
+        from tree_sitter_analyzer import language_loader
 
-        _loader_instance = None
+        # Reset loader by setting module attribute
+        if hasattr(language_loader, "_loader_instance"):
+            language_loader._loader_instance = None  # noqa: SLF001
     except (ImportError, AttributeError):
         pass
 
     try:
-        from tree_sitter_analyzer.query_loader import _query_loader_instance
+        from tree_sitter_analyzer import query_loader
 
-        _query_loader_instance = None
+        # Reset query loader by setting module attribute
+        if hasattr(query_loader, "_query_loader_instance"):
+            query_loader._query_loader_instance = None  # noqa: SLF001
     except (ImportError, AttributeError):
         pass
 
@@ -305,36 +306,37 @@ def reset_global_singletons():
 
     # Reset MCP-related singletons after test
     try:
-        from tree_sitter_analyzer.mcp.utils.search_cache import (
-            _default_cache,
-            clear_cache,
-        )
+        from tree_sitter_analyzer.mcp.utils.search_cache import clear_cache
 
-        _default_cache = None
+        # Clear the cache without importing the singleton variable
         clear_cache()
     except (ImportError, AttributeError):
         pass
 
     try:
-        from tree_sitter_analyzer.mcp.utils.gitignore_detector import (
-            _default_detector,
-        )
+        from tree_sitter_analyzer.mcp.utils import gitignore_detector
 
-        _default_detector = None
+        # Reset detector by setting module attribute
+        if hasattr(gitignore_detector, "_default_detector"):
+            gitignore_detector._default_detector = None  # noqa: SLF001
     except (ImportError, AttributeError):
         pass
 
     try:
-        from tree_sitter_analyzer.language_loader import _loader_instance
+        from tree_sitter_analyzer import language_loader
 
-        _loader_instance = None
+        # Reset loader by setting module attribute
+        if hasattr(language_loader, "_loader_instance"):
+            language_loader._loader_instance = None  # noqa: SLF001
     except (ImportError, AttributeError):
         pass
 
     try:
-        from tree_sitter_analyzer.query_loader import _query_loader_instance
+        from tree_sitter_analyzer import query_loader
 
-        _query_loader_instance = None
+        # Reset query loader by setting module attribute
+        if hasattr(query_loader, "_query_loader_instance"):
+            query_loader._query_loader_instance = None  # noqa: SLF001
     except (ImportError, AttributeError):
         pass
 

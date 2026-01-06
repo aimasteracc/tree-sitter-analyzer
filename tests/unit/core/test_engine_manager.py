@@ -145,12 +145,8 @@ class TestEngineManagerResetInstances:
         EngineManager.reset_instances()
 
         # Create some instances
-        instance1 = EngineManager.get_instance(
-            UnifiedAnalysisEngine, project_root="/path1"
-        )
-        instance2 = EngineManager.get_instance(
-            UnifiedAnalysisEngine, project_root="/path2"
-        )
+        EngineManager.get_instance(UnifiedAnalysisEngine, project_root="/path1")
+        EngineManager.get_instance(UnifiedAnalysisEngine, project_root="/path2")
 
         # Reset instances
         EngineManager.reset_instances()
@@ -177,7 +173,7 @@ class TestEngineManagerResetInstances:
         EngineManager.reset_instances()
 
         # Create instances
-        instance1 = EngineManager.get_instance(UnifiedAnalysisEngine)
+        EngineManager.get_instance(UnifiedAnalysisEngine)
 
         # Reset instances in multiple threads
         def reset_and_create():
@@ -258,13 +254,13 @@ class TestEngineManagerEdgeCases:
         EngineManager.reset_instances()
 
         # Create instances for multiple project roots
-        instance1 = EngineManager.get_instance(
+        EngineManager.get_instance(
             UnifiedAnalysisEngine, project_root="/path/to/project1"
         )
-        instance2 = EngineManager.get_instance(
+        EngineManager.get_instance(
             UnifiedAnalysisEngine, project_root="/path/to/project2"
         )
-        instance3 = EngineManager.get_instance(
+        EngineManager.get_instance(
             UnifiedAnalysisEngine, project_root="/path/to/project3"
         )
 

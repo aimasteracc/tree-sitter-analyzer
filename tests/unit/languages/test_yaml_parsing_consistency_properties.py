@@ -551,7 +551,7 @@ class TestYAMLParsingConsistencyProperties:
             results = []
             for i in range(5):
                 result = await plugin.analyze_file(str(yaml_file), request)
-                assert result.success, f"Parse {i+1} failed: {result.error}"
+                assert result.success, f"Parse {i + 1} failed: {result.error}"
                 results.append(result)
 
             # Property: All results must have identical structure

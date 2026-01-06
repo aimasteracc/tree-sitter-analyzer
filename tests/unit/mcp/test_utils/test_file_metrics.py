@@ -72,7 +72,7 @@ class TestFileMetrics:
             file_size_bytes=1000,
             content_hash="abc123",
         )
-        with pytest.raises(Exception):  # FrozenInstanceError
+        with pytest.raises(AttributeError):  # FrozenInstanceError is AttributeError
             metrics.total_lines = 200
 
 
@@ -338,7 +338,7 @@ class TestComputeFileMetrics:
         mock_cache.get_metrics.return_value = None
         mock_get_cache.return_value = mock_cache
 
-        result = compute_file_metrics("/test/file.py", language="python")
+        compute_file_metrics("/test/file.py", language="python")
 
         # Should call set_metrics when cache miss
         mock_cache.set_metrics.assert_called_once()
@@ -455,7 +455,7 @@ class TestComputeFileMetrics:
         mock_cache.get_metrics.return_value = None
         mock_get_cache.return_value = mock_cache
 
-        result = compute_file_metrics(
+        compute_file_metrics(
             "/test/file.py", language="python", project_root="/project"
         )
 

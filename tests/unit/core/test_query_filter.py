@@ -143,7 +143,6 @@ class TestQueryFilterMatchName:
 
     def test_match_name_unknown(self, query_filter: QueryFilter) -> None:
         """Test matching unknown method name."""
-        result = {"content": "unknown content"}
         name = query_filter._extract_method_name("unknown content")
         assert name == "unknown"
 

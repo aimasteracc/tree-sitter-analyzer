@@ -234,7 +234,7 @@ class TestPathResolverCache:
         test_file.write_text("content")
 
         # First call
-        result1 = resolver.resolve("test.txt")
+        resolver.resolve("test.txt")
         # Add to cache manually
         resolver._cache["test.txt"] = "cached_value"
         # Second call should return cached value
@@ -428,7 +428,7 @@ class TestPathResolverValidatePath:
         is_valid, error = resolver.validate_path("\0invalid")
         # Should handle gracefully
         assert isinstance(is_valid, bool)
-        assert isinstance(error, (str, type(None)))
+        assert isinstance(error, str | type(None))
 
 
 class TestPathResolverGetProjectRoot:

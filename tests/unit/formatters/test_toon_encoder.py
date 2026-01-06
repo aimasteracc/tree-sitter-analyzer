@@ -477,7 +477,7 @@ class TestToonEncoderCompactFormats:
         encoder = ToonEncoder()
         data = [{"pos": (10, 20), "name": "test"}]
         result = encoder.encode(data)
-        lines = result.split("\n")
+        result.split("\n")
         # Should have (a,b) annotation in schema
         assert "pos(a,b)" in result
         # Should have compact tuple format
@@ -488,7 +488,7 @@ class TestToonEncoderCompactFormats:
         encoder = ToonEncoder()
         data = [{"meta": {"x": 1, "y": 2}, "name": "test"}]
         result = encoder.encode(data)
-        lines = result.split("\n")
+        result.split("\n")
         # Should have {keys} annotation in schema
         assert "meta{x,y}" in result
         # Should have compact dict format

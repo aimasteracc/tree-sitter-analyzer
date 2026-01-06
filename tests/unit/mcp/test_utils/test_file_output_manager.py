@@ -77,7 +77,7 @@ class TestFileOutputManagerGetManagedInstance:
         with patch.object(
             FileOutputManager, "__init__", return_value=None
         ) as mock_init:
-            result = FileOutputManager.get_managed_instance("/test/project")
+            FileOutputManager.get_managed_instance("/test/project")
 
             # Should have called __init__ as fallback
             mock_init.assert_called_once_with("/test/project")

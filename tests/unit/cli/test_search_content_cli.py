@@ -754,7 +754,6 @@ class TestMain:
 
     def test_main_success(self):
         """Test main function with successful execution."""
-        test_args = ["--roots", "src", "--query", "test"]
 
         with patch(
             "tree_sitter_analyzer.cli.commands.search_content_cli._build_parser"
@@ -813,7 +812,6 @@ class TestMain:
 
     def test_main_keyboard_interrupt(self):
         """Test main function handles KeyboardInterrupt."""
-        test_args = ["--roots", "src", "--query", "test"]
 
         with patch(
             "tree_sitter_analyzer.cli.commands.search_content_cli._build_parser"

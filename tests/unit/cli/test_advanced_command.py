@@ -166,7 +166,7 @@ class TestAdvancedCommandCalculateFileMetrics:
         """Test calculating metrics for SQL file."""
         test_file = tmp_path / "test.sql"
         test_file.write_text(
-            "-- SQL comment\n" "SELECT * FROM table;\n" "\n" "-- Another comment\n"
+            "-- SQL comment\nSELECT * FROM table;\n\n-- Another comment\n"
         )
 
         metrics = command._calculate_file_metrics(str(test_file), "sql")
@@ -179,7 +179,7 @@ class TestAdvancedCommandCalculateFileMetrics:
     def test_calculate_file_metrics_html(self, command, tmp_path):
         """Test calculating metrics for HTML file."""
         test_file = tmp_path / "test.html"
-        test_file.write_text("<!-- HTML comment -->\n" "<div>Hello</div>\n" "\n")
+        test_file.write_text("<!-- HTML comment -->\n<div>Hello</div>\n\n")
 
         metrics = command._calculate_file_metrics(str(test_file), "html")
 
@@ -288,9 +288,7 @@ class TestAdvancedCommandOutputFullAnalysis:
             patch(
                 "tree_sitter_analyzer.cli.commands.advanced_command.output_section"
             ) as mock_section,
-            patch(
-                "tree_sitter_analyzer.cli.commands.advanced_command.output_data"
-            ) as mock_data,
+            patch("tree_sitter_analyzer.cli.commands.advanced_command.output_data"),
             patch.object(command, "_output_text_analysis") as mock_text,
         ):
             command._output_full_analysis(mock_analysis_result)

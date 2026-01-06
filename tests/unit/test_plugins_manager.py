@@ -503,7 +503,7 @@ class TestPluginManagerReloadPlugins:
         manager._plugin_modules["mock"] = "test_module"
         manager._discovered = True
 
-        plugins = manager.reload_plugins()
+        manager.reload_plugins()
 
         # Check that reload was called (clears and re-discovers)
         assert manager._discovered is True

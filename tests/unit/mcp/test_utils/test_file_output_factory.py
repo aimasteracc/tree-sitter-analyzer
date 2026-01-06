@@ -166,7 +166,7 @@ class TestFileOutputManagerFactoryClearInstance:
     def test_clear_instance_with_none(self):
         """Test clear_instance with None clears default instance."""
         # Create instance with None
-        instance = FileOutputManagerFactory.get_instance(None)
+        FileOutputManagerFactory.get_instance(None)
 
         # Clear it
         result = FileOutputManagerFactory.clear_instance(None)
@@ -176,7 +176,7 @@ class TestFileOutputManagerFactoryClearInstance:
     def test_clear_instance_normalizes_path(self):
         """Test clear_instance normalizes project root path."""
         # Create instance with relative path
-        instance = FileOutputManagerFactory.get_instance("./test/project")
+        FileOutputManagerFactory.get_instance("./test/project")
 
         # Clear with different path representation
         result = FileOutputManagerFactory.clear_instance(
@@ -273,7 +273,6 @@ class TestFileOutputManagerFactoryUpdateProjectRoot:
         """Test update_project_root successfully updates instance."""
         # Create instance
         instance = FileOutputManagerFactory.get_instance("/old/project")
-        old_project_root = instance.project_root
 
         # Update to new root
         result = FileOutputManagerFactory.update_project_root(
@@ -318,7 +317,7 @@ class TestFileOutputManagerFactoryUpdateProjectRoot:
     def test_update_project_root_normalizes_paths(self):
         """Test update_project_root normalizes both paths."""
         # Create instance with relative path
-        instance = FileOutputManagerFactory.get_instance("./old/project")
+        FileOutputManagerFactory.get_instance("./old/project")
 
         # Update with different path representation
         result = FileOutputManagerFactory.update_project_root(
@@ -422,8 +421,8 @@ class TestFileOutputManagerFactoryIntegration:
         FileOutputManagerFactory.clear_all_instances()
 
         # Recreate
-        instance1 = FileOutputManagerFactory.get_instance("/project1")
-        instance2 = FileOutputManagerFactory.get_instance("/project2")
+        FileOutputManagerFactory.get_instance("/project1")
+        FileOutputManagerFactory.get_instance("/project2")
 
         # Should be new instances
         assert FileOutputManagerFactory.get_instance_count() == 2

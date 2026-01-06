@@ -269,5 +269,5 @@ class TestIntegration:
         formatter1 = TableFormatterFactory.create_formatter("python", "full")
         formatter2 = create_table_formatter("full", "python")
 
-        assert type(formatter1) == type(formatter2)
+        assert type(formatter1) is type(formatter2)
         assert formatter1.format_type == formatter2.format_type

@@ -31,7 +31,7 @@ async def profile_analysis():
         result = await engine.analyze(request)
         end_time = time.perf_counter()
         print(
-            f"Analysis {i+1} took {end_time - start_time:.4f} seconds (Success: {result.success})"
+            f"Analysis {i + 1} took {end_time - start_time:.4f} seconds (Success: {result.success})"
         )
 
     # Get stats

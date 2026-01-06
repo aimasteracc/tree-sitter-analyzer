@@ -289,9 +289,9 @@ class CoverageMonitor:
         coverage = self.get_overall_coverage()
         low_coverage_files = self.get_low_coverage_files()
 
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print("覆盖率摘要")
-        print(f"{'='*60}")
+        print(f"{'=' * 60}")
         print(f"\n总体覆盖率: {coverage:.2f}%")
 
         if low_coverage_files:
@@ -306,7 +306,7 @@ class CoverageMonitor:
         else:
             print("\n✅ 所有文件覆盖率都在80%以上！")
 
-        print(f"\n{'='*60}\n")
+        print(f"\n{'=' * 60}\n")
 
 
 def main():

@@ -332,7 +332,7 @@ class TestQuietMode:
         """测试进入时设置级别"""
         original_level = global_logger.level
 
-        with QuietMode(enabled=True) as quiet:
+        with QuietMode(enabled=True):
             assert global_logger.level == logging.ERROR
 
         # Restore after context
@@ -342,7 +342,7 @@ class TestQuietMode:
         """测试退出时恢复级别"""
         original_level = global_logger.level
 
-        with QuietMode(enabled=True) as quiet:
+        with QuietMode(enabled=True):
             pass
 
         # Level should be restored
@@ -352,7 +352,7 @@ class TestQuietMode:
         """测试禁用时不改变级别"""
         original_level = global_logger.level
 
-        with QuietMode(enabled=False) as quiet:
+        with QuietMode(enabled=False):
             pass
 
         # Level should not change
@@ -362,9 +362,9 @@ class TestQuietMode:
         """测试嵌套上下文"""
         original_level = global_logger.level
 
-        with QuietMode(enabled=True) as quiet:
+        with QuietMode(enabled=True):
             assert global_logger.level == logging.ERROR
-            with QuietMode(enabled=True) as quiet:
+            with QuietMode(enabled=True):
                 assert global_logger.level == logging.ERROR
 
         # Should restore to original
@@ -394,7 +394,7 @@ class TestLoggingContext:
         """测试进入时设置级别"""
         original_level = global_logger.level
 
-        with LoggingContext(enabled=True, level=logging.ERROR) as ctx:
+        with LoggingContext(enabled=True, level=logging.ERROR):
             assert global_logger.level == logging.ERROR
 
         # Restore after context
@@ -404,7 +404,7 @@ class TestLoggingContext:
         """测试退出时恢复级别"""
         original_level = global_logger.level
 
-        with LoggingContext(enabled=True, level=logging.ERROR) as ctx:
+        with LoggingContext(enabled=True, level=logging.ERROR):
             pass
 
         # Level should be restored
@@ -414,7 +414,7 @@ class TestLoggingContext:
         """测试NOTSET级别恢复到INFO"""
         global_logger.setLevel(logging.NOTSET)
 
-        with LoggingContext(enabled=True, level=logging.ERROR) as ctx:
+        with LoggingContext(enabled=True, level=logging.ERROR):
             pass
 
         # Should restore to INFO when NOTSET
@@ -734,7 +734,7 @@ class TestIntegration:
         """测试日志上下文集成"""
         original_level = global_logger.level
 
-        with LoggingContext(enabled=True, level=logging.ERROR) as ctx:
+        with LoggingContext(enabled=True, level=logging.ERROR):
             # ERROR level means only error and above are logged
             log_info("should not log")
             log_error("should log")

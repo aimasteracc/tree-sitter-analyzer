@@ -48,7 +48,9 @@ class TestLanguageFormatterFactoryCreateFormatter:
         formatter_upper = LanguageFormatterFactory.create_formatter("PYTHON")
         formatter_mixed = LanguageFormatterFactory.create_formatter("Python")
 
-        assert type(formatter_lower) == type(formatter_upper) == type(formatter_mixed)
+        assert type(formatter_lower) is type(formatter_upper) and type(
+            formatter_upper
+        ) is type(formatter_mixed)
 
     def test_create_formatter_with_alias(self) -> None:
         """Test creating formatter with language alias."""

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """多次运行检查输出稳定性"""
 
-import subprocess
+import subprocess  # nosec B404
 import sys
 from pathlib import Path
 
@@ -17,7 +17,7 @@ def run_analyzer(input_file: str, table_format: str) -> str:
         table_format,
     ]
 
-    result = subprocess.run(
+    result = subprocess.run(  # nosec B603
         cmd, capture_output=True, text=True, encoding="utf-8", check=True
     )
 
@@ -39,7 +39,7 @@ def check_stability(input_file: str, table_format: str, runs: int = 5):
             match = re.search(r"Total Elements.*?(\d+)", output)
             if match:
                 count = match.group(1)
-                print(f"  Run {i+1}: {count} elements")
+                print(f"  Run {i + 1}: {count} elements")
                 outputs.append((count, output))
         elif "| **Total**" in output:
             import re
@@ -47,10 +47,10 @@ def check_stability(input_file: str, table_format: str, runs: int = 5):
             match = re.search(r"\|\s+\*\*Total\*\*.*?\|\s+\*\*(\d+)\*\*", output)
             if match:
                 count = match.group(1)
-                print(f"  Run {i+1}: {count} elements")
+                print(f"  Run {i + 1}: {count} elements")
                 outputs.append((count, output))
         else:
-            print(f"  Run {i+1}: unable to parse count")
+            print(f"  Run {i + 1}: unable to parse count")
             outputs.append(("?", output))
 
     # 检查是否都一致
