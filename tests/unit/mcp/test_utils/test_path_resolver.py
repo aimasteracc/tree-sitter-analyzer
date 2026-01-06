@@ -360,9 +360,11 @@ class TestPathResolverGetRelativePath:
         with pytest.raises(ValueError, match="not absolute"):
             resolver.get_relative_path("relative/path")
 
-    def test_get_relative_path_different_drives(self, monkeypatch):
+    @pytest.mark.skipif(os.name != "nt", reason="Windows-specific test")
+    def test_get_relative_path_different_drives(self):
         """Test getting relative path across different drives on Windows."""
-        monkeypatch.setattr(os, "name", "nt")
+        # This test can only run on actual Windows because pathlib.Path
+        # cannot instantiate WindowsPath on non-Windows systems
         resolver = PathResolver("C:\\project")
         abs_path = "D:\\other\\file.txt"
 
