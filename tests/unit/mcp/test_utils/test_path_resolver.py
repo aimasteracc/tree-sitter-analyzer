@@ -317,11 +317,13 @@ class TestPathResolverIsRelative:
     def test_absolute_path(self):
         """Test that absolute paths are not identified as relative."""
         resolver = PathResolver()
-        # On Windows, paths starting with / are considered absolute by pathlib
-        # This is expected behavior - test validates that absolute paths return False
-        assert resolver.is_relative("C:\\Users\\file.txt") is False
-        # Skip Unix absolute path test on Windows as pathlib treats it as absolute
-        if os.name != "nt":
+        # Test platform-appropriate absolute paths
+        if os.name == "nt":
+            # On Windows, test Windows-style absolute paths
+            assert resolver.is_relative("C:\\Users\\file.txt") is False
+        else:
+            # On Unix, test Unix-style absolute paths
+            # Note: Windows paths like "C:\..." are considered relative on Unix
             assert resolver.is_relative("/home/user/file.txt") is False
 
     def test_dot_path(self):
