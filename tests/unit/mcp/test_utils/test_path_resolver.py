@@ -197,7 +197,9 @@ class TestPathResolverResolve:
         try:
             os.chdir(tmp_path)
             result = resolver.resolve("test.txt")
-            assert str(test_file.resolve()) in result
+            assert _normalize_test_path(result) == _normalize_test_path(
+                str(test_file.resolve())
+            )
         finally:
             os.chdir(original_cwd)
 
@@ -240,7 +242,9 @@ class TestPathResolverResolve:
 
         # Use backslashes on all systems
         result = resolver.resolve("subdir\\test.txt")
-        assert str(test_file.resolve()) in result
+        assert _normalize_test_path(result) == _normalize_test_path(
+            str(test_file.resolve())
+        )
 
 
 class TestPathResolverCache:
@@ -468,7 +472,7 @@ class TestPathResolverGetProjectRoot:
         resolver = PathResolver(str(tmp_path))
         result = resolver.get_project_root()
         assert result is not None
-        assert str(tmp_path) in result
+        assert _normalize_test_path(result) == _normalize_test_path(str(tmp_path))
 
     def test_get_project_root_not_set(self):
         """Test getting unset project root."""
@@ -485,7 +489,9 @@ class TestPathResolverSetProjectRoot:
         resolver = PathResolver()
         resolver.set_project_root(str(tmp_path))
         assert resolver.project_root is not None
-        assert str(tmp_path) in resolver.project_root
+        assert _normalize_test_path(resolver.project_root) == _normalize_test_path(
+            str(tmp_path)
+        )
 
     def test_set_project_root_relative(self):
         """Test setting relative project root."""
@@ -511,7 +517,9 @@ class TestResolvePathFunction:
         test_file.write_text("content")
 
         result = resolve_path("test.txt", str(tmp_path))
-        assert str(test_file.resolve()) in result
+        assert _normalize_test_path(result) == _normalize_test_path(
+            str(test_file.resolve())
+        )
 
     def test_resolve_path_without_project_root(self, tmp_path):
         """Test resolve_path without project root."""
@@ -523,7 +531,9 @@ class TestResolvePathFunction:
         try:
             os.chdir(tmp_path)
             result = resolve_path("test.txt")
-            assert str(test_file.resolve()) in result
+            assert _normalize_test_path(result) == _normalize_test_path(
+                str(test_file.resolve())
+            )
         finally:
             os.chdir(original_cwd)
 
@@ -542,7 +552,9 @@ class TestPathResolverIntegration:
 
         # Resolve path
         resolved = resolver.resolve("src/main.py")
-        assert str(test_file.resolve()) in resolved
+        assert _normalize_test_path(resolved) == _normalize_test_path(
+            str(test_file.resolve())
+        )
 
         # Check if relative
         assert resolver.is_relative("src/main.py") is True
@@ -569,11 +581,8 @@ class TestPathResolverIntegration:
 
         # Test with different path separators
         # Note: Path.resolve() normalizes separators, so comparison should handle that
-        resolved_path = str(test_file.resolve())
+        normalized_expected = _normalize_test_path(str(test_file.resolve()))
         for path in ["test.txt", "./test.txt"]:
             resolved = resolver.resolve(path)
             # Check if normalized paths match
-            assert (
-                resolved_path in resolved
-                or resolved_path.replace("\\", "/") in resolved
-            )
+            assert _normalize_test_path(resolved) == normalized_expected
