@@ -15,6 +15,19 @@ from tree_sitter_analyzer.mcp.tools.base_tool import BaseMCPTool, MCPTool
 from tree_sitter_analyzer.security import SecurityValidator
 
 
+def _normalize_path(path: str) -> str:
+    """Normalize path to handle macOS /var -> /private/var symlinks
+    and Windows short path names (8.3 format).
+
+    On macOS, /var is a symlink to /private/var, so Path.resolve()
+    returns /private/var while tmp_path returns /var paths.
+    """
+    try:
+        return str(Path(path).resolve())
+    except (OSError, ValueError):
+        return path
+
+
 class ConcreteMCPTool(BaseMCPTool):
     """Concrete implementation of BaseMCPTool for testing"""
 
@@ -106,30 +119,34 @@ class TestResolveAndValidateFilePath:
 
     def test_resolve_valid_file_path(self, tmp_path):
         """Test resolving a valid file path"""
-        tool = ConcreteMCPTool(project_root=str(tmp_path))
+        # Use resolved path for project_root to handle macOS symlinks
+        resolved_tmp = str(tmp_path.resolve())
+        tool = ConcreteMCPTool(project_root=resolved_tmp)
         test_file = tmp_path / "test.txt"
         test_file.write_text("content")
 
         result = tool.resolve_and_validate_file_path(str(test_file))
-        assert str(test_file.resolve()) in result
+        assert _normalize_path(result) == _normalize_path(str(test_file))
 
     def test_resolve_relative_file_path(self, tmp_path):
         """Test resolving a relative file path"""
-        tool = ConcreteMCPTool(project_root=str(tmp_path))
+        resolved_tmp = str(tmp_path.resolve())
+        tool = ConcreteMCPTool(project_root=resolved_tmp)
         test_file = tmp_path / "test.txt"
         test_file.write_text("content")
 
         result = tool.resolve_and_validate_file_path("test.txt")
-        assert str(test_file.resolve()) in result
+        assert _normalize_path(result) == _normalize_path(str(test_file))
 
     def test_resolve_absolute_file_path(self, tmp_path):
         """Test resolving an absolute file path"""
-        tool = ConcreteMCPTool(project_root=str(tmp_path))
+        resolved_tmp = str(tmp_path.resolve())
+        tool = ConcreteMCPTool(project_root=resolved_tmp)
         test_file = tmp_path / "test.txt"
         test_file.write_text("content")
 
         result = tool.resolve_and_validate_file_path(str(test_file.resolve()))
-        assert str(test_file.resolve()) in result
+        assert _normalize_path(result) == _normalize_path(str(test_file))
 
     def test_resolve_nonexistent_file(self, tmp_path):
         """Test that nonexistent file path can be resolved (security only, no existence check)"""
@@ -159,7 +176,7 @@ class TestResolveAndValidateFilePath:
 
         # Should work with absolute path even without project root
         result = tool.resolve_and_validate_file_path(str(test_file.resolve()))
-        assert str(test_file.resolve()) in result
+        assert _normalize_path(result) == _normalize_path(str(test_file))
 
     @patch("tree_sitter_analyzer.mcp.tools.base_tool.get_shared_cache")
     def test_resolve_uses_cache(self, mock_get_cache):
@@ -210,30 +227,33 @@ class TestResolveAndValidateDirectoryPath:
 
     def test_resolve_valid_directory(self, tmp_path):
         """Test resolving a valid directory"""
-        tool = ConcreteMCPTool(project_root=str(tmp_path))
+        resolved_tmp = str(tmp_path.resolve())
+        tool = ConcreteMCPTool(project_root=resolved_tmp)
         test_dir = tmp_path / "test_dir"
         test_dir.mkdir()
 
         result = tool.resolve_and_validate_directory_path(str(test_dir))
-        assert str(test_dir.resolve()) in result
+        assert _normalize_path(result) == _normalize_path(str(test_dir))
 
     def test_resolve_relative_directory(self, tmp_path):
         """Test resolving a relative directory"""
-        tool = ConcreteMCPTool(project_root=str(tmp_path))
+        resolved_tmp = str(tmp_path.resolve())
+        tool = ConcreteMCPTool(project_root=resolved_tmp)
         test_dir = tmp_path / "test_dir"
         test_dir.mkdir()
 
         result = tool.resolve_and_validate_directory_path("test_dir")
-        assert str(test_dir.resolve()) in result
+        assert _normalize_path(result) == _normalize_path(str(test_dir))
 
     def test_resolve_absolute_directory(self, tmp_path):
         """Test resolving an absolute directory"""
-        tool = ConcreteMCPTool(project_root=str(tmp_path))
+        resolved_tmp = str(tmp_path.resolve())
+        tool = ConcreteMCPTool(project_root=resolved_tmp)
         test_dir = tmp_path / "test_dir"
         test_dir.mkdir()
 
         result = tool.resolve_and_validate_directory_path(str(test_dir.resolve()))
-        assert str(test_dir.resolve()) in result
+        assert _normalize_path(result) == _normalize_path(str(test_dir))
 
     def test_validate_nonexistent_directory(self, tmp_path):
         """Test that nonexistent directory raises ValueError"""

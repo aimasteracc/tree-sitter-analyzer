@@ -18,6 +18,19 @@ from tree_sitter_analyzer.mcp.utils.path_resolver import (
 )
 
 
+def _normalize_test_path(path: str) -> str:
+    """Normalize path to handle macOS /var -> /private/var symlinks
+    and Windows short path names (8.3 format).
+
+    On macOS, /var is a symlink to /private/var, so Path.resolve()
+    returns /private/var while tmp_path returns /var paths.
+    """
+    try:
+        return str(Path(path).resolve())
+    except (OSError, ValueError):
+        return path
+
+
 class TestNormalizePathCrossPlatform:
     """Tests for _normalize_path_cross_platform function."""
 
@@ -113,8 +126,10 @@ class TestPathResolverInit:
         """Test initialization with absolute project root."""
         resolver = PathResolver(str(tmp_path))
         assert resolver.project_root is not None
-        # Convert both to strings for comparison
-        assert str(tmp_path.resolve()) in resolver.project_root
+        # Normalize both paths to handle macOS /var -> /private/var symlinks
+        assert _normalize_test_path(resolver.project_root) == _normalize_test_path(
+            str(tmp_path)
+        )
 
     def test_init_with_relative_project_root(self):
         """Test initialization with relative project root."""
@@ -152,22 +167,24 @@ class TestPathResolverResolve:
 
     def test_resolve_absolute_path(self, tmp_path):
         """Test resolving absolute path."""
-        resolver = PathResolver(str(tmp_path))
+        resolved_tmp = str(tmp_path.resolve())
+        resolver = PathResolver(resolved_tmp)
         test_file = tmp_path / "test.txt"
         test_file.write_text("content")
 
         result = resolver.resolve(str(test_file))
-        assert str(test_file.resolve()) in result
+        assert _normalize_test_path(result) == _normalize_test_path(str(test_file))
 
     def test_resolve_relative_path_with_project_root(self, tmp_path):
         """Test resolving relative path with project root."""
-        resolver = PathResolver(str(tmp_path))
+        resolved_tmp = str(tmp_path.resolve())
+        resolver = PathResolver(resolved_tmp)
         test_file = tmp_path / "subdir" / "test.txt"
         test_file.parent.mkdir(parents=True)
         test_file.write_text("content")
 
         result = resolver.resolve("subdir/test.txt")
-        assert str(test_file.resolve()) in result
+        assert _normalize_test_path(result) == _normalize_test_path(str(test_file))
 
     def test_resolve_relative_path_without_project_root(self, tmp_path):
         """Test resolving relative path without project root."""
