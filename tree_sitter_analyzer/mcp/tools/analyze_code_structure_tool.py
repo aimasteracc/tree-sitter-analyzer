@@ -19,7 +19,6 @@ from ...constants import (
 )
 from ...core.analysis_engine import AnalysisRequest, get_analysis_engine
 from ...formatters.formatter_registry import FormatterRegistry
-from ...formatters.language_formatter_factory import create_language_formatter
 from ...language_detector import detect_language_from_file
 from ...utils import setup_logger
 from ..utils import get_performance_monitor
@@ -388,25 +387,16 @@ class AnalyzeCodeStructureTool(BaseMCPTool):
                 # Always convert analysis result to dict for metadata extraction
                 structure_dict = self._convert_analysis_result_to_dict(structure_result)
 
-                # Check if we have a language-specific formatter (e.g., SQL)
-                language_formatter = create_language_formatter(language)
-                if language_formatter:
-                    # Use language-specific formatter
-                    table_output = language_formatter.format_table(
-                        structure_dict, format_type
+                # Use unified FormatterRegistry for all formats
+                # This handles both language-specific and generic formatters
+                if format_type in ["full", "compact", "csv"]:
+                    # Use language-specific formatter from registry
+                    formatter = FormatterRegistry.get_formatter_for_language(
+                        language, format_type
                     )
-                # Use legacy formatter directly for core formats (v1.6.1.4 compatibility)
-                elif format_type in ["full", "compact", "csv"]:
-                    from ...legacy_table_formatter import LegacyTableFormatter
-
-                    legacy_formatter = LegacyTableFormatter(
-                        format_type=format_type,
-                        language=language,
-                        include_javadoc=False,
-                    )
-                    table_output = legacy_formatter.format_structure(structure_dict)
-                # Use FormatterRegistry for extended formats
+                    table_output = formatter.format_structure(structure_dict)
                 elif FormatterRegistry.is_format_supported(format_type):
+                    # Use generic format-based formatter
                     registry_formatter = FormatterRegistry.get_formatter(format_type)
                     table_output = registry_formatter.format(structure_result.elements)
                 else:

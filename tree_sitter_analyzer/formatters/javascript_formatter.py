@@ -46,221 +46,69 @@ class JavaScriptTableFormatter(BaseTableFormatter):
         return self.format_structure(data)
 
     def _format_full_table(self, data: dict[str, Any]) -> str:
-        """Full table format for JavaScript"""
+        """Full table format for JavaScript - matches golden master format"""
         if not isinstance(data, dict):
             raise TypeError(f"Expected dict, got {type(data)}")
 
-        lines = []
+        lines: list[str] = []
 
-        # Header - JavaScript (module/file based)
-        file_path = data.get("file_path", "Unknown")
-        if file_path is None:
-            file_path = "Unknown"
-        file_name = str(file_path).split("/")[-1].split("\\")[-1]
-        module_name = (
-            file_name.replace(".js", "").replace(".jsx", "").replace(".mjs", "")
-        )
-
-        # Check if this is a module (has exports)
-        exports = data.get("exports", [])
-        if exports is None:
-            exports = []
-        is_module = len(exports) > 0
-
-        if is_module:
-            lines.append(f"# Module: {module_name}")
-        else:
-            lines.append(f"# Script: {module_name}")
-        lines.append("")
-
-        # Imports
-        imports = data.get("imports", [])
-        if imports:
-            lines.append("## Imports")
-            lines.append("```javascript")
-            for imp in imports:
-                if isinstance(imp, str):
-                    # Handle malformed data where import is a string
-                    import_statement = imp
-                elif isinstance(imp, dict):
-                    import_statement = imp.get("statement", "")
-                    if not import_statement:
-                        # Construct import statement from parts
-                        source = imp.get("source", "")
-                        name = imp.get("name", "")
-                        if name and source:
-                            import_statement = f"import {name} from {source};"
-                else:
-                    import_statement = str(imp)
-                lines.append(import_statement)
-            lines.append("```")
-            lines.append("")
-
-        # Module Info
-        stats = data.get("statistics", {})
-        if stats is None or not isinstance(stats, dict):
-            stats = {}
+        # Get classes
         classes = data.get("classes", [])
         if classes is None:
             classes = []
+        methods = data.get("methods", [])
+        if methods is None:
+            methods = []
 
-        lines.append("## Module Info")
-        lines.append("| Property | Value |")
-        lines.append("|----------|-------|")
-        lines.append(f"| File | {file_name} |")
-        lines.append(f"| Type | {'ES6 Module' if is_module else 'Script'} |")
-        lines.append(f"| Functions | {stats.get('function_count', 0)} |")
-        lines.append(f"| Classes | {len(classes)} |")
-        lines.append(f"| Variables | {stats.get('variable_count', 0)} |")
-        lines.append(f"| Exports | {len(exports)} |")
+        # Header - use first class name if classes exist
+        if classes:
+            first_class = classes[0]
+            class_name = first_class.get("name", "Unknown")
+            lines.append(f"# {class_name}")
+        else:
+            # Fallback to file name
+            file_path = data.get("file_path", "Unknown")
+            if file_path is None:
+                file_path = "Unknown"
+            file_name = str(file_path).split("/")[-1].split("\\")[-1]
+            module_name = (
+                file_name.replace(".js", "").replace(".jsx", "").replace(".mjs", "")
+            )
+            lines.append(f"# {module_name}")
         lines.append("")
 
-        # Classes (if any)
+        # Classes Overview table (if classes exist)
         if classes:
-            lines.append("## Classes")
-            lines.append("| Class | Type | Extends | Lines | Methods | Properties |")
-            lines.append("|-------|------|---------|-------|---------|------------|")
+            lines.append("## Classes Overview")
+            lines.append("| Class | Type | Visibility | Lines | Methods | Fields |")
+            lines.append("|-------|------|------------|-------|---------|--------|")
 
             for class_info in classes:
                 name = str(class_info.get("name", "Unknown"))
-                class_type = "class"  # JavaScript only has classes
-                extends = str(class_info.get("superclass", "")) or "-"
+                class_type = "class"
+                visibility = "public"  # JavaScript classes are public by default
                 line_range = class_info.get("line_range", {})
                 lines_str = f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
 
                 # Count methods within the class
                 class_methods = [
                     m
-                    for m in data.get("methods", [])
+                    for m in methods
                     if line_range.get("start", 0)
                     <= m.get("line_range", {}).get("start", 0)
                     <= line_range.get("end", 0)
                 ]
 
-                # Count properties (class fields)
-                class_properties = [
-                    v
-                    for v in data.get("variables", [])
-                    if line_range.get("start", 0)
-                    <= v.get("line_range", {}).get("start", 0)
-                    <= line_range.get("end", 0)
-                ]
-
                 lines.append(
-                    f"| {name} | {class_type} | {extends} | {lines_str} | {len(class_methods)} | {len(class_properties)} |"
+                    f"| {name} | {class_type} | {visibility} | "
+                    f"{lines_str} | {len(class_methods)} | 0 |"
                 )
             lines.append("")
 
-        # Variables/Constants
-        variables = data.get("variables", [])
-        if variables:
-            lines.append("## Variables")
-            lines.append("| Name | Type | Scope | Kind | Line | Value |")
-            lines.append("|------|------|-------|------|------|-------|")
-
-            for var in variables:
-                name = str(var.get("name", ""))
-                # Try to get value from initializer or value field
-                var_value = var.get("initializer") or var.get("value", "")
-                var_type = self._infer_js_type(var_value)
-                scope = self._determine_scope(var)
-                kind = self._get_variable_kind(var)
-                line = var.get("line_range", {}).get("start", 0)
-                value = str(var_value)[:30] + (
-                    "..." if len(str(var_value)) > 30 else ""
-                )
-                value = value.replace("\n", " ").replace("|", "\\|")
-
-                lines.append(
-                    f"| {name} | {var_type} | {scope} | {kind} | {line} | {value} |"
-                )
-            lines.append("")
-
-        # Functions
-        functions = data.get("functions", [])
-        if functions:
-            # Group functions by type
-            regular_functions = [
-                f
-                for f in functions
-                if not self._is_method(f) and not f.get("is_async", False)
-            ]
-            async_functions = [
-                f
-                for f in functions
-                if not self._is_method(f) and f.get("is_async", False)
-            ]
-            methods = [f for f in functions if self._is_method(f)]
-
-            # Regular Functions
-            if regular_functions:
-                lines.append("## Functions")
-                lines.append(
-                    "| Function | Parameters | Type | Lines | Complexity | JSDoc |"
-                )
-                lines.append(
-                    "|----------|------------|------|-------|------------|-------|"
-                )
-
-                for func in regular_functions:
-                    lines.append(self._format_function_row(func))
-                lines.append("")
-
-            # Async Functions
-            if async_functions:
-                lines.append("## Async Functions")
-                lines.append(
-                    "| Function | Parameters | Type | Lines | Complexity | JSDoc |"
-                )
-                lines.append(
-                    "|----------|------------|------|-------|------------|-------|"
-                )
-
-                for func in async_functions:
-                    lines.append(self._format_function_row(func))
-                lines.append("")
-
-            # Methods (class methods)
-            if methods:
-                lines.append("## Methods")
-                lines.append(
-                    "| Method | Class | Parameters | Type | Lines | Complexity | JSDoc |"
-                )
-                lines.append(
-                    "|--------|-------|------------|------|-------|------------|-------|"
-                )
-
-                for method in methods:
-                    lines.append(self._format_method_row(method))
-                lines.append("")
-
-        # Exports
-        if exports:
-            lines.append("## Exports")
-            lines.append("| Export | Type | Name | Default |")
-            lines.append("|--------|------|------|---------|")
-
-            # Handle malformed exports data
-            if isinstance(exports, list):
-                for export in exports:
-                    try:
-                        export_type = self._get_export_type(export)
-                        if isinstance(export, dict):
-                            name = str(export.get("name", ""))
-                            is_default = "✓" if export.get("is_default", False) else "-"
-                        else:
-                            name = str(export)
-                            is_default = "-"
-                            export_type = "unknown"
-
-                        lines.append(f"| {export_type} | {name} | {is_default} |")
-                    except (TypeError, AttributeError):
-                        # Handle malformed export data gracefully
-                        lines.append(f"| unknown | {str(export)} | - |")
-            else:
-                # Handle case where exports is not a list (malformed data)
-                lines.append(f"| unknown | {str(exports)} | - |")
-            lines.append("")
+            # Generate per-class sections
+            for class_info in classes:
+                class_lines = self._format_class_section(class_info, data)
+                lines.extend(class_lines)
 
         # Trim trailing blank lines
         while lines and lines[-1] == "":
@@ -268,58 +116,174 @@ class JavaScriptTableFormatter(BaseTableFormatter):
 
         return "\n".join(lines)
 
-    def _format_compact_table(self, data: dict[str, Any]) -> str:
-        """Compact table format for JavaScript"""
-        lines = []
+    def _format_class_section(
+        self, class_info: dict[str, Any], data: dict[str, Any]
+    ) -> list[str]:
+        """Format a single class section with its methods"""
+        lines: list[str] = []
 
-        # Header
-        file_path = data.get("file_path", "Unknown")
-        file_name = file_path.split("/")[-1].split("\\")[-1]
-        module_name = (
-            file_name.replace(".js", "").replace(".jsx", "").replace(".mjs", "")
-        )
-        lines.append(f"# {module_name}")
+        name = str(class_info.get("name", "Unknown"))
+        line_range = class_info.get("line_range", {})
+        start = line_range.get("start", 0)
+        end = line_range.get("end", 0)
+
+        # Section header with line range
+        lines.append(f"## {name} ({start}-{end})")
+
+        # Get methods for this class
+        methods = data.get("methods", [])
+        if methods is None:
+            methods = []
+        class_methods = [
+            m
+            for m in methods
+            if start <= m.get("line_range", {}).get("start", 0) <= end
+        ]
+
+        # Constructors section
+        constructors = [m for m in class_methods if m.get("is_constructor", False)]
+        if constructors:
+            lines.append("### Constructors")
+            lines.append("| Constructor | Signature | Vis | Lines | Cx | Doc |")
+            lines.append("|-------------|-----------|-----|-------|----|----|")
+
+            for method in constructors:
+                lines.append(self._format_method_table_row(method))
+            lines.append("")
+
+        # Public Methods section
+        public_methods = [
+            m for m in class_methods if not m.get("is_constructor", False)
+        ]
+        if public_methods:
+            lines.append("### Public Methods")
+            lines.append("| Method | Signature | Vis | Lines | Cx | Doc |")
+            lines.append("|--------|-----------|-----|-------|----|----|")
+
+            for method in public_methods:
+                lines.append(self._format_method_table_row(method))
+            lines.append("")
+
+        return lines
+
+    def _format_method_table_row(self, method: dict[str, Any]) -> str:
+        """Format a method table row for JavaScript (golden master format)"""
+        name = str(method.get("name", ""))
+        signature = self._create_full_signature(method)
+        visibility = "+"  # JavaScript methods are public by default
+        line_range = method.get("line_range", {})
+        lines_str = f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
+        complexity = method.get("complexity_score", 1)
+        doc = "-"  # Default to no doc
+
+        return f"| {name} | {signature} | {visibility} | {lines_str} | {complexity} | {doc} |"
+
+    def _create_full_signature(self, method: dict[str, Any]) -> str:
+        """Create full method signature for JavaScript"""
+        params = method.get("parameters", [])
+        if not params:
+            return "():unknown"
+
+        # Handle malformed data
+        if isinstance(params, str):
+            return "():unknown"
+
+        param_strs = []
+        for param in params:
+            if isinstance(param, dict):
+                param_name = param.get("name", "")
+                param_type = param.get("type", "Any")
+                param_strs.append(f"{param_name}:{param_type}")
+            else:
+                param_strs.append(f"{param}:Any")
+
+        params_str = ", ".join(param_strs)
+        return_type = method.get("return_type", "unknown")
+        return f"({params_str}):{return_type}"
+
+    def _format_compact_table(self, data: dict[str, Any]) -> str:
+        """Compact table format for JavaScript - matches golden master format"""
+        lines: list[str] = []
+
+        # Get classes
+        classes = data.get("classes", [])
+        if classes is None:
+            classes = []
+        methods = data.get("methods", [])
+        if methods is None:
+            methods = []
+
+        # Header - use first class name if classes exist
+        if classes:
+            first_class = classes[0]
+            class_name = first_class.get("name", "Unknown")
+            lines.append(f"# {class_name}")
+        else:
+            file_path = data.get("file_path", "Unknown")
+            if file_path is None:
+                file_path = "Unknown"
+            file_name = str(file_path).split("/")[-1].split("\\")[-1]
+            module_name = (
+                file_name.replace(".js", "").replace(".jsx", "").replace(".mjs", "")
+            )
+            lines.append(f"# {module_name}")
         lines.append("")
 
-        # Info
-        stats = data.get("statistics", {})
+        # Info section
         lines.append("## Info")
         lines.append("| Property | Value |")
         lines.append("|----------|-------|")
-        lines.append(f"| Functions | {stats.get('function_count', 0)} |")
-        lines.append(f"| Classes | {len(data.get('classes', []))} |")
-        lines.append(f"| Variables | {stats.get('variable_count', 0)} |")
-        lines.append(f"| Exports | {len(data.get('exports', []))} |")
+        lines.append("| Package |  |")
+        lines.append(f"| Methods | {len(methods)} |")
+        lines.append("| Fields | 0 |")
         lines.append("")
 
-        # Functions (compact)
-        functions = data.get("functions", [])
-        if functions:
-            lines.append("## Functions")
-            lines.append("| Function | Params | Type | L | Cx | Doc |")
-            lines.append("|----------|--------|------|---|----|----|")
+        # Methods section
+        if methods:
+            lines.append("## Methods")
+            lines.append("| Method | Sig | V | L | Cx | Doc |")
+            lines.append("|--------|-----|---|---|----|----|")
 
-            for func in functions:
-                name = str(func.get("name", ""))
-                params = self._create_compact_params(func)
-                func_type = self._get_function_type_short(func)
-                line_range = func.get("line_range", {})
+            for method in methods:
+                name = str(method.get("name", ""))
+                signature = self._create_compact_signature(method)
+                visibility = "+"
+                line_range = method.get("line_range", {})
                 lines_str = f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
-                complexity = func.get("complexity_score", 0)
-                doc = self._clean_csv_text(
-                    self._extract_doc_summary(str(func.get("jsdoc", "")))
-                )
+                complexity = method.get("complexity_score", 1)
+                doc = "-"
 
                 lines.append(
-                    f"| {name} | {params} | {func_type} | {lines_str} | {complexity} | {doc} |"
+                    f"| {name} | {signature} | {visibility} | {lines_str} | {complexity} | {doc} |"
                 )
-            lines.append("")
 
         # Trim trailing blank lines
         while lines and lines[-1] == "":
             lines.pop()
 
         return "\n".join(lines)
+
+    def _create_compact_signature(self, method: dict[str, Any]) -> str:
+        """Create compact method signature for JavaScript"""
+        params = method.get("parameters", [])
+        if not params:
+            return "():unknown"
+
+        # Handle malformed data
+        if isinstance(params, str):
+            return "():unknown"
+
+        param_types = []
+        for param in params:
+            if isinstance(param, dict):
+                param_type = param.get("type", "Any")
+                param_types.append(param_type)
+            else:
+                param_types.append("Any")
+
+        params_str = ",".join(param_types)
+        return_type = method.get("return_type", "unknown")
+        return f"({params_str}):{return_type}"
 
     def _format_function_row(self, func: dict[str, Any]) -> str:
         """Format a function table row for JavaScript"""

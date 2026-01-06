@@ -193,7 +193,7 @@ class CppTableFormatter(BaseTableFormatter):
                 name_f = str(field.get("name", ""))
                 type_f = str(field.get("type", ""))
                 vis_f = self._convert_visibility(str(field.get("visibility", "")))
-                mod_f = ",".join(field.get("modifiers", []))
+                mod_f = ",".join([str(m) for m in field.get("modifiers", [])])
                 line_f = field.get("line_range", {}).get("start", 0)
                 doc_f = str(field.get("javadoc", "")) or "-"
                 lines.append(

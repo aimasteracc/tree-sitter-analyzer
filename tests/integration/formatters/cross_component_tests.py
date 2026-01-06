@@ -22,7 +22,7 @@ from typing import Any
 import pytest
 
 from tree_sitter_analyzer.core import AnalysisEngine
-from tree_sitter_analyzer.formatters.formatter_factory import TableFormatterFactory
+from tree_sitter_analyzer.formatters.formatter_registry import FormatterRegistry
 from tree_sitter_analyzer.mcp.tools.analyze_code_structure_tool import (
     AnalyzeCodeStructureTool as TableFormatTool,
 )
@@ -140,9 +140,9 @@ class CrossComponentFormatValidator:
                 Path(file_path), language=language
             )
 
-            # Format using formatter factory
-            formatter = TableFormatterFactory.create_formatter(
-                language=analysis_result.language, format_type=format_type
+            # Format using formatter registry
+            formatter = FormatterRegistry.get_formatter_for_language(
+                analysis_result.language, format_type
             )
 
             table_output = formatter.format(analysis_result)

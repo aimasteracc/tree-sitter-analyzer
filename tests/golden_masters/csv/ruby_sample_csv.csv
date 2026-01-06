@@ -29,18 +29,18 @@ Method,User#email,():,public,18-18,1,-
 Method,User#id,():,public,19-19,1,-
 Method,User#created_at,():,public,19-19,1,-
 Method,User#password_hash,():,public,20-20,1,-
-Method,User#initialize,"(username:Any, email:Any):",public,26-33,1,-
+Method,User#initialize,(username:Any, email:Any):,public,26-33,1,-
 Method,User#authenticate,(password:Any):,public,36-40,1,-
 Method,User#update_profile,(data:Any):,public,43-47,1,-
 Method,User#active?,():,public,50-52,1,-
 Method,User#deactivate!,():,public,55-58,1,-
 Method,User.instance_count,(): [static],public,61-63,1,-
 Method,User.find_by_email,(email:Any): [static],public,66-69,1,-
-Method,User.create_with_password,"(username:Any, email:Any, password:Any): [static]",public,72-76,1,-
+Method,User.create_with_password,(username:Any, email:Any, password:Any): [static],public,72-76,1,-
 Method,User#validate_email,():,public,81-83,1,-
 Method,User#generate_token,():,public,85-87,1,-
 Method,AdminUser#permissions,():,public,92-92,1,-
-Method,AdminUser#initialize,"(username:Any, email:Any, []:permissions =):",public,94-97,1,-
+Method,AdminUser#initialize,(username:Any, email:Any, []:permissions =):,public,94-97,1,-
 Method,AdminUser#has_permission?,(permission:Any):,public,99-101,1,-
 Method,AdminUser#grant_permission,(permission:Any):,public,103-105,1,-
 Method,AdminUser#revoke_permission,(permission:Any):,public,107-109,1,-
@@ -54,6 +54,6 @@ Method,UserRepository#save,(user:Any):,public,156-162,1,-
 Method,UserRepository#delete,(user:Any):,public,164-167,1,-
 Method,UserRepository#insert,(user:Any):,public,171-176,1,-
 Method,UserRepository#update,(user:Any):,public,178-183,1,-
-Method,create_user,"(username:Any, email:Any):",public,187-189,1,-
+Method,create_user,(username:Any, email:Any):,public,187-189,1,-
 Method,hash_password,(password:Any):,public,191-193,1,-
 Method,with_transaction,(&block:Any):,public,205-214,1,-

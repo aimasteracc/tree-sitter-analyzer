@@ -99,3 +99,10 @@ import concerns/timestampable
 | UserRepository#delete | (user:Any): | + | 164-167 | 1 | - |
 | UserRepository#insert | (user:Any): | + | 171-176 | 1 | - |
 | UserRepository#update | (user:Any): | + | 178-183 | 1 | - |
+
+## Module Functions
+| Method | Signature | Vis | Lines | Cx | Doc |
+|--------|-----------|-----|-------|----|----|
+| create_user | (username:Any, email:Any): | + | 187-189 | 1 | - |
+| hash_password | (password:Any): | + | 191-193 | 1 | - |
+| with_transaction | (&block:Any): | + | 205-214 | 1 | - |

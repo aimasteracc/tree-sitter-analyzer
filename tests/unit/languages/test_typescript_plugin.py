@@ -508,20 +508,20 @@ class TestTypeScriptPluginIntegration:
 
     def test_formatter_integration(self):
         """Test TypeScript formatter integration"""
-        from tree_sitter_analyzer.formatters.formatter_factory import (
-            TableFormatterFactory,
+        from tree_sitter_analyzer.formatters.formatter_registry import (
+            FormatterRegistry,
         )
 
         # Test that TypeScript formatter can be created
-        formatter = TableFormatterFactory.create_formatter("typescript", "full")
+        formatter = FormatterRegistry.get_formatter_for_language("typescript", "full")
         assert formatter is not None
 
         # Test alias
-        formatter_alias = TableFormatterFactory.create_formatter("ts", "full")
+        formatter_alias = FormatterRegistry.get_formatter_for_language("ts", "full")
         assert formatter_alias is not None
 
         # Test supported languages includes TypeScript
-        supported = TableFormatterFactory.get_supported_languages()
+        supported = FormatterRegistry.get_supported_languages()
         assert "typescript" in supported or "ts" in supported
 
     def test_language_detection_integration(self):

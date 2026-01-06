@@ -152,15 +152,15 @@ class TestTableCommandExecuteAsync:
                 analysis_time=0.1,
             )
             with patch(
-                "tree_sitter_analyzer.formatters.formatter_selector.FormatterSelector"
-            ) as mock_selector:
+                "tree_sitter_analyzer.formatters.formatter_registry.FormatterRegistry"
+            ) as mock_registry:
                 mock_formatter = MagicMock()
                 mock_formatter.format_structure.return_value = "table_output"
-                mock_selector.get_formatter.return_value = mock_formatter
+                mock_registry.get_formatter_for_language.return_value = mock_formatter
                 with patch.object(command, "_output_table"):
                     result = await command.execute_async("python")
                     assert result == 0
-                    mock_selector.get_formatter.assert_called_once()
+                    mock_registry.get_formatter_for_language.assert_called_once()
 
 
 class TestTableCommandFormatAsToon:

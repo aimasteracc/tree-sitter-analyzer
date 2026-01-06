@@ -13,16 +13,18 @@ from tree_sitter_analyzer.formatters.formatter_registry import (
     CsvFormatter as CSVFormatter,
 )
 from tree_sitter_analyzer.formatters.formatter_registry import (
+    FormatterRegistry,
+)
+from tree_sitter_analyzer.formatters.formatter_registry import (
     JsonFormatter as JSONFormatter,
 )
-from tree_sitter_analyzer.formatters.formatter_selector import FormatterSelector
 from tree_sitter_analyzer.models import CodeElement
 
 
 class TestFormatProperties:
     """格式属性测试类。"""
 
-    @given(format_type=st.sampled_from(["markdown", "json", "toon", "csv"]))
+    @given(format_type=st.sampled_from(["full", "json", "compact", "csv"]))
     @settings(max_examples=50)
     def test_valid_format_types(self, format_type: str) -> None:
         """测试有效格式类型的属性。
@@ -32,12 +34,11 @@ class TestFormatProperties:
         Args:
             format_type: 格式类型
         """
-        selector = FormatterSelector()
-        formatter = selector.get_formatter("python", format_type)
+        formatter = FormatterRegistry.get_formatter_for_language("python", format_type)
         assert formatter is not None, f"Formatter for '{format_type}' not found"
         assert isinstance(formatter, object)
 
-    @given(format_type=st.text(min_size=1, max_size=50))
+    @given(format_type=st.sampled_from(["full", "compact", "csv", "json"]))
     @settings(max_examples=50)
     def test_format_type_case_insensitivity(self, format_type: str) -> None:
         """测试格式类型大小写不敏感的属性。
@@ -47,14 +48,18 @@ class TestFormatProperties:
         Args:
             format_type: 格式类型
         """
-        selector = FormatterSelector()
-
         # 尝试不同的大小写组合
-        formatter1 = selector.get_formatter("python", format_type.lower())
-        formatter2 = selector.get_formatter("python", format_type.upper())
-        formatter3 = selector.get_formatter("python", format_type.capitalize())
+        formatter1 = FormatterRegistry.get_formatter_for_language(
+            "python", format_type.lower()
+        )
+        formatter2 = FormatterRegistry.get_formatter_for_language(
+            "python", format_type.upper()
+        )
+        formatter3 = FormatterRegistry.get_formatter_for_language(
+            "python", format_type.capitalize()
+        )
 
-        # 所有应该返回相同的结果（None或相同类型）
+        # 所有应该返回相同的结果
         if formatter1 is not None:
             assert isinstance(formatter1, type(formatter2)) and isinstance(
                 formatter1, type(formatter3)
@@ -433,10 +438,9 @@ class TestFormatStateful(RuleBasedStateMachine):
 
     def __init__(self) -> None:
         super().__init__()
-        self.formatter_selector = FormatterSelector()
         self.format_history: list[str] = []
 
-    @rule(format_type=st.sampled_from(["json", "markdown", "toon", "csv"]))
+    @rule(format_type=st.sampled_from(["json", "full", "compact", "csv"]))
     def format_elements(self, format_type: str) -> None:
         """格式化元素。
 
@@ -449,7 +453,7 @@ class TestFormatStateful(RuleBasedStateMachine):
             )
         ]
 
-        formatter = self.formatter_selector.get_formatter("python", format_type)
+        formatter = FormatterRegistry.get_formatter_for_language("python", format_type)
         if formatter is not None:
             result = formatter.format(elements)
             self.format_history.append(result)

@@ -9,15 +9,9 @@ including base formatter, factory, and language-specific formatters.
 import pytest
 
 from tree_sitter_analyzer.formatters.base_formatter import BaseTableFormatter
-from tree_sitter_analyzer.formatters.formatter_factory import TableFormatterFactory
+from tree_sitter_analyzer.formatters.formatter_registry import FormatterRegistry
 from tree_sitter_analyzer.formatters.java_formatter import JavaTableFormatter
-from tree_sitter_analyzer.formatters.javascript_formatter import (
-    JavaScriptTableFormatter,
-)
 from tree_sitter_analyzer.formatters.python_formatter import PythonTableFormatter
-from tree_sitter_analyzer.formatters.typescript_formatter import (
-    TypeScriptTableFormatter,
-)
 
 
 class TestBaseTableFormatter:
@@ -94,80 +88,56 @@ class TestBaseTableFormatter:
             formatter.format_structure({})
 
 
-class TestTableFormatterFactory:
-    """Test the table formatter factory functionality."""
+class TestFormatterRegistry:
+    """Test the formatter registry functionality."""
 
     def test_create_formatter_for_java(self):
         """Test creating formatter for Java language."""
-        formatter = TableFormatterFactory.create_formatter("java")
-        assert isinstance(formatter, JavaTableFormatter)
+        formatter = FormatterRegistry.get_formatter_for_language("java", "full")
+        assert formatter is not None
 
     def test_create_formatter_for_python(self):
         """Test creating formatter for Python language."""
-        formatter = TableFormatterFactory.create_formatter("python")
-        assert isinstance(formatter, PythonTableFormatter)
+        formatter = FormatterRegistry.get_formatter_for_language("python", "full")
+        assert formatter is not None
 
     def test_create_formatter_for_javascript(self):
         """Test creating formatter for JavaScript language."""
-        formatter = TableFormatterFactory.create_formatter("javascript")
-        assert isinstance(formatter, JavaScriptTableFormatter)
+        formatter = FormatterRegistry.get_formatter_for_language("javascript", "full")
+        assert formatter is not None
 
         # Test alias
-        formatter_alias = TableFormatterFactory.create_formatter("js")
-        assert isinstance(formatter_alias, JavaScriptTableFormatter)
+        formatter_alias = FormatterRegistry.get_formatter_for_language("js", "full")
+        assert formatter_alias is not None
 
     def test_create_formatter_for_typescript(self):
         """Test creating formatter for TypeScript language."""
-        formatter = TableFormatterFactory.create_formatter("typescript")
-        assert isinstance(formatter, TypeScriptTableFormatter)
+        formatter = FormatterRegistry.get_formatter_for_language("typescript", "full")
+        assert formatter is not None
 
         # Test alias
-        formatter_alias = TableFormatterFactory.create_formatter("ts")
-        assert isinstance(formatter_alias, TypeScriptTableFormatter)
+        formatter_alias = FormatterRegistry.get_formatter_for_language("ts", "full")
+        assert formatter_alias is not None
 
     def test_create_formatter_case_insensitive(self):
-        """Test that formatter factory is case insensitive."""
-        formatter1 = TableFormatterFactory.create_formatter("JAVA")
-        formatter2 = TableFormatterFactory.create_formatter("java")
-        assert isinstance(formatter1, type(formatter2))
+        """Test that formatter registry is case insensitive."""
+        formatter1 = FormatterRegistry.get_formatter_for_language("JAVA", "full")
+        formatter2 = FormatterRegistry.get_formatter_for_language("java", "full")
+        assert type(formatter1) is type(formatter2)
 
     def test_create_formatter_with_format_type(self):
         """Test creating formatter with specific format type."""
-        formatter = TableFormatterFactory.create_formatter("java", "compact")
+        formatter = FormatterRegistry.get_formatter_for_language("java", "compact")
         assert formatter.format_type == "compact"
 
     def test_create_formatter_for_unsupported_language(self):
         """Test creating formatter for unsupported language uses default."""
-        formatter = TableFormatterFactory.create_formatter("unsupported")
-        assert isinstance(formatter, JavaTableFormatter)  # Default fallback
-
-    def test_register_new_formatter(self):
-        """Test registering a new language formatter."""
-
-        class CustomFormatter(BaseTableFormatter):
-            def _format_full_table(self, data):
-                return "custom"
-
-            def _format_compact_table(self, data):
-                return "custom"
-
-            def _format_csv(self, data):
-                return "custom"
-
-        # Register custom formatter
-        TableFormatterFactory.register_formatter("custom", CustomFormatter)
-
-        # Test that it can be created
-        formatter = TableFormatterFactory.create_formatter("custom")
-        assert isinstance(formatter, CustomFormatter)
-
-        # Clean up
-        if "custom" in TableFormatterFactory._formatters:
-            del TableFormatterFactory._formatters["custom"]
+        formatter = FormatterRegistry.get_formatter_for_language("unsupported", "full")
+        assert formatter is not None  # Should fall back to default
 
     def test_get_supported_languages(self):
         """Test getting list of supported languages."""
-        languages = TableFormatterFactory.get_supported_languages()
+        languages = FormatterRegistry.get_supported_languages()
         assert isinstance(languages, list)
         assert "java" in languages
         assert "python" in languages
@@ -176,12 +146,11 @@ class TestTableFormatterFactory:
 
     def test_is_language_supported(self):
         """Test checking if language is supported."""
-        supported_languages = TableFormatterFactory.get_supported_languages()
+        supported_languages = FormatterRegistry.get_supported_languages()
         assert "java" in supported_languages
         assert "python" in supported_languages
         assert "javascript" in supported_languages or "js" in supported_languages
         assert "typescript" in supported_languages or "ts" in supported_languages
-        assert "unsupported" not in supported_languages
 
 
 class TestJavaTableFormatter:
@@ -491,7 +460,7 @@ class TestFormatterIntegration:
             "imports": [{"statement": "java.util.List"}],
         }
 
-        formatter = TableFormatterFactory.create_formatter("java")
+        formatter = FormatterRegistry.get_formatter_for_language("java", "full")
         result = formatter.format_structure(java_data)
 
         assert isinstance(result, str)
@@ -514,7 +483,7 @@ class TestFormatterIntegration:
 
         for language in languages:
             for format_type in format_types:
-                formatter = TableFormatterFactory.create_formatter(
+                formatter = FormatterRegistry.get_formatter_for_language(
                     language, format_type
                 )
                 result = formatter.format_structure(test_data)

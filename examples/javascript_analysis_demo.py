@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 
 from tree_sitter_analyzer.api import analyze_file
-from tree_sitter_analyzer.formatters.formatter_factory import TableFormatterFactory
+from tree_sitter_analyzer.formatters.formatter_registry import FormatterRegistry
 
 # Add project root to path
 project_root = Path(__file__).parent.parent
@@ -389,7 +389,7 @@ def analyze_modern_javascript():
         print("-" * 50)
 
         # Create JavaScript formatter
-        formatter = TableFormatterFactory.create_formatter("javascript", "full")
+        formatter = FormatterRegistry.get_formatter_for_language("javascript", "full")
 
         # Prepare data for formatter
         formatter_data = {

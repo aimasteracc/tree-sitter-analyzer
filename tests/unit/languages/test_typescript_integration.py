@@ -12,7 +12,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from tree_sitter_analyzer.formatters.formatter_factory import TableFormatterFactory
+from tree_sitter_analyzer.formatters.formatter_registry import FormatterRegistry
 from tree_sitter_analyzer.language_detector import detector
 from tree_sitter_analyzer.language_loader import get_loader
 from tree_sitter_analyzer.languages.typescript_plugin import TypeScriptPlugin
@@ -87,22 +87,22 @@ class TestTypeScriptIntegration:
             pass
 
     def test_typescript_formatter_integration(self):
-        """Test TypeScript formatter integration with factory"""
+        """Test TypeScript formatter integration with registry"""
         # Test creating TypeScript formatter
-        formatter = TableFormatterFactory.create_formatter("typescript", "full")
+        formatter = FormatterRegistry.get_formatter_for_language("typescript", "full")
         assert formatter is not None
 
         # Test TypeScript alias
-        formatter_alias = TableFormatterFactory.create_formatter("ts", "compact")
+        formatter_alias = FormatterRegistry.get_formatter_for_language("ts", "compact")
         assert formatter_alias is not None
 
         # Test that TypeScript is in supported languages
-        supported = TableFormatterFactory.get_supported_languages()
+        supported = FormatterRegistry.get_supported_languages()
         assert "typescript" in supported or "ts" in supported
 
     def test_typescript_formatter_with_sample_data(self):
         """Test TypeScript formatter with realistic data"""
-        formatter = TableFormatterFactory.create_formatter("typescript", "full")
+        formatter = FormatterRegistry.get_formatter_for_language("typescript", "full")
 
         sample_data = {
             "file_path": "src/UserService.ts",
@@ -374,23 +374,27 @@ class UserService {
         }
 
         # Test full format
-        full_formatter = TableFormatterFactory.create_formatter("typescript", "full")
-        full_result = full_formatter.format(sample_data)
+        full_formatter = FormatterRegistry.get_formatter_for_language(
+            "typescript", "full"
+        )
+        full_result = full_formatter.format_structure(sample_data)
         assert "# TypeScript Module: test" in full_result
         assert "## Classes" in full_result
         assert "## Functions" in full_result
 
         # Test compact format
-        compact_formatter = TableFormatterFactory.create_formatter(
+        compact_formatter = FormatterRegistry.get_formatter_for_language(
             "typescript", "compact"
         )
-        compact_result = compact_formatter.format(sample_data)
+        compact_result = compact_formatter.format_structure(sample_data)
         assert "# test.ts" in compact_result
         assert "## Summary" in compact_result
 
         # Test CSV format
-        csv_formatter = TableFormatterFactory.create_formatter("typescript", "csv")
-        csv_result = csv_formatter.format(sample_data)
+        csv_formatter = FormatterRegistry.get_formatter_for_language(
+            "typescript", "csv"
+        )
+        csv_result = csv_formatter.format_structure(sample_data)
         assert (
             "Type,Name,Kind,Return/Type,Lines,Visibility,Static,Async,Generic"
             in csv_result
@@ -422,7 +426,7 @@ class UserService {
         assert ts_plugin.is_applicable(file_path) is True
 
         # 4. Formatter creation
-        formatter = TableFormatterFactory.create_formatter("typescript", "full")
+        formatter = FormatterRegistry.get_formatter_for_language("typescript", "full")
         assert formatter is not None
 
         # 5. Mock analysis result formatting

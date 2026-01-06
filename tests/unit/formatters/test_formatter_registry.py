@@ -18,11 +18,6 @@ from tree_sitter_analyzer.formatters.formatter_registry import (
     IFormatter,
     JsonFormatter,
 )
-from tree_sitter_analyzer.formatters.legacy_formatter_adapters import (
-    LegacyCompactFormatter,
-    LegacyCsvFormatter,
-    LegacyFullFormatter,
-)
 from tree_sitter_analyzer.models import (
     Class,
     CodeElement,
@@ -510,6 +505,15 @@ class TestFormatterWithHtmlElements:
 class TestFormatterRegistryIntegration:
     """Test FormatterRegistry integration with built-in formatters"""
 
+    def setup_method(self):
+        """Setup for each test method - ensure registry is properly initialized"""
+        from tree_sitter_analyzer.formatters.formatter_registry import (
+            register_builtin_formatters,
+        )
+
+        FormatterRegistry.clear_registry()
+        register_builtin_formatters()
+
     def test_builtin_formatters_registered(self):
         """Test that built-in formatters are automatically registered"""
         available_formats = FormatterRegistry.get_available_formats()
@@ -527,10 +531,10 @@ class TestFormatterRegistryIntegration:
         compact_formatter = FormatterRegistry.get_formatter("compact")
 
         assert isinstance(json_formatter, JsonFormatter)
-        # CSV, Full, and Compact formatters are now legacy adapters for v1.6.1.4 compatibility
-        assert isinstance(csv_formatter, LegacyCsvFormatter)
-        assert isinstance(full_formatter, LegacyFullFormatter)
-        assert isinstance(compact_formatter, LegacyCompactFormatter)
+        # CSV, Full, and Compact formatters are built-in formatters
+        assert isinstance(csv_formatter, CsvFormatter)
+        assert isinstance(full_formatter, FullFormatter)
+        assert isinstance(compact_formatter, CompactFormatter)
 
     def test_formatter_instances_are_new(self):
         """Test that each get_formatter call returns a new instance"""
@@ -539,6 +543,78 @@ class TestFormatterRegistryIntegration:
 
         assert formatter1 is not formatter2
         assert isinstance(formatter1, type(formatter2))
+
+
+class TestFormatterRegistryLanguageSupport:
+    """Test FormatterRegistry language-specific formatter support"""
+
+    def setup_method(self):
+        """Setup for each test method - ensure registry is properly initialized"""
+        from tree_sitter_analyzer.formatters.formatter_registry import (
+            register_builtin_formatters,
+        )
+
+        FormatterRegistry.clear_registry()
+        register_builtin_formatters()
+
+    def test_get_formatter_for_language_java(self):
+        """Test getting formatter for Java language"""
+        formatter = FormatterRegistry.get_formatter_for_language("java", "full")
+        assert formatter is not None
+        assert hasattr(formatter, "format_structure")
+
+    def test_get_formatter_for_language_python(self):
+        """Test getting formatter for Python language"""
+        formatter = FormatterRegistry.get_formatter_for_language("python", "full")
+        assert formatter is not None
+        assert hasattr(formatter, "format_structure")
+
+    def test_get_formatter_for_language_javascript(self):
+        """Test getting formatter for JavaScript language"""
+        formatter = FormatterRegistry.get_formatter_for_language("javascript", "full")
+        assert formatter is not None
+        assert hasattr(formatter, "format_structure")
+
+    def test_get_formatter_for_language_with_alias(self):
+        """Test getting formatter using language alias"""
+        formatter_py = FormatterRegistry.get_formatter_for_language("py", "full")
+        formatter_python = FormatterRegistry.get_formatter_for_language(
+            "python", "full"
+        )
+        assert type(formatter_py) is type(formatter_python)
+
+    def test_get_formatter_for_language_different_formats(self):
+        """Test getting different format types for same language"""
+        full_formatter = FormatterRegistry.get_formatter_for_language("java", "full")
+        compact_formatter = FormatterRegistry.get_formatter_for_language(
+            "java", "compact"
+        )
+        csv_formatter = FormatterRegistry.get_formatter_for_language("java", "csv")
+
+        assert full_formatter is not None
+        assert compact_formatter is not None
+        assert csv_formatter is not None
+
+    def test_get_supported_languages(self):
+        """Test getting list of supported languages"""
+        languages = FormatterRegistry.get_supported_languages()
+        assert "java" in languages
+        assert "python" in languages
+        assert "javascript" in languages
+
+    def test_is_language_supported(self):
+        """Test checking if language is supported"""
+        assert FormatterRegistry.is_language_supported("java")
+        assert FormatterRegistry.is_language_supported("python")
+        assert not FormatterRegistry.is_language_supported("nonexistent_language")
+
+    def test_get_formatter_for_unsupported_language_falls_back(self):
+        """Test that unsupported language falls back to default formatter"""
+        # Should not raise, should fall back to default
+        formatter = FormatterRegistry.get_formatter_for_language(
+            "unsupported_lang", "full"
+        )
+        assert formatter is not None
 
 
 class TestFormatterErrorHandling:

@@ -72,4 +72,10 @@
 ### Public Methods
 | Method | Signature | Vis | Lines | Cx | Doc |
 |--------|-----------|-----|-------|----|----|
-| label | ():string | + | 189-197 | 1 | - |
+| UserStatus::label | ():string | + | 189-197 | 1 | - |
+
+## Functions
+| Method | Signature | Vis | Lines | Cx | Doc |
+|--------|-----------|-----|-------|----|----|
+| App\Models\createUser | ($username:string, $email:string):User | + | 203-206 | 1 | - |
+| App\Models\hashPassword | ($password:string):string | + | 211-214 | 1 | - |

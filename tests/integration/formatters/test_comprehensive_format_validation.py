@@ -353,8 +353,8 @@ class TestComprehensiveFormatValidation:
             from tree_sitter_analyzer.core.analysis_engine import (  # noqa: F401
                 AnalysisEngine,
             )
-            from tree_sitter_analyzer.formatters.formatter_factory import (  # noqa: F401
-                FormatterFactory,
+            from tree_sitter_analyzer.formatters.formatter_registry import (  # noqa: F401
+                FormatterRegistry,
             )
 
             # If available, test with real components

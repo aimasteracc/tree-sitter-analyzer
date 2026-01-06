@@ -138,6 +138,7 @@ class Variable(CodeElement):
     # Java-specific fields for detailed analysis
     annotations: list[dict[str, Any]] = field(default_factory=list)
     is_final: bool = False
+    is_readonly: bool = False  # PHP 8.1+ readonly property
     field_type: str | None = None  # Alias for variable_type
 
 

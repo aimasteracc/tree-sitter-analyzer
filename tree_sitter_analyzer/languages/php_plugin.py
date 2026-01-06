@@ -559,7 +559,8 @@ class PHPElementExtractor(ElementExtractor):
                                 visibility=visibility,
                                 is_static="static" in modifiers,
                                 is_constant=False,
-                                is_final="readonly" in modifiers,
+                                is_final=False,
+                                is_readonly="readonly" in modifiers,
                                 variable_type=var_type,
                                 modifiers=modifiers,
                             )

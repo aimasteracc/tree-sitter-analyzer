@@ -10,10 +10,11 @@ from pathlib import Path
 
 import pytest
 
-from tree_sitter_analyzer.formatters.legacy_formatter_adapters import (
-    LegacyCompactFormatter,
-    LegacyCsvFormatter,
-    LegacyFullFormatter,
+from tree_sitter_analyzer.formatters.formatter_registry import (
+    CompactFormatter,
+    CsvFormatter,
+    FormatterRegistry,
+    FullFormatter,
 )
 from tree_sitter_analyzer.mcp.tools.analyze_code_structure_tool import (
     AnalyzeCodeStructureTool as TableFormatTool,
@@ -343,7 +344,6 @@ class TestFormatConsistency:
 
     def test_formatter_registry_vs_legacy_formatter(self, sample_java_elements):
         """Ensure FormatterRegistry and legacy formatters produce identical output"""
-        from tree_sitter_analyzer.formatters.formatter_registry import FormatterRegistry
 
         # Test each format type
         for format_type in ["full", "compact", "csv"]:
@@ -355,11 +355,11 @@ class TestFormatConsistency:
                 # Skip if not supported by registry
                 continue
 
-            # Test with legacy formatter
+            # Test with built-in formatters
             legacy_formatters = {
-                "full": LegacyFullFormatter(),
-                "compact": LegacyCompactFormatter(),
-                "csv": LegacyCsvFormatter(),
+                "full": FullFormatter(),
+                "compact": CompactFormatter(),
+                "csv": CsvFormatter(),
             }
 
             if format_type in legacy_formatters:
@@ -497,11 +497,11 @@ class TestRealImplementationValidation:
         elements[0].element_type = "class"
         elements[0].visibility = "public"
 
-        # Test each legacy formatter
+        # Test each built-in formatter
         formatters = {
-            "full": LegacyFullFormatter(),
-            "compact": LegacyCompactFormatter(),
-            "csv": LegacyCsvFormatter(),
+            "full": FullFormatter(),
+            "compact": CompactFormatter(),
+            "csv": CsvFormatter(),
         }
 
         for format_type, formatter in formatters.items():
@@ -538,7 +538,7 @@ class TestRealImplementationValidation:
         elements[0].visibility = "public"
 
         # Test markdown validation with real output
-        full_formatter = LegacyFullFormatter()
+        full_formatter = FullFormatter()
         markdown_output = full_formatter.format(elements)
 
         validation_result = validate_format(markdown_output, "markdown")
@@ -547,7 +547,7 @@ class TestRealImplementationValidation:
         ), f"Markdown validation failed: {validation_result.errors}"
 
         # Test CSV validation with real output
-        csv_formatter = LegacyCsvFormatter()
+        csv_formatter = CsvFormatter()
         csv_output = csv_formatter.format(elements)
 
         csv_validation_result = validate_format(csv_output, "csv")

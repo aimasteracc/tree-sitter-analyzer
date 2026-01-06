@@ -20,498 +20,414 @@ class TypeScriptTableFormatter(BaseTableFormatter):
         return self.format_structure(data)
 
     def _format_full_table(self, data: dict[str, Any]) -> str:
-        """Full table format for TypeScript"""
-        lines = []
+        """Full table format for TypeScript - matches golden master format"""
+        lines: list[str] = []
 
-        # Header - TypeScript (module/file based)
-        file_path = data.get("file_path", "Unknown")
-        file_name = file_path.split("/")[-1].split("\\")[-1]
-        module_name = (
-            file_name.replace(".ts", "").replace(".tsx", "").replace(".d.ts", "")
-        )
-
-        # Check if this is a module (has exports, classes, interfaces, or functions)
-        exports = data.get("exports", [])
+        # Get classes/types from data
         classes = data.get("classes", [])
-        interfaces = data.get("interfaces", [])
-        functions = data.get("functions", [])
-        is_module = (
-            len(exports) > 0
-            or len(classes) > 0
-            or len(interfaces) > 0
-            or len(functions) > 0
-        )
-        is_declaration_file = file_name.endswith(".d.ts")
-        is_tsx = file_name.endswith(".tsx")
+        methods = data.get("methods", []) or data.get("functions", [])
+        fields = data.get("fields", []) or data.get("variables", [])
 
-        if is_declaration_file:
-            lines.append(f"# Declaration File: {module_name}")
-        elif is_tsx:
-            lines.append(f"# TSX Module: {module_name}")
-        elif is_module:
-            lines.append(f"# TypeScript Module: {module_name}")
+        # Header - use first class/type name (no file extension)
+        if classes:
+            first_class = classes[0]
+            class_name = str(first_class.get("name", "Unknown"))
+            lines.append(f"# {class_name}")
         else:
-            lines.append(f"# TypeScript Script: {module_name}")
+            file_path = data.get("file_path", "Unknown")
+            file_name = str(file_path).split("/")[-1].split("\\")[-1]
+            module_name = (
+                file_name.replace(".ts", "").replace(".tsx", "").replace(".d.ts", "")
+            )
+            lines.append(f"# {module_name}")
         lines.append("")
 
-        # Imports
-        imports = data.get("imports", [])
-        if imports:
-            lines.append("## Imports")
-            lines.append("```typescript")
-            for imp in imports:
-                import_statement = imp.get("statement", "")
-                if not import_statement:
-                    # Construct import statement from parts
-                    source = imp.get("source", "")
-                    name = imp.get("name", "")
-                    is_type_import = imp.get("is_type_import", False)
-                    if name and source:
-                        type_prefix = "type " if is_type_import else ""
-                        import_statement = f"import {type_prefix}{name} from {source};"
-                lines.append(import_statement)
-            lines.append("```")
-            lines.append("")
+        # Classes Overview table
+        if classes:
+            lines.append("## Classes Overview")
+            lines.append("| Class | Type | Visibility | Lines | Methods | Fields |")
+            lines.append("|-------|------|------------|-------|---------|--------|")
 
-        # Module Info
-        stats = data.get("statistics", {})
-        classes = data.get("classes", [])
-        interfaces = [c for c in classes if c.get("class_type") == "interface"]
-        type_aliases = [c for c in classes if c.get("class_type") == "type"]
-        enums = [c for c in classes if c.get("class_type") == "enum"]
-        actual_classes = [
-            c for c in classes if c.get("class_type") in ["class", "abstract_class"]
-        ]
-
-        lines.append("## Module Info")
-        lines.append("| Property | Value |")
-        lines.append("|----------|-------|")
-        lines.append(f"| File | {file_name} |")
-        lines.append(
-            f"| Type | {'Declaration File' if is_declaration_file else 'TSX Module' if is_tsx else 'TypeScript Module' if is_module else 'TypeScript Script'} |"
-        )
-        lines.append(f"| Functions | {stats.get('function_count', 0)} |")
-        lines.append(f"| Classes | {len(actual_classes)} |")
-        lines.append(f"| Interfaces | {len(interfaces)} |")
-        lines.append(f"| Type Aliases | {len(type_aliases)} |")
-        lines.append(f"| Enums | {len(enums)} |")
-        lines.append(f"| Variables | {stats.get('variable_count', 0)} |")
-        lines.append(f"| Exports | {len(exports)} |")
-        lines.append("")
-
-        # Interfaces (TypeScript specific)
-        if interfaces:
-            lines.append("## Interfaces")
-            lines.append(
-                "| Interface | Extends | Lines | Properties | Methods | Generics |"
-            )
-            lines.append(
-                "|-----------|---------|-------|------------|---------|----------|"
-            )
-
-            for interface in interfaces:
-                name = str(interface.get("name", "Unknown"))
-                extends = ", ".join(interface.get("interfaces", [])) or "-"
-                line_range = interface.get("line_range", {})
-                lines_str = f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
-
-                # Count properties and methods within the interface
-                interface_properties = [
-                    v
-                    for v in data.get("variables", [])
-                    if line_range.get("start", 0)
-                    <= v.get("line_range", {}).get("start", 0)
-                    <= line_range.get("end", 0)
-                    and v.get("declaration_kind") == "property_signature"
-                ]
-
-                interface_methods = [
-                    m
-                    for m in data.get("methods", [])
-                    if line_range.get("start", 0)
-                    <= m.get("line_range", {}).get("start", 0)
-                    <= line_range.get("end", 0)
-                    and m.get("is_signature", False)
-                ]
-
-                generics = ", ".join(interface.get("generics", [])) or "-"
-
-                lines.append(
-                    f"| {name} | {extends} | {lines_str} | {len(interface_properties)} | {len(interface_methods)} | {generics} |"
-                )
-            lines.append("")
-
-        # Type Aliases (TypeScript specific)
-        if type_aliases:
-            lines.append("## Type Aliases")
-            lines.append("| Type | Lines | Generics | Definition |")
-            lines.append("|------|-------|----------|------------|")
-
-            for type_alias in type_aliases:
-                name = str(type_alias.get("name", "Unknown"))
-                line_range = type_alias.get("line_range", {})
-                lines_str = f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
-                generics = ", ".join(type_alias.get("generics", [])) or "-"
-
-                # Extract type definition from raw text
-                raw_text = type_alias.get("raw_text", "")
-                if "=" in raw_text:
-                    definition = raw_text.split("=", 1)[1].strip().rstrip(";")[:50]
-                    if len(definition) > 47:
-                        definition = definition[:47] + "..."
-                else:
-                    definition = "-"
-
-                lines.append(f"| {name} | {lines_str} | {generics} | {definition} |")
-            lines.append("")
-
-        # Enums (TypeScript specific)
-        if enums:
-            lines.append("## Enums")
-            lines.append("| Enum | Lines | Values |")
-            lines.append("|------|-------|--------|")
-
-            for enum in enums:
-                name = str(enum.get("name", "Unknown"))
-                line_range = enum.get("line_range", {})
-                lines_str = f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
-
-                # Count enum values (simplified)
-                raw_text = enum.get("raw_text", "")
-                value_count = raw_text.count(",") + 1 if raw_text.count("{") > 0 else 0
-
-                lines.append(f"| {name} | {lines_str} | {value_count} |")
-            lines.append("")
-
-        # Classes
-        if actual_classes:
-            lines.append("## Classes")
-            lines.append(
-                "| Class | Type | Extends | Implements | Lines | Methods | Properties | Generics |"
-            )
-            lines.append(
-                "|-------|------|---------|------------|-------|---------|------------|----------|"
-            )
-
-            for class_info in actual_classes:
+            for class_info in classes:
                 name = str(class_info.get("name", "Unknown"))
-                class_type = class_info.get("class_type", "class")
-                extends = str(class_info.get("superclass", "")) or "-"
-                implements = ", ".join(class_info.get("interfaces", [])) or "-"
+                class_type = str(
+                    class_info.get("class_type", "") or class_info.get("type", "class")
+                )
+                visibility = str(class_info.get("visibility", "public"))
                 line_range = class_info.get("line_range", {})
                 lines_str = f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
-                generics = ", ".join(class_info.get("generics", [])) or "-"
 
-                # Count methods within the class
-                class_methods = [
-                    m
-                    for m in data.get("functions", [])
-                    if (
-                        line_range.get("start", 0)
-                        <= m.get("line_range", {}).get("start", 0)
-                        <= line_range.get("end", 0)
-                        and m.get("is_method", False)
-                        and not m.get("is_signature", False)
+                # Count methods/fields within the class range
+                class_methods = self._get_class_methods(methods, line_range)
+                class_fields = self._get_class_fields(fields, line_range)
+
+                lines.append(
+                    f"| {name} | {class_type} | {visibility} | {lines_str} | "
+                    f"{len(class_methods)} | {len(class_fields)} |"
+                )
+            lines.append("")
+
+        # Per-class sections
+        for class_info in classes:
+            class_name = str(class_info.get("name", "Unknown"))
+            line_range = class_info.get("line_range", {})
+            lines_str = f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
+
+            lines.append(f"## {class_name} ({lines_str})")
+
+            # Get methods/fields for this class
+            class_methods = self._get_class_methods(methods, line_range)
+            class_fields = self._get_class_fields(fields, line_range)
+
+            # Fields section
+            if class_fields:
+                lines.append("### Fields")
+                lines.append("| Name | Type | Vis | Modifiers | Line | Doc |")
+                lines.append("|------|------|-----|-----------|------|-----|")
+
+                for field in class_fields:
+                    name = str(field.get("name", ""))
+                    field_type = str(
+                        field.get("type", "")
+                        or field.get("field_type", "")
+                        or field.get("variable_type", "")
                     )
-                ]
+                    visibility = self._convert_visibility(
+                        str(field.get("visibility", "public"))
+                    )
+                    modifiers = self._format_modifiers(field)
+                    field_line_range = field.get("line_range", {})
+                    line = field_line_range.get("start", 0)
+                    doc = (
+                        self._extract_doc_summary(
+                            str(field.get("javadoc", "") or field.get("doc", ""))
+                        )
+                        or "-"
+                    )
 
-                # Count properties (class fields)
-                class_properties = [
-                    v
-                    for v in data.get("variables", [])
-                    if line_range.get("start", 0)
-                    <= v.get("line_range", {}).get("start", 0)
-                    <= line_range.get("end", 0)
-                    and v.get("declaration_kind") == "property"
-                ]
+                    lines.append(
+                        f"| {name} | {field_type} | {visibility} | {modifiers} | "
+                        f"{line} | {doc} |"
+                    )
+                lines.append("")
 
-                lines.append(
-                    f"| {name} | {class_type} | {extends} | {implements} | {lines_str} | {len(class_methods)} | {len(class_properties)} | {generics} |"
-                )
-            lines.append("")
+            # Group methods by type
+            constructors = [m for m in class_methods if m.get("is_constructor", False)]
+            public_methods = [
+                m
+                for m in class_methods
+                if not m.get("is_constructor", False)
+                and str(m.get("visibility", "public")).lower() == "public"
+            ]
+            private_methods = [
+                m
+                for m in class_methods
+                if not m.get("is_constructor", False)
+                and str(m.get("visibility", "")).lower() == "private"
+            ]
+            protected_methods = [
+                m
+                for m in class_methods
+                if not m.get("is_constructor", False)
+                and str(m.get("visibility", "")).lower() == "protected"
+            ]
 
-        # Functions
-        functions = data.get("functions", [])
-        if functions:
-            lines.append("## Functions")
-            lines.append(
-                "| Function | Type | Return Type | Parameters | Async | Generic | Lines | Complexity |"
-            )
-            lines.append(
-                "|----------|------|-------------|------------|-------|---------|-------|------------|"
-            )
+            # Constructors
+            if constructors:
+                lines.append("### Constructors")
+                lines.append("| Constructor | Signature | Vis | Lines | Cx | Doc |")
+                lines.append("|-------------|-----------|-----|-------|----|----|")
+                for method in constructors:
+                    lines.append(self._format_method_row(method))
+                lines.append("")
 
-            for func in functions:
-                name = str(func.get("name", "Unknown"))
-                func_type = (
-                    "arrow"
-                    if func.get("is_arrow")
-                    else "method"
-                    if func.get("is_method")
-                    else "function"
-                )
-                return_type = str(func.get("return_type", "any"))
-                params = func.get("parameters", [])
-                param_count = len(params)
-                is_async = "✓" if func.get("is_async") else ""
-                has_generics = "✓" if func.get("generics") else ""
-                line_range = func.get("line_range", {})
-                lines_str = f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
-                complexity = func.get("complexity_score", 1)
+            # Public Methods
+            if public_methods:
+                lines.append("### Public Methods")
+                lines.append("| Method | Signature | Vis | Lines | Cx | Doc |")
+                lines.append("|--------|-----------|-----|-------|----|----|")
+                for method in public_methods:
+                    lines.append(self._format_method_row(method))
+                lines.append("")
 
-                lines.append(
-                    f"| {name} | {func_type} | {return_type} | {param_count} | {is_async} | {has_generics} | {lines_str} | {complexity} |"
-                )
-            lines.append("")
+            # Protected Methods
+            if protected_methods:
+                lines.append("### Protected Methods")
+                lines.append("| Method | Signature | Vis | Lines | Cx | Doc |")
+                lines.append("|--------|-----------|-----|-------|----|----|")
+                for method in protected_methods:
+                    lines.append(self._format_method_row(method))
+                lines.append("")
 
-        # Variables/Properties
-        variables = data.get("variables", [])
-        if variables:
-            lines.append("## Variables & Properties")
-            lines.append(
-                "| Name | Type | Kind | Visibility | Static | Optional | Lines |"
-            )
-            lines.append(
-                "|------|------|------|------------|--------|----------|-------|"
-            )
+            # Private Methods
+            if private_methods:
+                lines.append("### Private Methods")
+                lines.append("| Method | Signature | Vis | Lines | Cx | Doc |")
+                lines.append("|--------|-----------|-----|-------|----|----|")
+                for method in private_methods:
+                    lines.append(self._format_method_row(method))
+                lines.append("")
 
-            for var in variables:
-                name = str(var.get("name", "Unknown"))
-                var_type = str(var.get("variable_type", "any"))
-                kind = var.get("declaration_kind", "variable")
-                visibility = var.get("visibility", "public")
-                is_static = "✓" if var.get("is_static") else ""
-                is_optional = "✓" if var.get("is_optional") else ""
-                line_range = var.get("line_range", {})
-                lines_str = f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
-
-                lines.append(
-                    f"| {name} | {var_type} | {kind} | {visibility} | {is_static} | {is_optional} | {lines_str} |"
-                )
-            lines.append("")
-
-        # Exports
-        if exports:
-            lines.append("## Exports")
-            lines.append("| Export | Type | Default |")
-            lines.append("|--------|------|---------|")
-
-            for export in exports:
-                names = export.get("names", [])
-                export_type = export.get("type", "unknown")
-                is_default = "✓" if export.get("is_default") else ""
-
-                for name in names:
-                    lines.append(f"| {name} | {export_type} | {is_default} |")
-            lines.append("")
+        # Trim trailing blank lines
+        while lines and lines[-1] == "":
+            lines.pop()
 
         return "\n".join(lines)
 
     def _format_compact_table(self, data: dict[str, Any]) -> str:
-        """Compact table format for TypeScript"""
-        lines = []
+        """Compact table format for TypeScript - matches golden master format"""
+        lines: list[str] = []
 
-        # Header
-        file_path = data.get("file_path", "Unknown")
-        file_name = file_path.split("/")[-1].split("\\")[-1]
-        lines.append(f"# {file_name}")
-        lines.append("")
-
-        # Summary
+        # Get classes from data
         classes = data.get("classes", [])
-        functions = data.get("functions", [])
-        variables = data.get("variables", [])
+        methods = data.get("methods", []) or data.get("functions", [])
+        fields = data.get("fields", []) or data.get("variables", [])
 
-        interfaces = len([c for c in classes if c.get("class_type") == "interface"])
-        type_aliases = len([c for c in classes if c.get("class_type") == "type"])
-        enums = len([c for c in classes if c.get("class_type") == "enum"])
-        actual_classes = len(
-            [c for c in classes if c.get("class_type") in ["class", "abstract_class"]]
-        )
-
-        lines.append("## Summary")
-        lines.append(f"- **Classes**: {actual_classes}")
-        lines.append(f"- **Interfaces**: {interfaces}")
-        lines.append(f"- **Type Aliases**: {type_aliases}")
-        lines.append(f"- **Enums**: {enums}")
-        lines.append(f"- **Functions**: {len(functions)}")
-        lines.append(f"- **Variables**: {len(variables)}")
+        # Header - use first class name
+        if classes:
+            first_class = classes[0]
+            class_name = str(first_class.get("name", "Unknown"))
+            lines.append(f"# {class_name}")
+        else:
+            file_path = data.get("file_path", "Unknown")
+            file_name = str(file_path).split("/")[-1].split("\\")[-1]
+            module_name = file_name.replace(".ts", "").replace(".tsx", "")
+            lines.append(f"# {module_name}")
         lines.append("")
 
-        # Main elements
-        if classes:
-            lines.append("## Types")
-            for class_info in classes:
-                name = class_info.get("name", "Unknown")
-                class_type = class_info.get("class_type", "class")
-                line_range = class_info.get("line_range", {})
-                lines_str = f"L{line_range.get('start', 0)}-{line_range.get('end', 0)}"
-                lines.append(f"- **{name}** ({class_type}) - {lines_str}")
-            lines.append("")
+        # Info section
+        lines.append("## Info")
+        lines.append("| Property | Value |")
+        lines.append("|----------|-------|")
 
-        if functions:
-            lines.append("## Functions")
-            for func in functions:
-                name = func.get("name", "Unknown")
-                return_type = func.get("return_type", "any")
-                line_range = func.get("line_range", {})
-                lines_str = f"L{line_range.get('start', 0)}-{line_range.get('end', 0)}"
-                async_marker = " (async)" if func.get("is_async") else ""
+        # Get package name if available
+        package_name = (data.get("package") or {}).get("name", "")
+        lines.append(f"| Package | {package_name} |")
+        lines.append(f"| Methods | {len(methods)} |")
+        lines.append(f"| Fields | {len(fields)} |")
+        lines.append("")
+
+        # Methods section
+        if methods:
+            lines.append("## Methods")
+            lines.append("| Method | Sig | V | L | Cx | Doc |")
+            lines.append("|--------|-----|---|---|----|----|")
+
+            for method in methods:
+                name = str(method.get("name", ""))
+                signature = self._create_compact_signature(method)
+                visibility = self._convert_visibility(
+                    str(method.get("visibility", "public"))
+                )
+                line_range = method.get("line_range", {})
+                lines_str = f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
+                complexity = method.get("complexity_score", 0)
+                doc = (
+                    self._extract_doc_summary(
+                        str(method.get("javadoc", "") or method.get("doc", ""))
+                    )
+                    or "-"
+                )
+
                 lines.append(
-                    f"- **{name}**(): {return_type}{async_marker} - {lines_str}"
+                    f"| {name} | {signature} | {visibility} | {lines_str} | "
+                    f"{complexity} | {doc} |"
                 )
             lines.append("")
+
+        # Trim trailing blank lines
+        while lines and lines[-1] == "":
+            lines.pop()
 
         return "\n".join(lines)
 
     def _format_csv(self, data: dict[str, Any]) -> str:
-        """CSV format for TypeScript"""
-        lines = []
+        """CSV format for TypeScript - matches golden master format"""
+        lines: list[str] = []
 
         # Header
-        lines.append("Type,Name,Kind,Return/Type,Lines,Visibility,Static,Async,Generic")
+        lines.append("Type,Name,Signature,Visibility,Lines,Complexity,Doc")
 
-        # Classes, interfaces, types, enums
-        classes = data.get("classes", [])
-        for class_info in classes:
-            name = class_info.get("name", "")
-            class_type = class_info.get("class_type", "class")
-            line_range = class_info.get("line_range", {})
+        # Fields
+        fields = data.get("fields", []) or data.get("variables", [])
+        for field in fields:
+            name = str(field.get("name", ""))
+            field_type = str(
+                field.get("type", "")
+                or field.get("field_type", "")
+                or field.get("variable_type", "")
+            )
+            signature = f"{name}:{field_type}" if field_type else name
+            visibility = str(field.get("visibility", "public"))
+            line_range = field.get("line_range", {})
             lines_str = f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
-            visibility = class_info.get("visibility", "public")
-            is_static = "true" if class_info.get("is_static") else "false"
-            has_generics = "true" if class_info.get("generics") else "false"
+            doc = (
+                self._extract_doc_summary(
+                    str(field.get("javadoc", "") or field.get("doc", ""))
+                )
+                or "-"
+            )
+
+            lines.append(f"Field,{name},{signature},{visibility},{lines_str},,{doc}")
+
+        # Methods
+        methods = data.get("methods", []) or data.get("functions", [])
+        for method in methods:
+            name = str(method.get("name", ""))
+            is_constructor = method.get("is_constructor", False)
+            method_type = "Constructor" if is_constructor else "Method"
+
+            signature = self._create_csv_signature(method)
+            visibility = str(method.get("visibility", "public"))
+            line_range = method.get("line_range", {})
+            lines_str = f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
+            complexity = method.get("complexity_score", 0)
+            doc = (
+                self._extract_doc_summary(
+                    str(method.get("javadoc", "") or method.get("doc", ""))
+                )
+                or "-"
+            )
+
+            # Escape signature if it contains commas
+            if "," in signature:
+                signature = f'"{signature}"'
 
             lines.append(
-                f"Class,{name},{class_type},,{lines_str},{visibility},{is_static},,{has_generics}"
+                f"{method_type},{name},{signature},{visibility},{lines_str},"
+                f"{complexity},{doc}"
             )
 
-        # Functions
-        functions = data.get("functions", [])
-        for func in functions:
-            name = func.get("name", "")
-            func_type = (
-                "arrow"
-                if func.get("is_arrow")
-                else "method"
-                if func.get("is_method")
-                else "function"
-            )
-            return_type = func.get("return_type", "any")
-            line_range = func.get("line_range", {})
-            lines_str = f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
-            visibility = func.get("visibility", "public")
-            is_static = "true" if func.get("is_static") else "false"
-            is_async = "true" if func.get("is_async") else "false"
-            has_generics = "true" if func.get("generics") else "false"
-
-            lines.append(
-                f"Function,{name},{func_type},{return_type},{lines_str},{visibility},{is_static},{is_async},{has_generics}"
-            )
-
-        # Variables
-        variables = data.get("variables", [])
-        for var in variables:
-            name = var.get("name", "")
-            kind = var.get("declaration_kind", "variable")
-            var_type = var.get("variable_type", "any")
-            line_range = var.get("line_range", {})
-            lines_str = f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
-            visibility = var.get("visibility", "public")
-            is_static = "true" if var.get("is_static") else "false"
-
-            lines.append(
-                f"Variable,{name},{kind},{var_type},{lines_str},{visibility},{is_static},,"
-            )
-
+        lines.append("")
         return "\n".join(lines)
 
-    def _get_element_type_name(self, element: dict[str, Any]) -> str:
-        """Get human-readable type name for TypeScript elements"""
-        element_type = element.get("element_type", "unknown")
+    def _get_class_methods(
+        self, methods: list[dict[str, Any]], line_range: dict[str, int]
+    ) -> list[dict[str, Any]]:
+        """Get methods within a class range"""
+        start = line_range.get("start", 0)
+        end = line_range.get("end", 0)
+        return [
+            m
+            for m in methods
+            if start <= (m.get("line_range") or {}).get("start", 0) <= end
+        ]
 
-        if element_type == "class":
-            class_type = element.get("class_type", "class")
-            if class_type == "interface":
-                return "Interface"
-            elif class_type == "type":
-                return "Type Alias"
-            elif class_type == "enum":
-                return "Enum"
-            elif class_type == "abstract_class":
-                return "Abstract Class"
+    def _get_class_fields(
+        self, fields: list[dict[str, Any]], line_range: dict[str, int]
+    ) -> list[dict[str, Any]]:
+        """Get fields within a class range"""
+        start = line_range.get("start", 0)
+        end = line_range.get("end", 0)
+        return [
+            f
+            for f in fields
+            if start <= (f.get("line_range") or {}).get("start", 0) <= end
+        ]
+
+    def _format_method_row(self, method: dict[str, Any]) -> str:
+        """Format a method table row"""
+        name = str(method.get("name", ""))
+        signature = self._create_full_signature(method)
+        visibility = self._convert_visibility(str(method.get("visibility", "public")))
+        line_range = method.get("line_range", {})
+        lines_str = f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
+        complexity = method.get("complexity_score", 0)
+        doc = (
+            self._extract_doc_summary(
+                str(method.get("javadoc", "") or method.get("doc", ""))
+            )
+            or "-"
+        )
+
+        return f"| {name} | {signature} | {visibility} | {lines_str} | {complexity} | {doc} |"
+
+    def _create_full_signature(self, method: dict[str, Any]) -> str:
+        """Create full method signature"""
+        params = method.get("parameters", [])
+        param_strs = []
+
+        for p in params:
+            if isinstance(p, dict):
+                param_name = str(p.get("name", ""))
+                param_type = str(p.get("type", "any"))
+                # Include modifiers like 'public'
+                modifiers = p.get("modifiers", [])
+                if modifiers:
+                    modifier_str = " ".join(str(m) for m in modifiers) + " "
+                else:
+                    modifier_str = ""
+                param_strs.append(f"{modifier_str}{param_name}:{param_type}")
             else:
-                return "Class"
-        elif element_type == "function":
-            if element.get("is_arrow"):
-                return "Arrow Function"
-            elif element.get("is_method"):
-                return "Method"
-            elif element.get("is_constructor"):
-                return "Constructor"
+                param_strs.append(str(p))
+
+        params_str = ", ".join(param_strs)
+        return_type = str(method.get("return_type", "any"))
+
+        return f"({params_str}):{return_type}"
+
+    def _create_compact_signature(self, method: dict[str, Any]) -> str:
+        """Create compact method signature"""
+        params = method.get("parameters", [])
+        param_types = []
+
+        for p in params:
+            if isinstance(p, dict):
+                param_type = str(p.get("type", "any"))
+                param_types.append(param_type)
             else:
-                return "Function"
-        elif element_type == "variable":
-            kind = element.get("declaration_kind", "variable")
-            if kind == "property":
-                return "Property"
-            elif kind == "property_signature":
-                return "Property Signature"
+                param_types.append(str(p))
+
+        params_str = ",".join(param_types)
+        return_type = str(method.get("return_type", "any"))
+
+        return f"({params_str}):{return_type}"
+
+    def _create_csv_signature(self, method: dict[str, Any]) -> str:
+        """Create CSV method signature with full parameter details"""
+        params = method.get("parameters", [])
+        param_strs = []
+
+        for p in params:
+            if isinstance(p, dict):
+                param_name = str(p.get("name", ""))
+                param_type = str(p.get("type", "any"))
+                # Include modifiers like 'public'
+                modifiers = p.get("modifiers", [])
+                if modifiers:
+                    modifier_str = " ".join(str(m) for m in modifiers) + " "
+                else:
+                    modifier_str = ""
+                param_strs.append(f"{modifier_str}{param_name}:{param_type}")
             else:
-                return "Variable"
-        elif element_type == "import":
-            return "Import"
-        else:
-            return str(element_type.title())
+                param_strs.append(str(p))
 
-    def _format_element_details(self, element: dict[str, Any]) -> str:
-        """Format TypeScript-specific element details"""
-        details = []
+        params_str = ", ".join(param_strs)
+        return_type = str(method.get("return_type", "any"))
 
-        # Type annotations
-        if element.get("has_type_annotations"):
-            details.append("typed")
+        return f"({params_str}):{return_type}"
 
-        # Generics
-        if element.get("generics"):
-            generics = ", ".join(element.get("generics", []))
-            details.append(f"<{generics}>")
-
-        # Visibility
-        visibility = element.get("visibility")
-        if visibility and visibility != "public":
-            details.append(visibility)
-
-        # Modifiers
+    def _format_modifiers(self, element: dict[str, Any]) -> str:
+        """Format element modifiers"""
+        modifiers = []
         if element.get("is_static"):
-            details.append("static")
-        if element.get("is_async"):
-            details.append("async")
+            modifiers.append("static")
+        if element.get("is_readonly"):
+            modifiers.append("readonly")
         if element.get("is_abstract"):
-            details.append("abstract")
-        if element.get("is_optional"):
-            details.append("optional")
-
-        # Framework specific
-        framework = element.get("framework_type")
-        if framework:
-            details.append(f"{framework}")
-
-        return " ".join(details) if details else ""
+            modifiers.append("abstract")
+        return " ".join(modifiers)
 
     def format_table(
         self, analysis_result: dict[str, Any], table_type: str = "full"
     ) -> str:
         """Format table output for TypeScript"""
-        # Set the format type based on table_type parameter
         original_format_type = self.format_type
         self.format_type = table_type
 
         try:
-            # Use the existing format_structure method
             return self.format_structure(analysis_result)
         finally:
-            # Restore original format type
             self.format_type = original_format_type
 
     def format_summary(self, analysis_result: dict[str, Any]) -> str:

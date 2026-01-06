@@ -549,66 +549,151 @@ class LegacyTableFormatter:
 
         return f"| {name} | {signature} | {visibility} | {lines_str} | {complexity} | {doc} |"
 
+    def _format_compact_method_row(self, method: dict[str, Any]) -> str:
+        """Format method row for compact table format."""
+        name = str(method.get("name", ""))
+        signature = self._create_compact_signature(method)
+        visibility = self._get_visibility_symbol(str(method.get("visibility", "")))
+        line_range = method.get("line_range", {})
+        start = line_range.get("start", 0) if line_range else 0
+        end = line_range.get("end", 0) if line_range else 0
+        lines_str = f"{start}-{end}" if end > start else str(start)
+        complexity = method.get("complexity_score", 1)
+        doc = "-"
+
+        return f"| {name} | {signature} | {visibility} | {lines_str} | {complexity} | {doc} |"
+
+    def _create_compact_signature(self, method: dict[str, Any]) -> str:
+        """Create compact method signature like (S,S):b"""
+        params = method.get("parameters", [])
+        return_type = str(method.get("return_type", "void"))
+
+        # Abbreviate parameter types
+        param_abbrevs = []
+        for param in params:
+            param_type = str(param.get("type", "Object"))
+            param_abbrevs.append(self._abbreviate_type(param_type))
+
+        params_str = ",".join(param_abbrevs) if param_abbrevs else ""
+        return_abbrev = self._abbreviate_type(return_type)
+
+        return f"({params_str}):{return_abbrev}"
+
+    def _abbreviate_type(self, type_str: str) -> str:
+        """Abbreviate type name for compact display."""
+        # Common abbreviations
+        abbrev_map = {
+            "String": "S",
+            "string": "S",
+            "int": "i",
+            "Integer": "I",
+            "long": "l",
+            "Long": "L",
+            "double": "d",
+            "Double": "D",
+            "float": "f",
+            "Float": "F",
+            "boolean": "b",
+            "Boolean": "B",
+            "void": "void",
+            "Object": "O",
+            "List": "L",
+            "Map": "M",
+            "Set": "St",
+            "Collection": "C",
+        }
+
+        # Handle generic types like Map<String, Object>
+        if "<" in type_str:
+            base_type = type_str.split("<")[0]
+            inner = type_str[type_str.index("<") + 1 : type_str.rindex(">")]
+            inner_parts = [p.strip() for p in inner.split(",")]
+            inner_abbrevs = [self._abbreviate_type(p) for p in inner_parts]
+            base_abbrev = abbrev_map.get(base_type, base_type[0].upper())
+            return f"{base_abbrev}<{', '.join(inner_abbrevs)}>"
+
+        # Handle array types
+        if type_str.endswith("[]"):
+            base = type_str[:-2]
+            return f"{self._abbreviate_type(base)}[]"
+
+        return abbrev_map.get(type_str, type_str[0].upper() if type_str else "?")
+
+    def _get_visibility_symbol(self, visibility: str) -> str:
+        """Convert visibility to symbol."""
+        symbols = {
+            "public": "+",
+            "private": "-",
+            "protected": "#",
+            "package": "~",
+            "internal": "~",
+        }
+        return symbols.get(visibility.lower(), "+")
+
     def _format_compact_table(self, data: dict[str, Any]) -> str:
         """Compact table format - compliant with format specification"""
         lines = []
 
-        # Header - just class name (no package in compact format)
+        # Get package and class info
+        package_name = data.get("package", {}).get("name", "")
         classes = data.get("classes", [])
         if classes is None:
             classes = []
         class_name = classes[0].get("name", "Unknown") if classes else "Unknown"
-        lines.append(f"# {class_name}")
+
+        # Header - full qualified name
+        if package_name:
+            lines.append(f"# {package_name}.{class_name}")
+        else:
+            lines.append(f"# {class_name}")
         lines.append("")
 
-        # Info section (required by specification)
-        classes = data.get("classes", [])
-        class_type = classes[0].get("type", "class") if classes else "class"
+        # Info section
         methods = data.get("methods", []) or []
         fields = data.get("fields", []) or []
 
         lines.append("## Info")
         lines.append("| Property | Value |")
         lines.append("|----------|-------|")
-        lines.append(f"| Type | {class_type} |")
+        if package_name:
+            lines.append(f"| Package | {package_name} |")
         lines.append(f"| Methods | {len(methods)} |")
         lines.append(f"| Fields | {len(fields)} |")
         lines.append("")
 
-        # Methods section (simplified, required by specification)
+        # Methods section with compact signature format
         lines.append("## Methods")
         if methods:
-            lines.append("| Name | Return Type | Access | Line |")
-            lines.append("|------|-------------|--------|------|")
+            lines.append("| Method | Sig | V | L | Cx | Doc |")
+            lines.append("|--------|-----|---|---|----|----|")
 
             for method in methods:
-                name = str(method.get("name", ""))
-                return_type = str(method.get("return_type", "void"))
-                access = str(method.get("visibility", "public"))
-                line_num = method.get("line_range", {}).get("start", 0)
-
-                lines.append(f"| {name} | {return_type} | {access} | {line_num} |")
+                row = self._format_compact_method_row(method)
+                lines.append(row)
         else:
-            lines.append("| Name | Return Type | Access | Line |")
-            lines.append("|------|-------------|--------|------|")
+            lines.append("| Method | Sig | V | L | Cx | Doc |")
+            lines.append("|--------|-----|---|---|----|----|")
         lines.append("")
 
-        # Fields section (simplified, required by specification)
+        # Fields section
         lines.append("## Fields")
         if fields:
-            lines.append("| Name | Type | Access | Line |")
-            lines.append("|------|------|--------|------|")
+            lines.append("| Field | Type | V | L |")
+            lines.append("|-------|------|---|---|")
 
             for field in fields:
                 name = str(field.get("name", ""))
-                field_type = str(field.get("type", "Object"))
-                access = str(field.get("visibility", "private"))
-                line_num = field.get("line_range", {}).get("start", 0)
+                field_type = self._abbreviate_type(str(field.get("type", "Object")))
+                visibility = self._get_visibility_symbol(
+                    str(field.get("visibility", "private"))
+                )
+                line_range = field.get("line_range", {})
+                start = line_range.get("start", 0) if line_range else 0
 
-                lines.append(f"| {name} | {field_type} | {access} | {line_num} |")
+                lines.append(f"| {name} | {field_type} | {visibility} | {start} |")
         else:
-            lines.append("| Name | Type | Access | Line |")
-            lines.append("|------|------|--------|------|")
+            lines.append("| Field | Type | V | L |")
+            lines.append("|-------|------|---|---|")
         lines.append("")
 
         # Remove trailing empty lines
@@ -758,25 +843,6 @@ class LegacyTableFormatter:
             signature += f" {modifier_str}"
 
         return signature
-
-    def _create_compact_signature(self, method: dict[str, Any]) -> str:
-        """Create compact method signature"""
-        params = method.get("parameters", [])
-        param_types = []
-        for p in params:
-            if isinstance(p, dict):
-                param_types.append(self._shorten_type(p.get("type", "O")))
-            elif isinstance(p, str):
-                # If parameter is already a string, shorten it directly
-                param_types.append(self._shorten_type(p))
-            else:
-                # Fallback for other types
-                param_types.append(self._shorten_type(str(p)))
-
-        params_str = ",".join(param_types)
-        return_type = self._shorten_type(method.get("return_type", "void"))
-
-        return f"({params_str}):{return_type}"
 
     def _shorten_type(self, type_name: Any) -> str:
         """Shorten type name"""

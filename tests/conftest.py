@@ -209,12 +209,12 @@ def reset_global_singletons():
     except (ImportError, AttributeError):
         pass
 
-    # Reset formatter cache
+    # Reset formatter registry
     try:
-        from tree_sitter_analyzer.formatters.formatter_selector import FormatterSelector
+        from tree_sitter_analyzer.formatters.formatter_registry import FormatterRegistry
 
-        if hasattr(FormatterSelector, "_instance"):
-            FormatterSelector._instance = None
+        FormatterRegistry.clear()
+        FormatterRegistry.register_builtin_formatters()
     except (ImportError, AttributeError):
         pass
 
@@ -297,10 +297,10 @@ def reset_global_singletons():
         pass
 
     try:
-        from tree_sitter_analyzer.formatters.formatter_selector import FormatterSelector
+        from tree_sitter_analyzer.formatters.formatter_registry import FormatterRegistry
 
-        if hasattr(FormatterSelector, "_instance"):
-            FormatterSelector._instance = None
+        FormatterRegistry.clear()
+        FormatterRegistry.register_builtin_formatters()
     except (ImportError, AttributeError):
         pass
 

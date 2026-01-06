@@ -4,10 +4,13 @@ Formatter Registry
 
 Dynamic formatter registration and management system.
 Provides extensible formatter architecture following the Registry pattern.
+
+This is the unified entry point for all formatter operations in the project.
 """
 
 import logging
 from abc import ABC, abstractmethod
+from typing import Any
 
 from ..models import CodeElement
 
@@ -47,15 +50,43 @@ class IFormatter(ABC):
         pass
 
 
+class IStructureFormatter(ABC):
+    """
+    Interface for structure-based formatters (legacy compatibility).
+
+    These formatters accept dict-based structure data instead of CodeElement lists.
+    Used for backward compatibility with v1.6.1.4 format output.
+    """
+
+    @abstractmethod
+    def format_structure(self, structure_data: dict[str, Any]) -> str:
+        """
+        Format structure data dictionary into a string representation.
+
+        Args:
+            structure_data: Dictionary containing analysis results
+
+        Returns:
+            Formatted string representation
+        """
+        pass
+
+
 class FormatterRegistry:
     """
-    Registry for managing and providing formatter instances.
+    Unified registry for managing and providing formatter instances.
 
     Implements the Registry pattern to allow dynamic registration
-    and retrieval of formatters by format name.
+    and retrieval of formatters by format name and language.
+
+    This is the primary entry point for formatter operations:
+    - Use get_formatter() for format-based lookup
+    - Use get_formatter_for_language() for language-specific formatting
     """
 
     _formatters: dict[str, type[IFormatter]] = {}
+    _language_formatters: dict[str, dict[str, type[Any]]] = {}
+    _default_language_formatter: type[Any] | None = None
 
     @classmethod
     def register_formatter(cls, formatter_class: type[IFormatter]) -> None:
@@ -153,7 +184,157 @@ class FormatterRegistry:
         This method is primarily for testing purposes.
         """
         cls._formatters.clear()
+        cls._language_formatters.clear()
+        cls._default_language_formatter = None
         logger.debug("Cleared all registered formatters")
+
+    @classmethod
+    def register_language_formatter(
+        cls,
+        language: str,
+        format_type: str,
+        formatter_class: type[Any],
+    ) -> None:
+        """
+        Register a language-specific formatter.
+
+        Args:
+            language: Programming language name (e.g., "java", "python")
+            format_type: Format type (e.g., "full", "compact", "csv")
+            formatter_class: Formatter class to register
+
+        Example:
+            >>> FormatterRegistry.register_language_formatter(
+            ...     "java", "full", JavaTableFormatter
+            ... )
+        """
+        lang_key = language.lower()
+        if lang_key not in cls._language_formatters:
+            cls._language_formatters[lang_key] = {}
+
+        cls._language_formatters[lang_key][format_type] = formatter_class
+        logger.debug(
+            f"Registered language formatter: {language}/{format_type} -> "
+            f"{formatter_class.__name__}"
+        )
+
+    @classmethod
+    def set_default_language_formatter(cls, formatter_class: type[Any]) -> None:
+        """
+        Set the default formatter class for languages without specific formatters.
+
+        Args:
+            formatter_class: Default formatter class
+        """
+        cls._default_language_formatter = formatter_class
+        logger.debug(f"Set default language formatter: {formatter_class.__name__}")
+
+    @classmethod
+    def get_formatter_for_language(
+        cls,
+        language: str,
+        format_type: str = "full",
+        **kwargs: Any,
+    ) -> Any:
+        """
+        Get a formatter instance for the specified language and format type.
+
+        This is the primary method for obtaining formatters in the unified architecture.
+        It handles language-specific formatter lookup with fallback to defaults.
+
+        Args:
+            language: Programming language name
+            format_type: Format type (full, compact, csv, json, etc.)
+            **kwargs: Additional arguments passed to formatter constructor
+                - include_javadoc: bool - Include JavaDoc in output
+
+        Returns:
+            Formatter instance appropriate for the language and format
+
+        Example:
+            >>> formatter = FormatterRegistry.get_formatter_for_language("java", "full")
+            >>> output = formatter.format_structure(analysis_data)
+        """
+        lang_key = language.lower()
+        format_key = format_type.lower()
+
+        # Check for language-specific formatter first
+        if lang_key in cls._language_formatters:
+            lang_formatters = cls._language_formatters[lang_key]
+            if format_key in lang_formatters:
+                formatter_class = lang_formatters[format_key]
+                return cls._create_formatter_instance(
+                    formatter_class, format_key, language, **kwargs
+                )
+
+        # Fall back to default language formatter if set
+        if cls._default_language_formatter is not None:
+            return cls._create_formatter_instance(
+                cls._default_language_formatter, format_key, language, **kwargs
+            )
+
+        # Final fallback to generic format-based formatter
+        if format_key in cls._formatters:
+            return cls._formatters[format_key]()
+
+        # If nothing found, raise error with helpful message
+        available = cls.get_available_formats()
+        raise ValueError(
+            f"No formatter found for language '{language}' "
+            f"with format '{format_type}'. Available formats: {available}"
+        )
+
+    @classmethod
+    def _create_formatter_instance(
+        cls,
+        formatter_class: type[Any],
+        format_type: str,
+        language: str,
+        **kwargs: Any,
+    ) -> Any:
+        """
+        Create a formatter instance with appropriate constructor arguments.
+
+        Handles different formatter constructor signatures gracefully.
+        """
+        try:
+            # Try full signature first (for TableFormatter-style classes)
+            include_javadoc = kwargs.get("include_javadoc", False)
+            return formatter_class(
+                format_type=format_type,
+                language=language,
+                include_javadoc=include_javadoc,
+            )
+        except TypeError:
+            try:
+                # Try format_type only
+                return formatter_class(format_type=format_type)
+            except TypeError:
+                # Fall back to no-arg constructor
+                return formatter_class()
+
+    @classmethod
+    def get_supported_languages(cls) -> list[str]:
+        """
+        Get list of all languages with registered formatters.
+
+        Returns:
+            List of language names
+        """
+        return list(cls._language_formatters.keys())
+
+    @classmethod
+    def is_language_supported(cls, language: str) -> bool:
+        """
+        Check if a language has specific formatters registered.
+
+        Args:
+            language: Language name to check
+
+        Returns:
+            True if language has specific formatters
+        """
+        return language.lower() in cls._language_formatters
 
 
 # Built-in formatter implementations
@@ -331,7 +512,10 @@ class CompactFormatter(IFormatter):
             visibility = getattr(element, "visibility", "")
             vis_symbol = self._get_visibility_symbol(visibility)
 
-            line = f"{vis_symbol} {element.name} ({element_type}) [{element.start_line}-{element.end_line}]"
+            line = (
+                f"{vis_symbol} {element.name} ({element_type}) "
+                f"[{element.start_line}-{element.end_line}]"
+            )
             lines.append(line)
 
         return "\n".join(lines)
@@ -347,33 +531,85 @@ def register_builtin_formatters() -> None:
     """Register all built-in formatters"""
     FormatterRegistry.register_formatter(JsonFormatter)
 
-    # Fallback to simple formatters first to avoid circular import issues during initialization
+    # Fallback to simple formatters first to avoid circular import issues
     FormatterRegistry.register_formatter(CsvFormatter)
     FormatterRegistry.register_formatter(FullFormatter)
     FormatterRegistry.register_formatter(CompactFormatter)
 
-    # Attempt to register legacy formatters for backward compatibility (v1.6.1.4 format restoration)
-    # This is handled separately to avoid circular dependencies
-    _register_legacy_formatters_safe()
+    # Register language-specific formatters
+    _register_language_formatters_safe()
 
 
-def _register_legacy_formatters_safe() -> None:
-    """Register legacy formatters safely to avoid circular imports"""
+def _register_language_formatters_safe() -> None:
+    """Register language-specific formatters safely to avoid circular imports"""
     try:
-        from .legacy_formatter_adapters import (
-            LegacyCompactFormatter,
-            LegacyCsvFormatter,
-            LegacyFullFormatter,
-        )
+        # Import language-specific formatters
+        from ..legacy_table_formatter import LegacyTableFormatter
+        from .cpp_formatter import CppTableFormatter
+        from .csharp_formatter import CSharpTableFormatter
+        from .css_formatter import CSSFormatter
+        from .go_formatter import GoTableFormatter
+        from .html_formatter import HtmlFormatter
+        from .java_formatter import JavaTableFormatter
+        from .javascript_formatter import JavaScriptTableFormatter
+        from .kotlin_formatter import KotlinTableFormatter
+        from .markdown_formatter import MarkdownFormatter
+        from .php_formatter import PHPTableFormatter
+        from .python_formatter import PythonTableFormatter
+        from .ruby_formatter import RubyTableFormatter
+        from .rust_formatter import RustTableFormatter
+        from .sql_formatter_wrapper import SQLFormatterWrapper
+        from .typescript_formatter import TypeScriptTableFormatter
+        from .yaml_formatter import YAMLFormatter
 
-        # Replace broken v1.9.4 formatters with legacy-compatible ones
-        FormatterRegistry.register_formatter(LegacyCsvFormatter)
-        FormatterRegistry.register_formatter(LegacyFullFormatter)
-        FormatterRegistry.register_formatter(LegacyCompactFormatter)
+        # Set LegacyTableFormatter as default for unsupported languages
+        FormatterRegistry.set_default_language_formatter(LegacyTableFormatter)
 
-        logger.info("Registered legacy formatters for v1.6.1.4 compatibility")
+        # Language to formatter mapping
+        language_formatters = {
+            "java": JavaTableFormatter,
+            "python": PythonTableFormatter,
+            "py": PythonTableFormatter,
+            "javascript": JavaScriptTableFormatter,
+            "js": JavaScriptTableFormatter,
+            "typescript": TypeScriptTableFormatter,
+            "ts": TypeScriptTableFormatter,
+            "csharp": CSharpTableFormatter,
+            "cs": CSharpTableFormatter,
+            "php": PHPTableFormatter,
+            "ruby": RubyTableFormatter,
+            "rb": RubyTableFormatter,
+            "kotlin": KotlinTableFormatter,
+            "kt": KotlinTableFormatter,
+            "kts": KotlinTableFormatter,
+            "go": GoTableFormatter,
+            "rust": RustTableFormatter,
+            "rs": RustTableFormatter,
+            "c": CppTableFormatter,
+            "cpp": CppTableFormatter,
+            "h": CppTableFormatter,
+            "hpp": CppTableFormatter,
+            "yaml": YAMLFormatter,
+            "yml": YAMLFormatter,
+            "css": CSSFormatter,
+            "html": HtmlFormatter,
+            "htm": HtmlFormatter,
+            "markdown": MarkdownFormatter,
+            "md": MarkdownFormatter,
+            "sql": SQLFormatterWrapper,
+        }
+
+        # Register each language with all format types
+        format_types = ["full", "compact", "csv"]
+        for lang, formatter_class in language_formatters.items():
+            for fmt in format_types:
+                FormatterRegistry.register_language_formatter(
+                    lang, fmt, formatter_class
+                )
+
+        logger.info("Registered language-specific formatters")
     except ImportError as e:
-        logger.warning(f"Failed to register legacy formatters: {e}")
+        logger.warning(f"Failed to register language formatters: {e}")
 
 
 # NOTE: HTML formatters are intentionally excluded from analyze_code_structure

@@ -47,10 +47,10 @@ class TableCommand(BaseCommand):
             if table_type == "toon":
                 formatted_output = self._format_as_toon(analysis_result)
             else:
-                # Get appropriate formatter using FormatterSelector (explicit configuration)
-                from ...formatters.formatter_selector import FormatterSelector
+                # Get appropriate formatter using unified FormatterRegistry
+                from ...formatters.formatter_registry import FormatterRegistry
 
-                formatter = FormatterSelector.get_formatter(
+                formatter = FormatterRegistry.get_formatter_for_language(
                     analysis_result.language,
                     table_type,
                     include_javadoc=getattr(self.args, "include_javadoc", False),
@@ -375,6 +375,9 @@ class TableCommand(BaseCommand):
             "type": field_type,
             "visibility": field_visibility,
             "modifiers": getattr(element, "modifiers", []),
+            "is_static": getattr(element, "is_static", False),
+            "is_readonly": getattr(element, "is_readonly", False),
+            "is_final": getattr(element, "is_final", False),
             "line_range": {
                 "start": getattr(element, "start_line", 0),
                 "end": getattr(element, "end_line", 0),

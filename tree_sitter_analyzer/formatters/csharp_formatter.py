@@ -12,27 +12,13 @@ class CSharpTableFormatter(BaseTableFormatter):
     """Table formatter specialized for C#"""
 
     def _format_full_table(self, data: dict[str, Any]) -> str:
-        """Full table format for C#"""
-        lines = []
+        """Full table format for C# - matches golden master format"""
+        lines: list[str] = []
 
-        # Header - C# (multi-class supported)
-        classes = data.get("classes", [])
-        namespace_name = self._extract_namespace(data)
-
-        if len(classes) > 1:
-            # If multiple classes exist, use filename
-            file_name = data.get("file_path", "Unknown").split("/")[-1].split("\\")[-1]
-            if namespace_name == "unknown":
-                lines.append(f"# {file_name}")
-            else:
-                lines.append(f"# {namespace_name}.{file_name}")
-        else:
-            # Single class: use class name
-            class_name = classes[0].get("name", "Unknown") if classes else "Unknown"
-            if namespace_name == "unknown":
-                lines.append(f"# {class_name}")
-            else:
-                lines.append(f"# {namespace_name}.{class_name}")
+        # Get file name for header
+        file_path = data.get("file_path", "Unknown")
+        file_name = str(file_path).split("/")[-1].split("\\")[-1]
+        lines.append(f"# {file_name}")
         lines.append("")
 
         # Using directives (imports)
@@ -47,121 +33,145 @@ class CSharpTableFormatter(BaseTableFormatter):
             lines.append("```")
             lines.append("")
 
-        # Class Info - C# (multi-class aware)
-        if len(classes) > 1:
+        # Get classes, methods, and fields
+        classes = data.get("classes", [])
+        methods = data.get("methods", [])
+        fields = data.get("fields", [])
+
+        # Classes Overview table
+        if classes:
             lines.append("## Classes Overview")
             lines.append("| Class | Type | Visibility | Lines | Methods | Fields |")
             lines.append("|-------|------|------------|-------|---------|--------|")
 
             for class_info in classes:
                 name = str(class_info.get("name", "Unknown"))
-                class_type = str(class_info.get("class_type", "class"))
-                visibility = str(class_info.get("visibility", "internal"))
+                # Check both "class_type" and "type" for compatibility
+                class_type = str(
+                    class_info.get("class_type", class_info.get("type", "class"))
+                )
+                visibility = str(class_info.get("visibility", "public"))
                 line_range = class_info.get("line_range", {})
                 lines_str = f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
 
                 # Count methods/fields within the class range
-                all_methods: list[dict[str, Any]] = data.get("methods", [])
-                class_methods = [
-                    m
-                    for m in all_methods
-                    if int(line_range.get("start", 0))
-                    <= int(m.get("line_range", {}).get("start", 0))
-                    <= int(line_range.get("end", 0))
-                ]
-                all_fields: list[dict[str, Any]] = data.get("fields", [])
-                class_fields = [
-                    f
-                    for f in all_fields
-                    if int(line_range.get("start", 0))
-                    <= int(f.get("line_range", {}).get("start", 0))
-                    <= int(line_range.get("end", 0))
-                ]
+                class_methods = self._get_class_methods(methods, line_range)
+                class_fields = self._get_class_fields(fields, line_range)
 
                 lines.append(
-                    f"| {name} | {class_type} | {visibility} | {lines_str} | {len(class_methods)} | {len(class_fields)} |"
+                    f"| {name} | {class_type} | {visibility} | {lines_str} | "
+                    f"{len(class_methods)} | {len(class_fields)} |"
                 )
-        else:
-            # Single class details
-            lines.append("## Info")
-            lines.append("| Property | Value |")
-            lines.append("|----------|-------|")
+            lines.append("")
 
-            class_info = data.get("classes", [{}])[0] if data.get("classes") else {}
-            stats = data.get("statistics") or {}
+        # Per-class sections
+        for class_info in classes:
+            class_name = str(class_info.get("name", "Unknown"))
+            line_range = class_info.get("line_range", {})
+            lines_str = f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
 
-            lines.append(f"| Namespace | {namespace_name} |")
-            lines.append(f"| Type | {str(class_info.get('class_type', 'class'))} |")
-            lines.append(
-                f"| Visibility | {str(class_info.get('visibility', 'internal'))} |"
-            )
-            lines.append(f"| Methods | {stats.get('method_count', 0)} |")
-            lines.append(f"| Fields | {stats.get('field_count', 0)} |")
+            lines.append(f"## {class_name} ({lines_str})")
 
-        lines.append("")
+            # Get methods/fields for this class
+            class_methods = self._get_class_methods(methods, line_range)
+            class_fields = self._get_class_fields(fields, line_range)
 
-        # Methods section
-        methods = data.get("methods", [])
-        if methods:
-            # Group methods by class if multiple classes
-            if len(classes) > 1:
-                for class_info in classes:
-                    class_name = class_info.get("name", "Unknown")
-                    line_range = class_info.get("line_range", {})
-                    all_methods_grouped: list[dict[str, Any]] = (
-                        methods  # methods is already list[dict]
+            # Fields section
+            if class_fields:
+                lines.append("### Fields")
+                lines.append("| Name | Type | Vis | Modifiers | Line | Doc |")
+                lines.append("|------|------|-----|-----------|------|-----|")
+
+                for field in class_fields:
+                    name = str(field.get("name", ""))
+                    field_type = str(
+                        field.get("type", "")
+                        or field.get("field_type", "")
+                        or field.get("variable_type", "")
                     )
-                    class_methods = [
-                        m
-                        for m in all_methods_grouped
-                        if int(line_range.get("start", 0))
-                        <= int(m.get("line_range", {}).get("start", 0))
-                        <= int(line_range.get("end", 0))
-                    ]
+                    visibility = self._convert_visibility(
+                        str(field.get("visibility", "private"))
+                    )
+                    modifiers = self._format_modifiers(field)
+                    field_line = field.get("line_range", {}).get("start", 0)
+                    doc = "-"
 
-                    if class_methods:
-                        lines.append(f"## {class_name} Methods")
-                        self._add_methods_table(lines, class_methods)
-                        lines.append("")
-            else:
-                lines.append("## Methods")
-                self._add_methods_table(lines, methods)
+                    lines.append(
+                        f"| {name} | {field_type} | {visibility} | {modifiers} "
+                        f"| {field_line} | {doc} |"
+                    )
                 lines.append("")
 
-        # Fields section
-        fields = data.get("fields", [])
-        if fields:
-            # Group fields by class if multiple classes
-            if len(classes) > 1:
-                for class_info in classes:
-                    class_name = class_info.get("name", "Unknown")
-                    line_range = class_info.get("line_range", {})
-                    all_fields_grouped: list[dict[str, Any]] = fields
-                    class_fields = [
-                        f
-                        for f in all_fields_grouped
-                        if int(line_range.get("start", 0))
-                        <= int(f.get("line_range", {}).get("start", 0))
-                        <= int(line_range.get("end", 0))
-                    ]
+            # Group methods by type
+            constructors = [m for m in class_methods if m.get("is_constructor", False)]
+            public_methods = [
+                m
+                for m in class_methods
+                if not m.get("is_constructor", False)
+                and str(m.get("visibility", "public")).lower() == "public"
+            ]
+            private_methods = [
+                m
+                for m in class_methods
+                if not m.get("is_constructor", False)
+                and str(m.get("visibility", "")).lower() == "private"
+            ]
+            protected_methods = [
+                m
+                for m in class_methods
+                if not m.get("is_constructor", False)
+                and str(m.get("visibility", "")).lower() == "protected"
+            ]
 
-                    if class_fields:
-                        lines.append(f"## {class_name} Fields")
-                        self._add_fields_table(lines, class_fields)
-                        lines.append("")
-            else:
-                lines.append("## Fields")
-                self._add_fields_table(lines, fields)
+            # Constructors
+            if constructors:
+                lines.append("### Constructors")
+                lines.append("| Constructor | Signature | Vis | Lines | Cx | Doc |")
+                lines.append("|-------------|-----------|-----|-------|----|----|")
+                for method in constructors:
+                    lines.append(self._format_method_row(method))
                 lines.append("")
+
+            # Public Methods
+            if public_methods:
+                lines.append("### Public Methods")
+                lines.append("| Method | Signature | Vis | Lines | Cx | Doc |")
+                lines.append("|--------|-----------|-----|-------|----|----|")
+                for method in public_methods:
+                    lines.append(self._format_method_row(method))
+                lines.append("")
+
+            # Protected Methods
+            if protected_methods:
+                lines.append("### Protected Methods")
+                lines.append("| Method | Signature | Vis | Lines | Cx | Doc |")
+                lines.append("|--------|-----------|-----|-------|----|----|")
+                for method in protected_methods:
+                    lines.append(self._format_method_row(method))
+                lines.append("")
+
+            # Private Methods
+            if private_methods:
+                lines.append("### Private Methods")
+                lines.append("| Method | Signature | Vis | Lines | Cx | Doc |")
+                lines.append("|--------|-----------|-----|-------|----|----|")
+                for method in private_methods:
+                    lines.append(self._format_method_row(method))
+                lines.append("")
+
+        # Trim trailing blank lines
+        while lines and lines[-1] == "":
+            lines.pop()
 
         return "\n".join(lines)
 
     def _format_compact_table(self, data: dict[str, Any]) -> str:
-        """Compact table format for C#"""
-        lines = []
+        """Compact table format for C# - matches golden master format"""
+        lines: list[str] = []
 
         # Header
-        file_name = data.get("file_path", "Unknown").split("/")[-1].split("\\")[-1]
+        file_path = data.get("file_path", "Unknown")
+        file_name = str(file_path).split("/")[-1].split("\\")[-1]
         lines.append(f"# {file_name}")
         lines.append("")
 
@@ -173,7 +183,7 @@ class CSharpTableFormatter(BaseTableFormatter):
         namespace_name = self._extract_namespace(data)
         stats = data.get("statistics") or {}
 
-        lines.append(f"| Namespace | {namespace_name} |")
+        lines.append(f"| Package | {namespace_name} |")
         lines.append(f"| Methods | {stats.get('method_count', 0)} |")
         lines.append(f"| Fields | {stats.get('field_count', 0)} |")
         lines.append("")
@@ -187,83 +197,193 @@ class CSharpTableFormatter(BaseTableFormatter):
 
             for method in methods:
                 name = str(method.get("name", ""))
-                params = method.get("parameters", [])
-                return_type = str(method.get("return_type", "void"))
-
-                # Format parameters
-                if params:
-                    param_str = ",".join(
-                        [self._format_param_type(p) for p in params[:2]]
-                    )
-                    if len(params) > 2:
-                        param_str += ",..."
-                else:
-                    param_str = ""
-
-                # Format return type (abbreviated)
-                ret_str = self._abbreviate_type(return_type)
-
-                signature = f"({param_str}):{ret_str}"
-                visibility = self._get_visibility_symbol(
-                    method.get("visibility", "private")
+                signature = self._create_compact_signature(method)
+                visibility = self._convert_visibility(
+                    str(method.get("visibility", "public"))
                 )
                 line_range = method.get("line_range", {})
                 lines_str = f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
                 complexity = method.get("complexity_score", 1)
-                has_doc = "✓" if method.get("documentation") else "-"
+                doc = "-"
 
                 lines.append(
-                    f"| {name} | {signature} | {visibility} | {lines_str} | {complexity} | {has_doc} |"
+                    f"| {name} | {signature} | {visibility} | {lines_str} | "
+                    f"{complexity} | {doc} |"
                 )
+            lines.append("")
+
+        # Trim trailing blank lines
+        while lines and lines[-1] == "":
+            lines.pop()
 
         return "\n".join(lines)
 
-    def _add_methods_table(
-        self, lines: list[str], methods: list[dict[str, Any]]
-    ) -> None:
-        """Add methods table to lines"""
-        lines.append("| Method | Signature | Vis | Lines | Cx | Doc |")
-        lines.append("|--------|-----------|-----|-------|----|----|")
+    def _format_csv(self, data: dict[str, Any]) -> str:
+        """CSV format for C# - matches golden master format"""
+        lines: list[str] = []
 
+        # Header
+        lines.append("Type,Name,Signature,Visibility,Lines,Complexity,Doc")
+
+        # Fields
+        fields = data.get("fields", [])
+        for field in fields:
+            name = str(field.get("name", ""))
+            field_type = str(
+                field.get("type", "")
+                or field.get("field_type", "")
+                or field.get("variable_type", "")
+            )
+            signature = f"{name}:{field_type}" if field_type else name
+            visibility = str(field.get("visibility", "private"))
+            line_range = field.get("line_range", {})
+            lines_str = f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
+            doc = "-"
+
+            lines.append(f"Field,{name},{signature},{visibility},{lines_str},,{doc}")
+
+        # Methods
+        methods = data.get("methods", [])
         for method in methods:
             name = str(method.get("name", ""))
-            params = method.get("parameters", [])
-            return_type = str(method.get("return_type", "void"))
+            is_constructor = method.get("is_constructor", False)
+            method_type = "Constructor" if is_constructor else "Method"
 
-            # Format parameters
-            param_strs = []
-            for param in params:
-                param_strs.append(self._format_parameter(param))
-
-            signature = f"({', '.join(param_strs)}):{return_type}"
-            visibility = self._get_visibility_symbol(
-                method.get("visibility", "private")
-            )
+            signature = self._create_full_signature(method)
+            visibility = str(method.get("visibility", "public"))
             line_range = method.get("line_range", {})
             lines_str = f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
             complexity = method.get("complexity_score", 1)
-            has_doc = "✓" if method.get("documentation") else "-"
+            doc = "-"
+
+            # Add static modifier if applicable
+            if method.get("is_static"):
+                signature = f"{signature} [static]"
+
+            # Escape signature if it contains commas
+            if "," in signature:
+                signature = f'"{signature}"'
 
             lines.append(
-                f"| {name} | {signature} | {visibility} | {lines_str} | {complexity} | {has_doc} |"
+                f"{method_type},{name},{signature},{visibility},{lines_str},"
+                f"{complexity},{doc}"
             )
 
-    def _add_fields_table(self, lines: list[str], fields: list[dict[str, Any]]) -> None:
-        """Add fields table to lines"""
-        lines.append("| Name | Type | Vis | Modifiers | Line | Doc |")
-        lines.append("|------|------|-----|-----------|------|-----|")
+        lines.append("")
+        return "\n".join(lines)
 
-        for field in fields:
-            name = str(field.get("name", ""))
-            field_type = str(field.get("variable_type", "unknown"))
-            visibility = self._get_visibility_symbol(field.get("visibility", "private"))
-            modifiers = ",".join(field.get("modifiers", []))
-            line = field.get("line_range", {}).get("start", 0)
-            has_doc = "✓" if field.get("documentation") else "-"
+    def _get_class_methods(
+        self, methods: list[dict[str, Any]], line_range: dict[str, int]
+    ) -> list[dict[str, Any]]:
+        """Get methods within a class range"""
+        start = line_range.get("start", 0)
+        end = line_range.get("end", 0)
+        return [
+            m
+            for m in methods
+            if start <= (m.get("line_range") or {}).get("start", 0) <= end
+        ]
 
-            lines.append(
-                f"| {name} | {field_type} | {visibility} | {modifiers} | {line} | {has_doc} |"
-            )
+    def _get_class_fields(
+        self, fields: list[dict[str, Any]], line_range: dict[str, int]
+    ) -> list[dict[str, Any]]:
+        """Get fields within a class range"""
+        start = line_range.get("start", 0)
+        end = line_range.get("end", 0)
+        return [
+            f
+            for f in fields
+            if start <= (f.get("line_range") or {}).get("start", 0) <= end
+        ]
+
+    def _format_method_row(self, method: dict[str, Any]) -> str:
+        """Format a method table row"""
+        name = str(method.get("name", ""))
+        signature = self._create_full_signature(method)
+        visibility = self._convert_visibility(str(method.get("visibility", "public")))
+        line_range = method.get("line_range", {})
+        lines_str = f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
+        complexity = method.get("complexity_score", 1)
+        doc = "-"
+
+        return (
+            f"| {name} | {signature} | {visibility} | {lines_str} | "
+            f"{complexity} | {doc} |"
+        )
+
+    def _create_full_signature(self, method: dict[str, Any]) -> str:
+        """Create full method signature"""
+        params = method.get("parameters", [])
+        param_strs = []
+
+        for p in params:
+            if isinstance(p, dict):
+                param_name = str(p.get("name", ""))
+                param_type = str(p.get("type", ""))
+                if param_name and param_type:
+                    param_strs.append(f"{param_name}:{param_type}")
+                elif param_type:
+                    param_strs.append(param_type)
+                elif param_name:
+                    param_strs.append(param_name)
+            else:
+                param_strs.append(str(p))
+
+        params_str = ", ".join(param_strs)
+        return_type = str(method.get("return_type", "void"))
+
+        return f"({params_str}):{return_type}"
+
+    def _create_compact_signature(self, method: dict[str, Any]) -> str:
+        """Create compact method signature"""
+        params = method.get("parameters", [])
+        param_types = []
+
+        for p in params:
+            if isinstance(p, dict):
+                param_type = str(p.get("type", "Any"))
+                param_types.append(self._abbreviate_type(param_type))
+            else:
+                param_types.append(str(p))
+
+        # Limit to first 3 params
+        if len(param_types) > 3:
+            params_str = ",".join(param_types[:2]) + ",..."
+        else:
+            params_str = ",".join(param_types)
+
+        return_type = str(method.get("return_type", "void"))
+        ret_str = self._abbreviate_type(return_type)
+
+        return f"({params_str}):{ret_str}"
+
+    def _format_modifiers(self, element: dict[str, Any]) -> str:
+        """Format element modifiers"""
+        modifiers = []
+
+        # Check visibility as modifier
+        visibility = str(element.get("visibility", "")).lower()
+        if visibility and visibility != "public":
+            modifiers.append(visibility)
+
+        # Check other modifiers
+        if element.get("is_static"):
+            modifiers.append("static")
+        if element.get("is_readonly"):
+            modifiers.append("readonly")
+        if element.get("is_const"):
+            modifiers.append("const")
+        if element.get("is_abstract"):
+            modifiers.append("abstract")
+
+        # Also check modifiers list
+        mod_list = element.get("modifiers", [])
+        for m in mod_list:
+            m_str = str(m).lower()
+            if m_str not in modifiers:
+                modifiers.append(m_str)
+
+        return ",".join(modifiers)
 
     def _extract_namespace(self, data: dict[str, Any]) -> str:
         """Extract namespace from data"""
@@ -272,28 +392,16 @@ class CSharpTableFormatter(BaseTableFormatter):
         if classes:
             full_name = classes[0].get("full_qualified_name", "")
             if full_name and "." in full_name:
-                # Extract namespace from full qualified name
                 parts = full_name.rsplit(".", 1)
                 if len(parts) == 2:
                     return str(parts[0])
-
         return "unknown"
-
-    def _format_parameter(self, param: str) -> str:
-        """Format a parameter string"""
-        # Parameter is already formatted as "type name" or just "type"
-        return param
-
-    def _format_param_type(self, param: str) -> str:
-        """Extract and abbreviate parameter type"""
-        # Extract type from "type name" format
-        parts = param.strip().split()
-        if parts:
-            return self._abbreviate_type(parts[0])
-        return "?"
 
     def _abbreviate_type(self, type_str: str) -> str:
         """Abbreviate type name for compact display"""
+        if not type_str:
+            return "void"
+
         # Remove namespace qualifiers
         if "." in type_str:
             type_str = type_str.split(".")[-1]
@@ -305,21 +413,17 @@ class CSharpTableFormatter(BaseTableFormatter):
             "Int64": "long",
             "Boolean": "bool",
             "Double": "double",
-            "Decimal": "decimal",
-            "DateTime": "DateTime",
-            "Object": "object",
+            "integer": "i",
+            "int": "i",
+            "string": "string",
+            "void": "void",
+            "bool": "bool",
+            "Any": "Any",
         }
-
-        # Handle generic types
-        if "<" in type_str:
-            base_type = type_str.split("<")[0]
-            base_type = abbrev_map.get(base_type, base_type)
-            # Simplify generic parameters
-            return f"{base_type}<T>"
 
         return abbrev_map.get(type_str, type_str)
 
-    def _get_visibility_symbol(self, visibility: str) -> str:
+    def _convert_visibility(self, visibility: str) -> str:
         """Convert visibility to symbol"""
         symbols = {
             "public": "+",
@@ -328,46 +432,3 @@ class CSharpTableFormatter(BaseTableFormatter):
             "internal": "~",
         }
         return symbols.get(visibility.lower(), "-")
-
-    def _format_csv(self, data: dict[str, Any]) -> str:
-        """CSV format for C#"""
-        lines = []
-
-        # Header
-        lines.append("Type,Name,Visibility,Lines,Signature,Complexity")
-
-        # Classes
-        for class_info in data.get("classes", []):
-            name = class_info.get("name", "")
-            visibility = class_info.get("visibility", "internal")
-            line_range = class_info.get("line_range", {})
-            lines_str = f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
-            class_type = class_info.get("class_type", "class")
-
-            lines.append(f"Class,{name},{visibility},{lines_str},{class_type},")
-
-        # Methods
-        for method in data.get("methods", []):
-            name = method.get("name", "")
-            visibility = method.get("visibility", "private")
-            line_range = method.get("line_range", {})
-            lines_str = f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
-            params = method.get("parameters", [])
-            return_type = method.get("return_type", "void")
-            signature = f"({len(params)} params):{return_type}"
-            complexity = method.get("complexity_score", 1)
-
-            lines.append(
-                f"Method,{name},{visibility},{lines_str},{signature},{complexity}"
-            )
-
-        # Fields
-        for field in data.get("fields", []):
-            name = field.get("name", "")
-            visibility = field.get("visibility", "private")
-            line = field.get("line_range", {}).get("start", 0)
-            field_type = field.get("variable_type", "unknown")
-
-            lines.append(f"Field,{name},{visibility},{line},{field_type},")
-
-        return "\n".join(lines)

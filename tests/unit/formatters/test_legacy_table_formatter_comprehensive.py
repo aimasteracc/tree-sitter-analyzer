@@ -406,7 +406,8 @@ class TestCompactTableFormat:
         }
         result = formatter.format_structure(data)
 
-        assert "| Name | Return Type | Access | Line |" in result
+        # Compact format now uses abbreviated headers
+        assert "| Method | Sig | V | L | Cx | Doc |" in result
         assert "| process |" in result
 
     def test_compact_format_fields_table(self, formatter: LegacyTableFormatter) -> None:
@@ -424,7 +425,8 @@ class TestCompactTableFormat:
         }
         result = formatter.format_structure(data)
 
-        assert "| Name | Type | Access | Line |" in result
+        # Compact format now uses abbreviated headers
+        assert "| Field | Type | V | L |" in result
         assert "| count |" in result
 
 

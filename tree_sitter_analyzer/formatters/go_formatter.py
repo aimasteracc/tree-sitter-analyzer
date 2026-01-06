@@ -76,7 +76,7 @@ class GoTableFormatter(BaseTableFormatter):
                 vis = self._go_visibility(name)
                 line_range = s.get("line_range", {})
                 lines_str = f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
-                embedded = ", ".join(s.get("interfaces", []) or [])
+                embedded = ", ".join([str(i) for i in (s.get("interfaces", []) or [])])
                 doc = self._extract_doc_summary(s.get("docstring", "") or "")
                 lines.append(
                     f"| {name} | {vis} | {lines_str} | {embedded or '-'} | {doc or '-'} |"

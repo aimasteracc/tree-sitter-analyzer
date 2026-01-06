@@ -45,7 +45,9 @@ class TestCSharpTableFormatterFullTable:
         }
 
         result = formatter.format_structure(data)
-        assert "MyNamespace.MyClass" in result
+        # New format uses file name as header, class name in Classes Overview
+        assert "MyClass.cs" in result
+        assert "MyClass" in result
         assert "## Imports" in result
         assert "using System;" in result
 
@@ -196,7 +198,8 @@ class TestCSharpTableFormatterFullTable:
         }
 
         result = formatter.format_structure(data)
-        assert "Unknown" in result
+        # New format uses file name as header when no classes
+        assert "Empty.cs" in result
 
 
 class TestCSharpTableFormatterCompactTable:
@@ -387,23 +390,28 @@ class TestCSharpTableFormatterHelperMethods:
         assert "line2" in result
         assert "line3" in result
 
-    def test_format_parameter(self):
-        """Test _format_parameter method."""
+    def test_create_full_signature(self):
+        """Test _create_full_signature method."""
         formatter = CSharpTableFormatter("full")
-        result = formatter._format_parameter("int x")
-        assert result == "int x"
+        method = {"parameters": [{"name": "x", "type": "int"}], "return_type": "void"}
+        result = formatter._create_full_signature(method)
+        assert "x:int" in result
+        assert ":void" in result
 
-    def test_format_param_type(self):
-        """Test _format_param_type method."""
+    def test_create_compact_signature(self):
+        """Test _create_compact_signature method."""
         formatter = CSharpTableFormatter("full")
-        result = formatter._format_param_type("int x")
-        assert result == "int"
+        method = {"parameters": [{"name": "x", "type": "int"}], "return_type": "void"}
+        result = formatter._create_compact_signature(method)
+        assert ":void" in result
 
-    def test_format_param_type_empty(self):
-        """Test _format_param_type with empty string."""
+    def test_format_modifiers(self):
+        """Test _format_modifiers method."""
         formatter = CSharpTableFormatter("full")
-        result = formatter._format_param_type("")
-        assert result == "?"
+        element = {"is_static": True, "is_readonly": True}
+        result = formatter._format_modifiers(element)
+        assert "static" in result
+        assert "readonly" in result
 
     def test_abbreviate_type_simple(self):
         """Test _abbreviate_type with simple types."""
@@ -418,13 +426,13 @@ class TestCSharpTableFormatterHelperMethods:
         result = formatter._abbreviate_type("System.String")
         assert result == "string"
 
-    def test_get_visibility_symbol(self):
-        """Test _get_visibility_symbol method."""
+    def test_convert_visibility(self):
+        """Test _convert_visibility method."""
         formatter = CSharpTableFormatter("full")
-        assert formatter._get_visibility_symbol("public") == "+"
-        assert formatter._get_visibility_symbol("private") == "-"
-        assert formatter._get_visibility_symbol("protected") == "#"
-        assert formatter._get_visibility_symbol("internal") == "~"
+        assert formatter._convert_visibility("public") == "+"
+        assert formatter._convert_visibility("private") == "-"
+        assert formatter._convert_visibility("protected") == "#"
+        assert formatter._convert_visibility("internal") == "~"
 
 
 class TestCSharpTableFormatterEdgeCases:
