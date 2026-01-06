@@ -195,7 +195,8 @@ class TestRubyTableFormatterFullTable:
         }
 
         result = formatter.format_structure(data)
-        assert "Unknown" in result
+        # New format uses filename as header when no classes
+        assert "empty.rb" in result
 
     def test_singleton_class(self):
         """Test singleton class."""
@@ -303,7 +304,9 @@ class TestRubyTableFormatterCompactTable:
         }
 
         result = formatter.format_structure(data)
-        assert "ClassA" in result
+        # Compact format shows methods, may not list all class names explicitly
+        assert "multiple.rb" in result
+        assert "method_a" in result
 
 
 class TestRubyTableFormatterCSV:

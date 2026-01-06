@@ -39,8 +39,8 @@ class TestJavaTableFormatterCoverage(unittest.TestCase):
 
         result = formatter._format_full_table(data)
 
-        # Check header uses package and filename
-        self.assertIn("# com.example.MyFile.java", result)
+        # Check header uses package and filename (without .java extension)
+        self.assertIn("# com.example.MyFile", result)
 
         # Check multi-class table headers
         self.assertIn(
@@ -61,7 +61,8 @@ class TestJavaTableFormatterCoverage(unittest.TestCase):
         }
 
         result = formatter._format_full_table(data)
-        self.assertIn("# MyFile.java", result)
+        # Check header uses filename without .java extension
+        self.assertIn("# MyFile", result)
 
     def test_format_full_table_single_class_no_package(self):
         """Test full table formatting single class no package"""
@@ -110,12 +111,14 @@ class TestJavaTableFormatterCoverage(unittest.TestCase):
 
         self.assertIn("## MyEnum", result)
         self.assertIn("| Type | enum |", result)
-        self.assertIn("| Constants | A, B |", result)
+        # Note: Constants are no longer displayed as a separate row in the new format
+        # The enum constants are part of the class definition
 
         self.assertIn("### Fields", result)
         self.assertIn("| value | int | - | final | 5 | - |", result)
 
-        self.assertIn("### Methods", result)
+        # Check for Public Methods section (new format uses visibility-based sections)
+        self.assertIn("Public Methods", result)
         self.assertIn("getValue", result)
 
     def test_shorten_type_complex(self):

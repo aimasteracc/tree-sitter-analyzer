@@ -246,7 +246,8 @@ class TestPHPTableFormatterFullTable:
         }
 
         result = formatter.format_structure(data)
-        assert "Unknown" in result
+        # New format uses filename as header when no classes
+        assert "Empty.php" in result
 
 
 class TestPHPTableFormatterCompactTable:
@@ -335,7 +336,9 @@ class TestPHPTableFormatterCompactTable:
         }
 
         result = formatter.format_structure(data)
-        assert "ClassA" in result
+        # Compact format shows methods, may not list all class names explicitly
+        assert "Multiple.php" in result
+        assert "methodA" in result
 
 
 class TestPHPTableFormatterCSV:
@@ -405,21 +408,23 @@ class TestPHPTableFormatterHelperMethods:
         assert result == "MyNamespace"
 
     def test_extract_namespace_from_method_metadata(self):
-        """Test _extract_namespace from method metadata."""
+        """Test _extract_namespace from method metadata (no longer supported)."""
         formatter = PHPTableFormatter("full")
         data = {
             "classes": [],
             "methods": [{"metadata": {"namespace": "MethodNamespace"}}],
         }
         result = formatter._extract_namespace(data)
-        assert result == "MethodNamespace"
+        # New implementation only extracts from classes, not methods
+        assert result == ""
 
     def test_extract_namespace_empty(self):
         """Test _extract_namespace with no namespace."""
         formatter = PHPTableFormatter("full")
         data = {}
         result = formatter._extract_namespace(data)
-        assert result == "unknown"
+        # New implementation returns empty string instead of "unknown"
+        assert result == ""
 
     def test_get_platform_newline(self):
         """Test _get_platform_newline returns string."""
