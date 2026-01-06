@@ -72,15 +72,15 @@ jobs:
         echo "" >> $GITHUB_STEP_SUMMARY
 
         # Run tests with coverage
+        # Note: marker filter uses 'and' to exclude tests requiring BOTH ripgrep AND fd
         uv run pytest tests/ -n auto -v --tb=short --maxfail=10 \
           --cov=tree_sitter_analyzer \
           --cov-report=xml \
           --cov-report=html \
           --cov-report=term-missing \
           --cov-report=term \
-          -m "not requires_ripgrep or not requires_fd" \
           --cov-fail-under=${{ env.COVERAGE_THRESHOLD_FAIL == 'true' && env.COVERAGE_THRESHOLD || 0 }} \
-          > pytest-coverage-output.txt 2>&1 || touch test_failed
+          2>&1 | tee pytest-coverage-output.txt || touch test_failed
 
         # Extract coverage percentage
         COVERAGE_PERCENT=$(uv run python -c "
