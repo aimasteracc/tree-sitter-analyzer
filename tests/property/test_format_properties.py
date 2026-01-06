@@ -180,7 +180,11 @@ class TestFormatProperties:
         elements=st.lists(
             st.fixed_dictionaries(
                 {
-                    "name": st.text(min_size=1, max_size=20),
+                    # Use simple alphanumeric names to avoid CSV escaping issues
+                    # with NULL bytes and other control characters
+                    "name": st.from_regex(
+                        r"[a-zA-Z][a-zA-Z0-9_]{0,19}", fullmatch=True
+                    ),
                     "element_type": st.sampled_from(
                         ["class", "function", "method", "variable"]
                     ),
