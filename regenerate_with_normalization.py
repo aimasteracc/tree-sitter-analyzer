@@ -2,7 +2,7 @@
 """重新生成使用归一化计数的 Golden Master 文件"""
 
 import re
-import subprocess
+import subprocess  # nosec
 import sys
 from pathlib import Path
 
@@ -51,7 +51,7 @@ def regenerate_golden_master(input_file: str, output_file: str, table_format: st
         table_format,
     ]
 
-    result = subprocess.run(
+    result = subprocess.run(  # nosec
         cmd, capture_output=True, text=True, encoding="utf-8", check=True
     )
 

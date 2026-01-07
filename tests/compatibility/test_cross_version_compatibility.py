@@ -197,7 +197,7 @@ class TestQueryFileCompatibility:
 
         # 验证加载器可以获取查询
         queries = loader.get_all_queries_for_language("python")
-        assert isinstance(queries, (list, dict))
+        assert isinstance(queries, list | dict)
 
         if isinstance(queries, list):
             assert len(queries) > 0
@@ -228,7 +228,7 @@ class TestPluginInterfaceCompatibility:
 
         # 验证返回值类型
         queries = plugin.get_queries()
-        assert isinstance(queries, (list, dict))
+        assert isinstance(queries, list | dict)
 
         language = plugin.get_language_name()
         assert isinstance(language, str)
@@ -247,7 +247,7 @@ class TestPluginInterfaceCompatibility:
 
         # 验证返回值类型
         queries = plugin.get_queries()
-        assert isinstance(queries, (list, dict))
+        assert isinstance(queries, list | dict)
 
         language = plugin.get_language_name()
         assert isinstance(language, str)
@@ -265,7 +265,7 @@ class TestPluginInterfaceCompatibility:
         assert hasattr(plugin, "get_language_name")
 
         queries = plugin.get_queries()
-        assert isinstance(queries, (list, dict))
+        assert isinstance(queries, list | dict)
 
         language = plugin.get_language_name()
         assert isinstance(language, str)

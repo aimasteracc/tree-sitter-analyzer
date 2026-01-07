@@ -3,7 +3,7 @@
 
 import json
 import os
-import subprocess
+import subprocess  # nosec
 import sys
 
 
@@ -15,7 +15,7 @@ def run_quick_test():
 
     cmd = [sys.executable, "-m", "pytest", "tests/", "-q", "--tb=no"]
 
-    result = subprocess.run(
+    result = subprocess.run(  # nosec
         cmd,
         capture_output=True,
         text=True,
@@ -57,7 +57,7 @@ def run_coverage():
 
     print(f"Command: {' '.join(cmd)}")
 
-    result = subprocess.run(
+    result = subprocess.run(  # nosec
         cmd,
         capture_output=True,
         text=True,
