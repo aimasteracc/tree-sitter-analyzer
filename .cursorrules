@@ -1,0 +1,1227 @@
+# Tree-sitter-analyzer MCP 测试规则
+
+## 项目概述
+这是一个 tree-sitter-analyzer 项目，包含 MCP (Model Context Protocol) 服务器实现。
+项目路径: `C:/git-private/tree-sitter-analyzer`
+
+## 测试基线比较规则
+
+### ⚡ 重要：AI助手自动执行规则
+
+**当用户说以下任意一句话时，AI助手应该自动执行完整的测试和对比流程，无需用户提供额外信息：**
+- "测试tree-sitter-analyzer-local" ⭐ **主要触发短语**
+- "测试tree-sitter-analyzer"
+- "执行回归测试"
+- "对比基线"
+- "执行测试并对比"
+- "运行所有测试并与基线对比"
+- "检查测试结果是否有变化"
+- "版本迭代测试"
+- "运行测试"
+- "执行测试"
+- 或任何类似的请求
+
+### 自动比较流程（AI助手必须遵循）
+
+1. **加载基线文件**:
+   ```python
+   import json
+   baseline = json.load(open(".cursor/test_baseline/.test_baseline.json", 'r', encoding='utf-8'))
+   ```
+   基线文件路径: `.cursor/test_baseline/.test_baseline.json`
+
+2. **设置项目路径**:
+   ```python
+   set_project_path(project_path="C:/git-private/tree-sitter-analyzer")
+   ```
+
+3. **执行所有测试用例**:
+   - 按照 `.cursorrules` 中定义的43个测试用例执行
+   - 参考"2. 基础功能测试"和"4. 回归测试用例"部分
+   - 按顺序执行：测试1-9（基础），测试10-35（回归），测试16a-16h（TOON格式）
+
+4. **提取关键指标**:
+   对每个测试结果，根据工具类型提取关键指标：
+   - `check_code_scale`: success, total_lines, classes, methods, fields, content_hash
+   - `query_code`: success, count, query_key, filter
+   - `search_content`/`find_and_grep`: success, count, query, searched_file_count
+   - `extract_code_section`: success, start_line, end_line, content_length, lines_extracted
+   - `analyze_code_structure`: success, classes_count, methods_count, fields_count, total_lines
+   - `list_files`: success, count, file_list
+
+   详细提取规则参考 `COMPARISON_GUIDE.md`
+
+5. **对比基线结果**:
+   - 对比每个测试的 `success` 状态（必须一致）
+   - 对比 `key_metrics` 中的关键字段
+   - 记录所有差异，包括：
+     - 指标名称
+     - 基线值
+     - 新值
+
+6. **生成对比报告**:
+   创建包含以下内容的Markdown报告：
+   - **摘要**: 总测试数、完全相同数、差异数、缺失数、新增数
+   - **差异详情**: 每个差异的测试ID、名称、具体指标变化
+   - **差异分析**: 每个差异的原因分析（功能改进、bug修复、回归问题、已知限制）
+   - **建议**: 是否需要更新基线、是否需要进一步调查
+
+7. **保存完整测试结果**:
+   - 保存所有测试的完整原始结果到 `.cursor/test_baseline/test_results.json`
+   - 格式：每个测试保存完整的MCP工具返回结果，不做任何处理
+   - 目的：通过 `git diff` 可以直观查看哪些测试结果发生了变化
+   - 文件结构：
+     ```json
+     {
+       "test_date": "YYYY-MM-DD",
+       "test_timestamp": "ISO格式",
+       "mcp_server": "tree-sitter-analyzer-local",
+       "tests": {
+         "1": {
+           "test_id": "1",
+           "test_name": "代码规模检查",
+           "tool": "check_code_scale",
+           "timestamp": "ISO格式",
+           "result": { /* 完整的MCP工具返回结果 */ }
+         },
+         ...
+       }
+     }
+     ```
+
+8. **保存对比报告**:
+   - 保存到 `.cursor/test_baseline/.test_comparison_report.json`（JSON格式）
+   - 同时在对话中显示Markdown格式的报告摘要
+
+9. **Git集成提示**:
+   - 提示用户可以通过 `git diff .cursor/test_baseline/test_results.json` 查看变化
+   - 如果结果符合预期，可以提交为新的基线
+
+### 关键指标对比规则
+
+对于每个测试，对比以下关键指标：
+- `success`: 测试是否成功（必须一致）
+- `count`: 查询结果数量（应该一致，除非功能变更）
+- `total_lines`: 文件总行数（应该一致，除非文件被修改）
+- `classes/methods/fields`: 代码结构统计（应该一致）
+- `content_hash`: 文件内容哈希（文件变化时会改变，这是正常的）
+
+### 已知限制处理
+
+以下测试有已知限制，对比时应该：
+- **测试 13**: fields查询键不支持 → 检查替代方案是否有效
+- **测试 14-15**: 过滤器可能未应用 → 记录实际行为，不视为错误
+- **测试 25-26**: sort参数不支持 → 记录实际行为，不视为错误
+
+### 差异分析规则
+
+1. **文件哈希变化**:
+   - 如果 `content_hash` 改变但其他指标相同 → 文件内容变化，但结构未变（正常）
+   - 如果 `content_hash` 改变且其他指标也变化 → 文件被修改（需要验证）
+
+2. **数量变化**:
+   - 如果 `count` 增加 → 可能是功能改进或bug修复
+   - 如果 `count` 减少 → 可能是回归问题或功能变更
+
+3. **结构变化**:
+   - 如果 `classes/methods/fields` 变化 → 代码结构变化（需要验证是否预期）
+
+### 报告格式
+
+对比报告应包含：
+- 测试统计（总数、相同、差异、缺失、新增）
+- 差异详情（列出每个差异的具体指标变化）
+- 差异分析（原因分析）
+- 建议（是否需要更新基线、是否需要进一步调查）
+
+## MCP 服务器配置
+- MCP 服务器名称: `tree-sitter-analyzer-local`
+- 项目根路径: `C:/git-private/tree-sitter-analyzer`
+- **配置文件位置**: `.cursor/mcp.json` (项目根目录，优先使用)
+- 全局配置位置: `C:/Users/aisheng.yu/.cursor/mcp.json` (备用，如果项目内没有配置)
+
+**重要**: Cursor 会优先使用项目根目录下的 `.cursor/mcp.json` 配置文件。如果项目内没有此文件，则使用用户目录的配置。
+
+## 测试 tree-sitter-analyzer-local 的标准流程
+
+### 1. 初始化测试
+首先设置项目路径：
+```python
+# 使用 MCP 工具设置项目路径
+set_project_path(project_path="C:/git-private/tree-sitter-analyzer")
+```
+
+### 2. 基础功能测试
+
+#### 测试 1: 代码规模检查 (check_code_scale)
+**测试文件**: `examples/Sample.java`
+**预期结果**:
+- 总行数: 178行
+- 类数: 8个
+- 方法数: 26个
+- 字段数: 6个
+- Package: `com.example`
+
+**MCP 调用**:
+```python
+check_code_scale(
+    file_path="examples/Sample.java",
+    include_complexity=True,
+    include_guidance=True
+)
+```
+
+#### 测试 2: 代码结构分析 (analyze_code_structure)
+**测试文件**: `examples/Sample.java`
+**格式**: `compact`
+**预期结果**: 包含类、方法、字段的结构表格
+
+**MCP 调用**:
+```python
+analyze_code_structure(
+    file_path="examples/Sample.java",
+    format_type="compact"
+)
+```
+
+#### 测试 3: 代码片段提取 (extract_code_section)
+**测试文件**: `examples/Sample.java`
+**行范围**: 72-110
+**预期结果**: 包含 Test 类定义、内部类、构造函数和方法
+
+**MCP 调用**:
+```python
+extract_code_section(
+    file_path="examples/Sample.java",
+    start_line=72,
+    end_line=110,
+    format="text"
+)
+```
+
+#### 测试 4: 代码查询 (query_code)
+**测试文件**: `examples/Sample.java`
+**查询类型**: `methods`
+**过滤器**: `visibility=public`
+**预期结果**: 22个公共方法
+
+**MCP 调用**:
+```python
+query_code(
+    file_path="examples/Sample.java",
+    query_key="methods",
+    filter="visibility=public"
+)
+```
+
+#### 测试 5: 文件列表 (list_files)
+**目录**: `examples/`
+**文件类型**: Java文件
+**预期结果**: 5个Java文件
+
+**MCP 调用**:
+```python
+list_files(
+    roots=["examples/"],
+    extensions=["java"],
+    types=["f"]
+)
+```
+
+#### 测试 6: 内容搜索 (search_content)
+**目录**: `examples/`
+**搜索模式**: `public class`
+**文件类型**: `*.java`
+**预期结果**: 6个匹配项
+
+**MCP 调用**:
+```python
+search_content(
+    roots=["examples/"],
+    query="public class",
+    include_globs=["*.java"],
+    case="smart"
+)
+```
+
+#### 测试 7: 查找和搜索 (find_and_grep)
+**目录**: `examples/`
+**文件模式**: `*.java`
+**搜索内容**: `implements`
+**预期结果**: 1个匹配项
+
+**MCP 调用**:
+```python
+find_and_grep(
+    roots=["examples/"],
+    pattern="*.java",
+    glob=True,
+    query="implements",
+    case="smart"
+)
+```
+
+### 3. 大型文件测试
+
+#### 测试 8: 大型文件分析 (BigService.java)
+**测试文件**: `examples/BigService.java`
+**预期结果**:
+- 总行数: 1419行
+- 类数: 1个
+- 方法数: 66个
+- 复杂度分析: 识别高复杂度方法（如 validateData 复杂度 10）
+
+**MCP 调用**:
+```python
+check_code_scale(
+    file_path="examples/BigService.java",
+    include_complexity=True,
+    include_guidance=True
+)
+```
+
+#### 测试 9: 大型文件片段提取
+**测试文件**: `examples/BigService.java`
+**行范围**: 141-172 (authenticateUser 方法)
+**预期结果**: 包含完整的 authenticateUser 方法实现
+
+**MCP 调用**:
+```python
+extract_code_section(
+    file_path="examples/BigService.java",
+    start_line=141,
+    end_line=172,
+    format="text"
+)
+```
+
+### 4. 回归测试用例（用于验证项目修改对现有功能的影响）
+
+#### 测试 10: 代码结构分析 - Full 格式
+**测试文件**: `examples/Sample.java`
+**格式**: `full`
+**预期结果**: 返回完整格式的结构表格，包含更详细的信息
+
+**MCP 调用**:
+```python
+analyze_code_structure(
+    file_path="examples/Sample.java",
+    format_type="full"
+)
+```
+
+#### 测试 11: 代码结构分析 - CSV 格式
+**测试文件**: `examples/Sample.java`
+**格式**: `csv`
+**预期结果**: 返回 CSV 格式的结构表格
+
+**MCP 调用**:
+```python
+analyze_code_structure(
+    file_path="examples/Sample.java",
+    format_type="csv"
+)
+```
+
+#### 测试 12: 代码查询 - 查询类 (classes)
+**测试文件**: `examples/Sample.java`
+**查询类型**: `classes`
+**预期结果**: 返回所有类的信息
+
+**MCP 调用**:
+```python
+query_code(
+    file_path="examples/Sample.java",
+    query_key="classes"
+)
+```
+
+#### 测试 13: 代码查询 - 查询字段 (fields)
+**测试文件**: `examples/Sample.java`
+**查询类型**: `fields`
+**过滤器**: `visibility=private`
+**预期结果**: 返回所有私有字段
+
+**⚠️ 已知限制**: `fields` 不是有效的 `query_key`。当前支持的 `query_key` 包括：`methods`、`classes`。
+
+**替代方案 1**: 查询所有字段，然后在客户端过滤：
+```python
+# 步骤1: 查询所有字段
+result = query_code(
+    file_path="examples/Sample.java",
+    query_string="(field_declaration) @field"
+)
+
+# 步骤2: 在客户端过滤私有字段
+# 检查字段声明的可见性修饰符
+private_fields = []
+for item in result['results']:
+    content = item['content']
+    # 检查是否以 "private" 开头（简单方法）
+    if content.strip().startswith('private'):
+        private_fields.append(item)
+```
+
+**替代方案 2**: 使用 `check_code_scale` 工具（推荐，更简单）：
+```python
+# check_code_scale 返回的 structural_overview.fields 包含完整的可见性信息
+result = check_code_scale(file_path="examples/Sample.java")
+private_fields = [f for f in result['structural_overview']['fields'] if f['visibility'] == 'private']
+```
+
+**验证结果**: 在 `examples/Sample.java` 中应找到 3 个私有字段：
+- `value` (74行) - private int
+- `finalField` (80行) - private final String
+- `description` (167行) - private final String
+
+**MCP 调用**:
+```python
+query_code(
+    file_path="examples/Sample.java",
+    query_key="fields",
+    filter="visibility=private"
+)
+```
+
+#### 测试 14: 代码查询 - 静态方法过滤
+**测试文件**: `examples/Sample.java`
+**查询类型**: `methods`
+**过滤器**: `is_static=true`
+**预期结果**: 返回所有静态方法
+
+**⚠️ 已知限制**: `is_static` 过滤器可能未正确应用。当前测试返回所有方法而非仅静态方法。
+
+**替代方案 1**: 使用 `check_code_scale` 工具（推荐，最简单）：
+```python
+# check_code_scale 返回的 structural_overview.methods 包含 is_static 字段
+result = check_code_scale(file_path="examples/Sample.java")
+static_methods = [m for m in result['structural_overview']['methods'] if m['is_static'] == True]
+```
+
+**替代方案 2**: 使用自定义查询字符串，然后在客户端过滤：
+```python
+# 步骤1: 使用自定义查询获取所有方法
+result = query_code(
+    file_path="examples/Sample.java",
+    query_string="(method_declaration) @method"
+)
+
+# 步骤2: 在客户端过滤静态方法
+# 检查方法声明的 content 中是否包含 "static" 关键字
+static_methods = []
+for item in result['results']:
+    content = item['content']
+    # 检查方法声明中是否包含 "static" 关键字
+    if 'static' in content and ('static void' in content or 'static ' in content.split('(')[0]):
+        static_methods.append(item)
+```
+
+**验证结果**: 在 `examples/Sample.java` 中应找到 3 个静态方法：
+- `staticParentMethod` (31行) - is_static: true
+- `staticInterfaceMethod` (61行) - is_static: true
+- `staticMethod` (128行) - is_static: true
+
+**MCP 调用**:
+```python
+query_code(
+    file_path="examples/Sample.java",
+    query_key="methods",
+    filter="is_static=true"
+)
+```
+
+**MCP 调用**:
+```python
+query_code(
+    file_path="examples/Sample.java",
+    query_key="methods",
+    filter="is_static=true"
+)
+```
+
+#### 测试 15: 代码查询 - 构造函数过滤
+**测试文件**: `examples/Sample.java`
+**查询类型**: `methods`
+**过滤器**: `is_constructor=true`
+**预期结果**: 返回所有构造函数
+
+**⚠️ 已知限制**: `is_constructor` 过滤器可能未正确应用。当前测试返回所有方法而非仅构造函数。
+
+**替代方案 1**: 使用 `check_code_scale` 工具（推荐，最简单）：
+```python
+# check_code_scale 返回的 structural_overview.methods 包含 is_constructor 字段
+result = check_code_scale(file_path="examples/Sample.java")
+constructors = [m for m in result['structural_overview']['methods'] if m['is_constructor'] == True]
+```
+
+**替代方案 2**: 使用自定义查询字符串：
+```python
+query_code(
+    file_path="examples/Sample.java",
+    query_string="(constructor_declaration) @constructor"
+)
+```
+
+**验证结果**: 在 `examples/Sample.java` 中应找到 4 个构造函数：
+- `ParentClass()` (26行) - is_constructor: true
+- `Test(int value)` (97行) - is_constructor: true
+- `Test()` (103行) - is_constructor: true
+- `TestEnum(String description)` (170行) - is_constructor: true
+
+**MCP 调用**:
+```python
+query_code(
+    file_path="examples/Sample.java",
+    query_key="methods",
+    filter="is_constructor=true"
+)
+```
+
+#### 测试 16: 代码片段提取 - JSON 格式
+**测试文件**: `examples/Sample.java`
+**行范围**: 72-110
+**格式**: `json`
+**预期结果**: 返回 JSON 格式的代码片段
+
+**MCP 调用**:
+```python
+extract_code_section(
+    file_path="examples/Sample.java",
+    start_line=72,
+    end_line=110,
+    format="json"
+)
+```
+
+#### 测试 16a: 代码规模检查 - TOON 格式（默认）
+**测试文件**: `examples/Sample.java`
+**输出格式**: `toon` (默认)
+**预期结果**: 返回 TOON 格式的输出，减少 50-70% 的 token 消耗
+
+**MCP 调用**:
+```python
+check_code_scale(
+    file_path="examples/Sample.java",
+    include_complexity=True,
+    include_guidance=True,
+    output_format="toon"
+)
+```
+
+#### 测试 16b: 代码规模检查 - JSON 格式
+**测试文件**: `examples/Sample.java`
+**输出格式**: `json`
+**预期结果**: 返回标准 JSON 格式的输出
+
+**MCP 调用**:
+```python
+check_code_scale(
+    file_path="examples/Sample.java",
+    include_complexity=True,
+    include_guidance=True,
+    output_format="json"
+)
+```
+
+#### 测试 16c: 代码结构分析 - TOON 格式
+**测试文件**: `examples/Sample.java`
+**格式**: `compact`
+**输出格式**: `toon`
+**预期结果**: 返回 TOON 格式的结构表格
+
+**MCP 调用**:
+```python
+analyze_code_structure(
+    file_path="examples/Sample.java",
+    format_type="compact",
+    output_format="toon"
+)
+```
+
+#### 测试 16d: 代码查询 - TOON 格式
+**测试文件**: `examples/Sample.java`
+**查询类型**: `methods`
+**输出格式**: `toon`
+**预期结果**: 返回 TOON 格式的查询结果
+
+**MCP 调用**:
+```python
+query_code(
+    file_path="examples/Sample.java",
+    query_key="methods",
+    filter="visibility=public",
+    output_format="toon"
+)
+```
+
+#### 测试 16e: 内容搜索 - TOON 格式
+**目录**: `examples/`
+**搜索模式**: `public class`
+**文件类型**: `*.java`
+**输出格式**: `toon`
+**预期结果**: 返回 TOON 格式的搜索结果
+
+**MCP 调用**:
+```python
+search_content(
+    roots=["examples/"],
+    query="public class",
+    include_globs=["*.java"],
+    case="smart",
+    output_format="toon"
+)
+```
+
+#### 测试 16f: 文件列表 - TOON 格式
+**目录**: `examples/`
+**文件类型**: Java文件
+**输出格式**: `toon`
+**预期结果**: 返回 TOON 格式的文件列表
+
+**MCP 调用**:
+```python
+list_files(
+    roots=["examples/"],
+    extensions=["java"],
+    types=["f"],
+    output_format="toon"
+)
+```
+
+#### 测试 16g: 查找和搜索 - TOON 格式
+**目录**: `examples/`
+**文件模式**: `*.java`
+**搜索内容**: `implements`
+**输出格式**: `toon`
+**预期结果**: 返回 TOON 格式的搜索结果
+
+**MCP 调用**:
+```python
+find_and_grep(
+    roots=["examples/"],
+    pattern="*.java",
+    glob=True,
+    query="implements",
+    case="smart",
+    output_format="toon"
+)
+```
+
+#### 测试 16h: 代码片段提取 - TOON 格式
+**测试文件**: `examples/Sample.java`
+**行范围**: 72-110
+**输出格式**: `toon`
+**预期结果**: 返回 TOON 格式的代码片段
+
+**MCP 调用**:
+```python
+extract_code_section(
+    file_path="examples/Sample.java",
+    start_line=72,
+    end_line=110,
+    format="text",
+    output_format="toon"
+)
+```
+
+#### 测试 17: 代码片段提取 - 带列范围
+**测试文件**: `examples/Sample.java`
+**行范围**: 72-72
+**列范围**: 0-50
+**预期结果**: 返回指定行和列范围的代码片段
+
+**MCP 调用**:
+```python
+extract_code_section(
+    file_path="examples/Sample.java",
+    start_line=72,
+    end_line=72,
+    start_column=0,
+    end_column=50,
+    format="text"
+)
+```
+
+#### 测试 18: 多类文件分析
+**测试文件**: `examples/MultiClass.java`
+**预期结果**:
+- 类数: 3个
+- 方法数: 8个
+- 字段数: 3个
+
+**MCP 调用**:
+```python
+check_code_scale(
+    file_path="examples/MultiClass.java",
+    include_complexity=True,
+    include_guidance=True
+)
+```
+
+#### 测试 19: 注解文件分析
+**测试文件**: `examples/TestAnnotationIssue.java`
+**预期结果**:
+- 类数: 1个
+- 方法数: 4个
+- 注解识别: 能够识别 @Override, @Test, @SuppressWarnings, @Deprecated
+
+**MCP 调用**:
+```python
+check_code_scale(
+    file_path="examples/TestAnnotationIssue.java",
+    include_complexity=True,
+    include_guidance=True
+)
+```
+
+#### 测试 20: JavaDoc 文件分析
+**测试文件**: `examples/JavaDocTest.java`
+**预期结果**: 能够正确识别 JavaDoc 注释和方法文档
+
+**MCP 调用**:
+```python
+check_code_scale(
+    file_path="examples/JavaDocTest.java",
+    include_complexity=True,
+    include_guidance=True
+)
+```
+
+#### 测试 21: 内容搜索 - 大小写敏感
+**目录**: `examples/`
+**搜索模式**: `Public class`
+**文件类型**: `*.java`
+**大小写**: `sensitive`
+**预期结果**: 应该找不到匹配（因为实际是 `public class`）
+
+**MCP 调用**:
+```python
+search_content(
+    roots=["examples/"],
+    query="Public class",
+    include_globs=["*.java"],
+    case="sensitive"
+)
+```
+
+#### 测试 22: 内容搜索 - 大小写不敏感
+**目录**: `examples/`
+**搜索模式**: `Public class`
+**文件类型**: `*.java`
+**大小写**: `insensitive`
+**预期结果**: 应该找到匹配（不区分大小写）
+
+**MCP 调用**:
+```python
+search_content(
+    roots=["examples/"],
+    query="Public class",
+    include_globs=["*.java"],
+    case="insensitive"
+)
+```
+
+#### 测试 23: 内容搜索 - 正则表达式
+**目录**: `examples/`
+**搜索模式**: `public\s+class`
+**文件类型**: `*.java`
+**预期结果**: 使用正则表达式匹配 `public class`
+
+**MCP 调用**:
+```python
+search_content(
+    roots=["examples/"],
+    query="public\\s+class",
+    include_globs=["*.java"],
+    case="smart"
+)
+```
+
+#### 测试 24: 内容搜索 - 全词匹配
+**目录**: `examples/`
+**搜索模式**: `class`
+**文件类型**: `*.java`
+**全词匹配**: `true`
+**预期结果**: 只匹配完整的单词 `class`，不匹配 `className` 等
+
+**MCP 调用**:
+```python
+search_content(
+    roots=["examples/"],
+    query="class",
+    include_globs=["*.java"],
+    word=True
+)
+```
+
+#### 测试 25: 文件列表 - 按修改时间排序
+**目录**: `examples/`
+**文件类型**: Java文件
+**排序**: `mtime`
+**预期结果**: 文件按修改时间排序
+
+**⚠️ 已知限制**: `list_files` 工具当前不支持 `sort` 参数。返回的文件列表按默认顺序（通常是路径字母顺序）。
+
+**替代方案**: 在客户端对返回结果进行排序，或使用文件系统工具进行排序。
+
+**MCP 调用**:
+```python
+list_files(
+    roots=["examples/"],
+    extensions=["java"],
+    types=["f"],
+    sort="mtime"
+)
+```
+
+#### 测试 26: 文件列表 - 按大小排序
+**目录**: `examples/`
+**文件类型**: Java文件
+**排序**: `size`
+**预期结果**: 文件按大小排序
+
+**⚠️ 已知限制**: `list_files` 工具当前不支持 `sort` 参数。返回的文件列表按默认顺序（通常是路径字母顺序）。
+
+**替代方案**: 在客户端对返回结果进行排序，或使用文件系统工具进行排序。
+
+**MCP 调用**:
+```python
+list_files(
+    roots=["examples/"],
+    extensions=["java"],
+    types=["f"],
+    sort="size"
+)
+```
+
+#### 测试 27: 文件列表 - 限制结果数量
+**目录**: `examples/`
+**文件类型**: Java文件
+**限制**: 3
+**预期结果**: 最多返回3个文件
+
+**MCP 调用**:
+```python
+list_files(
+    roots=["examples/"],
+    extensions=["java"],
+    types=["f"],
+    limit=3
+)
+```
+
+#### 测试 28: 查找和搜索 - 排除特定文件
+**目录**: `examples/`
+**文件模式**: `*.java`
+**搜索内容**: `class`
+**排除**: `BigService.java`
+**预期结果**: 在除 BigService.java 外的文件中搜索
+
+**MCP 调用**:
+```python
+find_and_grep(
+    roots=["examples/"],
+    pattern="*.java",
+    glob=True,
+    query="class",
+    exclude=["BigService.java"]
+)
+```
+
+#### 测试 29: 代码规模检查 - 不包含复杂度
+**测试文件**: `examples/Sample.java`
+**预期结果**: 返回代码规模信息，但不包含复杂度分析
+
+**MCP 调用**:
+```python
+check_code_scale(
+    file_path="examples/Sample.java",
+    include_complexity=False,
+    include_guidance=False
+)
+```
+
+#### 测试 30: 代码结构分析 - 保存到文件
+**测试文件**: `examples/Sample.java`
+**格式**: `compact`
+**输出文件**: `test_output.txt`
+**预期结果**: 将结构分析结果保存到文件
+
+**MCP 调用**:
+```python
+analyze_code_structure(
+    file_path="examples/Sample.java",
+    format_type="compact",
+    output_file="test_output.txt"
+)
+```
+
+#### 测试 31: 代码片段提取 - 批量提取
+**测试文件**: `examples/Sample.java`
+**批量请求**: 多个行范围
+**预期结果**: 一次性提取多个代码片段
+
+**MCP 调用**:
+```python
+extract_code_section(
+    requests=[
+        {"file_path": "examples/Sample.java", "sections": [{"start_line": 72, "end_line": 80}, {"start_line": 97, "end_line": 105}]}
+    ]
+)
+```
+
+#### 测试 32: 内容搜索 - 仅返回总数
+**目录**: `examples/`
+**搜索模式**: `public class`
+**文件类型**: `*.java`
+**输出格式**: `total_only`
+**预期结果**: 只返回匹配总数，不返回详细结果
+
+**MCP 调用**:
+```python
+search_content(
+    roots=["examples/"],
+    query="public class",
+    include_globs=["*.java"],
+    total_only=True
+)
+```
+
+#### 测试 33: 内容搜索 - 按文件分组
+**目录**: `examples/`
+**搜索模式**: `class`
+**文件类型**: `*.java`
+**输出格式**: `group_by_file`
+**预期结果**: 结果按文件分组显示
+
+**MCP 调用**:
+```python
+search_content(
+    roots=["examples/"],
+    query="class",
+    include_globs=["*.java"],
+    group_by_file=True
+)
+```
+
+#### 测试 34: 代码查询 - 自定义查询字符串
+**测试文件**: `examples/Sample.java`
+**查询字符串**: `(method_declaration) @method`
+**预期结果**: 使用自定义 tree-sitter 查询提取方法
+
+**MCP 调用**:
+```python
+query_code(
+    file_path="examples/Sample.java",
+    query_string="(method_declaration) @method"
+)
+```
+
+#### 测试 35: 代码规模检查 - 批量文件分析
+**文件列表**: 多个文件
+**预期结果**: 批量分析多个文件的代码规模
+
+**MCP 调用**:
+```python
+check_code_scale(
+    file_paths=["examples/Sample.java", "examples/MultiClass.java"],
+    metrics_only=True
+)
+```
+
+## 验证检查点
+
+### 代码规模检查验证
+- ✅ 文件行数统计准确
+- ✅ 类、方法、字段数量正确
+- ✅ Package 和导入识别正确
+- ✅ 复杂度计算准确
+- ✅ LLM 指导信息提供合理建议
+
+### 代码结构分析验证
+- ✅ 表格格式正确
+- ✅ 方法签名、可见性、行号准确
+- ✅ 元数据完整
+
+### 代码片段提取验证
+- ✅ 行号范围正确
+- ✅ 内容完整
+- ✅ 格式正确
+
+### 代码查询验证
+- ✅ 查询结果准确
+- ⚠️ 过滤器工作正常（部分过滤器可能未正确应用，如 `is_static`、`is_constructor`）
+- ✅ 返回格式正确
+- ⚠️ `fields` 查询键不支持（需要使用自定义查询字符串）
+
+### 文件操作验证
+- ✅ 文件列表完整
+- ⚠️ 文件排序不支持（`sort` 参数未实现，需要在客户端排序）
+- ✅ 搜索功能准确
+- ✅ 两阶段搜索（find_and_grep）工作正常
+
+### 回归测试验证
+- ✅ 不同输出格式（full、compact、csv）正常工作
+- ✅ 不同查询类型（classes、fields、methods）准确返回
+- ✅ 过滤器组合（visibility、is_static、is_constructor）正确应用
+- ✅ 不同输出格式（text、json、toon）正确转换
+- ✅ TOON 格式输出正确，token 消耗减少 50-70%
+- ✅ JSON 格式输出正确，保持向后兼容
+- ✅ 列范围提取功能正常
+- ✅ 多类文件、注解文件、JavaDoc 文件正确解析
+- ✅ 大小写敏感/不敏感搜索正确区分
+- ✅ 正则表达式搜索正常工作
+- ✅ 全词匹配功能正确
+- ✅ 文件排序（按时间、大小）正确
+- ✅ 结果限制功能正常
+- ✅ 文件排除功能正确
+- ✅ 批量操作功能正常
+- ✅ 输出优化选项（total_only、group_by_file）正确工作
+
+## 回归测试执行策略
+
+### 快速回归测试（核心功能）
+执行以下关键测试用例，快速验证核心功能是否正常：
+- 测试 1: 代码规模检查
+- 测试 2: 代码结构分析
+- 测试 4: 代码查询
+- 测试 5: 文件列表
+- 测试 6: 内容搜索
+- 测试 8: 大型文件分析
+
+### 完整回归测试（所有功能）
+在项目重大修改后，执行所有 43 个测试用例（基础测试 9 + 回归测试 26 + TOON 格式测试 8），确保：
+1. 所有现有功能正常工作
+2. 新功能不影响现有功能
+3. 性能没有明显下降
+4. 边界情况处理正确
+5. TOON 格式输出正确，token 消耗减少 50-70%
+6. JSON 格式保持向后兼容
+
+### 增量回归测试（针对性验证）
+根据修改内容，选择相关的测试用例：
+- **修改了查询功能**: 执行测试 4, 12-15, 34
+  - ⚠️ 注意：测试 13-15 有已知限制，如果修复了相关功能，应重点验证
+- **修改了搜索功能**: 执行测试 6, 7, 21-24, 32-33
+- **修改了文件操作**: 执行测试 5, 25-28
+  - ⚠️ 注意：测试 25-26 有已知限制，如果添加了排序功能，应重点验证
+- **修改了输出格式**: 执行测试 2, 10-11, 16, 16a-16h, 30
+- **修改了代码解析**: 执行测试 1, 8, 18-20
+- **修改了 TOON 格式**: 执行测试 16a-16h（所有 TOON 格式相关测试）
+
+### 已知限制测试用例处理
+对于标记了 ⚠️ 的测试用例（测试 13-15, 25-26）：
+1. **执行测试**: 仍然执行这些测试用例，记录实际行为
+2. **记录差异**: 明确记录实际行为与预期行为的差异
+3. **验证替代方案**: 如果提供了替代方案，验证替代方案是否有效
+4. **跟踪改进**: 当相关功能被修复后，重新验证这些测试用例
+
+## 测试样本文件位置
+- `examples/Sample.java` - 中等大小文件（178行，8个类）
+- `examples/BigService.java` - 大型文件（1419行，66个方法）
+- `examples/JavaDocTest.java` - JavaDoc 测试
+- `examples/MultiClass.java` - 多类文件
+- `examples/TestAnnotationIssue.java` - 注解测试
+
+## 已知问题和限制
+
+### 功能限制
+
+#### 1. query_code 工具限制
+- **问题**: `fields` 不是有效的 `query_key`
+  - **影响**: 测试 13 无法使用 `query_key="fields"` 查询字段
+  - **解决方案**:
+    - **方案1**: 使用自定义查询字符串 `(field_declaration) @field`，然后在客户端过滤
+    - **方案2**: 使用 `check_code_scale` 工具，其返回的 `structural_overview.fields` 包含完整的可见性信息
+  - **状态**: 已知限制，需要功能增强
+
+- **问题**: `is_static` 过滤器可能未正确应用
+  - **影响**: 测试 14 返回所有方法而非仅静态方法
+  - **解决方案**:
+    - **方案1**: 使用 `check_code_scale` 工具，其返回的 `structural_overview.methods` 包含 `is_static` 字段，可直接过滤
+    - **方案2**: 使用自定义查询字符串 `(method_declaration) @method`，然后在客户端检查方法内容中是否包含 "static" 关键字
+  - **状态**: 需要验证过滤器实现逻辑
+
+- **问题**: `is_constructor` 过滤器可能未正确应用
+  - **影响**: 测试 15 返回所有方法而非仅构造函数
+  - **解决方案**: 使用自定义查询字符串 `(constructor_declaration) @constructor`
+  - **状态**: 需要验证过滤器实现逻辑
+
+#### 2. list_files 工具限制
+- **问题**: 不支持 `sort` 参数
+  - **影响**: 测试 25、26 无法按修改时间或大小排序
+  - **解决方案**:
+    - 在客户端对返回结果进行排序
+    - 或使用文件系统工具进行排序
+  - **状态**: 已知限制，需要功能增强
+
+### 测试用例调整建议
+
+对于已知限制的测试用例，建议：
+
+1. **标记为已知限制**: 在测试用例中明确标注 ⚠️ 符号
+2. **提供替代方案**: 为每个限制提供可行的替代实现方案
+3. **记录预期行为**: 明确说明当前实际行为与预期行为的差异
+4. **跟踪改进**: 在项目改进时优先处理这些限制
+
+### 功能增强建议
+
+1. **query_code 工具**:
+   - 添加 `fields` 作为有效的 `query_key`
+   - 修复或改进过滤器实现，确保 `is_static`、`is_constructor` 等过滤器正确工作
+   - 提供过滤器使用文档和示例
+
+2. **list_files 工具**:
+   - 添加 `sort` 参数支持，支持 `mtime`、`size`、`path` 等排序选项
+   - 或明确文档说明不支持排序，建议客户端处理
+
+## 常见问题排查
+
+### 如果测试失败：
+1. 检查项目路径是否正确设置
+2. 确认 MCP 服务器已启动
+3. 验证测试文件是否存在
+4. 检查文件路径格式（使用正斜杠 `/`）
+5. 确认 `.cursor/mcp.json` 配置文件存在且配置正确
+6. 重启 Cursor 以加载项目内的 MCP 配置
+7. **检查已知限制**: 如果测试涉及已知限制的功能，参考"已知问题和限制"章节
+
+### 性能优化建议：
+- 对于大型文件，使用 `extract_code_section` 进行分段分析
+- 使用 `query_code` 配合过滤器快速定位特定元素
+- `find_and_grep` 适合在多个文件中搜索特定模式
+
+## 测试结果记录
+测试完成后，应记录：
+1. 每个测试的执行结果
+2. 任何异常或错误
+3. 性能指标（执行时间）
+4. 与预期结果的对比
+
+## 下次重现测试
+当需要重现这些测试时：
+1. 确保 MCP 服务器配置正确
+2. 按照上述测试流程依次执行
+3. 对比结果与预期值
+4. 记录任何差异或问题
+
+## 回归测试执行指南
+
+### 何时执行回归测试
+1. **项目重大修改后**: 修改核心功能、API 接口、数据结构时
+2. **版本发布前**: 确保新版本不影响现有功能
+3. **定期验证**: 建议每周或每月执行一次完整回归测试
+4. **问题修复后**: 修复 bug 后验证相关功能
+
+### 回归测试执行步骤（AI助手自动执行）
+
+**当用户要求"执行回归测试"、"对比基线"、"执行测试并对比"或类似请求时，AI助手应该自动执行以下流程：**
+
+#### 步骤1: 加载基线文件
+```python
+# 读取基线文件
+baseline = json.load(open(".test_baseline.json", 'r', encoding='utf-8'))
+```
+
+#### 步骤2: 设置项目路径
+```python
+set_project_path(project_path="C:/git-private/tree-sitter-analyzer")
+```
+
+#### 步骤3: 执行所有测试用例
+按照 `.cursorrules` 中定义的43个测试用例执行，参考"测试基线比较规则"部分。
+
+#### 步骤4: 提取关键指标
+对每个测试结果，根据工具类型提取关键指标：
+- `check_code_scale`: total_lines, classes, methods, fields, content_hash
+- `query_code`: count, query_key, filter
+- `search_content`/`find_and_grep`: count, query, searched_file_count
+- `extract_code_section`: start_line, end_line, content_length, lines_extracted
+- `analyze_code_structure`: classes_count, methods_count, fields_count, total_lines
+- `list_files`: count, file_list
+
+#### 步骤5: 对比基线结果
+- 对比 `success` 状态（必须一致）
+- 对比 `key_metrics` 中的关键字段
+- 记录所有差异
+
+#### 步骤6: 生成对比报告
+创建包含以下内容的报告：
+- **摘要**: 总测试数、完全相同数、差异数、缺失数、新增数
+- **差异详情**: 每个差异的测试ID、名称、具体指标变化
+- **差异分析**: 每个差异的原因（功能改进、bug修复、回归问题、已知限制）
+- **建议**: 是否需要更新基线、是否需要进一步调查
+
+#### 步骤7: 处理已知限制
+对于测试 13、14、15、25、26，记录实际行为，不视为错误。
+
+### 手动执行步骤（不使用AI助手时）
+
+1. **设置项目路径**: 首先执行 `set_project_path`
+2. **选择测试范围**: 根据修改内容选择快速/完整/增量回归测试
+3. **执行测试用例**: 按照编号顺序执行选定的测试用例
+4. **记录测试结果**: 记录每个测试的执行结果、耗时、是否通过
+5. **对比基线结果**: 使用 `compare_with_baseline.py` 脚本对比
+6. **分析差异**: 查看对比报告，分析差异原因
+7. **更新基线**: 如果差异是预期的，更新基线文件
+8. **处理已知限制**:
+   - 对于标记 ⚠️ 的测试用例（测试 13-15, 25-26），记录实际行为
+   - 验证替代方案是否有效
+   - 如果相关功能被修复，重新验证这些测试用例
+
+### 回归测试结果记录模板
+```
+## 回归测试报告
+**测试日期**: YYYY-MM-DD
+**测试范围**: [快速/完整/增量]
+**MCP 服务器版本**: [版本号]
+**项目路径**: C:/git-private/tree-sitter-analyzer
+
+### 测试结果汇总
+- 总测试数: 43 (基础测试 9 + 回归测试 26 + TOON 格式测试 8)
+- 通过: X
+- 失败: Y
+- 跳过: Z
+- 已知限制: 5 (测试 13-15, 25-26)
+
+### 详细结果
+| 测试编号 | 测试名称 | 状态 | 耗时(ms) | 备注 |
+|---------|---------|------|---------|------|
+| 1 | 代码规模检查 | ✅ | 150 | 通过 |
+| 13 | 查询字段 | ⚠️ | 100 | 已知限制：fields 不是有效的 query_key |
+| 14 | 静态方法过滤 | ⚠️ | 120 | 已知限制：过滤器可能未正确应用 |
+| 15 | 构造函数过滤 | ⚠️ | 110 | 已知限制：过滤器可能未正确应用 |
+| 16a | 代码规模检查 - TOON 格式 | ✅ | 120 | Token 减少 52% |
+| 25 | 按修改时间排序 | ⚠️ | 80 | 已知限制：list_files 不支持 sort 参数 |
+| 26 | 按大小排序 | ⚠️ | 75 | 已知限制：list_files 不支持 sort 参数 |
+| ... | ... | ... | ... | ... |
+
+### 失败测试详情
+[如有失败，记录详细错误信息]
+
+### 已知限制测试用例
+| 测试编号 | 限制类型 | 实际行为 | 预期行为 | 替代方案 |
+|---------|---------|---------|---------|---------|
+| 13 | 功能不支持 | fields 查询键不存在 | 返回所有字段 | 使用自定义查询字符串 |
+| 14 | 功能缺陷 | 返回所有方法 | 仅返回静态方法 | 客户端过滤或自定义查询 |
+| 15 | 功能缺陷 | 返回所有方法 | 仅返回构造函数 | 客户端过滤或自定义查询 |
+| 25 | 功能不支持 | 不支持 sort 参数 | 按修改时间排序 | 客户端排序 |
+| 26 | 功能不支持 | 不支持 sort 参数 | 按大小排序 | 客户端排序 |
+
+### 性能对比
+[与上次测试的性能对比]
+
+### TOON 格式验证
+- TOON 格式输出正确性: ✅/❌
+- Token 消耗减少率: X% (目标: 50-70%)
+- JSON 格式向后兼容性: ✅/❌
+
+### 功能改进建议
+[基于已知限制，提出功能改进建议]
+```
+
+### 回归测试自动化建议
+- 可以编写脚本批量执行测试用例
+- 使用 CI/CD 集成回归测试
+- 建立测试结果基线，自动对比差异
+- 设置性能阈值，自动告警

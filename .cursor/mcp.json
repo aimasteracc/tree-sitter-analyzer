@@ -1,0 +1,61 @@
+{
+  "mcpServers": {
+    "tree-sitter-analyzer-local": {
+      "command": "uv",
+      "args": [
+        "run",
+        "--directory",
+        "C:/git-private/tree-sitter-analyzer",
+        "python",
+        "-m",
+        "tree_sitter_analyzer.mcp.server"
+      ],
+      "env": {
+        "TREE_SITTER_PROJECT_ROOT": "C:/git-private/tree-sitter-analyzer",
+        "TREE_SITTER_OUTPUT_PATH": "C:/git-private/tree-sitter-analyzer/.analysis",
+        "TREE_SITTER_ANALYZER_ENABLE_FILE_LOG": "true",
+        "TREE_SITTER_ANALYZER_LOG_DIR": "C:/git-private/tree-sitter-analyzer/.analysis",
+        "TREE_SITTER_ANALYZER_LOG_LEVEL": "DEBUG"
+      },
+      "alwaysAllow": [
+        "check_code_scale",
+        "extract_code_section",
+        "set_project_path",
+        "query_code",
+        "analyze_code_structure",
+        "list_files",
+        "find_and_grep",
+        "search_content"
+      ],
+      "timeout": 3600,
+      "disabled": false
+    },
+    "tree-sitter-analyzer-pypi": {
+      "command": "uv",
+      "args": [
+        "run",
+        "--with",
+        "tree-sitter-analyzer[mcp]==1.10.2",
+        "python",
+        "-m",
+        "tree_sitter_analyzer.mcp.server"
+      ],
+      "env": {
+        "TREE_SITTER_PROJECT_ROOT": "C:/git-private/tree-sitter-analyzer",
+        "TREE_SITTER_OUTPUT_PATH": "C:/git-private/tree-sitter-analyzer/.analysis",
+        "TREE_SITTER_ANALYZER_ENABLE_FILE_LOG": "true",
+        "TREE_SITTER_ANALYZER_LOG_DIR": "C:/git-private/tree-sitter-analyzer/.analysis",
+        "TREE_SITTER_ANALYZER_LOG_LEVEL": "DEBUG"
+      },
+      "alwaysAllow": [
+        "check_code_scale",
+        "analyze_code_structure",
+        "extract_code_section",
+        "set_project_path",
+        "query_code"
+      ],
+      "timeout": 30,
+      "disabled": true
+    }
+  }
+}

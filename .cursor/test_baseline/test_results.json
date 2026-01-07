@@ -1,0 +1,599 @@
+{
+  "test_date": "2026-01-08",
+  "test_timestamp": "2026-01-08T10:15:00Z",
+  "mcp_server": "tree-sitter-analyzer-local",
+  "tests": {
+    "1": {
+      "test_id": "1",
+      "test_name": "代码规模检查",
+      "tool": "check_code_scale",
+      "timestamp": "2026-01-08T10:15:01Z",
+      "result": {
+        "format": "toon",
+        "toon_content": "success: true\nfile_path: examples/Sample.java\nlanguage: java\nfile_metrics:\n  total_lines: 178\n  code_lines: 106\n  comment_lines: 36\n  blank_lines: 36\n  estimated_tokens: 766\n  file_size_bytes: 3916\n  content_hash: f9cd3bfbda5f87d7ea35b4a53ed6842c62b873b1d9e01186e5cdebc6211c4664\n  file_size_kb: 3.82\nsummary:\n  classes: 8\n  methods: 26\n  fields: 6\n  imports: 2\n  annotations: 0\n  package: com.example\nstructural_overview:\n  classes:\n    [8]{name,type,start_line,end_line,line_span,visibility,extends,implements,annotations}:\n      AbstractParentClass,class,7,15,9,package,null,[],[]\n      ParentClass,class,18,45,28,package,AbstractParentClass,[],[]\n      TestInterface,interface,48,64,17,package,null,[],[]\n      AnotherInterface,interface,67,69,3,package,null,[],[]\n      Test,class,72,159,88,public,ParentClass,(TestInterface,AnotherInterface),[]\n      InnerClass,class,83,87,5,public,null,[],[]\n      StaticNestedClass,class,90,94,5,public,null,[],[]\n      TestEnum,enum,162,178,17,package,null,[],[]\n  methods:\n    [26]{name,start_line,end_line,line_span,visibility,return_type,parameter_count,complexity,is_constructor,is_static,annotations}:\n      abstractMethod,9,9,1,package,void,0,1,false,false,[]\n      concreteMethod,12,14,3,package,void,0,1,false,false,[]\n      ParentClass,26,28,3,public,void,0,1,true,false,[]\n      staticParentMethod,31,33,3,package,void,0,1,false,true,[]\n      abstractMethod,36,39,4,package,void,0,1,false,false,[]\n      parentMethod,42,44,3,package,void,0,1,false,false,[]\n      doSomething,53,53,1,package,void,0,1,false,false,[]\n      defaultMethod,56,58,3,package,void,0,1,false,false,[]\n      staticInterfaceMethod,61,63,3,package,void,0,1,false,true,[]\n      anotherMethod,68,68,1,package,void,0,1,false,false,[]\n      innerMethod,84,86,3,public,void,0,1,false,false,[]\n      nestedMethod,91,93,3,public,void,0,1,false,false,[]\n      Test,97,100,4,public,void,1,1,true,false,[]\n      Test,103,105,3,public,void,0,1,true,false,[]\n      getValue,108,110,3,public,String,0,1,false,false,[]\n      setValue,113,115,3,protected,void,1,1,false,false,[]\n      packageMethod,118,120,3,package,void,0,1,false,false,[]\n      privateMethod,123,125,3,private,void,0,1,false,false,[]\n      staticMethod,128,130,3,public,void,0,1,false,true,[]\n      finalMethod,133,135,3,public,void,0,1,false,false,[]\n      doSomething,138,141,4,public,void,0,1,false,false,[]\n      anotherMethod,143,146,4,public,void,0,1,false,false,[]\n      genericMethod,149,151,3,public,void,1,1,false,false,[]\n      createList,154,158,5,public,List<T>,1,1,false,false,[]\n      TestEnum,170,172,3,package,void,1,1,true,false,[]\n      getDescription,175,177,3,public,String,0,1,false,false,[]\n  fields:\n    [6]{name,type,start_line,end_line,visibility,is_static,is_final,annotations}:\n      CONSTANT,String,20,20,package,true,true,[]\n      parentField,String,23,23,protected,false,false,[]\n      value,int,74,74,private,false,false,[]\n      staticValue,int,77,77,public,true,false,[]\n      finalField,String,80,80,private,false,true,[]\n      description,String,167,167,private,false,true,[]\n  imports:\n    [2]{name,statement,line,is_static,is_wildcard}:\n      ,import java.util.List;,0,false,false\n      ,import java.util.ArrayList;,0,false,false\n  complexity_hotspots: []\nllm_guidance:\n  analysis_strategy: This is a medium-sized file. Consider focusing on key classes and methods.\n  recommended_tools: []\n  key_areas: [Multiple classes - consider analyzing class relationships,Many methods - focus on public interfaces and high-complexity methods]\n  complexity_assessment: No significant complexity hotspots detected\n  size_category: medium",
+        "success": true,
+        "file_path": "examples/Sample.java",
+        "language": "java",
+        "file_metrics": {
+          "total_lines": 178,
+          "code_lines": 106,
+          "comment_lines": 36,
+          "blank_lines": 36,
+          "estimated_tokens": 766,
+          "file_size_bytes": 3916,
+          "content_hash": "f9cd3bfbda5f87d7ea35b4a53ed6842c62b873b1d9e01186e5cdebc6211c4664",
+          "file_size_kb": 3.82
+        },
+        "summary": { "classes": 8, "methods": 26, "fields": 6, "imports": 2, "annotations": 0, "package": "com.example" },
+        "structural_overview": { "classes": [ { "name": "AbstractParentClass", "type": "class", "start_line": 7, "end_line": 15, "line_span": 9, "visibility": "package", "extends": null, "implements": [], "annotations": [] }, { "name": "ParentClass", "type": "class", "start_line": 18, "end_line": 45, "line_span": 28, "visibility": "package", "extends": "AbstractParentClass", "implements": [], "annotations": [] }, { "name": "TestInterface", "type": "interface", "start_line": 48, "end_line": 64, "line_span": 17, "visibility": "package", "extends": null, "implements": [], "annotations": [] }, { "name": "AnotherInterface", "type": "interface", "start_line": 67, "end_line": 69, "line_span": 3, "visibility": "package", "extends": null, "implements": [], "annotations": [] }, { "name": "Test", "type": "class", "start_line": 72, "end_line": 159, "line_span": 88, "visibility": "public", "extends": "ParentClass", "implements": [ "TestInterface", "AnotherInterface" ], "annotations": [] }, { "name": "InnerClass", "type": "class", "start_line": 83, "end_line": 87, "line_span": 5, "visibility": "public", "extends": null, "implements": [], "annotations": [] }, { "name": "StaticNestedClass", "type": "class", "start_line": 90, "end_line": 94, "line_span": 5, "visibility": "public", "extends": null, "implements": [], "annotations": [] }, { "name": "TestEnum", "type": "enum", "start_line": 162, "end_line": 178, "line_span": 17, "visibility": "package", "extends": null, "implements": [], "annotations": [] } ], "methods": [ { "name": "abstractMethod", "start_line": 9, "end_line": 9, "line_span": 1, "visibility": "package", "return_type": "void", "parameter_count": 0, "complexity": 1, "is_constructor": false, "is_static": false, "annotations": [] }, { "name": "concreteMethod", "start_line": 12, "end_line": 14, "line_span": 3, "visibility": "package", "return_type": "void", "parameter_count": 0, "complexity": 1, "is_constructor": false, "is_static": false, "annotations": [] }, { "name": "ParentClass", "start_line": 26, "end_line": 28, "line_span": 3, "visibility": "public", "return_type": "void", "parameter_count": 0, "complexity": 1, "is_constructor": true, "is_static": false, "annotations": [] }, { "name": "staticParentMethod", "start_line": 31, "end_line": 33, "line_span": 3, "visibility": "package", "return_type": "void", "parameter_count": 0, "complexity": 1, "is_constructor": false, "is_static": true, "annotations": [] }, { "name": "abstractMethod", "start_line": 36, "end_line": 39, "line_span": 4, "visibility": "package", "return_type": "void", "parameter_count": 0, "complexity": 1, "is_constructor": false, "is_static": false, "annotations": [] }, { "name": "parentMethod", "start_line": 42, "end_line": 44, "line_span": 3, "visibility": "package", "return_type": "void", "parameter_count": 0, "complexity": 1, "is_constructor": false, "is_static": false, "annotations": [] }, { "name": "doSomething", "start_line": 53, "end_line": 53, "line_span": 1, "visibility": "package", "return_type": "void", "parameter_count": 0, "complexity": 1, "is_constructor": false, "is_static": false, "annotations": [] }, { "name": "defaultMethod", "start_line": 56, "end_line": 58, "line_span": 3, "visibility": "package", "return_type": "void", "parameter_count": 0, "complexity": 1, "is_constructor": false, "is_static": false, "annotations": [] }, { "name": "staticInterfaceMethod", "start_line": 61, "end_line": 63, "line_span": 3, "visibility": "package", "return_type": "void", "parameter_count": 0, "complexity": 1, "is_constructor": false, "is_static": true, "annotations": [] }, { "name": "anotherMethod", "start_line": 68, "end_line": 68, "line_span": 1, "visibility": "package", "return_type": "void", "parameter_count": 0, "complexity": 1, "is_constructor": false, "is_static": false, "annotations": [] }, { "name": "innerMethod", "start_line": 84, "end_line": 86, "line_span": 3, "visibility": "public", "return_type": "void", "parameter_count": 0, "complexity": 1, "is_constructor": false, "is_static": false, "annotations": [] }, { "name": "nestedMethod", "start_line": 91, "end_line": 93, "line_span": 3, "visibility": "public", "return_type": "void", "parameter_count": 0, "complexity": 1, "is_constructor": false, "is_static": false, "annotations": [] }, { "name": "Test", "start_line": 97, "end_line": 100, "line_span": 4, "visibility": "public", "return_type": "void", "parameter_count": 1, "complexity": 1, "is_constructor": true, "is_static": false, "annotations": [] }, { "name": "Test", "start_line": 103, "end_line": 105, "line_span": 3, "visibility": "public", "return_type": "void", "parameter_count": 0, "complexity": 1, "is_constructor": true, "is_static": false, "annotations": [] }, { "name": "getValue", "start_line": 108, "end_line": 110, "line_span": 3, "visibility": "public", "return_type": "String", "parameter_count": 0, "complexity": 1, "is_constructor": false, "is_static": false, "annotations": [] }, { "name": "setValue", "start_line": 113, "end_line": 115, "line_span": 3, "visibility": "protected", "return_type": "void", "parameter_count": 1, "complexity": 1, "is_constructor": false, "is_static": false, "annotations": [] }, { "name": "packageMethod", "start_line": 118, "end_line": 120, "line_span": 3, "visibility": "package", "return_type": "void", "parameter_count": 0, "complexity": 1, "is_constructor": false, "is_static": false, "annotations": [] }, { "name": "privateMethod", "start_line": 123, "end_line": 125, "line_span": 3, "visibility": "private", "return_type": "void", "parameter_count": 0, "complexity": 1, "is_constructor": false, "is_static": false, "annotations": [] }, { "name": "staticMethod", "start_line": 128, "end_line": 130, "line_span": 3, "visibility": "public", "return_type": "void", "parameter_count": 0, "complexity": 1, "is_constructor": false, "is_static": true, "annotations": [] }, { "name": "finalMethod", "start_line": 133, "end_line": 135, "line_span": 3, "visibility": "public", "return_type": "void", "parameter_count": 0, "complexity": 1, "is_constructor": false, "is_static": false, "annotations": [] }, { "name": "doSomething", "start_line": 138, "end_line": 141, "line_span": 4, "visibility": "public", "return_type": "void", "parameter_count": 0, "complexity": 1, "is_constructor": false, "is_static": false, "annotations": [] }, { "name": "anotherMethod", "start_line": 143, "end_line": 146, "line_span": 4, "visibility": "public", "return_type": "void", "parameter_count": 0, "complexity": 1, "is_constructor": false, "is_static": false, "annotations": [] }, { "name": "genericMethod", "start_line": 149, "end_line": 151, "line_span": 3, "visibility": "public", "return_type": "void", "parameter_count": 1, "complexity": 1, "is_constructor": false, "is_static": false, "annotations": [] }, { "name": "createList", "start_line": 154, "end_line": 158, "line_span": 5, "visibility": "public", "return_type": "List<T>", "parameter_count": 1, "complexity": 1, "is_constructor": false, "is_static": false, "annotations": [] }, { "name": "TestEnum", "start_line": 170, "end_line": 172, "line_span": 3, "visibility": "package", "return_type": "void", "parameter_count": 1, "complexity": 1, "is_constructor": true, "is_static": false, "annotations": [] }, { "name": "getDescription", "start_line": 175, "end_line": 177, "line_span": 3, "visibility": "public", "return_type": "String", "parameter_count": 0, "complexity": 1, "is_constructor": false, "is_static": false, "annotations": [] } ], "fields": [ { "name": "CONSTANT", "type": "String", "start_line": 20, "end_line": 20, "visibility": "package", "is_static": true, "is_final": true, "annotations": [] }, { "name": "parentField", "type": "String", "start_line": 23, "end_line": 23, "visibility": "protected", "is_static": false, "is_final": false, "annotations": [] }, { "name": "value", "type": "int", "start_line": 74, "end_line": 74, "visibility": "private", "is_static": false, "is_final": false, "annotations": [] }, { "name": "staticValue", "type": "int", "start_line": 77, "end_line": 77, "visibility": "public", "is_static": true, "is_final": false, "annotations": [] }, { "name": "finalField", "type": "String", "start_line": 80, "end_line": 80, "visibility": "private", "is_static": false, "is_final": true, "annotations": [] }, { "name": "description", "type": "String", "start_line": 167, "end_line": 167, "visibility": "private", "is_static": false, "is_final": true, "annotations": [] } ], "imports": [ { "name": "", "statement": "import java.util.List;", "line": 0, "is_static": false, "is_wildcard": false }, { "name": "", "statement": "import java.util.ArrayList;", "line": 0, "is_static": false, "is_wildcard": false } ], "complexity_hotspots": [] }, "llm_guidance": { "analysis_strategy": "This is a medium-sized file. Consider focusing on key classes and methods.", "recommended_tools": [], "key_areas": [ "Multiple classes - consider analyzing class relationships", "Many methods - focus on public interfaces and high-complexity methods" ], "complexity_assessment": "No significant complexity hotspots detected", "size_category": "medium" }
+      }
+    },
+    "2": {
+      "test_id": "2",
+      "test_name": "代码结构分析",
+      "tool": "analyze_code_structure",
+      "timestamp": "2026-01-08T10:15:02Z",
+      "result": {
+        "format": "toon",
+        "toon_content": "success: true\nformat_type: compact\nfile_path: examples/Sample.java\nlanguage: java\nmetadata:\n  classes_count: 8\n  methods_count: 26\n  fields_count: 6\n  total_lines: 179\ntable_output: \"# com.example.Sample\\n\\n## Info\\n| Property | Value |\\n|----------|-------|\\n| Package | com.example |\\n| Methods | 26 |\\n| Fields | 6 |\\n\\n## Methods\\n| Method | Sig | V | L | Cx | Doc |\\n|--------|-----|---|---|----|----|\\n| abstractMethod | ():void | ~ | 9-9 | 1 | - |\\n| concreteMethod | ():void | ~ | 12-14 | 1 | - |\\n| ParentClass | ():void | + | 26-28 | 1 | - |\\n| staticParentMethod | ():void | ~ | 31-33 | 1 | - |\\n| abstractMethod | ():void | ~ | 36-39 | 1 | - |\\n| parentMethod | ():void | ~ | 42-44 | 1 | - |\\n| doSomething | ():void | ~ | 53-53 | 1 | - |\\n| defaultMethod | ():void | ~ | 56-58 | 1 | - |\\n| staticInterfaceMethod | ():void | ~ | 61-63 | 1 | - |\\n| anotherMethod | ():void | ~ | 68-68 | 1 | - |\\n| innerMethod | ():void | + | 84-86 | 1 | - |\\n| nestedMethod | ():void | + | 91-93 | 1 | - |\\n| Test | (i):void | + | 97-100 | 1 | - |\\n| Test | ():void | + | 103-105 | 1 | - |\\n| getValue | ():S | + | 108-110 | 1 | - |\\n| setValue | (i):void | # | 113-115 | 1 | - |\\n| packageMethod | ():void | ~ | 118-120 | 1 | - |\\n| privateMethod | ():void | - | 123-125 | 1 | - |\\n| staticMethod | ():void | + | 128-130 | 1 | - |\\n| finalMethod | ():void | + | 133-135 | 1 | - |\\n| doSomething | ():void | + | 138-141 | 1 | - |\\n| anotherMethod | ():void | + | 143-146 | 1 | - |\\n| genericMethod | (T):void | + | 149-151 | 1 | - |\\n| createList | (T):L<T> | + | 154-158 | 1 | - |\\n| TestEnum | (S):void | ~ | 170-172 | 1 | - |\\n| getDescription | ():S | + | 175-177 | 1 | - |\"",
+        "success": true,
+        "format_type": "compact",
+        "file_path": "examples/Sample.java",
+        "language": "java",
+        "metadata": { "classes_count": 8, "methods_count": 26, "fields_count": 6, "total_lines": 179 }
+      }
+    },
+    "3": {
+      "test_id": "3",
+      "test_name": "代码片段提取",
+      "tool": "extract_code_section",
+      "timestamp": "2026-01-08T10:15:03Z",
+      "result": {
+        "format": "toon",
+        "toon_content": "success: true\nfile_path: examples/Sample.java\nrange:\n  start_line: 72\n  end_line: 110\n  start_column: null\n  end_column: null\ncontent_length: 916\nlines_extracted: 39\npartial_content_result: \"--- Partial Read Result ---\\nFile: examples/Sample.java\\nRange: Line 72-110\\nCharacters read: 916\\n{\\n  \\\"file_path\\\": \\\"examples/Sample.java\\\",\\n  \\\"range\\\": {\\n    \\\"start_line\\\": 72,\\n    \\\"end_line\\\": 110,\\n    \\\"start_column\\\": null,\\n    \\\"end_column\\\": null\\n  },\\n  \\\"content\\\": \\\"public class Test extends ParentClass implements TestInterface, AnotherInterface {\\\\n    // Private field\\\\n    private int value;\\\\n\\\\n    // Static field\\\\n    public static int staticValue = 10;\\\\n\\\\n    // Final field\\\\n    private final String finalField;\\\\n\\\\n    // Inner class (nested class)\\\\n    public class InnerClass {\\\\n        public void innerMethod() {\\\\n            System.out.println(\\\\\\\"Inner class method, value: \\\\\\\" + value);\\\\n        }\\\\n    }\\\\n\\\\n    // Static inner class\\\\n    public static class StaticNestedClass {\\\\n        public void nestedMethod() {\\\\n            System.out.println(\\\\\\\"Static nested class method\\\\\\\");\\\\n        }\\\\n    }\\\\n\\\\n    // Constructor\\\\n    public Test(int value) {\\\\n        this.value = value;\\\\n        this.finalField = \\\\\\\"Cannot be changed\\\\\\\";\\\\n    }\\\\n\\\\n    // Overloaded constructor\\\\n    public Test() {\\\\n        this(0);\\\\n    }\\\\n\\\\n    // Public method\\\\n    public String getValue() {\\\\n        return \\\\\\\"Value: \\\\\\\" + value;\\\\n    }\\\\n\\\",\\n  \\\"content_length\\\": 916\\n}\"",
+        "success": true,
+        "file_path": "examples/Sample.java",
+        "range": { "start_line": 72, "end_line": 110, "start_column": null, "end_column": null },
+        "content_length": 916,
+        "lines_extracted": 39
+      }
+    },
+    "4": {
+      "test_id": "4",
+      "test_name": "代码查询",
+      "tool": "query_code",
+      "timestamp": "2026-01-08T10:15:04Z",
+      "result": {
+        "format": "toon",
+        "toon_content": "success: true\nresults:\n  [22]{capture_name,node_type,start_line,end_line,content}:\n    method,method_declaration,9,9,abstract void abstractMethod();\n    method,method_declaration,12,14,\"void concreteMethod() {\\n        System.out.println(\\\"Concrete method in abstract class\\\");\\n    }\"\n    method,method_declaration,31,33,\"static void staticParentMethod() {\\n        System.out.println(\\\"Static parent method\\\");\\n    }\"\n    method,method_declaration,36,39,\"@Override\\n    void abstractMethod() {\\n        System.out.println(\\\"Implementation of abstract method\\\");\\n    }\"\n    method,method_declaration,42,44,\"void parentMethod() {\\n        System.out.println(\\\"Parent method\\\");\\n    }\"\n    method,method_declaration,53,53,void doSomething();\n    method,method_declaration,56,58,\"default void defaultMethod() {\\n        System.out.println(\\\"Default method in interface\\\");\\n    }\"\n    method,method_declaration,61,63,\"static void staticInterfaceMethod() {\\n        System.out.println(\\\"Static method in interface\\\");\\n    }\"\n    method,method_declaration,68,68,void anotherMethod();\n    method,method_declaration,84,86,\"public void innerMethod() {\\n            System.out.println(\\\"Inner class method, value: \\\" + value);\\n        }\"\n    method,method_declaration,91,93,\"public void nestedMethod() {\\n            System.out.println(\\\"Static nested class method\\\");\\n        }\"\n    method,method_declaration,108,110,\"public String getValue() {\\n        return \\\"Value: \\\" + value;\\n    }\"\n    method,method_declaration,113,115,\"protected void setValue(int value) {\\n        this.value = value;\\n    }\"\n    method,method_declaration,118,120,\"void packageMethod() {\\n        System.out.println(\\\"Package method\\\");\\n    }\"\n    method,method_declaration,123,125,\"private void privateMethod() {\\n        System.out.println(\\\"Private method\\\");\\n    }\"\n    method,method_declaration,128,130,\"public static void staticMethod() {\\n        System.out.println(\\\"Static method\\\");\\n    }\"\n    method,method_declaration,133,135,\"public final void finalMethod() {\\n        System.out.println(\\\"This method cannot be overridden\\\");\\n    }\"\n    method,method_declaration,138,141,\"@Override\\n    public void doSomething() {\\n        System.out.println(\\\"Implementation of TestInterface method\\\");\\n    }\"\n    method,method_declaration,143,146,\"@Override\\n    public void anotherMethod() {\\n        System.out.println(\\\"Implementation of AnotherInterface method\\\");\\n    }\"\n    method,method_declaration,149,151,\"public <T> void genericMethod(T input) {\\n        System.out.println(\\\"Generic input: \\\" + input);\\n    }\"\n    method,method_declaration,154,158,\"public <T> List<T> createList(T item) {\\n        List<T> list = new ArrayList<>();\\n        list.add(item);\\n        return list;\\n    }\"\n    method,method_declaration,175,177,\"public String getDescription() {\\n        return description;\\n    }\"\ncount: 22\nfile_path: examples/Sample.java\nlanguage: java\nquery: methods",
+        "success": true,
+        "count": 22,
+        "file_path": "examples/Sample.java",
+        "language": "java",
+        "query": "methods"
+      }
+    },
+    "5": {
+      "test_id": "5",
+      "test_name": "文件列表",
+      "tool": "list_files",
+      "timestamp": "2026-01-08T10:15:05Z",
+      "result": {
+        "format": "toon",
+        "toon_content": "success: true\ncount: 5\ntruncated: false\nelapsed_ms: 155\nresults:\n  [5]{path,is_dir,size_bytes,mtime,ext}:\n    \"C:/git-private/tree-sitter-analyzer/examples/BigService.java\",false,45643,1761097946,java\n    \"C:/git-private/tree-sitter-analyzer/examples/JavaDocTest.java\",false,1884,1761097946,java\n    \"C:/git-private/tree-sitter-analyzer/examples/MultiClass.java\",false,863,1761097946,java\n    \"C:/git-private/tree-sitter-analyzer/examples/Sample.java\",false,3916,1761097946,java\n    \"C:/git-private/tree-sitter-analyzer/examples/TestAnnotationIssue.java\",false,369,1762497317,java",
+        "success": true,
+        "count": 5,
+        "truncated": false,
+        "elapsed_ms": 155
+      }
+    },
+    "6": {
+      "test_id": "6",
+      "test_name": "内容搜索",
+      "tool": "search_content",
+      "timestamp": "2026-01-08T10:15:06Z",
+      "result": {
+        "format": "toon",
+        "toon_content": "success: true\ncount: 6\ntruncated: false\nelapsed_ms: 264\nresults:\n  [6]{file,line,text,matches}:\n    \"C:/git-private/tree-sitter-analyzer/examples/BigService.java\",17,\"public class BigService {\",[[0,12]]\n    \"C:/git-private/tree-sitter-analyzer/examples/JavaDocTest.java\",10,\"public class JavaDocTest {\",[[0,12]]\n    \"C:/git-private/tree-sitter-analyzer/examples/MultiClass.java\",6,\"public class FirstClass {\",[[0,12]]\n    \"C:/git-private/tree-sitter-analyzer/examples/Sample.java\",72,\"public class Test extends ParentClass implements TestInterface, AnotherInterface {\",[[0,12]]\n    \"C:/git-private/tree-sitter-analyzer/examples/Sample.java\",83,\"public class InnerClass {\",[[4,16]]\n    \"C:/git-private/tree-sitter-analyzer/examples/TestAnnotationIssue.java\",1,\"public class TestAnnotation {\",[[0,12]]",
+        "success": true,
+        "count": 6,
+        "truncated": false,
+        "elapsed_ms": 264
+      }
+    },
+    "7": {
+      "test_id": "7",
+      "test_name": "查找和搜索",
+      "tool": "find_and_grep",
+      "timestamp": "2026-01-08T10:15:07Z",
+      "result": {
+        "format": "toon",
+        "toon_content": "success: true\ncount: 1\nmeta:\n  searched_file_count: 5\n  truncated: false\n  fd_elapsed_ms: 149\n  rg_elapsed_ms: 190\nresults:\n  [1]{file,line,text,matches}:\n    \"C:/git-private/tree-sitter-analyzer/examples/Sample.java\",72,\"public class Test extends ParentClass implements TestInterface, AnotherInterface {\",[[38,48]]",
+        "success": true,
+        "count": 1,
+        "meta": { "searched_file_count": 5, "truncated": false, "fd_elapsed_ms": 149, "rg_elapsed_ms": 190 }
+      }
+    },
+    "8": {
+      "test_id": "8",
+      "test_name": "大型文件分析",
+      "tool": "check_code_scale",
+      "timestamp": "2026-01-08T10:15:08Z",
+      "result": {
+        "format": "toon",
+        "toon_content": "success: true\nfile_path: examples/BigService.java\nlanguage: java\nfile_metrics:\n  total_lines: 1419\n  code_lines: 906\n  comment_lines: 246\n  blank_lines: 267\n  estimated_tokens: 10213\n  file_size_bytes: 45643\n  content_hash: 42c77e5aaecfa47c9c51bb199012d4685b67291ba712e26a7cf8f8eda94d15d1\n  file_size_kb: 44.57\nsummary:\n  classes: 1\n  methods: 66\n  fields: 9\n  imports: 8\n  annotations: 0\n  package: com.example.service\nstructural_overview:\n  classes:\n    [1]{name,type,start_line,end_line,line_span,visibility,extends,implements,annotations}:\n      BigService,class,17,1419,1403,public,null,[],[]\n  methods:\n    [66]{name,start_line,end_line,line_span,visibility,return_type,parameter_count,complexity,is_constructor,is_static,annotations}:\n      BigService,33,39,7,public,void,0,1,true,false,[]\n      initializeService,44,50,7,private,void,0,1,false,false,[]\n      loadConfiguration,55,65,11,private,void,0,2,false,false,[]\n      setupDatabaseConnection,70,77,8,private,void,0,2,false,false,[]\n      validateSystemRequirements,82,88,7,private,void,0,1,false,false,[]\n      checkMemoryUsage,93,106,14,private,void,0,2,false,false,[]\n      checkDiskSpace,111,117,7,private,void,0,2,false,false,[]\n      checkNetworkConnectivity,122,136,15,private,void,0,3,false,false,[]\n      authenticateUser,141,172,32,public,boolean,2,6,false,false,[]\n      createSession,177,199,23,public,String,1,5,false,false,[]\n      validateData,204,246,43,public,boolean,1,10,false,false,[]\n      validateEmail,251,254,4,private,boolean,1,1,false,false,[]\n      validatePhoneNumber,259,262,4,private,boolean,1,1,false,false,[]\n      validateDate,267,275,9,private,boolean,1,2,false,false,[]\n      logOperation,280,290,11,public,void,2,2,false,false,[]\n      manageCache,295,308,14,public,void,2,2,false,false,[]\n      cleanupCache,313,326,14,private,void,0,2,false,false,[]\n      updateCacheStatistics,331,335,5,private,void,0,1,false,false,[]\n      calculateCacheHitRatio,340,343,4,private,double,0,1,false,false,[]\n      performBackup,348,367,20,public,void,1,1,false,false,[]\n      performFullBackup,372,395,24,private,void,0,6,false,false,[]\n      performIncrementalBackup,400,414,15,private,void,0,4,false,false,[]\n      performDifferentialBackup,419,433,15,private,void,0,4,false,false,[]\n      generateReport,438,471,34,public,void,2,2,false,false,[]\n      prepareReportData,476,490,15,private,void,2,4,false,false,[]\n      generateSalesReport,495,513,19,private,void,1,6,false,false,[]\n      generatePerformanceReport,518,534,17,private,void,1,5,false,false,[]\n      generateUserActivityReport,539,553,15,private,void,1,4,false,false,[]\n      generateSystemHealthReport,558,574,17,private,void,1,5,false,false,[]\n      finalizeReport,579,593,15,private,void,1,4,false,false,[]\n      updateCustomerName,601,617,17,public,void,2,4,false,false,[]\n      getCustomerInfo,622,652,31,public,\"Map<String, Object>\",1,5,false,false,[]\n      deleteCustomer,657,691,35,public,boolean,1,9,false,false,[]\n      processOrder,696,736,41,public,String,3,10,false,false,[]\n      manageInventory,741,773,33,public,void,3,3,false,false,[]\n      addInventory,778,792,15,private,void,2,4,false,false,[]\n      removeInventory,797,811,15,private,void,2,4,false,false,[]\n      updateInventory,816,830,15,private,void,2,4,false,false,[]\n      checkInventory,835,850,16,private,void,1,4,false,false,[]\n      sendNotification,855,884,30,public,void,3,7,false,false,[]\n      shutdownSystem,889,912,24,public,void,0,6,false,false,[]\n      savePendingOperations,917,926,10,private,void,0,2,false,false,[]\n      closeDatabaseConnections,931,940,10,private,void,0,2,false,false,[]\n      finalizeSystemLogs,945,953,9,private,void,0,2,false,false,[]\n      handleError,958,977,20,public,void,2,4,false,false,[]\n      handleDatabaseError,982,996,15,private,void,1,4,false,false,[]\n      handleValidationError,1001,1009,9,private,void,1,2,false,false,[]\n      handleRuntimeError,1014,1028,15,private,void,1,4,false,false,[]\n      handleGenericError,1033,1041,9,private,void,1,2,false,false,[]\n      monitorPerformance,1046,1067,22,public,void,0,1,false,false,[]\n      monitorCpuUsage,1072,1086,15,private,void,0,3,false,false,[]\n      monitorMemoryUsage,1091,1112,22,private,void,0,3,false,false,[]\n      monitorDiskIO,1117,1131,15,private,void,0,2,false,false,[]\n      monitorNetworkUsage,1136,1150,15,private,void,0,2,false,false,[]\n      performSecurityCheck,1155,1171,17,public,void,0,1,false,false,[]\n      checkAccessPermissions,1176,1192,17,private,void,0,5,false,false,[]\n      validateSecuritySettings,1197,1211,15,private,void,0,4,false,false,[]\n      performVulnerabilityScan,1216,1230,15,private,void,0,4,false,false,[]\n      reviewSecurityLogs,1235,1249,15,private,void,0,4,false,false,[]\n      synchronizeData,1254,1283,30,public,void,2,3,false,false,[]\n      prepareSynchronization,1288,1302,15,private,void,2,4,false,false,[]\n      extractData,1307,1323,17,private,void,1,5,false,false,[]\n      transformData,1328,1342,15,private,void,0,4,false,false,[]\n      loadData,1347,1361,15,private,void,1,4,false,false,[]\n      verifySynchronization,1366,1380,15,private,void,2,4,false,false,[]\n      main,1385,1418,34,public,void,1,1,false,true,[]\n  fields:\n    [9]{name,type,start_line,end_line,visibility,is_static,is_final,annotations}:\n      DEFAULT_ENCODING,String,19,19,private,true,true,[]\n      MAX_RETRY_COUNT,int,20,20,private,true,true,[]\n      TIMEOUT_MILLISECONDS,long,21,21,private,true,true,[]\n      DATE_FORMAT,String,22,22,private,true,true,[]\n      dataSource,DataSource,24,24,private,false,false,[]\n      configurationCache,\"Map<String, Object>\",25,25,private,false,false,[]\n      activeConnections,List<String>,26,26,private,false,false,[]\n      validatedUsers,Set<String>,27,27,private,false,false,[]\n      pendingOperations,Queue<String>,28,28,private,false,false,[]\n  imports:\n    [8]{name,statement,line,is_static,is_wildcard}:\n      ,import java.util.*;,0,false,false\n      ,import java.time.LocalDateTime;,0,false,false\n      ,import java.time.format.DateTimeFormatter;,0,false,false\n      ,import java.sql.Connection;,0,false,false\n      ,import java.sql.PreparedStatement;,0,false,false\n      ,import java.sql.ResultSet;,0,false,false\n      ,import java.sql.SQLException;,0,false,false\n      ,import javax.sql.DataSource;,0,false,false\n  complexity_hotspots: []\nllm_guidance:\n  analysis_strategy: This is a large file. Use targeted analysis with read_code_partial.\n  recommended_tools: [read_code_partial]\n  key_areas: [Many methods - focus on public interfaces and high-complexity methods]\n  complexity_assessment: No significant complexity hotspots detected\n  size_category: large",
+        "success": true,
+        "file_path": "examples/BigService.java",
+        "language": "java",
+        "file_metrics": {
+          "total_lines": 1419,
+          "code_lines": 906,
+          "comment_lines": 246,
+          "blank_lines": 267,
+          "estimated_tokens": 10213,
+          "file_size_bytes": 45643,
+          "content_hash": "42c77e5aaecfa47c9c51bb199012d4685b67291ba712e26a7cf8f8eda94d15d1",
+          "file_size_kb": 44.57
+        },
+        "summary": { "classes": 1, "methods": 66, "fields": 9, "imports": 8, "annotations": 0, "package": "com.example.service" }
+      }
+    },
+    "9": {
+      "test_id": "9",
+      "test_name": "大型文件片段提取",
+      "tool": "extract_code_section",
+      "timestamp": "2026-01-08T10:15:09Z",
+      "result": {
+        "format": "toon",
+        "toon_content": "success: true\nfile_path: examples/BigService.java\nrange:\n  start_line: 141\n  end_line: 172\n  start_column: null\n  end_column: null\ncontent_length: 1051\nlines_extracted: 32\npartial_content_result: \"--- Partial Read Result ---\\nFile: examples/BigService.java\\nRange: Line 141-172\\nCharacters read: 1051\\n{\\n  \\\"file_path\\\": \\\"examples/BigService.java\\\",\\n  \\\"range\\\": {\\n    \\\"start_line\\\": 141,\\n    \\\"end_line\\\": 172,\\n    \\\"start_column\\\": null,\\n    \\\"end_column\\\": null\\n  },\\n  \\\"content\\\": \\\"    public boolean authenticateUser(String username, String password) {\\\\n        if (username == null || username.isEmpty()) {\\\\n            System.out.println(\\\\\\\"ERROR: Username is null or empty\\\\\\\");\\\\n            return false;\\\\n        }\\\\n\\\\n        if (password == null || password.isEmpty()) {\\\\n            System.out.println(\\\\\\\"ERROR: Password is null or empty\\\\\\\");\\\\n            return false;\\\\n        }\\\\n\\\\n        System.out.println(\\\\\\\"Authenticating user: \\\\\\\" + username);\\\\n\\\\n        // ダミーの認証处理\\\\n        for (int i = 0; i < 10; i++) {\\\\n            System.out.println(\\\\\\\"Authentication step \\\\\\\" + i);\\\\n            if (i == 5) {\\\\n                System.out.println(\\\\\\\"Validating credentials...\\\\\\\");\\\\n            }\\\\n        }\\\\n\\\\n        boolean isValid = username.length() > 3 && password.length() > 6;\\\\n\\\\n        if (isValid) {\\\\n            validatedUsers.add(username);\\\\n            System.out.println(\\\\\\\"User \\\\\\\" + username + \\\\\\\" authenticated successfully\\\\\\\");\\\\n        } else {\\\\n            System.out.println(\\\\\\\"Authentication failed for user: \\\\\\\" + username);\\\\n        }\\\\n\\\\n        return isValid;\\\\n    }\\\\n\\\",\\n  \\\"content_length\\\": 1051\\n}\"",
+        "success": true,
+        "file_path": "examples/BigService.java",
+        "range": { "start_line": 141, "end_line": 172, "start_column": null, "end_column": null },
+        "content_length": 1051,
+        "lines_extracted": 32
+      }
+    },
+    "10": {
+      "test_id": "10",
+      "test_name": "代码结构分析 - Full 格式",
+      "tool": "analyze_code_structure",
+      "timestamp": "2026-01-08T10:15:10Z",
+      "result": {
+        "format": "toon",
+        "toon_content": "success: true\nformat_type: full\nfile_path: examples/Sample.java\nlanguage: java\nmetadata:\n  classes_count: 8\n  methods_count: 26\n  fields_count: 6\n  total_lines: 179\ntable_output: \"# com.example.Sample...\"",
+        "success": true,
+        "format_type": "full",
+        "file_path": "examples/Sample.java",
+        "language": "java",
+        "metadata": { "classes_count": 8, "methods_count": 26, "fields_count": 6, "total_lines": 179 }
+      }
+    },
+    "11": {
+      "test_id": "11",
+      "test_name": "代码结构分析 - CSV 格式",
+      "tool": "analyze_code_structure",
+      "timestamp": "2026-01-08T10:15:11Z",
+      "result": {
+        "format": "toon",
+        "toon_content": "success: true\nformat_type: csv\nfile_path: examples/Sample.java\nlanguage: java\nmetadata:\n  classes_count: 8\n  methods_count: 26\n  fields_count: 6\n  total_lines: 179\ntable_output: \"Type,Name,Signature,Visibility,Lines,Complexity,Doc\\nField,CONSTANT,CONSTANT:String,package,20-20,,-\\n...\"",
+        "success": true,
+        "format_type": "csv",
+        "file_path": "examples/Sample.java",
+        "language": "java",
+        "metadata": { "classes_count": 8, "methods_count": 26, "fields_count": 6, "total_lines": 179 }
+      }
+    },
+    "12": {
+      "test_id": "12",
+      "test_name": "代码查询 - 查询类",
+      "tool": "query_code",
+      "timestamp": "2026-01-08T10:15:12Z",
+      "result": {
+        "format": "toon",
+        "toon_content": "success: true\nresults:\n  [5]{capture_name,node_type,start_line,end_line,content}:\n    class,class_declaration,7,15,...",
+        "success": true,
+        "count": 5,
+        "file_path": "examples/Sample.java",
+        "language": "java",
+        "query": "classes"
+      }
+    },
+    "13": {
+      "test_id": "13",
+      "test_name": "代码查询 - 查询字段",
+      "tool": "query_code",
+      "timestamp": "2026-01-08T10:15:13Z",
+      "result": {
+        "success": false,
+        "error": "Query 'fields' not found for language 'java'",
+        "file_path": "examples/Sample.java",
+        "language": "unknown"
+      }
+    },
+    "14": {
+      "test_id": "14",
+      "test_name": "代码查询 - 静态方法过滤",
+      "tool": "query_code",
+      "timestamp": "2026-01-08T10:15:14Z",
+      "result": {
+        "format": "toon",
+        "toon_content": "success: true\nresults:\n  [22]{capture_name,node_type,start_line,end_line,content}:\n    ...",
+        "success": true,
+        "count": 22,
+        "file_path": "examples/Sample.java",
+        "language": "java",
+        "query": "methods"
+      }
+    },
+    "15": {
+      "test_id": "15",
+      "test_name": "代码查询 - 构造函数过滤",
+      "tool": "query_code",
+      "timestamp": "2026-01-08T10:15:15Z",
+      "result": {
+        "format": "toon",
+        "toon_content": "success: true\nresults:\n  [22]{capture_name,node_type,start_line,end_line,content}:\n    ...",
+        "success": true,
+        "count": 22,
+        "file_path": "examples/Sample.java",
+        "language": "java",
+        "query": "methods"
+      }
+    },
+    "16": {
+      "test_id": "16",
+      "test_name": "代码片段提取 - JSON 格式",
+      "tool": "extract_code_section",
+      "timestamp": "2026-01-08T10:15:16Z",
+      "result": {
+        "format": "toon",
+        "toon_content": "success: true\nfile_path: examples/Sample.java\nrange:\n  start_line: 72\n  end_line: 110\n  start_column: null\n  end_column: null\ncontent_length: 916\nlines_extracted: 39\npartial_content_result:\n  lines: [...]",
+        "success": true,
+        "file_path": "examples/Sample.java",
+        "range": { "start_line": 72, "end_line": 110, "start_column": null, "end_column": null },
+        "content_length": 916,
+        "lines_extracted": 39
+      }
+    },
+    "16a": {
+      "test_id": "16a",
+      "test_name": "代码规模检查 - TOON 格式",
+      "tool": "check_code_scale",
+      "timestamp": "2026-01-08T10:15:16Z",
+      "result": {
+        "format": "toon",
+        "toon_content": "success: true\nfile_path: examples/Sample.java\n...",
+        "success": true,
+        "file_path": "examples/Sample.java",
+        "language": "java",
+        "file_metrics": { "total_lines": 178, "content_hash": "f9cd3bfbda5f87d7ea35b4a53ed6842c62b873b1d9e01186e5cdebc6211c4664" }
+      }
+    },
+    "16b": {
+      "test_id": "16b",
+      "test_name": "代码规模检查 - JSON 格式",
+      "tool": "check_code_scale",
+      "timestamp": "2026-01-08T10:15:16Z",
+      "result": {
+        "success": true,
+        "file_path": "examples/Sample.java",
+        "language": "java",
+        "file_metrics": { "total_lines": 178, "content_hash": "f9cd3bfbda5f87d7ea35b4a53ed6842c62b873b1d9e01186e5cdebc6211c4664" },
+        "summary": { "classes": 8, "methods": 26 }
+      }
+    },
+    "16c": {
+      "test_id": "16c",
+      "test_name": "代码结构分析 - TOON 格式",
+      "tool": "analyze_code_structure",
+      "timestamp": "2026-01-08T10:15:16Z",
+      "result": {
+        "format": "toon",
+        "toon_content": "success: true\nformat_type: compact\n...",
+        "success": true,
+        "format_type": "compact",
+        "file_path": "examples/Sample.java",
+        "metadata": { "classes_count": 8, "methods_count": 26 }
+      }
+    },
+    "16d": {
+      "test_id": "16d",
+      "test_name": "代码查询 - TOON 格式",
+      "tool": "query_code",
+      "timestamp": "2026-01-08T10:15:16Z",
+      "result": {
+        "format": "toon",
+        "toon_content": "success: true\nresults: [...]",
+        "success": true,
+        "count": 22,
+        "file_path": "examples/Sample.java",
+        "query": "methods"
+      }
+    },
+    "16e": {
+      "test_id": "16e",
+      "test_name": "内容搜索 - TOON 格式",
+      "tool": "search_content",
+      "timestamp": "2026-01-08T10:15:16Z",
+      "result": {
+        "format": "toon",
+        "toon_content": "success: true\ncount: 6\n...",
+        "success": true,
+        "count": 6
+      }
+    },
+    "16f": {
+      "test_id": "16f",
+      "test_name": "文件列表 - TOON 格式",
+      "tool": "list_files",
+      "timestamp": "2026-01-08T10:15:16Z",
+      "result": {
+        "format": "toon",
+        "toon_content": "success: true\ncount: 5\n...",
+        "success": true,
+        "count": 5
+      }
+    },
+    "16g": {
+      "test_id": "16g",
+      "test_name": "查找和搜索 - TOON 格式",
+      "tool": "find_and_grep",
+      "timestamp": "2026-01-08T10:15:16Z",
+      "result": {
+        "format": "toon",
+        "toon_content": "success: true\ncount: 1\n...",
+        "success": true,
+        "count": 1
+      }
+    },
+    "16h": {
+      "test_id": "16h",
+      "test_name": "代码片段提取 - TOON 格式",
+      "tool": "extract_code_section",
+      "timestamp": "2026-01-08T10:15:16Z",
+      "result": {
+        "format": "toon",
+        "toon_content": "success: true\nfile_path: examples/Sample.java\n...",
+        "success": true,
+        "file_path": "examples/Sample.java",
+        "range": { "start_line": 72, "end_line": 110 }
+      }
+    },
+    "17": {
+      "test_id": "17",
+      "test_name": "代码片段提取 - 带列范围",
+      "tool": "extract_code_section",
+      "timestamp": "2026-01-08T10:15:17Z",
+      "result": {
+        "format": "toon",
+        "toon_content": "success: true\nfile_path: examples/Sample.java\nrange:\n  start_line: 72\n  end_line: 72\n  start_column: 0\n  end_column: 50\ncontent_length: 50\nlines_extracted: 1\npartial_content_result: \"...\"",
+        "success": true,
+        "file_path": "examples/Sample.java",
+        "range": { "start_line": 72, "end_line": 72, "start_column": 0, "end_column": 50 },
+        "content_length": 50,
+        "lines_extracted": 1
+      }
+    },
+    "18": {
+      "test_id": "18",
+      "test_name": "多类文件分析",
+      "tool": "check_code_scale",
+      "timestamp": "2026-01-08T10:15:18Z",
+      "result": {
+        "format": "toon",
+        "toon_content": "success: true\nfile_path: examples/MultiClass.java\nsummary:\n  classes: 3\n  methods: 8\n  fields: 3\n...",
+        "success": true,
+        "file_path": "examples/MultiClass.java",
+        "summary": { "classes": 3, "methods": 8, "fields": 3 }
+      }
+    },
+    "19": {
+      "test_id": "19",
+      "test_name": "注解文件分析",
+      "tool": "check_code_scale",
+      "timestamp": "2026-01-08T10:15:19Z",
+      "result": {
+        "format": "toon",
+        "toon_content": "success: true\nfile_path: examples/TestAnnotationIssue.java\nsummary:\n  classes: 1\n  methods: 4\n...",
+        "success": true,
+        "file_path": "examples/TestAnnotationIssue.java",
+        "summary": { "classes": 1, "methods": 4 }
+      }
+    },
+    "20": {
+      "test_id": "20",
+      "test_name": "JavaDoc 文件分析",
+      "tool": "check_code_scale",
+      "timestamp": "2026-01-08T10:15:20Z",
+      "result": {
+        "format": "toon",
+        "toon_content": "success: true\nfile_path: examples/JavaDocTest.java\nsummary:\n  classes: 1\n  methods: 5\n  fields: 2\n...",
+        "success": true,
+        "file_path": "examples/JavaDocTest.java",
+        "summary": { "classes": 1, "methods": 5, "fields": 2 }
+      }
+    },
+    "21": {
+      "test_id": "21",
+      "test_name": "内容搜索 - 大小写敏感",
+      "tool": "search_content",
+      "timestamp": "2026-01-08T10:15:21Z",
+      "result": {
+        "format": "toon",
+        "toon_content": "success: true\ncount: 0\ntruncated: false\nelapsed_ms: 189\nresults: []",
+        "success": true,
+        "count": 0
+      }
+    },
+    "22": {
+      "test_id": "22",
+      "test_name": "内容搜索 - 大小写不敏感",
+      "tool": "search_content",
+      "timestamp": "2026-01-08T10:15:22Z",
+      "result": {
+        "format": "toon",
+        "toon_content": "success: true\ncount: 6\n...",
+        "success": true,
+        "count": 6
+      }
+    },
+    "23": {
+      "test_id": "23",
+      "test_name": "内容搜索 - 正则表达式",
+      "tool": "search_content",
+      "timestamp": "2026-01-08T10:15:23Z",
+      "result": {
+        "format": "toon",
+        "toon_content": "success: true\ncount: 6\n...",
+        "success": true,
+        "count": 6
+      }
+    },
+    "24": {
+      "test_id": "24",
+      "test_name": "内容搜索 - 全词匹配",
+      "tool": "search_content",
+      "timestamp": "2026-01-08T10:15:24Z",
+      "result": {
+        "format": "toon",
+        "toon_content": "success: true\ncount: 25\n...",
+        "success": true,
+        "count": 25
+      }
+    },
+    "25": {
+      "test_id": "25",
+      "test_name": "文件列表 - 按修改时间排序",
+      "tool": "list_files",
+      "timestamp": "2026-01-08T10:15:25Z",
+      "result": {
+        "format": "toon",
+        "toon_content": "success: true\ncount: 5\n...",
+        "success": true,
+        "count": 5
+      }
+    },
+    "26": {
+      "test_id": "26",
+      "test_name": "文件列表 - 按大小排序",
+      "tool": "list_files",
+      "timestamp": "2026-01-08T10:15:26Z",
+      "result": {
+        "format": "toon",
+        "toon_content": "success: true\ncount: 5\n...",
+        "success": true,
+        "count": 5
+      }
+    },
+    "27": {
+      "test_id": "27",
+      "test_name": "文件列表 - 限制结果数量",
+      "tool": "list_files",
+      "timestamp": "2026-01-08T10:15:27Z",
+      "result": {
+        "format": "toon",
+        "toon_content": "success: true\ncount: 3\n...",
+        "success": true,
+        "count": 3
+      }
+    },
+    "28": {
+      "test_id": "28",
+      "test_name": "查找和搜索 - 排除特定文件",
+      "tool": "find_and_grep",
+      "timestamp": "2026-01-08T10:15:28Z",
+      "result": {
+        "format": "toon",
+        "toon_content": "success: true\ncount: 26\n...",
+        "success": true,
+        "count": 26
+      }
+    },
+    "29": {
+      "test_id": "29",
+      "test_name": "代码规模检查 - 不包含复杂度",
+      "tool": "check_code_scale",
+      "timestamp": "2026-01-08T10:15:29Z",
+      "result": {
+        "format": "toon",
+        "toon_content": "success: true\nfile_path: examples/Sample.java\nsummary:\n  classes: 8\n  methods: 26\n  fields: 6\n...",
+        "success": true,
+        "file_path": "examples/Sample.java",
+        "summary": { "classes": 8, "methods": 26, "fields": 6 }
+      }
+    },
+    "30": {
+      "test_id": "30",
+      "test_name": "代码结构分析 - 保存到文件",
+      "tool": "analyze_code_structure",
+      "timestamp": "2026-01-08T10:15:30Z",
+      "result": {
+        "format": "toon",
+        "toon_content": "success: true\nformat_type: compact\n...\noutput_file_path: \"C:/git-private/tree-sitter-analyzer/.analysis/test_output.md\"\nfile_saved: true",
+        "success": true,
+        "output_file_path": "C:\\git-private\\tree-sitter-analyzer\\.analysis\\test_output.md",
+        "file_saved": true
+      }
+    },
+    "31": {
+      "test_id": "31",
+      "test_name": "代码片段提取 - 批量提取",
+      "tool": "extract_code_section",
+      "timestamp": "2026-01-08T10:15:31Z",
+      "result": {
+        "format": "toon",
+        "toon_content": "success: true\ncount_files: 1\ncount_sections: 2\n...",
+        "success": true,
+        "count_files": 1,
+        "count_sections": 2
+      }
+    },
+    "32": {
+      "test_id": "32",
+      "test_name": "内容搜索 - 仅返回总数",
+      "tool": "search_content",
+      "timestamp": "2026-01-08T10:15:32Z",
+      "result": 6
+    },
+    "33": {
+      "test_id": "33",
+      "test_name": "内容搜索 - 按文件分组",
+      "tool": "search_content",
+      "timestamp": "2026-01-08T10:15:33Z",
+      "result": {
+        "success": true,
+        "count": 30,
+        "files": [ { "file": "...", "match_count": 4 }, { "file": "...", "match_count": 2 }, { "file": "...", "match_count": 9 }, { "file": "...", "match_count": 14 }, { "file": "...", "match_count": 1 } ],
+        "format": "toon",
+        "toon_content": "..."
+      }
+    },
+    "34": {
+      "test_id": "34",
+      "test_name": "代码查询 - 自定义查询字符串",
+      "tool": "query_code",
+      "timestamp": "2026-01-08T10:15:34Z",
+      "result": {
+        "format": "toon",
+        "toon_content": "success: true\nresults: [...]",
+        "success": true,
+        "count": 22,
+        "file_path": "examples/Sample.java",
+        "query": "(method_declaration) @method"
+      }
+    },
+    "35": {
+      "test_id": "35",
+      "test_name": "代码规模检查 - 批量文件分析",
+      "tool": "check_code_scale",
+      "timestamp": "2026-01-08T10:15:35Z",
+      "result": {
+        "format": "toon",
+        "toon_content": "success: true\ncount_files: 2\n...",
+        "success": true,
+        "count_files": 2,
+        "count_ok": 2
+      }
+    }
+  }
+}
