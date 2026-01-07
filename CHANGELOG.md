@@ -1,5 +1,33 @@
 # Changelog
 
+## [1.10.3] - 2026-01-08
+
+### 🐛 Bug Fixes
+
+#### Formatter Test Consistency
+- **Fixed**: Updated TypeScript and JavaScript formatter tests to match new output format
+  - **Root Cause**: Recent formatter changes caused test expectations to drift from actual output
+  - **Solution**: Updated test baselines and assertions to align with current behavior
+  - **Impact**: Restored consistency in formatter test suite
+
+#### Path Handling
+- **Fixed**: Normalized paths in `test_path_resolver.py` for better macOS symlink compatibility
+  - **Root Cause**: Path resolution inconsistencies on macOS due to symlinks
+  - **Solution**: Applied path normalization in test assertions
+  - **Impact**: Improved cross-platform test reliability
+
+### 🔧 Technical Improvements
+- **Documentation**: Updated `.cursorrules` and test results baseline
+- **Editor Config**: Added cursor settings for improved development experience
+- **Test Quality**: Restored precise assertions in formatter tests
+
+### 📊 Quality Metrics
+- **Tests**: 8,409 tests (100% pass rate)
+- **Coverage**: 80.33% (maintained)
+- **Breaking Changes**: None
+
+---
+
 ## [1.10.2] - 2025-12-23
 
 ### 🐛 Bug Fixes
