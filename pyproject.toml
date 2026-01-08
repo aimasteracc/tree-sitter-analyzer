@@ -96,7 +96,7 @@ python = [
 c = ["tree-sitter-c>=0.20.0,<0.25.0"]
 cpp = ["tree-sitter-cpp>=0.23.4,<0.25.0"]
 rust = ["tree-sitter-rust>=0.20.0,<0.25.0"]
-go = ["tree-sitter-go>=0.20.0,<0.25.0"]
+go = ["tree-sitter-go>=0.20.0,<0.26.0"]
 markdown = ["tree-sitter-markdown>=0.3.1"]
 html = ["tree-sitter-html>=0.23.0,<0.25.0"]  # HTML DOM analysis with element classification
 css = ["tree-sitter-css>=0.23.0,<0.25.0"]   # CSS selector and property analysis with specificity calculation
@@ -122,7 +122,7 @@ systems = [
     "tree-sitter-c>=0.20.0,<0.25.0",
     "tree-sitter-cpp>=0.23.4,<0.25.0",
     "tree-sitter-rust>=0.20.0,<0.25.0",
-    "tree-sitter-go>=0.20.0,<0.25.0"
+    "tree-sitter-go>=0.20.0,<0.26.0"
 ]
 popular = [
     "tree-sitter-java>=0.23.5,<0.25.0",
@@ -138,7 +138,7 @@ all-languages = [
     "tree-sitter-c>=0.20.0,<0.25.0",
     "tree-sitter-cpp>=0.23.4,<0.25.0",
     "tree-sitter-rust>=0.20.0,<0.25.0",
-    "tree-sitter-go>=0.20.0,<0.25.0",
+    "tree-sitter-go>=0.20.0,<0.26.0",
     "tree-sitter-kotlin>=0.3.0",  # Kotlin language support for Android and JVM applications
     "tree-sitter-markdown>=0.3.1",
     "tree-sitter-html>=0.23.0,<0.25.0",
@@ -219,7 +219,7 @@ full = [
     "tree-sitter-c>=0.20.0,<0.25.0",
     "tree-sitter-cpp>=0.23.4,<0.25.0",
     "tree-sitter-rust>=0.20.0,<0.25.0",
-    "tree-sitter-go>=0.20.0,<0.25.0",
+    "tree-sitter-go>=0.20.0,<0.26.0",
     "tree-sitter-markdown>=0.3.1",
     "mcp>=1.12.2",
     "anyio>=4.0.0",
@@ -249,7 +249,7 @@ all = [
     "tree-sitter-c>=0.20.0,<0.25.0",
     "tree-sitter-cpp>=0.23.4,<0.25.0",
     "tree-sitter-rust>=0.20.0,<0.25.0",
-    "tree-sitter-go>=0.20.0,<0.25.0",
+    "tree-sitter-go>=0.20.0,<0.26.0",
     "tree-sitter-markdown>=0.3.1",
     "tree-sitter-html>=0.23.0,<0.25.0",
     "tree-sitter-css>=0.23.0,<0.25.0",
