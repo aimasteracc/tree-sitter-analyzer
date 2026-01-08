@@ -335,10 +335,6 @@ class AnalyzeScaleTool(BaseMCPTool):
                     "default": "toon",
                 },
             },
-            "oneOf": [
-                {"required": ["file_path"]},
-                {"required": ["file_paths"]},
-            ],
             "additionalProperties": False,
         }
 

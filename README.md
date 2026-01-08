@@ -7,21 +7,21 @@
 [![Tests](https://img.shields.io/badge/tests-8409%20passed-brightgreen.svg)](#-quality--testing)
 [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
-[![Version](https://img.shields.io/badge/version-1.10.3-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
+[![Version](https://img.shields.io/badge/version-1.10.4-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
 > 🚀 **Enterprise-Grade Code Analysis Tool for the AI Era** - Deep AI Integration · Powerful Search · 17 Languages · Intelligent Analysis
 
 ---
 
-## ✨ What's New in v1.10.0
+## ✨ What's New in v1.10.4
 
+- **Vertex AI Compatibility**: Fixed MCP tool JSON Schema compatibility with Vertex AI API by removing `oneOf`/`anyOf`/`allOf` constraints
 - **Format Change Management System**: Complete system for tracking and managing format changes with database tracking and pre-commit validation
 - **Behavior Profile Comparison**: CLI tool for comparing code analysis behavior profiles between versions
 - **Enhanced Language Support**: Added Go, Rust, and Kotlin to core dependencies for comprehensive systems programming language support
 - **C++ Formatter**: Dedicated formatter with Bandit security scanning
-- **Project Governance**: Added comprehensive governance documents and CI/CD workflows
-- **6,246 tests** with 100% pass rate and 80.33% coverage
+- **8,409 tests** with 100% pass rate and 80.33% coverage
 
 📖 **[Full Changelog](CHANGELOG.md)** for complete version history.
 

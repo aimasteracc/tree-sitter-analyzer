@@ -7,20 +7,20 @@
 [![Tests](https://img.shields.io/badge/tests-8409%20passed-brightgreen.svg)](#-品質とテスト)
 [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
-[![Version](https://img.shields.io/badge/version-1.10.3-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
+[![Version](https://img.shields.io/badge/version-1.10.4-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
 > 🚀 **AI時代のエンタープライズグレードコード解析ツール** - 深いAI統合 · 強力な検索 · 17言語対応 · インテリジェント分析
 
 ---
 
-## ✨ v1.10.0 最新情報
+## ✨ v1.10.4 最新情報
 
+- **Vertex AI互換性修正**: `oneOf`/`anyOf`/`allOf`制約を削除し、MCPツールのVertex AI API互換性を修正
 - **フォーマット変更管理システム**: フォーマット変更検出と動作プロファイル比較機能を追加
 - **言語サポート強化**: Go、Rust、Kotlinがコア依存関係に昇格
 - **C++フォーマッター**: C++コードフォーマット機能を追加
-- **プロジェクトガバナンス**: CODE_OF_CONDUCT.mdとGOVERNANCE.mdを追加
-- **6,246テスト** 100%パス率、80.33%カバレッジ
+- **8,409テスト** 100%パス率、80.33%カバレッジ
 
 📖 完全なバージョン履歴は **[変更履歴](CHANGELOG.md)** をご覧ください。
 

@@ -134,10 +134,6 @@ class ReadPartialTool(BaseMCPTool):
                     "default": False,
                 },
             },
-            "oneOf": [
-                {"required": ["file_path", "start_line"]},
-                {"required": ["requests"]},
-            ],
             "additionalProperties": False,
         }
 

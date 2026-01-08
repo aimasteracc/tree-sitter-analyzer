@@ -213,10 +213,6 @@ Choose output format parameters based on your needs to minimize token usage and 
                     },
                 },
                 "required": ["query"],
-                "anyOf": [
-                    {"required": ["roots"]},
-                    {"required": ["files"]},
-                ],
                 "additionalProperties": False,
             },
         }

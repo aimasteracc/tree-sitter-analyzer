@@ -7,20 +7,20 @@
 [![Tests](https://img.shields.io/badge/tests-8409%20passed-brightgreen.svg)](#-质量与测试)
 [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
-[![Version](https://img.shields.io/badge/version-1.10.3-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
+[![Version](https://img.shields.io/badge/version-1.10.4-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
 > 🚀 **AI时代的企业级代码分析工具** - 深度AI集成 · 强大搜索 · 17种语言 · 智能分析
 
 ---
 
-## ✨ v1.10.0 最新更新
+## ✨ v1.10.4 最新更新
 
+- **Vertex AI兼容性修复**: 移除`oneOf`/`anyOf`/`allOf`约束，修复MCP工具与Vertex AI API的兼容性
 - **格式变更管理系统**: 新增格式变更检测和行为配置文件比较功能
 - **增强语言支持**: Go、Rust、Kotlin现已成为核心依赖
 - **C++格式化器**: 新增C++代码格式化支持
-- **项目治理**: 添加CODE_OF_CONDUCT.md和GOVERNANCE.md
-- **6,246个测试** 100%通过率，80.33%覆盖率
+- **8,409个测试** 100%通过率，80.33%覆盖率
 
 📖 完整版本历史请查看 **[更新日志](CHANGELOG.md)**。
 

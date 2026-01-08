@@ -96,10 +96,6 @@ class QueryTool(BaseMCPTool):
                     },
                 },
                 "required": ["file_path"],
-                "anyOf": [
-                    {"required": ["query_key"]},
-                    {"required": ["query_string"]},
-                ],
             },
         }
 

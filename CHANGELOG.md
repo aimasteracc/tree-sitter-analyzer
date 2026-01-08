@@ -1,5 +1,34 @@
 # Changelog
 
+## [1.10.4] - 2026-01-08
+
+### 🐛 Bug Fixes
+
+#### Vertex AI API Compatibility Fix
+- **Fixed**: Removed `oneOf`, `anyOf`, `allOf` from MCP tool JSON Schema definitions
+  - **Root Cause**: Vertex AI API does not support `oneOf`, `anyOf`, or `allOf` at the top level of tool input schemas
+  - **Error**: `"tools.17.custom.input_schema: input_schema does not support oneOf, allOf, or anyOf at the top level"`
+  - **Impact**: MCP tools were incompatible with Vertex AI (Claude models via Google Cloud)
+  - **Solution**: Removed schema-level validation constraints; validation is performed at code level instead
+  - **Files Modified**:
+    - `tree_sitter_analyzer/mcp/tools/analyze_scale_tool.py` - Removed `oneOf` for `file_path`/`file_paths` mutual exclusion
+    - `tree_sitter_analyzer/mcp/tools/read_partial_tool.py` - Removed `oneOf` for single/batch mode
+    - `tree_sitter_analyzer/mcp/tools/query_tool.py` - Removed `anyOf` for `query_key`/`query_string`
+    - `tree_sitter_analyzer/mcp/tools/search_content_tool.py` - Removed `anyOf` for `roots`/`files`
+
+### 🔧 Technical Details
+- **Affected Tools**: `check_code_scale`, `extract_code_section`, `query_code`, `search_content`
+- **Validation**: All parameter validation is now performed in `validate_arguments()` methods
+- **Compatibility**: Now works with Vertex AI, Anthropic API, AWS Bedrock, and other providers
+- **Tests Updated**: Unit and integration tests updated to reflect schema changes
+
+### 📊 Quality Metrics
+- **Tests**: 8,409 tests (100% pass rate)
+- **Coverage**: 80.33% (maintained)
+- **Breaking Changes**: None - all improvements are backward compatible
+
+---
+
 ## [1.10.3] - 2026-01-08
 
 ### 🐛 Bug Fixes
