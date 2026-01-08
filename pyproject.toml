@@ -99,7 +99,7 @@ rust = ["tree-sitter-rust>=0.20.0,<0.25.0"]
 go = ["tree-sitter-go>=0.20.0,<0.25.0"]
 markdown = ["tree-sitter-markdown>=0.3.1"]
 html = ["tree-sitter-html>=0.23.0,<0.25.0"]  # HTML DOM analysis with element classification
-css = ["tree-sitter-css>=0.23.0,<0.25.0"]   # CSS selector and property analysis with specificity calculation
+css = ["tree-sitter-css>=0.23.0,<0.26.0"]   # CSS selector and property analysis with specificity calculation
 sql = ["tree-sitter-sql>=0.3.11,<0.4.0"]   # SQL language support for database schema analysis
 csharp = ["tree-sitter-c-sharp>=0.23.1"]  # C# language support for .NET applications
 php = ["tree-sitter-php>=0.23.0,<0.25.0"]  # PHP language support for web applications
@@ -114,7 +114,7 @@ web = [
     "tree-sitter-javascript>=0.23.1,<0.25.0",
     "tree-sitter-typescript>=0.20.0,<0.25.0",
     "tree-sitter-html>=0.23.0,<0.25.0",      # Complete HTML5 support with semantic analysis
-    "tree-sitter-css>=0.23.0,<0.25.0",       # Complete CSS3 support with advanced property categorization
+    "tree-sitter-css>=0.23.0,<0.26.0",       # Complete CSS3 support with advanced property categorization
     "tree-sitter-php>=0.23.0,<0.25.0",       # PHP for WordPress, Laravel, Symfony
     "tree-sitter-ruby>=0.23.0,<0.25.0"       # Ruby for Rails applications
 ]
@@ -142,7 +142,7 @@ all-languages = [
     "tree-sitter-kotlin>=0.3.0",  # Kotlin language support for Android and JVM applications
     "tree-sitter-markdown>=0.3.1",
     "tree-sitter-html>=0.23.0,<0.25.0",
-    "tree-sitter-css>=0.23.0,<0.25.0",
+    "tree-sitter-css>=0.23.0,<0.26.0",
     "tree-sitter-sql>=0.3.11,<0.4.0",  # SQL language support for database schema analysis
     "tree-sitter-c-sharp>=0.23.1",  # C# language support for .NET applications
     "tree-sitter-php>=0.23.0,<0.25.0",  # PHP language support for web applications
@@ -252,7 +252,7 @@ all = [
     "tree-sitter-go>=0.20.0,<0.25.0",
     "tree-sitter-markdown>=0.3.1",
     "tree-sitter-html>=0.23.0,<0.25.0",
-    "tree-sitter-css>=0.23.0,<0.25.0",
+    "tree-sitter-css>=0.23.0,<0.26.0",
     "tree-sitter-sql>=0.3.11,<0.4.0",  # SQL language support for database schema analysis
     "mcp>=1.12.2",
     "anyio>=4.0.0",
