@@ -7,15 +7,16 @@
 [![Tests](https://img.shields.io/badge/tests-4864%20passed-brightgreen.svg)](#-质量与测试)
 [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
-[![Version](https://img.shields.io/badge/version-1.9.17-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
+[![Version](https://img.shields.io/badge/version-1.9.18-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
 > 🚀 **AI时代的企业级代码分析工具** - 深度AI集成 · 强大搜索 · 15种语言 · 智能分析
 
 ---
 
-## ✨ v1.9.17 最新更新
+## ✨ v1.9.18 最新更新
 
+- **Vertex AI兼容性修复**: 修复MCP工具JSON Schema与Vertex AI API的兼容性
 - **新语言支持**: 添加Go、Rust、Kotlin、YAML完整支持
 - **4,864个测试** 100%通过率
 

@@ -56,13 +56,6 @@ class TestMCPQueryToolDefinition:
         assert "required" in schema
         assert "file_path" in schema["required"]
 
-        # Check anyOf constraint for query parameters
-        assert "anyOf" in schema
-        any_of = schema["anyOf"]
-        assert len(any_of) == 2
-        assert {"required": ["query_key"]} in any_of
-        assert {"required": ["query_string"]} in any_of
-
     def test_tool_definition_properties_types(self):
         """Test that all properties have correct types"""
         definition = self.query_tool.get_tool_definition()

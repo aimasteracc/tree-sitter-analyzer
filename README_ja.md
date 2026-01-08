@@ -7,15 +7,16 @@
 [![Tests](https://img.shields.io/badge/tests-4864%20passed-brightgreen.svg)](#-品質とテスト)
 [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
-[![Version](https://img.shields.io/badge/version-1.9.17-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
+[![Version](https://img.shields.io/badge/version-1.9.18-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
 > 🚀 **AI時代のエンタープライズグレードコード解析ツール** - 深いAI統合 · 強力な検索 · 15言語対応 · インテリジェント分析
 
 ---
 
-## ✨ v1.9.17 最新情報
+## ✨ v1.9.18 最新情報
 
+- **Vertex AI互換性修正**: MCPツールのJSON SchemaをVertex AI APIと互換性のある形式に修正
 - **新言語サポート**: Go、Rust、Kotlin、YAMLの完全なサポートを追加
 - **4,864テスト** 100%パス率
 
