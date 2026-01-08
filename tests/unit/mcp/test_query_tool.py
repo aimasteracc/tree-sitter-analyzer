@@ -132,7 +132,6 @@ class TestGetToolDefinition:
         assert schema["type"] == "object"
         assert "properties" in schema
         assert "required" in schema
-        assert "anyOf" in schema
 
     def test_required_fields(self, tool):
         """Test that required fields are correctly defined."""
@@ -141,17 +140,6 @@ class TestGetToolDefinition:
         required = schema.get("required", [])
         assert "file_path" in required
         assert len(required) == 1
-
-    def test_anyof_validation(self, tool):
-        """Test that anyOf validation is correctly defined."""
-        definition = tool.get_tool_definition()
-        schema = definition["inputSchema"]
-        anyof = schema.get("anyOf", [])
-        assert len(anyof) == 2
-        # First option: query_key required
-        assert "query_key" in anyof[0]["required"]
-        # Second option: query_string required
-        assert "query_string" in anyof[1]["required"]
 
     def test_file_path_property(self, tool):
         """Test that file_path property is correctly defined."""

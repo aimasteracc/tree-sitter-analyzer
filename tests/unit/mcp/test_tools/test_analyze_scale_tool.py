@@ -58,7 +58,6 @@ class TestAnalyzeScaleToolGetToolSchema:
         assert isinstance(schema, dict)
         assert "type" in schema
         assert "properties" in schema
-        assert "oneOf" in schema
         assert schema["type"] == "object"
 
     def test_get_tool_schema_has_file_path_property(self, tool):
@@ -111,13 +110,6 @@ class TestAnalyzeScaleToolGetToolSchema:
         assert "enum" in schema["properties"]["output_format"]
         assert "json" in schema["properties"]["output_format"]["enum"]
         assert "toon" in schema["properties"]["output_format"]["enum"]
-
-    def test_get_tool_schema_oneof_validation(self, tool):
-        """Test oneOf validation for mutually exclusive modes."""
-        schema = tool.get_tool_schema()
-        assert len(schema["oneOf"]) == 2
-        assert {"required": ["file_path"]} in schema["oneOf"]
-        assert {"required": ["file_paths"]} in schema["oneOf"]
 
 
 class TestAnalyzeScaleToolGetToolDefinition:

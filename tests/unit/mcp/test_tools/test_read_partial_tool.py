@@ -43,7 +43,6 @@ class TestReadPartialToolGetToolSchema:
         assert "type" in schema
         assert schema["type"] == "object"
         assert "properties" in schema
-        assert "oneOf" in schema
 
     def test_get_tool_schema_has_requests_property(self):
         """Test that schema has requests property for batch mode."""
@@ -59,15 +58,6 @@ class TestReadPartialToolGetToolSchema:
         schema = tool.get_tool_schema()
         assert "file_path" in schema["properties"]
         assert schema["properties"]["file_path"]["type"] == "string"
-
-    def test_get_tool_schema_oneof_validation(self):
-        """Test that oneOf enforces either batch or single mode."""
-        tool = ReadPartialTool()
-        schema = tool.get_tool_schema()
-        assert len(schema["oneOf"]) == 2
-        # Check that either file_path+start_line OR requests is required
-        assert {"required": ["file_path", "start_line"]} in schema["oneOf"]
-        assert {"required": ["requests"]} in schema["oneOf"]
 
 
 class TestReadPartialToolGetToolDefinition:

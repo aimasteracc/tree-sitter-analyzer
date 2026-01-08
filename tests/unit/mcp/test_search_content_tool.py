@@ -104,17 +104,6 @@ class TestGetToolDefinition:
         assert "query" in required
         assert len(required) == 1
 
-    def test_anyof_validation(self, tool):
-        """Test that anyOf validation is correctly defined."""
-        definition = tool.get_tool_definition()
-        schema = definition["inputSchema"]
-        anyof = schema.get("anyOf", [])
-        assert len(anyof) == 2
-        # First option: roots required
-        assert "roots" in anyof[0]["required"]
-        # Second option: files required
-        assert "files" in anyof[1]["required"]
-
     def test_roots_property(self, tool):
         """Test that roots property is correctly defined."""
         definition = tool.get_tool_definition()

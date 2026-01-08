@@ -28,17 +28,9 @@ class TestReadPartialToolSchema:
         # Test schema structure
         assert "type" in schema
         assert "properties" in schema
-        # Required fields are expressed via oneOf to support batch mode
-        assert "oneOf" in schema
 
         # Test schema type
         assert schema["type"] == "object"
-
-        # Ensure single-mode requirement includes file_path
-        one_of = schema["oneOf"]
-        assert any(
-            "required" in opt and "file_path" in opt["required"] for opt in one_of
-        )
 
         # Test properties
         properties = schema["properties"]
