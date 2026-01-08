@@ -9,7 +9,7 @@ description: 'Install fd and ripgrep system dependencies for all platforms'
 
 inputs:
   os:
-    description: 'Operating system (ubuntu-latest, windows-latest, macos-13)'
+    description: 'Operating system (ubuntu-latest, windows-latest, macos-latest)'
     required: true
 
 runs:
@@ -33,7 +33,7 @@ runs:
       shell: bash
 
     - name: Install system dependencies (macOS)
-      if: inputs.os == 'macos-13'
+      if: inputs.os == 'macos-latest'
       run: |
         echo "Installing fd and ripgrep on macOS..."
         brew install fd ripgrep

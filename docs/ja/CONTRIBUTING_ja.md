@@ -331,7 +331,7 @@ GitHub リポジトリの Settings → Branches → Branch protection rules で�
 ### テスト環境
 
 - **Python バージョン**: 3.10, 3.11, 3.12, 3.13
-- **OS プラットフォーム**: ubuntu-latest, windows-latest, macos-13
+- **OS プラットフォーム**: ubuntu-latest, windows-latest, macos-latest
 - **システム依存**: fd, ripgrep
 - **品質チェック**: mypy, black, ruff, isort, bandit, pydocstyle
 

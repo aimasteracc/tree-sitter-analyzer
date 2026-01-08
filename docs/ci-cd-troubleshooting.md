@@ -702,13 +702,13 @@ Review and optimize the test matrix in workflows:
 ```yaml
 strategy:
   matrix:
-    os: [ubuntu-latest, windows-latest, macos-13]
+    os: [ubuntu-latest, windows-latest, macos-latest]
     python-version: ["3.10", "3.11", "3.12", "3.13"]
     exclude:
       # Add more exclusions to reduce combinations
       - os: windows-latest
         python-version: "3.10"
-      - os: macos-13
+      - os: macos-latest
         python-version: "3.10"
 ```
 

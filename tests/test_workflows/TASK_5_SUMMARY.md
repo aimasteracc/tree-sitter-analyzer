@@ -177,7 +177,7 @@ python tests/test_workflows/validate_ci_workflow.py
 **Validation**: 
 - ✅ CI workflow uses same reusable-test.yml as other branches
 - ✅ Same Python versions (3.10, 3.11, 3.12, 3.13)
-- ✅ Same operating systems (ubuntu-latest, windows-latest, macos-13)
+- ✅ Same operating systems (ubuntu-latest, windows-latest, macos-latest)
 - ✅ Same --all-extras flag usage
 
 ### Requirement 1.5
