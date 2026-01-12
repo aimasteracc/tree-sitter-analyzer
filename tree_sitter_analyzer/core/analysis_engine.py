@@ -10,26 +10,20 @@ import asyncio
 import hashlib
 import os
 import threading
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any
 
 from ..models import AnalysisResult
-from .engine_manager import EngineManager
 from .performance import PerformanceContext, PerformanceMonitor
 from .request import AnalysisRequest
+
+if TYPE_CHECKING:
+    from ..plugins.base import LanguagePlugin
 
 
 class UnsupportedLanguageError(Exception):
     """Unsupported language error"""
 
     pass
-
-
-class LanguagePlugin(Protocol):
-    """Language plugin protocol"""
-
-    async def analyze_file(self, file_path: str, request: AnalysisRequest) -> Any:
-        """File analysis"""
-        ...
 
 
 class UnifiedAnalysisEngine:
@@ -302,22 +296,50 @@ class UnifiedAnalysisEngine:
         filename: str = "string",
         request: AnalysisRequest | None = None,
     ) -> Any:
-        """Sync version of analyze_code"""
+        """
+        Sync version of analyze_code.
+
+        注意: この同期メソッドは以下のケースを安全に処理します：
+        1. イベントループが実行されていない場合: asyncio.run() を使用
+        2. イベントループが実行中の場合: 別スレッドで新しいループを作成して実行
+
+        警告: 非同期コンテキスト内からこのメソッドを呼び出すことは推奨されません。
+        可能な限り analyze_code() を直接 await してください。
+
+        Args:
+            code: 解析するコード文字列
+            language: プログラミング言語
+            filename: ファイル名（デフォルト: "string"）
+            request: 解析リクエスト（オプション）
+
+        Returns:
+            解析結果
+        """
         try:
-            # Check if we're already in an event loop
             asyncio.get_running_loop()
+            # イベントループが実行中の場合
+            # 別スレッドで新しいイベントループを作成して実行
+            # これは追加リソースを消費しますが、デッドロックを回避します
+            import concurrent.futures
+
+            def run_in_new_loop() -> Any:
+                """新しいイベントループでコルーチンを実行"""
+                new_loop = asyncio.new_event_loop()
+                try:
+                    asyncio.set_event_loop(new_loop)
+                    return new_loop.run_until_complete(
+                        self.analyze_code(code, language, filename, request)
+                    )
+                finally:
+                    new_loop.close()
+
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                future = pool.submit(run_in_new_loop)
+                return future.result(timeout=60)
+
         except RuntimeError:
-            # No running loop, safe to use asyncio.run()
+            # イベントループが実行されていない場合、asyncio.run() を安全に使用
             return asyncio.run(self.analyze_code(code, language, filename, request))
-
-        # Already in an event loop - create a new thread to run the async code
-        import concurrent.futures
-
-        with concurrent.futures.ThreadPoolExecutor() as pool:
-            future = pool.submit(
-                asyncio.run, self.analyze_code(code, language, filename, request)
-            )
-            return future.result()
 
     async def _run_queries(
         self,
@@ -480,9 +502,14 @@ class UnifiedAnalysisEngine:
 
     @classmethod
     def _reset_instance(cls) -> None:
-        """Compatibility method for resetting instances"""
-        EngineManager.reset_instances()
-        cls._instances.clear()
+        """
+        Reset all singleton instances (for testing).
+
+        注意: EngineManager.reset_instances() も同じ _instances をクリアするため、
+        どちらのメソッドを呼んでも同じ結果になります。
+        """
+        with cls._lock:
+            cls._instances.clear()
 
 
 # Simple plugin implementation (for testing)

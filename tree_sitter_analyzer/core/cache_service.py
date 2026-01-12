@@ -2,14 +2,19 @@
 """
 Unified Cache Service - Common Cache System for CLI and MCP
 
-This module provides a memory-efficient hierarchical cache system.
-Achieves optimal performance with a 3-tier structure: L1 (fast), L2 (medium-term), L3 (long-term).
+このモジュールはメモリ効率の良いキャッシュシステムを提供します。
+シンプルなLRUキャッシュを使用し、TTL（有効期限）をサポートします。
 
-Roo Code compliance:
-- Type hints: Required for all functions
-- MCP logging: Log output at each step
-- docstring: Google Style docstring
-- Performance-focused: Optimization of memory efficiency and access speed
+設計ノート:
+以前の3階層キャッシュ（L1/L2/L3）は設計上の問題がありました：
+- set()で同じエントリが全階層に保存されていた
+- 「昇格」ロジックは意味がなかった（データは最初から全階層に存在）
+- メモリが無駄に使用されていた
+
+この実装では、シンプルな単層LRUキャッシュを使用します：
+- メモリ効率が良い
+- 動作が予測可能
+- APIは後方互換性を維持
 """
 
 import hashlib
@@ -18,7 +23,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any
 
-from cachetools import LRUCache, TTLCache
+from cachetools import LRUCache
 
 from ..utils import log_debug, log_info
 
@@ -26,15 +31,15 @@ from ..utils import log_debug, log_info
 @dataclass(frozen=True)
 class CacheEntry:
     """
-    Cache Entry
+    キャッシュエントリ
 
-    Data class that holds cached values and metadata.
+    キャッシュされた値とメタデータを保持するデータクラス。
 
     Attributes:
-        value: Cached value
-        created_at: Creation timestamp
-        expires_at: Expiration time
-        access_count: Access count
+        value: キャッシュされた値
+        created_at: 作成タイムスタンプ
+        expires_at: 有効期限
+        access_count: アクセス回数
     """
 
     value: Any
@@ -44,10 +49,10 @@ class CacheEntry:
 
     def is_expired(self) -> bool:
         """
-        Expiration check
+        有効期限チェック
 
         Returns:
-            bool: True if expired
+            bool: 期限切れの場合True
         """
         if self.expires_at is None:
             return False
@@ -56,17 +61,15 @@ class CacheEntry:
 
 class CacheService:
     """
-    Unified Cache Service
+    統合キャッシュサービス
 
-    Provides hierarchical cache system and shares cache between CLI and MCP.
-    3-tier structure optimized for memory efficiency and access speed.
+    シンプルなLRUキャッシュを提供し、CLI/MCP間でキャッシュを共有します。
+    TTL（有効期限）をサポートし、メモリ効率を最適化しています。
 
     Attributes:
-        _l1_cache: L1 cache (for fast access)
-        _l2_cache: L2 cache (for medium-term storage)
-        _l3_cache: L3 cache (for long-term storage)
-        _lock: Lock for thread safety
-        _stats: Cache statistics
+        _cache: LRUキャッシュ
+        _lock: スレッドセーフのためのロック
+        _stats: キャッシュ統計
     """
 
     def __init__(
@@ -77,49 +80,42 @@ class CacheService:
         ttl_seconds: int = 3600,
     ) -> None:
         """
-        Initialization
+        初期化
 
         Args:
-            l1_maxsize: Maximum size of L1 cache
-            l2_maxsize: Maximum size of L2 cache
-            l3_maxsize: Maximum size of L3 cache
-            ttl_seconds: Default TTL (seconds)
-        """
-        # Initialize hierarchical cache
-        self._l1_cache: LRUCache[str, CacheEntry] = LRUCache(maxsize=l1_maxsize)
-        self._l2_cache: TTLCache[str, CacheEntry] = TTLCache(
-            maxsize=l2_maxsize, ttl=ttl_seconds
-        )
-        self._l3_cache: LRUCache[str, CacheEntry] = LRUCache(maxsize=l3_maxsize)
+            l1_maxsize: 後方互換性のため保持（無視）
+            l2_maxsize: 後方互換性のため保持（無視）
+            l3_maxsize: キャッシュの最大サイズ
+            ttl_seconds: デフォルトTTL（秒）
 
-        # Lock for thread safety
+        注意: 単層キャッシュのため、l3_maxsize が実際のキャッシュサイズになります。
+        """
+        # 単一のLRUキャッシュを使用
+        self._cache: LRUCache[str, CacheEntry] = LRUCache(maxsize=l3_maxsize)
+
+        # スレッドセーフのためのロック
         self._lock = threading.RLock()
 
-        # Cache statistics
+        # キャッシュ統計（後方互換性のため階層別統計を維持）
         self._stats = {
             "hits": 0,
             "misses": 0,
-            "l1_hits": 0,
-            "l2_hits": 0,
-            "l3_hits": 0,
+            "l1_hits": 0,  # 後方互換性のため保持
+            "l2_hits": 0,  # 後方互換性のため保持
+            "l3_hits": 0,  # 後方互換性のため保持
             "sets": 0,
             "evictions": 0,
         }
 
         # デフォルト設定
         self._default_ttl = ttl_seconds
+        self._maxsize = l3_maxsize
 
-        log_debug(
-            f"CacheService initialized: L1={l1_maxsize}, L2={l2_maxsize}, "
-            f"L3={l3_maxsize}, TTL={ttl_seconds}s"
-        )
+        log_debug(f"CacheService initialized: maxsize={l3_maxsize}, TTL={ttl_seconds}s")
 
     async def get(self, key: str) -> Any | None:
         """
         キャッシュから値を取得
-
-        階層キャッシュを順番にチェックし、見つかった場合は
-        上位キャッシュに昇格させる。
 
         Args:
             key: キャッシュキー
@@ -134,34 +130,16 @@ class CacheService:
             raise ValueError("Cache key cannot be empty or None")
 
         with self._lock:
-            # L1キャッシュをチェック
-            entry = self._l1_cache.get(key)
+            entry = self._cache.get(key)
             if entry and not entry.is_expired():
                 self._stats["hits"] += 1
-                self._stats["l1_hits"] += 1
-                log_debug(f"Cache L1 hit: {key}")
+                self._stats["l1_hits"] += 1  # 後方互換性
+                log_debug(f"Cache hit: {key}")
                 return entry.value
 
-            # L2キャッシュをチェック
-            entry = self._l2_cache.get(key)
-            if entry and not entry.is_expired():
-                self._stats["hits"] += 1
-                self._stats["l2_hits"] += 1
-                # L1に昇格
-                self._l1_cache[key] = entry
-                log_debug(f"Cache L2 hit: {key} (promoted to L1)")
-                return entry.value
-
-            # L3キャッシュをチェック
-            entry = self._l3_cache.get(key)
-            if entry and not entry.is_expired():
-                self._stats["hits"] += 1
-                self._stats["l3_hits"] += 1
-                # L2とL1に昇格
-                self._l2_cache[key] = entry
-                self._l1_cache[key] = entry
-                log_debug(f"Cache L3 hit: {key} (promoted to L1/L2)")
-                return entry.value
+            # 期限切れエントリがある場合は削除
+            if entry and entry.is_expired():
+                del self._cache[key]
 
             # キャッシュミス
             self._stats["misses"] += 1
@@ -184,13 +162,12 @@ class CacheService:
         if not key or key is None:
             raise ValueError("Cache key cannot be empty or None")
 
-        # シリアライズ可能性チェック（安全のため標準の pickle を最小限に使用）
+        # シリアライズ可能性チェック
         import pickle  # nosec B403
 
         try:
             pickle.dumps(value)
         except Exception as e:
-            # 具体的なエラー型に依存せず、直感的な TypeError に正規化
             raise TypeError(f"Value is not serializable: {e}") from e
 
         ttl = ttl_seconds or self._default_ttl
@@ -204,11 +181,8 @@ class CacheService:
         )
 
         with self._lock:
-            # 全階層に設定
-            self._l1_cache[key] = entry
-            self._l2_cache[key] = entry
-            self._l3_cache[key] = entry
-
+            # キャッシュに設定
+            self._cache[key] = entry
             self._stats["sets"] += 1
             log_debug(f"Cache set: {key} (TTL={ttl}s)")
 
@@ -217,29 +191,27 @@ class CacheService:
         全キャッシュをクリア
         """
         with self._lock:
-            self._l1_cache.clear()
-            self._l2_cache.clear()
-            self._l3_cache.clear()
+            self._cache.clear()
 
             # 統計をリセット
-            for key in self._stats:
-                self._stats[key] = 0
+            for stat_key in self._stats:
+                self._stats[stat_key] = 0
 
-            # Only log if not in quiet mode (check log level)
+            # Only log if not in quiet mode
             import logging
 
             if logging.getLogger("tree_sitter_analyzer").level <= logging.INFO:
-                log_info("All caches cleared")
+                log_info("Cache cleared")
 
     def size(self) -> int:
         """
         キャッシュサイズを取得
 
         Returns:
-            L1キャッシュのサイズ（最も頻繁にアクセスされるアイテム数）
+            キャッシュ内のアイテム数
         """
         with self._lock:
-            return len(self._l1_cache)
+            return len(self._cache)
 
     def get_stats(self) -> dict[str, Any]:
         """
@@ -254,13 +226,15 @@ class CacheService:
                 self._stats["hits"] / total_requests if total_requests > 0 else 0.0
             )
 
+            cache_size = len(self._cache)
             return {
                 **self._stats,
                 "hit_rate": hit_rate,
                 "total_requests": total_requests,
-                "l1_size": len(self._l1_cache),
-                "l2_size": len(self._l2_cache),
-                "l3_size": len(self._l3_cache),
+                # 後方互換性のため、3つのサイズを報告（全て同じ値）
+                "l1_size": cache_size,
+                "l2_size": cache_size,
+                "l3_size": cache_size,
             }
 
     def generate_cache_key(
@@ -277,16 +251,13 @@ class CacheService:
         Returns:
             ハッシュ化されたキャッシュキー
         """
-        # 一意なキーを生成するための文字列を構築
         key_components = [
             file_path,
             language,
-            str(sorted(options.items())),  # 辞書を安定した文字列に変換
+            str(sorted(options.items())),
         ]
 
         key_string = ":".join(key_components)
-
-        # SHA256でハッシュ化
         return hashlib.sha256(key_string.encode("utf-8")).hexdigest()
 
     async def invalidate_pattern(self, pattern: str) -> int:
@@ -302,14 +273,12 @@ class CacheService:
         invalidated_count = 0
 
         with self._lock:
-            # 各階層からパターンに一致するキーを削除
-            for cache in [self._l1_cache, self._l2_cache, self._l3_cache]:
-                keys_to_remove = [key for key in cache.keys() if pattern in key]
+            keys_to_remove = [key for key in self._cache.keys() if pattern in key]
 
-                for key in keys_to_remove:
-                    if key in cache:
-                        del cache[key]
-                        invalidated_count += 1
+            for key in keys_to_remove:
+                if key in self._cache:
+                    del self._cache[key]
+                    invalidated_count += 1
 
         log_info(
             f"Invalidated {invalidated_count} cache entries matching pattern: {pattern}"
@@ -319,15 +288,10 @@ class CacheService:
     def __del__(self) -> None:
         """デストラクタ - リソースクリーンアップ"""
         try:
-            # Only clear if not in shutdown mode
             import sys
 
-            if sys.meta_path is not None:  # Check if Python is not shutting down
-                # Clear caches without logging to avoid shutdown issues
+            if sys.meta_path is not None:
                 with self._lock:
-                    self._l1_cache.clear()
-                    self._l2_cache.clear()
-                    self._l3_cache.clear()
+                    self._cache.clear()
         except Exception:
-            # Silently ignore all errors during shutdown to prevent ImportError
             pass  # nosec

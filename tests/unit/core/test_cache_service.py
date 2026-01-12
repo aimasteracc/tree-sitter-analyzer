@@ -417,9 +417,9 @@ class TestCacheServiceInvalidatePattern:
         # invalidate_pattern is async, so use await
         count = await service.invalidate_pattern("prefix_")
 
-        # invalidate_pattern removes from all 3 cache tiers (L1, L2, L3)
-        # So 2 matching keys * 3 tiers = 6 deletions
-        assert count == 6
+        # 単層キャッシュのため、2つのマッチするキーが削除される
+        # 注意: 以前の3階層キャッシュでは 2 * 3 = 6 だった
+        assert count == 2
 
         result1 = await service.get("prefix_key1")
         result2 = await service.get("prefix_key2")
@@ -452,9 +452,9 @@ class TestCacheServiceInvalidatePattern:
         # invalidate_pattern is async, so use await
         count = await service.invalidate_pattern("key")
 
-        # invalidate_pattern removes from all 3 cache tiers (L1, L2, L3)
-        # So 2 matching keys * 3 tiers = 6 deletions
-        assert count == 6
+        # 単層キャッシュのため、2つのマッチするキーが削除される
+        # 注意: 以前の3階層キャッシュでは 2 * 3 = 6 だった
+        assert count == 2
 
 
 class TestCacheServiceHierarchical:
