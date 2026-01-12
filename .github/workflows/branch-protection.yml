@@ -15,7 +15,7 @@ jobs:
     if: github.event.inputs.enable_protection != false
     steps:
       - name: Setup Branch Protection
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             const { data: branch } = await github.rest.repos.getBranch({
