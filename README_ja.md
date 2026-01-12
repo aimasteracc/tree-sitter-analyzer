@@ -4,7 +4,7 @@
 
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-8409%20passed-brightgreen.svg)](#-品質とテスト)
+[![Tests](https://img.shields.io/badge/tests-8405%20passed-brightgreen.svg)](#-品質とテスト)
 [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
 [![Version](https://img.shields.io/badge/version-1.10.4-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
@@ -20,7 +20,7 @@
 - **フォーマット変更管理システム**: フォーマット変更検出と動作プロファイル比較機能を追加
 - **言語サポート強化**: Go、Rust、Kotlinがコア依存関係に昇格
 - **C++フォーマッター**: C++コードフォーマット機能を追加
-- **8,409テスト** 100%パス率、80.33%カバレッジ
+- **8,405テスト** 100%パス率、80.33%カバレッジ
 
 📖 完全なバージョン履歴は **[変更履歴](CHANGELOG.md)** をご覧ください。
 

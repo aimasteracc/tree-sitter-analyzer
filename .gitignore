@@ -324,3 +324,20 @@ tests/debug_artifacts/
 /output.toon
 /test_mcp_output.toon
 /test_mcp_suppress_output.toon
+
+# Claude Code / AI Assistant temporary files
+tmpclaude-*
+planning-with-files/
+
+# Claude Code - local settings only (project settings should be committed)
+.claude/settings.local.json
+.claude/temp/
+.claude/*.log
+
+# Kiro planning session logs (progress.md is temporary)
+.kiro/specs/*/progress.md
+.kiro/specs/*/implementation_log.md
+
+# Other AI tools temporary files
+.cursor/temp/
+.roo/temp/
