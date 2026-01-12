@@ -521,7 +521,7 @@ dev = [
     "types-jsonschema",
     "types-PyYAML",
     "types-cachetools",
-    "mypy==1.18.2",
+    "mypy==1.19.1",
     "hypothesis>=6.0.0",
     "pytest-xdist>=3.8.0",
     "pytest-benchmark>=5.1.0",
