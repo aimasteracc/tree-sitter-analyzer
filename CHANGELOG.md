@@ -23,7 +23,7 @@
 - **Tests Updated**: Unit and integration tests updated to reflect schema changes
 
 ### 📊 Quality Metrics
-- **Tests**: 8,409 tests (100% pass rate)
+- **Tests**: 8,405 tests (100% pass rate)
 - **Coverage**: 80.33% (maintained)
 - **Breaking Changes**: None - all improvements are backward compatible
 
@@ -51,7 +51,7 @@
 - **Test Quality**: Restored precise assertions in formatter tests
 
 ### 📊 Quality Metrics
-- **Tests**: 8,409 tests (100% pass rate)
+- **Tests**: 8,405 tests (100% pass rate)
 - **Coverage**: 80.33% (maintained)
 - **Breaking Changes**: None
 

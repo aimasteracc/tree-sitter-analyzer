@@ -26,7 +26,7 @@ uv run tree-sitter-analyzer --show-supported-languages
 
 ### Testing
 ```bash
-# Run all tests (8,409+ tests)
+# Run all tests (8,405+ tests)
 uv run pytest tests/ -v
 
 # Run specific test categories
