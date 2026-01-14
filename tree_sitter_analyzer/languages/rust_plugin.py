@@ -14,22 +14,21 @@ if TYPE_CHECKING:
     from ..core.analysis_engine import AnalysisRequest
     from ..models import AnalysisResult
 
-from ..encoding_utils import extract_text_slice, safe_encode
 from ..models import Class, Function, Import, Variable
 from ..plugins.base import ElementExtractor, LanguagePlugin
+from ..plugins.programming_language_extractor import ProgrammingLanguageExtractor
 from ..utils import log_debug, log_error
 
 
-class RustElementExtractor(ElementExtractor):
+class RustElementExtractor(ProgrammingLanguageExtractor):
     """Rust-specific element extractor"""
 
     def __init__(self) -> None:
         """Initialize the Rust element extractor."""
+        super().__init__()
+        # Rust-specific attributes only
         self.current_module: str = ""
         self.current_file: str = ""
-        self.source_code: str = ""
-        self.content_lines: list[str] = []
-        self._node_text_cache: dict[tuple[int, int], str] = {}
         self.impl_blocks: list[dict[str, Any]] = []
         self.modules: list[dict[str, Any]] = []
 
@@ -164,7 +163,7 @@ class RustElementExtractor(ElementExtractor):
 
     def _reset_caches(self) -> None:
         """Reset performance caches"""
-        self._node_text_cache.clear()
+        super()._reset_caches()
         # Modules and impls persist across extraction calls within the same file analysis
         # but we clear them here if we assume sequential full extraction calls.
         # Ideally, we should call extract_modules separately or share state.
@@ -457,21 +456,8 @@ class RustElementExtractor(ElementExtractor):
         return derives
 
     def _get_node_text(self, node: "tree_sitter.Node") -> str:
-        """Get node text with caching using position-based keys"""
-        cache_key = (node.start_byte, node.end_byte)
-        if cache_key in self._node_text_cache:
-            return self._node_text_cache[cache_key]
-
-        try:
-            start_byte = node.start_byte
-            end_byte = node.end_byte
-            encoding = "utf-8"  # Default
-            content_bytes = safe_encode("\n".join(self.content_lines), encoding)
-            text = extract_text_slice(content_bytes, start_byte, end_byte, encoding)
-            self._node_text_cache[cache_key] = text
-            return text
-        except Exception:
-            return ""
+        """Get node text using parent's optimized method"""
+        return self._get_node_text_optimized(node, use_byte_offsets=True)
 
 
 class RustPlugin(LanguagePlugin):

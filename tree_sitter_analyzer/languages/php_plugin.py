@@ -23,10 +23,11 @@ except ImportError:
 
 from ..models import Class, Function, Import, Variable
 from ..plugins.base import ElementExtractor, LanguagePlugin
+from ..plugins.programming_language_extractor import ProgrammingLanguageExtractor
 from ..utils import log_error
 
 
-class PHPElementExtractor(ElementExtractor):
+class PHPElementExtractor(ProgrammingLanguageExtractor):
     """
     PHP-specific element extractor.
 
@@ -53,44 +54,19 @@ class PHPElementExtractor(ElementExtractor):
         optimization caches for node text extraction.
         """
         super().__init__()
-        self.source_code: str = ""
-        self.content_lines: list[str] = []
         self.current_namespace: str = ""
-
-        # Performance optimization caches - use position-based keys for deterministic caching
-        self._node_text_cache: dict[tuple[int, int], str] = {}
-        self._processed_nodes: set[tuple[int, int]] = set()
-        self._element_cache: dict[tuple[tuple[int, int], str], Any] = {}
-        self._file_encoding: str | None = None
+        # Override parent's _element_cache with PHP-specific key structure
+        self._element_cache: dict[tuple[tuple[int, int], str], Any] = {}  # type: ignore[assignment]
+        # Override parent's _file_encoding to allow None
+        self._file_encoding: str | None = None  # type: ignore[assignment]
         self._attribute_cache: dict[tuple[int, int], list[dict[str, Any]]] = {}
 
     def _reset_caches(self) -> None:
         """Reset all internal caches for a new file analysis."""
-        self._node_text_cache.clear()
-        self._processed_nodes.clear()
+        super()._reset_caches()
         self._element_cache.clear()
         self._attribute_cache.clear()
         self.current_namespace = ""
-
-    def _get_node_text_optimized(self, node: "tree_sitter.Node") -> str:
-        """
-        Get text content of a node with caching for performance.
-
-        Args:
-            node: Tree-sitter node to extract text from
-
-        Returns:
-            Text content of the node as string
-        """
-        # Use node position as cache key instead of object id for deterministic behavior
-        cache_key = (node.start_byte, node.end_byte)
-        if cache_key in self._node_text_cache:
-            return self._node_text_cache[cache_key]
-
-        # Extract text directly from source code string
-        text = self.source_code[node.start_byte : node.end_byte]
-        self._node_text_cache[cache_key] = text
-        return text
 
     def _extract_namespace(self, node: "tree_sitter.Node") -> None:
         """
