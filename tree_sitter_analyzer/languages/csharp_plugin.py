@@ -24,10 +24,11 @@ except ImportError:
 
 from ..models import Class, Function, Import, Variable
 from ..plugins.base import ElementExtractor, LanguagePlugin
+from ..plugins.base_element_extractor import BaseElementExtractor
 from ..utils import log_debug, log_error
 
 
-class CSharpElementExtractor(ElementExtractor):
+class CSharpElementExtractor(BaseElementExtractor):
     """
     C#-specific element extractor.
 
@@ -54,44 +55,39 @@ class CSharpElementExtractor(ElementExtractor):
         optimization caches for node text extraction.
         """
         super().__init__()
-        self.source_code: str = ""
-        self.content_lines: list[str] = []
         self.current_namespace: str = ""
 
-        # Performance optimization caches - use position-based keys for deterministic caching
-        self._node_text_cache: dict[tuple[int, int], str] = {}
-        self._processed_nodes: set[tuple[int, int]] = set()
-        self._element_cache: dict[tuple[tuple[int, int], str], Any] = {}
-        self._file_encoding: str | None = None
+        # C#-specific caches (inherited caches from BaseElementExtractor:
+        # _node_text_cache, _processed_nodes, _element_cache, source_code, content_lines, _file_encoding)
         self._attribute_cache: dict[tuple[int, int], list[dict[str, Any]]] = {}
 
     def _reset_caches(self) -> None:
         """Reset all internal caches for a new file analysis."""
-        self._node_text_cache.clear()
-        self._processed_nodes.clear()
-        self._element_cache.clear()
+        super()._reset_caches()
         self._attribute_cache.clear()
         self.current_namespace = ""
 
-    def _get_node_text_optimized(self, node: "tree_sitter.Node") -> str:
+    def _get_container_node_types(self) -> set[str]:
         """
-        Get text content of a node with caching for performance.
-
-        Args:
-            node: Tree-sitter node to extract text from
+        Get C#-specific container node types.
 
         Returns:
-            Text content of the node as string
+            Set of node type strings that may contain target elements
         """
-        # Use node position as cache key instead of object id for deterministic behavior
-        cache_key = (node.start_byte, node.end_byte)
-        if cache_key in self._node_text_cache:
-            return self._node_text_cache[cache_key]
-
-        # Extract text directly from source code string
-        text = self.source_code[node.start_byte : node.end_byte]
-        self._node_text_cache[cache_key] = text
-        return text
+        return super()._get_container_node_types() | {
+            "compilation_unit",
+            "namespace_declaration",
+            "file_scoped_namespace_declaration",
+            "class_declaration",
+            "interface_declaration",
+            "struct_declaration",
+            "record_declaration",
+            "enum_declaration",
+            "class_body",
+            "interface_body",
+            "struct_body",
+            "declaration_list",
+        }
 
     def _extract_namespace(self, node: "tree_sitter.Node") -> None:
         """
@@ -261,9 +257,7 @@ class CSharpElementExtractor(ElementExtractor):
         Returns:
             List of Class objects representing all class-like declarations
         """
-        self.source_code = source_code or ""
-        self.content_lines = self.source_code.split("\n")
-        self._reset_caches()
+        self._initialize_source(source_code or "")
 
         classes: list[Class] = []
 
@@ -386,9 +380,7 @@ class CSharpElementExtractor(ElementExtractor):
         Returns:
             List of Function objects representing methods, constructors, and properties
         """
-        self.source_code = source_code or ""
-        self.content_lines = self.source_code.split("\n")
-        self._reset_caches()
+        self._initialize_source(source_code or "")
 
         functions: list[Function] = []
 
@@ -630,9 +622,7 @@ class CSharpElementExtractor(ElementExtractor):
         Returns:
             List of Variable objects representing fields
         """
-        self.source_code = source_code or ""
-        self.content_lines = self.source_code.split("\n")
-        self._reset_caches()
+        self._initialize_source(source_code or "")
 
         variables: list[Variable] = []
 
@@ -786,8 +776,7 @@ class CSharpElementExtractor(ElementExtractor):
         Returns:
             List of Import objects representing using directives
         """
-        self.source_code = source_code or ""
-        self.content_lines = self.source_code.split("\n")
+        self._initialize_source(source_code or "")
 
         imports: list[Import] = []
 

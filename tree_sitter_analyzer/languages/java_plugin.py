@@ -7,6 +7,7 @@ Migrated from AdvancedAnalyzer implementation for future independence.
 """
 
 import re
+from collections.abc import Callable, Mapping
 from typing import TYPE_CHECKING, Any
 
 import anyio
@@ -17,41 +18,59 @@ if TYPE_CHECKING:
     from ..core.analysis_engine import AnalysisRequest
     from ..models import AnalysisResult
 
-from ..encoding_utils import extract_text_slice, safe_encode
 from ..models import Class, Function, Import, Package, Variable
 from ..plugins.base import ElementExtractor, LanguagePlugin
+from ..plugins.base_element_extractor import BaseElementExtractor
 from ..utils import log_debug, log_error, log_warning
 
 
-class JavaElementExtractor(ElementExtractor):
+class JavaElementExtractor(BaseElementExtractor):
     """Java-specific element extractor with AdvancedAnalyzer implementation"""
 
     def __init__(self) -> None:
         """Initialize the Java element extractor."""
+        super().__init__()
         self.current_package: str = ""
         self.current_file: str = ""
-        self.source_code: str = ""
-        self.content_lines: list[str] = []
         self.imports: list[str] = []
 
-        # Performance optimization caches - use position-based keys for deterministic caching
-        self._node_text_cache: dict[tuple[int, int], str] = {}
-        self._processed_nodes: set[int] = set()
-        self._element_cache: dict[tuple[int, str], Any] = {}
-        self._file_encoding: str | None = None
+        # Java-specific caches
         self._annotation_cache: dict[int, list[dict[str, Any]]] = {}
         self._signature_cache: dict[int, str] = {}
 
         # Extracted annotations for cross-referencing
         self.annotations: list[dict[str, Any]] = []
 
+    def _reset_caches(self) -> None:
+        """Reset performance caches"""
+        super()._reset_caches()
+        self._annotation_cache.clear()
+        self._signature_cache.clear()
+        self.annotations.clear()
+        self.current_package = (
+            ""  # Reset package state to avoid cross-test contamination
+        )
+
+    def _get_container_node_types(self) -> set[str]:
+        """Return Java-specific container node types."""
+        return super()._get_container_node_types() | {
+            "class_body",
+            "interface_body",
+            "enum_body",
+            "enum_body_declarations",  # Required for enum methods/fields/constructors
+            "class_declaration",
+            "interface_declaration",
+            "enum_declaration",
+            "method_declaration",
+            "constructor_declaration",
+            "modifiers",  # Annotation nodes can appear inside modifiers
+        }
+
     def extract_annotations(
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[dict[str, Any]]:
         """Extract Java annotations using AdvancedAnalyzer implementation"""
-        self.source_code = source_code
-        self.content_lines = source_code.split("\n")
-        self._reset_caches()
+        self._initialize_source(source_code)
 
         annotations: list[dict[str, Any]] = []
 
@@ -75,9 +94,7 @@ class JavaElementExtractor(ElementExtractor):
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[Function]:
         """Extract Java method definitions using AdvancedAnalyzer implementation"""
-        self.source_code = source_code
-        self.content_lines = source_code.split("\n")
-        self._reset_caches()
+        self._initialize_source(source_code)
 
         functions: list[Function] = []
 
@@ -98,9 +115,7 @@ class JavaElementExtractor(ElementExtractor):
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[Class]:
         """Extract Java class definitions using AdvancedAnalyzer implementation"""
-        self.source_code = source_code
-        self.content_lines = source_code.split("\n")
-        self._reset_caches()
+        self._initialize_source(source_code)
 
         # Ensure package information is extracted before processing classes
         # This fixes the issue where current_package is empty when extract_classes
@@ -128,9 +143,7 @@ class JavaElementExtractor(ElementExtractor):
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[Variable]:
         """Extract Java field definitions using AdvancedAnalyzer implementation"""
-        self.source_code = source_code
-        self.content_lines = source_code.split("\n")
-        self._reset_caches()
+        self._initialize_source(source_code)
 
         variables: list[Variable] = []
 
@@ -153,8 +166,7 @@ class JavaElementExtractor(ElementExtractor):
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[Import]:
         """Extract Java import statements with enhanced robustness"""
-        self.source_code = source_code
-        self.content_lines = source_code.split("\n")
+        self._initialize_source(source_code)
 
         imports: list[Import] = []
 
@@ -254,8 +266,7 @@ class JavaElementExtractor(ElementExtractor):
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[Package]:
         """Extract Java package declarations"""
-        self.source_code = source_code
-        self.content_lines = source_code.split("\n")
+        self._initialize_source(source_code)
 
         packages: list[Package] = []
 
@@ -296,28 +307,17 @@ class JavaElementExtractor(ElementExtractor):
         log_debug(f"Extracted {len(packages)} packages")
         return packages
 
-    def _reset_caches(self) -> None:
-        """Reset performance caches"""
-        self._node_text_cache.clear()
-        self._processed_nodes.clear()
-        self._element_cache.clear()
-        self._annotation_cache.clear()
-        self._signature_cache.clear()
-        self.annotations.clear()
-        self.current_package = (
-            ""  # Reset package state to avoid cross-test contamination
-        )
-
     def _traverse_and_extract_iterative(
         self,
         root_node: "tree_sitter.Node | None",
-        extractors: dict[str, Any],
+        extractors: Mapping[str, Callable[["tree_sitter.Node"], Any]],
         results: list[Any],
         element_type: str,
+        max_depth: int = 50,
     ) -> None:
         """
-        Iterative node traversal and extraction (from AdvancedAnalyzer)
-        Uses batch processing for optimal performance
+        Java-specific iterative node traversal with field batch processing.
+        Overrides base class to add batch processing for fields.
         """
         if not root_node:
             return
@@ -325,29 +325,15 @@ class JavaElementExtractor(ElementExtractor):
         # Target node types for extraction
         target_node_types = set(extractors.keys())
 
-        # Container node types that may contain target nodes (from AdvancedAnalyzer)
-        container_node_types = {
-            "program",
-            "class_body",
-            "interface_body",
-            "enum_body",
-            "enum_body_declarations",  # Required for enum methods/fields/constructors
-            "class_declaration",
-            "interface_declaration",
-            "enum_declaration",
-            "method_declaration",
-            "constructor_declaration",
-            "block",
-            "modifiers",  # Annotation nodes can appear inside modifiers
-        }
+        # Use base class container types plus Java-specific ones
+        container_node_types = self._get_container_node_types()
 
         # Iterative DFS stack: (node, depth)
-        node_stack = [(root_node, 0)]
+        node_stack: list[tuple[tree_sitter.Node, int]] = [(root_node, 0)]
         processed_nodes = 0
-        max_depth = 50  # Prevent infinite loops
 
-        # Batch processing containers (from AdvancedAnalyzer)
-        field_batch = []
+        # Java-specific: batch processing for fields (from AdvancedAnalyzer)
+        field_batch: list[tree_sitter.Node] = []
 
         while node_stack:
             current_node, depth = node_stack.pop()
@@ -368,7 +354,7 @@ class JavaElementExtractor(ElementExtractor):
             ):
                 continue
 
-            # Collect target nodes for batch processing (from AdvancedAnalyzer)
+            # Collect target nodes for batch processing (Java-specific)
             if node_type in target_node_types:
                 if element_type == "field" and node_type == "field_declaration":
                     field_batch.append(current_node)
@@ -409,25 +395,26 @@ class JavaElementExtractor(ElementExtractor):
                 for child in reversed(current_node.children):
                     node_stack.append((child, depth + 1))
 
-            # Process field batch when it reaches optimal size (from AdvancedAnalyzer)
+            # Process field batch when it reaches optimal size (Java-specific)
             if len(field_batch) >= 10:
                 self._process_field_batch(field_batch, extractors, results)
                 field_batch.clear()
 
-        # Process remaining field batch (from AdvancedAnalyzer)
+        # Process remaining field batch
         if field_batch:
             self._process_field_batch(field_batch, extractors, results)
 
         log_debug(f"Iterative traversal processed {processed_nodes} nodes")
 
     def _process_field_batch(
-        self, batch: list["tree_sitter.Node"], extractors: dict, results: list[Any]
+        self,
+        batch: list["tree_sitter.Node"],
+        extractors: Mapping[str, Callable[["tree_sitter.Node"], Any]],
+        results: list[Any],
     ) -> None:
-        """Process field nodes with caching using position-based keys"""
+        """Java-specific: Process field nodes in batch with caching."""
         for node in batch:
-            # Use stable node identifier
             node_id = id(node)
-            node_key = node_id  # Maintain variable name for minimal changes
 
             # Skip if already processed
             if node_id in self._processed_nodes:
@@ -442,7 +429,7 @@ class JavaElementExtractor(ElementExtractor):
                         results.extend(elements)
                     else:
                         results.append(elements)
-                self._processed_nodes.add(node_key)
+                self._processed_nodes.add(node_id)
                 continue
 
             # Extract and cache
@@ -456,55 +443,6 @@ class JavaElementExtractor(ElementExtractor):
                     else:
                         results.append(elements)
                 self._processed_nodes.add(node_id)
-
-    def _get_node_text_optimized(self, node: "tree_sitter.Node") -> str:
-        """Get node text with optimized caching using position-based keys"""
-        # Use position-based cache key for deterministic behavior
-        cache_key = (node.start_byte, node.end_byte)
-
-        # Check cache first
-        if cache_key in self._node_text_cache:
-            return self._node_text_cache[cache_key]
-
-        try:
-            # Use encoding utilities for text extraction
-            start_byte = node.start_byte
-            end_byte = node.end_byte
-
-            encoding = self._file_encoding or "utf-8"
-            content_bytes = safe_encode("\n".join(self.content_lines), encoding)
-            text = extract_text_slice(content_bytes, start_byte, end_byte, encoding)
-
-            self._node_text_cache[cache_key] = text
-            return text
-        except Exception as e:
-            log_error(f"Error in _get_node_text_optimized: {e}")
-            # Fallback to simple text extraction
-            try:
-                start_point = node.start_point
-                end_point = node.end_point
-
-                if start_point[0] == end_point[0]:
-                    # Single line
-                    line = self.content_lines[start_point[0]]
-                    result: str = line[start_point[1] : end_point[1]]
-                    return result
-                else:
-                    # Multiple lines
-                    lines = []
-                    for i in range(start_point[0], end_point[0] + 1):
-                        if i < len(self.content_lines):
-                            line = self.content_lines[i]
-                            if i == start_point[0]:
-                                lines.append(line[start_point[1] :])
-                            elif i == end_point[0]:
-                                lines.append(line[: end_point[1]])
-                            else:
-                                lines.append(line)
-                    return "\n".join(lines)
-            except Exception as fallback_error:
-                log_error(f"Fallback text extraction also failed: {fallback_error}")
-                return ""
 
     def _extract_class_optimized(self, node: "tree_sitter.Node") -> Class | None:
         """Extract class information optimized (from AdvancedAnalyzer)"""

@@ -264,7 +264,7 @@ def __magic_method__(self, other):
 
         # Mock extract_text_slice to raise exception
         with patch(
-            "tree_sitter_analyzer.languages.python_plugin.extract_text_slice"
+            "tree_sitter_analyzer.encoding_utils.extract_text_slice"
         ) as mock_extract:
             mock_extract.side_effect = Exception("Test error")
 
@@ -1040,7 +1040,7 @@ def __magic_method__(self, other):
             mock_node_copy.end_point = (0, 10)
 
             with patch(
-                "tree_sitter_analyzer.languages.python_plugin.extract_text_slice"
+                "tree_sitter_analyzer.encoding_utils.extract_text_slice"
             ) as mock_extract:
                 mock_extract.return_value = f"text_{i}"
                 extractor._get_node_text_optimized(mock_node_copy)
@@ -1095,7 +1095,7 @@ class クラス名:
         mock_node.end_point = (len(extractor.content_lines) - 1, 0)
 
         with patch(
-            "tree_sitter_analyzer.languages.python_plugin.extract_text_slice"
+            "tree_sitter_analyzer.encoding_utils.extract_text_slice"
         ) as mock_extract:
             mock_extract.return_value = unicode_code
             result = extractor._get_node_text_optimized(mock_node)
