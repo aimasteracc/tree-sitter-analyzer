@@ -23,30 +23,26 @@ except ImportError:
     TREE_SITTER_AVAILABLE = False
 
 from ..core.analysis_engine import AnalysisRequest
-from ..encoding_utils import extract_text_slice, safe_encode
 from ..models import AnalysisResult, Class, CodeElement, Function, Import, Variable
 from ..plugins.base import ElementExtractor, LanguagePlugin
+from ..plugins.base_element_extractor import BaseElementExtractor
 from ..utils import log_debug, log_error, log_warning
 from ..utils.tree_sitter_compat import TreeSitterQueryCompat
 
 
-class PythonElementExtractor(ElementExtractor):
+class PythonElementExtractor(BaseElementExtractor):
     """Enhanced Python-specific element extractor with comprehensive feature support"""
 
     def __init__(self) -> None:
         """Initialize the Python element extractor."""
+        super().__init__()
+
+        # Python-specific attributes
         self.current_module: str = ""
-        self.current_file: str = ""
-        self.source_code: str = ""
-        self.content_lines: list[str] = []
         self.imports: list[str] = []
         self.exports: list[dict[str, Any]] = []
 
-        # Performance optimization caches - use position-based keys for deterministic caching
-        self._node_text_cache: dict[tuple[int, int], str] = {}
-        self._processed_nodes: set[int] = set()
-        self._element_cache: dict[tuple[int, str], Any] = {}
-        self._file_encoding: str | None = None
+        # Python-specific caches
         self._docstring_cache: dict[int, str] = {}
         self._complexity_cache: dict[int, int] = {}
 
@@ -55,13 +51,29 @@ class PythonElementExtractor(ElementExtractor):
         self.framework_type: str = ""  # django, flask, fastapi, etc.
         self.python_version: str = "3.8"  # default
 
+    def _reset_caches(self) -> None:
+        """Reset performance caches including Python-specific caches"""
+        super()._reset_caches()
+        self._docstring_cache.clear()
+        self._complexity_cache.clear()
+
+    def _get_container_node_types(self) -> set[str]:
+        """Python-specific container node types"""
+        return super()._get_container_node_types() | {
+            "class_definition",
+            "function_definition",
+            "if_statement",
+            "for_statement",
+            "while_statement",
+            "with_statement",
+            "try_statement",
+        }
+
     def extract_functions(
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[Function]:
         """Extract Python function definitions with comprehensive details"""
-        self.source_code = source_code or ""
-        self.content_lines = self.source_code.split("\n")
-        self._reset_caches()
+        self._initialize_source(source_code or "")
         self._detect_file_characteristics()
 
         functions: list[Function] = []
@@ -87,9 +99,7 @@ class PythonElementExtractor(ElementExtractor):
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[Class]:
         """Extract Python class definitions with detailed information"""
-        self.source_code = source_code or ""
-        self.content_lines = self.source_code.split("\n")
-        self._reset_caches()
+        self._initialize_source(source_code or "")
 
         classes: list[Class] = []
 
@@ -151,14 +161,6 @@ class PythonElementExtractor(ElementExtractor):
 
         return variables
 
-    def _reset_caches(self) -> None:
-        """Reset performance caches"""
-        self._node_text_cache.clear()
-        self._processed_nodes.clear()
-        self._element_cache.clear()
-        self._docstring_cache.clear()
-        self._complexity_cache.clear()
-
     def _detect_file_characteristics(self) -> None:
         """Detect Python file characteristics"""
         # Check if it's a module
@@ -174,169 +176,6 @@ class PythonElementExtractor(ElementExtractor):
             self.framework_type = "flask"
         elif "fastapi" in self.source_code or "from fastapi" in self.source_code:
             self.framework_type = "fastapi"
-
-    def _traverse_and_extract_iterative(
-        self,
-        root_node: Optional["tree_sitter.Node"],
-        extractors: dict[str, Any],
-        results: list[Any],
-        element_type: str,
-    ) -> None:
-        """Iterative node traversal and extraction with caching"""
-        if not root_node:
-            return
-
-        target_node_types = set(extractors.keys())
-        container_node_types = {
-            "module",
-            "class_definition",
-            "function_definition",
-            "if_statement",
-            "for_statement",
-            "while_statement",
-            "with_statement",
-            "try_statement",
-            "block",
-        }
-
-        node_stack = [(root_node, 0)]
-        processed_nodes = 0
-        max_depth = 50
-
-        while node_stack:
-            current_node, depth = node_stack.pop()
-
-            if depth > max_depth:
-                log_warning(f"Maximum traversal depth ({max_depth}) exceeded")
-                continue
-
-            processed_nodes += 1
-            node_type = current_node.type
-
-            # Early termination for irrelevant nodes
-            if (
-                depth > 0
-                and node_type not in target_node_types
-                and node_type not in container_node_types
-            ):
-                continue
-
-            # Process target nodes
-            if node_type in target_node_types:
-                node_id = id(current_node)
-
-                if node_id in self._processed_nodes:
-                    continue
-
-                cache_key = (node_id, element_type)
-                if cache_key in self._element_cache:
-                    element = self._element_cache[cache_key]
-                    if element:
-                        if isinstance(element, list):
-                            results.extend(element)
-                        else:
-                            results.append(element)
-                    self._processed_nodes.add(node_id)
-                    continue
-
-                # Extract and cache
-                extractor = extractors.get(node_type)
-                if extractor:
-                    try:
-                        element = extractor(current_node)
-                        self._element_cache[cache_key] = element
-                        if element:
-                            if isinstance(element, list):
-                                results.extend(element)
-                            else:
-                                results.append(element)
-                        self._processed_nodes.add(node_id)
-                    except Exception:
-                        # Skip nodes that cause extraction errors
-                        self._processed_nodes.add(node_id)
-
-            # Add children to stack
-            if current_node.children:
-                try:
-                    # Try to reverse children for proper traversal order
-                    children_list = list(current_node.children)
-                    children_iter = reversed(children_list)
-                except TypeError:
-                    # Fallback for Mock objects or other non-reversible types
-                    try:
-                        children_list = list(current_node.children)
-                        children_iter = iter(children_list)  # type: ignore
-                    except TypeError:
-                        # If children is not iterable, skip
-                        children_iter = iter([])  # type: ignore
-
-                for child in children_iter:
-                    node_stack.append((child, depth + 1))
-
-        log_debug(f"Iterative traversal processed {processed_nodes} nodes")
-
-    def _get_node_text_optimized(self, node: "tree_sitter.Node") -> str:
-        """Get node text with optimized caching using position-based keys"""
-        # Use position-based cache key for deterministic behavior
-        cache_key = (node.start_byte, node.end_byte)
-
-        if cache_key in self._node_text_cache:
-            return self._node_text_cache[cache_key]
-
-        try:
-            start_byte = node.start_byte
-            end_byte = node.end_byte
-
-            encoding = self._file_encoding or "utf-8"
-            content_bytes = safe_encode("\n".join(self.content_lines), encoding)
-            text = extract_text_slice(content_bytes, start_byte, end_byte, encoding)
-
-            # If byte extraction returns empty string, try fallback
-            if text:
-                self._node_text_cache[cache_key] = text
-                return text
-        except Exception as e:
-            log_error(f"Error in _get_node_text_optimized: {e}")
-
-        # Fallback to simple text extraction
-        try:
-            start_point = node.start_point
-            end_point = node.end_point
-
-            # Validate points are within bounds
-            if start_point[0] < 0 or start_point[0] >= len(self.content_lines):
-                return ""
-
-            if end_point[0] < 0 or end_point[0] >= len(self.content_lines):
-                return ""
-
-            if start_point[0] == end_point[0]:
-                line = self.content_lines[start_point[0]]
-                # Ensure column indices are within line bounds
-                start_col = max(0, min(start_point[1], len(line)))
-                end_col = max(start_col, min(end_point[1], len(line)))
-                result: str = line[start_col:end_col]
-                self._node_text_cache[cache_key] = result
-                return result
-            else:
-                lines = []
-                for i in range(start_point[0], end_point[0] + 1):
-                    if i < len(self.content_lines):
-                        line = self.content_lines[i]
-                        if i == start_point[0]:
-                            start_col = max(0, min(start_point[1], len(line)))
-                            lines.append(line[start_col:])
-                        elif i == end_point[0]:
-                            end_col = max(0, min(end_point[1], len(line)))
-                            lines.append(line[:end_col])
-                        else:
-                            lines.append(line)
-                result = "\n".join(lines)
-                self._node_text_cache[cache_key] = result
-                return result
-        except Exception as fallback_error:
-            log_error(f"Fallback text extraction also failed: {fallback_error}")
-            return ""
 
     def _extract_function_optimized(self, node: "tree_sitter.Node") -> Function | None:
         """Extract function information with detailed metadata"""

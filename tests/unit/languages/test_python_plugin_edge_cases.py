@@ -42,7 +42,8 @@ class TestPythonPluginEdgeCases:
         result = extractor.extract_functions(mock_tree, None)
         assert isinstance(result, list)
         assert extractor.source_code == ""
-        assert extractor.content_lines == [""]
+        # Note: _initialize_source("") from BaseElementExtractor returns []
+        assert extractor.content_lines == []
 
     def test_extract_functions_with_empty_source(self, extractor):
         """Test function extraction with empty source code"""
@@ -53,7 +54,8 @@ class TestPythonPluginEdgeCases:
         result = extractor.extract_functions(mock_tree, "")
         assert isinstance(result, list)
         assert extractor.source_code == ""
-        assert extractor.content_lines == [""]
+        # Note: _initialize_source("") from BaseElementExtractor returns []
+        assert extractor.content_lines == []
 
     def test_extract_classes_with_malformed_tree(self, extractor):
         """Test class extraction with malformed tree"""
@@ -115,7 +117,7 @@ class TestPythonPluginEdgeCases:
         extractor.content_lines = ["line1", "line2"]
 
         with patch(
-            "tree_sitter_analyzer.languages.python_plugin.extract_text_slice"
+            "tree_sitter_analyzer.encoding_utils.extract_text_slice"
         ) as mock_extract:
             mock_extract.side_effect = Exception("Byte extraction failed")
 
@@ -137,7 +139,7 @@ class TestPythonPluginEdgeCases:
         ]
 
         with patch(
-            "tree_sitter_analyzer.languages.python_plugin.extract_text_slice"
+            "tree_sitter_analyzer.encoding_utils.extract_text_slice"
         ) as mock_extract:
             mock_extract.side_effect = Exception("Byte extraction failed")
 
@@ -479,7 +481,7 @@ class TestPythonPluginEdgeCases:
             extractor.content_lines = [f"content_{i}"]
 
             with patch(
-                "tree_sitter_analyzer.languages.python_plugin.extract_text_slice"
+                "tree_sitter_analyzer.encoding_utils.extract_text_slice"
             ) as mock_extract:
                 mock_extract.return_value = f"text_{i}"
                 extractor._get_node_text_optimized(mock_node)
@@ -511,7 +513,7 @@ class TestPythonPluginEdgeCases:
 
             # Should handle Unicode without errors
             with patch(
-                "tree_sitter_analyzer.languages.python_plugin.extract_text_slice"
+                "tree_sitter_analyzer.encoding_utils.extract_text_slice"
             ) as mock_extract:
                 mock_extract.return_value = unicode_code
                 result = extractor._get_node_text_optimized(mock_node)
@@ -532,7 +534,7 @@ class TestPythonPluginEdgeCases:
 
         # Should handle very long lines
         with patch(
-            "tree_sitter_analyzer.languages.python_plugin.extract_text_slice"
+            "tree_sitter_analyzer.encoding_utils.extract_text_slice"
         ) as mock_extract:
             mock_extract.return_value = long_line
             result = extractor._get_node_text_optimized(mock_node)
@@ -557,7 +559,7 @@ class TestPythonPluginEdgeCases:
         mock_node.end_point = (len(extractor.content_lines) - 1, 0)
 
         with patch(
-            "tree_sitter_analyzer.languages.python_plugin.extract_text_slice"
+            "tree_sitter_analyzer.encoding_utils.extract_text_slice"
         ) as mock_extract:
             mock_extract.return_value = nested_code
             result = extractor._get_node_text_optimized(mock_node)
@@ -579,7 +581,7 @@ class TestPythonPluginEdgeCases:
 
         # Should handle binary data in strings
         with patch(
-            "tree_sitter_analyzer.languages.python_plugin.extract_text_slice"
+            "tree_sitter_analyzer.encoding_utils.extract_text_slice"
         ) as mock_extract:
             mock_extract.return_value = binary_source
             result = extractor._get_node_text_optimized(mock_node)
@@ -626,7 +628,7 @@ class TestPythonPluginEdgeCases:
                 extractor.content_lines = [f"content_{i}"]
 
                 with patch(
-                    "tree_sitter_analyzer.languages.python_plugin.extract_text_slice"
+                    "tree_sitter_analyzer.encoding_utils.extract_text_slice"
                 ) as mock_extract:
                     mock_extract.return_value = f"text_{i}"
                     extractor._get_node_text_optimized(mock_node)
@@ -659,9 +661,7 @@ class TestPythonPluginEdgeCases:
         mock_node.end_point = (0, 10)
 
         # Should fallback gracefully
-        with patch(
-            "tree_sitter_analyzer.languages.python_plugin.safe_encode"
-        ) as mock_encode:
+        with patch("tree_sitter_analyzer.encoding_utils.safe_encode") as mock_encode:
             mock_encode.side_effect = Exception("Encoding failed")
 
             result = extractor._get_node_text_optimized(mock_node)

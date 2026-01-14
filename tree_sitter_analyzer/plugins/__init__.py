@@ -21,9 +21,13 @@ from ..models import Import as ModelImport
 from ..models import Variable as ModelVariable
 from ..utils import log_debug, log_error, log_warning
 
+# Import BaseElementExtractor for public API
+from .base_element_extractor import BaseElementExtractor
+
 __all__ = [
     "LanguagePlugin",
     "ElementExtractor",
+    "BaseElementExtractor",
     "DefaultExtractor",
     "DefaultLanguagePlugin",
 ]
