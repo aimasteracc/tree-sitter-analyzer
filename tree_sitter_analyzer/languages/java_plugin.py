@@ -20,11 +20,11 @@ if TYPE_CHECKING:
 
 from ..models import Class, Function, Import, Package, Variable
 from ..plugins.base import ElementExtractor, LanguagePlugin
-from ..plugins.base_element_extractor import BaseElementExtractor
+from ..plugins.programming_language_extractor import ProgrammingLanguageExtractor
 from ..utils import log_debug, log_error, log_warning
 
 
-class JavaElementExtractor(BaseElementExtractor):
+class JavaElementExtractor(ProgrammingLanguageExtractor):
     """Java-specific element extractor with AdvancedAnalyzer implementation"""
 
     def __init__(self) -> None:

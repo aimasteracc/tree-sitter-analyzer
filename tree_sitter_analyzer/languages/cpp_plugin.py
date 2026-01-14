@@ -18,11 +18,11 @@ if TYPE_CHECKING:
 
 from ..models import Class, Function, Import, Variable
 from ..plugins.base import ElementExtractor, LanguagePlugin
-from ..plugins.base_element_extractor import BaseElementExtractor
+from ..plugins.programming_language_extractor import ProgrammingLanguageExtractor
 from ..utils import log_debug, log_error
 
 
-class CppElementExtractor(BaseElementExtractor):
+class CppElementExtractor(ProgrammingLanguageExtractor):
     """C++ specific element extractor with advanced analysis support"""
 
     def __init__(self) -> None:

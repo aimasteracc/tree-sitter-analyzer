@@ -25,12 +25,12 @@ except ImportError:
 from ..core.analysis_engine import AnalysisRequest
 from ..models import AnalysisResult, Class, CodeElement, Function, Import, Variable
 from ..plugins.base import ElementExtractor, LanguagePlugin
-from ..plugins.base_element_extractor import BaseElementExtractor
+from ..plugins.programming_language_extractor import ProgrammingLanguageExtractor
 from ..utils import log_debug, log_error, log_warning
 from ..utils.tree_sitter_compat import TreeSitterQueryCompat
 
 
-class PythonElementExtractor(BaseElementExtractor):
+class PythonElementExtractor(ProgrammingLanguageExtractor):
     """Enhanced Python-specific element extractor with comprehensive feature support"""
 
     def __init__(self) -> None:

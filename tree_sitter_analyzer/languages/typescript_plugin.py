@@ -25,11 +25,11 @@ from ..core.analysis_engine import AnalysisRequest
 from ..language_loader import loader
 from ..models import AnalysisResult, Class, CodeElement, Function, Import, Variable
 from ..plugins.base import ElementExtractor, LanguagePlugin
-from ..plugins.base_element_extractor import BaseElementExtractor
+from ..plugins.programming_language_extractor import ProgrammingLanguageExtractor
 from ..utils import log_debug, log_error
 
 
-class TypeScriptElementExtractor(BaseElementExtractor):
+class TypeScriptElementExtractor(ProgrammingLanguageExtractor):
     """Enhanced TypeScript-specific element extractor with comprehensive feature support"""
 
     def __init__(self) -> None:

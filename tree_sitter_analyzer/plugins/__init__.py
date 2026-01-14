@@ -24,10 +24,18 @@ from ..utils import log_debug, log_error, log_warning
 # Import BaseElementExtractor for public API
 from .base_element_extractor import BaseElementExtractor
 
+# Import new layered base classes
+from .cached_element_extractor import CachedElementExtractor
+from .markup_language_extractor import MarkupLanguageExtractor
+from .programming_language_extractor import ProgrammingLanguageExtractor
+
 __all__ = [
     "LanguagePlugin",
     "ElementExtractor",
     "BaseElementExtractor",
+    "CachedElementExtractor",
+    "ProgrammingLanguageExtractor",
+    "MarkupLanguageExtractor",
     "DefaultExtractor",
     "DefaultLanguagePlugin",
 ]
