@@ -469,16 +469,16 @@ BaseElementExtractor（497行）を3層のクラス階層に分割するリフ�
 ---
 
 ### T2.8: Phase 2のコミット
-**Status:** pending
+**Status:** ✅ completed
 **Priority:** P0
 **Objective:** Phase 2の変更をコミット
 
 **Tasks:**
-- [ ] 全テストの実行
+- [x] 全テストの実行
   ```bash
   uv run pytest tests/ -v
   ```
-- [ ] git commit with message:
+- [x] git commit with message:
   ```
   refactor(plugins): migrate 7 plugins to ProgrammingLanguageExtractor
   
