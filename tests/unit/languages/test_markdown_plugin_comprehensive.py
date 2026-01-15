@@ -81,19 +81,16 @@ class TestMarkdownElementExtractor:
         assert extractor.content_lines == []
         assert len(extractor._node_text_cache) == 0
         assert len(extractor._processed_nodes) == 0
-        assert len(extractor._element_cache) == 0
 
     def test_reset_caches(self):
         """Test cache reset functionality"""
-        self.extractor._node_text_cache[1] = "test"
-        self.extractor._processed_nodes.add(1)
-        self.extractor._element_cache[(1, "test")] = "value"
+        self.extractor._node_text_cache[(0, 1)] = "test"
+        self.extractor._processed_nodes.add((0, 1))
 
         self.extractor._reset_caches()
 
         assert len(self.extractor._node_text_cache) == 0
         assert len(self.extractor._processed_nodes) == 0
-        assert len(self.extractor._element_cache) == 0
 
     def test_extract_functions_with_none_tree(self):
         """Test extract_functions with None tree"""
@@ -159,8 +156,9 @@ class TestMarkdownElementExtractor:
         self.extractor.content_lines = ["Hello World"]
 
         # Mock byte extraction to fail
+        # Patch where extract_text_slice is imported in CachedElementExtractor
         with patch(
-            "tree_sitter_analyzer.languages.markdown_plugin.extract_text_slice",
+            "tree_sitter_analyzer.plugins.cached_element_extractor.extract_text_slice",
             side_effect=Exception("Byte error"),
         ):
             result = self.extractor._get_node_text_optimized(mock_node)
@@ -177,7 +175,7 @@ class TestMarkdownElementExtractor:
         self.extractor.content_lines = ["Line 1", "Line 2", "Line 3"]
 
         with patch(
-            "tree_sitter_analyzer.languages.markdown_plugin.extract_text_slice",
+            "tree_sitter_analyzer.plugins.cached_element_extractor.extract_text_slice",
             side_effect=Exception("Byte error"),
         ):
             result = self.extractor._get_node_text_optimized(mock_node)
@@ -197,7 +195,7 @@ class TestMarkdownElementExtractor:
         self.extractor.content_lines = ["Hello"]
 
         with patch(
-            "tree_sitter_analyzer.languages.markdown_plugin.extract_text_slice",
+            "tree_sitter_analyzer.plugins.cached_element_extractor.extract_text_slice",
             side_effect=Exception("Byte error"),
         ):
             result = self.extractor._get_node_text_optimized(mock_node)
@@ -689,7 +687,7 @@ class TestMarkdownPluginEdgeCases:
         mock_node.end_byte = 50000
 
         with patch(
-            "tree_sitter_analyzer.languages.markdown_plugin.extract_text_slice",
+            "tree_sitter_analyzer.plugins.cached_element_extractor.extract_text_slice",
             side_effect=Exception("Too long"),
         ):
             result = self.extractor._get_node_text_optimized(mock_node)
@@ -707,7 +705,7 @@ class TestMarkdownPluginEdgeCases:
         mock_node.end_point = (0, 6)
 
         with patch(
-            "tree_sitter_analyzer.languages.markdown_plugin.extract_text_slice",
+            "tree_sitter_analyzer.plugins.cached_element_extractor.extract_text_slice",
             side_effect=Exception("Unicode error"),
         ):
             result = self.extractor._get_node_text_optimized(mock_node)

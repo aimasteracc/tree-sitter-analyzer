@@ -181,12 +181,18 @@ class TestJavaScriptPluginEdgeCases:
 
         # Should handle index errors gracefully
         with patch(
-            "tree_sitter_analyzer.encoding_utils.extract_text_slice"
+            "tree_sitter_analyzer.plugins.cached_element_extractor.extract_text_slice"
         ) as mock_extract:
             mock_extract.side_effect = Exception("Test error")
 
-            result = extractor._get_node_text_optimized(mock_node)
-            assert result == ""  # Should return empty string on error
+            # Mock fallback to raise exception to match empty string expectation
+            with patch.object(
+                extractor,
+                "_extract_text_by_position",
+                side_effect=Exception("Fallback error"),
+            ):
+                result = extractor._get_node_text_optimized(mock_node)
+                assert result == ""  # Should return empty string on error
 
     def test_function_extraction_with_missing_signature(self, extractor):
         """Test function extraction when signature parsing fails"""

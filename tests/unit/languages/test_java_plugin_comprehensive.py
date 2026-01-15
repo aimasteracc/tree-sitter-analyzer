@@ -593,7 +593,7 @@ class UserConfig {
 
         # Mock extract_text_slice to return test text
         with patch(
-            "tree_sitter_analyzer.encoding_utils.extract_text_slice"
+            "tree_sitter_analyzer.plugins.cached_element_extractor.extract_text_slice"
         ) as mock_extract:
             mock_extract.return_value = "test text"
 

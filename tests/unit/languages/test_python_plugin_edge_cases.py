@@ -117,12 +117,18 @@ class TestPythonPluginEdgeCases:
         extractor.content_lines = ["line1", "line2"]
 
         with patch(
-            "tree_sitter_analyzer.encoding_utils.extract_text_slice"
+            "tree_sitter_analyzer.plugins.cached_element_extractor.extract_text_slice"
         ) as mock_extract:
             mock_extract.side_effect = Exception("Byte extraction failed")
 
-            result = extractor._get_node_text_optimized(mock_node)
-            assert result == ""  # Should return empty string on failure
+            # Mock fallback to raise exception to match empty string expectation
+            with patch.object(
+                extractor,
+                "_extract_text_by_position",
+                side_effect=Exception("Fallback error"),
+            ):
+                result = extractor._get_node_text_optimized(mock_node)
+                assert result == ""  # Should return empty string on failure
 
     def test_get_node_text_optimized_multiline_edge_case(self, extractor):
         """Test multiline text extraction edge cases"""
@@ -137,14 +143,19 @@ class TestPythonPluginEdgeCases:
             "abcdefghijk",  # Line 1
             "ABCDEFGHIJK",  # Line 2
         ]
+        # Expected:
+        # Line 0: "567890" (from index 5)
+        # Line 1: "abcdefghijk" (full line)
+        # Line 2: "ABC" (up to index 3)
+        expected = "567890\nabcdefghijk\nABC"
 
+        # Patch extract_text_slice in CachedElementExtractor
         with patch(
-            "tree_sitter_analyzer.encoding_utils.extract_text_slice"
+            "tree_sitter_analyzer.plugins.cached_element_extractor.extract_text_slice"
         ) as mock_extract:
             mock_extract.side_effect = Exception("Byte extraction failed")
 
             result = extractor._get_node_text_optimized(mock_node)
-            expected = "567890\nabcdefghijk\nABC"
             assert result == expected
 
     def test_parse_function_signature_with_malformed_node(self, extractor):

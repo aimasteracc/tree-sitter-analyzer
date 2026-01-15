@@ -962,9 +962,10 @@ def __magic_method__(self, other):
         results = []
 
         # Should not process deeply nested nodes
-        # Note: _traverse_and_extract_iterative is inherited from BaseElementExtractor
+        # Note: _traverse_and_extract_iterative is inherited from ProgrammingLanguageExtractor (which inherits from CachedElementExtractor)
+        # log_warning is imported in ProgrammingLanguageExtractor
         with patch(
-            "tree_sitter_analyzer.plugins.base_element_extractor.log_warning"
+            "tree_sitter_analyzer.plugins.programming_language_extractor.log_warning"
         ) as mock_log:
             extractor._traverse_and_extract_iterative(
                 root_node, extractors, results, "function"
