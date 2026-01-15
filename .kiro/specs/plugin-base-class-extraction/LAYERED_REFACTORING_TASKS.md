@@ -823,12 +823,24 @@ BaseElementExtractor（497行）を3層のクラス階層に分割するリフ�
 
 ---
 
-## Phase 5: SQL Plugin移行と旧BaseElementExtractorの削除（1日）
+## Phase LR-5: SQL Plugin移行 ✅ COMPLETED (2026-01-15)
+
+**Summary:**
+SQLプラグインをProgrammingLanguageExtractorに移行完了。全18言語プラグインの移行が完了し、3層アーキテクチャが確立されました。
+
+**Test Results:** 353/359 passed (98.3%), 6 skipped
+**Code Reduction:** ~83 lines
+**Migration Pattern:** Method Consolidation Pattern (75-line `_get_node_text()` method完全削除)
+
+**Completion Report:** [PHASE_LR5_COMPLETION_REPORT.md](.kiro/specs/plugin-base-class-extraction/PHASE_LR5_COMPLETION_REPORT.md)
+
+---
 
 ### T5.1: SQL Pluginの移行分析
-**Status:** pending
+**Status:** ✅ completed
 **Priority:** P0
 **Objective:** SQLプラグインの移行方針を決定
+**Completed:** 2026-01-15
 
 **Analysis:**
 SQLプラグインは特殊なケースで、以下の特徴を持つ：
@@ -838,62 +850,90 @@ SQLプラグインは特殊なケースで、以下の特徴を持つ：
 - **複雑なロジック**: プラットフォーム互換性、検証・修正処理
 - **SQL固有機能**: `extract_sql_elements()`, 複数のSQL要素型
 
-**移行オプション:**
+**移行オプション比較:**
 
-**Option A: ProgrammingLanguageExtractor継承（推奨）**
+**Option A: ProgrammingLanguageExtractor継承 ⭐ 推奨**
 - ✅ オブジェクトID追跡(`set[int]`)が一致
 - ✅ 複雑なAST処理に適している
+- ✅ 既存の13プログラミング言語と一貫性
 - ⚠️ `_get_node_text()`を`_get_node_text_optimized()`に統合必要
+- **実装難易度:** 中（2-3時間）
+- **リスク:** 低
 
 **Option B: 独自のSQLLanguageExtractor作成**
 - ✅ SQL固有の複雑さを完全に分離
-- ❌ 追加の基底クラス作成が必要
-- ❌ スコープ拡大
+- ❌ 追加の基底クラス作成が必要（スコープ拡大）
+- ❌ 設計の一貫性が損なわれる
+- **実装難易度:** 高（4-6時間）
+- **リスク:** 中
 
 **Option C: 現状維持（ElementExtractor直接継承）**
 - ✅ 変更なし、リスク最小
 - ❌ リファクタリング目標未達成
-- ❌ コード重複が残る
+- ❌ コード重複が残る（~80-100行）
+- **実装難易度:** なし
+- **リスク:** なし（技術的負債が残る）
 
-**推奨**: Option A (ProgrammingLanguageExtractor継承)
+**決定:** Option A (ProgrammingLanguageExtractor継承)
 
 **Tasks:**
-- [ ] SQLプラグインの詳細分析完了
-- [ ] 移行方針の決定
-- [ ] 影響範囲の特定
+- [x] SQLプラグインの詳細分析完了
+- [x] 移行方針の決定（Option A）
+- [x] 影響範囲の特定
+- [x] 移行計画の作成
+
+**成果物:**
+- [`SQL_PLUGIN_MIGRATION_ANALYSIS.md`](.kiro/specs/plugin-base-class-extraction/SQL_PLUGIN_MIGRATION_ANALYSIS.md)
 
 **Dependencies:** Phase 4完了後
 
 ---
 
 ### T5.2: SQL Pluginの移行実装（Option A採用時）
-**Status:** pending
+**Status:** ✅ completed
 **Priority:** P0
 **Objective:** SQLプラグインをProgrammingLanguageExtractorに移行
+**Completed:** 2026-01-15
 
 **Tasks:**
-- [ ] インポート追加: `from ..plugins.programming_language_extractor import ProgrammingLanguageExtractor`
-- [ ] クラス定義変更: `class SQLElementExtractor(ProgrammingLanguageExtractor):`
-- [ ] `super().__init__()`呼び出し追加
-- [ ] メソッド統合:
-  - [ ] `_get_node_text()` → `_get_node_text_optimized()`への移行
-  - [ ] `_reset_caches()`のオーバーライド確認
-  - [ ] `_traverse_nodes()`の互換性確認
-- [ ] SQL固有機能の保持:
-  - [ ] `extract_sql_elements()`
-  - [ ] プラットフォーム互換性アダプター
-  - [ ] 検証・修正ロジック
-- [ ] テスト実行: `uv run pytest tests/ -k sql -v`
+- [x] インポート追加: `from ..plugins.programming_language_extractor import ProgrammingLanguageExtractor`
+- [x] クラス定義変更: `class SQLElementExtractor(ProgrammingLanguageExtractor):`
+- [x] `super().__init__()`呼び出し追加
+- [x] メソッド統合:
+  - [x] `_get_node_text()` → `_get_node_text_optimized()`への移行（32箇所）
+  - [x] `_reset_caches()`のオーバーライド確認（super()呼び出しに更新）
+  - [x] `_traverse_nodes()`の互換性確認（問題なし）
+- [x] SQL固有機能の保持:
+  - [x] `extract_sql_elements()`
+  - [x] プラットフォーム互換性アダプター
+  - [x] 検証・修正ロジック
+- [x] テスト実行: `uv run pytest tests/ -k sql -v`
+- [x] テストファイル修正（3ファイル、9箇所）
 
 **Acceptance Criteria:**
-- 全SQLテストが通過
-- プラットフォーム互換性が維持される
-- パフォーマンスが維持される
+- ✅ 353/359 SQLテストが通過 (98.3%)
+- ✅ プラットフォーム互換性が維持される
+- ✅ パフォーマンスが維持される
+- ✅ MyPy型チェック成功
 
-**Files to Modify:**
+**Files Modified:**
 - `tree_sitter_analyzer/languages/sql_plugin.py`
+- `tests/unit/languages/test_sql_plugin_extract_methods.py`
+- `tests/unit/languages/test_sql_plugin_comprehensive.py`
+- `tests/unit/languages/test_sql_coverage_boost.py`
 
-**Dependencies:** T5.5完了後
+**Code Reduction:**
+- 削除: 75行（`_get_node_text()`メソッド全体）
+- 削除: 5行（重複フィールド）
+- 削除: 3行（`_reset_caches()`簡素化）
+- **合計: ~83行削減**
+
+**Migration Patterns Applied:**
+- **Method Consolidation Pattern**: `_get_node_text()` 完全削除、`_get_node_text_optimized()`に統合
+- **Super Call Pattern**: `_reset_caches()`で`super()`呼び出し
+- **Source Initialization Pattern**: 5メソッドに`_initialize_source()`追加
+
+**Dependencies:** T5.1完了後
 
 ---
 

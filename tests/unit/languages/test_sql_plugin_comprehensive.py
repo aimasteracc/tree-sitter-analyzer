@@ -153,8 +153,8 @@ class TestSQLElementExtractorUnit:
         mock_node.start_point = (0, 0)
         mock_node.end_point = (0, 27)
 
-        text1 = extractor._get_node_text(mock_node)
-        text2 = extractor._get_node_text(mock_node)
+        text1 = extractor._get_node_text_optimized(mock_node)
+        text2 = extractor._get_node_text_optimized(mock_node)
 
         assert text1 == text2
         # Cache uses (start_byte, end_byte) tuple as key
@@ -172,7 +172,7 @@ class TestSQLElementExtractorUnit:
         mock_node.start_point = (0, 0)
         mock_node.end_point = (2, 5)
 
-        text = extractor._get_node_text(mock_node)
+        text = extractor._get_node_text_optimized(mock_node)
         assert isinstance(text, str)
 
     def test_get_node_text_empty_fallback(self, extractor: SQLElementExtractor) -> None:
@@ -187,7 +187,7 @@ class TestSQLElementExtractorUnit:
         mock_node.start_point = (100, 0)
         mock_node.end_point = (100, 50)
 
-        text = extractor._get_node_text(mock_node)
+        text = extractor._get_node_text_optimized(mock_node)
         assert text == ""
 
     # ==================== Traverse Nodes Tests ====================
