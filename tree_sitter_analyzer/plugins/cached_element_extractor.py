@@ -115,7 +115,9 @@ class CachedElementExtractor(ElementExtractor, ABC):
         Returns:
             Extracted text string
         """
-        content_bytes = safe_encode("\n".join(self.content_lines), self._file_encoding)
+        # Use original source_code to preserve exact byte positions
+        # Reconstructing from content_lines can cause byte offset mismatches
+        content_bytes = safe_encode(self.source_code, self._file_encoding)
         return extract_text_slice(
             content_bytes,
             node.start_byte,
