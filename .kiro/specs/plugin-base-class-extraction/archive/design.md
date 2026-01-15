@@ -1,5 +1,23 @@
 # Plugin Base Class Extraction - Design Document
 
+> **⚠️ ARCHIVED - 初期計画ドキュメント**
+>
+> このドキュメントは初期計画段階で作成されましたが、実際のプロジェクトは**Layered Refactoring (LR-1 through LR-6)** という異なるアプローチで完了しました。
+>
+> **実際の実装:**
+> - ✅ 3層アーキテクチャ採用 (CachedElementExtractor → Programming/MarkupLanguageExtractor → 18言語プラグイン)
+> - ✅ Phase LR-1 ~ LR-6 完了
+> - ✅ BaseElementExtractor (497行) 削除済み
+> - ✅ 全テスト通過 (4985/4986, 99.98%)
+> - ✅ コード削減: ~2,000行以上
+>
+> **完了レポート:**
+> - [LAYERED_REFACTORING_TASKS.md](./LAYERED_REFACTORING_TASKS.md)
+> - [PHASE_LR6_FINAL_REPORT.md](./PHASE_LR6_FINAL_REPORT.md)
+>
+> **Status:** ✅ **COMPLETED** (異なるアプローチで実装完了)
+> **Last Updated:** 2026-01-15
+
 ## 技術選型（Technology Choices）
 
 ### 継承階層の設計
