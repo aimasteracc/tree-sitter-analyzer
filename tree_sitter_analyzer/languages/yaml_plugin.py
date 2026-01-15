@@ -12,7 +12,8 @@ import threading
 from typing import TYPE_CHECKING, Any, cast
 
 from ..models import AnalysisResult, Class, CodeElement, Function, Import, Variable
-from ..plugins.base import ElementExtractor, LanguagePlugin
+from ..plugins.base import LanguagePlugin
+from ..plugins.markup_language_extractor import MarkupLanguageExtractor
 from ..utils import log_debug, log_error, log_info, log_warning
 
 if TYPE_CHECKING:
@@ -98,11 +99,12 @@ class YAMLElement(CodeElement):
         self.child_count = child_count
 
 
-class YAMLElementExtractor(ElementExtractor):
+class YAMLElementExtractor(MarkupLanguageExtractor):
     """YAML-specific element extractor using tree-sitter-yaml."""
 
     def __init__(self) -> None:
         """Initialize the YAML element extractor."""
+        super().__init__()
         self.source_code: str = ""
         self.content_lines: list[str] = []
         self._current_document_index: int = 0
@@ -232,7 +234,7 @@ class YAMLElementExtractor(ElementExtractor):
                 break
         return 0
 
-    def _traverse_nodes(self, node: "tree_sitter.Node") -> "list[tree_sitter.Node]":
+    def _traverse_nodes(self, node: "tree_sitter.Node") -> "list[tree_sitter.Node]":  # type: ignore[override]
         """Traverse all nodes in the tree."""
         nodes = [node]
         for child in node.children:
@@ -661,7 +663,7 @@ class YAMLPlugin(LanguagePlugin):
         """Return supported file extensions."""
         return [".yaml", ".yml"]
 
-    def create_extractor(self) -> "YAMLElementExtractor":
+    def create_extractor(self) -> MarkupLanguageExtractor:
         """Create and return a YAML element extractor."""
         return YAMLElementExtractor()
 
@@ -754,7 +756,7 @@ class YAMLPlugin(LanguagePlugin):
                 tree = YAML_PARSER.parse(content.encode("utf-8"))
 
             # Extract elements using the extractor
-            yaml_extractor = self.create_extractor()
+            yaml_extractor = cast(YAMLElementExtractor, self.create_extractor())
             elements = yaml_extractor.extract_yaml_elements(tree, content)
 
             log_info(f"Extracted {len(elements)} YAML elements from {file_path}")

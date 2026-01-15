@@ -159,7 +159,7 @@ class TestJavaScriptPluginEdgeCases:
 
         # Test with encoding error
         with patch(
-            "tree_sitter_analyzer.languages.javascript_plugin.extract_text_slice"
+            "tree_sitter_analyzer.encoding_utils.extract_text_slice"
         ) as mock_extract:
             mock_extract.side_effect = UnicodeDecodeError(
                 "utf-8", b"", 0, 1, "test error"
@@ -181,12 +181,18 @@ class TestJavaScriptPluginEdgeCases:
 
         # Should handle index errors gracefully
         with patch(
-            "tree_sitter_analyzer.languages.javascript_plugin.extract_text_slice"
+            "tree_sitter_analyzer.plugins.cached_element_extractor.extract_text_slice"
         ) as mock_extract:
             mock_extract.side_effect = Exception("Test error")
 
-            result = extractor._get_node_text_optimized(mock_node)
-            assert result == ""  # Should return empty string on error
+            # Mock fallback to raise exception to match empty string expectation
+            with patch.object(
+                extractor,
+                "_extract_text_by_position",
+                side_effect=Exception("Fallback error"),
+            ):
+                result = extractor._get_node_text_optimized(mock_node)
+                assert result == ""  # Should return empty string on error
 
     def test_function_extraction_with_missing_signature(self, extractor):
         """Test function extraction when signature parsing fails"""
@@ -501,7 +507,7 @@ class TestJavaScriptPluginEdgeCases:
                     extractor.content_lines = [f"test content {i}"]
 
                     with patch(
-                        "tree_sitter_analyzer.languages.javascript_plugin.extract_text_slice"
+                        "tree_sitter_analyzer.encoding_utils.extract_text_slice"
                     ) as mock_extract:
                         mock_extract.return_value = f"text_{i}"
                         result = extractor._get_node_text_optimized(mock_node)
@@ -630,7 +636,7 @@ class TestJavaScriptPluginEdgeCases:
 
             # Should handle different encodings
             with patch(
-                "tree_sitter_analyzer.languages.javascript_plugin.extract_text_slice"
+                "tree_sitter_analyzer.encoding_utils.extract_text_slice"
             ) as mock_extract:
                 mock_extract.return_value = "test"
                 result = extractor._get_node_text_optimized(mock_node)

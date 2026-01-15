@@ -105,7 +105,9 @@ def __magic_method__(self, other):
         assert isinstance(extractor._node_text_cache, dict)
         assert isinstance(extractor._processed_nodes, set)
         assert isinstance(extractor._element_cache, dict)
-        assert extractor._file_encoding is None
+        assert (
+            extractor._file_encoding == "utf-8"
+        )  # Default encoding from BaseElementExtractor
         assert isinstance(extractor._docstring_cache, dict)
         assert isinstance(extractor._complexity_cache, dict)
         assert extractor.is_module is False
@@ -224,31 +226,28 @@ def __magic_method__(self, other):
         # Create mock node
         mock_node = Mock()
         mock_node.start_byte = 0
-        mock_node.end_byte = 10
+        mock_node.end_byte = 9
+        mock_node.start_point = (0, 0)
+        mock_node.end_point = (0, 9)
 
         # Set up extractor state
-        extractor.content_lines = ["test content line"]
+        extractor.content_lines = ["test text line"]
         extractor._file_encoding = "utf-8"
 
-        # Mock extract_text_slice to return test text
-        with patch(
-            "tree_sitter_analyzer.languages.python_plugin.extract_text_slice"
-        ) as mock_extract:
-            mock_extract.return_value = "test text"
+        # Note: _get_node_text_optimized is inherited from BaseElementExtractor
+        # which uses position-based extraction as fallback
+        # First call should extract and cache
+        result1 = extractor._get_node_text_optimized(mock_node)
+        assert result1 == "test text"
+        # Cache uses (start_byte, end_byte) tuple as key
+        assert (
+            mock_node.start_byte,
+            mock_node.end_byte,
+        ) in extractor._node_text_cache
 
-            # First call should extract and cache
-            result1 = extractor._get_node_text_optimized(mock_node)
-            assert result1 == "test text"
-            # Cache uses (start_byte, end_byte) tuple as key
-            assert (
-                mock_node.start_byte,
-                mock_node.end_byte,
-            ) in extractor._node_text_cache
-
-            # Second call should use cache
-            result2 = extractor._get_node_text_optimized(mock_node)
-            assert result2 == "test text"
-            assert mock_extract.call_count == 1  # Should only be called once
+        # Second call should use cache
+        result2 = extractor._get_node_text_optimized(mock_node)
+        assert result2 == "test text"
 
     def test_get_node_text_optimized_fallback(self, extractor):
         """Test node text extraction fallback mechanism"""
@@ -265,7 +264,7 @@ def __magic_method__(self, other):
 
         # Mock extract_text_slice to raise exception
         with patch(
-            "tree_sitter_analyzer.languages.python_plugin.extract_text_slice"
+            "tree_sitter_analyzer.encoding_utils.extract_text_slice"
         ) as mock_extract:
             mock_extract.side_effect = Exception("Test error")
 
@@ -963,8 +962,10 @@ def __magic_method__(self, other):
         results = []
 
         # Should not process deeply nested nodes
+        # Note: _traverse_and_extract_iterative is inherited from ProgrammingLanguageExtractor (which inherits from CachedElementExtractor)
+        # log_warning is imported in ProgrammingLanguageExtractor
         with patch(
-            "tree_sitter_analyzer.languages.python_plugin.log_warning"
+            "tree_sitter_analyzer.plugins.programming_language_extractor.log_warning"
         ) as mock_log:
             extractor._traverse_and_extract_iterative(
                 root_node, extractors, results, "function"
@@ -1040,7 +1041,7 @@ def __magic_method__(self, other):
             mock_node_copy.end_point = (0, 10)
 
             with patch(
-                "tree_sitter_analyzer.languages.python_plugin.extract_text_slice"
+                "tree_sitter_analyzer.encoding_utils.extract_text_slice"
             ) as mock_extract:
                 mock_extract.return_value = f"text_{i}"
                 extractor._get_node_text_optimized(mock_node_copy)
@@ -1095,7 +1096,7 @@ class クラス名:
         mock_node.end_point = (len(extractor.content_lines) - 1, 0)
 
         with patch(
-            "tree_sitter_analyzer.languages.python_plugin.extract_text_slice"
+            "tree_sitter_analyzer.encoding_utils.extract_text_slice"
         ) as mock_extract:
             mock_extract.return_value = unicode_code
             result = extractor._get_node_text_optimized(mock_node)

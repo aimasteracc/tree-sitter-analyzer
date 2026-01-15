@@ -23,7 +23,6 @@ except ImportError:
     TREE_SITTER_AVAILABLE = False
 
 
-from ..encoding_utils import extract_text_slice, safe_encode
 from ..models import (
     Class,
     Function,
@@ -43,20 +42,21 @@ from ..models import (
 from ..platform_compat.adapter import CompatibilityAdapter
 from ..platform_compat.detector import PlatformDetector
 from ..platform_compat.profiles import BehaviorProfile
-from ..plugins.base import ElementExtractor, LanguagePlugin
+from ..plugins.base import LanguagePlugin
+from ..plugins.programming_language_extractor import ProgrammingLanguageExtractor
 from ..utils import log_debug, log_error
 
 
-class SQLElementExtractor(ElementExtractor):
+class SQLElementExtractor(ProgrammingLanguageExtractor):
     """
     SQL-specific element extractor.
 
     This extractor parses SQL AST and extracts database elements, mapping them
     to the unified element model:
-    - Tables and Views → Class elements
-    - Stored Procedures, Functions, Triggers → Function elements
-    - Indexes → Variable elements
-    - Schema references → Import elements
+    - Tables and Views ↁEClass elements
+    - Stored Procedures, Functions, Triggers ↁEFunction elements
+    - Indexes ↁEVariable elements
+    - Schema references ↁEImport elements
 
     The extractor handles standard SQL (ANSI SQL) syntax and supports
     CREATE TABLE, CREATE VIEW, CREATE PROCEDURE, CREATE FUNCTION,
@@ -67,22 +67,11 @@ class SQLElementExtractor(ElementExtractor):
         """
         Initialize the SQL element extractor.
 
-        Sets up internal state for source code processing and performance
-        optimization caches for node text extraction.
+        Sets up internal state for source code processing and SQL-specific features.
         """
         super().__init__()
-        self.source_code: str = ""
-        self.content_lines: list[str] = []
         self.diagnostic_mode = diagnostic_mode
         self.platform_info = None
-
-        # Performance optimization caches - use position-based keys for deterministic caching
-        # Cache node text to avoid repeated extraction
-        self._node_text_cache: dict[tuple[int, int], str] = {}
-        # Track processed nodes to avoid duplicate processing
-        self._processed_nodes: set[int] = set()
-        # File encoding for safe text extraction
-        self._file_encoding: str | None = None
 
         # Platform compatibility
         self.adapter: CompatibilityAdapter | None = None
@@ -108,8 +97,7 @@ class SQLElementExtractor(ElementExtractor):
         Returns:
             List of SQLElement objects with detailed metadata
         """
-        self.source_code = source_code or ""
-        self.content_lines = self.source_code.split("\n")
+        self._initialize_source(source_code or "")
         self._reset_caches()
 
         sql_elements: list[SQLElement] = []
@@ -337,9 +325,9 @@ class SQLElementExtractor(ElementExtractor):
         Extract stored procedures, functions, and triggers from SQL code.
 
         Maps SQL executable units to Function elements:
-        - CREATE PROCEDURE statements → Function
-        - CREATE FUNCTION statements → Function
-        - CREATE TRIGGER statements → Function
+        - CREATE PROCEDURE statements ↁEFunction
+        - CREATE FUNCTION statements ↁEFunction
+        - CREATE TRIGGER statements ↁEFunction
 
         Args:
             tree: Tree-sitter AST tree parsed from SQL source
@@ -348,8 +336,7 @@ class SQLElementExtractor(ElementExtractor):
         Returns:
             List of Function elements representing procedures, functions, and triggers
         """
-        self.source_code = source_code or ""
-        self.content_lines = self.source_code.split("\n")
+        self._initialize_source(source_code or "")
         self._reset_caches()
 
         functions: list[Function] = []
@@ -375,8 +362,8 @@ class SQLElementExtractor(ElementExtractor):
         Extract tables and views from SQL code.
 
         Maps SQL structural definitions to Class elements:
-        - CREATE TABLE statements → Class
-        - CREATE VIEW statements → Class
+        - CREATE TABLE statements ↁEClass
+        - CREATE VIEW statements ↁEClass
 
         Args:
             tree: Tree-sitter AST tree parsed from SQL source
@@ -385,8 +372,7 @@ class SQLElementExtractor(ElementExtractor):
         Returns:
             List of Class elements representing tables and views
         """
-        self.source_code = source_code or ""
-        self.content_lines = self.source_code.split("\n")
+        self._initialize_source(source_code or "")
         self._reset_caches()
 
         classes: list[Class] = []
@@ -409,7 +395,7 @@ class SQLElementExtractor(ElementExtractor):
         Extract indexes from SQL code.
 
         Maps SQL metadata definitions to Variable elements:
-        - CREATE INDEX statements → Variable
+        - CREATE INDEX statements ↁEVariable
 
         Args:
             tree: Tree-sitter AST tree parsed from SQL source
@@ -418,8 +404,7 @@ class SQLElementExtractor(ElementExtractor):
         Returns:
             List of Variable elements representing indexes
         """
-        self.source_code = source_code or ""
-        self.content_lines = self.source_code.split("\n")
+        self._initialize_source(source_code or "")
         self._reset_caches()
 
         variables: list[Variable] = []
@@ -450,8 +435,7 @@ class SQLElementExtractor(ElementExtractor):
         Returns:
             List of Import elements representing schema references
         """
-        self.source_code = source_code or ""
-        self.content_lines = self.source_code.split("\n")
+        self._initialize_source(source_code or "")
         self._reset_caches()
 
         imports: list[Import] = []
@@ -467,85 +451,8 @@ class SQLElementExtractor(ElementExtractor):
         return imports
 
     def _reset_caches(self) -> None:
-        """Reset performance caches."""
-        self._node_text_cache.clear()
-        self._processed_nodes.clear()
-
-    def _get_node_text(self, node: "tree_sitter.Node") -> str:
-        """
-        Get text content from a tree-sitter node with caching.
-
-        Uses byte-based extraction first, falls back to line-based extraction
-        if byte extraction fails. Results are cached for performance.
-
-        Args:
-            node: Tree-sitter node to extract text from
-
-        Returns:
-            Text content of the node, or empty string if extraction fails
-        """
-        # Use position-based cache key for deterministic behavior
-        cache_key = (node.start_byte, node.end_byte)
-
-        if cache_key in self._node_text_cache:
-            return self._node_text_cache[cache_key]
-
-        try:
-            start_byte = node.start_byte
-            end_byte = node.end_byte
-            encoding = self._file_encoding or "utf-8"
-            content_bytes = safe_encode("\n".join(self.content_lines), encoding)
-            text = extract_text_slice(content_bytes, start_byte, end_byte, encoding)
-
-            if text:
-                self._node_text_cache[cache_key] = text
-                return text
-        except Exception as e:
-            log_debug(f"Error in _get_node_text: {e}")
-
-        # Fallback to line-based extraction
-        try:
-            start_point = node.start_point
-            end_point = node.end_point
-
-            if start_point[0] < 0 or start_point[0] >= len(self.content_lines):
-                return ""
-
-            if end_point[0] < 0 or end_point[0] >= len(self.content_lines):
-                return ""
-
-            if start_point[0] == end_point[0]:
-                line = self.content_lines[start_point[0]]
-                start_col = max(0, min(start_point[1], len(line)))
-                end_col = max(start_col, min(end_point[1], len(line)))
-                result: str = line[start_col:end_col]
-                self._node_text_cache[cache_key] = result
-                return result
-            else:
-                lines = []
-                for i in range(
-                    start_point[0], min(end_point[0] + 1, len(self.content_lines))
-                ):
-                    if i < len(self.content_lines):
-                        line = self.content_lines[i]
-                        if i == start_point[0] and i == end_point[0]:
-                            start_col = max(0, min(start_point[1], len(line)))
-                            end_col = max(start_col, min(end_point[1], len(line)))
-                            lines.append(line[start_col:end_col])
-                        elif i == start_point[0]:
-                            start_col = max(0, min(start_point[1], len(line)))
-                            lines.append(line[start_col:])
-                        elif i == end_point[0]:
-                            end_col = max(0, min(end_point[1], len(line)))
-                            lines.append(line[:end_col])
-                        else:
-                            lines.append(line)
-                result = "\n".join(lines)
-                self._node_text_cache[cache_key] = result
-                return result
-        except Exception as fallback_error:
-            log_debug(f"Fallback text extraction also failed: {fallback_error}")
-            return ""
+        """Reset performance caches including parent class caches."""
+        super()._reset_caches()
 
     def _traverse_nodes(self, node: "tree_sitter.Node") -> Iterator["tree_sitter.Node"]:
         """
@@ -761,7 +668,9 @@ class SQLElementExtractor(ElementExtractor):
                         # object_reference contains identifier
                         for subchild in child.children:
                             if subchild.type == "identifier":
-                                table_name = self._get_node_text(subchild).strip()
+                                table_name = self._get_node_text_optimized(
+                                    subchild
+                                ).strip()
                                 # Validate table name
                                 if table_name and self._is_valid_identifier(table_name):
                                     break
@@ -774,7 +683,7 @@ class SQLElementExtractor(ElementExtractor):
                     try:
                         start_line = node.start_point[0] + 1
                         end_line = node.end_point[0] + 1
-                        raw_text = self._get_node_text(node)
+                        raw_text = self._get_node_text_optimized(node)
 
                         cls = Class(
                             name=table_name,
@@ -805,7 +714,7 @@ class SQLElementExtractor(ElementExtractor):
         for node in self._traverse_nodes(root_node):
             if node.type == "create_view":
                 # Get raw text first for fallback regex
-                raw_text = self._get_node_text(node)
+                raw_text = self._get_node_text_optimized(node)
                 view_name = None
 
                 # FIRST: Try regex parsing (most reliable for CREATE VIEW)
@@ -828,7 +737,9 @@ class SQLElementExtractor(ElementExtractor):
                             # object_reference contains identifier
                             for subchild in child.children:
                                 if subchild.type == "identifier":
-                                    potential_name = self._get_node_text(subchild)
+                                    potential_name = self._get_node_text_optimized(
+                                        subchild
+                                    )
                                     if potential_name:
                                         potential_name = potential_name.strip()
                                         # Validate view name - exclude SQL keywords
@@ -933,7 +844,7 @@ class SQLElementExtractor(ElementExtractor):
             if node.type == "ERROR":
                 # Check if this ERROR node contains CREATE and PROCEDURE in text
                 has_create = False
-                node_text = self._get_node_text(node)
+                node_text = self._get_node_text_optimized(node)
                 node_text_upper = node_text.upper()
 
                 # Look for keyword_create child
@@ -967,7 +878,7 @@ class SQLElementExtractor(ElementExtractor):
                                 # Use specific text for this procedure if possible,
                                 # but for legacy extraction we often just use the whole node text
                                 # or we could slice it. For now, keeping whole node text is safer for legacy
-                                raw_text = self._get_node_text(node)
+                                raw_text = self._get_node_text_optimized(node)
 
                                 func = Function(
                                     name=proc_name,
@@ -1002,7 +913,9 @@ class SQLElementExtractor(ElementExtractor):
                         # Only process the first object_reference
                         for subchild in child.children:
                             if subchild.type == "identifier":
-                                func_name = self._get_node_text(subchild).strip()
+                                func_name = self._get_node_text_optimized(
+                                    subchild
+                                ).strip()
                                 if func_name and self._is_valid_identifier(func_name):
                                     break
                                 else:
@@ -1011,7 +924,7 @@ class SQLElementExtractor(ElementExtractor):
 
                 # Fallback: Parse from raw text if AST parsing failed or returned invalid name
                 if not func_name:
-                    raw_text = self._get_node_text(node)
+                    raw_text = self._get_node_text_optimized(node)
                     import re
 
                     match = re.search(
@@ -1026,7 +939,7 @@ class SQLElementExtractor(ElementExtractor):
                     try:
                         start_line = node.start_point[0] + 1
                         end_line = node.end_point[0] + 1
-                        raw_text = self._get_node_text(node)
+                        raw_text = self._get_node_text_optimized(node)
                         func = Function(
                             name=func_name,
                             start_line=start_line,
@@ -1061,7 +974,7 @@ class SQLElementExtractor(ElementExtractor):
                 # we need to scan all children or use regex.
                 # Using regex on the node text is more robust for ERROR nodes.
 
-                node_text = self._get_node_text(node)
+                node_text = self._get_node_text_optimized(node)
                 if not node_text:
                     continue
 
@@ -1151,14 +1064,14 @@ class SQLElementExtractor(ElementExtractor):
                 index_name = None
                 for child in node.children:
                     if child.type == "identifier":
-                        index_name = self._get_node_text(child).strip()
+                        index_name = self._get_node_text_optimized(child).strip()
                         break
 
                 if index_name:
                     try:
                         start_line = node.start_point[0] + 1
                         end_line = node.end_point[0] + 1
-                        raw_text = self._get_node_text(node)
+                        raw_text = self._get_node_text_optimized(node)
 
                         var = Variable(
                             name=index_name,
@@ -1181,7 +1094,7 @@ class SQLElementExtractor(ElementExtractor):
         for node in self._traverse_nodes(root_node):
             if node.type == "qualified_name":
                 # Check if this looks like a schema reference
-                text = self._get_node_text(node)
+                text = self._get_node_text_optimized(node)
                 if "." in text and len(text.split(".")) == 2:
                     try:
                         start_line = node.start_point[0] + 1
@@ -1221,7 +1134,9 @@ class SQLElementExtractor(ElementExtractor):
                     if child.type == "object_reference":
                         for subchild in child.children:
                             if subchild.type == "identifier":
-                                table_name = self._get_node_text(subchild).strip()
+                                table_name = self._get_node_text_optimized(
+                                    subchild
+                                ).strip()
                                 # Validate table name - should be a simple identifier
                                 if table_name and self._is_valid_identifier(table_name):
                                     break
@@ -1237,7 +1152,7 @@ class SQLElementExtractor(ElementExtractor):
                     try:
                         start_line = node.start_point[0] + 1
                         end_line = node.end_point[0] + 1
-                        raw_text = self._get_node_text(node)
+                        raw_text = self._get_node_text_optimized(node)
 
                         table = SQLTable(
                             name=table_name,
@@ -1260,7 +1175,7 @@ class SQLElementExtractor(ElementExtractor):
     ) -> None:
         """Extract column definitions from CREATE TABLE statement."""
         # Use a more robust approach to extract columns
-        table_text = self._get_node_text(table_node)
+        table_text = self._get_node_text_optimized(table_node)
 
         # Parse the table definition using regex as fallback
         import re
@@ -1298,17 +1213,17 @@ class SQLElementExtractor(ElementExtractor):
                 # Extract column name and type
                 for child in node.children:
                     if child.type == "identifier" and column_name is None:
-                        column_name = self._get_node_text(child).strip()
+                        column_name = self._get_node_text_optimized(child).strip()
                     elif child.type in ["data_type", "type_name"]:
-                        data_type = self._get_node_text(child).strip()
+                        data_type = self._get_node_text_optimized(child).strip()
                     elif (
                         child.type == "not_null"
-                        or "NOT NULL" in self._get_node_text(child).upper()
+                        or "NOT NULL" in self._get_node_text_optimized(child).upper()
                     ):
                         nullable = False
                     elif (
                         child.type == "primary_key"
-                        or "PRIMARY KEY" in self._get_node_text(child).upper()
+                        or "PRIMARY KEY" in self._get_node_text_optimized(child).upper()
                     ):
                         is_primary_key = True
 
@@ -1400,7 +1315,7 @@ class SQLElementExtractor(ElementExtractor):
         for node in self._traverse_nodes(root_node):
             if node.type == "ERROR":
                 # Handle views inside ERROR nodes (common in some environments)
-                raw_text = self._get_node_text(node)
+                raw_text = self._get_node_text_optimized(node)
                 if not raw_text:
                     continue
 
@@ -1459,7 +1374,7 @@ class SQLElementExtractor(ElementExtractor):
                 source_tables = []
 
                 # Get raw text for regex parsing
-                raw_text = self._get_node_text(node)
+                raw_text = self._get_node_text_optimized(node)
 
                 # FIRST: Try regex parsing (most reliable for CREATE VIEW)
                 if raw_text:
@@ -1482,7 +1397,7 @@ class SQLElementExtractor(ElementExtractor):
                         if child.type == "object_reference":
                             for subchild in child.children:
                                 if subchild.type == "identifier":
-                                    potential_name = self._get_node_text(
+                                    potential_name = self._get_node_text_optimized(
                                         subchild
                                     ).strip()
                                     # Validate view name more strictly - exclude SQL keywords
@@ -1521,7 +1436,7 @@ class SQLElementExtractor(ElementExtractor):
                     try:
                         start_line = node.start_point[0] + 1
                         end_line = node.end_point[0] + 1
-                        raw_text = self._get_node_text(node)
+                        raw_text = self._get_node_text_optimized(node)
 
                         view = SQLView(
                             name=view_name,
@@ -1546,7 +1461,9 @@ class SQLElementExtractor(ElementExtractor):
                     if child.type == "object_reference":
                         for subchild in child.children:
                             if subchild.type == "identifier":
-                                table_name = self._get_node_text(child).strip()
+                                table_name = self._get_node_text_optimized(
+                                    child
+                                ).strip()
                                 if table_name and table_name not in source_tables:
                                     source_tables.append(table_name)
 
@@ -1623,7 +1540,7 @@ class SQLElementExtractor(ElementExtractor):
         for node in self._traverse_nodes(root_node):
             if node.type == "ERROR":
                 has_create = False
-                node_text = self._get_node_text(node)
+                node_text = self._get_node_text_optimized(node)
                 node_text_upper = node_text.upper()
 
                 for child in node.children:
@@ -1774,7 +1691,7 @@ class SQLElementExtractor(ElementExtractor):
             if node.type == "object_reference":
                 for child in node.children:
                     if child.type == "identifier":
-                        table_name = self._get_node_text(child).strip()
+                        table_name = self._get_node_text_optimized(child).strip()
                         if table_name and table_name not in dependencies:
                             # Simple heuristic: if it's referenced in FROM, UPDATE, INSERT, etc.
                             dependencies.append(table_name)
@@ -1908,7 +1825,9 @@ class SQLElementExtractor(ElementExtractor):
                         found_first_object_ref = True
                         for subchild in child.children:
                             if subchild.type == "identifier":
-                                func_name = self._get_node_text(subchild).strip()
+                                func_name = self._get_node_text_optimized(
+                                    subchild
+                                ).strip()
                                 # Validate function name using centralized validation
                                 if func_name and self._is_valid_identifier(func_name):
                                     break
@@ -1935,7 +1854,7 @@ class SQLElementExtractor(ElementExtractor):
                         try:
                             start_line = node.start_point[0] + 1
                             end_line = node.end_point[0] + 1
-                            raw_text = self._get_node_text(node)
+                            raw_text = self._get_node_text_optimized(node)
 
                             function = SQLFunction(
                                 name=func_name,
@@ -1959,7 +1878,7 @@ class SQLElementExtractor(ElementExtractor):
         dependencies: list[str],
     ) -> None:
         """Extract function metadata including parameters and return type."""
-        func_text = self._get_node_text(func_node)
+        func_text = self._get_node_text_optimized(func_node)
 
         # Extract return type
         import re
@@ -1983,7 +1902,7 @@ class SQLElementExtractor(ElementExtractor):
         import re
 
         # Use self.source_code which is set by parent method _extract_sql_elements
-        # This is more reliable than _get_node_text(root_node) which may fail
+        # This is more reliable than _get_node_text_optimized(root_node) which may fail
         # on some platforms due to encoding or byte offset issues
         source_code = self.source_code
 
@@ -2112,7 +2031,7 @@ class SQLElementExtractor(ElementExtractor):
                 # Use regex to extract index name from raw text for better accuracy
                 import re
 
-                raw_text = self._get_node_text(node)
+                raw_text = self._get_node_text_optimized(node)
                 # Pattern: CREATE [UNIQUE] INDEX index_name ON table_name
                 index_pattern = re.search(
                     r"CREATE\s+(?:UNIQUE\s+)?INDEX\s+([a-zA-Z_][a-zA-Z0-9_]*)\s+ON",
@@ -2129,7 +2048,7 @@ class SQLElementExtractor(ElementExtractor):
                     try:
                         start_line = node.start_point[0] + 1
                         end_line = node.end_point[0] + 1
-                        raw_text = self._get_node_text(node)
+                        raw_text = self._get_node_text_optimized(node)
 
                         # Create index object first
                         index = SQLIndex(
@@ -2164,7 +2083,7 @@ class SQLElementExtractor(ElementExtractor):
         index: "SQLIndex",
     ) -> None:
         """Extract index metadata including target table and columns."""
-        index_text = self._get_node_text(index_node)
+        index_text = self._get_node_text_optimized(index_node)
 
         # Check for UNIQUE keyword
         if "UNIQUE" in index_text.upper():
@@ -2346,7 +2265,7 @@ class SQLPlugin(LanguagePlugin):
         """Get supported file extensions."""
         return [".sql"]
 
-    def create_extractor(self) -> ElementExtractor:
+    def create_extractor(self) -> ProgrammingLanguageExtractor:
         """Create a new element extractor instance."""
         return SQLElementExtractor()
 

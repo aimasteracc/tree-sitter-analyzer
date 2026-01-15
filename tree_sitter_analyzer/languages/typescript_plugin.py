@@ -22,29 +22,26 @@ except ImportError:
     TREE_SITTER_AVAILABLE = False
 
 from ..core.analysis_engine import AnalysisRequest
-from ..encoding_utils import extract_text_slice, safe_encode
 from ..language_loader import loader
 from ..models import AnalysisResult, Class, CodeElement, Function, Import, Variable
 from ..plugins.base import ElementExtractor, LanguagePlugin
-from ..utils import log_debug, log_error, log_warning
+from ..plugins.programming_language_extractor import ProgrammingLanguageExtractor
+from ..utils import log_debug, log_error
 
 
-class TypeScriptElementExtractor(ElementExtractor):
+class TypeScriptElementExtractor(ProgrammingLanguageExtractor):
     """Enhanced TypeScript-specific element extractor with comprehensive feature support"""
 
     def __init__(self) -> None:
         """Initialize the TypeScript element extractor."""
+        super().__init__()
+
+        # TypeScript-specific attributes
         self.current_file: str = ""
-        self.source_code: str = ""
-        self.content_lines: list[str] = []
         self.imports: list[str] = []
         self.exports: list[dict[str, Any]] = []
 
-        # Performance optimization caches - use position-based keys for deterministic caching
-        self._node_text_cache: dict[tuple[int, int], str] = {}
-        self._processed_nodes: set[int] = set()
-        self._element_cache: dict[tuple[int, str], Any] = {}
-        self._file_encoding: str | None = None
+        # TypeScript-specific caches
         self._tsdoc_cache: dict[int, str] = {}
         self._complexity_cache: dict[int, int] = {}
 
@@ -58,9 +55,7 @@ class TypeScriptElementExtractor(ElementExtractor):
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[Function]:
         """Extract TypeScript function definitions with comprehensive details"""
-        self.source_code = source_code
-        self.content_lines = source_code.split("\n")
-        self._reset_caches()
+        self._initialize_source(source_code)
         self._detect_file_characteristics()
 
         functions: list[Function] = []
@@ -86,9 +81,7 @@ class TypeScriptElementExtractor(ElementExtractor):
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[Class]:
         """Extract TypeScript class and interface definitions with detailed information"""
-        self.source_code = source_code
-        self.content_lines = source_code.split("\n")
-        self._reset_caches()
+        self._initialize_source(source_code)
 
         classes: list[Class] = []
 
@@ -112,9 +105,7 @@ class TypeScriptElementExtractor(ElementExtractor):
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[Variable]:
         """Extract TypeScript variable definitions with type annotations"""
-        self.source_code = source_code
-        self.content_lines = source_code.split("\n")
-        self._reset_caches()
+        self._initialize_source(source_code)
 
         variables: list[Variable] = []
 
@@ -137,8 +128,7 @@ class TypeScriptElementExtractor(ElementExtractor):
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[Import]:
         """Extract TypeScript import statements with ES6+ and type import support"""
-        self.source_code = source_code
-        self.content_lines = source_code.split("\n")
+        self._initialize_source(source_code)
 
         imports: list[Import] = []
 
@@ -163,11 +153,28 @@ class TypeScriptElementExtractor(ElementExtractor):
 
     def _reset_caches(self) -> None:
         """Reset performance caches"""
-        self._node_text_cache.clear()
-        self._processed_nodes.clear()
-        self._element_cache.clear()
+        super()._reset_caches()
         self._tsdoc_cache.clear()
         self._complexity_cache.clear()
+
+    def _get_container_node_types(self) -> set[str]:
+        """Get TypeScript-specific container node types."""
+        return super()._get_container_node_types() | {
+            "class_body",
+            "interface_body",
+            "object_type",
+            "class_declaration",
+            "interface_declaration",
+            "function_declaration",
+            "method_definition",
+            "export_statement",
+            "variable_declaration",
+            "lexical_declaration",
+            "variable_declarator",
+            "assignment_expression",
+            "type_alias_declaration",
+            "enum_declaration",
+        }
 
     def _detect_file_characteristics(self) -> None:
         """Detect TypeScript file characteristics"""
@@ -186,140 +193,6 @@ class TypeScriptElementExtractor(ElementExtractor):
             self.framework_type = "angular"
         elif "vue" in self.source_code.lower():
             self.framework_type = "vue"
-
-    def _traverse_and_extract_iterative(
-        self,
-        root_node: Optional["tree_sitter.Node"],
-        extractors: dict[str, Any],
-        results: list[Any],
-        element_type: str,
-    ) -> None:
-        """Iterative node traversal and extraction with caching"""
-        if not root_node:
-            return
-
-        target_node_types = set(extractors.keys())
-        container_node_types = {
-            "program",
-            "class_body",
-            "interface_body",
-            "statement_block",
-            "object_type",
-            "class_declaration",
-            "interface_declaration",
-            "function_declaration",
-            "method_definition",
-            "export_statement",
-            "variable_declaration",
-            "lexical_declaration",
-            "variable_declarator",
-            "assignment_expression",
-            "type_alias_declaration",
-            "enum_declaration",
-        }
-
-        node_stack = [(root_node, 0)]
-        processed_nodes = 0
-        max_depth = 50
-
-        while node_stack:
-            current_node, depth = node_stack.pop()
-
-            if depth > max_depth:
-                log_warning(f"Maximum traversal depth ({max_depth}) exceeded")
-                continue
-
-            processed_nodes += 1
-            node_type = current_node.type
-
-            # Early termination for irrelevant nodes
-            if (
-                depth > 0
-                and node_type not in target_node_types
-                and node_type not in container_node_types
-            ):
-                continue
-
-            # Process target nodes
-            if node_type in target_node_types:
-                node_id = id(current_node)
-
-                if node_id in self._processed_nodes:
-                    continue
-
-                cache_key = (node_id, element_type)
-                if cache_key in self._element_cache:
-                    element = self._element_cache[cache_key]
-                    if element:
-                        if isinstance(element, list):
-                            results.extend(element)
-                        else:
-                            results.append(element)
-                    self._processed_nodes.add(node_id)
-                    continue
-
-                # Extract and cache
-                extractor = extractors.get(node_type)
-                if extractor:
-                    element = extractor(current_node)
-                    self._element_cache[cache_key] = element
-                    if element:
-                        if isinstance(element, list):
-                            results.extend(element)
-                        else:
-                            results.append(element)
-                    self._processed_nodes.add(node_id)
-
-            # Add children to stack
-            if current_node.children:
-                for child in reversed(current_node.children):
-                    node_stack.append((child, depth + 1))
-
-        log_debug(f"Iterative traversal processed {processed_nodes} nodes")
-
-    def _get_node_text_optimized(self, node: "tree_sitter.Node") -> str:
-        """Get node text with optimized caching using position-based keys"""
-        # Use position-based cache key for deterministic behavior
-        cache_key = (node.start_byte, node.end_byte)
-
-        if cache_key in self._node_text_cache:
-            return self._node_text_cache[cache_key]
-
-        try:
-            start_byte = node.start_byte
-            end_byte = node.end_byte
-
-            encoding = self._file_encoding or "utf-8"
-            content_bytes = safe_encode("\n".join(self.content_lines), encoding)
-            text = extract_text_slice(content_bytes, start_byte, end_byte, encoding)
-
-            self._node_text_cache[cache_key] = text
-            return text
-        except Exception as e:
-            log_error(f"Error in _get_node_text_optimized: {e}")
-            # Fallback to simple text extraction
-            try:
-                start_point = node.start_point
-                end_point = node.end_point
-
-                if start_point[0] == end_point[0]:
-                    line = self.content_lines[start_point[0]]
-                    return str(line[start_point[1] : end_point[1]])
-                else:
-                    lines = []
-                    for i in range(start_point[0], end_point[0] + 1):
-                        if i < len(self.content_lines):
-                            line = self.content_lines[i]
-                            if i == start_point[0]:
-                                lines.append(line[start_point[1] :])
-                            elif i == end_point[0]:
-                                lines.append(line[: end_point[1]])
-                            else:
-                                lines.append(line)
-                    return "\n".join(lines)
-            except Exception as fallback_error:
-                log_error(f"Fallback text extraction also failed: {fallback_error}")
-                return ""
 
     def _extract_function_optimized(self, node: "tree_sitter.Node") -> Function | None:
         """Extract regular function information with detailed metadata"""

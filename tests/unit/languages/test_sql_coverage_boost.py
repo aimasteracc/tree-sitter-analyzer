@@ -100,8 +100,8 @@ class TestSQLExtractorNodeMethods:
         mock_node.start_point = (0, 0)
         mock_node.end_point = (0, 19)
 
-        text1 = extractor._get_node_text(mock_node)
-        text2 = extractor._get_node_text(mock_node)
+        text1 = extractor._get_node_text_optimized(mock_node)
+        text2 = extractor._get_node_text_optimized(mock_node)
 
         assert text1 == text2
         # Cache uses position-based key (start_byte, end_byte)
@@ -119,7 +119,7 @@ class TestSQLExtractorNodeMethods:
         mock_node.start_point = (0, 0)
         mock_node.end_point = (2, 12)
 
-        text = extractor._get_node_text(mock_node)
+        text = extractor._get_node_text_optimized(mock_node)
         assert isinstance(text, str)
 
     def test_get_node_text_out_of_bounds(self, extractor):
@@ -134,7 +134,7 @@ class TestSQLExtractorNodeMethods:
         mock_node.start_point = (10, 0)
         mock_node.end_point = (10, 50)
 
-        text = extractor._get_node_text(mock_node)
+        text = extractor._get_node_text_optimized(mock_node)
         assert text == ""
 
     def test_traverse_nodes(self, extractor):

@@ -355,7 +355,7 @@ class UserConfig {
         assert isinstance(extractor._node_text_cache, dict)
         assert isinstance(extractor._processed_nodes, set)
         assert isinstance(extractor._element_cache, dict)
-        assert extractor._file_encoding is None
+        assert extractor._file_encoding == "utf-8"  # Default from BaseElementExtractor
         assert isinstance(extractor._annotation_cache, dict)
         assert isinstance(extractor._signature_cache, dict)
         assert isinstance(extractor.annotations, list)
@@ -593,7 +593,7 @@ class UserConfig {
 
         # Mock extract_text_slice to return test text
         with patch(
-            "tree_sitter_analyzer.languages.java_plugin.extract_text_slice"
+            "tree_sitter_analyzer.plugins.cached_element_extractor.extract_text_slice"
         ) as mock_extract:
             mock_extract.return_value = "test text"
 
@@ -626,7 +626,7 @@ class UserConfig {
 
         # Mock extract_text_slice to raise exception
         with patch(
-            "tree_sitter_analyzer.languages.java_plugin.extract_text_slice"
+            "tree_sitter_analyzer.encoding_utils.extract_text_slice"
         ) as mock_extract:
             mock_extract.side_effect = Exception("Test error")
 
@@ -1272,7 +1272,7 @@ class UserConfig {
             mock_node_copy.end_point = (0, 10)
 
             with patch(
-                "tree_sitter_analyzer.languages.java_plugin.extract_text_slice"
+                "tree_sitter_analyzer.encoding_utils.extract_text_slice"
             ) as mock_extract:
                 mock_extract.return_value = f"text_{i}"
                 extractor._get_node_text_optimized(mock_node_copy)

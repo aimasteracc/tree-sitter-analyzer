@@ -456,7 +456,7 @@ class TestSQLNodeTextExtraction:
         mock_node.start_point = (0, 0)
         mock_node.end_point = (0, 6)
 
-        text = extractor._get_node_text(mock_node)
+        text = extractor._get_node_text_optimized(mock_node)
         assert "SELECT" in text or text == ""  # May fail based on encoding
 
     def test_get_node_text_multiline(self, extractor):
@@ -470,7 +470,7 @@ class TestSQLNodeTextExtraction:
         mock_node.start_point = (0, 0)
         mock_node.end_point = (2, 12)
 
-        text = extractor._get_node_text(mock_node)
+        text = extractor._get_node_text_optimized(mock_node)
         assert isinstance(text, str)
 
     def test_get_node_text_caching(self, extractor):
@@ -485,9 +485,9 @@ class TestSQLNodeTextExtraction:
         mock_node.end_point = (0, 8)
 
         # First call
-        text1 = extractor._get_node_text(mock_node)
+        text1 = extractor._get_node_text_optimized(mock_node)
         # Second call should use cache
-        text2 = extractor._get_node_text(mock_node)
+        text2 = extractor._get_node_text_optimized(mock_node)
 
         assert text1 == text2
         # Cache uses (start_byte, end_byte) tuple as key
