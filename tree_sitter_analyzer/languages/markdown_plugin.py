@@ -20,13 +20,13 @@ except ImportError:
     TREE_SITTER_AVAILABLE = False
 
 from ..core.analysis_engine import AnalysisRequest
-from ..encoding_utils import extract_text_slice, safe_encode
 from ..models import AnalysisResult, CodeElement
 from ..models import Class as ModelClass
 from ..models import Function as ModelFunction
 from ..models import Import as ModelImport
 from ..models import Variable as ModelVariable
-from ..plugins.base import ElementExtractor, LanguagePlugin
+from ..plugins.base import LanguagePlugin
+from ..plugins.markup_language_extractor import MarkupLanguageExtractor
 from ..utils import log_debug, log_error
 from ..utils.tree_sitter_compat import TreeSitterQueryCompat
 
@@ -77,23 +77,14 @@ class MarkdownElement(CodeElement):
         self.column_count: int | None = None  # For tables
 
 
-class MarkdownElementExtractor(ElementExtractor):
+class MarkdownElementExtractor(MarkupLanguageExtractor):
     """Markdown-specific element extractor with comprehensive feature support"""
 
     def __init__(self) -> None:
         """Initialize the Markdown element extractor."""
-        self.current_file: str = ""
-        self.source_code: str = ""
-        self.content_lines: list[str] = []
+        super().__init__()
 
-        # Performance optimization caches - cleared for each extraction
-        # Use position-based keys (start_byte, end_byte) for deterministic caching
-        self._node_text_cache: dict[tuple[int, int], str] = {}
-        self._processed_nodes: set[tuple[int, int]] = set()
-        self._element_cache: dict[tuple[tuple[int, int], str], Any] = {}
-        self._file_encoding: str | None = None
-
-        # Extraction tracking - must be reset for each file
+        # Markdown-specific extraction tracking - must be reset for each file
         self._extracted_links: set[str] = set()
         self._extracted_images: set[tuple[str, str]] = set()
 
@@ -439,81 +430,12 @@ class MarkdownElementExtractor(ElementExtractor):
 
     def _reset_caches(self) -> None:
         """Reset performance caches AND extraction tracking sets"""
-        self._node_text_cache.clear()
-        self._processed_nodes.clear()
-        self._element_cache.clear()
-        # Critical: Reset extraction tracking to prevent cross-call pollution
+        super()._reset_caches()
+        # Critical: Reset Markdown-specific extraction tracking to prevent cross-call pollution
         if hasattr(self, "_extracted_links"):
             self._extracted_links.clear()
         if hasattr(self, "_extracted_images"):
             self._extracted_images.clear()
-
-    def _get_node_text_optimized(self, node: "tree_sitter.Node") -> str:
-        """Get node text with optimized caching using position-based keys"""
-        # Use position-based cache key for deterministic behavior
-        cache_key = (node.start_byte, node.end_byte)
-
-        if cache_key in self._node_text_cache:
-            return self._node_text_cache[cache_key]
-
-        try:
-            start_byte = node.start_byte
-            end_byte = node.end_byte
-
-            encoding = self._file_encoding or "utf-8"
-            content_bytes = safe_encode("\n".join(self.content_lines), encoding)
-            text = extract_text_slice(content_bytes, start_byte, end_byte, encoding)
-
-            if text:
-                self._node_text_cache[cache_key] = text
-                return text
-        except Exception as e:
-            log_error(f"Error in _get_node_text_optimized: {e}")
-
-        # Fallback to simple text extraction
-        try:
-            start_point = node.start_point
-            end_point = node.end_point
-
-            if start_point[0] < 0 or start_point[0] >= len(self.content_lines):
-                return ""
-
-            if end_point[0] < 0 or end_point[0] >= len(self.content_lines):
-                return ""
-
-            if start_point[0] == end_point[0]:
-                line = self.content_lines[start_point[0]]
-                start_col = max(0, min(start_point[1], len(line)))
-                end_col = max(start_col, min(end_point[1], len(line)))
-                result: str = line[start_col:end_col]
-                self._node_text_cache[cache_key] = result
-                return result
-            else:
-                lines = []
-                for i in range(
-                    start_point[0], min(end_point[0] + 1, len(self.content_lines))
-                ):
-                    if i < len(self.content_lines):
-                        line = self.content_lines[i]
-                        if i == start_point[0] and i == end_point[0]:
-                            # Single line case
-                            start_col = max(0, min(start_point[1], len(line)))
-                            end_col = max(start_col, min(end_point[1], len(line)))
-                            lines.append(line[start_col:end_col])
-                        elif i == start_point[0]:
-                            start_col = max(0, min(start_point[1], len(line)))
-                            lines.append(line[start_col:])
-                        elif i == end_point[0]:
-                            end_col = max(0, min(end_point[1], len(line)))
-                            lines.append(line[:end_col])
-                        else:
-                            lines.append(line)
-                result = "\n".join(lines)
-                self._node_text_cache[cache_key] = result
-                return result
-        except Exception as fallback_error:
-            log_error(f"Fallback text extraction also failed: {fallback_error}")
-            return ""
 
     def _extract_atx_headers(
         self, root_node: "tree_sitter.Node", headers: list[MarkdownElement]
@@ -1532,11 +1454,11 @@ class MarkdownPlugin(LanguagePlugin):
         """Return list of file extensions this plugin supports"""
         return [".md", ".markdown", ".mdown", ".mkd", ".mkdn", ".mdx"]
 
-    def create_extractor(self) -> ElementExtractor:
+    def create_extractor(self) -> MarkupLanguageExtractor:
         """Create and return a NEW element extractor for this language (avoid state pollution)"""
         return MarkdownElementExtractor()
 
-    def get_extractor(self) -> ElementExtractor:
+    def get_extractor(self) -> MarkupLanguageExtractor:
         """Get the cached extractor instance, creating it if necessary"""
         return self._extractor
 

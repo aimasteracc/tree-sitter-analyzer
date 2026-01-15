@@ -11,7 +11,8 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from ..models import AnalysisResult, MarkupElement
-from ..plugins.base import ElementExtractor, LanguagePlugin
+from ..plugins.base import LanguagePlugin
+from ..plugins.markup_language_extractor import MarkupLanguageExtractor
 from ..utils import log_debug, log_error, log_info
 
 if TYPE_CHECKING:
@@ -22,10 +23,11 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class HtmlElementExtractor(ElementExtractor):
+class HtmlElementExtractor(MarkupLanguageExtractor):
     """HTML-specific element extractor using tree-sitter-html"""
 
     def __init__(self) -> None:
+        super().__init__()
         self.element_categories = {
             # HTML要素の分類システム
             "structure": [
@@ -127,6 +129,9 @@ class HtmlElementExtractor(ElementExtractor):
         elements: list[MarkupElement] = []
 
         try:
+            # Initialize source for text extraction
+            self._initialize_source(source_code)
+
             if hasattr(tree, "root_node"):
                 self._traverse_for_html_elements(
                     tree.root_node, elements, source_code, None
@@ -347,16 +352,8 @@ class HtmlElementExtractor(ElementExtractor):
         return "unknown"
 
     def _extract_node_text(self, node: "tree_sitter.Node", source_code: str) -> str:
-        """Extract text content from a tree-sitter node"""
-        try:
-            if hasattr(node, "start_byte") and hasattr(node, "end_byte"):
-                source_bytes = source_code.encode("utf-8")
-                node_bytes = source_bytes[node.start_byte : node.end_byte]
-                return node_bytes.decode("utf-8", errors="replace")
-            return ""
-        except Exception as e:
-            log_debug(f"Failed to extract node text: {e}")
-            return ""
+        """Extract text content from a tree-sitter node using parent's optimized method"""
+        return self._get_node_text_optimized(node, use_byte_offsets=True)
 
 
 class HtmlPlugin(LanguagePlugin):
@@ -368,7 +365,7 @@ class HtmlPlugin(LanguagePlugin):
     def get_file_extensions(self) -> list[str]:
         return [".html", ".htm", ".xhtml"]
 
-    def create_extractor(self) -> ElementExtractor:
+    def create_extractor(self) -> MarkupLanguageExtractor:
         return HtmlElementExtractor()
 
     def get_tree_sitter_language(self) -> Any:

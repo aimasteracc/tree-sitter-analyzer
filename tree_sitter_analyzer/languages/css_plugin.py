@@ -11,7 +11,8 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from ..models import AnalysisResult, StyleElement
-from ..plugins.base import ElementExtractor, LanguagePlugin
+from ..plugins.base import LanguagePlugin
+from ..plugins.markup_language_extractor import MarkupLanguageExtractor
 from ..utils import log_debug, log_error, log_info
 
 if TYPE_CHECKING:
@@ -22,10 +23,11 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class CssElementExtractor(ElementExtractor):
+class CssElementExtractor(MarkupLanguageExtractor):
     """CSS-specific element extractor using tree-sitter-css"""
 
     def __init__(self) -> None:
+        super().__init__()
         self.property_categories = {
             # CSS プロパティの分類システム
             "layout": [
@@ -102,6 +104,9 @@ class CssElementExtractor(ElementExtractor):
         """Extract CSS rules using tree-sitter-css parser"""
         elements: list[StyleElement] = []
 
+        # Initialize source code for parent class methods
+        self._initialize_source(source_code)
+
         try:
             if hasattr(tree, "root_node"):
                 self._traverse_for_css_rules(tree.root_node, elements, source_code)
@@ -165,13 +170,15 @@ class CssElementExtractor(ElementExtractor):
                 element_class = "at_rule"
                 name = selector or "unknown_at_rule"
             else:
-                selector = self._extract_node_text(node, source_code)[:50]
+                selector = self._get_node_text_optimized(node, use_byte_offsets=True)[
+                    :50
+                ]
                 properties = {}
                 element_class = "other"
                 name = selector or "unknown"
 
             # Extract raw text
-            raw_text = self._extract_node_text(node, source_code)
+            raw_text = self._get_node_text_optimized(node, use_byte_offsets=True)
 
             # Create StyleElement
             element = StyleElement(
@@ -199,10 +206,12 @@ class CssElementExtractor(ElementExtractor):
             if hasattr(node, "children"):
                 for child in node.children:
                     if hasattr(child, "type") and child.type == "selectors":
-                        return self._extract_node_text(child, source_code).strip()
+                        return self._get_node_text_optimized(
+                            child, use_byte_offsets=True
+                        ).strip()
 
             # Fallback: extract from beginning of node text
-            node_text = self._extract_node_text(node, source_code)
+            node_text = self._get_node_text_optimized(node, use_byte_offsets=True)
             if "{" in node_text:
                 return node_text.split("{")[0].strip()
 
@@ -248,17 +257,19 @@ class CssElementExtractor(ElementExtractor):
                 for child in decl_node.children:
                     if hasattr(child, "type"):
                         if child.type == "property_name":
-                            prop_name = self._extract_node_text(
-                                child, source_code
+                            prop_name = self._get_node_text_optimized(
+                                child, use_byte_offsets=True
                             ).strip()
                         elif child.type in ["value", "values"]:
-                            prop_value = self._extract_node_text(
-                                child, source_code
+                            prop_value = self._get_node_text_optimized(
+                                child, use_byte_offsets=True
                             ).strip()
 
             # Fallback to simple parsing
             if not prop_name:
-                decl_text = self._extract_node_text(decl_node, source_code)
+                decl_text = self._get_node_text_optimized(
+                    decl_node, use_byte_offsets=True
+                )
                 if ":" in decl_text:
                     parts = decl_text.split(":", 1)
                     prop_name = parts[0].strip()
@@ -271,7 +282,7 @@ class CssElementExtractor(ElementExtractor):
     def _extract_at_rule_name(self, node: "tree_sitter.Node", source_code: str) -> str:
         """Extract at-rule name from CSS at-rule node"""
         try:
-            node_text = self._extract_node_text(node, source_code)
+            node_text = self._get_node_text_optimized(node, use_byte_offsets=True)
             if node_text.startswith("@"):
                 # For @media, @keyframes, etc., extract the full declaration line
                 # Split by { to get the rule declaration
@@ -311,18 +322,6 @@ class CssElementExtractor(ElementExtractor):
         best_category = max(category_scores, key=lambda k: category_scores[k])
         return best_category if category_scores[best_category] > 0 else "other"
 
-    def _extract_node_text(self, node: "tree_sitter.Node", source_code: str) -> str:
-        """Extract text content from a tree-sitter node"""
-        try:
-            if hasattr(node, "start_byte") and hasattr(node, "end_byte"):
-                source_bytes = source_code.encode("utf-8")
-                node_bytes = source_bytes[node.start_byte : node.end_byte]
-                return node_bytes.decode("utf-8", errors="replace")
-            return ""
-        except Exception as e:
-            log_debug(f"Failed to extract node text: {e}")
-            return ""
-
 
 class CssPlugin(LanguagePlugin):
     """CSS language plugin using tree-sitter-css for true CSS parsing"""
@@ -338,7 +337,7 @@ class CssPlugin(LanguagePlugin):
     def get_file_extensions(self) -> list[str]:
         return [".css", ".scss", ".sass", ".less"]
 
-    def create_extractor(self) -> ElementExtractor:
+    def create_extractor(self) -> MarkupLanguageExtractor:
         return CssElementExtractor()
 
     def get_tree_sitter_language(self) -> Any:
