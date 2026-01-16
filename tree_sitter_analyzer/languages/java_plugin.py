@@ -41,6 +41,21 @@ class JavaElementExtractor(ProgrammingLanguageExtractor):
         # Extracted annotations for cross-referencing
         self.annotations: list[dict[str, Any]] = []
 
+    def _get_function_handlers(self) -> dict[str, Callable]:
+        """Get mapping of node types to function extraction handlers."""
+        return {
+            "method_declaration": self._extract_method_optimized,
+            "constructor_declaration": self._extract_method_optimized,
+        }
+
+    def _get_class_handlers(self) -> dict[str, Callable]:
+        """Get mapping of node types to class extraction handlers."""
+        return {
+            "class_declaration": self._extract_class_optimized,
+            "interface_declaration": self._extract_class_optimized,
+            "enum_declaration": self._extract_class_optimized,
+        }
+
     def _reset_caches(self) -> None:
         """Reset performance caches"""
         super()._reset_caches()
@@ -90,48 +105,27 @@ class JavaElementExtractor(ProgrammingLanguageExtractor):
         log_debug(f"Extracted {len(annotations)} annotations")
         return annotations
 
-    def extract_functions(
-        self, tree: "tree_sitter.Tree", source_code: str
-    ) -> list[Function]:
-        """Extract Java method definitions using AdvancedAnalyzer implementation"""
-        self._initialize_source(source_code)
-
-        functions: list[Function] = []
-
-        # Use AdvancedAnalyzer's optimized traversal
-        extractors = {
-            "method_declaration": self._extract_method_optimized,
-            "constructor_declaration": self._extract_method_optimized,
-        }
-
-        self._traverse_and_extract_iterative(
-            tree.root_node, extractors, functions, "method"
-        )
-
-        log_debug(f"Extracted {len(functions)} methods")
-        return functions
+    # extract_functions() is inherited from base class
+    # Base class implementation uses _get_function_handlers()
 
     def extract_classes(
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[Class]:
-        """Extract Java class definitions using AdvancedAnalyzer implementation"""
+        """Extract Java class definitions with package pre-extraction.
+
+        Overrides base class to ensure package information is extracted
+        before processing classes, fixing the issue where current_package
+        is empty when extract_classes is called independently.
+        """
         self._initialize_source(source_code)
 
-        # Ensure package information is extracted before processing classes
-        # This fixes the issue where current_package is empty when extract_classes
-        # is called independently or before extract_imports
+        # Java-specific: Ensure package information is extracted first
         if not self.current_package:
             self._extract_package_from_tree(tree)
 
+        # Use base class template method logic
         classes: list[Class] = []
-
-        # Use AdvancedAnalyzer's optimized traversal
-        extractors = {
-            "class_declaration": self._extract_class_optimized,
-            "interface_declaration": self._extract_class_optimized,
-            "enum_declaration": self._extract_class_optimized,
-        }
-
+        extractors = self._get_class_handlers()
         self._traverse_and_extract_iterative(
             tree.root_node, extractors, classes, "class"
         )
@@ -447,8 +441,8 @@ class JavaElementExtractor(ProgrammingLanguageExtractor):
     def _extract_class_optimized(self, node: "tree_sitter.Node") -> Class | None:
         """Extract class information optimized (from AdvancedAnalyzer)"""
         try:
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
+            # Use base class method to extract common metadata
+            metadata = self._extract_common_metadata(node)
 
             # Extract class name efficiently
             class_name = None
@@ -493,22 +487,19 @@ class JavaElementExtractor(ProgrammingLanguageExtractor):
                     implements_interfaces = re.findall(r"\b[A-Z]\w*", implements_text)
 
             # Extract annotations for this class
-            class_annotations = self._find_annotations_for_line_cached(start_line)
+            class_annotations = self._find_annotations_for_line_cached(
+                metadata["start_line"]
+            )
 
             # Check if this is a nested class
             is_nested = self._is_nested_class(node)
             parent_class = self._find_parent_class(node) if is_nested else None
 
-            # Extract raw text
-            start_line_idx = max(0, start_line - 1)
-            end_line_idx = min(len(self.content_lines), end_line)
-            raw_text = "\n".join(self.content_lines[start_line_idx:end_line_idx])
-
             return Class(
                 name=class_name,
-                start_line=start_line,
-                end_line=end_line,
-                raw_text=raw_text,
+                start_line=metadata["start_line"],
+                end_line=metadata["end_line"],
+                raw_text=metadata["raw_text"],
                 language="java",
                 class_type=class_type,
                 full_qualified_name=full_qualified_name,
@@ -524,18 +515,18 @@ class JavaElementExtractor(ProgrammingLanguageExtractor):
                 extends_class=extends_class,  # Alias for superclass
                 implements_interfaces=implements_interfaces,  # Alias for interfaces
             )
-        except (AttributeError, ValueError, TypeError) as e:
+        except (AttributeError, ValueError, TypeError, UnicodeDecodeError) as e:
             log_debug(f"Failed to extract class info: {e}")
             return None
-        except Exception as e:
+        except (RuntimeError, IndexError) as e:
             log_error(f"Unexpected error in class extraction: {e}")
             return None
 
     def _extract_method_optimized(self, node: "tree_sitter.Node") -> Function | None:
         """Extract method information optimized (from AdvancedAnalyzer)"""
         try:
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
+            # Use base class method to extract common metadata
+            metadata = self._extract_common_metadata(node)
 
             # Extract method information efficiently
             method_info = self._parse_method_signature_optimized(node)
@@ -547,24 +538,20 @@ class JavaElementExtractor(ProgrammingLanguageExtractor):
             visibility = self._determine_visibility(modifiers)
 
             # Extract annotations for this method
-            method_annotations = self._find_annotations_for_line_cached(start_line)
+            method_annotations = self._find_annotations_for_line_cached(
+                metadata["start_line"]
+            )
 
-            # Calculate complexity score
-            complexity_score = self._calculate_complexity_optimized(node)
-
-            # Extract JavaDoc
-            javadoc = self._extract_javadoc_for_line(start_line)
-
-            # Extract raw text
-            start_line_idx = max(0, start_line - 1)
-            end_line_idx = min(len(self.content_lines), end_line)
-            raw_text = "\n".join(self.content_lines[start_line_idx:end_line_idx])
+            # Extract JavaDoc (use docstring from metadata if available)
+            javadoc = metadata.get("docstring") or self._extract_javadoc_for_line(
+                metadata["start_line"]
+            )
 
             return Function(
                 name=method_name,
-                start_line=start_line,
-                end_line=end_line,
-                raw_text=raw_text,
+                start_line=metadata["start_line"],
+                end_line=metadata["end_line"],
+                raw_text=metadata["raw_text"],
                 language="java",
                 parameters=parameters,
                 return_type=return_type if not is_constructor else "void",
@@ -578,14 +565,14 @@ class JavaElementExtractor(ProgrammingLanguageExtractor):
                 # Java-specific detailed information
                 annotations=method_annotations,
                 throws=throws,
-                complexity_score=complexity_score,
+                complexity_score=metadata["complexity"],
                 is_abstract="abstract" in modifiers,
                 is_final="final" in modifiers,
             )
-        except (AttributeError, ValueError, TypeError) as e:
+        except (AttributeError, ValueError, TypeError, UnicodeDecodeError) as e:
             log_debug(f"Failed to extract method info: {e}")
             return None
-        except Exception as e:
+        except (RuntimeError, IndexError) as e:
             log_error(f"Unexpected error in method extraction: {e}")
             return None
 
@@ -635,9 +622,9 @@ class JavaElementExtractor(ProgrammingLanguageExtractor):
                     field_type=field_type,  # Alias for variable_type
                 )
                 fields.append(field)
-        except (AttributeError, ValueError, TypeError) as e:
+        except (AttributeError, ValueError, TypeError, UnicodeDecodeError) as e:
             log_debug(f"Failed to extract field info: {e}")
-        except Exception as e:
+        except (RuntimeError, IndexError) as e:
             log_error(f"Unexpected error in field extraction: {e}")
 
         return fields
@@ -697,7 +684,7 @@ class JavaElementExtractor(ProgrammingLanguageExtractor):
                     throws.extend(exceptions)
 
             return method_name, return_type, parameters, modifiers, throws
-        except Exception:
+        except (AttributeError, TypeError, UnicodeDecodeError):
             return None
 
     def _parse_field_declaration_optimized(
@@ -739,7 +726,7 @@ class JavaElementExtractor(ProgrammingLanguageExtractor):
             modifiers = self._extract_modifiers_optimized(node)
 
             return field_type, variable_names, modifiers
-        except Exception:
+        except (AttributeError, TypeError, UnicodeDecodeError):
             return None
 
     def _extract_modifiers_optimized(self, node: "tree_sitter.Node") -> list[str]:
@@ -783,9 +770,9 @@ class JavaElementExtractor(ProgrammingLanguageExtractor):
             match = re.search(r"package\s+([\w.]+)", package_text)
             if match:
                 self.current_package = match.group(1)
-        except (AttributeError, ValueError, IndexError) as e:
+        except (AttributeError, ValueError, IndexError, UnicodeDecodeError) as e:
             log_debug(f"Failed to extract package info: {e}")
-        except Exception as e:
+        except RuntimeError as e:
             log_error(f"Unexpected error in package extraction: {e}")
 
     def _extract_package_element(self, node: "tree_sitter.Node") -> Package | None:
@@ -802,9 +789,9 @@ class JavaElementExtractor(ProgrammingLanguageExtractor):
                     raw_text=package_text,
                     language="java",
                 )
-        except (AttributeError, ValueError, IndexError) as e:
+        except (AttributeError, ValueError, IndexError, UnicodeDecodeError) as e:
             log_debug(f"Failed to extract package element: {e}")
-        except Exception as e:
+        except RuntimeError as e:
             log_error(f"Unexpected error in package element extraction: {e}")
 
         return None
@@ -872,7 +859,7 @@ class JavaElementExtractor(ProgrammingLanguageExtractor):
                         is_wildcard=import_text.endswith(".*"),
                         import_statement=import_text,
                     )
-        except Exception as e:
+        except (AttributeError, ValueError, UnicodeDecodeError) as e:
             log_debug(f"Failed to extract import info: {e}")
 
         return None
@@ -905,7 +892,7 @@ class JavaElementExtractor(ProgrammingLanguageExtractor):
                     "text": annotation_text,
                     "type": "annotation",
                 }
-        except Exception as e:
+        except (AttributeError, ValueError, UnicodeDecodeError) as e:
             log_debug(f"Failed to extract annotation: {e}")
 
         return None
@@ -1010,7 +997,7 @@ class JavaElementExtractor(ProgrammingLanguageExtractor):
                             if doc_line.endswith("*/"):
                                 break
                         return "\n".join(javadoc_lines)
-        except Exception as e:
+        except (IndexError, AttributeError) as e:
             log_debug(f"Failed to extract JavaDoc: {e}")
 
         return None
@@ -1022,7 +1009,7 @@ class JavaElementExtractor(ProgrammingLanguageExtractor):
                 if child.type == "identifier":
                     return self._get_node_text_optimized(child)
             return None
-        except Exception as e:
+        except (AttributeError, UnicodeDecodeError) as e:
             log_debug(f"Failed to extract class name: {e}")
             return None
 
@@ -1134,7 +1121,7 @@ class JavaPlugin(LanguagePlugin):
                 package=package,
             )
 
-        except Exception as e:
+        except (OSError, UnicodeDecodeError, RuntimeError) as e:
             log_error(f"Error analyzing Java file {file_path}: {e}")
             # Return empty result on error
             return AnalysisResult(
@@ -1178,7 +1165,7 @@ class JavaPlugin(LanguagePlugin):
                 try:
                     # Use modern tree-sitter API - PyCapsule should be passed to Language constructor
                     self._cached_language = tree_sitter.Language(caps_or_lang)
-                except Exception as e:
+                except (RuntimeError, ValueError, AttributeError) as e:
                     log_error(f"Failed to create Language object from PyCapsule: {e}")
                     return None
 
@@ -1186,7 +1173,7 @@ class JavaPlugin(LanguagePlugin):
         except ImportError as e:
             log_error(f"tree-sitter-java not available: {e}")
             return None
-        except Exception as e:
+        except (RuntimeError, ValueError, AttributeError) as e:
             log_error(f"Failed to load tree-sitter language for Java: {e}")
             return None
 
@@ -1212,7 +1199,7 @@ class JavaPlugin(LanguagePlugin):
                 "packages": extractor.extract_packages(tree, source_code),
                 "annotations": extractor.extract_annotations(tree, source_code),
             }
-        except Exception as e:
+        except (AttributeError, TypeError, RuntimeError) as e:
             log_error(f"Error extracting elements: {e}")
             return {
                 "functions": [],

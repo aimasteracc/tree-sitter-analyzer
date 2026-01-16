@@ -498,8 +498,14 @@ class TestJavaPluginErrorHandling:
             mock_request.file_path = temp_path
             mock_request.language = "java"
 
+            # Mock read_file_safe_async on the plugin module, as that's where it's imported
+            # OR where it's used. The error message shows it's called in java_plugin.py
+            # The test previously patched 'tree_sitter_analyzer.encoding_utils.read_file_safe_async'
+            # But maybe the import in java_plugin.py is 'from ... import read_file_safe_async'
+            # If so, we need to patch 'tree_sitter_analyzer.languages.java_plugin.read_file_safe_async'
+
             with patch(
-                "tree_sitter_analyzer.encoding_utils.read_file_safe_async"
+                "tree_sitter_analyzer.languages.java_plugin.read_file_safe_async"
             ) as mock_read:
                 mock_read.side_effect = Exception("Read error")
 
@@ -511,7 +517,8 @@ class TestJavaPluginErrorHandling:
                 assert result.success is False
 
         finally:
-            os.unlink(temp_path)
+            if os.path.exists(temp_path):
+                os.unlink(temp_path)
 
 
 class TestJavaPluginIntegration:

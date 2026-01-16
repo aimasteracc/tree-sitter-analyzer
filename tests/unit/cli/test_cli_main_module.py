@@ -10,12 +10,9 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from tree_sitter_analyzer.cli_main import (
-    CLICommandFactory,
-    create_argument_parser,
-    handle_special_commands,
-    main,
-)
+from tree_sitter_analyzer.cli.argument_parser import create_argument_parser
+from tree_sitter_analyzer.cli.special_commands import SpecialCommandHandler
+from tree_sitter_analyzer.cli_main import CLICommandFactory, main
 
 
 class TestCLICommandFactory:
@@ -396,7 +393,7 @@ class TestCreateArgumentParser:
 class TestHandleSpecialCommands:
     """Tests for handle_special_commands function."""
 
-    @patch("tree_sitter_analyzer.cli_main.output_list")
+    @patch("tree_sitter_analyzer.cli.special_commands.output_list")
     def test_handle_show_query_languages(self, mock_output_list):
         """Test handling --show-query-languages."""
         args = argparse.Namespace(
@@ -409,11 +406,11 @@ class TestHandleSpecialCommands:
             partial_read=False,
             metrics_only=False,
         )
-        result = handle_special_commands(args)
+        result = SpecialCommandHandler.handle(args)
         assert result == 0
         mock_output_list.assert_called()
 
-    @patch("tree_sitter_analyzer.cli_main.output_list")
+    @patch("tree_sitter_analyzer.cli.special_commands.output_list")
     def test_handle_show_common_queries(self, mock_output_list):
         """Test handling --show-common-queries."""
         args = argparse.Namespace(
@@ -426,7 +423,7 @@ class TestHandleSpecialCommands:
             partial_read=False,
             metrics_only=False,
         )
-        result = handle_special_commands(args)
+        result = SpecialCommandHandler.handle(args)
         assert result == 0
         mock_output_list.assert_called()
 
@@ -444,7 +441,7 @@ class TestHandleSpecialCommands:
             "BehaviorRecorder is imported inside handle_special_commands function"
         )
 
-    @patch("tree_sitter_analyzer.cli_main.output_error")
+    @patch("tree_sitter_analyzer.cli.special_commands.output_error")
     def test_handle_partial_read_missing_start_line(self, mock_output_error):
         """Test handling partial read without --start-line."""
         args = argparse.Namespace(
@@ -454,11 +451,11 @@ class TestHandleSpecialCommands:
             start_column=None,
             end_column=None,
         )
-        result = handle_special_commands(args)
+        result = SpecialCommandHandler.handle(args)
         assert result == 1
         mock_output_error.assert_called()
 
-    @patch("tree_sitter_analyzer.cli_main.output_error")
+    @patch("tree_sitter_analyzer.cli.special_commands.output_error")
     def test_handle_partial_read_invalid_start_line(self, mock_output_error):
         """Test handling partial read with invalid --start-line."""
         args = argparse.Namespace(
@@ -468,11 +465,11 @@ class TestHandleSpecialCommands:
             start_column=None,
             end_column=None,
         )
-        result = handle_special_commands(args)
+        result = SpecialCommandHandler.handle(args)
         assert result == 1
         mock_output_error.assert_called()
 
-    @patch("tree_sitter_analyzer.cli_main.output_error")
+    @patch("tree_sitter_analyzer.cli.special_commands.output_error")
     def test_handle_partial_read_invalid_end_line(self, mock_output_error):
         """Test handling partial read with invalid --end-line."""
         args = argparse.Namespace(
@@ -482,11 +479,11 @@ class TestHandleSpecialCommands:
             start_column=None,
             end_column=None,
         )
-        result = handle_special_commands(args)
+        result = SpecialCommandHandler.handle(args)
         assert result == 1
         mock_output_error.assert_called()
 
-    @patch("tree_sitter_analyzer.cli_main.output_error")
+    @patch("tree_sitter_analyzer.cli.special_commands.output_error")
     def test_handle_partial_read_invalid_start_column(self, mock_output_error):
         """Test handling partial read with invalid --start-column."""
         args = argparse.Namespace(
@@ -496,11 +493,11 @@ class TestHandleSpecialCommands:
             start_column=-1,
             end_column=None,
         )
-        result = handle_special_commands(args)
+        result = SpecialCommandHandler.handle(args)
         assert result == 1
         mock_output_error.assert_called()
 
-    @patch("tree_sitter_analyzer.cli_main.output_error")
+    @patch("tree_sitter_analyzer.cli.special_commands.output_error")
     def test_handle_partial_read_invalid_end_column(self, mock_output_error):
         """Test handling partial read with invalid --end-column."""
         args = argparse.Namespace(
@@ -510,11 +507,11 @@ class TestHandleSpecialCommands:
             start_column=None,
             end_column=-1,
         )
-        result = handle_special_commands(args)
+        result = SpecialCommandHandler.handle(args)
         assert result == 1
         mock_output_error.assert_called()
 
-    @patch("tree_sitter_analyzer.cli_main.output_error")
+    @patch("tree_sitter_analyzer.cli.special_commands.output_error")
     def test_handle_metrics_only_no_file_paths(self, mock_output_error):
         """Test handling --metrics-only without --file-paths or --files-from."""
         args = argparse.Namespace(
@@ -522,7 +519,7 @@ class TestHandleSpecialCommands:
             file_paths=None,
             files_from=None,
         )
-        result = handle_special_commands(args)
+        result = SpecialCommandHandler.handle(args)
         assert result == 1
         mock_output_error.assert_called()
 
@@ -538,7 +535,7 @@ class TestHandleSpecialCommands:
             partial_read=False,
             metrics_only=False,
         )
-        result = handle_special_commands(args)
+        result = SpecialCommandHandler.handle(args)
         assert result is None
 
 
@@ -558,7 +555,7 @@ class TestMainFunction:
         pytest.skip("Complex mocking required for main() function")
 
     @patch("tree_sitter_analyzer.cli_main.create_argument_parser")
-    @patch("tree_sitter_analyzer.cli_main.handle_special_commands")
+    @patch("tree_sitter_analyzer.cli_main.SpecialCommandHandler.handle")
     @patch("tree_sitter_analyzer.cli_main.sys.exit")
     def test_main_format_alias(self, mock_exit, mock_handle_special, mock_parser):
         """Test that --format is aliased to --output-format."""
@@ -589,7 +586,7 @@ class TestMainFunction:
         assert args.output_format == "toon"
 
     @patch("tree_sitter_analyzer.cli_main.create_argument_parser")
-    @patch("tree_sitter_analyzer.cli_main.handle_special_commands")
+    @patch("tree_sitter_analyzer.cli_main.SpecialCommandHandler.handle")
     @patch("tree_sitter_analyzer.cli_main.CLICommandFactory")
     @patch("tree_sitter_analyzer.cli_main.sys.exit")
     def test_main_creates_command(
@@ -626,7 +623,7 @@ class TestMainFunction:
         mock_command.execute.assert_called_once()
 
     @patch("tree_sitter_analyzer.cli_main.create_argument_parser")
-    @patch("tree_sitter_analyzer.cli_main.handle_special_commands")
+    @patch("tree_sitter_analyzer.cli_main.SpecialCommandHandler.handle")
     @patch("tree_sitter_analyzer.cli_main.CLICommandFactory")
     @patch("tree_sitter_analyzer.cli_main.sys.exit")
     def test_main_no_command_no_file_path(
@@ -659,7 +656,7 @@ class TestMainFunction:
         mock_exit.assert_called_once_with(1)
 
     @patch("tree_sitter_analyzer.cli_main.create_argument_parser")
-    @patch("tree_sitter_analyzer.cli_main.output_error")
+    @patch("tree_sitter_analyzer.cli.special_commands.output_error")
     @patch("tree_sitter_analyzer.cli_main.sys.exit")
     def test_main_keyboard_interrupt(self, mock_exit, mock_output_error, mock_parser):
         """Test that main handles KeyboardInterrupt."""
@@ -728,7 +725,7 @@ class TestLoggingConfiguration:
     """Tests for logging configuration."""
 
     @patch("tree_sitter_analyzer.cli_main.create_argument_parser")
-    @patch("tree_sitter_analyzer.cli_main.handle_special_commands")
+    @patch("tree_sitter_analyzer.cli_main.SpecialCommandHandler.handle")
     @patch("tree_sitter_analyzer.cli_main.sys.exit")
     def test_logging_configured_to_error(
         self, mock_exit, mock_handle_special, mock_parser
@@ -769,7 +766,7 @@ class TestLoggingConfiguration:
             assert any(logging.ERROR in call for call in calls)
 
     @patch("tree_sitter_analyzer.cli_main.create_argument_parser")
-    @patch("tree_sitter_analyzer.cli_main.handle_special_commands")
+    @patch("tree_sitter_analyzer.cli_main.SpecialCommandHandler.handle")
     @patch("tree_sitter_analyzer.cli_main.sys.exit")
     def test_logging_configured_for_table_output(
         self, mock_exit, mock_handle_special, mock_parser
@@ -880,7 +877,7 @@ class TestErrorHandling:
         mock_parser.return_value.parse_args.return_value = args
 
         with patch(
-            "tree_sitter_analyzer.cli_main.handle_special_commands"
+            "tree_sitter_analyzer.cli_main.SpecialCommandHandler.handle"
         ) as mock_handle_special:
             mock_handle_special.return_value = None
 

@@ -225,6 +225,34 @@ class CSharpElementExtractor(ProgrammingLanguageExtractor):
 
         return parameters
 
+    def _get_function_handlers(self) -> dict[str, Any]:
+        """
+        Get function node type to handler method mapping.
+
+        Returns:
+            Dictionary mapping node types to handler methods
+        """
+        return {
+            "method_declaration": self._extract_method,
+            "constructor_declaration": self._extract_constructor,
+            "property_declaration": self._extract_property,
+        }
+
+    def _get_class_handlers(self) -> dict[str, Any]:
+        """
+        Get class node type to handler method mapping.
+
+        Returns:
+            Dictionary mapping node types to handler methods
+        """
+        return {
+            "class_declaration": self._extract_class_declaration,
+            "interface_declaration": self._extract_class_declaration,
+            "record_declaration": self._extract_class_declaration,
+            "enum_declaration": self._extract_class_declaration,
+            "struct_declaration": self._extract_class_declaration,
+        }
+
     def _traverse_iterative(
         self, root_node: "tree_sitter.Node"
     ) -> Iterator["tree_sitter.Node"]:
@@ -303,6 +331,9 @@ class CSharpElementExtractor(ProgrammingLanguageExtractor):
 
             class_name = self._get_node_text_optimized(name_node)
 
+            # Use base class method to extract common metadata
+            metadata = self._extract_common_metadata(node)
+
             # Get modifiers and visibility
             modifiers = self._extract_modifiers(node)
             visibility = self._determine_visibility(modifiers)
@@ -336,9 +367,6 @@ class CSharpElementExtractor(ProgrammingLanguageExtractor):
                 else class_name
             )
 
-            # Get raw text
-            raw_text = self._get_node_text_optimized(node)
-
             # Determine class type
             class_type_map = {
                 "class_declaration": "class",
@@ -351,9 +379,9 @@ class CSharpElementExtractor(ProgrammingLanguageExtractor):
 
             return Class(
                 name=class_name,
-                start_line=node.start_point[0] + 1,
-                end_line=node.end_point[0] + 1,
-                raw_text=raw_text,
+                start_line=metadata["start_line"],
+                end_line=metadata["end_line"],
+                raw_text=metadata["raw_text"],
                 full_qualified_name=full_name,
                 superclass=superclass,
                 interfaces=interfaces,
@@ -428,6 +456,9 @@ class CSharpElementExtractor(ProgrammingLanguageExtractor):
 
             method_name = self._get_node_text_optimized(name_node)
 
+            # Use base class method to extract common metadata
+            metadata = self._extract_common_metadata(node)
+
             # Get modifiers and visibility
             modifiers = self._extract_modifiers(node)
             visibility = self._determine_visibility(modifiers)
@@ -446,24 +477,18 @@ class CSharpElementExtractor(ProgrammingLanguageExtractor):
             params_node = node.child_by_field_name("parameters")
             parameters = self._extract_parameters(params_node)
 
-            # Get raw text
-            raw_text = self._get_node_text_optimized(node)
-
-            # Calculate complexity (simplified)
-            complexity_score = self._calculate_complexity(node)
-
             return Function(
                 name=method_name,
-                start_line=node.start_point[0] + 1,
-                end_line=node.end_point[0] + 1,
-                raw_text=raw_text,
+                start_line=metadata["start_line"],
+                end_line=metadata["end_line"],
+                raw_text=metadata["raw_text"],
                 parameters=parameters,
                 return_type=return_type,
                 modifiers=modifiers,
                 visibility=visibility,
                 is_async=is_async,
                 annotations=attributes,
-                complexity_score=complexity_score,
+                complexity_score=metadata["complexity"],
             )
 
         except Exception as e:
@@ -488,6 +513,9 @@ class CSharpElementExtractor(ProgrammingLanguageExtractor):
 
             constructor_name = self._get_node_text_optimized(name_node)
 
+            # Use base class method to extract common metadata
+            metadata = self._extract_common_metadata(node)
+
             # Get modifiers and visibility
             modifiers = self._extract_modifiers(node)
             visibility = self._determine_visibility(modifiers)
@@ -499,14 +527,11 @@ class CSharpElementExtractor(ProgrammingLanguageExtractor):
             params_node = node.child_by_field_name("parameters")
             parameters = self._extract_parameters(params_node)
 
-            # Get raw text
-            raw_text = self._get_node_text_optimized(node)
-
             return Function(
                 name=constructor_name,
-                start_line=node.start_point[0] + 1,
-                end_line=node.end_point[0] + 1,
-                raw_text=raw_text,
+                start_line=metadata["start_line"],
+                end_line=metadata["end_line"],
+                raw_text=metadata["raw_text"],
                 parameters=parameters,
                 return_type="void",
                 modifiers=modifiers,
@@ -537,6 +562,9 @@ class CSharpElementExtractor(ProgrammingLanguageExtractor):
 
             property_name = self._get_node_text_optimized(name_node)
 
+            # Use base class method to extract common metadata
+            metadata = self._extract_common_metadata(node)
+
             # Get modifiers and visibility
             modifiers = self._extract_modifiers(node)
             visibility = self._determine_visibility(modifiers)
@@ -547,9 +575,6 @@ class CSharpElementExtractor(ProgrammingLanguageExtractor):
             # Get property type
             type_node = node.child_by_field_name("type")
             property_type = self._extract_type_name(type_node)
-
-            # Get raw text
-            raw_text = self._get_node_text_optimized(node)
 
             # Check for getter/setter (for future use)
             # has_getter = False
@@ -566,9 +591,9 @@ class CSharpElementExtractor(ProgrammingLanguageExtractor):
 
             return Function(
                 name=property_name,
-                start_line=node.start_point[0] + 1,
-                end_line=node.end_point[0] + 1,
-                raw_text=raw_text,
+                start_line=metadata["start_line"],
+                end_line=metadata["end_line"],
+                raw_text=metadata["raw_text"],
                 parameters=[],
                 return_type=property_type,
                 modifiers=modifiers,
@@ -581,18 +606,14 @@ class CSharpElementExtractor(ProgrammingLanguageExtractor):
             log_error(f"Error extracting property: {e}")
             return None
 
-    def _calculate_complexity(self, node: "tree_sitter.Node") -> int:
+    def _get_complexity_keywords(self) -> set[str]:
         """
-        Calculate cyclomatic complexity of a method.
-
-        Args:
-            node: Method node
+        Get C#-specific complexity keywords.
 
         Returns:
-            Complexity score (1 + number of decision points)
+            Set of node types that contribute to complexity
         """
-        complexity = 1
-        decision_keywords = {
+        return {
             "if_statement",
             "switch_statement",
             "for_statement",
@@ -602,12 +623,6 @@ class CSharpElementExtractor(ProgrammingLanguageExtractor):
             "catch_clause",
             "conditional_expression",  # ternary operator
         }
-
-        for child in self._traverse_iterative(node):
-            if child.type in decision_keywords:
-                complexity += 1
-
-        return complexity
 
     def extract_variables(
         self, tree: "tree_sitter.Tree | None", source_code: str

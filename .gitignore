@@ -335,7 +335,6 @@ planning-with-files/
 .claude/*.log
 
 # Kiro planning session logs (progress.md is temporary)
-.kiro/specs/*/progress.md
 .kiro/specs/*/implementation_log.md
 
 # Other AI tools temporary files

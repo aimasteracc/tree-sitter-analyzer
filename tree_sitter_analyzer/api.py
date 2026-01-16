@@ -17,21 +17,219 @@ from .utils import log_error
 
 logger = logging.getLogger(__name__)
 
-# Global engine instance (singleton pattern)
-_engine: UnifiedAnalysisEngine | None = None
-
 
 def get_engine() -> UnifiedAnalysisEngine:
     """
     Get the global analysis engine instance.
 
+    UnifiedAnalysisEngine uses class-based singleton pattern internally,
+    so multiple calls return the same instance.
+
     Returns:
         UnifiedAnalysisEngine instance
     """
-    global _engine
-    if _engine is None:
-        _engine = UnifiedAnalysisEngine()
-    return _engine
+    return UnifiedAnalysisEngine()
+
+
+def _convert_element_to_dict(elem: Any, all_elements: list[Any]) -> dict[str, Any]:
+    """
+    Convert a code element to a dictionary representation.
+
+    Args:
+        elem: Code element to convert
+        all_elements: All elements (used for finding parent class)
+
+    Returns:
+        Dictionary representation of the element
+    """
+    elem_dict = {
+        "name": elem.name,
+        "type": type(elem).__name__.lower(),
+        "start_line": elem.start_line,
+        "end_line": elem.end_line,
+        "raw_text": elem.raw_text,
+        "language": elem.language,
+    }
+
+    # Add type-specific fields
+    if hasattr(elem, "module_path"):
+        elem_dict["module_path"] = elem.module_path
+    if hasattr(elem, "module_name"):
+        elem_dict["module_name"] = elem.module_name
+    if hasattr(elem, "imported_names"):
+        elem_dict["imported_names"] = elem.imported_names
+    if hasattr(elem, "variable_type"):
+        elem_dict["variable_type"] = elem.variable_type
+    if hasattr(elem, "initializer"):
+        elem_dict["initializer"] = elem.initializer
+    if hasattr(elem, "is_constant"):
+        elem_dict["is_constant"] = elem.is_constant
+    if hasattr(elem, "parameters"):
+        elem_dict["parameters"] = elem.parameters
+    if hasattr(elem, "return_type"):
+        elem_dict["return_type"] = elem.return_type
+    if hasattr(elem, "is_async"):
+        elem_dict["is_async"] = elem.is_async
+    if hasattr(elem, "is_static"):
+        elem_dict["is_static"] = elem.is_static
+    if hasattr(elem, "is_constructor"):
+        elem_dict["is_constructor"] = elem.is_constructor
+    if hasattr(elem, "is_method"):
+        elem_dict["is_method"] = elem.is_method
+    if hasattr(elem, "complexity_score"):
+        elem_dict["complexity_score"] = elem.complexity_score
+    if hasattr(elem, "superclass"):
+        elem_dict["superclass"] = elem.superclass
+    if hasattr(elem, "class_type"):
+        elem_dict["class_type"] = elem.class_type
+
+    # For methods, try to find the class name from context
+    if elem_dict.get("is_method") and elem_dict["type"] == "function":
+        elem_dict["class_name"] = _find_parent_class_name(elem, all_elements)
+
+    return elem_dict
+
+
+def _find_parent_class_name(elem: Any, all_elements: list[Any]) -> str | None:
+    """
+    Find the parent class name for a method element.
+
+    Args:
+        elem: Method element
+        all_elements: All elements to search
+
+    Returns:
+        Parent class name or None
+    """
+    for other_elem in all_elements:
+        if (
+            hasattr(other_elem, "start_line")
+            and hasattr(other_elem, "end_line")
+            and type(other_elem).__name__.lower() == "class"
+            and other_elem.start_line <= elem.start_line <= other_elem.end_line
+        ):
+            return str(other_elem.name)
+    return None
+
+
+def _convert_elements_to_list(analysis_result: Any) -> list[dict[str, Any]]:
+    """
+    Convert analysis result elements to a list of dictionaries.
+
+    Args:
+        analysis_result: Analysis result containing elements
+
+    Returns:
+        List of element dictionaries
+    """
+    if not hasattr(analysis_result, "elements"):
+        return []
+
+    return [
+        _convert_element_to_dict(elem, analysis_result.elements)
+        for elem in analysis_result.elements
+    ]
+
+
+def _convert_analysis_result_to_dict(
+    analysis_result: Any,
+    file_path: str | Path,
+    language: str | None = None,
+    is_file_analysis: bool = True,
+) -> dict[str, Any]:
+    """
+    Convert AnalysisResult to expected API format.
+
+    Args:
+        analysis_result: Analysis result from engine
+        file_path: Path to the file (for file analysis)
+        language: Programming language (None if auto-detected)
+        is_file_analysis: Whether this is file analysis (True) or code analysis (False)
+
+    Returns:
+        Dictionary representation of the analysis result
+    """
+    result = {
+        "success": analysis_result.success,
+        "language_info": {
+            "language": analysis_result.language,
+            "detected": language is None if is_file_analysis else False,
+        },
+        "ast_info": {
+            "node_count": analysis_result.node_count,
+            "line_count": analysis_result.line_count,
+        },
+    }
+
+    # Add file_info only for file analysis
+    if is_file_analysis:
+        result["file_info"] = {
+            "path": str(file_path),
+            "exists": True,
+        }
+
+    # Add error message if analysis failed
+    if not analysis_result.success and analysis_result.error_message:
+        result["error"] = analysis_result.error_message
+
+    return result
+
+
+def _build_error_result(
+    error: str,
+    file_path: str | Path,
+    language: str | None = None,
+    is_file_analysis: bool = True,
+) -> dict[str, Any]:
+    """
+    Build error result dictionary.
+
+    Args:
+        error: Error message
+        file_path: Path to the file
+        language: Programming language
+        is_file_analysis: Whether this is file analysis (True) or code analysis (False)
+
+    Returns:
+        Error result dictionary
+    """
+    result = {
+        "success": False,
+        "error": error,
+        "language_info": {"language": language or "unknown", "detected": False},
+        "ast_info": {"node_count": 0, "line_count": 0},
+    }
+
+    # Add file_info only for file analysis
+    if is_file_analysis:
+        result["file_info"] = {"path": str(file_path), "exists": False}
+
+    return result
+
+
+def _filter_result_by_options(
+    result: dict[str, Any],
+    include_elements: bool,
+    include_queries: bool,
+) -> dict[str, Any]:
+    """
+    Filter result based on options.
+
+    Args:
+        result: Analysis result dictionary
+        include_elements: Whether to include elements
+        include_queries: Whether to include queries
+
+    Returns:
+        Filtered result dictionary
+    """
+    if not include_elements and "elements" in result:
+        del result["elements"]
+
+    if not include_queries and "query_results" in result:
+        del result["query_results"]
+
+    return result
 
 
 def analyze_file(
@@ -97,69 +295,8 @@ def analyze_file(
             if analysis_result.error_message:
                 result["error"] = analysis_result.error_message
             return result
-        if include_elements and hasattr(analysis_result, "elements"):
-            elements_list: list[dict[str, Any]] = []
-            result["elements"] = elements_list
-            for elem in analysis_result.elements:
-                elem_dict = {
-                    "name": elem.name,
-                    "type": type(elem).__name__.lower(),
-                    "start_line": elem.start_line,
-                    "end_line": elem.end_line,
-                    "raw_text": elem.raw_text,
-                    "language": elem.language,
-                }
-
-                # Add type-specific fields
-                if hasattr(elem, "module_path"):
-                    elem_dict["module_path"] = elem.module_path
-                if hasattr(elem, "module_name"):
-                    elem_dict["module_name"] = elem.module_name
-                if hasattr(elem, "imported_names"):
-                    elem_dict["imported_names"] = elem.imported_names
-                if hasattr(elem, "variable_type"):
-                    elem_dict["variable_type"] = elem.variable_type
-                if hasattr(elem, "initializer"):
-                    elem_dict["initializer"] = elem.initializer
-                if hasattr(elem, "is_constant"):
-                    elem_dict["is_constant"] = elem.is_constant
-                if hasattr(elem, "parameters"):
-                    elem_dict["parameters"] = elem.parameters
-                if hasattr(elem, "return_type"):
-                    elem_dict["return_type"] = elem.return_type
-                if hasattr(elem, "is_async"):
-                    elem_dict["is_async"] = elem.is_async
-                if hasattr(elem, "is_static"):
-                    elem_dict["is_static"] = elem.is_static
-                if hasattr(elem, "is_constructor"):
-                    elem_dict["is_constructor"] = elem.is_constructor
-                if hasattr(elem, "is_method"):
-                    elem_dict["is_method"] = elem.is_method
-                if hasattr(elem, "complexity_score"):
-                    elem_dict["complexity_score"] = elem.complexity_score
-                if hasattr(elem, "superclass"):
-                    elem_dict["superclass"] = elem.superclass
-                if hasattr(elem, "class_type"):
-                    elem_dict["class_type"] = elem.class_type
-
-                # For methods, try to find the class name from context
-                if elem_dict.get("is_method") and elem_dict["type"] == "function":
-                    # Look for the class this method belongs to
-                    for other_elem in analysis_result.elements:
-                        if (
-                            hasattr(other_elem, "start_line")
-                            and hasattr(other_elem, "end_line")
-                            and type(other_elem).__name__.lower() == "class"
-                            and other_elem.start_line
-                            <= elem.start_line
-                            <= other_elem.end_line
-                        ):
-                            elem_dict["class_name"] = other_elem.name
-                            break
-                    else:
-                        elem_dict["class_name"] = None
-
-                elements_list.append(elem_dict)
+        if include_elements:
+            result["elements"] = _convert_elements_to_list(analysis_result)
 
         # Add query results if requested and available
         if include_queries and hasattr(analysis_result, "query_results"):
@@ -178,14 +315,35 @@ def analyze_file(
 
         return result
 
-    except FileNotFoundError as e:
+    except FileNotFoundError:
         # Re-raise FileNotFoundError for tests that expect it
-        raise e
-    except Exception as e:
-        log_error(f"API analyze_file failed: {e}")
+        raise
+    except OSError as e:
+        # File system errors
+        log_error(f"File system error in analyze_file: {e}")
         return {
             "success": False,
-            "error": str(e),
+            "error": f"File system error: {e}",
+            "file_info": {"path": str(file_path), "exists": False},
+            "language_info": {"language": language or "unknown", "detected": False},
+            "ast_info": {"node_count": 0, "line_count": 0},
+        }
+    except (ValueError, TypeError) as e:
+        # Invalid input errors
+        log_error(f"Invalid input in analyze_file: {e}")
+        return {
+            "success": False,
+            "error": f"Invalid input: {e}",
+            "file_info": {"path": str(file_path), "exists": False},
+            "language_info": {"language": language or "unknown", "detected": False},
+            "ast_info": {"node_count": 0, "line_count": 0},
+        }
+    except Exception as e:
+        # Unexpected errors - log and re-raise for debugging
+        log_error(f"Unexpected error in analyze_file: {e}")
+        return {
+            "success": False,
+            "error": f"Unexpected error: {e}",
             "file_info": {"path": str(file_path), "exists": False},
             "language_info": {"language": language or "unknown", "detected": False},
             "ast_info": {"node_count": 0, "line_count": 0},
@@ -238,69 +396,8 @@ def analyze_code(
             if analysis_result.error_message:
                 result["error"] = analysis_result.error_message
             return result
-        if include_elements and hasattr(analysis_result, "elements"):
-            elements_list: list[dict[str, Any]] = []
-            result["elements"] = elements_list
-            for elem in analysis_result.elements:
-                elem_dict = {
-                    "name": elem.name,
-                    "type": type(elem).__name__.lower(),
-                    "start_line": elem.start_line,
-                    "end_line": elem.end_line,
-                    "raw_text": elem.raw_text,
-                    "language": elem.language,
-                }
-
-                # Add type-specific fields
-                if hasattr(elem, "module_path"):
-                    elem_dict["module_path"] = elem.module_path
-                if hasattr(elem, "module_name"):
-                    elem_dict["module_name"] = elem.module_name
-                if hasattr(elem, "imported_names"):
-                    elem_dict["imported_names"] = elem.imported_names
-                if hasattr(elem, "variable_type"):
-                    elem_dict["variable_type"] = elem.variable_type
-                if hasattr(elem, "initializer"):
-                    elem_dict["initializer"] = elem.initializer
-                if hasattr(elem, "is_constant"):
-                    elem_dict["is_constant"] = elem.is_constant
-                if hasattr(elem, "parameters"):
-                    elem_dict["parameters"] = elem.parameters
-                if hasattr(elem, "return_type"):
-                    elem_dict["return_type"] = elem.return_type
-                if hasattr(elem, "is_async"):
-                    elem_dict["is_async"] = elem.is_async
-                if hasattr(elem, "is_static"):
-                    elem_dict["is_static"] = elem.is_static
-                if hasattr(elem, "is_constructor"):
-                    elem_dict["is_constructor"] = elem.is_constructor
-                if hasattr(elem, "is_method"):
-                    elem_dict["is_method"] = elem.is_method
-                if hasattr(elem, "complexity_score"):
-                    elem_dict["complexity_score"] = elem.complexity_score
-                if hasattr(elem, "superclass"):
-                    elem_dict["superclass"] = elem.superclass
-                if hasattr(elem, "class_type"):
-                    elem_dict["class_type"] = elem.class_type
-
-                # For methods, try to find the class name from context
-                if elem_dict.get("is_method") and elem_dict["type"] == "function":
-                    # Look for the class this method belongs to
-                    for other_elem in analysis_result.elements:
-                        if (
-                            hasattr(other_elem, "start_line")
-                            and hasattr(other_elem, "end_line")
-                            and type(other_elem).__name__.lower() == "class"
-                            and other_elem.start_line
-                            <= elem.start_line
-                            <= other_elem.end_line
-                        ):
-                            elem_dict["class_name"] = other_elem.name
-                            break
-                    else:
-                        elem_dict["class_name"] = None
-
-                elements_list.append(elem_dict)
+        if include_elements:
+            result["elements"] = _convert_elements_to_list(analysis_result)
 
         # Add query results if requested and available
         if include_queries and hasattr(analysis_result, "query_results"):
@@ -319,11 +416,21 @@ def analyze_code(
 
         return result
 
-    except Exception as e:
-        log_error(f"API analyze_code failed: {e}")
+    except (ValueError, TypeError) as e:
+        # Invalid input errors
+        log_error(f"Invalid input in analyze_code: {e}")
         return {
             "success": False,
-            "error": str(e),
+            "error": f"Invalid input: {e}",
+            "language_info": {"language": language or "unknown", "detected": False},
+            "ast_info": {"node_count": 0, "line_count": 0},
+        }
+    except Exception as e:
+        # Unexpected errors - log for debugging
+        log_error(f"Unexpected error in analyze_code: {e}")
+        return {
+            "success": False,
+            "error": f"Unexpected error: {e}",
             "language_info": {"language": language or "unknown", "detected": False},
             "ast_info": {"node_count": 0, "line_count": 0},
         }
@@ -339,8 +446,11 @@ def get_supported_languages() -> list[str]:
     try:
         engine = get_engine()
         return engine.get_supported_languages()
+    except (AttributeError, RuntimeError) as e:
+        log_error(f"Engine error getting supported languages: {e}")
+        return []
     except Exception as e:
-        log_error(f"Failed to get supported languages: {e}")
+        log_error(f"Unexpected error getting supported languages: {e}")
         return []
 
 

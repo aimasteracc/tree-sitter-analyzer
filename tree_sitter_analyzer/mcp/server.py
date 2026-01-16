@@ -8,11 +8,10 @@ functionality through the Model Context Protocol.
 
 import argparse
 import asyncio
-import json
 import os
 import sys
 from pathlib import Path as PathClass
-from typing import Any, cast
+from typing import Any
 
 try:
     from mcp.server import Server
@@ -20,7 +19,7 @@ try:
     from mcp.server.stdio import stdio_server as _stdio_server
 
     stdio_server: Any = _stdio_server
-    from mcp.types import Resource, TextContent, Tool
+    from mcp.types import Prompt, Resource, TextContent, Tool
 
     MCP_AVAILABLE = True
 except ImportError:
@@ -28,16 +27,43 @@ except ImportError:
 
     # Fallback types for development without MCP
     class Server:  # type: ignore
-        pass
+        def __init__(self, name: str) -> None:
+            pass
+
+        def list_tools(self) -> Any:
+            return lambda f: f
+
+        def call_tool(self) -> Any:
+            return lambda f: f
+
+        def list_resources(self) -> Any:
+            return lambda f: f
+
+        def read_resource(self) -> Any:
+            return lambda f: f
+
+        def list_prompts(self) -> Any:
+            return lambda f: f
+
+        async def run(self, read: Any, write: Any, opts: Any) -> None:
+            pass
 
     class InitializationOptions:  # type: ignore
         def __init__(self, **kwargs: Any) -> None:
             pass
 
     class Tool:  # type: ignore
-        pass
+        def __init__(self, **kwargs: Any) -> None:
+            pass
 
     class Resource:  # type: ignore
+        def __init__(self, **kwargs: Any) -> None:
+            pass
+
+    class TextContent:  # type: ignore
+        pass
+
+    class Prompt:  # type: ignore
         pass
 
     pass
@@ -50,20 +76,17 @@ except ImportError:
 
 import contextlib
 
-from ..constants import (
-    ELEMENT_TYPE_CLASS,
-    ELEMENT_TYPE_FUNCTION,
-    ELEMENT_TYPE_IMPORT,
-    ELEMENT_TYPE_PACKAGE,
-    ELEMENT_TYPE_VARIABLE,
-    is_element_of_type,
-)
 from ..core.analysis_engine import get_analysis_engine
 from ..platform_compat.detector import PlatformDetector
 from ..project_detector import detect_project_root
 from ..security import SecurityValidator
 from ..utils import setup_logger
 from . import MCP_INFO
+from .handler_resources import ResourceHandler
+
+# Handler imports
+from .handler_tools import ToolHandler
+from .legacy import LegacyHandler
 from .resources import CodeFileResource, ProjectStatsResource
 from .tools.analyze_code_structure_tool import AnalyzeCodeStructureTool
 from .tools.analyze_scale_tool import AnalyzeScaleTool
@@ -73,7 +96,6 @@ from .tools.query_tool import QueryTool
 from .tools.read_partial_tool import ReadPartialTool
 from .tools.search_content_tool import SearchContentTool
 from .utils.file_metrics import compute_file_metrics
-from .utils.shared_cache import get_shared_cache
 
 # Import UniversalAnalyzeTool at module level for test compatibility
 try:
@@ -104,30 +126,22 @@ class TreeSitterAnalyzerMCPServer:
         try:
             logger.info("Starting MCP server initialization...")
         except Exception:  # nosec
-            # Gracefully handle logging failures during initialization
             pass
 
         self.analysis_engine = get_analysis_engine(project_root)
         self.security_validator = SecurityValidator(project_root)
-        # Use unified analysis engine instead of deprecated AdvancedAnalyzer
 
         # Initialize MCP tools with security validation (core tools + fd/rg tools)
-        self.query_tool = QueryTool(project_root)  # query_code
-        self.read_partial_tool = ReadPartialTool(project_root)  # extract_code_section
-        self.analyze_code_structure_tool = AnalyzeCodeStructureTool(
-            project_root
-        )  # analyze_code_structure
-        self.table_format_tool = (
-            self.analyze_code_structure_tool
-        )  # Alias for backward compatibility
-        self.analyze_scale_tool = AnalyzeScaleTool(project_root)  # check_code_scale
-        # New fd/rg tools
-        self.list_files_tool = ListFilesTool(project_root)  # list_files
-        self.search_content_tool = SearchContentTool(project_root)  # search_content
-        self.find_and_grep_tool = FindAndGrepTool(project_root)  # find_and_grep
+        self.query_tool = QueryTool(project_root)
+        self.read_partial_tool = ReadPartialTool(project_root)
+        self.analyze_code_structure_tool = AnalyzeCodeStructureTool(project_root)
+        self.table_format_tool = self.analyze_code_structure_tool
+        self.analyze_scale_tool = AnalyzeScaleTool(project_root)
+        self.list_files_tool = ListFilesTool(project_root)
+        self.search_content_tool = SearchContentTool(project_root)
+        self.find_and_grep_tool = FindAndGrepTool(project_root)
 
         # Optional universal tool to satisfy initialization tests
-        # Allow tests to control initialization by checking if UniversalAnalyzeTool is available
         if UNIVERSAL_TOOL_AVAILABLE and UniversalAnalyzeTool is not None:
             try:
                 self.universal_analyze_tool: UniversalAnalyzeTool | None = (
@@ -141,8 +155,12 @@ class TreeSitterAnalyzerMCPServer:
         # Initialize MCP resources
         self.code_file_resource = CodeFileResource()
         self.project_stats_resource = ProjectStatsResource()
-        # Add project_root attribute for test compatibility
         self.project_stats_resource.project_root = project_root
+
+        # Initialize Handlers
+        self.tool_handler = ToolHandler(self)
+        self.resource_handler = ResourceHandler(self)
+        self.legacy_handler = LegacyHandler(self)
 
         # Server metadata
         self.name = MCP_INFO["name"]
@@ -168,7 +186,6 @@ class TreeSitterAnalyzerMCPServer:
                 f"MCP server initialization complete: {self.name} v{self.version}"
             )
         except Exception:  # nosec
-            # Gracefully handle logging failures during initialization
             pass
 
     def is_initialized(self) -> bool:
@@ -183,170 +200,8 @@ class TreeSitterAnalyzerMCPServer:
             )
 
     async def _analyze_code_scale(self, arguments: dict[str, Any]) -> dict[str, Any]:
-        """
-        Legacy method for analyzing code scale.
-        Used by existing tests that mock server internals.
-        """
-        # For initialization-specific tests, we should raise MCPError instead of RuntimeError
-        if not self._initialization_complete:
-            from .utils.error_handler import MCPError
-
-            raise MCPError("Server is still initializing")
-
-        # For specific initialization tests we allow delegating to universal tool
-        if "file_path" not in arguments:
-            universal_tool = getattr(self, "universal_analyze_tool", None)
-            if universal_tool is not None:
-                try:
-                    result = await universal_tool.execute(arguments)
-                    return dict(result)  # Ensure proper type casting
-                except ValueError:
-                    # Re-raise ValueError as-is for test compatibility
-                    raise
-            else:
-                raise ValueError("file_path is required")
-
-        file_path = arguments["file_path"]
-        language = arguments.get("language")
-        include_complexity = arguments.get("include_complexity", True)
-        include_details = arguments.get("include_details", False)
-
-        # Use PathClass which is mocked in some tests
-        base_root = getattr(
-            getattr(self.security_validator, "boundary_manager", None),
-            "project_root",
-            None,
-        )
-        if not PathClass(file_path).is_absolute() and base_root:
-            resolved_path = str((PathClass(base_root) / file_path).resolve())
-        else:
-            resolved_path = file_path
-
-        # Security validation
-        shared_cache = get_shared_cache()
-        cached = shared_cache.get_security_validation(
-            resolved_path, project_root=base_root
-        )
-        if cached is None:
-            cached = self.security_validator.validate_file_path(resolved_path)
-            shared_cache.set_security_validation(
-                resolved_path, cached, project_root=base_root
-            )
-        is_valid, error_msg = cached
-        if not is_valid:
-            raise ValueError(f"Invalid file path: {error_msg}")
-
-        # Use PathClass for existence check to respect mocks
-        if not PathClass(resolved_path).exists():
-            raise FileNotFoundError(f"File not found: {file_path}")
-
-        # Detect language if not specified
-        from ..language_detector import detect_language_from_file
-
-        if not language:
-            language = detect_language_from_file(resolved_path, project_root=base_root)
-
-        # Create analysis request
-        from ..core.analysis_engine import AnalysisRequest
-
-        request = AnalysisRequest(
-            file_path=resolved_path,
-            language=language,
-            include_complexity=include_complexity,
-            include_details=include_details,
-        )
-
-        # Perform analysis
-        analysis_result = await self.analysis_engine.analyze(request)
-
-        if analysis_result is None or not analysis_result.success:
-            error_msg = (
-                analysis_result.error_message or "Unknown error"
-                if analysis_result
-                else "Unknown error"
-            )
-            raise RuntimeError(f"Failed to analyze file: {file_path} - {error_msg}")
-
-        # Get element counts from the unified elements list
-        elements = analysis_result.elements or []
-
-        # Count elements by type using the new unified system
-        classes_count = len(
-            [e for e in elements if is_element_of_type(e, ELEMENT_TYPE_CLASS)]
-        )
-        methods_count = len(
-            [e for e in elements if is_element_of_type(e, ELEMENT_TYPE_FUNCTION)]
-        )
-        fields_count = len(
-            [e for e in elements if is_element_of_type(e, ELEMENT_TYPE_VARIABLE)]
-        )
-        imports_count = len(
-            [e for e in elements if is_element_of_type(e, ELEMENT_TYPE_IMPORT)]
-        )
-        packages_count = len(
-            [e for e in elements if is_element_of_type(e, ELEMENT_TYPE_PACKAGE)]
-        )
-        total_elements = (
-            classes_count
-            + methods_count
-            + fields_count
-            + imports_count
-            + packages_count
-        )
-
-        # Calculate unified file metrics (cached by content hash)
-        file_metrics = compute_file_metrics(
-            resolved_path, language=language, project_root=base_root
-        )
-        lines_code = file_metrics["code_lines"]
-        lines_comment = file_metrics["comment_lines"]
-        lines_blank = file_metrics["blank_lines"]
-
-        result = {
-            "file_path": file_path,
-            "language": language,
-            "metrics": {
-                "lines_total": analysis_result.line_count,
-                "lines_code": lines_code,
-                "lines_comment": lines_comment,
-                "lines_blank": lines_blank,
-                "elements": {
-                    "classes": classes_count,
-                    "methods": methods_count,
-                    "fields": fields_count,
-                    "imports": imports_count,
-                    "packages": packages_count,
-                    "total": total_elements,
-                },
-            },
-        }
-
-        if include_complexity:
-            # Add complexity metrics if available
-            methods = [
-                e for e in elements if is_element_of_type(e, ELEMENT_TYPE_FUNCTION)
-            ]
-            if methods:
-                complexities = [getattr(m, "complexity_score", 0) for m in methods]
-                result["metrics"]["complexity"] = {
-                    "total": sum(complexities),
-                    "average": round(
-                        sum(complexities) / len(complexities) if complexities else 0, 2
-                    ),
-                    "max": max(complexities) if complexities else 0,
-                }
-
-        if include_details:
-            # Convert elements to serializable format
-            detailed_elements = []
-            for elem in elements:
-                if hasattr(elem, "__dict__"):
-                    detailed_elements.append(elem.__dict__)
-                else:
-                    detailed_elements.append({"element": str(elem)})
-            result["detailed_elements"] = detailed_elements
-
-        return cast(dict[str, Any], result)
+        """Legacy method delegated to LegacyHandler."""
+        return await self.legacy_handler.analyze_code_scale(arguments)
 
     def _calculate_file_metrics(self, file_path: str, language: str) -> dict[str, Any]:
         """Legacy wrapper for file metrics calculation."""
@@ -360,28 +215,8 @@ class TreeSitterAnalyzerMCPServer:
         )
 
     async def _read_resource(self, uri: str) -> dict[str, Any]:
-        """
-        Read a resource by URI.
-
-        Args:
-            uri: Resource URI to read
-
-        Returns:
-            Resource content
-
-        Raises:
-            ValueError: If URI is invalid or resource not found
-        """
-        if uri.startswith("code://file/"):
-            # Extract file path from URI
-            result = await self.code_file_resource.read_resource(uri)
-            return {"content": result}
-        elif uri.startswith("code://stats/"):
-            # Extract stats type from URI
-            result = await self.project_stats_resource.read_resource(uri)
-            return {"content": result}
-        else:
-            raise ValueError(f"Unknown resource URI: {uri}")
+        """Legacy wrapper for read_resource."""
+        return {"content": await self.resource_handler.read_resource(uri)}
 
     def create_server(self) -> Server:
         """
@@ -395,7 +230,6 @@ class TreeSitterAnalyzerMCPServer:
 
         server: Server = Server(self.name)
 
-        # Register tools using @server decorators (standard MCP pattern)
         @server.list_tools()  # type: ignore[misc]
         async def handle_list_tools() -> list[Tool]:
             """List all available tools."""
@@ -433,201 +267,27 @@ class TreeSitterAnalyzerMCPServer:
         async def handle_call_tool(
             name: str, arguments: dict[str, Any]
         ) -> list[TextContent]:
-            try:
-                # Ensure server is fully initialized
-                self._ensure_initialized()
+            """Delegate to ToolHandler."""
+            return await self.tool_handler.handle_tool_call(name, arguments)
 
-                # Log tool call
-                logger.info(
-                    f"MCP tool call: {name} with args: {list(arguments.keys())}"
-                )
-
-                # Validate file path security (server-side early rejection for compatibility)
-                # Note: Tools also validate paths, but they use shared caching to avoid redundant work.
-                if "file_path" in arguments:
-                    file_path = arguments["file_path"]
-
-                    # Best-effort resolve against project root for boundary enforcement
-                    base_root = getattr(
-                        getattr(self.security_validator, "boundary_manager", None),
-                        "project_root",
-                        None,
-                    )
-                    if not PathClass(file_path).is_absolute() and base_root:
-                        resolved_candidate = str(
-                            (PathClass(base_root) / file_path).resolve()
-                        )
-                    else:
-                        resolved_candidate = file_path
-
-                    shared_cache = get_shared_cache()
-                    cached = shared_cache.get_security_validation(
-                        resolved_candidate, project_root=base_root
-                    )
-                    if cached is None:
-                        cached = self.security_validator.validate_file_path(
-                            resolved_candidate
-                        )
-                        shared_cache.set_security_validation(
-                            resolved_candidate, cached, project_root=base_root
-                        )
-
-                    if cached is not None:
-                        is_valid, error_msg = cached
-                        if not is_valid:
-                            raise ValueError(
-                                f"Invalid or unsafe file path: {error_msg or file_path}"
-                            )
-
-                # Handle tool calls with simplified parameter handling
-                if name == "check_code_scale":
-                    # Delegate to analyze_scale_tool which handles both single and batch modes
-                    result = await self.analyze_scale_tool.execute(arguments)
-
-                elif name == "analyze_code_structure":
-                    if "file_path" not in arguments:
-                        raise ValueError("file_path parameter is required")
-
-                    result = await self.table_format_tool.execute(arguments)
-
-                elif name == "extract_code_section":
-                    # Design principle: keep server routing thin; tool owns schema/validation.
-                    # Support both:
-                    # - single mode: file_path + start_line (+ end_line/columns)
-                    # - batch mode: requests[] (multi-file x multi-range)
-                    if "requests" in arguments and arguments["requests"] is not None:
-                        # Pass through as-is; ReadPartialTool handles exclusivity, limits, security validation, and TOON policy.
-                        result = await self.read_partial_tool.execute(arguments)
-                    else:
-                        # Backward-compatible single-mode validation (keep legacy error semantics)
-                        if (
-                            "file_path" not in arguments
-                            or "start_line" not in arguments
-                        ):
-                            raise ValueError(
-                                "file_path and start_line parameters are required"
-                            )
-
-                        full_args = {
-                            "file_path": arguments["file_path"],
-                            "start_line": arguments["start_line"],
-                            "end_line": arguments.get("end_line"),
-                            "start_column": arguments.get("start_column"),
-                            "end_column": arguments.get("end_column"),
-                            "format": arguments.get("format", "text"),
-                            "output_file": arguments.get("output_file"),
-                            "suppress_output": arguments.get("suppress_output", False),
-                            "output_format": arguments.get("output_format", "toon"),
-                            "allow_truncate": arguments.get("allow_truncate", False),
-                            "fail_fast": arguments.get("fail_fast", False),
-                        }
-                        result = await self.read_partial_tool.execute(full_args)
-
-                elif name == "set_project_path":
-                    project_path = arguments.get("project_path")
-                    if not project_path or not isinstance(project_path, str):
-                        raise ValueError(
-                            "project_path parameter is required and must be a string"
-                        )
-                    if not PathClass(project_path).is_dir():
-                        raise ValueError(f"Project path does not exist: {project_path}")
-                    self.set_project_path(project_path)
-                    result = {"status": "success", "project_root": project_path}
-
-                elif name == "query_code":
-                    result = await self.query_tool.execute(arguments)
-
-                elif name == "list_files":
-                    result = await self.list_files_tool.execute(arguments)
-
-                elif name == "search_content":
-                    result = await self.search_content_tool.execute(arguments)
-
-                elif name == "find_and_grep":
-                    result = await self.find_and_grep_tool.execute(arguments)
-
-                else:
-                    raise ValueError(f"Unknown tool: {name}")
-
-                # Return result
-                return [
-                    TextContent(
-                        type="text",
-                        text=json.dumps(result, indent=2, ensure_ascii=False),
-                    )
-                ]
-
-            except Exception as e:
-                try:
-                    logger.error(f"Tool call error for {name}: {e}")
-                except (ValueError, OSError):
-                    pass  # Silently ignore logging errors during shutdown
-                return [
-                    TextContent(
-                        type="text",
-                        text=json.dumps(
-                            {"error": str(e), "tool": name, "arguments": arguments},
-                            indent=2,
-                        ),
-                    )
-                ]
-
-        # Register resources
         @server.list_resources()  # type: ignore
         async def handle_list_resources() -> list[Resource]:
-            """List available resources."""
-            return [
-                Resource(
-                    uri=self.code_file_resource.get_resource_info()["uri_template"],
-                    name=self.code_file_resource.get_resource_info()["name"],
-                    description=self.code_file_resource.get_resource_info()[
-                        "description"
-                    ],
-                    mimeType=self.code_file_resource.get_resource_info()["mime_type"],
-                ),
-                Resource(
-                    uri=self.project_stats_resource.get_resource_info()["uri_template"],
-                    name=self.project_stats_resource.get_resource_info()["name"],
-                    description=self.project_stats_resource.get_resource_info()[
-                        "description"
-                    ],
-                    mimeType=self.project_stats_resource.get_resource_info()[
-                        "mime_type"
-                    ],
-                ),
-            ]
+            """Delegate to ResourceHandler."""
+            return await self.resource_handler.list_resources()
 
         @server.read_resource()  # type: ignore
         async def handle_read_resource(uri: str) -> str:
-            """Read resource content."""
-            try:
-                # Check which resource matches the URI
-                if self.code_file_resource.matches_uri(uri):
-                    return await self.code_file_resource.read_resource(uri)
-                elif self.project_stats_resource.matches_uri(uri):
-                    return await self.project_stats_resource.read_resource(uri)
-                else:
-                    raise ValueError(f"Resource not found: {uri}")
+            """Delegate to ResourceHandler."""
+            return await self.resource_handler.read_resource(uri)
 
-            except Exception as e:
-                try:
-                    logger.error(f"Resource read error for {uri}: {e}")
-                except (ValueError, OSError):
-                    pass  # Silently ignore logging errors during shutdown
-                raise
-
-        # Some clients may request prompts; explicitly return empty list
-        # Some clients may request prompts; explicitly return empty list
+        # Handle prompts capability (empty for now)
         try:
-            from mcp.types import Prompt
 
             @server.list_prompts()  # type: ignore
             async def handle_list_prompts() -> list[Prompt]:
                 logger.info("Client requested prompts list (returning empty)")
                 return []
-
         except Exception as e:
-            # If Prompt type is unavailable, log at debug level and continue safely
             with contextlib.suppress(ValueError, OSError):
                 logger.debug(f"Prompts API unavailable or incompatible: {e}")
 
@@ -635,7 +295,7 @@ class TreeSitterAnalyzerMCPServer:
         try:
             logger.info("MCP server created successfully")
         except (ValueError, OSError):
-            pass  # Silently ignore logging errors during shutdown
+            pass
         return server
 
     def set_project_path(self, project_path: str) -> None:
@@ -646,6 +306,8 @@ class TreeSitterAnalyzerMCPServer:
             project_path: Path to the project directory
         """
         # Invalidate shared caches once when the project root changes.
+        from .utils.shared_cache import get_shared_cache
+
         get_shared_cache().clear()
 
         # Update project stats resource
@@ -671,7 +333,7 @@ class TreeSitterAnalyzerMCPServer:
         try:
             logger.info(f"Set project path to: {project_path}")
         except (ValueError, OSError):
-            pass  # Silently ignore logging errors during shutdown
+            pass
 
     async def run(self) -> None:
         """
@@ -709,25 +371,23 @@ class TreeSitterAnalyzerMCPServer:
         try:
             logger.info(f"Starting MCP server: {self.name} v{self.version}")
         except (ValueError, OSError):
-            pass  # Silently ignore logging errors during shutdown
+            pass
 
         try:
             async with stdio_server() as (read_stream, write_stream):
                 logger.info("Server running, waiting for requests...")
                 await server.run(read_stream, write_stream, options)
         except Exception as e:
-            # Use safe logging to avoid I/O errors during shutdown
             try:
                 logger.error(f"Server error: {e}")
             except (ValueError, OSError):
-                pass  # Silently ignore logging errors during shutdown
+                pass
             raise
         finally:
-            # Safe cleanup
             try:
                 logger.info("MCP server shutting down")
             except (ValueError, OSError):
-                pass  # Silently ignore logging errors during shutdown
+                pass
 
 
 def parse_mcp_args(args: list[str] | None = None) -> argparse.Namespace:
@@ -806,20 +466,20 @@ async def main() -> None:
         try:
             logger.info("Server stopped by user")
         except (ValueError, OSError):
-            pass  # Silently ignore logging errors during shutdown
+            pass
         sys.exit(0)
     except Exception as e:
         try:
             logger.error(f"Server failed: {e}")
         except (ValueError, OSError):
-            pass  # Silently ignore logging errors during shutdown
+            pass
         sys.exit(1)
     finally:
         # Ensure clean shutdown
         try:
             logger.info("MCP server shutdown complete")
         except (ValueError, OSError):
-            pass  # Silently ignore logging errors during shutdown
+            pass
 
 
 def main_sync() -> None:

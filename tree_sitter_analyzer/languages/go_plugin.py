@@ -38,33 +38,36 @@ class GoElementExtractor(ProgrammingLanguageExtractor):
         self.channels: list[dict[str, Any]] = []
         self.defers: list[dict[str, Any]] = []
 
-    def extract_functions(
-        self, tree: "tree_sitter.Tree", source_code: str
-    ) -> list[Function]:
-        """Extract Go function and method declarations"""
-        self.source_code = source_code
-        self.content_lines = source_code.split("\n")
-        self._reset_caches()
+    def _get_function_handlers(self) -> dict[str, Any]:
+        """
+        Get function node type to handler method mapping.
 
-        functions: list[Function] = []
-
-        extractors = {
+        Returns:
+            Dictionary mapping node types to handler methods
+        """
+        return {
             "function_declaration": self._extract_function,
             "method_declaration": self._extract_method,
         }
 
-        self._traverse_and_extract(tree.root_node, extractors, functions)
+    def _get_class_handlers(self) -> dict[str, Any]:
+        """
+        Get class node type to handler method mapping.
 
-        log_debug(f"Extracted {len(functions)} Go functions/methods")
-        return functions
+        Returns:
+            Dictionary mapping node types to handler methods
+        """
+        # Go uses type_declaration for structs and interfaces
+        return {}
+
+    # extract_functions() is inherited from base class
+    # Base class implementation uses _get_function_handlers()
 
     def extract_classes(
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[Class]:
         """Extract Go struct and interface definitions"""
-        self.source_code = source_code
-        self.content_lines = source_code.split("\n")
-        self._reset_caches()
+        self._initialize_source(source_code or "")
 
         classes: list[Class] = []
 
@@ -78,9 +81,7 @@ class GoElementExtractor(ProgrammingLanguageExtractor):
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[Variable]:
         """Extract Go const and var declarations"""
-        self.source_code = source_code
-        self.content_lines = source_code.split("\n")
-        self._reset_caches()
+        self._initialize_source(source_code or "")
 
         variables: list[Variable] = []
 
@@ -89,7 +90,9 @@ class GoElementExtractor(ProgrammingLanguageExtractor):
             "var_declaration": self._extract_var_declaration,
         }
 
-        self._traverse_and_extract(tree.root_node, extractors, variables)
+        self._traverse_and_extract_iterative(
+            tree.root_node, extractors, variables, "variable"
+        )
 
         log_debug(f"Extracted {len(variables)} Go const/var declarations")
         return variables
@@ -98,9 +101,7 @@ class GoElementExtractor(ProgrammingLanguageExtractor):
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[Import]:
         """Extract Go import declarations"""
-        self.source_code = source_code
-        self.content_lines = source_code.split("\n")
-        self._reset_caches()
+        self._initialize_source(source_code or "")
 
         imports: list[Import] = []
 
@@ -108,7 +109,9 @@ class GoElementExtractor(ProgrammingLanguageExtractor):
             "import_declaration": self._extract_import_declaration,
         }
 
-        self._traverse_and_extract(tree.root_node, extractors, imports)
+        self._traverse_and_extract_iterative(
+            tree.root_node, extractors, imports, "import"
+        )
 
         log_debug(f"Extracted {len(imports)} Go imports")
         return imports
@@ -117,9 +120,7 @@ class GoElementExtractor(ProgrammingLanguageExtractor):
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[Package]:
         """Extract Go package declaration"""
-        self.source_code = source_code
-        self.content_lines = source_code.split("\n")
-        self._reset_caches()
+        self._initialize_source(source_code or "")
 
         packages: list[Package] = []
 
@@ -140,32 +141,6 @@ class GoElementExtractor(ProgrammingLanguageExtractor):
         self.goroutines.clear()
         self.channels.clear()
         self.defers.clear()
-
-    def _traverse_and_extract(
-        self,
-        node: "tree_sitter.Node",
-        extractors: dict[str, Any],
-        results: list[Any],
-    ) -> None:
-        """Recursive traversal to find and extract elements"""
-        if node.type in extractors:
-            element = extractors[node.type](node)
-            if element:
-                if isinstance(element, list):
-                    results.extend(element)
-                else:
-                    results.append(element)
-
-        # Also detect goroutines, channels, defers
-        if node.type == "go_statement":
-            self._extract_goroutine(node)
-        elif node.type == "send_statement":
-            self._extract_channel_operation(node, "send")
-        elif node.type == "defer_statement":
-            self._extract_defer(node)
-
-        for child in node.children:
-            self._traverse_and_extract(child, extractors, results)
 
     def _traverse_for_types(
         self, node: "tree_sitter.Node", results: list[Class]

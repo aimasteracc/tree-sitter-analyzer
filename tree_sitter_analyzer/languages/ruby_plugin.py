@@ -65,6 +65,30 @@ class RubyElementExtractor(ProgrammingLanguageExtractor):
         self._element_cache.clear()
         self.current_module = ""
 
+    def _get_function_handlers(self) -> dict[str, Any]:
+        """
+        Get function node type handlers for Ruby.
+
+        Returns:
+            Dictionary mapping node types to handler methods
+        """
+        return {
+            "method": self._extract_method_element,
+            "singleton_method": self._extract_singleton_method_element,
+        }
+
+    def _get_class_handlers(self) -> dict[str, Any]:
+        """
+        Get class node type handlers for Ruby.
+
+        Returns:
+            Dictionary mapping node types to handler methods
+        """
+        return {
+            "class": self._extract_class_element,
+            "module": self._extract_class_element,
+        }
+
     def _determine_visibility(self, node: "tree_sitter.Node") -> str:
         """
         Determine visibility of a method.
@@ -78,9 +102,41 @@ class RubyElementExtractor(ProgrammingLanguageExtractor):
         Returns:
             Visibility string ("public", "private", "protected")
         """
-        # TODO: Implement visibility detection by looking for visibility modifiers
-        # For now, default to public
-        return "public"
+        # Handle None node case
+        if node is None:
+            return "public"
+
+        # Look for visibility modifiers before this method
+        # In Ruby, visibility keywords affect all methods declared after them
+        # until another visibility keyword is encountered
+
+        # Get the parent node (usually a class or module body)
+        parent = node.parent
+        if not parent:
+            return "public"
+
+        # Track the current visibility by scanning siblings before this node
+        current_visibility = "public"  # Default visibility in Ruby
+
+        # Iterate through siblings before this node
+        for sibling in parent.children:
+            # Stop when we reach the current node
+            if sibling == node:
+                break
+
+            # Check if this sibling is a visibility modifier
+            if sibling.type == "call":
+                method_node = sibling.child_by_field_name("method")
+                if method_node:
+                    method_name = self._get_node_text_optimized(method_node)
+                    if method_name in ("private", "protected", "public"):
+                        # Check if it has arguments (specific method visibility)
+                        args_node = sibling.child_by_field_name("arguments")
+                        if not args_node or not args_node.children:
+                            # No arguments means it affects all following methods
+                            current_visibility = method_name
+
+        return current_visibility
 
     def extract_classes(
         self, tree: "tree_sitter.Tree", source_code: str
@@ -139,6 +195,9 @@ class RubyElementExtractor(ProgrammingLanguageExtractor):
             if not name_node:
                 return None
 
+            # Use base class method to extract common metadata
+            metadata = self._extract_common_metadata(node)
+
             name = self._get_node_text_optimized(name_node)
             is_module = node.type == "module"
 
@@ -154,8 +213,8 @@ class RubyElementExtractor(ProgrammingLanguageExtractor):
 
             return Class(
                 name=name,
-                start_line=node.start_point[0] + 1,
-                end_line=node.end_point[0] + 1,
+                start_line=metadata["start_line"],
+                end_line=metadata["end_line"],
                 visibility="public",
                 is_abstract=False,
                 full_qualified_name=name,
@@ -221,7 +280,7 @@ class RubyElementExtractor(ProgrammingLanguageExtractor):
         return functions
 
     def _extract_method_element(
-        self, node: "tree_sitter.Node", parent_class: str
+        self, node: "tree_sitter.Node", parent_class: str = ""
     ) -> Function | None:
         """
         Extract a method element.
@@ -238,6 +297,9 @@ class RubyElementExtractor(ProgrammingLanguageExtractor):
             name_node = node.child_by_field_name("name")
             if not name_node:
                 return None
+
+            # Use base class method to extract common metadata
+            metadata = self._extract_common_metadata(node)
 
             name = self._get_node_text_optimized(name_node)
             visibility = self._determine_visibility(node)
@@ -259,8 +321,8 @@ class RubyElementExtractor(ProgrammingLanguageExtractor):
 
             return Function(
                 name=f"{parent_class}#{name}" if parent_class else name,
-                start_line=node.start_point[0] + 1,
-                end_line=node.end_point[0] + 1,
+                start_line=metadata["start_line"],
+                end_line=metadata["end_line"],
                 visibility=visibility,
                 is_static=False,
                 is_async=False,
@@ -275,7 +337,7 @@ class RubyElementExtractor(ProgrammingLanguageExtractor):
             return None
 
     def _extract_singleton_method_element(
-        self, node: "tree_sitter.Node", parent_class: str
+        self, node: "tree_sitter.Node", parent_class: str = ""
     ) -> Function | None:
         """
         Extract a singleton (class) method element.
@@ -292,6 +354,9 @@ class RubyElementExtractor(ProgrammingLanguageExtractor):
             name_node = node.child_by_field_name("name")
             if not name_node:
                 return None
+
+            # Use base class method to extract common metadata
+            metadata = self._extract_common_metadata(node)
 
             name = self._get_node_text_optimized(name_node)
             visibility = self._determine_visibility(node)
@@ -313,8 +378,8 @@ class RubyElementExtractor(ProgrammingLanguageExtractor):
 
             return Function(
                 name=f"{parent_class}.{name}" if parent_class else name,
-                start_line=node.start_point[0] + 1,
-                end_line=node.end_point[0] + 1,
+                start_line=metadata["start_line"],
+                end_line=metadata["end_line"],
                 visibility=visibility,
                 is_static=True,  # Singleton methods are class methods
                 is_async=False,

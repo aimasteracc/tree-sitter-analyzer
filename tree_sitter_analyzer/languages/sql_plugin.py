@@ -132,7 +132,7 @@ class SQLElementExtractor(ProgrammingLanguageExtractor):
                 sql_elements = self._validate_and_fix_elements(sql_elements)
 
                 log_debug(f"Extracted {len(sql_elements)} SQL elements with metadata")
-            except Exception as e:
+            except (AttributeError, ValueError, IndexError, KeyError, TypeError) as e:
                 log_error(
                     f"Error during enhanced SQL extraction on {self.platform_info}: {e}"
                 )
@@ -350,7 +350,7 @@ class SQLElementExtractor(ProgrammingLanguageExtractor):
                 log_debug(
                     f"Extracted {len(functions)} SQL functions/procedures/triggers"
                 )
-            except Exception as e:
+            except (AttributeError, ValueError, IndexError, KeyError, TypeError) as e:
                 log_debug(f"Error during function extraction: {e}")
 
         return functions
@@ -383,7 +383,7 @@ class SQLElementExtractor(ProgrammingLanguageExtractor):
                 self._extract_tables(tree.root_node, classes)
                 self._extract_views(tree.root_node, classes)
                 log_debug(f"Extracted {len(classes)} SQL tables/views")
-            except Exception as e:
+            except (AttributeError, ValueError, IndexError, KeyError, TypeError) as e:
                 log_debug(f"Error during class extraction: {e}")
 
         return classes
@@ -414,7 +414,7 @@ class SQLElementExtractor(ProgrammingLanguageExtractor):
                 # Extract indexes
                 self._extract_indexes(tree.root_node, variables)
                 log_debug(f"Extracted {len(variables)} SQL indexes")
-            except Exception as e:
+            except (AttributeError, ValueError, IndexError, KeyError, TypeError) as e:
                 log_debug(f"Error during variable extraction: {e}")
 
         return variables
@@ -445,7 +445,7 @@ class SQLElementExtractor(ProgrammingLanguageExtractor):
                 # Extract schema references (e.g., FROM schema.table)
                 self._extract_schema_references(tree.root_node, imports)
                 log_debug(f"Extracted {len(imports)} SQL schema references")
-            except Exception as e:
+            except (AttributeError, ValueError, IndexError, KeyError, TypeError) as e:
                 log_debug(f"Error during import extraction: {e}")
 
         return imports
@@ -693,7 +693,13 @@ class SQLElementExtractor(ProgrammingLanguageExtractor):
                             language="sql",
                         )
                         classes.append(cls)
-                    except Exception as e:
+                    except (
+                        AttributeError,
+                        ValueError,
+                        IndexError,
+                        KeyError,
+                        TypeError,
+                    ) as e:
                         log_debug(f"Failed to extract table: {e}")
 
     def _extract_views(
@@ -822,7 +828,13 @@ class SQLElementExtractor(ProgrammingLanguageExtractor):
                             language="sql",
                         )
                         classes.append(cls)
-                    except Exception as e:
+                    except (
+                        AttributeError,
+                        ValueError,
+                        IndexError,
+                        KeyError,
+                        TypeError,
+                    ) as e:
                         log_debug(f"Failed to extract view: {e}")
 
     def _extract_procedures(
@@ -888,7 +900,13 @@ class SQLElementExtractor(ProgrammingLanguageExtractor):
                                     language="sql",
                                 )
                                 functions.append(func)
-                            except Exception as e:
+                            except (
+                                AttributeError,
+                                ValueError,
+                                IndexError,
+                                KeyError,
+                                TypeError,
+                            ) as e:
                                 log_debug(f"Failed to extract procedure: {e}")
 
     def _extract_sql_functions(
@@ -948,7 +966,13 @@ class SQLElementExtractor(ProgrammingLanguageExtractor):
                             language="sql",
                         )
                         functions.append(func)
-                    except Exception as e:
+                    except (
+                        AttributeError,
+                        ValueError,
+                        IndexError,
+                        KeyError,
+                        TypeError,
+                    ) as e:
                         log_debug(f"Failed to extract function: {e}")
 
     def _extract_triggers(
@@ -995,7 +1019,7 @@ class SQLElementExtractor(ProgrammingLanguageExtractor):
 
                         if trigger_name and self._is_valid_identifier(trigger_name):
                             # Skip common SQL keywords
-                            if trigger_name.upper() in (
+                            if trigger_name and trigger_name.upper() in (
                                 "KEY",
                                 "AUTO_INCREMENT",
                                 "PRIMARY",
@@ -1042,7 +1066,7 @@ class SQLElementExtractor(ProgrammingLanguageExtractor):
                                     language="sql",
                                 )
                                 functions.append(func)
-                            except Exception as e:
+                            except (AttributeError, ValueError, IndexError) as e:
                                 log_debug(f"Failed to extract trigger: {e}")
 
     def _extract_indexes(
@@ -1081,7 +1105,7 @@ class SQLElementExtractor(ProgrammingLanguageExtractor):
                             language="sql",
                         )
                         variables.append(var)
-                    except Exception as e:
+                    except (AttributeError, ValueError, IndexError) as e:
                         log_debug(f"Failed to extract index: {e}")
 
     def _extract_schema_references(
@@ -1109,7 +1133,7 @@ class SQLElementExtractor(ProgrammingLanguageExtractor):
                             language="sql",
                         )
                         imports.append(imp)
-                    except Exception as e:
+                    except (AttributeError, ValueError, IndexError) as e:
                         log_debug(f"Failed to extract schema reference: {e}")
 
     def _extract_sql_tables(
@@ -1164,7 +1188,7 @@ class SQLElementExtractor(ProgrammingLanguageExtractor):
                             constraints=constraints,
                         )
                         sql_elements.append(table)
-                    except Exception as e:
+                    except (AttributeError, ValueError, IndexError) as e:
                         log_debug(f"Failed to extract enhanced table: {e}")
 
     def _extract_table_columns(
@@ -1448,7 +1472,7 @@ class SQLElementExtractor(ProgrammingLanguageExtractor):
                             dependencies=source_tables,
                         )
                         sql_elements.append(view)
-                    except Exception as e:
+                    except (AttributeError, ValueError, KeyError, TypeError) as e:
                         log_debug(f"Failed to extract enhanced view: {e}")
 
     def _extract_view_sources(
@@ -1527,7 +1551,7 @@ class SQLElementExtractor(ProgrammingLanguageExtractor):
                         log_debug(
                             f"Extracted procedure: {proc_name} at lines {start_line}-{end_line}"
                         )
-                    except Exception as e:
+                    except (AttributeError, ValueError, KeyError, TypeError) as e:
                         log_debug(f"Failed to extract enhanced procedure: {e}")
 
                     i = end_line
@@ -1610,7 +1634,12 @@ class SQLElementExtractor(ProgrammingLanguageExtractor):
                                     dependencies=iteration_dependencies,
                                 )
                                 sql_elements.append(procedure)
-                            except Exception as e:
+                            except (
+                                AttributeError,
+                                ValueError,
+                                KeyError,
+                                TypeError,
+                            ) as e:
                                 log_debug(f"Failed to extract enhanced procedure: {e}")
 
     def _extract_procedure_parameters(
@@ -1804,12 +1833,10 @@ class SQLElementExtractor(ProgrammingLanguageExtractor):
                     log_debug(
                         f"Extracted function: {func_name} at lines {start_line}-{end_line}"
                     )
-                except Exception as e:
+                    i = end_line
+                except (AttributeError, ValueError, KeyError, TypeError) as e:
                     log_debug(f"Failed to extract enhanced function: {e}")
-
-                i = end_line
-            else:
-                i += 1
+                    i += 1
 
         # Also try the original tree-sitter approach as fallback
         for node in self._traverse_nodes(root_node):
@@ -1867,7 +1894,7 @@ class SQLElementExtractor(ProgrammingLanguageExtractor):
                                 return_type=return_type,
                             )
                             sql_elements.append(function)
-                        except Exception as e:
+                        except (AttributeError, ValueError, KeyError, TypeError) as e:
                             log_debug(f"Failed to extract enhanced function: {e}")
 
     def _extract_function_metadata(
@@ -1984,7 +2011,7 @@ class SQLElementExtractor(ProgrammingLanguageExtractor):
                     dependencies=[table_name] if table_name else [],
                 )
                 sql_elements.append(trigger)
-            except Exception as e:
+            except (AttributeError, ValueError, KeyError, TypeError) as e:
                 log_debug(f"Failed to extract enhanced trigger: {e}")
 
     def _extract_trigger_metadata(
@@ -2071,7 +2098,7 @@ class SQLElementExtractor(ProgrammingLanguageExtractor):
                         log_debug(
                             f"Extracted index: {index_name} on table {index.table_name}"
                         )
-                    except Exception as e:
+                    except (AttributeError, ValueError, KeyError, TypeError) as e:
                         log_debug(f"Failed to extract enhanced index {index_name}: {e}")
 
         # Add regex-based fallback for indexes that tree-sitter might miss
@@ -2161,7 +2188,7 @@ class SQLElementExtractor(ProgrammingLanguageExtractor):
                         f"Regex extracted index: {index_name} on table {table_name}"
                     )
 
-                except Exception as e:
+                except (AttributeError, ValueError, TypeError) as e:
                     log_debug(
                         f"Failed to create regex-extracted index {index_name}: {e}"
                     )
@@ -2228,7 +2255,7 @@ class SQLPlugin(LanguagePlugin):
 
             self.adapter = CompatibilityAdapter(profile)
             self.extractor.set_adapter(self.adapter)
-        except Exception as e:
+        except (OSError, AttributeError, ValueError, TypeError, RuntimeError) as e:
             log_error(f"Failed to initialize SQL platform compatibility: {e}")
             self.adapter = CompatibilityAdapter(None)  # Use default adapter
             self.extractor.set_adapter(self.adapter)
@@ -2366,7 +2393,7 @@ class SQLPlugin(LanguagePlugin):
                 error_message=None,
             )
 
-        except Exception as e:
+        except (OSError, AttributeError, ValueError, TypeError, RuntimeError) as e:
             log_error(f"Failed to analyze SQL file {file_path}: {e}")
             return AnalysisResult(
                 file_path=file_path,

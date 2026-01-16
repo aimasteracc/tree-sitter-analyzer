@@ -655,33 +655,24 @@ class TestPythonPluginErrorHandling:
             assert "error" in result
 
     @pytest.mark.asyncio
-    async def test_analyze_file_with_exception(self, plugin: PythonPlugin) -> None:
+    async def test_analyze_file_with_exception(self, plugin):
         """Test file analysis with exception"""
-        python_code = "class Test: pass"
+        temp_path = "/tmp/test.py"
+        mock_request = Mock()
+        mock_request.file_path = temp_path
+        mock_request.language = "python"
 
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
-            f.write(python_code)
-            temp_path = f.name
+        with patch(
+            "tree_sitter_analyzer.languages.python_plugin.read_file_safe_async"
+        ) as mock_read:
+            mock_read.side_effect = Exception("Read error")
 
-        try:
-            mock_request = Mock()
-            mock_request.file_path = temp_path
-            mock_request.language = "python"
+            result = await plugin.analyze_file(temp_path, mock_request)
 
-            with patch(
-                "tree_sitter_analyzer.encoding_utils.read_file_safe_async"
-            ) as mock_read:
-                mock_read.side_effect = Exception("Read error")
-
-                result = await plugin.analyze_file(temp_path, mock_request)
-
-                # Should return error result instead of raising
-                assert result is not None
-                assert hasattr(result, "success")
-                assert result.success is False
-
-        finally:
-            os.unlink(temp_path)
+            # Should return error result instead of raising
+            assert result is not None
+            assert hasattr(result, "success")
+            assert result.success is False
 
 
 class TestPythonPluginIntegration:

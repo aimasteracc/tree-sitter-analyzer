@@ -35,48 +35,23 @@ class CElementExtractor(ProgrammingLanguageExtractor):
         self._comment_cache: dict[int, str] = {}
         self._complexity_cache: dict[int, int] = {}
 
-    def extract_functions(
-        self, tree: "tree_sitter.Tree", source_code: str
-    ) -> list[Function]:
-        """Extract C function definitions with comprehensive details"""
-        self._initialize_source(source_code)
-
-        functions: list[Function] = []
-
-        # Use optimized traversal for function types
-        extractors = {
+    def _get_function_handlers(self) -> dict[str, Any]:
+        """Get function node type handlers for C."""
+        return {
             "function_definition": self._extract_function_optimized,
             "preproc_function_def": self._extract_macro_function,
         }
 
-        self._traverse_and_extract_iterative(
-            tree.root_node, extractors, functions, "function"
-        )
-
-        log_debug(f"Extracted {len(functions)} C functions")
-        return functions
-
-    def extract_classes(
-        self, tree: "tree_sitter.Tree", source_code: str
-    ) -> list[Class]:
-        """Extract C struct/union/enum definitions as 'classes'"""
-        self._initialize_source(source_code)
-
-        classes: list[Class] = []
-
-        # Extract struct, union, and enum declarations
-        extractors = {
+    def _get_class_handlers(self) -> dict[str, Any]:
+        """Get class node type handlers for C (struct/union/enum)."""
+        return {
             "struct_specifier": self._extract_struct_optimized,
             "union_specifier": self._extract_union_optimized,
             "enum_specifier": self._extract_enum_optimized,
         }
 
-        self._traverse_and_extract_iterative(
-            tree.root_node, extractors, classes, "class"
-        )
-
-        log_debug(f"Extracted {len(classes)} C structs/unions/enums")
-        return classes
+    # extract_functions() and extract_classes() are inherited from base class
+    # Base class implementation uses _get_function_handlers() and _get_class_handlers()
 
     def extract_variables(
         self, tree: "tree_sitter.Tree", source_code: str
@@ -145,8 +120,8 @@ class CElementExtractor(ProgrammingLanguageExtractor):
     def _extract_function_optimized(self, node: "tree_sitter.Node") -> Function | None:
         """Extract function information optimized"""
         try:
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
+            # Use base class method to extract common metadata
+            metadata = self._extract_common_metadata(node)
 
             # Extract function details
             function_info = self._parse_function_signature(node)
@@ -155,30 +130,19 @@ class CElementExtractor(ProgrammingLanguageExtractor):
 
             name, return_type, parameters, modifiers = function_info
 
-            # Extract raw text
-            start_line_idx = max(0, start_line - 1)
-            end_line_idx = min(len(self.content_lines), end_line)
-            raw_text = "\n".join(self.content_lines[start_line_idx:end_line_idx])
-
-            # Calculate complexity
-            complexity_score = self._calculate_complexity_optimized(node)
-
-            # Extract comments/documentation
-            docstring = self._extract_comment_for_line(start_line)
-
             return Function(
                 name=name,
-                start_line=start_line,
-                end_line=end_line,
-                raw_text=raw_text,
+                start_line=metadata["start_line"],
+                end_line=metadata["end_line"],
+                raw_text=metadata["raw_text"],
                 language="c",
                 parameters=parameters,
                 return_type=return_type or "int",
                 modifiers=modifiers,
                 is_static="static" in modifiers,
                 visibility="public",  # C functions are effectively public
-                docstring=docstring,
-                complexity_score=complexity_score,
+                docstring=metadata["docstring"],
+                complexity_score=metadata["complexity"],
             )
         except (AttributeError, ValueError, TypeError) as e:
             log_debug(f"Failed to extract function info: {e}")
@@ -261,8 +225,14 @@ class CElementExtractor(ProgrammingLanguageExtractor):
     def _extract_struct_optimized(self, node: "tree_sitter.Node") -> Class | None:
         """Extract struct information optimized"""
         try:
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
+            # Determine the actual node to use for metadata extraction
+            actual_node = node
+            if node.parent and node.parent.type == "type_definition":
+                # Use typedef node for position if it's a typedef struct
+                actual_node = node.parent
+
+            # Use base class method to extract common metadata
+            metadata = self._extract_common_metadata(actual_node)
 
             struct_name = None
 
@@ -280,32 +250,21 @@ class CElementExtractor(ProgrammingLanguageExtractor):
                 for sibling in node.parent.children:
                     if sibling.type == "type_identifier":
                         struct_name = self._get_node_text_optimized(sibling)
-                        # Use the typedef position for the start/end lines
-                        start_line = node.parent.start_point[0] + 1
-                        end_line = node.parent.end_point[0] + 1
                         break
 
             if not struct_name:
                 # Truly anonymous struct
-                struct_name = f"anonymous_struct_{start_line}"
-
-            # Extract raw text
-            start_line_idx = max(0, start_line - 1)
-            end_line_idx = min(len(self.content_lines), end_line)
-            raw_text = "\n".join(self.content_lines[start_line_idx:end_line_idx])
-
-            # Extract comments/documentation
-            docstring = self._extract_comment_for_line(start_line)
+                struct_name = f"anonymous_struct_{metadata['start_line']}"
 
             return Class(
                 name=struct_name,
-                start_line=start_line,
-                end_line=end_line,
-                raw_text=raw_text,
+                start_line=metadata["start_line"],
+                end_line=metadata["end_line"],
+                raw_text=metadata["raw_text"],
                 language="c",
                 class_type="struct",
                 full_qualified_name=struct_name,
-                docstring=docstring,
+                docstring=metadata["docstring"],
             )
         except Exception as e:
             log_debug(f"Failed to extract struct info: {e}")
@@ -330,8 +289,14 @@ class CElementExtractor(ProgrammingLanguageExtractor):
     def _extract_enum_optimized(self, node: "tree_sitter.Node") -> Class | None:
         """Extract enum information optimized"""
         try:
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
+            # Determine the actual node to use for metadata extraction
+            actual_node = node
+            if node.parent and node.parent.type == "type_definition":
+                # Use typedef node for position if it's a typedef enum
+                actual_node = node.parent
+
+            # Use base class method to extract common metadata
+            metadata = self._extract_common_metadata(actual_node)
 
             enum_name = None
 
@@ -345,32 +310,21 @@ class CElementExtractor(ProgrammingLanguageExtractor):
                 for sibling in node.parent.children:
                     if sibling.type == "type_identifier":
                         enum_name = self._get_node_text_optimized(sibling)
-                        # Use the typedef position for the start/end lines
-                        start_line = node.parent.start_point[0] + 1
-                        end_line = node.parent.end_point[0] + 1
                         break
 
             if not enum_name:
                 # Truly anonymous enum
-                enum_name = f"anonymous_enum_{start_line}"
-
-            # Extract raw text
-            start_line_idx = max(0, start_line - 1)
-            end_line_idx = min(len(self.content_lines), end_line)
-            raw_text = "\n".join(self.content_lines[start_line_idx:end_line_idx])
-
-            # Extract comments/documentation
-            docstring = self._extract_comment_for_line(start_line)
+                enum_name = f"anonymous_enum_{metadata['start_line']}"
 
             return Class(
                 name=enum_name,
-                start_line=start_line,
-                end_line=end_line,
-                raw_text=raw_text,
+                start_line=metadata["start_line"],
+                end_line=metadata["end_line"],
+                raw_text=metadata["raw_text"],
                 language="c",
                 class_type="enum",
                 full_qualified_name=enum_name,
-                docstring=docstring,
+                docstring=metadata["docstring"],
             )
         except Exception as e:
             log_debug(f"Failed to extract enum info: {e}")
@@ -714,6 +668,11 @@ class CElementExtractor(ProgrammingLanguageExtractor):
 
         complexity += count_decisions(node)
         return complexity
+
+    def _extract_docstring_for_node(self, node: "tree_sitter.Node") -> str | None:
+        """Extract docstring/comment for a C node (override base class)."""
+        start_line = node.start_point[0] + 1
+        return self._extract_comment_for_line(start_line)
 
     def _extract_comment_for_line(self, line: int) -> str | None:
         """Extract comment (documentation) for a specific line"""

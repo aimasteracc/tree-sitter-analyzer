@@ -9,6 +9,7 @@ Equivalent to Java plugin capabilities for consistent language support.
 """
 
 import re
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, Optional
 
 import anyio
@@ -72,17 +73,9 @@ class JavaScriptElementExtractor(ProgrammingLanguageExtractor):
             "assignment_expression",
         }
 
-    def extract_functions(
-        self, tree: "tree_sitter.Tree", source_code: str
-    ) -> list[Function]:
-        """Extract JavaScript function definitions with comprehensive details"""
-        self._initialize_source(source_code)
-        self._detect_file_characteristics()
-
-        functions: list[Function] = []
-
-        # Use optimized traversal for multiple function types
-        extractors = {
+    def _get_function_handlers(self) -> dict[str, Callable]:
+        """Get mapping of node types to function extraction handlers."""
+        return {
             "function_declaration": self._extract_function_optimized,
             "function_expression": self._extract_function_optimized,
             "arrow_function": self._extract_arrow_function_optimized,
@@ -90,33 +83,16 @@ class JavaScriptElementExtractor(ProgrammingLanguageExtractor):
             "generator_function_declaration": self._extract_generator_function_optimized,
         }
 
-        self._traverse_and_extract_iterative(
-            tree.root_node, extractors, functions, "function"
-        )
-
-        log_debug(f"Extracted {len(functions)} JavaScript functions")
-        return functions
-
-    def extract_classes(
-        self, tree: "tree_sitter.Tree", source_code: str
-    ) -> list[Class]:
-        """Extract JavaScript class definitions with detailed information"""
-        self._initialize_source(source_code)
-
-        classes: list[Class] = []
-
-        # Extract both class declarations and expressions
-        extractors = {
+    def _get_class_handlers(self) -> dict[str, Callable]:
+        """Get mapping of node types to class extraction handlers."""
+        return {
             "class_declaration": self._extract_class_optimized,
             "class_expression": self._extract_class_optimized,
         }
 
-        self._traverse_and_extract_iterative(
-            tree.root_node, extractors, classes, "class"
-        )
-
-        log_debug(f"Extracted {len(classes)} JavaScript classes")
-        return classes
+    # extract_functions() and extract_classes() are inherited from base class
+    # Base class implementation uses _get_function_handlers() and _get_class_handlers()
+    # and automatically calls _detect_file_characteristics() if available
 
     def extract_variables(
         self, tree: "tree_sitter.Tree", source_code: str
@@ -247,7 +223,7 @@ class JavaScriptElementExtractor(ProgrammingLanguageExtractor):
                 is_method=False,
                 framework_type=self.framework_type,
             )
-        except Exception as e:
+        except (AttributeError, ValueError, IndexError) as e:
             log_error(f"Failed to extract function info: {e}")
             import traceback
 
@@ -311,7 +287,7 @@ class JavaScriptElementExtractor(ProgrammingLanguageExtractor):
                 is_method=False,
                 framework_type=self.framework_type,
             )
-        except Exception as e:
+        except (AttributeError, ValueError, IndexError) as e:
             log_debug(f"Failed to extract arrow function info: {e}")
             return None
 
@@ -366,9 +342,9 @@ class JavaScriptElementExtractor(ProgrammingLanguageExtractor):
                 is_method=True,
                 framework_type=self.framework_type,
             )
-        except Exception as e:
+        except (AttributeError, ValueError, IndexError) as e:
             log_debug(f"Failed to extract method info: {e}")
-            raise
+            return None
 
     def _extract_generator_function_optimized(
         self, node: "tree_sitter.Node"
@@ -411,7 +387,7 @@ class JavaScriptElementExtractor(ProgrammingLanguageExtractor):
                 is_method=False,
                 framework_type=self.framework_type,
             )
-        except Exception as e:
+        except (AttributeError, ValueError, IndexError) as e:
             log_debug(f"Failed to extract generator function info: {e}")
             return None
 
@@ -462,7 +438,7 @@ class JavaScriptElementExtractor(ProgrammingLanguageExtractor):
                 framework_type=self.framework_type,
                 is_exported=self._is_exported_class(class_name),
             )
-        except Exception as e:
+        except (AttributeError, ValueError, IndexError, UnicodeDecodeError) as e:
             log_debug(f"Failed to extract class info: {e}")
             return None
 
@@ -522,7 +498,7 @@ class JavaScriptElementExtractor(ProgrammingLanguageExtractor):
                 is_constant=False,  # Class properties are not const
                 initializer=prop_value,
             )
-        except Exception as e:
+        except (AttributeError, ValueError, IndexError) as e:
             log_debug(f"Failed to extract property info: {e}")
             return None
 
@@ -545,7 +521,7 @@ class JavaScriptElementExtractor(ProgrammingLanguageExtractor):
                     if var_info:
                         variables.append(var_info)
 
-        except Exception as e:
+        except (AttributeError, ValueError, IndexError) as e:
             log_debug(f"Failed to extract variables from declaration: {e}")
 
         return variables
@@ -632,7 +608,7 @@ class JavaScriptElementExtractor(ProgrammingLanguageExtractor):
                 docstring=jsdoc,
                 initializer=var_value,  # Use initializer instead of value
             )
-        except Exception as e:
+        except (AttributeError, ValueError, IndexError) as e:
             log_debug(f"Failed to parse variable declarator: {e}")
             return None
 
@@ -658,7 +634,7 @@ class JavaScriptElementExtractor(ProgrammingLanguageExtractor):
                     parameters = self._extract_parameters(child)
 
             return name or "", parameters, is_async, is_generator
-        except Exception:
+        except (AttributeError, ValueError, IndexError, UnicodeDecodeError):
             return None
 
     def _parse_method_signature_optimized(
@@ -701,7 +677,7 @@ class JavaScriptElementExtractor(ProgrammingLanguageExtractor):
                 is_setter,
                 is_constructor,
             )
-        except Exception:
+        except (AttributeError, ValueError, IndexError):
             return None
 
     def _extract_parameters(self, params_node: "tree_sitter.Node") -> list[str]:
@@ -763,7 +739,7 @@ class JavaScriptElementExtractor(ProgrammingLanguageExtractor):
                 imported_names=import_names,
             )
 
-        except Exception as e:
+        except (AttributeError, ValueError, IndexError, UnicodeDecodeError) as e:
             log_debug(f"Failed to extract import info: {e}")
             return None
 
@@ -820,7 +796,7 @@ class JavaScriptElementExtractor(ProgrammingLanguageExtractor):
                 module_name=source,
                 imported_names=names,
             )
-        except Exception as e:
+        except (AttributeError, ValueError, IndexError) as e:
             log_debug(f"Failed to extract import info: {e}")
             return None
 
@@ -848,7 +824,7 @@ class JavaScriptElementExtractor(ProgrammingLanguageExtractor):
                 module_name=source,
                 imported_names=["dynamic_import"],
             )
-        except Exception as e:
+        except (AttributeError, ValueError, IndexError) as e:
             log_debug(f"Failed to extract dynamic import: {e}")
             return None
 
@@ -881,9 +857,8 @@ class JavaScriptElementExtractor(ProgrammingLanguageExtractor):
                 )
                 imports.append(import_obj)
 
-        except Exception as e:
+        except (AttributeError, ValueError, IndexError) as e:
             log_debug(f"Failed to extract CommonJS requires: {e}")
-            raise
 
         return imports
 
@@ -907,7 +882,7 @@ class JavaScriptElementExtractor(ProgrammingLanguageExtractor):
                 "end_line": node.end_point[0] + 1,
                 "raw_text": export_text,
             }
-        except Exception as e:
+        except (AttributeError, ValueError, IndexError) as e:
             log_debug(f"Failed to extract export info: {e}")
             return None
 
@@ -940,7 +915,7 @@ class JavaScriptElementExtractor(ProgrammingLanguageExtractor):
                     }
                     exports.append(export_obj)
 
-        except Exception as e:
+        except (AttributeError, ValueError, IndexError) as e:
             log_debug(f"Failed to extract CommonJS exports: {e}")
 
         return exports
@@ -982,7 +957,7 @@ class JavaScriptElementExtractor(ProgrammingLanguageExtractor):
                     return "default", [default_match.group(1)], source, True, False
 
             return None
-        except Exception:
+        except (AttributeError, ValueError, IndexError):
             return None
 
     def _parse_export_statement(
@@ -1023,7 +998,7 @@ class JavaScriptElementExtractor(ProgrammingLanguageExtractor):
                     return "direct", ["unknown"], False
 
             return None
-        except Exception:
+        except (AttributeError, ValueError, IndexError):
             return None
 
     def _find_parent_class_name(self, node: "tree_sitter.Node") -> str | None:
@@ -1089,7 +1064,7 @@ class JavaScriptElementExtractor(ProgrammingLanguageExtractor):
             elements.extend(self.extract_classes(tree, source_code))
             elements.extend(self.extract_variables(tree, source_code))
             elements.extend(self.extract_imports(tree, source_code))
-        except Exception as e:
+        except (AttributeError, ValueError, TypeError, RuntimeError) as e:
             log_error(f"Failed to extract elements: {e}")
 
         return elements
@@ -1158,7 +1133,7 @@ class JavaScriptElementExtractor(ProgrammingLanguageExtractor):
             self._jsdoc_cache[target_line] = ""
             return None
 
-        except Exception as e:
+        except (AttributeError, ValueError, IndexError) as e:
             log_debug(f"Failed to extract JSDoc: {e}")
             return None
 
@@ -1208,7 +1183,7 @@ class JavaScriptElementExtractor(ProgrammingLanguageExtractor):
             ]
             for keyword in keywords:
                 complexity += node_text.count(keyword)
-        except Exception as e:
+        except (AttributeError, ValueError, TypeError) as e:
             log_debug(f"Failed to calculate complexity: {e}")
 
         self._complexity_cache[node_id] = complexity
@@ -1445,7 +1420,7 @@ class JavaScriptPlugin(LanguagePlugin):
                 line_count=len(source_code.splitlines()),
                 node_count=node_count,
             )
-        except Exception as e:
+        except (OSError, AttributeError, ValueError, TypeError, RuntimeError) as e:
             log_error(f"Error analyzing JavaScript file {file_path}: {e}")
             return AnalysisResult(
                 file_path=file_path,
@@ -1470,15 +1445,16 @@ class JavaScriptPlugin(LanguagePlugin):
             classes = self._extractor.extract_classes(tree, source_code)
             variables = self._extractor.extract_variables(tree, source_code)
             imports = self._extractor.extract_imports(tree, source_code)
+            exports = self._extractor.extract_exports(tree, source_code)
 
             return {
                 "functions": functions,
                 "classes": classes,
                 "variables": variables,
                 "imports": imports,
-                "exports": [],  # TODO: Implement exports extraction
+                "exports": exports,
             }
-        except Exception as e:
+        except (AttributeError, ValueError, TypeError, RuntimeError) as e:
             log_error(f"Failed to extract elements: {e}")
             return {
                 "functions": [],

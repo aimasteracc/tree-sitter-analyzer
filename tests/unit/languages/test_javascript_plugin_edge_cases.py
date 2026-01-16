@@ -221,7 +221,7 @@ class TestJavaScriptPluginEdgeCases:
         with patch.object(
             extractor, "_parse_function_signature_optimized"
         ) as mock_parse:
-            mock_parse.side_effect = Exception("Test error")
+            mock_parse.side_effect = ValueError("Test error")
 
             result = extractor._extract_function_optimized(mock_node)
             assert result is None

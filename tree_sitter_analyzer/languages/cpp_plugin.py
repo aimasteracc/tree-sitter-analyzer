@@ -36,51 +36,23 @@ class CppElementExtractor(ProgrammingLanguageExtractor):
         self._comment_cache: dict[int, str] = {}
         self._complexity_cache: dict[int, int] = {}
 
-    def extract_functions(
-        self, tree: "tree_sitter.Tree", source_code: str
-    ) -> list[Function]:
-        """Extract C++ function definitions with comprehensive details"""
-        self._initialize_source(source_code)
-
-        functions: list[Function] = []
-
-        # Use optimized traversal for function types
-        extractors = {
+    def _get_function_handlers(self) -> dict[str, Any]:
+        """Get function node type handlers for C++."""
+        return {
             "function_definition": self._extract_function_optimized,
             "function_declarator": self._extract_function_declaration,
             "template_declaration": self._extract_template_function,
             "field_declaration": self._extract_function_from_field_declaration,  # Pure virtual, etc
         }
 
-        self._traverse_and_extract_iterative(
-            tree.root_node, extractors, functions, "function"
-        )
-
-        log_debug(f"Extracted {len(functions)} C++ functions")
-        return functions
-
-    def extract_classes(
-        self, tree: "tree_sitter.Tree", source_code: str
-    ) -> list[Class]:
-        """Extract C++ class/struct definitions with detailed information"""
-        self._initialize_source(source_code)
-
-        classes: list[Class] = []
-
-        # Extract class, struct, and union declarations
-        extractors = {
+    def _get_class_handlers(self) -> dict[str, Any]:
+        """Get class node type handlers for C++."""
+        return {
             "class_specifier": self._extract_class_optimized,
             "struct_specifier": self._extract_struct_optimized,
             "union_specifier": self._extract_union_optimized,
             "template_declaration": self._extract_template_class,
         }
-
-        self._traverse_and_extract_iterative(
-            tree.root_node, extractors, classes, "class"
-        )
-
-        log_debug(f"Extracted {len(classes)} C++ classes/structs")
-        return classes
 
     def extract_variables(
         self, tree: "tree_sitter.Tree", source_code: str
@@ -205,8 +177,8 @@ class CppElementExtractor(ProgrammingLanguageExtractor):
     def _extract_function_optimized(self, node: "tree_sitter.Node") -> Function | None:
         """Extract function information optimized"""
         try:
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
+            # Use base class method to extract common metadata
+            metadata = self._extract_common_metadata(node)
 
             # Extract function details
             function_info = self._parse_function_signature(node)
@@ -215,28 +187,17 @@ class CppElementExtractor(ProgrammingLanguageExtractor):
 
             name, return_type, parameters, modifiers = function_info
 
-            # Extract raw text
-            start_line_idx = max(0, start_line - 1)
-            end_line_idx = min(len(self.content_lines), end_line)
-            raw_text = "\n".join(self.content_lines[start_line_idx:end_line_idx])
-
-            # Calculate complexity
-            complexity_score = self._calculate_complexity_optimized(node)
-
             # Determine visibility (check if function is global or class member)
             is_global = self._is_global_scope(node)
             visibility = self._determine_visibility(
                 modifiers, is_global=is_global, node=node
             )
 
-            # Extract comments/documentation
-            docstring = self._extract_comment_for_line(start_line)
-
             return Function(
                 name=name,
-                start_line=start_line,
-                end_line=end_line,
-                raw_text=raw_text,
+                start_line=metadata["start_line"],
+                end_line=metadata["end_line"],
+                raw_text=metadata["raw_text"],
                 language="cpp",
                 parameters=parameters,
                 return_type=return_type or "void",
@@ -245,8 +206,8 @@ class CppElementExtractor(ProgrammingLanguageExtractor):
                 is_private="private" in modifiers,
                 is_public="public" in modifiers,
                 visibility=visibility,
-                docstring=docstring,
-                complexity_score=complexity_score,
+                docstring=metadata["docstring"],
+                complexity_score=metadata["complexity"],
             )
         except (AttributeError, ValueError, TypeError) as e:
             log_debug(f"Failed to extract function info: {e}")
@@ -515,8 +476,8 @@ class CppElementExtractor(ProgrammingLanguageExtractor):
     def _extract_class_optimized(self, node: "tree_sitter.Node") -> Class | None:
         """Extract class information optimized"""
         try:
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
+            # Use base class method to extract common metadata
+            metadata = self._extract_common_metadata(node)
 
             class_name = None
             superclasses: list[str] = []
@@ -531,14 +492,6 @@ class CppElementExtractor(ProgrammingLanguageExtractor):
             if not class_name:
                 return None
 
-            # Extract raw text
-            start_line_idx = max(0, start_line - 1)
-            end_line_idx = min(len(self.content_lines), end_line)
-            raw_text = "\n".join(self.content_lines[start_line_idx:end_line_idx])
-
-            # Extract comments/documentation
-            docstring = self._extract_comment_for_line(start_line)
-
             # Build fully qualified name with namespace
             full_qualified_name = (
                 f"{self.current_namespace}::{class_name}"
@@ -548,9 +501,9 @@ class CppElementExtractor(ProgrammingLanguageExtractor):
 
             return Class(
                 name=class_name,
-                start_line=start_line,
-                end_line=end_line,
-                raw_text=raw_text,
+                start_line=metadata["start_line"],
+                end_line=metadata["end_line"],
+                raw_text=metadata["raw_text"],
                 language="cpp",
                 class_type="class",
                 full_qualified_name=full_qualified_name,
@@ -558,7 +511,7 @@ class CppElementExtractor(ProgrammingLanguageExtractor):
                 superclass=superclasses[0] if superclasses else None,
                 interfaces=superclasses[1:] if len(superclasses) > 1 else [],
                 modifiers=modifiers,
-                docstring=docstring,
+                docstring=metadata["docstring"],
             )
         except Exception as e:
             log_debug(f"Failed to extract class info: {e}")
@@ -1017,6 +970,11 @@ class CppElementExtractor(ProgrammingLanguageExtractor):
 
         complexity += count_decisions(node)
         return complexity
+
+    def _extract_docstring_for_node(self, node: "tree_sitter.Node") -> str | None:
+        """Extract docstring/comment for a C++ node (override base class)."""
+        start_line = node.start_point[0] + 1
+        return self._extract_comment_for_line(start_line)
 
     def _extract_comment_for_line(self, line: int) -> str | None:
         """Extract comment (documentation) for a specific line"""

@@ -28,47 +28,45 @@ class KotlinElementExtractor(ProgrammingLanguageExtractor):
         self.current_package: str = ""
         self.current_file: str = ""
 
-    def extract_functions(
-        self, tree: "tree_sitter.Tree", source_code: str
-    ) -> list[Function]:
-        """Extract Kotlin function declarations"""
-        self.source_code = source_code
-        self.content_lines = source_code.split("\n")
-        self._reset_caches()
+    def _get_function_handlers(self) -> dict[str, Any]:
+        """Return function node type handlers for Kotlin."""
+        return {
+            "function_declaration": self._extract_function,
+        }
 
-        functions: list[Function] = []
-
-        self._traverse_and_extract(
-            tree.root_node,
-            {"function_declaration": self._extract_function},
-            functions,
-        )
-
-        log_debug(f"Extracted {len(functions)} Kotlin functions")
-        return functions
-
-    def extract_classes(
-        self, tree: "tree_sitter.Tree", source_code: str
-    ) -> list[Class]:
-        """Extract Kotlin class declarations"""
-        self.source_code = source_code
-        self.content_lines = source_code.split("\n")
-        self._reset_caches()
-
-        # Extract package
-        self._extract_package(tree.root_node)
-
-        classes: list[Class] = []
-
-        extractors = {
+    def _get_class_handlers(self) -> dict[str, Any]:
+        """Return class node type handlers for Kotlin."""
+        return {
             "class_declaration": self._extract_class,
             "object_declaration": self._extract_object,
         }
 
-        self._traverse_and_extract(
+    # extract_functions() is inherited from base class
+    # Base class implementation uses _get_function_handlers()
+
+    def extract_classes(
+        self, tree: "tree_sitter.Tree", source_code: str
+    ) -> list[Class]:
+        """Extract Kotlin class declarations with package pre-extraction.
+
+        Overrides base class to ensure package information is extracted
+        before processing classes.
+        """
+        self.source_code = source_code
+        self.content_lines = source_code.split("\n")
+        self._reset_caches()
+
+        # Kotlin-specific: Extract package first
+        self._extract_package(tree.root_node)
+
+        # Use base class template method logic
+        classes: list[Class] = []
+        extractors = self._get_class_handlers()
+        self._traverse_and_extract_iterative(
             tree.root_node,
             extractors,
             classes,
+            element_type="class",
         )
 
         log_debug(f"Extracted {len(classes)} Kotlin classes")
@@ -88,10 +86,11 @@ class KotlinElementExtractor(ProgrammingLanguageExtractor):
             "property_declaration": self._extract_property,
         }
 
-        self._traverse_and_extract(
+        self._traverse_and_extract_iterative(
             tree.root_node,
             extractors,
             variables,
+            element_type="variable",
         )
 
         log_debug(f"Extracted {len(variables)} Kotlin properties")
@@ -111,10 +110,11 @@ class KotlinElementExtractor(ProgrammingLanguageExtractor):
             "import_header": self._extract_import,
         }
 
-        self._traverse_and_extract(
+        self._traverse_and_extract_iterative(
             tree.root_node,
             extractors,
             imports,
+            element_type="import",
         )
 
         log_debug(f"Extracted {len(imports)} Kotlin imports")
@@ -153,21 +153,6 @@ class KotlinElementExtractor(ProgrammingLanguageExtractor):
         if not self.source_code:
             self.current_package = ""
 
-    def _traverse_and_extract(
-        self,
-        node: "tree_sitter.Node",
-        extractors: dict[str, Any],
-        results: list[Any],
-    ) -> None:
-        """Recursive traversal to find and extract elements"""
-        if node.type in extractors:
-            element = extractors[node.type](node)
-            if element:
-                results.append(element)
-
-        for child in node.children:
-            self._traverse_and_extract(child, extractors, results)
-
     def _extract_package(self, node: "tree_sitter.Node") -> None:
         """Extract package declaration"""
         # Find package_header at top level usually
@@ -190,6 +175,9 @@ class KotlinElementExtractor(ProgrammingLanguageExtractor):
     def _extract_function(self, node: "tree_sitter.Node") -> Function | None:
         """Extract function information"""
         try:
+            # Use base class method to extract common metadata
+            metadata = self._extract_common_metadata(node)
+
             # name: simple_identifier
             name = "anonymous"
             # Try getting by field name first
@@ -202,9 +190,6 @@ class KotlinElementExtractor(ProgrammingLanguageExtractor):
                     if child.type == "simple_identifier":
                         name = self._get_node_text(child)
                         break
-
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
 
             # Parameters
             parameters = []
@@ -260,21 +245,17 @@ class KotlinElementExtractor(ProgrammingLanguageExtractor):
                 if "suspend" in mods:
                     is_suspend = True
 
-            # Docstring
-            docstring = self._extract_docstring(node)
-
-            raw_text = self._get_node_text(node)
-
             func = Function(
                 name=name,
-                start_line=start_line,
-                end_line=end_line,
-                raw_text=raw_text,
+                start_line=metadata["start_line"],
+                end_line=metadata["end_line"],
+                raw_text=metadata["raw_text"],
                 language="kotlin",
                 parameters=parameters,
                 return_type=return_type,
                 visibility=visibility,
-                docstring=docstring,
+                docstring=metadata["docstring"],
+                complexity_score=metadata["complexity"],
             )
             func.is_suspend = is_suspend
             return func
@@ -296,6 +277,9 @@ class KotlinElementExtractor(ProgrammingLanguageExtractor):
     ) -> Class | None:
         """Generic extraction for class/object/interface"""
         try:
+            # Use base class method to extract common metadata
+            metadata = self._extract_common_metadata(node)
+
             name = "anonymous"
             # Try getting by field name first
             name_node = node.child_by_field_name("name")
@@ -306,9 +290,6 @@ class KotlinElementExtractor(ProgrammingLanguageExtractor):
                     if child.type == "simple_identifier":
                         name = self._get_node_text(child)
                         break
-
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
 
             visibility = "public"
             modifiers_node = node.child_by_field_name("modifiers")
@@ -333,17 +314,16 @@ class KotlinElementExtractor(ProgrammingLanguageExtractor):
                         # Explicitly a class, not interface
                         break
 
-            raw_text = self._get_node_text(node)
-
             return Class(
                 name=name,
-                start_line=start_line,
-                end_line=end_line,
-                raw_text=raw_text,
+                start_line=metadata["start_line"],
+                end_line=metadata["end_line"],
+                raw_text=metadata["raw_text"],
                 language="kotlin",
                 class_type=kind,
                 visibility=visibility,
                 package_name=self.current_package,
+                docstring=metadata["docstring"],
             )
 
         except Exception as e:

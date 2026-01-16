@@ -32,55 +32,73 @@ class RustElementExtractor(ProgrammingLanguageExtractor):
         self.impl_blocks: list[dict[str, Any]] = []
         self.modules: list[dict[str, Any]] = []
 
-    def extract_functions(
-        self, tree: "tree_sitter.Tree", source_code: str
-    ) -> list[Function]:
-        """Extract Rust function declarations"""
-        self.source_code = source_code
-        self.content_lines = source_code.split("\n")
-        self._reset_caches()
+    def _get_function_handlers(self) -> dict[str, Any]:
+        """
+        Get function node type handlers for Rust.
 
-        functions: list[Function] = []
+        Returns:
+            Dictionary mapping node types to handler methods
+        """
+        return {
+            "function_item": self._extract_function,
+        }
 
-        # Use tree traversal to find function_item
-        self._traverse_and_extract(
-            tree.root_node,
-            {"function_item": self._extract_function},
-            functions,
-        )
+    def _get_class_handlers(self) -> dict[str, Any]:
+        """
+        Get class node type handlers for Rust.
 
-        log_debug(f"Extracted {len(functions)} Rust functions")
-        return functions
+        Returns:
+            Dictionary mapping node types to handler methods
+        """
+        return {
+            "struct_item": self._extract_struct,
+            "enum_item": self._extract_enum,
+            "trait_item": self._extract_trait,
+            "impl_item": self._extract_impl,
+        }
+
+    def _get_container_node_types(self) -> set[str]:
+        """
+        Get Rust-specific container node types.
+
+        Returns:
+            Set of container node type names
+        """
+        return super()._get_container_node_types() | {
+            "mod_item",
+            "impl_item",
+            "declaration_list",
+            "field_declaration_list",
+        }
+
+    # extract_functions() is inherited from base class
+    # Base class implementation uses _get_function_handlers()
 
     def extract_classes(
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[Class]:
-        """Extract Rust struct, enum, trait, and impl definitions"""
+        """Extract Rust struct, enum, trait, and impl definitions with module pre-extraction.
+
+        Overrides base class to ensure module information is extracted
+        before processing classes.
+        """
         self.source_code = source_code
         self.content_lines = source_code.split("\n")
         self._reset_caches()
 
-        # Extract modules first
+        # Rust-specific: Extract modules first
         self._extract_modules(tree.root_node)
 
+        # Use base class template method logic
         classes: list[Class] = []
-
-        extractors = {
-            "struct_item": self._extract_struct,
-            "enum_item": self._extract_enum,
-            "trait_item": self._extract_trait,
-            "impl_item": self._extract_impl,  # Impl blocks are treated as related to classes
-        }
-
-        self._traverse_and_extract(
+        self._traverse_and_extract_iterative(
             tree.root_node,
-            extractors,
+            self._get_class_handlers(),
             classes,
+            "class",
         )
 
-        # Process collected impl blocks and add them to classes list if they are standalone
-        # Or we might want to return them as separate metadata.
-        # For now, we'll include impl blocks as Class objects with type='impl' for visibility
+        # Process collected impl blocks (Rust-specific)
         for _impl in self.impl_blocks:
             # Creating a Class object for impl block to represent it in the structure
             pass
@@ -103,10 +121,11 @@ class RustElementExtractor(ProgrammingLanguageExtractor):
             "field_declaration": self._extract_field,
         }
 
-        self._traverse_and_extract(
+        self._traverse_and_extract_iterative(
             tree.root_node,
             extractors,
             variables,
+            "variable",
         )
 
         log_debug(f"Extracted {len(variables)} Rust fields")
@@ -127,10 +146,11 @@ class RustElementExtractor(ProgrammingLanguageExtractor):
             "use_declaration": self._extract_import,
         }
 
-        self._traverse_and_extract(
+        self._traverse_and_extract_iterative(
             tree.root_node,
             extractors,
             imports,
+            "import",
         )
 
         log_debug(f"Extracted {len(imports)} Rust imports")
@@ -171,21 +191,6 @@ class RustElementExtractor(ProgrammingLanguageExtractor):
         if not self.source_code:
             self.modules.clear()
             self.impl_blocks.clear()
-
-    def _traverse_and_extract(
-        self,
-        node: "tree_sitter.Node",
-        extractors: dict[str, Any],
-        results: list[Any],
-    ) -> None:
-        """Recursive traversal to find and extract elements"""
-        if node.type in extractors:
-            element = extractors[node.type](node)
-            if element:
-                results.append(element)
-
-        for child in node.children:
-            self._traverse_and_extract(child, extractors, results)
 
     def _extract_modules(self, node: "tree_sitter.Node") -> None:
         """Extract module information"""

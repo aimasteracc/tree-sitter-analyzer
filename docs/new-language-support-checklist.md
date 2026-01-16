@@ -18,8 +18,12 @@ This document outlines the steps required to add support for a new programming l
 ### 2. Implement Element Extractor
 
 - [ ] Create `{Language}ElementExtractor` class
-  - [ ] Inherit from `ElementExtractor`
-  - [ ] Implement language-specific extraction methods
+  - [ ] Inherit from `ProgrammingLanguageExtractor` (for programming languages) or `CachedElementExtractor`
+  - [ ] Implement `_get_container_node_types()` to specify valid containers
+  - [ ] Implement `_get_function_handlers()` mapping (if applicable)
+  - [ ] Implement `_get_class_handlers()` mapping (if applicable)
+  - [ ] Implement language-specific handler methods
+  - [ ] Override `_get_decision_keywords()` for complexity calculation
 
 ### 3. Define Queries
 

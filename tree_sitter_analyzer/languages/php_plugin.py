@@ -68,6 +68,32 @@ class PHPElementExtractor(ProgrammingLanguageExtractor):
         self._attribute_cache.clear()
         self.current_namespace = ""
 
+    def _get_function_handlers(self) -> dict[str, Any]:
+        """
+        Get function node type handlers for PHP.
+
+        Returns:
+            Dictionary mapping node types to handler methods
+        """
+        return {
+            "method_declaration": self._extract_method_element,
+            "function_definition": self._extract_function_element,
+        }
+
+    def _get_class_handlers(self) -> dict[str, Any]:
+        """
+        Get class node type handlers for PHP.
+
+        Returns:
+            Dictionary mapping node types to handler methods
+        """
+        return {
+            "class_declaration": self._extract_class_element,
+            "interface_declaration": self._extract_class_element,
+            "trait_declaration": self._extract_class_element,
+            "enum_declaration": self._extract_class_element,
+        }
+
     def _extract_namespace(self, node: "tree_sitter.Node") -> None:
         """
         Extract namespace from the AST and set current_namespace.
@@ -224,6 +250,9 @@ class PHPElementExtractor(ProgrammingLanguageExtractor):
             if not name_node:
                 return None
 
+            # Use base class method to extract common metadata
+            metadata = self._extract_common_metadata(node)
+
             name = self._get_node_text_optimized(name_node)
             modifiers = self._extract_modifiers(node)
             visibility = self._determine_visibility(modifiers)
@@ -266,8 +295,8 @@ class PHPElementExtractor(ProgrammingLanguageExtractor):
 
             return Class(
                 name=full_name,
-                start_line=node.start_point[0] + 1,
-                end_line=node.end_point[0] + 1,
+                start_line=metadata["start_line"],
+                end_line=metadata["end_line"],
                 visibility=visibility,
                 is_abstract="abstract" in modifiers,
                 full_qualified_name=full_name,
@@ -332,7 +361,7 @@ class PHPElementExtractor(ProgrammingLanguageExtractor):
         return functions
 
     def _extract_method_element(
-        self, node: "tree_sitter.Node", parent_class: str
+        self, node: "tree_sitter.Node", parent_class: str = ""
     ) -> Function | None:
         """
         Extract a method element.
@@ -348,6 +377,9 @@ class PHPElementExtractor(ProgrammingLanguageExtractor):
             name_node = node.child_by_field_name("name")
             if not name_node:
                 return None
+
+            # Use base class method to extract common metadata
+            metadata = self._extract_common_metadata(node)
 
             name = self._get_node_text_optimized(name_node)
             modifiers = self._extract_modifiers(node)
@@ -377,8 +409,8 @@ class PHPElementExtractor(ProgrammingLanguageExtractor):
 
             return Function(
                 name=f"{parent_class}::{name}" if parent_class else name,
-                start_line=node.start_point[0] + 1,
-                end_line=node.end_point[0] + 1,
+                start_line=metadata["start_line"],
+                end_line=metadata["end_line"],
                 visibility=visibility,
                 is_static="static" in modifiers,
                 is_async=False,  # PHP doesn't have async/await like C#
@@ -407,6 +439,9 @@ class PHPElementExtractor(ProgrammingLanguageExtractor):
             if not name_node:
                 return None
 
+            # Use base class method to extract common metadata
+            metadata = self._extract_common_metadata(node)
+
             name = self._get_node_text_optimized(name_node)
 
             # Extract parameters
@@ -431,8 +466,8 @@ class PHPElementExtractor(ProgrammingLanguageExtractor):
 
             return Function(
                 name=full_name,
-                start_line=node.start_point[0] + 1,
-                end_line=node.end_point[0] + 1,
+                start_line=metadata["start_line"],
+                end_line=metadata["end_line"],
                 visibility="public",
                 is_static=False,
                 is_async=False,

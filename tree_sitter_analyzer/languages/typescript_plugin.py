@@ -9,6 +9,7 @@ Equivalent to JavaScript plugin capabilities with TypeScript-specific enhancemen
 """
 
 import re
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, Optional
 
 if TYPE_CHECKING:
@@ -51,17 +52,9 @@ class TypeScriptElementExtractor(ProgrammingLanguageExtractor):
         self.framework_type: str = ""  # react, angular, vue, etc.
         self.typescript_version: str = "4.0"  # default
 
-    def extract_functions(
-        self, tree: "tree_sitter.Tree", source_code: str
-    ) -> list[Function]:
-        """Extract TypeScript function definitions with comprehensive details"""
-        self._initialize_source(source_code)
-        self._detect_file_characteristics()
-
-        functions: list[Function] = []
-
-        # Use optimized traversal for multiple function types
-        extractors = {
+    def _get_function_handlers(self) -> dict[str, Callable]:
+        """Get mapping of node types to function extraction handlers."""
+        return {
             "function_declaration": self._extract_function_optimized,
             "function_expression": self._extract_function_optimized,
             "arrow_function": self._extract_arrow_function_optimized,
@@ -70,23 +63,9 @@ class TypeScriptElementExtractor(ProgrammingLanguageExtractor):
             "method_signature": self._extract_method_signature_optimized,
         }
 
-        self._traverse_and_extract_iterative(
-            tree.root_node, extractors, functions, "function"
-        )
-
-        log_debug(f"Extracted {len(functions)} TypeScript functions")
-        return functions
-
-    def extract_classes(
-        self, tree: "tree_sitter.Tree", source_code: str
-    ) -> list[Class]:
-        """Extract TypeScript class and interface definitions with detailed information"""
-        self._initialize_source(source_code)
-
-        classes: list[Class] = []
-
-        # Extract classes, interfaces, and type aliases
-        extractors = {
+    def _get_class_handlers(self) -> dict[str, Callable]:
+        """Get mapping of node types to class extraction handlers."""
+        return {
             "class_declaration": self._extract_class_optimized,
             "interface_declaration": self._extract_interface_optimized,
             "type_alias_declaration": self._extract_type_alias_optimized,
@@ -94,12 +73,9 @@ class TypeScriptElementExtractor(ProgrammingLanguageExtractor):
             "abstract_class_declaration": self._extract_class_optimized,
         }
 
-        self._traverse_and_extract_iterative(
-            tree.root_node, extractors, classes, "class"
-        )
-
-        log_debug(f"Extracted {len(classes)} TypeScript classes/interfaces/types")
-        return classes
+    # extract_functions() and extract_classes() are inherited from base class
+    # Base class implementation uses _get_function_handlers() and _get_class_handlers()
+    # and automatically calls _detect_file_characteristics() if available
 
     def extract_variables(
         self, tree: "tree_sitter.Tree", source_code: str
@@ -241,7 +217,7 @@ class TypeScriptElementExtractor(ProgrammingLanguageExtractor):
                 is_method=False,
                 framework_type=self.framework_type,
             )
-        except Exception as e:
+        except (AttributeError, ValueError, IndexError) as e:
             log_error(f"Failed to extract function info: {e}")
             import traceback
 
@@ -311,7 +287,7 @@ class TypeScriptElementExtractor(ProgrammingLanguageExtractor):
                 is_method=False,
                 framework_type=self.framework_type,
             )
-        except Exception as e:
+        except (AttributeError, ValueError, IndexError) as e:
             log_debug(f"Failed to extract arrow function info: {e}")
             return None
 
@@ -371,7 +347,7 @@ class TypeScriptElementExtractor(ProgrammingLanguageExtractor):
                 framework_type=self.framework_type,
                 visibility=visibility,
             )
-        except Exception as e:
+        except (AttributeError, ValueError, IndexError) as e:
             log_debug(f"Failed to extract method info: {e}")
             return None
 
@@ -428,7 +404,7 @@ class TypeScriptElementExtractor(ProgrammingLanguageExtractor):
                 is_method=True,
                 framework_type=self.framework_type,
             )
-        except Exception as e:
+        except (AttributeError, ValueError, IndexError) as e:
             log_debug(f"Failed to extract method signature info: {e}")
             return None
 
@@ -478,7 +454,7 @@ class TypeScriptElementExtractor(ProgrammingLanguageExtractor):
                 framework_type=self.framework_type,
                 # TypeScript-specific properties handled above
             )
-        except Exception as e:
+        except (AttributeError, ValueError, IndexError) as e:
             log_debug(f"Failed to extract generator function info: {e}")
             return None
 
@@ -544,7 +520,7 @@ class TypeScriptElementExtractor(ProgrammingLanguageExtractor):
                 is_abstract=is_abstract,
                 # TypeScript-specific properties handled above
             )
-        except Exception as e:
+        except (AttributeError, ValueError, IndexError, UnicodeDecodeError) as e:
             log_debug(f"Failed to extract class info: {e}")
             return None
 
@@ -596,7 +572,7 @@ class TypeScriptElementExtractor(ProgrammingLanguageExtractor):
                 is_exported=self._is_exported_class(interface_name),
                 # TypeScript-specific properties handled above
             )
-        except Exception as e:
+        except (AttributeError, ValueError, IndexError, UnicodeDecodeError) as e:
             log_debug(f"Failed to extract interface info: {e}")
             return None
 
@@ -638,7 +614,7 @@ class TypeScriptElementExtractor(ProgrammingLanguageExtractor):
                 is_exported=self._is_exported_class(type_name),
                 # TypeScript-specific properties handled above
             )
-        except Exception as e:
+        except (AttributeError, ValueError, IndexError, UnicodeDecodeError) as e:
             log_debug(f"Failed to extract type alias info: {e}")
             return None
 
@@ -677,7 +653,7 @@ class TypeScriptElementExtractor(ProgrammingLanguageExtractor):
                 is_exported=self._is_exported_class(enum_name),
                 # TypeScript-specific properties handled above
             )
-        except Exception as e:
+        except (AttributeError, ValueError, IndexError, UnicodeDecodeError) as e:
             log_debug(f"Failed to extract enum info: {e}")
             return None
 
@@ -753,7 +729,7 @@ class TypeScriptElementExtractor(ProgrammingLanguageExtractor):
                 # TypeScript-specific properties
                 visibility=visibility,
             )
-        except Exception as e:
+        except (AttributeError, ValueError, IndexError) as e:
             log_debug(f"Failed to extract property info: {e}")
             return None
 
@@ -798,7 +774,7 @@ class TypeScriptElementExtractor(ProgrammingLanguageExtractor):
                 # TypeScript-specific properties
                 visibility="public",  # Interface properties are always public
             )
-        except Exception as e:
+        except (AttributeError, ValueError, IndexError) as e:
             log_debug(f"Failed to extract property signature info: {e}")
             return None
 
@@ -821,7 +797,7 @@ class TypeScriptElementExtractor(ProgrammingLanguageExtractor):
                     if var_info:
                         variables.append(var_info)
 
-        except Exception as e:
+        except (AttributeError, ValueError, IndexError) as e:
             log_debug(f"Failed to extract variables from declaration: {e}")
 
         return variables
@@ -874,7 +850,7 @@ class TypeScriptElementExtractor(ProgrammingLanguageExtractor):
                 # TypeScript-specific properties
                 visibility="public",  # Variables are typically public in TypeScript
             )
-        except Exception as e:
+        except (AttributeError, ValueError, IndexError) as e:
             log_debug(f"Failed to parse variable declarator: {e}")
             return None
 
@@ -906,7 +882,7 @@ class TypeScriptElementExtractor(ProgrammingLanguageExtractor):
                     generics = self._extract_generics(child)
 
             return name, parameters, is_async, is_generator, return_type, generics
-        except Exception:
+        except (AttributeError, ValueError, IndexError, UnicodeDecodeError):
             return None
 
     def _parse_method_signature_optimized(
@@ -1003,7 +979,7 @@ class TypeScriptElementExtractor(ProgrammingLanguageExtractor):
                 visibility,
                 generics,
             )
-        except Exception:
+        except (AttributeError, ValueError, IndexError, UnicodeDecodeError):
             return None
 
     def _extract_parameters_with_types(
@@ -1128,7 +1104,7 @@ class TypeScriptElementExtractor(ProgrammingLanguageExtractor):
                         if child.type == "import_clause":
                             import_names.extend(self._extract_import_names(child))
                             break
-                except Exception:
+                except (AttributeError, ValueError, IndexError, UnicodeDecodeError):
                     pass  # nosec
 
             # If no module path found, return None for edge case tests
@@ -1149,7 +1125,13 @@ class TypeScriptElementExtractor(ProgrammingLanguageExtractor):
                 imported_names=import_names,
             )
 
-        except Exception as e:
+        except (
+            AttributeError,
+            ValueError,
+            IndexError,
+            UnicodeDecodeError,
+            TypeError,
+        ) as e:
             log_debug(f"Failed to extract import info: {e}")
             return None
 
@@ -1266,7 +1248,7 @@ class TypeScriptElementExtractor(ProgrammingLanguageExtractor):
                                         names.append(f"* as {text.decode('utf-8')}")
                                     else:
                                         names.append(f"* as {str(text)}")
-        except Exception as e:
+        except (AttributeError, ValueError, IndexError, UnicodeDecodeError) as e:
             log_debug(f"Failed to extract import names: {e}")
 
         return names
@@ -1300,7 +1282,7 @@ class TypeScriptElementExtractor(ProgrammingLanguageExtractor):
                 module_path=source,
                 imported_names=["dynamic_import"],
             )
-        except Exception as e:
+        except (AttributeError, ValueError, IndexError) as e:
             log_debug(f"Failed to extract dynamic import: {e}")
             return None
 
@@ -1343,7 +1325,7 @@ class TypeScriptElementExtractor(ProgrammingLanguageExtractor):
                 )
                 imports.append(import_obj)
 
-        except Exception as e:
+        except (AttributeError, ValueError, IndexError) as e:
             log_debug(f"Failed to extract CommonJS requires: {e}")
             return []
 
@@ -1453,7 +1435,7 @@ class TypeScriptElementExtractor(ProgrammingLanguageExtractor):
             self._tsdoc_cache[target_line] = ""
             return None
 
-        except Exception as e:
+        except (AttributeError, ValueError, IndexError) as e:
             log_debug(f"Failed to extract TSDoc: {e}")
             return None
 
@@ -1503,7 +1485,7 @@ class TypeScriptElementExtractor(ProgrammingLanguageExtractor):
             ]
             for keyword in keywords:
                 complexity += node_text.count(keyword)
-        except Exception as e:
+        except (AttributeError, ValueError, TypeError) as e:
             log_debug(f"Failed to calculate complexity: {e}")
 
         self._complexity_cache[node_id] = complexity
@@ -1561,7 +1543,7 @@ class TypeScriptPlugin(LanguagePlugin):
         if self._language is None:
             try:
                 self._language = loader.load_language("typescript")
-            except Exception as e:
+            except (OSError, ImportError, RuntimeError) as e:
                 log_debug(f"Failed to load TypeScript language: {e}")
                 return None
         return self._language

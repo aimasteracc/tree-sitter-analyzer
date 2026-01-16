@@ -1345,14 +1345,14 @@ class UserConfig {
             assert result is None
 
     def test_extract_method_optimized_with_exception(self, extractor):
-        """Test method extraction when an exception occurs"""
+        """Test extract_method_optimized when an exception occurs"""
         mock_node = Mock()
         mock_node.start_point = (0, 0)
         mock_node.end_point = (2, 0)
 
         # Mock to raise exception
         with patch.object(extractor, "_parse_method_signature_optimized") as mock_parse:
-            mock_parse.side_effect = Exception("Test error")
+            mock_parse.side_effect = ValueError("Test error")
 
             result = extractor._extract_method_optimized(mock_node)
             assert result is None
@@ -1374,7 +1374,7 @@ class UserConfig {
             assert result == []
 
     def test_extract_field_optimized_with_exception(self, extractor):
-        """Test field extraction when an exception occurs"""
+        """Test extract_field_optimized when an exception occurs"""
         mock_node = Mock()
         mock_node.start_point = (0, 0)
         mock_node.end_point = (2, 0)
@@ -1383,7 +1383,7 @@ class UserConfig {
         with patch.object(
             extractor, "_parse_field_declaration_optimized"
         ) as mock_parse:
-            mock_parse.side_effect = Exception("Test error")
+            mock_parse.side_effect = ValueError("Test error")
 
             result = extractor._extract_field_optimized(mock_node)
             assert result == []

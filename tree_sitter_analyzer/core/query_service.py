@@ -129,8 +129,14 @@ class QueryService:
 
             return results
 
+        except FileNotFoundError:
+            logger.error(f"File not found: {file_path}")
+            raise
+        except (ValueError, TypeError) as e:
+            logger.error(f"Invalid input in query execution: {e}")
+            raise
         except Exception as e:
-            logger.error(f"Query execution failed: {e}")
+            logger.error(f"Unexpected error in query execution: {e}")
             raise
 
     def _create_result_dict(
@@ -203,79 +209,143 @@ class QueryService:
         Returns:
             List of (node, capture_name) tuples
         """
-        captures = []
-
         # Try to get plugin for the language
         plugin = self.plugin_manager.get_plugin(language)
         if not plugin:
             logger.warning(f"No plugin found for language: {language}")
             return self._fallback_query_execution(root_node, query_key)
 
-        # Use plugin's execute_query_strategy method
-        try:
-            # Create a mock tree object for plugin compatibility
-            class MockTree:
-                def __init__(self, root_node: Any) -> None:
-                    self.root_node = root_node
+        # Try plugin's execute_query_strategy method
+        captures = self._try_plugin_query_strategy(plugin, source_code, query_key)
+        if captures is not None:
+            return captures
 
-            # Execute plugin query strategy
+        # Try plugin's element categories for tree traversal
+        captures = self._try_plugin_element_categories(plugin, root_node, query_key)
+        if captures is not None:
+            return captures
+
+        # Final fallback
+        return self._fallback_query_execution(root_node, query_key)
+
+    def _try_plugin_query_strategy(
+        self, plugin: Any, source_code: str, query_key: str | None
+    ) -> list[tuple[Any, str]] | None:
+        """
+        Try to execute query using plugin's query strategy.
+
+        Args:
+            plugin: Language plugin
+            source_code: Source code content
+            query_key: Query key to execute
+
+        Returns:
+            List of captures or None if strategy fails
+        """
+        try:
             elements = plugin.execute_query_strategy(
                 source_code, query_key or "function"
             )
 
-            # Convert elements to captures format
-            if elements:
-                for element in elements:
-                    if hasattr(element, "start_line") and hasattr(element, "end_line"):
-                        # Create a mock node for compatibility
-                        class MockNode:
-                            def __init__(self, element: Any) -> None:
-                                self.type = getattr(
-                                    element, "element_type", query_key or "unknown"
-                                )
-                                self.start_point = (
-                                    getattr(element, "start_line", 1) - 1,
-                                    0,
-                                )
-                                self.end_point = (
-                                    getattr(element, "end_line", 1) - 1,
-                                    0,
-                                )
-                                self.text = getattr(element, "raw_text", "").encode(
-                                    "utf-8"
-                                )
+            if not elements:
+                return []
 
-                        mock_node = MockNode(element)
-                        captures.append((mock_node, query_key or "element"))
-
-            return captures
+            return self._convert_elements_to_captures(elements, query_key)
 
         except Exception as e:
             logger.debug(f"Plugin query strategy failed: {e}")
+            return None
 
-        # Fallback: Use plugin's element categories for tree traversal
+    def _convert_elements_to_captures(
+        self, elements: list[Any], query_key: str | None
+    ) -> list[tuple[Any, str]]:
+        """
+        Convert plugin elements to capture format.
+
+        Args:
+            elements: List of plugin elements
+            query_key: Query key for capture name
+
+        Returns:
+            List of (node, capture_name) tuples
+        """
+        captures = []
+        for element in elements:
+            if not (hasattr(element, "start_line") and hasattr(element, "end_line")):
+                continue
+
+            mock_node = self._create_mock_node(element, query_key)
+            captures.append((mock_node, query_key or "element"))
+
+        return captures
+
+    def _create_mock_node(self, element: Any, query_key: str | None) -> Any:
+        """
+        Create a mock node from a plugin element.
+
+        Args:
+            element: Plugin element
+            query_key: Query key for node type
+
+        Returns:
+            Mock node object
+        """
+
+        class MockNode:
+            def __init__(self, element: Any, query_key: str | None) -> None:
+                self.type = getattr(element, "element_type", query_key or "unknown")
+                self.start_point = (
+                    getattr(element, "start_line", 1) - 1,
+                    0,
+                )
+                self.end_point = (
+                    getattr(element, "end_line", 1) - 1,
+                    0,
+                )
+                self.text = getattr(element, "raw_text", "").encode("utf-8")
+
+        return MockNode(element, query_key)
+
+    def _try_plugin_element_categories(
+        self, plugin: Any, root_node: Any, query_key: str | None
+    ) -> list[tuple[Any, str]] | None:
+        """
+        Try to execute query using plugin's element categories.
+
+        Args:
+            plugin: Language plugin
+            root_node: Root node of the parsed tree
+            query_key: Query key to execute
+
+        Returns:
+            List of captures or None if strategy fails
+        """
         try:
             element_categories = plugin.get_element_categories()
-            if element_categories and query_key and query_key in element_categories:
-                node_types = element_categories[query_key]
+            if not element_categories or not query_key:
+                return None
 
-                def walk_tree(node: Any) -> None:
-                    """Walk the tree and find matching nodes using plugin categories"""
-                    if node.type in node_types:
-                        captures.append((node, query_key))
+            if query_key not in element_categories:
+                return None
 
-                    # Recursively process children
-                    for child in node.children:
-                        walk_tree(child)
+            node_types = element_categories[query_key]
+            captures: list[tuple[Any, str]] = []
 
-                walk_tree(root_node)
-                return captures
+            def walk_tree(node: Any) -> None:
+                """Walk the tree and find matching nodes using plugin categories"""
+                if node.type in node_types:
+                    captures.append((node, query_key))
+
+                # Recursively process children
+                for child in node.children:
+                    walk_tree(child)
+
+            walk_tree(root_node)
+            return captures
 
         except Exception as e:
             logger.debug(f"Plugin element categories failed: {e}")
-
-        # Final fallback
-        return self._fallback_query_execution(root_node, query_key)
+            return None
 
     def _fallback_query_execution(
         self, root_node: Any, query_key: str | None
@@ -291,9 +361,14 @@ class QueryService:
             List of (node, capture_name) tuples
         """
         captures = []
+        MAX_DEPTH = 100  # Prevent infinite recursion on malformed trees
 
-        def walk_tree_basic(node: Any) -> None:
-            """Basic tree walking for unsupported languages"""
+        def walk_tree_basic(node: Any, depth: int = 0) -> None:
+            """Basic tree walking for unsupported languages (iterative)"""
+            # Prevent excessive depth
+            if depth > MAX_DEPTH:
+                return
+
             # Get node type safely
             node_type = getattr(node, "type", "")
             if not isinstance(node_type, str):
@@ -316,10 +391,10 @@ class QueryService:
             ):
                 captures.append((node, query_key))
 
-            # Recursively process children
+            # Process children iteratively (no recursion)
             children = getattr(node, "children", [])
             for child in children:
-                walk_tree_basic(child)
+                walk_tree_basic(child, depth + 1)
 
         walk_tree_basic(root_node)
         return captures

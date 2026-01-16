@@ -8,6 +8,7 @@ decorators, type hints, context managers, and framework-specific patterns.
 Equivalent to JavaScript plugin capabilities for consistent language support.
 """
 
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, Optional
 
 import anyio
@@ -69,56 +70,21 @@ class PythonElementExtractor(ProgrammingLanguageExtractor):
             "try_statement",
         }
 
-    def extract_functions(
-        self, tree: "tree_sitter.Tree", source_code: str
-    ) -> list[Function]:
-        """Extract Python function definitions with comprehensive details"""
-        self._initialize_source(source_code or "")
-        self._detect_file_characteristics()
-
-        functions: list[Function] = []
-
-        # Use optimized traversal for multiple function types
-        extractors = {
+    def _get_function_handlers(self) -> dict[str, Callable]:
+        """Get Python function node type handlers"""
+        return {
             "function_definition": self._extract_function_optimized,
         }
 
-        if tree is not None and tree.root_node is not None:
-            try:
-                self._traverse_and_extract_iterative(
-                    tree.root_node, extractors, functions, "function"
-                )
-                log_debug(f"Extracted {len(functions)} Python functions")
-            except Exception as e:
-                log_debug(f"Error during function extraction: {e}")
-                return []
-
-        return functions
-
-    def extract_classes(
-        self, tree: "tree_sitter.Tree", source_code: str
-    ) -> list[Class]:
-        """Extract Python class definitions with detailed information"""
-        self._initialize_source(source_code or "")
-
-        classes: list[Class] = []
-
-        # Extract class declarations
-        extractors = {
+    def _get_class_handlers(self) -> dict[str, Callable]:
+        """Get Python class node type handlers"""
+        return {
             "class_definition": self._extract_class_optimized,
         }
 
-        if tree is not None and tree.root_node is not None:
-            try:
-                self._traverse_and_extract_iterative(
-                    tree.root_node, extractors, classes, "class"
-                )
-                log_debug(f"Extracted {len(classes)} Python classes")
-            except Exception as e:
-                log_debug(f"Error during class extraction: {e}")
-                return []
-
-        return classes
+    # extract_functions() and extract_classes() are inherited from base class
+    # Base class implementation uses _get_function_handlers() and _get_class_handlers()
+    # and automatically calls _detect_file_characteristics() if available
 
     def extract_variables(
         self, tree: "tree_sitter.Tree", source_code: str
@@ -144,7 +110,7 @@ class PythonElementExtractor(ProgrammingLanguageExtractor):
                     for node, capture_name in captures:
                         if capture_name == "class.body":
                             class_bodies.append(node)
-                except Exception as e:
+                except (RuntimeError, ValueError, AttributeError) as e:
                     log_debug(
                         f"Could not extract Python class attributes using query: {e}"
                     )
@@ -156,7 +122,7 @@ class PythonElementExtractor(ProgrammingLanguageExtractor):
                         self._extract_class_attributes(class_body, source_code)
                     )
 
-        except Exception as e:
+        except (RuntimeError, ValueError, AttributeError) as e:
             log_warning(f"Could not extract Python class attributes: {e}")
 
         return variables
@@ -180,8 +146,8 @@ class PythonElementExtractor(ProgrammingLanguageExtractor):
     def _extract_function_optimized(self, node: "tree_sitter.Node") -> Function | None:
         """Extract function information with detailed metadata"""
         try:
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
+            # Use base class method to extract common metadata
+            metadata = self._extract_common_metadata(node)
 
             # Extract function details
             function_info = self._parse_function_signature_optimized(node)
@@ -189,17 +155,6 @@ class PythonElementExtractor(ProgrammingLanguageExtractor):
                 return None
 
             name, parameters, is_async, decorators, return_type = function_info
-
-            # Extract docstring
-            docstring = self._extract_docstring_for_line(start_line)
-
-            # Calculate complexity
-            complexity_score = self._calculate_complexity_optimized(node)
-
-            # Extract raw text
-            start_line_idx = max(0, start_line - 1)
-            end_line_idx = min(len(self.content_lines), end_line)
-            raw_text = "\n".join(self.content_lines[start_line_idx:end_line_idx])
 
             # Determine visibility (Python conventions)
             visibility = "public"
@@ -210,16 +165,16 @@ class PythonElementExtractor(ProgrammingLanguageExtractor):
 
             return Function(
                 name=name,
-                start_line=start_line,
-                end_line=end_line,
-                raw_text=raw_text,
+                start_line=metadata["start_line"],
+                end_line=metadata["end_line"],
+                raw_text=metadata["raw_text"],
                 language="python",
                 parameters=parameters,
                 return_type=return_type or "Any",
                 is_async=is_async,
-                is_generator="yield" in raw_text,
-                docstring=docstring,
-                complexity_score=complexity_score,
+                is_generator="yield" in metadata["raw_text"],
+                docstring=metadata["docstring"],
+                complexity_score=metadata["complexity"],
                 modifiers=decorators,
                 is_static="staticmethod" in decorators,
                 is_staticmethod="staticmethod" in decorators,
@@ -230,7 +185,7 @@ class PythonElementExtractor(ProgrammingLanguageExtractor):
                 is_property="property" in decorators,
                 is_classmethod="classmethod" in decorators,
             )
-        except Exception as e:
+        except (AttributeError, TypeError, ValueError, UnicodeDecodeError) as e:
             log_error(f"Failed to extract function info: {e}")
             import traceback
 
@@ -302,7 +257,7 @@ class PythonElementExtractor(ProgrammingLanguageExtractor):
                         return_type = type_text
 
             return name or "", parameters, is_async, decorators, return_type
-        except Exception:
+        except (AttributeError, TypeError, UnicodeDecodeError):
             return None
 
     def _extract_parameters_from_node_optimized(
@@ -383,7 +338,7 @@ class PythonElementExtractor(ProgrammingLanguageExtractor):
             self._docstring_cache[target_line] = ""
             return None
 
-        except Exception as e:
+        except (IndexError, AttributeError) as e:
             log_debug(f"Failed to extract docstring: {e}")
             return None
 
@@ -415,7 +370,7 @@ class PythonElementExtractor(ProgrammingLanguageExtractor):
                 pattern = rf"\b{keyword}\b"
                 matches = re.findall(pattern, node_text)
                 complexity += len(matches)
-        except Exception as e:
+        except (AttributeError, TypeError, UnicodeDecodeError) as e:
             log_debug(f"Failed to calculate complexity: {e}")
 
         self._complexity_cache[node_id] = complexity
@@ -424,8 +379,8 @@ class PythonElementExtractor(ProgrammingLanguageExtractor):
     def _extract_class_optimized(self, node: "tree_sitter.Node") -> Class | None:
         """Extract class information with detailed metadata"""
         try:
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
+            # Use base class method to extract common metadata
+            metadata = self._extract_common_metadata(node)
 
             # Extract class name
             class_name = None
@@ -462,12 +417,6 @@ class PythonElementExtractor(ProgrammingLanguageExtractor):
             if not class_name:
                 return None
 
-            # Extract docstring
-            docstring = self._extract_docstring_for_line(start_line)
-
-            # Extract raw text
-            raw_text = self._get_node_text_optimized(node)
-
             # Generate fully qualified name
             full_qualified_name = (
                 f"{self.current_module}.{class_name}"
@@ -477,26 +426,27 @@ class PythonElementExtractor(ProgrammingLanguageExtractor):
 
             return Class(
                 name=class_name,
-                start_line=start_line,
-                end_line=end_line,
-                raw_text=raw_text,
+                start_line=metadata["start_line"],
+                end_line=metadata["end_line"],
+                raw_text=metadata["raw_text"],
                 language="python",
                 class_type="class",
                 superclass=superclasses[0] if superclasses else None,
                 interfaces=superclasses[1:] if len(superclasses) > 1 else [],
-                docstring=docstring,
+                docstring=metadata["docstring"],
                 modifiers=decorators,
                 full_qualified_name=full_qualified_name,
                 package_name=self.current_module,
                 # Python-specific properties
                 framework_type=self.framework_type,
                 is_dataclass="dataclass" in decorators,
-                is_abstract="ABC" in superclasses or "abstractmethod" in raw_text,
+                is_abstract="ABC" in superclasses
+                or "abstractmethod" in metadata["raw_text"],
                 is_exception=any(
                     "Exception" in sc or "Error" in sc for sc in superclasses
                 ),
             )
-        except Exception as e:
+        except (AttributeError, TypeError, ValueError, UnicodeDecodeError) as e:
             log_debug(f"Failed to extract class info: {e}")
             return None
 
@@ -540,7 +490,7 @@ class PythonElementExtractor(ProgrammingLanguageExtractor):
                     if attribute:
                         attributes.append(attribute)
 
-        except Exception as e:
+        except (AttributeError, TypeError) as e:
             log_warning(f"Could not extract class attributes: {e}")
 
         return attributes
@@ -575,7 +525,7 @@ class PythonElementExtractor(ProgrammingLanguageExtractor):
                     variable_type=attr_type,
                 )
 
-        except Exception as e:
+        except (ValueError, IndexError, AttributeError) as e:
             log_warning(f"Could not extract class attribute info: {e}")
 
         return None
@@ -621,7 +571,7 @@ class PythonElementExtractor(ProgrammingLanguageExtractor):
                         if imp:
                             imports.append(imp)
 
-                except Exception as query_error:
+                except (RuntimeError, ValueError, AttributeError) as query_error:
                     # Fallback to manual extraction for tree-sitter compatibility
                     log_debug(
                         f"Query execution failed, using manual extraction: {query_error}"
@@ -630,7 +580,7 @@ class PythonElementExtractor(ProgrammingLanguageExtractor):
                         self._extract_imports_manual(tree.root_node, source_code)
                     )
 
-        except Exception as e:
+        except (RuntimeError, ValueError, AttributeError) as e:
             log_warning(f"Could not extract Python imports: {e}")
             # Final fallback
             imports.extend(self._extract_imports_manual(tree.root_node, source_code))
@@ -739,7 +689,7 @@ class PythonElementExtractor(ProgrammingLanguageExtractor):
                             )
                             imports.append(import_obj)
 
-                except Exception as e:
+                except (AttributeError, ValueError, UnicodeDecodeError) as e:
                     log_warning(f"Failed to extract import manually: {e}")
 
             # Recursively process children
@@ -855,7 +805,7 @@ class PythonElementExtractor(ProgrammingLanguageExtractor):
                 is_public=visibility == "public",
             )
 
-        except Exception as e:
+        except (AttributeError, TypeError, ValueError, UnicodeDecodeError) as e:
             log_warning(f"Could not extract detailed function info: {e}")
             return None
 
@@ -902,7 +852,7 @@ class PythonElementExtractor(ProgrammingLanguageExtractor):
                 modifiers=decorators,
             )
 
-        except Exception as e:
+        except (AttributeError, TypeError, ValueError, UnicodeDecodeError) as e:
             log_warning(f"Could not extract detailed class info: {e}")
             return None
 
@@ -936,7 +886,7 @@ class PythonElementExtractor(ProgrammingLanguageExtractor):
                 variable_type=assignment_type,
             )
 
-        except Exception as e:
+        except (AttributeError, ValueError, IndexError) as e:
             log_warning(f"Could not extract variable info: {e}")
             return None
 
@@ -982,7 +932,7 @@ class PythonElementExtractor(ProgrammingLanguageExtractor):
                 module_name=module_name,
             )
 
-        except Exception as e:
+        except (AttributeError, ValueError, IndexError) as e:
             log_warning(f"Could not extract import info: {e}")
             return None
 
@@ -1203,7 +1153,7 @@ class PythonPlugin(LanguagePlugin):
             except ImportError:
                 log_error("tree-sitter-python not available")
                 return None
-            except Exception as e:
+            except (RuntimeError, ValueError, AttributeError) as e:
                 log_error(f"Failed to load Python language: {e}")
                 return None
         return self._language_cache
@@ -1430,7 +1380,7 @@ class PythonPlugin(LanguagePlugin):
                 line_count=len(source_code.splitlines()),
                 node_count=node_count,
             )
-        except Exception as e:
+        except (OSError, UnicodeDecodeError, RuntimeError) as e:
             log_error(f"Error analyzing Python file {file_path}: {e}")
             return AnalysisResult(
                 file_path=file_path,
@@ -1459,7 +1409,7 @@ class PythonPlugin(LanguagePlugin):
             )
             return {"captures": captures, "query": query_string}
 
-        except Exception as e:
+        except (RuntimeError, ValueError, AttributeError) as e:
             log_error(f"Query execution failed: {e}")
             return {"error": str(e)}
 
@@ -1473,7 +1423,7 @@ class PythonPlugin(LanguagePlugin):
             elements.extend(extractor.extract_classes(tree, source_code))  # type: ignore
             elements.extend(extractor.extract_variables(tree, source_code))  # type: ignore
             elements.extend(extractor.extract_imports(tree, source_code))  # type: ignore
-        except Exception as e:
+        except (AttributeError, TypeError, RuntimeError) as e:
             log_error(f"Failed to extract elements: {e}")
 
         return elements
