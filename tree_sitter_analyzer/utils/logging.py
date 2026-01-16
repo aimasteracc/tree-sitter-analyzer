@@ -58,6 +58,11 @@ def setup_logger(
     enable_file_log = (
         os.environ.get("TREE_SITTER_ANALYZER_ENABLE_FILE_LOG", "").lower() == "true"
     )
+
+    # Disable file logging for test loggers to prevent file lock contention during parallel tests
+    if name.startswith("test_"):
+        enable_file_log = False
+
     file_log_level = level  # Default to main logger level
 
     if not logger.handlers:  # Avoid duplicate handlers

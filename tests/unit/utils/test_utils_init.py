@@ -4,6 +4,8 @@ Tests for Utils Module Initialization (utils/__init__.py)
 Tests for all exported functions/classes, module imports, and re-exports.
 """
 
+from unittest.mock import patch
+
 from tree_sitter_analyzer.utils import (
     LoggingContext,
     QuietMode,
@@ -283,28 +285,33 @@ class TestFunctionalityAvailability:
 
     def test_log_info_works(self) -> None:
         """Test that log_info can be called."""
-        # Should not raise
-        log_info("Test message")
+        with patch("tree_sitter_analyzer.utils.logging.logger"):
+            # Should not raise
+            log_info("Test message")
 
     def test_log_error_works(self) -> None:
         """Test that log_error can be called."""
-        # Should not raise
-        log_error("Test error")
+        with patch("tree_sitter_analyzer.utils.logging.logger"):
+            # Should not raise
+            log_error("Test error")
 
     def test_log_warning_works(self) -> None:
         """Test that log_warning can be called."""
-        # Should not raise
-        log_warning("Test warning")
+        with patch("tree_sitter_analyzer.utils.logging.logger"):
+            # Should not raise
+            log_warning("Test warning")
 
     def test_log_debug_works(self) -> None:
         """Test that log_debug can be called."""
-        # Should not raise
-        log_debug("Test debug")
+        with patch("tree_sitter_analyzer.utils.logging.logger"):
+            # Should not raise
+            log_debug("Test debug")
 
     def test_safe_print_works(self) -> None:
         """Test that safe_print can be called."""
-        # Should not raise
-        safe_print("Test print")
+        with patch("tree_sitter_analyzer.utils.logging.logger"):
+            # Should not raise
+            safe_print("Test print")
 
 
 class TestClassInstantiation:
@@ -313,14 +320,23 @@ class TestClassInstantiation:
     def test_quiet_mode_instantiation(self) -> None:
         """Test QuietMode can be instantiated."""
         # Should not raise
-        with QuietMode():
-            pass
+        # Patch logger to avoid side effects on global logger during parallel execution
+        with patch("tree_sitter_analyzer.utils.logging.logger"):
+            with QuietMode():
+                pass
 
     def test_logging_context_instantiation(self) -> None:
         """Test LoggingContext can be instantiated."""
         # Should not raise (though may require specific args)
         # We just test it's a class
         assert isinstance(LoggingContext, type)
+
+        # Also verify it can be instantiated without side effects
+        with patch("tree_sitter_analyzer.utils.logging.logger"):
+            # Need to mock getLogger to return the mocked logger
+            with patch("logging.getLogger"):
+                ctx = LoggingContext()
+                assert ctx is not None
 
     def test_tree_sitter_query_compat_instantiation(self) -> None:
         """Test TreeSitterQueryCompat can be instantiated."""
