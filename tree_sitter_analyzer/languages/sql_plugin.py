@@ -629,6 +629,7 @@ class SQLElementExtractor(ProgrammingLanguageExtractor):
             return False
 
         # Reject if too long (identifiers should be reasonable length)
+        # Check length BEFORE expensive regex operations for performance
         if len(name) > 128:
             return False
 
@@ -640,7 +641,8 @@ class SQLElementExtractor(ProgrammingLanguageExtractor):
             return True
 
         # Also allow quoted identifiers (backticks, double quotes, square brackets)
-        if re.match(r'^[`"\[].*[`"\]]$', name):
+        # Use non-greedy match and length limit to prevent catastrophic backtracking
+        if len(name) >= 2 and re.match(r'^[`"\[].+?[`"\]]$', name):
             return True
 
         return False
