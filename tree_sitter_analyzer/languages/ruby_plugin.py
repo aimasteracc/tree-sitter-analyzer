@@ -102,10 +102,6 @@ class RubyElementExtractor(ProgrammingLanguageExtractor):
         Returns:
             Visibility string ("public", "private", "protected")
         """
-        # Handle None node case
-        if node is None:
-            return "public"
-
         # Look for visibility modifiers before this method
         # In Ruby, visibility keywords affect all methods declared after them
         # until another visibility keyword is encountered
