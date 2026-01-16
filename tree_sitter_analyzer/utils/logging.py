@@ -160,18 +160,25 @@ class SafeStreamHandler(logging.StreamHandler):
         Emit a record, safely handling closed streams and pytest capture
         """
         try:
-            # Check if stream is closed before writing
+            # Quick check: if stream is closed, return immediately
             if hasattr(self.stream, "closed") and self.stream.closed:
                 return
 
-            # Check if we can write to the stream
+            # Quick check: if stream doesn't have write method, return immediately
             if not hasattr(self.stream, "write"):
                 return
 
             # Special handling for pytest capture scenarios
             # Check if this is a pytest capture stream that might be problematic
+            # Optimize: cache the type string to avoid repeated str() calls
+            stream_type_str = str(type(self.stream)).lower()
             stream_name = getattr(self.stream, "name", "")
-            if stream_name is None or "pytest" in str(type(self.stream)).lower():
+
+            if (
+                stream_name is None
+                or "pytest" in stream_type_str
+                or "capture" in stream_type_str
+            ):
                 # For pytest streams, be extra cautious
                 try:
                     # Just try to emit without any pre-checks
@@ -181,11 +188,14 @@ class SafeStreamHandler(logging.StreamHandler):
                     return
 
             # Additional safety checks for stream validity for non-pytest streams
+            # Optimize: avoid expensive writable() check if not necessary
             try:
                 # Test if we can actually write to the stream without flushing
                 # Avoid flush() as it can cause "I/O operation on closed file" in pytest
-                if hasattr(self.stream, "writable") and not self.stream.writable():
-                    return
+                if hasattr(self.stream, "writable"):
+                    # Only call writable() if the method exists
+                    if not self.stream.writable():
+                        return
             except (ValueError, OSError, AttributeError, UnicodeError):
                 return
 
