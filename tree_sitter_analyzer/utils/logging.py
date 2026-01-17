@@ -5,22 +5,39 @@ Utilities for Tree-sitter Analyzer
 Provides logging, debugging, and common utility functions.
 """
 
-import atexit
 import contextlib
 import logging
 import os
 import sys
 import tempfile
+import threading
 from functools import wraps
 from pathlib import Path
 from typing import Any
 
+# Thread-local storage for logging context
+_thread_local = threading.local()
 
-# Configure global logger
+
+def _get_context_level() -> int | None:
+    """Get the current context logging level for this thread"""
+    return getattr(_thread_local, "logging_level", None)
+
+
+def _set_context_level(level: int | None) -> None:
+    """Set the context logging level for this thread"""
+    _thread_local.logging_level = level
+
+
+# Configure logger
 def setup_logger(
     name: str = "tree_sitter_analyzer", level: int | str = logging.WARNING
 ) -> logging.Logger:
-    """Setup unified logger for the project"""
+    """Setup unified logger for the project
+
+    This function is idempotent and can be called multiple times safely.
+    It will reuse existing loggers and only add handlers if they don't exist.
+    """
     # Handle string level parameter
     if isinstance(level, str):
         level_upper = level.upper()
@@ -60,7 +77,8 @@ def setup_logger(
     )
 
     # Disable file logging for test loggers to prevent file lock contention during parallel tests
-    if name.startswith("test_"):
+    # UNLESS explicitly enabled via environment variable (for testing file logging itself)
+    if name.startswith("test_") and not enable_file_log:
         enable_file_log = False
 
     file_log_level = level  # Default to main logger level
@@ -213,50 +231,36 @@ class SafeStreamHandler(logging.StreamHandler):
             pass  # nosec
 
 
-def setup_safe_logging_shutdown() -> None:
+def get_logger(name: str = "tree_sitter_analyzer") -> logging.Logger:
+    """Get or create a logger instance
+
+    This function returns a logger that respects thread-local context levels
+    set by QuietMode or LoggingContext.
+
+    Args:
+        name: Logger name (default: "tree_sitter_analyzer")
+
+    Returns:
+        Logger instance
     """
-    Setup safe logging shutdown to prevent I/O errors
-    """
+    logger = logging.getLogger(name)
 
-    def cleanup_logging() -> None:
-        """Clean up logging handlers safely"""
-        try:
-            # Get all loggers
-            loggers = [logging.getLogger()] + [
-                logging.getLogger(name) for name in logging.Logger.manager.loggerDict
-            ]
+    # If logger doesn't have handlers, set it up
+    if not logger.handlers:
+        logger = setup_logger(name)
 
-            for logger in loggers:
-                for handler in logger.handlers[:]:
-                    try:
-                        handler.close()
-                        logger.removeHandler(handler)
-                    except Exception as e:
-                        if hasattr(sys, "stderr") and hasattr(sys.stderr, "write"):
-                            with contextlib.suppress(Exception):
-                                sys.stderr.write(
-                                    f"[logging_cleanup] handler close/remove skipped: {e}\n"
-                                )
-        except Exception as e:
-            if hasattr(sys, "stderr") and hasattr(sys.stderr, "write"):
-                with contextlib.suppress(Exception):
-                    sys.stderr.write(f"[logging_cleanup] cleanup skipped: {e}\n")
+    # Apply thread-local context level if set
+    context_level = _get_context_level()
+    if context_level is not None:
+        logger.setLevel(context_level)
 
-    # Register cleanup function
-    atexit.register(cleanup_logging)
-
-
-# Setup safe shutdown on import
-setup_safe_logging_shutdown()
-
-
-# Global logger instance
-logger = setup_logger()
+    return logger
 
 
 def log_info(message: str, *args: Any, **kwargs: Any) -> None:
     """Log info message"""
     try:
+        logger = get_logger()
         logger.info(message, *args, **kwargs)
     except (ValueError, OSError) as e:
         if hasattr(sys, "stderr") and hasattr(sys.stderr, "write"):
@@ -267,6 +271,7 @@ def log_info(message: str, *args: Any, **kwargs: Any) -> None:
 def log_warning(message: str, *args: Any, **kwargs: Any) -> None:
     """Log warning message"""
     try:
+        logger = get_logger()
         logger.warning(message, *args, **kwargs)
     except (ValueError, OSError) as e:
         if hasattr(sys, "stderr") and hasattr(sys.stderr, "write"):
@@ -277,6 +282,7 @@ def log_warning(message: str, *args: Any, **kwargs: Any) -> None:
 def log_error(message: str, *args: Any, **kwargs: Any) -> None:
     """Log error message"""
     try:
+        logger = get_logger()
         logger.error(message, *args, **kwargs)
     except (ValueError, OSError) as e:
         if hasattr(sys, "stderr") and hasattr(sys.stderr, "write"):
@@ -287,6 +293,7 @@ def log_error(message: str, *args: Any, **kwargs: Any) -> None:
 def log_debug(message: str, *args: Any, **kwargs: Any) -> None:
     """Log debug message"""
     try:
+        logger = get_logger()
         logger.debug(message, *args, **kwargs)
     except (ValueError, OSError) as e:
         if hasattr(sys, "stderr") and hasattr(sys.stderr, "write"):
@@ -327,7 +334,10 @@ def suppress_output(func: Any) -> Any:
 
 
 class QuietMode:
-    """Context manager for quiet execution"""
+    """Context manager for quiet execution
+
+    This uses thread-local storage to avoid interfering with other threads/processes.
+    """
 
     def __init__(self, enabled: bool = True):
         self.enabled = enabled
@@ -335,12 +345,16 @@ class QuietMode:
 
     def __enter__(self) -> "QuietMode":
         if self.enabled:
+            logger = get_logger()
             self.old_level = logger.level
+            _set_context_level(logging.ERROR)
             logger.setLevel(logging.ERROR)
         return self
 
     def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         if self.enabled and self.old_level is not None:
+            _set_context_level(None)
+            logger = get_logger()
             logger.setLevel(self.old_level)
 
 
@@ -380,10 +394,6 @@ def create_performance_logger(name: str) -> logging.Logger:
     return perf_logger
 
 
-# Performance logger instance
-perf_logger = create_performance_logger("tree_sitter_analyzer")
-
-
 def log_performance(
     operation: str,
     execution_time: float | None = None,
@@ -391,6 +401,7 @@ def log_performance(
 ) -> None:
     """Log performance metrics"""
     try:
+        perf_logger = create_performance_logger("tree_sitter_analyzer")
         message = f"{operation}"
         if execution_time is not None:
             message += f": {execution_time:.4f}s"
@@ -423,26 +434,55 @@ def setup_performance_logger() -> logging.Logger:
 
 
 class LoggingContext:
-    """Context manager for controlling logging behavior"""
+    """Context manager for controlling logging behavior
+
+    This uses thread-local storage to avoid interfering with other threads/processes.
+    """
 
     def __init__(self, enabled: bool = True, level: int | None = None):
         self.enabled = enabled
         self.level = level
         self.old_level: int | None = None
-        # Use a specific logger name for testing to avoid interference
-        self.target_logger = logging.getLogger("tree_sitter_analyzer")
+        # Allow tests to override the target logger
+        self.target_logger = None
 
     def __enter__(self) -> "LoggingContext":
         if self.enabled and self.level is not None:
+            # Use target_logger if set (for testing), otherwise get default logger
+            logger = (
+                self.target_logger if self.target_logger is not None else get_logger()
+            )
             # Always save the current level before changing
-            self.old_level = self.target_logger.level
+            self.old_level = logger.level
             # Ensure we have a valid level to restore to (not NOTSET)
             if self.old_level == logging.NOTSET:
                 self.old_level = logging.INFO  # Default fallback
-            self.target_logger.setLevel(self.level)
+            _set_context_level(self.level)
+            logger.setLevel(self.level)
         return self
 
     def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         if self.enabled and self.old_level is not None:
+            _set_context_level(None)
+            # Use target_logger if set (for testing), otherwise get default logger
+            logger = (
+                self.target_logger if self.target_logger is not None else get_logger()
+            )
             # Always restore the saved level
-            self.target_logger.setLevel(self.old_level)
+            logger.setLevel(self.old_level)
+
+
+# Backward compatibility: provide default logger instances
+# These are deprecated and should not be used in new code
+# Use get_logger() and create_performance_logger() instead
+logger = get_logger()
+perf_logger = create_performance_logger("tree_sitter_analyzer")
+
+
+def setup_safe_logging_shutdown() -> None:
+    """Setup safe logging shutdown to prevent I/O errors
+
+    This function is kept for backward compatibility but does nothing.
+    Python's logging module handles cleanup automatically.
+    """
+    pass
