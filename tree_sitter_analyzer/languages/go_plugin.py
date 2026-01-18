@@ -60,6 +60,26 @@ class GoElementExtractor(ProgrammingLanguageExtractor):
         # Go uses type_declaration for structs and interfaces
         return {}
 
+    def _get_container_node_types(self) -> set[str]:
+        """
+        Get Go-specific container node types.
+
+        Returns:
+            Set of container node type names
+        """
+        return super()._get_container_node_types() | {
+            "source_file",
+            "function_declaration",
+            "method_declaration",
+            "return_statement",
+            "expression_list",
+            "func_literal",
+            "for_statement",
+            "if_statement",
+            "switch_statement",
+            "select_statement",
+        }
+
     # extract_functions() is inherited from base class
     # Base class implementation uses _get_function_handlers()
 

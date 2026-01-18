@@ -69,6 +69,10 @@ class RustElementExtractor(ProgrammingLanguageExtractor):
             "impl_item",
             "declaration_list",
             "field_declaration_list",
+            "struct_item",
+            "enum_item",
+            "trait_item",
+            "source_file",
         }
 
     # extract_functions() is inherited from base class

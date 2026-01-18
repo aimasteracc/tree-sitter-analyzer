@@ -41,6 +41,23 @@ class KotlinElementExtractor(ProgrammingLanguageExtractor):
             "object_declaration": self._extract_object,
         }
 
+    def _get_container_node_types(self) -> set[str]:
+        """
+        Get Kotlin-specific container node types.
+
+        Returns:
+            Set of container node type names
+        """
+        return super()._get_container_node_types() | {
+            "source_file",
+            "class_declaration",
+            "class_body",
+            "object_declaration",
+            "companion_object",
+            "function_declaration",
+            "function_body",
+        }
+
     # extract_functions() is inherited from base class
     # Base class implementation uses _get_function_handlers()
 
