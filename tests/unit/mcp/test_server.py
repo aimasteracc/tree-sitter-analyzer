@@ -173,7 +173,7 @@ class TestReadResource:
     @pytest.mark.asyncio
     async def test_read_unknown_resource_raises_error(self, server):
         """Test reading unknown resource raises error"""
-        with pytest.raises(ValueError, match="Unknown resource URI"):
+        with pytest.raises(ValueError, match="Resource not found"):
             await server._read_resource("unknown://resource/test")
 
 

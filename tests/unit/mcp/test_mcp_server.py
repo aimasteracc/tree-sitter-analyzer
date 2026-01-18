@@ -190,7 +190,7 @@ class TestAnalyzeCodeScale:
 
         # Mock file existence and language detection
         with (
-            patch("tree_sitter_analyzer.mcp.server.PathClass") as mock_path,
+            patch("tree_sitter_analyzer.mcp.legacy.PathClass") as mock_path,
             patch(
                 "tree_sitter_analyzer.language_detector.detect_language_from_file"
             ) as mock_detect_lang,
