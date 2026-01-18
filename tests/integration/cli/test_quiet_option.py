@@ -117,7 +117,7 @@ public class Test {
                     mock_factory.return_value = mock_command
 
                     with patch(
-                        "tree_sitter_analyzer.cli_main.handle_special_commands"
+                        "tree_sitter_analyzer.cli_main.SpecialCommandHandler.handle"
                     ) as mock_special:
                         mock_special.return_value = None
 

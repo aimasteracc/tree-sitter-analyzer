@@ -147,8 +147,11 @@ class TestIntegrationProperties:
         extractor.platform_info = MagicMock()
 
         # Mock _extract_sql_tables to raise an exception
+        # Use AttributeError which is one of the caught exception types
         with patch.object(
-            extractor, "_extract_sql_tables", side_effect=Exception("Simulated failure")
+            extractor,
+            "_extract_sql_tables",
+            side_effect=AttributeError("Simulated failure"),
         ):
             with patch(
                 "tree_sitter_analyzer.languages.sql_plugin.log_error"

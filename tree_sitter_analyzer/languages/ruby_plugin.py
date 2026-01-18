@@ -106,6 +106,10 @@ class RubyElementExtractor(ProgrammingLanguageExtractor):
         # In Ruby, visibility keywords affect all methods declared after them
         # until another visibility keyword is encountered
 
+        # Handle None node gracefully
+        if node is None:
+            return "public"
+
         # Get the parent node (usually a class or module body)
         parent = node.parent
         if not parent:

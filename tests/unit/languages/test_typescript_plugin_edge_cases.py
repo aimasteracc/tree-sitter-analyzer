@@ -45,9 +45,9 @@ class TestTypeScriptElementExtractorEdgeCases:
         mock_node.start_point = (0, 0)
         mock_node.end_point = (5, 0)
 
-        # Mock to raise exception
+        # Mock to raise exception - use AttributeError which is caught
         extractor._parse_function_signature_optimized = Mock(
-            side_effect=Exception("Test error")
+            side_effect=AttributeError("Test error")
         )
 
         result = extractor._extract_function_optimized(mock_node)
@@ -456,8 +456,10 @@ class TestTypeScriptElementExtractorEdgeCases:
         """Test dynamic import extraction with error handling"""
         mock_expr_stmt = Mock()
 
-        # Mock to raise exception
-        extractor._get_node_text_optimized = Mock(side_effect=Exception("Test error"))
+        # Mock to raise exception - use AttributeError which is caught
+        extractor._get_node_text_optimized = Mock(
+            side_effect=AttributeError("Test error")
+        )
 
         result = extractor._extract_dynamic_import(mock_expr_stmt)
         assert result is None
@@ -466,8 +468,10 @@ class TestTypeScriptElementExtractorEdgeCases:
         """Test CommonJS require extraction with error handling"""
         mock_tree = Mock()
 
-        # Mock to raise exception
-        extractor._get_node_text_optimized = Mock(side_effect=Exception("Test error"))
+        # Mock to raise exception - use AttributeError which is caught
+        extractor._get_node_text_optimized = Mock(
+            side_effect=AttributeError("Test error")
+        )
 
         result = extractor._extract_commonjs_requires(
             mock_tree, "const fs = require('fs')"
@@ -489,8 +493,8 @@ class TestTypeScriptElementExtractorEdgeCases:
         """Test complexity calculation with error handling"""
         mock_node = Mock()
 
-        # Mock to raise exception
-        extractor._get_node_text_optimized = Mock(side_effect=Exception("Test error"))
+        # Mock to raise exception - use TypeError which is caught by this method
+        extractor._get_node_text_optimized = Mock(side_effect=TypeError("Test error"))
 
         result = extractor._calculate_complexity_optimized(mock_node)
         assert result == 1  # Should return default complexity
@@ -652,7 +656,7 @@ class TestTypeScriptPluginEdgeCases:
         ):
             with patch(
                 "tree_sitter_analyzer.languages.typescript_plugin.loader.load_language",
-                side_effect=Exception("Load error"),
+                side_effect=ImportError("Load error"),
             ):
                 result = plugin.get_tree_sitter_language()
                 assert result is None

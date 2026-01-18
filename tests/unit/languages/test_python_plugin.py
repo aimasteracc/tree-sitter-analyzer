@@ -626,7 +626,8 @@ class TestPythonPluginErrorHandling:
         mock_node = Mock()
 
         with patch.object(extractor, "_extract_name_from_node") as mock_extract_name:
-            mock_extract_name.side_effect = Exception("Extraction error")
+            # Use AttributeError which is one of the caught exception types
+            mock_extract_name.side_effect = AttributeError("Extraction error")
 
             result = extractor._extract_detailed_function_info(mock_node, "test code")
 
@@ -662,10 +663,14 @@ class TestPythonPluginErrorHandling:
         mock_request.file_path = temp_path
         mock_request.language = "python"
 
+        # The import is done inside analyze_file() with:
+        # from ..encoding_utils import read_file_safe_async
+        # So we must patch it in the source module (encoding_utils)
+        # The exception must be one that's caught: (OSError, UnicodeDecodeError, RuntimeError)
         with patch(
-            "tree_sitter_analyzer.languages.python_plugin.read_file_safe_async"
+            "tree_sitter_analyzer.encoding_utils.read_file_safe_async"
         ) as mock_read:
-            mock_read.side_effect = Exception("Read error")
+            mock_read.side_effect = OSError("Read error")
 
             result = await plugin.analyze_file(temp_path, mock_request)
 
