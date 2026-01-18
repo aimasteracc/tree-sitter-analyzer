@@ -1839,6 +1839,9 @@ class SQLElementExtractor(ProgrammingLanguageExtractor):
                 except (AttributeError, ValueError, KeyError, TypeError) as e:
                     log_debug(f"Failed to extract enhanced function: {e}")
                     i += 1
+            else:
+                # No CREATE FUNCTION match on this line, move to next line
+                i += 1
 
         # Also try the original tree-sitter approach as fallback
         for node in self._traverse_nodes(root_node):
