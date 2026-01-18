@@ -141,18 +141,17 @@ x = 42
 
         result = await server._analyze_code_scale(arguments)
 
+        # Updated to match analyze_scale_tool output format
         assert "file_path" in result
         assert "language" in result
-        assert "metrics" in result
+        assert "file_metrics" in result
         assert result["language"] == "python"
 
-        metrics = result["metrics"]
-        assert "lines_total" in metrics
-        assert "lines_code" in metrics
-        assert "lines_comment" in metrics
-        assert "lines_blank" in metrics
-        assert "elements" in metrics
-        assert "complexity" in metrics
+        file_metrics = result["file_metrics"]
+        assert "total_lines" in file_metrics
+        assert "code_lines" in file_metrics
+        assert "comment_lines" in file_metrics
+        assert "blank_lines" in file_metrics
 
     @pytest.mark.asyncio
     async def test_analyze_code_scale_with_details(
@@ -169,8 +168,9 @@ x = 42
 
         result = await server._analyze_code_scale(arguments)
 
-        assert "detailed_elements" in result
-        assert isinstance(result["detailed_elements"], list)
+        # Updated to match analyze_scale_tool output format
+        assert "detailed_analysis" in result
+        assert isinstance(result["detailed_analysis"], dict)
 
     @pytest.mark.asyncio
     async def test_analyze_code_scale_missing_file_path(self, temp_project_dir):
@@ -192,7 +192,9 @@ x = 42
 
         arguments = {"file_path": "non_existent_file.py"}
 
-        with pytest.raises(FileNotFoundError):
+        with pytest.raises(
+            (ValueError, FileNotFoundError), match="File not found|not found"
+        ):
             await server._analyze_code_scale(arguments)
 
     @pytest.mark.asyncio
@@ -220,19 +222,21 @@ x = 42
 
     @pytest.mark.asyncio
     async def test_analyze_code_scale_with_universal_tool(self, temp_project_dir):
-        """Test code scale analysis delegation to universal tool."""
-        mock_universal_tool = AsyncMock()
-        mock_universal_tool.execute.return_value = {"result": "from_universal_tool"}
+        """Test code scale analysis delegation to analyze_scale_tool."""
+        mock_analyze_scale_tool = AsyncMock()
+        mock_analyze_scale_tool.execute.return_value = {
+            "result": "from_analyze_scale_tool"
+        }
 
         server = TreeSitterAnalyzerMCPServer(temp_project_dir)
-        server.universal_analyze_tool = mock_universal_tool
+        server.analyze_scale_tool = mock_analyze_scale_tool
 
-        arguments = {}  # No file_path to trigger universal tool
+        arguments = {"file_path": "test.py"}
 
         result = await server._analyze_code_scale(arguments)
 
-        assert result == {"result": "from_universal_tool"}
-        mock_universal_tool.execute.assert_called_once_with(arguments)
+        assert result == {"result": "from_analyze_scale_tool"}
+        mock_analyze_scale_tool.execute.assert_called_once_with(arguments)
 
 
 class TestTreeSitterAnalyzerMCPServerFileMetrics:

@@ -320,15 +320,14 @@ module.exports = { Calculator, createCalculator };
             }
         )
 
-        assert "metrics" in scale_result
-        assert "elements" in scale_result["metrics"]
+        assert "file_metrics" in scale_result
+        assert "summary" in scale_result
 
         # Check that we got a valid response structure
-        elements = scale_result["metrics"]["elements"]
-        assert isinstance(elements["classes"], int)
-        assert isinstance(elements["methods"], int)
-        assert isinstance(elements["total"], int)
-        assert elements["total"] >= 0
+        summary = scale_result["summary"]
+        assert isinstance(summary["classes"], int)
+        assert isinstance(summary["methods"], int)
+        assert summary["classes"] >= 0
 
         # Test structure analysis (Step 2) - use JSON format for test assertions
         structure_result = await self.server.table_format_tool.execute(
@@ -369,7 +368,7 @@ module.exports = { Calculator, createCalculator };
                 )
 
                 assert result["language"] == lang
-                assert "metrics" in result
+                assert "file_metrics" in result
                 languages_tested.append(lang)
 
             except Exception as e:

@@ -73,18 +73,16 @@ class TestMCPServerInitialization:
         with tempfile.TemporaryDirectory() as temp_dir:
             server = TreeSitterAnalyzerMCPServer(temp_dir)
 
-            # Mock the universal_analyze_tool to avoid actual analysis
-            server.universal_analyze_tool = Mock()
-            server.universal_analyze_tool.execute = AsyncMock(
+            # Mock the analyze_scale_tool to avoid actual analysis
+            server.analyze_scale_tool = Mock()
+            server.analyze_scale_tool.execute = AsyncMock(
                 return_value={"result": "test"}
             )
 
             # Should work when initialized
             result = await server._analyze_code_scale({"test": "args"})
             assert result == {"result": "test"}
-            server.universal_analyze_tool.execute.assert_called_once_with(
-                {"test": "args"}
-            )
+            server.analyze_scale_tool.execute.assert_called_once_with({"test": "args"})
 
     @pytest.mark.asyncio
     async def test_analyze_code_scale_fails_when_not_initialized(self):

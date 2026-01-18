@@ -158,63 +158,42 @@ class TestAnalyzeCodeScale:
     @patch("tree_sitter_analyzer.mcp.server.get_analysis_engine")
     @patch("tree_sitter_analyzer.mcp.server.setup_logger")
     def test_analyze_code_scale_method(self, mock_logger, mock_engine):
-        """Test _analyze_code_scale method."""
+        """Test _analyze_code_scale method delegates to analyze_scale_tool."""
         # Mock dependencies
         mock_engine.return_value = Mock()
         mock_logger.return_value = Mock()
 
         server = TreeSitterAnalyzerMCPServer()
 
-        # Mock the analysis engine and file operations
-        mock_result = Mock()
-        # Create mock elements with proper structure
-        mock_class = Mock()
-        mock_class.element_type = "class"
-        mock_class.name = "TestClass"
-
-        mock_function = Mock()
-        mock_function.element_type = "function"
-        mock_function.name = "test_method"
-        mock_function.complexity_score = 1  # Add complexity_score
-
-        mock_result.elements = [mock_class, mock_function]
-        mock_result.success = True
-        mock_result.to_dict.return_value = {
-            "elements": [
-                {"element_type": "class", "name": "TestClass"},
-                {"element_type": "function", "name": "test_method"},
-            ],
-            "line_count": 50,
+        # Mock the analyze_scale_tool.execute() to return expected result
+        expected_result = {
+            "metrics": {
+                "elements": {"classes": 1, "methods": 1},
+            }
         }
-        server.analysis_engine.analyze = AsyncMock(return_value=mock_result)
+        server.analyze_scale_tool = Mock()
+        server.analyze_scale_tool.execute = AsyncMock(return_value=expected_result)
 
-        # Mock file existence and language detection
-        with (
-            patch("tree_sitter_analyzer.mcp.legacy.PathClass") as mock_path,
-            patch(
-                "tree_sitter_analyzer.language_detector.detect_language_from_file"
-            ) as mock_detect_lang,
-        ):
-            mock_path_instance = Mock()
-            mock_path_instance.exists.return_value = True
-            mock_path.return_value = mock_path_instance
-            mock_detect_lang.return_value = "python"
+        import asyncio
 
-            import asyncio
-
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            try:
-                result = loop.run_until_complete(
-                    server._analyze_code_scale({"file_path": "test.py"})
-                )
-                # Check the new format
-                assert "metrics" in result
-                assert "elements" in result["metrics"]
-                assert result["metrics"]["elements"]["classes"] == 1
-                assert result["metrics"]["elements"]["methods"] == 1
-            finally:
-                loop.close()
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            result = loop.run_until_complete(
+                server._analyze_code_scale({"file_path": "test.py"})
+            )
+            # Check the result matches what the tool returned
+            assert result == expected_result
+            assert "metrics" in result
+            assert "elements" in result["metrics"]
+            assert result["metrics"]["elements"]["classes"] == 1
+            assert result["metrics"]["elements"]["methods"] == 1
+            # Verify the tool was called with the correct arguments
+            server.analyze_scale_tool.execute.assert_called_once_with(
+                {"file_path": "test.py"}
+            )
+        finally:
+            loop.close()
 
 
 class TestMainFunction:

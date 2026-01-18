@@ -121,8 +121,9 @@ class TestMCPServerCodeAnalysisEdgeCases:
         arguments = {"file_path": empty_file}
         result = await server._analyze_code_scale(arguments)
 
-        assert result["metrics"]["lines_total"] == 0
-        assert result["metrics"]["elements"]["total"] == 0
+        assert result["file_metrics"]["total_lines"] == 0
+        assert result["summary"]["classes"] == 0
+        assert result["summary"]["methods"] == 0
 
     @pytest.mark.asyncio
     async def test_analyze_binary_file(self, temp_project_dir, binary_file):
@@ -144,9 +145,9 @@ class TestMCPServerCodeAnalysisEdgeCases:
         arguments = {"file_path": large_file}
         result = await server._analyze_code_scale(arguments)
 
-        assert result["metrics"]["lines_total"] > 10000
+        assert result["file_metrics"]["total_lines"] > 10000
         assert (
-            result["metrics"]["lines_code"] >= 9999
+            result["file_metrics"]["code_lines"] >= 9999
         )  # Adjust expectation to match actual result
 
     @pytest.mark.asyncio
@@ -191,8 +192,8 @@ if True
         result = await server._analyze_code_scale(arguments)
 
         # Should still return metrics even for malformed code
-        assert "metrics" in result
-        assert result["metrics"]["lines_total"] > 0
+        assert "file_metrics" in result
+        assert result["file_metrics"]["total_lines"] > 0
 
     @pytest.mark.asyncio
     async def test_analyze_with_encoding_issues(self, temp_project_dir):
@@ -233,8 +234,8 @@ if True
         arguments = {"file_path": str(test_file)}
         result = await server._analyze_code_scale(arguments)
 
-        assert result["metrics"]["lines_total"] == 3
-        assert result["metrics"]["lines_code"] >= 2
+        assert result["file_metrics"]["total_lines"] == 3
+        assert result["file_metrics"]["code_lines"] >= 2
 
 
 class TestMCPServerFileMetricsEdgeCases:

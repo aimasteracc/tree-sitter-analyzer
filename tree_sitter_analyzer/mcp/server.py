@@ -86,7 +86,6 @@ from .handler_resources import ResourceHandler
 
 # Handler imports
 from .handler_tools import ToolHandler
-from .legacy import LegacyHandler
 from .resources import CodeFileResource, ProjectStatsResource
 from .tools.analyze_code_structure_tool import AnalyzeCodeStructureTool
 from .tools.analyze_scale_tool import AnalyzeScaleTool
@@ -160,7 +159,6 @@ class TreeSitterAnalyzerMCPServer:
         # Initialize Handlers
         self.tool_handler = ToolHandler(self)
         self.resource_handler = ResourceHandler(self)
-        self.legacy_handler = LegacyHandler(self)
 
         # Server metadata
         self.name = MCP_INFO["name"]
@@ -200,8 +198,19 @@ class TreeSitterAnalyzerMCPServer:
             )
 
     async def _analyze_code_scale(self, arguments: dict[str, Any]) -> dict[str, Any]:
-        """Legacy method delegated to LegacyHandler."""
-        return await self.legacy_handler.analyze_code_scale(arguments)
+        """
+        Analyze code scale - delegates to AnalyzeScaleTool.
+
+        This method exists for test compatibility. Production code uses
+        ToolHandler.handle_tool_call() which routes to analyze_scale_tool.
+        """
+        if not self._initialization_complete:
+            from .utils.error_handler import MCPError
+
+            raise MCPError("Server is still initializing")
+
+        # Delegate to the proper tool
+        return await self.analyze_scale_tool.execute(arguments)
 
     def _calculate_file_metrics(self, file_path: str, language: str) -> dict[str, Any]:
         """Legacy wrapper for file metrics calculation."""

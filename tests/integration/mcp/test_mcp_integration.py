@@ -71,7 +71,7 @@ class TestMCPToolsIntegration:
             {"file_path": str(test_file), "include_complexity": False}
         )
 
-        assert "metrics" in result
+        assert "file_metrics" in result
         assert "language" in result
         assert result["language"] == "python"
 
@@ -215,13 +215,17 @@ class TestMCPErrorHandling:
         test_file = Path(temp_dir) / "test.xyz"
         test_file.write_text("some content")
 
-        # Unsupported language raises UnsupportedLanguageError
+        # Unsupported language raises either UnsupportedLanguageError or ValueError
+        # depending on where in the tool chain it's caught
         from tree_sitter_analyzer.core.analysis_engine import UnsupportedLanguageError
 
-        with pytest.raises(UnsupportedLanguageError):
+        with pytest.raises((UnsupportedLanguageError, ValueError)) as exc_info:
             await server._analyze_code_scale(
                 {"file_path": str(test_file), "include_complexity": False}
             )
+
+        # Verify the error message mentions unsupported language
+        assert "unsupported language" in str(exc_info.value).lower()
 
     @pytest.mark.asyncio
     async def test_invalid_query_error(self):
