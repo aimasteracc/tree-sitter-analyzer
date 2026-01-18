@@ -89,7 +89,7 @@ class RubyElementExtractor(ProgrammingLanguageExtractor):
             "module": self._extract_class_element,
         }
 
-    def _determine_visibility(self, node: "tree_sitter.Node") -> str:
+    def _determine_visibility(self, node: "tree_sitter.Node | None") -> str:
         """
         Determine visibility of a method.
 
