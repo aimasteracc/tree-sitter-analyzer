@@ -448,14 +448,29 @@ mv .kiro/specs/{feature-name} .kiro/specs/archived/{feature-name}
 - Documentation updates
 - Test additions for existing code
 
-### Integration with planning-with-files Skill
+### Integration with planning-with-files Skill (Global)
 
-When using the `/planning-with-files` skill:
-- Create files in `.kiro/specs/{feature-name}/` directory
-- Map `task_plan.md` → `tasks.md`
-- Map `findings.md` → `design.md`
-- Keep `progress.md` as session log
-- Follow existing naming conventions in this project
+When using the globally installed `planning-with-files` skill, the following rules apply to maintain consistency with the `.kiro` structure:
+
+**1. File Mapping (Mandatory)**
+To ensure compatibility with the project's existing structure, the skill's templates are mapped to `.kiro` files as follows:
+- `task_plan.md`  → `.kiro/specs/{feature}/tasks.md`
+- `findings.md`   → `.kiro/specs/{feature}/design.md`
+- `progress.md`   → `.kiro/specs/{feature}/progress.md`
+
+**2. Automated Script Usage**
+Leverage scripts from `~/.config/opencode/skills/planning-with-files/scripts/` to manage task state:
+- **Initialization**: Use `init-session.ps1` (Windows) to scaffold the mapped `.kiro` structure.
+- **Context Recovery**: Use `session-catchup.py` at the start of every session to sync progress from `.kiro/specs/`.
+- **Validation**: Use `check-complete.ps1` before marking any task as `completed`.
+
+**3. The 2-Action Rule (Strict Enforcement)**
+- Every 2 non-trivial tool calls (Read/Grep/Bash) MUST be followed by an update to `design.md` (via findings) or `progress.md`.
+- This ensures no discovered context is lost and the planning remains "live".
+
+**4. Error Handling**
+- All errors MUST be logged in `progress.md` using the "Log ALL Errors" table format from the skill's templates.
+- If a task fails 3 times, revert changes and consult `oracle` using the failure context from `progress.md`.
 
 ### Example: Starting a New Feature
 
