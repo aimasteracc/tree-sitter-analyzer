@@ -63,10 +63,14 @@ jobs:
         from pathlib import Path
         import subprocess
 
-        # Detect current platform key
-        os_name = platform.system().lower()
-        if os_name == "darwin": os_name = "macos"
-        python_version = f"{sys.version_info.major}.{sys.version_info.minor}"
+        # Use matrix values for consistency
+        os_name = "${{ matrix.os }}"
+        if "ubuntu" in os_name: os_name = "linux"
+        elif "windows" in os_name: os_name = "windows"
+        elif "macos" in os_name: os_name = "macos"
+        else: os_name = platform.system().lower()
+
+        python_version = "${{ matrix.python-version }}"
 
         # Paths
         base_dir = Path("tests/platform_profiles")
