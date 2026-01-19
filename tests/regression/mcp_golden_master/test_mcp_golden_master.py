@@ -7,7 +7,7 @@ These tests ensure that MCP tool outputs remain stable across code changes.
 
 Golden masters are stored in tests/golden_masters/mcp/ directory.
 To update golden masters after intentional changes, run:
-    uv run python scripts/update_mcp_golden_masters.py --all
+    uv run python scripts/update_golden_masters.py --mcp
 """
 
 import importlib
