@@ -86,13 +86,12 @@ jobs:
         echo "### ⚡ Analysis Benchmarks" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
 
-        uv run pytest tests/benchmarks/test_performance_benchmarks.py \
+        uv run pytest tests/benchmarks/test_large_file_performance.py \
           -v \
           --benchmark-only \
           --benchmark-autosave \
           --benchmark-save-data \
           --benchmark-json=benchmark-analysis.json \
-          -k "analysis" \
           --timeout=${{ env.BENCHMARK_TIMEOUT }} \
           > benchmark-analysis-output.txt 2>&1 || touch benchmark_failed
 
@@ -109,13 +108,12 @@ jobs:
         echo "### 🔍 Query Benchmarks" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
 
-        uv run pytest tests/benchmarks/test_performance_benchmarks.py \
+        uv run pytest tests/benchmarks/test_query_performance.py \
           -v \
           --benchmark-only \
           --benchmark-autosave \
           --benchmark-save-data \
           --benchmark-json=benchmark-query.json \
-          -k "query" \
           --timeout=${{ env.BENCHMARK_TIMEOUT }} \
           > benchmark-query-output.txt 2>&1 || touch benchmark_failed
 
@@ -131,22 +129,7 @@ jobs:
       run: |
         echo "### 💾 Cache Benchmarks" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-
-        uv run pytest tests/benchmarks/test_performance_benchmarks.py \
-          -v \
-          --benchmark-only \
-          --benchmark-autosave \
-          --benchmark-save-data \
-          --benchmark-json=benchmark-cache.json \
-          -k "cache" \
-          --timeout=${{ env.BENCHMARK_TIMEOUT }} \
-          > benchmark-cache-output.txt 2>&1 || touch benchmark_failed
-
-        cat benchmark-cache-output.txt
-
-        echo '```text' >> $GITHUB_STEP_SUMMARY
-        tail -n 50 benchmark-cache-output.txt >> $GITHUB_STEP_SUMMARY
-        echo '```' >> $GITHUB_STEP_SUMMARY
+        echo "No cache benchmarks defined yet." >> $GITHUB_STEP_SUMMARY
       shell: bash
 
     - name: Run Formatting Benchmarks
@@ -154,22 +137,7 @@ jobs:
       run: |
         echo "### 📝 Formatting Benchmarks" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-
-        uv run pytest tests/benchmarks/test_performance_benchmarks.py \
-          -v \
-          --benchmark-only \
-          --benchmark-autosave \
-          --benchmark-save-data \
-          --benchmark-json=benchmark-formatting.json \
-          -k "formatting" \
-          --timeout=${{ env.BENCHMARK_TIMEOUT }} \
-          > benchmark-formatting-output.txt 2>&1 || touch benchmark_failed
-
-        cat benchmark-formatting-output.txt
-
-        echo '```text' >> $GITHUB_STEP_SUMMARY
-        tail -n 50 benchmark-formatting-output.txt >> $GITHUB_STEP_SUMMARY
-        echo '```' >> $GITHUB_STEP_SUMMARY
+        echo "No formatting benchmarks defined yet." >> $GITHUB_STEP_SUMMARY
       shell: bash
 
     - name: Compare with baseline
@@ -234,7 +202,7 @@ jobs:
         echo "### 📈 Benchmark Summary" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
 
-        TOTAL_BENCHMARKS=$(uv run pytest tests/benchmarks/test_performance_benchmarks.py \
+        TOTAL_BENCHMARKS=$(uv run pytest tests/benchmarks/ \
           --collect-only -q --benchmark-only 2>/dev/null | grep -c "test_" || echo "0")
         echo "**Total Benchmarks:** $TOTAL_BENCHMARKS" >> $GITHUB_STEP_SUMMARY
 
