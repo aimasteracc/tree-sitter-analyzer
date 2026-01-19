@@ -1,7 +1,5 @@
 # Regression Tests Workflow
-#
-# Purpose: Run regression tests to ensure backward compatibility and Golden Master validation
-# Triggers: Pull requests, push to main/develop branches, manual dispatch
+# Purpose: Specialized Golden Master and Backward Compatibility checks
 
 name: Regression Tests
 
@@ -11,37 +9,13 @@ on:
   push:
     branches: [main, develop]
   workflow_dispatch:
-    inputs:
-      update-golden-masters:
-        description: 'Update Golden Masters (only for maintainers)'
-        required: false
-        default: false
-        type: boolean
-      test-scope:
-        description: 'Test scope'
-        required: false
-        default: 'all'
-        type: choice
-        options:
-          - all
-          - format
-          - api
-          - compatibility
-
-env:
-  REGRESSION_TEST_TIMEOUT: 600
 
 jobs:
   regression-tests:
-    name: Regression Tests (${{ inputs.test-scope || 'all' }})
+    name: Regression Tests
     runs-on: ubuntu-latest
-
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
-
+    - uses: actions/checkout@v4
     - name: Setup Analyzer
       uses: ./.github/actions/setup-analyzer
       with:
@@ -49,117 +23,9 @@ jobs:
         python-version: "3.11"
         uv-sync: "true"
 
-    - name: Run Format Regression Tests
-      if: inputs.test-scope == 'all' || inputs.test-scope == 'format'
+    - name: Run Regression Tests
       run: |
-        echo "### 🔄 Format Regression Tests" >> $GITHUB_STEP_SUMMARY
-        uv run pytest tests/regression/test_format_regression.py \
-          -v --tb=short -m regression --timeout=${{ env.REGRESSION_TEST_TIMEOUT }} \
-          > format-regression-output.txt 2>&1 || touch format_failed
-        echo '```text' >> $GITHUB_STEP_SUMMARY
-        tail -n 50 format-regression-output.txt >> $GITHUB_STEP_SUMMARY
-        echo '```' >> $GITHUB_STEP_SUMMARY
-        if [ -f format_failed ]; then
-          echo "❌ **Format Regression Tests Failed!**" >> $GITHUB_STEP_SUMMARY
-          exit 1
-        fi
+        echo "### 🔄 Regression Tests" >> $GITHUB_STEP_SUMMARY
+        # Only run regression marked tests
+        uv run pytest tests/ -v -m regression --tb=short
       shell: bash
-
-    - name: Run API Regression Tests
-      if: inputs.test-scope == 'all' || inputs.test-scope == 'api'
-      run: |
-        echo "### 🔌 API Regression Tests" >> $GITHUB_STEP_SUMMARY
-        uv run pytest tests/regression/test_api_regression.py \
-          -v --tb=short -m regression --timeout=${{ env.REGRESSION_TEST_TIMEOUT }} \
-          > api-regression-output.txt 2>&1 || touch api_failed
-        echo '```text' >> $GITHUB_STEP_SUMMARY
-        tail -n 50 api-regression-output.txt >> $GITHUB_STEP_SUMMARY
-        echo '```' >> $GITHUB_STEP_SUMMARY
-        if [ -f api_failed ]; then
-          echo "❌ **API Regression Tests Failed!**" >> $GITHUB_STEP_SUMMARY
-          exit 1
-        fi
-      shell: bash
-
-    - name: Run Cross-Version Compatibility Tests
-      if: inputs.test-scope == 'all' || inputs.test-scope == 'compatibility'
-      run: |
-        echo "### 🔗 Cross-Version Compatibility Tests" >> $GITHUB_STEP_SUMMARY
-        uv run pytest tests/compatibility/test_cross_version_compatibility.py \
-          -v --tb=short -m regression --timeout=${{ env.REGRESSION_TEST_TIMEOUT }} \
-          > compatibility-output.txt 2>&1 || touch compatibility_failed
-        echo '```text' >> $GITHUB_STEP_SUMMARY
-        tail -n 50 compatibility-output.txt >> $GITHUB_STEP_SUMMARY
-        echo '```' >> $GITHUB_STEP_SUMMARY
-        if [ -f compatibility_failed ]; then
-          echo "❌ **Cross-Version Compatibility Tests Failed!**" >> $GITHUB_STEP_SUMMARY
-          exit 1
-        fi
-      shell: bash
-
-    - name: Upload Regression Test Logs
-      if: always()
-      uses: actions/upload-artifact@v4
-      with:
-        name: regression-test-logs
-        path: |
-          *-regression-output.txt
-          *-output.txt
-        retention-days: 7
-
-  golden-master-update:
-    name: Update Golden Masters
-    runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch' && inputs.update-golden-masters == true
-
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
-
-    - name: Setup Analyzer
-      uses: ./.github/actions/setup-analyzer
-      with:
-        os: ubuntu-latest
-        python-version: "3.11"
-        uv-sync: "true"
-
-    - name: Update Golden Masters
-      run: |
-        echo "### 🔄 Updating Golden Masters" >> $GITHUB_STEP_SUMMARY
-        uv run pytest tests/regression/test_format_regression.py --update-golden-masters -v --tb=short \
-          > golden-master-update-output.txt 2>&1 || touch update_failed
-        echo '```text' >> $GITHUB_STEP_SUMMARY
-        tail -n 100 golden-master-update-output.txt >> $GITHUB_STEP_SUMMARY
-        echo '```' >> $GITHUB_STEP_SUMMARY
-        if [ -f update_failed ]; then
-          echo "❌ **Golden Master Update Failed!**" >> $GITHUB_STEP_SUMMARY
-          exit 1
-        fi
-      shell: bash
-
-    - name: Check for changes
-      id: check-changes
-      run: |
-        if git diff --quiet tests/golden_masters/; then
-          echo "changed=false" >> $GITHUB_OUTPUT
-        else
-          echo "changed=true" >> $GITHUB_OUTPUT
-          echo "### 📝 Changed Files" >> $GITHUB_STEP_SUMMARY
-          echo '```text' >> $GITHUB_STEP_SUMMARY
-          git diff --name-only tests/golden_masters/ >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
-        fi
-      shell: bash
-
-    - name: Create Pull Request
-      if: steps.check-changes.outputs.changed == 'true'
-      uses: peter-evans/create-pull-request@v6
-      with:
-        title: "chore: update golden masters"
-        body: |
-          Automated Golden Master update from workflow run.
-          Please review the changes carefully before merging.
-        branch: update/golden-masters
-        delete-branch: true

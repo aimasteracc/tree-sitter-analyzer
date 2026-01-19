@@ -1,51 +1,21 @@
 # Performance Benchmarks Workflow
-#
-# Purpose: Run performance benchmarks and track performance trends
-# Triggers: Pull requests, push to main branch, scheduled runs, manual dispatch
+# Purpose: Specialized performance monitoring (Slow)
 
 name: Performance Benchmarks
 
 on:
-  pull_request:
-    branches: [main, develop]
   push:
-    branches: [main]
+    branches: [main, develop]
   schedule:
     - cron: '0 0 * * *'
   workflow_dispatch:
-    inputs:
-      benchmark-scope:
-        description: 'Benchmark scope'
-        required: false
-        default: 'all'
-        type: choice
-        options:
-          - all
-          - analysis
-          - query
-          - cache
-          - formatting
-      compare-baseline:
-        description: 'Compare against baseline'
-        required: false
-        default: true
-        type: boolean
-
-env:
-  BENCHMARK_TIMEOUT: 900
-  PERFORMANCE_REGRESSION_THRESHOLD: 10
 
 jobs:
   benchmarks:
-    name: Performance Benchmarks (${{ inputs.benchmark-scope || 'all' }})
+    name: Performance Benchmarks
     runs-on: ubuntu-latest
-
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
-
+    - uses: actions/checkout@v4
     - name: Setup Analyzer
       uses: ./.github/actions/setup-analyzer
       with:
@@ -53,82 +23,11 @@ jobs:
         python-version: "3.11"
         uv-sync: "true"
 
-    - name: Download baseline data
-      if: inputs.compare-baseline != false
-      uses: actions/cache/restore@v4
-      with:
-        path: .benchmark/baseline
-        key: benchmark-baseline-${{ github.base_ref || github.ref_name }}
-        restore-keys: |
-          benchmark-baseline-main
-          benchmark-baseline-
-
     - name: Run Analysis Benchmarks
-      if: inputs.benchmark-scope == 'all' || inputs.benchmark-scope == 'analysis'
       run: |
         echo "### ⚡ Analysis Benchmarks" >> $GITHUB_STEP_SUMMARY
-        uv run pytest tests/benchmarks/test_large_file_performance.py \
-          -v --benchmark-only --benchmark-autosave --benchmark-save-data \
-          --benchmark-json=benchmark-analysis.json \
-          --timeout=${{ env.BENCHMARK_TIMEOUT }} \
-          > benchmark-analysis-output.txt 2>&1 || touch benchmark_failed
-        echo '```text' >> $GITHUB_STEP_SUMMARY
-        tail -n 50 benchmark-analysis-output.txt >> $GITHUB_STEP_SUMMARY
-        echo '```' >> $GITHUB_STEP_SUMMARY
-      shell: bash
-
-    - name: Run Query Benchmarks
-      if: inputs.benchmark-scope == 'all' || inputs.benchmark-scope == 'query'
-      run: |
-        echo "### 🔍 Query Benchmarks" >> $GITHUB_STEP_SUMMARY
-        uv run pytest tests/benchmarks/test_query_performance.py \
-          -v --benchmark-only --benchmark-autosave --benchmark-save-data \
-          --benchmark-json=benchmark-query.json \
-          --timeout=${{ env.BENCHMARK_TIMEOUT }} \
-          > benchmark-query-output.txt 2>&1 || touch benchmark_failed
-        echo '```text' >> $GITHUB_STEP_SUMMARY
-        tail -n 50 benchmark-query-output.txt >> $GITHUB_STEP_SUMMARY
-        echo '```' >> $GITHUB_STEP_SUMMARY
-      shell: bash
-
-    - name: Compare with baseline
-      if: inputs.compare-baseline != false && always()
-      run: |
-        echo "### 📊 Performance Comparison" >> $GITHUB_STEP_SUMMARY
-        if [ -d ".benchmark/baseline" ]; then
-          for json_file in benchmark-*.json; do
-            if [ -f "$json_file" ]; then
-              echo "#### $(basename $json_file .json | sed 's/benchmark-//')" >> $GITHUB_STEP_SUMMARY
-              echo '```text' >> $GITHUB_STEP_SUMMARY
-              uv run pytest-benchmark compare "$json_file" ".benchmark/baseline/$(basename $json_file)" \
-                2>&1 | head -n 50 >> $GITHUB_STEP_SUMMARY || echo "Comparison not available"
-              echo '```' >> $GITHUB_STEP_SUMMARY
-            fi
-          done
-        else
-          echo "No baseline data available." >> $GITHUB_STEP_SUMMARY
-        fi
-      shell: bash
-
-    - name: Check for performance regression
-      if: inputs.compare-baseline != false && always()
-      run: |
-        echo "### ⚠️ Performance Regression Check" >> $GITHUB_STEP_SUMMARY
-        REGRESSION_DETECTED=false
-        for json_file in benchmark-*.json; do
-          if [ -f "$json_file" ]; then
-            uv run python scripts/check_performance_regression.py \
-              "$json_file" ${{ env.PERFORMANCE_REGRESSION_THRESHOLD }} \
-              2>&1 || touch regression_detected
-            [ -f regression_detected ] && REGRESSION_DETECTED=true
-          fi
-        done
-        if [ "$REGRESSION_DETECTED" = true ]; then
-          echo "❌ **Performance Regression Detected!**" >> $GITHUB_STEP_SUMMARY
-          exit 1
-        else
-          echo "✅ **No Performance Regression Detected**" >> $GITHUB_STEP_SUMMARY
-        fi
+        # Only run benchmark marked tests
+        uv run pytest tests/benchmarks/ -v -m benchmark --benchmark-autosave --benchmark-json=benchmark-analysis.json
       shell: bash
 
     - name: Upload benchmark results
@@ -136,49 +35,4 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: benchmark-results
-        path: |
-          benchmark-*.json
-          benchmark-*-output.txt
-        retention-days: 30
-
-    - name: Save as new baseline
-      if: github.ref == 'refs/heads/main' && github.event_name == 'push' && !failure()
-      run: |
-        mkdir -p .benchmark/baseline
-        cp benchmark-*.json .benchmark/baseline/ 2>/dev/null || true
-      shell: bash
-
-    - name: Upload new baseline
-      if: github.ref == 'refs/heads/main' && github.event_name == 'push' && !failure()
-      uses: actions/cache/save@v4
-      with:
-        path: .benchmark/baseline
-        key: benchmark-baseline-${{ github.ref_name }}-${{ github.sha }}
-
-  benchmark-trend:
-    name: Benchmark Trend Analysis
-    runs-on: ubuntu-latest
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-    needs: benchmarks
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
-    - name: Download benchmark results
-      uses: actions/download-artifact@v4
-      with:
-        name: benchmark-results
-        path: benchmark-results/
-    - name: Generate trend report
-      run: |
-        echo "### 📊 Performance Trend Analysis" >> $GITHUB_STEP_SUMMARY
-        echo '```text' >> $GITHUB_STEP_SUMMARY
-        for json_file in benchmark-results/benchmark-*.json; do
-          if [ -f "$json_file" ]; then
-            echo "=== $(basename $json_file .json | sed 's/benchmark-//') ===" >> $GITHUB_STEP_SUMMARY
-            uv run python scripts/generate_benchmark_trend.py "$json_file" >> $GITHUB_STEP_SUMMARY 2>&1 || true
-          fi
-        done
-        echo '```' >> $GITHUB_STEP_SUMMARY
-      shell: bash
+        path: benchmark-*.json

@@ -1,6 +1,6 @@
-# CI Workflow
-# Purpose: Continuous Integration for all branches
-# High-level coordinator using reusable workflows
+# Orchestrative CI Workflow
+# Purpose: Single Path of Execution for all quality, test, and build checks.
+# Branch-specific automation (PR creation, Publishing) is integrated as conditional jobs.
 
 name: CI
 
@@ -32,6 +32,36 @@ jobs:
     needs: test
     uses: ./.github/workflows/reusable-build.yml
 
+  # Integrated Automation for Develop Branch
+  create-release-pr:
+    name: Develop Automation
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create Pull Request to main
+        uses: peter-evans/create-pull-request@v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          base: main
+          branch: develop-to-main
+          title: "🚀 Develop to Main: Automated Release"
+          body: |
+            ## 🤖 Automated Release from Develop Branch
+            This PR was automatically generated after successful quality verification.
+            - **Status**: Verified by CI Orchestrator
+          delete-branch: true
+
+  # Integrated Automation for Release/Hotfix Publishing
+  deploy:
+    name: Automated Deployment
+    needs: build
+    if: (startsWith(github.ref, 'refs/heads/release/') || startsWith(github.ref, 'refs/heads/hotfix/')) && github.event_name == 'push'
+    uses: ./.github/workflows/reusable-publish.yml
+    secrets:
+      PYPI_API_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
+
   quality-gate:
     name: Quality Gate
     needs: [test, quality-check, build]
@@ -42,22 +72,11 @@ jobs:
         run: |
           echo "### 🏆 Final Quality Gate Status" >> $GITHUB_STEP_SUMMARY
           SUCCESS=true
-
-          if [[ "${{ needs.quality-check.result }}" != "success" ]]; then
-            echo "❌ Quality Checks failed" >> $GITHUB_STEP_SUMMARY
-            SUCCESS=false
-          fi
-          if [[ "${{ needs.test.result }}" != "success" ]]; then
-            echo "❌ Test Suite failed" >> $GITHUB_STEP_SUMMARY
-            SUCCESS=false
-          fi
-          if [[ "${{ needs.build.result }}" != "success" ]]; then
-            echo "❌ Build Verification failed" >> $GITHUB_STEP_SUMMARY
-            SUCCESS=false
-          fi
-
+          if [[ "${{ needs.quality-check.result }}" != "success" ]]; then SUCCESS=false; fi
+          if [[ "${{ needs.test.result }}" != "success" ]]; then SUCCESS=false; fi
+          if [[ "${{ needs.build.result }}" != "success" ]]; then SUCCESS=false; fi
           if [ "$SUCCESS" = true ]; then
-            echo "✅ All systems go! This version meets our authority standards." >> $GITHUB_STEP_SUMMARY
+            echo "✅ All systems go!" >> $GITHUB_STEP_SUMMARY
           else
             echo "⚠️ Quality Gate rejected this version." >> $GITHUB_STEP_SUMMARY
             exit 1
