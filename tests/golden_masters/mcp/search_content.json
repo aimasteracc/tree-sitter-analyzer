@@ -1,0 +1,40 @@
+{
+  "count": 3,
+  "results": [
+    {
+      "file": "/examples/BigService.java",
+      "line": 17,
+      "matches": [
+        [
+          7,
+          23
+        ]
+      ],
+      "text": "public class BigService {"
+    },
+    {
+      "file": "/examples/ComprehensiveTypeScript.ts",
+      "line": 149,
+      "matches": [
+        [
+          0,
+          17
+        ]
+      ],
+      "text": "class UserService extends BaseEntity implements Repository<User> {"
+    },
+    {
+      "file": "/examples/SampleAdvanced.cs",
+      "line": 11,
+      "matches": [
+        [
+          11,
+          28
+        ]
+      ],
+      "text": "public class UserService"
+    }
+  ],
+  "success": true,
+  "truncated": false
+}

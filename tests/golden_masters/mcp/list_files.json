@@ -1,0 +1,42 @@
+{
+  "count": 5,
+  "results": [
+    {
+      "ext": "java",
+      "is_dir": false,
+      "mtime": 1761097946,
+      "path": "/examples/BigService.java",
+      "size_bytes": 45643
+    },
+    {
+      "ext": "java",
+      "is_dir": false,
+      "mtime": 1761097946,
+      "path": "/examples/JavaDocTest.java",
+      "size_bytes": 1884
+    },
+    {
+      "ext": "java",
+      "is_dir": false,
+      "mtime": 1761097946,
+      "path": "/examples/MultiClass.java",
+      "size_bytes": 863
+    },
+    {
+      "ext": "java",
+      "is_dir": false,
+      "mtime": 1761097946,
+      "path": "/examples/Sample.java",
+      "size_bytes": 3916
+    },
+    {
+      "ext": "java",
+      "is_dir": false,
+      "mtime": 1762497317,
+      "path": "/examples/TestAnnotationIssue.java",
+      "size_bytes": 369
+    }
+  ],
+  "success": true,
+  "truncated": false
+}

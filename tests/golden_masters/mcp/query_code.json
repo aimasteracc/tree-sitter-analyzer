@@ -1,0 +1,464 @@
+{
+  "count": 65,
+  "file_path": "examples/BigService.java",
+  "language": "java",
+  "query": "methods",
+  "results": [
+    {
+      "capture_name": "method",
+      "content": "private void initializeService() {\n        System.out.println(\"Initializing BigService...\");\n        loadConfiguration();\n        setupDatabaseConnection();\n        validateSystemRequirements();\n        System.out.println(\"BigService initialization completed.\");\n    }",
+      "end_line": 50,
+      "node_type": "method_declaration",
+      "start_line": 44
+    },
+    {
+      "capture_name": "method",
+      "content": "private void loadConfiguration() {\n        configurationCache.put(\"max_connections\", 100);\n        configurationCache.put(\"timeout\", TIMEOUT_MILLISECONDS);\n        configurationCache.put(\"retry_count\", MAX_RETRY_COUNT);\n        configurationCache.put(\"encoding\", DEFAULT_ENCODING);\n        configurationCache.put(\"date_format\", DATE_FORMAT);\n\n        for (int i = 0; i < 10; i++) {\n            configurationCache.put(\"config_param_\" + i, \"value_\" + i);\n        }\n    }",
+      "end_line": 65,
+      "node_type": "method_declaration",
+      "start_line": 55
+    },
+    {
+      "capture_name": "method",
+      "content": "private void setupDatabaseConnection() {\n        System.out.println(\"Setting up database connection...\");\n        // Dummy connection setup process\n        for (int i = 0; i < 5; i++) {\n            activeConnections.add(\"connection_\" + i);\n            System.out.println(\"Created connection: connection_\" + i);\n        }\n    }",
+      "end_line": 77,
+      "node_type": "method_declaration",
+      "start_line": 70
+    },
+    {
+      "capture_name": "method",
+      "content": "private void validateSystemRequirements() {\n        System.out.println(\"Validating system requirements...\");\n        checkMemoryUsage();\n        checkDiskSpace();\n        checkNetworkConnectivity();\n        System.out.println(\"System requirements validation completed.\");\n    }",
+      "end_line": 88,
+      "node_type": "method_declaration",
+      "start_line": 82
+    },
+    {
+      "capture_name": "method",
+      "content": "private void checkMemoryUsage() {\n        Runtime runtime = Runtime.getRuntime();\n        long totalMemory = runtime.totalMemory();\n        long freeMemory = runtime.freeMemory();\n        long usedMemory = totalMemory - freeMemory;\n\n        System.out.println(\"Total Memory: \" + totalMemory);\n        System.out.println(\"Free Memory: \" + freeMemory);\n        System.out.println(\"Used Memory: \" + usedMemory);\n\n        if (usedMemory > totalMemory * 0.8) {\n            System.out.println(\"WARNING: High memory usage detected!\");\n        }\n    }",
+      "end_line": 106,
+      "node_type": "method_declaration",
+      "start_line": 93
+    },
+    {
+      "capture_name": "method",
+      "content": "private void checkDiskSpace() {\n        System.out.println(\"Checking disk space...\");\n        // Dummy disk space check\n        for (int i = 0; i < 3; i++) {\n            System.out.println(\"Disk \" + i + \": Available space OK\");\n        }\n    }",
+      "end_line": 117,
+      "node_type": "method_declaration",
+      "start_line": 111
+    },
+    {
+      "capture_name": "method",
+      "content": "private void checkNetworkConnectivity() {\n        System.out.println(\"Checking network connectivity...\");\n        String[] hosts = {\"localhost\", \"database.example.com\", \"api.example.com\"};\n\n        for (String host : hosts) {\n            System.out.println(\"Testing connection to: \" + host);\n            // Dummy connection test\n            try {\n                Thread.sleep(100);\n                System.out.println(\"Connection to \" + host + \" successful\");\n            } catch (InterruptedException e) {\n                System.out.println(\"Connection test interrupted\");\n            }\n        }\n    }",
+      "end_line": 136,
+      "node_type": "method_declaration",
+      "start_line": 122
+    },
+    {
+      "capture_name": "method",
+      "content": "public boolean authenticateUser(String username, String password) {\n        if (username == null || username.isEmpty()) {\n            System.out.println(\"ERROR: Username is null or empty\");\n            return false;\n        }\n\n        if (password == null || password.isEmpty()) {\n            System.out.println(\"ERROR: Password is null or empty\");\n            return false;\n        }\n\n        System.out.println(\"Authenticating user: \" + username);\n\n        // ダミーの認証処理\n        for (int i = 0; i < 10; i++) {\n            System.out.println(\"Authentication step \" + i);\n            if (i == 5) {\n                System.out.println(\"Validating credentials...\");\n            }\n        }\n\n        boolean isValid = username.length() > 3 && password.length() > 6;\n\n        if (isValid) {\n            validatedUsers.add(username);\n            System.out.println(\"User \" + username + \" authenticated successfully\");\n        } else {\n            System.out.println(\"Authentication failed for user: \" + username);\n        }\n\n        return isValid;\n    }",
+      "end_line": 172,
+      "node_type": "method_declaration",
+      "start_line": 141
+    },
+    {
+      "capture_name": "method",
+      "content": "public String createSession(String username) {\n        if (!validatedUsers.contains(username)) {\n            System.out.println(\"ERROR: User not authenticated: \" + username);\n            return null;\n        }\n\n        String sessionId = \"session_\" + System.currentTimeMillis() + \"_\" + username;\n        System.out.println(\"Creating session: \" + sessionId);\n\n        // Session creation process\n        for (int i = 0; i < 15; i++) {\n            System.out.println(\"Session creation step \" + i);\n            if (i == 7) {\n                System.out.println(\"Generating session token...\");\n            }\n            if (i == 12) {\n                System.out.println(\"Storing session data...\");\n            }\n        }\n\n        System.out.println(\"Session created successfully: \" + sessionId);\n        return sessionId;\n    }",
+      "end_line": 199,
+      "node_type": "method_declaration",
+      "start_line": 177
+    },
+    {
+      "capture_name": "method",
+      "content": "public boolean validateData(Map<String, Object> data) {\n        if (data == null || data.isEmpty()) {\n            System.out.println(\"ERROR: Data is null or empty\");\n            return false;\n        }\n\n        System.out.println(\"Validating data with \" + data.size() + \" fields\");\n\n        for (Map.Entry<String, Object> entry : data.entrySet()) {\n            String key = entry.getKey();\n            Object value = entry.getValue();\n\n            System.out.println(\"Validating field: \" + key);\n\n            if (value == null) {\n                System.out.println(\"WARNING: Null value for field: \" + key);\n                continue;\n            }\n\n            // Field-specific validation\n            if (key.contains(\"email\")) {\n                if (!validateEmail(value.toString())) {\n                    System.out.println(\"ERROR: Invalid email format: \" + value);\n                    return false;\n                }\n            } else if (key.contains(\"phone\")) {\n                if (!validatePhoneNumber(value.toString())) {\n                    System.out.println(\"ERROR: Invalid phone number: \" + value);\n                    return false;\n                }\n            } else if (key.contains(\"date\")) {\n                if (!validateDate(value.toString())) {\n                    System.out.println(\"ERROR: Invalid date format: \" + value);\n                    return false;\n                }\n            }\n\n            System.out.println(\"Field \" + key + \" validation passed\");\n        }\n\n        System.out.println(\"Data validation completed successfully\");\n        return true;\n    }",
+      "end_line": 246,
+      "node_type": "method_declaration",
+      "start_line": 204
+    },
+    {
+      "capture_name": "method",
+      "content": "private boolean validateEmail(String email) {\n        System.out.println(\"Validating email: \" + email);\n        return email != null && email.contains(\"@\") && email.contains(\".\");\n    }",
+      "end_line": 254,
+      "node_type": "method_declaration",
+      "start_line": 251
+    },
+    {
+      "capture_name": "method",
+      "content": "private boolean validatePhoneNumber(String phone) {\n        System.out.println(\"Validating phone number: \" + phone);\n        return phone != null && phone.matches(\"//d{10,15}\");\n    }",
+      "end_line": 262,
+      "node_type": "method_declaration",
+      "start_line": 259
+    },
+    {
+      "capture_name": "method",
+      "content": "private boolean validateDate(String date) {\n        System.out.println(\"Validating date: \" + date);\n        try {\n            LocalDateTime.parse(date, DateTimeFormatter.ofPattern(DATE_FORMAT));\n            return true;\n        } catch (Exception e) {\n            return false;\n        }\n    }",
+      "end_line": 275,
+      "node_type": "method_declaration",
+      "start_line": 267
+    },
+    {
+      "capture_name": "method",
+      "content": "public void logOperation(String operation, String details) {\n        String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern(DATE_FORMAT));\n        String logEntry = String.format(\"[%s] %s: %s\", timestamp, operation, details);\n\n        System.out.println(\"LOG: \" + logEntry);\n\n        // Log file writing process (dummy)\n        for (int i = 0; i < 5; i++) {\n            System.out.println(\"Writing log entry, step \" + i);\n        }\n    }",
+      "end_line": 290,
+      "node_type": "method_declaration",
+      "start_line": 280
+    },
+    {
+      "capture_name": "method",
+      "content": "public void manageCache(String key, Object value) {\n        System.out.println(\"Managing cache for key: \" + key);\n\n        if (configurationCache.size() > 1000) {\n            System.out.println(\"Cache size limit reached, cleaning up...\");\n            cleanupCache();\n        }\n\n        configurationCache.put(key, value);\n        System.out.println(\"Cache updated for key: \" + key);\n\n        // Update cache statistics\n        updateCacheStatistics();\n    }",
+      "end_line": 308,
+      "node_type": "method_declaration",
+      "start_line": 295
+    },
+    {
+      "capture_name": "method",
+      "content": "private void cleanupCache() {\n        System.out.println(\"Starting cache cleanup...\");\n\n        int originalSize = configurationCache.size();\n        Iterator<Map.Entry<String, Object>> iterator = configurationCache.entrySet().iterator();\n\n        while (iterator.hasNext() && configurationCache.size() > 500) {\n            iterator.next();\n            iterator.remove();\n        }\n\n        int cleanedItems = originalSize - configurationCache.size();\n        System.out.println(\"Cache cleanup completed. Removed \" + cleanedItems + \" items.\");\n    }",
+      "end_line": 326,
+      "node_type": "method_declaration",
+      "start_line": 313
+    },
+    {
+      "capture_name": "method",
+      "content": "private void updateCacheStatistics() {\n        System.out.println(\"Updating cache statistics...\");\n        System.out.println(\"Current cache size: \" + configurationCache.size());\n        System.out.println(\"Cache hit ratio: \" + calculateCacheHitRatio());\n    }",
+      "end_line": 335,
+      "node_type": "method_declaration",
+      "start_line": 331
+    },
+    {
+      "capture_name": "method",
+      "content": "private double calculateCacheHitRatio() {\n        // Dummy calculation\n        return Math.random() * 0.3 + 0.7; // 70-100% range\n    }",
+      "end_line": 343,
+      "node_type": "method_declaration",
+      "start_line": 340
+    },
+    {
+      "capture_name": "method",
+      "content": "public void performBackup(String backupType) {\n        System.out.println(\"Starting backup process: \" + backupType);\n\n        switch (backupType.toLowerCase()) {\n            case \"full\":\n                performFullBackup();\n                break;\n            case \"incremental\":\n                performIncrementalBackup();\n                break;\n            case \"differential\":\n                performDifferentialBackup();\n                break;\n            default:\n                System.out.println(\"Unknown backup type: \" + backupType);\n                return;\n        }\n\n        System.out.println(\"Backup process completed: \" + backupType);\n    }",
+      "end_line": 367,
+      "node_type": "method_declaration",
+      "start_line": 348
+    },
+    {
+      "capture_name": "method",
+      "content": "private void performFullBackup() {\n        System.out.println(\"Performing full backup...\");\n\n        for (int i = 0; i < 30; i++) {\n            System.out.println(\"Full backup progress: \" + (i + 1) + \"/30\");\n\n            if (i == 10) {\n                System.out.println(\"Backing up database...\");\n            } else if (i == 20) {\n                System.out.println(\"Backing up configuration files...\");\n            } else if (i == 25) {\n                System.out.println(\"Backing up user data...\");\n            }\n\n            try {\n                Thread.sleep(50);\n            } catch (InterruptedException e) {\n                System.out.println(\"Backup interrupted\");\n                return;\n            }\n        }\n\n        System.out.println(\"Full backup completed successfully\");\n    }",
+      "end_line": 395,
+      "node_type": "method_declaration",
+      "start_line": 372
+    },
+    {
+      "capture_name": "method",
+      "content": "private void performIncrementalBackup() {\n        System.out.println(\"Performing incremental backup...\");\n\n        for (int i = 0; i < 15; i++) {\n            System.out.println(\"Incremental backup progress: \" + (i + 1) + \"/15\");\n\n            if (i == 5) {\n                System.out.println(\"Identifying changed files...\");\n            } else if (i == 10) {\n                System.out.println(\"Copying modified data...\");\n            }\n        }\n\n        System.out.println(\"Incremental backup completed successfully\");\n    }",
+      "end_line": 414,
+      "node_type": "method_declaration",
+      "start_line": 400
+    },
+    {
+      "capture_name": "method",
+      "content": "private void performDifferentialBackup() {\n        System.out.println(\"Performing differential backup...\");\n\n        for (int i = 0; i < 20; i++) {\n            System.out.println(\"Differential backup progress: \" + (i + 1) + \"/20\");\n\n            if (i == 7) {\n                System.out.println(\"Comparing with last full backup...\");\n            } else if (i == 15) {\n                System.out.println(\"Copying differential data...\");\n            }\n        }\n\n        System.out.println(\"Differential backup completed successfully\");\n    }",
+      "end_line": 433,
+      "node_type": "method_declaration",
+      "start_line": 419
+    },
+    {
+      "capture_name": "method",
+      "content": "public void generateReport(String reportType, Map<String, Object> parameters) {\n        System.out.println(\"Generating report: \" + reportType);\n\n        if (parameters == null) {\n            parameters = new HashMap<>();\n        }\n\n        // レポート生成の前処理\n        prepareReportData(reportType, parameters);\n\n        // レポートの種類に応じた処理\n        switch (reportType.toLowerCase()) {\n            case \"sales\":\n                generateSalesReport(parameters);\n                break;\n            case \"performance\":\n                generatePerformanceReport(parameters);\n                break;\n            case \"user_activity\":\n                generateUserActivityReport(parameters);\n                break;\n            case \"system_health\":\n                generateSystemHealthReport(parameters);\n                break;\n            default:\n                System.out.println(\"Unknown report type: \" + reportType);\n                return;\n        }\n\n        // レポート生成の後処理\n        finalizeReport(reportType);\n\n        System.out.println(\"Report generation completed: \" + reportType);\n    }",
+      "end_line": 471,
+      "node_type": "method_declaration",
+      "start_line": 438
+    },
+    {
+      "capture_name": "method",
+      "content": "private void prepareReportData(String reportType, Map<String, Object> parameters) {\n        System.out.println(\"Preparing report data for: \" + reportType);\n\n        for (int i = 0; i < 10; i++) {\n            System.out.println(\"Data preparation step \" + (i + 1) + \"/10\");\n\n            if (i == 3) {\n                System.out.println(\"Loading data sources...\");\n            } else if (i == 7) {\n                System.out.println(\"Validating data integrity...\");\n            }\n        }\n\n        System.out.println(\"Report data preparation completed\");\n    }",
+      "end_line": 490,
+      "node_type": "method_declaration",
+      "start_line": 476
+    },
+    {
+      "capture_name": "method",
+      "content": "private void generateSalesReport(Map<String, Object> parameters) {\n        System.out.println(\"Generating sales report...\");\n\n        for (int i = 0; i < 25; i++) {\n            System.out.println(\"Sales report generation step \" + (i + 1) + \"/25\");\n\n            if (i == 5) {\n                System.out.println(\"Calculating total sales...\");\n            } else if (i == 10) {\n                System.out.println(\"Analyzing sales trends...\");\n            } else if (i == 15) {\n                System.out.println(\"Generating charts and graphs...\");\n            } else if (i == 20) {\n                System.out.println(\"Formatting report layout...\");\n            }\n        }\n\n        System.out.println(\"Sales report generated successfully\");\n    }",
+      "end_line": 513,
+      "node_type": "method_declaration",
+      "start_line": 495
+    },
+    {
+      "capture_name": "method",
+      "content": "private void generatePerformanceReport(Map<String, Object> parameters) {\n        System.out.println(\"Generating performance report...\");\n\n        for (int i = 0; i < 20; i++) {\n            System.out.println(\"Performance report generation step \" + (i + 1) + \"/20\");\n\n            if (i == 5) {\n                System.out.println(\"Collecting performance metrics...\");\n            } else if (i == 10) {\n                System.out.println(\"Analyzing system performance...\");\n            } else if (i == 15) {\n                System.out.println(\"Creating performance summary...\");\n            }\n        }\n\n        System.out.println(\"Performance report generated successfully\");\n    }",
+      "end_line": 534,
+      "node_type": "method_declaration",
+      "start_line": 518
+    },
+    {
+      "capture_name": "method",
+      "content": "private void generateUserActivityReport(Map<String, Object> parameters) {\n        System.out.println(\"Generating user activity report...\");\n\n        for (int i = 0; i < 18; i++) {\n            System.out.println(\"User activity report generation step \" + (i + 1) + \"/18\");\n\n            if (i == 6) {\n                System.out.println(\"Analyzing user behavior patterns...\");\n            } else if (i == 12) {\n                System.out.println(\"Calculating user engagement metrics...\");\n            }\n        }\n\n        System.out.println(\"User activity report generated successfully\");\n    }",
+      "end_line": 553,
+      "node_type": "method_declaration",
+      "start_line": 539
+    },
+    {
+      "capture_name": "method",
+      "content": "private void generateSystemHealthReport(Map<String, Object> parameters) {\n        System.out.println(\"Generating system health report...\");\n\n        for (int i = 0; i < 22; i++) {\n            System.out.println(\"System health report generation step \" + (i + 1) + \"/22\");\n\n            if (i == 5) {\n                System.out.println(\"Checking system resources...\");\n            } else if (i == 10) {\n                System.out.println(\"Analyzing error logs...\");\n            } else if (i == 15) {\n                System.out.println(\"Evaluating system stability...\");\n            }\n        }\n\n        System.out.println(\"System health report generated successfully\");\n    }",
+      "end_line": 574,
+      "node_type": "method_declaration",
+      "start_line": 558
+    },
+    {
+      "capture_name": "method",
+      "content": "private void finalizeReport(String reportType) {\n        System.out.println(\"Finalizing report: \" + reportType);\n\n        for (int i = 0; i < 8; i++) {\n            System.out.println(\"Report finalization step \" + (i + 1) + \"/8\");\n\n            if (i == 3) {\n                System.out.println(\"Applying report formatting...\");\n            } else if (i == 6) {\n                System.out.println(\"Saving report to file...\");\n            }\n        }\n\n        System.out.println(\"Report finalization completed\");\n    }",
+      "end_line": 593,
+      "node_type": "method_declaration",
+      "start_line": 579
+    },
+    {
+      "capture_name": "method",
+      "content": "public void updateCustomerName(String customerId, String newName) {\n        // Originally, complex processing such as database updates would be included here\n        if (customerId == null || customerId.isEmpty()) {\n            System.out.println(\"ERROR: Customer ID is null or empty.\");\n            return;\n        }\n        if (newName == null || newName.isEmpty()) {\n            System.out.println(\"ERROR: New name is null or empty.\");\n            return;\n        }\n        System.out.println(\"Updating customer \" + customerId + \" to name \" + newName);\n        // ... About 50 lines of dummy processing ...\n        for (int i = 0; i < 50; i++) {\n            System.out.println(\"Processing step \" + i);\n        }\n        System.out.println(\"Customer name updated successfully.\");\n    }",
+      "end_line": 617,
+      "node_type": "method_declaration",
+      "start_line": 601
+    },
+    {
+      "capture_name": "method",
+      "content": "public Map<String, Object> getCustomerInfo(String customerId) {\n        System.out.println(\"Retrieving customer information for ID: \" + customerId);\n\n        if (customerId == null || customerId.isEmpty()) {\n            System.out.println(\"ERROR: Customer ID is null or empty\");\n            return null;\n        }\n\n        Map<String, Object> customerInfo = new HashMap<>();\n\n        // Dummy customer information retrieval process\n        for (int i = 0; i < 15; i++) {\n            System.out.println(\"Customer info retrieval step \" + (i + 1) + \"/15\");\n\n            if (i == 5) {\n                System.out.println(\"Querying customer database...\");\n                customerInfo.put(\"id\", customerId);\n                customerInfo.put(\"name\", \"Customer_\" + customerId);\n            } else if (i == 10) {\n                System.out.println(\"Loading customer preferences...\");\n                customerInfo.put(\"email\", \"customer\" + customerId + \"@example.com\");\n                customerInfo.put(\"phone\", \"123-456-\" + customerId);\n            }\n        }\n\n        customerInfo.put(\"status\", \"active\");\n        customerInfo.put(\"created_date\", LocalDateTime.now().toString());\n\n        System.out.println(\"Customer information retrieved successfully\");\n        return customerInfo;\n    }",
+      "end_line": 652,
+      "node_type": "method_declaration",
+      "start_line": 622
+    },
+    {
+      "capture_name": "method",
+      "content": "public boolean deleteCustomer(String customerId) {\n        System.out.println(\"Deleting customer: \" + customerId);\n\n        if (customerId == null || customerId.isEmpty()) {\n            System.out.println(\"ERROR: Customer ID is null or empty\");\n            return false;\n        }\n\n        // Pre-deletion validation\n        for (int i = 0; i < 10; i++) {\n            System.out.println(\"Pre-deletion validation step \" + (i + 1) + \"/10\");\n\n            if (i == 3) {\n                System.out.println(\"Checking customer dependencies...\");\n            } else if (i == 7) {\n                System.out.println(\"Validating deletion permissions...\");\n            }\n        }\n\n        // Actual deletion process\n        for (int i = 0; i < 20; i++) {\n            System.out.println(\"Customer deletion step \" + (i + 1) + \"/20\");\n\n            if (i == 5) {\n                System.out.println(\"Removing customer data...\");\n            } else if (i == 10) {\n                System.out.println(\"Cleaning up related records...\");\n            } else if (i == 15) {\n                System.out.println(\"Updating audit logs...\");\n            }\n        }\n\n        System.out.println(\"Customer \" + customerId + \" deleted successfully\");\n        return true;\n    }",
+      "end_line": 691,
+      "node_type": "method_declaration",
+      "start_line": 657
+    },
+    {
+      "capture_name": "method",
+      "content": "public String processOrder(String customerId, List<String> items, double totalAmount) {\n        System.out.println(\"Processing order for customer: \" + customerId);\n\n        if (customerId == null || customerId.isEmpty()) {\n            System.out.println(\"ERROR: Customer ID is required\");\n            return null;\n        }\n\n        if (items == null || items.isEmpty()) {\n            System.out.println(\"ERROR: Order items are required\");\n            return null;\n        }\n\n        if (totalAmount <= 0) {\n            System.out.println(\"ERROR: Invalid total amount: \" + totalAmount);\n            return null;\n        }\n\n        String orderId = \"ORDER_\" + System.currentTimeMillis();\n        System.out.println(\"Generated order ID: \" + orderId);\n\n        // Order processing steps\n        for (int i = 0; i < 25; i++) {\n            System.out.println(\"Order processing step \" + (i + 1) + \"/25\");\n\n            if (i == 3) {\n                System.out.println(\"Validating customer account...\");\n            } else if (i == 7) {\n                System.out.println(\"Checking item availability...\");\n            } else if (i == 12) {\n                System.out.println(\"Processing payment...\");\n            } else if (i == 17) {\n                System.out.println(\"Updating inventory...\");\n            } else if (i == 22) {\n                System.out.println(\"Generating order confirmation...\");\n            }\n        }\n\n        System.out.println(\"Order processed successfully: \" + orderId);\n        return orderId;\n    }",
+      "end_line": 736,
+      "node_type": "method_declaration",
+      "start_line": 696
+    },
+    {
+      "capture_name": "method",
+      "content": "public void manageInventory(String action, String itemId, int quantity) {\n        System.out.println(\"Managing inventory - Action: \" + action + \", Item: \" + itemId + \", Quantity: \" + quantity);\n\n        if (action == null || action.isEmpty()) {\n            System.out.println(\"ERROR: Action is required\");\n            return;\n        }\n\n        if (itemId == null || itemId.isEmpty()) {\n            System.out.println(\"ERROR: Item ID is required\");\n            return;\n        }\n\n        switch (action.toLowerCase()) {\n            case \"add\":\n                addInventory(itemId, quantity);\n                break;\n            case \"remove\":\n                removeInventory(itemId, quantity);\n                break;\n            case \"update\":\n                updateInventory(itemId, quantity);\n                break;\n            case \"check\":\n                checkInventory(itemId);\n                break;\n            default:\n                System.out.println(\"ERROR: Unknown inventory action: \" + action);\n                return;\n        }\n\n        System.out.println(\"Inventory management completed for item: \" + itemId);\n    }",
+      "end_line": 773,
+      "node_type": "method_declaration",
+      "start_line": 741
+    },
+    {
+      "capture_name": "method",
+      "content": "private void addInventory(String itemId, int quantity) {\n        System.out.println(\"Adding inventory for item: \" + itemId + \", quantity: \" + quantity);\n\n        for (int i = 0; i < 12; i++) {\n            System.out.println(\"Inventory addition step \" + (i + 1) + \"/12\");\n\n            if (i == 4) {\n                System.out.println(\"Validating item information...\");\n            } else if (i == 8) {\n                System.out.println(\"Updating inventory database...\");\n            }\n        }\n\n        System.out.println(\"Inventory added successfully\");\n    }",
+      "end_line": 792,
+      "node_type": "method_declaration",
+      "start_line": 778
+    },
+    {
+      "capture_name": "method",
+      "content": "private void removeInventory(String itemId, int quantity) {\n        System.out.println(\"Removing inventory for item: \" + itemId + \", quantity: \" + quantity);\n\n        for (int i = 0; i < 10; i++) {\n            System.out.println(\"Inventory removal step \" + (i + 1) + \"/10\");\n\n            if (i == 3) {\n                System.out.println(\"Checking available quantity...\");\n            } else if (i == 7) {\n                System.out.println(\"Updating inventory records...\");\n            }\n        }\n\n        System.out.println(\"Inventory removed successfully\");\n    }",
+      "end_line": 811,
+      "node_type": "method_declaration",
+      "start_line": 797
+    },
+    {
+      "capture_name": "method",
+      "content": "private void updateInventory(String itemId, int quantity) {\n        System.out.println(\"Updating inventory for item: \" + itemId + \", new quantity: \" + quantity);\n\n        for (int i = 0; i < 8; i++) {\n            System.out.println(\"Inventory update step \" + (i + 1) + \"/8\");\n\n            if (i == 3) {\n                System.out.println(\"Calculating inventory changes...\");\n            } else if (i == 6) {\n                System.out.println(\"Applying inventory updates...\");\n            }\n        }\n\n        System.out.println(\"Inventory updated successfully\");\n    }",
+      "end_line": 830,
+      "node_type": "method_declaration",
+      "start_line": 816
+    },
+    {
+      "capture_name": "method",
+      "content": "private void checkInventory(String itemId) {\n        System.out.println(\"Checking inventory for item: \" + itemId);\n\n        for (int i = 0; i < 6; i++) {\n            System.out.println(\"Inventory check step \" + (i + 1) + \"/6\");\n\n            if (i == 2) {\n                System.out.println(\"Querying inventory database...\");\n            } else if (i == 4) {\n                System.out.println(\"Calculating available quantity...\");\n            }\n        }\n\n        int availableQuantity = (int) (Math.random() * 100) + 1;\n        System.out.println(\"Available quantity for item \" + itemId + \": \" + availableQuantity);\n    }",
+      "end_line": 850,
+      "node_type": "method_declaration",
+      "start_line": 835
+    },
+    {
+      "capture_name": "method",
+      "content": "public void sendNotification(String recipient, String message, String type) {\n        System.out.println(\"Sending notification to: \" + recipient);\n        System.out.println(\"Message: \" + message);\n        System.out.println(\"Type: \" + type);\n\n        if (recipient == null || recipient.isEmpty()) {\n            System.out.println(\"ERROR: Recipient is required\");\n            return;\n        }\n\n        if (message == null || message.isEmpty()) {\n            System.out.println(\"ERROR: Message is required\");\n            return;\n        }\n\n        // Notification sending process\n        for (int i = 0; i < 15; i++) {\n            System.out.println(\"Notification sending step \" + (i + 1) + \"/15\");\n\n            if (i == 3) {\n                System.out.println(\"Validating recipient address...\");\n            } else if (i == 7) {\n                System.out.println(\"Formatting notification message...\");\n            } else if (i == 11) {\n                System.out.println(\"Delivering notification...\");\n            }\n        }\n\n        System.out.println(\"Notification sent successfully to: \" + recipient);\n    }",
+      "end_line": 884,
+      "node_type": "method_declaration",
+      "start_line": 855
+    },
+    {
+      "capture_name": "method",
+      "content": "public void shutdownSystem() {\n        System.out.println(\"Initiating system shutdown...\");\n\n        // Pre-shutdown processing\n        for (int i = 0; i < 20; i++) {\n            System.out.println(\"Shutdown preparation step \" + (i + 1) + \"/20\");\n\n            if (i == 3) {\n                System.out.println(\"Saving pending operations...\");\n                savePendingOperations();\n            } else if (i == 8) {\n                System.out.println(\"Closing database connections...\");\n                closeDatabaseConnections();\n            } else if (i == 13) {\n                System.out.println(\"Clearing cache...\");\n                configurationCache.clear();\n            } else if (i == 17) {\n                System.out.println(\"Finalizing logs...\");\n                finalizeSystemLogs();\n            }\n        }\n\n        System.out.println(\"System shutdown completed successfully\");\n    }",
+      "end_line": 912,
+      "node_type": "method_declaration",
+      "start_line": 889
+    },
+    {
+      "capture_name": "method",
+      "content": "private void savePendingOperations() {\n        System.out.println(\"Saving \" + pendingOperations.size() + \" pending operations...\");\n\n        while (!pendingOperations.isEmpty()) {\n            String operation = pendingOperations.poll();\n            System.out.println(\"Saving operation: \" + operation);\n        }\n\n        System.out.println(\"All pending operations saved\");\n    }",
+      "end_line": 926,
+      "node_type": "method_declaration",
+      "start_line": 917
+    },
+    {
+      "capture_name": "method",
+      "content": "private void closeDatabaseConnections() {\n        System.out.println(\"Closing database connections...\");\n\n        for (String connection : activeConnections) {\n            System.out.println(\"Closing connection: \" + connection);\n        }\n\n        activeConnections.clear();\n        System.out.println(\"All database connections closed\");\n    }",
+      "end_line": 940,
+      "node_type": "method_declaration",
+      "start_line": 931
+    },
+    {
+      "capture_name": "method",
+      "content": "private void finalizeSystemLogs() {\n        System.out.println(\"Finalizing system logs...\");\n\n        for (int i = 0; i < 5; i++) {\n            System.out.println(\"Log finalization step \" + (i + 1) + \"/5\");\n        }\n\n        System.out.println(\"System logs finalized\");\n    }",
+      "end_line": 953,
+      "node_type": "method_declaration",
+      "start_line": 945
+    },
+    {
+      "capture_name": "method",
+      "content": "public void handleError(Exception error, String context) {\n        System.out.println(\"Handling error in context: \" + context);\n        System.out.println(\"Error message: \" + error.getMessage());\n\n        // Record error log\n        logOperation(\"ERROR\", \"Error in \" + context + \": \" + error.getMessage());\n\n        // Processing according to error type\n        if (error instanceof SQLException) {\n            handleDatabaseError((SQLException) error);\n        } else if (error instanceof IllegalArgumentException) {\n            handleValidationError((IllegalArgumentException) error);\n        } else if (error instanceof RuntimeException) {\n            handleRuntimeError((RuntimeException) error);\n        } else {\n            handleGenericError(error);\n        }\n\n        System.out.println(\"Error handling completed for context: \" + context);\n    }",
+      "end_line": 977,
+      "node_type": "method_declaration",
+      "start_line": 958
+    },
+    {
+      "capture_name": "method",
+      "content": "private void handleDatabaseError(SQLException error) {\n        System.out.println(\"Handling database error: \" + error.getSQLState());\n\n        for (int i = 0; i < 8; i++) {\n            System.out.println(\"Database error handling step \" + (i + 1) + \"/8\");\n\n            if (i == 3) {\n                System.out.println(\"Attempting database reconnection...\");\n            } else if (i == 6) {\n                System.out.println(\"Rolling back transaction...\");\n            }\n        }\n\n        System.out.println(\"Database error handled\");\n    }",
+      "end_line": 996,
+      "node_type": "method_declaration",
+      "start_line": 982
+    },
+    {
+      "capture_name": "method",
+      "content": "private void handleValidationError(IllegalArgumentException error) {\n        System.out.println(\"Handling validation error: \" + error.getMessage());\n\n        for (int i = 0; i < 5; i++) {\n            System.out.println(\"Validation error handling step \" + (i + 1) + \"/5\");\n        }\n\n        System.out.println(\"Validation error handled\");\n    }",
+      "end_line": 1009,
+      "node_type": "method_declaration",
+      "start_line": 1001
+    },
+    {
+      "capture_name": "method",
+      "content": "private void handleRuntimeError(RuntimeException error) {\n        System.out.println(\"Handling runtime error: \" + error.getMessage());\n\n        for (int i = 0; i < 10; i++) {\n            System.out.println(\"Runtime error handling step \" + (i + 1) + \"/10\");\n\n            if (i == 4) {\n                System.out.println(\"Collecting error context...\");\n            } else if (i == 7) {\n                System.out.println(\"Notifying administrators...\");\n            }\n        }\n\n        System.out.println(\"Runtime error handled\");\n    }",
+      "end_line": 1028,
+      "node_type": "method_declaration",
+      "start_line": 1014
+    },
+    {
+      "capture_name": "method",
+      "content": "private void handleGenericError(Exception error) {\n        System.out.println(\"Handling generic error: \" + error.getClass().getSimpleName());\n\n        for (int i = 0; i < 6; i++) {\n            System.out.println(\"Generic error handling step \" + (i + 1) + \"/6\");\n        }\n\n        System.out.println(\"Generic error handled\");\n    }",
+      "end_line": 1041,
+      "node_type": "method_declaration",
+      "start_line": 1033
+    },
+    {
+      "capture_name": "method",
+      "content": "public void monitorPerformance() {\n        System.out.println(\"Starting performance monitoring...\");\n\n        long startTime = System.currentTimeMillis();\n\n        // Monitor CPU usage\n        monitorCpuUsage();\n\n        // Monitor memory usage\n        monitorMemoryUsage();\n\n        // Monitor disk I/O\n        monitorDiskIO();\n\n        // Monitor network usage\n        monitorNetworkUsage();\n\n        long endTime = System.currentTimeMillis();\n        long duration = endTime - startTime;\n\n        System.out.println(\"Performance monitoring completed in \" + duration + \"ms\");\n    }",
+      "end_line": 1067,
+      "node_type": "method_declaration",
+      "start_line": 1046
+    },
+    {
+      "capture_name": "method",
+      "content": "private void monitorCpuUsage() {\n        System.out.println(\"Monitoring CPU usage...\");\n\n        for (int i = 0; i < 10; i++) {\n            System.out.println(\"CPU monitoring step \" + (i + 1) + \"/10\");\n            double cpuUsage = Math.random() * 100;\n            System.out.println(\"Current CPU usage: \" + String.format(\"%.2f\", cpuUsage) + \"%\");\n\n            if (cpuUsage > 80) {\n                System.out.println(\"WARNING: High CPU usage detected!\");\n            }\n        }\n\n        System.out.println(\"CPU monitoring completed\");\n    }",
+      "end_line": 1086,
+      "node_type": "method_declaration",
+      "start_line": 1072
+    },
+    {
+      "capture_name": "method",
+      "content": "private void monitorMemoryUsage() {\n        System.out.println(\"Monitoring memory usage...\");\n\n        Runtime runtime = Runtime.getRuntime();\n\n        for (int i = 0; i < 8; i++) {\n            System.out.println(\"Memory monitoring step \" + (i + 1) + \"/8\");\n\n            long totalMemory = runtime.totalMemory();\n            long freeMemory = runtime.freeMemory();\n            long usedMemory = totalMemory - freeMemory;\n            double usagePercentage = (double) usedMemory / totalMemory * 100;\n\n            System.out.println(\"Memory usage: \" + String.format(\"%.2f\", usagePercentage) + \"%\");\n\n            if (usagePercentage > 85) {\n                System.out.println(\"WARNING: High memory usage detected!\");\n            }\n        }\n\n        System.out.println(\"Memory monitoring completed\");\n    }",
+      "end_line": 1112,
+      "node_type": "method_declaration",
+      "start_line": 1091
+    },
+    {
+      "capture_name": "method",
+      "content": "private void monitorDiskIO() {\n        System.out.println(\"Monitoring disk I/O...\");\n\n        for (int i = 0; i < 6; i++) {\n            System.out.println(\"Disk I/O monitoring step \" + (i + 1) + \"/6\");\n\n            double readRate = Math.random() * 100;\n            double writeRate = Math.random() * 100;\n\n            System.out.println(\"Disk read rate: \" + String.format(\"%.2f\", readRate) + \" MB/s\");\n            System.out.println(\"Disk write rate: \" + String.format(\"%.2f\", writeRate) + \" MB/s\");\n        }\n\n        System.out.println(\"Disk I/O monitoring completed\");\n    }",
+      "end_line": 1131,
+      "node_type": "method_declaration",
+      "start_line": 1117
+    },
+    {
+      "capture_name": "method",
+      "content": "private void monitorNetworkUsage() {\n        System.out.println(\"Monitoring network usage...\");\n\n        for (int i = 0; i < 7; i++) {\n            System.out.println(\"Network monitoring step \" + (i + 1) + \"/7\");\n\n            double inboundTraffic = Math.random() * 1000;\n            double outboundTraffic = Math.random() * 1000;\n\n            System.out.println(\"Inbound traffic: \" + String.format(\"%.2f\", inboundTraffic) + \" KB/s\");\n            System.out.println(\"Outbound traffic: \" + String.format(\"%.2f\", outboundTraffic) + \" KB/s\");\n        }\n\n        System.out.println(\"Network monitoring completed\");\n    }",
+      "end_line": 1150,
+      "node_type": "method_declaration",
+      "start_line": 1136
+    },
+    {
+      "capture_name": "method",
+      "content": "public void performSecurityCheck() {\n        System.out.println(\"Starting security check...\");\n\n        // Check access permissions\n        checkAccessPermissions();\n\n        // Validate security settings\n        validateSecuritySettings();\n\n        // Perform vulnerability scan\n        performVulnerabilityScan();\n\n        // Review security logs\n        reviewSecurityLogs();\n\n        System.out.println(\"Security check completed\");\n    }",
+      "end_line": 1171,
+      "node_type": "method_declaration",
+      "start_line": 1155
+    },
+    {
+      "capture_name": "method",
+      "content": "private void checkAccessPermissions() {\n        System.out.println(\"Checking access permissions...\");\n\n        for (int i = 0; i < 12; i++) {\n            System.out.println(\"Permission check step \" + (i + 1) + \"/12\");\n\n            if (i == 3) {\n                System.out.println(\"Validating user permissions...\");\n            } else if (i == 7) {\n                System.out.println(\"Checking file system permissions...\");\n            } else if (i == 10) {\n                System.out.println(\"Verifying database access rights...\");\n            }\n        }\n\n        System.out.println(\"Access permissions check completed\");\n    }",
+      "end_line": 1192,
+      "node_type": "method_declaration",
+      "start_line": 1176
+    },
+    {
+      "capture_name": "method",
+      "content": "private void validateSecuritySettings() {\n        System.out.println(\"Validating security settings...\");\n\n        for (int i = 0; i < 9; i++) {\n            System.out.println(\"Security settings validation step \" + (i + 1) + \"/9\");\n\n            if (i == 3) {\n                System.out.println(\"Checking encryption settings...\");\n            } else if (i == 6) {\n                System.out.println(\"Validating authentication configuration...\");\n            }\n        }\n\n        System.out.println(\"Security settings validation completed\");\n    }",
+      "end_line": 1211,
+      "node_type": "method_declaration",
+      "start_line": 1197
+    },
+    {
+      "capture_name": "method",
+      "content": "private void performVulnerabilityScan() {\n        System.out.println(\"Performing vulnerability scan...\");\n\n        for (int i = 0; i < 15; i++) {\n            System.out.println(\"Vulnerability scan step \" + (i + 1) + \"/15\");\n\n            if (i == 5) {\n                System.out.println(\"Scanning for known vulnerabilities...\");\n            } else if (i == 10) {\n                System.out.println(\"Checking for security patches...\");\n            }\n        }\n\n        System.out.println(\"Vulnerability scan completed\");\n    }",
+      "end_line": 1230,
+      "node_type": "method_declaration",
+      "start_line": 1216
+    },
+    {
+      "capture_name": "method",
+      "content": "private void reviewSecurityLogs() {\n        System.out.println(\"Reviewing security logs...\");\n\n        for (int i = 0; i < 8; i++) {\n            System.out.println(\"Security log review step \" + (i + 1) + \"/8\");\n\n            if (i == 3) {\n                System.out.println(\"Analyzing failed login attempts...\");\n            } else if (i == 6) {\n                System.out.println(\"Checking for suspicious activities...\");\n            }\n        }\n\n        System.out.println(\"Security log review completed\");\n    }",
+      "end_line": 1249,
+      "node_type": "method_declaration",
+      "start_line": 1235
+    },
+    {
+      "capture_name": "method",
+      "content": "public void synchronizeData(String sourceSystem, String targetSystem) {\n        System.out.println(\"Starting data synchronization from \" + sourceSystem + \" to \" + targetSystem);\n\n        if (sourceSystem == null || sourceSystem.isEmpty()) {\n            System.out.println(\"ERROR: Source system is required\");\n            return;\n        }\n\n        if (targetSystem == null || targetSystem.isEmpty()) {\n            System.out.println(\"ERROR: Target system is required\");\n            return;\n        }\n\n        // Prepare data synchronization\n        prepareSynchronization(sourceSystem, targetSystem);\n\n        // Extract data\n        extractData(sourceSystem);\n\n        // Transform data\n        transformData();\n\n        // Load data\n        loadData(targetSystem);\n\n        // Verify synchronization\n        verifySynchronization(sourceSystem, targetSystem);\n\n        System.out.println(\"Data synchronization completed successfully\");\n    }",
+      "end_line": 1283,
+      "node_type": "method_declaration",
+      "start_line": 1254
+    },
+    {
+      "capture_name": "method",
+      "content": "private void prepareSynchronization(String sourceSystem, String targetSystem) {\n        System.out.println(\"Preparing synchronization between \" + sourceSystem + \" and \" + targetSystem);\n\n        for (int i = 0; i < 10; i++) {\n            System.out.println(\"Synchronization preparation step \" + (i + 1) + \"/10\");\n\n            if (i == 3) {\n                System.out.println(\"Establishing connections...\");\n            } else if (i == 7) {\n                System.out.println(\"Validating data schemas...\");\n            }\n        }\n\n        System.out.println(\"Synchronization preparation completed\");\n    }",
+      "end_line": 1302,
+      "node_type": "method_declaration",
+      "start_line": 1288
+    },
+    {
+      "capture_name": "method",
+      "content": "private void extractData(String sourceSystem) {\n        System.out.println(\"Extracting data from \" + sourceSystem);\n\n        for (int i = 0; i < 20; i++) {\n            System.out.println(\"Data extraction step \" + (i + 1) + \"/20\");\n\n            if (i == 5) {\n                System.out.println(\"Querying source database...\");\n            } else if (i == 10) {\n                System.out.println(\"Processing data records...\");\n            } else if (i == 15) {\n                System.out.println(\"Validating extracted data...\");\n            }\n        }\n\n        System.out.println(\"Data extraction completed\");\n    }",
+      "end_line": 1323,
+      "node_type": "method_declaration",
+      "start_line": 1307
+    },
+    {
+      "capture_name": "method",
+      "content": "private void transformData() {\n        System.out.println(\"Transforming data...\");\n\n        for (int i = 0; i < 15; i++) {\n            System.out.println(\"Data transformation step \" + (i + 1) + \"/15\");\n\n            if (i == 5) {\n                System.out.println(\"Applying data mapping rules...\");\n            } else if (i == 10) {\n                System.out.println(\"Performing data cleansing...\");\n            }\n        }\n\n        System.out.println(\"Data transformation completed\");\n    }",
+      "end_line": 1342,
+      "node_type": "method_declaration",
+      "start_line": 1328
+    },
+    {
+      "capture_name": "method",
+      "content": "private void loadData(String targetSystem) {\n        System.out.println(\"Loading data into \" + targetSystem);\n\n        for (int i = 0; i < 18; i++) {\n            System.out.println(\"Data loading step \" + (i + 1) + \"/18\");\n\n            if (i == 6) {\n                System.out.println(\"Inserting new records...\");\n            } else if (i == 12) {\n                System.out.println(\"Updating existing records...\");\n            }\n        }\n\n        System.out.println(\"Data loading completed\");\n    }",
+      "end_line": 1361,
+      "node_type": "method_declaration",
+      "start_line": 1347
+    },
+    {
+      "capture_name": "method",
+      "content": "private void verifySynchronization(String sourceSystem, String targetSystem) {\n        System.out.println(\"Verifying synchronization between \" + sourceSystem + \" and \" + targetSystem);\n\n        for (int i = 0; i < 12; i++) {\n            System.out.println(\"Synchronization verification step \" + (i + 1) + \"/12\");\n\n            if (i == 4) {\n                System.out.println(\"Comparing record counts...\");\n            } else if (i == 8) {\n                System.out.println(\"Validating data integrity...\");\n            }\n        }\n\n        System.out.println(\"Synchronization verification completed\");\n    }",
+      "end_line": 1380,
+      "node_type": "method_declaration",
+      "start_line": 1366
+    },
+    {
+      "capture_name": "method",
+      "content": "public static void main(String[] args) {\n        System.out.println(\"BigService Demo Application\");\n        System.out.println(\"==========================\");\n\n        BigService service = new BigService();\n\n        // Test basic functions\n        System.out.println(\"/n--- Testing Basic Functions ---\");\n        service.authenticateUser(\"testuser\", \"password123\");\n        service.createSession(\"testuser\");\n\n        // Test customer management\n        System.out.println(\"/n--- Testing Customer Management ---\");\n        service.updateCustomerName(\"CUST001\", \"New Customer Name\");\n        Map<String, Object> customerInfo = service.getCustomerInfo(\"CUST001\");\n\n        // Test report generation\n        System.out.println(\"/n--- Testing Report Generation ---\");\n        Map<String, Object> reportParams = new HashMap<>();\n        reportParams.put(\"start_date\", \"2024-01-01\");\n        reportParams.put(\"end_date\", \"2024-12-31\");\n        service.generateReport(\"sales\", reportParams);\n\n        // Test performance monitoring\n        System.out.println(\"/n--- Testing Performance Monitoring ---\");\n        service.monitorPerformance();\n\n        // Test security check\n        System.out.println(\"/n--- Testing Security Check ---\");\n        service.performSecurityCheck();\n\n        System.out.println(\"/n--- Demo Completed ---\");\n        System.out.println(\"BigService demo application finished successfully.\");\n    }",
+      "end_line": 1418,
+      "node_type": "method_declaration",
+      "start_line": 1385
+    }
+  ],
+  "success": true
+}
