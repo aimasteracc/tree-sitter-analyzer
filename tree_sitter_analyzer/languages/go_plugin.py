@@ -13,8 +13,6 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     import tree_sitter
 
-    from ..core.analysis_engine import AnalysisRequest
-    from ..models import AnalysisResult
 
 from ..models import Class, Function, Import, Package, Variable
 from ..plugins.base import ElementExtractor, LanguagePlugin
@@ -647,172 +645,13 @@ class GoPlugin(LanguagePlugin):
         ]
 
     def get_queries(self) -> dict[str, str]:
-        """Get Go-specific tree-sitter queries."""
-        from ..queries.go import GO_QUERIES
+        return {}
 
-        return GO_QUERIES
+    def execute_query_strategy(
+        self, query_key: str | None, language: str
+    ) -> str | None:
+        queries = self.get_queries()
+        return queries.get(query_key) if query_key else None
 
-    async def analyze_file(
-        self, file_path: str, request: "AnalysisRequest"
-    ) -> "AnalysisResult":
-        """Analyze Go code and return structured results."""
-        from ..models import AnalysisResult
-
-        try:
-            from ..encoding_utils import read_file_safe
-
-            file_content, detected_encoding = read_file_safe(file_path)
-
-            # Get tree-sitter language and parse
-            language = self.get_tree_sitter_language()
-            if language is None:
-                return AnalysisResult(
-                    file_path=file_path,
-                    language="go",
-                    line_count=len(file_content.split("\n")),
-                    elements=[],
-                    source_code=file_content,
-                )
-
-            import tree_sitter
-
-            parser = tree_sitter.Parser()
-
-            # Set language (handle different tree-sitter versions)
-            if hasattr(parser, "set_language"):
-                parser.set_language(language)
-            elif hasattr(parser, "language"):
-                parser.language = language
-            else:
-                parser = tree_sitter.Parser(language)
-
-            tree = parser.parse(file_content.encode("utf-8"))
-
-            # Extract elements
-            elements_dict = self.extract_elements(tree, file_content)
-
-            all_elements = []
-            all_elements.extend(elements_dict.get("packages", []))
-            all_elements.extend(elements_dict.get("imports", []))
-            all_elements.extend(elements_dict.get("functions", []))
-            all_elements.extend(elements_dict.get("classes", []))
-            all_elements.extend(elements_dict.get("variables", []))
-
-            # Count nodes
-            node_count = (
-                self._count_tree_nodes(tree.root_node) if tree and tree.root_node else 0
-            )
-
-            result = AnalysisResult(
-                file_path=file_path,
-                language="go",
-                line_count=len(file_content.split("\n")),
-                elements=all_elements,
-                node_count=node_count,
-                source_code=file_content,
-            )
-
-            # Attach Go-specific metadata
-            result.goroutines = self.extractor.goroutines
-            result.channels = self.extractor.channels
-            result.defers = self.extractor.defers
-
-            return result
-
-        except Exception as e:
-            log_error(f"Error analyzing Go file {file_path}: {e}")
-            return AnalysisResult(
-                file_path=file_path,
-                language="go",
-                line_count=0,
-                elements=[],
-                source_code="",
-                error_message=str(e),
-                success=False,
-            )
-
-    def _count_tree_nodes(self, node: Any) -> int:
-        """Recursively count nodes."""
-        if node is None:
-            return 0
-        count = 1
-        if hasattr(node, "children"):
-            for child in node.children:
-                count += self._count_tree_nodes(child)
-        return count
-
-    def get_tree_sitter_language(self) -> Any | None:
-        """Get the tree-sitter language for Go."""
-        if self._cached_language is not None:
-            return self._cached_language
-
-        try:
-            import tree_sitter
-            import tree_sitter_go
-
-            caps_or_lang = tree_sitter_go.language()
-
-            if hasattr(caps_or_lang, "__class__") and "Language" in str(
-                type(caps_or_lang)
-            ):
-                self._cached_language = caps_or_lang
-            else:
-                try:
-                    self._cached_language = tree_sitter.Language(caps_or_lang)
-                except Exception as e:
-                    log_error(f"Failed to create Language object: {e}")
-                    return None
-
-            return self._cached_language
-        except ImportError as e:
-            log_error(f"tree-sitter-go not available: {e}")
-            return None
-        except Exception as e:
-            log_error(f"Failed to load tree-sitter language for Go: {e}")
-            return None
-
-    def extract_elements(self, tree: Any | None, source_code: str) -> dict[str, Any]:
-        """Extract all elements from Go source code."""
-        if tree is None:
-            return {
-                "packages": [],
-                "imports": [],
-                "functions": [],
-                "classes": [],
-                "variables": [],
-            }
-
-        try:
-            extractor = self.create_extractor()
-
-            result = {
-                "packages": extractor.extract_packages(tree, source_code),
-                "imports": extractor.extract_imports(tree, source_code),
-                "functions": extractor.extract_functions(tree, source_code),
-                "classes": extractor.extract_classes(tree, source_code),
-                "variables": extractor.extract_variables(tree, source_code),
-            }
-
-            # Capture Go-specific metadata
-            if isinstance(extractor, GoElementExtractor):
-                self.extractor.goroutines = extractor.goroutines
-                self.extractor.channels = extractor.channels
-                self.extractor.defers = extractor.defers
-
-            return result
-
-        except Exception as e:
-            log_error(f"Error extracting Go elements: {e}")
-            return {
-                "packages": [],
-                "imports": [],
-                "functions": [],
-                "classes": [],
-                "variables": [],
-            }
-
-    def supports_file(self, file_path: str) -> bool:
-        """Check if this plugin supports the given file."""
-        return any(
-            file_path.lower().endswith(ext) for ext in self.get_file_extensions()
-        )
+    def get_element_categories(self) -> dict[str, list[str]]:
+        return {}

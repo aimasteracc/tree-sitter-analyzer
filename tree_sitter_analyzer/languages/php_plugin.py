@@ -873,3 +873,15 @@ class PHPPlugin(LanguagePlugin):
         except Exception as e:
             log_error(f"Error loading file {file_path}: {e}")
             raise OSError(f"Failed to load file {file_path}: {e}") from e
+
+    def get_queries(self) -> dict[str, str]:
+        return {}
+
+    def execute_query_strategy(
+        self, query_key: str | None, language: str
+    ) -> str | None:
+        queries = self.get_queries()
+        return queries.get(query_key) if query_key else None
+
+    def get_element_categories(self) -> dict[str, list[str]]:
+        return {}

@@ -1,0 +1,457 @@
+[
+  {
+    "capture_name": "method.definition",
+    "node_type": "function_definition",
+    "start_line": 30,
+    "end_line": 39,
+    "content": "def __init__(self) -> None:\n        \"\"\"Initialize the QueryExecutor.\"\"\"\n        self._query_loader = get_query_loader()\n        self._execution_stats: dict[str, Any] = {\n            \"total_queries\": 0,\n            \"successful_queries\": 0,\n            \"failed_queries\": 0,\n            \"total_execution_time\": 0.0,\n        }\n        logger.info(\"QueryExecutor initialized successfully\")"
+  },
+  {
+    "capture_name": "method.name",
+    "node_type": "identifier",
+    "start_line": 30,
+    "end_line": 30,
+    "content": "__init__"
+  },
+  {
+    "capture_name": "method.params",
+    "node_type": "parameters",
+    "start_line": 30,
+    "end_line": 30,
+    "content": "(self)"
+  },
+  {
+    "capture_name": "method.self",
+    "node_type": "identifier",
+    "start_line": 30,
+    "end_line": 30,
+    "content": "self"
+  },
+  {
+    "capture_name": "method.body",
+    "node_type": "block",
+    "start_line": 31,
+    "end_line": 39,
+    "content": "\"\"\"Initialize the QueryExecutor.\"\"\"\n        self._query_loader = get_query_loader()\n        self._execution_stats: dict[str, Any] = {\n            \"total_queries\": 0,\n            \"successful_queries\": 0,\n            \"failed_queries\": 0,\n            \"total_execution_time\": 0.0,\n        }\n        logger.info(\"QueryExecutor initialized successfully\")"
+  },
+  {
+    "capture_name": "method.definition",
+    "node_type": "function_definition",
+    "start_line": 41,
+    "end_line": 138,
+    "content": "def execute_query(\n        self,\n        tree: Tree | None,\n        language: Language | None,\n        query_name: str,\n        source_code: str,\n    ) -> dict[str, Any]:\n        \"\"\"\n        Execute a predefined query by name.\n\n        Args:\n            tree: Tree-sitter tree to query\n            language: Tree-sitter language object\n            query_name: Name of the predefined query\n            source_code: Source code for context\n\n        Returns:\n            Dictionary containing query results and metadata\n        \"\"\"\n        start_time = time.time()\n        self._execution_stats[\"total_queries\"] += 1\n\n        try:\n            # Validate inputs\n            if tree is None:\n                return self._create_error_result(\"Tree is None\", query_name=query_name)\n\n            if language is None:\n                return self._create_error_result(\n                    \"Language is None\", query_name=query_name\n                )\n\n            # Try multiple ways to get language name\n            language_name = getattr(language, \"name\", None)\n            if not language_name:\n                language_name = getattr(language, \"_name\", None)\n            if not language_name:\n                language_name = (\n                    str(language).split(\".\")[-1]\n                    if hasattr(language, \"__class__\")\n                    else None\n                )\n\n            # Ensure we have a valid language name\n            if (\n                not language_name\n                or language_name.strip() == \"\"\n                or language_name == \"None\"\n            ):\n                language_name = \"unknown\"\n            else:\n                language_name = language_name.strip().lower()\n\n            query_string = self._query_loader.get_query(language_name, query_name)\n            if query_string is None:\n                return self._create_error_result(\n                    f\"Query '{query_name}' not found\", query_name=query_name\n                )\n\n            # Create and execute the query using modern API\n            try:\n                captures = TreeSitterQueryCompat.safe_execute_query(\n                    language, query_string, tree.root_node, fallback_result=[]\n                )\n\n                # Process captures\n                try:\n                    processed_captures = self._process_captures(captures, source_code)\n                except Exception as e:\n                    # logger.error(f\"Error processing captures for {query_name}: {e}\")\n                    return self._create_error_result(\n                        f\"Capture processing failed: {str(e)}\", query_name=query_name\n                    )\n\n                self._execution_stats[\"successful_queries\"] += 1\n                execution_time = time.time() - start_time\n                self._execution_stats[\"total_execution_time\"] += execution_time\n\n                return {\n                    \"captures\": processed_captures,\n                    \"query_name\": query_name,\n                    \"query_string\": query_string,\n                    \"execution_time\": execution_time,\n                    \"success\": True,\n                }\n\n            except Exception as e:\n                logger.error(f\"Error executing query '{query_name}': {e}\")\n                return self._create_error_result(\n                    f\"Query execution failed: {str(e)}\", query_name=query_name\n                )\n\n        except Exception as e:\n            logger.error(f\"Unexpected error in execute_query: {e}\")\n            self._execution_stats[\"failed_queries\"] += 1\n            return self._create_error_result(\n                f\"Unexpected error: {str(e)}\", query_name=query_name\n            )"
+  },
+  {
+    "capture_name": "method.name",
+    "node_type": "identifier",
+    "start_line": 41,
+    "end_line": 41,
+    "content": "execute_query"
+  },
+  {
+    "capture_name": "method.params",
+    "node_type": "parameters",
+    "start_line": 41,
+    "end_line": 47,
+    "content": "(\n        self,\n        tree: Tree | None,\n        language: Language | None,\n        query_name: str,\n        source_code: str,\n    )"
+  },
+  {
+    "capture_name": "method.self",
+    "node_type": "identifier",
+    "start_line": 42,
+    "end_line": 42,
+    "content": "self"
+  },
+  {
+    "capture_name": "method.body",
+    "node_type": "block",
+    "start_line": 48,
+    "end_line": 138,
+    "content": "\"\"\"\n        Execute a predefined query by name.\n\n        Args:\n            tree: Tree-sitter tree to query\n            language: Tree-sitter language object\n            query_name: Name of the predefined query\n            source_code: Source code for context\n\n        Returns:\n            Dictionary containing query results and metadata\n        \"\"\"\n        start_time = time.time()\n        self._execution_stats[\"total_queries\"] += 1\n\n        try:\n            # Validate inputs\n            if tree is None:\n                return self._create_error_result(\"Tree is None\", query_name=query_name)\n\n            if language is None:\n                return self._create_error_result(\n                    \"Language is None\", query_name=query_name\n                )\n\n            # Try multiple ways to get language name\n            language_name = getattr(language, \"name\", None)\n            if not language_name:\n                language_name = getattr(language, \"_name\", None)\n            if not language_name:\n                language_name = (\n                    str(language).split(\".\")[-1]\n                    if hasattr(language, \"__class__\")\n                    else None\n                )\n\n            # Ensure we have a valid language name\n            if (\n                not language_name\n                or language_name.strip() == \"\"\n                or language_name == \"None\"\n            ):\n                language_name = \"unknown\"\n            else:\n                language_name = language_name.strip().lower()\n\n            query_string = self._query_loader.get_query(language_name, query_name)\n            if query_string is None:\n                return self._create_error_result(\n                    f\"Query '{query_name}' not found\", query_name=query_name\n                )\n\n            # Create and execute the query using modern API\n            try:\n                captures = TreeSitterQueryCompat.safe_execute_query(\n                    language, query_string, tree.root_node, fallback_result=[]\n                )\n\n                # Process captures\n                try:\n                    processed_captures = self._process_captures(captures, source_code)\n                except Exception as e:\n                    # logger.error(f\"Error processing captures for {query_name}: {e}\")\n                    return self._create_error_result(\n                        f\"Capture processing failed: {str(e)}\", query_name=query_name\n                    )\n\n                self._execution_stats[\"successful_queries\"] += 1\n                execution_time = time.time() - start_time\n                self._execution_stats[\"total_execution_time\"] += execution_time\n\n                return {\n                    \"captures\": processed_captures,\n                    \"query_name\": query_name,\n                    \"query_string\": query_string,\n                    \"execution_time\": execution_time,\n                    \"success\": True,\n                }\n\n            except Exception as e:\n                logger.error(f\"Error executing query '{query_name}': {e}\")\n                return self._create_error_result(\n                    f\"Query execution failed: {str(e)}\", query_name=query_name\n                )\n\n        except Exception as e:\n            logger.error(f\"Unexpected error in execute_query: {e}\")\n            self._execution_stats[\"failed_queries\"] += 1\n            return self._create_error_result(\n                f\"Unexpected error: {str(e)}\", query_name=query_name\n            )"
+  },
+  {
+    "capture_name": "method.definition",
+    "node_type": "function_definition",
+    "start_line": 140,
+    "end_line": 223,
+    "content": "def execute_query_with_language_name(\n        self,\n        tree: Tree | None,\n        language: Language | None,\n        query_name: str,\n        source_code: str,\n        language_name: str,\n    ) -> dict[str, Any]:\n        \"\"\"\n        Execute a predefined query by name with explicit language name.\n\n        Args:\n            tree: Tree-sitter tree to query\n            language: Tree-sitter language object\n            query_name: Name of the predefined query\n            source_code: Source code for context\n            language_name: Name of the programming language\n\n        Returns:\n            Dictionary containing query results and metadata\n        \"\"\"\n        start_time = time.time()\n        self._execution_stats[\"total_queries\"] += 1\n\n        try:\n            # Validate inputs\n            if tree is None:\n                return self._create_error_result(\"Tree is None\", query_name=query_name)\n\n            if language is None:\n                return self._create_error_result(\n                    \"Language is None\", query_name=query_name\n                )\n\n            processed_captures: list[dict[str, Any]] = []\n\n            # Use the provided language name\n            lang_name = language_name.strip().lower() if language_name else \"unknown\"\n\n            query_string = self._query_loader.get_query(lang_name, query_name)\n            if query_string is None:\n                return self._create_error_result(\n                    f\"Query '{query_name}' not found\", query_name=query_name\n                )\n\n            # Create and execute the query using modern API\n            try:\n                captures = TreeSitterQueryCompat.safe_execute_query(\n                    language, query_string, tree.root_node, fallback_result=[]\n                )\n\n                # Process captures\n                try:\n                    processed_captures = self._process_captures(captures, source_code)\n                except Exception as e:\n                    # logger.error(f\"Error processing captures for {query_name}: {e}\")\n                    return self._create_error_result(\n                        f\"Capture processing failed: {str(e)}\", query_name=query_name\n                    )\n\n                self._execution_stats[\"successful_queries\"] += 1\n                execution_time = time.time() - start_time\n                self._execution_stats[\"total_execution_time\"] += execution_time\n\n                return {\n                    \"captures\": processed_captures,\n                    \"query_name\": query_name,\n                    \"query_string\": query_string,\n                    \"execution_time\": execution_time,\n                    \"success\": True,\n                }\n\n            except Exception as e:\n                logger.error(f\"Error executing query '{query_name}': {e}\")\n                return self._create_error_result(\n                    f\"Query execution failed: {str(e)}\", query_name=query_name\n                )\n\n        except Exception as e:\n            logger.error(f\"Unexpected error in execute_query: {e}\")\n            self._execution_stats[\"failed_queries\"] += 1\n            return self._create_error_result(\n                f\"Unexpected error: {str(e)}\", query_name=query_name\n            )"
+  },
+  {
+    "capture_name": "method.name",
+    "node_type": "identifier",
+    "start_line": 140,
+    "end_line": 140,
+    "content": "execute_query_with_language_name"
+  },
+  {
+    "capture_name": "method.params",
+    "node_type": "parameters",
+    "start_line": 140,
+    "end_line": 147,
+    "content": "(\n        self,\n        tree: Tree | None,\n        language: Language | None,\n        query_name: str,\n        source_code: str,\n        language_name: str,\n    )"
+  },
+  {
+    "capture_name": "method.self",
+    "node_type": "identifier",
+    "start_line": 141,
+    "end_line": 141,
+    "content": "self"
+  },
+  {
+    "capture_name": "method.body",
+    "node_type": "block",
+    "start_line": 148,
+    "end_line": 223,
+    "content": "\"\"\"\n        Execute a predefined query by name with explicit language name.\n\n        Args:\n            tree: Tree-sitter tree to query\n            language: Tree-sitter language object\n            query_name: Name of the predefined query\n            source_code: Source code for context\n            language_name: Name of the programming language\n\n        Returns:\n            Dictionary containing query results and metadata\n        \"\"\"\n        start_time = time.time()\n        self._execution_stats[\"total_queries\"] += 1\n\n        try:\n            # Validate inputs\n            if tree is None:\n                return self._create_error_result(\"Tree is None\", query_name=query_name)\n\n            if language is None:\n                return self._create_error_result(\n                    \"Language is None\", query_name=query_name\n                )\n\n            processed_captures: list[dict[str, Any]] = []\n\n            # Use the provided language name\n            lang_name = language_name.strip().lower() if language_name else \"unknown\"\n\n            query_string = self._query_loader.get_query(lang_name, query_name)\n            if query_string is None:\n                return self._create_error_result(\n                    f\"Query '{query_name}' not found\", query_name=query_name\n                )\n\n            # Create and execute the query using modern API\n            try:\n                captures = TreeSitterQueryCompat.safe_execute_query(\n                    language, query_string, tree.root_node, fallback_result=[]\n                )\n\n                # Process captures\n                try:\n                    processed_captures = self._process_captures(captures, source_code)\n                except Exception as e:\n                    # logger.error(f\"Error processing captures for {query_name}: {e}\")\n                    return self._create_error_result(\n                        f\"Capture processing failed: {str(e)}\", query_name=query_name\n                    )\n\n                self._execution_stats[\"successful_queries\"] += 1\n                execution_time = time.time() - start_time\n                self._execution_stats[\"total_execution_time\"] += execution_time\n\n                return {\n                    \"captures\": processed_captures,\n                    \"query_name\": query_name,\n                    \"query_string\": query_string,\n                    \"execution_time\": execution_time,\n                    \"success\": True,\n                }\n\n            except Exception as e:\n                logger.error(f\"Error executing query '{query_name}': {e}\")\n                return self._create_error_result(\n                    f\"Query execution failed: {str(e)}\", query_name=query_name\n                )\n\n        except Exception as e:\n            logger.error(f\"Unexpected error in execute_query: {e}\")\n            self._execution_stats[\"failed_queries\"] += 1\n            return self._create_error_result(\n                f\"Unexpected error: {str(e)}\", query_name=query_name\n            )"
+  },
+  {
+    "capture_name": "method.definition",
+    "node_type": "function_definition",
+    "start_line": 225,
+    "end_line": 292,
+    "content": "def execute_query_string(\n        self,\n        tree: Tree | None,\n        language: Language | None,\n        query_string: str,\n        source_code: str,\n    ) -> dict[str, Any]:\n        \"\"\"\n        Execute a query string directly.\n\n        Args:\n            tree: Tree-sitter tree to query\n            language: Tree-sitter language object\n            query_string: Query string to execute\n            source_code: Source code for context\n\n        Returns:\n            Dictionary containing query results and metadata\n        \"\"\"\n        start_time = time.time()\n        self._execution_stats[\"total_queries\"] += 1\n\n        try:\n            # Validate inputs\n            if tree is None:\n                return self._create_error_result(\"Tree is None\")\n\n            if language is None:\n                return self._create_error_result(\"Language is None\")\n\n            # Create and execute the query using modern API\n            try:\n                # Use query_string directly\n                # Final clean up of unreachable code\n                captures = TreeSitterQueryCompat.safe_execute_query(\n                    language, query_string, tree.root_node, fallback_result=[]\n                )\n\n                # Process captures\n                try:\n                    processed_captures = self._process_captures(captures, source_code)\n                except Exception as e:\n                    # logger.error(f\"Error processing captures: {e}\")\n                    return self._create_error_result(\n                        f\"Capture processing failed: {str(e)}\"\n                    )\n\n                self._execution_stats[\"successful_queries\"] += 1\n                execution_time = time.time() - start_time\n                self._execution_stats[\"total_execution_time\"] += execution_time\n\n                return {\n                    \"captures\": processed_captures,\n                    \"query_string\": query_string,\n                    \"execution_time\": execution_time,\n                    \"success\": True,\n                }\n\n            except Exception as e:\n                logger.error(f\"Error executing query string: {e}\")\n                return self._create_error_result(\n                    f\"Query execution failed: {str(e)}\", query_string=query_string\n                )\n\n        except Exception as e:\n            logger.error(f\"Unexpected error in execute_query_string: {e}\")\n            self._execution_stats[\"failed_queries\"] += 1\n            return self._create_error_result(f\"Unexpected error: {str(e)}\")"
+  },
+  {
+    "capture_name": "method.name",
+    "node_type": "identifier",
+    "start_line": 225,
+    "end_line": 225,
+    "content": "execute_query_string"
+  },
+  {
+    "capture_name": "method.params",
+    "node_type": "parameters",
+    "start_line": 225,
+    "end_line": 231,
+    "content": "(\n        self,\n        tree: Tree | None,\n        language: Language | None,\n        query_string: str,\n        source_code: str,\n    )"
+  },
+  {
+    "capture_name": "method.self",
+    "node_type": "identifier",
+    "start_line": 226,
+    "end_line": 226,
+    "content": "self"
+  },
+  {
+    "capture_name": "method.body",
+    "node_type": "block",
+    "start_line": 232,
+    "end_line": 292,
+    "content": "\"\"\"\n        Execute a query string directly.\n\n        Args:\n            tree: Tree-sitter tree to query\n            language: Tree-sitter language object\n            query_string: Query string to execute\n            source_code: Source code for context\n\n        Returns:\n            Dictionary containing query results and metadata\n        \"\"\"\n        start_time = time.time()\n        self._execution_stats[\"total_queries\"] += 1\n\n        try:\n            # Validate inputs\n            if tree is None:\n                return self._create_error_result(\"Tree is None\")\n\n            if language is None:\n                return self._create_error_result(\"Language is None\")\n\n            # Create and execute the query using modern API\n            try:\n                # Use query_string directly\n                # Final clean up of unreachable code\n                captures = TreeSitterQueryCompat.safe_execute_query(\n                    language, query_string, tree.root_node, fallback_result=[]\n                )\n\n                # Process captures\n                try:\n                    processed_captures = self._process_captures(captures, source_code)\n                except Exception as e:\n                    # logger.error(f\"Error processing captures: {e}\")\n                    return self._create_error_result(\n                        f\"Capture processing failed: {str(e)}\"\n                    )\n\n                self._execution_stats[\"successful_queries\"] += 1\n                execution_time = time.time() - start_time\n                self._execution_stats[\"total_execution_time\"] += execution_time\n\n                return {\n                    \"captures\": processed_captures,\n                    \"query_string\": query_string,\n                    \"execution_time\": execution_time,\n                    \"success\": True,\n                }\n\n            except Exception as e:\n                logger.error(f\"Error executing query string: {e}\")\n                return self._create_error_result(\n                    f\"Query execution failed: {str(e)}\", query_string=query_string\n                )\n\n        except Exception as e:\n            logger.error(f\"Unexpected error in execute_query_string: {e}\")\n            self._execution_stats[\"failed_queries\"] += 1\n            return self._create_error_result(f\"Unexpected error: {str(e)}\")"
+  },
+  {
+    "capture_name": "method.definition",
+    "node_type": "function_definition",
+    "start_line": 294,
+    "end_line": 315,
+    "content": "def execute_multiple_queries(\n        self, tree: Tree, language: Language, query_names: list[str], source_code: str\n    ) -> dict[str, dict[str, Any]]:\n        \"\"\"\n        Execute multiple queries and return combined results.\n\n        Args:\n            tree: Tree-sitter tree to query\n            language: Tree-sitter language object\n            query_names: List of query names to execute\n            source_code: Source code for context\n\n        Returns:\n            Dictionary mapping query names to their results\n        \"\"\"\n        results = {}\n\n        for query_name in query_names:\n            result = self.execute_query(tree, language, query_name, source_code)\n            results[query_name] = result\n\n        return results"
+  },
+  {
+    "capture_name": "method.name",
+    "node_type": "identifier",
+    "start_line": 294,
+    "end_line": 294,
+    "content": "execute_multiple_queries"
+  },
+  {
+    "capture_name": "method.params",
+    "node_type": "parameters",
+    "start_line": 294,
+    "end_line": 296,
+    "content": "(\n        self, tree: Tree, language: Language, query_names: list[str], source_code: str\n    )"
+  },
+  {
+    "capture_name": "method.self",
+    "node_type": "identifier",
+    "start_line": 295,
+    "end_line": 295,
+    "content": "self"
+  },
+  {
+    "capture_name": "method.body",
+    "node_type": "block",
+    "start_line": 297,
+    "end_line": 315,
+    "content": "\"\"\"\n        Execute multiple queries and return combined results.\n\n        Args:\n            tree: Tree-sitter tree to query\n            language: Tree-sitter language object\n            query_names: List of query names to execute\n            source_code: Source code for context\n\n        Returns:\n            Dictionary mapping query names to their results\n        \"\"\"\n        results = {}\n\n        for query_name in query_names:\n            result = self.execute_query(tree, language, query_name, source_code)\n            results[query_name] = result\n\n        return results"
+  },
+  {
+    "capture_name": "method.definition",
+    "node_type": "function_definition",
+    "start_line": 317,
+    "end_line": 363,
+    "content": "def _process_captures(\n        self, captures: Any, source_code: str\n    ) -> list[dict[str, Any]]:\n        \"\"\"\n        Process query captures into standardized format.\n\n        Args:\n            captures: Raw captures from Tree-sitter query\n            source_code: Source code for context\n\n        Returns:\n            List of processed capture dictionaries\n        \"\"\"\n        processed = []\n\n        try:\n            for capture in captures:\n                try:\n                    # Handle tuple format from modern API\n                    if isinstance(capture, tuple) and len(capture) == 2:\n                        node, name = capture\n                    # Handle dictionary format (legacy API compatibility)\n                    elif (\n                        isinstance(capture, dict)\n                        and \"node\" in capture\n                        and \"name\" in capture\n                    ):\n                        node = capture[\"node\"]\n                        name = capture[\"name\"]\n                    else:\n                        logger.warning(f\"Unexpected capture format: {type(capture)}\")\n                        continue\n\n                    if node is None:\n                        continue\n\n                    result_dict = self._create_result_dict(node, name, source_code)\n                    processed.append(result_dict)\n\n                except Exception as e:\n                    logger.error(f\"Error processing capture: {e}\")\n                    continue\n\n        except Exception as e:\n            logger.error(f\"Error in _process_captures: {e}\")\n\n        return processed"
+  },
+  {
+    "capture_name": "method.name",
+    "node_type": "identifier",
+    "start_line": 317,
+    "end_line": 317,
+    "content": "_process_captures"
+  },
+  {
+    "capture_name": "method.params",
+    "node_type": "parameters",
+    "start_line": 317,
+    "end_line": 319,
+    "content": "(\n        self, captures: Any, source_code: str\n    )"
+  },
+  {
+    "capture_name": "method.self",
+    "node_type": "identifier",
+    "start_line": 318,
+    "end_line": 318,
+    "content": "self"
+  },
+  {
+    "capture_name": "method.body",
+    "node_type": "block",
+    "start_line": 320,
+    "end_line": 363,
+    "content": "\"\"\"\n        Process query captures into standardized format.\n\n        Args:\n            captures: Raw captures from Tree-sitter query\n            source_code: Source code for context\n\n        Returns:\n            List of processed capture dictionaries\n        \"\"\"\n        processed = []\n\n        try:\n            for capture in captures:\n                try:\n                    # Handle tuple format from modern API\n                    if isinstance(capture, tuple) and len(capture) == 2:\n                        node, name = capture\n                    # Handle dictionary format (legacy API compatibility)\n                    elif (\n                        isinstance(capture, dict)\n                        and \"node\" in capture\n                        and \"name\" in capture\n                    ):\n                        node = capture[\"node\"]\n                        name = capture[\"name\"]\n                    else:\n                        logger.warning(f\"Unexpected capture format: {type(capture)}\")\n                        continue\n\n                    if node is None:\n                        continue\n\n                    result_dict = self._create_result_dict(node, name, source_code)\n                    processed.append(result_dict)\n\n                except Exception as e:\n                    logger.error(f\"Error processing capture: {e}\")\n                    continue\n\n        except Exception as e:\n            logger.error(f\"Error in _process_captures: {e}\")\n\n        return processed"
+  },
+  {
+    "capture_name": "method.definition",
+    "node_type": "function_definition",
+    "start_line": 365,
+    "end_line": 397,
+    "content": "def _create_result_dict(\n        self, node: Node, capture_name: str, source_code: str\n    ) -> dict[str, Any]:\n        \"\"\"\n        Create a result dictionary from a Tree-sitter node.\n\n        Args:\n            node: Tree-sitter node\n            capture_name: Name of the capture\n            source_code: Source code for context\n\n        Returns:\n            Dictionary containing node information\n        \"\"\"\n        try:\n            # Extract node text using safe utility\n            node_text = get_node_text_safe(node, source_code)\n\n            return {\n                \"capture_name\": capture_name,\n                \"node_type\": getattr(node, \"type\", \"unknown\"),\n                \"start_point\": getattr(node, \"start_point\", (0, 0)),\n                \"end_point\": getattr(node, \"end_point\", (0, 0)),\n                \"start_byte\": getattr(node, \"start_byte\", 0),\n                \"end_byte\": getattr(node, \"end_byte\", 0),\n                \"text\": node_text,\n                \"line_number\": getattr(node, \"start_point\", (0, 0))[0] + 1,\n                \"column_number\": getattr(node, \"start_point\", (0, 0))[1],\n            }\n\n        except Exception as e:\n            logger.error(f\"Error creating result dict: {e}\")\n            return {\"capture_name\": capture_name, \"node_type\": \"error\", \"error\": str(e)}"
+  },
+  {
+    "capture_name": "method.name",
+    "node_type": "identifier",
+    "start_line": 365,
+    "end_line": 365,
+    "content": "_create_result_dict"
+  },
+  {
+    "capture_name": "method.params",
+    "node_type": "parameters",
+    "start_line": 365,
+    "end_line": 367,
+    "content": "(\n        self, node: Node, capture_name: str, source_code: str\n    )"
+  },
+  {
+    "capture_name": "method.self",
+    "node_type": "identifier",
+    "start_line": 366,
+    "end_line": 366,
+    "content": "self"
+  },
+  {
+    "capture_name": "method.body",
+    "node_type": "block",
+    "start_line": 368,
+    "end_line": 397,
+    "content": "\"\"\"\n        Create a result dictionary from a Tree-sitter node.\n\n        Args:\n            node: Tree-sitter node\n            capture_name: Name of the capture\n            source_code: Source code for context\n\n        Returns:\n            Dictionary containing node information\n        \"\"\"\n        try:\n            # Extract node text using safe utility\n            node_text = get_node_text_safe(node, source_code)\n\n            return {\n                \"capture_name\": capture_name,\n                \"node_type\": getattr(node, \"type\", \"unknown\"),\n                \"start_point\": getattr(node, \"start_point\", (0, 0)),\n                \"end_point\": getattr(node, \"end_point\", (0, 0)),\n                \"start_byte\": getattr(node, \"start_byte\", 0),\n                \"end_byte\": getattr(node, \"end_byte\", 0),\n                \"text\": node_text,\n                \"line_number\": getattr(node, \"start_point\", (0, 0))[0] + 1,\n                \"column_number\": getattr(node, \"start_point\", (0, 0))[1],\n            }\n\n        except Exception as e:\n            logger.error(f\"Error creating result dict: {e}\")\n            return {\"capture_name\": capture_name, \"node_type\": \"error\", \"error\": str(e)}"
+  },
+  {
+    "capture_name": "method.definition",
+    "node_type": "function_definition",
+    "start_line": 399,
+    "end_line": 419,
+    "content": "def _create_error_result(\n        self, error_message: str, query_name: str | None = None, **kwargs: Any\n    ) -> dict[str, Any]:\n        \"\"\"\n        Create an error result dictionary.\n\n        Args:\n            error_message: Error message\n            query_name: Optional query name\n            **kwargs: Additional fields to include in the error result\n\n        Returns:\n            Error result dictionary\n        \"\"\"\n        result = {\"captures\": [], \"error\": error_message, \"success\": False}\n\n        if query_name:\n            result[\"query_name\"] = query_name\n\n        result.update(kwargs)\n        return result"
+  },
+  {
+    "capture_name": "method.name",
+    "node_type": "identifier",
+    "start_line": 399,
+    "end_line": 399,
+    "content": "_create_error_result"
+  },
+  {
+    "capture_name": "method.params",
+    "node_type": "parameters",
+    "start_line": 399,
+    "end_line": 401,
+    "content": "(\n        self, error_message: str, query_name: str | None = None, **kwargs: Any\n    )"
+  },
+  {
+    "capture_name": "method.self",
+    "node_type": "identifier",
+    "start_line": 400,
+    "end_line": 400,
+    "content": "self"
+  },
+  {
+    "capture_name": "method.body",
+    "node_type": "block",
+    "start_line": 402,
+    "end_line": 419,
+    "content": "\"\"\"\n        Create an error result dictionary.\n\n        Args:\n            error_message: Error message\n            query_name: Optional query name\n            **kwargs: Additional fields to include in the error result\n\n        Returns:\n            Error result dictionary\n        \"\"\"\n        result = {\"captures\": [], \"error\": error_message, \"success\": False}\n\n        if query_name:\n            result[\"query_name\"] = query_name\n\n        result.update(kwargs)\n        return result"
+  },
+  {
+    "capture_name": "method.definition",
+    "node_type": "function_definition",
+    "start_line": 421,
+    "end_line": 438,
+    "content": "def get_available_queries(self, language: str) -> list[str]:\n        \"\"\"\n        Get available queries for a language.\n\n        Args:\n            language: Programming language name\n\n        Returns:\n            List of available query names\n        \"\"\"\n        try:\n            queries = self._query_loader.get_all_queries_for_language(language)\n            if isinstance(queries, dict):\n                return list(queries.keys())\n            return list(queries) if queries else []  # type: ignore[unreachable]\n        except Exception as e:\n            logger.error(f\"Error getting available queries for {language}: {e}\")\n            return []"
+  },
+  {
+    "capture_name": "method.name",
+    "node_type": "identifier",
+    "start_line": 421,
+    "end_line": 421,
+    "content": "get_available_queries"
+  },
+  {
+    "capture_name": "method.params",
+    "node_type": "parameters",
+    "start_line": 421,
+    "end_line": 421,
+    "content": "(self, language: str)"
+  },
+  {
+    "capture_name": "method.self",
+    "node_type": "identifier",
+    "start_line": 421,
+    "end_line": 421,
+    "content": "self"
+  },
+  {
+    "capture_name": "method.body",
+    "node_type": "block",
+    "start_line": 422,
+    "end_line": 438,
+    "content": "\"\"\"\n        Get available queries for a language.\n\n        Args:\n            language: Programming language name\n\n        Returns:\n            List of available query names\n        \"\"\"\n        try:\n            queries = self._query_loader.get_all_queries_for_language(language)\n            if isinstance(queries, dict):\n                return list(queries.keys())\n            return list(queries) if queries else []  # type: ignore[unreachable]\n        except Exception as e:\n            logger.error(f\"Error getting available queries for {language}: {e}\")\n            return []"
+  },
+  {
+    "capture_name": "method.definition",
+    "node_type": "function_definition",
+    "start_line": 440,
+    "end_line": 455,
+    "content": "def get_query_description(self, language: str, query_name: str) -> str | None:\n        \"\"\"\n        Get description for a specific query.\n\n        Args:\n            language: Programming language name\n            query_name: Name of the query\n\n        Returns:\n            Query description or None if not found\n        \"\"\"\n        try:\n            return self._query_loader.get_query_description(language, query_name)\n        except Exception as e:\n            logger.error(f\"Error getting query description: {e}\")\n            return None"
+  },
+  {
+    "capture_name": "method.name",
+    "node_type": "identifier",
+    "start_line": 440,
+    "end_line": 440,
+    "content": "get_query_description"
+  },
+  {
+    "capture_name": "method.params",
+    "node_type": "parameters",
+    "start_line": 440,
+    "end_line": 440,
+    "content": "(self, language: str, query_name: str)"
+  },
+  {
+    "capture_name": "method.self",
+    "node_type": "identifier",
+    "start_line": 440,
+    "end_line": 440,
+    "content": "self"
+  },
+  {
+    "capture_name": "method.body",
+    "node_type": "block",
+    "start_line": 441,
+    "end_line": 455,
+    "content": "\"\"\"\n        Get description for a specific query.\n\n        Args:\n            language: Programming language name\n            query_name: Name of the query\n\n        Returns:\n            Query description or None if not found\n        \"\"\"\n        try:\n            return self._query_loader.get_query_description(language, query_name)\n        except Exception as e:\n            logger.error(f\"Error getting query description: {e}\")\n            return None"
+  },
+  {
+    "capture_name": "method.definition",
+    "node_type": "function_definition",
+    "start_line": 457,
+    "end_line": 485,
+    "content": "def validate_query(self, language: str, query_string: str) -> bool:\n        \"\"\"\n        Validate a query string for a specific language.\n\n        Args:\n            language: Programming language name\n            query_string: Query string to validate\n\n        Returns:\n            True if query is valid, False otherwise\n        \"\"\"\n        try:\n            # This would require loading the language and attempting to create the query\n            # For now, we'll do basic validation\n            from ..language_loader import get_loader\n\n            loader = get_loader()\n\n            lang_obj = loader.load_language(language)\n            if lang_obj is None:\n                return False\n\n            # Try to create the query\n            lang_obj.query(query_string)\n            return True\n\n        except Exception as e:\n            logger.error(f\"Query validation failed: {e}\")\n            return False"
+  },
+  {
+    "capture_name": "method.name",
+    "node_type": "identifier",
+    "start_line": 457,
+    "end_line": 457,
+    "content": "validate_query"
+  },
+  {
+    "capture_name": "method.params",
+    "node_type": "parameters",
+    "start_line": 457,
+    "end_line": 457,
+    "content": "(self, language: str, query_string: str)"
+  },
+  {
+    "capture_name": "method.self",
+    "node_type": "identifier",
+    "start_line": 457,
+    "end_line": 457,
+    "content": "self"
+  },
+  {
+    "capture_name": "method.body",
+    "node_type": "block",
+    "start_line": 458,
+    "end_line": 485,
+    "content": "\"\"\"\n        Validate a query string for a specific language.\n\n        Args:\n            language: Programming language name\n            query_string: Query string to validate\n\n        Returns:\n            True if query is valid, False otherwise\n        \"\"\"\n        try:\n            # This would require loading the language and attempting to create the query\n            # For now, we'll do basic validation\n            from ..language_loader import get_loader\n\n            loader = get_loader()\n\n            lang_obj = loader.load_language(language)\n            if lang_obj is None:\n                return False\n\n            # Try to create the query\n            lang_obj.query(query_string)\n            return True\n\n        except Exception as e:\n            logger.error(f\"Query validation failed: {e}\")\n            return False"
+  },
+  {
+    "capture_name": "method.definition",
+    "node_type": "function_definition",
+    "start_line": 487,
+    "end_line": 505,
+    "content": "def get_query_statistics(self) -> dict[str, Any]:\n        \"\"\"\n        Get query execution statistics.\n\n        Returns:\n            Dictionary containing execution statistics\n        \"\"\"\n        stats = self._execution_stats.copy()\n\n        if stats[\"total_queries\"] > 0:\n            stats[\"success_rate\"] = stats[\"successful_queries\"] / stats[\"total_queries\"]\n            stats[\"average_execution_time\"] = (\n                stats[\"total_execution_time\"] / stats[\"total_queries\"]\n            )\n        else:\n            stats[\"success_rate\"] = 0.0\n            stats[\"average_execution_time\"] = 0.0\n\n        return stats"
+  },
+  {
+    "capture_name": "method.name",
+    "node_type": "identifier",
+    "start_line": 487,
+    "end_line": 487,
+    "content": "get_query_statistics"
+  },
+  {
+    "capture_name": "method.params",
+    "node_type": "parameters",
+    "start_line": 487,
+    "end_line": 487,
+    "content": "(self)"
+  },
+  {
+    "capture_name": "method.self",
+    "node_type": "identifier",
+    "start_line": 487,
+    "end_line": 487,
+    "content": "self"
+  },
+  {
+    "capture_name": "method.body",
+    "node_type": "block",
+    "start_line": 488,
+    "end_line": 505,
+    "content": "\"\"\"\n        Get query execution statistics.\n\n        Returns:\n            Dictionary containing execution statistics\n        \"\"\"\n        stats = self._execution_stats.copy()\n\n        if stats[\"total_queries\"] > 0:\n            stats[\"success_rate\"] = stats[\"successful_queries\"] / stats[\"total_queries\"]\n            stats[\"average_execution_time\"] = (\n                stats[\"total_execution_time\"] / stats[\"total_queries\"]\n            )\n        else:\n            stats[\"success_rate\"] = 0.0\n            stats[\"average_execution_time\"] = 0.0\n\n        return stats"
+  },
+  {
+    "capture_name": "method.definition",
+    "node_type": "function_definition",
+    "start_line": 507,
+    "end_line": 514,
+    "content": "def reset_statistics(self) -> None:\n        \"\"\"Reset query execution statistics.\"\"\"\n        self._execution_stats = {\n            \"total_queries\": 0,\n            \"successful_queries\": 0,\n            \"failed_queries\": 0,\n            \"total_execution_time\": 0.0,\n        }"
+  },
+  {
+    "capture_name": "method.name",
+    "node_type": "identifier",
+    "start_line": 507,
+    "end_line": 507,
+    "content": "reset_statistics"
+  },
+  {
+    "capture_name": "method.params",
+    "node_type": "parameters",
+    "start_line": 507,
+    "end_line": 507,
+    "content": "(self)"
+  },
+  {
+    "capture_name": "method.self",
+    "node_type": "identifier",
+    "start_line": 507,
+    "end_line": 507,
+    "content": "self"
+  },
+  {
+    "capture_name": "method.body",
+    "node_type": "block",
+    "start_line": 508,
+    "end_line": 514,
+    "content": "\"\"\"Reset query execution statistics.\"\"\"\n        self._execution_stats = {\n            \"total_queries\": 0,\n            \"successful_queries\": 0,\n            \"failed_queries\": 0,\n            \"total_execution_time\": 0.0,\n        }"
+  }
+]

@@ -2411,3 +2411,15 @@ class SQLPlugin(LanguagePlugin):
                 success=False,
                 error_message=str(e),
             )
+
+    def get_queries(self) -> dict[str, str]:
+        return {}
+
+    def execute_query_strategy(
+        self, query_key: str | None, language: str
+    ) -> str | None:
+        queries = self.get_queries()
+        return queries.get(query_key) if query_key else None
+
+    def get_element_categories(self) -> dict[str, list[str]]:
+        return {}

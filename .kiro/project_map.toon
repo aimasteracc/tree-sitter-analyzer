@@ -1,0 +1,1907 @@
+
+FILE: tree_sitter_analyzer/core/__init__.py
+file_path: tree_sitter_analyzer/core/__init__.py
+language: python
+package: null
+classes: []
+methods: []
+fields: []
+imports:
+  [3]{name,is_static,is_wildcard,statement,line_range(a,b)}:
+    UnifiedAnalysisEngine as AnalysisEngine,false,false,,(11,11)
+    "Parser, ParseResult",false,false,,(12,12)
+    QueryExecutor,false,false,,(13,13)
+statistics:
+  class_count: 0
+  method_count: 0
+  field_count: 0
+  import_count: 3
+  total_lines: 15---
+FILE: tree_sitter_analyzer/core/analysis_engine.py
+file_path: tree_sitter_analyzer/core/analysis_engine.py
+language: python
+package: null
+classes:
+  [3]{name,visibility,line_range(a,b)}:
+    UnsupportedLanguageError,public,(23,26)
+    UnifiedAnalysisEngine,public,(29,514)
+    MockLanguagePlugin,public,(518,548)
+methods:
+  [31]{name,visibility,line_range(a,b)}:
+    __new__,public,(39,48)
+    __init__,public,(50,67)
+    _ensure_initialized,public,(69,88)
+    register_plugin,public,(90,93)
+    clear_cache,public,(95,99)
+    _load_plugins,public,(101,115)
+    analyze,public,(117,161)
+    _validate_path,public,(163,170)
+    _get_validated_language,public,(172,179)
+    analyze_file,public,(181,190)
+    _ensure_request,public,(192,239)
+    analyze_file_async,public,(241,248)
+    analyze_code,public,(250,292)
+    analyze_code_sync,public,(294,344)
+    run_in_new_loop,public,(327,336)
+    _run_queries,public,(346,382)
+    _generate_cache_key,public,(384,398)
+    _detect_language,public,(400,406)
+    _create_empty_result,public,(408,421)
+    cleanup,public,(423,431)
+    analyze_sync,public,(433,447)
+    get_supported_languages,public,(449,452)
+    get_available_queries,public,(454,457)
+    get_cache_stats,public,(459,462)
+    measure_operation,public,(500,503)
+    __init__,public,(521,522)
+    get_language_name,public,(524,525)
+    get_file_extensions,public,(527,528)
+    create_extractor,public,(530,531)
+    analyze_file,public,(533,548)
+    get_analysis_engine,public,(551,553)
+fields:
+  [2]{name,type,line_range(a,b)}:
+    _instances,,(36,36)
+    _lock,,(37,37)
+imports:
+  [27]{name,is_static,is_wildcard,statement,line_range(a,b)}:
+    asyncio,false,false,,(9,9)
+    hashlib,false,false,,(10,10)
+    os,false,false,,(11,11)
+    threading,false,false,,(12,12)
+    "TYPE_CHECKING, Any",false,false,,(13,13)
+    AnalysisResult,false,false,,(15,15)
+    "PerformanceContext, PerformanceMonitor",false,false,,(16,16)
+    AnalysisRequest,false,false,,(17,17)
+    LanguagePlugin,false,false,,(20,20)
+    LanguageDetector,false,false,,(75,75)
+    PluginManager,false,false,,(76,76)
+    SecurityValidator,false,false,,(77,77)
+    CacheService,false,false,,(78,78)
+    Parser,false,false,,(79,79)
+    QueryExecutor,false,false,,(80,80)
+    "log_debug, log_error",false,false,,(103,103)
+    PluginManager,false,false,,(107,107)
+    "log_debug, log_info",false,false,,(120,120)
+    log_error,false,false,,(165,165)
+    tempfile,false,false,,(258,258)
+    AnalysisRequest,false,false,,(260,260)
+    eadPoolExecutor(max_worke,false,false,,(325,325)
+    "ery_with_language_name(\n     ",false,false,,(354,354)
+    " def analyze_sync(self, request: An",false,false,,(412,412)
+    "adPoolExecutor() as pool:\n   ",false,false,,(429,429)
+    turn self._query_executor,false,false,,(443,443)
+    asyncio,false,false,,(534,534)
+statistics:
+  class_count: 3
+  method_count: 31
+  field_count: 2
+  import_count: 27
+  total_lines: 553---
+FILE: tree_sitter_analyzer/core/cache_service.py
+file_path: tree_sitter_analyzer/core/cache_service.py
+language: python
+package: null
+classes:
+  [1]{name,visibility,line_range(a,b)}:
+    CacheService,public,(62,297)
+methods:
+  [9]{name,visibility,line_range(a,b)}:
+    __init__,public,(75,114)
+    get,public,(116,147)
+    set,public,(149,187)
+    clear,public,(189,204)
+    size,public,(206,214)
+    get_stats,public,(216,238)
+    generate_cache_key,public,(240,261)
+    invalidate_pattern,public,(263,286)
+    __del__,public,(288,297)
+fields: []
+imports:
+  [10]{name,is_static,is_wildcard,statement,line_range(a,b)}:
+    "ount: アクセス回数",false,false,,(20,20)
+    "\"\"\"\n\n    value",false,false,,(21,21)
+    " Any\n    created_at: datetime\n   ",false,false,,(22,22)
+    "expires_at: datetime | None = None\n    a",false,false,,(23,23)
+    "cess_count: int = 0\n\n ",false,false,,(24,24)
+    " def is_expired(self) -> bool:\n",false,false,,(26,26)
+    "      \"\"\"\n        有効期限チェック\n\n        Ret",false,false,,(28,28)
+    total_re,false,false,,(166,166)
+    "]",false,false,,(201,201)
+    "#!/usr/bin/env python3\n\"\"\"\nUnified Cache Service - Common Cache System for CLI and MCP\n\nこのモジュールはメモリ効率の良いキャッシュシステムを提供します。\nシンプルなLRUキャッシュを使用し、TTL（有効期限）をサポートします。\n\n設計ノート:\n以前の3階層キャッシュ（L1/L2/L3）は設計上の問題がありました：\n- set()で同じエントリが全階層に保存されていた\n- 「昇格」ロジックは意味がなかった（データは最初から全階層に存在）\n- メモリが無駄に使用されていた\n\nこの実装では、シンプルな単層LRUキャッシュを使用します：\n- メモリ効率が良い\n- 動作が予測可能\n- APIは後方互換性を維持\n\"\"\"\n\n hashlib\n threading\nfrom dataclasses  dataclass\nfrom datetime  datetime, timedelta\nfrom typing  Any\n\nfrom cachetools  LRUCache\n\nfrom ..utils  log_debug, log_info\n\n\n@dataclass(frozen=True)\nclass CacheEntry:\n    \"\"\"\n    キャッシュエントリ\n\n    キャッシュされた値とメタデータを保持するデータクラス。\n\n    Attributes:\n        value: キャッシュされた値\n        created_at: 作成タイムスタンプ\n        expires_at: 有効期限\n        access_count: アクセス回数\n    \"\"\"\n\n    value: Any\n    created_at: datetime\n    expires_at: datetime | None = None\n    access_count: int = 0\n\n    def is_expired(self) -> bool:\n        \"\"\"\n        有効期限チェック\n\n        Returns:\n            bool: 期限切れの場合True\n        \"\"\"\n        if self.expires_at is None:\n            return False\n        return datetime.now() > self.expires_at\n\n\nclass CacheService:\n    \"\"\"\n    統合キャッシュサービス\n\n    シンプルなLRUキャッシュを提供し、CLI/MCP間でキャッシュを共有します。\n    TTL（有効期限）をサポートし、メモリ効率を最適化しています。\n\n    Attributes:\n        _cache: LRUキャッシュ\n        _lock: スレッドセーフのためのロック\n        _stats: キャッシュ統計\n    \"\"\"\n\n    def __init__(\n        self,\n        l1_maxsize: int = 100,\n        l2_maxsize: int = 1000,\n        l3_maxsize: int = 10000,\n        ttl_seconds: int = 3600,\n    ) -> None:\n        \"\"\"\n        初期化\n\n        Args:\n            l1_maxsize: 後方互換性のため保持（無視）\n            l2_maxsize: 後方互換性のため保持（無視）\n            l3_maxsize: キャッシュの最大サイズ\n            ttl_seconds: デフォルトTTL（秒）\n\n        注意: 単層キャッシュのため、l3_maxsize が実際のキャッシュサイズになります。\n        \"\"\"\n        # 単一のLRUキャッシュを使用\n        self._cache: LRUCache[str, CacheEntry] = LRUCache(maxsize=l3_maxsize)\n\n        # スレッドセーフのためのロック\n        self._lock = threading.RLock()\n\n        # キャッシュ統計（後方互換性のため階層別統計を維持）\n        self._stats = {\n            \"hits\": 0,\n            \"misses\": 0,\n            \"l1_hits\": 0,  # 後方互換性のため保持\n            \"l2_hits\": 0,  # 後方互換性のため保持\n            \"l3_hits\": 0,  # 後方互換性のため保持\n            \"sets\": 0,\n            \"evictions\": 0,\n        }\n\n        # デフォルト設定\n        self._default_ttl = ttl_seconds\n        self._maxsize = l3_maxsize\n\n        log_debug(f\"CacheService initialized: maxsize={l3_maxsize}, TTL={ttl_seconds}s\")\n\n    async def get(self, key: str) -> Any | None:\n        \"\"\"\n        キャッシュから値を取得\n\n        Args:\n            key: キャッシュキー\n\n        Returns:\n            キャッシュされた値、見つからない場合はNone\n\n        Raises:\n            ValueError: 無効なキーの場合\n        \"\"\"\n        if not key or key is None:\n            raise ValueError(\"Cache key cannot be empty or None\")\n\n        with self._lock:\n            entry = self._cache.get(key)\n            if entry and not entry.is_expired():\n                self._stats[\"hits\"] += 1\n                self._stats[\"l1_hits\"] += 1  # 後方互換性\n                log_debug(f\"Cache hit: {key}\")\n                return entry.value\n\n            # 期限切れエントリがある場合は削除\n            if entry and entry.is_expired():\n                del self._cache[key]\n\n            # キャッシュミス\n            self._stats[\"misses\"] += 1\n            log_debug(f\"Cache miss: {key}\")\n            return None\n\n    async def set(self, key: str, value: Any, ttl_seconds: int | None = None) -> None:\n        \"\"\"\n        キャッシュに値を設定\n\n        Args:\n            key: キャッシュキー\n            value: キャッシュする値\n            ttl_seconds: TTL（秒）、Noneの場合はデフォルト値\n\n        Raises:\n            ValueError: 無効なキーの場合\n            TypeError: シリアライズできない値の場合\n        \"\"\"\n        if not key or key is None:\n            raise ValueError(\"Cache key cannot be empty or None\")\n\n        # シリアライズ可能性チェック\n         pickle  # nosec B403\n\n        try:\n            pickle.dumps(value)\n        except Exception as e:\n            raise TypeError(f\"Value is not serializable: {e}\") from e\n\n        ttl = ttl_seconds or self._default_ttl\n        expires_at = datetime.now() + timedelta(seconds=ttl)\n\n        entry = CacheEntry(\n            value=value,\n            created_at=datetime.now(),\n            expires_at=expires_at,\n            access_count=0,\n        )\n\n        with self._lock:\n            # キャッシュに設定\n            self._cache[key] = entry\n            self._stats[\"sets\"] += 1\n            log_debug(f\"Cache set: {key} (TTL={ttl}s)\")\n\n    def clear(self) -> None:\n        \"\"\"\n        全キャッシュをクリア\n        \"\"\"\n        with self._lock:\n            self._cache.clear()\n\n            # 統計をリセット\n            for stat_key in self._stats:\n                self._stats[stat_key] = 0\n\n            # Only log if not in quiet mode\n             logging\n\n            if logging.getLogger(\"tree_sitter_analyzer\").level <= logging.INFO:\n                log_info(\"Cache cleared\")\n\n    def size(self) -> int:\n        \"\"\"\n        キャッシュサイズを取得\n\n        Returns:\n            キャッシュ内のアイテム数\n        \"\"\"\n        with self._lock:\n            return len(self._cache)\n\n    def get_stats(self) -> dict[str, Any]:\n        \"\"\"\n        キャッシュ統計を取得\n\n        Returns:\n            統計情報辞書\n        \"\"\"\n        with self._lock:\n            total_requests = self._stats[\"hits\"] + self._stats[\"misses\"]\n            hit_rate = (\n                self._stats[\"hits\"] / total_requests if total_requests > 0 else 0.0\n            )\n\n            cache_size = len(self._cache)\n            return {\n                **self._stats,\n                \"hit_rate\": hit_rate,\n                \"total_requests\": total_requests,\n                # 後方互換性のため、3つのサイズを報告（全て同じ値）\n                \"l1_size\": cache_size,\n                \"l2_size\": cache_size,\n                \"l3_size\": cache_size,\n            }\n\n    def generate_cache_key(\n        self, file_path: str, language: str, options: dict[str, Any]\n    ) -> str:\n        \"\"\"\n        キャッシュキーを生成\n\n        Args:\n            file_path: ファイルパス\n            language: プログラミング言語\n            options: 解析オプション\n\n        Returns:\n            ハッシュ化されたキャッシュキー\n        \"\"\"\n        key_components = [\n            file_path,\n            language,\n            str(sorted(options.items())),\n        ]\n\n        key_string = \":\".join(key_components)\n        return hashlib.sha256(key_string.encode(\"utf-8\")).hexdigest()\n\n    async def invalidate_pattern(self, pattern: str) -> int:\n        \"\"\"\n        パターンに一致するキーを無効化\n\n        Args:\n            pattern: 無効化するキーのパターン\n\n        Returns:\n            無効化されたキー数\n        \"\"\"\n        invalidated_count = 0\n\n        with self._lock:\n            keys_to_remove = [key for key in self._cache.keys() if pattern in key]\n\n            for key in keys_to_remove:\n                if key in self._cache:\n                    del self._cache[key]\n                    invalidated_count += 1\n\n        log_info(\n            f\"Invalidated {invalidated_count} cache entries matching pattern: {pattern}\"\n        )\n        return invalidated_count\n\n    def __del__(self) -> None:\n        \"\"\"デストラクタ - リソースクリーンアップ\"\"\"\n        try:\n             sys\n\n            if sys.meta_path is not None:\n                with self._lock:\n                    self._cache.clear()\n        except Exception:\n            pass  # nosec",false,false,,(291,291)
+statistics:
+  class_count: 1
+  method_count: 9
+  field_count: 0
+  import_count: 10
+  total_lines: 297---
+FILE: tree_sitter_analyzer/core/engine_manager.py
+file_path: tree_sitter_analyzer/core/engine_manager.py
+language: python
+package: null
+classes:
+  [1]{name,visibility,line_range(a,b)}:
+    EngineManager,public,(17,55)
+methods: []
+fields: []
+imports:
+  [4]{name,is_static,is_wildcard,statement,line_range(a,b)}:
+    "ger:\n    \"\"\"",false,false,,(10,10)
+    Manages UnifiedAnalysisEngine si,false,false,,(11,11)
+    このクラスは UnifiedAnalysisEngine の __new__ パターンに委譲します。,false,false,,(14,14)
+    "threading\nfrom typing",false,false,,(50,50)
+statistics:
+  class_count: 1
+  method_count: 0
+  field_count: 0
+  import_count: 4
+  total_lines: 55---
+FILE: tree_sitter_analyzer/core/parser.py
+file_path: tree_sitter_analyzer/core/parser.py
+language: python
+package: null
+classes:
+  [2]{name,visibility,line_range(a,b)}:
+    ParseResult,public,(25,43)
+    Parser,public,(46,306)
+methods:
+  [8]{name,visibility,line_range(a,b)}:
+    __init__,public,(57,61)
+    parse_file,public,(63,151)
+    parse_code,public,(153,214)
+    is_language_supported,public,(216,230)
+    get_supported_languages,public,(232,243)
+    validate_ast,public,(245,264)
+    get_parse_errors,public,(266,306)
+    find_error_nodes,public,(280,298)
+fields:
+  [1]{name,type,line_range(a,b)}:
+    _cache,,(55,55)
+imports:
+  [9]{name,is_static,is_wildcard,statement,line_range(a,b)}:
+    hashlib,false,false,,(9,9)
+    logging,false,false,,(10,10)
+    os,false,false,,(11,11)
+    Path,false,false,,(12,12)
+    "Any, NamedTuple",false,false,,(13,13)
+    LRUCache,false,false,,(15,15)
+    Tree,false,false,,(16,16)
+    EncodingManager,false,false,,(18,18)
+    get_loader,false,false,,(19,19)
+statistics:
+  class_count: 2
+  method_count: 8
+  field_count: 1
+  import_count: 9
+  total_lines: 312---
+FILE: tree_sitter_analyzer/core/performance.py
+file_path: tree_sitter_analyzer/core/performance.py
+language: python
+package: null
+classes:
+  [2]{name,visibility,line_range(a,b)}:
+    PerformanceMonitor,public,(12,82)
+    PerformanceContext,public,(85,101)
+methods:
+  [13]{name,visibility,line_range(a,b)}:
+    __init__,public,(15,19)
+    measure_operation,public,(21,23)
+    get_last_duration,public,(25,27)
+    _set_duration,public,(29,31)
+    start_monitoring,public,(33,36)
+    stop_monitoring,public,(38,41)
+    get_operation_stats,public,(43,45)
+    get_performance_summary,public,(47,54)
+    record_operation,public,(56,75)
+    clear_metrics,public,(77,82)
+    __init__,public,(88,91)
+    __enter__,public,(93,95)
+    __exit__,public,(97,101)
+fields: []
+imports:
+  [3]{name,is_static,is_wildcard,statement,line_range(a,b)}:
+    time,false,false,,(6,6)
+    Any,false,false,,(7,7)
+    "log_info, log_performance",false,false,,(9,9)
+statistics:
+  class_count: 2
+  method_count: 13
+  field_count: 0
+  import_count: 3
+  total_lines: 101---
+FILE: tree_sitter_analyzer/core/query.py
+file_path: tree_sitter_analyzer/core/query.py
+language: python
+package: null
+classes:
+  [1]{name,visibility,line_range(a,b)}:
+    QueryExecutor,public,(22,469)
+methods:
+  [17]{name,visibility,line_range(a,b)}:
+    __init__,public,(30,39)
+    execute_query,public,(41,104)
+    _normalize_language_name,public,(106,116)
+    execute_query_with_language_name,public,(118,178)
+    execute_query_string,public,(180,247)
+    execute_multiple_queries,public,(249,270)
+    _process_captures,public,(272,318)
+    _create_result_dict,public,(320,352)
+    _create_error_result,public,(354,374)
+    get_available_queries,public,(376,393)
+    get_query_description,public,(395,410)
+    validate_query,public,(412,440)
+    get_query_statistics,public,(442,460)
+    reset_statistics,public,(462,469)
+    get_available_queries,public,(473,496)
+    get_query_description,public,(499,517)
+    get_all_queries_for_language,public,(527,549)
+fields: []
+imports:
+  [10]{name,is_static,is_wildcard,statement,line_range(a,b)}:
+    logging,false,false,,(9,9)
+    time,false,false,,(10,10)
+    Any,false,false,,(11,11)
+    "Language, Node, Tree",false,false,,(13,13)
+    get_query_loader,false,false,,(15,15)
+    "TreeSitterQueryCompat, get_node_text_safe",false,false,,(16,16)
+    get_loader,false,false,,(426,426)
+    get_query_loader,false,false,,(511,511)
+    warnings,false,false,,(541,541)
+    get_loader,false,false,,(554,554)
+statistics:
+  class_count: 1
+  method_count: 17
+  field_count: 0
+  import_count: 10
+  total_lines: 558---
+FILE: tree_sitter_analyzer/core/query_filter.py
+file_path: tree_sitter_analyzer/core/query_filter.py
+language: python
+package: null
+classes:
+  [1]{name,visibility,line_range(a,b)}:
+    QueryFilter,public,(12,200)
+methods:
+  [11]{name,visibility,line_range(a,b)}:
+    __init__,public,(15,16)
+    filter_results,public,(18,46)
+    _parse_filter_expression,public,(48,69)
+    _matches_filters,public,(71,76)
+    _matches_single_filter,public,(78,98)
+    _match_name,public,(100,114)
+    _match_params,public,(116,127)
+    _match_modifier,public,(129,136)
+    _extract_method_name,public,(138,152)
+    _count_parameters,public,(154,168)
+    get_filter_help,public,(170,200)
+fields: []
+imports:
+  [2]{name,is_static,is_wildcard,statement,line_range(a,b)}:
+    re,false,false,,(8,8)
+    Any,false,false,,(9,9)
+statistics:
+  class_count: 1
+  method_count: 11
+  field_count: 0
+  import_count: 2
+  total_lines: 200---
+FILE: tree_sitter_analyzer/core/query_service.py
+file_path: tree_sitter_analyzer/core/query_service.py
+language: python
+package: null
+classes:
+  [2]{name,visibility,line_range(a,b)}:
+    QueryService,public,(23,415)
+    MockNode,public,(294,305)
+methods:
+  [15]{name,visibility,line_range(a,b)}:
+    __init__,public,(26,32)
+    execute_query,public,(34,140)
+    _create_result_dict,public,(142,167)
+    get_available_queries,public,(169,179)
+    get_query_description,public,(181,195)
+    _execute_plugin_query,public,(197,229)
+    _try_plugin_query_strategy,public,(231,257)
+    _convert_elements_to_captures,public,(259,280)
+    _create_mock_node,public,(282,307)
+    __init__,public,(295,305)
+    _try_plugin_element_categories,public,(309,348)
+    walk_tree,public,(334,341)
+    _fallback_query_execution,public,(350,400)
+    walk_tree_basic,public,(366,397)
+    _read_file_async,public,(402,415)
+fields: []
+imports:
+  [9]{name,is_static,is_wildcard,statement,line_range(a,b)}:
+    asyncio,false,false,,(9,9)
+    logging,false,false,,(10,10)
+    Any,false,false,,(11,11)
+    read_file_safe,false,false,,(13,13)
+    PluginManager,false,false,,(14,14)
+    query_loader,false,false,,(15,15)
+    "TreeSitterQueryCompat, get_node_text_safe",false,false,,(16,16)
+    Parser,false,false,,(17,17)
+    QueryFilter,false,false,,(18,18)
+statistics:
+  class_count: 2
+  method_count: 15
+  field_count: 0
+  import_count: 9
+  total_lines: 415---
+FILE: tree_sitter_analyzer/core/request.py
+file_path: tree_sitter_analyzer/core/request.py
+language: python
+package: null
+classes: []
+methods: []
+fields:
+  [7]{name,type,line_range(a,b)}:
+    language,,(27,27)
+    queries,,(28,28)
+    include_elements,,(29,29)
+    include_queries,,(30,30)
+    include_complexity,,(31,31)
+    include_details,,(32,32)
+    format_type,,(33,33)
+imports:
+  [2]{name,is_static,is_wildcard,statement,line_range(a,b)}:
+    dataclass,false,false,,(6,6)
+    Any,false,false,,(7,7)
+statistics:
+  class_count: 0
+  method_count: 0
+  field_count: 7
+  import_count: 2
+  total_lines: 52---
+FILE: tree_sitter_analyzer/languages/__init__.py
+file_path: tree_sitter_analyzer/languages/__init__.py
+language: python
+package: null
+classes: []
+methods: []
+fields: []
+imports: []
+statistics:
+  class_count: 0
+  method_count: 0
+  field_count: 0
+  import_count: 0
+  total_lines: 10---
+FILE: tree_sitter_analyzer/languages/c_plugin.py
+file_path: tree_sitter_analyzer/languages/c_plugin.py
+language: python
+package: null
+classes:
+  [2]{name,visibility,line_range(a,b)}:
+    CElementExtractor,public,(25,706)
+    CPlugin,public,(709,877)
+methods:
+  [32]{name,visibility,line_range(a,b)}:
+    __init__,public,(28,36)
+    _get_function_handlers,public,(38,43)
+    _get_class_handlers,public,(45,51)
+    extract_variables,public,(56,76)
+    extract_imports,public,(78,100)
+    _reset_caches,public,(102,106)
+    _get_container_node_types,public,(108,118)
+    _extract_function_optimized,public,(120,152)
+    _parse_function_signature,public,(154,210)
+    find_function_declarator,public,(164,175)
+    _extract_parameters,public,(212,223)
+    _extract_struct_optimized,public,(225,271)
+    _extract_union_optimized,public,(273,287)
+    _extract_enum_optimized,public,(289,331)
+    _extract_field_optimized,public,(333,417)
+    _extract_variable_declaration,public,(419,494)
+    _extract_include_info,public,(496,529)
+    _extract_includes_fallback,public,(531,571)
+    _extract_macro_definition,public,(573,604)
+    _extract_macro_function,public,(606,641)
+    _calculate_complexity_optimized,public,(643,670)
+    count_decisions,public,(657,667)
+    _extract_docstring_for_node,public,(672,675)
+    _extract_comment_for_line,public,(677,706)
+    __init__,public,(712,718)
+    get_language_name,public,(720,722)
+    get_file_extensions,public,(724,726)
+    create_extractor,public,(728,730)
+    analyze_file,public,(732,809)
+    _count_tree_nodes,public,(811,820)
+    get_tree_sitter_language,public,(822,850)
+    extract_elements,public,(852,877)
+fields: []
+imports:
+  [14]{name,is_static,is_wildcard,statement,line_range(a,b)}:
+    re,false,false,,(10,10)
+    "TYPE_CHECKING, Any",false,false,,(11,11)
+    tree_sitter,false,false,,(14,14)
+    AnalysisRequest,false,false,,(16,16)
+    AnalysisResult,false,false,,(17,17)
+    "Class, Function, Import, Variable",false,false,,(19,19)
+    "ElementExtractor, LanguagePlugin",false,false,,(20,20)
+    ProgrammingLanguageExtractor,false,false,,(21,21)
+    "log_debug, log_error",false,false,,(22,22)
+    AnalysisResult,false,false,,(736,736)
+    read_file_safe,false,false,,(739,739)
+    tree_sitter,false,false,,(753,753)
+    tree_sitter,false,false,,(828,828)
+    tree_sitter_c,false,false,,(829,829)
+statistics:
+  class_count: 2
+  method_count: 32
+  field_count: 0
+  import_count: 14
+  total_lines: 877---
+FILE: tree_sitter_analyzer/languages/cpp_plugin.py
+file_path: tree_sitter_analyzer/languages/cpp_plugin.py
+language: python
+package: null
+classes:
+  [2]{name,visibility,line_range(a,b)}:
+    CppElementExtractor,public,(25,1002)
+    CppPlugin,public,(1005,1177)
+methods:
+  [40]{name,visibility,line_range(a,b)}:
+    __init__,public,(28,37)
+    _get_function_handlers,public,(39,46)
+    _get_class_handlers,public,(48,55)
+    extract_variables,public,(57,76)
+    extract_imports,public,(78,132)
+    extract_packages,public,(134,154)
+    find_namespaces,public,(142,149)
+    _reset_caches,public,(156,161)
+    _get_container_node_types,public,(163,175)
+    _extract_function_optimized,public,(177,217)
+    _extract_function_from_field_declaration,public,(219,316)
+    _extract_function_declaration,public,(318,358)
+    _extract_template_function,public,(360,379)
+    _parse_function_signature,public,(381,458)
+    _extract_parameters,public,(460,474)
+    _extract_class_optimized,public,(476,518)
+    _extract_struct_optimized,public,(520,529)
+    _extract_union_optimized,public,(531,540)
+    _extract_template_class,public,(542,571)
+    _extract_base_classes,public,(573,585)
+    _extract_field_optimized,public,(587,657)
+    _extract_variable_declaration,public,(659,727)
+    _extract_include_info,public,(729,762)
+    _extract_includes_fallback,public,(764,804)
+    _extract_namespace_info,public,(806,832)
+    _is_global_scope,public,(834,853)
+    _get_access_specifier,public,(855,897)
+    _determine_visibility,public,(899,941)
+    _calculate_complexity_optimized,public,(943,972)
+    count_decisions,public,(959,969)
+    _extract_docstring_for_node,public,(974,977)
+    _extract_comment_for_line,public,(979,1002)
+    __init__,public,(1008,1014)
+    get_language_name,public,(1016,1018)
+    get_file_extensions,public,(1020,1022)
+    create_extractor,public,(1024,1026)
+    analyze_file,public,(1028,1106)
+    _count_tree_nodes,public,(1108,1117)
+    get_tree_sitter_language,public,(1119,1147)
+    extract_elements,public,(1149,1177)
+fields: []
+imports:
+  [16]{name,is_static,is_wildcard,statement,line_range(a,b)}:
+    re,false,false,,(10,10)
+    "TYPE_CHECKING, Any",false,false,,(11,11)
+    tree_sitter,false,false,,(14,14)
+    AnalysisRequest,false,false,,(16,16)
+    AnalysisResult,false,false,,(17,17)
+    "Class, Function, Import, Variable",false,false,,(19,19)
+    "ElementExtractor, LanguagePlugin",false,false,,(20,20)
+    ProgrammingLanguageExtractor,false,false,,(21,21)
+    "log_debug, log_error",false,false,,(22,22)
+    Package,false,false,,(136,136)
+    Package,false,false,,(808,808)
+    AnalysisResult,false,false,,(1032,1032)
+    read_file_safe,false,false,,(1035,1035)
+    tree_sitter,false,false,,(1049,1049)
+    tree_sitter,false,false,,(1125,1125)
+    tree_sitter_cpp,false,false,,(1126,1126)
+statistics:
+  class_count: 2
+  method_count: 40
+  field_count: 0
+  import_count: 16
+  total_lines: 1177---
+FILE: tree_sitter_analyzer/languages/csharp_plugin.py
+file_path: tree_sitter_analyzer/languages/csharp_plugin.py
+language: python
+package: null
+classes:
+  [2]{name,visibility,line_range(a,b)}:
+    CSharpElementExtractor,public,(31,862)
+    CSharpPlugin,public,(865,1081)
+methods:
+  [33]{name,visibility,line_range(a,b)}:
+    __init__,public,(50,62)
+    _reset_caches,public,(64,68)
+    _get_container_node_types,public,(70,90)
+    _extract_namespace,public,(92,113)
+    _extract_modifiers,public,(115,130)
+    _determine_visibility,public,(132,151)
+    _extract_attributes,public,(153,188)
+    _extract_type_name,public,(190,203)
+    _extract_parameters,public,(205,226)
+    _get_function_handlers,public,(228,239)
+    _get_class_handlers,public,(241,254)
+    _traverse_iterative,public,(256,273)
+    extract_classes,public,(275,314)
+    _extract_class_declaration,public,(316,396)
+    extract_functions,public,(398,439)
+    _extract_method,public,(441,496)
+    _extract_constructor,public,(498,545)
+    _extract_property,public,(547,607)
+    _get_complexity_keywords,public,(609,625)
+    extract_variables,public,(627,659)
+    _extract_field,public,(661,721)
+    _extract_event,public,(723,779)
+    extract_imports,public,(781,811)
+    _extract_using_directive,public,(813,862)
+    __init__,public,(874,880)
+    get_language_name,public,(882,889)
+    get_file_extensions,public,(891,898)
+    create_extractor,public,(900,907)
+    get_queries,public,(909,918)
+    execute_query_strategy,public,(920,937)
+    get_element_categories,public,(939,963)
+    get_tree_sitter_language,public,(965,995)
+    analyze_file,public,(997,1081)
+fields: []
+imports:
+  [14]{name,is_static,is_wildcard,statement,line_range(a,b)}:
+    Iterator,false,false,,(9,9)
+    "TYPE_CHECKING, Any, Optional",false,false,,(10,10)
+    tree_sitter,false,false,,(13,13)
+    AnalysisRequest,false,false,,(15,15)
+    AnalysisResult,false,false,,(16,16)
+    tree_sitter,false,false,,(19,19)
+    "Class, Function, Import, Variable",false,false,,(25,25)
+    "ElementExtractor, LanguagePlugin",false,false,,(26,26)
+    ProgrammingLanguageExtractor,false,false,,(27,27)
+    "log_debug, log_error",false,false,,(28,28)
+    "ueries.csharp import CSHARP_QUERIES\n\n      ",false,false,,(916,916)
+    ree_sitter_c_sharp,false,false,,(976,976)
+    "ncoding_utils import read_file_safe\n       ",false,false,,(1010,1010)
+    "odels import AnalysisResult\n\n      ",false,false,,(1011,1011)
+statistics:
+  class_count: 2
+  method_count: 33
+  field_count: 0
+  import_count: 14
+  total_lines: 1081---
+FILE: tree_sitter_analyzer/languages/css_plugin.py
+file_path: tree_sitter_analyzer/languages/css_plugin.py
+language: python
+package: null
+classes:
+  [2]{name,visibility,line_range(a,b)}:
+    CssElementExtractor,public,(26,323)
+    CssPlugin,public,(326,472)
+methods:
+  [24]{name,visibility,line_range(a,b)}:
+    __init__,public,(29,83)
+    extract_functions,public,(85,87)
+    extract_classes,public,(89,91)
+    extract_variables,public,(93,95)
+    extract_imports,public,(97,99)
+    extract_css_rules,public,(101,116)
+    _traverse_for_css_rules,public,(118,133)
+    _is_css_rule_node,public,(135,149)
+    _create_style_element,public,(151,201)
+    _extract_selector,public,(203,220)
+    _extract_properties,public,(222,246)
+    _parse_declaration,public,(248,280)
+    _extract_at_rule_name,public,(282,305)
+    _classify_rule,public,(307,323)
+    __init__,public,(329,332)
+    get_language_name,public,(334,335)
+    get_file_extensions,public,(337,338)
+    create_extractor,public,(340,341)
+    get_tree_sitter_language,public,(343,348)
+    get_supported_element_types,public,(350,351)
+    get_queries,public,(353,357)
+    execute_query_strategy,public,(359,367)
+    get_element_categories,public,(369,382)
+    analyze_file,public,(384,472)
+fields: []
+imports:
+  [14]{name,is_static,is_wildcard,statement,line_range(a,b)}:
+    logging,false,false,,(10,10)
+    "TYPE_CHECKING, Any",false,false,,(11,11)
+    "AnalysisResult, StyleElement",false,false,,(13,13)
+    LanguagePlugin,false,false,,(14,14)
+    MarkupLanguageExtractor,false,false,,(15,15)
+    "log_debug, log_error, log_info",false,false,,(16,16)
+    tree_sitter,false,false,,(19,19)
+    AnalysisRequest,false,false,,(21,21)
+    tree_sit,false,false,,(345,345)
+    "s ts_css\n\n        return tree_si",false,false,,(346,346)
+    "t CSS_QUERIES\n\n        return CSS_QUE",false,false,,(355,355)
+    "port read_file_safe\n\n        try:\n         ",false,false,,(388,388)
+    ,false,false,,(396,396)
+    "s ts_css\n\n                # Get",false,false,,(397,397)
+statistics:
+  class_count: 2
+  method_count: 24
+  field_count: 0
+  import_count: 14
+  total_lines: 472---
+FILE: tree_sitter_analyzer/languages/go_plugin.py
+file_path: tree_sitter_analyzer/languages/go_plugin.py
+language: python
+package: null
+classes:
+  [2]{name,visibility,line_range(a,b)}:
+    GoElementExtractor,public,(25,607)
+    GoPlugin,public,(610,818)
+methods:
+  [40]{name,visibility,line_range(a,b)}:
+    __init__,public,(28,39)
+    _get_function_handlers,public,(41,51)
+    _get_class_handlers,public,(53,61)
+    _get_container_node_types,public,(63,81)
+    extract_classes,public,(86,98)
+    extract_variables,public,(100,118)
+    extract_imports,public,(120,137)
+    extract_packages,public,(139,156)
+    _reset_caches,public,(158,163)
+    _traverse_for_types,public,(165,175)
+    _extract_package,public,(177,193)
+    _extract_import_declaration,public,(195,217)
+    _extract_import_spec,public,(219,256)
+    _extract_function,public,(258,300)
+    _extract_method,public,(302,362)
+    _extract_parameters,public,(364,373)
+    _extract_return_type,public,(375,380)
+    _extract_type_declaration,public,(382,393)
+    _extract_type_spec,public,(395,447)
+    _extract_embedded_types,public,(449,466)
+    _extract_const_declaration,public,(468,472)
+    _extract_var_declaration,public,(474,478)
+    _extract_var_or_const,public,(480,493)
+    _extract_var_spec,public,(495,539)
+    _extract_goroutine,public,(541,551)
+    _extract_channel_operation,public,(553,566)
+    _extract_defer,public,(568,578)
+    _extract_docstring,public,(580,603)
+    _get_node_text,public,(605,607)
+    __init__,public,(613,619)
+    get_language_name,public,(621,623)
+    get_file_extensions,public,(625,627)
+    create_extractor,public,(629,631)
+    get_supported_element_types,public,(633,647)
+    get_queries,public,(649,653)
+    analyze_file,public,(655,732)
+    _count_tree_nodes,public,(734,742)
+    get_tree_sitter_language,public,(744,772)
+    extract_elements,public,(774,812)
+    supports_file,public,(814,818)
+fields: []
+imports:
+  [15]{name,is_static,is_wildcard,statement,line_range(a,b)}:
+    re,false,false,,(10,10)
+    "TYPE_CHECKING, Any",false,false,,(11,11)
+    tree_sitter,false,false,,(14,14)
+    AnalysisRequest,false,false,,(16,16)
+    AnalysisResult,false,false,,(17,17)
+    "Class, Function, Import, Package, Variable",false,false,,(19,19)
+    "ElementExtractor, LanguagePlugin",false,false,,(20,20)
+    ProgrammingLanguageExtractor,false,false,,(21,21)
+    "log_debug, log_error",false,false,,(22,22)
+    GO_QUERIES,false,false,,(651,651)
+    AnalysisResult,false,false,,(659,659)
+    read_file_safe,false,false,,(662,662)
+    tree_sitter,false,false,,(677,677)
+    tree_sitter,false,false,,(750,750)
+    tree_sitter_go,false,false,,(751,751)
+statistics:
+  class_count: 2
+  method_count: 40
+  field_count: 0
+  import_count: 15
+  total_lines: 818---
+FILE: tree_sitter_analyzer/languages/html_plugin.py
+file_path: tree_sitter_analyzer/languages/html_plugin.py
+language: python
+package: null
+classes:
+  [2]{name,visibility,line_range(a,b)}:
+    HtmlElementExtractor,public,(26,356)
+    HtmlPlugin,public,(359,500)
+methods:
+  [23]{name,visibility,line_range(a,b)}:
+    __init__,public,(29,107)
+    extract_functions,public,(109,111)
+    extract_classes,public,(113,115)
+    extract_variables,public,(117,119)
+    extract_imports,public,(121,123)
+    extract_html_elements,public,(125,142)
+    _traverse_for_html_elements,public,(144,171)
+    _is_html_element_node,public,(173,184)
+    _create_markup_element,public,(186,232)
+    _extract_tag_name,public,(234,264)
+    _extract_attributes,public,(266,298)
+    _parse_attribute,public,(300,342)
+    _classify_element,public,(344,352)
+    _extract_node_text,public,(354,356)
+    get_language_name,public,(362,363)
+    get_file_extensions,public,(365,366)
+    create_extractor,public,(368,369)
+    get_tree_sitter_language,public,(371,376)
+    get_supported_element_types,public,(378,379)
+    get_queries,public,(381,385)
+    execute_query_strategy,public,(387,395)
+    get_element_categories,public,(397,408)
+    analyze_file,public,(410,500)
+fields: []
+imports:
+  [14]{name,is_static,is_wildcard,statement,line_range(a,b)}:
+    logging,false,false,,(10,10)
+    "TYPE_CHECKING, Any",false,false,,(11,11)
+    "AnalysisResult, MarkupElement",false,false,,(13,13)
+    LanguagePlugin,false,false,,(14,14)
+    MarkupLanguageExtractor,false,false,,(15,15)
+    "log_debug, log_error, log_info",false,false,,(16,16)
+    tree_sitter,false,false,,(19,19)
+    AnalysisRequest,false,false,,(21,21)
+    tr,false,false,,(373,373)
+    "_html as ts_html\n\n        return t",false,false,,(374,374)
+    "l import HTML_QUERIES\n\n        return H",false,false,,(383,383)
+    "ils import read_file_safe\n\n        try:\n   ",false,false,,(414,414)
+    i,false,false,,(422,422)
+    _html as ts_html,false,false,,(423,423)
+statistics:
+  class_count: 2
+  method_count: 23
+  field_count: 0
+  import_count: 14
+  total_lines: 500---
+FILE: tree_sitter_analyzer/languages/java_plugin.py
+file_path: tree_sitter_analyzer/languages/java_plugin.py
+language: python
+package: null
+classes:
+  [2]{name,visibility,line_range(a,b)}:
+    JavaElementExtractor,public,(27,1014)
+    JavaPlugin,public,(1017,1217)
+methods:
+  [42]{name,visibility,line_range(a,b)}:
+    __init__,public,(30,42)
+    _get_function_handlers,public,(44,49)
+    _get_class_handlers,public,(51,57)
+    _reset_caches,public,(59,67)
+    _get_container_node_types,public,(69,82)
+    extract_annotations,public,(84,106)
+    extract_classes,public,(111,134)
+    extract_variables,public,(136,157)
+    extract_imports,public,(159,190)
+    _extract_imports_fallback,public,(192,257)
+    extract_packages,public,(259,302)
+    _traverse_and_extract_iterative,public,(304,401)
+    _process_field_batch,public,(403,439)
+    _extract_class_optimized,public,(441,523)
+    _extract_method_optimized,public,(525,577)
+    _extract_field_optimized,public,(579,630)
+    _parse_method_signature_optimized,public,(632,688)
+    _parse_field_declaration_optimized,public,(690,730)
+    _extract_modifiers_optimized,public,(732,764)
+    _extract_package_info,public,(766,776)
+    _extract_package_element,public,(778,797)
+    _extract_package_from_tree,public,(799,805)
+    _extract_import_info,public,(807,865)
+    _extract_annotation_optimized,public,(867,898)
+    _determine_visibility,public,(900,909)
+    _find_annotations_for_line_cached,public,(911,923)
+    _is_nested_class,public,(925,936)
+    _find_parent_class,public,(938,951)
+    _calculate_complexity_optimized,public,(953,982)
+    count_decisions,public,(968,979)
+    _extract_javadoc_for_line,public,(984,1003)
+    _extract_class_name,public,(1005,1014)
+    __init__,public,(1020,1028)
+    get_language_name,public,(1030,1032)
+    get_file_extensions,public,(1034,1036)
+    create_extractor,public,(1038,1040)
+    analyze_file,public,(1042,1135)
+    _analyze_sync,public,(1070,1108)
+    _count_tree_nodes,public,(1137,1143)
+    get_tree_sitter_language,public,(1145,1178)
+    extract_elements,public,(1180,1211)
+    supports_file,public,(1213,1217)
+fields: []
+imports:
+  [19]{name,is_static,is_wildcard,statement,line_range(a,b)}:
+    re,false,false,,(9,9)
+    "Callable, Mapping",false,false,,(10,10)
+    "TYPE_CHECKING, Any",false,false,,(11,11)
+    anyio,false,false,,(13,13)
+    tree_sitter,false,false,,(16,16)
+    AnalysisRequest,false,false,,(18,18)
+    AnalysisResult,false,false,,(19,19)
+    "Class, Function, Import, Package, Variable",false,false,,(21,21)
+    "ElementExtractor, LanguagePlugin",false,false,,(22,22)
+    ProgrammingLanguageExtractor,false,false,,(23,23)
+    "log_debug, log_error, log_warning",false,false,,(24,24)
+    re,false,false,,(280,280)
+    AnalysisResult,false,false,,(1047,1047)
+    read_file_safe_async,false,false,,(1051,1051)
+    tree_sitter,false,false,,(1071,1071)
+    count_nodes_iterative,false,false,,(1102,1102)
+    count_nodes_iterative,false,false,,(1141,1141)
+    tree_sitter,false,false,,(1151,1151)
+    tree_sitter_java,false,false,,(1152,1152)
+statistics:
+  class_count: 2
+  method_count: 42
+  field_count: 0
+  import_count: 19
+  total_lines: 1217---
+FILE: tree_sitter_analyzer/languages/javascript_plugin.py
+file_path: tree_sitter_analyzer/languages/javascript_plugin.py
+language: python
+package: null
+classes:
+  [2]{name,visibility,line_range(a,b)}:
+    JavaScriptElementExtractor,public,(35,1190)
+    JavaScriptPlugin,public,(1193,1465)
+methods:
+  [55]{name,visibility,line_range(a,b)}:
+    __init__,public,(38,52)
+    _reset_caches,public,(54,58)
+    _get_container_node_types,public,(60,74)
+    _get_function_handlers,public,(76,84)
+    _get_class_handlers,public,(86,91)
+    extract_variables,public,(97,117)
+    extract_imports,public,(119,144)
+    extract_exports,public,(146,167)
+    _detect_file_characteristics,public,(169,183)
+    _extract_function_optimized,public,(185,231)
+    _extract_arrow_function_optimized,public,(233,292)
+    _extract_method_optimized,public,(294,347)
+    _extract_generator_function_optimized,public,(349,392)
+    _extract_class_optimized,public,(394,443)
+    _extract_variable_optimized,public,(445,447)
+    _extract_lexical_variable_optimized,public,(449,456)
+    _extract_property_optimized,public,(458,503)
+    _extract_variables_from_declaration,public,(505,527)
+    _parse_variable_declarator,public,(529,613)
+    _parse_function_signature_optimized,public,(615,638)
+    _parse_method_signature_optimized,public,(640,681)
+    _extract_parameters,public,(683,700)
+    _extract_import_info_simple,public,(702,744)
+    _extract_import_names,public,(746,773)
+    _extract_import_info_enhanced,public,(775,801)
+    _extract_dynamic_import,public,(803,829)
+    _extract_commonjs_requires,public,(831,863)
+    _extract_export_info,public,(865,887)
+    _extract_commonjs_exports,public,(889,921)
+    _parse_import_statement,public,(923,961)
+    _parse_export_statement,public,(963,1002)
+    _find_parent_class_name,public,(1004,1013)
+    _is_react_component,public,(1015,1024)
+    _is_exported_class,public,(1026,1028)
+    _infer_type_from_value,public,(1030,1054)
+    extract_elements,public,(1056,1070)
+    _get_variable_kind,public,(1072,1090)
+    _extract_jsdoc_for_line,public,(1092,1138)
+    _clean_jsdoc,public,(1140,1161)
+    _calculate_complexity_optimized,public,(1163,1190)
+    __init__,public,(1196,1203)
+    get_language_name,public,(1213,1215)
+    get_file_extensions,public,(1217,1219)
+    create_extractor,public,(1221,1223)
+    get_extractor,public,(1225,1226)
+    get_tree_sitter_language,public,(1228,1232)
+    get_supported_queries,public,(1234,1249)
+    is_applicable,public,(1251,1256)
+    get_plugin_info,public,(1258,1278)
+    execute_query_strategy,public,(1280,1285)
+    _get_node_type_for_element,public,(1287,1305)
+    get_element_categories,public,(1307,1359)
+    analyze_file,public,(1361,1430)
+    _analyze_sync,public,(1389,1411)
+    extract_elements,public,(1432,1465)
+fields: []
+imports:
+  [16]{name,is_static,is_wildcard,statement,line_range(a,b)}:
+    re,false,false,,(11,11)
+    Callable,false,false,,(12,12)
+    "TYPE_CHECKING, Any, Optional",false,false,,(13,13)
+    anyio,false,false,,(15,15)
+    tree_sitter,false,false,,(18,18)
+    tree_sitter,false,false,,(21,21)
+    AnalysisRequest,false,false,,(27,27)
+    loader,false,false,,(28,28)
+    "AnalysisResult, Class, CodeElement, Function, Import, Variable",false,false,,(29,29)
+    "ElementExtractor, LanguagePlugin",false,false,,(30,30)
+    ProgrammingLanguageExtractor,false,false,,(31,31)
+    "log_debug, log_error",false,false,,(32,32)
+    traceback,false,false,,(228,228)
+    "Class, Function, Import, Variable",false,false,,(1289,1289)
+    read_file_safe_async,false,false,,(1383,1383)
+    count_nodes_iterative,false,false,,(1405,1405)
+statistics:
+  class_count: 2
+  method_count: 55
+  field_count: 0
+  import_count: 16
+  total_lines: 1465---
+FILE: tree_sitter_analyzer/languages/kotlin_plugin.py
+file_path: tree_sitter_analyzer/languages/kotlin_plugin.py
+language: python
+package: null
+classes:
+  [2]{name,visibility,line_range(a,b)}:
+    KotlinElementExtractor,public,(22,452)
+    KotlinPlugin,public,(455,634)
+methods:
+  [27]{name,visibility,line_range(a,b)}:
+    __init__,public,(25,29)
+    _get_function_handlers,public,(31,35)
+    _get_class_handlers,public,(37,42)
+    _get_container_node_types,public,(44,59)
+    extract_classes,public,(64,90)
+    extract_variables,public,(92,114)
+    extract_imports,public,(116,138)
+    extract_packages,public,(140,165)
+    _reset_caches,public,(167,171)
+    _extract_package,public,(173,190)
+    _extract_function,public,(192,282)
+    _extract_class,public,(284,286)
+    _extract_object,public,(288,290)
+    _extract_class_or_object,public,(292,348)
+    _extract_property,public,(350,416)
+    _extract_import,public,(418,443)
+    _get_node_text,public,(445,447)
+    _extract_docstring,public,(449,452)
+    __init__,public,(458,464)
+    get_language_name,public,(466,468)
+    get_file_extensions,public,(470,472)
+    create_extractor,public,(474,476)
+    analyze_file,public,(478,556)
+    _count_tree_nodes,public,(558,566)
+    get_tree_sitter_language,public,(568,596)
+    extract_elements,public,(598,628)
+    supports_file,public,(630,634)
+fields: []
+imports:
+  [13]{name,is_static,is_wildcard,statement,line_range(a,b)}:
+    "TYPE_CHECKING, Any",false,false,,(8,8)
+    tree_sitter,false,false,,(11,11)
+    AnalysisRequest,false,false,,(13,13)
+    AnalysisResult,false,false,,(14,14)
+    "Class, Function, Import, Package, Variable",false,false,,(16,16)
+    "ElementExtractor, LanguagePlugin",false,false,,(17,17)
+    ProgrammingLanguageExtractor,false,false,,(18,18)
+    "log_debug, log_error",false,false,,(19,19)
+    AnalysisResult,false,false,,(483,483)
+    read_file_safe,false,false,,(486,486)
+    tree_sitter,false,false,,(501,501)
+    tree_sitter,false,false,,(574,574)
+    tree_sitter_kotlin,false,false,,(575,575)
+statistics:
+  class_count: 2
+  method_count: 27
+  field_count: 0
+  import_count: 13
+  total_lines: 634---
+FILE: tree_sitter_analyzer/languages/markdown_plugin.py
+file_path: tree_sitter_analyzer/languages/markdown_plugin.py
+language: python
+package: null
+classes:
+  [3]{name,visibility,line_range(a,b)}:
+    MarkdownElement,public,(34,77)
+    MarkdownElementExtractor,public,(80,1433)
+    MarkdownPlugin,public,(1436,1895)
+methods:
+  [63]{name,visibility,line_range(a,b)}:
+    __init__,public,(37,77)
+    __init__,public,(83,89)
+    extract_functions,public,(91,106)
+    extract_classes,public,(108,123)
+    extract_variables,public,(125,143)
+    extract_imports,public,(145,160)
+    extract_headers,public,(162,182)
+    extract_code_blocks,public,(184,202)
+    extract_links,public,(204,238)
+    extract_images,public,(240,271)
+    extract_references,public,(273,290)
+    extract_blockquotes,public,(292,309)
+    extract_horizontal_rules,public,(311,328)
+    extract_html_elements,public,(330,349)
+    extract_text_formatting,public,(351,372)
+    extract_footnotes,public,(374,391)
+    extract_lists,public,(393,410)
+    extract_tables,public,(412,429)
+    _reset_caches,public,(431,438)
+    _extract_atx_headers,public,(440,473)
+    _extract_setext_headers,public,(475,512)
+    _extract_fenced_code_blocks,public,(514,560)
+    _extract_indented_code_blocks,public,(562,587)
+    _extract_inline_links,public,(589,641)
+    _extract_reference_links,public,(643,699)
+    _extract_autolinks,public,(701,756)
+    _extract_inline_images,public,(758,801)
+    _extract_reference_images,public,(803,843)
+    _extract_image_reference_definitions,public,(845,925)
+    _extract_link_reference_definitions,public,(927,947)
+    _extract_list_items,public,(949,1008)
+    _extract_pipe_tables,public,(1010,1052)
+    _extract_block_quotes,public,(1054,1092)
+    _extract_thematic_breaks,public,(1094,1115)
+    _extract_html_blocks,public,(1117,1144)
+    _extract_inline_html,public,(1146,1190)
+    _extract_emphasis_elements,public,(1192,1246)
+    _extract_inline_code_spans,public,(1248,1286)
+    _extract_strikethrough_elements,public,(1288,1326)
+    _extract_footnote_elements,public,(1328,1395)
+    _traverse_nodes,public,(1397,1401)
+    _parse_link_components,public,(1403,1417)
+    _parse_image_components,public,(1419,1433)
+    __init__,public,(1439,1447)
+    get_language_name,public,(1449,1451)
+    get_file_extensions,public,(1453,1455)
+    create_extractor,public,(1457,1459)
+    get_extractor,public,(1461,1463)
+    get_language,public,(1465,1467)
+    extract_functions,public,(1469,1484)
+    extract_classes,public,(1486,1501)
+    extract_variables,public,(1503,1518)
+    extract_imports,public,(1520,1535)
+    get_tree_sitter_language,public,(1537,1556)
+    get_supported_queries,public,(1558,1578)
+    is_applicable,public,(1580,1585)
+    get_plugin_info,public,(1587,1619)
+    analyze_file,public,(1621,1721)
+    count_nodes,public,(1700,1704)
+    execute_query,public,(1723,1750)
+    extract_elements,public,(1752,1785)
+    execute_query_strategy,public,(1787,1805)
+    get_element_categories,public,(1807,1895)
+fields: []
+imports:
+  [32]{name,is_static,is_wildcard,statement,line_range(a,b)}:
+    "TYPE_CHECKING, Any, Optional",false,false,,(10,10)
+    tree_sitter,false,false,,(13,13)
+    tree_sitter,false,false,,(16,16)
+    AnalysisRequest,false,false,,(22,22)
+    "AnalysisResult, CodeElement",false,false,,(23,23)
+    Class as ModelClass,false,false,,(24,24)
+    Function as ModelFunction,false,false,,(25,25)
+    Import as ModelImport,false,false,,(26,26)
+    Variable as ModelVariable,false,false,,(27,27)
+    LanguagePlugin,false,false,,(28,28)
+    MarkupLanguageExtractor,false,false,,(29,29)
+    "log_debug, log_error",false,false,,(30,30)
+    TreeSitterQueryCompat,false,false,,(31,31)
+    odes usin,false,false,,(593,593)
+    ed from i,false,false,,(647,647)
+    ne nodes,false,false,,(705,705)
+    nodes usi,false,false,,(762,762)
+    ted from,false,false,,(807,807)
+    could be,false,false,,(849,849)
+    ragraphs,false,false,,(1058,1058)
+    ")\", raw_t",false,false,,(1129,1129)
+    for,false,false,,(1150,1150)
+    "e):",false,false,,(1196,1196)
+    "e):",false,false,,(1252,1252)
+    "e):",false,false,,(1292,1292)
+    "e):",false,false,,(1332,1332)
+    pattern,false,false,,(1405,1405)
+    pattern,false,false,,(1421,1421)
+    anguage_capsule = tsmarkdown.language(),false,false,,(1543,1543)
+    ree_sitter.Languag,false,false,,(1547,1547)
+    "rce_code, _ = read_file_safe(file_path)\n\n  ",false,false,,(1643,1643)
+                   query_string = get_query(,false,false,,(1731,1731)
+statistics:
+  class_count: 3
+  method_count: 63
+  field_count: 0
+  import_count: 32
+  total_lines: 1895---
+FILE: tree_sitter_analyzer/languages/php_plugin.py
+file_path: tree_sitter_analyzer/languages/php_plugin.py
+language: python
+package: null
+classes:
+  [2]{name,visibility,line_range(a,b)}:
+    PHPElementExtractor,public,(30,710)
+    PHPPlugin,public,(713,875)
+methods:
+  [25]{name,visibility,line_range(a,b)}:
+    __init__,public,(49,62)
+    _reset_caches,public,(64,69)
+    _get_function_handlers,public,(71,81)
+    _get_class_handlers,public,(83,95)
+    _extract_namespace,public,(97,118)
+    _extract_modifiers,public,(120,141)
+    _determine_visibility,public,(143,160)
+    _extract_attributes,public,(162,194)
+    extract_classes,public,(196,236)
+    _extract_class_element,public,(238,311)
+    extract_functions,public,(313,361)
+    _extract_method_element,public,(363,425)
+    _extract_function_element,public,(427,482)
+    extract_variables,public,(484,530)
+    _extract_property_elements,public,(532,582)
+    _extract_constant_elements,public,(584,627)
+    extract_imports,public,(629,661)
+    _extract_use_statement,public,(663,710)
+    get_language_name,public,(723,730)
+    get_file_extensions,public,(732,739)
+    get_tree_sitter_language,public,(741,768)
+    create_extractor,public,(770,777)
+    analyze_file,public,(779,829)
+    _count_nodes,public,(831,845)
+    _load_file_safe,public,(847,875)
+fields:
+  [1]{name,type,line_range(a,b)}:
+    e_instance,,(721,721)
+imports:
+  [12]{name,is_static,is_wildcard,statement,line_range(a,b)}:
+    "TYPE_CHECKING, Any, Optional",false,false,,(9,9)
+    tree_sitter,false,false,,(12,12)
+    AnalysisRequest,false,false,,(14,14)
+    AnalysisResult,false,false,,(15,15)
+    tree_sitter,false,false,,(18,18)
+    "Class, Function, Import, Variable",false,false,,(24,24)
+    "ElementExtractor, LanguagePlugin",false,false,,(25,25)
+    ProgrammingLanguageExtractor,false,false,,(26,26)
+    log_error,false,false,,(27,27)
+    ree_sitter_php,false,false,,(758,758)
+    "odels import AnalysisResult\n\n      ",false,false,,(792,792)
+    hardet,false,false,,(860,860)
+statistics:
+  class_count: 2
+  method_count: 25
+  field_count: 1
+  import_count: 12
+  total_lines: 875---
+FILE: tree_sitter_analyzer/languages/python_plugin.py
+file_path: tree_sitter_analyzer/languages/python_plugin.py
+language: python
+package: null
+classes:
+  [2]{name,visibility,line_range(a,b)}:
+    PythonElementExtractor,public,(34,1077)
+    PythonPlugin,public,(1080,1429)
+methods:
+  [54]{name,visibility,line_range(a,b)}:
+    __init__,public,(37,53)
+    _reset_caches,public,(55,59)
+    _get_container_node_types,public,(61,71)
+    _get_function_handlers,public,(73,77)
+    _get_class_handlers,public,(79,83)
+    extract_variables,public,(89,128)
+    _detect_file_characteristics,public,(130,144)
+    _extract_function_optimized,public,(146,193)
+    _parse_function_signature_optimized,public,(195,261)
+    _extract_parameters_from_node_optimized,public,(263,290)
+    _extract_docstring_for_line,public,(292,343)
+    _calculate_complexity_optimized,public,(345,377)
+    _extract_class_optimized,public,(379,451)
+    _is_framework_class,public,(453,468)
+    _extract_class_attributes,public,(470,496)
+    _extract_class_attribute_info,public,(498,531)
+    extract_imports,public,(533,588)
+    _extract_imports_manual,public,(590,700)
+    walk_tree,public,(596,697)
+    extract_packages,public,(702,748)
+    _extract_detailed_function_info,public,(750,810)
+    _extract_detailed_class_info,public,(812,857)
+    _extract_variable_info,public,(859,891)
+    _extract_import_info,public,(893,937)
+    _validate_node,public,(940,946)
+    _extract_name_from_node,public,(948,955)
+    _extract_parameters_from_node,public,(957,974)
+    _extract_decorators_from_node,public,(976,995)
+    _extract_return_type_from_node,public,(997,1021)
+    _extract_docstring_from_node,public,(1023,1050)
+    _extract_function_body,public,(1052,1057)
+    _extract_superclasses_from_node,public,(1059,1069)
+    _calculate_complexity,public,(1071,1077)
+    __init__,public,(1083,1091)
+    get_language_name,public,(1093,1095)
+    get_file_extensions,public,(1097,1099)
+    create_extractor,public,(1101,1103)
+    get_extractor,public,(1105,1109)
+    get_language,public,(1111,1113)
+    extract_functions,public,(1115,1120)
+    extract_classes,public,(1122,1127)
+    extract_variables,public,(1129,1134)
+    extract_imports,public,(1136,1141)
+    get_tree_sitter_language,public,(1143,1159)
+    get_supported_queries,public,(1161,1180)
+    is_applicable,public,(1182,1187)
+    get_plugin_info,public,(1189,1213)
+    execute_query_strategy,public,(1215,1220)
+    _get_node_type_for_element,public,(1222,1235)
+    get_element_categories,public,(1237,1319)
+    analyze_file,public,(1321,1390)
+    _analyze_sync,public,(1349,1371)
+    execute_query,public,(1392,1414)
+    extract_elements,public,(1416,1429)
+fields: []
+imports:
+  [20]{name,is_static,is_wildcard,statement,line_range(a,b)}:
+    Callable,false,false,,(11,11)
+    "TYPE_CHECKING, Any, Optional",false,false,,(12,12)
+    anyio,false,false,,(14,14)
+    tree_sitter,false,false,,(17,17)
+    tree_sitter,false,false,,(20,20)
+    AnalysisRequest,false,false,,(26,26)
+    "AnalysisResult, Class, CodeElement, Function, Import, Variable",false,false,,(27,27)
+    "ElementExtractor, LanguagePlugin",false,false,,(28,28)
+    ProgrammingLanguageExtractor,false,false,,(29,29)
+    "log_debug, log_error, log_warning",false,false,,(30,30)
+    TreeSitterQueryCompat,false,false,,(31,31)
+    traceback,false,false,,(190,190)
+    re,false,false,,(347,347)
+    os,false,false,,(704,704)
+    Package,false,false,,(706,706)
+    tree_sitter,false,false,,(1147,1147)
+    tree_sitter_python as tspython,false,false,,(1148,1148)
+    "tion, Import, Variable\n\n        if isinstance(element,",false,false,,(1224,1224)
+    "d_file_safe_async\n\n            # 1. Non-blocking ",false,false,,(1343,1343)
+    "import count_nodes_iterative\n\n                node_count = 0",false,false,,(1365,1365)
+statistics:
+  class_count: 2
+  method_count: 54
+  field_count: 0
+  import_count: 20
+  total_lines: 1429---
+FILE: tree_sitter_analyzer/languages/ruby_plugin.py
+file_path: tree_sitter_analyzer/languages/ruby_plugin.py
+language: python
+package: null
+classes:
+  [2]{name,visibility,line_range(a,b)}:
+    RubyElementExtractor,public,(30,634)
+    RubyPlugin,public,(637,798)
+methods:
+  [22]{name,visibility,line_range(a,b)}:
+    __init__,public,(48,60)
+    _reset_caches,public,(62,66)
+    _get_function_handlers,public,(68,78)
+    _get_class_handlers,public,(80,90)
+    _determine_visibility,public,(92,139)
+    extract_classes,public,(141,175)
+    _extract_class_element,public,(177,229)
+    extract_functions,public,(231,280)
+    _extract_method_element,public,(282,337)
+    _extract_singleton_method_element,public,(339,394)
+    _extract_attr_methods,public,(396,465)
+    extract_variables,public,(467,508)
+    _extract_assignment_variable,public,(510,556)
+    extract_imports,public,(558,591)
+    _extract_require_statement,public,(593,634)
+    get_language_name,public,(647,654)
+    get_file_extensions,public,(656,663)
+    get_tree_sitter_language,public,(665,692)
+    create_extractor,public,(694,701)
+    analyze_file,public,(703,753)
+    _count_nodes,public,(755,768)
+    _load_file_safe,public,(770,798)
+fields:
+  [1]{name,type,line_range(a,b)}:
+    e_instance,,(645,645)
+imports:
+  [12]{name,is_static,is_wildcard,statement,line_range(a,b)}:
+    "TYPE_CHECKING, Any, Optional",false,false,,(9,9)
+    tree_sitter,false,false,,(12,12)
+    AnalysisRequest,false,false,,(14,14)
+    AnalysisResult,false,false,,(15,15)
+    tree_sitter,false,false,,(18,18)
+    "Class, Function, Import, Variable",false,false,,(24,24)
+    "ElementExtractor, LanguagePlugin",false,false,,(25,25)
+    ProgrammingLanguageExtractor,false,false,,(26,26)
+    log_error,false,false,,(27,27)
+    ree_sitter_ruby,false,false,,(682,682)
+    "odels import AnalysisResult\n\n      ",false,false,,(716,716)
+    hardet,false,false,,(783,783)
+statistics:
+  class_count: 2
+  method_count: 22
+  field_count: 1
+  import_count: 12
+  total_lines: 798---
+FILE: tree_sitter_analyzer/languages/rust_plugin.py
+file_path: tree_sitter_analyzer/languages/rust_plugin.py
+language: python
+package: null
+classes:
+  [2]{name,visibility,line_range(a,b)}:
+    RustElementExtractor,public,(23,469)
+    RustPlugin,public,(472,668)
+methods:
+  [31]{name,visibility,line_range(a,b)}:
+    __init__,public,(26,33)
+    _get_function_handlers,public,(35,44)
+    _get_class_handlers,public,(46,58)
+    _get_container_node_types,public,(60,76)
+    extract_classes,public,(81,111)
+    extract_variables,public,(113,136)
+    extract_imports,public,(138,161)
+    _extract_import,public,(163,186)
+    _reset_caches,public,(188,197)
+    _extract_modules,public,(199,205)
+    _extract_module,public,(207,226)
+    _extract_function,public,(228,303)
+    _extract_struct,public,(305,307)
+    _extract_enum,public,(309,311)
+    _extract_trait,public,(313,315)
+    _extract_type_def,public,(317,355)
+    _extract_impl,public,(357,378)
+    _extract_field,public,(380,410)
+    _extract_visibility,public,(412,417)
+    _extract_docstring,public,(419,451)
+    _extract_derives,public,(453,465)
+    _get_node_text,public,(467,469)
+    __init__,public,(475,481)
+    get_language_name,public,(483,485)
+    get_file_extensions,public,(487,489)
+    create_extractor,public,(491,493)
+    analyze_file,public,(495,585)
+    _count_tree_nodes,public,(587,595)
+    get_tree_sitter_language,public,(597,625)
+    extract_elements,public,(627,662)
+    supports_file,public,(664,668)
+fields: []
+imports:
+  [14]{name,is_static,is_wildcard,statement,line_range(a,b)}:
+    re,false,false,,(8,8)
+    "TYPE_CHECKING, Any",false,false,,(9,9)
+    tree_sitter,false,false,,(12,12)
+    AnalysisRequest,false,false,,(14,14)
+    AnalysisResult,false,false,,(15,15)
+    "Class, Function, Import, Variable",false,false,,(17,17)
+    "ElementExtractor, LanguagePlugin",false,false,,(18,18)
+    ProgrammingLanguageExtractor,false,false,,(19,19)
+    "log_debug, log_error",false,false,,(20,20)
+    AnalysisResult,false,false,,(500,500)
+    read_file_safe,false,false,,(503,503)
+    tree_sitter,false,false,,(518,518)
+    tree_sitter,false,false,,(603,603)
+    tree_sitter_rust,false,false,,(604,604)
+statistics:
+  class_count: 2
+  method_count: 31
+  field_count: 0
+  import_count: 14
+  total_lines: 668---
+FILE: tree_sitter_analyzer/languages/sql_plugin.py
+file_path: tree_sitter_analyzer/languages/sql_plugin.py
+language: python
+package: null
+classes:
+  [2]{name,visibility,line_range(a,b)}:
+    SQLElementExtractor,public,(50,2199)
+    SQLPlugin,public,(2202,2413)
+methods:
+  [41]{name,visibility,line_range(a,b)}:
+    __init__,public,(66,77)
+    set_adapter,public,(79,81)
+    extract_sql_elements,public,(83,146)
+    _validate_and_fix_elements,public,(148,319)
+    extract_functions,public,(321,356)
+    extract_classes,public,(358,389)
+    extract_variables,public,(391,420)
+    extract_imports,public,(422,451)
+    _reset_caches,public,(453,455)
+    _traverse_nodes,public,(457,470)
+    _is_valid_identifier,public,(472,648)
+    _extract_tables,public,(650,705)
+    _extract_views,public,(707,840)
+    _extract_procedures,public,(842,912)
+    _extract_sql_functions,public,(914,978)
+    _extract_triggers,public,(980,1072)
+    _extract_indexes,public,(1074,1111)
+    _extract_schema_references,public,(1113,1139)
+    _extract_sql_tables,public,(1141,1194)
+    _extract_table_columns,public,(1196,1268)
+    _split_column_definitions,public,(1270,1292)
+    _parse_column_definition,public,(1294,1335)
+    _extract_sql_views,public,(1337,1478)
+    _extract_view_sources,public,(1480,1494)
+    _extract_sql_procedures,public,(1496,1645)
+    _extract_procedure_parameters,public,(1647,1715)
+    _extract_procedure_dependencies,public,(1717,1728)
+    _extract_sql_functions_enhanced,public,(1730,1903)
+    _extract_function_metadata,public,(1905,1928)
+    _extract_sql_triggers,public,(1930,2020)
+    _extract_trigger_metadata,public,(2022,2050)
+    _extract_sql_indexes,public,(2052,2110)
+    _extract_index_metadata,public,(2112,2141)
+    _extract_indexes_with_regex,public,(2143,2199)
+    __init__,public,(2215,2266)
+    get_tree_sitter_language,public,(2268,2290)
+    get_language_name,public,(2292,2294)
+    get_file_extensions,public,(2296,2298)
+    create_extractor,public,(2300,2302)
+    extract_elements,public,(2304,2335)
+    analyze_file,public,(2337,2413)
+fields: []
+imports:
+  [40]{name,is_static,is_wildcard,statement,line_range(a,b)}:
+    Iterator,false,false,,(9,9)
+    "TYPE_CHECKING, Any",false,false,,(10,10)
+    tree_sitter,false,false,,(13,13)
+    AnalysisRequest,false,false,,(15,15)
+    AnalysisResult,false,false,,(16,16)
+    tree_sitter,false,false,,(19,19)
+    "(\n    Class,\n    Function,\n    Import,\n    SQLColumn,\n    SQLConstraint,\n    SQLElement,\n    SQLFunction,\n    SQLIndex,\n    SQLParameter,\n    SQLProcedure,\n    SQLTable,\n    SQLTrigger,\n    SQLView,\n    Variable,\n)",false,false,,(26,41)
+    CompatibilityAdapter,false,false,,(42,42)
+    PlatformDetector,false,false,,(43,43)
+    BehaviorProfile,false,false,,(44,44)
+    LanguagePlugin,false,false,,(45,45)
+    ProgrammingLanguageExtractor,false,false,,(46,46)
+    "log_debug, log_error",false,false,,(47,47)
+    e,false,false,,(155,155)
+    Allow al,false,false,,(637,637)
+    or node i,false,false,,(720,720)
+    ,false,false,,(874,874)
+    ,false,false,,(948,948)
+    ,false,false,,(1009,1009)
+    " SQLColumn, SQLConstraint\n\n                co",false,false,,(1153,1153)
+    Extract,false,false,,(1207,1207)
+    Basic pa,false,false,,(1296,1296)
+    #,false,false,,(1348,1348)
+    ,false,false,,(1408,1408)
+    ines = se,false,false,,(1501,1501)
+    " SQLParameter\n\n                  ",false,false,,(1534,1534)
+    "First, e",false,false,,(1651,1651)
+    ines = se,false,false,,(1735,1735)
+    " SQLParameter\n\n                pa",false,false,,(1807,1807)
+    eturns_ma,false,false,,(1916,1916)
+    Use self,false,false,,(1934,1934)
+    iming = N,false,false,,(2027,2027)
+    ra,false,false,,(2064,2064)
+    able_matc,false,false,,(2125,2125)
+    Split so,false,false,,(2147,2147)
+    "import ElementExtractor\n\n            if isi",false,false,,(2233,2233)
+    ,false,false,,(2282,2282)
+    "ql\n\n            self._",false,false,,(2283,2283)
+    "mport Parser\n        from ..mode",false,false,,(2354,2354)
+    " AnalysisResult\n\n        try:\n     ",false,false,,(2355,2355)
+statistics:
+  class_count: 2
+  method_count: 41
+  field_count: 0
+  import_count: 40
+  total_lines: 2413---
+FILE: tree_sitter_analyzer/languages/typescript_plugin.py
+file_path: tree_sitter_analyzer/languages/typescript_plugin.py
+language: python
+package: null
+classes:
+  [2]{name,visibility,line_range(a,b)}:
+    TypeScriptElementExtractor,public,(33,1506)
+    TypeScriptPlugin,public,(1509,1748)
+methods:
+  [52]{name,visibility,line_range(a,b)}:
+    __init__,public,(36,53)
+    _get_function_handlers,public,(55,64)
+    _get_class_handlers,public,(66,74)
+    extract_variables,public,(80,101)
+    extract_imports,public,(103,128)
+    _reset_caches,public,(130,134)
+    _get_container_node_types,public,(136,153)
+    _detect_file_characteristics,public,(155,171)
+    _extract_function_optimized,public,(173,225)
+    _extract_arrow_function_optimized,public,(227,292)
+    _extract_method_optimized,public,(294,352)
+    _extract_method_signature_optimized,public,(354,409)
+    _extract_generator_function_optimized,public,(411,459)
+    _extract_class_optimized,public,(461,525)
+    _extract_interface_optimized,public,(527,577)
+    _extract_type_alias_optimized,public,(579,619)
+    _extract_enum_optimized,public,(621,658)
+    _extract_variable_optimized,public,(660,662)
+    _extract_lexical_variable_optimized,public,(664,671)
+    _extract_property_optimized,public,(673,734)
+    _extract_property_signature_optimized,public,(736,779)
+    _extract_variables_from_declaration,public,(781,803)
+    _parse_variable_declarator,public,(805,855)
+    _parse_function_signature_optimized,public,(857,886)
+    _parse_method_signature_optimized,public,(888,983)
+    _extract_parameters_with_types,public,(985,1012)
+    _extract_generics,public,(1014,1023)
+    _extract_import_info_simple,public,(1025,1136)
+    _extract_import_names,public,(1138,1254)
+    _extract_dynamic_import,public,(1256,1287)
+    _extract_commonjs_requires,public,(1289,1332)
+    _is_framework_component,public,(1334,1350)
+    _is_exported_class,public,(1352,1358)
+    _infer_type_from_value,public,(1360,1384)
+    _extract_tsdoc_for_line,public,(1386,1440)
+    _clean_tsdoc,public,(1442,1463)
+    _calculate_complexity_optimized,public,(1465,1492)
+    extract_elements,public,(1494,1506)
+    __init__,public,(1512,1514)
+    get_language_name,public,(1524,1526)
+    get_file_extensions,public,(1528,1530)
+    create_extractor,public,(1532,1534)
+    get_extractor,public,(1536,1537)
+    get_tree_sitter_language,public,(1539,1549)
+    get_supported_queries,public,(1551,1572)
+    is_applicable,public,(1574,1579)
+    get_plugin_info,public,(1581,1609)
+    analyze_file,public,(1611,1678)
+    count_nodes,public,(1657,1661)
+    extract_elements,public,(1680,1693)
+    execute_query_strategy,public,(1695,1700)
+    get_element_categories,public,(1702,1748)
+fields: []
+imports:
+  [14]{name,is_static,is_wildcard,statement,line_range(a,b)}:
+    re,false,false,,(11,11)
+    Callable,false,false,,(12,12)
+    "TYPE_CHECKING, Any, Optional",false,false,,(13,13)
+    tree_sitter,false,false,,(16,16)
+    tree_sitter,false,false,,(19,19)
+    AnalysisRequest,false,false,,(25,25)
+    loader,false,false,,(26,26)
+    "AnalysisResult, Class, CodeElement, Function, Import, Variable",false,false,,(27,27)
+    "ElementExtractor, LanguagePlugin",false,false,,(28,28)
+    ProgrammingLanguageExtractor,false,false,,(29,29)
+    "log_debug, log_error",false,false,,(30,30)
+    traceback,false,false,,(222,222)
+    re,false,false,,(951,951)
+    read_file_safe,false,false,,(1633,1633)
+statistics:
+  class_count: 2
+  method_count: 52
+  field_count: 0
+  import_count: 14
+  total_lines: 1748---
+FILE: tree_sitter_analyzer/languages/yaml_plugin.py
+file_path: tree_sitter_analyzer/languages/yaml_plugin.py
+language: python
+package: null
+classes:
+  [3]{name,visibility,line_range(a,b)}:
+    YAMLElement,public,(43,99)
+    YAMLElementExtractor,public,(102,647)
+    YAMLPlugin,public,(650,788)
+methods:
+  [31]{name,visibility,line_range(a,b)}:
+    __init__,public,(46,99)
+    __init__,public,(105,110)
+    extract_functions,public,(112,116)
+    extract_classes,public,(118,122)
+    extract_variables,public,(124,128)
+    extract_imports,public,(130,134)
+    extract_yaml_elements,public,(136,173)
+    extract_elements,public,(175,187)
+    _get_node_text,public,(189,199)
+    _calculate_nesting_level,public,(201,216)
+    _get_document_index,public,(218,235)
+    _traverse_nodes,public,(237,242)
+    _count_document_children,public,(244,273)
+    _extract_documents,public,(275,305)
+    _extract_mappings,public,(307,423)
+    _extract_value_info,public,(425,472)
+    _is_number,public,(474,480)
+    _extract_sequences,public,(482,558)
+    _extract_anchors,public,(560,587)
+    _extract_aliases,public,(589,616)
+    _extract_comments,public,(618,647)
+    __init__,public,(653,656)
+    get_language_name,public,(658,660)
+    get_file_extensions,public,(662,664)
+    create_extractor,public,(666,668)
+    get_tree_sitter_language,public,(670,674)
+    get_supported_element_types,public,(676,686)
+    get_queries,public,(688,692)
+    execute_query_strategy,public,(694,702)
+    get_element_categories,public,(704,718)
+    analyze_file,public,(720,788)
+fields: []
+imports:
+  [13]{name,is_static,is_wildcard,statement,line_range(a,b)}:
+    logging,false,false,,(10,10)
+    threading,false,false,,(11,11)
+    "TYPE_CHECKING, Any, cast",false,false,,(12,12)
+    "AnalysisResult, Class, CodeElement, Function, Import, Variable",false,false,,(14,14)
+    LanguagePlugin,false,false,,(15,15)
+    MarkupLanguageExtractor,false,false,,(16,16)
+    "log_debug, log_error, log_info, log_warning",false,false,,(17,17)
+    tree_sitter,false,false,,(20,20)
+    AnalysisRequest,false,false,,(22,22)
+    tree_sitter,false,false,,(28,28)
+    tree_sitter_yaml as ts_yaml,false,false,,(29,29)
+    YAML_QUERIES,false,false,,(690,690)
+    read_file_safe,false,false,,(732,732)
+statistics:
+  class_count: 3
+  method_count: 31
+  field_count: 0
+  import_count: 13
+  total_lines: 788---
+FILE: tree_sitter_analyzer/plugins/__init__.py
+file_path: tree_sitter_analyzer/plugins/__init__.py
+language: python
+package: null
+classes:
+  [4]{name,visibility,line_range(a,b)}:
+    ElementExtractor,public,(40,73)
+    LanguagePlugin,public,(76,97)
+    DefaultExtractor,public,(100,268)
+    DefaultLanguagePlugin,public,(274,284)
+methods:
+  [13]{name,visibility,line_range(a,b)}:
+    is_applicable,public,(94,97)
+    extract_functions,public,(103,116)
+    extract_classes,public,(118,131)
+    extract_variables,public,(133,146)
+    extract_imports,public,(148,161)
+    _traverse_for_functions,public,(163,184)
+    _traverse_for_classes,public,(186,207)
+    _traverse_for_variables,public,(209,232)
+    _traverse_for_imports,public,(234,255)
+    _extract_node_name,public,(257,268)
+    get_language_name,public,(277,278)
+    get_file_extensions,public,(280,281)
+    create_extractor,public,(283,284)
+fields: []
+imports:
+  [11]{name,is_static,is_wildcard,statement,line_range(a,b)}:
+    "ABC, abstractmethod",false,false,,(9,9)
+    TYPE_CHECKING,false,false,,(10,10)
+    tree_sitter,false,false,,(13,13)
+    Class as ModelClass,false,false,,(18,18)
+    Function as ModelFunction,false,false,,(19,19)
+    Import as ModelImport,false,false,,(20,20)
+    Variable as ModelVariable,false,false,,(21,21)
+    "log_debug, log_error, log_warning",false,false,,(22,22)
+    CachedElementExtractor,false,false,,(25,25)
+    MarkupLanguageExtractor,false,false,,(26,26)
+    ProgrammingLanguageExtractor,false,false,,(27,27)
+statistics:
+  class_count: 4
+  method_count: 13
+  field_count: 0
+  import_count: 11
+  total_lines: 288---
+FILE: tree_sitter_analyzer/plugins/base.py
+file_path: tree_sitter_analyzer/plugins/base.py
+language: python
+package: null
+classes:
+  [4]{name,visibility,line_range(a,b)}:
+    ElementExtractor,public,(34,197)
+    LanguagePlugin,public,(200,331)
+    DefaultExtractor,public,(334,608)
+    DefaultLanguagePlugin,public,(611,651)
+methods:
+  [32]{name,visibility,line_range(a,b)}:
+    __init__,public,(42,45)
+    extract_packages,public,(111,123)
+    extract_annotations,public,(125,139)
+    extract_all_elements,public,(141,165)
+    extract_html_elements,public,(167,181)
+    extract_css_rules,public,(183,197)
+    get_supported_element_types,public,(254,261)
+    get_queries,public,(263,270)
+    execute_query_strategy,public,(272,286)
+    get_formatter_map,public,(288,295)
+    get_element_categories,public,(297,304)
+    is_applicable,public,(306,317)
+    get_plugin_info,public,(319,331)
+    extract_functions,public,(342,357)
+    extract_classes,public,(359,372)
+    extract_variables,public,(374,389)
+    extract_imports,public,(391,404)
+    _traverse_for_functions,public,(406,434)
+    _traverse_for_classes,public,(436,464)
+    _traverse_for_variables,public,(466,494)
+    _traverse_for_imports,public,(496,524)
+    _is_function_node,public,(526,537)
+    _is_class_node,public,(539,550)
+    _is_variable_node,public,(552,563)
+    _is_import_node,public,(565,576)
+    _extract_node_name,public,(578,592)
+    _extract_node_text,public,(594,604)
+    _get_language_hint,public,(606,608)
+    get_language_name,public,(614,615)
+    get_file_extensions,public,(617,618)
+    create_extractor,public,(620,621)
+    analyze_file,public,(623,651)
+fields: []
+imports:
+  [15]{name,is_static,is_wildcard,statement,line_range(a,b)}:
+    logging,false,false,,(9,9)
+    "ABC, abstractmethod",false,false,,(10,10)
+    "(\n    TYPE_CHECKING,\n    Any,\n)",false,false,,(11,14)
+    PlatformInfo,false,false,,(16,16)
+    tree_sitter,false,false,,(19,19)
+    AnalysisRequest,false,false,,(21,21)
+    AnalysisResult,false,false,,(22,22)
+    Class as ModelClass,false,false,,(24,24)
+    CodeElement,false,false,,(25,25)
+    Function as ModelFunction,false,false,,(26,26)
+    Import as ModelImport,false,false,,(27,27)
+    Variable as ModelVariable,false,false,,(28,28)
+    "log_debug, log_error",false,false,,(29,29)
+    UnifiedAnalysisEngine,false,false,,(636,636)
+    AnalysisResult,false,false,,(637,637)
+statistics:
+  class_count: 4
+  method_count: 32
+  field_count: 0
+  import_count: 15
+  total_lines: 651---
+FILE: tree_sitter_analyzer/plugins/cached_element_extractor.py
+file_path: tree_sitter_analyzer/plugins/cached_element_extractor.py
+language: python
+package: null
+classes:
+  [1]{name,visibility,line_range(a,b)}:
+    CachedElementExtractor,public,(21,177)
+methods:
+  [6]{name,visibility,line_range(a,b)}:
+    __init__,public,(29,39)
+    _reset_caches,public,(41,43)
+    _initialize_source,public,(45,56)
+    _get_node_text_optimized,public,(58,106)
+    _extract_text_by_bytes,public,(108,126)
+    _extract_text_by_position,public,(128,177)
+fields: []
+imports:
+  [6]{name,is_static,is_wildcard,statement,line_range(a,b)}:
+    ABC,false,false,,(10,10)
+    TYPE_CHECKING,false,false,,(11,11)
+    tree_sitter,false,false,,(14,14)
+    "extract_text_slice, safe_encode",false,false,,(16,16)
+    log_error,false,false,,(17,17)
+    ElementExtractor,false,false,,(18,18)
+statistics:
+  class_count: 1
+  method_count: 6
+  field_count: 0
+  import_count: 6
+  total_lines: 177---
+FILE: tree_sitter_analyzer/plugins/manager.py
+file_path: tree_sitter_analyzer/plugins/manager.py
+language: python
+package: null
+classes:
+  [1]{name,visibility,line_range(a,b)}:
+    PluginManager,public,(83,561)
+methods:
+  [21]{name,visibility,line_range(a,b)}:
+    _is_source_checkout,public,(24,30)
+    _should_load_entry_points,public,(33,38)
+    _is_running_under_pytest,public,(41,43)
+    _prewarm_local_language_modules_for_tests,public,(46,76)
+    _safe_import,public,(54,61)
+    __init__,public,(94,99)
+    load_plugins,public,(101,119)
+    _discover_from_entry_points,public,(121,142)
+    _discover_from_local_directory,public,(144,168)
+    get_plugin,public,(170,235)
+    _load_from_entry_points,public,(237,294)
+    _load_from_local_directory,public,(296,356)
+    _find_plugin_classes,public,(358,381)
+    get_all_plugins,public,(383,398)
+    _get_default_aliases,public,(400,407)
+    get_supported_languages,public,(409,425)
+    reload_plugins,public,(427,442)
+    register_plugin,public,(444,468)
+    unregister_plugin,public,(470,485)
+    get_plugin_info,public,(487,511)
+    validate_plugin,public,(513,561)
+fields: []
+imports:
+  [10]{name,is_static,is_wildcard,statement,line_range(a,b)}:
+    lib,false,false,,(9,9)
+    lib.metadata,false,false,,(10,10)
+    logging,false,false,,(11,11)
+    os,false,false,,(12,12)
+    pkgutil,false,false,,(13,13)
+    sys,false,false,,(14,14)
+    Path,false,false,,(15,15)
+    "Any, cast",false,false,,(16,16)
+    "log_debug, log_error, log_info, log_warning",false,false,,(18,18)
+    LanguagePlugin,false,false,,(19,19)
+statistics:
+  class_count: 1
+  method_count: 21
+  field_count: 0
+  import_count: 10
+  total_lines: 561---
+FILE: tree_sitter_analyzer/plugins/markup_language_extractor.py
+file_path: tree_sitter_analyzer/plugins/markup_language_extractor.py
+language: python
+package: null
+classes:
+  [1]{name,visibility,line_range(a,b)}:
+    MarkupLanguageExtractor,public,(17,117)
+methods:
+  [5]{name,visibility,line_range(a,b)}:
+    __init__,public,(36,46)
+    _reset_caches,public,(48,54)
+    _traverse_nodes,public,(56,87)
+    _is_node_processed,public,(89,104)
+    _mark_node_processed,public,(106,117)
+fields: []
+imports:
+  [5]{name,is_static,is_wildcard,statement,line_range(a,b)}:
+    ABC,false,false,,(7,7)
+    Iterator,false,false,,(8,8)
+    TYPE_CHECKING,false,false,,(9,9)
+    tree_sitter,false,false,,(12,12)
+    CachedElementExtractor,false,false,,(14,14)
+statistics:
+  class_count: 1
+  method_count: 5
+  field_count: 0
+  import_count: 5
+  total_lines: 117---
+FILE: tree_sitter_analyzer/plugins/programming_language_extractor.py
+file_path: tree_sitter_analyzer/plugins/programming_language_extractor.py
+language: python
+package: null
+classes:
+  [1]{name,visibility,line_range(a,b)}:
+    ProgrammingLanguageExtractor,public,(25,446)
+methods:
+  [17]{name,visibility,line_range(a,b)}:
+    __init__,public,(36,44)
+    _reset_caches,public,(46,50)
+    _get_container_node_types,public,(54,68)
+    _traverse_and_extract_iterative,public,(70,160)
+    _append_element_to_results,public,(162,174)
+    _push_children_to_stack,public,(176,197)
+    _get_decision_keywords,public,(201,218)
+    _calculate_complexity_optimized,public,(220,249)
+    count_decisions,public,(237,243)
+    _extract_common_metadata,public,(253,280)
+    _extract_raw_text,public,(282,298)
+    _extract_docstring_for_node,public,(300,320)
+    _get_function_handlers,public,(324,334)
+    _get_class_handlers,public,(336,346)
+    extract_functions,public,(350,388)
+    extract_classes,public,(390,428)
+    extract_variables,public,(430,446)
+fields: []
+imports:
+  [7]{name,is_static,is_wildcard,statement,line_range(a,b)}:
+    ABC,false,false,,(13,13)
+    Callable,false,false,,(14,14)
+    "TYPE_CHECKING, Any",false,false,,(15,15)
+    tree_sitter,false,false,,(18,18)
+    "Class, Function, Variable",false,false,,(20,20)
+    "log_debug, log_error, log_warning",false,false,,(21,21)
+    CachedElementExtractor,false,false,,(22,22)
+statistics:
+  class_count: 1
+  method_count: 17
+  field_count: 0
+  import_count: 7
+  total_lines: 446---

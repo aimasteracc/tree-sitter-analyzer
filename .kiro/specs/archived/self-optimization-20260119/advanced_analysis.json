@@ -1,0 +1,365 @@
+{
+  "file_path": "tree_sitter_analyzer/core/analysis_engine.py",
+  "language": "python",
+  "line_count": 551,
+  "element_count": 59,
+  "node_count": 3850,
+  "elements": [
+    {
+      "name": "__new__",
+      "type": "function",
+      "start_line": 39,
+      "end_line": 48
+    },
+    {
+      "name": "__init__",
+      "type": "function",
+      "start_line": 50,
+      "end_line": 67
+    },
+    {
+      "name": "_ensure_initialized",
+      "type": "function",
+      "start_line": 69,
+      "end_line": 88
+    },
+    {
+      "name": "register_plugin",
+      "type": "function",
+      "start_line": 90,
+      "end_line": 93
+    },
+    {
+      "name": "clear_cache",
+      "type": "function",
+      "start_line": 95,
+      "end_line": 99
+    },
+    {
+      "name": "_load_plugins",
+      "type": "function",
+      "start_line": 101,
+      "end_line": 115
+    },
+    {
+      "name": "analyze",
+      "type": "function",
+      "start_line": 117,
+      "end_line": 172
+    },
+    {
+      "name": "analyze_file",
+      "type": "function",
+      "start_line": 174,
+      "end_line": 237
+    },
+    {
+      "name": "analyze_file_async",
+      "type": "function",
+      "start_line": 239,
+      "end_line": 246
+    },
+    {
+      "name": "analyze_code",
+      "type": "function",
+      "start_line": 248,
+      "end_line": 290
+    },
+    {
+      "name": "analyze_code_sync",
+      "type": "function",
+      "start_line": 292,
+      "end_line": 342
+    },
+    {
+      "name": "run_in_new_loop",
+      "type": "function",
+      "start_line": 325,
+      "end_line": 334
+    },
+    {
+      "name": "_run_queries",
+      "type": "function",
+      "start_line": 344,
+      "end_line": 380
+    },
+    {
+      "name": "_generate_cache_key",
+      "type": "function",
+      "start_line": 382,
+      "end_line": 396
+    },
+    {
+      "name": "_detect_language",
+      "type": "function",
+      "start_line": 398,
+      "end_line": 404
+    },
+    {
+      "name": "_create_empty_result",
+      "type": "function",
+      "start_line": 406,
+      "end_line": 419
+    },
+    {
+      "name": "cleanup",
+      "type": "function",
+      "start_line": 421,
+      "end_line": 429
+    },
+    {
+      "name": "analyze_sync",
+      "type": "function",
+      "start_line": 431,
+      "end_line": 445
+    },
+    {
+      "name": "get_supported_languages",
+      "type": "function",
+      "start_line": 447,
+      "end_line": 450
+    },
+    {
+      "name": "get_available_queries",
+      "type": "function",
+      "start_line": 452,
+      "end_line": 455
+    },
+    {
+      "name": "get_cache_stats",
+      "type": "function",
+      "start_line": 457,
+      "end_line": 460
+    },
+    {
+      "name": "measure_operation",
+      "type": "function",
+      "start_line": 498,
+      "end_line": 501
+    },
+    {
+      "name": "__init__",
+      "type": "function",
+      "start_line": 519,
+      "end_line": 520
+    },
+    {
+      "name": "get_language_name",
+      "type": "function",
+      "start_line": 522,
+      "end_line": 523
+    },
+    {
+      "name": "get_file_extensions",
+      "type": "function",
+      "start_line": 525,
+      "end_line": 526
+    },
+    {
+      "name": "create_extractor",
+      "type": "function",
+      "start_line": 528,
+      "end_line": 529
+    },
+    {
+      "name": "analyze_file",
+      "type": "function",
+      "start_line": 531,
+      "end_line": 546
+    },
+    {
+      "name": "get_analysis_engine",
+      "type": "function",
+      "start_line": 549,
+      "end_line": 551
+    },
+    {
+      "name": "UnsupportedLanguageError",
+      "type": "class",
+      "start_line": 23,
+      "end_line": 26
+    },
+    {
+      "name": "UnifiedAnalysisEngine",
+      "type": "class",
+      "start_line": 29,
+      "end_line": 512
+    },
+    {
+      "name": "MockLanguagePlugin",
+      "type": "class",
+      "start_line": 516,
+      "end_line": 546
+    },
+    {
+      "name": "_instances",
+      "type": "variable",
+      "start_line": 36,
+      "end_line": 36
+    },
+    {
+      "name": "_lock",
+      "type": "variable",
+      "start_line": 37,
+      "end_line": 37
+    },
+    {
+      "name": "asyncio",
+      "type": "import",
+      "start_line": 9,
+      "end_line": 9
+    },
+    {
+      "name": "hashlib",
+      "type": "import",
+      "start_line": 10,
+      "end_line": 10
+    },
+    {
+      "name": "os",
+      "type": "import",
+      "start_line": 11,
+      "end_line": 11
+    },
+    {
+      "name": "threading",
+      "type": "import",
+      "start_line": 12,
+      "end_line": 12
+    },
+    {
+      "name": "TYPE_CHECKING, Any",
+      "type": "import",
+      "start_line": 13,
+      "end_line": 13
+    },
+    {
+      "name": "AnalysisResult",
+      "type": "import",
+      "start_line": 15,
+      "end_line": 15
+    },
+    {
+      "name": "PerformanceContext, PerformanceMonitor",
+      "type": "import",
+      "start_line": 16,
+      "end_line": 16
+    },
+    {
+      "name": "AnalysisRequest",
+      "type": "import",
+      "start_line": 17,
+      "end_line": 17
+    },
+    {
+      "name": "LanguagePlugin",
+      "type": "import",
+      "start_line": 20,
+      "end_line": 20
+    },
+    {
+      "name": "LanguageDetector",
+      "type": "import",
+      "start_line": 75,
+      "end_line": 75
+    },
+    {
+      "name": "PluginManager",
+      "type": "import",
+      "start_line": 76,
+      "end_line": 76
+    },
+    {
+      "name": "SecurityValidator",
+      "type": "import",
+      "start_line": 77,
+      "end_line": 77
+    },
+    {
+      "name": "CacheService",
+      "type": "import",
+      "start_line": 78,
+      "end_line": 78
+    },
+    {
+      "name": "Parser",
+      "type": "import",
+      "start_line": 79,
+      "end_line": 79
+    },
+    {
+      "name": "QueryExecutor",
+      "type": "import",
+      "start_line": 80,
+      "end_line": 80
+    },
+    {
+      "name": "log_debug, log_error",
+      "type": "import",
+      "start_line": 103,
+      "end_line": 103
+    },
+    {
+      "name": "PluginManager",
+      "type": "import",
+      "start_line": 107,
+      "end_line": 107
+    },
+    {
+      "name": "log_debug, log_error, log_info",
+      "type": "import",
+      "start_line": 120,
+      "end_line": 120
+    },
+    {
+      "name": "tempfile",
+      "type": "import",
+      "start_line": 256,
+      "end_line": 256
+    },
+    {
+      "name": "AnalysisRequest",
+      "type": "import",
+      "start_line": 258,
+      "end_line": 258
+    },
+    {
+      "name": "eadPoolExecutor(max_worke",
+      "type": "import",
+      "start_line": 323,
+      "end_line": 323
+    },
+    {
+      "name": "ery_with_language_name(\n     ",
+      "type": "import",
+      "start_line": 352,
+      "end_line": 352
+    },
+    {
+      "name": " def analyze_sync(self, request: An",
+      "type": "import",
+      "start_line": 410,
+      "end_line": 410
+    },
+    {
+      "name": "adPoolExecutor() as pool:\n   ",
+      "type": "import",
+      "start_line": 427,
+      "end_line": 427
+    },
+    {
+      "name": "turn self._query_executor",
+      "type": "import",
+      "start_line": 441,
+      "end_line": 441
+    },
+    {
+      "name": "asyncio",
+      "type": "import",
+      "start_line": 532,
+      "end_line": 532
+    }
+  ],
+  "success": true,
+  "analysis_time": 0.0
+}
