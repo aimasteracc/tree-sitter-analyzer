@@ -33,6 +33,8 @@ class MCPOutputNormalizer:
         "elapsed_ms",
         "elapsed_time",
         "content_hash",  # File content hash - changes with file content
+        "mtime",  # File modification time - changes when files are modified
+        "size_bytes",  # File size - changes when files are modified
     }
 
     # Fields that contain file paths (need normalization)

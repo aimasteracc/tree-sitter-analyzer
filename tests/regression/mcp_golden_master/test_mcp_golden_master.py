@@ -221,6 +221,12 @@ class TestMCPGoldenMasters:
             }
         )
 
+        # Sort results for deterministic comparison
+        if "results" in result:
+            result["results"] = sorted(
+                result["results"], key=lambda x: x.get("file", "")
+            )
+
         normalized = self.normalizer.normalize(result)
         expected = self._load_or_create_golden_master("search_content", normalized)
 
@@ -244,6 +250,12 @@ class TestMCPGoldenMasters:
                 "output_format": "json",
             }
         )
+
+        # Sort results for deterministic comparison
+        if "results" in result:
+            result["results"] = sorted(
+                result["results"], key=lambda x: (x.get("file", ""), x.get("line", 0))
+            )
 
         normalized = self.normalizer.normalize(result)
         expected = self._load_or_create_golden_master("find_and_grep", normalized)
