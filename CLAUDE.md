@@ -389,6 +389,26 @@ When feature is fully implemented and tested:
 mv .kiro/specs/{feature-name} .kiro/specs/archived/{feature-name}
 ```
 
+### TOON Project Map
+
+The project maintains a token-optimized structural index to facilitate global analysis without reading all source files.
+
+**1. Location & Format**
+- **File**: `.kiro/project_map.toon`
+- **Format**: TOON (Token-Optimized Output Notation)
+- **Content**: Comprehensive list of classes, methods (with line ranges), imports, and metrics for all core and language modules.
+
+**2. Usage for Agents**
+- **Contract Validation**: Before refactoring plugins, check `project_map.toon` to identify missing methods or signature drifts.
+- **Global Search**: Use `grep` on the map to find all implementations of an interface or usage of a decorator.
+- **Context Recovery**: Read the map at the start of a session to gain an instant "bird's-eye view" of the entire repository.
+
+**3. Updating the Map**
+Run the following command to refresh the structural index:
+```bash
+echo "" > .kiro/project_map.toon && for file in tree_sitter_analyzer/core/*.py tree_sitter_analyzer/languages/*.py tree_sitter_analyzer/plugins/*.py; do echo "FILE: $file" >> .kiro/project_map.toon && uv run tree-sitter-analyzer "$file" --table toon >> .kiro/project_map.toon 2>/dev/null && echo "---" >> .kiro/project_map.toon; done
+```
+
 ### File-Based Planning Rules
 
 **MANDATORY PRACTICES:**
