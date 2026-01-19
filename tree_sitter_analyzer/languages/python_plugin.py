@@ -63,6 +63,7 @@ class PythonElementExtractor(ProgrammingLanguageExtractor):
         return super()._get_container_node_types() | {
             "class_definition",
             "function_definition",
+            "decorated_definition",
             "if_statement",
             "for_statement",
             "while_statement",
