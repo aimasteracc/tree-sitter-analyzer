@@ -14,6 +14,7 @@ import pytest
 from tree_sitter_analyzer.mcp.tools.query_tool import QueryTool
 
 
+@pytest.mark.benchmark
 class TestQueryPerformance:
     """Tests for query performance."""
 

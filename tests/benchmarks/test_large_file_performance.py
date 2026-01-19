@@ -20,6 +20,7 @@ from tree_sitter_analyzer.mcp.tools.analyze_scale_tool import AnalyzeScaleTool
 from tree_sitter_analyzer.mcp.tools.query_tool import QueryTool
 
 
+@pytest.mark.benchmark
 class TestLargeFilePerformance:
     """Tests for large file processing performance."""
 

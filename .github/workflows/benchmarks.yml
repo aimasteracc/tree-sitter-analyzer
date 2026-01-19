@@ -26,8 +26,8 @@ jobs:
     - name: Run Analysis Benchmarks
       run: |
         echo "### ⚡ Analysis Benchmarks" >> $GITHUB_STEP_SUMMARY
-        # Only run benchmark marked tests
-        uv run pytest tests/benchmarks/ -v -m benchmark --benchmark-autosave --benchmark-json=benchmark-analysis.json
+        # Only run benchmark marked tests and disable xdist for accurate measurements
+        uv run pytest tests/benchmarks/ -v -m benchmark -n0 --benchmark-autosave --benchmark-json=benchmark-analysis.json
       shell: bash
 
     - name: Upload benchmark results
