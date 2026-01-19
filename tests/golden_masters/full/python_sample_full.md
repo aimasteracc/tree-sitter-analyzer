@@ -11,15 +11,24 @@ from functools import reduce
 ## Classes Overview
 | Class | Type | Visibility | Lines | Methods | Fields |
 |-------|------|------------|-------|---------|--------|
-| Animal | class | public | 31-45 | 2 | 0 |
+| Person | class | public | 14-28 | 2 | 1 |
+| Animal | class | public | 31-45 | 3 | 0 |
 | Dog | class | public | 48-61 | 3 | 0 |
-| Cat | class | public | 64-78 | 2 | 0 |
+| Cat | class | public | 64-78 | 3 | 0 |
+
+## Person (14-28)
+### Public Methods
+| Method | Signature | Vis | Lines | Cx | Doc |
+|--------|-----------|-----|-------|----|----| 
+| __post_init__ | (self:Any):Any | + | 21-24 | 2 | Validate the person data after initialization. |
+| greet | (self:Any):str | + | 26-28 | 2 | Return a greeting message. |
 
 ## Animal (31-45)
 ### Public Methods
 | Method | Signature | Vis | Lines | Cx | Doc |
 |--------|-----------|-----|-------|----|----| 
 | __init__ | (self:Any, name:str, species:str):Any | + | 34-36 | 1 | - |
+| make_sound | (self:Any):str | + | 39-41 | 1 | Make the sound characteristic of this animal. |
 | describe | (self:Any):str | + | 43-45 | 1 | Describe the animal. |
 
 ## Dog (48-61)
@@ -36,6 +45,7 @@ from functools import reduce
 |--------|-----------|-----|-------|----|----| 
 | __init__ | (self:Any, name:str):Any | + | 67-69 | 1 | - |
 | make_sound | (self:Any):str | + | 71-73 | 1 | Cats meow. |
+| purr | ():str [static] | + | 76-78 | 1 | Cats can purr. |
 
 ## Module Functions
 | Method | Signature | Vis | Lines | Cx | Doc |
@@ -50,4 +60,5 @@ from functools import reduce
 | lambda_and_higher_order_functions | ():Any | + | 171-186 | 6 | Demonstrate lambda functions and higher-order f... |
 | decorator_example | (func:Any):Any | + | 189-198 | 1 | A simple decorator example. |
 | wrapper | (*args:Any, **kwargs:Any):Any | + | 192-196 | 1 | - |
+| decorated_function | (message:str):str | + | 202-204 | 1 | A function that uses the decorator. |
 | main | ():Any | + | 207-252 | 1 | Main function to demonstrate all features. |
