@@ -117,34 +117,22 @@ class UnifiedAnalysisEngine:
     async def analyze(self, request: AnalysisRequest) -> Any:
         """Unified analysis method (Async)"""
         self._ensure_initialized()
-        from ..utils import log_debug, log_error, log_info
+        from ..utils import log_debug, log_info
 
         log_debug(f"Starting async analysis for {request.file_path}")
 
-        # Security validation
-        is_valid, error_msg = self._security_validator.validate_file_path(
-            request.file_path
-        )
-        if not is_valid:
-            log_error(f"Security validation failed: {request.file_path} - {error_msg}")
-            raise ValueError(f"Invalid file path: {error_msg}")
+        # 1. Validation & Language detection
+        self._validate_path(request.file_path)
+        language = self._get_validated_language(request)
 
-        # Language detection
-        language = request.language or self._detect_language(request.file_path)
-        if language == "unknown":
-            # For "unknown" language, we strictly raise error now to match test expectations
-            raise UnsupportedLanguageError(f"Unsupported language: {language}")
-        elif not self._language_detector.is_supported(language):
-            raise UnsupportedLanguageError(f"Unsupported language: {language}")
-
-        # Cache check
+        # 2. Cache check
         cache_key = self._generate_cache_key(request)
         cached_result = await self._cache_service.get(cache_key)
         if cached_result:
             log_info(f"Cache hit for {request.file_path}")
             return cached_result
 
-        # File existence check
+        # 3. Parsing
         if not os.path.exists(request.file_path):
             raise FileNotFoundError(f"File not found: {request.file_path}")
 
@@ -154,6 +142,7 @@ class UnifiedAnalysisEngine:
                 request.file_path, language, parse_result.error_message
             )
 
+        # 4. Plugin Analysis
         plugin = self._plugin_manager.get_plugin(language)
         if not plugin:
             raise UnsupportedLanguageError(f"Plugin not found for language: {language}")
@@ -164,77 +153,90 @@ class UnifiedAnalysisEngine:
         if not result.language:
             result.language = language
 
-        # Execute queries if requested
+        # 5. Queries & Cache Update
         if request.queries and request.include_queries:
             await self._run_queries(request, result, plugin, language)
 
         await self._cache_service.set(cache_key, result)
         return result
 
+    def _validate_path(self, file_path: str) -> None:
+        """Validate file path for security"""
+        from ..utils import log_error
+
+        is_valid, error_msg = self._security_validator.validate_file_path(file_path)
+        if not is_valid:
+            log_error(f"Security validation failed: {file_path} - {error_msg}")
+            raise ValueError(f"Invalid file path: {error_msg}")
+
+    def _get_validated_language(self, request: AnalysisRequest) -> str:
+        """Detect and validate language support"""
+        language = request.language or self._detect_language(request.file_path)
+        if language == "unknown":
+            raise UnsupportedLanguageError(f"Unsupported language: {language}")
+        elif not self._language_detector.is_supported(language):
+            raise UnsupportedLanguageError(f"Unsupported language: {language}")
+        return str(language)
+
     async def analyze_file(
         self,
         file_path: str,
         language: str | None = None,
         request: AnalysisRequest | None = None,
-        format_type: str | None = None,
-        include_details: bool | None = None,
-        include_complexity: bool | None = None,
-        include_elements: bool | None = None,
-        include_queries: bool | None = None,
-        queries: list[str] | None = None,
+        **kwargs: Any,
     ) -> Any:
-        """Compatibility alias for analyze with additional parameters
+        """Compatibility alias for analyze with additional parameters"""
+        request = self._ensure_request(file_path, language, request, **kwargs)
+        return await self.analyze(request)
 
-        Args:
-            file_path: Path to the file to analyze
-            language: Programming language (auto-detected if None)
-            request: Pre-built AnalysisRequest (if provided, other params are ignored)
-            format_type: Output format type ('json' or 'toon')
-            include_details: Whether to include detailed structure info
-            include_complexity: Whether to include complexity metrics
-            include_elements: Whether to extract code elements
-            include_queries: Whether to execute queries
-            queries: List of query names to execute
-
-        Returns:
-            Analysis result
-        """
+    def _ensure_request(
+        self,
+        file_path: str,
+        language: str | None = None,
+        request: AnalysisRequest | None = None,
+        **kwargs: Any,
+    ) -> AnalysisRequest:
+        """Helper to ensure AnalysisRequest is properly built from parameters"""
         if request is None:
-            request = AnalysisRequest(
+            return AnalysisRequest(
                 file_path=file_path,
                 language=language,
-                format_type=format_type or "json",
-                include_details=include_details
-                if include_details is not None
-                else False,
-                include_complexity=include_complexity
-                if include_complexity is not None
-                else True,
-                include_elements=include_elements
-                if include_elements is not None
-                else True,
-                include_queries=include_queries
-                if include_queries is not None
-                else True,
-                queries=queries,
+                format_type=str(kwargs.get("format_type") or "json"),
+                include_details=bool(kwargs.get("include_details") or False),
+                include_complexity=bool(
+                    kwargs.get("include_complexity")
+                    if kwargs.get("include_complexity") is not None
+                    else True
+                ),
+                include_elements=bool(
+                    kwargs.get("include_elements")
+                    if kwargs.get("include_elements") is not None
+                    else True
+                ),
+                include_queries=bool(
+                    kwargs.get("include_queries")
+                    if kwargs.get("include_queries") is not None
+                    else True
+                ),
+                queries=kwargs.get("queries"),
             )
-        else:
-            # Update request with provided parameters
-            if language:
-                request.language = language
-            if format_type:
-                request.format_type = format_type
-            if include_details is not None:
-                request.include_details = include_details
-            if include_complexity is not None:
-                request.include_complexity = include_complexity
-            if include_elements is not None:
-                request.include_elements = include_elements
-            if include_queries is not None:
-                request.include_queries = include_queries
-            if queries is not None:
-                request.queries = queries
-        return await self.analyze(request)
+
+        # Update existing request with provided parameters
+        if language:
+            request.language = language
+
+        for key in [
+            "format_type",
+            "include_details",
+            "include_complexity",
+            "include_elements",
+            "include_queries",
+            "queries",
+        ]:
+            if key in kwargs and kwargs[key] is not None:
+                setattr(request, key, kwargs[key])
+
+        return request
 
     async def analyze_file_async(
         self,
