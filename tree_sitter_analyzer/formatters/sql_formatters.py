@@ -54,8 +54,19 @@ class SQLFormatterBase:
     def _format_grouped_elements(
         self, grouped_elements: dict[SQLElementType, list[SQLElement]], file_path: str
     ) -> str:
-        """Format grouped elements - to be implemented by subclasses"""
-        raise NotImplementedError("Subclasses must implement _format_grouped_elements")
+        """Default formatting for grouped elements to prevent NotImplementedError"""
+        filename = file_path.split("/")[-1] if file_path else "unknown.sql"
+        output = [f"# {filename}", ""]
+
+        for element_type, elements in grouped_elements.items():
+            output.append(f"## {element_type.value.title()}s")
+            for element in elements:
+                output.append(
+                    f"- {element.name} ({element.start_line}-{element.end_line})"
+                )
+            output.append("")
+
+        return "\n".join(output).rstrip() + "\n"
 
 
 class SQLFullFormatter(SQLFormatterBase):

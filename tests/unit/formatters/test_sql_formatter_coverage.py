@@ -1,5 +1,3 @@
-import pytest
-
 from tree_sitter_analyzer.formatters.sql_formatters import (
     SQLFormatterBase,
     SQLFullFormatter,
@@ -120,7 +118,24 @@ class TestSQLFormatterCoverage:
         )  # SELECT should be filtered
         assert "| idx_users_email | index | 30-30 | users(email) | - |" in result
 
-    def test_base_formatter_not_implemented(self):
+    def test_base_formatter_default_implementation(self):
         formatter = SQLFormatterBase()
-        with pytest.raises(NotImplementedError):
-            formatter._format_grouped_elements({}, "test.sql")
+        from tree_sitter_analyzer.models import SQLElement, SQLElementType
+
+        # Create a mock element
+        class MockElement(SQLElement):
+            pass
+
+        element = MockElement(
+            name="test_elem",
+            start_line=1,
+            end_line=2,
+            raw_text="...",
+            language="sql",
+            sql_element_type=SQLElementType.TABLE,
+        )
+
+        result = formatter.format_elements([element], "test.sql")
+        assert "# test.sql" in result
+        assert "## Tables" in result
+        assert "- test_elem (1-2)" in result
