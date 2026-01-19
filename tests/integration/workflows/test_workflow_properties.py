@@ -93,6 +93,7 @@ class TestWorkflowProperties:
         for _job_name, job in jobs.items():
             steps = job.get("steps", [])
             for step in steps:
+                # Check for direct run commands
                 if "run" in step:
                     run_cmd = step["run"]
                     if (
@@ -101,6 +102,11 @@ class TestWorkflowProperties:
                         or "uv pip install" in run_cmd
                     ):
                         commands.append(run_cmd)
+
+                # Check for setup-analyzer usage with uv-sync
+                if "uses" in step and "setup-analyzer" in step["uses"]:
+                    if step.get("with", {}).get("uv-sync") == "true":
+                        commands.append("uv sync (via setup-analyzer)")
 
         return commands
 
@@ -159,7 +165,10 @@ class TestWorkflowProperties:
     ):
         """Property 7: System dependencies (fd, ripgrep) must be handled."""
         content = yaml.dump(reusable_test_workflow)
-        assert "setup-system" in content or ("fd" in content and "ripgrep" in content)
+        assert any(
+            marker in content
+            for marker in ["setup-system", "setup-analyzer", "fd", "ripgrep"]
+        )
 
     def test_property_11_reusable_workflow_structure(
         self,

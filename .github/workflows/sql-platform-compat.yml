@@ -20,26 +20,22 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v5
+    - name: Setup Analyzer
+      uses: ./.github/actions/setup-analyzer
       with:
+        os: ${{ matrix.os }}
         python-version: ${{ matrix.python-version }}
-
-    - name: Install uv
-      uses: astral-sh/setup-uv@v4
-
-    - name: Install dependencies
-      run: |
-        uv sync --all-extras --dev
+        uv-sync: "true"
 
     - name: Run Platform Compatibility Tests
       run: |
-        # Run SQL-specific tests from unit/languages directory
         uv run python -m pytest tests/unit/languages/ -k "test_sql" -v --tb=short
+      shell: bash
 
     - name: Dump AST for Sample Database
       run: |
         uv run python scripts/dump_ast.py examples/sample_database.sql > sample_database_ast.txt
+      shell: bash
 
     - name: Upload AST Artifact
       uses: actions/upload-artifact@v4
@@ -50,6 +46,7 @@ jobs:
     - name: Record SQL Behavior Profile
       run: |
         uv run python -m tree_sitter_analyzer.platform_compat.record --output-dir tests/platform_profiles
+      shell: bash
 
     - name: Upload Profile Artifact
       uses: actions/upload-artifact@v4
@@ -66,7 +63,7 @@ jobs:
         from pathlib import Path
         import subprocess
 
-        # Detect current platform key (same logic as detector)
+        # Detect current platform key
         os_name = platform.system().lower()
         if os_name == "darwin": os_name = "macos"
         python_version = f"{sys.version_info.major}.{sys.version_info.minor}"
@@ -85,7 +82,6 @@ jobs:
             sys.exit(0)
 
         print(f"Comparing {current_profile} with {baseline_profile}...")
-        # Use uv run to ensure dependencies are available
         result = subprocess.run(
             ["uv", "run", "python", "-m", "tree_sitter_analyzer.platform_compat.compare", str(baseline_profile), str(current_profile), "--fail-on-diff"],
             capture_output=True,

@@ -2,10 +2,6 @@
 #
 # Purpose: Run comprehensive test suite with coverage reporting and threshold checks
 # Triggers: Pull requests, push to main/develop branches, manual dispatch
-# Jobs:
-#   - coverage-check: Run tests with coverage and enforce minimum thresholds
-# Secrets Required:
-#   - CODECOV_TOKEN: For coverage upload to Codecov
 
 name: Test Coverage Check
 
@@ -28,7 +24,7 @@ on:
           - '3.13'
 
 env:
-  COVERAGE_THRESHOLD: 40  # Minimum coverage percentage (adjust as needed)
+  COVERAGE_THRESHOLD: 40  # Minimum coverage percentage
   COVERAGE_THRESHOLD_FAIL: false  # Set to true to fail CI on low coverage
 
 jobs:
@@ -42,25 +38,12 @@ jobs:
       with:
         fetch-depth: 0
 
-    - name: Install uv
-      uses: astral-sh/setup-uv@v4
-      with:
-        version: "latest"
-        enable-cache: true
-        cache-dependency-glob: "uv.lock"
-
-    - name: Set up Python ${{ inputs.python-version || '3.11' }}
-      run: uv python install ${{ inputs.python-version || '3.11' }}
-
-    - name: Setup System Dependencies
-      uses: ./.github/actions/setup-system
+    - name: Setup Analyzer
+      uses: ./.github/actions/setup-analyzer
       with:
         os: ubuntu-latest
-
-    - name: Install dependencies
-      run: |
-        uv sync --all-extras
-      shell: bash
+        python-version: ${{ inputs.python-version || '3.11' }}
+        uv-sync: "true"
 
     - name: Run Tests with Coverage
       id: test-coverage
@@ -71,15 +54,12 @@ jobs:
         echo "**Coverage Threshold:** ${{ env.COVERAGE_THRESHOLD }}%" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
 
-        # Run tests with coverage
-        # Note: marker filter uses 'and' to exclude tests requiring BOTH ripgrep AND fd
         uv run pytest tests/ -n auto -v --tb=short --maxfail=10 \
           --cov=tree_sitter_analyzer \
           --cov-report=xml \
           --cov-report=html \
           --cov-report=term-missing \
           --cov-report=term \
-          --cov-fail-under=${{ env.COVERAGE_THRESHOLD_FAIL == 'true' && env.COVERAGE_THRESHOLD || 0 }} \
           2>&1 | tee pytest-coverage-output.txt || touch test_failed
 
         # Extract coverage percentage
@@ -96,12 +76,10 @@ jobs:
 
         echo "COVERAGE_PERCENT=$COVERAGE_PERCENT" >> $GITHUB_ENV
 
-        # Display coverage in summary
         echo '```text' >> $GITHUB_STEP_SUMMARY
         tail -n 30 pytest-coverage-output.txt >> $GITHUB_STEP_SUMMARY
         echo '```' >> $GITHUB_STEP_SUMMARY
 
-        # Check if coverage meets threshold
         if [ "$COVERAGE_PERCENT" -lt "${{ env.COVERAGE_THRESHOLD }}" ]; then
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "⚠️ **Coverage Warning:** Current coverage ($COVERAGE_PERCENT%) is below threshold (${{ env.COVERAGE_THRESHOLD }}%)" >> $GITHUB_STEP_SUMMARY
@@ -114,7 +92,6 @@ jobs:
           echo "✅ **Coverage Check Passed:** $COVERAGE_PERCENT% (threshold: ${{ env.COVERAGE_THRESHOLD }}%)" >> $GITHUB_STEP_SUMMARY
         fi
 
-        # Check if tests failed
         if [ -f test_failed ]; then
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "❌ **Tests Failed!**" >> $GITHUB_STEP_SUMMARY
@@ -126,45 +103,32 @@ jobs:
       if: always()
       run: |
         echo "### 📈 Coverage Details" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-
-        # Generate coverage summary
-        uv run python scripts/monitor_coverage.py summary >> $GITHUB_STEP_SUMMARY 2>&1 || echo "Coverage summary generation completed"
-
-        # Show low coverage files
+        uv run python scripts/monitor_coverage.py summary >> $GITHUB_STEP_SUMMARY 2>&1 || echo "Coverage summary completed"
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "#### Low Coverage Files (< 50%)" >> $GITHUB_STEP_SUMMARY
         echo '```text' >> $GITHUB_STEP_SUMMARY
-        uv run python scripts/monitor_coverage.py low --threshold 50 >> $GITHUB_STEP_SUMMARY 2>&1 || echo "No low coverage files found"
+        uv run python scripts/monitor_coverage.py low --threshold 50 >> $GITHUB_STEP_SUMMARY 2>&1 || echo "No low coverage files"
         echo '```' >> $GITHUB_STEP_SUMMARY
       shell: bash
 
     - name: Upload Coverage to Codecov
       if: always()
       uses: codecov/codecov-action@v5
-      env:
-        CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
       with:
         files: ./coverage.xml
+        token: ${{ secrets.CODECOV_TOKEN }}
         flags: unittests
         name: codecov-coverage-check
         fail_ci_if_error: false
-        verbose: true
 
-    - name: Upload Coverage HTML Report
+    - name: Upload Artifacts
       if: always()
       uses: actions/upload-artifact@v4
       with:
-        name: coverage-html-report
-        path: htmlcov/
-        retention-days: 7
-
-    - name: Upload Coverage XML Report
-      if: always()
-      uses: actions/upload-artifact@v4
-      with:
-        name: coverage-xml-report
-        path: coverage.xml
+        name: coverage-reports
+        path: |
+          htmlcov/
+          coverage.xml
         retention-days: 7
 
     - name: Comment Coverage on PR
@@ -179,8 +143,7 @@ jobs:
       if: always()
       run: |
         echo "### 📊 Coverage Trend" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
         echo '```text' >> $GITHUB_STEP_SUMMARY
-        uv run python scripts/monitor_coverage.py trend >> $GITHUB_STEP_SUMMARY 2>&1 || echo "Trend data not available"
+        uv run python scripts/monitor_coverage.py trend >> $GITHUB_STEP_SUMMARY 2>&1 || echo "Trend not available"
         echo '```' >> $GITHUB_STEP_SUMMARY
       shell: bash

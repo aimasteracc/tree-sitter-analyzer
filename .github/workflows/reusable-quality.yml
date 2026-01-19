@@ -7,53 +7,30 @@ on:
   workflow_call:
 
 jobs:
-  lint:
-    name: Lint (Ruff)
+  quality:
+    name: Code Quality Checks
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Install uv
-        uses: astral-sh/setup-uv@v4
+
+      - name: Setup Analyzer
+        uses: ./.github/actions/setup-analyzer
         with:
-          version: "latest"
-      - name: Set up Python 3.11
-        run: uv python install 3.11
+          os: ubuntu-latest
+          python-version: "3.11"
+          uv-sync: "true"
+
       - name: Run Ruff
         run: |
-          uv sync --all-extras
           uv run ruff check .
           echo "✅ Ruff linting passed" >> $GITHUB_STEP_SUMMARY
 
-  type-check:
-    name: Type Check (MyPy)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install uv
-        uses: astral-sh/setup-uv@v4
-        with:
-          version: "latest"
-      - name: Set up Python 3.11
-        run: uv python install 3.11
       - name: Run MyPy
         run: |
-          uv sync --all-extras
           uv run mypy tree_sitter_analyzer/
           echo "✅ MyPy type checking passed" >> $GITHUB_STEP_SUMMARY
 
-  security:
-    name: Security Scan (Bandit)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install uv
-        uses: astral-sh/setup-uv@v4
-        with:
-          version: "latest"
-      - name: Set up Python 3.11
-        run: uv python install 3.11
       - name: Run Bandit
         run: |
-          uv sync --all-extras
           uv run --with bandit bandit -r tree_sitter_analyzer/ -f json -o bandit-results.json
           echo "✅ Bandit security scan passed" >> $GITHUB_STEP_SUMMARY

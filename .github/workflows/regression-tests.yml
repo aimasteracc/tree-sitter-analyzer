@@ -2,9 +2,6 @@
 #
 # Purpose: Run regression tests to ensure backward compatibility and Golden Master validation
 # Triggers: Pull requests, push to main/develop branches, manual dispatch
-# Jobs:
-#   - regression-tests: Run all regression tests including Golden Master validation
-#   - golden-master-update: Allow manual Golden Master updates (manual trigger only)
 
 name: Regression Tests
 
@@ -32,7 +29,7 @@ on:
           - compatibility
 
 env:
-  REGRESSION_TEST_TIMEOUT: 600  # 10 minutes timeout for regression tests
+  REGRESSION_TEST_TIMEOUT: 600
 
 jobs:
   regression-tests:
@@ -45,56 +42,26 @@ jobs:
       with:
         fetch-depth: 0
 
-    - name: Install uv
-      uses: astral-sh/setup-uv@v4
-      with:
-        version: "latest"
-        enable-cache: true
-        cache-dependency-glob: "uv.lock"
-
-    - name: Set up Python 3.11
-      run: uv python install 3.11
-
-    - name: Setup System Dependencies
-      uses: ./.github/actions/setup-system
+    - name: Setup Analyzer
+      uses: ./.github/actions/setup-analyzer
       with:
         os: ubuntu-latest
-
-    - name: Install dependencies
-      run: |
-        uv sync --all-extras
-      shell: bash
+        python-version: "3.11"
+        uv-sync: "true"
 
     - name: Run Format Regression Tests
       if: inputs.test-scope == 'all' || inputs.test-scope == 'format'
       run: |
         echo "### 🔄 Format Regression Tests" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-
         uv run pytest tests/regression/test_format_regression.py \
-          -v --tb=short \
-          -m regression \
-          --timeout=${{ env.REGRESSION_TEST_TIMEOUT }} \
+          -v --tb=short -m regression --timeout=${{ env.REGRESSION_TEST_TIMEOUT }} \
           > format-regression-output.txt 2>&1 || touch format_failed
-
-        cat format-regression-output.txt
-
         echo '```text' >> $GITHUB_STEP_SUMMARY
         tail -n 50 format-regression-output.txt >> $GITHUB_STEP_SUMMARY
         echo '```' >> $GITHUB_STEP_SUMMARY
-
         if [ -f format_failed ]; then
-          echo "" >> $GITHUB_STEP_SUMMARY
           echo "❌ **Format Regression Tests Failed!**" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "If you intentionally changed the format output, please update the Golden Masters:" >> $GITHUB_STEP_SUMMARY
-          echo "```bash" >> $GITHUB_STEP_SUMMARY
-          echo "uv run pytest tests/regression/test_format_regression.py --update-golden-masters" >> $GITHUB_STEP_SUMMARY
-          echo "```" >> $GITHUB_STEP_SUMMARY
           exit 1
-        else
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "✅ **Format Regression Tests Passed!**" >> $GITHUB_STEP_SUMMARY
         fi
       shell: bash
 
@@ -102,27 +69,15 @@ jobs:
       if: inputs.test-scope == 'all' || inputs.test-scope == 'api'
       run: |
         echo "### 🔌 API Regression Tests" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-
         uv run pytest tests/regression/test_api_regression.py \
-          -v --tb=short \
-          -m regression \
-          --timeout=${{ env.REGRESSION_TEST_TIMEOUT }} \
+          -v --tb=short -m regression --timeout=${{ env.REGRESSION_TEST_TIMEOUT }} \
           > api-regression-output.txt 2>&1 || touch api_failed
-
-        cat api-regression-output.txt
-
         echo '```text' >> $GITHUB_STEP_SUMMARY
         tail -n 50 api-regression-output.txt >> $GITHUB_STEP_SUMMARY
         echo '```' >> $GITHUB_STEP_SUMMARY
-
         if [ -f api_failed ]; then
-          echo "" >> $GITHUB_STEP_SUMMARY
           echo "❌ **API Regression Tests Failed!**" >> $GITHUB_STEP_SUMMARY
           exit 1
-        else
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "✅ **API Regression Tests Passed!**" >> $GITHUB_STEP_SUMMARY
         fi
       shell: bash
 
@@ -130,55 +85,15 @@ jobs:
       if: inputs.test-scope == 'all' || inputs.test-scope == 'compatibility'
       run: |
         echo "### 🔗 Cross-Version Compatibility Tests" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-
         uv run pytest tests/compatibility/test_cross_version_compatibility.py \
-          -v --tb=short \
-          -m regression \
-          --timeout=${{ env.REGRESSION_TEST_TIMEOUT }} \
+          -v --tb=short -m regression --timeout=${{ env.REGRESSION_TEST_TIMEOUT }} \
           > compatibility-output.txt 2>&1 || touch compatibility_failed
-
-        cat compatibility-output.txt
-
         echo '```text' >> $GITHUB_STEP_SUMMARY
         tail -n 50 compatibility-output.txt >> $GITHUB_STEP_SUMMARY
         echo '```' >> $GITHUB_STEP_SUMMARY
-
         if [ -f compatibility_failed ]; then
-          echo "" >> $GITHUB_STEP_SUMMARY
           echo "❌ **Cross-Version Compatibility Tests Failed!**" >> $GITHUB_STEP_SUMMARY
           exit 1
-        else
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "✅ **Cross-Version Compatibility Tests Passed!**" >> $GITHUB_STEP_SUMMARY
-        fi
-      shell: bash
-
-    - name: Generate Regression Test Summary
-      if: always()
-      run: |
-        echo "### 📊 Regression Test Summary" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-
-        # Count total tests
-        TOTAL_TESTS=$(uv run pytest tests/regression/ tests/compatibility/ \
-          --collect-only -q -m regression 2>/dev/null | grep -c "test_" || echo "0")
-        echo "**Total Regression Tests:** $TOTAL_TESTS" >> $GITHUB_STEP_SUMMARY
-
-        # Check for failures
-        FAILED=0
-        if [ -f format_failed ]; then FAILED=$((FAILED + 1)); fi
-        if [ -f api_failed ]; then FAILED=$((FAILED + 1)); fi
-        if [ -f compatibility_failed ]; then FAILED=$((FAILED + 1)); fi
-
-        echo "**Failed Test Suites:** $FAILED/3" >> $GITHUB_STEP_SUMMARY
-
-        if [ $FAILED -eq 0 ]; then
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "✅ **All Regression Tests Passed!**" >> $GITHUB_STEP_SUMMARY
-        else
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "❌ **Some Regression Tests Failed**" >> $GITHUB_STEP_SUMMARY
         fi
       shell: bash
 
@@ -192,38 +107,6 @@ jobs:
           *-output.txt
         retention-days: 7
 
-    - name: Comment on PR (if failed)
-      if: failure() && github.event_name == 'pull_request'
-      uses: actions/github-script@v7
-      with:
-        script: |
-          const comment = `## ⚠️ Regression Tests Failed
-
-          The regression tests have failed. This indicates a potential breaking change.
-
-          ### 📋 Failed Test Suites:
-          - Format Regression Tests
-          - API Regression Tests
-          - Cross-Version Compatibility Tests
-
-          ### 🔍 Next Steps:
-          1. Review the test logs in the artifacts
-          2. Check if the changes are intentional
-          3. If intentional, update the Golden Masters:
-             \`\`\`bash
-             uv run pytest tests/regression/test_format_regression.py --update-golden-masters
-             \`\`\`
-          4. If unintentional, fix the breaking changes
-
-          Please review the [workflow run](${context.payload.repository.html_url}/actions/runs/${context.runId}) for details.`;
-
-          github.rest.issues.createComment({
-            issue_number: context.issue.number,
-            owner: context.repo.owner,
-            repo: context.repo.repo,
-            body: comment
-          });
-
   golden-master-update:
     name: Update Golden Masters
     runs-on: ubuntu-latest
@@ -235,50 +118,24 @@ jobs:
       with:
         fetch-depth: 0
 
-    - name: Install uv
-      uses: astral-sh/setup-uv@v4
-      with:
-        version: "latest"
-        enable-cache: true
-        cache-dependency-glob: "uv.lock"
-
-    - name: Set up Python 3.11
-      run: uv python install 3.11
-
-    - name: Setup System Dependencies
-      uses: ./.github/actions/setup-system
+    - name: Setup Analyzer
+      uses: ./.github/actions/setup-analyzer
       with:
         os: ubuntu-latest
-
-    - name: Install dependencies
-      run: |
-        uv sync --all-extras
-      shell: bash
+        python-version: "3.11"
+        uv-sync: "true"
 
     - name: Update Golden Masters
       run: |
         echo "### 🔄 Updating Golden Masters" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-
-        # Update format Golden Masters
-        uv run pytest tests/regression/test_format_regression.py \
-          --update-golden-masters \
-          -v --tb=short \
+        uv run pytest tests/regression/test_format_regression.py --update-golden-masters -v --tb=short \
           > golden-master-update-output.txt 2>&1 || touch update_failed
-
-        cat golden-master-update-output.txt
-
         echo '```text' >> $GITHUB_STEP_SUMMARY
         tail -n 100 golden-master-update-output.txt >> $GITHUB_STEP_SUMMARY
         echo '```' >> $GITHUB_STEP_SUMMARY
-
         if [ -f update_failed ]; then
-          echo "" >> $GITHUB_STEP_SUMMARY
           echo "❌ **Golden Master Update Failed!**" >> $GITHUB_STEP_SUMMARY
           exit 1
-        else
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "✅ **Golden Masters Updated Successfully!**" >> $GITHUB_STEP_SUMMARY
         fi
       shell: bash
 
@@ -296,26 +153,8 @@ jobs:
         fi
       shell: bash
 
-    - name: Commit and push changes
+    - name: Create Pull Request
       if: steps.check-changes.outputs.changed == 'true'
-      run: |
-        git config --local user.email "github-actions[bot]@users.noreply.github.com"
-        git config --local user.name "github-actions[bot]"
-        git add tests/golden_masters/
-        git commit -m "chore: update golden masters [skip ci]"
-        git push
-      shell: bash
-
-    - name: Upload Update Logs
-      if: always()
-      uses: actions/upload-artifact@v4
-      with:
-        name: golden-master-update-logs
-        path: golden-master-update-output.txt
-        retention-days: 30
-
-    - name: Create Pull Request (if needed)
-      if: steps.check-changes.outputs.changed == 'true' && github.ref != 'refs/heads/main'
       uses: peter-evans/create-pull-request@v6
       with:
         title: "chore: update golden masters"
