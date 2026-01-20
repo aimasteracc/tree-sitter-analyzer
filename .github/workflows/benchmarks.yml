@@ -1,21 +1,58 @@
 # Performance Benchmarks Workflow
-# Purpose: Specialized performance monitoring (Slow)
+#
+# Purpose: Run performance benchmarks and track performance trends
+# Triggers: Pull requests, push to main branch, scheduled runs, manual dispatch
+# Jobs:
+#   - benchmarks: Run all performance benchmarks and compare against baseline
+#   - benchmark-trend: Analyze performance trends over time
 
 name: Performance Benchmarks
 
 on:
-  push:
+  pull_request:
     branches: [main, develop]
+  push:
+    branches: [main]
   schedule:
+    # Run benchmarks daily at 00:00 UTC
     - cron: '0 0 * * *'
   workflow_dispatch:
+    inputs:
+      benchmark-scope:
+        description: 'Benchmark scope'
+        required: false
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - analysis
+          - query
+          - cache
+          - formatting
+      compare-baseline:
+        description: 'Compare against baseline'
+        required: false
+        default: true
+        type: boolean
+
+env:
+  BENCHMARK_TIMEOUT: 900
+  PERFORMANCE_REGRESSION_THRESHOLD: 10
+  # Handle inputs for scheduled/push events by defaulting to 'all'
+  BENCHMARK_SCOPE: ${{ github.event.inputs.benchmark-scope || 'all' }}
+  COMPARE_BASELINE: ${{ github.event.inputs.compare-baseline || 'true' }}
 
 jobs:
   benchmarks:
-    name: Performance Benchmarks
+    name: Performance Benchmarks (${{ github.event.inputs.benchmark-scope || 'all' }})
     runs-on: ubuntu-latest
+
     steps:
-    - uses: actions/checkout@v4
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
     - name: Setup Analyzer
       uses: ./.github/actions/setup-analyzer
       with:
@@ -23,11 +60,181 @@ jobs:
         python-version: "3.11"
         uv-sync: "true"
 
+    - name: Download baseline data
+      if: env.COMPARE_BASELINE != 'false'
+      uses: actions/cache/restore@v4
+      with:
+        path: .benchmark/baseline
+        key: benchmark-baseline-${{ github.base_ref || github.ref_name }}
+        restore-keys: |
+          benchmark-baseline-main
+          benchmark-baseline-
+
     - name: Run Analysis Benchmarks
+      if: env.BENCHMARK_SCOPE == 'all' || env.BENCHMARK_SCOPE == 'analysis'
       run: |
-        echo "### ⚡ Analysis Benchmarks" >> $GITHUB_STEP_SUMMARY
-        # Only run benchmark marked tests and disable xdist for accurate measurements
-        uv run pytest tests/benchmarks/ -v -m benchmark -n0 --benchmark-autosave --benchmark-json=benchmark-analysis.json
+        echo "### Analysis Benchmarks" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+
+        uv run pytest tests/benchmarks/ \
+          -v \
+          --benchmark-only \
+          --benchmark-autosave \
+          --benchmark-save-data \
+          --benchmark-json=benchmark-analysis.json \
+          -k "analysis" \
+          --timeout=${{ env.BENCHMARK_TIMEOUT }} \
+          > benchmark-analysis-output.txt 2>&1 || touch benchmark_failed
+
+        cat benchmark-analysis-output.txt
+
+        echo '```text' >> $GITHUB_STEP_SUMMARY
+        tail -n 50 benchmark-analysis-output.txt >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY
+      shell: bash
+
+    - name: Run Query Benchmarks
+      if: env.BENCHMARK_SCOPE == 'all' || env.BENCHMARK_SCOPE == 'query'
+      run: |
+        echo "### Query Benchmarks" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+
+        uv run pytest tests/benchmarks/ \
+          -v \
+          --benchmark-only \
+          --benchmark-autosave \
+          --benchmark-save-data \
+          --benchmark-json=benchmark-query.json \
+          -k "query" \
+          --timeout=${{ env.BENCHMARK_TIMEOUT }} \
+          > benchmark-query-output.txt 2>&1 || touch benchmark_failed
+
+        cat benchmark-query-output.txt
+
+        echo '```text' >> $GITHUB_STEP_SUMMARY
+        tail -n 50 benchmark-query-output.txt >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY
+      shell: bash
+
+    - name: Run Cache Benchmarks
+      if: env.BENCHMARK_SCOPE == 'all' || env.BENCHMARK_SCOPE == 'cache'
+      run: |
+        echo "### Cache Benchmarks" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+
+        uv run pytest tests/benchmarks/ \
+          -v \
+          --benchmark-only \
+          --benchmark-autosave \
+          --benchmark-save-data \
+          --benchmark-json=benchmark-cache.json \
+          -k "cache" \
+          --timeout=${{ env.BENCHMARK_TIMEOUT }} \
+          > benchmark-cache-output.txt 2>&1 || touch benchmark_failed
+
+        cat benchmark-cache-output.txt
+
+        echo '```text' >> $GITHUB_STEP_SUMMARY
+        tail -n 50 benchmark-cache-output.txt >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY
+      shell: bash
+
+    - name: Run Formatting Benchmarks
+      if: env.BENCHMARK_SCOPE == 'all' || env.BENCHMARK_SCOPE == 'formatting'
+      run: |
+        echo "### Formatting Benchmarks" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+
+        uv run pytest tests/benchmarks/ \
+          -v \
+          --benchmark-only \
+          --benchmark-autosave \
+          --benchmark-save-data \
+          --benchmark-json=benchmark-formatting.json \
+          -k "formatting" \
+          --timeout=${{ env.BENCHMARK_TIMEOUT }} \
+          > benchmark-formatting-output.txt 2>&1 || touch benchmark_failed
+
+        cat benchmark-formatting-output.txt
+
+        echo '```text' >> $GITHUB_STEP_SUMMARY
+        tail -n 50 benchmark-formatting-output.txt >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY
+      shell: bash
+
+    - name: Compare with baseline
+      if: env.COMPARE_BASELINE != 'false' && always()
+      run: |
+        echo "### Performance Comparison" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+
+        if [ -d ".benchmark/baseline" ]; then
+          echo "Comparing against baseline..." >> $GITHUB_STEP_SUMMARY
+
+          for json_file in benchmark-*.json; do
+            if [ -f "$json_file" ]; then
+              echo "#### $(basename $json_file .json | sed 's/benchmark-//')" >> $GITHUB_STEP_SUMMARY
+              echo '```text' >> $GITHUB_STEP_SUMMARY
+              uv run pytest-benchmark compare "$json_file" ".benchmark/baseline/$(basename $json_file)" \
+                2>&1 | head -n 50 >> $GITHUB_STEP_SUMMARY || echo "Comparison not available"
+              echo '```' >> $GITHUB_STEP_SUMMARY
+            fi
+          done
+        else
+          echo "No baseline data available for comparison." >> $GITHUB_STEP_SUMMARY
+        fi
+      shell: bash
+
+    - name: Check for performance regression
+      if: env.COMPARE_BASELINE != 'false' && always()
+      run: |
+        echo "### Performance Regression Check" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+
+        REGRESSION_DETECTED=false
+
+        for json_file in benchmark-*.json; do
+          if [ -f "$json_file" ]; then
+            uv run python scripts/check_performance_regression.py \
+              "$json_file" \
+              ${{ env.PERFORMANCE_REGRESSION_THRESHOLD }} \
+              2>&1 || touch regression_detected
+
+            if [ -f regression_detected ]; then
+              REGRESSION_DETECTED=true
+            fi
+          fi
+        done
+
+        if [ "$REGRESSION_DETECTED" = true ]; then
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Performance Regression Detected!" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Performance has degraded by more than ${{ env.PERFORMANCE_REGRESSION_THRESHOLD }}%." >> $GITHUB_STEP_SUMMARY
+          echo "Please review changes and consider optimizing code." >> $GITHUB_STEP_SUMMARY
+        else
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "No Performance Regression Detected" >> $GITHUB_STEP_SUMMARY
+        fi
+      shell: bash
+
+    - name: Generate Benchmark Summary
+      if: always()
+      run: |
+        echo "### Benchmark Summary" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+
+        TOTAL_BENCHMARKS=$(uv run pytest tests/benchmarks/ \
+          --collect-only -q -m benchmark 2>/dev/null | grep -c "test_" || echo "0")
+        echo "**Total Benchmarks:** $TOTAL_BENCHMARKS" >> $GITHUB_STEP_SUMMARY
+
+        if [ -f benchmark_failed ]; then
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Some benchmarks failed to complete" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "All benchmarks completed successfully" >> $GITHUB_STEP_SUMMARY
+        fi
       shell: bash
 
     - name: Upload benchmark results
@@ -35,4 +242,102 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: benchmark-results
-        path: benchmark-*.json
+        path: |
+          benchmark-*.json
+          benchmark-*-output.txt
+        retention-days: 30
+
+    - name: Save as new baseline
+      if: github.ref == 'refs/heads/main' && github.event_name == 'push' && !failure()
+      run: |
+        mkdir -p .benchmark/baseline
+        cp benchmark-*.json .benchmark/baseline/ 2>/dev/null || true
+      shell: bash
+
+    - name: Upload new baseline
+      if: github.ref == 'refs/heads/main' && github.event_name == 'push' && !failure()
+      uses: actions/cache/save@v4
+      with:
+        path: .benchmark/baseline
+        key: benchmark-baseline-${{ github.ref_name }}-${{ github.sha }}
+
+    - name: Comment on PR (if regression detected)
+      if: failure() && github.event_name == 'pull_request' && env.COMPARE_BASELINE != 'false'
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const comment = `## Performance Regression Detected
+
+          The performance benchmarks have detected a significant regression.
+
+          ### Regression Details:
+          - Threshold: ${{ env.PERFORMANCE_REGRESSION_THRESHOLD }}% degradation
+          - Please review benchmark artifacts for detailed information
+
+          ### Next Steps:
+          1. Review benchmark results in artifacts
+          2. Identify the cause of regression
+          3. Optimize code or revert changes
+          4. Re-run benchmarks to verify the fix
+
+          Please review the [workflow run](${context.payload.repository.html_url}/actions/runs/${context.runId}) for details.`;
+
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: comment
+          });
+
+  benchmark-trend:
+    name: Benchmark Trend Analysis
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    needs: benchmarks
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Download benchmark results
+      uses: actions/download-artifact@v4
+      with:
+        name: benchmark-results
+        path: benchmark-results/
+
+    - name: Generate trend report
+      run: |
+        echo "### Performance Trend Analysis" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+
+        echo "Analyzing performance trends over time..." >> $GITHUB_STEP_SUMMARY
+
+        echo '```text' >> $GITHUB_STEP_SUMMARY
+        echo "Benchmark Trend Report" >> $GITHUB_STEP_SUMMARY
+        echo "Generated: $(date -u)" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+
+        for json_file in benchmark-results/benchmark-*.json; do
+          if [ -f "$json_file" ]; then
+            echo "=== $(basename $json_file .json | sed 's/benchmark-//') ===" >> $GITHUB_STEP_SUMMARY
+            uv run python scripts/generate_benchmark_trend.py "$json_file" >> $GITHUB_STEP_SUMMARY 2>&1 || true
+          fi
+        done
+        echo '```' >> $GITHUB_STEP_SUMMARY
+      shell: bash
+
+    - name: Store trend data
+      run: |
+        mkdir -p .benchmark/history
+        TIMESTAMP=$(date -u +%Y%m%d-%H%M%S)
+        cp benchmark-results/benchmark-*.json .benchmark/history/ 2>/dev/null || true
+      shell: bash
+
+    - name: Upload trend data
+      uses: actions/upload-artifact@v4
+      with:
+        name: benchmark-trend-data
+        path: .benchmark/history/
+        retention-days: 90
