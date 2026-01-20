@@ -311,9 +311,7 @@ class TestCLIRegression:
         assert isinstance(data, list)
 
         # Verify expected method count
-        assert (
-            len(data) == 65
-        )  # Total methods (constructor not included in method_declaration query)
+        assert len(data) == 66  # Total methods including constructor
 
         # Verify structure of first method
         assert "capture_name" in data[0]
