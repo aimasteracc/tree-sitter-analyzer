@@ -9,13 +9,29 @@ and JSON line parsing for ripgrep.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import os
 import shutil
 import tempfile
 from dataclasses import dataclass
+from enum import Enum
 from pathlib import Path
 from typing import Any
+
+
+class SortType(str, Enum):
+    """Sort types for file listing tools."""
+
+    NAME = "name"
+    PATH = "path"
+    MODIFIED = "modified"
+    ACCESSED = "accessed"
+    CREATED = "created"
+    SIZE = "size"
+    EXT = "ext"
+    MTIME = "mtime"  # Alias for MODIFIED used in some tools
+
 
 # Safety caps (hard limits)
 MAX_RESULTS_HARD_CAP = 10000
@@ -626,23 +642,6 @@ class TempFileList:
     ) -> None:
         with contextlib.suppress(Exception):
             Path(self.path).unlink(missing_ok=True)
-
-
-class contextlib:  # minimal shim for suppress without importing globally
-    class suppress:
-        def __init__(self, *exceptions: type[BaseException]) -> None:
-            self.exceptions = exceptions
-
-        def __enter__(self) -> None:  # noqa: D401
-            return None
-
-        def __exit__(
-            self,
-            exc_type: type[BaseException] | None,
-            exc: BaseException | None,
-            tb: Any,
-        ) -> bool:
-            return exc_type is not None and issubclass(exc_type, self.exceptions)
 
 
 def write_files_to_temp(files: list[str]) -> TempFileList:

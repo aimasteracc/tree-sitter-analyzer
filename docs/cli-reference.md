@@ -181,6 +181,12 @@ uv run list-files . --types f --size "+1k" --changed-within "1week"
 
 # Exclude directories
 uv run list-files . --exclude "node_modules" --exclude "__pycache__"
+
+# Sort results
+uv run list-files . --sort modified    # Sort by modification time (newest first)
+uv run list-files . --sort size        # Sort by file size (largest first)
+uv run list-files . --sort name        # Sort by filename only
+uv run list-files . --sort path        # Sort by full path
 ```
 
 ### Search Content (ripgrep-based)

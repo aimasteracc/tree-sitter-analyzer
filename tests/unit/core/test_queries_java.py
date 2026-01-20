@@ -124,11 +124,19 @@ class TestJavaQueries:
 
     def test_query_aliases(self) -> None:
         """Test that query aliases work correctly"""
-        # Test functions alias
+        # Test functions alias (now includes both methods and constructors)
         assert "functions" in ALL_QUERIES
         functions_query = ALL_QUERIES["functions"]["query"]
-        method_query = JAVA_QUERIES["method"]
-        assert functions_query == method_query
+        assert "method_declaration" in functions_query
+        assert "constructor_declaration" in functions_query
+        assert "@function" in functions_query
+
+        # Test methods alias (now includes both methods and constructors)
+        assert "methods" in ALL_QUERIES
+        methods_query = ALL_QUERIES["methods"]["query"]
+        assert "method_declaration" in methods_query
+        assert "constructor_declaration" in methods_query
+        assert "@method" in methods_query
 
         # Test classes alias
         assert "classes" in ALL_QUERIES

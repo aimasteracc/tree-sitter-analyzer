@@ -1,9 +1,16 @@
 {
-  "count": 65,
+  "count": 66,
   "file_path": "examples/BigService.java",
   "language": "java",
   "query": "methods",
   "results": [
+    {
+      "capture_name": "method",
+      "content": "public BigService() {\n        this.configurationCache = new HashMap<>();\n        this.activeConnections = new ArrayList<>();\n        this.validatedUsers = new HashSet<>();\n        this.pendingOperations = new LinkedList<>();\n        initializeService();\n    }",
+      "end_line": 39,
+      "node_type": "constructor_declaration",
+      "start_line": 33
+    },
     {
       "capture_name": "method",
       "content": "private void initializeService() {\n        System.out.println(\"Initializing BigService...\");\n        loadConfiguration();\n        setupDatabaseConnection();\n        validateSystemRequirements();\n        System.out.println(\"BigService initialization completed.\");\n    }",

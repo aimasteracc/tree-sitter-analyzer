@@ -86,16 +86,34 @@ class QueryFilter:
             return self._match_name(result, filter_type, filter_value)
         elif filter_key == "params":
             return self._match_params(result, filter_type, filter_value)
-        elif filter_key == "static":
+        elif filter_key in ("static", "is_static"):
             return self._match_modifier(result, "static", filter_value)
-        elif filter_key == "public":
+        elif filter_key in ("public", "is_public"):
             return self._match_modifier(result, "public", filter_value)
-        elif filter_key == "private":
+        elif filter_key in ("private", "is_private"):
             return self._match_modifier(result, "private", filter_value)
-        elif filter_key == "protected":
+        elif filter_key in ("protected", "is_protected"):
             return self._match_modifier(result, "protected", filter_value)
+        elif filter_key == "visibility":
+            return self._match_modifier(result, filter_value, "true")
+        elif filter_key == "is_constructor":
+            return self._match_constructor(result, filter_value)
 
         return True
+
+    def _match_constructor(self, result: dict[str, Any], value: str) -> bool:
+        """Check if result is a constructor"""
+        node_type = result.get("node_type", "").lower()
+        # Use exact matching to avoid false positives (e.g., "constructor_helper")
+        is_constructor = node_type in ("constructor", "constructor_declaration")
+
+        if not is_constructor:
+            # Also check capture name as fallback
+            capture_name = result.get("capture_name", "").lower()
+            is_constructor = capture_name in ("constructor", "constructor_declaration")
+
+        expected_bool = value.lower() == "true"
+        return expected_bool == is_constructor
 
     def _match_name(self, result: dict[str, Any], match_type: str, value: str) -> bool:
         """Match method name"""

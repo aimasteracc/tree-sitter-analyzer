@@ -9,18 +9,23 @@ import threading
 
 from .utils import log_error
 
+# Define types for better clarity and type safety
+QueryInfo = str | dict[str, str]
+LanguageQueries = dict[str, QueryInfo]
+
 
 class QueryLoader:
     """Load and manage language-specific Tree-sitter queries with optimizations."""
 
     # --- Predefined Queries (from query_library.py) ---
-    _PREDEFINED_QUERIES: dict[str, dict[str, str]] = {
+    _PREDEFINED_QUERIES: dict[str, LanguageQueries] = {
         "java": {
             "class": "(class_declaration) @class",
             "interface": "(interface_declaration) @interface",
             "method": "(method_declaration) @method",
             "constructor": "(constructor_declaration) @constructor",
             "field": "(field_declaration) @field",
+            "fields": "(field_declaration) @field",
             "import": "(import_declaration) @import",
             "package": "(package_declaration) @package",
             "annotation": "(annotation) @annotation",
@@ -39,6 +44,7 @@ class QueryLoader:
         "method": "Extract method declarations",
         "constructor": "Extract constructor declarations",
         "field": "Extract field declarations",
+        "fields": "Extract field declarations (alias for field)",
         "import": "Extract import statements",
         "package": "Extract package declarations",
         "annotation": "Extract annotations",
@@ -50,11 +56,11 @@ class QueryLoader:
     }
 
     def __init__(self) -> None:
-        self._loaded_queries: dict[str, dict] = {}
+        self._loaded_queries: dict[str, LanguageQueries] = {}
         self._query_modules: dict[str, object] = {}
         self._failed_languages: set[str] = set()  # 読み込み失敗した言語をキャッシュ
 
-    def load_language_queries(self, language: str) -> dict:
+    def load_language_queries(self, language: str) -> LanguageQueries:
         """Load queries for a specific language with optimized caching."""
         # Handle None or empty language - return empty dict without warning
         if not language or language == "None" or language.strip() == "":

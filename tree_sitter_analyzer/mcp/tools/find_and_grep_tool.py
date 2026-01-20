@@ -8,7 +8,7 @@ First narrow files with fd, then search contents with ripgrep, with caps & meta.
 from __future__ import annotations
 
 import logging
-import pathlib
+import os
 import time
 from typing import Any
 
@@ -345,26 +345,27 @@ class FindAndGrepTool(BaseMCPTool):
 
         # Optional sorting
         sort_mode = arguments.get("sort")
-        if sort_mode in ("path", "mtime", "size"):
+        if sort_mode and files:
             try:
-                if sort_mode == "path":
+                if sort_mode == fd_rg_utils.SortType.PATH:
                     files.sort()
-                elif sort_mode == "mtime":
-
-                    def get_mtime(p: str) -> float:
-                        path_obj = pathlib.Path(p)
-                        return path_obj.stat().st_mtime if path_obj.exists() else 0
-
-                    files.sort(key=get_mtime, reverse=True)
-                elif sort_mode == "size":
-
-                    def get_size(p: str) -> int:
-                        path_obj = pathlib.Path(p)
-                        return path_obj.stat().st_size if path_obj.exists() else 0
-
-                    files.sort(key=get_size, reverse=True)
-            except (OSError, ValueError):  # nosec B110
-                pass
+                elif sort_mode in (
+                    fd_rg_utils.SortType.MODIFIED,
+                    fd_rg_utils.SortType.MTIME,
+                ):
+                    # Sort by mtime (newest first)
+                    files.sort(
+                        key=lambda x: os.path.getmtime(x) if os.path.exists(x) else 0,
+                        reverse=True,
+                    )
+                elif sort_mode == fd_rg_utils.SortType.SIZE:
+                    # Sort by size (largest first)
+                    files.sort(
+                        key=lambda x: os.path.getsize(x) if os.path.exists(x) else 0,
+                        reverse=True,
+                    )
+            except OSError as e:
+                logger.warning(f"Sorting failed: {e}")
 
         searched_file_count = len(files)
         if searched_file_count == 0:

@@ -191,10 +191,10 @@ class TestMCPGoldenMasters:
             }
         )
 
-        # Additional normalization for list_files - sort file list for determinism
-        if "files" in result:
-            result["files"] = sorted(
-                result["files"], key=lambda x: x.get("path", x.get("name", ""))
+        # Additional normalization for list_files - sort results list for determinism
+        if "results" in result:
+            result["results"] = sorted(
+                result["results"], key=lambda x: x.get("path", x.get("name", ""))
             )
 
         normalized = self.normalizer.normalize(result)

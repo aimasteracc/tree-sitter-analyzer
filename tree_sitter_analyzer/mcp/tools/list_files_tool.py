@@ -46,6 +46,7 @@ class ListFilesArguments(TypedDict, total=False):
     output_file: str
     suppress_output: bool
     output_format: str
+    sort: fd_rg_utils.SortType | str
 
 
 class ListFilesTool(BaseMCPTool):
@@ -153,6 +154,19 @@ class ListFilesTool(BaseMCPTool):
                         "description": "Output format: 'toon' (default, 50-70% token reduction) or 'json'",
                         "default": "toon",
                     },
+                    "sort": {
+                        "type": "string",
+                        "enum": [
+                            "name",
+                            "path",
+                            "modified",
+                            "accessed",
+                            "created",
+                            "size",
+                            "ext",
+                        ],
+                        "description": "Sort the results based on the given type. Values: 'name' (filename only), 'path' (full path), 'modified', 'accessed', 'created', 'size', 'ext'",
+                    },
                 },
                 "required": ["roots"],
                 "additionalProperties": False,
@@ -185,6 +199,7 @@ class ListFilesTool(BaseMCPTool):
             "pattern",
             "changed_within",
             "changed_before",
+            "sort",
         ]:
             if key in arguments and not isinstance(arguments[key], str):
                 raise ValueError(f"{key} must be a string")
@@ -394,6 +409,25 @@ class ListFilesTool(BaseMCPTool):
                 )
             except (OSError, ValueError):  # nosec B112
                 continue
+
+        # Sort results (default to path for stability if not specified)
+        sort_type = arguments.get("sort")
+        if results:
+            if sort_type == fd_rg_utils.SortType.NAME:
+                # Sort by filename only (not full path)
+                results.sort(key=lambda x: Path(x["path"]).name)
+            elif (
+                sort_type == fd_rg_utils.SortType.MODIFIED
+                or sort_type == fd_rg_utils.SortType.MTIME
+            ):
+                results.sort(key=lambda x: x["mtime"] or 0, reverse=True)
+            elif sort_type == fd_rg_utils.SortType.SIZE:
+                results.sort(key=lambda x: x["size_bytes"] or 0, reverse=True)
+            elif sort_type == fd_rg_utils.SortType.EXT:
+                results.sort(key=lambda x: x["ext"] or "")
+            else:
+                # Default stable sort by path
+                results.sort(key=lambda x: x["path"])
 
         final_result: dict[str, Any] = {
             "success": True,

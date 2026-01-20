@@ -358,18 +358,38 @@ for query_name, query_string in JAVA_QUERIES.items():
 
 # Add common query aliases for cross-language compatibility
 ALL_QUERIES["functions"] = {
-    "query": JAVA_QUERIES["method"],
-    "description": "Search all function/method declarations (alias for method)",
+    "query": """
+    [
+      (method_declaration)
+      (constructor_declaration)
+    ] @function
+    """,
+    "description": "Search all function/method declarations",
 }
 
 ALL_QUERIES["methods"] = {
-    "query": JAVA_QUERIES["method"],
-    "description": "Search all method declarations (alias for method)",
+    "query": """
+    [
+      (method_declaration)
+      (constructor_declaration)
+    ] @method
+    """,
+    "description": "Search all method/constructor declarations",
 }
 
 ALL_QUERIES["classes"] = {
     "query": JAVA_QUERIES["class"],
     "description": "Search all class declarations (alias for class)",
+}
+
+ALL_QUERIES["fields"] = {
+    "query": JAVA_QUERIES["field"],
+    "description": "Search all field declarations (alias for field)",
+}
+
+ALL_QUERIES["variables"] = {
+    "query": JAVA_QUERIES["field"],
+    "description": "Search all variables/fields (alias for field)",
 }
 
 
@@ -382,12 +402,12 @@ def get_query(name: str) -> str:
     )
 
 
-def get_all_queries() -> dict:
+def get_all_queries() -> dict[str, dict[str, str]]:
     """Get all available queries."""
     return ALL_QUERIES
 
 
-def list_queries() -> list:
+def list_queries() -> list[str]:
     """List all available query names."""
     return list(ALL_QUERIES.keys())
 
