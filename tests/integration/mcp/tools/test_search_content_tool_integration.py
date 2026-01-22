@@ -59,11 +59,11 @@ class TestSearchContentToolIntegration:
         )
 
         assert isinstance(result, dict)
-        assert "matches" in result
-        assert len(result["matches"]) > 0
+        assert "results" in result
+        assert len(result["results"]) > 0
         # Should find 'def' in multiple files
-        assert any("main.py" in match.get("file", "") for match in result["matches"])
-        assert any("utils.py" in match.get("file", "") for match in result["matches"])
+        assert any("main.py" in match.get("file", "") for match in result["results"])
+        assert any("utils.py" in match.get("file", "") for match in result["results"])
 
     @pytest.mark.asyncio
     async def test_search_with_file_pattern(
@@ -80,9 +80,9 @@ class TestSearchContentToolIntegration:
         )
 
         assert isinstance(result, dict)
-        assert "matches" in result
+        assert "results" in result
         # All matches should be from .py files
-        for match in result["matches"]:
+        for match in result["results"]:
             assert match["file"].endswith(".py")
 
     @pytest.mark.asyncio
@@ -178,9 +178,9 @@ class TestSearchContentToolIntegration:
         )
 
         assert isinstance(result, dict)
-        assert "matches" in result
+        assert "results" in result
         # Should not find 'Hello, World!' with case-sensitive search
-        assert len(result["matches"]) == 0
+        assert len(result["results"]) == 0
 
     @pytest.mark.asyncio
     async def test_case_insensitive_search(
@@ -198,10 +198,10 @@ class TestSearchContentToolIntegration:
         )
 
         assert isinstance(result, dict)
-        assert "matches" in result
+        assert "results" in result
         # Should find 'Hello, World!' with case-insensitive search
-        assert len(result["matches"]) > 0
-        assert any("Hello" in match.get("text", "") for match in result["matches"])
+        assert len(result["results"]) > 0
+        assert any("Hello" in match.get("text", "") for match in result["results"])
 
     @pytest.mark.asyncio
     async def test_max_count_limits_results(
@@ -218,10 +218,10 @@ class TestSearchContentToolIntegration:
         )
 
         assert isinstance(result, dict)
-        assert "matches" in result
+        assert "results" in result
         # Each file should have at most 1 match
         file_counts: dict[str, int] = {}
-        for match in result["matches"]:
+        for match in result["results"]:
             file = match["file"]
             file_counts[file] = file_counts.get(file, 0) + 1
         for count in file_counts.values():
@@ -242,9 +242,9 @@ class TestSearchContentToolIntegration:
         )
 
         assert isinstance(result, dict)
-        assert "matches" in result
+        assert "results" in result
         # Matches should include context lines
-        for match in result["matches"]:
+        for match in result["results"]:
             if "context" in match:
                 assert "before" in match["context"] or "after" in match["context"]
 
@@ -269,7 +269,7 @@ class TestSearchContentToolIntegration:
         # File should contain JSON data
         content = output_file.read_text()
         assert len(content) > 0
-        assert "matches" in content or "total" in content
+        assert "results" in content or "total" in content
 
     @pytest.mark.asyncio
     async def test_suppress_output_with_file_output(
@@ -290,8 +290,8 @@ class TestSearchContentToolIntegration:
         assert isinstance(result, dict)
         assert "output_file" in result
         assert output_file.exists()
-        # Result should be minimal (no matches in response)
-        assert "matches" not in result or len(result.get("matches", [])) == 0
+        # Result should be minimal (no results in response)
+        assert "results" not in result or len(result.get("results", [])) == 0
 
     @pytest.mark.asyncio
     async def test_parallel_search_multiple_roots(
