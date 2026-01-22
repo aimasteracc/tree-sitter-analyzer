@@ -13,7 +13,6 @@ from tree_sitter_analyzer.core.analysis_engine import (
     UnifiedAnalysisEngine,
     create_analysis_engine,
 )
-from tree_sitter_analyzer.core.file_loader import FileLoader
 from tree_sitter_analyzer.core.request import AnalysisRequest
 
 
@@ -164,9 +163,6 @@ class SampleClass {
         self, temp_project: Path
     ):
         """Test dependency injection with custom FileLoader."""
-        # Create custom FileLoader
-        custom_loader = FileLoader(project_root=str(temp_project))
-
         # Create engine with dependency injection (using constructor directly)
         engine = UnifiedAnalysisEngine(project_root=str(temp_project))
 

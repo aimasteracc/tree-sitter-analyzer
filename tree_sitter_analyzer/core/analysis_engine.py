@@ -134,7 +134,7 @@ class UnifiedAnalysisEngine:
             self._cache_service = None
             self._security_validator = None
             self._query_executor = None
-            self._performance_monitor = None
+            self._performance_monitor = None  # type: ignore[assignment]
             self._lazy_mode = True
 
             # Initial plugin discovery only (no heavy loading)
@@ -217,7 +217,7 @@ class UnifiedAnalysisEngine:
         cached_result = await self._cache_service.get(cache_key)  # type: ignore[union-attr]
         if cached_result:
             log_info(f"Cache hit for {request.file_path}")
-            return cached_result  # type: ignore[return-value]
+            return cached_result  # type: ignore[no-any-return]
 
         # 4. Parse file
         if not os.path.exists(request.file_path):
@@ -234,7 +234,7 @@ class UnifiedAnalysisEngine:
         if not plugin:
             raise UnsupportedLanguageError(f"Plugin not found for language: {language}")
 
-        with self._performance_monitor.measure_operation(f"analyze_{language}"):  # type: ignore[union-attr]
+        with self._performance_monitor.measure_operation(f"analyze_{language}"):
             result = await plugin.analyze_file(request.file_path, request)
 
         if not result.language:
@@ -275,7 +275,7 @@ class UnifiedAnalysisEngine:
         self._ensure_initialized()
 
         try:
-            return self._language_detector.detect_from_extension(file_path)  # type: ignore[union-attr, no-any-return]
+            return self._language_detector.detect_from_extension(file_path)  # type: ignore[union-attr]
         except Exception:
             return "unknown"
 
@@ -443,7 +443,7 @@ class UnifiedAnalysisEngine:
 
         with concurrent.futures.ThreadPoolExecutor() as pool:
             future = pool.submit(asyncio.run, self.analyze(request))
-            return future.result()  # type: ignore[return-value]
+            return future.result()
 
     def _ensure_request(
         self,
@@ -497,17 +497,17 @@ class UnifiedAnalysisEngine:
     def get_supported_languages(self) -> list[str]:
         """Get list of supported languages."""
         self._ensure_initialized()
-        return self._plugin_manager.get_supported_languages()  # type: ignore[union-attr, no-any-return]
+        return self._plugin_manager.get_supported_languages()  # type: ignore[union-attr]
 
     def get_available_queries(self, language: str) -> list[str]:
         """Get available queries for a language."""
         self._ensure_initialized()
-        return self._query_executor.get_available_queries(language)  # type: ignore[union-attr, no-any-return]
+        return self._query_executor.get_available_queries(language)  # type: ignore[union-attr]
 
     def get_cache_stats(self) -> dict[str, Any]:
         """Get cache statistics."""
         self._ensure_initialized()
-        return self._cache_service.get_stats()  # type: ignore[union-attr, no-any-return]
+        return self._cache_service.get_stats()  # type: ignore[union-attr]
 
     def clear_cache(self) -> None:
         """Clear the analysis cache."""
@@ -568,7 +568,7 @@ class UnifiedAnalysisEngine:
     def measure_operation(self, operation_name: str) -> PerformanceContext:
         """Measure an operation using the performance monitor"""
         self._ensure_initialized()
-        return self._performance_monitor.measure_operation(operation_name)  # type: ignore[union-attr, no-any-return]
+        return self._performance_monitor.measure_operation(operation_name)
 
     @classmethod
     def _reset_instance(cls) -> None:

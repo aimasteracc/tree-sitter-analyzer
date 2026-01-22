@@ -638,7 +638,7 @@ class DefaultLanguagePlugin(LanguagePlugin):
 
         try:
             engine = UnifiedAnalysisEngine()
-            return await engine.analyze_file(file_path)  # type: ignore[no-any-return]
+            return await engine.analyze_file(file_path)
         except Exception as e:
             log_error(f"Failed to analyze file {file_path}: {e}")
             return AnalysisResult(

@@ -483,7 +483,7 @@ class TestResultParserIntegration:
         assert isinstance(parsed, dict)
         # Should have counts for files
         assert len(parsed) > 0
-        for file, count in parsed.items():
+        for _file, count in parsed.items():
             assert isinstance(count, int)
             assert count > 0
 
@@ -562,7 +562,7 @@ class TestBuilderPatternIntegration:
         )
 
         # Should not be able to modify
-        with pytest.raises(Exception):
+        with pytest.raises(AttributeError):
             config.roots = ["/tmp"]  # type: ignore
 
 

@@ -67,7 +67,7 @@ class SearchContext:
     timeout_ms: int | None = None
     enable_parallel: bool = True
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """Extract common parameters from arguments dict."""
         # Extract search parameters from arguments
         self.query = self.arguments.get("query", "")

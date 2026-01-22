@@ -23,7 +23,9 @@ class SearchArgumentValidator:
     - Path validation
     """
 
-    def __init__(self, project_root: str | Path | None = None, path_resolver=None):
+    def __init__(
+        self, project_root: str | Path | None = None, path_resolver: Any = None
+    ) -> None:
         """Initialize the validator.
 
         Args:
@@ -261,7 +263,7 @@ class SearchArgumentValidator:
                 resolved = self.path_resolver.resolve(root)
                 validated_roots.append(resolved)
             except Exception as e:
-                raise ValueError(f"Invalid root path '{root}': {e}")
+                raise ValueError(f"Invalid root path '{root}': {e}") from e
 
         return validated_roots
 
@@ -289,7 +291,7 @@ class SearchArgumentValidator:
                 resolved = self.path_resolver.resolve(file_path)
                 validated_files.append(resolved)
             except Exception as e:
-                raise ValueError(f"Invalid file path '{file_path}': {e}")
+                raise ValueError(f"Invalid file path '{file_path}': {e}") from e
 
         return validated_files
 

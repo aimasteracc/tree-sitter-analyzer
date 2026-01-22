@@ -109,7 +109,7 @@ class FileLoader:
         except (UnicodeDecodeError, LookupError, OSError) as e:
             raise FileLoadError(
                 f"Failed to load file {file_path} with encoding {encoding}: {e}"
-            )
+            ) from e
 
     def exists(self, file_path: str | Path) -> bool:
         """
@@ -144,4 +144,4 @@ class FileLoader:
         try:
             return os.path.getsize(path)
         except OSError as e:
-            raise FileLoadError(f"Failed to get file size for {file_path}: {e}")
+            raise FileLoadError(f"Failed to get file size for {file_path}: {e}") from e
