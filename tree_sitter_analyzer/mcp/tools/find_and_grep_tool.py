@@ -318,18 +318,16 @@ class FindAndGrepTool(BaseMCPTool):
             roots=tuple(roots),
             pattern=arguments.get("pattern"),
             glob=bool(arguments.get("glob", False)),
-            types=tuple(arguments.get("types")) if arguments.get("types") else None,
-            extensions=tuple(arguments.get("extensions"))
-            if arguments.get("extensions")
+            types=tuple(arguments.get("types") or [])
+            if arguments.get("types")
             else None,
-            exclude=tuple(arguments.get("exclude"))
-            if arguments.get("exclude")
-            else None,
+            extensions=tuple(arguments.get("extensions") or []),
+            exclude=tuple(arguments.get("exclude") or []),
             depth=arguments.get("depth"),
             follow_symlinks=bool(arguments.get("follow_symlinks", False)),
             hidden=bool(arguments.get("hidden", False)),
             no_ignore=no_ignore,
-            size=tuple(arguments.get("size")) if arguments.get("size") else None,
+            size=tuple(arguments.get("size") or []) if arguments.get("size") else None,
             changed_within=arguments.get("changed_within"),
             changed_before=arguments.get("changed_before"),
             full_path_match=bool(arguments.get("full_path_match", False)),
@@ -434,9 +432,7 @@ class FindAndGrepTool(BaseMCPTool):
             include_globs=tuple(combined_include_globs)
             if combined_include_globs
             else None,
-            exclude_globs=tuple(arguments.get("exclude_globs"))
-            if arguments.get("exclude_globs")
-            else None,
+            exclude_globs=tuple(arguments.get("exclude_globs") or []),
             follow_symlinks=bool(arguments.get("follow_symlinks", False)),
             hidden=bool(arguments.get("hidden", False)),
             no_ignore=no_ignore,

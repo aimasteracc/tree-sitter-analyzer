@@ -302,10 +302,6 @@ def analyze_file(
         if include_queries and hasattr(analysis_result, "query_results"):
             result["query_results"] = analysis_result.query_results
 
-        # Add error message if analysis failed
-        if not analysis_result.success and analysis_result.error_message:
-            result["error"] = analysis_result.error_message
-
         # Filter results based on options
         if not include_elements and "elements" in result:
             del result["elements"]
@@ -371,11 +367,13 @@ def analyze_code(
         Analysis results dictionary
     """
     try:
+        import asyncio
+
         engine = get_engine()
 
-        # Perform the analysis using sync method
-        analysis_result = engine.analyze_code_sync(
-            source_code, language, filename="string"
+        # Perform the analysis using async method wrapped in sync call
+        analysis_result = asyncio.run(
+            engine.analyze_code(source_code, language, filename="string")
         )
 
         # Convert AnalysisResult to expected API format
@@ -402,10 +400,6 @@ def analyze_code(
         # Add query results if requested and available
         if include_queries and hasattr(analysis_result, "query_results"):
             result["query_results"] = analysis_result.query_results
-
-        # Add error message if analysis failed
-        if not analysis_result.success and analysis_result.error_message:
-            result["error"] = analysis_result.error_message
 
         # Filter results based on options
         if not include_elements and "elements" in result:

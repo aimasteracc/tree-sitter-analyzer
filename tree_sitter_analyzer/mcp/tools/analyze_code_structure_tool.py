@@ -398,7 +398,9 @@ class AnalyzeCodeStructureTool(BaseMCPTool):
                 elif FormatterRegistry.is_format_supported(format_type):
                     # Use generic format-based formatter
                     registry_formatter = FormatterRegistry.get_formatter(format_type)
-                    table_output = registry_formatter.format(structure_result.elements)
+                    table_output = registry_formatter.format(
+                        list(structure_result.elements)
+                    )
                 else:
                     # Unsupported format
                     raise ValueError(f"Unsupported format type: {format_type}")

@@ -47,10 +47,10 @@ class ContentSearchStrategy(SearchStrategy):
 
     def __init__(
         self,
-        cache=None,
-        file_output_manager=None,
-        path_resolver=None,
-    ):
+        cache: Any = None,
+        file_output_manager: Any = None,
+        path_resolver: Any = None,
+    ) -> None:
         """Initialize the content search strategy.
 
         Args:
@@ -119,11 +119,11 @@ class ContentSearchStrategy(SearchStrategy):
             elif isinstance(cached_result, dict) and "total_matches" in cached_result:
                 total_matches = cached_result["total_matches"]
                 return (
-                    int(total_matches) if isinstance(total_matches, (int, float)) else 0
+                    int(total_matches) if isinstance(total_matches, int | float) else 0
                 )
             elif isinstance(cached_result, dict) and "count" in cached_result:
                 count = cached_result["count"]
-                return int(count) if isinstance(count, (int, float)) else 0
+                return int(count) if isinstance(count, int | float) else 0
             else:
                 return 0
         else:
@@ -188,7 +188,9 @@ class ContentSearchStrategy(SearchStrategy):
             Tuple of (return_code, stdout, stderr)
         """
         # Split roots for parallel processing
-        root_chunks = split_roots_for_parallel_processing(context.roots, max_chunks=4)
+        root_chunks = split_roots_for_parallel_processing(
+            context.roots or [], max_chunks=4
+        )
 
         # Build commands for each chunk
         commands = []
@@ -603,14 +605,16 @@ class ContentSearchStrategy(SearchStrategy):
 
         # Use the cache's create_cache_key method if available
         if hasattr(self.cache, "create_cache_key"):
-            return self.cache.create_cache_key(
-                query=arguments.get("query", ""),
-                roots=arguments.get("roots", []),
-                **{
-                    k: v
-                    for k, v in count_only_args.items()
-                    if k not in ["query", "roots", "output_file", "suppress_output"]
-                },
+            return str(
+                self.cache.create_cache_key(
+                    query=arguments.get("query", ""),
+                    roots=arguments.get("roots", []),
+                    **{
+                        k: v
+                        for k, v in count_only_args.items()
+                        if k not in ["query", "roots", "output_file", "suppress_output"]
+                    },
+                )
             )
 
         return None

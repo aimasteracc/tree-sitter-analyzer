@@ -287,17 +287,13 @@ class ListFilesTool(BaseMCPTool):
             pattern=arguments.get("pattern"),
             glob=bool(arguments.get("glob", False)),
             types=tuple(effective_types) if effective_types else None,
-            extensions=tuple(arguments.get("extensions"))
-            if arguments.get("extensions")
-            else None,
-            exclude=tuple(arguments.get("exclude"))
-            if arguments.get("exclude")
-            else None,
+            extensions=tuple(arguments.get("extensions") or []),
+            exclude=tuple(arguments.get("exclude") or []),
             depth=arguments.get("depth"),
             follow_symlinks=bool(arguments.get("follow_symlinks", False)),
             hidden=bool(arguments.get("hidden", False)),
             no_ignore=no_ignore,
-            size=tuple(arguments.get("size")) if arguments.get("size") else None,
+            size=tuple(arguments.get("size") or []) if arguments.get("size") else None,
             changed_within=arguments.get("changed_within"),
             changed_before=arguments.get("changed_before"),
             full_path_match=bool(arguments.get("full_path_match", False)),
