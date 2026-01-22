@@ -620,9 +620,10 @@ class TestEndToEndWorkflow:
         assert len(python_files) == 3  # main.py, utils.py, test_main.py
 
         # Step 2: Search for 'def' in found files
+        # Use roots parameter instead of files (which doesn't exist)
         rg_config = RgCommandConfig(
             query="def",
-            files=[str(f) for f in python_files],
+            roots=tuple(str(f) for f in python_files),
         )
 
         rg_builder = RgCommandBuilder()

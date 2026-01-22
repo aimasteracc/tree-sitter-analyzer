@@ -54,6 +54,7 @@ class TestSearchContentToolIntegration:
             {
                 "query": "def",
                 "roots": [str(temp_project)],
+                "output_format": "json",
             }
         )
 
@@ -74,6 +75,7 @@ class TestSearchContentToolIntegration:
                 "query": "def",
                 "roots": [str(temp_project)],
                 "include_globs": ["*.py"],
+                "output_format": "json",
             }
         )
 
@@ -147,6 +149,7 @@ class TestSearchContentToolIntegration:
                 "query": "def",
                 "roots": [str(temp_project)],
                 "group_by_file": True,
+                "output_format": "json",
             }
         )
 
@@ -170,6 +173,7 @@ class TestSearchContentToolIntegration:
                 "query": "HELLO",
                 "roots": [str(temp_project)],
                 "case": "sensitive",
+                "output_format": "json",
             }
         )
 
@@ -189,6 +193,7 @@ class TestSearchContentToolIntegration:
                 "query": "hello",
                 "roots": [str(temp_project)],
                 "case": "insensitive",
+                "output_format": "json",
             }
         )
 
@@ -208,6 +213,7 @@ class TestSearchContentToolIntegration:
                 "query": "def",
                 "roots": [str(temp_project)],
                 "max_count": 1,
+                "output_format": "json",
             }
         )
 

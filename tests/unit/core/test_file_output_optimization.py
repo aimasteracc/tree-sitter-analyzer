@@ -58,7 +58,7 @@ async def test_search_content_with_output_file_and_suppress_output(
         return (0, rg_output.encode(), b"")
 
     monkeypatch.setattr(
-        "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture",
+        "tree_sitter_analyzer.mcp.tools.fd_rg.utils.run_command_capture",
         mock_run_command,
     )
 
@@ -137,7 +137,7 @@ async def test_find_and_grep_with_output_file_and_suppress_output(
             return (0, rg_output.encode(), b"")
 
     monkeypatch.setattr(
-        "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture",
+        "tree_sitter_analyzer.mcp.tools.fd_rg.utils.run_command_capture",
         mock_run_command,
     )
 
@@ -208,7 +208,7 @@ async def test_search_content_output_file_without_suppress_output(
         return (0, rg_output.encode(), b"")
 
     monkeypatch.setattr(
-        "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture",
+        "tree_sitter_analyzer.mcp.tools.fd_rg.utils.run_command_capture",
         mock_run_command,
     )
 
@@ -276,7 +276,7 @@ async def test_find_and_grep_output_file_auto_extension_detection(
             return (0, rg_output.encode(), b"")
 
     monkeypatch.setattr(
-        "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture",
+        "tree_sitter_analyzer.mcp.tools.fd_rg.utils.run_command_capture",
         mock_run_command,
     )
 
@@ -355,7 +355,7 @@ async def test_search_content_large_results_token_optimization(monkeypatch, tmp_
         return (0, rg_output.encode(), b"")
 
     monkeypatch.setattr(
-        "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture",
+        "tree_sitter_analyzer.mcp.tools.fd_rg.utils.run_command_capture",
         mock_run_command,
     )
 
@@ -437,7 +437,7 @@ async def test_find_and_grep_combined_optimization_features(monkeypatch, tmp_pat
             return (0, rg_output.encode(), b"")
 
     monkeypatch.setattr(
-        "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture",
+        "tree_sitter_analyzer.mcp.tools.fd_rg.utils.run_command_capture",
         mock_run_command,
     )
 
@@ -572,7 +572,7 @@ async def test_list_files_with_output_file_and_suppress_output(monkeypatch, tmp_
         return (0, fd_output.encode(), b"")
 
     monkeypatch.setattr(
-        "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture",
+        "tree_sitter_analyzer.mcp.tools.fd_rg.utils.run_command_capture",
         mock_run_command,
     )
 
@@ -625,7 +625,7 @@ async def test_list_files_count_only_with_output_file(monkeypatch, tmp_path):
         return (0, fd_output.encode(), b"")
 
     monkeypatch.setattr(
-        "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture",
+        "tree_sitter_analyzer.mcp.tools.fd_rg.utils.run_command_capture",
         mock_run_command,
     )
 
@@ -677,7 +677,7 @@ async def test_list_files_output_file_without_suppress_output(monkeypatch, tmp_p
         return (0, fd_output.encode(), b"")
 
     monkeypatch.setattr(
-        "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture",
+        "tree_sitter_analyzer.mcp.tools.fd_rg.utils.run_command_capture",
         mock_run_command,
     )
 
@@ -722,7 +722,7 @@ async def test_list_files_large_results_token_optimization(monkeypatch, tmp_path
         return (0, fd_output.encode(), b"")
 
     monkeypatch.setattr(
-        "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture",
+        "tree_sitter_analyzer.mcp.tools.fd_rg.utils.run_command_capture",
         mock_run_command,
     )
 
