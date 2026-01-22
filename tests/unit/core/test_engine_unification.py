@@ -1,3 +1,5 @@
+import asyncio
+
 import pytest
 
 from tree_sitter_analyzer.api import get_engine
@@ -29,12 +31,23 @@ def test_unified_engine_sync_analysis(tmp_path):
     assert len(result.elements) >= 2  # Class and Method
 
 
-def test_unified_engine_analyze_code():
+def test_unified_engine_analyze_code(tmp_path):
     """Verify code string analysis."""
     code = "def hello(): print('world')"
     engine = get_engine()
 
-    result = engine.analyze_code_sync(code, language="python")
+    # Write code to temporary file
+    py_file = tmp_path / "test_code.py"
+    py_file.write_text(code)
+
+    result = asyncio.run(
+        engine.analyze(
+            AnalysisRequest(
+                file_path=str(py_file),
+                language="python",
+            )
+        )
+    )
     assert result.success is True
     assert result.language == "python"
     assert any(el.name == "hello" for el in result.elements)

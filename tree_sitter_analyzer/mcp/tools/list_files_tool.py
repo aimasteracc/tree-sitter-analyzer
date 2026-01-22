@@ -17,8 +17,19 @@ from ..utils.error_handler import handle_mcp_errors
 from ..utils.file_output_manager import FileOutputManager
 from ..utils.format_helper import apply_toon_format_to_response, format_for_file_output
 from ..utils.gitignore_detector import get_default_detector
-from . import fd_rg_utils
 from .base_tool import BaseMCPTool
+from .fd_rg import (
+    MAX_RESULTS_HARD_CAP,
+    FdCommandBuilder,
+    FdCommandConfig,
+    SortType,
+    check_external_command,
+    clamp_int,
+    run_command_capture,
+)
+
+# Constants for backward compatibility
+DEFAULT_RESULTS_LIMIT = 2000
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +57,7 @@ class ListFilesArguments(TypedDict, total=False):
     output_file: str
     suppress_output: bool
     output_format: str
-    sort: fd_rg_utils.SortType | str
+    sort: SortType | str
 
 
 class ListFilesTool(BaseMCPTool):
@@ -228,7 +239,7 @@ class ListFilesTool(BaseMCPTool):
     @handle_mcp_errors("list_files")
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
         # Check if fd command is available
-        if not fd_rg_utils.check_external_command("fd"):
+        if not check_external_command("fd"):
             return {
                 "success": False,
                 "error": "fd command not found. Please install fd (https://github.com/sharkdp/fd) to use this tool.",
@@ -239,10 +250,10 @@ class ListFilesTool(BaseMCPTool):
         self.validate_arguments(arguments)
         roots = self._validate_roots(arguments["roots"])  # normalized absolutes
 
-        limit = fd_rg_utils.clamp_int(
+        limit = clamp_int(
             arguments.get("limit"),
-            fd_rg_utils.DEFAULT_RESULTS_LIMIT,
-            fd_rg_utils.MAX_RESULTS_HARD_CAP,
+            DEFAULT_RESULTS_LIMIT,
+            MAX_RESULTS_HARD_CAP,
         )
 
         # Performance optimization:
@@ -271,28 +282,33 @@ class ListFilesTool(BaseMCPTool):
                     f"Auto-enabled --no-ignore due to .gitignore interference: {detection_info['reason']}"
                 )
 
-        cmd = fd_rg_utils.build_fd_command(
+        config = FdCommandConfig(
+            roots=tuple(roots),
             pattern=arguments.get("pattern"),
             glob=bool(arguments.get("glob", False)),
-            types=effective_types,
-            extensions=arguments.get("extensions"),
-            exclude=arguments.get("exclude"),
+            types=tuple(effective_types) if effective_types else None,
+            extensions=tuple(arguments.get("extensions"))
+            if arguments.get("extensions")
+            else None,
+            exclude=tuple(arguments.get("exclude"))
+            if arguments.get("exclude")
+            else None,
             depth=arguments.get("depth"),
             follow_symlinks=bool(arguments.get("follow_symlinks", False)),
             hidden=bool(arguments.get("hidden", False)),
-            no_ignore=no_ignore,  # Use the potentially auto-detected value
-            size=arguments.get("size"),
+            no_ignore=no_ignore,
+            size=tuple(arguments.get("size")) if arguments.get("size") else None,
             changed_within=arguments.get("changed_within"),
             changed_before=arguments.get("changed_before"),
             full_path_match=bool(arguments.get("full_path_match", False)),
-            absolute=True,  # unify output to absolute paths
+            absolute=True,
             limit=limit,
-            roots=roots,
         )
+        cmd = FdCommandBuilder().build(config)
 
         # Use fd default path format (one per line). We'll determine is_dir and ext via Path
         started = time.time()
-        rc, out, err = await fd_rg_utils.run_command_capture(cmd)
+        rc, out, err = await run_command_capture(cmd)
         elapsed_ms = int((time.time() - started) * 1000)
 
         if rc != 0:
@@ -309,8 +325,8 @@ class ListFilesTool(BaseMCPTool):
         if arguments.get("count_only", False):
             total_count = len(lines)
             # Apply hard cap for counting as well
-            if total_count > fd_rg_utils.MAX_RESULTS_HARD_CAP:
-                total_count = fd_rg_utils.MAX_RESULTS_HARD_CAP
+            if total_count > MAX_RESULTS_HARD_CAP:
+                total_count = MAX_RESULTS_HARD_CAP
                 truncated = True
             else:
                 truncated = False
@@ -374,8 +390,8 @@ class ListFilesTool(BaseMCPTool):
 
         # Truncate defensively even if fd didn't
         truncated = False
-        if len(lines) > fd_rg_utils.MAX_RESULTS_HARD_CAP:
-            lines = lines[: fd_rg_utils.MAX_RESULTS_HARD_CAP]
+        if len(lines) > MAX_RESULTS_HARD_CAP:
+            lines = lines[:MAX_RESULTS_HARD_CAP]
             truncated = True
 
         results: list[dict[str, Any]] = []
@@ -413,17 +429,14 @@ class ListFilesTool(BaseMCPTool):
         # Sort results (default to path for stability if not specified)
         sort_type = arguments.get("sort")
         if results:
-            if sort_type == fd_rg_utils.SortType.NAME:
+            if sort_type == SortType.NAME:
                 # Sort by filename only (not full path)
                 results.sort(key=lambda x: Path(x["path"]).name)
-            elif (
-                sort_type == fd_rg_utils.SortType.MODIFIED
-                or sort_type == fd_rg_utils.SortType.MTIME
-            ):
+            elif sort_type == SortType.MODIFIED or sort_type == SortType.MTIME:
                 results.sort(key=lambda x: x["mtime"] or 0, reverse=True)
-            elif sort_type == fd_rg_utils.SortType.SIZE:
+            elif sort_type == SortType.SIZE:
                 results.sort(key=lambda x: x["size_bytes"] or 0, reverse=True)
-            elif sort_type == fd_rg_utils.SortType.EXT:
+            elif sort_type == SortType.EXT:
                 results.sort(key=lambda x: x["ext"] or "")
             else:
                 # Default stable sort by path

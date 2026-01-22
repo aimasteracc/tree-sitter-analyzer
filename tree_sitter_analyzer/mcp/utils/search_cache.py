@@ -178,17 +178,17 @@ class SearchCache:
     ) -> dict[str, Any]:
         """Derive file list result from count data."""
         try:
-            from ..tools import fd_rg_utils  # Import here to avoid circular imports
+            from ..tools.fd_rg import RgResultTransformer
 
             file_counts = count_result.get("file_counts", {})
             if requested_format == "summary":
-                derived_result = fd_rg_utils.create_file_summary_from_count_data(
+                derived_result = RgResultTransformer().create_file_summary_from_count(
                     file_counts
                 )
                 derived_result["cache_derived"] = True  # Mark as derived from cache
                 return derived_result
             elif requested_format in ["file_list", "files_only"]:
-                file_list = fd_rg_utils.extract_file_list_from_count_data(file_counts)
+                file_list = [f for f in file_counts if f != "__total__"]
                 return {
                     "success": True,
                     "files": file_list,
@@ -197,7 +197,7 @@ class SearchCache:
                     "cache_derived": True,  # Mark as derived from cache
                 }
         except ImportError:
-            logger.warning("Could not import fd_rg_utils for cache derivation")
+            logger.warning("Could not import fd_rg for cache derivation")
 
         return count_result
 

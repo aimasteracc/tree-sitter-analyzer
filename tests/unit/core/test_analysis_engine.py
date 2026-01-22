@@ -8,6 +8,7 @@ including singleton management, plugin handling, caching, and analysis operation
 
 import os
 import tempfile
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
@@ -18,6 +19,7 @@ from tree_sitter_analyzer.core.analysis_engine import (
     get_analysis_engine,
 )
 from tree_sitter_analyzer.core.request import AnalysisRequest
+from tree_sitter_analyzer.models import AnalysisResult
 
 
 class TestUnifiedAnalysisEngineInit:
@@ -241,13 +243,7 @@ class TestUnifiedAnalysisEngineAnalysis:
         assert result is not None
         assert result.file_path == "custom.py"
 
-    def test_analyze_code_sync(self):
-        """Test synchronous version of analyze_code."""
-        engine = UnifiedAnalysisEngine()
-        code = "def hello():\n    pass\n"
-        result = engine.analyze_code_sync(code, language="python")
-        assert result is not None
-        assert result.success is True
+    # test_analyze_code_sync removed - method no longer exists after V2 integration
 
     @pytest.mark.asyncio
     async def test_analyze_with_request(self):
@@ -295,25 +291,7 @@ class TestUnifiedAnalysisEngineAnalysis:
             if os.path.exists(temp_path):
                 os.remove(temp_path)
 
-    @pytest.mark.asyncio
-    async def test_analyze_file_async_compatibility(self):
-        """Test analyze_file_async compatibility alias."""
-        engine = UnifiedAnalysisEngine()
-
-        # Create a temporary Python file
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".py", delete=False, encoding="utf-8"
-        ) as tf:
-            tf.write("def hello():\n    pass\n")
-            temp_path = tf.name
-
-        try:
-            result = await engine.analyze_file_async(temp_path)
-            assert result is not None
-            assert result.success is True
-        finally:
-            if os.path.exists(temp_path):
-                os.remove(temp_path)
+    # test_analyze_file_async_compatibility removed - method no longer exists after V2 integration
 
     @classmethod
     def teardown_class(cls):
@@ -493,3 +471,143 @@ class TestMockLanguagePlugin:
         assert result is not None
         assert result.language == "python"
         assert result.success is True
+
+
+class TestDependencyInjection:
+    """Test suite for dependency injection pattern"""
+
+    @pytest.fixture
+    def mock_dependencies(self):
+        """Create mock dependencies for testing"""
+        parser = Mock()
+        language_detector = Mock()
+        plugin_manager = Mock()
+        cache_service = AsyncMock()
+        security_validator = Mock()
+        query_executor = Mock()
+        performance_monitor = Mock()
+
+        # Configure mocks
+        language_detector.detect_from_extension.return_value = "python"
+        language_detector.is_supported.return_value = True
+        security_validator.validate_file_path.return_value = (True, None)
+        cache_service.get.return_value = None
+        cache_service.set = AsyncMock()
+        performance_monitor.measure_operation.return_value.__enter__ = Mock()
+        performance_monitor.measure_operation.return_value.__exit__ = Mock()
+
+        return {
+            "parser": parser,
+            "language_detector": language_detector,
+            "plugin_manager": plugin_manager,
+            "cache_service": cache_service,
+            "security_validator": security_validator,
+            "query_executor": query_executor,
+            "performance_monitor": performance_monitor,
+        }
+
+    @pytest.fixture
+    def engine(self, mock_dependencies):
+        """Create engine instance with mocked dependencies"""
+        return UnifiedAnalysisEngine(**mock_dependencies)
+
+    def test_initialization_with_dependencies(self, mock_dependencies):
+        """Test that engine initializes with injected dependencies"""
+        engine = UnifiedAnalysisEngine(**mock_dependencies)
+
+        assert engine._parser == mock_dependencies["parser"]
+        assert engine._language_detector == mock_dependencies["language_detector"]
+        assert engine._plugin_manager == mock_dependencies["plugin_manager"]
+        assert engine._cache_service == mock_dependencies["cache_service"]
+        assert engine._security_validator == mock_dependencies["security_validator"]
+        assert engine._query_executor == mock_dependencies["query_executor"]
+
+    @pytest.mark.asyncio
+    async def test_analyze_with_cache_hit(self, engine, mock_dependencies):
+        """Test that cached results are returned"""
+        cached_result = AnalysisResult(
+            file_path="test.py",
+            language="python",
+            success=True,
+            elements=[],
+            analysis_time=0.1,
+        )
+        mock_dependencies["cache_service"].get.return_value = cached_result
+
+        request = AnalysisRequest(file_path="test.py", language="python")
+        result = await engine.analyze(request)
+
+        assert result == cached_result
+        mock_dependencies["cache_service"].get.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_analyze_invalid_path_with_di(self, engine, mock_dependencies):
+        """Test that invalid paths raise ValueError with DI"""
+        mock_dependencies["security_validator"].validate_file_path.return_value = (
+            False,
+            "Path outside project root",
+        )
+
+        request = AnalysisRequest(file_path="../../../etc/passwd")
+
+        with pytest.raises(ValueError, match="Invalid file path"):
+            await engine.analyze(request)
+
+    @pytest.mark.asyncio
+    async def test_analyze_unsupported_language_with_di(
+        self, engine, mock_dependencies
+    ):
+        """Test that unsupported languages raise UnsupportedLanguageError with DI"""
+        mock_dependencies["language_detector"].is_supported.return_value = False
+
+        request = AnalysisRequest(file_path="test.xyz", language="unknown")
+
+        with pytest.raises(UnsupportedLanguageError):
+            await engine.analyze(request)
+
+    @pytest.mark.asyncio
+    async def test_analyze_file_not_found_with_di(self, engine, mock_dependencies):
+        """Test that missing files raise FileNotFoundError with DI"""
+        request = AnalysisRequest(file_path="/nonexistent/file.py", language="python")
+
+        with pytest.raises(FileNotFoundError):
+            await engine.analyze(request)
+
+    def test_get_supported_languages_with_di(self, engine, mock_dependencies):
+        """Test getting supported languages with DI"""
+        mock_dependencies["plugin_manager"].get_supported_languages.return_value = [
+            "python",
+            "javascript",
+            "java",
+        ]
+
+        languages = engine.get_supported_languages()
+
+        assert languages == ["python", "javascript", "java"]
+
+    def test_get_available_queries_with_di(self, engine, mock_dependencies):
+        """Test getting available queries for a language with DI"""
+        mock_dependencies["query_executor"].get_available_queries.return_value = [
+            "functions",
+            "classes",
+        ]
+
+        queries = engine.get_available_queries("python")
+
+        assert queries == ["functions", "classes"]
+
+    def test_clear_cache_with_di(self, engine, mock_dependencies):
+        """Test cache clearing with DI"""
+        engine.clear_cache()
+
+        mock_dependencies["cache_service"].clear.assert_called_once()
+
+    def test_cleanup_with_di(self, engine, mock_dependencies):
+        """Test resource cleanup with DI"""
+        engine.cleanup()
+
+        mock_dependencies["cache_service"].clear.assert_called_once()
+        mock_dependencies["performance_monitor"].clear_metrics.assert_called_once()
+
+
+# TestCreateAnalysisEngine class removed - factory function implementation changed after V2 integration

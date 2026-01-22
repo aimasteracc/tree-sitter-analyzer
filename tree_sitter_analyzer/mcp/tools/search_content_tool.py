@@ -8,22 +8,19 @@ Search content in files under roots or an explicit file list using ripgrep --jso
 from __future__ import annotations
 
 import logging
-import time
 from pathlib import Path
 from typing import Any
 
 from ..utils.error_handler import handle_mcp_errors
 from ..utils.file_output_manager import FileOutputManager
-from ..utils.format_helper import (
-    apply_toon_format_to_response,
-    attach_toon_content_to_response,
-    format_for_file_output,
-)
-from ..utils.gitignore_detector import get_default_detector
 from ..utils.search_cache import get_default_cache
-from . import fd_rg_utils
 from .base_tool import BaseMCPTool
+from .fd_rg import check_external_command
+from .formatters.search_formatter import SearchResultFormatter
 from .output_format_validator import get_default_validator
+from .search_strategies.base import SearchContext
+from .search_strategies.content_search import ContentSearchStrategy
+from .validators.search_validator import SearchArgumentValidator
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +41,17 @@ class SearchContentTool(BaseMCPTool):
         super().__init__(project_root)
         self.cache = get_default_cache() if enable_cache else None
         self.file_output_manager = FileOutputManager.get_managed_instance(project_root)
+
+        # Initialize new components
+        self._validator = SearchArgumentValidator(
+            project_root=self.project_root, path_resolver=self.path_resolver
+        )
+        self._strategy = ContentSearchStrategy(
+            cache=self.cache,
+            file_output_manager=self.file_output_manager,
+            path_resolver=self.path_resolver,
+        )
+        self._formatter = SearchResultFormatter()
 
     def set_project_path(self, project_path: str) -> None:
         """
@@ -304,6 +312,29 @@ Choose output format parameters based on your needs to minimize token usage and 
         else:
             return "normal"
 
+    def _create_cache_key(self, context: SearchContext) -> str:
+        """Create cache key from search context.
+
+        Args:
+            context: SearchContext containing search parameters
+
+        Returns:
+            Cache key string
+        """
+        if not self.cache:
+            return ""
+
+        # Extract cache parameters (exclude output-related params)
+        cache_params = {
+            k: v
+            for k, v in context.arguments.items()
+            if k not in ["query", "roots", "files", "output_file", "suppress_output"]
+        }
+
+        return self.cache.create_cache_key(
+            query=context.query, roots=context.roots or [], **cache_params
+        )
+
     def _create_count_only_cache_key(
         self, total_only_cache_key: str, arguments: dict[str, Any]
     ) -> str | None:
@@ -335,592 +366,41 @@ Choose output format parameters based on your needs to minimize token usage and 
 
     @handle_mcp_errors("search_content")
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any] | int:
-        # Check if rg command is available
-        if not fd_rg_utils.check_external_command("rg"):
+        """Execute search operation (simplified version).
+
+        Args:
+            arguments: Search arguments dictionary
+
+        Returns:
+            Search results as dictionary or integer (for total_only mode)
+        """
+        # 1. Check if ripgrep command is available
+        if not check_external_command("rg"):
             return {
                 "success": False,
                 "error": "rg (ripgrep) command not found. Please install ripgrep (https://github.com/BurntSushi/ripgrep) to use this tool.",
-                "count": 0,
-                "results": [],
+                "install_instructions": "https://github.com/BurntSushi/ripgrep#installation",
             }
 
-        self.validate_arguments(arguments)
-        # NOTE: MCP tool responses are structured objects. When output_format="toon",
-        # we return {"format":"toon","toon_content":"..."} to reduce tokens while
-        # remaining JSON/protocol compatible.
-        output_format = arguments.get("output_format", "toon")
+        try:
+            # 2. Validate arguments and create context
+            context = self._validator.validate(arguments)
 
-        roots = arguments.get("roots")
-        files = arguments.get("files")
-        if roots:
-            roots = self._validate_roots(roots)
-        if files:
-            files = self._validate_files(files)
+            # 3. Create cache key
+            context.cache_key = self._create_cache_key(context)
 
-        # Check cache if enabled (simplified for performance)
-        cache_key = None
-        if self.cache:
-            # Create simplified cache key for better performance
-            cache_params = {
-                k: v
-                for k, v in arguments.items()
-                if k
-                not in ["query", "roots", "files", "output_file", "suppress_output"]
-            }
-            cache_key = self.cache.create_cache_key(
-                query=arguments["query"], roots=roots or [], **cache_params
+            # 4. Execute strategy
+            result = await self._strategy.execute(context)
+
+            # 5. Format result
+            return self._formatter.format(
+                result,
+                output_format=context.output_format,
+                suppress_output=context.suppress_output,
             )
 
-            # Simple cache lookup without complex cross-format logic for performance
-            cached_result = self.cache.get(cache_key)
-            if cached_result is not None:
-                # Check if this is a total_only request
-                total_only_requested = arguments.get("total_only", False)
-
-                if total_only_requested:
-                    # For total_only mode, always return integer if possible
-                    if isinstance(cached_result, int):
-                        return cached_result
-                    elif (
-                        isinstance(cached_result, dict)
-                        and "total_matches" in cached_result
-                    ):
-                        total_matches = cached_result["total_matches"]
-                        return (
-                            int(total_matches)
-                            if isinstance(total_matches, int | float)
-                            else 0
-                        )
-                    elif isinstance(cached_result, dict) and "count" in cached_result:
-                        count = cached_result["count"]
-                        return int(count) if isinstance(count, int | float) else 0
-                    else:
-                        # Fallback: extract count from dict or return 0
-                        return 0
-                else:
-                    # For non-total_only modes, return dict format
-                    if isinstance(cached_result, dict):
-                        cached_result = cached_result.copy()
-                        cached_result["cache_hit"] = True
-                        return cached_result
-                    elif isinstance(cached_result, int):
-                        # Convert integer to dict format for non-total_only modes
-                        return {
-                            "success": True,
-                            "count": cached_result,
-                            "total_matches": cached_result,
-                            "cache_hit": True,
-                        }
-                    else:
-                        # For other types, convert to dict format
-                        return {
-                            "success": True,
-                            "cached_result": cached_result,
-                            "cache_hit": True,
-                        }
-
-        # Handle max_count parameter properly
-        # If user specifies max_count, use it directly (with reasonable upper limit)
-        # If not specified, use None to let ripgrep return all matches (subject to hard cap later)
-        max_count = arguments.get("max_count")
-        if max_count is not None:
-            # Clamp user-specified max_count to reasonable limits
-            # Use 1 as minimum default, but respect user's small values
-            max_count = fd_rg_utils.clamp_int(
-                max_count,
-                1,  # Minimum default value
-                fd_rg_utils.DEFAULT_RESULTS_LIMIT,  # Upper limit for safety
-            )
-        timeout_ms = arguments.get("timeout_ms")
-
-        # Note: --files-from is not supported in this ripgrep version
-        # For files mode, we'll search in the parent directories of the files
-        # and use glob patterns to restrict search to specific files
-        if files:
-            # Extract unique parent directories from file paths
-            parent_dirs = set()
-            file_globs = []
-            for file_path in files:
-                resolved = self.path_resolver.resolve(file_path)
-                parent_dir = str(Path(resolved).parent)
-                parent_dirs.add(parent_dir)
-
-                # Create glob pattern for this specific file
-                file_name = Path(resolved).name
-                # Escape special characters in filename for glob pattern
-                escaped_name = file_name.replace("[", "[[]").replace("]", "[]]")
-                file_globs.append(escaped_name)
-
-            # Use parent directories as roots for compatibility
-            roots = list(parent_dirs)
-
-            # Add file-specific glob patterns to include_globs
-            if not arguments.get("include_globs"):
-                arguments["include_globs"] = []
-            arguments["include_globs"].extend(file_globs)
-
-        # Check for count-only mode (total_only also requires count mode)
-        total_only = bool(arguments.get("total_only", False))
-        count_only_matches = (
-            bool(arguments.get("count_only_matches", False)) or total_only
-        )
-        summary_only = bool(arguments.get("summary_only", False))
-
-        # Smart .gitignore detection
-        no_ignore = bool(arguments.get("no_ignore", False))
-        if not no_ignore and roots:  # Only for roots mode, not files mode
-            # Auto-detect if we should use --no-ignore
-            detector = get_default_detector()
-            original_roots = arguments.get("roots", [])
-            should_ignore = detector.should_use_no_ignore(
-                original_roots, self.project_root
-            )
-            if should_ignore:
-                no_ignore = True
-                # Log the auto-detection for debugging
-                # Logger already defined at module level
-                detection_info = detector.get_detection_info(
-                    original_roots, self.project_root
-                )
-                logger.info(
-                    f"Auto-enabled --no-ignore due to .gitignore interference: {detection_info['reason']}"
-                )
-
-        # Roots mode
-        # Determine if we should use parallel processing
-        use_parallel = (
-            roots is not None
-            and len(roots) > 1
-            and arguments.get("enable_parallel", True)
-        )
-
-        started = time.time()
-
-        if use_parallel and roots is not None:
-            # Split roots for parallel processing
-            root_chunks = fd_rg_utils.split_roots_for_parallel_processing(
-                roots, max_chunks=4
-            )
-
-            # Build commands for each chunk
-            commands = []
-            for chunk in root_chunks:
-                cmd = fd_rg_utils.build_rg_command(
-                    query=arguments["query"],
-                    case=arguments.get("case", "smart"),
-                    fixed_strings=bool(arguments.get("fixed_strings", False)),
-                    word=bool(arguments.get("word", False)),
-                    multiline=bool(arguments.get("multiline", False)),
-                    include_globs=arguments.get("include_globs"),
-                    exclude_globs=arguments.get("exclude_globs"),
-                    follow_symlinks=bool(arguments.get("follow_symlinks", False)),
-                    hidden=bool(arguments.get("hidden", False)),
-                    no_ignore=no_ignore,
-                    max_filesize=arguments.get("max_filesize"),
-                    context_before=arguments.get("context_before"),
-                    context_after=arguments.get("context_after"),
-                    encoding=arguments.get("encoding"),
-                    max_count=max_count,
-                    timeout_ms=timeout_ms,
-                    roots=chunk,
-                    files_from=None,
-                    count_only_matches=count_only_matches,
-                )
-                commands.append(cmd)
-
-            # Execute commands in parallel
-            results = await fd_rg_utils.run_parallel_rg_searches(
-                commands, timeout_ms=timeout_ms, max_concurrent=4
-            )
-
-            # Merge results
-            rc, out, err = fd_rg_utils.merge_rg_results(results, count_only_matches)
-        else:
-            # Single command execution (original behavior)
-            cmd = fd_rg_utils.build_rg_command(
-                query=arguments["query"],
-                case=arguments.get("case", "smart"),
-                fixed_strings=bool(arguments.get("fixed_strings", False)),
-                word=bool(arguments.get("word", False)),
-                multiline=bool(arguments.get("multiline", False)),
-                include_globs=arguments.get("include_globs"),
-                exclude_globs=arguments.get("exclude_globs"),
-                follow_symlinks=bool(arguments.get("follow_symlinks", False)),
-                hidden=bool(arguments.get("hidden", False)),
-                no_ignore=no_ignore,
-                max_filesize=arguments.get("max_filesize"),
-                context_before=arguments.get("context_before"),
-                context_after=arguments.get("context_after"),
-                encoding=arguments.get("encoding"),
-                max_count=max_count,
-                timeout_ms=timeout_ms,
-                roots=roots,
-                files_from=None,
-                count_only_matches=count_only_matches,
-            )
-
-            rc, out, err = await fd_rg_utils.run_command_capture(
-                cmd, timeout_ms=timeout_ms
-            )
-
-        elapsed_ms = int((time.time() - started) * 1000)
-
-        if rc not in (0, 1):
-            message = err.decode("utf-8", errors="replace").strip() or "ripgrep failed"
-            return {"success": False, "error": message, "returncode": rc}
-
-        # Handle total-only mode (highest priority for count queries)
-        total_only = arguments.get("total_only", False)
-        if total_only:
-            # Parse count output and return only the total
-            file_counts = fd_rg_utils.parse_rg_count_output(out)
-            total_matches = file_counts.get("__total__", 0)
-
-            # Cache the FULL count data for future cross-format optimization
-            # This allows count_only_matches queries to be served from this cache
-            if self.cache and cache_key:
-                # Cache both the simple total and the detailed count structure
-                self.cache.set(cache_key, total_matches)
-
-                # Also cache the equivalent count_only_matches result for cross-format optimization
-                count_only_cache_key = self._create_count_only_cache_key(
-                    cache_key, arguments
-                )
-                if count_only_cache_key:
-                    # Create a copy of file_counts without __total__ for the detailed result
-                    file_counts_copy = {
-                        k: v for k, v in file_counts.items() if k != "__total__"
-                    }
-                    detailed_count_result = {
-                        "success": True,
-                        "count_only": True,
-                        "total_matches": total_matches,
-                        "file_counts": file_counts_copy,  # Keep the file-level data (without __total__)
-                        "elapsed_ms": elapsed_ms,
-                        "derived_from_total_only": True,  # Mark as derived
-                    }
-                    self.cache.set(count_only_cache_key, detailed_count_result)
-                    logger.debug(
-                        "Cross-cached total_only result as count_only_matches for future optimization"
-                    )
-
-            return int(total_matches)
-
-        # Handle count-only mode
-        if count_only_matches:
-            file_counts = fd_rg_utils.parse_rg_count_output(out)
-            total_matches = file_counts.pop("__total__", 0)
-            result = {
-                "success": True,
-                "count_only": True,
-                "total_matches": total_matches,
-                "file_counts": file_counts,
-                "elapsed_ms": elapsed_ms,
-            }
-
-            # Cache the result
-            if self.cache and cache_key:
-                self.cache.set(cache_key, result)
-
-            if output_format == "toon":
-                return attach_toon_content_to_response(result)
-            return result
-
-        # Handle normal mode
-        matches = fd_rg_utils.parse_rg_json_lines_to_matches(out)
-
-        # Apply user-specified max_count limit if provided
-        # Note: ripgrep's -m option limits matches per file, not total matches
-        # So we need to apply the total limit here in post-processing
-        user_max_count = arguments.get("max_count")
-        if user_max_count is not None and len(matches) > user_max_count:
-            matches = matches[:user_max_count]
-            truncated = True
-        else:
-            truncated = len(matches) >= fd_rg_utils.MAX_RESULTS_HARD_CAP
-            if truncated:
-                matches = matches[: fd_rg_utils.MAX_RESULTS_HARD_CAP]
-
-        # Apply path optimization if requested
-        optimize_paths = arguments.get("optimize_paths", False)
-        if optimize_paths and matches:
-            matches = fd_rg_utils.optimize_match_paths(matches)
-
-            # Return optimized results in proper format
-            result = {
-                "success": True,
-                "count": len(matches),
-                "truncated": truncated,
-                "elapsed_ms": elapsed_ms,
-                "results": matches,
-            }
-
-            # Handle output suppression and file output for optimized results
-            output_file = arguments.get("output_file")
-            suppress_output = arguments.get("suppress_output", False)
-
-            # Handle file output if requested
-            if output_file:
-                try:
-                    # Format content based on output_format
-                    formatted_content, _ = format_for_file_output(result, output_format)
-                    file_path = self.file_output_manager.save_to_file(
-                        content=formatted_content, base_name=output_file
-                    )
-
-                    # If suppress_output is True, return minimal response
-                    if suppress_output:
-                        minimal_result = {
-                            "success": result.get("success", True),
-                            "count": result.get("count", 0),
-                            "output_file": output_file,
-                            "file_saved": f"Results saved to {file_path}",
-                        }
-                        # Cache the full result, not the minimal one
-                        if self.cache and cache_key:
-                            self.cache.set(cache_key, result)
-                        if output_format == "toon":
-                            return attach_toon_content_to_response(minimal_result)
-                        return minimal_result
-                    else:
-                        # Include file info in full response
-                        result["output_file"] = output_file
-                        result["file_saved"] = f"Results saved to {file_path}"
-                except Exception as e:
-                    logger.error(f"Failed to save output to file: {e}")
-                    result["file_save_error"] = str(e)
-                    result["file_saved"] = False
-            elif suppress_output:
-                # If suppress_output is True but no output_file, remove detailed results
-                minimal_result = {
-                    "success": result.get("success", True),
-                    "count": result.get("count", 0),
-                    "elapsed_ms": result.get("elapsed_ms", 0),
-                }
-                # Cache the full result, not the minimal one
-                if self.cache and cache_key:
-                    self.cache.set(cache_key, result)
-                if output_format == "toon":
-                    return attach_toon_content_to_response(minimal_result)
-                return minimal_result
-
-            # Cache the result
-            if self.cache and cache_key:
-                self.cache.set(cache_key, result)
-
-            if output_format == "toon":
-                return attach_toon_content_to_response(result)
-            return result
-
-        # Apply file grouping if requested (takes priority over other formats)
-        group_by_file = arguments.get("group_by_file", False)
-        if group_by_file and matches:
-            result = fd_rg_utils.group_matches_by_file(matches)
-
-            # Handle output suppression and file output for grouped results
-            output_file = arguments.get("output_file")
-            suppress_output = arguments.get("suppress_output", False)
-
-            # Handle file output if requested
-            if output_file:
-                try:
-                    # Format content based on output_format
-                    formatted_content, _ = format_for_file_output(result, output_format)
-                    file_path = self.file_output_manager.save_to_file(
-                        content=formatted_content, base_name=output_file
-                    )
-
-                    # If suppress_output is True, return minimal response
-                    if suppress_output:
-                        minimal_result = {
-                            "success": result.get("success", True),
-                            "count": result.get("count", 0),
-                            "output_file": output_file,
-                            "file_saved": f"Results saved to {file_path}",
-                        }
-                        # Cache the full result, not the minimal one
-                        if self.cache and cache_key:
-                            self.cache.set(cache_key, result)
-                        if output_format == "toon":
-                            return attach_toon_content_to_response(minimal_result)
-                        return minimal_result
-                    else:
-                        # Include file info in full response
-                        result["output_file"] = output_file
-                        result["file_saved"] = f"Results saved to {file_path}"
-                except Exception as e:
-                    logger.error(f"Failed to save output to file: {e}")
-                    result["file_save_error"] = str(e)
-                    result["file_saved"] = False
-            elif suppress_output:
-                # If suppress_output is True but no output_file, remove detailed results
-                minimal_result = {
-                    "success": result.get("success", True),
-                    "count": result.get("count", 0),
-                    "summary": result.get("summary", {}),
-                    "meta": result.get("meta", {}),
-                }
-                # Cache the full result, not the minimal one
-                if self.cache and cache_key:
-                    self.cache.set(cache_key, result)
-                if output_format == "toon":
-                    return attach_toon_content_to_response(minimal_result)
-                return minimal_result
-
-            # Cache the result
-            if self.cache and cache_key:
-                self.cache.set(cache_key, result)
-
-            if output_format == "toon":
-                return attach_toon_content_to_response(result)
-            return result
-
-        # Handle summary mode
-        if summary_only:
-            summary = fd_rg_utils.summarize_search_results(matches)
-            result = {
-                "success": True,
-                "count": len(matches),
-                "truncated": truncated,
-                "elapsed_ms": elapsed_ms,
-                "summary": summary,
-            }
-
-            # Handle output suppression and file output for summary results
-            output_file = arguments.get("output_file")
-            suppress_output = arguments.get("suppress_output", False)
-            # Handle file output if requested
-            if output_file:
-                try:
-                    # Format content based on output_format
-                    formatted_content, _ = format_for_file_output(result, output_format)
-                    file_path = self.file_output_manager.save_to_file(
-                        content=formatted_content, base_name=output_file
-                    )
-
-                    # If suppress_output is True, return minimal response
-                    if suppress_output:
-                        minimal_result = {
-                            "success": result.get("success", True),
-                            "count": result.get("count", 0),
-                            "output_file": output_file,
-                            "file_saved": f"Results saved to {file_path}",
-                        }
-                        # Cache the full result, not the minimal one
-                        if self.cache and cache_key:
-                            self.cache.set(cache_key, result)
-                        if output_format == "toon":
-                            return attach_toon_content_to_response(minimal_result)
-                        return minimal_result
-                    else:
-                        # Include file info in full response
-                        result["output_file"] = output_file
-                        result["file_saved"] = f"Results saved to {file_path}"
-                except Exception as e:
-                    logger.error(f"Failed to save output to file: {e}")
-                    result["file_save_error"] = str(e)
-                    result["file_saved"] = False
-            elif suppress_output:
-                # If suppress_output is True but no output_file, remove detailed results
-                minimal_result = {
-                    "success": result.get("success", True),
-                    "count": result.get("count", 0),
-                    "summary": result.get("summary", {}),
-                    "elapsed_ms": result.get("elapsed_ms", 0),
-                }
-                # Cache the full result, not the minimal one
-                if self.cache and cache_key:
-                    self.cache.set(cache_key, result)
-                if output_format == "toon":
-                    return attach_toon_content_to_response(minimal_result)
-                return minimal_result
-
-            # Cache the result
-            if self.cache and cache_key:
-                self.cache.set(cache_key, result)
-
-            if output_format == "toon":
-                return attach_toon_content_to_response(result)
-            return result
-
-        result = {
-            "success": True,
-            "count": len(matches),
-            "truncated": truncated,
-            "elapsed_ms": elapsed_ms,
-        }
-
-        # Handle output suppression and file output
-        output_file = arguments.get("output_file")
-        suppress_output = arguments.get("suppress_output", False)
-        output_format = arguments.get("output_format", "toon")
-
-        # Always add results to the base result for caching
-        result["results"] = matches
-
-        # Handle file output if requested
-        if output_file:
-            try:
-                # Create detailed output for file
-                file_content = {
-                    "success": True,
-                    "count": len(matches),
-                    "truncated": truncated,
-                    "elapsed_ms": elapsed_ms,
-                    "results": matches,
-                    "summary": fd_rg_utils.summarize_search_results(matches),
-                    "grouped_by_file": (
-                        fd_rg_utils.group_matches_by_file(matches)["files"]
-                        if matches
-                        else []
-                    ),
-                }
-
-                # Format content based on output_format
-                formatted_content, _ = format_for_file_output(
-                    file_content, output_format
-                )
-
-                # Save to file
-                saved_file_path = self.file_output_manager.save_to_file(
-                    content=formatted_content, base_name=output_file
-                )
-
-                result["output_file"] = output_file
-                result["output_file_path"] = saved_file_path
-                result["file_saved"] = True
-
-                logger.info(f"Search results saved to: {saved_file_path}")
-
-                # If suppress_output is True, return minimal response
-                if suppress_output:
-                    minimal_result = {
-                        "success": result.get("success", True),
-                        "count": result.get("count", 0),
-                        "output_file": output_file,
-                        "file_saved": f"Results saved to {saved_file_path}",
-                    }
-                    # Cache the full result, not the minimal one
-                    if self.cache and cache_key:
-                        self.cache.set(cache_key, result)
-                    return minimal_result
-
-            except Exception as e:
-                logger.error(f"Failed to save output to file: {e}")
-                result["file_save_error"] = str(e)
-                result["file_saved"] = False
-        elif suppress_output:
-            # If suppress_output is True but no output_file, remove results from response
-            result_copy = result.copy()
-            result_copy.pop("results", None)
-            # Cache the full result, not the minimal one
-            if self.cache and cache_key:
-                self.cache.set(cache_key, result)
-            return result_copy
-
-        # Cache the result
-        if self.cache and cache_key:
-            self.cache.set(cache_key, result)
-
-        # Apply TOON format to direct output if requested
-        return apply_toon_format_to_response(result, output_format)
+        except ValueError as e:
+            return {"success": False, "error": str(e)}
+        except Exception as e:
+            logger.error(f"Unexpected error in search_content: {e}", exc_info=True)
+            return {"success": False, "error": f"Unexpected error: {str(e)}"}
