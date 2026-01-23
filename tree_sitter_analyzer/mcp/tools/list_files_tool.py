@@ -26,6 +26,7 @@ from .fd_rg import (
     check_external_command,
     clamp_int,
     run_command_capture,
+    sanitize_error_message,
 )
 
 # Constants for backward compatibility
@@ -312,8 +313,10 @@ class ListFilesTool(BaseMCPTool):
         elapsed_ms = int((time.time() - started) * 1000)
 
         if rc != 0:
-            message = err.decode("utf-8", errors="replace").strip() or "fd failed"
-            return {"success": False, "error": message, "returncode": rc}
+            raw_message = err.decode("utf-8", errors="replace").strip() or "fd failed"
+            # Sanitize error message to prevent information leakage
+            sanitized_message = sanitize_error_message(raw_message)
+            return {"success": False, "error": sanitized_message, "returncode": rc}
 
         lines = [
             line.strip()

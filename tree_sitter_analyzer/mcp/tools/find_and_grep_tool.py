@@ -35,6 +35,7 @@ from .fd_rg import (
     get_missing_commands,
     group_matches_by_file,
     run_command_capture,
+    sanitize_error_message,
     summarize_search_results,
 )
 
@@ -341,11 +342,14 @@ class FindAndGrepTool(BaseMCPTool):
         fd_elapsed_ms = int((time.time() - fd_started) * 1000)
 
         if fd_rc != 0:
+            raw_message = (
+                fd_err.decode("utf-8", errors="replace").strip() or "fd failed"
+            )
+            # Sanitize error message to prevent information leakage
+            sanitized_message = sanitize_error_message(raw_message)
             return {
                 "success": False,
-                "error": (
-                    fd_err.decode("utf-8", errors="replace").strip() or "fd failed"
-                ),
+                "error": sanitized_message,
                 "returncode": fd_rc,
             }
 
@@ -456,11 +460,14 @@ class FindAndGrepTool(BaseMCPTool):
         rg_elapsed_ms = int((time.time() - rg_started) * 1000)
 
         if rg_rc not in (0, 1):
+            raw_message = (
+                rg_err.decode("utf-8", errors="replace").strip() or "ripgrep failed"
+            )
+            # Sanitize error message to prevent information leakage
+            sanitized_message = sanitize_error_message(raw_message)
             return {
                 "success": False,
-                "error": (
-                    rg_err.decode("utf-8", errors="replace").strip() or "ripgrep failed"
-                ),
+                "error": sanitized_message,
                 "returncode": rg_rc,
             }
 

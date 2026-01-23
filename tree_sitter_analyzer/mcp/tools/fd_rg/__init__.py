@@ -85,6 +85,7 @@ from .utils import (
     merge_command_results,
     run_command_capture,
     run_parallel_commands,
+    sanitize_error_message,
     split_roots_for_parallel_processing,
     write_files_to_temp,
 )
@@ -113,6 +114,7 @@ __all__ = [
     "merge_command_results",
     "run_command_capture",
     "run_parallel_commands",
+    "sanitize_error_message",
     "split_roots_for_parallel_processing",
     "TempFileList",
     "write_files_to_temp",

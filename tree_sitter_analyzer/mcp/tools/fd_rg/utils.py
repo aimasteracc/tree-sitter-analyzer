@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import os
+import re
 import shutil
 import tempfile
 from dataclasses import dataclass
@@ -55,6 +56,94 @@ def get_missing_commands() -> list[str]:
     if not check_external_command("rg"):
         missing.append("rg")
     return missing
+
+
+def sanitize_error_message(error_message: str) -> str:
+    """Sanitize error messages to prevent information leakage.
+
+    Removes sensitive system paths and file information from error messages
+    to prevent security information disclosure.
+
+    Args:
+        error_message: Raw error message from command execution
+
+    Returns:
+        Sanitized error message with sensitive information redacted
+
+    Examples:
+        >>> sanitize_error_message("rg: /private/etc/passwd: Permission denied")
+        "Permission denied accessing restricted paths"
+
+        >>> sanitize_error_message("rg: C:\\Windows\\System32\\config\\SAM: Access denied")
+        "Permission denied accessing restricted paths"
+    """
+    if not error_message:
+        return error_message
+
+    # Patterns that indicate permission/access errors
+    permission_patterns = [
+        r"permission denied",
+        r"access denied",
+        r"access is denied",
+        r"operation not permitted",
+        r"\(os error 13\)",  # EACCES
+        r"\(os error 5\)",  # Windows ACCESS_DENIED
+    ]
+
+    # Check if this is a permission error
+    is_permission_error = any(
+        re.search(pattern, error_message, re.IGNORECASE)
+        for pattern in permission_patterns
+    )
+
+    if is_permission_error:
+        # Count how many permission errors occurred
+        lines = error_message.strip().split("\n")
+        permission_lines = [
+            line
+            for line in lines
+            if any(re.search(p, line, re.IGNORECASE) for p in permission_patterns)
+        ]
+
+        if len(permission_lines) > 1:
+            return (
+                f"Permission denied accessing {len(permission_lines)} restricted paths"
+            )
+        else:
+            return "Permission denied accessing restricted paths"
+
+    # Patterns for sensitive system paths to redact
+    sensitive_path_patterns = [
+        # Unix/Linux/macOS system paths
+        (r"/etc/[^\s:]+", "/etc/[redacted]"),
+        (r"/private/etc/[^\s:]+", "/private/etc/[redacted]"),
+        (r"/var/[^\s:]+", "/var/[redacted]"),
+        (r"/sys/[^\s:]+", "/sys/[redacted]"),
+        (r"/proc/[^\s:]+", "/proc/[redacted]"),
+        (r"/root/[^\s:]+", "/root/[redacted]"),
+        (r"/boot/[^\s:]+", "/boot/[redacted]"),
+        # Windows system paths
+        (
+            r"[A-Z]:\\Windows\\System32\\[^\s:]+",
+            "C:\\\\Windows\\\\System32\\\\[redacted]",
+        ),
+        (r"[A-Z]:\\Windows\\[^\s:]+", "C:\\\\Windows\\\\[redacted]"),
+        (r"[A-Z]:\\Program Files\\[^\s:]+", "C:\\\\Program Files\\\\[redacted]"),
+        # UNC paths
+        (r"\\\\[^\s\\]+\\[^\s:]+", "\\\\\\\\[redacted]"),
+    ]
+
+    sanitized = error_message
+    for pattern, replacement in sensitive_path_patterns:
+        # Use lambda with default argument to properly bind replacement value
+        sanitized = re.sub(
+            pattern,
+            lambda m, repl=replacement: repl,  # type: ignore[misc]
+            sanitized,
+            flags=re.IGNORECASE,
+        )
+
+    return sanitized
 
 
 def clamp_int(value: int | None, default_value: int, hard_cap: int) -> int:

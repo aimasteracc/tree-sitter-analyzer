@@ -18,6 +18,7 @@ from tree_sitter_analyzer.mcp.tools.fd_rg import (
     optimize_match_paths,
     run_command_capture,
     run_parallel_commands,
+    sanitize_error_message,
     split_roots_for_parallel_processing,
     summarize_search_results,
 )
@@ -93,8 +94,12 @@ class ContentSearchStrategy(SearchStrategy):
 
         # Handle errors
         if rc not in (0, 1):
-            message = err.decode("utf-8", errors="replace").strip() or "ripgrep failed"
-            return {"success": False, "error": message, "returncode": rc}
+            raw_message = (
+                err.decode("utf-8", errors="replace").strip() or "ripgrep failed"
+            )
+            # Sanitize error message to prevent information leakage
+            sanitized_message = sanitize_error_message(raw_message)
+            return {"success": False, "error": sanitized_message, "returncode": rc}
 
         # Process results based on output mode
         return await self._process_results(context, out, elapsed_ms)
