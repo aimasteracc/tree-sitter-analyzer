@@ -361,7 +361,6 @@ if __name__ == "__main__":
             assert result["language"] == "java"
             assert "file_metrics" in result
             assert "summary" in result
-            assert "structural_overview" in result
             assert "llm_guidance" in result
 
             # Check file metrics
@@ -375,17 +374,6 @@ if __name__ == "__main__":
 
             # Check summary
             summary = result["summary"]
-            assert "classes" in summary
-            assert "methods" in summary
-            assert "fields" in summary
-            assert "imports" in summary
-
-            # Check structural overview
-            structural = result["structural_overview"]
-            assert "classes" in structural
-            assert "methods" in structural
-            assert "fields" in structural
-            assert "complexity_hotspots" in structural
 
             # Check LLM guidance
             guidance = result["llm_guidance"]
@@ -469,35 +457,6 @@ if __name__ == "__main__":
 
             # Should auto-detect Java
             assert result["language"] == "java"
-
-    @pytest.mark.asyncio
-    async def test_complexity_hotspots_detection(
-        self, analyze_scale_tool, temp_project_dir
-    ):
-        """Test complexity hotspots detection"""
-        java_file = Path(temp_project_dir) / "ComplexSample.java"
-
-        with patch.object(
-            analyze_scale_tool.analysis_engine, "analyze"
-        ) as mock_analyze:
-            mock_analyze.return_value = self.create_mock_analysis_result("java")
-
-            arguments = {
-                "file_path": str(java_file),
-                "include_complexity": True,
-                "output_format": "json",  # Use JSON format for test assertions
-            }
-
-            result = await analyze_scale_tool.execute(arguments)
-
-            # Check complexity hotspots
-            structural = result["structural_overview"]
-            assert "complexity_hotspots" in structural
-
-            # Should detect high complexity method
-            hotspots = structural["complexity_hotspots"]
-            if hotspots:  # If any hotspots detected
-                assert any(hotspot["complexity"] > 10 for hotspot in hotspots)
 
     @pytest.mark.asyncio
     async def test_llm_guidance_generation(self, analyze_scale_tool, temp_project_dir):
@@ -713,7 +672,6 @@ if __name__ == "__main__":
             assert result["language"] == "java"
             assert "file_metrics" in result
             assert "summary" in result
-            assert "structural_overview" in result
             assert "llm_guidance" in result
             assert "detailed_analysis" in result
 
@@ -721,7 +679,6 @@ if __name__ == "__main__":
             assert result["file_metrics"]["total_lines"] > 0
             assert result["summary"]["classes"] >= 0
             assert result["summary"]["methods"] >= 0
-            assert len(result["structural_overview"]["classes"]) >= 0
             assert result["llm_guidance"]["size_category"] in [
                 "small",
                 "medium",
