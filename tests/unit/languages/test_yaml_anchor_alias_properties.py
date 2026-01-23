@@ -10,7 +10,7 @@ Tests correctness properties for YAML anchor and alias detection to ensure:
 """
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
 from tree_sitter_analyzer.languages.yaml_plugin import (
@@ -158,7 +158,7 @@ reference: *{anchor_name}
 class TestYAMLAnchorAliasProperties:
     """Property-based tests for YAML anchor and alias detection."""
 
-    @settings(max_examples=100)
+    @settings(max_examples=100, suppress_health_check=[HealthCheck.too_slow])
     @given(yaml_data=yaml_with_anchor_and_alias())
     def test_property_6_anchor_detection(self, yaml_data: tuple[str, str]):
         """

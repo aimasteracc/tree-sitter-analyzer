@@ -10,7 +10,10 @@ from unittest.mock import patch
 
 import pytest
 
-from tree_sitter_analyzer.mcp.tools import fd_rg_utils
+from tree_sitter_analyzer.mcp.tools.fd_rg_utils import (
+    create_file_summary_from_count_data,
+    extract_file_list_from_count_data,
+)
 from tree_sitter_analyzer.mcp.tools.search_content_tool import SearchContentTool
 from tree_sitter_analyzer.mcp.utils.search_cache import SearchCache, clear_cache
 
@@ -19,7 +22,7 @@ from tree_sitter_analyzer.mcp.utils.search_cache import SearchCache, clear_cache
 def mock_external_commands(monkeypatch):
     """Auto-mock external command availability checks for all tests in this module."""
     monkeypatch.setattr(
-        "tree_sitter_analyzer.mcp.tools.fd_rg_utils.check_external_command",
+        "tree_sitter_analyzer.mcp.tools.fd_rg.utils.check_external_command",
         lambda cmd: True,
     )
 
@@ -39,7 +42,7 @@ class TestSmartCacheOptimization:
         """Test file list extraction from count data."""
         count_data = {"file1.py": 5, "file2.py": 3, "file3.py": 2, "__total__": 10}
 
-        file_list = fd_rg_utils.extract_file_list_from_count_data(count_data)
+        file_list = extract_file_list_from_count_data(count_data)
         expected_files = ["file1.py", "file2.py", "file3.py"]
 
         assert set(file_list) == set(expected_files)
@@ -49,7 +52,7 @@ class TestSmartCacheOptimization:
         """Test file summary creation from count data."""
         count_data = {"file1.py": 5, "file2.py": 3, "__total__": 8}
 
-        summary = fd_rg_utils.create_file_summary_from_count_data(count_data)
+        summary = create_file_summary_from_count_data(count_data)
 
         assert summary["success"] is True
         assert summary["total_matches"] == 8
@@ -151,7 +154,9 @@ class TestSmartCacheOptimization:
         assert result["cache_derived"] is True
 
     @pytest.mark.asyncio
-    @patch("tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture")
+    @patch(
+        "tree_sitter_analyzer.mcp.tools.search_strategies.content_search.run_command_capture"
+    )
     @patch(
         "tree_sitter_analyzer.mcp.tools.search_content_tool.SearchContentTool._validate_roots"
     )
@@ -214,7 +219,9 @@ class TestSmartCacheOptimization:
             assert result == expected_format, f"Failed for {arguments}"
 
     @pytest.mark.asyncio
-    @patch("tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture")
+    @patch(
+        "tree_sitter_analyzer.mcp.tools.search_strategies.content_search.run_command_capture"
+    )
     @patch(
         "tree_sitter_analyzer.mcp.tools.search_content_tool.SearchContentTool._validate_roots"
     )

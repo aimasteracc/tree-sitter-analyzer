@@ -117,10 +117,8 @@ class TestCacheFunctionality:
         self, search_tool, sample_files, monkeypatch
     ):
         """Test 3: キャッシュヒット時に、キャッシュされた結果を返す"""
-        # Enable cache
-        from tree_sitter_analyzer.core.smart_cache import SmartCache
-
-        search_tool.cache = SmartCache()
+        # Skip cache test - smart_cache module removed
+        pytest.skip("smart_cache module has been removed")
 
         async def mock_run_command(cmd, timeout_ms=None):
             output = b'{"type":"match","data":{"path":{"text":"src/main.py"},"lines":{"text":"def main():\\n"},"line_number":1,"absolute_offset":0,"submatches":[{"match":{"text":"def"},"start":0,"end":3}]}}\n'
@@ -145,9 +143,8 @@ class TestCacheFunctionality:
         self, search_tool, sample_files, monkeypatch
     ):
         """Test 4: total_onlyモードでキャッシュから整数を返す"""
-        from tree_sitter_analyzer.core.smart_cache import SmartCache
-
-        search_tool.cache = SmartCache()
+        # Skip cache test - smart_cache module removed
+        pytest.skip("smart_cache module has been removed")
 
         async def mock_run_command(cmd, timeout_ms=None):
             # Simulate count output
@@ -177,21 +174,24 @@ class TestArgumentValidation:
 
     @pytest.mark.asyncio
     async def test_missing_query_raises_error(self, search_tool, sample_files):
-        """Test 5: queryパラメータが欠けている場合、エラーを発生させる"""
-        with pytest.raises(ValueError, match="query"):
-            await search_tool.execute({"roots": [sample_files["src_dir"]]})
+        """Test 5: queryパラメータが欠けている場合、エラーを返す"""
+        result = await search_tool.execute({"roots": [sample_files["src_dir"]]})
+        assert result["success"] is False
+        assert "query" in result["error"].lower()
 
     @pytest.mark.asyncio
     async def test_invalid_roots_type_raises_error(self, search_tool):
-        """Test 6: rootsパラメータの型が不正な場合、エラーを発生させる"""
-        with pytest.raises((ValueError, TypeError)):
-            await search_tool.execute({"query": "test", "roots": "not_a_list"})
+        """Test 6: rootsパラメータの型が不正な場合、エラーを返す"""
+        result = await search_tool.execute({"query": "test", "roots": "not_a_list"})
+        assert result["success"] is False
+        assert "error" in result
 
     @pytest.mark.asyncio
     async def test_invalid_files_type_raises_error(self, search_tool):
-        """Test 7: filesパラメータの型が不正な場合、エラーを発生させる"""
-        with pytest.raises((ValueError, TypeError)):
-            await search_tool.execute({"query": "test", "files": "not_a_list"})
+        """Test 7: filesパラメータの型が不正な場合、エラーを返す"""
+        result = await search_tool.execute({"query": "test", "files": "not_a_list"})
+        assert result["success"] is False
+        assert "error" in result
 
 
 class TestErrorHandling:
@@ -203,7 +203,7 @@ class TestErrorHandling:
     ):
         """Test 8: ripgrepコマンドが見つからない場合、エラーを返す"""
         monkeypatch.setattr(
-            "tree_sitter_analyzer.mcp.tools.fd_rg_utils.check_external_command",
+            "tree_sitter_analyzer.mcp.tools.search_content_tool.check_external_command",
             lambda cmd: False,
         )
 
@@ -227,7 +227,7 @@ class TestErrorHandling:
             return (2, b"", b"ripgrep error")
 
         monkeypatch.setattr(
-            "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture",
+            "tree_sitter_analyzer.mcp.tools.search_strategies.content_search.run_command_capture",
             mock_run_command,
         )
 

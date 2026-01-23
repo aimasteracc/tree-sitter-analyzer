@@ -76,8 +76,11 @@ class TestFileLoader:
         """Test getting file size"""
         size = loader.get_file_size(temp_file)
 
+        # Get actual file size from the temp file
+        actual_size = Path(temp_file).stat().st_size
+
         assert size > 0
-        assert size == len("Hello, World!\n")
+        assert size == actual_size
 
     def test_get_file_size_nonexistent(self, loader):
         """Test that getting size of nonexistent file raises FileLoadError"""

@@ -124,11 +124,17 @@ async def test_rg_71_group_by_file_positions_key(monkeypatch, tmp_path):
         return 0, evt, b""
 
     monkeypatch.setattr(
-        "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture", fake_run
+        "tree_sitter_analyzer.mcp.tools.search_strategies.content_search.run_command_capture",
+        fake_run,
     )
 
     res = await tool.execute(
-        {"roots": [str(tmp_path)], "query": "x", "group_by_file": True}
+        {
+            "roots": [str(tmp_path)],
+            "query": "x",
+            "group_by_file": True,
+            "output_format": "json",
+        }
     )
     assert res["success"] is True
     files = res["files"]
@@ -162,11 +168,17 @@ async def test_rg_72_summary_text_contains_totals(monkeypatch, tmp_path):
         return 0, out, b""
 
     monkeypatch.setattr(
-        "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture", fake_run
+        "tree_sitter_analyzer.mcp.tools.search_strategies.content_search.run_command_capture",
+        fake_run,
     )
 
     res = await tool.execute(
-        {"roots": [str(tmp_path)], "query": "x", "summary_only": True}
+        {
+            "roots": [str(tmp_path)],
+            "query": "x",
+            "summary_only": True,
+            "output_format": "json",
+        }
     )
     assert res["success"] is True
     assert "Found 2 matches" in res["summary"]["summary"]
@@ -181,11 +193,17 @@ async def test_rg_73_total_only_returns_int(monkeypatch, tmp_path):
         return 0, b"a:2\nb:3\n", b""
 
     monkeypatch.setattr(
-        "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture", fake_run
+        "tree_sitter_analyzer.mcp.tools.search_strategies.content_search.run_command_capture",
+        fake_run,
     )
 
     total = await tool.execute(
-        {"roots": [str(tmp_path)], "query": "x", "total_only": True}
+        {
+            "roots": [str(tmp_path)],
+            "query": "x",
+            "total_only": True,
+            "output_format": "json",
+        }
     )
     assert isinstance(total, int) and total == 5
 
@@ -329,7 +347,8 @@ async def test_rg_78_group_by_file_priority_over_summary(monkeypatch, tmp_path):
         return 0, evt, b""
 
     monkeypatch.setattr(
-        "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture", fake_run
+        "tree_sitter_analyzer.mcp.tools.search_strategies.content_search.run_command_capture",
+        fake_run,
     )
 
     res = await tool.execute(
@@ -337,6 +356,7 @@ async def test_rg_78_group_by_file_priority_over_summary(monkeypatch, tmp_path):
             "roots": [str(tmp_path)],
             "query": "x",
             "group_by_file": True,
+            "output_format": "json",
         }
     )
     # group_by_file returns grouped structure
@@ -368,7 +388,8 @@ async def test_rg_79_optimize_paths_has_effect(monkeypatch, tmp_path):
         return 0, evt, b""
 
     monkeypatch.setattr(
-        "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture", fake_run
+        "tree_sitter_analyzer.mcp.tools.search_strategies.content_search.run_command_capture",
+        fake_run,
     )
 
     res = await tool.execute(

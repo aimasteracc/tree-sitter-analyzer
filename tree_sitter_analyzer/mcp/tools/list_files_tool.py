@@ -185,6 +185,8 @@ class ListFilesTool(BaseMCPTool):
         }
 
     def _validate_roots(self, roots: list[str]) -> list[str]:
+        from ..utils.error_handler import AnalysisError
+
         if not roots or not isinstance(roots, list):
             raise ValueError("roots must be a non-empty array of strings")
         validated: list[str] = []
@@ -196,7 +198,9 @@ class ListFilesTool(BaseMCPTool):
                 resolved = self.resolve_and_validate_directory_path(r)
                 validated.append(resolved)
             except ValueError as e:
-                raise ValueError(f"Invalid root '{r}': {e}") from e
+                raise AnalysisError(
+                    f"Invalid root '{r}': {e}", operation="list_files"
+                ) from e
         return validated
 
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:

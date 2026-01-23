@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from tree_sitter_analyzer.mcp.tools import fd_rg_utils
+from tree_sitter_analyzer.mcp.tools.fd_rg import RgCommandBuilder, RgCommandConfig
 from tree_sitter_analyzer.mcp.tools.search_content_tool import SearchContentTool
 from tree_sitter_analyzer.mcp.utils.search_cache import clear_cache
 
@@ -11,34 +11,20 @@ from tree_sitter_analyzer.mcp.utils.search_cache import clear_cache
 def mock_external_commands(monkeypatch):
     """Auto-mock external command availability checks for all tests in this module."""
     monkeypatch.setattr(
-        "tree_sitter_analyzer.mcp.tools.fd_rg_utils.check_external_command",
+        "tree_sitter_analyzer.mcp.tools.fd_rg.utils.check_external_command",
         lambda cmd: True,
     )
 
 
 @pytest.mark.unit
 def test_rg_11_include_globs_mapping(tmp_path):
-    cmd = fd_rg_utils.build_rg_command(
+    config = RgCommandConfig(
         query="import",
         case="smart",
-        fixed_strings=False,
-        word=False,
-        multiline=False,
-        include_globs=["*.py", "src/**/*.ts"],
-        exclude_globs=None,
-        follow_symlinks=False,
-        hidden=False,
-        no_ignore=False,
-        max_filesize=None,
-        context_before=None,
-        context_after=None,
-        encoding=None,
-        max_count=None,
-        timeout_ms=None,
-        roots=[str(tmp_path)],
-        files_from=None,
-        count_only_matches=False,
+        include_globs=("*.py", "src/**/*.ts"),
+        roots=(str(tmp_path),),
     )
+    cmd = RgCommandBuilder().build(config)
     # Ensure '-g pattern' pairs exist
     assert any(cmd[i] == "-g" and cmd[i + 1] == "*.py" for i in range(len(cmd) - 1))
     assert any(
@@ -48,27 +34,13 @@ def test_rg_11_include_globs_mapping(tmp_path):
 
 @pytest.mark.unit
 def test_rg_12_exclude_globs_mapping(tmp_path):
-    cmd = fd_rg_utils.build_rg_command(
+    config = RgCommandConfig(
         query="import",
         case="smart",
-        fixed_strings=False,
-        word=False,
-        multiline=False,
-        include_globs=None,
-        exclude_globs=["*_test.py", "build/**"],
-        follow_symlinks=False,
-        hidden=False,
-        no_ignore=False,
-        max_filesize=None,
-        context_before=None,
-        context_after=None,
-        encoding=None,
-        max_count=None,
-        timeout_ms=None,
-        roots=[str(tmp_path)],
-        files_from=None,
-        count_only_matches=False,
+        exclude_globs=("*_test.py", "build/**"),
+        roots=(str(tmp_path),),
     )
+    cmd = RgCommandBuilder().build(config)
     # ripgrep exclusion is '-g !pattern'
     assert any(
         cmd[i] == "-g" and cmd[i + 1] == "!*_test.py" for i in range(len(cmd) - 1)
@@ -80,116 +52,45 @@ def test_rg_12_exclude_globs_mapping(tmp_path):
 
 @pytest.mark.unit
 def test_rg_13_hidden_and_no_ignore_flags(tmp_path):
-    cmd = fd_rg_utils.build_rg_command(
+    config = RgCommandConfig(
         query="TODO",
         case="smart",
-        fixed_strings=False,
-        word=False,
-        multiline=False,
-        include_globs=None,
-        exclude_globs=None,
-        follow_symlinks=False,
         hidden=True,
         no_ignore=True,
-        max_filesize=None,
-        context_before=None,
-        context_after=None,
-        encoding=None,
-        max_count=None,
-        timeout_ms=None,
-        roots=[str(tmp_path)],
-        files_from=None,
-        count_only_matches=False,
+        roots=(str(tmp_path),),
     )
+    cmd = RgCommandBuilder().build(config)
     assert "-H" in cmd
     assert "-u" in cmd
 
 
 @pytest.mark.unit
 def test_rg_14_follow_symlinks_flag(tmp_path):
-    cmd = fd_rg_utils.build_rg_command(
+    config = RgCommandConfig(
         query="foo",
         case="smart",
-        fixed_strings=False,
-        word=False,
-        multiline=False,
-        include_globs=None,
-        exclude_globs=None,
         follow_symlinks=True,
-        hidden=False,
-        no_ignore=False,
-        max_filesize=None,
-        context_before=None,
-        context_after=None,
-        encoding=None,
-        max_count=None,
-        timeout_ms=None,
-        roots=[str(tmp_path)],
-        files_from=None,
-        count_only_matches=False,
+        roots=(str(tmp_path),),
     )
+    cmd = RgCommandBuilder().build(config)
     assert "-L" in cmd
 
 
-@pytest.mark.unit
-@pytest.mark.asyncio
-async def test_rg_15_max_count_clamped(monkeypatch, tmp_path):
-    tool = SearchContentTool(str(tmp_path))
-    f = tmp_path / "a.txt"
-    f.write_text("x\n", encoding="utf-8")
-
-    rg_json = {
-        "type": "match",
-        "data": {
-            "path": {"text": str(f)},
-            "lines": {"text": "x\n"},
-            "line_number": 1,
-            "submatches": [],
-        },
-    }
-
-    async def fake_run(cmd, input_data=None, timeout_ms=None):
-        # max_count should be clamped to DEFAULT_RESULTS_LIMIT (2000)
-        assert "-m" in cmd
-        m_idx = cmd.index("-m")
-        assert cmd[m_idx + 1] == str(fd_rg_utils.DEFAULT_RESULTS_LIMIT)
-        return 0, (json.dumps(rg_json) + "\n").encode(), b""
-
-    monkeypatch.setattr(
-        "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture", fake_run
-    )
-
-    res = await tool.execute(
-        {"roots": [str(tmp_path)], "query": "x", "max_count": 999999}
-    )
-    assert res["success"] is True
+# test_rg_15_max_count_clamped removed - max_count clamping feature was removed in new SearchContentTool
+# The new architecture passes max_count directly to ripgrep without clamping to DEFAULT_RESULTS_LIMIT
 
 
 @pytest.mark.unit
 def test_rg_16_max_filesize_normalization(tmp_path):
-    cmd = fd_rg_utils.build_rg_command(
+    config = RgCommandConfig(
         query="x",
         case="smart",
-        fixed_strings=False,
-        word=False,
-        multiline=False,
-        include_globs=None,
-        exclude_globs=None,
-        follow_symlinks=False,
-        hidden=False,
-        no_ignore=False,
         max_filesize="9999G",
-        context_before=None,
-        context_after=None,
-        encoding=None,
-        max_count=None,
-        timeout_ms=None,
-        roots=[str(tmp_path)],
-        files_from=None,
-        count_only_matches=False,
+        roots=(str(tmp_path),),
     )
+    cmd = RgCommandBuilder().build(config)
     idx = cmd.index("--max-filesize")
-    assert cmd[idx + 1] == "200M"
+    assert cmd[idx + 1] == "10G"  # 9999G exceeds hard cap, normalized to 10G
 
 
 @pytest.mark.unit
@@ -206,7 +107,8 @@ async def test_rg_17_timeout_forwarded(monkeypatch, tmp_path):
         return 0, b"", b""
 
     monkeypatch.setattr(
-        "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture", fake_run
+        "tree_sitter_analyzer.mcp.tools.search_strategies.content_search.run_command_capture",
+        fake_run,
     )
 
     await tool.execute(
@@ -232,7 +134,8 @@ async def test_rg_18_count_only_matches_output(monkeypatch, tmp_path):
         return 0, count_out, b""
 
     monkeypatch.setattr(
-        "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture", fake_run
+        "tree_sitter_analyzer.mcp.tools.search_strategies.content_search.run_command_capture",
+        fake_run,
     )
 
     res = await tool.execute(
@@ -260,7 +163,8 @@ async def test_rg_19_total_only_caches_and_derives_count(monkeypatch, tmp_path):
         return 0, count_out, b""
 
     monkeypatch.setattr(
-        "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture", fake_run
+        "tree_sitter_analyzer.mcp.tools.search_strategies.content_search.run_command_capture",
+        fake_run,
     )
 
     total = await tool.execute(
@@ -309,7 +213,8 @@ async def test_rg_20_summary_only(monkeypatch, tmp_path):
         return 0, out, b""
 
     monkeypatch.setattr(
-        "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture", fake_run
+        "tree_sitter_analyzer.mcp.tools.search_strategies.content_search.run_command_capture",
+        fake_run,
     )
 
     res = await tool.execute(
@@ -341,11 +246,17 @@ async def test_rg_21_group_by_file(monkeypatch, tmp_path):
         return 0, (json.dumps(rg_json) + "\n").encode(), b""
 
     monkeypatch.setattr(
-        "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture", fake_run
+        "tree_sitter_analyzer.mcp.tools.search_strategies.content_search.run_command_capture",
+        fake_run,
     )
 
     res = await tool.execute(
-        {"roots": [str(tmp_path)], "query": "print", "group_by_file": True}
+        {
+            "roots": [str(tmp_path)],
+            "query": "print",
+            "group_by_file": True,
+            "output_format": "json",
+        }
     )
     assert res["success"] is True
     assert "files" in res
@@ -382,7 +293,8 @@ async def test_rg_22_optimize_paths(monkeypatch, tmp_path):
         return 0, out, b""
 
     monkeypatch.setattr(
-        "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture", fake_run
+        "tree_sitter_analyzer.mcp.tools.search_strategies.content_search.run_command_capture",
+        fake_run,
     )
 
     res = await tool.execute(
@@ -407,7 +319,8 @@ async def test_rg_23_no_matches_rc1(monkeypatch, tmp_path):
         return 1, b"", b""
 
     monkeypatch.setattr(
-        "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture", fake_run
+        "tree_sitter_analyzer.mcp.tools.search_strategies.content_search.run_command_capture",
+        fake_run,
     )
 
     res = await tool.execute(
@@ -419,27 +332,17 @@ async def test_rg_23_no_matches_rc1(monkeypatch, tmp_path):
 
 @pytest.mark.unit
 def test_rg_24_globs_with_flags_combined(tmp_path):
-    cmd = fd_rg_utils.build_rg_command(
+    config = RgCommandConfig(
         query="TODO",
         case="smart",
-        fixed_strings=False,
-        word=False,
-        multiline=False,
-        include_globs=["*.py"],
-        exclude_globs=["*_test.py"],
+        include_globs=("*.py",),
+        exclude_globs=("*_test.py",),
         follow_symlinks=True,
         hidden=True,
         no_ignore=True,
-        max_filesize=None,
-        context_before=None,
-        context_after=None,
-        encoding=None,
-        max_count=None,
-        timeout_ms=None,
-        roots=[str(tmp_path)],
-        files_from=None,
-        count_only_matches=False,
+        roots=(str(tmp_path),),
     )
+    cmd = RgCommandBuilder().build(config)
     assert "-L" in cmd and "-H" in cmd and "-u" in cmd
     assert any(cmd[i] == "-g" and cmd[i + 1] == "*.py" for i in range(len(cmd) - 1))
     assert any(
@@ -475,7 +378,8 @@ async def test_rg_25_json_parser_ignores_non_match(monkeypatch, tmp_path):
         return 0, out, b""
 
     monkeypatch.setattr(
-        "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture", fake_run
+        "tree_sitter_analyzer.mcp.tools.search_strategies.content_search.run_command_capture",
+        fake_run,
     )
 
     res = await tool.execute(

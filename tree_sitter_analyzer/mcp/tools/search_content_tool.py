@@ -237,13 +237,17 @@ Choose output format parameters based on your needs to minimize token usage and 
 
     def _validate_files(self, files: list[str]) -> list[str]:
         validated: list[str] = []
+        from ..utils.error_handler import AnalysisError
+
         for p in files:
             if not isinstance(p, str) or not p.strip():
                 raise ValueError("files entries must be non-empty strings")
             try:
                 resolved = self.resolve_and_validate_file_path(p)
                 if not Path(resolved).exists() or not Path(resolved).is_file():
-                    raise ValueError(f"File not found: {p}")
+                    raise AnalysisError(
+                        f"File not found: {p}", operation="search_content"
+                    )
                 validated.append(resolved)
             except ValueError as e:
                 raise ValueError(f"Invalid file path '{p}': {e}") from e

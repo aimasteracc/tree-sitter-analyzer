@@ -116,13 +116,17 @@ public class Test {
             result = await search_content_tool.execute(arguments)
 
             # Check that file output info is included
-            assert "output_file_path" in result
             assert "file_saved" in result
-            # file_saved can be True or a string message
-            assert result["file_saved"] is True or isinstance(result["file_saved"], str)
+            # file_saved should be a string message with the path
+            assert isinstance(result["file_saved"], str)
+            assert "Results saved to" in result["file_saved"]
 
-            # Check that the file was created
-            output_file_path = Path(result["output_file_path"])
+            # Extract the file path from the message
+            # Format: "Results saved to <path>"
+            file_saved_msg = result["file_saved"]
+            output_file_path = Path(
+                file_saved_msg.replace("Results saved to ", "").strip()
+            )
             assert output_file_path.exists()
 
             # Check file content

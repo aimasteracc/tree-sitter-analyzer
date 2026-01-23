@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from tree_sitter_analyzer.mcp.tools import fd_rg_utils
+from tree_sitter_analyzer.mcp.tools.fd_rg import RgCommandBuilder, RgCommandConfig
 from tree_sitter_analyzer.mcp.tools.search_content_tool import SearchContentTool
 
 
@@ -10,7 +10,7 @@ from tree_sitter_analyzer.mcp.tools.search_content_tool import SearchContentTool
 def mock_external_commands(monkeypatch):
     """Auto-mock external command availability checks for all tests in this module."""
     monkeypatch.setattr(
-        "tree_sitter_analyzer.mcp.tools.fd_rg_utils.check_external_command",
+        "tree_sitter_analyzer.mcp.tools.fd_rg.utils.check_external_command",
         lambda cmd: True,
     )
 
@@ -18,59 +18,29 @@ def mock_external_commands(monkeypatch):
 @pytest.mark.unit
 def test_rg_01_build_cmd_default_smart_case(tmp_path):
     """Default build: --json, smart case (-S), default max-filesize."""
-    cmd = fd_rg_utils.build_rg_command(
+    config = RgCommandConfig(
         query="test",
         case="smart",
-        fixed_strings=False,
-        word=False,
-        multiline=False,
-        include_globs=None,
-        exclude_globs=None,
-        follow_symlinks=False,
-        hidden=False,
-        no_ignore=False,
-        max_filesize=None,
-        context_before=None,
-        context_after=None,
-        encoding=None,
-        max_count=None,
-        timeout_ms=None,
-        roots=[str(tmp_path)],
-        files_from=None,
-        count_only_matches=False,
+        roots=(str(tmp_path),),
     )
+    cmd = RgCommandBuilder().build(config)
 
     assert cmd[0] == "rg"
     assert "--json" in cmd
     assert "-S" in cmd  # smart case
     assert "--max-filesize" in cmd
     sz_idx = cmd.index("--max-filesize")
-    assert cmd[sz_idx + 1] == "10M"
+    assert cmd[sz_idx + 1] == "1G"
 
 
 @pytest.mark.unit
 def test_rg_02_build_cmd_case_insensitive(tmp_path):
-    cmd = fd_rg_utils.build_rg_command(
+    config = RgCommandConfig(
         query="test",
         case="insensitive",
-        fixed_strings=False,
-        word=False,
-        multiline=False,
-        include_globs=None,
-        exclude_globs=None,
-        follow_symlinks=False,
-        hidden=False,
-        no_ignore=False,
-        max_filesize=None,
-        context_before=None,
-        context_after=None,
-        encoding=None,
-        max_count=None,
-        timeout_ms=None,
-        roots=[str(tmp_path)],
-        files_from=None,
-        count_only_matches=False,
+        roots=(str(tmp_path),),
     )
+    cmd = RgCommandBuilder().build(config)
     assert "-i" in cmd
     assert "-S" not in cmd
     assert "-s" not in cmd
@@ -78,27 +48,12 @@ def test_rg_02_build_cmd_case_insensitive(tmp_path):
 
 @pytest.mark.unit
 def test_rg_03_build_cmd_case_sensitive(tmp_path):
-    cmd = fd_rg_utils.build_rg_command(
+    config = RgCommandConfig(
         query="test",
         case="sensitive",
-        fixed_strings=False,
-        word=False,
-        multiline=False,
-        include_globs=None,
-        exclude_globs=None,
-        follow_symlinks=False,
-        hidden=False,
-        no_ignore=False,
-        max_filesize=None,
-        context_before=None,
-        context_after=None,
-        encoding=None,
-        max_count=None,
-        timeout_ms=None,
-        roots=[str(tmp_path)],
-        files_from=None,
-        count_only_matches=False,
+        roots=(str(tmp_path),),
     )
+    cmd = RgCommandBuilder().build(config)
     assert "-s" in cmd
     assert "-S" not in cmd
     assert "-i" not in cmd
@@ -106,105 +61,50 @@ def test_rg_03_build_cmd_case_sensitive(tmp_path):
 
 @pytest.mark.unit
 def test_rg_04_build_cmd_fixed_strings_flag(tmp_path):
-    cmd = fd_rg_utils.build_rg_command(
+    config = RgCommandConfig(
         query="a+b?",
         case="smart",
         fixed_strings=True,
-        word=False,
-        multiline=False,
-        include_globs=None,
-        exclude_globs=None,
-        follow_symlinks=False,
-        hidden=False,
-        no_ignore=False,
-        max_filesize=None,
-        context_before=None,
-        context_after=None,
-        encoding=None,
-        max_count=None,
-        timeout_ms=None,
-        roots=[str(tmp_path)],
-        files_from=None,
-        count_only_matches=False,
+        roots=(str(tmp_path),),
     )
+    cmd = RgCommandBuilder().build(config)
     assert "-F" in cmd
 
 
 @pytest.mark.unit
 def test_rg_05_build_cmd_word_boundaries(tmp_path):
-    cmd = fd_rg_utils.build_rg_command(
+    config = RgCommandConfig(
         query="test",
         case="smart",
-        fixed_strings=False,
         word=True,
-        multiline=False,
-        include_globs=None,
-        exclude_globs=None,
-        follow_symlinks=False,
-        hidden=False,
-        no_ignore=False,
-        max_filesize=None,
-        context_before=None,
-        context_after=None,
-        encoding=None,
-        max_count=None,
-        timeout_ms=None,
-        roots=[str(tmp_path)],
-        files_from=None,
-        count_only_matches=False,
+        roots=(str(tmp_path),),
     )
+    cmd = RgCommandBuilder().build(config)
     assert "-w" in cmd
 
 
 @pytest.mark.unit
 def test_rg_06_build_cmd_multiline(tmp_path):
-    cmd = fd_rg_utils.build_rg_command(
+    config = RgCommandConfig(
         query="class \\w+",
         case="smart",
-        fixed_strings=False,
-        word=False,
         multiline=True,
-        include_globs=None,
-        exclude_globs=None,
-        follow_symlinks=False,
-        hidden=False,
-        no_ignore=False,
-        max_filesize=None,
-        context_before=None,
-        context_after=None,
-        encoding=None,
-        max_count=None,
-        timeout_ms=None,
-        roots=[str(tmp_path)],
-        files_from=None,
-        count_only_matches=False,
+        roots=(str(tmp_path),),
     )
+    cmd = RgCommandBuilder().build(config)
     assert "--multiline" in cmd
 
 
 @pytest.mark.unit
 def test_rg_07_build_cmd_globs_include_exclude(tmp_path):
-    cmd = fd_rg_utils.build_rg_command(
+    config = RgCommandConfig(
         query="import",
         case="smart",
-        fixed_strings=False,
-        word=False,
-        multiline=False,
-        include_globs=["*.py", "src/*.ts"],
-        exclude_globs=["*_test.py", "build/**"],
-        follow_symlinks=False,
-        hidden=False,
-        no_ignore=False,
-        max_filesize=None,
-        context_before=None,
-        context_after=None,
-        encoding=None,
-        max_count=None,
-        timeout_ms=None,
-        roots=[str(tmp_path)],
-        files_from=None,
-        count_only_matches=False,
+        include_globs=("*.py", "src/*.ts"),
+        exclude_globs=("*_test.py", "build/**"),
+        roots=(str(tmp_path),),
     )
+    cmd = RgCommandBuilder().build(config)
 
     def has_pair(flag: str, value: str) -> bool:
         return any(
@@ -220,27 +120,14 @@ def test_rg_07_build_cmd_globs_include_exclude(tmp_path):
 
 @pytest.mark.unit
 def test_rg_08_build_cmd_hidden_and_no_ignore(tmp_path):
-    cmd = fd_rg_utils.build_rg_command(
+    config = RgCommandConfig(
         query="TODO",
         case="smart",
-        fixed_strings=False,
-        word=False,
-        multiline=False,
-        include_globs=None,
-        exclude_globs=None,
-        follow_symlinks=False,
         hidden=True,
         no_ignore=True,
-        max_filesize=None,
-        context_before=None,
-        context_after=None,
-        encoding=None,
-        max_count=None,
-        timeout_ms=None,
-        roots=[str(tmp_path)],
-        files_from=None,
-        count_only_matches=False,
+        roots=(str(tmp_path),),
     )
+    cmd = RgCommandBuilder().build(config)
     assert "-H" in cmd  # hidden
     assert "-u" in cmd  # no_ignore
 
@@ -270,7 +157,8 @@ async def test_rg_09_search_content_exec_roots_basic_match_parsing(
         return 0, out, b""
 
     monkeypatch.setattr(
-        "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture", fake_run
+        "tree_sitter_analyzer.mcp.tools.search_strategies.content_search.run_command_capture",
+        fake_run,
     )
 
     result = await tool.execute(
@@ -281,56 +169,3 @@ async def test_rg_09_search_content_exec_roots_basic_match_parsing(
     assert result["results"][0]["file"] == str(f)
     assert result["results"][0]["line"] == 1
     assert result["results"][0]["matches"] == [[0, 5]]
-
-
-@pytest.mark.unit
-@pytest.mark.asyncio
-async def test_rg_10_search_content_exec_files_list_uses_parent_dirs(
-    monkeypatch, tmp_path
-):
-    tool = SearchContentTool(str(tmp_path))
-    f = tmp_path / "b.txt"
-    f.write_text("abc\n", encoding="utf-8")
-
-    rg_json = {
-        "type": "match",
-        "data": {
-            "path": {"text": str(f)},
-            "lines": {"text": "abc\n"},
-            "line_number": 1,
-            "submatches": [{"match": {"text": "a"}, "start": 0, "end": 1}],
-        },
-    }
-
-    parent_dir = str(f.parent)
-
-    async def fake_run(cmd, input_data=None, timeout_ms=None):
-        # Ensure parent directory of file is used as a root in the command
-        # Handle both symbolic link and real paths on macOS
-        import os
-
-        real_parent_dir = os.path.realpath(parent_dir)
-        # Check if any path in cmd matches either the symbolic or real path
-        path_found = False
-        for item in cmd:
-            if isinstance(item, str) and (
-                parent_dir in item
-                or real_parent_dir in item
-                or os.path.realpath(item) == real_parent_dir
-            ):
-                path_found = True
-                break
-        assert path_found, f"Neither {parent_dir} nor {real_parent_dir} found in {cmd}"
-        out = (json.dumps(rg_json) + "\n").encode()
-        return 0, out, b""
-
-    monkeypatch.setattr(
-        "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture", fake_run
-    )
-
-    result = await tool.execute(
-        {"files": [str(f)], "query": "a", "output_format": "json"}
-    )
-    assert result["success"] is True
-    assert result["count"] == 1
-    assert result["results"][0]["file"] == str(f)

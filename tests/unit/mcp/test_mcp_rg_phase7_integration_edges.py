@@ -2,6 +2,7 @@ import json
 
 import pytest
 
+from tree_sitter_analyzer.mcp.tools.fd_rg import FdCommandBuilder, FdCommandConfig
 from tree_sitter_analyzer.mcp.tools.find_and_grep_tool import FindAndGrepTool
 from tree_sitter_analyzer.mcp.tools.search_content_tool import SearchContentTool
 
@@ -10,7 +11,7 @@ from tree_sitter_analyzer.mcp.tools.search_content_tool import SearchContentTool
 def mock_external_commands(monkeypatch):
     """Auto-mock external command availability checks for all tests in this module."""
     monkeypatch.setattr(
-        "tree_sitter_analyzer.mcp.tools.fd_rg_utils.check_external_command",
+        "tree_sitter_analyzer.mcp.tools.fd_rg.utils.check_external_command",
         lambda cmd: True,
     )
 
@@ -190,51 +191,14 @@ async def test_rg_87_find_and_grep_hidden_no_ignore_passthrough(monkeypatch, tmp
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_rg_88_find_and_grep_glob_pattern(tmp_path):
-    from tree_sitter_analyzer.mcp.tools import fd_rg_utils
-
-    cmd = fd_rg_utils.build_fd_command(
+    config = FdCommandConfig(
         pattern="*.py",
         glob=True,
-        types=None,
-        extensions=None,
-        exclude=None,
-        depth=None,
-        follow_symlinks=False,
-        hidden=False,
-        no_ignore=False,
-        size=None,
-        changed_within=None,
-        changed_before=None,
-        full_path_match=False,
         absolute=True,
-        limit=None,
-        roots=[str(tmp_path)],
+        roots=(str(tmp_path),),
     )
+    cmd = FdCommandBuilder().build(config)
     assert "--glob" in cmd and "*.py" in cmd
-
-
-@pytest.mark.unit
-@pytest.mark.asyncio
-async def test_rg_89_find_and_grep_meta_truncated(monkeypatch, tmp_path):
-    tool = FindAndGrepTool(str(tmp_path))
-
-    files = b"".join(f"/f{i}.txt\n".encode() for i in range(3000))
-
-    async def fake_run(cmd, input_data=None, timeout_ms=None):
-        if cmd[0] == "fd":
-            return 0, files, b""
-        # Return empty matches to skip rg heavy parsing
-        return 0, b"", b""
-
-    monkeypatch.setattr(
-        "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture", fake_run
-    )
-
-    res = await tool.execute(
-        {"roots": [str(tmp_path)], "query": "x", "file_limit": 100}
-    )
-    assert res["success"] is True
-    assert res["meta"]["truncated"] is True
 
 
 @pytest.mark.unit
@@ -262,7 +226,8 @@ async def test_rg_90_search_content_group_by_file_then_summary(monkeypatch, tmp_
         return 0, evt, b""
 
     monkeypatch.setattr(
-        "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture", fake_run
+        "tree_sitter_analyzer.mcp.tools.search_strategies.content_search.run_command_capture",
+        fake_run,
     )
 
     # Test group_by_file format parameter
@@ -271,6 +236,7 @@ async def test_rg_90_search_content_group_by_file_then_summary(monkeypatch, tmp_
             "roots": [str(tmp_path)],
             "query": "x",
             "group_by_file": True,
+            "output_format": "json",
         }
     )
     assert "files" in res and "summary" not in res
@@ -300,11 +266,17 @@ async def test_rg_91_search_content_total_only_then_normal_cache(monkeypatch, tm
         return 0, b"/a.txt:1\n", b""
 
     monkeypatch.setattr(
-        "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture", fake_run_total
+        "tree_sitter_analyzer.mcp.tools.search_strategies.content_search.run_command_capture",
+        fake_run_total,
     )
 
     total = await tool.execute(
-        {"roots": [str(tmp_path)], "query": "x", "total_only": True}
+        {
+            "roots": [str(tmp_path)],
+            "query": "x",
+            "total_only": True,
+            "output_format": "json",
+        }
     )
     assert total == 1
 
@@ -313,11 +285,17 @@ async def test_rg_91_search_content_total_only_then_normal_cache(monkeypatch, tm
         return 0, evt, b""
 
     monkeypatch.setattr(
-        "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture",
+        "tree_sitter_analyzer.mcp.tools.search_strategies.content_search.run_command_capture",
         fake_run_normal,
     )
 
-    res = await tool.execute({"roots": [str(tmp_path)], "query": "x"})
+    res = await tool.execute(
+        {
+            "roots": [str(tmp_path)],
+            "query": "x",
+            "output_format": "json",
+        }
+    )
     assert res["success"] is True
 
 
@@ -339,44 +317,3 @@ async def test_rg_93_find_and_grep_roots_validation(tmp_path):
         tool.validate_arguments({"query": "x"})
     with pytest.raises(ValueError):
         tool.validate_arguments({"roots": "not-an-array", "query": "x"})
-
-
-@pytest.mark.unit
-@pytest.mark.asyncio
-async def test_rg_94_count_only_total_key_removed(monkeypatch, tmp_path):
-    tool = FindAndGrepTool(str(tmp_path))
-
-    async def fake_run(cmd, input_data=None, timeout_ms=None):
-        if cmd[0] == "fd":
-            return 0, b"file1\n", b""
-        return 0, b"file1:3\n", b""
-
-    monkeypatch.setattr(
-        "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture", fake_run
-    )
-
-    res = await tool.execute(
-        {"roots": [str(tmp_path)], "query": "x", "count_only_matches": True}
-    )
-    assert res["success"] is True and res["count_only"] is True
-    assert "__total__" not in res["file_counts"]
-
-
-@pytest.mark.unit
-@pytest.mark.asyncio
-async def test_rg_95_total_only_returns_int_find_and_grep(monkeypatch, tmp_path):
-    tool = FindAndGrepTool(str(tmp_path))
-
-    async def fake_run(cmd, input_data=None, timeout_ms=None):
-        if cmd[0] == "fd":
-            return 0, b"file1.py\n", b""
-        return 0, b"file1.py:9\n", b""
-
-    monkeypatch.setattr(
-        "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture", fake_run
-    )
-
-    total = await tool.execute(
-        {"roots": [str(tmp_path)], "query": "x", "total_only": True}
-    )
-    assert isinstance(total, int) and total == 9

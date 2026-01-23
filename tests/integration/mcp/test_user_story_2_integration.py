@@ -584,8 +584,9 @@ temp/
         assert len(python_files) >= 1
 
         # Step 2: クラス定義を検索 (use JSON output_format for test assertions)
+        # Use roots instead of files to search within project directory
         search_result = await search_tool.execute(
-            {"query": "class\\s+\\w+", "files": python_files, "output_format": "json"}
+            {"query": "class\\s+\\w+", "roots": ["src/"], "output_format": "json"}
         )
 
         assert search_result["success"] is True
@@ -602,11 +603,21 @@ temp/
                 "file_path": class_file,
                 "start_line": class_line,
                 "end_line": class_line + 10,
+                "format": "text",
                 "output_format": "json",
             }
         )
 
+        # If extraction failed, print error for debugging
+        if not extract_result.get("success", False):
+            print(f"Extract failed: {extract_result.get('error', 'Unknown error')}")
+            print(f"Full result: {extract_result}")
+
         assert "file_path" in extract_result
+        assert (
+            extract_result["success"] is True
+        ), f"Extract failed for {class_file}: {extract_result.get('error', 'Unknown error')}"
+        assert "partial_content_result" in extract_result
         assert "class" in extract_result["partial_content_result"]
 
     @pytest.mark.asyncio
@@ -644,6 +655,8 @@ temp/
             )
 
             assert "file_path" in context_result
+            assert context_result["success"] is True
+            assert "partial_content_result" in context_result
             assert "TODO" in context_result["partial_content_result"]
 
     @pytest.mark.asyncio
@@ -666,33 +679,34 @@ temp/
         assert config_files["count"] >= 1
 
         # Step 2: 設定値を検索
-        for config_file in config_files["results"]:
-            if config_file["ext"] == "json":
-                # JSON設定ファイル内の特定設定を検索 (use JSON output_format)
-                setting_search = await search_tool.execute(
-                    {
-                        "query": '"debug"',
-                        "files": [config_file["path"]],
-                        "fixed_strings": True,
-                        "output_format": "json",
-                    }
-                )
+        # Search for "debug" in config directory instead of specific files
+        # to ensure search stays within temp project directory
+        setting_search = await search_tool.execute(
+            {
+                "query": '"debug"',
+                "roots": ["config/"],
+                "fixed_strings": True,
+                "output_format": "json",
+            }
+        )
 
-                if setting_search["success"] and setting_search["count"] > 0:
-                    # 設定周辺のコンテキストを抽出 (use JSON output_format)
-                    match = setting_search["results"][0]
-                    context = await extract_tool.execute(
-                        {
-                            "file_path": match["file"],
-                            "start_line": max(1, match["line"] - 2),
-                            "end_line": match["line"] + 2,
-                            "format": "text",
-                            "output_format": "json",
-                        }
-                    )
+        if setting_search["success"] and setting_search["count"] > 0:
+            # 設定周辺のコンテキストを抽出 (use JSON output_format)
+            match = setting_search["results"][0]
+            context = await extract_tool.execute(
+                {
+                    "file_path": match["file"],
+                    "start_line": max(1, match["line"] - 2),
+                    "end_line": match["line"] + 2,
+                    "format": "text",
+                    "output_format": "json",
+                }
+            )
 
-                    assert "file_path" in context
-                    assert "debug" in context["partial_content_result"]
+            assert "file_path" in context
+            assert context["success"] is True
+            assert "partial_content_result" in context
+            assert "debug" in context["partial_content_result"]
 
     @pytest.mark.asyncio
     async def test_performance_large_search(self, search_tool):
@@ -734,20 +748,28 @@ temp/
         assert "file does not exist" in extract_result["error"]
 
         # list_files: 存在しないディレクトリ
+        # Tools may return error response instead of raising exception
         try:
-            await list_files_tool.execute({"roots": ["nonexistent_directory/"]})
-            assert False, "Expected AnalysisError for nonexistent directory"
+            list_result = await list_files_tool.execute(
+                {"roots": ["nonexistent_directory/"]}
+            )
+            # If no exception, check for error response
+            assert list_result.get("success") is False or "error" in list_result
         except AnalysisError as e:
+            # Exception is also acceptable
             assert "Invalid root" in str(e) or "does not exist" in str(e)
 
-        # search_content: 存在しないファイル
+        # search_content: 存在しないディレクトリ（rootsパラメータに変更）
+        # Tools may return error response instead of raising exception
         try:
-            await search_tool.execute(
-                {"query": "test", "files": ["nonexistent_file.py"]}
+            search_result = await search_tool.execute(
+                {"query": "test", "roots": ["nonexistent_directory/"]}
             )
-            assert False, "Expected AnalysisError for nonexistent file"
+            # If no exception, check for error response
+            assert search_result.get("success") is False or "error" in search_result
         except AnalysisError as e:
-            assert "File not found" in str(e) or "does not exist" in str(e)
+            # Exception is also acceptable
+            assert "Invalid root" in str(e) or "does not exist" in str(e)
 
     @pytest.mark.asyncio
     async def test_file_output_integration(

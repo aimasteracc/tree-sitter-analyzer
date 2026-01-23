@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 import pytest
 
-from tree_sitter_analyzer.mcp.tools import fd_rg_utils
+from tree_sitter_analyzer.mcp.tools.fd_rg import utils as fd_rg_utils
 from tree_sitter_analyzer.mcp.tools.search_content_tool import SearchContentTool
 
 
@@ -29,11 +29,11 @@ class TestSearchContentParallel:
 
         with (
             patch(
-                "tree_sitter_analyzer.mcp.tools.fd_rg_utils.check_external_command",
+                "tree_sitter_analyzer.mcp.tools.search_content_tool.check_external_command",
                 return_value=True,
             ),
             patch(
-                "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_parallel_rg_searches"
+                "tree_sitter_analyzer.mcp.tools.search_strategies.content_search.run_parallel_commands"
             ) as mock_parallel,
             patch.object(tool, "_validate_roots", return_value=arguments["roots"]),
         ):
@@ -59,14 +59,14 @@ class TestSearchContentParallel:
 
         with (
             patch(
-                "tree_sitter_analyzer.mcp.tools.fd_rg_utils.check_external_command",
+                "tree_sitter_analyzer.mcp.tools.search_content_tool.check_external_command",
                 return_value=True,
             ),
             patch(
-                "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture"
+                "tree_sitter_analyzer.mcp.tools.search_strategies.content_search.run_command_capture"
             ) as mock_single,
             patch(
-                "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_parallel_rg_searches"
+                "tree_sitter_analyzer.mcp.tools.search_strategies.content_search.run_parallel_commands"
             ) as mock_parallel,
             patch.object(tool, "_validate_roots", return_value=arguments["roots"]),
         ):
@@ -94,14 +94,14 @@ class TestSearchContentParallel:
 
         with (
             patch(
-                "tree_sitter_analyzer.mcp.tools.fd_rg_utils.check_external_command",
+                "tree_sitter_analyzer.mcp.tools.search_content_tool.check_external_command",
                 return_value=True,
             ),
             patch(
-                "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture"
+                "tree_sitter_analyzer.mcp.tools.search_strategies.content_search.run_command_capture"
             ) as mock_single,
             patch(
-                "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_parallel_rg_searches"
+                "tree_sitter_analyzer.mcp.tools.search_strategies.content_search.run_parallel_commands"
             ) as mock_parallel,
             patch.object(tool, "_validate_roots", return_value=arguments["roots"]),
         ):
@@ -143,13 +143,15 @@ class TestSearchContentParallel:
     @pytest.mark.asyncio
     async def test_parallel_rg_searches_execution(self):
         """Test parallel ripgrep search execution."""
+        from tree_sitter_analyzer.mcp.tools.fd_rg import run_parallel_commands
+
         commands = [
             ["rg", "--json", "test", "/dir1"],
             ["rg", "--json", "test", "/dir2"],
         ]
 
         with patch(
-            "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture"
+            "tree_sitter_analyzer.mcp.tools.fd_rg.utils.run_command_capture"
         ) as mock_run:
             # Mock different results for each command
             mock_run.side_effect = [
@@ -157,9 +159,7 @@ class TestSearchContentParallel:
                 (0, b'{"type":"match","data":{"path":{"text":"file2.py"}}}', b""),
             ]
 
-            results = await fd_rg_utils.run_parallel_rg_searches(
-                commands, max_concurrent=2
-            )
+            results = await run_parallel_commands(commands, max_concurrent=2)
 
             assert len(results) == 2
             assert all(rc == 0 for rc, _, _ in results)
@@ -167,15 +167,15 @@ class TestSearchContentParallel:
 
     def test_merge_json_results(self):
         """Test merging of JSON results from parallel searches."""
+        from tree_sitter_analyzer.mcp.tools.fd_rg import merge_command_results
+
         results = [
             (0, b'{"type":"match","data":{"path":{"text":"file1.py"}}}\n', b""),
             (0, b'{"type":"match","data":{"path":{"text":"file2.py"}}}\n', b""),
             (1, b"", b""),  # No matches
         ]
 
-        rc, stdout, stderr = fd_rg_utils.merge_rg_results(
-            results, count_only_mode=False
-        )
+        rc, stdout, stderr = merge_command_results(results)
 
         assert rc == 0  # Should be 0 since we have matches
         assert b"file1.py" in stdout
@@ -183,13 +183,15 @@ class TestSearchContentParallel:
 
     def test_merge_count_results(self):
         """Test merging of count results from parallel searches."""
+        from tree_sitter_analyzer.mcp.tools.fd_rg import merge_command_results
+
         results = [
             (0, b"file1.py:3\nfile2.py:2\n", b""),
             (0, b"file3.py:1\n", b""),
             (1, b"", b""),  # No matches
         ]
 
-        rc, stdout, stderr = fd_rg_utils.merge_rg_results(results, count_only_mode=True)
+        rc, stdout, stderr = merge_command_results(results)
 
         assert rc == 0  # Should be 0 since we have matches
         stdout_str = stdout.decode("utf-8")
@@ -208,11 +210,11 @@ class TestSearchContentParallel:
 
         with (
             patch(
-                "tree_sitter_analyzer.mcp.tools.fd_rg_utils.check_external_command",
+                "tree_sitter_analyzer.mcp.tools.search_content_tool.check_external_command",
                 return_value=True,
             ),
             patch(
-                "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_parallel_rg_searches"
+                "tree_sitter_analyzer.mcp.tools.search_strategies.content_search.run_parallel_commands"
             ) as mock_parallel,
             patch.object(tool, "_validate_roots", return_value=arguments["roots"]),
         ):
@@ -240,11 +242,11 @@ class TestSearchContentParallel:
 
         with (
             patch(
-                "tree_sitter_analyzer.mcp.tools.fd_rg_utils.check_external_command",
+                "tree_sitter_analyzer.mcp.tools.search_content_tool.check_external_command",
                 return_value=True,
             ),
             patch(
-                "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_parallel_rg_searches"
+                "tree_sitter_analyzer.mcp.tools.search_strategies.content_search.run_parallel_commands"
             ) as mock_parallel,
             patch.object(tool, "_validate_roots", return_value=arguments["roots"]),
         ):
