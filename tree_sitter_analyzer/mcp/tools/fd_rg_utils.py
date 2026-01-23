@@ -46,6 +46,31 @@ from .fd_rg import (
     run_parallel_commands,
 )
 
+# Explicit re-exports for backward compatibility
+__all__ = [
+    "FdCommandBuilder",
+    "FdCommandConfig",
+    "RgCommandBuilder",
+    "RgCommandConfig",
+    "RgResultTransformer",
+    "check_external_command",
+    "merge_command_results",
+    "run_command_capture",
+    "run_parallel_commands",
+    "build_fd_command",
+    "build_rg_command",
+    "parse_size_to_bytes",
+    "create_file_summary_from_count_data",
+    "extract_file_list_from_count_data",
+    "run_parallel_rg_searches",
+    "merge_rg_results",
+    "DEFAULT_RESULTS_LIMIT",
+    "DEFAULT_RG_MAX_FILESIZE",
+    "RG_MAX_FILESIZE_HARD_CAP_BYTES",
+    "DEFAULT_RG_TIMEOUT_MS",
+    "RG_TIMEOUT_HARD_CAP_MS",
+]
+
 # Constants for backward compatibility
 DEFAULT_RESULTS_LIMIT = 2000
 DEFAULT_RG_MAX_FILESIZE = "1G"
