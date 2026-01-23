@@ -705,7 +705,6 @@ if __name__ == '__main__':
         # Should provide comprehensive metrics
         assert "file_metrics" in scale_result
         assert "summary" in scale_result
-        assert "structural_overview" in scale_result
 
         # US1-AC2: Developers can generate detailed structure documentation (use JSON format)
         structure_result = await self.table_tool.execute(

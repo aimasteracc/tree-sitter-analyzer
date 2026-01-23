@@ -517,7 +517,6 @@ class AnalyzeScaleTool(BaseMCPTool):
                             else None
                         ),
                     },
-                    "structural_overview": structural_overview,
                 }
 
                 if include_guidance:

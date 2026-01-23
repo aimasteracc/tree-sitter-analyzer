@@ -8,7 +8,6 @@ from typing import Any
 
 from tree_sitter_analyzer.mcp.utils.format_helper import (
     apply_toon_format_to_response,
-    attach_toon_content_to_response,
 )
 
 logger = logging.getLogger(__name__)
@@ -88,6 +87,6 @@ class SearchResultFormatter:
         """
         # Check if result has specific format indicators
         if result.get("count_only") or result.get("summary"):
-            return attach_toon_content_to_response(result)
+            return apply_toon_format_to_response(result, "toon")
         else:
             return apply_toon_format_to_response(result, "toon")

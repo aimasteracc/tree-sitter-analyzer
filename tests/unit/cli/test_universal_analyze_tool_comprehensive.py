@@ -326,6 +326,7 @@ class TestExecution:
                 "file_path": str(test_file),
                 "analysis_type": "basic",
                 "include_ast": True,
+                "output_format": "json",
             }
             result = await tool.execute(args)
 
@@ -364,6 +365,7 @@ class TestExecution:
                 "file_path": str(test_file),
                 "analysis_type": "basic",
                 "include_queries": True,
+                "output_format": "json",
             }
             result = await tool.execute(args)
 

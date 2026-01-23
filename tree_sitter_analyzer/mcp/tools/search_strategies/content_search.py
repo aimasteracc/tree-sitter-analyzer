@@ -28,7 +28,6 @@ from tree_sitter_analyzer.mcp.tools.search_strategies.base import (
 )
 from tree_sitter_analyzer.mcp.utils.format_helper import (
     apply_toon_format_to_response,
-    attach_toon_content_to_response,
     format_for_file_output,
 )
 from tree_sitter_analyzer.mcp.utils.gitignore_detector import get_default_detector
@@ -407,7 +406,7 @@ class ContentSearchStrategy(SearchStrategy):
             self.cache.set(context.cache_key, result)
 
         if context.output_format == "toon":
-            return attach_toon_content_to_response(result)
+            return apply_toon_format_to_response(result, "toon")
         return result
 
     def _process_optimized_paths(
@@ -443,7 +442,7 @@ class ContentSearchStrategy(SearchStrategy):
             self.cache.set(context.cache_key, result)
 
         if context.output_format == "toon":
-            return attach_toon_content_to_response(result)
+            return apply_toon_format_to_response(result, "toon")
         return result
 
     def _process_grouped_by_file(
@@ -470,7 +469,7 @@ class ContentSearchStrategy(SearchStrategy):
             self.cache.set(context.cache_key, result)
 
         if context.output_format == "toon":
-            return attach_toon_content_to_response(result)
+            return apply_toon_format_to_response(result, "toon")
         return result
 
     def _process_summary_only(
@@ -504,7 +503,7 @@ class ContentSearchStrategy(SearchStrategy):
             self.cache.set(context.cache_key, result)
 
         if context.output_format == "toon":
-            return attach_toon_content_to_response(result)
+            return apply_toon_format_to_response(result, "toon")
         return result
 
     def _process_normal_mode(

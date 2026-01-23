@@ -148,7 +148,6 @@ public class SampleClass {
                 "language",
                 "file_metrics",
                 "summary",
-                "structural_overview",
                 "llm_guidance",
             ]
             for key in expected_keys:
@@ -172,14 +171,6 @@ public class SampleClass {
             assert "imports" in summary
             assert summary["classes"] == 1  # SampleClass
             assert summary["methods"] >= 3  # Constructor + getName + complexCalculation
-
-            # Test structural overview
-            overview = result["structural_overview"]
-            assert "classes" in overview
-            assert "methods" in overview
-            assert "fields" in overview
-            assert "imports" in overview
-            assert "complexity_hotspots" in overview
 
             # Test LLM guidance
             guidance = result["llm_guidance"]
@@ -224,7 +215,6 @@ public class SampleClass {
             # Should still include other sections
             assert "file_metrics" in result
             assert "summary" in result
-            assert "structural_overview" in result
 
         finally:
             Path(temp_path).unlink(missing_ok=True)
@@ -321,20 +311,7 @@ public class Test {
             "file_size_kb": 3.0,
         }
 
-        structural_overview = {
-            "classes": [{"name": "TestClass", "start_line": 10, "end_line": 100}],
-            "methods": [
-                {"name": "method1", "complexity": 5},
-                {"name": "method2", "complexity": 15},  # High complexity
-            ],
-            "fields": [],
-            "imports": [],
-            "complexity_hotspots": [
-                {"name": "method2", "complexity": 15, "start_line": 50, "end_line": 80}
-            ],
-        }
-
-        guidance = self.tool._generate_llm_guidance(file_metrics, structural_overview)
+        guidance = self.tool._generate_llm_guidance(file_metrics, {})
 
         # Test guidance structure
         assert "size_category" in guidance
@@ -397,7 +374,6 @@ public class SimpleClass {
 
             # Test that AdvancedAnalyzer integration works
             assert "summary" in result
-            assert "structural_overview" in result
 
             # Test that we get expected analysis results
             summary = result["summary"]

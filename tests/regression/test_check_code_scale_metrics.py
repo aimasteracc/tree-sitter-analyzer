@@ -176,31 +176,6 @@ class Helper {
         ), f"Expected at least 3 methods, got {result['summary']['methods']}"
 
     @pytest.mark.asyncio
-    async def test_structural_overview_populated_for_python(
-        self, analyze_scale_tool, python_sample_file
-    ):
-        """
-        Test that structural_overview is populated for Python files.
-
-        Bug: Previously structural_overview was empty dict {} for non-Java files
-        """
-        result = await analyze_scale_tool.execute(
-            {"file_path": str(python_sample_file), "language": "python"}
-        )
-
-        assert result["success"] is True
-        assert "structural_overview" in result
-        assert isinstance(result["structural_overview"], dict)
-        assert "classes" in result["structural_overview"]
-        assert "methods" in result["structural_overview"]
-        assert (
-            len(result["structural_overview"]["classes"]) > 0
-        ), "Bug: structural_overview should contain class information for Python files"
-        assert (
-            len(result["structural_overview"]["methods"]) > 0
-        ), "Bug: structural_overview should contain method information for Python files"
-
-    @pytest.mark.asyncio
     async def test_auto_language_detection_python(
         self, analyze_scale_tool, python_sample_file
     ):
@@ -297,30 +272,3 @@ class TestCheckCodeScaleBugRegression:
         assert (
             result["summary"]["methods"] > 0
         ), "Bug not fixed: analysis_result is still None for Python files"
-
-    @pytest.mark.asyncio
-    async def test_bug_fix_structural_overview_not_empty(
-        self, analyze_scale_tool, tmp_path
-    ):
-        """
-        Test that structural_overview is not empty for non-Java files.
-
-        Bug: Line 455 set structural_overview = {}
-        Fix: Extract structural_overview from universal_result
-        """
-        py_file = tmp_path / "test.py"
-        py_file.write_text(
-            "class TestClass:\n    def test_method(self):\n        pass\n"
-        )
-
-        result = await analyze_scale_tool.execute(
-            {"file_path": str(py_file), "language": "python"}
-        )
-
-        # If structural_overview was {}, it would have empty lists
-        assert (
-            len(result["structural_overview"]["classes"]) > 0
-        ), "Bug not fixed: structural_overview is still empty dict for Python files"
-        assert (
-            len(result["structural_overview"]["methods"]) > 0
-        ), "Bug not fixed: structural_overview is still empty dict for Python files"

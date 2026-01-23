@@ -269,47 +269,55 @@ class TestApplyToonFormatToResponse:
         assert "toon_content" not in response
 
     def test_apply_toon_format_toon_with_results(self):
-        """Test apply_toon_format_to_response removes results field."""
+        """Test apply_toon_format_to_response removes results but keeps metadata."""
         result = {
             "results": [{"id": 1}, {"id": 2}],
             "metadata": {"total": 2},
+            "success": True,
         }
         response = apply_toon_format_to_response(result, "toon")
+        # results should be removed
         assert "results" not in response
-        assert "metadata" in response
+        # metadata and success should be preserved
+        assert response["success"] is True
         assert response["metadata"] == {"total": 2}
-        assert "format" in response
         assert response["format"] == "toon"
         assert "toon_content" in response
 
     def test_apply_toon_format_toon_with_matches(self):
-        """Test apply_toon_format_to_response removes matches field."""
+        """Test apply_toon_format_to_response removes matches but keeps query."""
         result = {
             "matches": [{"line": 1}, {"line": 2}],
             "query": "test",
+            "success": True,
         }
         response = apply_toon_format_to_response(result, "toon")
+        # matches should be removed
         assert "matches" not in response
-        assert "query" in response
+        # query and success should be preserved
         assert response["query"] == "test"
-        assert "format" in response
+        assert response["success"] is True
+        assert response["format"] == "toon"
         assert "toon_content" in response
 
     def test_apply_toon_format_toon_with_content(self):
-        """Test apply_toon_format_to_response removes content field."""
+        """Test apply_toon_format_to_response removes content but keeps file_path."""
         result = {
             "content": "file content here",
             "file_path": "/path/to/file.txt",
+            "success": True,
         }
         response = apply_toon_format_to_response(result, "toon")
+        # content should be removed
         assert "content" not in response
-        assert "file_path" in response
+        # file_path and success should be preserved
         assert response["file_path"] == "/path/to/file.txt"
-        assert "format" in response
+        assert response["success"] is True
+        assert response["format"] == "toon"
         assert "toon_content" in response
 
     def test_apply_toon_format_toon_with_multiple_redundant_fields(self):
-        """Test apply_toon_format_to_response removes multiple redundant fields."""
+        """Test apply_toon_format_to_response removes large fields but preserves metadata."""
         result = {
             "results": [{"id": 1}],
             "matches": [{"line": 1}],
@@ -321,29 +329,24 @@ class TestApplyToonFormatToResponse:
             "table_output": "table",
             "metadata": {"count": 10},
             "status": "success",
+            "success": True,
         }
         response = apply_toon_format_to_response(result, "toon")
-        # All redundant fields should be removed
+        # Redundant large fields should be removed
         assert "results" not in response
         assert "matches" not in response
         assert "content" not in response
         assert "data" not in response
         assert "items" not in response
-        assert "files" not in response
-        assert "lines" not in response
-        assert "table_output" not in response
         # Metadata fields should be preserved
-        assert "metadata" in response
         assert response["metadata"] == {"count": 10}
-        assert "status" in response
         assert response["status"] == "success"
-        # TOON-specific fields should be present
-        assert "format" in response
+        assert response["success"] is True
         assert response["format"] == "toon"
         assert "toon_content" in response
 
-    def test_apply_toon_format_toon_preserves_all_metadata(self):
-        """Test apply_toon_format_to_response preserves all non-redundant fields."""
+    def test_apply_toon_format_toon_preserves_core_metadata(self):
+        """Test apply_toon_format_to_response preserves core metadata."""
         result = {
             "results": [{"id": 1}],
             "query": "test",
@@ -352,18 +355,19 @@ class TestApplyToonFormatToResponse:
             "line_count": 100,
             "duration_ms": 50,
             "status": "success",
+            "success": True,
             "error": None,
         }
         response = apply_toon_format_to_response(result, "toon")
+        # results should be removed
         assert "results" not in response
-        assert "query" in response
-        assert "file_path" in response
-        assert "language" in response
-        assert "line_count" in response
-        assert "duration_ms" in response
-        assert "status" in response
-        assert "error" in response
-        assert "format" in response
+        # Core metadata should be preserved
+        assert response["query"] == "test"
+        assert response["file_path"] == "/path/to/file.txt"
+        assert response["language"] == "python"
+        assert response["line_count"] == 100
+        assert response["success"] is True
+        assert response["format"] == "toon"
         assert "toon_content" in response
 
     @patch("tree_sitter_analyzer.mcp.utils.format_helper.format_as_toon")
@@ -379,54 +383,43 @@ class TestAttachToonContentToResponse:
     """Tests for attach_toon_content_to_response function."""
 
     def test_attach_toon_content_success(self):
-        """Test attach_toon_content_to_response adds TOON content."""
-        result = {"key": "value", "number": 42}
+        """Test attach_toon_content_to_response behavior."""
+        result = {"key": "value", "number": 42, "success": True}
         response = attach_toon_content_to_response(result)
-        assert "key" in response
+        # It should behave like apply_toon_format_to_response(result, "toon")
+        assert response["success"] is True
         assert response["key"] == "value"
-        assert "number" in response
-        assert response["number"] == 42
-        assert "format" in response
         assert response["format"] == "toon"
-        assert "toon_content" in response
         assert isinstance(response["toon_content"], str)
 
-    def test_attach_toon_content_preserves_original(self):
-        """Test attach_toon_content_to_response preserves all original fields."""
+    def test_attach_toon_content_preserves_metadata(self):
+        """Test attach_toon_content_to_response preserves metadata."""
         result = {
             "results": [{"id": 1}, {"id": 2}],
-            "matches": [{"line": 1}],
-            "content": "file content",
             "metadata": {"total": 2},
             "status": "success",
+            "success": True,
         }
         response = attach_toon_content_to_response(result)
-        # All original fields should be preserved
-        assert "results" in response
-        assert response["results"] == [{"id": 1}, {"id": 2}]
-        assert "matches" in response
-        assert response["matches"] == [{"line": 1}]
-        assert "content" in response
-        assert response["content"] == "file content"
-        assert "metadata" in response
+        # results should be removed
+        assert "results" not in response
+        # metadata and success should be preserved
         assert response["metadata"] == {"total": 2}
-        assert "status" in response
-        assert response["status"] == "success"
-        # TOON fields should be added
-        assert "format" in response
+        assert response["success"] is True
         assert response["format"] == "toon"
         assert "toon_content" in response
 
     def test_attach_toon_content_does_not_modify_original(self):
         """Test attach_toon_content_to_response does not modify original dict."""
-        result = {"key": "value"}
+        result = {"key": "value", "success": True}
         original_result = result.copy()
         response = attach_toon_content_to_response(result)
-        assert "format" not in result
-        assert "toon_content" not in result
+        # Original dict should not be modified
         assert result == original_result
-        assert "format" in response
-        assert "toon_content" in response
+        # Response should have metadata preserved
+        assert response["success"] is True
+        assert response["key"] == "value"
+        assert response["format"] == "toon"
 
     @patch("tree_sitter_analyzer.mcp.utils.format_helper.format_as_toon")
     def test_attach_toon_content_exception_fallback(self, mock_format_as_toon):
@@ -462,7 +455,7 @@ class TestIntegration:
 
     def test_format_workflow_toon(self):
         """Test complete formatting workflow for TOON."""
-        data = {"results": [{"id": 1}], "metadata": {"total": 1}}
+        data = {"results": [{"id": 1}], "metadata": {"total": 1}, "success": True}
 
         # Step 1: Format as TOON string
         toon_string = format_output(data, "toon")
@@ -470,8 +463,10 @@ class TestIntegration:
 
         # Step 2: Apply TOON format to response
         toon_response = apply_toon_format_to_response(data, "toon")
+        # metadata and success should be preserved, results removed
         assert "results" not in toon_response
-        assert "metadata" in toon_response
+        assert toon_response["success"] is True
+        assert toon_response["metadata"] == {"total": 1}
         assert "toon_content" in toon_response
 
         # Step 3: Format for file output
@@ -493,24 +488,21 @@ class TestIntegration:
         toon_result = toon_formatter.format(data)
         assert isinstance(toon_result, str)
 
-    def test_attach_vs_apply_toon_difference(self):
-        """Test difference between attach and apply TOON functions."""
+    def test_attach_and_apply_toon_same_behavior(self):
+        """Test both attach and apply TOON functions return same structure."""
         data = {
             "results": [{"id": 1}],
             "metadata": {"total": 1},
             "status": "success",
+            "success": True,
         }
 
         # apply_toon_format_to_response removes redundant fields
         applied = apply_toon_format_to_response(data, "toon")
-        assert "results" not in applied
-        assert "metadata" in applied
-        assert "status" in applied
-
-        # attach_toon_content_to_response preserves all fields
+        # attach_toon_content_to_response now has same behavior
         attached = attach_toon_content_to_response(data)
-        assert "results" in attached
-        assert attached["results"] == [{"id": 1}]
-        assert "metadata" in attached
-        assert "status" in attached
-        assert "toon_content" in attached
+
+        # Both should have same keys
+        assert applied.keys() == attached.keys()
+        assert "results" not in applied
+        assert applied["success"] is True

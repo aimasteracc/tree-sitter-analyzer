@@ -16,7 +16,6 @@ from ..utils.error_handler import handle_mcp_errors
 from ..utils.file_output_manager import FileOutputManager
 from ..utils.format_helper import (
     apply_toon_format_to_response,
-    attach_toon_content_to_response,
     format_for_file_output,
 )
 from ..utils.gitignore_detector import get_default_detector
@@ -498,7 +497,7 @@ class FindAndGrepTool(BaseMCPTool):
                 },
             }
             if output_format == "toon":
-                return attach_toon_content_to_response(result)
+                return apply_toon_format_to_response(result, "toon")
             return result
         else:
             # Parse full match details
@@ -586,7 +585,7 @@ class FindAndGrepTool(BaseMCPTool):
                     return minimal_result
 
                 if output_format == "toon":
-                    return attach_toon_content_to_response(grouped_result)
+                    return apply_toon_format_to_response(grouped_result, "toon")
                 return grouped_result
 
             # Check if summary_only mode is requested
