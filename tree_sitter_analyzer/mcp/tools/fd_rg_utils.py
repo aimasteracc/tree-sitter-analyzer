@@ -40,7 +40,9 @@ from .fd_rg import (
     RgCommandBuilder,
     RgCommandConfig,
     RgResultTransformer,
+    check_external_command,
     merge_command_results,
+    run_command_capture,
     run_parallel_commands,
 )
 
