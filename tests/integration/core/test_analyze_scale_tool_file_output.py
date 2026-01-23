@@ -372,9 +372,6 @@ if __name__ == "__main__":
             assert "estimated_tokens" in file_metrics
             assert "file_size_bytes" in file_metrics
 
-            # Check summary
-            summary = result["summary"]
-
             # Check LLM guidance
             guidance = result["llm_guidance"]
             assert "analysis_strategy" in guidance
