@@ -164,6 +164,7 @@ x = 42
             "file_path": sample_python_file,
             "include_complexity": True,
             "include_details": True,
+            "output_format": "json",
         }
 
         result = await server._analyze_code_scale(arguments)

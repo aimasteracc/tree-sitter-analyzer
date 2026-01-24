@@ -138,7 +138,11 @@ public class Sample {
     @pytest.mark.asyncio
     async def test_execute_with_include_queries(self, tool, sample_python_file):
         """Test analysis with include_queries option."""
-        args = {"file_path": sample_python_file, "include_queries": True}
+        args = {
+            "file_path": sample_python_file,
+            "include_queries": True,
+            "output_format": "json",
+        }
         result = await tool.execute(args)
 
         assert isinstance(result, dict)
@@ -194,7 +198,11 @@ public class Sample {
     @pytest.mark.asyncio
     async def test_execute_java_with_include_queries(self, tool, sample_java_file):
         """Test Java file analysis with include_queries option."""
-        args = {"file_path": sample_java_file, "include_queries": True}
+        args = {
+            "file_path": sample_java_file,
+            "include_queries": True,
+            "output_format": "json",
+        }
         result = await tool.execute(args)
 
         assert isinstance(result, dict)

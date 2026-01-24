@@ -208,7 +208,11 @@ class CoreClass:
             mock_result.elements = []
             mock_analyze.return_value = mock_result
 
-            analyze_args = {"file_path": str(main_py), "include_guidance": True}
+            analyze_args = {
+                "file_path": str(main_py),
+                "include_guidance": True,
+                "output_format": "json",
+            }
 
             analyze_result = await all_tools["analyze_scale"].execute(analyze_args)
 
@@ -689,7 +693,11 @@ class CoreClass:
                 mock_result.elements = []
                 mock_analyze.return_value = mock_result
 
-                analyze_args = {"file_path": str(file_path), "include_guidance": True}
+                analyze_args = {
+                    "file_path": str(file_path),
+                    "include_guidance": True,
+                    "output_format": "json",
+                }
 
                 analyze_result = await all_tools["analyze_scale"].execute(analyze_args)
                 analysis_results.append((file_name, analyze_result))
