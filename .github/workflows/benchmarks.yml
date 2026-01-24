@@ -28,7 +28,6 @@ on:
           - analysis
           - query
           - cache
-          - formatting
       compare-baseline:
         description: 'Compare against baseline'
         required: false
@@ -82,7 +81,7 @@ jobs:
           --benchmark-autosave \
           --benchmark-save-data \
           --benchmark-json=benchmark-analysis.json \
-          -k "analysis" \
+          -k "analyze" \
           --timeout=${{ env.BENCHMARK_TIMEOUT }} \
           > benchmark-analysis-output.txt 2>&1 || touch benchmark_failed
 
@@ -139,28 +138,6 @@ jobs:
         echo '```' >> $GITHUB_STEP_SUMMARY
       shell: bash
 
-    - name: Run Formatting Benchmarks
-      if: env.BENCHMARK_SCOPE == 'all' || env.BENCHMARK_SCOPE == 'formatting'
-      run: |
-        echo "### Formatting Benchmarks" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-
-        uv run pytest tests/benchmarks/ \
-          -v \
-          --benchmark-only \
-          --benchmark-autosave \
-          --benchmark-save-data \
-          --benchmark-json=benchmark-formatting.json \
-          -k "formatting" \
-          --timeout=${{ env.BENCHMARK_TIMEOUT }} \
-          > benchmark-formatting-output.txt 2>&1 || touch benchmark_failed
-
-        cat benchmark-formatting-output.txt
-
-        echo '```text' >> $GITHUB_STEP_SUMMARY
-        tail -n 50 benchmark-formatting-output.txt >> $GITHUB_STEP_SUMMARY
-        echo '```' >> $GITHUB_STEP_SUMMARY
-      shell: bash
 
     - name: Compare with baseline
       if: env.COMPARE_BASELINE != 'false' && always()
