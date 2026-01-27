@@ -457,7 +457,7 @@ class UnifiedAnalysisEngine:
             return AnalysisRequest(
                 file_path=file_path,
                 language=language,
-                format_type=str(kwargs.get("format_type") or "json"),
+                format_type=str(kwargs.get("format_type") or "toon"),
                 include_details=bool(kwargs.get("include_details") or False),
                 include_complexity=bool(
                     kwargs.get("include_complexity")

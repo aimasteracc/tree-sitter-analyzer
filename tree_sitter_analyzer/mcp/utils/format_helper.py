@@ -49,41 +49,38 @@ def format_as_toon(data: dict[str, Any]) -> str:
         return format_as_json(data)
 
 
-def format_output(data: dict[str, Any], output_format: str = "json") -> str:
+def format_output(data: dict[str, Any], output_format: str = "toon") -> str:
     """
     Format data as string according to the specified format.
 
     Args:
         data: Dictionary data to format
-        output_format: 'json' or 'toon'
+        output_format: 'toon'
 
     Returns:
         Formatted string
     """
-    if output_format == "toon":
-        return format_as_toon(data)
-    return format_as_json(data)
+    return format_as_toon(data)
 
 
-def get_formatter(output_format: str = "json") -> Any:
+def get_formatter(output_format: str = "toon") -> Any:
     """
     Get a formatter instance for the specified format.
 
     Returns:
         Formatter instance with format() method
     """
-    if output_format == "toon":
-        try:
-            from ...formatters.toon_formatter import ToonFormatter
+    try:
+        from ...formatters.toon_formatter import ToonFormatter
 
-            return ToonFormatter()
-        except ImportError:
-            logger.warning("ToonFormatter not available, using JSON formatter")
-    return JsonFormatter()
+        return ToonFormatter()
+    except ImportError:
+        logger.warning("ToonFormatter not available, using JSON fallback formatter")
+        return JsonFormatter()
 
 
 def apply_toon_format_to_response(
-    result: dict[str, Any], output_format: str = "json"
+    result: dict[str, Any], output_format: str = "toon"
 ) -> dict[str, Any]:
     """
     Apply output format to MCP tool response.
@@ -95,14 +92,11 @@ def apply_toon_format_to_response(
 
     Args:
         result: Original result dictionary from MCP tool
-        output_format: 'json' or 'toon'
+        output_format: 'toon' (default)
 
     Returns:
         Formatted result dict
     """
-    if output_format != "toon":
-        return result
-
     try:
         # 1. Generate TOON content first while we have all data
         toon_content = format_as_toon(result)
@@ -151,7 +145,7 @@ def attach_toon_content_to_response(result: dict[str, Any]) -> dict[str, Any]:
 
 
 def format_for_file_output(
-    data: dict[str, Any], output_format: str = "json"
+    data: dict[str, Any], output_format: str = "toon"
 ) -> tuple[str, str]:
     """
     Format data for file output with appropriate extension.
@@ -159,14 +153,12 @@ def format_for_file_output(
     Returns:
         Tuple of (formatted_content, file_extension)
     """
-    if output_format == "toon":
-        return format_as_toon(data), ".toon"
-    return format_as_json(data), ".json"
+    return format_as_toon(data), ".toon"
 
 
 def apply_output_format(
     result: dict[str, Any],
-    output_format: str = "json",
+    output_format: str = "toon",
     return_formatted_string: bool = False,
 ) -> dict[str, Any] | str:
     """
@@ -174,7 +166,7 @@ def apply_output_format(
 
     Args:
         result: Result dictionary
-        output_format: 'json' or 'toon'
+        output_format: 'toon'
         return_formatted_string: If True, return formatted string
 
     Returns:

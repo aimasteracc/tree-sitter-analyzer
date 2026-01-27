@@ -330,8 +330,8 @@ class AnalyzeScaleTool(BaseMCPTool):
                 },
                 "output_format": {
                     "type": "string",
-                    "enum": ["json", "toon"],
-                    "description": "Output format: 'toon' (default, 50-70% token reduction) or 'json'",
+                    "enum": ["toon"],
+                    "description": "Output format: 'toon' (default)",
                     "default": "toon",
                 },
             },

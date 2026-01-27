@@ -363,137 +363,6 @@ class JavaTableFormatter(BaseTableFormatter):
         container_end = int(container_range.get("end", 0))
         return container_start <= item_start <= container_end
 
-    def _format_compact_table(self, data: dict[str, Any]) -> str:
-        """Compact table format for Java"""
-        lines: list[str] = []
-
-        # Header - use package.FileName format (from file_path, without extension)
-        package_name = (data.get("package") or {}).get("name", "")
-        classes = data.get("classes", [])
-        file_path = data.get("file_path", "")
-
-        if file_path:
-            # Extract filename without extension
-            file_name = file_path.split("/")[-1].split("\\")[-1]
-            if file_name.endswith(".java"):
-                file_name = file_name[:-5]
-            if package_name:
-                lines.append(f"# {package_name}.{file_name}")
-            else:
-                lines.append(f"# {file_name}")
-        elif classes:
-            main_classes = [c for c in classes if not self._is_inner_class(c, classes)]
-            main_class = main_classes[0] if main_classes else classes[0]
-            class_name = main_class.get("name", "Unknown")
-            if package_name:
-                lines.append(f"# {package_name}.{class_name}")
-            else:
-                lines.append(f"# {class_name}")
-        else:
-            lines.append("# Unknown")
-        lines.append("")
-
-        # Info
-        stats = data.get("statistics") or {}
-        lines.append("## Info")
-        lines.append("| Property | Value |")
-        lines.append("|----------|-------|")
-        if package_name:
-            lines.append(f"| Package | {package_name} |")
-        lines.append(f"| Methods | {stats.get('method_count', 0)} |")
-        lines.append(f"| Fields | {stats.get('field_count', 0)} |")
-        lines.append("")
-
-        # Methods (compact)
-        methods = data.get("methods", [])
-        if methods:
-            lines.append("## Methods")
-            lines.append("| Method | Sig | V | L | Cx | Doc |")
-            lines.append("|--------|-----|---|---|----|----|")
-
-            for method in methods:
-                name = str(method.get("name", ""))
-                signature = self._create_compact_signature(method)
-                visibility = self._convert_visibility(str(method.get("visibility", "")))
-                line_range = method.get("line_range", {})
-                lines_str = f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
-                complexity = method.get("complexity_score", 1)
-                doc = self._clean_csv_text(
-                    self._extract_doc_summary(str(method.get("javadoc", "")))
-                )
-
-                lines.append(
-                    f"| {name} | {signature} | {visibility} | "
-                    f"{lines_str} | {complexity} | {doc} |"
-                )
-            lines.append("")
-
-        # Trim trailing blank lines
-        while lines and lines[-1] == "":
-            lines.pop()
-
-        return "\n".join(lines)
-
-    def _create_compact_signature(self, method: dict[str, Any]) -> str:
-        """Create compact method signature for Java"""
-        params = method.get("parameters", [])
-        param_types = [
-            self._shorten_type(p.get("type", "O") if isinstance(p, dict) else str(p))
-            for p in params
-        ]
-        params_str = ",".join(param_types)
-        return_type = self._shorten_type(method.get("return_type", "void"))
-
-        return f"({params_str}):{return_type}"
-
-    def _shorten_type(self, type_name: Any) -> str:
-        """Shorten type name for Java tables"""
-        if type_name is None:
-            return "O"
-
-        if not isinstance(type_name, str):
-            type_name = str(type_name)
-
-        type_mapping = {
-            "String": "S",
-            "int": "i",
-            "long": "l",
-            "double": "d",
-            "boolean": "b",
-            "void": "void",
-            "Object": "O",
-            "Exception": "E",
-            "SQLException": "SE",
-            "IllegalArgumentException": "IAE",
-            "RuntimeException": "RE",
-        }
-
-        # Map<String,Object> -> M<S,O>
-        if "Map<" in type_name:
-            result = (
-                type_name.replace("Map<", "M<")
-                .replace("String", "S")
-                .replace("Object", "O")
-            )
-            return str(result)
-
-        # List<String> -> L<S>
-        if "List<" in type_name:
-            result = type_name.replace("List<", "L<").replace("String", "S")
-            return str(result)
-
-        # String[] -> S[]
-        if "[]" in type_name:
-            base_type = type_name.replace("[]", "")
-            if base_type:
-                result = type_mapping.get(base_type, base_type[0].upper()) + "[]"
-                return str(result)
-            else:
-                return "O[]"
-
-        result = type_mapping.get(type_name, type_name)
-        return str(result)
-
     def format_table(
         self, analysis_result: dict[str, Any], table_type: str = "full"
     ) -> str:
@@ -503,9 +372,6 @@ class JavaTableFormatter(BaseTableFormatter):
         self.format_type = table_type
 
         try:
-            # Handle json format separately
-            if table_type == "json":
-                return self._format_json(analysis_result)
             # Use the existing format_structure method
             return self.format_structure(analysis_result)
         finally:
@@ -514,28 +380,17 @@ class JavaTableFormatter(BaseTableFormatter):
 
     def format_summary(self, analysis_result: dict[str, Any]) -> str:
         """Format summary output for Java"""
-        return self._format_compact_table(analysis_result)
+        return self._format_full_table(analysis_result)
 
     def format_structure(self, analysis_result: dict[str, Any]) -> str:
         """Format structure analysis output for Java"""
         return super().format_structure(analysis_result)
 
     def format_advanced(
-        self, analysis_result: dict[str, Any], output_format: str = "json"
+        self, analysis_result: dict[str, Any], output_format: str = "toon"
     ) -> str:
         """Format advanced analysis output for Java"""
-        if output_format == "json":
-            return self._format_json(analysis_result)
-        elif output_format == "csv":
+        if output_format == "csv":
             return self._format_csv(analysis_result)
         else:
             return self._format_full_table(analysis_result)
-
-    def _format_json(self, data: dict[str, Any]) -> str:
-        """Format data as JSON"""
-        import json
-
-        try:
-            return json.dumps(data, indent=2, ensure_ascii=False)
-        except (TypeError, ValueError) as e:
-            return f"# JSON serialization error: {e}\n"

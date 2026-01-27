@@ -67,16 +67,15 @@ class SpecialCommandHandler:
         return None
 
     def _effective_output_format(self) -> str:
-        # --format is an alias for json/toon; --output-format supports json/text/toon
+        # --format is an alias for toon; --output-format supports text/toon
         fmt = getattr(self.args, "format", None) or getattr(
-            self.args, "output_format", "json"
+            self.args, "output_format", "toon"
         )
         return str(fmt)
 
     def _tool_output_format(self) -> str:
-        # Tools only accept json/toon; map text -> toon for batch modes.
-        fmt = self._effective_output_format()
-        return "toon" if fmt in {"toon", "text"} else "json"
+        # Tools only accept toon; map text -> toon for batch modes.
+        return "toon"
 
     def _load_requests_payload(self) -> list[dict[str, Any]]:
         # Local import avoids rare closure/scoping issues in some execution contexts.
@@ -140,7 +139,7 @@ class SpecialCommandHandler:
             if fmt == "toon":
                 print(result.get("toon_content", ""))
             else:
-                # json or text: print the returned dict as JSON (text is mapped for batch modes)
+                # text: print the returned dict as TOON (text is mapped for batch modes)
                 from tree_sitter_analyzer.output_manager import output_json
 
                 output_json(result)

@@ -5,7 +5,6 @@ Output Manager for CLI
 Handles different types of outputs: user information, errors, and structured data.
 """
 
-import json
 import sys
 from typing import Any
 
@@ -15,17 +14,15 @@ from .utils import log_error, log_warning
 class OutputManager:
     """Manages different types of output for CLI"""
 
-    SUPPORTED_FORMATS = ["json", "yaml", "csv", "table", "toon"]
+    SUPPORTED_FORMATS = ["yaml", "csv", "table", "toon"]
 
     def __init__(
         self,
         quiet: bool = False,
-        json_output: bool = False,
-        output_format: str = "json",
+        output_format: str = "toon",
     ):
         self.quiet = quiet
-        self.json_output = json_output
-        self.output_format = output_format if not json_output else "json"
+        self.output_format = output_format
         self._formatter_registry: dict[str, Any] = self._init_formatters()
 
     def _init_formatters(self) -> dict[str, Any]:
@@ -39,17 +36,6 @@ class OutputManager:
             Dictionary mapping format names to formatter instances
         """
         formatters: dict[str, Any] = {}
-
-        # JSON formatter (built-in)
-        class JsonFormatter:
-            """Simple JSON formatter implementing the Formatter protocol."""
-
-            def format(self, data: Any) -> str:
-                if isinstance(data, str):
-                    return data
-                return json.dumps(data, indent=2, ensure_ascii=False)
-
-        formatters["json"] = JsonFormatter()
 
         # TOON formatter (if available)
         try:
@@ -124,14 +110,10 @@ class OutputManager:
 
         Args:
             data: Data to output
-            format_type: Format to use (json, toon, yaml, etc.)
+            format_type: Format to use (toon, yaml, etc.)
                         If None, uses self.output_format
         """
         fmt = format_type or self.output_format
-
-        # Legacy compatibility: if json_output flag is set, force JSON
-        if self.json_output:
-            fmt = "json"
 
         # Check if data is already TOON-formatted from MCP tool
         # MCP tools return dict with "format": "toon" and "toon_content" when TOON is requested
@@ -140,14 +122,9 @@ class OutputManager:
             and data.get("format") == "toon"
             and "toon_content" in data
         ):
-            if fmt == "toon":
-                # Already TOON formatted - just print the toon_content
-                print(data["toon_content"])
-                return
-            elif fmt == "json":
-                # User wants JSON but got TOON response - output as JSON
-                print(json.dumps(data, indent=2, ensure_ascii=False))
-                return
+            # Already TOON formatted - just print the toon_content
+            print(data["toon_content"])
+            return
 
         # Try using registered formatter
         formatter = self._formatter_registry.get(fmt)
@@ -158,15 +135,16 @@ class OutputManager:
             elif callable(formatter):
                 output = formatter(data)
             else:
-                # Fallback to JSON
-                output = json.dumps(data, indent=2, ensure_ascii=False)
+                # Fallback to TOON if available, otherwise string
+                toon_formatter = self._formatter_registry.get("toon")
+                if toon_formatter:
+                    output = toon_formatter.format(data)
+                else:
+                    output = str(data)
             print(output)
         else:
             # Fallback to legacy behavior
-            if fmt == "json":
-                print(json.dumps(data, indent=2, ensure_ascii=False))
-            else:
-                self._format_data(data)
+            self._format_data(data)
 
     def _format_data(self, data: Any) -> None:
         """Format data for human-readable output"""
@@ -233,8 +211,8 @@ class OutputManager:
             print(f"Total {len(extensions)} extensions supported")
 
     def output_json(self, data: Any) -> None:
-        """Output JSON data"""
-        print(json.dumps(data, indent=2, ensure_ascii=False))
+        """Output data as TOON (formerly JSON)"""
+        self.data(data, "toon")
 
     def output_list(self, items: str | list[Any], title: str | None = None) -> None:
         """Output a list of items"""
@@ -282,10 +260,10 @@ class OutputManager:
 _output_manager = OutputManager()
 
 
-def set_output_mode(quiet: bool = False, json_output: bool = False) -> None:
+def set_output_mode(quiet: bool = False) -> None:
     """Set global output mode"""
     global _output_manager
-    _output_manager = OutputManager(quiet=quiet, json_output=json_output)
+    _output_manager = OutputManager(quiet=quiet)
 
 
 def get_output_manager() -> OutputManager:
@@ -315,7 +293,7 @@ def output_success(message: str) -> None:
 
 
 def output_json(data: Any) -> None:
-    """Output JSON data using the global output manager"""
+    """Output data as TOON (formerly JSON) using the global output manager"""
     _output_manager.output_json(data)
 
 
@@ -355,6 +333,6 @@ def output_extensions(extensions: list[str]) -> None:
     _output_manager.output_extensions(extensions)
 
 
-def output_data(data: Any, format_type: str = "json") -> None:
+def output_data(data: Any, format_type: str = "toon") -> None:
     """Output structured data"""
     _output_manager.data(data, format_type)

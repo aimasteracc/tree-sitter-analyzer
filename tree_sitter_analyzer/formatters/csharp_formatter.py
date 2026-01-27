@@ -165,59 +165,6 @@ class CSharpTableFormatter(BaseTableFormatter):
 
         return "\n".join(lines)
 
-    def _format_compact_table(self, data: dict[str, Any]) -> str:
-        """Compact table format for C# - matches golden master format"""
-        lines: list[str] = []
-
-        # Header
-        file_path = data.get("file_path", "Unknown")
-        file_name = str(file_path).split("/")[-1].split("\\")[-1]
-        lines.append(f"# {file_name}")
-        lines.append("")
-
-        # Info
-        lines.append("## Info")
-        lines.append("| Property | Value |")
-        lines.append("|----------|-------|")
-
-        namespace_name = self._extract_namespace(data)
-        stats = data.get("statistics") or {}
-
-        lines.append(f"| Package | {namespace_name} |")
-        lines.append(f"| Methods | {stats.get('method_count', 0)} |")
-        lines.append(f"| Fields | {stats.get('field_count', 0)} |")
-        lines.append("")
-
-        # Methods
-        methods = data.get("methods", [])
-        if methods:
-            lines.append("## Methods")
-            lines.append("| Method | Sig | V | L | Cx | Doc |")
-            lines.append("|--------|-----|---|---|----|----|")
-
-            for method in methods:
-                name = str(method.get("name", ""))
-                signature = self._create_compact_signature(method)
-                visibility = self._convert_visibility(
-                    str(method.get("visibility", "public"))
-                )
-                line_range = method.get("line_range", {})
-                lines_str = f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
-                complexity = method.get("complexity_score", 1)
-                doc = "-"
-
-                lines.append(
-                    f"| {name} | {signature} | {visibility} | {lines_str} | "
-                    f"{complexity} | {doc} |"
-                )
-            lines.append("")
-
-        # Trim trailing blank lines
-        while lines and lines[-1] == "":
-            lines.pop()
-
-        return "\n".join(lines)
-
     def _format_csv(self, data: dict[str, Any]) -> str:
         """CSV format for C# - matches golden master format"""
         lines: list[str] = []
@@ -333,29 +280,6 @@ class CSharpTableFormatter(BaseTableFormatter):
         return_type = str(method.get("return_type", "void"))
 
         return f"({params_str}):{return_type}"
-
-    def _create_compact_signature(self, method: dict[str, Any]) -> str:
-        """Create compact method signature"""
-        params = method.get("parameters", [])
-        param_types = []
-
-        for p in params:
-            if isinstance(p, dict):
-                param_type = str(p.get("type", "Any"))
-                param_types.append(self._abbreviate_type(param_type))
-            else:
-                param_types.append(str(p))
-
-        # Limit to first 3 params
-        if len(param_types) > 3:
-            params_str = ",".join(param_types[:2]) + ",..."
-        else:
-            params_str = ",".join(param_types)
-
-        return_type = str(method.get("return_type", "void"))
-        ret_str = self._abbreviate_type(return_type)
-
-        return f"({params_str}):{ret_str}"
 
     def _format_modifiers(self, element: dict[str, Any]) -> str:
         """Format element modifiers"""

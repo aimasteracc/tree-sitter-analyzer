@@ -152,17 +152,39 @@ tests/
 └── conftest.py    # pytest設定
 ```
 
+### モックライブラリの使用規則
+
+**🚫 禁止事項**
+- `unittest.mock`の直接使用は**厳禁**
+- `from unittest.mock import Mock, patch, AsyncMock`などのインポートは使用しない
+
+**✅ 必須事項**
+- 全てのモック処理には`pytest-mock`（`mocker`フィクスチャ）を使用
+- `mocker.patch()`, `mocker.AsyncMock()`, `mocker.Mock()`などを使用
+
+**理由**
+- pytestとの統合が優れている
+- テストの自動クリーンアップが保証される
+- より簡潔で読みやすいテストコードになる
+- pytestのフィクスチャシステムと一貫性がある
+
 ### テストパターン
+
+#### ✅ 正しい例（pytest-mock使用）
 ```python
 import pytest
-from unittest.mock import AsyncMock, patch
 
 @pytest.mark.asyncio
-async def test_analyze_file_success():
+async def test_analyze_file_success(mocker):
     """正常ケースのテスト"""
     # Arrange
     file_path = Path("test_file.py")
     expected_result = {"elements": [], "metadata": {}}
+    
+    # モックの作成（pytest-mock使用）
+    mock_parser = mocker.AsyncMock()
+    mock_parser.parse.return_value = expected_result
+    mocker.patch("module.get_parser", return_value=mock_parser)
     
     # Act
     result = await analyze_file(file_path)
@@ -172,12 +194,94 @@ async def test_analyze_file_success():
     assert "elements" in result
 
 @pytest.mark.asyncio
-async def test_analyze_file_not_found():
+async def test_analyze_file_not_found(mocker):
     """ファイルが見つからない場合のテスト"""
     file_path = Path("nonexistent.py")
     
+    # モックでFileNotFoundErrorを発生させる
+    mocker.patch("pathlib.Path.exists", return_value=False)
+    
     with pytest.raises(FileNotFoundError):
         await analyze_file(file_path)
+
+def test_sync_function_with_mock(mocker):
+    """同期関数のモックテスト"""
+    # Arrange
+    mock_service = mocker.Mock()
+    mock_service.get_data.return_value = {"key": "value"}
+    mocker.patch("module.Service", return_value=mock_service)
+    
+    # Act
+    result = function_under_test()
+    
+    # Assert
+    assert result["key"] == "value"
+    mock_service.get_data.assert_called_once()
+```
+
+#### ❌ 間違った例（unittest.mock使用）
+```python
+# 🚫 このパターンは使用禁止
+import pytest
+from unittest.mock import AsyncMock, patch, Mock  # ❌ 禁止
+
+@pytest.mark.asyncio
+async def test_analyze_file_wrong():
+    # ❌ unittest.mockの直接使用は禁止
+    with patch("module.get_parser") as mock_parser:
+        mock_parser.return_value = AsyncMock()
+        result = await analyze_file(Path("test.py"))
+```
+
+### pytest-mock使用パターン集
+
+#### パッチング
+```python
+def test_with_patch(mocker):
+    """関数やメソッドのパッチング"""
+    mock_func = mocker.patch("module.function_name")
+    mock_func.return_value = "mocked_value"
+    
+    result = call_function()
+    assert result == "mocked_value"
+```
+
+#### AsyncMockの使用
+```python
+@pytest.mark.asyncio
+async def test_async_mock(mocker):
+    """非同期関数のモック"""
+    mock_async = mocker.AsyncMock()
+    mock_async.return_value = {"data": "test"}
+    mocker.patch("module.async_function", new=mock_async)
+    
+    result = await call_async_function()
+    assert result["data"] == "test"
+```
+
+#### 属性のモック
+```python
+def test_attribute_mock(mocker):
+    """オブジェクト属性のモック"""
+    mock_obj = mocker.Mock()
+    mock_obj.attribute = "value"
+    mock_obj.method.return_value = 42
+    
+    assert mock_obj.attribute == "value"
+    assert mock_obj.method() == 42
+```
+
+#### 副作用の設定
+```python
+def test_side_effect(mocker):
+    """副作用の設定"""
+    mock_func = mocker.Mock()
+    mock_func.side_effect = [1, 2, ValueError("error")]
+    
+    assert mock_func() == 1
+    assert mock_func() == 2
+    with pytest.raises(ValueError):
+        mock_func()
 ```
 
 ## パフォーマンス最適化

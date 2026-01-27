@@ -99,55 +99,6 @@ class KotlinTableFormatter(BaseTableFormatter):
 
         return "\n".join(lines)
 
-    def _format_compact_table(self, data: dict[str, Any]) -> str:
-        """Compact table format for Kotlin"""
-        lines = []
-
-        # Header
-        package_name = (data.get("package") or {}).get("name", "default")
-        file_name = data.get("file_path", "Unknown").split("/")[-1].split("\\")[-1]
-        if package_name != "default":
-            lines.append(f"# {package_name}.{file_name}")
-        else:
-            lines.append(f"# {file_name}")
-        lines.append("")
-
-        # Info
-        stats = data.get("statistics") or {}
-        lines.append("## Info")
-        lines.append("| Property | Value |")
-        lines.append("|----------|-------|")
-        lines.append(f"| Package | {package_name} |")
-        lines.append(f"| Classes | {len(data.get('classes', []))} |")
-        lines.append(f"| Functions | {stats.get('method_count', 0)} |")
-        lines.append(f"| Properties | {stats.get('field_count', 0)} |")
-        lines.append("")
-
-        # Functions (compact)
-        fns = data.get("methods", [])
-        if fns:
-            lines.append("## Functions")
-            lines.append("| Fn | Sig | V | S | L | Doc |")
-            lines.append("|----|-----|---|---|---|-----|")
-
-            for fn in fns:
-                name = str(fn.get("name", ""))
-                signature = self._create_compact_signature(fn)
-                visibility = self._convert_visibility(str(fn.get("visibility", "")))
-                is_suspend = "Y" if fn.get("is_suspend", False) else "-"
-                line_range = fn.get("line_range", {})
-                lines_str = f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
-                doc = self._clean_csv_text(
-                    self._extract_doc_summary(str(fn.get("docstring", "") or ""))
-                )
-
-                lines.append(
-                    f"| {name} | {signature} | {visibility} | {is_suspend} | {lines_str} | {doc} |"
-                )
-            lines.append("")
-
-        return "\n".join(lines)
-
     def _format_fn_row(self, fn: dict[str, Any]) -> str:
         """Format a function table row for Kotlin"""
         name = str(fn.get("name", ""))
@@ -198,15 +149,6 @@ class KotlinTableFormatter(BaseTableFormatter):
 
         return f"fun({params_str}){ret_str}"
 
-    def _create_compact_signature(self, fn: dict[str, Any]) -> str:
-        """Create compact function signature for Kotlin"""
-        params = fn.get("parameters", [])
-        params_summary = f"({len(params)})"
-        return_type = fn.get("return_type", "")
-        ret_str = f":{return_type}" if return_type and return_type != "Unit" else ""
-
-        return f"{params_summary}{ret_str}"
-
     def _convert_visibility(self, visibility: str) -> str:
         """Convert visibility to short symbol"""
         if visibility == "public":
@@ -228,9 +170,6 @@ class KotlinTableFormatter(BaseTableFormatter):
         self.format_type = table_type
 
         try:
-            # Handle json format separately
-            if table_type == "json":
-                return self._format_json(analysis_result)
             # Use the existing format_structure method
             return self.format_structure(analysis_result)
         finally:
@@ -239,30 +178,17 @@ class KotlinTableFormatter(BaseTableFormatter):
 
     def format_summary(self, analysis_result: dict[str, Any]) -> str:
         """Format summary output for Kotlin"""
-        return self._format_compact_table(analysis_result)
+        return self._format_full_table(analysis_result)
 
     def format_structure(self, analysis_result: dict[str, Any]) -> str:
         """Format structure analysis output for Kotlin"""
-        if self.format_type == "compact":
-            return self._format_compact_table(analysis_result)
         return self._format_full_table(analysis_result)
 
     def format_advanced(
-        self, analysis_result: dict[str, Any], output_format: str = "json"
+        self, analysis_result: dict[str, Any], output_format: str = "toon"
     ) -> str:
         """Format advanced analysis output for Kotlin"""
-        if output_format == "json":
-            return self._format_json(analysis_result)
-        elif output_format == "csv":
+        if output_format == "csv":
             return self._format_csv(analysis_result)
         else:
             return self._format_full_table(analysis_result)
-
-    def _format_json(self, data: dict[str, Any]) -> str:
-        """Format data as JSON"""
-        import json
-
-        try:
-            return json.dumps(data, indent=2, ensure_ascii=False)
-        except (TypeError, ValueError) as e:
-            return f"# JSON serialization error: {e}\n"

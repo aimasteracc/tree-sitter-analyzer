@@ -126,7 +126,7 @@ class TableFormatterFactory:
             stacklevel=2,
         )
         # Register for all format types
-        for format_type in ["full", "compact", "csv"]:
+        for format_type in ["full", "csv"]:
             FormatterRegistry.register_language_formatter(
                 language, format_type, formatter_class
             )

@@ -65,14 +65,14 @@ def create_argument_parser() -> argparse.ArgumentParser:
     # Output format options
     parser.add_argument(
         "--output-format",
-        choices=["json", "text", "toon"],
-        default="json",
-        help="Specify output format: 'json' (default), 'text', or 'toon' (50-70%% token reduction)",
+        choices=["text", "toon"],
+        default="toon",
+        help="Specify output format: 'toon' (default) or 'text'",
     )
     parser.add_argument(
         "--format",
-        choices=["json", "toon"],
-        help="Alias for --output-format (json or toon)",
+        choices=["toon"],
+        help="Alias for --output-format (toon)",
     )
     parser.add_argument(
         "--toon-use-tabs",
@@ -81,7 +81,7 @@ def create_argument_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--table",
-        choices=["full", "compact", "csv", "json", "toon"],
+        choices=["full", "csv", "toon"],
         help="Output in table format (toon format provides 50-70%% token reduction)",
     )
     parser.add_argument(

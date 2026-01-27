@@ -249,63 +249,6 @@ class CppTableFormatter(BaseTableFormatter):
 
         return lines
 
-    def _format_compact_table(self, data: dict[str, Any]) -> str:
-        """Compact table format for C/C++"""
-        lines = []
-
-        # Header
-        file_path = data.get("file_path", "Unknown")
-        file_name = file_path.split("/")[-1].split("\\")[-1]
-        lines.append(f"# {file_name}")
-        lines.append("")
-
-        # Info
-        stats = data.get("statistics") or {}
-        package_name = (data.get("package") or {}).get("name", "unknown")
-        language = data.get("language", "").lower()
-
-        lines.append("## Info")
-        lines.append("| Property | Value |")
-        lines.append("|----------|-------|")
-
-        # Only show Package for C++ (which has namespaces)
-        # C language doesn't have packages, so skip this row
-        if language in ("cpp", "c++") or (package_name and package_name != "unknown"):
-            lines.append(f"| Package | {package_name} |")
-
-        lines.append(f"| Methods | {stats.get('method_count', 0)} |")
-        lines.append(f"| Fields | {stats.get('field_count', 0)} |")
-        lines.append("")
-
-        # Methods (compact)
-        methods = data.get("methods", [])
-        if methods:
-            lines.append("## Methods")
-            lines.append("| Method | Sig | V | L | Cx | Doc |")
-            lines.append("|--------|-----|---|---|----|----|")
-
-            for method in methods:
-                name = str(method.get("name", ""))
-                signature = self._create_compact_signature(method)
-                visibility = self._convert_visibility(str(method.get("visibility", "")))
-                line_range = method.get("line_range", {})
-                lines_str = f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
-                complexity = method.get("complexity_score", 0)
-                doc = self._clean_csv_text(
-                    self._extract_doc_summary(str(method.get("javadoc", "")))
-                )
-
-                lines.append(
-                    f"| {name} | {signature} | {visibility} | {lines_str} | {complexity} | {doc} |"
-                )
-            lines.append("")
-
-        # Trim trailing blank lines
-        while lines and lines[-1] == "":
-            lines.pop()
-
-        return "\n".join(lines)
-
     def _format_method_row(self, method: dict[str, Any]) -> str:
         """Format a method table row"""
         name = str(method.get("name", ""))
@@ -321,97 +264,6 @@ class CppTableFormatter(BaseTableFormatter):
 
         return f"| {name} | {signature} | {visibility} | {lines_str} | {cols_str} | {complexity} | {doc} |"
 
-    def _create_compact_signature(self, method: dict[str, Any]) -> str:
-        """Create compact method signature"""
-        params = method.get("parameters", [])
-        param_types = []
-
-        for p in params:
-            if isinstance(p, dict):
-                # Dict format: {"name": "a", "type": "int"}
-                type_str = p.get("type", "Any")
-                name_str = p.get("name", "")
-
-                # Check if name implies array (e.g. arr[])
-                if "[]" in name_str:
-                    type_str += "[]"
-
-                # Check if name implies pointer (e.g. *ptr)
-                # If TableCommand parsed "int *ptr" -> type="int", name="*ptr"
-                if name_str.startswith("*") and not type_str.endswith("*"):
-                    type_str += "*"
-            elif isinstance(p, str):
-                # String format: "a:int" or "int a" or "int* a"
-                if ":" in p:
-                    # Format: "name:type"
-                    parts = p.split(":", 1)
-                    type_str = parts[1].strip()
-                else:
-                    # Format: "type name" (C style)
-                    # Split by space and take everything except last token (name)
-                    tokens = p.strip().split()
-                    if len(tokens) >= 2:
-                        # Last token is name, everything before is type
-                        type_str = " ".join(tokens[:-1])
-                        name_part = tokens[-1]
-
-                        # Check if name part implies array (e.g. arr[])
-                        if "[]" in name_part:
-                            type_str += "[]"
-
-                        # Check if name part implies pointer (e.g. *ptr)
-                        if name_part.startswith("*") and not type_str.endswith("*"):
-                            type_str += "*"
-                    else:
-                        # Only one token, might be type-only or name-only
-                        type_str = tokens[0] if tokens else "Any"
-            else:
-                type_str = "Any"
-
-            # DEBUG
-            # print(f"DEBUG: type_str='{type_str}' shortened='{self._shorten_type(type_str)}'")
-            param_types.append(self._shorten_type(type_str))
-
-        params_str = ",".join(param_types)
-        return_type = self._shorten_type(method.get("return_type", "void"))
-
-        return f"({params_str}):{return_type}"
-
-    def _shorten_type(self, type_name: Any) -> str:
-        """Shorten type name for C/C++ compact display"""
-        if type_name is None:
-            return "void"
-
-        s = str(type_name).strip()
-
-        # Keep pointers, references, arrays as-is (important info)
-        if any(x in s for x in ["*", "&", "["]):
-            return s
-
-        # Remove const/volatile/static qualifiers for brevity
-        s = (
-            s.replace("const ", "")
-            .replace("volatile ", "")
-            .replace("static ", "")
-            .strip()
-        )
-
-        # Shorten common primitive types
-        type_map = {
-            "int": "i",
-            "double": "d",
-            "float": "f",
-            "char": "c",
-            "long": "l",
-            "short": "s",
-            "bool": "b",
-            "void": "void",
-            "size_t": "size_t",
-            "string": "str",
-        }
-
-        return type_map.get(s, s)  # Return shortened or original
-
     def format_table(
         self, analysis_result: dict[str, Any], table_type: str = "full"
     ) -> str:
@@ -420,15 +272,13 @@ class CppTableFormatter(BaseTableFormatter):
         self.format_type = table_type
 
         try:
-            if table_type == "json":
-                return self._format_json(analysis_result)
             return self.format_structure(analysis_result)
         finally:
             self.format_type = original_format_type
 
     def format_summary(self, analysis_result: dict[str, Any]) -> str:
         """Format summary output"""
-        return self._format_compact_table(analysis_result)
+        return self._format_full_table(analysis_result)
 
     def format_analysis_result(self, analysis_result: Any, table_type: str) -> str:
         """
@@ -439,11 +289,7 @@ class CppTableFormatter(BaseTableFormatter):
         formatted_data = self._convert_analysis_result_to_format(analysis_result)
 
         # Format based on table type
-        if table_type == "full":
-            return self._format_full_table(formatted_data)
-        elif table_type == "compact":
-            return self._format_compact_table(formatted_data)
-        elif table_type == "csv":
+        if table_type == "csv":
             return self._format_csv(formatted_data)
         else:
             return self._format_full_table(formatted_data)
@@ -672,20 +518,10 @@ class CppTableFormatter(BaseTableFormatter):
         return super().format_structure(analysis_result)
 
     def format_advanced(
-        self, analysis_result: dict[str, Any], output_format: str = "json"
+        self, analysis_result: dict[str, Any], output_format: str = "toon"
     ) -> str:
         """Format advanced analysis output"""
-        if output_format == "json":
-            return self._format_json(analysis_result)
-        elif output_format == "csv":
+        if output_format == "csv":
             return self._format_csv(analysis_result)
         else:
             return self._format_full_table(analysis_result)
-
-    def _format_json(self, data: dict[str, Any]) -> str:
-        import json
-
-        try:
-            return json.dumps(data, indent=2, ensure_ascii=False)
-        except (TypeError, ValueError) as e:
-            return f"# JSON serialization error: {e}\\n"

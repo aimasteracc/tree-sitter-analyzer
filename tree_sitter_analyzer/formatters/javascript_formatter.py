@@ -27,15 +27,11 @@ class JavaScriptTableFormatter(BaseTableFormatter):
 
         if format_type:
             # Check for supported format types
-            supported_formats = ["full", "compact", "csv", "json"]
+            supported_formats = ["full", "csv", "toon"]
             if format_type not in supported_formats:
                 raise ValueError(
                     f"Unsupported format type: {format_type}. Supported formats: {supported_formats}"
                 )
-
-            # Handle json format separately
-            if format_type == "json":
-                return self._format_json(data)
 
             # Temporarily change format type for this call
             original_format = self.format_type
@@ -198,90 +194,6 @@ class JavaScriptTableFormatter(BaseTableFormatter):
                 param_strs.append(f"{param}:Any")
 
         params_str = ", ".join(param_strs)
-        return_type = method.get("return_type", "unknown")
-        return f"({params_str}):{return_type}"
-
-    def _format_compact_table(self, data: dict[str, Any]) -> str:
-        """Compact table format for JavaScript - matches golden master format"""
-        lines: list[str] = []
-
-        # Get classes
-        classes = data.get("classes", [])
-        if classes is None:
-            classes = []
-        methods = data.get("methods", [])
-        if methods is None:
-            methods = []
-
-        # Header - use first class name if classes exist
-        if classes:
-            first_class = classes[0]
-            class_name = first_class.get("name", "Unknown")
-            lines.append(f"# {class_name}")
-        else:
-            file_path = data.get("file_path", "Unknown")
-            if file_path is None:
-                file_path = "Unknown"
-            file_name = str(file_path).split("/")[-1].split("\\")[-1]
-            module_name = (
-                file_name.replace(".js", "").replace(".jsx", "").replace(".mjs", "")
-            )
-            lines.append(f"# {module_name}")
-        lines.append("")
-
-        # Info section
-        lines.append("## Info")
-        lines.append("| Property | Value |")
-        lines.append("|----------|-------|")
-        lines.append("| Package |  |")
-        lines.append(f"| Methods | {len(methods)} |")
-        lines.append("| Fields | 0 |")
-        lines.append("")
-
-        # Methods section
-        if methods:
-            lines.append("## Methods")
-            lines.append("| Method | Sig | V | L | Cx | Doc |")
-            lines.append("|--------|-----|---|---|----|----|")
-
-            for method in methods:
-                name = str(method.get("name", ""))
-                signature = self._create_compact_signature(method)
-                visibility = "+"
-                line_range = method.get("line_range", {})
-                lines_str = f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
-                complexity = method.get("complexity_score", 1)
-                doc = "-"
-
-                lines.append(
-                    f"| {name} | {signature} | {visibility} | {lines_str} | {complexity} | {doc} |"
-                )
-
-        # Trim trailing blank lines
-        while lines and lines[-1] == "":
-            lines.pop()
-
-        return "\n".join(lines)
-
-    def _create_compact_signature(self, method: dict[str, Any]) -> str:
-        """Create compact method signature for JavaScript"""
-        params = method.get("parameters", [])
-        if not params:
-            return "():unknown"
-
-        # Handle malformed data
-        if isinstance(params, str):
-            return "():unknown"
-
-        param_types = []
-        for param in params:
-            if isinstance(param, dict):
-                param_type = param.get("type", "Any")
-                param_types.append(param_type)
-            else:
-                param_types.append("Any")
-
-        params_str = ",".join(param_types)
         return_type = method.get("return_type", "unknown")
         return f"({params_str}):{return_type}"
 
@@ -531,15 +443,6 @@ class JavaScriptTableFormatter(BaseTableFormatter):
 
         return f"{name} ({method_count} methods)"
 
-    def _format_json(self, data: dict[str, Any]) -> str:
-        """Format data as JSON"""
-        import json
-
-        try:
-            return json.dumps(data, indent=2, ensure_ascii=False)
-        except (TypeError, ValueError) as e:
-            return f"# JSON serialization error: {e}\n"
-
     def format_table(
         self, analysis_result: dict[str, Any], table_type: str = "full"
     ) -> str:
@@ -557,19 +460,17 @@ class JavaScriptTableFormatter(BaseTableFormatter):
 
     def format_summary(self, analysis_result: dict[str, Any]) -> str:
         """Format summary output for JavaScript"""
-        return self._format_compact_table(analysis_result)
+        return self._format_full_table(analysis_result)
 
     def format_structure(self, analysis_result: dict[str, Any]) -> str:
         """Format structure analysis output for JavaScript"""
         return super().format_structure(analysis_result)
 
     def format_advanced(
-        self, analysis_result: dict[str, Any], output_format: str = "json"
+        self, analysis_result: dict[str, Any], output_format: str = "toon"
     ) -> str:
         """Format advanced analysis output for JavaScript"""
-        if output_format == "json":
-            return self._format_json(analysis_result)
-        elif output_format == "csv":
+        if output_format == "csv":
             return self._format_csv(analysis_result)
         else:
             return self._format_full_table(analysis_result)

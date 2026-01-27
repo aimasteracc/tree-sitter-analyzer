@@ -74,7 +74,7 @@ class AnalyzeCodeStructureTool(BaseMCPTool):
                 "format_type": {
                     "type": "string",
                     "description": "Table format type",
-                    "enum": ["full", "compact", "csv"],
+                    "enum": ["full", "csv"],
                     "default": "full",
                 },
                 "language": {
@@ -94,8 +94,8 @@ class AnalyzeCodeStructureTool(BaseMCPTool):
                 },
                 "output_format": {
                     "type": "string",
-                    "enum": ["json", "toon"],
-                    "description": "Output format for metadata: 'toon' (default, 50-70% token reduction) or 'json'",
+                    "enum": ["toon"],
+                    "description": "Output format for metadata: 'toon' (default)",
                     "default": "toon",
                 },
             },
@@ -134,7 +134,7 @@ class AnalyzeCodeStructureTool(BaseMCPTool):
                 raise ValueError("format_type must be a string")
 
             # Only support v1.6.1.4 specification formats (no HTML formats)
-            allowed_formats = ["full", "compact", "csv"]
+            allowed_formats = ["full", "csv"]
             if format_type not in allowed_formats:
                 raise ValueError(
                     f"format_type must be one of: {', '.join(sorted(allowed_formats))}"
@@ -389,7 +389,7 @@ class AnalyzeCodeStructureTool(BaseMCPTool):
 
                 # Use unified FormatterRegistry for all formats
                 # This handles both language-specific and generic formatters
-                if format_type in ["full", "compact", "csv"]:
+                if format_type in ["full", "csv"]:
                     # Use language-specific formatter from registry
                     formatter = FormatterRegistry.get_formatter_for_language(
                         language, format_type

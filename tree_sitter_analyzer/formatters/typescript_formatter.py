@@ -174,73 +174,6 @@ class TypeScriptTableFormatter(BaseTableFormatter):
 
         return "\n".join(lines)
 
-    def _format_compact_table(self, data: dict[str, Any]) -> str:
-        """Compact table format for TypeScript - matches golden master format"""
-        lines: list[str] = []
-
-        # Get classes from data
-        classes = data.get("classes", [])
-        methods = data.get("methods", []) or data.get("functions", [])
-        fields = data.get("fields", []) or data.get("variables", [])
-
-        # Header - use first class name
-        if classes:
-            first_class = classes[0]
-            class_name = str(first_class.get("name", "Unknown"))
-            lines.append(f"# {class_name}")
-        else:
-            file_path = data.get("file_path", "Unknown")
-            file_name = str(file_path).split("/")[-1].split("\\")[-1]
-            module_name = file_name.replace(".ts", "").replace(".tsx", "")
-            lines.append(f"# {module_name}")
-        lines.append("")
-
-        # Info section
-        lines.append("## Info")
-        lines.append("| Property | Value |")
-        lines.append("|----------|-------|")
-
-        # Get package name if available
-        package_name = (data.get("package") or {}).get("name", "")
-        lines.append(f"| Package | {package_name} |")
-        lines.append(f"| Methods | {len(methods)} |")
-        lines.append(f"| Fields | {len(fields)} |")
-        lines.append("")
-
-        # Methods section
-        if methods:
-            lines.append("## Methods")
-            lines.append("| Method | Sig | V | L | Cx | Doc |")
-            lines.append("|--------|-----|---|---|----|----|")
-
-            for method in methods:
-                name = str(method.get("name", ""))
-                signature = self._create_compact_signature(method)
-                visibility = self._convert_visibility(
-                    str(method.get("visibility", "public"))
-                )
-                line_range = method.get("line_range", {})
-                lines_str = f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
-                complexity = method.get("complexity_score", 0)
-                doc = (
-                    self._extract_doc_summary(
-                        str(method.get("javadoc", "") or method.get("doc", ""))
-                    )
-                    or "-"
-                )
-
-                lines.append(
-                    f"| {name} | {signature} | {visibility} | {lines_str} | "
-                    f"{complexity} | {doc} |"
-                )
-            lines.append("")
-
-        # Trim trailing blank lines
-        while lines and lines[-1] == "":
-            lines.pop()
-
-        return "\n".join(lines)
-
     def _format_csv(self, data: dict[str, Any]) -> str:
         """CSV format for TypeScript - matches golden master format"""
         lines: list[str] = []
@@ -366,23 +299,6 @@ class TypeScriptTableFormatter(BaseTableFormatter):
 
         return f"({params_str}):{return_type}"
 
-    def _create_compact_signature(self, method: dict[str, Any]) -> str:
-        """Create compact method signature"""
-        params = method.get("parameters", [])
-        param_types = []
-
-        for p in params:
-            if isinstance(p, dict):
-                param_type = str(p.get("type", "any"))
-                param_types.append(param_type)
-            else:
-                param_types.append(str(p))
-
-        params_str = ",".join(param_types)
-        return_type = str(method.get("return_type", "any"))
-
-        return f"({params_str}):{return_type}"
-
     def _create_csv_signature(self, method: dict[str, Any]) -> str:
         """Create CSV method signature with full parameter details"""
         params = method.get("parameters", [])
@@ -432,28 +348,17 @@ class TypeScriptTableFormatter(BaseTableFormatter):
 
     def format_summary(self, analysis_result: dict[str, Any]) -> str:
         """Format summary output for TypeScript"""
-        return self._format_compact_table(analysis_result)
+        return self._format_full_table(analysis_result)
 
     def format_structure(self, analysis_result: dict[str, Any]) -> str:
         """Format structure analysis output for TypeScript"""
         return super().format_structure(analysis_result)
 
     def format_advanced(
-        self, analysis_result: dict[str, Any], output_format: str = "json"
+        self, analysis_result: dict[str, Any], output_format: str = "toon"
     ) -> str:
         """Format advanced analysis output for TypeScript"""
-        if output_format == "json":
-            return self._format_json(analysis_result)
-        elif output_format == "csv":
+        if output_format == "csv":
             return self._format_csv(analysis_result)
         else:
             return self._format_full_table(analysis_result)
-
-    def _format_json(self, data: dict[str, Any]) -> str:
-        """Format data as JSON"""
-        import json
-
-        try:
-            return json.dumps(data, indent=2, ensure_ascii=False)
-        except (TypeError, ValueError) as e:
-            return f"# JSON serialization error: {e}\n"

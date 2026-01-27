@@ -75,7 +75,42 @@ class PythonElementExtractor(ProgrammingLanguageExtractor):
         """Get Python function node type handlers"""
         return {
             "function_definition": self._extract_function_optimized,
+            "if_statement": self._extract_if_main_block,
         }
+
+    def _extract_if_main_block(self, node: "tree_sitter.Node") -> Function | None:
+        """Extract if __name__ == "__main__": block as a pseudo-function"""
+        try:
+            # Check if this is the main guard
+            node_text = self._get_node_text_optimized(node)
+            if (
+                "__name__" in node_text
+                and "__main__" in node_text
+                and "==" in node_text
+            ):
+                # Confirm structure more precisely if needed, but text match is usually enough for this specific idiom
+
+                # Create a pseudo-function for the main block
+                return Function(
+                    name="__main__",
+                    start_line=node.start_point[0] + 1,
+                    end_line=node.end_point[0] + 1,
+                    raw_text=node_text,
+                    language="python",
+                    parameters=[],
+                    return_type="None",
+                    docstring="Main entry point",
+                    complexity_score=self._calculate_complexity_optimized(node),
+                    modifiers=[],
+                    is_static=False,
+                    is_private=False,
+                    is_public=True,
+                    framework_type=self.framework_type,
+                )
+            return None
+        except (AttributeError, TypeError, ValueError, UnicodeDecodeError) as e:
+            log_debug(f"Failed to extract if_main block: {e}")
+            return None
 
     def _get_class_handlers(self) -> dict[str, Callable]:
         """Get Python class node type handlers"""
@@ -389,15 +424,13 @@ class PythonElementExtractor(ProgrammingLanguageExtractor):
             decorators = []
 
             # Extract decorators from preceding siblings
-            if node.parent:
+            if node.parent and node.parent.type == "decorated_definition":
                 for sibling in node.parent.children:
-                    if sibling.type == "decorated_definition":
-                        for child in sibling.children:
-                            if child.type == "decorator":
-                                decorator_text = self._get_node_text_optimized(child)
-                                if decorator_text.startswith("@"):
-                                    decorator_text = decorator_text[1:].strip()
-                                decorators.append(decorator_text)
+                    if sibling.type == "decorator":
+                        decorator_text = self._get_node_text_optimized(sibling)
+                        if decorator_text.startswith("@"):
+                            decorator_text = decorator_text[1:].strip()
+                        decorators.append(decorator_text)
 
             for child in node.children:
                 if child.type == "identifier":
@@ -425,13 +458,15 @@ class PythonElementExtractor(ProgrammingLanguageExtractor):
                 else class_name
             )
 
+            is_dataclass = "dataclass" in decorators
+
             return Class(
                 name=class_name,
                 start_line=metadata["start_line"],
                 end_line=metadata["end_line"],
                 raw_text=metadata["raw_text"],
                 language="python",
-                class_type="class",
+                class_type="dataclass" if is_dataclass else "class",
                 superclass=superclasses[0] if superclasses else None,
                 interfaces=superclasses[1:] if len(superclasses) > 1 else [],
                 docstring=metadata["docstring"],
@@ -440,7 +475,7 @@ class PythonElementExtractor(ProgrammingLanguageExtractor):
                 package_name=self.current_module,
                 # Python-specific properties
                 framework_type=self.framework_type,
-                is_dataclass="dataclass" in decorators,
+                is_dataclass=is_dataclass,
                 is_abstract="ABC" in superclasses
                 or "abstractmethod" in metadata["raw_text"],
                 is_exception=any(
@@ -480,13 +515,13 @@ class PythonElementExtractor(ProgrammingLanguageExtractor):
                 if child.type == "expression_statement":
                     # Check if it's an assignment
                     for grandchild in child.children:
-                        if grandchild.type == "assignment":
+                        if grandchild.type in ["assignment", "annotated_assignment"]:
                             attribute = self._extract_class_attribute_info(
                                 grandchild, source_code
                             )
                             if attribute:
                                 attributes.append(attribute)
-                elif child.type == "assignment":
+                elif child.type in ["assignment", "annotated_assignment"]:
                     attribute = self._extract_class_attribute_info(child, source_code)
                     if attribute:
                         attributes.append(attribute)
@@ -505,6 +540,9 @@ class PythonElementExtractor(ProgrammingLanguageExtractor):
             assignment_text = source_code[node.start_byte : node.end_byte]
 
             # Extract attribute name and type annotation
+            attr_name = None
+            attr_type = None
+
             if "=" in assignment_text:
                 left_part = assignment_text.split("=")[0].strip()
 
@@ -516,7 +554,13 @@ class PythonElementExtractor(ProgrammingLanguageExtractor):
                 else:
                     attr_name = left_part
                     attr_type = None
+            elif ":" in assignment_text:
+                # Handle type annotations without assignment (e.g., "name: str")
+                name_part, type_part = assignment_text.split(":", 1)
+                attr_name = name_part.strip()
+                attr_type = type_part.strip()
 
+            if attr_name:
                 return Variable(
                     name=attr_name,
                     start_line=node.start_point[0] + 1,
@@ -910,7 +954,16 @@ class PythonElementExtractor(ProgrammingLanguageExtractor):
 
             # Extract import name and module name (simplified)
             if import_type == "from_import":
-                if "from" in import_text and "import" in import_text:
+                # Try regex first for better accuracy
+                import re
+
+                match = re.search(
+                    r"from\s+([\w\.]+)\s+import\s+(.+)", import_text, re.DOTALL
+                )
+                if match:
+                    module_name = match.group(1).strip()
+                    import_name = match.group(2).strip()
+                elif "from" in import_text and "import" in import_text:
                     parts = import_text.split("import")
                     module_name = parts[0].replace("from", "").strip()
                     import_name = parts[1].strip()

@@ -82,9 +82,8 @@ class TableCommand(BaseCommand):
         use_tabs = getattr(self.args, "toon_use_tabs", False)
         formatter = ToonFormatter(use_tabs=use_tabs)
 
-        # Convert to structure format for TOON
-        structure_data = self._convert_to_toon_format(analysis_result)
-        return formatter.format(structure_data)
+        # Pass AnalysisResult directly to formatter to use its optimized logic
+        return formatter.format(analysis_result)
 
     def _convert_to_toon_format(self, analysis_result: Any) -> dict[str, Any]:
         """Convert AnalysisResult to TOON-friendly format with position info."""

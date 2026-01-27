@@ -465,6 +465,7 @@ class AnalysisResult:
 
         return {
             "file_path": self.file_path,
+            "language": self.language,
             "line_count": self.line_count,
             "package": {"name": packages[0].name} if packages else None,
             "imports": [

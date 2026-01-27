@@ -56,6 +56,13 @@
 - [ ] テストデータが適切に管理されている
 - [ ] 非同期テストで`@pytest.mark.asyncio`を使用している
 
+### モックライブラリの使用（必須）
+- [ ] **pytest-mock使用**: `mocker`フィクスチャを使用している
+- [ ] **unittest.mock禁止**: `from unittest.mock import ...`のインポートがない
+- [ ] **パッチング**: `mocker.patch()`を使用している
+- [ ] **AsyncMock**: `mocker.AsyncMock()`を使用している（非同期テスト時）
+- [ ] **Mock**: `mocker.Mock()`を使用している（同期テスト時）
+
 ## 🔧 コード品質チェック
 
 ### フォーマット・リンティング
