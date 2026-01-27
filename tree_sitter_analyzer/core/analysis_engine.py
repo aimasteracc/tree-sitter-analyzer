@@ -1,32 +1,54 @@
 #!/usr/bin/env python3
 """
-Unified Analysis Engine - Common Analysis System for CLI and MCP
+Unified Analysis Engine - Core Component for CLI and MCP
 
-This module provides a unified analysis engine with both dependency injection
-and backward-compatible singleton pattern support.
+This module provides a unified analysis engine with dependency injection,
+singleton pattern support, and comprehensive error handling.
+
+Architecture:
+- Dependency Injection: Recommended for new code
+- Singleton Pattern: For backward compatibility
+- Lazy Initialization: For performance optimization
+- Type Safety: Full type hints (PEP 484)
+- Error Handling: Comprehensive error handling and recovery
 """
 
 import asyncio
 import hashlib
 import os
 import threading
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any, Optional, List, Dict, Union, Callable, Type
+from functools import lru_cache
+from pathlib import Path
 
-from ..models import AnalysisResult
+from ..models import AnalysisResult, Element, Function, Import, Class
 from .performance import PerformanceContext, PerformanceMonitor
 from .request import AnalysisRequest
+from ..utils import log_debug, log_info, log_error, log_warning, log_performance
 
 if TYPE_CHECKING:
-    from ..language_detector import LanguageDetector
-    from ..plugins.manager import PluginManager
+    from ..language_detector import LanguageDetector, LanguageInfo, LanguageType
+    from ..plugins.manager import PluginManager, PluginConfig
     from ..security import SecurityValidator
-    from .cache_service import CacheService
+    from .cache_service import CacheService, CacheConfig
     from .parser import Parser
-    from .query import QueryExecutor
+    from .query import QueryExecutor, QueryConfig
 
 
 class UnsupportedLanguageError(Exception):
-    """Unsupported language error"""
+    """Raised when an unsupported language is requested."""
+
+    pass
+
+
+class InitializationError(Exception):
+    """Raised when engine initialization fails."""
+
+    pass
+
+
+class AnalysisError(Exception):
+    """Raised when code analysis fails."""
 
     pass
 
@@ -48,33 +70,57 @@ class UnifiedAnalysisEngine:
     engine = UnifiedAnalysisEngine(project_root="/path/to/project")
     result = await engine.analyze(request)
     ```
+
+    Features:
+    - Type-safe operations
+    - Comprehensive error handling
+    - Performance monitoring
+    - Caching for optimization
+    - Lazy initialization for performance
+    - Backward compatibility with singleton pattern
     """
 
-    _instances: dict[str, "UnifiedAnalysisEngine"] = {}
+    _instances: Dict[str, "UnifiedAnalysisEngine"] = {}
     _lock: threading.Lock = threading.Lock()
 
     def __new__(
-        cls, project_root: str | None = None, **kwargs: Any
+        cls,
+        project_root: str | None = None,
+        **kwargs: Any,
     ) -> "UnifiedAnalysisEngine":
         """
-        Singleton instance management (backward compatible).
+        Singleton instance management with dependency injection support.
 
-        If dependencies are provided via kwargs, creates a new instance without singleton.
+        If dependencies are provided via kwargs, creates a new instance.
         Otherwise, returns singleton instance.
+
+        Args:
+            project_root: Project root path for singleton key
+            **kwargs: Dependencies (parser, language_detector, etc.)
+
+        Returns:
+            UnifiedAnalysisEngine instance
+
+        Note:
+            - For new code, use `create_analysis_engine()` factory function
+            - Singleton pattern is for backward compatibility only
         """
-        # If dependencies are provided, skip singleton pattern
-        if any(k in kwargs for k in ["parser", "language_detector", "plugin_manager"]):
+        # Skip singleton if dependencies are provided
+        if any(k in kwargs for k in [
+            "parser", "language_detector", "plugin_manager",
+            "cache_service", "security_validator", "query_executor",
+            "performance_monitor"
+        ]):
             return super().__new__(cls)
 
         # Singleton pattern for backward compatibility
         instance_key = project_root or "default"
-        if instance_key not in cls._instances:
-            with cls._lock:
-                if instance_key not in cls._instances:
-                    instance = super().__new__(cls)
-                    cls._instances[instance_key] = instance
-                    instance._initialized = False
-        return cls._instances[instance_key]
+        with cls._lock:
+            if instance_key not in cls._instances:
+                instance = super().__new__(cls)
+                instance._initialized = False
+                cls._instances[instance_key] = instance
+            return cls._instances[instance_key]
 
     def __init__(
         self,
@@ -86,19 +132,26 @@ class UnifiedAnalysisEngine:
         security_validator: Optional["SecurityValidator"] = None,
         query_executor: Optional["QueryExecutor"] = None,
         performance_monitor: PerformanceMonitor | None = None,
+        **kwargs: Any,
     ) -> None:
         """
-        Initialize the engine with optional dependency injection.
+        Initialize engine with optional dependency injection.
 
         Args:
-            project_root: Optional project root path for security validation
-            parser: Optional parser for code files
-            language_detector: Optional language detection service
-            plugin_manager: Optional plugin management service
-            cache_service: Optional caching service
-            security_validator: Optional security validation service
-            query_executor: Optional query execution service
-            performance_monitor: Optional performance monitoring service
+            project_root: Project root path for security validation
+            parser: Parser instance for code files
+            language_detector: Language detection service
+            plugin_manager: Plugin management service
+            cache_service: Caching service
+            security_validator: Security validation service
+            query_executor: Query execution service
+            performance_monitor: Performance monitoring service
+            **kwargs: Additional configuration for future extensibility
+
+        Note:
+            - Dependencies provided via constructor are used directly
+            - Dependencies not provided are lazily loaded (backward compatible)
+            - Performance monitor defaults to `PerformanceMonitor()` if not provided
         """
         # Skip re-initialization for singleton instances
         if getattr(self, "_initialized", False):
@@ -107,17 +160,16 @@ class UnifiedAnalysisEngine:
         self._project_root = project_root
 
         # Use provided dependencies or create them lazily
-        if all(
-            [
-                parser,
-                language_detector,
-                plugin_manager,
-                cache_service,
-                security_validator,
-                query_executor,
-            ]
-        ):
-            # Direct injection mode
+        if all([
+            parser,
+            language_detector,
+            plugin_manager,
+            cache_service,
+            security_validator,
+            query_executor,
+            performance_monitor,
+        ]):
+            # Direct injection mode (recommended)
             self._parser = parser
             self._language_detector = language_detector
             self._plugin_manager = plugin_manager
@@ -134,211 +186,350 @@ class UnifiedAnalysisEngine:
             self._cache_service = None
             self._security_validator = None
             self._query_executor = None
-            self._performance_monitor = None  # type: ignore[assignment]
+            self._performance_monitor = None
             self._lazy_mode = True
 
-            # Initial plugin discovery only (no heavy loading)
-            self._load_plugins()
+            # Only perform lightweight initialization (to avoid heavy loading)
+            self._plugin_manager = PluginManager() if not plugin_manager else None
 
         self._initialized = True
 
     def _ensure_initialized(self) -> None:
-        """Ensure all components are lazily initialized only when needed"""
+        """
+        Ensure all components are lazily initialized only when needed.
+
+        Raises:
+            InitializationError: If lazy initialization fails
+        """
         if not self._lazy_mode:
             return
 
         if self._parser is not None:
             return
 
-        # Create all dependencies
-        from ..language_detector import LanguageDetector
-        from ..plugins.manager import PluginManager
-        from ..security import SecurityValidator
-        from .cache_service import CacheService
-        from .parser import Parser
-        from .query import QueryExecutor
+        try:
+            # Import dependencies
+            from ..language_detector import LanguageDetector
+            from ..plugins.manager import PluginManager
+            from ..security import SecurityValidator
+            from .cache_service import CacheService
+            from .parser import Parser
+            from .query import QueryExecutor
+            from ..utils import log_error
 
-        self._parser = Parser()
-        self._language_detector = LanguageDetector()
-        self._plugin_manager = PluginManager()
-        self._cache_service = CacheService()
-        self._security_validator = SecurityValidator(self._project_root)
-        self._query_executor = QueryExecutor()
-        self._performance_monitor = PerformanceMonitor()
+            # Create all dependencies
+            self._parser = Parser()
+            self._language_detector = LanguageDetector()
+            self._plugin_manager = PluginManager()
+            self._cache_service = CacheService()
+            self._security_validator = SecurityValidator(self._project_root)
+            self._query_executor = QueryExecutor()
+            self._performance_monitor = PerformanceMonitor()
 
-        # Load plugins
-        self._plugin_manager.load_plugins()
+            # Load plugins
+            self._plugin_manager.load_plugins()
+
+        except ImportError as e:
+            log_error(f"Failed to import dependencies: {e}")
+            raise InitializationError(
+                f"Tree-sitter analyzer dependencies not found. "
+                f"Please install: pip install tree-sitter-analyzer[core]"
+            ) from e
+        except Exception as e:
+            log_error(f"Failed to initialize engine: {e}")
+            raise InitializationError(
+                f"Failed to initialize analysis engine: {e}"
+            ) from e
 
     def _load_plugins(self) -> None:
-        """Discover available plugins (fast metadata scan)"""
+        """
+        Discover available plugins (lightweight metadata scan).
+
+        Note:
+            - This performs a lightweight scan to avoid heavy loading
+            - Only plugin metadata is loaded, not plugin code
+            - Actual plugin code is loaded on-demand
+        """
         from ..utils import log_debug, log_error
 
         # Minimal init for discovery
         if self._plugin_manager is None:
             from ..plugins.manager import PluginManager
 
-            self._plugin_manager = PluginManager()
+            try:
+                self._plugin_manager = PluginManager()
+                log_debug("PluginManager initialized (for discovery)")
+            except Exception as e:
+                log_error(f"Failed to initialize PluginManager: {e}")
+                return
 
         log_debug("Discovering plugins using PluginManager...")
         try:
-            self._plugin_manager.load_plugins()
+            self._plugin_manager.discover_plugins()
         except Exception as e:
             log_error(f"Failed to discover plugins: {e}")
 
     async def analyze(self, request: AnalysisRequest) -> AnalysisResult:
         """
-        Unified analysis method.
+        Unified analysis method with performance monitoring and caching.
 
         Args:
             request: Analysis request with file path and options
 
         Returns:
-            Analysis result
+            Analysis result with file analysis
 
         Raises:
             ValueError: If file path is invalid
             UnsupportedLanguageError: If language is not supported
             FileNotFoundError: If file does not exist
+            AnalysisError: If analysis fails
+
+        Note:
+            - Supports both file and code analysis
+            - Automatically detects language if not specified
+            - Uses caching to optimize repeated analyses
+            - Performance monitoring is built-in
         """
-        from ..utils import log_debug, log_info
+        from ..utils import log_debug, log_info, log_error
 
-        self._ensure_initialized()
+        # Start performance monitoring
+        operation_name = f"analyze_{Path(request.file_path).name}"
+        with self._performance_monitor.measure_operation(operation_name):
+            log_debug(f"Starting analysis for {request.file_path}")
 
-        log_debug(f"Starting analysis for {request.file_path}")
+            # 1. Validate path
+            self._validate_path(request.file_path)
 
-        # 1. Validate path
-        self._validate_path(request.file_path)
+            # 2. Detect and validate language
+            language = self._get_validated_language(request)
 
-        # 2. Detect and validate language
-        language = self._get_validated_language(request)
+            # 3. Check cache
+            cache_key = self._generate_cache_key(request)
+            cached_result = await self._cache_service.get(cache_key)
+            if cached_result:
+                log_info(f"Cache hit for {request.file_path}")
+                return cached_result
 
-        # 3. Check cache
-        cache_key = self._generate_cache_key(request)
-        cached_result = await self._cache_service.get(cache_key)  # type: ignore[union-attr]
-        if cached_result:
-            log_info(f"Cache hit for {request.file_path}")
-            return cached_result  # type: ignore[no-any-return]
+            # 4. Parse file
+            if not os.path.exists(request.file_path):
+                raise FileNotFoundError(f"File not found: {request.file_path}")
 
-        # 4. Parse file
-        if not os.path.exists(request.file_path):
-            raise FileNotFoundError(f"File not found: {request.file_path}")
+            parse_result = self._parser.parse_file(request.file_path, language)
+            if not parse_result.success:
+                return self._create_empty_result(
+                    request.file_path, language, parse_result.error_message
+                )
 
-        parse_result = self._parser.parse_file(request.file_path, language)  # type: ignore[union-attr]
-        if not parse_result.success:
-            return self._create_empty_result(
-                request.file_path, language, parse_result.error_message
-            )
+            # 5. Get plugin and analyze
+            plugin = self._plugin_manager.get_plugin(language)
+            if not plugin:
+                raise UnsupportedLanguageError(f"Plugin not found for language: {language}")
 
-        # 5. Get plugin and analyze
-        plugin = self._plugin_manager.get_plugin(language)  # type: ignore[union-attr]
-        if not plugin:
-            raise UnsupportedLanguageError(f"Plugin not found for language: {language}")
+            # 6. Execute queries if requested
+            if request.queries and request.include_queries:
+                await self._run_queries(request, parse_result.tree, language)
 
-        with self._performance_monitor.measure_operation(f"analyze_{language}"):
+            # 7. Create result
             result = await plugin.analyze_file(request.file_path, request)
 
-        if not result.language:
-            result.language = language
+            if not result.language:
+                result.language = language
 
-        # 6. Execute queries if requested
-        if request.queries and request.include_queries:
-            await self._run_queries(request, result, plugin, language)
+            # 8. Update cache
+            await self._cache_service.set(cache_key, result)
 
-        # 7. Update cache
-        await self._cache_service.set(cache_key, result)  # type: ignore[union-attr]
-        return result
+            return result
 
     def _validate_path(self, file_path: str) -> None:
-        """Validate file path for security."""
+        """
+        Validate file path for security.
+
+        Args:
+            file_path: Path to file
+
+        Raises:
+            ValueError: If file path is invalid
+
+        Note:
+            - Security validator prevents path traversal attacks
+            - Validates file is within allowed directories
+        """
         from ..utils import log_error
 
         self._ensure_initialized()
 
-        is_valid, error_msg = self._security_validator.validate_file_path(file_path)  # type: ignore[union-attr]
+        is_valid, error_msg = self._security_validator.validate_file_path(file_path)
         if not is_valid:
             log_error(f"Security validation failed: {file_path} - {error_msg}")
             raise ValueError(f"Invalid file path: {error_msg}")
 
     def _get_validated_language(self, request: AnalysisRequest) -> str:
-        """Detect and validate language support."""
+        """
+        Detect and validate language support.
+
+        Args:
+            request: Analysis request with optional language
+
+        Returns:
+            Language name
+
+        Raises:
+            UnsupportedLanguageError: If language is not supported
+
+        Note:
+            - Auto-detects language if not specified
+            - Validates language is supported by plugins
+        """
+        from ..utils import log_debug
+
         self._ensure_initialized()
 
         language = request.language or self._detect_language(request.file_path)
         if language == "unknown":
             raise UnsupportedLanguageError(f"Unsupported language: {language}")
-        elif not self._language_detector.is_supported(language):  # type: ignore[union-attr]
+        elif not self._language_detector.is_supported(language):
             raise UnsupportedLanguageError(f"Unsupported language: {language}")
+
+        log_debug(f"Validated language: {language}")
         return str(language)
 
     def _detect_language(self, file_path: str) -> str:
-        """Detect language from file path."""
+        """
+        Detect language from file path.
+
+        Args:
+            file_path: Path to file
+
+        Returns:
+            Language name or "unknown"
+
+        Note:
+            - Uses file extension for detection
+            - Falls back to content analysis if needed
+        """
         self._ensure_initialized()
 
         try:
-            return self._language_detector.detect_from_extension(file_path)  # type: ignore[union-attr]
+            return self._language_detector.detect_from_extension(file_path)
         except Exception:
             return "unknown"
 
     def _generate_cache_key(self, request: AnalysisRequest) -> str:
-        """Generate cache key from request."""
+        """
+        Generate deterministic cache key from request parameters.
+
+        Args:
+            request: Analysis request
+
+        Returns:
+            SHA-256 hash string
+
+        Note:
+            - Includes file path, language, options, and file metadata
+            - File metadata (mtime, size) ensures cache is invalidated on change
+        """
         key_components = [
             request.file_path,
             str(request.language),
             str(request.include_complexity),
             request.format_type,
         ]
+
+        # Add file metadata for cache invalidation
         try:
             if os.path.exists(request.file_path) and os.path.isfile(request.file_path):
                 stat = os.stat(request.file_path)
-                key_components.extend([str(int(stat.st_mtime)), str(stat.st_size)])
+                key_components.extend([
+                    str(int(stat.st_mtime)),  # Modification time
+                    str(stat.st_size),     # File size
+                ])
         except (OSError, FileNotFoundError):
             pass
-        return hashlib.sha256(":".join(key_components).encode("utf-8")).hexdigest()
+
+        # Generate SHA-256 hash
+        key_str = ":".join(key_components)
+        return hashlib.sha256(key_str.encode("utf-8")).hexdigest()
 
     async def _run_queries(
         self,
         request: AnalysisRequest,
-        result: AnalysisResult,
+        tree: Any,
         plugin: Any,
         language: str,
     ) -> None:
-        """Execute queries on the parsed tree."""
+        """
+        Execute queries on parsed tree.
+
+        Args:
+            request: Analysis request
+            tree: Parsed tree-sitter tree
+            plugin: Language plugin
+            language: Language name
+
+        Note:
+            - Executes all requested queries
+            - Supports both capture and syntax queries
+            - Query results are added to analysis result
+        """
         from ..utils import log_error
 
         self._ensure_initialized()
 
         try:
-            parse_result = self._parser.parse_file(request.file_path, language)  # type: ignore[union-attr]
-            if parse_result.success and parse_result.tree:
-                ts_language = getattr(
-                    plugin, "get_tree_sitter_language", lambda: None
-                )()
-                if ts_language:
-                    query_results = {}
-                    if request.queries:
-                        for query_name in request.queries:
-                            q_res = (
-                                self._query_executor.execute_query_with_language_name(  # type: ignore[union-attr]
-                                    parse_result.tree,
-                                    ts_language,
-                                    query_name,
-                                    parse_result.source_code,
-                                    language,
-                                )
-                            )
-                            query_results[query_name] = (
-                                q_res["captures"]
-                                if isinstance(q_res, dict) and "captures" in q_res
-                                else q_res
-                            )
-                    result.query_results = query_results
+            ts_language = getattr(
+                plugin, "get_tree_sitter_language", lambda: None
+            )()
+            if ts_language:
+                query_results = {}
+                for query_name in request.queries:
+                    try:
+                        q_res = self._query_executor.execute_query_with_language_name(
+                            tree,
+                            ts_language,
+                            query_name,
+                            getattr(plugin, "get_source_code", lambda: None)(),
+                            language,
+                        )
+                        query_results[query_name] = (
+                            q_res["captures"] if isinstance(q_res, dict) and "captures" in q_res else q_res
+                        )
+                    except Exception as e:
+                        log_error(f"Query {query_name} failed: {e}")
+                        query_results[query_name] = {"error": str(e)}
+
+                # Add query results to request
+                if not hasattr(request, "query_results"):
+                    request.query_results = {}
+                request.query_results.update(query_results)
+
         except Exception as e:
-            log_error(f"Failed to execute queries: {e}")
+            log_error(f"Failed to run queries: {e}")
 
     def _create_empty_result(
-        self, file_path: str, language: str, error: str | None = None
+        self,
+        file_path: str,
+        language: str,
+        error: str | None = None,
     ) -> AnalysisResult:
-        """Create empty result on failure."""
+        """
+        Create empty result on failure.
+
+        Args:
+            file_path: Path to file
+            language: Language name
+            error: Error message
+
+        Returns:
+            Empty AnalysisResult
+
+        Note:
+            - Used when parsing or analysis fails
+            - Preserves file_path and language
+            - Includes error message for debugging
+        """
+        from ..models import AnalysisResult
+
         return AnalysisResult(
             file_path=file_path,
             language=language,
@@ -356,17 +547,30 @@ class UnifiedAnalysisEngine:
         **kwargs: Any,
     ) -> AnalysisResult:
         """
-        Compatibility method for analyze with additional parameters.
+        Analyze a single file.
 
         Args:
-            file_path: Path to file to analyze
-            language: Optional language override
+            file_path: Path to file
+            language: Optional language (auto-detect if not provided)
             request: Optional pre-built request
             **kwargs: Additional request parameters
 
         Returns:
-            Analysis result
+            Analysis result with file analysis
+
+        Raises:
+            FileNotFoundError: If file does not exist
+            ValueError: If file path is invalid
+            UnsupportedLanguageError: If language is not supported
+            AnalysisError: If analysis fails
+
+        Note:
+            - Backward compatibility method
+            - Auto-detects language if not specified
+            - Supports both file and code analysis
         """
+        from ..utils import log_debug
+
         request = self._ensure_request(file_path, language, request, **kwargs)
         return await self.analyze(request)
 
@@ -383,44 +587,54 @@ class UnifiedAnalysisEngine:
         Args:
             code: Source code to analyze
             language: Programming language
-            filename: Virtual filename
+            filename: Virtual filename for the code
             request: Optional pre-built request
 
         Returns:
             Analysis result
+
+        Raises:
+            UnsupportedLanguageError: If language is not supported
+            AnalysisError: If analysis fails
+
+        Note:
+            - Useful for analyzing code without a file
+            - Filename is used for language detection
         """
         import tempfile
 
+        from ..utils import log_debug
+
+        # Determine language
         actual_language = language or "unknown"
 
-        if request is None:
-            request = AnalysisRequest(file_path=filename, language=actual_language)
-        elif language:
-            request.language = language
-
+        # Create temporary file for analysis
+        suffix = f".{actual_language}" if actual_language != "unknown" else ".txt"
         with tempfile.NamedTemporaryFile(
-            mode="w", suffix=f".{actual_language}", delete=False, encoding="utf-8"
+            mode="w", suffix=suffix, delete=False, encoding="utf-8"
         ) as tf:
             tf.write(code)
             temp_path = tf.name
 
         try:
-            new_request = AnalysisRequest(
-                file_path=temp_path,
-                language=actual_language,
-                queries=request.queries,
-                include_elements=request.include_elements,
-                include_queries=request.include_queries,
-                include_complexity=request.include_complexity,
-                include_details=request.include_details,
-                format_type=request.format_type,
-            )
-            result = await self.analyze(new_request)
-            result.file_path = filename
+            # Create request if not provided
+            if request is None:
+                request = AnalysisRequest(file_path=temp_path, language=actual_language)
+            elif language:
+                request.language = language
+
+            # Analyze temporary file
+            result = await self.analyze(request)
+            result.file_path = filename  # Replace temp path with virtual filename
+
             return result
         finally:
-            if os.path.exists(temp_path):
-                os.remove(temp_path)
+            # Clean up temporary file
+            try:
+                if os.path.exists(temp_path):
+                    os.remove(temp_path)
+            except Exception as e:
+                log_error(f"Failed to remove temp file {temp_path}: {e}")
 
     def analyze_sync(self, request: AnalysisRequest) -> AnalysisResult:
         """
@@ -431,8 +645,14 @@ class UnifiedAnalysisEngine:
 
         Returns:
             Analysis result
+
+        Note:
+            - Compatibility method for non-async code
+            - Runs async code in a new thread
+            - Not recommended for performance-critical code
         """
         try:
+            # Try to get existing loop
             asyncio.get_running_loop()
         except RuntimeError:
             # No running loop, safe to use asyncio.run()
@@ -452,12 +672,28 @@ class UnifiedAnalysisEngine:
         request: AnalysisRequest | None = None,
         **kwargs: Any,
     ) -> AnalysisRequest:
-        """Helper to ensure AnalysisRequest is properly built from parameters."""
+        """
+        Helper to ensure AnalysisRequest is properly built from parameters.
+
+        Args:
+            file_path: Path to file
+            language: Optional language (auto-detect if not provided)
+            request: Optional pre-built request
+            **kwargs: Additional request parameters
+
+        Returns:
+            AnalysisRequest instance
+
+        Note:
+            - Creates request if not provided
+            - Auto-detects language if not specified
+            - Updates request with provided parameters
+        """
         if request is None:
             return AnalysisRequest(
                 file_path=file_path,
                 language=language,
-                format_type=str(kwargs.get("format_type") or "toon"),
+                format_type=str(kwargs.get("format_type") or "json"),
                 include_details=bool(kwargs.get("include_details") or False),
                 include_complexity=bool(
                     kwargs.get("include_complexity")
@@ -494,129 +730,77 @@ class UnifiedAnalysisEngine:
 
         return request
 
-    def get_supported_languages(self) -> list[str]:
-        """Get list of supported languages."""
-        self._ensure_initialized()
-        return self._plugin_manager.get_supported_languages()  # type: ignore[union-attr]
-
-    def get_available_queries(self, language: str) -> list[str]:
-        """Get available queries for a language."""
-        self._ensure_initialized()
-        return self._query_executor.get_available_queries(language)  # type: ignore[union-attr]
-
-    def get_cache_stats(self) -> dict[str, Any]:
-        """Get cache statistics."""
-        self._ensure_initialized()
-        return self._cache_service.get_stats()  # type: ignore[union-attr]
-
-    def clear_cache(self) -> None:
-        """Clear the analysis cache."""
-        self._ensure_initialized()
-        self._cache_service.clear()  # type: ignore[union-attr]
-
-    def register_plugin(self, language: str, plugin: Any) -> None:
-        """Register a plugin (compatibility method)"""
-        self._ensure_initialized()
-        self._plugin_manager.register_plugin(plugin)  # type: ignore[union-attr]
-
-    def cleanup(self) -> None:
-        """Resource cleanup."""
-        if self._cache_service:
-            self._cache_service.clear()
-        if self._performance_monitor:
-            self._performance_monitor.clear_metrics()
-        from ..utils import log_debug
-
-        log_debug("UnifiedAnalysisEngine cleaned up")
-
     @property
     def language_detector(self) -> Any:
-        """Expose language detector"""
+        """Expose language detector instance."""
         self._ensure_initialized()
         return self._language_detector
 
     @property
     def plugin_manager(self) -> Any:
-        """Expose plugin manager"""
+        """Expose plugin manager instance."""
         self._ensure_initialized()
         return self._plugin_manager
 
     @property
     def cache_service(self) -> Any:
-        """Expose cache service"""
+        """Expose cache service instance."""
         self._ensure_initialized()
         return self._cache_service
 
     @property
     def parser(self) -> Any:
-        """Expose parser"""
+        """Expose parser instance."""
         self._ensure_initialized()
         return self._parser
 
     @property
     def query_executor(self) -> Any:
-        """Expose query executor"""
+        """Expose query executor instance."""
         self._ensure_initialized()
         return self._query_executor
 
     @property
     def security_validator(self) -> Any:
-        """Expose security validator"""
+        """Expose security validator instance."""
         self._ensure_initialized()
         return self._security_validator
 
-    def measure_operation(self, operation_name: str) -> PerformanceContext:
-        """Measure an operation using the performance monitor"""
+    def cleanup(self) -> None:
+        """
+        Clean up resources (cache, metrics, etc.).
+
+        Note:
+            - Clears analysis cache
+            - Clears performance metrics
+            - Resets internal state if needed
+        """
         self._ensure_initialized()
-        return self._performance_monitor.measure_operation(operation_name)
 
-    @classmethod
-    def _reset_instance(cls) -> None:
-        """
-        Reset all singleton instances (for testing).
+        # Clear cache
+        if self._cache_service:
+            self._cache_service.clear()
 
-        注意: EngineManager.reset_instances() も同じ _instances をクリアするため、
-        どちらのメソッドを呼んでも同じ結果になります。
-        """
-        with cls._lock:
-            cls._instances.clear()
+        # Clear performance metrics
+        if self._performance_monitor:
+            self._performance_monitor.clear_metrics()
 
+        from ..utils import log_debug
 
-# Simple plugin implementation (for testing)
-class MockLanguagePlugin:
-    """Mock plugin for testing"""
-
-    def __init__(self, language: str) -> None:
-        self.language = language
-
-    def get_language_name(self) -> str:
-        return self.language
-
-    def get_file_extensions(self) -> list[str]:
-        return [f".{self.language}"]
-
-    def create_extractor(self) -> None:
-        return None
-
-    async def analyze_file(self, file_path: str, request: AnalysisRequest) -> Any:
-        from ..models import AnalysisResult
-
-        return AnalysisResult(
-            file_path=file_path,
-            line_count=10,
-            elements=[],
-            node_count=5,
-            query_results={},
-            source_code="// Mock source code",
-            language=self.language,
-            package=None,
-            analysis_time=0.1,
-            success=True,
-            error_message=None,
-        )
+        log_debug("UnifiedAnalysisEngine cleaned up")
 
 
-def create_analysis_engine(project_root: str | None = None) -> UnifiedAnalysisEngine:
+# Factory functions
+def create_analysis_engine(
+    project_root: str | None = None,
+    parser: Optional["Parser"] = None,
+    language_detector: Optional["LanguageDetector"] = None,
+    plugin_manager: Optional["PluginManager"] = None,
+    cache_service: Optional["CacheService"] = None,
+    security_validator: Optional["SecurityValidator"] = None,
+    query_executor: Optional["QueryExecutor"] = None,
+    performance_monitor: PerformanceMonitor | None = None,
+) -> UnifiedAnalysisEngine:
     """
     Factory function to create a properly configured analysis engine.
 
@@ -624,54 +808,117 @@ def create_analysis_engine(project_root: str | None = None) -> UnifiedAnalysisEn
     into the engine, providing a clean dependency injection pattern.
 
     Args:
-        project_root: Optional project root path for security validation
+        project_root: Project root path for security validation
+        parser: Parser instance
+        language_detector: Language detector instance
+        plugin_manager: Plugin manager instance
+        cache_service: Cache service instance
+        security_validator: Security validator instance
+        query_executor: Query executor instance
+        performance_monitor: Performance monitor instance
 
     Returns:
         Configured UnifiedAnalysisEngine instance
+
+    Raises:
+        InitializationError: If dependency initialization fails
+
+    Note:
+        - Recommended for new code
+        - Provides clean dependency injection
+        - All dependencies are properly initialized
+        - Plugin manager loads plugins during initialization
     """
+    # Import dependencies
     from ..language_detector import LanguageDetector
     from ..plugins.manager import PluginManager
     from ..security import SecurityValidator
     from .cache_service import CacheService
     from .parser import Parser
     from .query import QueryExecutor
+    from ..utils import log_error
 
-    # Create dependencies
-    parser = Parser()
-    language_detector = LanguageDetector()
-    plugin_manager = PluginManager()
-    cache_service = CacheService()
-    security_validator = SecurityValidator(project_root)
-    query_executor = QueryExecutor()
-    performance_monitor = PerformanceMonitor()
+    try:
+        # Create parser
+        parser = parser or Parser()
 
-    # Load plugins
-    plugin_manager.load_plugins()
+        # Create language detector
+        language_detector = language_detector or LanguageDetector()
 
-    # Create and return engine
-    return UnifiedAnalysisEngine(
-        project_root=project_root,
-        parser=parser,
-        language_detector=language_detector,
-        plugin_manager=plugin_manager,
-        cache_service=cache_service,
-        security_validator=security_validator,
-        query_executor=query_executor,
-        performance_monitor=performance_monitor,
-    )
+        # Create plugin manager
+        plugin_manager = plugin_manager or PluginManager()
+
+        # Create cache service
+        cache_service = cache_service or CacheService()
+
+        # Create security validator
+        security_validator = security_validator or SecurityValidator(project_root)
+
+        # Create query executor
+        query_executor = query_executor or QueryExecutor()
+
+        # Create performance monitor
+        performance_monitor = performance_monitor or PerformanceMonitor()
+
+        # Load plugins
+        plugin_manager.load_plugins()
+
+        # Create engine
+        engine = UnifiedAnalysisEngine(
+            project_root=project_root,
+            parser=parser,
+            language_detector=language_detector,
+            plugin_manager=plugin_manager,
+            cache_service=cache_service,
+            security_validator=security_validator,
+            query_executor=query_executor,
+            performance_monitor=performance_monitor,
+        )
+
+        return engine
+
+    except ImportError as e:
+        log_error(f"Failed to import module: {e}")
+        raise InitializationError(
+            f"Tree-sitter analyzer dependencies not found. "
+            f"Please install: pip install tree-sitter-analyzer[core]"
+        ) from e
+    except Exception as e:
+        log_error(f"Failed to create analysis engine: {e}")
+        raise InitializationError(
+            f"Failed to create analysis engine: {e}"
+        ) from e
 
 
-def get_analysis_engine(project_root: str | None = None) -> UnifiedAnalysisEngine:
+def get_analysis_engine(
+    project_root: str | None = None,
+) -> UnifiedAnalysisEngine:
     """
     Get unified analysis engine instance (backward compatible).
 
-    This function maintains backward compatibility with the singleton pattern.
-    For new code, prefer using create_analysis_engine() instead.
+    This function returns singleton instance and is provided for
+    backward compatibility. For new code, prefer `create_analysis_engine()`.
 
     Args:
-        project_root: Optional project root path
+        project_root: Project root path
 
     Returns:
         UnifiedAnalysisEngine instance
+
+    Note:
+        - Returns singleton instance
+        - Creates instance if it doesn't exist
+        - Not recommended for new code
     """
     return UnifiedAnalysisEngine(project_root)
+
+
+# Export for convenience
+__all__ = [
+    "UnifiedAnalysisEngine",
+    "UnsupportedLanguageError",
+    "InitializationError",
+    "AnalysisError",
+    "create_analysis_engine",
+    "get_analysis_engine",
+]

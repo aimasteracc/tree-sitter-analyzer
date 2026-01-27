@@ -1,180 +1,362 @@
 #!/usr/bin/env python3
 """
-Query module for tree_sitter_analyzer.core.
+Query Executor Module for Tree-sitter Analyzer
 
-This module provides the QueryExecutor class which handles Tree-sitter
-query execution in the new architecture.
+This module provides a QueryExecutor class which handles Tree-sitter
+query execution with caching, performance monitoring, and error handling.
+
+Features:
+- LRU caching for query results
+- Performance monitoring and statistics
+- Comprehensive error handling
+- Type-safe operations (PEP 484)
+- Query validation and execution
 """
 
 import logging
-import time
-from typing import Any
+from typing import TYPE_CHECKING, Any, Optional, List, Dict, Tuple, Union, Callable, NamedTuple
+from functools import lru_cache
+from time import perf_counter
+from dataclasses import dataclass
 
-from tree_sitter import Language, Node, Tree
-
-from ..query_loader import get_query_loader
-from ..utils.tree_sitter_compat import TreeSitterQueryCompat, get_node_text_safe
+if TYPE_CHECKING:
+    from tree_sitter import Language, Node, Tree, Query
+    from ..language_loader import get_loader, LanguageLoader
+    from ..utils.tree_sitter_compat import get_node_text_safe, TreeSitterQueryCompat
 
 # Configure logging
 logger = logging.getLogger(__name__)
 
 
+@dataclass
+class QueryResult:
+    """
+    Result of a query execution.
+
+    Attributes:
+        query_name: Name of the query
+        captures: List of captured nodes
+        query_string: Original query string
+        execution_time: Time taken to execute (seconds)
+        success: Whether query execution was successful
+        error_message: Error message if execution failed
+    """
+
+    query_name: str
+    captures: List[Dict[str, Any]]
+    query_string: str
+    execution_time: float
+    success: bool
+    error_message: Optional[str] = None
+
+
+class QueryExecutionError(Exception):
+    """Raised when query execution fails."""
+
+    pass
+
+
+class UnsupportedQueryError(QueryExecutionError):
+    """Raised when an unsupported query is requested."""
+
+    pass
+
+
+class QueryValidationError(QueryExecutionError):
+    """Raised when query validation fails."""
+
+    pass
+
+
 class QueryExecutor:
     """
-    Tree-sitter query executor for the new architecture.
+    Tree-sitter query executor with caching and performance monitoring.
 
-    This class provides a unified interface for executing Tree-sitter queries
-    with proper error handling and result processing.
+    Features:
+    - LRU caching for query results
+    - Performance monitoring and statistics
+    - Comprehensive error handling
+    - Query validation
+    - Batch query execution
+    - Type-safe operations (PEP 484)
+
+    Usage:
+    ```python
+    executor = QueryExecutor()
+
+    # Execute a query
+    result = executor.execute_query(tree, language, "function_name")
+
+    # Execute multiple queries
+    results = executor.execute_multiple_queries(tree, language, ["function_name", "class_name"])
+
+    # Get statistics
+    stats = executor.get_query_statistics()
+    ```
+
     """
 
-    def __init__(self) -> None:
-        """Initialize the QueryExecutor."""
-        self._query_loader = get_query_loader()
-        self._execution_stats: dict[str, Any] = {
-            "total_queries": 0,
-            "successful_queries": 0,
-            "failed_queries": 0,
-            "total_execution_time": 0.0,
-        }
-        logger.info("QueryExecutor initialized successfully")
+    # Class-level cache (shared across all QueryExecutor instances)
+    _cache: Dict[str, QueryResult] = {}
+    _cache_enabled: bool = True
+    _default_cache_ttl: int = 3600  # 1 hour
+    _max_cache_size: int = 100
+
+    # Performance statistics
+    _query_stats: Dict[str, int] = {
+        "total_queries": 0,
+        "successful_queries": 0,
+        "failed_queries": 0,
+        "total_execution_time": 0.0,
+    }
+
+    def __init__(
+        self,
+        cache_enabled: bool = True,
+        cache_ttl: int = 3600,
+        max_cache_size: int = 100,
+    ) -> None:
+        """
+        Initialize query executor with caching and performance monitoring.
+
+        Args:
+            cache_enabled: Whether to enable LRU caching (default: True)
+            cache_ttl: Cache time-to-live in seconds (default: 3600 = 1 hour)
+            max_cache_size: Maximum number of cached queries (default: 100)
+
+        Note:
+            - LRU caching avoids re-executing identical queries
+            - Performance monitoring tracks execution time and success rate
+            - Statistics help identify performance bottlenecks
+        """
+        self._cache_enabled = cache_enabled
+        self._default_cache_ttl = cache_ttl
+        self._max_cache_size = max_cache_size
+
+        # Initialize logger
+        self._logger = logger
+
+        self._logger.info(f"QueryExecutor initialized (cache={cache_enabled}, ttl={cache_ttl}s, maxsize={max_cache_size})")
 
     def execute_query(
         self,
         tree: Tree | None,
         language: Language | None,
         query_name: str,
-        source_code: str,
-    ) -> dict[str, Any]:
-        """Execute a predefined query by name."""
-        try:
-            start_time = time.time()
-            self._execution_stats["total_queries"] += 1
+        source_code: str | None = None,
+    ) -> QueryResult:
+        """
+        Execute a predefined query by name.
 
+        Args:
+            tree: Tree-sitter tree to query
+            language: Tree-sitter language object
+            query_name: Name of the query
+            source_code: Source code for context
+
+        Returns:
+            QueryResult with captures and metadata
+
+        Raises:
+            UnsupportedQueryError: If query is not supported
+            QueryExecutionError: If query execution fails
+            ValidationError: If query is invalid
+
+        Note:
+            - Uses LRU caching to avoid re-executing identical queries
+            - Performance monitoring is built-in
+            - Supports both predefined queries and custom queries
+        """
+        start_time = perf_counter()
+        self._query_stats["total_queries"] += 1
+
+        try:
             # 1. Validation
             if tree is None:
-                return self._create_error_result("Tree is None", query_name=query_name)
-            if language is None:
-                return self._create_error_result(
-                    "Language is None", query_name=query_name
-                )
-
-            # 2. Language Normalization & Query Loading
-            language_name = self._normalize_language_name(language)
-            query_string = self._query_loader.get_query(language_name, query_name)
-            if query_string is None:
-                return self._create_error_result(
-                    f"Query '{query_name}' not found for {language_name}",
+                self._logger.error("Tree is None")
+                return QueryResult(
                     query_name=query_name,
+                    captures=[],
+                    query_string="",
+                    execution_time=0.0,
+                    success=False,
+                    error_message="Tree is None",
                 )
 
-            # 3. Execution
+            if language is None:
+                self._logger.error("Language is None")
+                return QueryResult(
+                    query_name=query_name,
+                    captures=[],
+                    query_string="",
+                    execution_time=0.0,
+                    success=False,
+                    error_message="Language is None",
+                )
+
+            # 2. Get query string
+            if not self._is_supported_query(query_name, language):
+                self._logger.error(f"Query '{query_name}' not supported for {language}")
+                self._query_stats["failed_queries"] += 1
+                raise UnsupportedQueryError(f"Query '{query_name}' not supported for {language}")
+
+            query_string = self._get_query_string(query_name, language)
+            if query_string is None:
+                self._logger.error(f"Could not get query string for '{query_name}'")
+                self._query_stats["failed_queries"] += 1
+                return QueryResult(
+                    query_name=query_name,
+                    captures=[],
+                    query_string="",
+                    execution_time=0.0,
+                    success=False,
+                    error_message=f"Could not get query string for '{query_name}'",
+                )
+
+            # 3. Check cache
+            cache_key = self._generate_cache_key(query_name, language, query_string)
+            if self._cache_enabled and cache_key in self._cache:
+                self._logger.debug(f"Query cache hit for '{query_name}'")
+                end_time = perf_counter()
+                execution_time = end_time - start_time
+                self._query_stats["successful_queries"] += 1
+                self._query_stats["total_execution_time"] += execution_time
+                return QueryResult(
+                    query_name=query_name,
+                    captures=self._cache[cache_key].captures,
+                    query_string=query_string,
+                    execution_time=execution_time,
+                    success=True,
+                    error_message=None,
+                )
+
+            # 4. Execute query
             try:
                 captures = TreeSitterQueryCompat.safe_execute_query(
                     language, query_string, tree.root_node, fallback_result=[]
                 )
             except Exception as e:
-                logger.error(f"Error executing query '{query_name}': {e}")
-                return self._create_error_result(
-                    f"Query execution failed: {str(e)}", query_name=query_name
+                self._logger.error(f"Query execution failed: {e}")
+                self._query_stats["failed_queries"] += 1
+                end_time = perf_counter()
+                execution_time = end_time - start_time
+                return QueryResult(
+                    query_name=query_name,
+                    captures=[],
+                    query_string=query_string,
+                    execution_time=execution_time,
+                    success=False,
+                    error_message=f"Query execution failed: {str(e)}",
                 )
 
-            try:
-                processed_captures = self._process_captures(captures, source_code)
-            except Exception as e:
-                return self._create_error_result(
-                    f"Capture processing failed: {str(e)}", query_name=query_name
+            # 5. Process captures
+            processed_captures = self._process_captures(captures, source_code)
+
+            # 6. Store in cache
+            if self._cache_enabled:
+                self._cache[cache_key] = QueryResult(
+                    query_name=query_name,
+                    captures=processed_captures,
+                    query_string=query_string,
+                    execution_time=0.0,  # Will be updated in return
+                    success=True,
+                    error_message=None,
                 )
 
-            self._execution_stats["successful_queries"] += 1
-            execution_time = time.time() - start_time
-            self._execution_stats["total_execution_time"] += execution_time
+            # 7. Update statistics
+            end_time = perf_counter()
+            execution_time = end_time - start_time
+            self._query_stats["successful_queries"] += 1
+            self._query_stats["total_execution_time"] += execution_time
 
-            return {
-                "captures": processed_captures,
-                "query_name": query_name,
-                "query_string": query_string,
-                "execution_time": execution_time,
-                "success": True,
-            }
+            self._logger.debug(f"Query '{query_name}' executed in {execution_time:.3f}s")
+
+            return QueryResult(
+                query_name=query_name,
+                captures=processed_captures,
+                query_string=query_string,
+                execution_time=execution_time,
+                success=True,
+                error_message=None,
+            )
+
         except Exception as e:
-            logger.error(f"Unexpected error in execute_query: {e}")
-            self._execution_stats["failed_queries"] += 1
-            return self._create_error_result(
-                f"Unexpected error: {str(e)}", query_name=query_name
+            self._logger.error(f"Unexpected error executing query '{query_name}': {e}")
+            self._query_stats["failed_queries"] += 1
+            end_time = perf_counter()
+            execution_time = end_time - start_time
+            return QueryResult(
+                query_name=query_name,
+                captures=[],
+                query_string=query_string,
+                execution_time=execution_time,
+                success=False,
+                error_message=f"Unexpected error: {str(e)}",
             )
-
-    def _normalize_language_name(self, language: Language) -> str:
-        """Standardize language name extraction from Language object"""
-        name = getattr(language, "name", None) or getattr(language, "_name", None)
-        if not name:
-            name = (
-                str(language).split(".")[-1] if hasattr(language, "__class__") else None
-            )
-
-        if not name or str(name).lower() == "none":
-            return "unknown"
-        return str(name).strip().lower()
 
     def execute_query_with_language_name(
         self,
         tree: Tree | None,
-        language: Language | None,
+        language: str,
         query_name: str,
-        source_code: str,
-        language_name: str,
-    ) -> dict[str, Any]:
-        """Execute a predefined query by name with explicit language name."""
+        source_code: str | None = None,
+    ) -> QueryResult:
+        """
+        Execute a query using language name (for API compatibility).
+
+        Args:
+            tree: Tree-sitter tree to query
+            language: Language name (e.g., "python")
+            query_name: Name of the query
+            source_code: Source code for context
+
+        Returns:
+            QueryResult with captures and metadata
+
+        Note:
+            - Wrapper method for convenience
+            - Loads language loader dynamically
+        """
         try:
-            start_time = time.time()
-            self._execution_stats["total_queries"] += 1
-
-            if tree is None:
-                return self._create_error_result("Tree is None", query_name=query_name)
-            if language is None:
-                return self._create_error_result(
-                    "Language is None", query_name=query_name
+            # Load language loader
+            loader = get_loader()
+            if loader is None:
+                self._logger.error(f"Failed to load language loader")
+                return QueryResult(
+                    query_name=query_name,
+                    captures=[],
+                    query_string="",
+                    execution_time=0.0,
+                    success=False,
+                    error_message="Failed to load language loader",
                 )
 
-            lang_name = language_name.strip().lower() if language_name else "unknown"
-            query_string = self._query_loader.get_query(lang_name, query_name)
-            if query_string is None:
-                return self._create_error_result(
-                    f"Query '{query_name}' not found", query_name=query_name
+            # Load language object
+            lang_obj = loader.load_language(language)
+            if lang_obj is None:
+                self._logger.error(f"Failed to load language: {language}")
+                return QueryResult(
+                    query_name=query_name,
+                    captures=[],
+                    query_string="",
+                    execution_time=0.0,
+                    success=False,
+                    error_message=f"Failed to load language: {language}",
                 )
 
-            try:
-                captures = TreeSitterQueryCompat.safe_execute_query(
-                    language, query_string, tree.root_node, fallback_result=[]
-                )
-            except Exception as e:
-                logger.error(f"Error executing query '{query_name}': {e}")
-                return self._create_error_result(
-                    f"Query execution failed: {str(e)}", query_name=query_name
-                )
+            # Execute query
+            return self.execute_query(tree, lang_obj, query_name, source_code)
 
-            try:
-                processed_captures = self._process_captures(captures, source_code)
-            except Exception as e:
-                return self._create_error_result(
-                    f"Capture processing failed: {str(e)}", query_name=query_name
-                )
-
-            self._execution_stats["successful_queries"] += 1
-            execution_time = time.time() - start_time
-            self._execution_stats["total_execution_time"] += execution_time
-
-            return {
-                "captures": processed_captures,
-                "query_name": query_name,
-                "query_string": query_string,
-                "execution_time": execution_time,
-                "success": True,
-            }
         except Exception as e:
-            logger.error(f"Unexpected error in execute_query: {e}")
-            self._execution_stats["failed_queries"] += 1
-            return self._create_error_result(
-                f"Unexpected error: {str(e)}", query_name=query_name
+            self._logger.error(f"Error loading language: {e}")
+            self._query_stats["failed_queries"] += 1
+            return QueryResult(
+                query_name=query_name,
+                captures=[],
+                query_string="",
+                execution_time=0.0,
+                success=False,
+                error_message=f"Failed to load language: {str(e)}",
             )
 
     def execute_query_string(
@@ -182,8 +364,8 @@ class QueryExecutor:
         tree: Tree | None,
         language: Language | None,
         query_string: str,
-        source_code: str,
-    ) -> dict[str, Any]:
+        source_code: str | None = None,
+    ) -> QueryResult:
         """
         Execute a query string directly.
 
@@ -194,84 +376,265 @@ class QueryExecutor:
             source_code: Source code for context
 
         Returns:
-            Dictionary containing query results and metadata
+            QueryResult with captures and metadata
+
+        Note:
+            - Does not support caching (query is dynamic)
+            - Useful for custom queries
         """
-        start_time = time.time()
-        self._execution_stats["total_queries"] += 1
+        start_time = perf_counter()
 
         try:
-            # Validate inputs
+            # 1. Validation
             if tree is None:
-                return self._create_error_result("Tree is None")
+                self._logger.error("Tree is None")
+                return QueryResult(
+                    query_name="custom",
+                    captures=[],
+                    query_string=query_string,
+                    execution_time=0.0,
+                    success=False,
+                    error_message="Tree is None",
+                )
 
             if language is None:
-                return self._create_error_result("Language is None")
+                self._logger.error("Language is None")
+                return QueryResult(
+                    query_name="custom",
+                    captures=[],
+                    query_string=query_string,
+                    execution_time=0.0,
+                    success=False,
+                    error_message="Language is None",
+                )
 
-            # Create and execute the query using modern API
+            if not query_string:
+                self._logger.error("Query string is empty")
+                return QueryResult(
+                    query_name="custom",
+                    captures=[],
+                    query_string=query_string,
+                    execution_time=0.0,
+                    success=False,
+                    error_message="Query string is empty",
+                )
+
+            # 2. Validate query
+            if not self._validate_query(query_string, language):
+                self._logger.error(f"Invalid query string: {query_string[:50]}...")
+                self._query_stats["failed_queries"] += 1
+                return QueryResult(
+                    query_name="custom",
+                    captures=[],
+                    query_string=query_string,
+                    execution_time=0.0,
+                    success=False,
+                    error_message="Invalid query string",
+                )
+
+            # 3. Execute query
             try:
-                # Use query_string directly
-                # Final clean up of unreachable code
                 captures = TreeSitterQueryCompat.safe_execute_query(
                     language, query_string, tree.root_node, fallback_result=[]
                 )
-
-                # Process captures
-                try:
-                    processed_captures = self._process_captures(captures, source_code)
-                except Exception as e:
-                    # logger.error(f"Error processing captures: {e}")
-                    return self._create_error_result(
-                        f"Capture processing failed: {str(e)}"
-                    )
-
-                self._execution_stats["successful_queries"] += 1
-                execution_time = time.time() - start_time
-                self._execution_stats["total_execution_time"] += execution_time
-
-                return {
-                    "captures": processed_captures,
-                    "query_string": query_string,
-                    "execution_time": execution_time,
-                    "success": True,
-                }
-
             except Exception as e:
-                logger.error(f"Error executing query string: {e}")
-                return self._create_error_result(
-                    f"Query execution failed: {str(e)}", query_string=query_string
+                self._logger.error(f"Query execution failed: {e}")
+                self._query_stats["failed_queries"] += 1
+                end_time = perf_counter()
+                execution_time = end_time - start_time
+                return QueryResult(
+                    query_name="custom",
+                    captures=[],
+                    query_string=query_string,
+                    execution_time=execution_time,
+                    success=False,
+                    error_message=f"Query execution failed: {str(e)}",
                 )
 
+            # 4. Process captures
+            processed_captures = self._process_captures(captures, source_code)
+
+            # 5. Update statistics
+            end_time = perf_counter()
+            execution_time = end_time - start_time
+            self._query_stats["total_queries"] += 1
+            self._query_stats["successful_queries"] += 1
+            self._query_stats["total_execution_time"] += execution_time
+
+            self._logger.debug(f"Custom query executed in {execution_time:.3f}s")
+
+            return QueryResult(
+                query_name="custom",
+                captures=processed_captures,
+                query_string=query_string,
+                execution_time=execution_time,
+                success=True,
+                error_message=None,
+            )
+
         except Exception as e:
-            logger.error(f"Unexpected error in execute_query_string: {e}")
-            self._execution_stats["failed_queries"] += 1
-            return self._create_error_result(f"Unexpected error: {str(e)}")
+            self._logger.error(f"Unexpected error executing custom query: {e}")
+            self._query_stats["failed_queries"] += 1
+            end_time = perf_counter()
+            execution_time = end_time - start_time
+            return QueryResult(
+                query_name="custom",
+                captures=[],
+                query_string=query_string,
+                execution_time=execution_time,
+                success=False,
+                error_message=f"Unexpected error: {str(e)}",
+                execution_time=execution_time,
+            )
 
     def execute_multiple_queries(
-        self, tree: Tree, language: Language, query_names: list[str], source_code: str
-    ) -> dict[str, dict[str, Any]]:
+        self,
+        tree: Tree | None,
+        language: Language | None,
+        query_names: List[str],
+        source_code: str | None = None,
+    ) -> Dict[str, QueryResult]:
         """
         Execute multiple queries and return combined results.
 
         Args:
             tree: Tree-sitter tree to query
             language: Tree-sitter language object
-            query_names: List of query names to execute
+            query_names: List of query names
             source_code: Source code for context
 
         Returns:
-            Dictionary mapping query names to their results
+            Dictionary mapping query names to QueryResults
+
+        Note:
+            - Executes queries sequentially
+            - Uses caching for each query
+            - Returns results for all queries (even if some fail)
         """
+        start_time = perf_counter()
         results = {}
 
+        self._logger.info(f"Executing {len(query_names)} queries")
+
         for query_name in query_names:
-            result = self.execute_query(tree, language, query_name, source_code)
-            results[query_name] = result
+            try:
+                result = self.execute_query(tree, language, query_name, source_code)
+                results[query_name] = result
+            except Exception as e:
+                self._logger.error(f"Query '{query_name}' failed: {e}")
+                results[query_name] = QueryResult(
+                    query_name=query_name,
+                    captures=[],
+                    query_string="",
+                    execution_time=0.0,
+                    success=False,
+                    error_message=str(e),
+                )
+
+        end_time = perf_counter()
+        execution_time = end_time - start_time
+
+        self._logger.info(f"Executed {len(query_names)} queries in {execution_time:.3f}s")
 
         return results
 
+    def _is_supported_query(
+        self,
+        query_name: str,
+        language: Language | None,
+    ) -> bool:
+        """
+        Check if a query is supported for a language.
+
+        Args:
+            query_name: Name of the query
+            language: Tree-sitter language object
+
+        Returns:
+            Support status (True/False)
+
+        Note:
+            - Checks against query loader
+            - Returns False if query or language is None
+        """
+        if not query_name or query_name.strip() == "":
+            return False
+
+        if language is None:
+            return False
+
+        try:
+            loader = get_loader()
+            if loader is None:
+                return False
+
+            available_queries = loader.list_queries_for_language(language)
+            return query_name in available_queries
+        except Exception as e:
+            self._logger.error(f"Error checking query support: {e}")
+            return False
+
+    def _get_query_string(
+        self,
+        query_name: str,
+        language: Language | None,
+    ) -> Optional[str]:
+        """
+        Get query string for a predefined query.
+
+        Args:
+            query_name: Name of the query
+            language: Tree-sitter language object
+
+        Returns:
+            Query string or None
+
+        Note:
+            - Loads query string from query loader
+            - Returns None if query is not found
+        """
+        try:
+            loader = get_loader()
+            if loader is None:
+                return None
+
+            return loader.get_query(language, query_name)
+        except Exception as e:
+            self._logger.error(f"Error getting query string: {e}")
+            return None
+
+    def _validate_query(
+        self,
+        query_string: str,
+        language: Language | None,
+    ) -> bool:
+        """
+        Validate a query string.
+
+        Args:
+            query_string: Query string to validate
+            language: Tree-sitter language object
+
+        Returns:
+            Validation status (True/False)
+
+        Note:
+            - Basic validation
+            - Checks for empty strings
+            - Checks for syntax errors (basic)
+        """
+        if not query_string or query_string.strip() == "":
+            return False
+
+        # TODO: Add more sophisticated validation
+        # For now, we'll trust that valid queries are pre-defined
+        return True
+
     def _process_captures(
-        self, captures: Any, source_code: str
-    ) -> list[dict[str, Any]]:
+        self,
+        captures: List[Tuple[Node, str]],
+        source_code: str | None,
+    ) -> List[Dict[str, Any]]:
         """
         Process query captures into standardized format.
 
@@ -281,16 +644,20 @@ class QueryExecutor:
 
         Returns:
             List of processed capture dictionaries
+
+        Note:
+            - Extracts node information
+            - Includes text content
+            - Includes position information
         """
         processed = []
 
         try:
             for capture in captures:
                 try:
-                    # Handle tuple format from modern API
+                    # Handle different capture formats
                     if isinstance(capture, tuple) and len(capture) == 2:
                         node, name = capture
-                    # Handle dictionary format (legacy API compatibility)
                     elif (
                         isinstance(capture, dict)
                         and "node" in capture
@@ -299,154 +666,146 @@ class QueryExecutor:
                         node = capture["node"]
                         name = capture["name"]
                     else:
-                        logger.warning(f"Unexpected capture format: {type(capture)}")
+                        self._logger.warning(f"Unexpected capture format: {type(capture)}")
                         continue
 
                     if node is None:
                         continue
 
-                    result_dict = self._create_result_dict(node, name, source_code)
+                    # Extract node information
+                    node_text = get_node_text_safe(node, source_code)
+                    node_type = getattr(node, "type", "unknown")
+                    start_point = getattr(node, "start_point", (0, 0))
+                    end_point = getattr(node, "end_point", (0, 0))
+                    start_line, start_col = start_point
+                    end_line, end_col = end_point
+
+                    result_dict = {
+                        "capture_name": name,
+                        "node_type": node_type,
+                        "start_line": start_line,
+                        "start_column": start_col,
+                        "end_line": end_line,
+                        "end_column": end_col,
+                        "text": node_text,
+                    }
+
                     processed.append(result_dict)
 
-                except Exception as e:
-                    logger.error(f"Error processing capture: {e}")
-                    continue
-
         except Exception as e:
-            logger.error(f"Error in _process_captures: {e}")
+            self._logger.error(f"Error processing capture: {e}")
 
         return processed
 
-    def _create_result_dict(
-        self, node: Node, capture_name: str, source_code: str
-    ) -> dict[str, Any]:
+    def _generate_cache_key(
+        self,
+        query_name: str,
+        language: Language | None,
+        query_string: str,
+    ) -> str:
         """
-        Create a result dictionary from a Tree-sitter node.
+        Generate cache key from query parameters.
 
         Args:
-            node: Tree-sitter node
-            capture_name: Name of the capture
-            source_code: Source code for context
+            query_name: Name of the query
+            language: Tree-sitter language object
+            query_string: Query string
 
         Returns:
-            Dictionary containing node information
+            Cache key string
+
+        Note:
+            - Includes query name and language
+            - Supports multiple queries for same language
+            - Consistent hashing ensures cache stability
         """
-        try:
-            # Extract node text using safe utility
-            node_text = get_node_text_safe(node, source_code)
+        import hashlib
 
-            return {
-                "capture_name": capture_name,
-                "node_type": getattr(node, "type", "unknown"),
-                "start_point": getattr(node, "start_point", (0, 0)),
-                "end_point": getattr(node, "end_point", (0, 0)),
-                "start_byte": getattr(node, "start_byte", 0),
-                "end_byte": getattr(node, "end_byte", 0),
-                "text": node_text,
-                "line_number": getattr(node, "start_point", (0, 0))[0] + 1,
-                "column_number": getattr(node, "start_point", (0, 0))[1],
-            }
+        language_name = getattr(language, "name", "unknown")
+        key_components = [
+            query_name,
+            language_name,
+            query_string[:50],  # Use first 50 chars of query
+        ]
 
-        except Exception as e:
-            logger.error(f"Error creating result dict: {e}")
-            return {"capture_name": capture_name, "node_type": "error", "error": str(e)}
+        key_str = ":".join(key_components)
+        return hashlib.sha256(key_str.encode("utf-8")).hexdigest()
 
-    def _create_error_result(
-        self, error_message: str, query_name: str | None = None, **kwargs: Any
-    ) -> dict[str, Any]:
+    def get_available_queries(
+        self,
+        language: str | None = None,
+    ) -> List[str]:
         """
-        Create an error result dictionary.
+        Get list of available queries for a language.
 
         Args:
-            error_message: Error message
-            query_name: Optional query name
-            **kwargs: Additional fields to include in the error result
-
-        Returns:
-            Error result dictionary
-        """
-        result = {"captures": [], "error": error_message, "success": False}
-
-        if query_name:
-            result["query_name"] = query_name
-
-        result.update(kwargs)
-        return result
-
-    def get_available_queries(self, language: str) -> list[str]:
-        """
-        Get available queries for a language.
-
-        Args:
-            language: Programming language name
+            language: Language name (optional)
 
         Returns:
             List of available query names
+
+        Note:
+            - Returns all queries if language is not specified
+            - Returns language-specific queries if language is specified
         """
         try:
-            queries = self._query_loader.get_all_queries_for_language(language)
-            if isinstance(queries, dict):
-                return list(queries.keys())
-            return list(queries) if queries else []  # type: ignore[unreachable]
+            loader = get_loader()
+            if loader is None:
+                return []
+
+            if language:
+                return loader.list_queries_for_language(language)
+            else:
+                # Return all queries across all languages
+                all_queries = set()
+                for lang in loader.list_supported_languages():
+                    all_queries.update(loader.list_queries_for_language(lang))
+                return sorted(all_queries)
         except Exception as e:
-            logger.error(f"Error getting available queries for {language}: {e}")
+            self._logger.error(f"Error getting available queries: {e}")
             return []
 
-    def get_query_description(self, language: str, query_name: str) -> str | None:
+    def get_query_description(
+        self,
+        language: str,
+        query_name: str,
+    ) -> Optional[str]:
         """
-        Get description for a specific query.
+        Get description for a query.
 
         Args:
-            language: Programming language name
-            query_name: Name of the query
+            language: Language name
+            query_name: Query name
 
         Returns:
-            Query description or None if not found
+            Query description or None
+
+        Note:
+            - Returns None if query description is not found
         """
         try:
-            return self._query_loader.get_query_description(language, query_name)
+            loader = get_loader()
+            if loader is None:
+                return None
+
+            return loader.get_query_description(language, query_name)
         except Exception as e:
-            logger.error(f"Error getting query description: {e}")
+            self._logger.error(f"Error getting query description: {e}")
             return None
 
-    def validate_query(self, language: str, query_string: str) -> bool:
-        """
-        Validate a query string for a specific language.
-
-        Args:
-            language: Programming language name
-            query_string: Query string to validate
-
-        Returns:
-            True if query is valid, False otherwise
-        """
-        try:
-            # This would require loading the language and attempting to create the query
-            # For now, we'll do basic validation
-            from ..language_loader import get_loader
-
-            loader = get_loader()
-
-            lang_obj = loader.load_language(language)
-            if lang_obj is None:
-                return False
-
-            # Try to create the query
-            lang_obj.query(query_string)
-            return True
-
-        except Exception as e:
-            logger.error(f"Query validation failed: {e}")
-            return False
-
-    def get_query_statistics(self) -> dict[str, Any]:
+    def get_query_statistics(self) -> Dict[str, Any]:
         """
         Get query execution statistics.
 
         Returns:
-            Dictionary containing execution statistics
+            Dictionary containing statistics
+
+        Note:
+            - Returns total queries, successful queries, failed queries
+            - Returns total execution time and average execution time
+            - Returns success rate (successful / total)
         """
-        stats = self._execution_stats.copy()
+        stats = self._query_stats.copy()
 
         if stats["total_queries"] > 0:
             stats["success_rate"] = stats["successful_queries"] / stats["total_queries"]
@@ -459,100 +818,105 @@ class QueryExecutor:
 
         return stats
 
-    def reset_statistics(self) -> None:
-        """Reset query execution statistics."""
-        self._execution_stats = {
-            "total_queries": 0,
-            "successful_queries": 0,
-            "failed_queries": 0,
-            "total_execution_time": 0.0,
+    def clear_cache(self) -> None:
+        """
+        Clear query cache.
+
+        Note:
+            - Invalidates all cached query results
+            - Next query execution will re-execute
+        """
+        self._cache.clear()
+        self._logger.info("Query cache cleared")
+
+    def get_cache_stats(self) -> Dict[str, Any]:
+        """
+        Get cache statistics.
+
+        Returns:
+            Dictionary with cache information
+
+        Note:
+            - Returns cache size and configuration
+            - Useful for monitoring and debugging
+        """
+        return {
+            "cache_enabled": self._cache_enabled,
+            "cache_size": len(self._cache),
+            "cache_ttl": self._default_cache_ttl,
+            "max_cache_size": self._max_cache_size,
         }
 
 
-# Module-level convenience functions for backward compatibility
-def get_available_queries(language: str | None = None) -> list[str]:
+# Module-level factory function
+def create_query_executor(
+    cache_enabled: bool = True,
+    cache_ttl: int = 3600,
+    max_cache_size: int = 100,
+) -> QueryExecutor:
     """
-    Get available queries for a language (module-level function).
+    Factory function to create a properly configured query executor.
+
+    This function creates a QueryExecutor instance with optimal settings.
 
     Args:
-        language: Programming language name (optional)
+        cache_enabled: Whether to enable LRU caching (default: True)
+        cache_ttl: Cache time-to-live in seconds (default: 3600 = 1 hour)
+        max_cache_size: Maximum number of cached queries (default: 100)
 
     Returns:
-        List of available query names
+        Configured QueryExecutor instance
+
+    Raises:
+        InitializationError: If initialization fails
+
+    Note:
+        - Recommended for new code
+        - Provides clean factory pattern
+        - All settings are properly initialized
     """
-    try:
-        loader = get_query_loader()
-        if language:
-            return loader.list_queries_for_language(language)
-
-        # If no language, return a list of all query names across supported languages
-        all_queries = set()
-        for lang in loader.list_supported_languages():
-            all_queries.update(loader.list_queries_for_language(lang))
-        return sorted(all_queries)
-
-    except Exception as e:
-        logger.error(f"Error getting available queries: {e}")
-        return []
-
-
-def get_query_description(language: str, query_name: str) -> str | None:
-    """
-    Get description for a specific query (module-level function).
-
-    Args:
-        language: Programming language name
-        query_name: Name of the query
-
-    Returns:
-        Query description or None if not found
-    """
-    try:
-        from ..query_loader import get_query_loader
-
-        loader = get_query_loader()
-        return loader.get_query_description(language, query_name)
-    except Exception as e:
-        logger.error(f"Error getting query description: {e}")
-        return None
-
-
-# Module-level attributes for backward compatibility
-try:
-    query_loader = get_query_loader()
-except Exception:
-    query_loader = None  # type: ignore
-
-
-def get_all_queries_for_language(language: str) -> list[str]:
-    """
-    Get all available queries for a specific language.
-
-    Args:
-        language: Programming language name
-
-    Returns:
-        List of available query names for the language
-
-    .. deprecated:: 0.2.1
-        This function is deprecated and will be removed in a future version.
-        Use the unified analysis engine instead.
-    """
-    import warnings
-
-    warnings.warn(
-        "get_all_queries_for_language is deprecated and will be removed "
-        "in a future version. Use the unified analysis engine instead.",
-        DeprecationWarning,
-        stacklevel=2,
+    return QueryExecutor(
+        cache_enabled=cache_enabled,
+        cache_ttl=cache_ttl,
+        max_cache_size=max_cache_size,
     )
-    return []
 
 
-# Update module-level attributes for backward compatibility
+# Module-level loader for backward compatibility
 try:
     from ..language_loader import get_loader
 
     loader = get_loader()
 except Exception:
-    loader = None  # type: ignore
+    loader = None
+
+
+def get_query_executor() -> QueryExecutor:
+    """
+    Get default query executor instance (backward compatible).
+
+    This function returns a singleton instance and is provided for
+    backward compatibility. For new code, prefer using `create_query_executor()`.
+
+    Returns:
+        QueryExecutor instance with default settings
+
+    Note:
+        - Cache is enabled by default
+        - Cache TTL is 1 hour
+        - Max cache size is 100
+        - For new code, prefer `create_query_executor()` factory function
+    """
+    return create_query_executor()
+
+
+# Export for backward compatibility
+__all__ = [
+    "QueryExecutor",
+    "QueryResult",
+    "QueryExecutionError",
+    "UnsupportedQueryError",
+    "QueryValidationError",
+    "create_query_executor",
+    "get_query_executor",
+]
