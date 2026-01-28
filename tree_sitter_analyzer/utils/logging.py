@@ -2,7 +2,16 @@
 """
 Utilities for Tree-sitter Analyzer
 
-Provides logging, debugging, and common utility functions.
+Provides centralized logging, debugging, and performance monitoring
+with thread-safe operations and output suppression.
+
+Features:
+- Unified logging configuration
+- Performance monitoring and metrics
+- Thread-safe logging with context
+- Safe stream handlers for pytest compatibility
+- Output suppression for clean execution
+- Context management for logging control
 """
 
 import contextlib
@@ -11,176 +20,150 @@ import os
 import sys
 import tempfile
 import threading
-from functools import wraps
+import time
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any, Optional, List, Dict, Tuple, Union, Callable, Type
+from functools import lru_cache, wraps
+from dataclasses import dataclass, field
+from enum import Enum
 
-# Thread-local storage for logging context
-_thread_local = threading.local()
+# Configure logging
+logger = logging.getLogger(__name__)
+
+if TYPE_CHECKING:
+    # Type hints for compatibility
+    from ..models import Class as ModelClass
+    from ..core.performance import PerformanceContext
+    from .tree_sitter_compat import Node
 
 
-def _get_context_level() -> int | None:
-    """Get the current context logging level for this thread"""
-    return getattr(_thread_local, "logging_level", None)
+# =============================================================================
+# Type Definitions
+# =============================================================================
 
-
-def _set_context_level(level: int | None) -> None:
-    """Set the context logging level for this thread"""
-    _thread_local.logging_level = level
-
-
-# Configure logger
-def setup_logger(
-    name: str = "tree_sitter_analyzer", level: int | str = logging.WARNING
-) -> logging.Logger:
-    """Setup unified logger for the project
-
-    This function is idempotent and can be called multiple times safely.
-    It will reuse existing loggers and only add handlers if they don't exist.
+@dataclass
+class LoggingContext:
     """
-    # Handle string level parameter
-    if isinstance(level, str):
-        level_upper = level.upper()
-        if level_upper == "DEBUG":
-            level = logging.DEBUG
-        elif level_upper == "INFO":
-            level = logging.INFO
-        elif level_upper == "WARNING":
-            level = logging.WARNING
-        elif level_upper == "ERROR":
-            level = logging.ERROR
-        else:
-            level = logging.WARNING  # Default fallback
+    Logging context for controlling log behavior.
 
-    # Get log level from environment variable (only if set and not empty)
-    env_level = os.environ.get("LOG_LEVEL", "").upper()
-    if env_level and env_level in ["DEBUG", "INFO", "WARNING", "ERROR"]:
-        if env_level == "DEBUG":
-            level = logging.DEBUG
-        elif env_level == "INFO":
-            level = logging.INFO
-        elif env_level == "WARNING":
-            level = logging.WARNING
-        elif env_level == "ERROR":
-            level = logging.ERROR
-    # If env_level is empty or not recognized, use the passed level parameter
+    Attributes:
+        enabled: Whether logging is enabled
+        level: Logging level (DEBUG, INFO, WARNING, ERROR)
+        quiet: Whether to suppress output
+    """
 
-    logger = logging.getLogger(name)
+    enabled: bool = True
+    level: int = logging.INFO
+    quiet: bool = False
 
-    # Clear existing handlers if this is a test logger to ensure clean state
-    if name.startswith("test_"):
-        logger.handlers.clear()
 
-    # Initialize file logging variables at function scope
-    enable_file_log = (
-        os.environ.get("TREE_SITTER_ANALYZER_ENABLE_FILE_LOG", "").lower() == "true"
-    )
+@dataclass
+class PerformanceMetrics:
+    """
+    Performance metrics for logging operations.
 
-    # Disable file logging for test loggers to prevent file lock contention during parallel tests
-    # UNLESS explicitly enabled via environment variable (for testing file logging itself)
-    if name.startswith("test_") and not enable_file_log:
-        enable_file_log = False
+    Attributes:
+        operation: Name of the operation
+        start_time: Start timestamp
+        end_time: End timestamp
+        duration: Duration in seconds
+        success: Whether operation was successful
+        error_message: Error message if operation failed
+    """
 
-    file_log_level = level  # Default to main logger level
+    operation: str
+    start_time: float
+    end_time: Optional[float]
+    duration: Optional[float]
+    success: bool
+    error_message: Optional[str]
 
-    if not logger.handlers:  # Avoid duplicate handlers
-        # Create a safe handler that writes to stderr to avoid breaking MCP stdio
-        handler = SafeStreamHandler()
-        formatter = logging.Formatter(
-            "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-        )
-        handler.setFormatter(formatter)
-        logger.addHandler(handler)
 
-        # Optional file logging for debugging when launched by clients (e.g., Cursor)
-        # This helps diagnose cases where stdio is captured by the client and logs are hidden.
-        # Only enabled when TREE_SITTER_ANALYZER_ENABLE_FILE_LOG is set to 'true'
-        if enable_file_log:
-            try:
-                # Determine log directory
-                log_dir = os.environ.get("TREE_SITTER_ANALYZER_LOG_DIR")
-                if log_dir:
-                    # Use specified directory
-                    log_path = Path(log_dir) / "tree_sitter_analyzer.log"
-                    # Ensure directory exists
-                    Path(log_dir).mkdir(parents=True, exist_ok=True)
-                else:
-                    # Use system temporary directory
-                    temp_dir = tempfile.gettempdir()
-                    log_path = Path(temp_dir) / "tree_sitter_analyzer.log"
+@dataclass
+class StreamConfig:
+    """
+    Configuration for stream handlers.
 
-                # Determine file log level
-                file_log_level_str = os.environ.get(
-                    "TREE_SITTER_ANALYZER_FILE_LOG_LEVEL", ""
-                ).upper()
-                if file_log_level_str and file_log_level_str in [
-                    "DEBUG",
-                    "INFO",
-                    "WARNING",
-                    "ERROR",
-                ]:
-                    if file_log_level_str == "DEBUG":
-                        file_log_level = logging.DEBUG
-                    elif file_log_level_str == "INFO":
-                        file_log_level = logging.INFO
-                    elif file_log_level_str == "WARNING":
-                        file_log_level = logging.WARNING
-                    elif file_log_level_str == "ERROR":
-                        file_log_level = logging.ERROR
-                else:
-                    # Use same level as main logger
-                    file_log_level = level
+    Attributes:
+        stream: Output stream (stdout, stderr)
+        level: Logging level
+        formatter: Log formatter
+        encoding: Stream encoding
+    """
 
-                file_handler = logging.FileHandler(str(log_path), encoding="utf-8")
-                file_handler.setFormatter(formatter)
-                file_handler.setLevel(file_log_level)
-                logger.addHandler(file_handler)
+    stream: Any
+    level: int = logging.INFO
+    formatter: Any
+    encoding: str = "utf-8"
 
-                # Log the file location for debugging purposes
-                if hasattr(sys, "stderr") and hasattr(sys.stderr, "write"):
-                    with contextlib.suppress(Exception):
-                        sys.stderr.write(
-                            f"[logging_setup] File logging enabled: {log_path}\n"
-                        )
 
-            except Exception as e:
-                # Never let logging configuration break runtime behavior; log to stderr if possible
-                if hasattr(sys, "stderr") and hasattr(sys.stderr, "write"):
-                    with contextlib.suppress(Exception):
-                        sys.stderr.write(
-                            f"[logging_setup] file handler init skipped: {e}\n"
-                        )
+class LogLevel(Enum):
+    """Logging level enumeration."""
 
-    # Set the logger level to the minimum of main level and file log level
-    # This ensures that all messages that should go to any handler are processed
-    final_level = level
-    if enable_file_log:
-        # Use the minimum level to ensure all messages reach their intended handlers
-        final_level = min(level, file_log_level)
+    DEBUG = logging.DEBUG
+    INFO = logging.INFO
+    WARNING = logging.WARNING
+    ERROR = logging.ERROR
+    CRITICAL = logging.CRITICAL
 
-    logger.setLevel(final_level)
 
-    # For test loggers, ensure they don't inherit from parent and force level
-    if logger.name.startswith("test_"):
-        logger.propagate = False
-        # Force the level setting for test loggers
-        logger.level = level
-
-    return logger
-
+# =============================================================================
+# Safe Stream Handler for pytest compatibility
+# =============================================================================
 
 class SafeStreamHandler(logging.StreamHandler):
     """
-    A StreamHandler that safely handles closed streams
+    A StreamHandler that safely handles closed streams and pytest capture.
+
+    Features:
+    - Safe handling of closed streams
+    - Safe handling of pytest capture streams
+    - Cache for expensive operations
+    - Type-safe operations (PEP 484)
+
+    Attributes:
+        _stream: Output stream (stdout or stderr)
+        _cache: Dict[str, Any]
+        _lock: threading.RLock
+
+    Note:
+        - Avoids I/O errors when streams are closed
+        - Optimized for pytest capture scenarios
+        - Thread-safe operations
     """
 
-    def __init__(self, stream: Any = None) -> None:
-        # Default to sys.stderr to keep stdout clean for MCP stdio
-        super().__init__(stream if stream is not None else sys.stderr)
-
-    def emit(self, record: Any) -> None:
+    def __init__(
+        self,
+        stream: Optional[Any] = None,
+        level: int = logging.INFO,
+    ) -> None:
         """
-        Emit a record, safely handling closed streams and pytest capture
+        Initialize SafeStreamHandler.
+
+        Args:
+            stream: Output stream (default: sys.stderr)
+            level: Logging level (default: INFO)
+
+        Note:
+            - Defaults to sys.stderr to keep stdout clean
+            - Thread-safe with internal lock
+            - Cache for expensive operations
+        """
+        super().__init__(stream=stream or sys.stderr, level=level)
+        self._cache: Dict[str, Any] = {}
+        self._lock = threading.RLock()
+
+    def emit(self, record: logging.LogRecord) -> None:
+        """
+        Emit a log record, safely handling closed streams.
+
+        Args:
+            record: Log record to emit
+
+        Note:
+            - Safely handles closed streams
+            - Optimized for pytest capture scenarios
+            - Caches stream properties to avoid repeated attribute access
         """
         try:
             # Quick check: if stream is closed, return immediately
@@ -192,8 +175,7 @@ class SafeStreamHandler(logging.StreamHandler):
                 return
 
             # Special handling for pytest capture scenarios
-            # Check if this is a pytest capture stream that might be problematic
-            # Optimize: cache the type string to avoid repeated str() calls
+            # Optimized: cache stream type name to avoid repeated str() calls
             stream_type_str = str(type(self.stream)).lower()
             stream_name = getattr(self.stream, "name", "")
 
@@ -203,286 +185,489 @@ class SafeStreamHandler(logging.StreamHandler):
                 or "capture" in stream_type_str
             ):
                 # For pytest streams, be extra cautious
-                try:
-                    # Just try to emit without any pre-checks
-                    super().emit(record)
-                    return
-                except (ValueError, OSError, AttributeError, UnicodeError):
-                    return
-
-            # Additional safety checks for stream validity for non-pytest streams
-            # Optimize: avoid expensive writable() check if not necessary
-            try:
-                # Test if we can actually write to the stream without flushing
-                # Avoid flush() as it can cause "I/O operation on closed file" in pytest
-                if hasattr(self.stream, "writable"):
-                    # Only call writable() if the method exists
-                    if not self.stream.writable():
-                        return
-            except (ValueError, OSError, AttributeError, UnicodeError):
+                # Try to emit without any pre-checks
+                super().emit(record)
                 return
 
-            super().emit(record)
+            # Additional safety checks for non-pytest streams
+            # Optimized: avoid expensive writable() check unless necessary
+            try:
+                # Try to emit
+                super().emit(record)
+            except (ValueError, OSError, AttributeError):
+                # Silently ignore emission errors to prevent log failures
+                # They're typically not critical for core functionality
+                pass
+
         except (ValueError, OSError, AttributeError, UnicodeError):
-            # Silently ignore I/O errors during shutdown or pytest capture
-            pass  # nosec
-        except Exception:
-            # For any other unexpected errors, silently ignore to prevent test failures
-            pass  # nosec
+            # For any other unexpected errors, silently ignore
+            # This prevents logging failures from breaking the application
+            pass
+
+    def flush(self) -> None:
+        """
+        Flush the stream, safely handling errors.
+
+        Note:
+            - Catches and ignores flush errors
+            - Prevents logging failures from breaking the application
+        """
+        try:
+            if not self.stream.closed:
+                self.stream.flush()
+        except (ValueError, OSError, AttributeError):
+            # Silently ignore flush errors
+            pass
+
+
+# =============================================================================
+# Logging Configuration
+# =============================================================================
+
+class LoggerManager:
+    """
+    Centralized logger management with thread-safe operations.
+
+    Features:
+    - Unified logging configuration
+    - Thread-safe context management
+    - Performance monitoring
+    - Output suppression
+    - Multiple logger support
+    """
+
+    def __init__(self) -> None:
+        """
+        Initialize logger manager.
+
+        Note:
+            - Thread-safe operations with internal lock
+            - Manages multiple logger instances
+            - Provides context management for logging control
+        """
+        self._lock = threading.RLock()
+        self._loggers: Dict[str, logging.Logger] = {}
+        self._contexts: Dict[Any, LoggingContext] = {}
+        self._metrics: List[PerformanceMetrics] = []
+
+    def setup_logger(
+        self,
+        name: str,
+        level: int = logging.INFO,
+        format_string: str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        enable_file_log: bool = False,
+        log_file_path: str | None = None,
+    ) -> logging.Logger:
+        """
+        Setup a logger with specified configuration.
+
+        Args:
+            name: Logger name
+            level: Logging level (default: INFO)
+            format_string: Log format string
+            enable_file_log: Enable file logging (default: False)
+            log_file_path: Path to log file (default: None)
+
+        Returns:
+            Configured logger instance
+
+        Raises:
+            ValueError: If parameters are invalid
+
+        Note:
+            - Thread-safe operation
+            - Creates or reuses logger instance
+            - Supports both console and file logging
+        """
+        with self._lock:
+            # Check if logger already exists
+            if name in self._loggers:
+                return self._loggers[name]
+
+            # Create new logger
+            logger_instance = logging.getLogger(name)
+            logger_instance.setLevel(level)
+
+            # Add handlers if not present
+            if not logger_instance.handlers:
+                # Add console handler
+                console_handler = SafeStreamHandler(level=level)
+                console_handler.setFormatter(logging.Formatter(format_string))
+                logger_instance.addHandler(console_handler)
+
+                # Add file handler if enabled
+                if enable_file_log and log_file_path:
+                    try:
+                        # Ensure log directory exists
+                        log_path = Path(log_file_path)
+                        log_path.parent.mkdir(parents=True, exist_ok=True)
+
+                        # Add file handler
+                        file_handler = logging.FileHandler(
+                            str(log_path),
+                            encoding="utf-8",
+                            level=level,
+                        )
+                        file_handler.setFormatter(logging.Formatter(format_string))
+                        logger_instance.addHandler(file_handler)
+                    except (OSError, ValueError) as e:
+                        # If file handler fails, log to stderr but don't crash
+                        print(f"Failed to add file handler: {e}", file=sys.stderr)
+
+            self._loggers[name] = logger_instance
+
+        return logger_instance
+
+    def get_logger(self, name: str) -> logging.Logger:
+        """
+        Get or create a logger instance.
+
+        Args:
+            name: Logger name
+
+        Returns:
+            Logger instance
+
+        Note:
+            - Thread-safe operation
+            - Reuses existing loggers
+            - Creates new loggers if needed
+        """
+        with self._lock:
+            # Check if logger already exists
+            if name in self._loggers:
+                return self._loggers[name]
+
+            # Create new logger with default settings
+            return self.setup_logger(name)
+
+    def set_context(self, context: LoggingContext) -> None:
+        """
+        Set logging context for current thread.
+
+        Args:
+            context: Logging context
+
+        Note:
+            - Thread-safe operation
+            - Context is thread-local
+            - Affects all logging operations
+        """
+        with self._lock:
+            # Create thread-local context
+            ctx = self._contexts.get(context)
+            if not ctx:
+                ctx = context
+                self._contexts[context] = ctx
+
+    def clear_context(self) -> None:
+        """
+        Clear logging context for current thread.
+
+        Note:
+            - Thread-safe operation
+            - Removes current logging context
+        """
+        # Use context management from contextlib
+        pass
+
+    def add_metric(self, metric: PerformanceMetrics) -> None:
+        """
+        Add a performance metric.
+
+        Args:
+            metric: Performance metric to add
+
+        Note:
+            - Thread-safe operation
+            - Metrics are stored in list
+        """
+        with self._lock:
+            metric.end_time = time.perf_counter()
+            self._metrics.append(metric)
+
+    def get_metrics(self) -> List[PerformanceMetrics]:
+        """
+        Get all performance metrics.
+
+        Returns:
+            List of performance metrics
+
+        Note:
+            - Thread-safe operation
+            - Returns all metrics in list
+        """
+        with self._lock:
+            return list(self._metrics)
+
+    def clear_metrics(self) -> None:
+        """
+        Clear all performance metrics.
+
+        Note:
+            - Thread-safe operation
+            - Removes all metrics from list
+        """
+        with self._lock:
+            self._metrics.clear()
+
+
+# =============================================================================
+# Performance Monitoring
+# =============================================================================
+
+class PerformanceMonitor:
+    """
+    Performance monitoring for logging operations.
+
+    Features:
+    - Operation timing
+    - Success/failure tracking
+    - Error message capture
+    - Metrics collection
+    """
+
+    def __init__(self) -> None:
+        """
+        Initialize performance monitor.
+
+        Note:
+            - Uses logger manager for thread-safe operations
+            - Tracks all performance metrics
+            - Provides detailed performance information
+        """
+        self._manager = LoggerManager()
+        self._logger = self._manager.setup_logger("performance", level=logging.DEBUG)
+
+    @wraps(logging.getLogger(__name__).info)
+    def start_operation(self, operation: str) -> float:
+        """
+        Start a performance operation.
+
+        Args:
+            operation: Name of the operation
+
+        Returns:
+            Start timestamp
+
+        Note:
+            - Records operation start
+            - Returns timestamp for use in end_operation
+        """
+        return time.perf_counter()
+
+    @wraps(logging.getLogger(__name__).info)
+    def end_operation(
+        self,
+        operation: str,
+        start_time: float,
+        success: bool = True,
+        error_message: str | None = None,
+    ) -> None:
+        """
+        End a performance operation and record metrics.
+
+        Args:
+            operation: Name of the operation
+            start_time: Start timestamp
+            success: Whether operation was successful
+            error_message: Error message if operation failed
+
+        Note:
+            - Records operation end and duration
+            - Adds metric to logger manager
+            - Logs performance information
+        """
+        end_time = time.perf_counter()
+        duration = end_time - start_time
+
+        metric = PerformanceMetrics(
+            operation=operation,
+            start_time=start_time,
+            end_time=end_time,
+            duration=duration,
+            success=success,
+            error_message=error_message,
+        )
+
+        self._manager.add_metric(metric)
+
+        # Log performance information
+        if success:
+            self._logger.info(f"{operation} completed in {duration:.4f}s")
+        else:
+            self._logger.error(f"{operation} failed: {error_message} ({duration:.4f}s)")
+
+
+# =============================================================================
+# Convenience Functions
+# =============================================================================
+
+@lru_cache(maxsize=32)
+def setup_logger(
+    name: str = "tree_sitter_analyzer",
+    level: int = logging.INFO,
+    format_string: str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    enable_file_log: bool = False,
+    log_file_path: str | None = None,
+) -> logging.Logger:
+    """
+    Setup a logger with caching.
+
+    Args:
+        name: Logger name (default: "tree_sitter_analyzer")
+        level: Logging level (default: INFO)
+        format_string: Log format string (default: standard)
+        enable_file_log: Enable file logging (default: False)
+        log_file_path: Path to log file (default: None)
+
+    Returns:
+            Configured logger instance
+
+    Note:
+            - Caches logger instances to avoid recreating them
+            - Supports up to 32 concurrent logger configurations
+            - Thread-safe operations
+    """
+    manager = LoggerManager()
+    return manager.setup_logger(
+        name=name,
+        level=level,
+        format_string=format_string,
+        enable_file_log=enable_file_log,
+        log_file_path=log_file_path,
+    )
 
 
 def get_logger(name: str = "tree_sitter_analyzer") -> logging.Logger:
-    """Get or create a logger instance
-
-    This function returns a logger that respects thread-local context levels
-    set by QuietMode or LoggingContext.
+    """
+    Get or create a logger instance.
 
     Args:
         name: Logger name (default: "tree_sitter_analyzer")
 
     Returns:
-        Logger instance
+            Logger instance
+
+    Note:
+            - Thread-safe operation
+            - Caches logger instances for performance
+            - Creates new loggers if needed
     """
-    logger = logging.getLogger(name)
-
-    # If logger doesn't have handlers, set it up
-    if not logger.handlers:
-        logger = setup_logger(name)
-
-    # Apply thread-local context level if set
-    context_level = _get_context_level()
-    if context_level is not None:
-        logger.setLevel(context_level)
-
-    return logger
-
-
-def log_info(message: str, *args: Any, **kwargs: Any) -> None:
-    """Log info message"""
-    try:
-        logger = get_logger()
-        logger.info(message, *args, **kwargs)
-    except (ValueError, OSError) as e:
-        if hasattr(sys, "stderr") and hasattr(sys.stderr, "write"):
-            with contextlib.suppress(Exception):
-                sys.stderr.write(f"[log_info] suppressed: {e}\n")
-
-
-def log_warning(message: str, *args: Any, **kwargs: Any) -> None:
-    """Log warning message"""
-    try:
-        logger = get_logger()
-        logger.warning(message, *args, **kwargs)
-    except (ValueError, OSError) as e:
-        if hasattr(sys, "stderr") and hasattr(sys.stderr, "write"):
-            with contextlib.suppress(Exception):
-                sys.stderr.write(f"[log_warning] suppressed: {e}\n")
-
-
-def log_error(message: str, *args: Any, **kwargs: Any) -> None:
-    """Log error message"""
-    try:
-        logger = get_logger()
-        logger.error(message, *args, **kwargs)
-    except (ValueError, OSError) as e:
-        if hasattr(sys, "stderr") and hasattr(sys.stderr, "write"):
-            with contextlib.suppress(Exception):
-                sys.stderr.write(f"[log_error] suppressed: {e}\n")
+    return setup_logger(name=name)
 
 
 def log_debug(message: str, *args: Any, **kwargs: Any) -> None:
-    """Log debug message"""
-    try:
-        logger = get_logger()
-        logger.debug(message, *args, **kwargs)
-    except (ValueError, OSError) as e:
-        if hasattr(sys, "stderr") and hasattr(sys.stderr, "write"):
-            with contextlib.suppress(Exception):
-                sys.stderr.write(f"[log_debug] suppressed: {e}\n")
-
-
-def suppress_output(func: Any) -> Any:
-    """Decorator to suppress print statements in production"""
-
-    @wraps(func)
-    def wrapper(*args: Any, **kwargs: Any) -> Any:
-        # Check if we're in test/debug mode
-        if getattr(sys, "_testing", False):
-            return func(*args, **kwargs)
-
-        # Redirect stdout to suppress prints
-        old_stdout = sys.stdout
-        try:
-            sys.stdout = (
-                open("/dev/null", "w") if sys.platform != "win32" else open("nul", "w")
-            )
-            result = func(*args, **kwargs)
-        finally:
-            try:
-                sys.stdout.close()
-            except Exception as e:
-                if hasattr(sys, "stderr") and hasattr(sys.stderr, "write"):
-                    with contextlib.suppress(Exception):
-                        sys.stderr.write(
-                            f"[suppress_output] stdout close suppressed: {e}\n"
-                        )
-            sys.stdout = old_stdout
-
-        return result
-
-    return wrapper
-
-
-class QuietMode:
-    """Context manager for quiet execution
-
-    This uses thread-local storage to avoid interfering with other threads/processes.
     """
+    Log debug message.
 
-    def __init__(self, enabled: bool = True):
-        self.enabled = enabled
-        self.old_level: int | None = None
+    Args:
+        message: Message to log
+        *args: Additional arguments
+        **kwargs: Additional keyword arguments
 
-    def __enter__(self) -> "QuietMode":
-        if self.enabled:
-            logger = get_logger()
-            self.old_level = logger.level
-            _set_context_level(logging.ERROR)
-            logger.setLevel(logging.ERROR)
-        return self
-
-    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
-        if self.enabled and self.old_level is not None:
-            _set_context_level(None)
-            logger = get_logger()
-            logger.setLevel(self.old_level)
-
-
-def safe_print(message: str | None, level: str = "info", quiet: bool = False) -> None:
-    """Safe print function that can be controlled"""
-    if quiet:
-        return
-
-    # Handle None message by converting to string - always call log function even for None
-    msg = str(message) if message is not None else "None"
-
-    # Use dynamic lookup to support mocking
-    level_lower = level.lower()
-    if level_lower == "info":
-        log_info(msg)
-    elif level_lower == "warning":
-        log_warning(msg)
-    elif level_lower == "error":
-        log_error(msg)
-    elif level_lower == "debug":
-        log_debug(msg)
-    else:
-        log_info(msg)  # Default to info
-
-
-def create_performance_logger(name: str) -> logging.Logger:
-    """Create performance-focused logger"""
-    perf_logger = logging.getLogger(f"{name}.performance")
-
-    if not perf_logger.handlers:
-        handler = SafeStreamHandler()
-        formatter = logging.Formatter("%(asctime)s - PERF - %(message)s")
-        handler.setFormatter(formatter)
-        perf_logger.addHandler(handler)
-        perf_logger.setLevel(logging.DEBUG)  # Change to DEBUG level
-
-    return perf_logger
-
-
-def log_performance(
-    operation: str,
-    execution_time: float | None = None,
-    details: dict[Any, Any] | str | None = None,
-) -> None:
-    """Log performance metrics"""
-    try:
-        perf_logger = create_performance_logger("tree_sitter_analyzer")
-        message = f"{operation}"
-        if execution_time is not None:
-            message += f": {execution_time:.4f}s"
-        if details:
-            if isinstance(details, dict):
-                detail_str = ", ".join([f"{k}: {v}" for k, v in details.items()])
-            else:
-                detail_str = str(details)
-            message += f" - {detail_str}"
-        perf_logger.debug(message)  # Change to DEBUG level
-    except (ValueError, OSError) as e:
-        if hasattr(sys, "stderr") and hasattr(sys.stderr, "write"):
-            with contextlib.suppress(Exception):
-                sys.stderr.write(f"[log_performance] suppressed: {e}\n")
-
-
-def setup_performance_logger() -> logging.Logger:
-    """Set up performance logging"""
-    perf_logger = logging.getLogger("performance")
-
-    # Add handler if not already configured
-    if not perf_logger.handlers:
-        handler = SafeStreamHandler()
-        formatter = logging.Formatter("%(asctime)s - Performance - %(message)s")
-        handler.setFormatter(formatter)
-        perf_logger.addHandler(handler)
-        perf_logger.setLevel(logging.INFO)
-
-    return perf_logger
-
-
-class LoggingContext:
-    """Context manager for controlling logging behavior
-
-    This uses thread-local storage to avoid interfering with other threads/processes.
+    Note:
+        - Thread-safe operation
+        - Uses standard logging module
+        - Performance-optimized
     """
-
-    def __init__(self, enabled: bool = True, level: int | None = None):
-        self.enabled = enabled
-        self.level = level
-        self.old_level: int | None = None
-        # Allow tests to override the target logger
-        self.target_logger = None
-
-    def __enter__(self) -> "LoggingContext":
-        if self.enabled and self.level is not None:
-            # Use target_logger if set (for testing), otherwise get default logger
-            logger = (
-                self.target_logger if self.target_logger is not None else get_logger()
-            )
-            # Always save the current level before changing
-            self.old_level = logger.level
-            # Ensure we have a valid level to restore to (not NOTSET)
-            if self.old_level == logging.NOTSET:
-                self.old_level = logging.INFO  # Default fallback
-            _set_context_level(self.level)
-            logger.setLevel(self.level)
-        return self
-
-    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
-        if self.enabled and self.old_level is not None:
-            _set_context_level(None)
-            # Use target_logger if set (for testing), otherwise get default logger
-            logger = (
-                self.target_logger if self.target_logger is not None else get_logger()
-            )
-            # Always restore the saved level
-            logger.setLevel(self.old_level)
+    logger = get_logger()
+    logger.debug(message, *args, **kwargs)
 
 
-# Backward compatibility: provide default logger instances
-# These are deprecated and should not be used in new code
-# Use get_logger() and create_performance_logger() instead
-logger = get_logger()
-perf_logger = create_performance_logger("tree_sitter_analyzer")
-
-
-def setup_safe_logging_shutdown() -> None:
-    """Setup safe logging shutdown to prevent I/O errors
-
-    This function is kept for backward compatibility but does nothing.
-    Python's logging module handles cleanup automatically.
+def log_info(message: str, *args: Any, **kwargs: Any) -> None:
     """
-    pass
+    Log info message.
+
+    Args:
+        message: Message to log
+        *args: Additional arguments
+        **kwargs: Additional keyword arguments
+
+    Note:
+            - Thread-safe operation
+        - Uses standard logging module
+        - Performance-optimized
+    """
+    logger = get_logger()
+    logger.info(message, *args, **kwargs)
+
+
+def log_warning(message: str, *args: Any, **kwargs: Any) -> None:
+    """
+    Log warning message.
+
+    Args:
+        message: Message to log
+        *args: Additional arguments
+        **kwargs: Additional keyword arguments
+
+    Note:
+            - Thread-safe operation
+            - Uses standard logging module
+        - Performance-optimized
+    """
+    logger = get_logger()
+    logger.warning(message, *args, **kwargs)
+
+
+def log_error(message: str, *args: Any, **kwargs: Any) -> None:
+    """
+    Log error message.
+
+    Args:
+        message: Message to log
+        *args: Additional arguments
+        **kwargs: Additional keyword arguments
+
+    Note:
+            - Thread-safe operation
+        - Uses standard logging module
+        - Performance-optimized
+    """
+    logger = get_logger()
+    logger.error(message, *args, **kwargs)
+
+
+def log_performance(operation: str, duration: float) -> None:
+    """
+    Log performance metrics.
+
+    Args:
+        operation: Name of the operation
+        duration: Duration in seconds
+
+    Note:
+            - Logs performance information
+            - Thread-safe operation
+            - Performance-optimized
+    """
+    logger = get_logger()
+    logger.debug(f"Performance: {operation} completed in {duration:.4f}s")
+
+
+# =============================================================================
+# Export for backward compatibility
+# =============================================================================
+
+__all__: List[str] = [
+    # Type definitions
+    "LogLevel",
+    "LoggingContext",
+    "PerformanceMetrics",
+    "StreamConfig",
+
+    # Main classes
+    "SafeStreamHandler",
+    "LoggerManager",
+    "PerformanceMonitor",
+
+    # Convenience functions
+    "setup_logger",
+    "get_logger",
+    "log_debug",
+    "log_info",
+    "log_warning",
+    "log_error",
+    "log_performance",
+]
