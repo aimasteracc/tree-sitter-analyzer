@@ -1,11 +1,5 @@
 # Reusable Test Workflow
-#
-# Purpose: Comprehensive test suite for all branches
-# Triggers: Called by branch-specific workflows
-# Jobs:
-#   - test-matrix: Runs tests across Python versions and OS platforms
-# Secrets Required:
-#   - CODECOV_TOKEN: For coverage upload
+# Comprehensive test suite with advanced coverage reporting
 
 name: Reusable Test Workflow
 
@@ -17,20 +11,18 @@ on:
         required: false
         default: '3.11'
         type: string
-
       upload-coverage:
         description: 'Whether to upload coverage to Codecov'
         required: false
         default: true
         type: boolean
-
     secrets:
       CODECOV_TOKEN:
         required: true
 
 jobs:
   test-matrix:
-    name: Test Suite
+    name: Test Suite (${{ matrix.os }}, Python ${{ matrix.python-version }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -38,53 +30,48 @@ jobs:
         os: [ubuntu-latest, windows-latest, macos-latest]
         python-version: ["3.10", "3.11", "3.12", "3.13"]
         exclude:
-          # Reduce matrix size for faster CI
           - os: windows-latest
             python-version: "3.10"
+          - os: windows-latest
+            python-version: "3.12"
           - os: macos-latest
             python-version: "3.10"
-
-    env:
-      PYTHONIOENCODING: utf-8
-      PYTHONUTF8: 1
+          - os: macos-latest
+            python-version: "3.12"
 
     steps:
     - uses: actions/checkout@v4
       with:
         fetch-depth: 0
 
-    - name: Install uv
-      uses: astral-sh/setup-uv@v4
-      with:
-        version: "latest"
-        enable-cache: true
-        cache-dependency-glob: "uv.lock"
-
-    - name: Set up Python ${{ matrix.python-version }}
-      run: uv python install ${{ matrix.python-version }}
-
-    - name: Setup System Dependencies
-      uses: ./.github/actions/setup-system
+    - name: Setup Analyzer
+      uses: ./.github/actions/setup-analyzer
       with:
         os: ${{ matrix.os }}
-
-    - name: Install dependencies
-      run: |
-        uv sync --all-extras
-      shell: bash
+        python-version: ${{ matrix.python-version }}
+        uv-sync: "true"
 
     - name: Run Tests with Coverage
       if: matrix.os == 'ubuntu-latest' && matrix.python-version == inputs.python-version
-      id: test-coverage
       run: |
         echo "### 📊 Test Coverage Report" >> $GITHUB_STEP_SUMMARY
+        # Exclude benchmarks and regression tests from the main CI run to speed it up
         uv run pytest tests/ -n auto -v --tb=short --maxfail=10 \
-          --cov=tree_sitter_analyzer --cov-report=xml --cov-report=term-missing \
-          -m "not requires_ripgrep or not requires_fd" > pytest-output.txt 2>&1 || touch test_failed
+          -m "not benchmark and not regression" \
+          --cov=tree_sitter_analyzer --cov-report=xml --cov-report=html --cov-report=term-missing \
+          2>&1 | tee pytest-output.txt || touch test_failed
 
-        cat pytest-output.txt
+        # Detailed Coverage Reporting (Merged from test-coverage.yml)
         echo '```text' >> $GITHUB_STEP_SUMMARY
-        tail -n 20 pytest-output.txt >> $GITHUB_STEP_SUMMARY
+        tail -n 50 pytest-output.txt >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY
+
+        echo "### 📈 Coverage Details" >> $GITHUB_STEP_SUMMARY
+        uv run python scripts/monitor_coverage.py summary >> $GITHUB_STEP_SUMMARY 2>&1 || echo "Summary completed"
+
+        echo "#### Low Coverage Files (< 50%)" >> $GITHUB_STEP_SUMMARY
+        echo '```text' >> $GITHUB_STEP_SUMMARY
+        uv run python scripts/monitor_coverage.py low --threshold 50 >> $GITHUB_STEP_SUMMARY 2>&1 || echo "None found"
         echo '```' >> $GITHUB_STEP_SUMMARY
 
         if [ -f test_failed ]; then
@@ -96,24 +83,39 @@ jobs:
     - name: Run Tests (no coverage)
       if: matrix.os != 'ubuntu-latest' || matrix.python-version != inputs.python-version
       run: |
+        # Exclude benchmarks and regression tests
         uv run pytest tests/ -n auto -v --tb=short --maxfail=10 \
-          -m "not requires_ripgrep or not requires_fd"
+          -m "not benchmark and not regression"
       shell: bash
 
     - name: Upload coverage to Codecov
       if: inputs.upload-coverage && matrix.os == 'ubuntu-latest' && matrix.python-version == inputs.python-version
       uses: codecov/codecov-action@v5
-      env:
-        CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
       with:
         files: ./coverage.xml
         fail_ci_if_error: false
+        token: ${{ secrets.CODECOV_TOKEN }}
         flags: unittests
         name: codecov-umbrella
+
+    - name: Upload Coverage HTML Report
+      if: matrix.os == 'ubuntu-latest' && matrix.python-version == inputs.python-version
+      uses: actions/upload-artifact@v4
+      with:
+        name: coverage-html-report
+        path: htmlcov/
+        retention-days: 7
+
+    - name: Comment Coverage on PR
+      if: github.event_name == 'pull_request' && matrix.os == 'ubuntu-latest' && matrix.python-version == inputs.python-version
+      uses: py-cov-action/python-coverage-comment-action@v3
+      with:
+        GITHUB_TOKEN: ${{ github.token }}
+        MINIMUM_GREEN: 40
+        MINIMUM_ORANGE: 30
 
     - name: Update README statistics
       if: matrix.os == 'ubuntu-latest' && matrix.python-version == inputs.python-version
       run: |
-        echo "Updating README statistics..."
         uv run python scripts/update_readme_stats.py || echo "README stats update completed with warnings"
       shell: bash

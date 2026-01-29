@@ -278,68 +278,6 @@ class RubyTableFormatter(BaseTableFormatter):
 
         return "\n".join(lines)
 
-    def _format_compact_table(self, data: dict[str, Any]) -> str:
-        """Compact table format for Ruby, following Java golden master format."""
-        lines = []
-
-        # Header
-        classes = data.get("classes", [])
-        file_path = data.get("file_path", "Unknown")
-        file_name = file_path.split("/")[-1].split("\\")[-1]
-
-        if len(classes) == 1:
-            class_name = classes[0].get("name", file_name)
-            lines.append(f"# {class_name}")
-        else:
-            lines.append(f"# {file_name}")
-        lines.append("")
-
-        # Info table
-        stats = data.get("statistics") or {}
-        lines.append("## Info")
-        lines.append("| Property | Value |")
-        lines.append("|----------|-------|")
-        lines.append("| Package |  |")
-        lines.append(
-            f"| Methods | {stats.get('method_count', len(data.get('methods', [])))} |"
-        )
-        lines.append(
-            f"| Fields | {stats.get('field_count', len(data.get('fields', [])))} |"
-        )
-        lines.append("")
-
-        # Methods table
-        methods = data.get("methods", [])
-        if methods:
-            lines.append("## Methods")
-            lines.append("| Method | Sig | V | L | Cx | Doc |")
-            lines.append("|--------|-----|---|---|----|----|")
-
-            for method in methods:
-                # Build method name with class prefix
-                mname = str(method.get("name", "Unknown"))
-                parent_class = method.get("parent_class", "")
-                if parent_class:
-                    metadata = method.get("metadata", {})
-                    method_type = metadata.get("method_type", "instance")
-                    prefix = "." if method_type == "class" else "#"
-                    mname = f"{parent_class}{prefix}{mname}"
-
-                sig = self._format_compact_signature(method)
-                mvis = self._get_visibility_symbol(method.get("visibility", "public"))
-                mrange = method.get("line_range", {})
-                mlines = f"{mrange.get('start', 0)}-{mrange.get('end', 0)}"
-                mcx = method.get("complexity_score", method.get("complexity", 1))
-                mdoc = method.get("documentation", "-") or "-"
-                if mdoc and len(mdoc) > 20:
-                    mdoc = mdoc[:17] + "..."
-
-                lines.append(
-                    f"| {mname} | {sig} | {mvis} | {mlines} | {mcx} | {mdoc} |"
-                )
-
-        return "\n".join(lines)
-
     def _format_csv(self, data: dict[str, Any]) -> str:
         """CSV format for Ruby, following Java golden master format."""
         lines = []
@@ -406,8 +344,8 @@ class RubyCompactFormatter(RubyTableFormatter):
     """Compact table formatter for Ruby"""
 
     def format(self, data: dict[str, Any]) -> str:
-        """Format data as compact table"""
-        return self._format_compact_table(data)
+        """Format data as full table"""
+        return self._format_full_table(data)
 
 
 class RubyCSVFormatter(RubyTableFormatter):

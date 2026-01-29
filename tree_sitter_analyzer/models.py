@@ -410,6 +410,24 @@ class AnalysisResult:
     def __post_init__(self) -> None:
         pass
 
+    # Dictionary-like interface for backward compatibility
+    def __contains__(self, key: str) -> bool:
+        """Support 'in' operator for backward compatibility."""
+        return hasattr(self, key) or key in self.to_dict()
+
+    def __getitem__(self, key: str) -> Any:
+        """Support dict-like access for backward compatibility."""
+        if hasattr(self, key):
+            return getattr(self, key)
+        return self.to_dict()[key]
+
+    def get(self, key: str, default: Any = None) -> Any:
+        """Support dict.get() for backward compatibility."""
+        try:
+            return self[key]
+        except (KeyError, AttributeError):
+            return default
+
     def to_dict(self) -> dict[str, Any]:
         """Convert analysis result to dictionary for serialization using unified elements"""
         # Use unified elements list for consistent data structure
@@ -447,6 +465,7 @@ class AnalysisResult:
 
         return {
             "file_path": self.file_path,
+            "language": self.language,
             "line_count": self.line_count,
             "package": {"name": packages[0].name} if packages else None,
             "imports": [

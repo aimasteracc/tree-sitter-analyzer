@@ -1,8 +1,6 @@
 # Reusable Build Workflow
 #
 # Purpose: Standardized package building and validation
-# Jobs:
-#   - build: Builds source distribution and wheel, validates with twine
 
 name: Reusable Build Workflow
 
@@ -20,30 +18,32 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@v4
+      - name: Setup Analyzer
+        uses: ./.github/actions/setup-analyzer
         with:
-          version: "latest"
-
-      - name: Set up Python 3.11
-        run: uv python install 3.11
+          os: ubuntu-latest
+          python-version: "3.11"
+          install-sys-deps: "false"
 
       - name: Build package
         run: |
           echo "### 📦 Build Summary" >> $GITHUB_STEP_SUMMARY
           uv run --with build python -m build
           echo "✅ Package built successfully" >> $GITHUB_STEP_SUMMARY
+        shell: bash
 
       - name: Validate package
         run: |
           uv run --with twine twine check dist/*
           echo "✅ Twine validation passed" >> $GITHUB_STEP_SUMMARY
+        shell: bash
 
       - name: List artifacts
         run: |
           echo '```text' >> $GITHUB_STEP_SUMMARY
           ls -R dist/ >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
+        shell: bash
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4

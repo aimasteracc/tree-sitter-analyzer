@@ -16,88 +16,49 @@ if TYPE_CHECKING:
     from ..core.analysis_engine import AnalysisRequest
     from ..models import AnalysisResult
 
-from ..encoding_utils import extract_text_slice, safe_encode
 from ..models import Class, Function, Import, Variable
 from ..plugins.base import ElementExtractor, LanguagePlugin
-from ..utils import log_debug, log_error, log_warning
+from ..plugins.programming_language_extractor import ProgrammingLanguageExtractor
+from ..utils import log_debug, log_error
 
 
-class CppElementExtractor(ElementExtractor):
+class CppElementExtractor(ProgrammingLanguageExtractor):
     """C++ specific element extractor with advanced analysis support"""
 
     def __init__(self) -> None:
         """Initialize the C++ element extractor."""
+        super().__init__()
         self.current_namespace: str = ""
         self.current_file: str = ""
-        self.source_code: str = ""
-        self.content_lines: list[str] = []
         self.includes: list[str] = []
 
-        # Performance optimization caches - use position-based keys for deterministic caching
-        self._node_text_cache: dict[tuple[int, int], str] = {}
-        self._processed_nodes: set[int] = set()
-        self._element_cache: dict[tuple[int, str], Any] = {}
-        self._file_encoding: str | None = None
+        # C++-specific caches
         self._comment_cache: dict[int, str] = {}
         self._complexity_cache: dict[int, int] = {}
 
-    def extract_functions(
-        self, tree: "tree_sitter.Tree", source_code: str
-    ) -> list[Function]:
-        """Extract C++ function definitions with comprehensive details"""
-        self.source_code = source_code
-        self.content_lines = source_code.split("\n")
-        self._reset_caches()
-
-        functions: list[Function] = []
-
-        # Use optimized traversal for function types
-        extractors = {
+    def _get_function_handlers(self) -> dict[str, Any]:
+        """Get function node type handlers for C++."""
+        return {
             "function_definition": self._extract_function_optimized,
             "function_declarator": self._extract_function_declaration,
             "template_declaration": self._extract_template_function,
             "field_declaration": self._extract_function_from_field_declaration,  # Pure virtual, etc
         }
 
-        self._traverse_and_extract_iterative(
-            tree.root_node, extractors, functions, "function"
-        )
-
-        log_debug(f"Extracted {len(functions)} C++ functions")
-        return functions
-
-    def extract_classes(
-        self, tree: "tree_sitter.Tree", source_code: str
-    ) -> list[Class]:
-        """Extract C++ class/struct definitions with detailed information"""
-        self.source_code = source_code
-        self.content_lines = source_code.split("\n")
-        self._reset_caches()
-
-        classes: list[Class] = []
-
-        # Extract class, struct, and union declarations
-        extractors = {
+    def _get_class_handlers(self) -> dict[str, Any]:
+        """Get class node type handlers for C++."""
+        return {
             "class_specifier": self._extract_class_optimized,
             "struct_specifier": self._extract_struct_optimized,
             "union_specifier": self._extract_union_optimized,
             "template_declaration": self._extract_template_class,
         }
 
-        self._traverse_and_extract_iterative(
-            tree.root_node, extractors, classes, "class"
-        )
-
-        log_debug(f"Extracted {len(classes)} C++ classes/structs")
-        return classes
-
     def extract_variables(
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[Variable]:
         """Extract C++ variable/field declarations"""
-        self.source_code = source_code
-        self.content_lines = source_code.split("\n")
-        self._reset_caches()
+        self._initialize_source(source_code)
 
         variables: list[Variable] = []
 
@@ -118,8 +79,7 @@ class CppElementExtractor(ElementExtractor):
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[Import]:
         """Extract C++ include directives"""
-        self.source_code = source_code
-        self.content_lines = source_code.split("\n")
+        self._initialize_source(source_code)
 
         imports: list[Import] = []
 
@@ -175,8 +135,7 @@ class CppElementExtractor(ElementExtractor):
         """Extract C++ namespace declarations"""
         from ..models import Package
 
-        self.source_code = source_code
-        self.content_lines = source_code.split("\n")
+        self._initialize_source(source_code)
 
         packages: list[Package] = []
 
@@ -196,26 +155,14 @@ class CppElementExtractor(ElementExtractor):
 
     def _reset_caches(self) -> None:
         """Reset performance caches"""
-        self._node_text_cache.clear()
-        self._processed_nodes.clear()
-        self._element_cache.clear()
+        super()._reset_caches()
         self._comment_cache.clear()
         self._complexity_cache.clear()
         self.current_namespace = ""
 
-    def _traverse_and_extract_iterative(
-        self,
-        root_node: "tree_sitter.Node | None",
-        extractors: dict[str, Any],
-        results: list[Any],
-        element_type: str,
-    ) -> None:
-        """Iterative node traversal and extraction with caching"""
-        if root_node is None:
-            return
-
-        target_node_types = set(extractors.keys())
-        container_node_types = {
+    def _get_container_node_types(self) -> set[str]:
+        """Get C++-specific container node types for AST traversal."""
+        return super()._get_container_node_types() | {
             "translation_unit",
             "namespace_definition",
             "class_specifier",
@@ -227,114 +174,11 @@ class CppElementExtractor(ElementExtractor):
             "template_declaration",
         }
 
-        node_stack = [(root_node, 0)]
-        processed_nodes = 0
-        max_depth = 50
-
-        while node_stack:
-            current_node, depth = node_stack.pop()
-
-            if depth > max_depth:
-                log_warning(f"Maximum traversal depth ({max_depth}) exceeded")
-                continue
-
-            processed_nodes += 1
-            node_type = current_node.type
-
-            # Early termination for irrelevant nodes
-            if (
-                depth > 0
-                and node_type not in target_node_types
-                and node_type not in container_node_types
-            ):
-                continue
-
-            # Process target nodes
-            if node_type in target_node_types:
-                node_id = id(current_node)
-
-                if node_id in self._processed_nodes:
-                    continue
-
-                cache_key = (node_id, element_type)
-                if cache_key in self._element_cache:
-                    element = self._element_cache[cache_key]
-                    if element:
-                        if isinstance(element, list):
-                            results.extend(element)
-                        else:
-                            results.append(element)
-                    self._processed_nodes.add(node_id)
-                    continue
-
-                # Extract and cache
-                extractor = extractors[node_type]
-                element = extractor(current_node)
-                self._element_cache[cache_key] = element
-                if element:
-                    if isinstance(element, list):
-                        results.extend(element)
-                    else:
-                        results.append(element)
-                self._processed_nodes.add(node_id)
-
-            # Add children to stack (reversed for correct DFS traversal)
-            if current_node.children:
-                for child in reversed(current_node.children):
-                    node_stack.append((child, depth + 1))
-
-        log_debug(f"Iterative traversal processed {processed_nodes} nodes")
-
-    def _get_node_text_optimized(self, node: "tree_sitter.Node") -> str:
-        """Get node text with optimized caching using position-based keys"""
-        # Use position-based cache key for deterministic behavior
-        cache_key = (node.start_byte, node.end_byte)
-
-        if cache_key in self._node_text_cache:
-            return self._node_text_cache[cache_key]
-
-        try:
-            start_byte = node.start_byte
-            end_byte = node.end_byte
-
-            encoding = self._file_encoding or "utf-8"
-            content_bytes = safe_encode("\n".join(self.content_lines), encoding)
-            text = extract_text_slice(content_bytes, start_byte, end_byte, encoding)
-
-            self._node_text_cache[cache_key] = text
-            return text
-        except Exception as e:
-            log_error(f"Error in _get_node_text_optimized: {e}")
-            # Fallback to simple text extraction
-            try:
-                start_point = node.start_point
-                end_point = node.end_point
-
-                if start_point[0] == end_point[0]:
-                    line = self.content_lines[start_point[0]]
-                    result: str = line[start_point[1] : end_point[1]]
-                    return result
-                else:
-                    lines = []
-                    for i in range(start_point[0], end_point[0] + 1):
-                        if i < len(self.content_lines):
-                            line = self.content_lines[i]
-                            if i == start_point[0]:
-                                lines.append(line[start_point[1] :])
-                            elif i == end_point[0]:
-                                lines.append(line[: end_point[1]])
-                            else:
-                                lines.append(line)
-                    return "\n".join(lines)
-            except Exception as fallback_error:
-                log_error(f"Fallback text extraction also failed: {fallback_error}")
-                return ""
-
     def _extract_function_optimized(self, node: "tree_sitter.Node") -> Function | None:
         """Extract function information optimized"""
         try:
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
+            # Use base class method to extract common metadata
+            metadata = self._extract_common_metadata(node)
 
             # Extract function details
             function_info = self._parse_function_signature(node)
@@ -343,28 +187,17 @@ class CppElementExtractor(ElementExtractor):
 
             name, return_type, parameters, modifiers = function_info
 
-            # Extract raw text
-            start_line_idx = max(0, start_line - 1)
-            end_line_idx = min(len(self.content_lines), end_line)
-            raw_text = "\n".join(self.content_lines[start_line_idx:end_line_idx])
-
-            # Calculate complexity
-            complexity_score = self._calculate_complexity_optimized(node)
-
             # Determine visibility (check if function is global or class member)
             is_global = self._is_global_scope(node)
             visibility = self._determine_visibility(
                 modifiers, is_global=is_global, node=node
             )
 
-            # Extract comments/documentation
-            docstring = self._extract_comment_for_line(start_line)
-
             return Function(
                 name=name,
-                start_line=start_line,
-                end_line=end_line,
-                raw_text=raw_text,
+                start_line=metadata["start_line"],
+                end_line=metadata["end_line"],
+                raw_text=metadata["raw_text"],
                 language="cpp",
                 parameters=parameters,
                 return_type=return_type or "void",
@@ -373,8 +206,8 @@ class CppElementExtractor(ElementExtractor):
                 is_private="private" in modifiers,
                 is_public="public" in modifiers,
                 visibility=visibility,
-                docstring=docstring,
-                complexity_score=complexity_score,
+                docstring=metadata["docstring"],
+                complexity_score=metadata["complexity"],
             )
         except (AttributeError, ValueError, TypeError) as e:
             log_debug(f"Failed to extract function info: {e}")
@@ -643,8 +476,8 @@ class CppElementExtractor(ElementExtractor):
     def _extract_class_optimized(self, node: "tree_sitter.Node") -> Class | None:
         """Extract class information optimized"""
         try:
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
+            # Use base class method to extract common metadata
+            metadata = self._extract_common_metadata(node)
 
             class_name = None
             superclasses: list[str] = []
@@ -659,14 +492,6 @@ class CppElementExtractor(ElementExtractor):
             if not class_name:
                 return None
 
-            # Extract raw text
-            start_line_idx = max(0, start_line - 1)
-            end_line_idx = min(len(self.content_lines), end_line)
-            raw_text = "\n".join(self.content_lines[start_line_idx:end_line_idx])
-
-            # Extract comments/documentation
-            docstring = self._extract_comment_for_line(start_line)
-
             # Build fully qualified name with namespace
             full_qualified_name = (
                 f"{self.current_namespace}::{class_name}"
@@ -676,9 +501,9 @@ class CppElementExtractor(ElementExtractor):
 
             return Class(
                 name=class_name,
-                start_line=start_line,
-                end_line=end_line,
-                raw_text=raw_text,
+                start_line=metadata["start_line"],
+                end_line=metadata["end_line"],
+                raw_text=metadata["raw_text"],
                 language="cpp",
                 class_type="class",
                 full_qualified_name=full_qualified_name,
@@ -686,7 +511,7 @@ class CppElementExtractor(ElementExtractor):
                 superclass=superclasses[0] if superclasses else None,
                 interfaces=superclasses[1:] if len(superclasses) > 1 else [],
                 modifiers=modifiers,
-                docstring=docstring,
+                docstring=metadata["docstring"],
             )
         except Exception as e:
             log_debug(f"Failed to extract class info: {e}")
@@ -1146,6 +971,11 @@ class CppElementExtractor(ElementExtractor):
         complexity += count_decisions(node)
         return complexity
 
+    def _extract_docstring_for_node(self, node: "tree_sitter.Node") -> str | None:
+        """Extract docstring/comment for a C++ node (override base class)."""
+        start_line = node.start_point[0] + 1
+        return self._extract_comment_for_line(start_line)
+
     def _extract_comment_for_line(self, line: int) -> str | None:
         """Extract comment (documentation) for a specific line"""
         try:
@@ -1345,3 +1175,18 @@ class CppPlugin(LanguagePlugin):
                 "imports": [],
                 "packages": [],
             }
+
+    def get_queries(self) -> dict[str, str]:
+        """Return language-specific tree-sitter queries."""
+        return {}
+
+    def execute_query_strategy(
+        self, query_key: str | None, language: str
+    ) -> str | None:
+        """Execute query strategy for this language plugin."""
+        queries = self.get_queries()
+        return queries.get(query_key) if query_key else None
+
+    def get_element_categories(self) -> dict[str, list[str]]:
+        """Return element categories for HTML/CSS languages."""
+        return {}

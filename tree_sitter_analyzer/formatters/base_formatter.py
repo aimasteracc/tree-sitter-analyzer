@@ -38,8 +38,23 @@ class BaseFormatter(ABC):
         else:
             # Fallback: convert to string
             import json
+            from dataclasses import asdict, is_dataclass
 
-            return json.dumps(data, indent=2, ensure_ascii=False)
+            class EnhancedJSONEncoder(json.JSONEncoder):
+                def default(self, o: Any) -> Any:
+                    if is_dataclass(o) and not isinstance(o, type):
+                        return asdict(o)
+                    if hasattr(o, "to_dict"):
+                        return o.to_dict()
+                    if hasattr(o, "__dict__"):
+                        return o.__dict__
+                    if isinstance(o, set | frozenset):
+                        return list(o)
+                    return super().default(o)
+
+            return json.dumps(
+                data, indent=2, ensure_ascii=False, cls=EnhancedJSONEncoder
+            )
 
     @abstractmethod
     def format_summary(self, analysis_result: dict[str, Any]) -> str:
@@ -74,16 +89,12 @@ class BaseTableFormatter(BaseFormatter):
 
     def format_summary(self, analysis_result: dict[str, Any]) -> str:
         """Default summary implementation for table formatters"""
-        return self._format_compact_table(analysis_result)
+        return self._format_full_table(analysis_result)
 
     def format_advanced(
-        self, analysis_result: dict[str, Any], output_format: str = "json"
+        self, analysis_result: dict[str, Any], output_format: str = "toon"
     ) -> str:
         """Default advanced implementation for table formatters"""
-        if output_format == "json":
-            import json
-
-            return json.dumps(analysis_result, indent=2, ensure_ascii=False)
         return self._format_full_table(analysis_result)
 
     def format_table(
@@ -114,8 +125,6 @@ class BaseTableFormatter(BaseFormatter):
         """Format structure data in table format"""
         if self.format_type == "full":
             result = self._format_full_table(structure_data)
-        elif self.format_type == "compact":
-            result = self._format_compact_table(structure_data)
         elif self.format_type == "csv":
             result = self._format_csv(structure_data)
         else:
@@ -130,11 +139,6 @@ class BaseTableFormatter(BaseFormatter):
     @abstractmethod
     def _format_full_table(self, data: dict[str, Any]) -> str:
         """Full table format (language-specific implementation)"""
-        pass
-
-    @abstractmethod
-    def _format_compact_table(self, data: dict[str, Any]) -> str:
-        """Compact table format (language-specific implementation)"""
         pass
 
     def _format_csv(self, data: dict[str, Any]) -> str:

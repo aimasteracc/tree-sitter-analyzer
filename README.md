@@ -4,7 +4,7 @@
 
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-8409%20passed-brightgreen.svg)](#-quality--testing)
+[![Tests](https://img.shields.io/badge/tests-8405%20passed-brightgreen.svg)](#-quality--testing)
 [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
 [![Version](https://img.shields.io/badge/version-1.10.4-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
@@ -21,7 +21,7 @@
 - **Behavior Profile Comparison**: CLI tool for comparing code analysis behavior profiles between versions
 - **Enhanced Language Support**: Added Go, Rust, and Kotlin to core dependencies for comprehensive systems programming language support
 - **C++ Formatter**: Dedicated formatter with Bandit security scanning
-- **8,409 tests** with 100% pass rate and 80.33% coverage
+- **8,405 tests** with 100% pass rate and 80.33% coverage
 
 📖 **[Full Changelog](CHANGELOG.md)** for complete version history.
 

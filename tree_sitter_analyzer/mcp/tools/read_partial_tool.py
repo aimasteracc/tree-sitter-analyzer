@@ -297,8 +297,9 @@ class ReadPartialTool(BaseMCPTool):
                     "lines_extracted": lines_extracted,
                 }
 
-                # Only include partial_content_result if not suppressed or no output file specified
-                if not suppress_output or not output_file:
+                # Only include partial_content_result if not suppressed (when output_file is specified)
+                # If no output_file, always include it. If output_file exists, only include if not suppressed.
+                if not output_file or not suppress_output:
                     if content_format == "json":
                         # For JSON format, return structured data with exact line count
                         lines = content.split("\n") if content else []

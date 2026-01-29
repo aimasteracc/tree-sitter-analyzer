@@ -23,10 +23,11 @@ except ImportError:
 
 from ..models import Class, Function, Import, Variable
 from ..plugins.base import ElementExtractor, LanguagePlugin
+from ..plugins.programming_language_extractor import ProgrammingLanguageExtractor
 from ..utils import log_error
 
 
-class PHPElementExtractor(ElementExtractor):
+class PHPElementExtractor(ProgrammingLanguageExtractor):
     """
     PHP-specific element extractor.
 
@@ -53,44 +54,45 @@ class PHPElementExtractor(ElementExtractor):
         optimization caches for node text extraction.
         """
         super().__init__()
-        self.source_code: str = ""
-        self.content_lines: list[str] = []
         self.current_namespace: str = ""
-
-        # Performance optimization caches - use position-based keys for deterministic caching
-        self._node_text_cache: dict[tuple[int, int], str] = {}
-        self._processed_nodes: set[tuple[int, int]] = set()
-        self._element_cache: dict[tuple[tuple[int, int], str], Any] = {}
-        self._file_encoding: str | None = None
+        # Override parent's _element_cache with PHP-specific key structure
+        self._element_cache: dict[tuple[tuple[int, int], str], Any] = {}  # type: ignore[assignment]
+        # Override parent's _file_encoding to allow None
+        self._file_encoding: str | None = None  # type: ignore[assignment]
         self._attribute_cache: dict[tuple[int, int], list[dict[str, Any]]] = {}
 
     def _reset_caches(self) -> None:
         """Reset all internal caches for a new file analysis."""
-        self._node_text_cache.clear()
-        self._processed_nodes.clear()
+        super()._reset_caches()
         self._element_cache.clear()
         self._attribute_cache.clear()
         self.current_namespace = ""
 
-    def _get_node_text_optimized(self, node: "tree_sitter.Node") -> str:
+    def _get_function_handlers(self) -> dict[str, Any]:
         """
-        Get text content of a node with caching for performance.
-
-        Args:
-            node: Tree-sitter node to extract text from
+        Get function node type handlers for PHP.
 
         Returns:
-            Text content of the node as string
+            Dictionary mapping node types to handler methods
         """
-        # Use node position as cache key instead of object id for deterministic behavior
-        cache_key = (node.start_byte, node.end_byte)
-        if cache_key in self._node_text_cache:
-            return self._node_text_cache[cache_key]
+        return {
+            "method_declaration": self._extract_method_element,
+            "function_definition": self._extract_function_element,
+        }
 
-        # Extract text directly from source code string
-        text = self.source_code[node.start_byte : node.end_byte]
-        self._node_text_cache[cache_key] = text
-        return text
+    def _get_class_handlers(self) -> dict[str, Any]:
+        """
+        Get class node type handlers for PHP.
+
+        Returns:
+            Dictionary mapping node types to handler methods
+        """
+        return {
+            "class_declaration": self._extract_class_element,
+            "interface_declaration": self._extract_class_element,
+            "trait_declaration": self._extract_class_element,
+            "enum_declaration": self._extract_class_element,
+        }
 
     def _extract_namespace(self, node: "tree_sitter.Node") -> None:
         """
@@ -248,6 +250,9 @@ class PHPElementExtractor(ElementExtractor):
             if not name_node:
                 return None
 
+            # Use base class method to extract common metadata
+            metadata = self._extract_common_metadata(node)
+
             name = self._get_node_text_optimized(name_node)
             modifiers = self._extract_modifiers(node)
             visibility = self._determine_visibility(modifiers)
@@ -290,8 +295,8 @@ class PHPElementExtractor(ElementExtractor):
 
             return Class(
                 name=full_name,
-                start_line=node.start_point[0] + 1,
-                end_line=node.end_point[0] + 1,
+                start_line=metadata["start_line"],
+                end_line=metadata["end_line"],
                 visibility=visibility,
                 is_abstract="abstract" in modifiers,
                 full_qualified_name=full_name,
@@ -356,7 +361,7 @@ class PHPElementExtractor(ElementExtractor):
         return functions
 
     def _extract_method_element(
-        self, node: "tree_sitter.Node", parent_class: str
+        self, node: "tree_sitter.Node", parent_class: str = ""
     ) -> Function | None:
         """
         Extract a method element.
@@ -372,6 +377,9 @@ class PHPElementExtractor(ElementExtractor):
             name_node = node.child_by_field_name("name")
             if not name_node:
                 return None
+
+            # Use base class method to extract common metadata
+            metadata = self._extract_common_metadata(node)
 
             name = self._get_node_text_optimized(name_node)
             modifiers = self._extract_modifiers(node)
@@ -401,8 +409,8 @@ class PHPElementExtractor(ElementExtractor):
 
             return Function(
                 name=f"{parent_class}::{name}" if parent_class else name,
-                start_line=node.start_point[0] + 1,
-                end_line=node.end_point[0] + 1,
+                start_line=metadata["start_line"],
+                end_line=metadata["end_line"],
                 visibility=visibility,
                 is_static="static" in modifiers,
                 is_async=False,  # PHP doesn't have async/await like C#
@@ -431,6 +439,9 @@ class PHPElementExtractor(ElementExtractor):
             if not name_node:
                 return None
 
+            # Use base class method to extract common metadata
+            metadata = self._extract_common_metadata(node)
+
             name = self._get_node_text_optimized(name_node)
 
             # Extract parameters
@@ -455,8 +466,8 @@ class PHPElementExtractor(ElementExtractor):
 
             return Function(
                 name=full_name,
-                start_line=node.start_point[0] + 1,
-                end_line=node.end_point[0] + 1,
+                start_line=metadata["start_line"],
+                end_line=metadata["end_line"],
                 visibility="public",
                 is_static=False,
                 is_async=False,
@@ -862,3 +873,18 @@ class PHPPlugin(LanguagePlugin):
         except Exception as e:
             log_error(f"Error loading file {file_path}: {e}")
             raise OSError(f"Failed to load file {file_path}: {e}") from e
+
+    def get_queries(self) -> dict[str, str]:
+        """Return language-specific tree-sitter queries."""
+        return {}
+
+    def execute_query_strategy(
+        self, query_key: str | None, language: str
+    ) -> str | None:
+        """Execute query strategy for this language plugin."""
+        queries = self.get_queries()
+        return queries.get(query_key) if query_key else None
+
+    def get_element_categories(self) -> dict[str, list[str]]:
+        """Return element categories for HTML/CSS languages."""
+        return {}

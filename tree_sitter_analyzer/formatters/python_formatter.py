@@ -40,31 +40,165 @@ class PythonTableFormatter(BaseTableFormatter):
 
     def format_summary(self, analysis_result: dict[str, Any]) -> str:
         """Format summary output for Python"""
-        return self._format_compact_table(analysis_result)
+        return self._format_full_table(analysis_result)
 
     def format_structure(self, analysis_result: dict[str, Any]) -> str:
         """Format structure analysis output for Python"""
         return super().format_structure(analysis_result)
 
     def format_advanced(
-        self, analysis_result: dict[str, Any], output_format: str = "json"
+        self, analysis_result: dict[str, Any], output_format: str = "toon"
     ) -> str:
         """Format advanced analysis output for Python"""
-        if output_format == "json":
-            return self._format_json(analysis_result)
-        elif output_format == "csv":
+        if output_format == "csv":
             return self._format_csv(analysis_result)
         else:
             return self._format_full_table(analysis_result)
 
-    def _format_json(self, data: dict[str, Any]) -> str:
-        """Format data as JSON"""
-        import json
+    def _format_csv(self, data: dict[str, Any]) -> str:
+        """Format data as CSV with specific Python columns"""
+        import csv
+        import io
 
-        try:
-            return json.dumps(data, indent=2, ensure_ascii=False)
-        except (TypeError, ValueError) as e:
-            return f"# JSON serialization error: {e}\n"
+        output = io.StringIO()
+        writer = csv.writer(output, lineterminator="\n")
+
+        # Header
+        writer.writerow(["type", "name", "parent", "sig", "lines", "cx", "doc", "meta"])
+
+        # Imports
+        imports = data.get("imports", [])
+        for imp in imports:
+            name = imp.get("name", "")
+            module = imp.get("module_name", "")
+
+            # Split comma-separated imports (e.g. from abc import ABC, abstractmethod)
+            if "," in name:
+                parts = [p.strip() for p in name.split(",") if p.strip()]
+                for part in parts:
+                    writer.writerow(["imp", part, module, "", "", "", "", ""])
+            else:
+                writer.writerow(["imp", name, module, "", "", "", "", ""])
+
+        # Classes
+        classes = data.get("classes", [])
+        methods = data.get("methods", [])
+        fields = data.get("fields", [])
+
+        for cls in classes:
+            c_start = cls.get("line_range", {}).get("start", 0)
+            c_end = cls.get("line_range", {}).get("end", 0)
+
+            # Count fields inside class
+            cls_fields_count = sum(
+                1
+                for f in fields
+                if c_start <= f.get("line_range", {}).get("start", 0) <= c_end
+            )
+
+            meta_parts = []
+            if cls_fields_count > 0:
+                meta_parts.append(f"fields={cls_fields_count}")
+
+            meta = ",".join(meta_parts)
+            parent = cls.get("superclass", "")
+
+            sig_parts = []
+            if cls.get("type") == "dataclass":
+                sig_parts.append("(dataclass)")
+
+            # Check for abstract
+            modifiers = cls.get("modifiers", [])
+            if "ABC" in str(parent) or any("abstract" in m for m in modifiers):
+                if "(dataclass)" not in sig_parts:  # Avoid clutter if both?
+                    sig_parts.append("(abstract)")
+
+            sig = " ".join(sig_parts)
+            lines_str = f"{c_start}-{c_end}"
+
+            writer.writerow(
+                ["cls", cls.get("name"), parent, sig, lines_str, "", "", meta]
+            )
+
+        # Methods and Functions
+        for method in methods:
+            m_start = method.get("line_range", {}).get("start", 0)
+            parent = ""
+            for cls in classes:
+                if (
+                    cls.get("line_range", {}).get("start", 0)
+                    <= m_start
+                    <= cls.get("line_range", {}).get("end", 0)
+                ):
+                    parent = cls.get("name")
+                    break
+
+            type_str = "mtd" if parent else "fn"
+
+            # Custom signature formatting for CSV
+            params = method.get("parameters", [])
+            ret_type = method.get("return_type", "Any")
+            if not ret_type:
+                ret_type = "Any"
+
+            param_strs = []
+            for p in params:
+                if isinstance(p, dict):
+                    p_name = p.get("name")
+                    p_type = p.get("type")
+                    if p_type and p_type != "Any":
+                        param_strs.append(f"{p_name}:{p_type}")
+                    elif p_name:
+                        param_strs.append(str(p_name))
+                else:
+                    param_strs.append(str(p))
+
+            sig_csv = "|".join(param_strs) + f"->{ret_type}"
+            lines_str = f"{m_start}-{method.get('line_range', {}).get('end', 0)}"
+            cx = method.get("complexity_score", "")
+
+            doc = method.get("docstring", "")
+            if doc:
+                doc = str(doc).strip().split("\n")[0].strip(' "')
+            else:
+                doc = ""
+
+            meta_parts = []
+            # Check modifiers
+            mods = method.get("modifiers", [])
+
+            # Map standard flags
+            if method.get("is_abstract") or "abstractmethod" in mods:
+                meta_parts.append("abstract")
+
+            if method.get("is_static") or "staticmethod" in mods:
+                if "static" not in meta_parts:
+                    meta_parts.append("static")
+
+            # Other modifiers
+            for m in mods:
+                if (
+                    m not in ["staticmethod", "abstractmethod", "abstract", "static"]
+                    and m not in meta_parts
+                ):
+                    meta_parts.append(f"@{m}" if not m.startswith("@") else m)
+
+            meta = ",".join(meta_parts)
+
+            writer.writerow(
+                [
+                    type_str,
+                    method.get("name"),
+                    parent,
+                    sig_csv,
+                    lines_str,
+                    cx,
+                    doc,
+                    meta,
+                ]
+            )
+
+        return output.getvalue()
 
     def format_analysis_result(
         self, analysis_result: Any, table_type: str = "full"
@@ -139,6 +273,8 @@ class PythonTableFormatter(BaseTableFormatter):
                 "start": getattr(element, "start_line", 0),
                 "end": getattr(element, "end_line", 0),
             },
+            "superclass": getattr(element, "superclass", ""),
+            "modifiers": getattr(element, "modifiers", []),
         }
 
     def _convert_function_element_for_python(self, element: Any) -> dict[str, Any]:
@@ -146,8 +282,21 @@ class PythonTableFormatter(BaseTableFormatter):
         params = getattr(element, "parameters", [])
         processed_params = self._process_python_parameters(params)
 
+        docstring = getattr(element, "docstring", "") or ""
+        method_name = getattr(element, "name", str(element))
+
+        # Special handling for __init__ methods - they often get wrong docstrings from tree-sitter
+        if method_name == "__init__" and docstring:
+            docstring_text = str(docstring).strip()
+            if any(
+                word in docstring_text.lower()
+                for word in ["bark", "meow", "fetch", "purr"]
+            ):
+                # This looks like it belongs to another method, not __init__
+                docstring = ""
+
         return {
-            "name": getattr(element, "name", str(element)),
+            "name": method_name,
             "visibility": getattr(element, "visibility", "public"),
             "return_type": getattr(element, "return_type", "Any"),
             "parameters": processed_params,
@@ -159,7 +308,8 @@ class PythonTableFormatter(BaseTableFormatter):
                 "start": getattr(element, "start_line", 0),
                 "end": getattr(element, "end_line", 0),
             },
-            "docstring": getattr(element, "docstring", "") or "",
+            "docstring": docstring,
+            "javadoc": docstring,  # Compatibility with BaseTableFormatter (CSV)
             "decorators": getattr(element, "decorators", []),
             "modifiers": getattr(element, "modifiers", []),
         }
@@ -435,83 +585,6 @@ class PythonTableFormatter(BaseTableFormatter):
 
         return "\n".join(lines)
 
-    def _format_compact_table(self, data: dict[str, Any]) -> str:
-        """Compact table format for Python"""
-        lines = []
-
-        # Header - extract module/file name
-        file_path = data.get("file_path", "Unknown")
-        file_name = str(file_path).split("/")[-1].split("\\")[-1]
-        module_name = (
-            file_name.replace(".py", "").replace(".pyw", "").replace(".pyi", "")
-        )
-
-        classes = data.get("classes", [])
-
-        # Title logic for Python modules:
-        # - Single class: use class name directly
-        # - Multiple classes or no classes: use "Module: filename"
-        if len(classes) == 1:
-            class_name = classes[0].get("name", module_name)
-            lines.append(f"# {class_name}")
-        else:
-            lines.append(f"# Module: {module_name}")
-        lines.append("")
-
-        # Info
-        stats = data.get("statistics") or {}
-        lines.append("## Info")
-        lines.append("| Property | Value |")
-        lines.append("|----------|-------|")
-        lines.append(f"| Classes | {len(classes)} |")
-        lines.append(f"| Methods | {stats.get('method_count', 0)} |")
-        lines.append(f"| Fields | {stats.get('field_count', 0)} |")
-        lines.append("")
-
-        # Classes section (add class names for better visibility)
-        if classes:
-            lines.append("## Classes")
-            lines.append("| Class | Type | Lines |")
-            lines.append("|-------|------|-------|")
-            for class_info in classes:
-                if class_info is None:
-                    continue
-                name = str(class_info.get("name", "Unknown"))
-                class_type = str(class_info.get("type", "class"))
-                line_range = class_info.get("line_range") or {}
-                lines_str = f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
-                lines.append(f"| {name} | {class_type} | {lines_str} |")
-            lines.append("")
-
-        # Methods (compact)
-        methods = data.get("methods", [])
-        if methods:
-            lines.append("## Methods")
-            lines.append("| Method | Sig | V | L | Cx | Doc |")
-            lines.append("|--------|-----|---|---|----|----|")
-
-            for method in methods:
-                name = str(method.get("name", ""))
-                signature = self._create_compact_signature(method)
-                visibility = self._convert_visibility(str(method.get("visibility", "")))
-                line_range = method.get("line_range") or {}
-                lines_str = f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
-                complexity = method.get("complexity_score", 0)
-                doc = self._clean_csv_text(
-                    self._extract_doc_summary(str(method.get("javadoc", "")))
-                )
-
-                lines.append(
-                    f"| {name} | {signature} | {visibility} | {lines_str} | {complexity} | {doc} |"
-                )
-            lines.append("")
-
-        # Trim trailing blank lines
-        while lines and lines[-1] == "":
-            lines.pop()
-
-        return "\n".join(lines)
-
     def _format_method_row(self, method: dict[str, Any]) -> str:
         """Format a method table row for Python"""
         name = str(method.get("name", ""))
@@ -550,96 +623,6 @@ class PythonTableFormatter(BaseTableFormatter):
         async_indicator = "🔄" if method.get("is_async", False) else ""
 
         return f"| {name}{async_indicator} | {signature} | {vis_symbol} | {lines_str} | {cols_str} | {complexity} | {decorator_str} | {doc} |"
-
-    def _create_compact_signature(self, method: dict[str, Any]) -> str:
-        """Create compact method signature for Python"""
-        if method is None or not isinstance(method, dict):
-            raise TypeError(f"Expected dict, got {type(method)}")
-
-        params = method.get("parameters", [])
-        param_types = []
-
-        # Handle both list and string parameters
-        if isinstance(params, str):
-            # If parameters is a malformed string, skip it
-            pass
-        elif isinstance(params, list):
-            for p in params:
-                if isinstance(p, dict):
-                    param_type = p.get("type", "Any")
-                    if param_type == "Any" or param_type is None:
-                        param_types.append(
-                            "Any"
-                        )  # Keep "Any" as is for missing type info
-                    else:
-                        param_types.append(
-                            param_type
-                        )  # Don't shorten types for consistency
-                else:
-                    param_types.append("Any")  # Use "Any" for missing type info
-
-        params_str = ",".join(param_types)
-        return_type = method.get("return_type", "Any")
-
-        # Handle dict return type
-        if isinstance(return_type, dict):
-            return_type = return_type.get("type", "Any") or str(return_type)
-        elif not isinstance(return_type, str):
-            return_type = str(return_type)
-
-        return f"({params_str}):{return_type}"
-
-    def _shorten_type(self, type_name: Any) -> str:
-        """Shorten type name for Python tables"""
-        if type_name is None:
-            return "Any"  # Return "Any" instead of "A" for None
-
-        if not isinstance(type_name, str):
-            type_name = str(type_name)
-
-        type_mapping = {
-            "str": "s",
-            "int": "i",
-            "float": "f",
-            "bool": "b",
-            "None": "N",
-            "Any": "A",
-            "List": "L",
-            "Dict": "D",
-            "Optional": "O",
-            "Union": "U",  # Changed from "Uni" to "U"
-            "Calculator": "Calculator",  # Keep full name for Calculator
-        }
-
-        # List[str] -> L[s]
-        if "List[" in type_name:
-            result = (
-                type_name.replace("List[", "L[").replace("str", "s").replace("int", "i")
-            )
-            return str(result)
-
-        # Dict[str, int] -> D[s,i] (no space after comma)
-        if "Dict[" in type_name:
-            result = (
-                type_name.replace("Dict[", "D[").replace("str", "s").replace("int", "i")
-            )
-            # Remove spaces after commas for compact format
-            result = result.replace(", ", ",")
-            return str(result)
-
-        # Optional[float] -> O[f], Optional[str] -> O[s]
-        if "Optional[" in type_name:
-            result = (
-                type_name.replace("Optional[", "O[")
-                .replace("str", "s")
-                .replace("float", "f")
-            )
-            return str(result)
-
-        result = type_mapping.get(
-            type_name, type_name[:3] if len(type_name) > 3 else type_name
-        )
-        return str(result)
 
     def _extract_module_docstring(self, data: dict[str, Any]) -> str | None:
         """Extract module-level docstring"""
@@ -793,10 +776,15 @@ class PythonTableFormatter(BaseTableFormatter):
             else:
                 doc = "-"
 
-        # Add static modifier if applicable
+        # Add modifiers (static, abstract, decorators)
         modifiers = []
-        if method.get("is_static", False):
-            modifiers.append("static")
+        # For Python, we use the raw modifiers list to show exact decorator names (e.g., staticmethod)
+        # instead of the generic "static" flag, to be consistent with other decorators.
+
+        # Add decorators
+        raw_modifiers = method.get("modifiers", []) or []
+        for mod in raw_modifiers:
+            modifiers.append(mod)
 
         modifier_str = f" [{', '.join(modifiers)}]" if modifiers else ""
 

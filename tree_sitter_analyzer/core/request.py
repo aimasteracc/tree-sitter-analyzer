@@ -30,7 +30,7 @@ class AnalysisRequest:
     include_queries: bool = True
     include_complexity: bool = True
     include_details: bool = False
-    format_type: str = "json"
+    format_type: str = "toon"
 
     @classmethod
     def from_mcp_arguments(cls, arguments: dict[str, Any]) -> "AnalysisRequest":
@@ -48,5 +48,5 @@ class AnalysisRequest:
             language=arguments.get("language"),
             include_complexity=arguments.get("include_complexity", True),
             include_details=arguments.get("include_details", False),
-            format_type=arguments.get("format_type", "json"),
+            format_type=arguments.get("format_type", "toon"),
         )

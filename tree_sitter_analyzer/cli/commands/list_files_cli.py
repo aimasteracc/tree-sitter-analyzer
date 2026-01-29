@@ -58,6 +58,11 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--full-path-match", action="store_true")
     parser.add_argument("--limit", type=int)
     parser.add_argument("--count-only", action="store_true")
+    parser.add_argument(
+        "--sort",
+        choices=["name", "path", "modified", "accessed", "created", "size", "ext"],
+        help="Sort the results by: name (filename only), path (full path), modified, accessed, created, size, or ext (extension).",
+    )
 
     # project root
     parser.add_argument(
@@ -95,6 +100,7 @@ async def _run(args: argparse.Namespace) -> int:
         "full_path_match": "full_path_match",
         "limit": "limit",
         "count_only": "count_only",
+        "sort": "sort",
     }
 
     for cli_arg, payload_key in arg_mapping.items():

@@ -639,11 +639,13 @@ def _sanitize_error_context(context: dict[str, Any]) -> dict[str, Any]:
             sanitized[key] = value[:500] + "...[TRUNCATED]"
         elif isinstance(value, list | tuple) and len(value) > 10:
             sanitized[key] = list(value[:10]) + ["...[TRUNCATED]"]
-        elif isinstance(value, dict) and len(value) > 20:
-            # Recursively sanitize nested dictionaries
-            truncated_dict = dict(list(value.items())[:20])
-            sanitized[key] = _sanitize_error_context(truncated_dict)
-            sanitized[key]["__truncated__"] = True
+        elif isinstance(value, dict):
+            if len(value) > 20:
+                truncated_dict = dict(list(value.items())[:20])
+                sanitized[key] = _sanitize_error_context(truncated_dict)
+                sanitized[key]["__truncated__"] = True
+            else:
+                sanitized[key] = _sanitize_error_context(value)
         else:
             sanitized[key] = value
 

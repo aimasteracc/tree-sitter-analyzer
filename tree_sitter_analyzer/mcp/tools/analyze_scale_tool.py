@@ -330,8 +330,8 @@ class AnalyzeScaleTool(BaseMCPTool):
                 },
                 "output_format": {
                     "type": "string",
-                    "enum": ["json", "toon"],
-                    "description": "Output format: 'toon' (default, 50-70% token reduction) or 'json'",
+                    "enum": ["toon"],
+                    "description": "Output format: 'toon' (default)",
                     "default": "toon",
                 },
             },
@@ -449,10 +449,12 @@ class AnalyzeScaleTool(BaseMCPTool):
                             f"Failed to analyze file with universal engine: {error_msg}"
                         )
 
-                    # Adapt the result to a compatible structure for report generation
-                    # This part needs careful implementation based on universal_result structure
-                    analysis_result = None  # Placeholder
-                    structural_overview = {}  # Placeholder
+                    # Use universal_result directly - it has the same structure
+                    analysis_result = universal_result
+                    # Extract structural overview from universal result
+                    structural_overview = self._extract_structural_overview(
+                        analysis_result
+                    )
 
                 # Generate LLM guidance
                 llm_guidance = None
@@ -515,7 +517,6 @@ class AnalyzeScaleTool(BaseMCPTool):
                             else None
                         ),
                     },
-                    "structural_overview": structural_overview,
                 }
 
                 if include_guidance:

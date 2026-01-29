@@ -8,7 +8,7 @@ First narrow files with fd, then search contents with ripgrep, with caps & meta.
 from __future__ import annotations
 
 import logging
-import pathlib
+import os
 import time
 from typing import Any
 
@@ -16,12 +16,27 @@ from ..utils.error_handler import handle_mcp_errors
 from ..utils.file_output_manager import FileOutputManager
 from ..utils.format_helper import (
     apply_toon_format_to_response,
-    attach_toon_content_to_response,
     format_for_file_output,
 )
 from ..utils.gitignore_detector import get_default_detector
-from . import fd_rg_utils
 from .base_tool import BaseMCPTool
+from .fd_rg import (
+    DEFAULT_RESULTS_LIMIT,
+    MAX_RESULTS_HARD_CAP,
+    FdCommandBuilder,
+    FdCommandConfig,
+    RgCommandBuilder,
+    RgCommandConfig,
+    RgResultParser,
+    RgResultTransformer,
+    SortType,
+    clamp_int,
+    get_missing_commands,
+    group_matches_by_file,
+    run_command_capture,
+    sanitize_error_message,
+    summarize_search_results,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -260,7 +275,7 @@ class FindAndGrepTool(BaseMCPTool):
     @handle_mcp_errors("find_and_grep")
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any] | int:
         # Check if both fd and rg commands are available
-        missing_commands = fd_rg_utils.get_missing_commands()
+        missing_commands = get_missing_commands()
         if missing_commands:
             return {
                 "success": False,
@@ -274,10 +289,10 @@ class FindAndGrepTool(BaseMCPTool):
         roots = self._validate_roots(arguments["roots"])  # absolute validated
 
         # fd step
-        fd_limit = fd_rg_utils.clamp_int(
+        fd_limit = clamp_int(
             arguments.get("file_limit"),
-            fd_rg_utils.DEFAULT_RESULTS_LIMIT,
-            fd_rg_utils.MAX_RESULTS_HARD_CAP,
+            DEFAULT_RESULTS_LIMIT,
+            MAX_RESULTS_HARD_CAP,
         )
 
         # Smart .gitignore detection for fd stage
@@ -299,35 +314,41 @@ class FindAndGrepTool(BaseMCPTool):
                     f"Auto-enabled --no-ignore due to .gitignore interference: {detection_info['reason']}"
                 )
 
-        fd_cmd = fd_rg_utils.build_fd_command(
+        fd_config = FdCommandConfig(
+            roots=tuple(roots),
             pattern=arguments.get("pattern"),
             glob=bool(arguments.get("glob", False)),
-            types=arguments.get("types"),
-            extensions=arguments.get("extensions"),
-            exclude=arguments.get("exclude"),
+            types=tuple(arguments.get("types") or [])
+            if arguments.get("types")
+            else None,
+            extensions=tuple(arguments.get("extensions") or []),
+            exclude=tuple(arguments.get("exclude") or []),
             depth=arguments.get("depth"),
             follow_symlinks=bool(arguments.get("follow_symlinks", False)),
             hidden=bool(arguments.get("hidden", False)),
             no_ignore=no_ignore,
-            size=arguments.get("size"),
+            size=tuple(arguments.get("size") or []) if arguments.get("size") else None,
             changed_within=arguments.get("changed_within"),
             changed_before=arguments.get("changed_before"),
             full_path_match=bool(arguments.get("full_path_match", False)),
             absolute=True,
             limit=fd_limit,
-            roots=roots,
         )
+        fd_cmd = FdCommandBuilder().build(fd_config)
 
         fd_started = time.time()
-        fd_rc, fd_out, fd_err = await fd_rg_utils.run_command_capture(fd_cmd)
+        fd_rc, fd_out, fd_err = await run_command_capture(fd_cmd)
         fd_elapsed_ms = int((time.time() - fd_started) * 1000)
 
         if fd_rc != 0:
+            raw_message = (
+                fd_err.decode("utf-8", errors="replace").strip() or "fd failed"
+            )
+            # Sanitize error message to prevent information leakage
+            sanitized_message = sanitize_error_message(raw_message)
             return {
                 "success": False,
-                "error": (
-                    fd_err.decode("utf-8", errors="replace").strip() or "fd failed"
-                ),
+                "error": sanitized_message,
                 "returncode": fd_rc,
             }
 
@@ -345,26 +366,27 @@ class FindAndGrepTool(BaseMCPTool):
 
         # Optional sorting
         sort_mode = arguments.get("sort")
-        if sort_mode in ("path", "mtime", "size"):
+        if sort_mode and files:
             try:
-                if sort_mode == "path":
+                if sort_mode == SortType.PATH:
                     files.sort()
-                elif sort_mode == "mtime":
-
-                    def get_mtime(p: str) -> float:
-                        path_obj = pathlib.Path(p)
-                        return path_obj.stat().st_mtime if path_obj.exists() else 0
-
-                    files.sort(key=get_mtime, reverse=True)
-                elif sort_mode == "size":
-
-                    def get_size(p: str) -> int:
-                        path_obj = pathlib.Path(p)
-                        return path_obj.stat().st_size if path_obj.exists() else 0
-
-                    files.sort(key=get_size, reverse=True)
-            except (OSError, ValueError):  # nosec B110
-                pass
+                elif sort_mode in (
+                    SortType.MODIFIED,
+                    SortType.MTIME,
+                ):
+                    # Sort by mtime (newest first)
+                    files.sort(
+                        key=lambda x: os.path.getmtime(x) if os.path.exists(x) else 0,
+                        reverse=True,
+                    )
+                elif sort_mode == SortType.SIZE:
+                    # Sort by size (largest first)
+                    files.sort(
+                        key=lambda x: os.path.getsize(x) if os.path.exists(x) else 0,
+                        reverse=True,
+                    )
+            except OSError as e:
+                logger.warning(f"Sorting failed: {e}")
 
         searched_file_count = len(files)
         if searched_file_count == 0:
@@ -404,54 +426,62 @@ class FindAndGrepTool(BaseMCPTool):
         combined_include_globs = arguments.get("include_globs", []) or []
         combined_include_globs.extend(file_globs)
 
-        rg_cmd = fd_rg_utils.build_rg_command(
+        rg_config = RgCommandConfig(
             query=arguments["query"],
             case=arguments.get("case", "smart"),
             fixed_strings=bool(arguments.get("fixed_strings", False)),
             word=bool(arguments.get("word", False)),
             multiline=bool(arguments.get("multiline", False)),
-            include_globs=combined_include_globs,
-            exclude_globs=arguments.get("exclude_globs"),
+            include_globs=tuple(combined_include_globs)
+            if combined_include_globs
+            else None,
+            exclude_globs=tuple(arguments.get("exclude_globs") or []),
             follow_symlinks=bool(arguments.get("follow_symlinks", False)),
             hidden=bool(arguments.get("hidden", False)),
-            no_ignore=no_ignore,  # Use the same no_ignore flag from fd stage
+            no_ignore=no_ignore,
             max_filesize=arguments.get("max_filesize"),
             context_before=arguments.get("context_before"),
             context_after=arguments.get("context_after"),
             encoding=arguments.get("encoding"),
             max_count=arguments.get("max_count"),
             timeout_ms=arguments.get("timeout_ms"),
-            roots=rg_roots,
+            roots=tuple(rg_roots),
             files_from=None,
             count_only_matches=bool(arguments.get("count_only_matches", False))
             or bool(arguments.get("total_only", False)),
         )
+        rg_cmd = RgCommandBuilder().build(rg_config)
 
         rg_started = time.time()
-        rg_rc, rg_out, rg_err = await fd_rg_utils.run_command_capture(
+        rg_rc, rg_out, rg_err = await run_command_capture(
             rg_cmd, timeout_ms=arguments.get("timeout_ms")
         )
         rg_elapsed_ms = int((time.time() - rg_started) * 1000)
 
         if rg_rc not in (0, 1):
+            raw_message = (
+                rg_err.decode("utf-8", errors="replace").strip() or "ripgrep failed"
+            )
+            # Sanitize error message to prevent information leakage
+            sanitized_message = sanitize_error_message(raw_message)
             return {
                 "success": False,
-                "error": (
-                    rg_err.decode("utf-8", errors="replace").strip() or "ripgrep failed"
-                ),
+                "error": sanitized_message,
                 "returncode": rg_rc,
             }
 
         # Handle total-only mode (highest priority for count queries)
         if arguments.get("total_only", False):
             # Parse count output and return only the total
-            count_data = fd_rg_utils.parse_rg_count_output(rg_out)
+            parser = RgResultParser()
+            count_data = parser.parse_count_output(rg_out)
             total_matches = count_data.pop("__total__", 0)
             return total_matches
 
         if arguments.get("count_only_matches", False):
             # Parse count-only output
-            count_data = fd_rg_utils.parse_rg_count_output(rg_out)
+            parser = RgResultParser()
+            count_data = parser.parse_count_output(rg_out)
             total_matches = count_data.pop("__total__", 0)
 
             result = {
@@ -467,11 +497,12 @@ class FindAndGrepTool(BaseMCPTool):
                 },
             }
             if output_format == "toon":
-                return attach_toon_content_to_response(result)
+                return apply_toon_format_to_response(result, "toon")
             return result
         else:
             # Parse full match details
-            matches = fd_rg_utils.parse_rg_json_lines_to_matches(rg_out)
+            parser = RgResultParser()
+            matches = parser.parse_json_matches(rg_out)
 
             # Apply user-specified max_count limit if provided
             # Note: ripgrep's -m option limits matches per file, not total matches
@@ -481,23 +512,24 @@ class FindAndGrepTool(BaseMCPTool):
                 matches = matches[:user_max_count]
                 truncated_rg = True
             else:
-                truncated_rg = len(matches) >= fd_rg_utils.MAX_RESULTS_HARD_CAP
+                truncated_rg = len(matches) >= MAX_RESULTS_HARD_CAP
                 if truncated_rg:
-                    matches = matches[: fd_rg_utils.MAX_RESULTS_HARD_CAP]
+                    matches = matches[:MAX_RESULTS_HARD_CAP]
 
             # Apply path optimization if requested
             optimize_paths = arguments.get("optimize_paths", False)
             if optimize_paths and matches:
-                matches = fd_rg_utils.optimize_match_paths(matches)
+                transformer = RgResultTransformer()
+                matches = transformer.optimize_paths(matches)
 
             # Apply file grouping if requested (takes priority over other formats)
             group_by_file = arguments.get("group_by_file", False)
             if group_by_file and matches:
-                grouped_result = fd_rg_utils.group_matches_by_file(matches)
+                grouped_result = group_matches_by_file(matches)
 
                 # If summary_only is also requested, add summary to grouped result
                 if arguments.get("summary_only", False):
-                    summary = fd_rg_utils.summarize_search_results(matches)
+                    summary = summarize_search_results(matches)
                     grouped_result["summary"] = summary
 
                 grouped_result["meta"] = {
@@ -553,12 +585,12 @@ class FindAndGrepTool(BaseMCPTool):
                     return minimal_result
 
                 if output_format == "toon":
-                    return attach_toon_content_to_response(grouped_result)
+                    return apply_toon_format_to_response(grouped_result, "toon")
                 return grouped_result
 
             # Check if summary_only mode is requested
             if arguments.get("summary_only", False):
-                summary = fd_rg_utils.summarize_search_results(matches)
+                summary = summarize_search_results(matches)
                 result = {
                     "success": True,
                     "summary_only": True,
@@ -648,11 +680,11 @@ class FindAndGrepTool(BaseMCPTool):
                             "results": matches,
                             "count": len(matches),
                             "files": (
-                                fd_rg_utils.group_matches_by_file(matches)["files"]
+                                group_matches_by_file(matches)["files"]
                                 if matches
                                 else []
                             ),
-                            "summary": fd_rg_utils.summarize_search_results(matches),
+                            "summary": summarize_search_results(matches),
                             "meta": result["meta"],
                         }
 

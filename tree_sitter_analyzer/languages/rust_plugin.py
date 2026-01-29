@@ -14,74 +14,95 @@ if TYPE_CHECKING:
     from ..core.analysis_engine import AnalysisRequest
     from ..models import AnalysisResult
 
-from ..encoding_utils import extract_text_slice, safe_encode
 from ..models import Class, Function, Import, Variable
 from ..plugins.base import ElementExtractor, LanguagePlugin
+from ..plugins.programming_language_extractor import ProgrammingLanguageExtractor
 from ..utils import log_debug, log_error
 
 
-class RustElementExtractor(ElementExtractor):
+class RustElementExtractor(ProgrammingLanguageExtractor):
     """Rust-specific element extractor"""
 
     def __init__(self) -> None:
         """Initialize the Rust element extractor."""
+        super().__init__()
+        # Rust-specific attributes only
         self.current_module: str = ""
         self.current_file: str = ""
-        self.source_code: str = ""
-        self.content_lines: list[str] = []
-        self._node_text_cache: dict[tuple[int, int], str] = {}
         self.impl_blocks: list[dict[str, Any]] = []
         self.modules: list[dict[str, Any]] = []
 
-    def extract_functions(
-        self, tree: "tree_sitter.Tree", source_code: str
-    ) -> list[Function]:
-        """Extract Rust function declarations"""
-        self.source_code = source_code
-        self.content_lines = source_code.split("\n")
-        self._reset_caches()
+    def _get_function_handlers(self) -> dict[str, Any]:
+        """
+        Get function node type handlers for Rust.
 
-        functions: list[Function] = []
+        Returns:
+            Dictionary mapping node types to handler methods
+        """
+        return {
+            "function_item": self._extract_function,
+        }
 
-        # Use tree traversal to find function_item
-        self._traverse_and_extract(
-            tree.root_node,
-            {"function_item": self._extract_function},
-            functions,
-        )
+    def _get_class_handlers(self) -> dict[str, Any]:
+        """
+        Get class node type handlers for Rust.
 
-        log_debug(f"Extracted {len(functions)} Rust functions")
-        return functions
+        Returns:
+            Dictionary mapping node types to handler methods
+        """
+        return {
+            "struct_item": self._extract_struct,
+            "enum_item": self._extract_enum,
+            "trait_item": self._extract_trait,
+            "impl_item": self._extract_impl,
+        }
+
+    def _get_container_node_types(self) -> set[str]:
+        """
+        Get Rust-specific container node types.
+
+        Returns:
+            Set of container node type names
+        """
+        return super()._get_container_node_types() | {
+            "mod_item",
+            "impl_item",
+            "declaration_list",
+            "field_declaration_list",
+            "struct_item",
+            "enum_item",
+            "trait_item",
+            "source_file",
+        }
+
+    # extract_functions() is inherited from base class
+    # Base class implementation uses _get_function_handlers()
 
     def extract_classes(
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[Class]:
-        """Extract Rust struct, enum, trait, and impl definitions"""
+        """Extract Rust struct, enum, trait, and impl definitions with module pre-extraction.
+
+        Overrides base class to ensure module information is extracted
+        before processing classes.
+        """
         self.source_code = source_code
         self.content_lines = source_code.split("\n")
         self._reset_caches()
 
-        # Extract modules first
+        # Rust-specific: Extract modules first
         self._extract_modules(tree.root_node)
 
+        # Use base class template method logic
         classes: list[Class] = []
-
-        extractors = {
-            "struct_item": self._extract_struct,
-            "enum_item": self._extract_enum,
-            "trait_item": self._extract_trait,
-            "impl_item": self._extract_impl,  # Impl blocks are treated as related to classes
-        }
-
-        self._traverse_and_extract(
+        self._traverse_and_extract_iterative(
             tree.root_node,
-            extractors,
+            self._get_class_handlers(),
             classes,
+            "class",
         )
 
-        # Process collected impl blocks and add them to classes list if they are standalone
-        # Or we might want to return them as separate metadata.
-        # For now, we'll include impl blocks as Class objects with type='impl' for visibility
+        # Process collected impl blocks (Rust-specific)
         for _impl in self.impl_blocks:
             # Creating a Class object for impl block to represent it in the structure
             pass
@@ -104,10 +125,11 @@ class RustElementExtractor(ElementExtractor):
             "field_declaration": self._extract_field,
         }
 
-        self._traverse_and_extract(
+        self._traverse_and_extract_iterative(
             tree.root_node,
             extractors,
             variables,
+            "variable",
         )
 
         log_debug(f"Extracted {len(variables)} Rust fields")
@@ -128,10 +150,11 @@ class RustElementExtractor(ElementExtractor):
             "use_declaration": self._extract_import,
         }
 
-        self._traverse_and_extract(
+        self._traverse_and_extract_iterative(
             tree.root_node,
             extractors,
             imports,
+            "import",
         )
 
         log_debug(f"Extracted {len(imports)} Rust imports")
@@ -164,7 +187,7 @@ class RustElementExtractor(ElementExtractor):
 
     def _reset_caches(self) -> None:
         """Reset performance caches"""
-        self._node_text_cache.clear()
+        super()._reset_caches()
         # Modules and impls persist across extraction calls within the same file analysis
         # but we clear them here if we assume sequential full extraction calls.
         # Ideally, we should call extract_modules separately or share state.
@@ -172,21 +195,6 @@ class RustElementExtractor(ElementExtractor):
         if not self.source_code:
             self.modules.clear()
             self.impl_blocks.clear()
-
-    def _traverse_and_extract(
-        self,
-        node: "tree_sitter.Node",
-        extractors: dict[str, Any],
-        results: list[Any],
-    ) -> None:
-        """Recursive traversal to find and extract elements"""
-        if node.type in extractors:
-            element = extractors[node.type](node)
-            if element:
-                results.append(element)
-
-        for child in node.children:
-            self._traverse_and_extract(child, extractors, results)
 
     def _extract_modules(self, node: "tree_sitter.Node") -> None:
         """Extract module information"""
@@ -457,21 +465,8 @@ class RustElementExtractor(ElementExtractor):
         return derives
 
     def _get_node_text(self, node: "tree_sitter.Node") -> str:
-        """Get node text with caching using position-based keys"""
-        cache_key = (node.start_byte, node.end_byte)
-        if cache_key in self._node_text_cache:
-            return self._node_text_cache[cache_key]
-
-        try:
-            start_byte = node.start_byte
-            end_byte = node.end_byte
-            encoding = "utf-8"  # Default
-            content_bytes = safe_encode("\n".join(self.content_lines), encoding)
-            text = extract_text_slice(content_bytes, start_byte, end_byte, encoding)
-            self._node_text_cache[cache_key] = text
-            return text
-        except Exception:
-            return ""
+        """Get node text using parent's optimized method"""
+        return self._get_node_text_optimized(node, use_byte_offsets=True)
 
 
 class RustPlugin(LanguagePlugin):
@@ -671,3 +666,18 @@ class RustPlugin(LanguagePlugin):
         return any(
             file_path.lower().endswith(ext) for ext in self.get_file_extensions()
         )
+
+    def get_queries(self) -> dict[str, str]:
+        """Return language-specific tree-sitter queries."""
+        return {}
+
+    def execute_query_strategy(
+        self, query_key: str | None, language: str
+    ) -> str | None:
+        """Execute query strategy for this language plugin."""
+        queries = self.get_queries()
+        return queries.get(query_key) if query_key else None
+
+    def get_element_categories(self) -> dict[str, list[str]]:
+        """Return element categories for HTML/CSS languages."""
+        return {}

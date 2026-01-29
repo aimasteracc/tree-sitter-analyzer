@@ -173,52 +173,6 @@ class GoTableFormatter(BaseTableFormatter):
 
         return "\n".join(lines)
 
-    def _format_compact_table(self, data: dict[str, Any]) -> str:
-        """Compact table format for Go"""
-        lines = []
-
-        # Header
-        package_name = self._get_package_name(data)
-        file_name = data.get("file_path", "Unknown").split("/")[-1].split("\\")[-1]
-
-        if package_name:
-            lines.append(f"# {package_name}/{file_name}")
-        else:
-            lines.append(f"# {file_name}")
-        lines.append("")
-
-        # Info
-        stats = data.get("statistics") or {}
-        lines.append("## Info")
-        lines.append("| Property | Value |")
-        lines.append("|----------|-------|")
-        lines.append(f"| Package | {package_name or 'main'} |")
-        lines.append(f"| Funcs | {stats.get('function_count', 0)} |")
-        lines.append(f"| Types | {stats.get('class_count', 0)} |")
-        lines.append("")
-
-        # Functions (compact)
-        functions = data.get("functions", []) or data.get("methods", [])
-        if functions:
-            lines.append("## Funcs")
-            lines.append("| Func | Sig | V | L | Doc |")
-            lines.append("|------|-----|---|---|-----|")
-            for func in functions:
-                name = func.get("name", "")
-                sig = self._create_go_compact_signature(func)
-                vis = "E" if self._go_visibility(name) == "exported" else "u"
-                line_range = func.get("line_range", {})
-                lines_str = f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
-                doc = self._extract_doc_summary(func.get("docstring", "") or "")[:20]
-                lines.append(f"| {name} | {sig} | {vis} | {lines_str} | {doc or '-'} |")
-            lines.append("")
-
-        # Trim trailing blank lines
-        while lines and lines[-1] == "":
-            lines.pop()
-
-        return "\n".join(lines)
-
     def _format_func_row(self, func: dict[str, Any]) -> str:
         """Format a function table row for Go"""
         name = func.get("name", "")
@@ -333,36 +287,23 @@ class GoTableFormatter(BaseTableFormatter):
         self.format_type = table_type
 
         try:
-            if table_type == "json":
-                return self._format_json(analysis_result)
             return self.format_structure(analysis_result)
         finally:
             self.format_type = original_format_type
 
     def format_summary(self, analysis_result: dict[str, Any]) -> str:
         """Format summary output for Go"""
-        return self._format_compact_table(analysis_result)
+        return self._format_full_table(analysis_result)
 
     def format_structure(self, analysis_result: dict[str, Any]) -> str:
         """Format structure analysis output for Go"""
         return super().format_structure(analysis_result)
 
     def format_advanced(
-        self, analysis_result: dict[str, Any], output_format: str = "json"
+        self, analysis_result: dict[str, Any], output_format: str = "toon"
     ) -> str:
         """Format advanced analysis output for Go"""
-        if output_format == "json":
-            return self._format_json(analysis_result)
-        elif output_format == "csv":
+        if output_format == "csv":
             return self._format_csv(analysis_result)
         else:
             return self._format_full_table(analysis_result)
-
-    def _format_json(self, data: dict[str, Any]) -> str:
-        """Format data as JSON"""
-        import json
-
-        try:
-            return json.dumps(data, indent=2, ensure_ascii=False)
-        except (TypeError, ValueError) as e:
-            return f"# JSON serialization error: {e}\n"

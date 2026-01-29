@@ -11,6 +11,7 @@
 - `tree_sitter_analyzer/`: メインのソースコード
     - `core/`: 解析エンジンやクエリサービスなどの中核機能
     - `languages/`: 各プログラミング言語のプラグイン
+    - `plugins/`: プラグイン基底クラスと共通ユーティリティ（`programming_language_extractor.py`など）
     - `formatters/`: 出力フォーマットを処理するクラス
     - `mcp/`: Model Context Protocol（MCP）サーバーの実装
     - `cli/`: コマンドラインインターフェースの実装

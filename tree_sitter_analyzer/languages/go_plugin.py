@@ -16,54 +16,78 @@ if TYPE_CHECKING:
     from ..core.analysis_engine import AnalysisRequest
     from ..models import AnalysisResult
 
-from ..encoding_utils import extract_text_slice, safe_encode
 from ..models import Class, Function, Import, Package, Variable
 from ..plugins.base import ElementExtractor, LanguagePlugin
+from ..plugins.programming_language_extractor import ProgrammingLanguageExtractor
 from ..utils import log_debug, log_error
 
 
-class GoElementExtractor(ElementExtractor):
+class GoElementExtractor(ProgrammingLanguageExtractor):
     """Go-specific element extractor"""
 
     def __init__(self) -> None:
         """Initialize the Go element extractor."""
+        super().__init__()
+
+        # Go-specific attributes
         self.current_package: str = ""
         self.current_file: str = ""
-        self.source_code: str = ""
-        self.content_lines: list[str] = []
-        self._node_text_cache: dict[tuple[int, int], str] = {}
+
         # Go-specific metadata
         self.goroutines: list[dict[str, Any]] = []
         self.channels: list[dict[str, Any]] = []
         self.defers: list[dict[str, Any]] = []
 
-    def extract_functions(
-        self, tree: "tree_sitter.Tree", source_code: str
-    ) -> list[Function]:
-        """Extract Go function and method declarations"""
-        self.source_code = source_code
-        self.content_lines = source_code.split("\n")
-        self._reset_caches()
+    def _get_function_handlers(self) -> dict[str, Any]:
+        """
+        Get function node type to handler method mapping.
 
-        functions: list[Function] = []
-
-        extractors = {
+        Returns:
+            Dictionary mapping node types to handler methods
+        """
+        return {
             "function_declaration": self._extract_function,
             "method_declaration": self._extract_method,
         }
 
-        self._traverse_and_extract(tree.root_node, extractors, functions)
+    def _get_class_handlers(self) -> dict[str, Any]:
+        """
+        Get class node type to handler method mapping.
 
-        log_debug(f"Extracted {len(functions)} Go functions/methods")
-        return functions
+        Returns:
+            Dictionary mapping node types to handler methods
+        """
+        # Go uses type_declaration for structs and interfaces
+        return {}
+
+    def _get_container_node_types(self) -> set[str]:
+        """
+        Get Go-specific container node types.
+
+        Returns:
+            Set of container node type names
+        """
+        return super()._get_container_node_types() | {
+            "source_file",
+            "function_declaration",
+            "method_declaration",
+            "return_statement",
+            "expression_list",
+            "func_literal",
+            "for_statement",
+            "if_statement",
+            "switch_statement",
+            "select_statement",
+        }
+
+    # extract_functions() is inherited from base class
+    # Base class implementation uses _get_function_handlers()
 
     def extract_classes(
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[Class]:
         """Extract Go struct and interface definitions"""
-        self.source_code = source_code
-        self.content_lines = source_code.split("\n")
-        self._reset_caches()
+        self._initialize_source(source_code or "")
 
         classes: list[Class] = []
 
@@ -77,9 +101,7 @@ class GoElementExtractor(ElementExtractor):
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[Variable]:
         """Extract Go const and var declarations"""
-        self.source_code = source_code
-        self.content_lines = source_code.split("\n")
-        self._reset_caches()
+        self._initialize_source(source_code or "")
 
         variables: list[Variable] = []
 
@@ -88,7 +110,9 @@ class GoElementExtractor(ElementExtractor):
             "var_declaration": self._extract_var_declaration,
         }
 
-        self._traverse_and_extract(tree.root_node, extractors, variables)
+        self._traverse_and_extract_iterative(
+            tree.root_node, extractors, variables, "variable"
+        )
 
         log_debug(f"Extracted {len(variables)} Go const/var declarations")
         return variables
@@ -97,9 +121,7 @@ class GoElementExtractor(ElementExtractor):
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[Import]:
         """Extract Go import declarations"""
-        self.source_code = source_code
-        self.content_lines = source_code.split("\n")
-        self._reset_caches()
+        self._initialize_source(source_code or "")
 
         imports: list[Import] = []
 
@@ -107,7 +129,9 @@ class GoElementExtractor(ElementExtractor):
             "import_declaration": self._extract_import_declaration,
         }
 
-        self._traverse_and_extract(tree.root_node, extractors, imports)
+        self._traverse_and_extract_iterative(
+            tree.root_node, extractors, imports, "import"
+        )
 
         log_debug(f"Extracted {len(imports)} Go imports")
         return imports
@@ -116,9 +140,7 @@ class GoElementExtractor(ElementExtractor):
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[Package]:
         """Extract Go package declaration"""
-        self.source_code = source_code
-        self.content_lines = source_code.split("\n")
-        self._reset_caches()
+        self._initialize_source(source_code or "")
 
         packages: list[Package] = []
 
@@ -134,37 +156,11 @@ class GoElementExtractor(ElementExtractor):
         return packages
 
     def _reset_caches(self) -> None:
-        """Reset performance caches"""
-        self._node_text_cache.clear()
+        """Reset performance caches including Go-specific metadata"""
+        super()._reset_caches()
         self.goroutines.clear()
         self.channels.clear()
         self.defers.clear()
-
-    def _traverse_and_extract(
-        self,
-        node: "tree_sitter.Node",
-        extractors: dict[str, Any],
-        results: list[Any],
-    ) -> None:
-        """Recursive traversal to find and extract elements"""
-        if node.type in extractors:
-            element = extractors[node.type](node)
-            if element:
-                if isinstance(element, list):
-                    results.extend(element)
-                else:
-                    results.append(element)
-
-        # Also detect goroutines, channels, defers
-        if node.type == "go_statement":
-            self._extract_goroutine(node)
-        elif node.type == "send_statement":
-            self._extract_channel_operation(node, "send")
-        elif node.type == "defer_statement":
-            self._extract_defer(node)
-
-        for child in node.children:
-            self._traverse_and_extract(child, extractors, results)
 
     def _traverse_for_types(
         self, node: "tree_sitter.Node", results: list[Class]
@@ -604,25 +600,11 @@ class GoElementExtractor(ElementExtractor):
                 line_idx -= 1
             else:
                 break
-
         return "\n".join(docs) if docs else None
 
     def _get_node_text(self, node: "tree_sitter.Node") -> str:
-        """Get node text with caching using position-based keys"""
-        cache_key = (node.start_byte, node.end_byte)
-        if cache_key in self._node_text_cache:
-            return self._node_text_cache[cache_key]
-
-        try:
-            start_byte = node.start_byte
-            end_byte = node.end_byte
-            encoding = "utf-8"
-            content_bytes = safe_encode("\n".join(self.content_lines), encoding)
-            text = extract_text_slice(content_bytes, start_byte, end_byte, encoding)
-            self._node_text_cache[cache_key] = text
-            return text
-        except Exception:
-            return ""
+        """Get node text using parent's optimized method"""
+        return self._get_node_text_optimized(node, use_byte_offsets=True)
 
 
 class GoPlugin(LanguagePlugin):
@@ -834,3 +816,14 @@ class GoPlugin(LanguagePlugin):
         return any(
             file_path.lower().endswith(ext) for ext in self.get_file_extensions()
         )
+
+    def execute_query_strategy(
+        self, query_key: str | None, language: str
+    ) -> str | None:
+        """Execute query strategy for this language plugin."""
+        queries = self.get_queries()
+        return queries.get(query_key) if query_key else None
+
+    def get_element_categories(self) -> dict[str, list[str]]:
+        """Return element categories for HTML/CSS languages."""
+        return {}

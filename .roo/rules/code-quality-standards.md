@@ -126,8 +126,14 @@
 ### テスト
 - 各機能に対応するテストを作成
 - エッジケースのテスト
-- モックの適切な使用
+- **モックライブラリ**: `pytest-mock`（`mocker`フィクスチャ）を使用、`unittest.mock`の直接使用は禁止
 - テストカバレッジ80%以上を目標
+
+### テストにおけるモック使用規則
+- **必須**: 全てのモック処理に`pytest-mock`を使用
+- **禁止**: `from unittest.mock import Mock, patch, AsyncMock`などのインポート
+- **推奨パターン**: `mocker.patch()`, `mocker.Mock()`, `mocker.AsyncMock()`
+- **理由**: pytestとの統合性、自動クリーンアップ、コードの一貫性
 
 ## 品質チェックコマンド
 

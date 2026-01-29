@@ -24,10 +24,11 @@ except ImportError:
 
 from ..models import Class, Function, Import, Variable
 from ..plugins.base import ElementExtractor, LanguagePlugin
+from ..plugins.programming_language_extractor import ProgrammingLanguageExtractor
 from ..utils import log_debug, log_error
 
 
-class CSharpElementExtractor(ElementExtractor):
+class CSharpElementExtractor(ProgrammingLanguageExtractor):
     """
     C#-specific element extractor.
 
@@ -54,44 +55,39 @@ class CSharpElementExtractor(ElementExtractor):
         optimization caches for node text extraction.
         """
         super().__init__()
-        self.source_code: str = ""
-        self.content_lines: list[str] = []
         self.current_namespace: str = ""
 
-        # Performance optimization caches - use position-based keys for deterministic caching
-        self._node_text_cache: dict[tuple[int, int], str] = {}
-        self._processed_nodes: set[tuple[int, int]] = set()
-        self._element_cache: dict[tuple[tuple[int, int], str], Any] = {}
-        self._file_encoding: str | None = None
+        # C#-specific caches (inherited caches from BaseElementExtractor:
+        # _node_text_cache, _processed_nodes, _element_cache, source_code, content_lines, _file_encoding)
         self._attribute_cache: dict[tuple[int, int], list[dict[str, Any]]] = {}
 
     def _reset_caches(self) -> None:
         """Reset all internal caches for a new file analysis."""
-        self._node_text_cache.clear()
-        self._processed_nodes.clear()
-        self._element_cache.clear()
+        super()._reset_caches()
         self._attribute_cache.clear()
         self.current_namespace = ""
 
-    def _get_node_text_optimized(self, node: "tree_sitter.Node") -> str:
+    def _get_container_node_types(self) -> set[str]:
         """
-        Get text content of a node with caching for performance.
-
-        Args:
-            node: Tree-sitter node to extract text from
+        Get C#-specific container node types.
 
         Returns:
-            Text content of the node as string
+            Set of node type strings that may contain target elements
         """
-        # Use node position as cache key instead of object id for deterministic behavior
-        cache_key = (node.start_byte, node.end_byte)
-        if cache_key in self._node_text_cache:
-            return self._node_text_cache[cache_key]
-
-        # Extract text directly from source code string
-        text = self.source_code[node.start_byte : node.end_byte]
-        self._node_text_cache[cache_key] = text
-        return text
+        return super()._get_container_node_types() | {
+            "compilation_unit",
+            "namespace_declaration",
+            "file_scoped_namespace_declaration",
+            "class_declaration",
+            "interface_declaration",
+            "struct_declaration",
+            "record_declaration",
+            "enum_declaration",
+            "class_body",
+            "interface_body",
+            "struct_body",
+            "declaration_list",
+        }
 
     def _extract_namespace(self, node: "tree_sitter.Node") -> None:
         """
@@ -229,6 +225,34 @@ class CSharpElementExtractor(ElementExtractor):
 
         return parameters
 
+    def _get_function_handlers(self) -> dict[str, Any]:
+        """
+        Get function node type to handler method mapping.
+
+        Returns:
+            Dictionary mapping node types to handler methods
+        """
+        return {
+            "method_declaration": self._extract_method,
+            "constructor_declaration": self._extract_constructor,
+            "property_declaration": self._extract_property,
+        }
+
+    def _get_class_handlers(self) -> dict[str, Any]:
+        """
+        Get class node type to handler method mapping.
+
+        Returns:
+            Dictionary mapping node types to handler methods
+        """
+        return {
+            "class_declaration": self._extract_class_declaration,
+            "interface_declaration": self._extract_class_declaration,
+            "record_declaration": self._extract_class_declaration,
+            "enum_declaration": self._extract_class_declaration,
+            "struct_declaration": self._extract_class_declaration,
+        }
+
     def _traverse_iterative(
         self, root_node: "tree_sitter.Node"
     ) -> Iterator["tree_sitter.Node"]:
@@ -261,9 +285,7 @@ class CSharpElementExtractor(ElementExtractor):
         Returns:
             List of Class objects representing all class-like declarations
         """
-        self.source_code = source_code or ""
-        self.content_lines = self.source_code.split("\n")
-        self._reset_caches()
+        self._initialize_source(source_code or "")
 
         classes: list[Class] = []
 
@@ -309,6 +331,9 @@ class CSharpElementExtractor(ElementExtractor):
 
             class_name = self._get_node_text_optimized(name_node)
 
+            # Use base class method to extract common metadata
+            metadata = self._extract_common_metadata(node)
+
             # Get modifiers and visibility
             modifiers = self._extract_modifiers(node)
             visibility = self._determine_visibility(modifiers)
@@ -342,9 +367,6 @@ class CSharpElementExtractor(ElementExtractor):
                 else class_name
             )
 
-            # Get raw text
-            raw_text = self._get_node_text_optimized(node)
-
             # Determine class type
             class_type_map = {
                 "class_declaration": "class",
@@ -357,9 +379,9 @@ class CSharpElementExtractor(ElementExtractor):
 
             return Class(
                 name=class_name,
-                start_line=node.start_point[0] + 1,
-                end_line=node.end_point[0] + 1,
-                raw_text=raw_text,
+                start_line=metadata["start_line"],
+                end_line=metadata["end_line"],
+                raw_text=metadata["raw_text"],
                 full_qualified_name=full_name,
                 superclass=superclass,
                 interfaces=interfaces,
@@ -386,9 +408,7 @@ class CSharpElementExtractor(ElementExtractor):
         Returns:
             List of Function objects representing methods, constructors, and properties
         """
-        self.source_code = source_code or ""
-        self.content_lines = self.source_code.split("\n")
-        self._reset_caches()
+        self._initialize_source(source_code or "")
 
         functions: list[Function] = []
 
@@ -436,6 +456,9 @@ class CSharpElementExtractor(ElementExtractor):
 
             method_name = self._get_node_text_optimized(name_node)
 
+            # Use base class method to extract common metadata
+            metadata = self._extract_common_metadata(node)
+
             # Get modifiers and visibility
             modifiers = self._extract_modifiers(node)
             visibility = self._determine_visibility(modifiers)
@@ -454,24 +477,18 @@ class CSharpElementExtractor(ElementExtractor):
             params_node = node.child_by_field_name("parameters")
             parameters = self._extract_parameters(params_node)
 
-            # Get raw text
-            raw_text = self._get_node_text_optimized(node)
-
-            # Calculate complexity (simplified)
-            complexity_score = self._calculate_complexity(node)
-
             return Function(
                 name=method_name,
-                start_line=node.start_point[0] + 1,
-                end_line=node.end_point[0] + 1,
-                raw_text=raw_text,
+                start_line=metadata["start_line"],
+                end_line=metadata["end_line"],
+                raw_text=metadata["raw_text"],
                 parameters=parameters,
                 return_type=return_type,
                 modifiers=modifiers,
                 visibility=visibility,
                 is_async=is_async,
                 annotations=attributes,
-                complexity_score=complexity_score,
+                complexity_score=metadata["complexity"],
             )
 
         except Exception as e:
@@ -496,6 +513,9 @@ class CSharpElementExtractor(ElementExtractor):
 
             constructor_name = self._get_node_text_optimized(name_node)
 
+            # Use base class method to extract common metadata
+            metadata = self._extract_common_metadata(node)
+
             # Get modifiers and visibility
             modifiers = self._extract_modifiers(node)
             visibility = self._determine_visibility(modifiers)
@@ -507,14 +527,11 @@ class CSharpElementExtractor(ElementExtractor):
             params_node = node.child_by_field_name("parameters")
             parameters = self._extract_parameters(params_node)
 
-            # Get raw text
-            raw_text = self._get_node_text_optimized(node)
-
             return Function(
                 name=constructor_name,
-                start_line=node.start_point[0] + 1,
-                end_line=node.end_point[0] + 1,
-                raw_text=raw_text,
+                start_line=metadata["start_line"],
+                end_line=metadata["end_line"],
+                raw_text=metadata["raw_text"],
                 parameters=parameters,
                 return_type="void",
                 modifiers=modifiers,
@@ -545,6 +562,9 @@ class CSharpElementExtractor(ElementExtractor):
 
             property_name = self._get_node_text_optimized(name_node)
 
+            # Use base class method to extract common metadata
+            metadata = self._extract_common_metadata(node)
+
             # Get modifiers and visibility
             modifiers = self._extract_modifiers(node)
             visibility = self._determine_visibility(modifiers)
@@ -555,9 +575,6 @@ class CSharpElementExtractor(ElementExtractor):
             # Get property type
             type_node = node.child_by_field_name("type")
             property_type = self._extract_type_name(type_node)
-
-            # Get raw text
-            raw_text = self._get_node_text_optimized(node)
 
             # Check for getter/setter (for future use)
             # has_getter = False
@@ -574,9 +591,9 @@ class CSharpElementExtractor(ElementExtractor):
 
             return Function(
                 name=property_name,
-                start_line=node.start_point[0] + 1,
-                end_line=node.end_point[0] + 1,
-                raw_text=raw_text,
+                start_line=metadata["start_line"],
+                end_line=metadata["end_line"],
+                raw_text=metadata["raw_text"],
                 parameters=[],
                 return_type=property_type,
                 modifiers=modifiers,
@@ -589,18 +606,14 @@ class CSharpElementExtractor(ElementExtractor):
             log_error(f"Error extracting property: {e}")
             return None
 
-    def _calculate_complexity(self, node: "tree_sitter.Node") -> int:
+    def _get_complexity_keywords(self) -> set[str]:
         """
-        Calculate cyclomatic complexity of a method.
-
-        Args:
-            node: Method node
+        Get C#-specific complexity keywords.
 
         Returns:
-            Complexity score (1 + number of decision points)
+            Set of node types that contribute to complexity
         """
-        complexity = 1
-        decision_keywords = {
+        return {
             "if_statement",
             "switch_statement",
             "for_statement",
@@ -610,12 +623,6 @@ class CSharpElementExtractor(ElementExtractor):
             "catch_clause",
             "conditional_expression",  # ternary operator
         }
-
-        for child in self._traverse_iterative(node):
-            if child.type in decision_keywords:
-                complexity += 1
-
-        return complexity
 
     def extract_variables(
         self, tree: "tree_sitter.Tree | None", source_code: str
@@ -630,9 +637,7 @@ class CSharpElementExtractor(ElementExtractor):
         Returns:
             List of Variable objects representing fields
         """
-        self.source_code = source_code or ""
-        self.content_lines = self.source_code.split("\n")
-        self._reset_caches()
+        self._initialize_source(source_code or "")
 
         variables: list[Variable] = []
 
@@ -786,8 +791,7 @@ class CSharpElementExtractor(ElementExtractor):
         Returns:
             List of Import objects representing using directives
         """
-        self.source_code = source_code or ""
-        self.content_lines = self.source_code.split("\n")
+        self._initialize_source(source_code or "")
 
         imports: list[Import] = []
 

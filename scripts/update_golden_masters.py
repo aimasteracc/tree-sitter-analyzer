@@ -33,7 +33,15 @@ def update_golden_master(
     golden_dir = Path("tests/golden_masters") / table_format
     golden_dir.mkdir(parents=True, exist_ok=True)
 
-    output_file = golden_dir / f"{output_name}_{table_format}.md"
+    # Determine file extension
+    if table_format == "csv":
+        extension = "csv"
+    elif table_format == "toon":
+        extension = "toon"
+    else:
+        extension = "md"
+
+    output_file = golden_dir / f"{output_name}_{table_format}.{extension}"
 
     print(f"Generating golden master: {output_file}")
 
@@ -42,12 +50,12 @@ def update_golden_master(
     returncode, output = run_command(cmd)
 
     if returncode != 0:
-        print(f"  ❌ Failed to generate output for {input_file}", file=sys.stderr)
+        print(f"  FAILED to generate output for {input_file}", file=sys.stderr)
         return False
 
     # 出力を保存
     output_file.write_text(output, encoding="utf-8")
-    print(f"  ✅ Updated: {output_file}")
+    print(f"  Updated: {output_file}")
     return True
 
 
@@ -95,10 +103,10 @@ def main():
     print("=" * 80)
 
     if success_count == total_count:
-        print("✅ All golden masters updated successfully!")
+        print("All golden masters updated successfully!")
         return 0
     else:
-        print("⚠️  Some golden masters failed to update")
+        print("Some golden masters failed to update")
         return 1
 
 

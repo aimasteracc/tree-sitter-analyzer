@@ -48,14 +48,13 @@
 
 #### 2.2 Element Extractor実装
 - [ ] `{Language}ElementExtractor` クラス実装
+  - [ ] `ProgrammingLanguageExtractor` を継承（プログラミング言語の場合）
   - [ ] `__init__()`: キャッシュ初期化
   - [ ] `_reset_caches()`: キャッシュリセット
-  - [ ] `_get_node_text_optimized()`: ノードテキスト抽出
-  - [ ] `extract_classes()`: クラス抽出
-  - [ ] `extract_functions()`: 関数/メソッド抽出
-  - [ ] `extract_variables()`: 変数/フィールド抽出
+  - [ ] `_get_container_node_types()`: コンテナノード定義
+  - [ ] `_get_function_handlers()`: 関数ハンドラ登録
+  - [ ] `_get_class_handlers()`: クラスハンドラ登録
   - [ ] `extract_imports()`: インポート抽出
-  - [ ] `_traverse_iterative()`: 反復的なAST走査
 
 #### 2.3 言語固有の抽出メソッド
 - [ ] クラス型抽出（class, interface, etc.）

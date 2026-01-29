@@ -4,7 +4,7 @@
 
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-8409%20passed-brightgreen.svg)](#-质量与测试)
+[![Tests](https://img.shields.io/badge/tests-8405%20passed-brightgreen.svg)](#-质量与测试)
 [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
 [![Version](https://img.shields.io/badge/version-1.10.4-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
@@ -20,7 +20,7 @@
 - **格式变更管理系统**: 新增格式变更检测和行为配置文件比较功能
 - **增强语言支持**: Go、Rust、Kotlin现已成为核心依赖
 - **C++格式化器**: 新增C++代码格式化支持
-- **8,409个测试** 100%通过率，80.33%覆盖率
+- **8,405个测试** 100%通过率，80.33%覆盖率
 
 📖 完整版本历史请查看 **[更新日志](CHANGELOG.md)**。
 

@@ -312,59 +312,6 @@ class PHPTableFormatter(BaseTableFormatter):
 
         return "\n".join(lines)
 
-    def _format_compact_table(self, data: dict[str, Any]) -> str:
-        """Compact table format for PHP, following Java golden master format."""
-        lines = []
-
-        # Header
-        file_path = data.get("file_path", "Unknown")
-        file_name = file_path.split("/")[-1].split("\\")[-1]
-        lines.append(f"# {file_name}")
-        lines.append("")
-
-        # Info table
-        stats = data.get("statistics") or {}
-        lines.append("## Info")
-        lines.append("| Property | Value |")
-        lines.append("|----------|-------|")
-        namespace = self._extract_namespace(data)
-        lines.append(f"| Namespace | {namespace if namespace else ''} |")
-        lines.append(
-            f"| Methods | {stats.get('method_count', len(data.get('methods', [])))} |"
-        )
-        lines.append(
-            f"| Fields | {stats.get('field_count', len(data.get('fields', [])))} |"
-        )
-        lines.append("")
-
-        # Methods table
-        methods = data.get("methods", [])
-        if methods:
-            lines.append("## Methods")
-            lines.append("| Method | Sig | V | L | Cx | Doc |")
-            lines.append("|--------|-----|---|---|----|----|")
-
-            for method in methods:
-                mname = str(method.get("name", "Unknown"))
-                parent_class = method.get("parent_class", "")
-                if parent_class:
-                    mname = f"{parent_class}::{mname}"
-
-                sig = self._format_compact_signature(method)
-                mvis = self._get_visibility_symbol(method.get("visibility", "public"))
-                mrange = method.get("line_range", {})
-                mlines = f"{mrange.get('start', 0)}-{mrange.get('end', 0)}"
-                mcx = method.get("complexity_score", method.get("complexity", 1))
-                mdoc = method.get("documentation", "-") or "-"
-                if mdoc and len(mdoc) > 20:
-                    mdoc = mdoc[:17] + "..."
-
-                lines.append(
-                    f"| {mname} | {sig} | {mvis} | {mlines} | {mcx} | {mdoc} |"
-                )
-
-        return "\n".join(lines)
-
     def _format_csv(self, data: dict[str, Any]) -> str:
         """CSV format for PHP, following Java golden master format."""
         lines = []
@@ -423,8 +370,8 @@ class PHPCompactFormatter(PHPTableFormatter):
     """Compact table formatter for PHP"""
 
     def format(self, data: dict[str, Any]) -> str:
-        """Format data as compact table"""
-        return self._format_compact_table(data)
+        """Format data as full table"""
+        return self._format_full_table(data)
 
 
 class PHPCSVFormatter(PHPTableFormatter):

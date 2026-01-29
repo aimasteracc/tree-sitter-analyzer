@@ -16,84 +16,48 @@ if TYPE_CHECKING:
     from ..core.analysis_engine import AnalysisRequest
     from ..models import AnalysisResult
 
-from ..encoding_utils import extract_text_slice, safe_encode
 from ..models import Class, Function, Import, Variable
 from ..plugins.base import ElementExtractor, LanguagePlugin
-from ..utils import log_debug, log_error, log_warning
+from ..plugins.programming_language_extractor import ProgrammingLanguageExtractor
+from ..utils import log_debug, log_error
 
 
-class CElementExtractor(ElementExtractor):
+class CElementExtractor(ProgrammingLanguageExtractor):
     """C specific element extractor with advanced analysis support"""
 
     def __init__(self) -> None:
         """Initialize the C element extractor."""
+        super().__init__()
         self.current_file: str = ""
-        self.source_code: str = ""
-        self.content_lines: list[str] = []
         self.includes: list[str] = []
 
-        # Performance optimization caches - use position-based keys for deterministic caching
-        self._node_text_cache: dict[tuple[int, int], str] = {}
-        self._processed_nodes: set[int] = set()
-        self._element_cache: dict[tuple[int, str], Any] = {}
-        self._file_encoding: str | None = None
+        # C-specific caches (in addition to inherited base caches)
         self._comment_cache: dict[int, str] = {}
         self._complexity_cache: dict[int, int] = {}
 
-    def extract_functions(
-        self, tree: "tree_sitter.Tree", source_code: str
-    ) -> list[Function]:
-        """Extract C function definitions with comprehensive details"""
-        self.source_code = source_code
-        self.content_lines = source_code.split("\n")
-        self._reset_caches()
-
-        functions: list[Function] = []
-
-        # Use optimized traversal for function types
-        extractors = {
+    def _get_function_handlers(self) -> dict[str, Any]:
+        """Get function node type handlers for C."""
+        return {
             "function_definition": self._extract_function_optimized,
             "preproc_function_def": self._extract_macro_function,
         }
 
-        self._traverse_and_extract_iterative(
-            tree.root_node, extractors, functions, "function"
-        )
-
-        log_debug(f"Extracted {len(functions)} C functions")
-        return functions
-
-    def extract_classes(
-        self, tree: "tree_sitter.Tree", source_code: str
-    ) -> list[Class]:
-        """Extract C struct/union/enum definitions as 'classes'"""
-        self.source_code = source_code
-        self.content_lines = source_code.split("\n")
-        self._reset_caches()
-
-        classes: list[Class] = []
-
-        # Extract struct, union, and enum declarations
-        extractors = {
+    def _get_class_handlers(self) -> dict[str, Any]:
+        """Get class node type handlers for C (struct/union/enum)."""
+        return {
             "struct_specifier": self._extract_struct_optimized,
             "union_specifier": self._extract_union_optimized,
             "enum_specifier": self._extract_enum_optimized,
         }
 
-        self._traverse_and_extract_iterative(
-            tree.root_node, extractors, classes, "class"
-        )
-
-        log_debug(f"Extracted {len(classes)} C structs/unions/enums")
-        return classes
+    # extract_functions() and extract_classes() are inherited from base class
+    # Base class implementation uses _get_function_handlers() and _get_class_handlers()
 
     def extract_variables(
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[Variable]:
         """Extract C variable/field declarations"""
-        self.source_code = source_code
-        self.content_lines = source_code.split("\n")
-        self._reset_caches()
+        self._initialize_source(source_code)
 
         variables: list[Variable] = []
 
@@ -115,8 +79,7 @@ class CElementExtractor(ElementExtractor):
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[Import]:
         """Extract C include directives"""
-        self.source_code = source_code
-        self.content_lines = source_code.split("\n")
+        self._initialize_source(source_code)
 
         imports: list[Import] = []
 
@@ -138,25 +101,13 @@ class CElementExtractor(ElementExtractor):
 
     def _reset_caches(self) -> None:
         """Reset performance caches"""
-        self._node_text_cache.clear()
-        self._processed_nodes.clear()
-        self._element_cache.clear()
+        super()._reset_caches()
         self._comment_cache.clear()
         self._complexity_cache.clear()
 
-    def _traverse_and_extract_iterative(
-        self,
-        root_node: "tree_sitter.Node | None",
-        extractors: dict[str, Any],
-        results: list[Any],
-        element_type: str,
-    ) -> None:
-        """Iterative node traversal and extraction with caching"""
-        if root_node is None:
-            return
-
-        target_node_types = set(extractors.keys())
-        container_node_types = {
+    def _get_container_node_types(self) -> set[str]:
+        """Get C-specific container node types for traversal."""
+        return super()._get_container_node_types() | {
             "translation_unit",
             "compound_statement",
             "struct_specifier",
@@ -166,114 +117,11 @@ class CElementExtractor(ElementExtractor):
             "type_definition",  # For typedef structs
         }
 
-        node_stack = [(root_node, 0)]
-        processed_nodes = 0
-        max_depth = 50
-
-        while node_stack:
-            current_node, depth = node_stack.pop()
-
-            if depth > max_depth:
-                log_warning(f"Maximum traversal depth ({max_depth}) exceeded")
-                continue
-
-            processed_nodes += 1
-            node_type = current_node.type
-
-            # Early termination for irrelevant nodes
-            if (
-                depth > 0
-                and node_type not in target_node_types
-                and node_type not in container_node_types
-            ):
-                continue
-
-            # Process target nodes
-            if node_type in target_node_types:
-                node_id = id(current_node)
-
-                if node_id in self._processed_nodes:
-                    continue
-
-                cache_key = (node_id, element_type)
-                if cache_key in self._element_cache:
-                    element = self._element_cache[cache_key]
-                    if element:
-                        if isinstance(element, list):
-                            results.extend(element)
-                        else:
-                            results.append(element)
-                    self._processed_nodes.add(node_id)
-                    continue
-
-                # Extract and cache
-                extractor = extractors[node_type]
-                element = extractor(current_node)
-                self._element_cache[cache_key] = element
-                if element:
-                    if isinstance(element, list):
-                        results.extend(element)
-                    else:
-                        results.append(element)
-                self._processed_nodes.add(node_id)
-
-            # Add children to stack (reversed for correct DFS traversal)
-            if current_node.children:
-                for child in reversed(current_node.children):
-                    node_stack.append((child, depth + 1))
-
-        log_debug(f"Iterative traversal processed {processed_nodes} nodes")
-
-    def _get_node_text_optimized(self, node: "tree_sitter.Node") -> str:
-        """Get node text with optimized caching using position-based keys"""
-        # Use position-based cache key for deterministic behavior
-        cache_key = (node.start_byte, node.end_byte)
-
-        if cache_key in self._node_text_cache:
-            return self._node_text_cache[cache_key]
-
-        try:
-            start_byte = node.start_byte
-            end_byte = node.end_byte
-
-            encoding = self._file_encoding or "utf-8"
-            content_bytes = safe_encode("\n".join(self.content_lines), encoding)
-            text = extract_text_slice(content_bytes, start_byte, end_byte, encoding)
-
-            self._node_text_cache[cache_key] = text
-            return text
-        except Exception as e:
-            log_error(f"Error in _get_node_text_optimized: {e}")
-            # Fallback to simple text extraction
-            try:
-                start_point = node.start_point
-                end_point = node.end_point
-
-                if start_point[0] == end_point[0]:
-                    line = self.content_lines[start_point[0]]
-                    result: str = line[start_point[1] : end_point[1]]
-                    return result
-                else:
-                    lines = []
-                    for i in range(start_point[0], end_point[0] + 1):
-                        if i < len(self.content_lines):
-                            line = self.content_lines[i]
-                            if i == start_point[0]:
-                                lines.append(line[start_point[1] :])
-                            elif i == end_point[0]:
-                                lines.append(line[: end_point[1]])
-                            else:
-                                lines.append(line)
-                    return "\n".join(lines)
-            except Exception as fallback_error:
-                log_error(f"Fallback text extraction also failed: {fallback_error}")
-                return ""
-
     def _extract_function_optimized(self, node: "tree_sitter.Node") -> Function | None:
         """Extract function information optimized"""
         try:
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
+            # Use base class method to extract common metadata
+            metadata = self._extract_common_metadata(node)
 
             # Extract function details
             function_info = self._parse_function_signature(node)
@@ -282,30 +130,19 @@ class CElementExtractor(ElementExtractor):
 
             name, return_type, parameters, modifiers = function_info
 
-            # Extract raw text
-            start_line_idx = max(0, start_line - 1)
-            end_line_idx = min(len(self.content_lines), end_line)
-            raw_text = "\n".join(self.content_lines[start_line_idx:end_line_idx])
-
-            # Calculate complexity
-            complexity_score = self._calculate_complexity_optimized(node)
-
-            # Extract comments/documentation
-            docstring = self._extract_comment_for_line(start_line)
-
             return Function(
                 name=name,
-                start_line=start_line,
-                end_line=end_line,
-                raw_text=raw_text,
+                start_line=metadata["start_line"],
+                end_line=metadata["end_line"],
+                raw_text=metadata["raw_text"],
                 language="c",
                 parameters=parameters,
                 return_type=return_type or "int",
                 modifiers=modifiers,
                 is_static="static" in modifiers,
                 visibility="public",  # C functions are effectively public
-                docstring=docstring,
-                complexity_score=complexity_score,
+                docstring=metadata["docstring"],
+                complexity_score=metadata["complexity"],
             )
         except (AttributeError, ValueError, TypeError) as e:
             log_debug(f"Failed to extract function info: {e}")
@@ -388,8 +225,14 @@ class CElementExtractor(ElementExtractor):
     def _extract_struct_optimized(self, node: "tree_sitter.Node") -> Class | None:
         """Extract struct information optimized"""
         try:
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
+            # Determine the actual node to use for metadata extraction
+            actual_node = node
+            if node.parent and node.parent.type == "type_definition":
+                # Use typedef node for position if it's a typedef struct
+                actual_node = node.parent
+
+            # Use base class method to extract common metadata
+            metadata = self._extract_common_metadata(actual_node)
 
             struct_name = None
 
@@ -407,32 +250,21 @@ class CElementExtractor(ElementExtractor):
                 for sibling in node.parent.children:
                     if sibling.type == "type_identifier":
                         struct_name = self._get_node_text_optimized(sibling)
-                        # Use the typedef position for the start/end lines
-                        start_line = node.parent.start_point[0] + 1
-                        end_line = node.parent.end_point[0] + 1
                         break
 
             if not struct_name:
                 # Truly anonymous struct
-                struct_name = f"anonymous_struct_{start_line}"
-
-            # Extract raw text
-            start_line_idx = max(0, start_line - 1)
-            end_line_idx = min(len(self.content_lines), end_line)
-            raw_text = "\n".join(self.content_lines[start_line_idx:end_line_idx])
-
-            # Extract comments/documentation
-            docstring = self._extract_comment_for_line(start_line)
+                struct_name = f"anonymous_struct_{metadata['start_line']}"
 
             return Class(
                 name=struct_name,
-                start_line=start_line,
-                end_line=end_line,
-                raw_text=raw_text,
+                start_line=metadata["start_line"],
+                end_line=metadata["end_line"],
+                raw_text=metadata["raw_text"],
                 language="c",
                 class_type="struct",
                 full_qualified_name=struct_name,
-                docstring=docstring,
+                docstring=metadata["docstring"],
             )
         except Exception as e:
             log_debug(f"Failed to extract struct info: {e}")
@@ -457,8 +289,14 @@ class CElementExtractor(ElementExtractor):
     def _extract_enum_optimized(self, node: "tree_sitter.Node") -> Class | None:
         """Extract enum information optimized"""
         try:
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
+            # Determine the actual node to use for metadata extraction
+            actual_node = node
+            if node.parent and node.parent.type == "type_definition":
+                # Use typedef node for position if it's a typedef enum
+                actual_node = node.parent
+
+            # Use base class method to extract common metadata
+            metadata = self._extract_common_metadata(actual_node)
 
             enum_name = None
 
@@ -472,32 +310,21 @@ class CElementExtractor(ElementExtractor):
                 for sibling in node.parent.children:
                     if sibling.type == "type_identifier":
                         enum_name = self._get_node_text_optimized(sibling)
-                        # Use the typedef position for the start/end lines
-                        start_line = node.parent.start_point[0] + 1
-                        end_line = node.parent.end_point[0] + 1
                         break
 
             if not enum_name:
                 # Truly anonymous enum
-                enum_name = f"anonymous_enum_{start_line}"
-
-            # Extract raw text
-            start_line_idx = max(0, start_line - 1)
-            end_line_idx = min(len(self.content_lines), end_line)
-            raw_text = "\n".join(self.content_lines[start_line_idx:end_line_idx])
-
-            # Extract comments/documentation
-            docstring = self._extract_comment_for_line(start_line)
+                enum_name = f"anonymous_enum_{metadata['start_line']}"
 
             return Class(
                 name=enum_name,
-                start_line=start_line,
-                end_line=end_line,
-                raw_text=raw_text,
+                start_line=metadata["start_line"],
+                end_line=metadata["end_line"],
+                raw_text=metadata["raw_text"],
                 language="c",
                 class_type="enum",
                 full_qualified_name=enum_name,
-                docstring=docstring,
+                docstring=metadata["docstring"],
             )
         except Exception as e:
             log_debug(f"Failed to extract enum info: {e}")
@@ -842,6 +669,11 @@ class CElementExtractor(ElementExtractor):
         complexity += count_decisions(node)
         return complexity
 
+    def _extract_docstring_for_node(self, node: "tree_sitter.Node") -> str | None:
+        """Extract docstring/comment for a C node (override base class)."""
+        start_line = node.start_point[0] + 1
+        return self._extract_comment_for_line(start_line)
+
     def _extract_comment_for_line(self, line: int) -> str | None:
         """Extract comment (documentation) for a specific line"""
         try:
@@ -1043,3 +875,18 @@ class CPlugin(LanguagePlugin):
                 "variables": [],
                 "imports": [],
             }
+
+    def get_queries(self) -> dict[str, str]:
+        """Return language-specific tree-sitter queries."""
+        return {}
+
+    def execute_query_strategy(
+        self, query_key: str | None, language: str
+    ) -> str | None:
+        """Execute query strategy for this language plugin."""
+        queries = self.get_queries()
+        return queries.get(query_key) if query_key else None
+
+    def get_element_categories(self) -> dict[str, list[str]]:
+        """Return element categories for HTML/CSS languages."""
+        return {}

@@ -466,6 +466,11 @@ Tree-sitter Analyzer MCPサーバーは、AI統合コード解析のための8�
       "default": false,
       "description": "カウントのみ返す"
     },
+    "sort": {
+      "type": "string",
+      "enum": ["name", "path", "modified", "accessed", "created", "size", "ext"],
+      "description": "ソート順: 'name' (ファイル名), 'path' (フルパス), 'modified' (更新日時), 'size' (サイズ), 'ext' (拡張子)"
+    },
     "output_file": {
       "type": "string",
       "description": "出力ファイル名（オプション）"

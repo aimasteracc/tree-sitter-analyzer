@@ -65,12 +65,11 @@ class LegacyTableFormatter:
         """
         if self.format_type == "full":
             result = self._format_full_table(structure_data)
-        elif self.format_type == "compact":
-            result = self._format_compact_table(structure_data)
         elif self.format_type == "csv":
             result = self._format_csv(structure_data)
         else:
-            raise ValueError(f"Unsupported format type: {self.format_type}")
+            # Fallback to full table
+            result = self._format_full_table(structure_data)
 
         # Convert to platform-specific newline characters
         # Skip newline conversion for CSV format

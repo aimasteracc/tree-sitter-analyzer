@@ -158,56 +158,134 @@ class ToonFormatter(BaseFormatter):
 
         # File metadata
         if self.include_metadata:
-            lines.append(f"file: {result.file_path}")
-            lines.append(f"language: {result.language}")
             if result.package:
                 package_name = (
                     result.package.name
                     if hasattr(result.package, "name")
                     else str(result.package)
                 )
-                lines.append(f"package: {package_name}")
+                lines.append(f"module: {package_name}")
+            else:
+                # If no package, use file stem
+                import os
+
+                file_name = result.file_path.replace("\\", "/").split("/")[-1]
+                module_name = os.path.splitext(file_name)[0]
+                lines.append(f"module: {module_name}")
+
             lines.append("")
 
-        # Statistics summary
-        stats = result.get_summary()
-        if stats:
-            lines.append("summary:")
-            for key, value in stats.items():
-                lines.append(f"  {key}: {value}")
-            lines.append("")
+        # Imports
+        imports = [e for e in result.elements if e.element_type == "import"]
+        if imports:
+            lines.append("imports:")
+            for imp in imports:
+                name = getattr(imp, "name", "")
+                module_name = getattr(imp, "module_name", "")
 
-        # Elements (classes, methods, functions)
-        if result.elements:
-            lines.append(f"elements[{len(result.elements)}]:")
-
-            # Group by type
-            classes = [e for e in result.elements if e.element_type == "class"]
-            methods = [e for e in result.elements if e.element_type == "method"]
-            functions = [e for e in result.elements if e.element_type == "function"]
-
-            if classes:
-                lines.append(f"  classes[{len(classes)}]:")
-                for cls in classes:
-                    lines.append(f"    - {cls.name}")
-
-            if methods:
-                lines.append(f"  methods[{len(methods)}]:")
-                if self.compact_arrays:
-                    # Use compact table format
-                    method_dicts = [
-                        self._method_to_dict(m) for m in methods[:10]
-                    ]  # Limit for demo
-                    table = self.encoder.encode_array_table(method_dicts, indent=2)
-                    lines.append(table)
+                if module_name:
+                    # User prefers compact comma lists
+                    formatted_name = name.replace(", ", ",")
+                    lines.append(f"  {module_name}: {formatted_name}")
                 else:
-                    for method in methods[:10]:  # Limit for demo
-                        lines.append(f"    - {method.name}")
+                    # Simple import
+                    lines.append(f"  {name}: {name}")
+            lines.append("")
 
-            if functions:
-                lines.append(f"  functions[{len(functions)}]:")
-                for func in functions[:10]:  # Limit for demo
-                    lines.append(f"    - {func.name}")
+        # Group by type
+        classes = [e for e in result.elements if e.element_type == "class"]
+        all_funcs = [
+            e for e in result.elements if e.element_type in ("method", "function")
+        ]
+        fields = [e for e in result.elements if e.element_type == "variable"]
+
+        # Helper to check if element is inside class
+        def is_child_of(child: Any, parent: Any) -> bool:
+            return bool(parent.start_line <= child.start_line <= parent.end_line)
+
+        # Classes Summary
+        if classes:
+            lines.append(f"classes[{len(classes)}]{{name,type,lines,methods,fields}}:")
+            for cls in classes:
+                # Count methods and fields for this class
+                m_count = sum(1 for m in all_funcs if is_child_of(m, cls))
+                f_count = sum(1 for f in fields if is_child_of(f, cls))
+
+                class_type = (
+                    "dataclass" if getattr(cls, "is_dataclass", False) else "class"
+                )
+                lines.append(
+                    f"  {cls.name},{class_type},{cls.start_line}-{cls.end_line},{m_count},{f_count}"
+                )
+            lines.append("")
+
+        # Class Details
+        assigned_funcs = set()
+        if classes:
+            for cls in classes:
+                class_type = (
+                    "dataclass" if getattr(cls, "is_dataclass", False) else "class"
+                )
+                lines.append(f"{cls.name}:")
+                lines.append(f"  type: {class_type}")
+
+                # Annotations (Decorators) - explicit listing requested
+                modifiers = getattr(cls, "modifiers", [])
+                # Filter out standard types/flags that are handled elsewhere
+                annotations = [
+                    m for m in modifiers if m not in ["abstract", "static", "dataclass"]
+                ]
+                if annotations:
+                    lines.append("  annotations:")
+                    for ann in annotations:
+                        lines.append(f"    - @{ann}")
+
+                superclass = getattr(cls, "superclass", None)
+                if superclass:
+                    lines.append(f"  parent: {superclass}")
+                lines.append(f"  lines: {cls.start_line}-{cls.end_line}")
+
+                # Get methods for this class
+                cls_methods = [m for m in all_funcs if is_child_of(m, cls)]
+                # Mark as assigned
+                for m in cls_methods:
+                    # Use a unique key
+                    key = (m.name, m.start_line, m.end_line)
+                    assigned_funcs.add(key)
+
+                if cls_methods:
+                    lines.append(
+                        f"  methods[{len(cls_methods)}]{{name,sig,lines,cx,doc}}:"
+                    )
+                    for m in cls_methods:
+                        m_dict = self._method_to_dict_rich(m)
+                        name = m_dict["name"]
+                        sig = m_dict["sig"]
+                        line_count = m_dict["lines"]
+                        cx = m_dict["cx"]
+                        doc = m_dict["doc"]
+                        lines.append(f"    {name},{sig},{line_count},{cx},{doc}")
+                lines.append("")
+
+        # Standalone Functions
+        standalone_funcs = [
+            f
+            for f in all_funcs
+            if (f.name, f.start_line, f.end_line) not in assigned_funcs
+        ]
+
+        if standalone_funcs:
+            lines.append(
+                f"functions[{len(standalone_funcs)}]{{name,sig,lines,cx,doc}}:"
+            )
+            for func in standalone_funcs:
+                f_dict = self._method_to_dict_rich(func)
+                name = f_dict["name"]
+                sig = f_dict["sig"]
+                line_count = f_dict["lines"]
+                cx = f_dict["cx"]
+                doc = f_dict["doc"]
+                lines.append(f"  {name},{sig},{line_count},{cx},{doc}")
 
         return "\n".join(lines)
 
@@ -348,3 +426,87 @@ class ToonFormatter(BaseFormatter):
 
         # Need at least 2 TOON patterns to confirm
         return toon_patterns >= 2
+
+    def _method_to_dict_rich(self, method: Any) -> dict[str, Any]:
+        """Convert method to dictionary with rich details for TOON"""
+        # Name with modifiers
+        name = getattr(method, "name", "unknown")
+        modifiers = []
+
+        # Handle decorators and flags
+        # Map common flags to TOON modifiers
+        if getattr(method, "is_abstract", False):
+            modifiers.append("abstract")
+        if getattr(method, "is_static", False):
+            modifiers.append("static")
+
+        # Add other modifiers from 'modifiers' list if available
+        if hasattr(method, "modifiers") and method.modifiers:
+            for mod in method.modifiers:
+                # Avoid duplication and standard flags
+                if (
+                    mod not in modifiers
+                    and mod != "staticmethod"
+                    and mod != "abstractmethod"
+                    and mod != "abstract"
+                ):
+                    modifiers.append(mod)
+
+        full_name = f"{name}[{','.join(modifiers)}]" if modifiers else name
+
+        # Signature
+        sig = self._format_toon_signature(method)
+
+        # Doc
+        doc = getattr(method, "docstring", "")
+
+        # Special handling for __init__ methods - they often get wrong docstrings from tree-sitter
+        # (Copied from PythonTableFormatter logic to maintain consistency)
+        if name == "__init__" and doc:
+            doc_str = str(doc).strip()
+            # If it contains class-specific terms that don't match __init__, it's likely wrong
+            if any(
+                word in doc_str.lower() for word in ["bark", "meow", "fetch", "purr"]
+            ):
+                doc = ""
+
+        if doc and str(doc).strip():
+            # Simplify docstring: first line, no quotes
+            doc = str(doc).strip().split("\n")[0].strip(' "')
+            # Handle empty after strip
+            if not doc:
+                doc = "-"
+        else:
+            doc = "-"
+
+        return {
+            "name": full_name,
+            "sig": sig,
+            "lines": f"{getattr(method, 'start_line', 0)}-{getattr(method, 'end_line', 0)}",
+            "cx": getattr(method, "complexity_score", ""),
+            "doc": doc,
+        }
+
+    def _format_toon_signature(self, method: Any) -> str:
+        """Format signature as p1|p2->ret"""
+        params = []
+        method_params = getattr(method, "parameters", [])
+        if method_params:
+            for p in method_params:
+                # p can be string or dict
+                if isinstance(p, dict):
+                    p_name = p.get("name", "")
+                    p_type = p.get("type", "")
+                    if p_type and p_type != "Any":
+                        params.append(f"{p_name}:{p_type}")
+                    else:
+                        params.append(p_name)
+                else:
+                    params.append(str(p))
+
+        ret_type = getattr(method, "return_type", "Any")
+        if not ret_type:
+            ret_type = "Any"
+
+        param_str = "|".join(params)
+        return f"{param_str}->{ret_type}"
