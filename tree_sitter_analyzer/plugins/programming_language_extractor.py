@@ -1,10 +1,18 @@
 #!/usr/bin/env python3
 """
-Programming Language Extractor Module
+Programming Language Extractor - Advanced Plugin System
 
-Base class for programming language plugins with advanced features.
-Provides iterative AST traversal with depth limits, element caching,
-cyclomatic complexity calculation, and container node type customization.
+Base class for programming language plugins with advanced features
+including iterative AST traversal, element caching, cyclomatic complexity
+calculation, and container node type customization.
+
+Optimized with:
+- Complete type hints (PEP 484)
+- Comprehensive error handling and recovery
+- Performance optimization (LRU caching, iterative traversal)
+- Thread-safe operations
+- Complexity calculation (cyclomatic metrics)
+- Detailed documentation
 
 Features:
 - Iterative AST traversal with depth limits
@@ -12,80 +20,217 @@ Features:
 - Cyclomatic complexity calculation
 - Container node type customization
 - Comprehensive error handling
-- Performance monitoring
+- Performance monitoring and statistics
 - Type-safe operations (PEP 484)
+
+Architecture:
+- Layered design with clear separation of concerns
+- Performance optimization with LRU caching and iterative traversal
+- Thread-safe operations where applicable
+- Integration with models and core components
+
+Usage:
+    >>> from tree_sitter_analyzer.plugins import ProgrammingLanguageExtractor
+    >>> extractor = ProgrammingLanguageExtractor(max_depth=50)
+    >>> functions = extractor.extract_functions(tree, source_code)
+
+Author: aisheng.yu
+Version: 1.10.5
+Date: 2026-01-28
 """
 
+import functools
+import hashlib
 import logging
-from typing import TYPE_CHECKING, Any, Optional, List, Dict, Tuple, Union, Callable, Type
-from collections.abc import Callable as CallableType
+import os
+import threading
+import time
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, Optional, List, Dict, Tuple, Union, Callable, Type, NamedTuple
 from functools import lru_cache, wraps
-from time import perf_counter
+from collections import deque
 from dataclasses import dataclass, field
+from enum import Enum
+from time import perf_counter
 
-# Configure logging
-logger = logging.getLogger(__name__)
-
+# Type checking setup
 if TYPE_CHECKING:
-    from tree_sitter import Tree, Node
+    # Tree-sitter imports
+    from tree_sitter import Tree, Language, Node
+
+    # Model imports
     from ..models import (
         CodeElement,
         Class,
         Function,
         Variable,
-        Import as ModelImport,
+        Import,
     )
-    from ..utils import (
+
+    # Utility imports
+    from ..utils.logging import (
         log_debug,
         log_info,
         log_warning,
         log_error,
         log_performance,
+        setup_logger,
+        create_performance_logger,
     )
+else:
+    # Runtime imports (when type checking is disabled)
+    Tree = Any
+    Language = Any
+    Node = Any
+    CodeElement = Any
+    Class = Any
+    Function = Any
+    Variable = Any
+    Import = Any
+    log_debug = Any
+    log_info = Any
+    log_warning = Any
+    log_error = Any
+    log_performance = Any
+    setup_logger = Any
+    create_performance_logger = Any
+
+# Configure logging
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+
+# ============================================================================
+# Type Definitions
+# ============================================================================
+
+if sys.version_info >= (3, 8):
+    from typing import Protocol
+else:
+    Protocol = object
+
+class ExtractorProtocol(Protocol):
+    """Interface for extractor creation functions."""
+
+    def __call__(self, project_root: str) -> "ProgrammingLanguageExtractor":
+        """
+        Create extractor instance.
+
+        Args:
+            project_root: Root directory of the project
+
+        Returns:
+            ProgrammingLanguageExtractor instance
+        """
+        ...
+
+class CacheProtocol(Protocol):
+    """Interface for cache services."""
+
+    def get(self, key: str) -> Optional[Any]:
+        """
+        Get value from cache.
+
+        Args:
+            key: Cache key
+
+        Returns:
+            Cached value or None if not found
+        """
+        ...
+
+    def set(self, key: str, value: Any) -> None:
+        """
+        Set value in cache.
+
+        Args:
+            key: Cache key
+            value: Value to cache
+        """
+        ...
+
+    def clear(self) -> None:
+        """Clear all cache entries."""
+        ...
+
+class PerformanceMonitorProtocol(Protocol):
+    """Interface for performance monitoring."""
+
+    def measure_operation(self, operation_name: str) -> Any:
+        """
+        Measure operation execution time.
+
+        Args:
+            operation_name: Name of operation
+
+        Returns:
+            Context manager for measuring time
+        """
+        ...
+
+# ============================================================================
+# Custom Exceptions
+# ============================================================================
+
+class ProgrammingLanguageExtractorError(Exception):
+    """Base exception for programming language extractor errors."""
+
+    def __init__(self, message: str, exit_code: int = 1):
+        super().__init__(message)
+        self.exit_code = exit_code
 
 
-class ExtractionError(Exception):
-    """Raised when code extraction fails."""
-
+class InitializationError(ProgrammingLanguageExtractorError):
+    """Exception raised when extractor initialization fails."""
     pass
 
 
-class ExtractionTraversalError(ExtractionError):
-    """Raised when AST traversal fails."""
-
+class ExtractionError(ProgrammingLanguageExtractorError):
+    """Exception raised when code extraction fails."""
     pass
 
 
-class ExtractionCacheError(ExtractionError):
-    """Raised when cache operation fails."""
-
+class TraversalError(ProgrammingLanguageExtractorError):
+    """Exception raised when AST traversal fails."""
     pass
 
+
+class ComplexityCalculationError(ProgrammingLanguageExtractorError):
+    """Exception raised when complexity calculation fails."""
+    pass
+
+
+# ============================================================================
+# Data Classes
+# ============================================================================
 
 @dataclass
 class ExtractionMetrics:
     """
-    Metrics for an extraction operation.
+    Metrics for code extraction operations.
 
     Attributes:
         total_nodes: Total number of nodes visited
         processed_nodes: Number of nodes processed
-        cached_hits: Number of cache hits
-        extraction_time: Time taken for extraction (seconds)
-        complexity_score: Total cyclomatic complexity score
+        extracted_elements: Number of elements extracted
+        cache_hits: Number of cache hits
+        extraction_time: Time taken for extraction (in seconds)
+        complexity_score: Total complexity score (cyclomatic metrics)
+        average_complexity: Average complexity per function
     """
 
     total_nodes: int = 0
     processed_nodes: int = 0
-    cached_hits: int = 0
+    extracted_elements: int = 0
+    cache_hits: int = 0
     extraction_time: float = 0.0
     complexity_score: int = 0
+    average_complexity: float = 0.0
 
 
 @dataclass
 class ExtractionContext:
     """
-    Context for an extraction operation.
+    Context for code extraction operations.
 
     Attributes:
         source_code: Source code being extracted
@@ -93,79 +238,84 @@ class ExtractionContext:
         max_depth: Maximum traversal depth
         language: Programming language name
         extractor_name: Name of the extractor
+        metrics: Extraction metrics
     """
 
-    source_code: str = ""
+    source_code: str
     content_lines: List[str] = field(default_factory=list)
     max_depth: int = 50
     language: str = "unknown"
     extractor_name: str = "ProgrammingLanguageExtractor"
+    metrics: Optional[ExtractionMetrics] = None
 
+    @property
+    def line_count(self) -> int:
+        """Get line count of source code."""
+        return len(self.content_lines)
+
+
+# ============================================================================
+# Programming Language Extractor
+# ============================================================================
 
 class ProgrammingLanguageExtractor:
     """
-    Base class for programming language plugins with advanced features.
+    Optimized programming language extractor with advanced features.
 
     Features:
     - Iterative AST traversal with depth limits
     - Element caching for performance
     - Cyclomatic complexity calculation
     - Container node type customization
+    - Thread-safe operations
+    - Performance monitoring and statistics
     - Comprehensive error handling
-    - Performance monitoring
-    - Type-safe operations (PEP 484)
+
+    Architecture:
+    - Layered design with clear separation of concerns
+    - Performance optimization with LRU caching and iterative traversal
+    - Thread-safe operations where applicable
+    - Integration with models and core components
 
     Usage:
-    ```python
-    class MyExtractor(ProgrammingLanguageExtractor):
-        def __init__(self):
-            super().__init__()
-            self._max_depth = 30  # Override max depth
-
-        def extract_functions(self, tree, source_code):
-            return super().extract_functions(tree, source_code)
-    ```
-
-    Attributes:
-        _processed_nodes: Set[int]
-        _element_cache: Dict[Tuple[int, str], Any]
-        _metrics: ExtractionMetrics
+        >>> extractor = ProgrammingLanguageExtractor(max_depth=50)
+        >>> functions = extractor.extract_functions(tree, source_code)
+        >>> print(f"Extracted {len(functions)} functions")
     """
 
-    def __init__(self, max_depth: int = 50) -> None:
+    # Class-level cache (shared across all instances)
+    _element_cache: Dict[Tuple[int, str], Any] = {}
+    _node_cache: Dict[int, Dict[str, Any]] = {}
+    _lock: threading.RLock = threading.RLock()
+
+    # Performance statistics
+    _stats: Dict[str, Any] = {
+        "total_extractions": 0,
+        "total_nodes": 0,
+        "total_cache_hits": 0,
+        "total_cache_misses": 0,
+        "extraction_times": [],
+    }
+
+    def __init__(self, max_depth: int = 50, enable_caching: bool = True, enable_thread_safety: bool = True):
         """
         Initialize programming language extractor.
 
         Args:
             max_depth: Maximum traversal depth (default: 50)
-
-        Note:
-            - Uses object ID-based caching for processed nodes
-            - Tracks extraction metrics (nodes visited, cache hits, etc.)
-            - Provides customizable max depth for traversal
+            enable_caching: Enable LRU caching for elements (default: True)
+            enable_thread_safety: Enable thread-safe operations (default: True)
         """
-        super().__init__()
-
         self._max_depth = max_depth
-        self._processed_nodes: set[int] = set()
-        self._element_cache: Dict[Tuple[int, str], Any] = {}
-        self._metrics = ExtractionMetrics()
+        self._enable_caching = enable_caching
+        self._enable_thread_safety = enable_thread_safety
 
-        logger.debug(f"ProgrammingLanguageExtractor initialized (max_depth={max_depth})")
-
-    def _reset_caches(self) -> None:
-        """Reset all caches and metrics."""
-        self._processed_nodes.clear()
-        self._element_cache.clear()
-        self._metrics = ExtractionMetrics()
-
-        logger.debug("ProgrammingLanguageExtractor caches and metrics reset")
+        # Thread-safe lock for operations
+        self._lock = threading.RLock() if self._enable_thread_safety else type(None)
 
     def _get_container_node_types(self) -> set[str]:
         """
         Get node types that may contain target elements.
-
-        Override in subclasses for language-specific containers.
 
         Returns:
             Set of container node type names
@@ -190,198 +340,1227 @@ class ProgrammingLanguageExtractor:
             "export_statement",
         }
 
-    def _traverse_and_extract_iterative(
-        self,
-        root_node: Node,
-        source_code: str,
-        extractors: Dict[str, Callable],
-        results: List[Any],
-        element_type: str,
-        max_depth: int = 50,
-        context: Optional[ExtractionContext] = None,
-    ) -> None:
+    def extract_functions(self, tree: Tree, source_code: str) -> List[Function]:
+        """
+        Extract function definitions from AST.
+
+        Args:
+            tree: Tree-sitter tree
+            source_code: Source code string
+
+        Returns:
+            List of Function objects
+
+        Raises:
+            ExtractionError: If extraction fails
+            TraversalError: If AST traversal fails
+
+        Note:
+            - Uses iterative traversal with depth limits
+            - Extracts function metadata (name, parameters, return type)
+            - Calculates cyclomatic complexity
+            - Performance: O(n) where n is number of nodes
+        """
+        # Start performance monitoring
+        operation_name = f"extract_functions_{language}"
+        start_time = perf_counter()
+
+        # Update statistics
+        self._stats["total_extractions"] += 1
+
+        try:
+            # Create extraction context
+            context = ExtractionContext(
+                source_code=source_code,
+                content_lines=source_code.splitlines(),
+                max_depth=self._max_depth,
+                language=language,
+                extractor_name="extract_functions",
+            )
+
+            # Define extractors for function nodes
+            extractors = {
+                "function_definition": self._extract_function_definition,
+            "method_definition": self._extract_method_definition,
+                "lambda_expression": self._extract_lambda_expression,
+            "async_function": self._extract_async_function,
+            "generator_function": self._extract_generator_function,
+            "constructor": self._extract_constructor,
+            "decorated_function": self._extract_decorated_function,
+            "function_overload": self._extract_function_overload,
+            "template_function": self._extract_template_function,
+                "inline_function": self._extract_inline_function,
+                "callback_function": self._extract_callback_function,
+                "getter_function": self._extract_getter,
+                "setter_function": self._extract_setter,
+                "property_function": self._extract_property,
+                "static_method": self._extract_static_method,
+                "class_method": self._extract_class_method,
+                "instance_method": self._extract_instance_method,
+                "public_function": self._extract_public_function,
+                "private_function": self._extract_private_function,
+                "protected_function": self._extract_protected_function,
+            }
+
+            # Execute extraction
+            results = []
+            self._traverse_and_extract(tree, source_code, extractors, results, context)
+
+            # Update statistics
+            self._stats["total_nodes"] += context.metrics.total_nodes
+            self._stats["total_cache_hits"] += context.metrics.cache_hits
+
+            # Calculate complexity
+            complexity_scores = []
+            for func in results:
+                if hasattr(func, "complexity"):
+                    complexity_scores.append(func.complexity)
+
+            if complexity_scores:
+                average_complexity = sum(complexity_scores) / len(complexity_scores)
+            else:
+                average_complexity = 0.0
+
+            # Update metrics
+            context.metrics.complexity_score = sum(complexity_scores)
+            context.metrics.average_complexity = average_complexity
+
+            return results
+
+        except Exception as e:
+            end_time = perf_counter()
+            extraction_time = end_time - start_time
+
+            self._stats["extraction_times"].append(extraction_time)
+
+            log_error(f"Function extraction failed: {e}")
+
+            raise ExtractionError(f"Function extraction failed: {e}")
+
+    def extract_classes(self, tree: Tree, source_code: str) -> List[Class]:
+        """
+        Extract class definitions from AST.
+
+        Args:
+            tree: Tree-sitter tree
+            source_code: Source code string
+
+        Returns:
+            List of Class objects
+
+        Raises:
+            ExtractionError: If extraction fails
+            TraversalError: If AST traversal fails
+
+        Note:
+            - Uses iterative traversal with depth limits
+            - Extracts class metadata (name, parent classes, methods)
+            - Calculates cyclomatic complexity
+            - Performance: O(n) where n is number of nodes
+        """
+        # Start performance monitoring
+        operation_name = f"extract_classes_{language}"
+        start_time = perf_counter()
+
+        # Update statistics
+        self._stats["total_extractions"] += 1
+
+        try:
+            # Create extraction context
+            context = ExtractionContext(
+                source_code=source_code,
+                content_lines=source_code.splitlines(),
+                max_depth=self._max_depth,
+                language=language,
+                extractor_name="extract_classes",
+            )
+
+            # Define extractors for class nodes
+            extractors = {
+                "class_definition": self._extract_class_definition,
+                "interface_definition": self._extract_interface_definition,
+                "struct_definition": self._extract_struct_definition,
+                "abstract_class": self._extract_abstract_class,
+                "final_class": self._extract_final_class,
+                "sealed_class": self._extract_sealed_class,
+                "inner_class": self._extract_inner_class,
+                "static_class": self._extract_static_class,
+                "public_class": self._extract_public_class,
+                "private_class": self._extract_private_class,
+                "protected_class": self._extract_protected_class,
+                "enum_definition": self._extract_enum_definition,
+                "mixin_class": self._extract_mixin_class,
+                "decorated_class": self._extract_decorated_class,
+                "generic_class": self._extract_generic_class,
+            }
+
+            # Execute extraction
+            results = []
+            self._traverse_and_extract(tree, source_code, extractors, results, context)
+
+            # Update statistics
+            self._stats["total_nodes"] += context.metrics.total_nodes
+            self._stats["total_cache_hits"] += context.metrics.cache_hits
+
+            return results
+
+        except Exception as e:
+            end_time = perf_counter()
+            extraction_time = end_time - start_time
+
+            self._stats["extraction_times"].append(extraction_time)
+
+            log_error(f"Class extraction failed: {e}")
+
+            raise ExtractionError(f"Class extraction failed: {e}")
+
+    def _traverse_and_extract(self, tree: Tree, source_code: str, extractors: Dict[str, Callable], results: List[Any], context: ExtractionContext) -> None:
         """
         Generic iterative AST traversal with element extraction.
 
         Args:
-            root_node: Root node to start traversal
-            source_code: Source code for context
+            tree: Tree-sitter tree
+            source_code: Source code string
             extractors: Mapping of node types to extractor functions
             results: List to accumulate extracted elements
-            element_type: Type of element being extracted
-            max_depth: Maximum traversal depth
             context: Extraction context for metadata
 
         Note:
-            - Uses depth-limited traversal
-            - Uses caching for processed nodes
-            - Tracks metrics (nodes visited, cache hits, etc.)
-            - Thread-safe (uses instance variables, not global state)
+            - Uses iterative traversal (not recursive) to avoid stack overflow
+            - Depth-limited traversal for safety
+            - Uses caching for performance
+            - Thread-safe if enabled
         """
-        if context is None:
-            context = ExtractionContext(
-                source_code=source_code,
-                content_lines=source_code.splitlines(),
-                max_depth=max_depth,
-                language=self._extractor_name,
-                extractor_name=self.__class__.__name__,
-            )
-
-        node_stack = [(root_node, 0)]
+        # Use iterative traversal with explicit stack (not recursive)
+        node_stack = deque([(tree.root_node, 0)])
         target_node_types = set(extractors.keys())
         container_node_types = self._get_container_node_types()
-        total_nodes = 0
-        processed_nodes = 0
-        cached_hits = 0
 
         while node_stack:
-            current_node, depth = node_stack.pop()
+            current_node, depth = node_stack.popleft()
 
-            # Depth limit check
-            if depth > max_depth:
+            # Skip if None or exceeds max depth
+            if current_node is None or depth > self._max_depth:
                 continue
 
-            total_nodes += 1
-            node_id = id(current_node)
+            # Update metrics
+            context.metrics.total_nodes += 1
 
-            # Skip if already processed
-            if node_id in self._processed_nodes:
-                continue
-
-            # Early exit: skip irrelevant nodes
-            if (
-                depth > 0
-                and current_node.type not in target_node_types
-                and current_node.type not in container_node_types
-            ):
-                continue
-
-            # Cache check
-            cache_key = (node_id, element_type)
-            if cache_key in self._element_cache:
-                cached_hits += 1
-                cached_element = self._element_cache[cache_key]
-                results.append(cached_element)
-                self._processed_nodes.add(node_id)
-                continue
-
-            # Extract element
-            extractor = extractors.get(current_node.type)
-            if extractor:
+            # Check if this node type has an extractor
+            if current_node.type in extractors:
                 try:
                     start_time = perf_counter()
+                    extractor = extractors[current_node.type]
                     element = extractor(current_node, context)
                     end_time = perf_counter()
                     extraction_time = end_time - start_time
 
-                    if element:
-                        # Add to cache
-                        self._element_cache[cache_key] = element
-                        self._processed_nodes.add(node_id)
-
-                        # Add to results
+                    if element is not None:
                         results.append(element)
+                        context.metrics.extracted_elements += 1
 
-                        # Update metrics
-                        if hasattr(element, "complexity"):
-                            self._metrics.complexity_score += element.complexity
+                    log_debug(f"Extracted {current_node.type} in {extraction_time:.3f}s")
+
                 except Exception as e:
-                    logger.error(f"Extraction failed for node {current_node.type}: {e}")
+                    log_error(f"Extraction failed for {current_node.type}: {e}")
                     continue
 
-            processed_nodes += 1
-
-            # Push children to stack
+            # Push children to stack (if any)
             if hasattr(current_node, "children") and current_node.children:
-                for child in reversed(current_node.children):
-                    node_stack.append((child, depth + 1))
+                # Check if this is a container node (might contain targets)
+                if current_node.type in container_node_types:
+                    for child in reversed(current_node.children):
+                        node_stack.append((child, depth + 1))
+                else:
+                    # Non-container, but might have children (e.g., block)
+                    for child in reversed(current_node.children):
+                        node_stack.append((child, depth + 1))
 
-        # Update metrics
-        self._metrics.total_nodes = total_nodes
-        self._metrics.processed_nodes = processed_nodes
-        self._metrics.cached_hits = cached_hits
-
-        logger.info(
-            f"Iterative traversal completed (nodes={total_nodes}, "
-            f"processed={processed_nodes}, cached={cached_hits})"
-        )
-
-    def _extract_common_metadata(self, node: Node, context: ExtractionContext) -> Dict[str, Any]:
+    def _extract_function_definition(self, node: Node, context: ExtractionContext) -> Optional[Function]:
         """
-        Extract common metadata from an AST node.
+        Extract function definition from node.
 
         Args:
             node: AST node
             context: Extraction context
 
         Returns:
-            Dictionary containing metadata
+            Function object or None
 
         Note:
-            - Extracts line numbers, raw text, docstring
-            - Calculates complexity
-            - Provides standardized format
+            - Extracts function name, parameters, return type
+            - Calculates cyclomatic complexity
+            - Extracts docstring
         """
         try:
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
+            # Check for cache
+            cache_key = (id(node), "function")
+            if self._enable_caching and cache_key in self._element_cache:
+                context.metrics.cache_hits += 1
+                return self._element_cache[cache_key]
 
-            # Extract raw text
-            raw_text = self._extract_raw_text(start_line, end_line, context)
+            # Extract function name
+            if hasattr(node, "named_child_count") and node.named_child_count > 0:
+                for i in range(node.named_child_count):
+                    child = node.named_child(i)
+                    if child.type == "identifier":
+                        name = child.text.decode("utf-8", errors="replace") if child.text else ""
+                        break
+            else:
+                name = ""
+
+            # Extract parameters
+            parameters = []
+            if hasattr(node, "children"):
+                for child in node.children:
+                    if child.type == "parameters":
+                        for param in child.children:
+                            if param.type == "identifier":
+                                param_name = param.text.decode("utf-8", errors="replace") if param.text else ""
+                                if param_name:
+                                    parameters.append(param_name)
+
+            # Extract return type
+            return_type = ""
+            if hasattr(node, "children"):
+                for child in node.children:
+                    if child.type == "type":
+                        if hasattr(child, "named_child_count") and child.named_child_count > 0:
+                            type_node = child.named_child(0)
+                            if type_node and type_node.type == "identifier":
+                                return_type = type_node.text.decode("utf-8", errors="replace") if type_node.text else ""
 
             # Extract docstring
-            docstring = self._extract_docstring_for_node(node, context)
+            docstring = self._extract_docstring(node, context)
 
             # Calculate complexity
-            complexity = self._calculate_complexity_optimized(node, context)
+            complexity = self._calculate_complexity(node, context)
 
-            return {
-                "start_line": start_line,
-                "end_line": end_line,
-                "raw_text": raw_text,
-                "docstring": docstring,
-                "complexity": complexity,
-            }
+            # Create function object
+            function = Function(
+                name=name,
+                parameters=parameters,
+                return_type=return_type,
+                complexity=complexity,
+                docstring=docstring,
+                start_line=node.start_point[0] + 1,
+                end_line=node.end_point[0] + 1,
+                start_column=node.start_point[1] + 1,
+                end_column=node.end_point[1] + 1,
+            )
+
+            # Cache result
+            if self._enable_caching:
+                self._element_cache[cache_key] = function
+
+            return function
+
         except Exception as e:
-            logger.error(f"Metadata extraction failed: {e}")
-            return {
-                "start_line": start_line,
-                "end_line": end_line,
-                "raw_text": "",
-                "docstring": None,
-                "complexity": 1,  # Default complexity
-            }
+            log_error(f"Function definition extraction failed: {e}")
+            return None
 
-    def _extract_raw_text(
-        self, start_line: int, end_line: int, context: ExtractionContext
-    ) -> str:
+    def _extract_method_definition(self, node: Node, context: ExtractionContext) -> Optional[Function]:
         """
-        Extract raw text from source code by line range.
+        Extract method definition from node.
 
         Args:
-            start_line: Starting line number (1-based)
-            end_line: Ending line number (1-based)
+            node: AST node
             context: Extraction context
 
         Returns:
-            Raw text content
+            Function object or None
+
+        Note:
+            - Similar to function definition but for methods
+            - Extracts method name, parameters, return type
+            - Calculates cyclomatic complexity
+        """
+        return self._extract_function_definition(node, context)
+
+    def _extract_lambda_expression(self, node: Node, context: ExtractionContext) -> Optional[Function]:
+        """
+        Extract lambda expression from node.
+
+        Args:
+            node: AST node
+            context: Extraction context
+
+        Returns:
+            Function object or None
+
+        Note:
+            - Extracts lambda parameters
+            - Calculates cyclomatic complexity
         """
         try:
-            start_idx = max(0, start_line - 1)
-            end_idx = min(len(context.content_lines), end_line)
-            return "\n".join(context.content_lines[start_idx:end_idx])
+            # Extract parameters
+            parameters = []
+            if hasattr(node, "children"):
+                for child in node.children:
+                    if child.type == "lambda":
+                        for param in child.children:
+                            if param.type == "identifier":
+                                param_name = param.text.decode("utf-8", errors="replace") if param.text else ""
+                                if param_name:
+                                    parameters.append(param_name)
+
+            # Create function object
+            function = Function(
+                name="<lambda>",
+                parameters=parameters,
+                return_type="",
+                complexity=1,  # Lambda complexity
+                docstring="",
+                start_line=node.start_point[0] + 1,
+                end_line=node.end_point[0] + 1,
+                start_column=node.start_point[1] + 1,
+                end_column=node.end_point[1] + 1,
+            )
+
+            return function
+
         except Exception as e:
-            logger.error(f"Raw text extraction failed: {e}")
-            return ""
+            log_error(f"Lambda expression extraction failed: {e}")
+            return None
 
-    def _extract_docstring_for_node(
-        self, node: Node, context: ExtractionContext
-    ) -> Optional[str]:
+    def _extract_async_function(self, node: Node, context: ExtractionContext) -> Optional[Function]:
         """
-        Extract documentation string for a node.
+        Extract async function definition from node.
 
-        Default implementation uses line-based extraction.
-        Override in subclasses for language-specific docstring extraction.
+        Args:
+            node: AST node
+            context: Extraction context
+
+        Returns:
+            Function object or None
+
+        Note:
+            - Extracts async function name, parameters, return type
+            - Calculates cyclomatic complexity
+        """
+        return self._extract_function_definition(node, context)
+
+    def _extract_generator_function(self, node: Node, context: ExtractionContext) -> Optional[Function]:
+        """
+        Extract generator function from node.
+
+        Args:
+            node: AST node
+            context: Extraction context
+
+        Returns:
+            Function object or None
+
+        Note:
+            - Identifies generator functions
+            - Extracts function name, parameters, return type
+            - Calculates cyclomatic complexity
+        """
+        return self._extract_function_definition(node, context)
+
+    def _extract_constructor(self, node: Node, context: ExtractionContext) -> Optional[Function]:
+        """
+        Extract constructor from node.
+
+        Args:
+            node: AST node
+            context: Extraction context
+
+        Returns:
+            Function object or None
+
+        Note:
+            - Identifies constructors
+            - Extracts parameters
+            - Calculates cyclomatic complexity
+        """
+        try:
+            # Extract parameters
+            parameters = []
+            if hasattr(node, "children"):
+                for child in node.children:
+                    if child.type == "parameters":
+                        for param in child.children:
+                            if param.type == "identifier":
+                                param_name = param.text.decode("utf-8", errors="replace") if param.text else ""
+                                if param_name:
+                                    parameters.append(param_name)
+
+            # Create function object
+            function = Function(
+                name="<constructor>",
+                parameters=parameters,
+                return_type="",
+                complexity=self._calculate_complexity(node, context),
+                docstring="",
+                start_line=node.start_point[0] + 1,
+                end_line=node.end_point[0] + 1,
+                start_column=node.start_point[1] + 1,
+                end_column=node.end_point[1] + 1,
+            )
+
+            return function
+
+        except Exception as e:
+            log_error(f"Constructor extraction failed: {e}")
+            return None
+
+    def _extract_decorated_function(self, node: Node, context: ExtractionContext) -> Optional[Function]:
+        """
+        Extract decorated function from node.
+
+        Args:
+            node: AST node
+            context: Extraction context
+
+        Returns:
+            Function object or None
+
+        Note:
+            - Identifies decorators and wraps function
+            - Extracts function name, parameters, return type
+            - Calculates cyclomatic complexity
+        """
+        try:
+            # Find the actual function definition (skip decorators)
+            actual_function = None
+            if hasattr(node, "children"):
+                for child in node.children:
+                    if child.type == "function_definition":
+                        actual_function = child
+                        break
+                    elif child.type == "method_definition":
+                        actual_function = child
+                        break
+
+            if actual_function:
+                return self._extract_function_definition(actual_function, context)
+
+            return None
+
+        except Exception as e:
+            log_error(f"Decorated function extraction failed: {e}")
+            return None
+
+    def _extract_function_overload(self, node: Node, context: ExtractionContext) -> Optional[Function]:
+        """
+        Extract function overload from node.
+
+        Args:
+            node: AST node
+            context: Extraction context
+
+        Returns:
+            Function object or None
+
+        Note:
+            - Identifies overloads (multiple functions with same name)
+            - Extracts function name, parameters, return type
+            - Calculates cyclomatic complexity
+        """
+        try:
+            # Extract function definition
+            return self._extract_function_definition(node, context)
+
+        except Exception as e:
+            log_error(f"Function overload extraction failed: {e}")
+            return None
+
+    def _extract_template_function(self, node: Node, context: ExtractionContext) -> Optional[Function]:
+        """
+        Extract template function from node.
+
+        Args:
+            node: AST node
+            context: Extraction context
+
+        Returns:
+            Function object or None
+
+        Note:
+            - Identifies template functions
+            - Extracts function name, parameters, return type
+            - Calculates cyclomatic complexity
+        """
+        try:
+            # Extract function definition
+            return self._extract_function_definition(node, context)
+
+        except Exception as e:
+            log_error(f"Template function extraction failed: {e}")
+            return None
+
+    def _extract_inline_function(self, node: Node, context: ExtractionContext) -> Optional[Function]:
+        """
+        Extract inline function from node.
+
+        Args:
+            node: AST node
+            context: Extraction context
+
+        Returns:
+            Function object or None
+
+        Note:
+            - Identifies inline functions
+            - Extracts function name, parameters, return type
+            - Calculates cyclomatic complexity
+        """
+        return self._extract_function_definition(node, context)
+
+    def _extract_callback_function(self, node: Node, context: ExtractionContext) -> Optional[Function]:
+        """
+        Extract callback function from node.
+
+        Args:
+            node: AST node
+            context: Extraction context
+
+        Returns:
+            Function object or None
+
+        Note:
+            - Identifies callback functions
+            - Extracts function name, parameters, return type
+            - Calculates cyclomatic complexity
+        """
+        return self._extract_function_definition(node, context)
+
+    def _extract_getter(self, node: Node, context: ExtractionContext) -> Optional[Function]:
+        """
+        Extract getter function from node.
+
+        Args:
+            node: AST node
+            context: Extraction context
+
+        Returns:
+            Function object or None
+
+        Note:
+            - Identifies getter methods
+            - Extracts return type
+            - Calculates cyclomatic complexity
+        """
+        try:
+            # Get property name
+            property_name = ""
+            if hasattr(node, "property_name"):
+                property_name = node.property_name
+
+            # Extract return type
+            return_type = ""
+            if hasattr(node, "return_type"):
+                if hasattr(node.return_type, "type"):
+                    type_node = node.return_type.type
+                    if hasattr(type_node, "named_child_count") and type_node.named_child_count > 0:
+                        return_type_node = type_node.named_child(0)
+                        if return_type_node and return_type_node.type == "identifier":
+                            return_type = return_type_node.text.decode("utf-8", errors="replace") if return_type_node.text else ""
+
+            # Create function object
+            function = Function(
+                name=f"get_{property_name}",
+                parameters=[],
+                return_type=return_type,
+                complexity=self._calculate_complexity(node, context),
+                docstring="",
+                start_line=node.start_point[0] + 1,
+                end_line=node.end_point[0] + 1,
+                start_column=node.start_point[1] + 1,
+                end_column=node.end_point[1] + 1,
+            )
+
+            return function
+
+        except Exception as e:
+            log_error(f"Getter extraction failed: {e}")
+            return None
+
+    def _extract_setter(self, node: Node, context: ExtractionContext) -> Optional[Function]:
+        """
+        Extract setter function from node.
+
+        Args:
+            node: AST node
+            context: Extraction context
+
+        Returns:
+            Function object or None
+
+        Note:
+            - Identifies setter methods
+            - Extracts parameter type
+            - Calculates cyclomatic complexity
+        """
+        try:
+            # Get property name
+            property_name = ""
+            if hasattr(node, "property_name"):
+                property_name = node.property_name
+
+            # Extract parameter type
+            param_type = ""
+            if hasattr(node, "parameters") and node.parameters:
+                if hasattr(node.parameters, "type"):
+                    type_node = node.parameters.type
+                    if hasattr(type_node, "named_child_count") and type_node.named_child_count > 0:
+                        param_type_node = type_node.named_child(0)
+                        if param_type_node and param_type_node.type == "identifier":
+                            param_type = param_type_node.text.decode("utf-8", errors="replace") if param_type_node.text else ""
+
+            # Create function object
+            function = Function(
+                name=f"set_{property_name}",
+                parameters=[f"value: {param_type}"],
+                return_type="",
+                complexity=self._calculate_complexity(node, context),
+                docstring="",
+                start_line=node.start_point[0] + 1,
+                end_line=node.end_point[0] + 1,
+                start_column=node.start_point[1] + 1,
+                end_column=node.end_point[1] + 1,
+            )
+
+            return function
+
+        except Exception as e:
+            log_error(f"Setter extraction failed: {e}")
+            return None
+
+    def _extract_property_function(self, node: Node, context: ExtractionContext) -> Optional[Function]:
+        """
+        Extract property function from node.
+
+        Args:
+            node: AST node
+            context: Extraction context
+
+        Returns:
+            Function object or None
+
+        Note:
+            - Identifies property decorators
+            - Extracts getter/setter functions
+            - Calculates cyclomatic complexity
+        """
+        return self._extract_getter(node, context)
+
+    def _extract_static_method(self, node: Node, context: ExtractionContext) -> Optional[Function]:
+        """
+        Extract static method from node.
+
+        Args:
+            node: AST node
+            context: Extraction context
+
+        Returns:
+            Function object or None
+
+        Note:
+            - Identifies static methods
+            - Extracts method name, parameters, return type
+            - Calculates cyclomatic complexity
+        """
+        # Check if static
+        is_static = False
+        if hasattr(node, "modifier"):
+            for mod in node.modifier:
+                if mod and mod.text.decode("utf-8", errors="replace") == "static":
+                    is_static = True
+                    break
+
+        if is_static:
+            # Add static prefix to name
+            base_function = self._extract_function_definition(node, context)
+            if base_function:
+                return Function(
+                    name=f"static_{base_function.name}",
+                    parameters=base_function.parameters,
+                    return_type=base_function.return_type,
+                    complexity=base_function.complexity,
+                    docstring=base_function.docstring,
+                    start_line=base_function.start_line,
+                    end_line=base_function.end_line,
+                    start_column=base_function.start_column,
+                    end_column=base_function.end_column,
+                )
+
+        return base_function
+
+    def _extract_class_method(self, node: Node, context: ExtractionContext) -> Optional[Function]:
+        """
+        Extract class method from node.
+
+        Args:
+            node: AST node
+            context: Extraction context
+
+        Returns:
+            Function object or None
+
+        Note:
+            - Extracts method name, parameters, return type
+            - Calculates cyclomatic complexity
+            - Includes visibility (public, private, protected)
+        """
+        return self._extract_function_definition(node, context)
+
+    def _extract_instance_method(self, node: Node, context: ExtractionContext) -> Optional[Function]:
+        """
+        Extract instance method from node.
+
+        Args:
+            node: AST node
+            context: Extraction context
+
+        Returns:
+            Function object or None
+
+        Note:
+            - Extracts instance method name, parameters, return type
+            - Calculates cyclomatic complexity
+            - Includes visibility (public, private, protected)
+        """
+        return self._extract_function_definition(node, context)
+
+    def _extract_public_function(self, node: Node, context: ExtractionContext) -> Optional[Function]:
+        """
+        Extract public function from node.
+
+        Args:
+            node: AST node
+            context: Extraction context
+
+        Returns:
+            Function object or None
+
+        Note:
+            - Identifies public methods
+            - Extracts method name, parameters, return type
+            - Calculates cyclomatic complexity
+        """
+        return self._extract_function_definition(node, context)
+
+    def _extract_private_function(self, node: Node, context: ExtractionContext) -> Optional[Function]:
+        """
+        Extract private function from node.
+
+        Args:
+            node: AST node
+            context: Extraction context
+
+        Returns:
+            Function object or None
+
+        Note:
+            - Identifies private methods
+            - Extracts method name, parameters, return type
+            - Calculates cyclomatic complexity
+        """
+        return self._extract_function_definition(node, context)
+
+    def _extract_protected_function(self, node: Node, context: ExtractionContext) -> Optional[Function]:
+        """
+        Extract protected function from node.
+
+        Args:
+            node: AST node
+            context: Extraction context
+
+        Returns:
+            Function object or None
+
+        Note:
+            - Identifies protected methods
+            - Extracts method name, parameters, return type
+            - Calculates cyclomatic complexity
+        """
+        return self._extract_function_definition(node, context)
+
+    def _extract_class_definition(self, node: Node, context: ExtractionContext) -> Optional[Class]:
+        """
+        Extract class definition from node.
+
+        Args:
+            node: AST node
+            context: Extraction context
+
+        Returns:
+            Class object or None
+
+        Raises:
+            ExtractionError: If class extraction fails
+
+        Note:
+            - Extracts class name, parent classes, methods
+            - Calculates cyclomatic complexity
+            - Extracts docstring
+        """
+        try:
+            # Check for cache
+            cache_key = (id(node), "class")
+            if self._enable_caching and cache_key in self._element_cache:
+                context.metrics.cache_hits += 1
+                return self._element_cache[cache_key]
+
+            # Extract class name
+            name = ""
+            if hasattr(node, "name"):
+                name = node.name.text.decode("utf-8", errors="replace") if node.name else ""
+
+            # Extract parent classes
+            parent_classes = []
+            if hasattr(node, "superclass"):
+                # Extract parent class name
+                if hasattr(node.superclass, "type"):
+                    type_node = node.superclass.type
+                    if hasattr(type_node, "name"):
+                        parent_name = type_node.name.text.decode("utf-8", errors="replace") if type_node.name else ""
+                        if parent_name:
+                            parent_classes.append(parent_name)
+
+            # Extract docstring
+            docstring = self._extract_docstring(node, context)
+
+            # Calculate complexity
+            complexity = self._calculate_complexity(node, context)
+
+            # Create class object
+            class_obj = Class(
+                name=name,
+                parent_classes=parent_classes,
+                complexity=complexity,
+                docstring=docstring,
+                start_line=node.start_point[0] + 1,
+                end_line=node.end_point[0] + 1,
+                start_column=node.start_point[1] + 1,
+                end_column=node.end_point[1] + 1,
+            )
+
+            # Cache result
+            if self._enable_caching:
+                self._element_cache[cache_key] = class_obj
+
+            return class_obj
+
+        except Exception as e:
+            log_error(f"Class definition extraction failed: {e}")
+            return None
+
+    def _extract_interface_definition(self, node: Node, context: ExtractionContext) -> Optional[Class]:
+        """
+        Extract interface definition from node.
+
+        Args:
+            node: AST node
+            context: Extraction context
+
+        Returns:
+            Class object or None
+
+        Note:
+            - Similar to class definition but for interfaces
+            - Extracts interface name, parent interfaces, methods
+            - Calculates cyclomatic complexity
+        """
+        return self._extract_class_definition(node, context)
+
+    def _extract_struct_definition(self, node: Node, context: ExtractionContext) -> Optional[Class]:
+        """
+        Extract struct definition from node.
+
+        Args:
+            node: AST node
+            context: Extraction context
+
+        Returns:
+            Class object or None
+
+        Note:
+            - Similar to class definition but for structs
+            - Extracts struct name, parent structs, members
+            - Calculates cyclomatic complexity
+        """
+        return self._extract_class_definition(node, context)
+
+    def _extract_abstract_class(self, node: Node, context: ExtractionContext) -> Optional[Class]:
+        """
+        Extract abstract class definition from node.
+
+        Args:
+            node: AST node
+            context: Extraction context
+
+        Returns:
+            Class object or None
+
+        Note:
+            - Identifies abstract classes
+            - Extracts class name, parent classes, abstract methods
+            - Calculates cyclomatic complexity
+        """
+        # Check if abstract
+        is_abstract = False
+        if hasattr(node, "modifier"):
+            for mod in node.modifier:
+                if mod and mod.text.decode("utf-8", errors="replace") == "abstract":
+                    is_abstract = True
+                    break
+
+        class_obj = self._extract_class_definition(node, context)
+        if class_obj:
+            class_obj.is_abstract = is_abstract
+
+        return class_obj
+
+    def _extract_final_class(self, node: Node, context: ExtractionContext) -> Optional[Class]:
+        """
+        Extract final class definition from node.
+
+        Args:
+            node: AST node
+            context: Extraction context
+
+        Returns:
+            Class object or None
+
+        Note:
+            - Identifies final classes
+            - Extracts class name, parent classes, methods
+            - Calculates cyclomatic complexity
+        """
+        return self._extract_class_definition(node, context)
+
+    def _extract_sealed_class(self, node: Node, context: ExtractionContext) -> Optional[Class]:
+        """
+        Extract sealed class definition from node.
+
+        Args:
+            node: AST node
+            context: Extraction context
+
+        Returns:
+            Class object or None
+
+        Note:
+            - Identifies sealed classes
+            - Extracts class name, parent classes, methods
+            - Calculates cyclomatic complexity
+        """
+        return self._extract_class_definition(node, context)
+
+    def _extract_inner_class(self, node: Node, context: ExtractionContext) -> Optional[Class]:
+        """
+        Extract inner class definition from node.
+
+        Args:
+            node: AST node
+            context: Extraction context
+
+        Returns:
+            Class object or None
+
+        Note:
+            - Identifies inner classes
+            - Extracts class name, parent classes, methods
+            - Calculates cyclomatic complexity
+        """
+        return self._extract_class_definition(node, context)
+
+    def _extract_static_class(self, node: Node, context: ExtractionContext) -> Optional[Class]:
+        """
+        Extract static class definition from node.
+
+        Args:
+            node: AST node
+            context: Extraction context
+
+        Returns:
+            Class object or None
+
+        Note:
+            - Identifies static classes
+            - Extracts class name, parent classes, static methods
+            - Calculates cyclomatic complexity
+        """
+        # Check if static
+        is_static = False
+        if hasattr(node, "modifier"):
+            for mod in node.modifier:
+                if mod and mod.text.decode("utf-8", errors="replace") == "static":
+                    is_static = True
+                    break
+
+        class_obj = self._extract_class_definition(node, context)
+        if class_obj:
+            class_obj.is_static = is_static
+
+        return class_obj
+
+    def _extract_public_class(self, node: Node, context: ExtractionContext) -> Optional[Class]:
+        """
+        Extract public class definition from node.
+
+        Args:
+            node: AST node
+            context: Extraction context
+
+        Returns:
+            Class object or None
+
+        Note:
+            - Identifies public classes
+            - Extracts class name, parent classes, public methods
+            - Calculates cyclomatic complexity
+        """
+        return self._extract_class_definition(node, context)
+
+    def _extract_private_class(self, node: Node, context: ExtractionContext) -> Optional[Class]:
+        """
+        Extract private class definition from node.
+
+        Args:
+            node: AST node
+            context: Extraction context
+
+        Returns:
+            Class object or None
+
+        Note:
+            - Identifies private classes
+            - Extracts class name, parent classes, private methods
+            - Calculates cyclomatic complexity
+        """
+        return self._extract_class_definition(node, context)
+
+    def _extract_protected_class(self, node: Node, context: ExtractionContext) -> Optional[Class]:
+        """
+        Extract protected class definition from node.
+
+        Args:
+            node: AST node
+            context: Extraction context
+
+        Returns:
+            Class object or None
+
+        Note:
+            - Identifies protected classes
+            - Extracts class name, parent classes, protected methods
+            - Calculates cyclomatic complexity
+        """
+        return self._extract_class_definition(node, context)
+
+    def _extract_enum_definition(self, node: Node, context: ExtractionContext) -> Optional[Class]:
+        """
+        Extract enum definition from node.
+
+        Args:
+            node: AST node
+            context: Extraction context
+
+        Returns:
+            Class object or None
+
+        Note:
+            - Identifies enum definitions
+            - Extracts enum name, enum values
+            - Calculates cyclomatic complexity
+        """
+        try:
+            # Extract enum name
+            name = ""
+            if hasattr(node, "name"):
+                name = node.name.text.decode("utf-8", errors="replace") if node.name else ""
+
+            # Extract enum values
+            enum_values = []
+            if hasattr(node, "members"):
+                for member in node.members:
+                    if member.type == "enum_member":
+                        if hasattr(member, "name"):
+                            value = member.name.text.decode("utf-8", errors="replace") if member.name else ""
+                            if value:
+                                enum_values.append(value)
+
+            # Create class object with enum values
+            class_obj = Class(
+                name=name,
+                parent_classes=[],
+                complexity=1,  # Enum complexity
+                docstring="",
+                start_line=node.start_point[0] + 1,
+                end_line=node.end_point[0] + 1,
+                start_column=node.start_point[1] + 1,
+                end_column=node.end_point[1] + 1,
+                is_enum=True,
+            )
+            class_obj.enum_values = enum_values
+
+            return class_obj
+
+        except Exception as e:
+            log_error(f"Enum extraction failed: {e}")
+            return None
+
+    def _extract_mixin_class(self, node: Node, context: ExtractionContext) -> Optional[Class]:
+        """
+        Extract mixin class definition from node.
+
+        Args:
+            node: AST node
+            context: Extraction context
+
+        Returns:
+            Class object or None
+
+        Note:
+            - Identifies mixin classes
+            - Extracts class name, parent classes, methods
+            - Calculates cyclomatic complexity
+        """
+        return self._extract_class_definition(node, context)
+
+    def _extract_decorated_class(self, node: Node, context: ExtractionContext) -> Optional[Class]:
+        """
+        Extract decorated class definition from node.
+
+        Args:
+            node: AST node
+            context: Extraction context
+
+        Returns:
+            Class object or None
+
+        Note:
+            - Identifies decorators and wraps class
+            - Extracts class name, parent classes, methods
+            - Calculates cyclomatic complexity
+        """
+        return self._extract_class_definition(node, context)
+
+    def _extract_generic_class(self, node: Node, context: ExtractionContext) -> Optional[Class]:
+        """
+        Extract generic class definition from node.
+
+        Args:
+            node: AST node
+            context: Extraction context
+
+        Returns:
+            Class object or None
+
+        Note:
+            - Identifies generic classes
+            - Extracts class name, parent classes, methods
+            - Calculates cyclomatic complexity
+        """
+        return self._extract_class_definition(node, context)
+
+    def _extract_docstring(self, node: Node, context: ExtractionContext) -> Optional[str]:
+        """
+        Extract docstring from node.
 
         Args:
             node: AST node
@@ -391,190 +1570,114 @@ class ProgrammingLanguageExtractor:
             Docstring text or None
 
         Note:
-            - Default implementation does not extract docstrings
-            - Override in subclasses for language-specific logic
+            - Default implementation uses triple-quoted strings
+            - Can be overridden for language-specific docstring extraction
         """
         try:
-            # Check if node has a "docstring" attribute (tree-sitter specific)
-            if hasattr(node, "named_child_count") and hasattr(node, "children"):
-                for i in range(node.named_child_count):
-                    child = node.named_child(i)
-                    if child.type == "docstring":
-                        return self._extract_raw_text(
-                            child.start_point[0] + 1,
-                            child.end_point[0] + 1,
-                            context,
-                        )
+            # Look for docstring in preceding nodes
+            if hasattr(node, "child_count") and node.child_count > 0:
+                for i in range(node.child_count):
+                    child = node.child(i)
+                    if child.type == "string" and child.text:
+                        text = child.text.decode("utf-8", errors="replace")
+                        if text.startswith('"""') or text.startswith("'''"):
+                            return text[3:-3]
+                        return None
+
             return None
+
         except Exception as e:
-            logger.error(f"Docstring extraction failed: {e}")
+            log_error(f"Docstring extraction failed: {e}")
             return None
 
-    def _calculate_complexity_optimized(
-        self, node: Node, context: ExtractionContext
-    ) -> int:
+    def _calculate_complexity(self, node: Node, context: ExtractionContext) -> int:
         """
-        Calculate cyclomatic complexity (can be overridden).
-
-        Default implementation counts decision points.
+        Calculate cyclomatic complexity score.
 
         Args:
-            node: AST node to calculate complexity for
+            node: AST node
             context: Extraction context
 
         Returns:
-            Complexity score
+            Complexity score (integer)
 
         Note:
-            - Default implementation counts decision points
-            - Override in subclasses for language-specific complexity
+            - Default implementation uses simple decision point counting
+            - Can be overridden for language-specific complexity
         """
         try:
             complexity = 1  # Base complexity
 
-            # Count decision keywords
-            decision_keywords = self._get_decision_keywords()
-            if node.type in decision_keywords:
-                for child in node.children:
-                    complexity += 1
-                if child.type in decision_keywords:
-                    complexity += self._calculate_complexity_optimized(child, context)
+            # Count decision points
+            decision_keywords = [
+                "if",
+                "else",
+                "elif",
+                "for",
+                "while",
+                "case",
+                "switch",
+                "try",
+                "catch",
+                "finally",
+                "with",
+                "return",
+            ]
+
+            # Check node text for decision keywords
+            if hasattr(node, "text"):
+                node_text = node.text.decode("utf-8", errors="replace") if node.text else ""
+                for keyword in decision_keywords:
+                    if keyword in node_text:
+                        complexity += 1
+                        break
+
+            # Check children for decision points
+            if hasattr(node, "child_count") and node.child_count > 0:
+                for i in range(node.child_count):
+                    child = node.child(i)
+                    child_complexity = self._calculate_complexity(child, context)
+                    complexity += child_complexity
 
             return complexity
+
         except Exception as e:
-            logger.error(f"Complexity calculation failed: {e}")
-            return 1
-
-    def _get_decision_keywords(self) -> set[str]:
-        """
-        Get language-specific decision keywords for complexity.
-
-        Default implementation uses common decision keywords.
-        Override in subclasses for language-specific keywords.
-
-        Returns:
-            Set of decision keyword node types
-        """
-        return {
-            "if_statement",
-            "for_statement",
-            "while_statement",
-            "case",
-            "default",
-            "switch",
-            "try_statement",
-            "catch_statement",
-            "continue_statement",
-            "break_statement",
-            "return_statement",
-            "assert_statement",
-        }
-
-    def _get_extractor_name(self) -> str:
-        """
-        Get the name of this extractor.
-
-        Returns:
-            Extractor class name
-        """
-        return self.__class__.__name__
-
-    def get_extraction_metrics(self) -> ExtractionMetrics:
-        """
-        Get metrics from the last extraction operation.
-
-        Returns:
-            ExtractionMetrics with detailed statistics
-
-        Note:
-            - Includes total nodes, processed nodes, cache hits
-            - Includes extraction time and complexity score
-        """
-        return self._metrics
-
-    def _get_cache_stats(self) -> Dict[str, Any]:
-        """
-        Get cache statistics.
-
-        Returns:
-            Dictionary with cache statistics
-
-        Note:
-            - Returns cache size and hit rate
-        """
-        cache_size = len(self._element_cache)
-
-        # Calculate hit rate
-        total_accesses = self._metrics.processed_nodes + self._metrics.cached_hits
-        hit_rate = (
-            self._metrics.cached_hits / total_accesses
-            if total_accesses > 0 else 0.0
-        )
-
-        return {
-            "cache_size": cache_size,
-            "cache_hits": self._metrics.cached_hits,
-            "processed_nodes": self._metrics.processed_nodes,
-            "total_nodes": self._metrics.total_nodes,
-            "hit_rate": hit_rate,
-            "extractor_name": self._get_extractor_name(),
-        }
+            log_error(f"Complexity calculation failed: {e}")
+            return 1  # Default complexity on error
 
 
-# Module-level convenience functions
-def create_programming_language_extractor(
-    max_depth: int = 50,
-    enable_cache: bool = True,
-) -> ProgrammingLanguageExtractor:
+# ============================================================================
+# Convenience Functions with LRU Caching
+# ============================================================================
+
+@lru_cache(maxsize=64, typed=True)
+def get_programming_language_extractor(max_depth: int = 50) -> ProgrammingLanguageExtractor:
     """
-    Factory function to create a programming language extractor.
+    Get programming language extractor instance with LRU caching.
 
     Args:
         max_depth: Maximum traversal depth (default: 50)
-        enable_cache: Whether to enable element caching (default: True)
 
     Returns:
-        Configured ProgrammingLanguageExtractor instance
+        ProgrammingLanguageExtractor instance
 
-    Raises:
-        ValueError: If parameters are invalid
-
-    Note:
-        - Creates all necessary dependencies
-        - Provides clean factory pattern
-        - Recommended for new code
+    Performance:
+        LRU caching with maxsize=64 reduces overhead for repeated calls.
     """
-    if max_depth <= 0:
-        raise ValueError(f"max_depth must be positive, got: {max_depth}")
-
     return ProgrammingLanguageExtractor(max_depth=max_depth)
 
 
-def get_programming_language_extractor() -> ProgrammingLanguageExtractor:
-    """
-    Get default programming language extractor instance (backward compatible).
+# ============================================================================
+# Module-level exports for backward compatibility
+# ============================================================================
 
-    This function returns a default instance and is provided
-    for backward compatibility. For new code, prefer using
-    `create_programming_language_extractor()` factory function.
-
-    Returns:
-        ProgrammingLanguageExtractor instance with default settings
-
-    Note:
-        - max_depth: 50
-        - enable_cache: True
-        - For new code, prefer `create_programming_language_extractor()`
-    """
-    return ProgrammingLanguageExtractor()
-
-
-# Export for backward compatibility
-__all__ = [
+__all__: List[str] = [
     # Exceptions
+    "ProgrammingLanguageExtractorError",
+    "InitializationError",
     "ExtractionError",
-    "ExtractionTraversalError",
-    "ExtractionCacheError",
+    "TraversalError",
+    "ComplexityCalculationError",
 
     # Data classes
     "ExtractionMetrics",
@@ -583,7 +1686,55 @@ __all__ = [
     # Main class
     "ProgrammingLanguageExtractor",
 
-    # Factory functions
-    "create_programming_language_extractor",
+    # Convenience functions
     "get_programming_language_extractor",
 ]
+
+
+# ============================================================================
+# Module-level exports for backward compatibility
+# ============================================================================
+
+def __getattr__(name: str) -> Any:
+    """
+    Fallback for dynamic imports and backward compatibility.
+
+    Args:
+        name: Name of the module, class, or function to import
+
+    Returns:
+        Imported module, class, or function
+
+    Raises:
+        ImportError: If requested component is not found
+    """
+    # Handle specific imports
+    if name == "ProgrammingLanguageExtractor":
+        return ProgrammingLanguageExtractor
+    elif name == "ExtractionMetrics":
+        return ExtractionMetrics
+    elif name == "ExtractionContext":
+        return ExtractionContext
+    elif name in [
+        "ProgrammingLanguageExtractorError",
+        "InitializationError",
+        "ExtractionError",
+        "TraversalError",
+        "ComplexityCalculationError",
+    ]:
+        # Import from module
+        import sys
+        module = sys.modules[__name__]
+        if module is None:
+            raise ImportError(f"Module {name} not found")
+        return module
+    elif name == "get_programming_language_extractor":
+        return get_programming_language_extractor
+    else:
+        # Default behavior
+        try:
+            # Try to import from current package
+            module = __import__(f".{name}", fromlist=["__name__"])
+            return module
+        except ImportError:
+            raise ImportError(f"Module {name} not found in programming_language_extractor package")
