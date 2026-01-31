@@ -1,15 +1,38 @@
 #!/usr/bin/env python3
 """
-Partial Read Command
+Partial Read Command.
 
 Handles partial file reading functionality, extracting specified line ranges.
+
+Key Features:
+    - Line range extraction
+    - Character range support
+    - TOON formatter support
+    - Multiple output formats
+
+Version: 1.10.5
+Date: 2026-01-28
 """
+
+from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from ...file_handler import read_file_partial
-from ...output_manager import output_data, output_json, output_section
-from .base_command import BaseCommand
+if TYPE_CHECKING:
+    from ...file_handler import read_file_partial
+    from ...output_manager import output_data, output_json, output_section
+    from .base_command import BaseCommand
+else:
+    try:
+        from ...file_handler import read_file_partial
+        from ...output_manager import output_data, output_json, output_section
+        from .base_command import BaseCommand
+    except ImportError as e:
+        import logging
+
+        logging.warning(f"Import fallback triggered in partial_read_command: {e}")
+
+__all__ = ["PartialReadCommand"]
 
 # TOON formatter for CLI output
 try:
@@ -18,9 +41,6 @@ try:
     _toon_available = True
 except ImportError:
     _toon_available = False
-
-if TYPE_CHECKING:
-    pass
 
 
 class PartialReadCommand(BaseCommand):

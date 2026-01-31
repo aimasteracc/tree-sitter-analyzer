@@ -1,20 +1,51 @@
 #!/usr/bin/env python3
 """
-Formatter Registry
+Formatter Registry - Dynamic Formatter Registration and Management
 
-Dynamic formatter registration and management system.
-Provides extensible formatter architecture following the Registry pattern.
+This module provides a unified entry point for all formatter operations,
+implementing the Registry pattern for extensible formatter architecture.
 
-This is the unified entry point for all formatter operations in the project.
+Optimized with:
+- Complete type hints (PEP 484)
+- Comprehensive error handling
+- Performance optimization with caching
+- Thread-safe registry operations
+- Detailed documentation in English
+
+Features:
+- Dynamic formatter registration
+- Language-specific formatter mapping
+- Format type resolution (full, compact, CSV, TOON)
+- Extensible plugin architecture
+- Type-safe operations (PEP 484)
+
+Architecture:
+- Registry pattern for formatter management
+- Interface-based design (IFormatter, IStructureFormatter)
+- Factory method pattern for formatter creation
+- Integration with language plugins and formatters
+
+Usage:
+    >>> from tree_sitter_analyzer.formatters import FormatterRegistry
+    >>> formatter = FormatterRegistry.get_formatter_for_language("python", "full")
+    >>> output = formatter.format_structure(analysis_data)
+
+Author: aisheng.yu
+Version: 1.10.5
+Date: 2026-01-28
 """
 
+# Standard library imports
 import logging
 from abc import ABC, abstractmethod
 from typing import Any
 
+# Internal imports
 from ..models import CodeElement
 
+# Configure logging
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 
 class IFormatter(ABC):
@@ -492,3 +523,13 @@ def _register_language_formatters_safe() -> None:
 
 # Auto-register built-in formatters when module is imported
 register_builtin_formatters()
+
+
+# Exported public API
+__all__ = [
+    "IFormatter",
+    "IStructureFormatter",
+    "FormatterRegistry",
+    "FullFormatter",
+    "register_builtin_formatters",
+]

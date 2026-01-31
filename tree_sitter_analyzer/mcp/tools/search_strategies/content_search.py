@@ -1,36 +1,87 @@
-"""Content search strategy using ripgrep.
+#!/usr/bin/env python3
+"""
+Content Search Strategy using Ripgrep.
 
 This module implements the main content search strategy that uses ripgrep
-to search for text patterns in files.
+to search for text patterns in files with advanced filtering and formatting.
+
+Key Features:
+    - Ripgrep-based content searching with parallel execution support
+    - Advanced result parsing and formatting (toon, json)
+    - Gitignore integration for intelligent file filtering
+    - Multiple output modes (total_only, count_only, summary)
+    - Path optimization and result grouping
+    - Caching support for performance optimization
+
+Classes:
+    ContentSearchStrategy: Main implementation of SearchStrategy using ripgrep
+
+Version: 1.10.5
+Date: 2026-01-28
+Author: tree-sitter-analyzer team
 """
+
+from __future__ import annotations
 
 import logging
 import time
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from tree_sitter_analyzer.mcp.tools.fd_rg import (
-    MAX_RESULTS_HARD_CAP,
-    RgCommandBuilder,
-    RgCommandConfig,
-    RgResultParser,
-    group_matches_by_file,
-    merge_command_results,
-    optimize_match_paths,
-    run_command_capture,
-    run_parallel_commands,
-    sanitize_error_message,
-    split_roots_for_parallel_processing,
-    summarize_search_results,
-)
-from tree_sitter_analyzer.mcp.tools.search_strategies.base import (
-    SearchContext,
-    SearchStrategy,
-)
-from tree_sitter_analyzer.mcp.utils.format_helper import (
-    apply_toon_format_to_response,
-    format_for_file_output,
-)
-from tree_sitter_analyzer.mcp.utils.gitignore_detector import get_default_detector
+if TYPE_CHECKING:
+    from tree_sitter_analyzer.mcp.tools.fd_rg import (
+        MAX_RESULTS_HARD_CAP,
+        RgCommandBuilder,
+        RgCommandConfig,
+        RgResultParser,
+        group_matches_by_file,
+        merge_command_results,
+        optimize_match_paths,
+        run_command_capture,
+        run_parallel_commands,
+        sanitize_error_message,
+        split_roots_for_parallel_processing,
+        summarize_search_results,
+    )
+    from tree_sitter_analyzer.mcp.tools.search_strategies.base import (
+        SearchContext,
+        SearchStrategy,
+    )
+    from tree_sitter_analyzer.mcp.utils.format_helper import (
+        apply_toon_format_to_response,
+        format_for_file_output,
+    )
+    from tree_sitter_analyzer.mcp.utils.gitignore_detector import get_default_detector
+else:
+    try:
+        from tree_sitter_analyzer.mcp.tools.fd_rg import (
+            MAX_RESULTS_HARD_CAP,
+            RgCommandBuilder,
+            RgCommandConfig,
+            RgResultParser,
+            group_matches_by_file,
+            merge_command_results,
+            optimize_match_paths,
+            run_command_capture,
+            run_parallel_commands,
+            sanitize_error_message,
+            split_roots_for_parallel_processing,
+            summarize_search_results,
+        )
+        from tree_sitter_analyzer.mcp.tools.search_strategies.base import (
+            SearchContext,
+            SearchStrategy,
+        )
+        from tree_sitter_analyzer.mcp.utils.format_helper import (
+            apply_toon_format_to_response,
+            format_for_file_output,
+        )
+        from tree_sitter_analyzer.mcp.utils.gitignore_detector import (
+            get_default_detector,
+        )
+    except ImportError as e:
+        logging.warning(f"Import fallback triggered in content_search: {e}")
+
+__all__ = ["ContentSearchStrategy"]
 
 logger = logging.getLogger(__name__)
 

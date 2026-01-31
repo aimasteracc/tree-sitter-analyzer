@@ -1,18 +1,46 @@
 #!/usr/bin/env python3
 """
-TOON (Token-Oriented Object Notation) Formatter
+TOON Formatter - Token-Oriented Object Notation Formatter
 
-High-level formatter for converting analysis results and MCP responses
-to TOON format, optimized for LLM consumption with 50-70% token reduction.
+This module provides high-level formatting for converting analysis results and MCP
+responses to TOON format, optimized for LLM consumption with 50-70% token reduction.
+
+Optimized with:
+- Complete type hints (PEP 484)
+- Comprehensive error handling
+- Performance optimization
+- Detailed documentation in English
+
+Features:
+- TOON format encoding
+- Token reduction optimization (50-70%)
+- LLM-friendly output structure
+- Analysis result compression
+- Type-safe operations (PEP 484)
+
+Usage:
+    >>> from tree_sitter_analyzer.formatters import ToonFormatter
+    >>> formatter = ToonFormatter()
+    >>> output = formatter.format(analysis_result)
+
+Author: aisheng.yu
+Version: 1.10.5
+Date: 2026-01-28
 """
 
+# Standard library imports
 import logging
 from typing import Any
 
+# Internal imports
 from .base_formatter import BaseFormatter
 from .toon_encoder import ToonEncodeError, ToonEncoder
 
-# Logger for TOON formatter
+# Configure logging
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+
+# Additional logger for TOON formatter
 logger = logging.getLogger(__name__)
 
 

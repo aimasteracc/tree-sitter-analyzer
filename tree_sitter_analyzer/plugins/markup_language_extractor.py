@@ -1,32 +1,46 @@
 #!/usr/bin/env python3
 """
-Markup Language Extractor Module
+Markup Language Extractor.
 
-Base class for markup language plugins (HTML, CSS, Markdown, etc.)
-with lightweight features and position-based node tracking.
+Base class for markup language plugins (HTML, CSS, Markdown, etc.).
 
-Features:
-- Simple recursive node traversal
-- Position-based node tracking (memory efficient)
-- Shallow nesting depth support
-- Comprehensive error handling
-- Type-safe operations (PEP 484)
-- Performance monitoring
+Key Features:
+    - Recursive node traversal
+    - Position-based tracking
+    - Shallow nesting support
+    - Error handling
+    - Performance monitoring
+
+Version: 1.10.5
+Date: 2026-01-28
 """
 
+from __future__ import annotations
+
 import logging
-from typing import TYPE_CHECKING, Any, Optional, List, Dict, Tuple, Union, Callable, Type, Iterator
 from abc import ABC
+from collections.abc import Callable, Iterator
 from time import perf_counter
+from typing import (
+    TYPE_CHECKING,
+    Any,
+)
+
+__all__ = ["MarkupLanguageExtractor"]
 
 # Configure logging
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
-    from tree_sitter import Tree, Node
+    from tree_sitter import Node, Tree
+
     from ..models import Class as ModelClass
-    from ..utils import log_debug, log_info, log_warning, log_error, log_performance
-    from .cached_element_extractor import CachedElementExtractor
+    from ..utils import log_debug, log_error, log_performance
+else:
+    Node = Any
+    Tree = Any
+
+from .cached_element_extractor import CachedElementExtractor  # noqa: E402
 
 
 class MarkupExtractionError(Exception):
@@ -103,7 +117,7 @@ class MarkupLanguageExtractor(CachedElementExtractor, ABC):
         super()._reset_caches()
         self._processed_nodes.clear()
 
-    def _traverse_nodes(self, root_node: Optional[Node]) -> Iterator[Node]:
+    def _traverse_nodes(self, root_node: Node | None) -> Iterator[Node]:
         """
         Simple recursive node traversal (depth-first pre-order).
 
@@ -171,7 +185,7 @@ class MarkupLanguageExtractor(CachedElementExtractor, ABC):
         node_key = (node.start_byte, node.end_byte)
         self._processed_nodes.add(node_key)
 
-    def _extract_common_metadata(self, node: Node, source_code: str) -> Dict[str, Any]:
+    def _extract_common_metadata(self, node: Node, source_code: str) -> dict[str, Any]:
         """
         Extract common metadata from an AST node.
 
@@ -213,7 +227,7 @@ class MarkupLanguageExtractor(CachedElementExtractor, ABC):
 
     # --- Template Method Pattern ---
 
-    def _get_function_handlers(self) -> Dict[str, Callable]:
+    def _get_function_handlers(self) -> dict[str, Callable]:
         """
         Get mapping of node types to function extraction handlers.
 
@@ -231,7 +245,7 @@ class MarkupLanguageExtractor(CachedElementExtractor, ABC):
         """
         return {}
 
-    def _get_class_handlers(self) -> Dict[str, Callable]:
+    def _get_class_handlers(self) -> dict[str, Callable]:
         """
         Get mapping of node types to class extraction handlers.
 
@@ -249,7 +263,7 @@ class MarkupLanguageExtractor(CachedElementExtractor, ABC):
         """
         return {}
 
-    def _get_variable_handlers(self) -> Dict[str, Callable]:
+    def _get_variable_handlers(self) -> dict[str, Callable]:
         """
         Get mapping of node types to variable extraction handlers.
 
@@ -267,7 +281,7 @@ class MarkupLanguageExtractor(CachedElementExtractor, ABC):
         """
         return {}
 
-    def _get_import_handlers(self) -> Dict[str, Callable]:
+    def _get_import_handlers(self) -> dict[str, Callable]:
         """
         Get mapping of node types to import extraction handlers.
 
@@ -287,9 +301,7 @@ class MarkupLanguageExtractor(CachedElementExtractor, ABC):
 
     # --- Common Extraction Methods (Template Method Pattern) ---
 
-    def extract_functions(
-        self, tree: Tree, source_code: str
-    ) -> List[Any]:
+    def extract_functions(self, tree: Tree, source_code: str) -> list[Any]:
         """
         Extract function definitions using template method pattern.
 
@@ -336,7 +348,7 @@ class MarkupLanguageExtractor(CachedElementExtractor, ABC):
 
                             if function:
                                 functions.append(function)
-                                log_performance(
+                                log_performance(  # type: ignore
                                     f"Function extraction time: {extraction_time:.3f}s, "
                                     f"node_type={node.type}"
                                 )
@@ -354,9 +366,7 @@ class MarkupLanguageExtractor(CachedElementExtractor, ABC):
         log_debug(f"Extracted {len(functions)} functions")
         return functions
 
-    def extract_classes(
-        self, tree: Tree, source_code: str
-    ) -> List[ModelClass]:
+    def extract_classes(self, tree: Tree, source_code: str) -> list[ModelClass]:
         """
         Extract class definitions using template method pattern.
 
@@ -403,7 +413,7 @@ class MarkupLanguageExtractor(CachedElementExtractor, ABC):
 
                             if cls:
                                 classes.append(cls)
-                                log_performance(
+                                log_performance(  # type: ignore
                                     f"Class extraction time: {extraction_time:.3f}s, "
                                     f"node_type={node.type}"
                                 )
@@ -421,9 +431,7 @@ class MarkupLanguageExtractor(CachedElementExtractor, ABC):
         log_debug(f"Extracted {len(classes)} classes")
         return classes
 
-    def extract_variables(
-        self, tree: Tree, source_code: str
-    ) -> List[Any]:
+    def extract_variables(self, tree: Tree, source_code: str) -> list[Any]:
         """
         Extract variable definitions using template method pattern.
 
@@ -471,7 +479,7 @@ class MarkupLanguageExtractor(CachedElementExtractor, ABC):
 
                             if variable:
                                 variables.append(variable)
-                                log_performance(
+                                log_performance(  # type: ignore
                                     f"Variable extraction time: {extraction_time:.3f}s, "
                                     f"node_type={node.type}"
                                 )
@@ -489,9 +497,7 @@ class MarkupLanguageExtractor(CachedElementExtractor, ABC):
         log_debug(f"Extracted {len(variables)} variables")
         return variables
 
-    def extract_imports(
-        self, tree: Tree, source_code: str
-    ) -> List[Any]:
+    def extract_imports(self, tree: Tree, source_code: str) -> list[Any]:
         """
         Extract import statements using template method pattern.
 
@@ -539,7 +545,7 @@ class MarkupLanguageExtractor(CachedElementExtractor, ABC):
 
                             if imp:
                                 imports.append(imp)
-                                log_performance(
+                                log_performance(  # type: ignore
                                     f"Import extraction time: {extraction_time:.3f}s, "
                                     f"node_type={node.type}"
                                 )
@@ -598,10 +604,8 @@ __all__ = [
     "MarkupExtractionError",
     "MarkupTraversalError",
     "MarkupExtractionWarning",
-
     # Main class
     "MarkupLanguageExtractor",
-
     # Factory functions
     "create_markup_language_extractor",
 ]

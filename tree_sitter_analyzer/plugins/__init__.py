@@ -1,51 +1,41 @@
 #!/usr/bin/env python3
 """
-Plugin System for Multi-Language Code Analysis
+Plugin System.
 
-This package provides a plugin-based architecture for extending the
-tree-sitter analyzer with language-specific parsers and extractors.
+Plugin-based architecture for multi-language code analysis.
 
-Features:
-- Abstract base classes for extensibility
-- Type-safe operations (PEP 484)
-- Comprehensive error handling
-- Performance optimization (caching, monitoring)
-- Language-specific extractors
-- Plugin management and discovery
-
-Architecture:
-- ElementExtractor: Base class for extracting code elements
-- LanguagePlugin: Base class for language-specific plugins
-- CachedElementExtractor: Cached version of extractors
-- MarkupLanguageExtractor: Base for markup languages
-- ProgrammingLanguageExtractor: Base for programming languages
-- PluginManager: Manages plugin discovery and loading
+Version: 1.10.5
+Date: 2026-01-28
 """
 
+from __future__ import annotations
+
 import logging
-from typing import TYPE_CHECKING, Any, Optional, List, Dict, Tuple, Union, Callable, Type
 from abc import ABC, abstractmethod
-from functools import lru_cache, wraps
-from time import perf_counter
 from dataclasses import dataclass
 from enum import Enum
+from time import perf_counter
+from typing import (
+    TYPE_CHECKING,
+)
 
 if TYPE_CHECKING:
-    from tree_sitter import Tree, Node
+    from tree_sitter import Tree
+
+    from ..models import (
+        Class as ModelClass,
+    )
     from ..models import (
         CodeElement,
         Function,
-        Class as ModelClass,
-        Import as ModelImport,
         Variable,
     )
-    from ..utils import (
-        log_debug,
-        log_info,
-        log_warning,
-        log_error,
-        log_performance,
+    from ..models import (
+        Import as ModelImport,
     )
+
+# Internal imports
+from ..utils import log_error, log_performance, log_warning
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -104,11 +94,11 @@ class ExtractorResult:
         error_message: Error message if extraction failed
     """
 
-    elements: List[CodeElement]
+    elements: list[CodeElement]
     extractor_name: str
     execution_time: float
     success: bool
-    error_message: Optional[str] = None
+    error_message: str | None = None
 
 
 @dataclass
@@ -129,10 +119,10 @@ class PluginInfo:
     name: str
     type: PluginType
     state: PluginState
-    version: Optional[str]
+    version: str | None
     description: str
     language: str
-    file_extensions: List[str]
+    file_extensions: list[str]
 
 
 class ElementExtractor(ABC):
@@ -160,7 +150,7 @@ class ElementExtractor(ABC):
         self,
         tree: Tree,
         source_code: str,
-    ) -> List[Function]:
+    ) -> list[Function]:
         """
         Extract function definitions from the syntax tree.
 
@@ -185,7 +175,7 @@ class ElementExtractor(ABC):
         self,
         tree: Tree,
         source_code: str,
-    ) -> List[ModelClass]:
+    ) -> list[ModelClass]:
         """
         Extract class definitions from the syntax tree.
 
@@ -210,7 +200,7 @@ class ElementExtractor(ABC):
         self,
         tree: Tree,
         source_code: str,
-    ) -> List[Variable]:
+    ) -> list[Variable]:
         """
         Extract variable declarations from the syntax tree.
 
@@ -235,7 +225,7 @@ class ElementExtractor(ABC):
         self,
         tree: Tree,
         source_code: str,
-    ) -> List[ModelImport]:
+    ) -> list[ModelImport]:
         """
         Extract import statements from the syntax tree.
 
@@ -292,20 +282,18 @@ class ElementExtractor(ABC):
             imports = self.extract_imports(tree, source_code)
 
             # Combine all elements
-            all_elements = (
-                functions + classes + variables + imports
-            )
+            all_elements = functions + classes + variables + imports
 
             end_time = perf_counter()
             execution_time = end_time - start_time
 
-            log_performance(
+            log_performance(  # type: ignore
                 f"{self._extractor_name} extraction time: {execution_time:.3f}s, "
                 f"{len(all_elements)} elements"
             )
 
             return ExtractorResult(
-                elements=all_elements,
+                elements=all_elements,  # type: ignore
                 extractor_name=self._extractor_name,
                 execution_time=execution_time,
                 success=True,
@@ -367,7 +355,7 @@ class LanguagePlugin(ABC):
         pass
 
     @abstractmethod
-    def get_file_extensions(self) -> List[str]:
+    def get_file_extensions(self) -> list[str]:
         """
         Get list of file extensions supported by this plugin.
 
@@ -381,7 +369,7 @@ class LanguagePlugin(ABC):
         pass
 
     @abstractmethod
-    def create_parser(self) -> Optional[Tree]:
+    def create_parser(self) -> Tree | None:
         """
         Create a Tree-sitter parser for this language.
 
@@ -397,7 +385,7 @@ class LanguagePlugin(ABC):
         """
         pass
 
-    def create_extractor(self) -> Optional[ElementExtractor]:
+    def create_extractor(self) -> ElementExtractor | None:
         """
         Create an element extractor for this language.
 
@@ -411,15 +399,17 @@ class LanguagePlugin(ABC):
         # Default implementation - to be overridden by subclasses
         try:
             # Try to import from current package
-            from . import programming_language_extractor, markup_language_extractor
+            from . import markup_language_extractor, programming_language_extractor
 
             # Check if this is a programming language
-            if isinstance(self, programming_language_extractor.ProgrammingLanguageExtractor):
-                return programming_language_extractor.ProgrammingLanguageExtractor()
+            if isinstance(
+                self, programming_language_extractor.ProgrammingLanguageExtractor
+            ):
+                return programming_language_extractor.ProgrammingLanguageExtractor()  # type: ignore
 
             # Check if this is a markup language
             elif isinstance(self, markup_language_extractor.MarkupLanguageExtractor):
-                return markup_language_extractor.MarkupLanguageExtractor()
+                return markup_language_extractor.MarkupLanguageExtractor()  # type: ignore
 
             # Fallback to default
             else:
@@ -463,9 +453,9 @@ class DefaultExtractor(ElementExtractor):
 
     def extract_functions(
         self,
-        tree: Optional[Tree],
+        tree: Tree | None,
         source_code: str,
-    ) -> List[Function]:
+    ) -> list[Function]:
         """
         Extract functions using basic pattern matching.
 
@@ -481,9 +471,9 @@ class DefaultExtractor(ElementExtractor):
 
     def extract_classes(
         self,
-        tree: Optional[Tree],
+        tree: Tree | None,
         source_code: str,
-    ) -> List[ModelClass]:
+    ) -> list[ModelClass]:
         """
         Extract classes using basic pattern matching.
 
@@ -499,9 +489,9 @@ class DefaultExtractor(ElementExtractor):
 
     def extract_variables(
         self,
-        tree: Optional[Tree],
+        tree: Tree | None,
         source_code: str,
-    ) -> List[Variable]:
+    ) -> list[Variable]:
         """
         Extract variables using basic pattern matching.
 
@@ -517,9 +507,9 @@ class DefaultExtractor(ElementExtractor):
 
     def extract_imports(
         self,
-        tree: Optional[Tree],
+        tree: Tree | None,
         source_code: str,
-    ) -> List[ModelImport]:
+    ) -> list[ModelImport]:
         """
         Extract imports using basic pattern matching.
 
@@ -559,7 +549,7 @@ class DefaultLanguagePlugin(LanguagePlugin):
         """
         return self._language
 
-    def get_file_extensions(self) -> List[str]:
+    def get_file_extensions(self) -> list[str]:
         """
         Get list of file extensions supported by this plugin.
 
@@ -568,14 +558,16 @@ class DefaultLanguagePlugin(LanguagePlugin):
         """
         return [".txt", ".md"]
 
-    def create_parser(self) -> Optional[Tree]:
+    def create_parser(self) -> Tree | None:
         """
         Create a Tree-sitter parser for this language.
 
         Returns:
             Tree-sitter parser or None (for default implementation)
         """
-        log_warning(f"DefaultLanguagePlugin does not support parser creation for {self._language}")
+        log_warning(
+            f"DefaultLanguagePlugin does not support parser creation for {self._language}"
+        )
         return None
 
     def is_applicable(self, file_path: str) -> bool:
@@ -597,10 +589,9 @@ class DefaultLanguagePlugin(LanguagePlugin):
 
 # Layered extractor support
 # Import layered extractors for better performance
-from .cached_element_extractor import CachedElementExtractor
-from .programming_language_extractor import ProgrammingLanguageExtractor
-from .markup_language_extractor import MarkupLanguageExtractor
-
+from .cached_element_extractor import CachedElementExtractor  # noqa: E402
+from .markup_language_extractor import MarkupLanguageExtractor  # noqa: E402
+from .programming_language_extractor import ProgrammingLanguageExtractor  # noqa: E402
 
 # Export for backward compatibility
 __all__ = [
@@ -609,19 +600,16 @@ __all__ = [
     "LanguagePlugin",
     "DefaultExtractor",
     "DefaultLanguagePlugin",
-
     # Data classes
     "ExtractorResult",
     "PluginInfo",
     "PluginState",
     "PluginType",
-
     # Exceptions
     "PluginError",
     "PluginLoadError",
     "PluginNotFoundError",
     "PluginExecutionError",
-
     # Layered extractors
     "CachedElementExtractor",
     "ProgrammingLanguageExtractor",

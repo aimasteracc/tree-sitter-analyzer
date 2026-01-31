@@ -1,13 +1,41 @@
-"""Argument validator for SearchContentTool.
-
-This module provides validation logic for search tool arguments.
+#!/usr/bin/env python3
 """
+Argument Validator for SearchContentTool.
+
+This module provides comprehensive validation logic for search tool arguments,
+including parameter validation, type checking, and SearchContext creation.
+
+Key Features:
+    - Required parameter validation
+    - Type and value range validation
+    - Mutual exclusivity checks for search parameters
+    - Path validation with optional PathResolver integration
+    - SearchContext dataclass creation
+
+Classes:
+    SearchArgumentValidator: Main validator for search tool arguments
+
+Version: 1.10.5
+Date: 2026-01-28
+Author: tree-sitter-analyzer team
+"""
+
+from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from tree_sitter_analyzer.mcp.tools.search_strategies.base import SearchContext
+if TYPE_CHECKING:
+    from tree_sitter_analyzer.mcp.tools.search_strategies.base import SearchContext
+else:
+    try:
+        from tree_sitter_analyzer.mcp.tools.search_strategies.base import SearchContext
+    except ImportError as e:
+        logging.warning(f"Import fallback triggered in search_validator: {e}")
+        SearchContext = None  # type: ignore[misc,assignment]
+
+__all__ = ["SearchArgumentValidator"]
 
 logger = logging.getLogger(__name__)
 

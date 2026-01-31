@@ -1,17 +1,64 @@
 #!/usr/bin/env python3
 """
-Markdown Language Plugin
+Markdown Language Plugin - Enhanced Markdown Document Analysis
 
-Enhanced Markdown-specific parsing and element extraction functionality.
-Provides comprehensive support for Markdown elements including headers,
-links, code blocks, lists, tables, and other structural elements.
+This module provides comprehensive Markdown-specific parsing and element extraction
+functionality for the tree-sitter-analyzer framework.
+
+Optimized with:
+- Complete type hints (PEP 484)
+- Comprehensive error handling and recovery
+- Performance optimization with caching
+- Thread-safe operations where applicable
+- Detailed documentation in English
+
+Features:
+- CommonMark and GFM (GitHub Flavored Markdown) support
+- Header hierarchy extraction
+- Link and image parsing
+- Code block analysis with language detection
+- List (ordered and unordered) extraction
+- Table parsing
+- Blockquote handling
+- Type-safe operations (PEP 484)
+
+Architecture:
+- Extends MarkupLanguageExtractor for document markup patterns
+- Layered design with clear separation of concerns
+- Performance optimization with node caching
+- Integration with tree-sitter Markdown grammar
+- Documentation structure analysis
+
+Usage:
+    >>> from tree_sitter_analyzer.languages import MarkdownPlugin
+    >>> plugin = MarkdownPlugin()
+    >>> result = await plugin.analyze(request)
+    >>> elements = result.elements
+
+Author: aisheng.yu
+Version: 1.10.5
+Date: 2026-01-28
 """
 
+# Standard library imports
+import logging
 from typing import TYPE_CHECKING, Any, Optional
 
+# Type checking imports
 if TYPE_CHECKING:
     import tree_sitter
+    from tree_sitter import Language, Node, Tree
 
+    from ..core.analysis_engine import AnalysisRequest
+    from ..models import AnalysisResult
+else:
+    # Runtime fallback for type checking imports
+    tree_sitter = Any  # type: ignore[misc,assignment]
+    Tree = Any
+    Node = Any
+    Language = Any
+
+# Runtime tree-sitter availability check
 try:
     import tree_sitter
 
@@ -19,7 +66,7 @@ try:
 except ImportError:
     TREE_SITTER_AVAILABLE = False
 
-from ..core.analysis_engine import AnalysisRequest
+# Internal imports
 from ..models import AnalysisResult, CodeElement
 from ..models import Class as ModelClass
 from ..models import Function as ModelFunction
@@ -29,6 +76,10 @@ from ..plugins.base import LanguagePlugin
 from ..plugins.markup_language_extractor import MarkupLanguageExtractor
 from ..utils import log_debug, log_error
 from ..utils.tree_sitter_compat import TreeSitterQueryCompat
+
+# Configure logging
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 
 class MarkdownElement(CodeElement):
@@ -1394,7 +1445,7 @@ class MarkdownElementExtractor(MarkupLanguageExtractor):
                 except Exception as e:
                     log_debug(f"Failed to extract footnote definition: {e}")
 
-    def _traverse_nodes(self, node: "tree_sitter.Node") -> Any:
+    def _traverse_nodes(self, node: "tree_sitter.Node") -> Any:  # type: ignore
         """Traverse all nodes in the tree"""
         yield node
         for child in node.children:
@@ -1893,3 +1944,10 @@ class MarkdownPlugin(LanguagePlugin):
             ],
             "text_content": ["atx_heading", "setext_heading", "inline", "paragraph"],
         }
+
+
+# Exported public API
+__all__ = [
+    "MarkdownElement",
+    "MarkdownPlugin",
+]

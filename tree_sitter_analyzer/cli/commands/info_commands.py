@@ -36,47 +36,34 @@ Version: 1.10.5
 Date: 2026-01-28
 """
 
-import hashlib
 import logging
-import os
 import sys
-import threading
-import time
-from typing import TYPE_CHECKING, Any, Optional, List, Dict, Tuple, Union, Callable, Type, NamedTuple, Set
-from functools import lru_cache, wraps
-from dataclasses import dataclass, field
-from enum import Enum
-from pathlib import Path
+from functools import lru_cache
 from time import perf_counter
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Protocol,
+)
 
 # Type checking setup
 if TYPE_CHECKING:
     # Core imports
+    # Utility imports
+    from ...utils.logging import (
+        log_debug,
+        log_error,
+    )
     from ..core.analysis_engine import AnalysisEngine, AnalysisRequest, AnalysisResult
+    from ..core.cache_service import CacheConfig, CacheService
     from ..core.parser import Parser
     from ..core.query import QueryExecutor, QueryResult
-    from ..core.cache_service import CacheService, CacheConfig
     from ..language_detector import LanguageDetector, LanguageInfo
-    from ..plugins.manager import PluginManager, PluginInfo
+    from ..plugins.manager import PluginInfo, PluginManager
     from ..plugins.programming_language_extractor import ProgrammingLanguageExtractor
 
     # CLI imports
-    from .base import Command, CommandResult, ExecutionContext, CommandMetadata
-    from .. import import CommandRegistry
-
-    # Utility imports
-    from ...utils.logging import (
-        LoggerConfig,
-        LoggingContext,
-        log_debug,
-        log_info,
-        log_warning,
-        log_error,
-        log_performance,
-        setup_logger,
-        create_performance_logger,
-        safe_print,
-    )
+    from .base import Command, CommandMetadata, CommandResult, ExecutionContext
 else:
     # Runtime imports (when type checking is disabled)
     # Core imports
@@ -103,25 +90,17 @@ else:
     # Utility imports
     from ...utils.logging import (
         log_debug,
-        log_info,
-        log_warning,
         log_error,
-        log_performance,
-        safe_print,
     )
 
 # Configure logging
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-# ============================================================================
+# =====
 # Type Definitions
-# ============================================================================
+# =====
 
-if sys.version_info >= (3, 8):
-    from typing import Protocol
-else:
-    Protocol = object
 
 class InfoCommandProtocol(Protocol):
     """Interface for info command creation functions."""
@@ -138,9 +117,11 @@ class InfoCommandProtocol(Protocol):
         """
         ...
 
+
 # ============================================================================
 # Custom Exceptions
 # ============================================================================
+
 
 class InfoCommandError(Exception):
     """Base exception for info command errors."""
@@ -152,22 +133,26 @@ class InfoCommandError(Exception):
 
 class InitializationError(InfoCommandError):
     """Exception raised when info command initialization fails."""
+
     pass
 
 
 class ExecutionError(InfoCommandError):
     """Exception raised when command execution fails."""
+
     pass
 
 
 class ValidationError(InfoCommandError):
     """Exception raised when command validation fails."""
+
     pass
 
 
 # ============================================================================
 # Info Command
 # ============================================================================
+
 
 class InfoCommand(Command):
     """
@@ -194,7 +179,7 @@ class InfoCommand(Command):
         >>> print(result.message)
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """
         Initialize info command.
 
@@ -309,6 +294,7 @@ class InfoCommand(Command):
 # Version Command
 # ============================================================================
 
+
 class VersionCommand(Command):
     """
     Version command for displaying version information.
@@ -333,9 +319,11 @@ class VersionCommand(Command):
 
     VERSION = "1.10.5"
     BUILD_DATE = "2026-01-28"
-    PYTHON_VERSION = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
+    PYTHON_VERSION = (
+        f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
+    )
 
-    def __init__(self):
+    def __init__(self):  # type: ignore
         """
         Initialize version command.
 
@@ -384,8 +372,8 @@ class VersionCommand(Command):
 
             # Display dependency information
             version_lines.append("Dependencies:")
-            version_lines.append(f"  - tree-sitter: (bundled)")
-            version_lines.append(f"  - tree-sitter-languages: (bundled)")
+            version_lines.append("  - tree-sitter: (bundled)")
+            version_lines.append("  - tree-sitter-languages: (bundled)")
             version_lines.append("")
 
             version_lines.append("=== End ===")
@@ -422,6 +410,7 @@ class VersionCommand(Command):
 # Help Command
 # ============================================================================
 
+
 class HelpCommand(Command):
     """
     Help command for displaying help information.
@@ -445,7 +434,7 @@ class HelpCommand(Command):
         >>> print(result.message)
     """
 
-    def __init__(self):
+    def __init__(self):  # type: ignore
         """
         Initialize help command.
 
@@ -544,6 +533,7 @@ class HelpCommand(Command):
 # Convenience Functions with LRU Caching
 # ============================================================================
 
+
 @lru_cache(maxsize=64, typed=True)
 def get_info_command() -> InfoCommand:
     """
@@ -590,12 +580,11 @@ def get_help_command() -> HelpCommand:
 # Module-level exports
 # ============================================================================
 
-__all__: List[str] = [
+__all__: list[str] = [
     # Main classes
     "InfoCommand",
     "VersionCommand",
     "HelpCommand",
-
     # Convenience functions
     "get_info_command",
     "get_version_command",
@@ -606,6 +595,7 @@ __all__: List[str] = [
 # ============================================================================
 # Module-level exports for backward compatibility
 # ============================================================================
+
 
 def __getattr__(name: str) -> Any:
     """
@@ -640,4 +630,4 @@ def __getattr__(name: str) -> Any:
             module = __import__(f".{name}", fromlist=["__name__"])
             return module
         except ImportError:
-            raise ImportError(f"Module {name} not found")
+            raise ImportError(f"Module {name} not found") from None

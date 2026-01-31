@@ -1,11 +1,21 @@
 #!/usr/bin/env python3
 """
-JavaScript Language Queries
+JavaScript Language Queries.
 
 Comprehensive Tree-sitter queries for JavaScript language constructs.
-Covers functions, classes, variables, imports, exports, and modern JavaScript features.
-Equivalent to Java query coverage for consistent language support.
+
+Key Features:
+    - Functions and arrow functions
+    - Classes and methods
+    - Variables and imports/exports
+    - Modern ES6+ features
+    - Async/await patterns
+
+Version: 1.10.5
+Date: 2026-01-28
 """
+
+from __future__ import annotations
 
 # JavaScript-specific query library
 JAVASCRIPT_QUERIES: dict[str, str] = {
@@ -722,3 +732,13 @@ def get_available_javascript_queries() -> list[str]:
         List of query names
     """
     return list(JAVASCRIPT_QUERIES.keys())
+
+
+__all__: list[str] = [
+    "get_javascript_query",
+    "get_javascript_query_description",
+    "get_query",
+    "get_all_queries",
+    "list_queries",
+    "get_available_javascript_queries",
+]

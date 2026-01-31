@@ -1,14 +1,35 @@
 #!/usr/bin/env python3
 """
-Output format parameter validation for search_content tool.
+Output Format Parameter Validation for search_content Tool.
 
 Ensures mutual exclusion of output format parameters to prevent conflicts
 and provides multilingual error messages with token efficiency guidance.
+
+Key Features:
+    - Mutual exclusion validation for output format params
+    - Token efficiency guidance for each format
+    - Multilingual error messages (English, Japanese)
+    - Environment-based language detection
+    - Singleton pattern for validator instance
+
+Classes:
+    OutputFormatValidator: Validator for output format parameters
+
+Functions:
+    get_default_validator: Get singleton OutputFormatValidator instance
+
+Version: 1.10.5
+Date: 2026-01-28
+Author: tree-sitter-analyzer team
 """
+
+from __future__ import annotations
 
 import locale
 import os
 from typing import Any
+
+__all__ = ["OutputFormatValidator", "get_default_validator"]
 
 
 class OutputFormatValidator:

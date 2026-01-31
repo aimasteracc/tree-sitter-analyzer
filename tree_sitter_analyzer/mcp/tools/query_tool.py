@@ -1,20 +1,55 @@
 #!/usr/bin/env python3
 """
-Query Tool for MCP
+Query Tool for MCP.
 
 MCP tool providing tree-sitter query functionality using unified QueryService.
-Supports both predefined query keys and custom query strings.
+Supports both predefined query keys and custom query strings with filtering.
+
+Key Features:
+    - Tree-sitter query execution with QueryService integration
+    - Predefined query key support (e.g., 'functions', 'classes')
+    - Custom query string support for advanced patterns
+    - Filtering options (type, name, line range)
+    - Multiple output formats (toon, json) for MCP
+    - File output with token optimization
+
+Classes:
+    QueryTool: MCP tool for tree-sitter query operations
+
+Version: 1.10.5
+Date: 2026-01-28
+Author: tree-sitter-analyzer team
 """
+
+from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from ...core.query_service import QueryService
-from ...language_detector import detect_language_from_file
-from ..utils.file_output_manager import FileOutputManager
-from ..utils.format_helper import apply_toon_format_to_response, format_for_file_output
-from .base_tool import BaseMCPTool
+if TYPE_CHECKING:
+    from ...core.query_service import QueryService
+    from ...language_detector import detect_language_from_file
+    from ..utils.file_output_manager import FileOutputManager
+    from ..utils.format_helper import (
+        apply_toon_format_to_response,
+        format_for_file_output,
+    )
+    from .base_tool import BaseMCPTool
+else:
+    try:
+        from ...core.query_service import QueryService
+        from ...language_detector import detect_language_from_file
+        from ..utils.file_output_manager import FileOutputManager
+        from ..utils.format_helper import (
+            apply_toon_format_to_response,
+            format_for_file_output,
+        )
+        from .base_tool import BaseMCPTool
+    except ImportError as e:
+        logging.warning(f"Import fallback triggered in query_tool: {e}")
+
+__all__ = ["QueryTool"]
 
 logger = logging.getLogger(__name__)
 

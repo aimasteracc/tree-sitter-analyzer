@@ -1,10 +1,21 @@
 #!/usr/bin/env python3
 """
-C# Language Queries
+C# Language Queries.
 
 Comprehensive Tree-sitter queries for C# language constructs.
-Covers classes, methods, properties, fields, and modern C# features.
+
+Key Features:
+    - Classes and interfaces
+    - Methods and properties
+    - Records and structs
+    - LINQ and async/await
+    - Modern C# features
+
+Version: 1.10.5
+Date: 2026-01-28
 """
+
+from __future__ import annotations
 
 # C#-specific query library
 CSHARP_QUERIES: dict[str, str] = {

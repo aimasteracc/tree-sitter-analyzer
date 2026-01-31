@@ -1,3 +1,22 @@
+#!/usr/bin/env python3
+"""
+Ruby Language Queries.
+
+Tree-sitter queries for Ruby language constructs.
+
+Key Features:
+    - Classes and modules
+    - Methods and blocks
+    - Constants and variables
+    - Metaprogramming elements
+    - Ruby-specific syntax
+
+Version: 1.10.5
+Date: 2026-01-28
+"""
+
+from __future__ import annotations
+
 """
 Ruby Tree-sitter Queries
 

@@ -38,43 +38,36 @@ Date: 2026-01-28
 
 import hashlib
 import logging
-import os
-import sys
 import threading
-import time
-from typing import TYPE_CHECKING, Any, Optional, List, Dict, Tuple, Union, Callable, Type, NamedTuple, Set
-from functools import lru_cache, wraps
-from dataclasses import dataclass, field
-from enum import Enum
-from pathlib import Path
+from contextlib import nullcontext
+from dataclasses import dataclass
+from functools import lru_cache
 from time import perf_counter
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Protocol,
+)
 
 # Type checking setup
 if TYPE_CHECKING:
     # Core imports
-    from ..core.analysis_engine import AnalysisEngine, AnalysisRequest, AnalysisResult
-    from ..core.parser import Parser, ParseResult
-    from ..core.query import QueryExecutor, QueryResult, QueryError
-    from ..core.cache_service import CacheService, CacheConfig
-    from ..language_detector import LanguageDetector, LanguageInfo
-    from ..plugins.manager import PluginManager, PluginInfo
-
-    # CLI imports
-    from .base import Command, CommandResult, ExecutionContext, CommandMetadata
-
     # Utility imports
     from ...utils.logging import (
-        LoggerConfig,
-        LoggingContext,
         log_debug,
+        log_error,
         log_info,
         log_warning,
-        log_error,
-        log_performance,
-        setup_logger,
-        create_performance_logger,
-        safe_print,
     )
+    from ..core.analysis_engine import AnalysisEngine, AnalysisRequest, AnalysisResult
+    from ..core.cache_service import CacheConfig, CacheService
+    from ..core.parser import Parser, ParseResult
+    from ..core.query import QueryError, QueryExecutor, QueryResult
+    from ..language_detector import LanguageDetector, LanguageInfo
+    from ..plugins.manager import PluginInfo, PluginManager
+
+    # CLI imports
+    from .base import Command, CommandMetadata, CommandResult, ExecutionContext
 else:
     # Runtime imports (when type checking is disabled)
     # Core imports
@@ -102,25 +95,19 @@ else:
     # Utility imports
     from ...utils.logging import (
         log_debug,
+        log_error,
         log_info,
         log_warning,
-        log_error,
-        log_performance,
-        safe_print,
     )
 
 # Configure logging
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-# ============================================================================
+# =====
 # Type Definitions
-# ============================================================================
+# =====
 
-if sys.version_info >= (3, 8):
-    from typing import Protocol
-else:
-    Protocol = object
 
 class QueryToolProtocol(Protocol):
     """Interface for query tool command creation functions."""
@@ -137,10 +124,11 @@ class QueryToolProtocol(Protocol):
         """
         ...
 
+
 class CacheProtocol(Protocol):
     """Interface for cache services."""
 
-    def get(self, key: str) -> Optional[Any]:
+    def get(self, key: str) -> Any | None:
         """
         Get value from cache.
 
@@ -166,6 +154,7 @@ class CacheProtocol(Protocol):
         """Clear all cache entries."""
         ...
 
+
 class PerformanceMonitorProtocol(Protocol):
     """Interface for performance monitoring."""
 
@@ -181,9 +170,11 @@ class PerformanceMonitorProtocol(Protocol):
         """
         ...
 
+
 # ============================================================================
 # Custom Exceptions
 # ============================================================================
+
 
 class QueryToolError(Exception):
     """Base exception for query tool errors."""
@@ -195,27 +186,32 @@ class QueryToolError(Exception):
 
 class InitializationError(QueryToolError):
     """Exception raised when query tool initialization fails."""
+
     pass
 
 
 class ExecutionError(QueryToolError):
     """Exception raised when query execution fails."""
+
     pass
 
 
 class ValidationError(QueryToolError):
     """Exception raised when validation fails."""
+
     pass
 
 
 class CacheError(QueryToolError):
     """Exception raised when caching fails."""
+
     pass
 
 
 # ============================================================================
 # Data Classes
 # ============================================================================
+
 
 @dataclass(frozen=True, slots=True)
 class QuerySpec:
@@ -231,27 +227,29 @@ class QuerySpec:
         scope: Query scope (file, project, etc.)
     """
 
-    query_string: Optional[str] = None
-    query_file: Optional[str] = None
-    query_name: Optional[str] = None
+    query_string: str | None = None
+    query_file: str | None = None
+    query_name: str | None = None
     language: str = "python"
-    pattern: Optional[str] = None
+    pattern: str | None = None
     scope: str = "file"
 
     def __hash__(self) -> int:
         """Hash based on query spec."""
-        return hash((
-            self.query_string or "",
-            self.query_file or "",
-            self.query_name or "",
-            self.language,
-            self.pattern or "",
-            self.scope,
-        ))
+        return hash(
+            (
+                self.query_string or "",
+                self.query_file or "",
+                self.query_name or "",
+                self.language,
+                self.pattern or "",
+                self.scope,
+            )
+        )
 
 
 @dataclass
-class QueryResult:
+class QueryResult:  # type: ignore
     """
     Result of query execution.
 
@@ -264,10 +262,10 @@ class QueryResult:
     """
 
     query_spec: QuerySpec
-    captures: List[Dict[str, Any]]
+    captures: list[dict[str, Any]]
     execution_time: float
     success: bool
-    error_message: Optional[str] = None
+    error_message: str | None = None
 
     @property
     def capture_count(self) -> int:
@@ -309,6 +307,7 @@ class QueryToolConfig:
 # Query Tool Command
 # ============================================================================
 
+
 class QueryToolCommand(Command):
     """
     Optimized command for executing Tree-sitter queries.
@@ -336,7 +335,7 @@ class QueryToolCommand(Command):
         >>> print(result.message)
     """
 
-    def __init__(self, config: Optional[QueryToolConfig] = None):
+    def __init__(self, config: QueryToolConfig | None = None):
         """
         Initialize query tool command.
 
@@ -352,16 +351,18 @@ class QueryToolCommand(Command):
         self._config = config or QueryToolConfig()
 
         # Thread-safe lock for operations
-        self._lock = threading.RLock() if self._config.enable_thread_safety else type(None)
+        self._lock = (
+            threading.RLock() if self._config.enable_thread_safety else None
+        )
 
         # Query executor (lazy loading)
-        self._query_executor: Optional[QueryExecutor] = None
+        self._query_executor: QueryExecutor | None = None
 
         # Cache for query results
-        self._query_cache: Dict[str, QueryResult] = {}
+        self._query_cache: dict[str, QueryResult] = {}
 
         # Performance statistics
-        self._stats: Dict[str, Any] = {
+        self._stats: dict[str, Any] = {
             "total_queries": 0,
             "successful_queries": 0,
             "failed_queries": 0,
@@ -427,7 +428,7 @@ class QueryToolCommand(Command):
                 return CommandResult(
                     command_name=self._name,
                     success=True,
-                    message=f"Query from cache: {query_spec.query_name or query_spec.query_string[:50]}...",
+                    message=f"Query from cache: {query_spec.query_name or query_spec.query_string[:50]}...",  # type: ignore
                     data=cached_result,
                     execution_time=execution_time,
                 )
@@ -482,7 +483,7 @@ class QueryToolCommand(Command):
             - Initializes all analysis components
             - Thread-safe operation
         """
-        with self._lock:
+        with (self._lock if self._lock else nullcontext()):
             if self._query_executor is None:
                 if TYPE_CHECKING:
                     from ...core.query import QueryExecutor, QueryExecutorConfig
@@ -502,9 +503,11 @@ class QueryToolCommand(Command):
                     log_debug("Query executor initialized")
                 except Exception as e:
                     log_error(f"Failed to initialize query executor: {e}")
-                    raise InitializationError(f"Failed to initialize query executor: {e}") from e
+                    raise InitializationError(
+                        f"Failed to initialize query executor: {e}"
+                    ) from e
 
-    def _parse_query_spec(self, context: ExecutionContext) -> Optional[QuerySpec]:
+    def _parse_query_spec(self, context: ExecutionContext) -> QuerySpec | None:
         """
         Parse query specification from arguments.
 
@@ -527,7 +530,9 @@ class QueryToolCommand(Command):
             spec = context.args[0]
 
             # Check if it's a query string
-            if spec.startswith(('"') or spec.startswith("'") or "(" in spec or "." in spec):
+            if spec.startswith(
+                ('"') or spec.startswith("'") or "(" in spec or "." in spec
+            ):
                 return QuerySpec(
                     query_string=spec,
                     language=self._config.project_root,
@@ -550,7 +555,9 @@ class QueryToolCommand(Command):
             log_error(f"Failed to parse query specification: {e}")
             return None
 
-    def _execute_query(self, query_spec: QuerySpec, context: ExecutionContext) -> QueryResult:
+    def _execute_query(
+        self, query_spec: QuerySpec, context: ExecutionContext
+    ) -> QueryResult:
         """
         Execute Tree-sitter query with given specification.
 
@@ -585,7 +592,9 @@ class QueryToolCommand(Command):
 
             elif query_spec.query_name:
                 # Load named query
-                query_string = self._load_named_query(query_spec.query_name, query_spec.language)
+                query_string = self._load_named_query(
+                    query_spec.query_name, query_spec.language
+                )
             else:
                 return QueryResult(
                     query_spec=query_spec,
@@ -674,7 +683,7 @@ class QueryToolCommand(Command):
                 error_message=f"Query execution failed: {str(e)}",
             )
 
-    def _load_query_file(self, file_path: str) -> Optional[str]:
+    def _load_query_file(self, file_path: str) -> str | None:
         """
         Load query string from file.
 
@@ -694,15 +703,15 @@ class QueryToolCommand(Command):
             else:
                 from ...encoding_utils import EncodingManager, read_file_safe
 
-            encoding_manager = EncodingManager()
+            EncodingManager()
             content, encoding = read_file_safe(file_path)
-            return content
+            return content  # type: ignore
 
         except Exception as e:
             log_error(f"Failed to load query file {file_path}: {e}")
             return None
 
-    def _load_named_query(self, name: str, language: str) -> Optional[str]:
+    def _load_named_query(self, name: str, language: str) -> str | None:
         """
         Load named query from registry.
 
@@ -758,14 +767,14 @@ class QueryToolCommand(Command):
             - Invalidates all cached query results
             - Resets internal cache statistics
         """
-        with self._lock:
+        with (self._lock if self._lock else nullcontext()):
             self._query_cache.clear()
             self._stats["cache_hits"] = 0
             self._stats["cache_misses"] = 0
 
         log_info("Query tool cache cleared")
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         """
         Get query tool statistics.
 
@@ -777,7 +786,7 @@ class QueryToolCommand(Command):
             - Returns query execution statistics
             - Returns performance metrics
         """
-        with self._lock:
+        with (self._lock if self._lock else nullcontext()):
             return {
                 "total_queries": self._stats["total_queries"],
                 "successful_queries": self._stats["successful_queries"],
@@ -785,7 +794,8 @@ class QueryToolCommand(Command):
                 "cache_hits": self._stats["cache_hits"],
                 "cache_misses": self._stats["cache_misses"],
                 "cache_hit_rate": (
-                    self._stats["cache_hits"] / (self._stats["cache_hits"] + self._stats["cache_misses"])
+                    self._stats["cache_hits"]
+                    / (self._stats["cache_hits"] + self._stats["cache_misses"])
                     if (self._stats["cache_hits"] + self._stats["cache_misses"]) > 0
                     else 0.0
                 ),
@@ -813,6 +823,7 @@ class QueryToolCommand(Command):
 # ============================================================================
 # Convenience Functions with LRU Caching
 # ============================================================================
+
 
 @lru_cache(maxsize=64, typed=True)
 def get_query_tool_command(project_root: str = ".") -> QueryToolCommand:
@@ -883,22 +894,19 @@ def create_query_tool_command(
 # Module-level exports
 # ============================================================================
 
-__all__: List[str] = [
+__all__: list[str] = [
     # Data classes
     "QuerySpec",
     "QueryResult",
     "QueryToolConfig",
-
     # Exceptions
     "QueryToolError",
     "InitializationError",
     "ExecutionError",
     "ValidationError",
     "CacheError",
-
     # Main class
     "QueryToolCommand",
-
     # Convenience functions
     "get_query_tool_command",
     "create_query_tool_command",
@@ -908,6 +916,7 @@ __all__: List[str] = [
 # ============================================================================
 # Module-level exports for backward compatibility
 # ============================================================================
+
 
 def __getattr__(name: str) -> Any:
     """
@@ -940,6 +949,7 @@ def __getattr__(name: str) -> Any:
     ]:
         # Import from module
         import sys
+
         module = sys.modules[__name__]
         if module is None:
             raise ImportError(f"Module {name} not found")
@@ -955,4 +965,4 @@ def __getattr__(name: str) -> Any:
             module = __import__(f".{name}", fromlist=["__name__"])
             return module
         except ImportError:
-            raise ImportError(f"Module {name} not found")
+            raise ImportError(f"Module {name} not found") from None

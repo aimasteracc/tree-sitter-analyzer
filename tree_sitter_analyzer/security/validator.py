@@ -1,15 +1,28 @@
 #!/usr/bin/env python3
 """
-Security Validator for Tree-sitter Analyzer
+Security Validator.
 
-Provides unified security validation framework inspired by code-index-mcp's
-ValidationHelper but enhanced for tree-sitter analyzer's requirements.
+Unified security validation framework for tree-sitter analyzer.
+
+Key Features:
+    - Path validation and normalization
+    - File system permission checks
+    - Platform-specific security
+    - Input sanitization
+    - Command injection prevention
+
+Version: 1.10.5
+Date: 2026-01-28
 """
+
+from __future__ import annotations
 
 import platform
 import re
 import stat
 from pathlib import Path
+
+__all__ = ["SecurityValidator"]
 
 try:
     import ctypes

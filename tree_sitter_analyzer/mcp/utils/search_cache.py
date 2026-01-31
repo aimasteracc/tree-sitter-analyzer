@@ -1,18 +1,38 @@
 #!/usr/bin/env python3
 """
-Search Cache Module for MCP Tools
+Search Cache Module for MCP Tools.
 
-Provides basic caching functionality for search results to improve performance
-by avoiding repeated expensive search operations.
+Provides thread-safe caching functionality for search results to improve
+performance by avoiding repeated expensive search operations.
 
-This is a simplified version focusing on core caching features for Phase 2.
+Key Features:
+    - Thread-safe in-memory cache with RLock
+    - TTL (Time-To-Live) based expiration
+    - LRU (Least Recently Used) eviction policy
+    - Statistics tracking (hits, misses, evictions)
+    - Automatic cleanup of expired entries
+    - Singleton instance via get_default_cache()
+
+Classes:
+    SearchCache: Main cache implementation with TTL and LRU
+
+Functions:
+    get_default_cache: Get singleton SearchCache instance
+
+Version: 1.10.5
+Date: 2026-01-28
+Author: tree-sitter-analyzer team
 """
+
+from __future__ import annotations
 
 import logging
 import threading
 import time
 from pathlib import Path
 from typing import Any
+
+__all__ = ["SearchCache", "get_default_cache"]
 
 logger = logging.getLogger(__name__)
 

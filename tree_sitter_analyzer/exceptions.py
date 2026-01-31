@@ -1,13 +1,32 @@
 #!/usr/bin/env python3
 """
-Tree-sitter Analyzer Custom Exceptions
+Tree-sitter Analyzer Custom Exceptions.
 
-Unified exception handling system for consistent error management
-across the entire framework.
+Unified exception handling system with rich context and error codes.
+
+Key Features:
+    - Base exception hierarchy
+    - Analysis and parsing exceptions
+    - Language and plugin errors
+    - Query execution exceptions
+    - File handling errors
+    - Error code system
+
+Version: 1.10.5
+Date: 2026-01-28
 """
+
+from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
+
+__all__ = [
+    "TreeSitterAnalyzerError",
+    "AnalysisError",
+    "LanguageNotSupportedError",
+    "PluginError",
+]
 
 
 class TreeSitterAnalyzerError(Exception):

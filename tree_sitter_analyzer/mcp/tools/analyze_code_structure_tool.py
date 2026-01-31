@@ -1,33 +1,77 @@
 #!/usr/bin/env python3
 """
-Code Structure Analysis Tool for MCP
+Code Structure Analysis Tool for MCP.
 
 This tool analyzes code structure and generates detailed overview tables
-(classes, methods, fields) with line positions for large files.
+(classes, methods, fields) with line positions for large files through MCP protocol.
+
+Key Features:
+    - Comprehensive code structure analysis (classes, methods, fields)
+    - Detailed table formatting with line position tracking
+    - Multiple output formats (toon, json) for MCP integration
+    - File output support with token optimization
+    - Language-specific structure extraction
+    - Performance monitoring and logging
+
+Classes:
+    AnalyzeCodeStructureTool: MCP tool for code structure analysis
+
+Version: 1.10.5
+Date: 2026-01-28
+Author: tree-sitter-analyzer team
 """
 
-from pathlib import Path
-from typing import Any
+from __future__ import annotations
 
-from ...constants import (
-    ELEMENT_TYPE_CLASS,
-    ELEMENT_TYPE_FUNCTION,
-    ELEMENT_TYPE_IMPORT,
-    ELEMENT_TYPE_PACKAGE,
-    ELEMENT_TYPE_VARIABLE,
-    is_element_of_type,
-)
-from ...core.analysis_engine import AnalysisRequest, get_analysis_engine
-from ...formatters.formatter_registry import FormatterRegistry
-from ...language_detector import detect_language_from_file
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from ...constants import (
+        ELEMENT_TYPE_CLASS,
+        ELEMENT_TYPE_FUNCTION,
+        ELEMENT_TYPE_IMPORT,
+        ELEMENT_TYPE_PACKAGE,
+        ELEMENT_TYPE_VARIABLE,
+        is_element_of_type,
+    )
+    from ...core.analysis_engine import AnalysisRequest, get_analysis_engine
+    from ...formatters.formatter_registry import FormatterRegistry
+    from ...language_detector import detect_language_from_file
+    from ..utils import get_performance_monitor
+    from ..utils.file_output_manager import FileOutputManager
+    from ..utils.format_helper import apply_toon_format_to_response
+    from .base_tool import BaseMCPTool
+else:
+    try:
+        from ...constants import (
+            ELEMENT_TYPE_CLASS,
+            ELEMENT_TYPE_FUNCTION,
+            ELEMENT_TYPE_IMPORT,
+            ELEMENT_TYPE_PACKAGE,
+            ELEMENT_TYPE_VARIABLE,
+            is_element_of_type,
+        )
+        from ...core.analysis_engine import AnalysisRequest, get_analysis_engine
+        from ...formatters.formatter_registry import FormatterRegistry
+        from ...language_detector import detect_language_from_file
+        from ..utils import get_performance_monitor
+        from ..utils.file_output_manager import FileOutputManager
+        from ..utils.format_helper import apply_toon_format_to_response
+        from .base_tool import BaseMCPTool
+    except ImportError as e:
+        import logging
+
+        logging.warning(
+            f"Import fallback triggered in analyze_code_structure_tool: {e}"
+        )
+
 from ...utils import setup_logger
-from ..utils import get_performance_monitor
-from ..utils.file_output_manager import FileOutputManager
-from ..utils.format_helper import apply_toon_format_to_response
-from .base_tool import BaseMCPTool
+
+__all__ = ["AnalyzeCodeStructureTool"]
 
 # Set up logging
-logger = setup_logger(__name__)
+logger = setup_logger(__name__)  # type: ignore
 
 
 class AnalyzeCodeStructureTool(BaseMCPTool):
@@ -377,7 +421,7 @@ class AnalyzeCodeStructureTool(BaseMCPTool):
                     include_complexity=True,
                     include_details=True,
                 )
-                structure_result = await self.analysis_engine.analyze(request)
+                structure_result = await self.analysis_engine.analyze(request)  # type: ignore
 
                 if structure_result is None:
                     raise RuntimeError(

@@ -1,12 +1,32 @@
 #!/usr/bin/env python3
 """
-Query Filter Service
+Query Filter Service.
 
-Provides post-processing filtering for query results, supporting filtering by name, parameters, and other conditions.
+Provides post-processing filtering for query results, supporting multiple
+filter types including name matching, parameter counts, and modifiers.
+
+Key Features:
+    - Exact name matching (name=main)
+    - Pattern-based name matching (name~auth*)
+    - Parameter count filtering (params=0)
+    - Modifier filtering (static=true, async=true)
+    - Multiple filter expression support
+    - Regex pattern compilation for performance
+
+Classes:
+    QueryFilter: Main filter class with expression parsing
+
+Version: 1.10.5
+Date: 2026-01-28
+Author: tree-sitter-analyzer team
 """
+
+from __future__ import annotations
 
 import re
 from typing import Any
+
+__all__ = ["QueryFilter"]
 
 
 class QueryFilter:

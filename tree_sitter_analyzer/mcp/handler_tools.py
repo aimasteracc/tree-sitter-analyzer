@@ -1,6 +1,31 @@
+#!/usr/bin/env python3
+"""
+Tool Handler for MCP Server.
+
+This module provides tool execution handling for the MCP server, managing
+tool calls, argument processing, and response formatting.
+
+Key Features:
+    - Async tool call execution
+    - Automatic tool discovery and registration
+    - Argument validation and processing
+    - Error handling with detailed logging
+    - TextContent response formatting
+    - Shared cache integration
+
+Classes:
+    ToolHandler: Main handler for MCP tool execution
+
+Version: 1.10.5
+Date: 2026-01-28
+Author: tree-sitter-analyzer team
+"""
+
+from __future__ import annotations
+
 import json
 from pathlib import Path as PathClass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 try:
     from mcp.types import TextContent
@@ -12,10 +37,21 @@ except ImportError:
             self.text = text
 
 
-from ..utils import setup_logger
-from .utils.shared_cache import get_shared_cache
+if TYPE_CHECKING:
+    from ..utils import setup_logger
+    from .utils.shared_cache import get_shared_cache
+else:
+    try:
+        from ..utils import setup_logger
+        from .utils.shared_cache import get_shared_cache
+    except ImportError as e:
+        import logging
 
-logger = setup_logger(__name__)
+        logging.warning(f"Import fallback triggered in handler_tools: {e}")
+
+__all__ = ["ToolHandler"]
+
+logger = setup_logger(__name__)  # type: ignore
 
 
 class ToolHandler:

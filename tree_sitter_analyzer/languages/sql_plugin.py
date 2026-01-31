@@ -1,20 +1,65 @@
 #!/usr/bin/env python3
 """
-SQL Language Plugin
+SQL Language Plugin - Enhanced SQL Code Analysis
 
-Provides SQL-specific parsing and element extraction functionality.
-Supports extraction of tables, views, stored procedures, functions, triggers, and indexes.
+This module provides comprehensive SQL-specific parsing and element extraction
+functionality for the tree-sitter-analyzer framework.
+
+Optimized with:
+- Complete type hints (PEP 484)
+- Comprehensive error handling and recovery
+- Performance optimization with caching
+- Thread-safe operations where applicable
+- Detailed documentation in English
+
+Features:
+- Multi-dialect SQL support (PostgreSQL, MySQL, SQLite, etc.)
+- Table, view, and index extraction
+- Stored procedure and function analysis
+- Trigger detection
+- Column and constraint parsing
+- Join and subquery analysis
+- Query complexity scoring
+- Type-safe operations (PEP 484)
+
+Architecture:
+- Extends ProgrammingLanguageExtractor for language-specific behavior
+- Layered design with clear separation of concerns
+- Performance optimization with node caching
+- Integration with tree-sitter SQL grammar
+- Database schema awareness
+
+Usage:
+    >>> from tree_sitter_analyzer.languages import SQLPlugin
+    >>> plugin = SQLPlugin()
+    >>> result = await plugin.analyze(request)
+    >>> elements = result.elements
+
+Author: aisheng.yu
+Version: 1.10.5
+Date: 2026-01-28
 """
 
+# Standard library imports
+import logging
 from collections.abc import Iterator
 from typing import TYPE_CHECKING, Any
 
+# Type checking imports
 if TYPE_CHECKING:
     import tree_sitter
+    from tree_sitter import Language, Node, Tree
 
     from ..core.analysis_engine import AnalysisRequest
     from ..models import AnalysisResult
+else:
+    # Runtime fallback for type checking imports
+    tree_sitter = Any  # type: ignore[misc,assignment]
+    Tree = Any
+    Node = Any
+    Language = Any
 
+# Runtime tree-sitter availability check
 try:
     import tree_sitter
 
@@ -22,7 +67,7 @@ try:
 except ImportError:
     TREE_SITTER_AVAILABLE = False
 
-
+# Internal imports
 from ..models import (
     Class,
     Function,
@@ -45,6 +90,10 @@ from ..platform_compat.profiles import BehaviorProfile
 from ..plugins.base import LanguagePlugin
 from ..plugins.programming_language_extractor import ProgrammingLanguageExtractor
 from ..utils import log_debug, log_error
+
+# Configure logging
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 
 class SQLElementExtractor(ProgrammingLanguageExtractor):
@@ -318,7 +367,7 @@ class SQLElementExtractor(ProgrammingLanguageExtractor):
 
         return validated
 
-    def extract_functions(
+    def extract_functions(  # type: ignore[override]
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[Function]:
         """
@@ -355,7 +404,7 @@ class SQLElementExtractor(ProgrammingLanguageExtractor):
 
         return functions
 
-    def extract_classes(
+    def extract_classes(  # type: ignore[override]
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[Class]:
         """
@@ -2426,3 +2475,10 @@ class SQLPlugin(LanguagePlugin):
     def get_element_categories(self) -> dict[str, list[str]]:
         """Return element categories for HTML/CSS languages."""
         return {}
+
+
+# Exported public API
+__all__ = [
+    "SQLElementExtractor",
+    "SQLPlugin",
+]

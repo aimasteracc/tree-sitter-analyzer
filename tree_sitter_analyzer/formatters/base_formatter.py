@@ -1,12 +1,53 @@
 #!/usr/bin/env python3
 """
-Base formatter for language-specific formatting.
+Base Formatter - Abstract Base Class for All Formatters
+
+This module provides the abstract base class and common functionality for all
+format-specific formatters in the tree-sitter-analyzer framework.
+
+Optimized with:
+- Complete type hints (PEP 484)
+- Comprehensive error handling
+- Performance optimization with caching
+- Detailed documentation in English
+
+Features:
+- Abstract formatter interface (ABC)
+- Common formatting utilities
+- CSV export functionality
+- JSON serialization support
+- Multiple output format delegation
+- Type-safe operations (PEP 484)
+
+Architecture:
+- Abstract base class (ABC) for all formatters
+- Template method pattern for format delegation
+- Extensible design for custom formatters
+- Integration with OutputManager
+
+Usage:
+    >>> from tree_sitter_analyzer.formatters import BaseFormatter
+    >>> class MyFormatter(BaseFormatter):
+    ...     def format_structure(self, data):
+    ...         return str(data)
+
+Author: aisheng.yu
+Version: 1.10.5
+Date: 2026-01-28
 """
 
+from __future__ import annotations
+
+# Standard library imports
 import csv
 import io
+import logging
 from abc import ABC, abstractmethod
 from typing import Any
+
+# Configure logging
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 
 class BaseFormatter(ABC):
@@ -262,3 +303,10 @@ class BaseTableFormatter(BaseFormatter):
         cleaned = cleaned.replace('"', '""')
 
         return cleaned
+
+
+# Exported public API
+__all__ = [
+    "BaseFormatter",
+    "BaseTableFormatter",
+]

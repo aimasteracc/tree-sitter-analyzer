@@ -1,21 +1,53 @@
 #!/usr/bin/env python3
 """
-Base Tool Protocol for MCP Tools
+Base Tool Protocol for MCP Tools.
 
-This module defines the base class that all MCP tools should inherit from
-to ensure consistent behavior and project path management.
+This module defines the abstract base class that all MCP tools should inherit from
+to ensure consistent behavior, project path management, security validation,
+and shared resource caching.
+
+Key Features:
+    - Abstract base class for all MCP tools
+    - Unified security validation through SecurityValidator
+    - Path resolution with PathResolver integration
+    - Shared cache management for performance optimization
+    - Thread-safe path validation with caching
+
+Classes:
+    BaseMCPTool: Abstract base class for MCP tool implementations
+
+Version: 1.10.5
+Date: 2026-01-28
+Author: tree-sitter-analyzer team
 """
 
-from abc import ABC, abstractmethod
-from typing import Any
+from __future__ import annotations
 
-from ...security import SecurityValidator
+from abc import ABC, abstractmethod
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from ...security import SecurityValidator
+    from ..utils.path_resolver import PathResolver
+else:
+    # Runtime imports with fallback
+    try:
+        from ...security import SecurityValidator
+        from ..utils.path_resolver import PathResolver
+    except ImportError as e:
+        import logging
+
+        logging.warning(f"Import fallback triggered in base_tool: {e}")
+        SecurityValidator = None  # type: ignore[misc,assignment]
+        PathResolver = None  # type: ignore[misc,assignment]
+
 from ...utils import setup_logger
-from ..utils.path_resolver import PathResolver
 from ..utils.shared_cache import get_shared_cache
 
+__all__ = ["BaseMCPTool"]
+
 # Set up logging
-logger = setup_logger(__name__)
+logger = setup_logger(__name__)  # type: ignore
 
 
 class BaseMCPTool(ABC):

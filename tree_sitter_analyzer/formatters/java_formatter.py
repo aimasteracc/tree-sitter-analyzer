@@ -1,11 +1,53 @@
 #!/usr/bin/env python3
 """
-Java-specific table formatter.
+Java Table Formatter - Enhanced Java Code Result Formatting
+
+This module provides specialized formatting for Java code analysis results,
+handling Java OOP features and generating structured output.
+
+Optimized with:
+- Complete type hints (PEP 484)
+- Comprehensive error handling
+- Performance optimization with caching
+- Detailed documentation in English
+
+Features:
+- Java-specific element formatting
+- Class and interface hierarchy
+- Annotation processing
+- Generic type support
+- Package and import handling
+- Framework-specific patterns (Spring, Jakarta EE)
+- Multiple output formats (table, CSV, TOON)
+- Complexity metrics
+- Type-safe operations (PEP 484)
+
+Architecture:
+- Extends BaseTableFormatter for consistent interface
+- Layered design with format delegation
+- Performance optimization where applicable
+- Integration with analysis result models
+
+Usage:
+    >>> from tree_sitter_analyzer.formatters import JavaTableFormatter
+    >>> formatter = JavaTableFormatter()
+    >>> output = formatter.format(analysis_result)
+
+Author: aisheng.yu
+Version: 1.10.5
+Date: 2026-01-28
 """
 
+# Standard library imports
+import logging
 from typing import Any
 
+# Internal imports
 from .base_formatter import BaseTableFormatter
+
+# Configure logging
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 
 class JavaTableFormatter(BaseTableFormatter):
@@ -394,3 +436,9 @@ class JavaTableFormatter(BaseTableFormatter):
             return self._format_csv(analysis_result)
         else:
             return self._format_full_table(analysis_result)
+
+
+# Exported public API
+__all__ = [
+    "JavaTableFormatter",
+]

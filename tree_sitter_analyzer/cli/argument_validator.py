@@ -1,11 +1,23 @@
 #!/usr/bin/env python3
 """
-CLI Argument Validator
+CLI Argument Validator.
 
 Validates CLI argument combinations and provides clear error messages.
+
+Key Features:
+    - Mutually exclusive argument validation
+    - Format compatibility checking
+    - Comprehensive error messages
+
+Version: 1.10.5
+Date: 2026-01-28
 """
 
+from __future__ import annotations
+
 from typing import Any
+
+__all__ = ["CLIArgumentValidator"]
 
 
 class CLIArgumentValidator:

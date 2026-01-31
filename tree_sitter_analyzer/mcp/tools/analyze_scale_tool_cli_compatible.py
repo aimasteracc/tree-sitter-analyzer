@@ -1,21 +1,51 @@
 #!/usr/bin/env python3
 """
-CLI-Compatible Analyze Code Scale MCP Tool
+CLI-Compatible Analyze Code Scale MCP Tool.
 
-This tool provides code scale analysis with output format
-that matches the CLI --advanced --statistics output exactly.
+This tool provides code scale analysis with output format that matches
+the CLI --advanced --statistics output exactly for backward compatibility.
+
+Key Features:
+    - CLI output format compatibility (--advanced --statistics)
+    - Code scale and complexity metrics
+    - Language-agnostic analysis
+    - Performance monitoring
+    - Detailed element statistics
+
+Classes:
+    AnalyzeScaleToolCLICompatible: MCP tool with CLI-compatible output
+
+Version: 1.10.5
+Date: 2026-01-28
+Author: tree-sitter-analyzer team
 """
+
+from __future__ import annotations
 
 import time
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from ...core.analysis_engine import get_analysis_engine
-from ...language_detector import detect_language_from_file
+if TYPE_CHECKING:
+    from ...core.analysis_engine import get_analysis_engine
+    from ...language_detector import detect_language_from_file
+else:
+    try:
+        from ...core.analysis_engine import get_analysis_engine
+        from ...language_detector import detect_language_from_file
+    except ImportError as e:
+        import logging
+
+        logging.warning(
+            f"Import fallback triggered in analyze_scale_tool_cli_compatible: {e}"
+        )
+
 from ...utils import setup_logger
 
+__all__ = ["AnalyzeScaleToolCLICompatible"]
+
 # Set up logging
-logger = setup_logger(__name__)
+logger = setup_logger(__name__)  # type: ignore
 
 
 class AnalyzeScaleToolCLICompatible:
@@ -110,7 +140,7 @@ class AnalyzeScaleToolCLICompatible:
                 include_complexity=True,
                 include_details=False,
             )
-            analysis_result = await self.analysis_engine.analyze(request)
+            analysis_result = await self.analysis_engine.analyze(request)  # type: ignore
 
             # Build CLI-compatible result structure (exact match with CLI --advanced --statistics)
             # Standardize element type mapping to match CLI expectations

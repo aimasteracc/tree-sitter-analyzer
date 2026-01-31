@@ -1,15 +1,43 @@
 #!/usr/bin/env python3
 """
-Result parsers for fd and ripgrep output.
+Result Parsers for fd and ripgrep Output.
 
 This module handles parsing of command output into structured data,
 separating parsing logic from command execution and formatting.
+
+Key Features:
+    - FdResultParser for fd output parsing
+    - RgResultParser for ripgrep --json output parsing
+    - RgResultTransformer for result transformation and grouping
+    - Safety limits (MAX_RESULTS_HARD_CAP, DEFAULT_RESULTS_LIMIT)
+    - Error handling for malformed output
+
+Classes:
+    FdResultParser: Parses fd stdout into file lists
+    RgResultParser: Parses ripgrep --json into structured matches
+    RgResultTransformer: Transforms and groups ripgrep results
+
+Constants:
+    MAX_RESULTS_HARD_CAP: Hard limit for search results (10000)
+    DEFAULT_RESULTS_LIMIT: Default result limit (2000)
+
+Version: 1.10.5
+Date: 2026-01-28
+Author: tree-sitter-analyzer team
 """
 
 from __future__ import annotations
 
 import json
 from typing import Any
+
+__all__ = [
+    "MAX_RESULTS_HARD_CAP",
+    "DEFAULT_RESULTS_LIMIT",
+    "FdResultParser",
+    "RgResultParser",
+    "RgResultTransformer",
+]
 
 # Safety caps (hard limits)
 MAX_RESULTS_HARD_CAP = 10000

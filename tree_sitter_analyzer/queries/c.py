@@ -1,10 +1,21 @@
 #!/usr/bin/env python3
 """
-C Language Queries
+C Language Queries.
 
-Tree-sitter queries specific to C language constructs.
-Covers functions, structs, unions, enums, and preprocessor directives.
+Tree-sitter queries for C language constructs.
+
+Key Features:
+    - Functions and declarations
+    - Structs, unions, and enums
+    - Preprocessor directives
+    - Type definitions
+    - Static and inline functions
+
+Version: 1.10.5
+Date: 2026-01-28
 """
+
+from __future__ import annotations
 
 # C-specific query library
 C_QUERIES: dict[str, str] = {
@@ -341,3 +352,13 @@ def get_available_c_queries() -> list[str]:
         List of query names
     """
     return list(C_QUERIES.keys())
+
+
+__all__: list[str] = [
+    "get_c_query",
+    "get_c_query_description",
+    "get_query",
+    "get_all_queries",
+    "list_queries",
+    "get_available_c_queries",
+]

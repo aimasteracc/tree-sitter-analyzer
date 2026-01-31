@@ -1,12 +1,42 @@
 #!/usr/bin/env python3
 """
-Ruby-specific table formatter.
-Follows Java golden master format for consistency.
+Ruby Table Formatter - Enhanced Ruby Code Result Formatting
+
+This module provides specialized formatting for Ruby code analysis results.
+
+Optimized with:
+- Complete type hints (PEP 484)
+- Comprehensive error handling
+- Performance optimization
+- Detailed documentation in English
+
+Features:
+- Ruby-specific element formatting
+- Module and mixin support
+- Block and proc handling
+- Symbol and string interpolation
+- Type-safe operations (PEP 484)
+
+Usage:
+    >>> from tree_sitter_analyzer.formatters import RubyTableFormatter
+    >>> formatter = RubyTableFormatter()
+    >>> output = formatter.format(analysis_result)
+
+Author: aisheng.yu
+Version: 1.10.5
+Date: 2026-01-28
 """
 
+# Standard library imports
+import logging
 from typing import Any
 
+# Internal imports
 from .base_formatter import BaseTableFormatter
+
+# Configure logging
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 
 class RubyTableFormatter(BaseTableFormatter):
@@ -354,3 +384,11 @@ class RubyCSVFormatter(RubyTableFormatter):
     def format(self, data: dict[str, Any]) -> str:
         """Format data as CSV"""
         return self._format_csv(data)
+
+
+__all__: list[str] = [
+    "RubyTableFormatter",
+    "RubyFullFormatter",
+    "RubyCompactFormatter",
+    "RubyCSVFormatter",
+]

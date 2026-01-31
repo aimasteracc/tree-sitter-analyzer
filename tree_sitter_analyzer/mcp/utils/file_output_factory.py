@@ -1,20 +1,48 @@
 #!/usr/bin/env python3
 """
-File Output Manager Factory
+File Output Manager Factory.
 
 This module provides a Managed Singleton Factory Pattern for FileOutputManager
 to prevent duplicate initialization and ensure consistent instance management
 across MCP tools.
+
+Key Features:
+    - Managed Singleton Factory Pattern (one instance per project root)
+    - Thread-safe instance creation with RLock
+    - Automatic project root normalization
+    - Instance lifecycle management
+    - Memory-efficient instance reuse
+
+Classes:
+    FileOutputManagerFactory: Factory for FileOutputManager instances
+
+Version: 1.10.5
+Date: 2026-01-28
+Author: tree-sitter-analyzer team
 """
+
+from __future__ import annotations
 
 import threading
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .file_output_manager import FileOutputManager
+else:
+    try:
+        from .file_output_manager import FileOutputManager
+    except ImportError as e:
+        import logging
+
+        logging.warning(f"Import fallback triggered in file_output_factory: {e}")
 
 from ...utils import setup_logger
-from .file_output_manager import FileOutputManager
+
+__all__ = ["FileOutputManagerFactory"]
 
 # Set up logging
-logger = setup_logger(__name__)
+logger = setup_logger(__name__)  # type: ignore
 
 
 class FileOutputManagerFactory:

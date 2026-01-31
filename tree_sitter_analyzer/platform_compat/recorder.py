@@ -1,17 +1,58 @@
+#!/usr/bin/env python3
+"""
+Behavior Recorder.
+
+Records SQL parsing behavior on the current platform.
+
+Key Features:
+    - Fixture-based recording
+    - Node traversal analysis
+    - Attribute extraction
+    - Profile generation
+
+Version: 1.10.5
+Date: 2026-01-28
+"""
+
+from __future__ import annotations
+
 import logging
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-import tree_sitter
-import tree_sitter_sql
+if TYPE_CHECKING:
+    import tree_sitter
+    import tree_sitter_sql
 
-from tree_sitter_analyzer.platform_compat.detector import PlatformDetector
-from tree_sitter_analyzer.platform_compat.fixtures import ALL_FIXTURES, SQLTestFixture
-from tree_sitter_analyzer.platform_compat.profiles import (
-    PROFILE_SCHEMA_VERSION,
-    BehaviorProfile,
-    ParsingBehavior,
-)
+    from tree_sitter_analyzer.platform_compat.detector import PlatformDetector
+    from tree_sitter_analyzer.platform_compat.fixtures import (
+        ALL_FIXTURES,
+        SQLTestFixture,
+    )
+    from tree_sitter_analyzer.platform_compat.profiles import (
+        PROFILE_SCHEMA_VERSION,
+        BehaviorProfile,
+        ParsingBehavior,
+    )
+else:
+    try:
+        import tree_sitter  # type: ignore[import]
+        import tree_sitter_sql  # type: ignore[import]
+
+        from tree_sitter_analyzer.platform_compat.detector import PlatformDetector
+        from tree_sitter_analyzer.platform_compat.fixtures import (
+            ALL_FIXTURES,
+            SQLTestFixture,
+        )
+        from tree_sitter_analyzer.platform_compat.profiles import (
+            PROFILE_SCHEMA_VERSION,
+            BehaviorProfile,
+            ParsingBehavior,
+        )
+    except ImportError as e:
+        logging.warning(f"Import fallback triggered in recorder: {e}")
+
+__all__ = ["BehaviorRecorder"]
 
 logger = logging.getLogger(__name__)
 

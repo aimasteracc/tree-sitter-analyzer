@@ -26,22 +26,23 @@ Version: 1.10.5
 Date: 2026-01-28
 """
 
-import functools
 import logging
 import os
 import sys
 import threading
-import time
-from typing import TYPE_CHECKING, Any, Optional, Dict, List, Tuple, Union, Callable, Type
-from functools import lru_cache
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
+from functools import lru_cache
+from typing import (
+    TYPE_CHECKING,
+    Any,
+)
 
 # Type checking setup
 if TYPE_CHECKING:
     # Models
-    from ..models import Class as ModelClass
     from ..core.performance import PerformanceContext
+    from ..models import Class as ModelClass
 else:
     # Runtime imports (when type checking is disabled)
     ModelClass = Any
@@ -59,6 +60,7 @@ QUIET_MODE_ENV = "QUIET_MODE"
 # ============================================================================
 # Type Definitions
 # ============================================================================
+
 
 @dataclass
 class LoggingConfig:
@@ -78,7 +80,7 @@ class LoggingConfig:
     level: int = logging.INFO
     format_string: str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     enable_file_logging: bool = False
-    log_file_path: Optional[str] = None
+    log_file_path: str | None = None
     enable_console_logging: bool = True
     enable_performance_logging: bool = True
     performance_log_level: int = logging.DEBUG
@@ -122,10 +124,10 @@ class PerformanceMetrics:
 
     operation: str
     start_time: float
-    end_time: Optional[float]
-    duration: Optional[float]
+    end_time: float | None
+    duration: float | None
     success: bool
-    error_message: Optional[str]
+    error_message: str | None
 
 
 class LogLevel(Enum):
@@ -141,6 +143,7 @@ class LogLevel(Enum):
 # ============================================================================
 # Custom Exceptions
 # ============================================================================
+
 
 class LoggingError(Exception):
     """Base exception for logging errors."""
@@ -170,6 +173,7 @@ class StreamHandlerError(LoggingError):
 # Safe Stream Handler for pytest compatibility
 # ============================================================================
 
+
 class SafeStreamHandler(logging.StreamHandler):
     """
     A StreamHandler that safely handles closed streams and pytest capture.
@@ -194,7 +198,7 @@ class SafeStreamHandler(logging.StreamHandler):
 
     def __init__(
         self,
-        stream: Optional[Any] = None,
+        stream: Any | None = None,
         level: int = logging.INFO,
     ) -> None:
         """
@@ -213,13 +217,16 @@ class SafeStreamHandler(logging.StreamHandler):
         self._stream = stream or sys.stderr
 
         # Initialize cache for expensive properties
-        self._cache: Dict[str, Any] = {}
+        self._cache: dict[str, Any] = {}
 
         # Thread-safe lock for operations
         self._lock = threading.RLock()
 
-        # Set level
-        super().__init__(level=level)
+        # Initialize parent class (without level parameter)
+        super().__init__(self._stream)
+
+        # Set level after initialization
+        self.setLevel(level)
 
     @property
     def stream(self) -> Any:
@@ -307,6 +314,7 @@ class SafeStreamHandler(logging.StreamHandler):
 # Logger Manager
 # ============================================================================
 
+
 class LoggerManager:
     """
     Centralized logger management with thread-safe operations.
@@ -331,7 +339,7 @@ class LoggerManager:
     - Manages logging contexts for flexible control
     """
 
-    def __init__(self, config: Optional[LoggingConfig] = None) -> None:
+    def __init__(self, config: LoggingConfig | None = None) -> None:
         """
         Initialize logger manager.
 
@@ -349,13 +357,13 @@ class LoggerManager:
         self._lock = threading.RLock()
 
         # Logger cache (LRU)
-        self._loggers: Dict[str, logging.Logger] = {}
+        self._loggers: dict[str, logging.Logger] = {}
 
         # Logging contexts (thread-local)
-        self._contexts: Dict[Any, LoggingContext] = {}
+        self._contexts: dict[Any, LoggingContext] = {}
 
         # Performance metrics
-        self._metrics: List[PerformanceMetrics] = []
+        self._metrics: list[PerformanceMetrics] = []
 
     def setup_logger(
         self,
@@ -363,7 +371,7 @@ class LoggerManager:
         level: int = logging.INFO,
         format_string: str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
         enable_file_log: bool = False,
-        log_file_path: Optional[str] = None,
+        log_file_path: str | None = None,
     ) -> logging.Logger:
         """
         Setup a logger with specified configuration.
@@ -406,14 +414,15 @@ class LoggerManager:
                 try:
                     # Ensure log directory exists
                     from pathlib import Path
+
                     log_path = Path(log_file_path)
                     log_path.parent.mkdir(parents=True, exist_ok=True)
 
                     file_handler = logging.FileHandler(
                         str(log_path),
                         encoding="utf-8",
-                        level=level,
                     )
+                    file_handler.setLevel(level)
                     file_handler.setFormatter(logging.Formatter(format_string))
                     logger_instance.addHandler(file_handler)
                 except Exception as e:
@@ -488,7 +497,7 @@ class LoggerManager:
         with self._lock:
             self._metrics.append(metric)
 
-    def get_metrics(self) -> List[PerformanceMetrics]:
+    def get_metrics(self) -> list[PerformanceMetrics]:
         """
         Get all performance metrics.
 
@@ -513,7 +522,7 @@ class LoggerManager:
         with self._lock:
             self._metrics.clear()
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         """
         Get logger manager statistics.
 
@@ -543,6 +552,7 @@ class LoggerManager:
 # Convenience Functions with LRU Caching
 # ============================================================================
 
+
 @lru_cache(maxsize=64, typed=True)
 def get_logger_manager() -> LoggerManager:
     """
@@ -567,6 +577,7 @@ def get_logger_manager() -> LoggerManager:
 # ============================================================================
 # Performance Monitoring
 # ============================================================================
+
 
 @lru_cache(maxsize=64, typed=True)
 def create_performance_logger(name: str = "performance") -> logging.Logger:
@@ -604,6 +615,7 @@ def log_performance(operation: str, duration: float) -> None:
 # ============================================================================
 # Logging Functions
 # ============================================================================
+
 
 def log_debug(message: str, *args: Any, **kwargs: Any) -> None:
     """
@@ -681,6 +693,7 @@ def log_error(message: str, *args: Any, **kwargs: Any) -> None:
 # Output Suppression
 # ============================================================================
 
+
 def suppress_output() -> None:
     """Suppress all logging output."""
     os.environ[LOG_LEVEL_ENV] = "CRITICAL"
@@ -703,17 +716,15 @@ def setup_safe_logging_shutdown() -> None:
 # Module-level exports for backward compatibility
 # ============================================================================
 
-__all__: List[str] = [
+__all__: list[str] = [
     # Type definitions
     "LoggingConfig",
     "LoggingContext",
     "PerformanceMetrics",
     "LogLevel",
-
     # Main classes
     "SafeStreamHandler",
     "LoggerManager",
-
     # Convenience functions
     "get_logger_manager",
     "create_performance_logger",
@@ -731,6 +742,7 @@ __all__: List[str] = [
 # Module-level exports for backward compatibility
 # ============================================================================
 
+
 def __getattr__(name: str) -> Any:
     """
     Fallback for dynamic imports and backward compatibility.
@@ -744,11 +756,21 @@ def __getattr__(name: str) -> Any:
     Raises:
         ImportError: If component is not found
     """
+    # Skip Python internal attributes
+    if name.startswith("_"):
+        raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
+
     # Handle specific imports
     if name == "LoggerManager":
         return LoggerManager
     elif name == "SafeStreamHandler":
         return SafeStreamHandler
+    elif name == "LoggingConfig":
+        return LoggingConfig
+    elif name == "LoggingContext":
+        return LoggingContext
+    elif name == "LoggingError":
+        return LoggingError
     elif name in ["setup_logger", "get_logger", "set_context"]:
         return getattr(get_logger_manager(), name)
     elif name in [
@@ -756,9 +778,11 @@ def __getattr__(name: str) -> Any:
         "log_info",
         "log_warning",
         "log_error",
+        "log_performance",
+        "create_performance_logger",
+        "setup_safe_logging_shutdown",
     ]:
-        # Import from module
-        module = __import__(f".{name}", fromlist=[f".{name}"])
-        return getattr(module, name)
+        # These functions are already defined at module level
+        return globals()[name]
     else:
         raise ImportError(f"Module {name} not found in logging package")

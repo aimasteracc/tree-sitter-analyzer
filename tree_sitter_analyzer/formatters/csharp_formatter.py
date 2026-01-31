@@ -1,11 +1,53 @@
 #!/usr/bin/env python3
 """
-C#-specific table formatter.
+C# Table Formatter - Enhanced C# Code Result Formatting
+
+This module provides specialized formatting for C# code analysis results,
+handling .NET framework features and modern C# syntax.
+
+Optimized with:
+- Complete type hints (PEP 484)
+- Comprehensive error handling
+- Performance optimization with caching
+- Detailed documentation in English
+
+Features:
+- C#-specific element formatting
+- Property and event handling
+- LINQ query analysis
+- Async/await pattern detection
+- Attribute (annotation) support
+- Record and init-only properties
+- Multiple output formats (table, CSV, TOON)
+- Complexity metrics
+- Type-safe operations (PEP 484)
+
+Architecture:
+- Extends BaseTableFormatter for consistent interface
+- Layered design with format delegation
+- Performance optimization where applicable
+- Integration with analysis result models
+
+Usage:
+    >>> from tree_sitter_analyzer.formatters import CSharpTableFormatter
+    >>> formatter = CSharpTableFormatter()
+    >>> output = formatter.format(analysis_result)
+
+Author: aisheng.yu
+Version: 1.10.5
+Date: 2026-01-28
 """
 
+# Standard library imports
+import logging
 from typing import Any
 
+# Internal imports
 from .base_formatter import BaseTableFormatter
+
+# Configure logging
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 
 class CSharpTableFormatter(BaseTableFormatter):
@@ -356,3 +398,9 @@ class CSharpTableFormatter(BaseTableFormatter):
             "internal": "~",
         }
         return symbols.get(visibility.lower(), "-")
+
+
+# Exported public API
+__all__ = [
+    "CSharpTableFormatter",
+]

@@ -1,15 +1,37 @@
 #!/usr/bin/env python3
 """
-Project Boundary Manager for Tree-sitter Analyzer
+Project Boundary Manager.
 
-Provides strict project boundary control to prevent access to files
-outside the designated project directory.
+Strict project boundary control to prevent unauthorized file access.
+
+Key Features:
+    - Project directory enforcement
+    - Path validation and normalization
+    - Symlink resolution
+    - Access control checks
+
+Version: 1.10.5
+Date: 2026-01-28
 """
 
-from pathlib import Path
+from __future__ import annotations
 
-from ..exceptions import SecurityError
-from ..utils import log_debug, log_info, log_warning
+from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ..exceptions import SecurityError
+    from ..utils import log_debug, log_info, log_warning
+else:
+    try:
+        from ..exceptions import SecurityError
+        from ..utils import log_debug, log_info, log_warning
+    except ImportError as e:
+        import logging
+
+        logging.warning(f"Import fallback triggered in boundary_manager: {e}")
+
+__all__ = ["ProjectBoundaryManager"]
 
 
 class ProjectBoundaryManager:

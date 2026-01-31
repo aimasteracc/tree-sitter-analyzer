@@ -24,43 +24,23 @@ Version: 1.10.5
 Date: 2026-01-28
 """
 
-import hashlib
 import logging
-import os
-import threading
-import time
-from typing import TYPE_CHECKING, Any, Optional, List, Dict, Tuple, Union, Callable, Type, NamedTuple, Set
-from functools import lru_cache, wraps
 from dataclasses import dataclass, field
 from enum import Enum
-from pathlib import Path
-from time import perf_counter
+from functools import lru_cache
+from typing import (
+    TYPE_CHECKING,
+    Any,
+)
 
 # Type checking setup
 if TYPE_CHECKING:
     # Utility imports
-    from ..utils.logging import (
-        log_debug,
-        log_info,
-        log_warning,
-        log_error,
-        log_performance,
-        setup_logger,
-        create_performance_logger,
-        safe_print,
-    )
+    pass
 else:
     # Runtime imports (when type checking is disabled)
     # Utility imports
-    from ..utils.logging import (
-        log_debug,
-        log_info,
-        log_warning,
-        log_error,
-        log_performance,
-        setup_logger,
-        safe_print,
-    )
+    pass
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -70,10 +50,6 @@ logger.setLevel(logging.INFO)
 # Type Definitions
 # ============================================================================
 
-if sys.version_info >= (3, 8):
-    from typing import Protocol
-else:
-    Protocol = object
 
 class ElementType(Enum):
     """Element type enumeration."""
@@ -108,6 +84,7 @@ class Visibility(Enum):
 # Custom Exceptions
 # ============================================================================
 
+
 class ElementModelError(Exception):
     """Base exception for element model errors."""
 
@@ -118,22 +95,26 @@ class ElementModelError(Exception):
 
 class InitializationError(ElementModelError):
     """Exception raised when element model initialization fails."""
+
     pass
 
 
 class ValidationError(ElementModelError):
     """Exception raised when element validation fails."""
+
     pass
 
 
 class InconsistencyError(ElementModelError):
     """Exception raised when element data is inconsistent."""
+
     pass
 
 
 # ============================================================================
 # Data Classes
 # ============================================================================
+
 
 @dataclass(frozen=True, slots=True)
 class Position:
@@ -154,7 +135,6 @@ class Position:
     end_column: int
     offset: int
 
-    @property
     def __str__(self) -> str:
         """String representation of position."""
         return f"Line {self.line}, Column {self.column}"
@@ -180,12 +160,11 @@ class TypeInfo:
 
     name: str
     module: str
-    parameters: List[str] = field(default_factory=list)
+    parameters: list[str] = field(default_factory=list)
     is_generic: bool = False
     is_primitive: bool = True
     is_nullable: bool = False
 
-    @property
     def __str__(self) -> str:
         """String representation of type."""
         if self.is_generic and self.parameters:
@@ -214,13 +193,13 @@ class DocstringInfo:
     """
 
     content: str
-    format: Optional[str] = None
-    position: Optional[Position] = None
-    summary: Optional[str] = None
-    description: Optional[str] = None
-    parameters: List[str] = field(default_factory=list)
-    returns: Optional[str] = None
-    raises: List[str] = field(default_factory=list)
+    format: str | None = None
+    position: Position | None = None
+    summary: str | None = None
+    description: str | None = None
+    parameters: list[str] = field(default_factory=list)
+    returns: str | None = None
+    raises: list[str] = field(default_factory=list)
 
     def __hash__(self) -> int:
         """Hash based on content."""
@@ -230,6 +209,7 @@ class DocstringInfo:
 # ============================================================================
 # Base Element Classes
 # ============================================================================
+
 
 @dataclass(frozen=True, slots=True)
 class Element:
@@ -255,8 +235,8 @@ class Element:
     name: str
     position: Position
     visibility: Visibility = Visibility.PUBLIC
-    docstring: Optional[str] = None
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    docstring: str | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
 
     def __hash__(self) -> int:
         """Hash based on element type and name."""
@@ -313,6 +293,7 @@ class NamedElement(Element):
 # Variable Element
 # ============================================================================
 
+
 @dataclass(frozen=True, slots=True)
 class Variable(NamedElement):
     """
@@ -340,8 +321,8 @@ class Variable(NamedElement):
         is_local: Whether variable is local (function scope)
     """
 
-    variable_type: TypeInfo
-    value: Optional[Any] = None
+    variable_type: TypeInfo | None = None
+    value: Any | None = None
     is_constant: bool = False
     is_mutable: bool = True
     is_static: bool = False
@@ -361,6 +342,7 @@ class Variable(NamedElement):
 # ============================================================================
 # Function Element
 # ============================================================================
+
 
 @dataclass(frozen=True, slots=True)
 class Function(NamedElement):
@@ -396,8 +378,8 @@ class Function(NamedElement):
         complexity: Cyclomatic complexity score
     """
 
-    return_type: Optional[TypeInfo] = None
-    parameters: List[str] = field(default_factory=list)
+    return_type: TypeInfo | None = None
+    parameters: list[str] = field(default_factory=list)
     is_async: bool = False
     is_generator: bool = False
     is_static: bool = False
@@ -407,7 +389,7 @@ class Function(NamedElement):
     is_abstract: bool = False
     is_constructor: bool = False
     is_operator: bool = False
-    decorators: List[str] = field(default_factory=list)
+    decorators: list[str] = field(default_factory=list)
     complexity: int = 1
 
     def __hash__(self) -> int:
@@ -438,6 +420,7 @@ class Function(NamedElement):
 # ============================================================================
 # Class Element
 # ============================================================================
+
 
 @dataclass(frozen=True, slots=True)
 class Class(NamedElement):
@@ -473,11 +456,11 @@ class Class(NamedElement):
         complexity: Cyclomatic complexity score
     """
 
-    base_classes: List[str] = field(default_factory=list)
-    implemented_interfaces: List[str] = field(default_factory=list)
-    methods: List[str] = field(default_factory=list)
-    fields: List[str] = field(default_factory=list)
-    properties: List[str] = field(default_factory=list)
+    base_classes: list[str] = field(default_factory=list)
+    implemented_interfaces: list[str] = field(default_factory=list)
+    methods: list[str] = field(default_factory=list)
+    fields: list[str] = field(default_factory=list)
+    properties: list[str] = field(default_factory=list)
     is_abstract: bool = False
     is_final: bool = False
     is_static: bool = False
@@ -485,7 +468,7 @@ class Class(NamedElement):
     is_exception: bool = False
     is_enum: bool = False
     is_mixin: bool = False
-    decorators: List[str] = field(default_factory=list)
+    decorators: list[str] = field(default_factory=list)
     complexity: int = 1
 
     def __hash__(self) -> int:
@@ -506,6 +489,7 @@ class Class(NamedElement):
 # ============================================================================
 # Import Element
 # ============================================================================
+
 
 @dataclass(frozen=True, slots=True)
 class Import(Element):
@@ -535,7 +519,7 @@ class Import(Element):
     """
 
     import_type: str = "module"
-    module: str
+    module: str = ""
     imported_name: str = ""
     imported_from: str = ""
     is_relative: bool = False
@@ -574,6 +558,7 @@ class Import(Element):
 # ============================================================================
 # Element Factory
 # ============================================================================
+
 
 @dataclass(frozen=True)
 class ElementFactory:
@@ -628,7 +613,9 @@ class ElementFactory:
         if column < 0:
             raise ValidationError(f"Column number must be >= 0, got: {column}")
         if end_line < line:
-            raise ValidationError(f"End line must be >= start line, got: {end_line} < {line}")
+            raise ValidationError(
+                f"End line must be >= start line, got: {end_line} < {line}"
+            )
         if end_column < 0:
             raise ValidationError(f"End column must be >= 0, got: {end_column}")
         if offset < 0:
@@ -648,7 +635,7 @@ class ElementFactory:
         module: str = "builtins",
         is_primitive: bool = True,
         is_generic: bool = False,
-        parameters: Optional[List[str]] = None,
+        parameters: list[str] | None = None,
     ) -> TypeInfo:
         """
         Create type information object.
@@ -685,15 +672,15 @@ class ElementFactory:
         name: str,
         position: Position,
         visibility: Visibility = Visibility.PUBLIC,
-        docstring: Optional[str] = None,
-        variable_type: Optional[TypeInfo] = None,
-        value: Optional[Any] = None,
+        docstring: str | None = None,
+        variable_type: TypeInfo | None = None,
+        value: Any | None = None,
         is_constant: bool = False,
         is_mutable: bool = True,
         is_static: bool = False,
         is_global: bool = False,
         is_local: bool = False,
-        metadata: Optional[Dict[str, Any]] = None,
+        metadata: dict[str, Any] | None = None,
     ) -> Variable:
         """
         Create variable element.
@@ -749,10 +736,10 @@ class ElementFactory:
         self,
         name: str,
         position: Position,
-        return_type: Optional[TypeInfo] = None,
-        parameters: Optional[List[str]] = None,
+        return_type: TypeInfo | None = None,
+        parameters: list[str] | None = None,
         visibility: Visibility = Visibility.PUBLIC,
-        docstring: Optional[str] = None,
+        docstring: str | None = None,
         is_async: bool = False,
         is_generator: bool = False,
         is_static: bool = False,
@@ -762,8 +749,8 @@ class ElementFactory:
         is_abstract: bool = False,
         is_constructor: bool = False,
         complexity: int = 1,
-        decorators: Optional[List[str]] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        decorators: list[str] | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> Function:
         """
         Create function element.
@@ -830,13 +817,13 @@ class ElementFactory:
         self,
         name: str,
         position: Position,
-        base_classes: Optional[List[str]] = None,
-        implemented_interfaces: Optional[List[str]] = None,
-        methods: Optional[List[str]] = None,
-        fields: Optional[List[str]] = None,
-        properties: Optional[List[str]] = None,
+        base_classes: list[str] | None = None,
+        implemented_interfaces: list[str] | None = None,
+        methods: list[str] | None = None,
+        fields: list[str] | None = None,
+        properties: list[str] | None = None,
         visibility: Visibility = Visibility.PUBLIC,
-        docstring: Optional[str] = None,
+        docstring: str | None = None,
         is_abstract: bool = False,
         is_final: bool = False,
         is_static: bool = False,
@@ -844,9 +831,9 @@ class ElementFactory:
         is_exception: bool = False,
         is_enum: bool = False,
         is_mixin: bool = False,
-        decorators: Optional[List[str]] = None,
+        decorators: list[str] | None = None,
         complexity: int = 1,
-        metadata: Optional[Dict[str, Any]] = None,
+        metadata: dict[str, Any] | None = None,
     ) -> Class:
         """
         Create class element.
@@ -923,8 +910,8 @@ class ElementFactory:
         is_relative: bool = False,
         is_star_import: bool = False,
         is_wildcard: bool = False,
-        docstring: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        docstring: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> Import:
         """
         Create import element.
@@ -979,6 +966,7 @@ class ElementFactory:
 # Convenience Functions
 # ============================================================================
 
+
 @lru_cache(maxsize=128, typed=True)
 def get_element_factory() -> ElementFactory:
     """
@@ -997,17 +985,15 @@ def get_element_factory() -> ElementFactory:
 # Module-level exports
 # ============================================================================
 
-__all__: List[str] = [
+__all__: list[str] = [
     # Enums
     "ElementType",
     "Visibility",
-
     # Exceptions
     "ElementModelError",
     "InitializationError",
     "ValidationError",
     "InconsistencyError",
-
     # Data classes
     "Position",
     "TypeInfo",
@@ -1025,6 +1011,7 @@ __all__: List[str] = [
 # Module-level exports for backward compatibility
 # ============================================================================
 
+
 def __getattr__(name: str) -> Any:
     """
     Fallback for dynamic imports and backward compatibility.
@@ -1038,6 +1025,10 @@ def __getattr__(name: str) -> Any:
     Raises:
         ImportError: If requested component is not found
     """
+    # Skip Python internal attributes
+    if name.startswith("_"):
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
     # Handle specific imports
     if name == "ElementFactory":
         return ElementFactory
@@ -1067,6 +1058,7 @@ def __getattr__(name: str) -> Any:
     ]:
         # Import from module
         import sys
+
         module = sys.modules[__name__]
         if module is None:
             raise ImportError(f"Module {name} not found")
@@ -1080,4 +1072,4 @@ def __getattr__(name: str) -> Any:
             module = __import__(f".{name}", fromlist=["__name__"])
             return module
         except ImportError:
-            raise ImportError(f"Module {name} not found in element package")
+            raise ImportError(f"Module {name} not found in element package") from None

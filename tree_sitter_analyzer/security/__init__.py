@@ -1,19 +1,30 @@
 #!/usr/bin/env python3
 """
-Security module for Tree-sitter Analyzer
+Security Module.
 
-This module provides unified security validation and protection mechanisms
-for file path validation, regex pattern safety, and project boundary control.
+Unified security validation and protection mechanisms.
 
-Architecture:
-- SecurityValidator: Unified validation framework
-- ProjectBoundaryManager: Project access control
-- RegexSafetyChecker: ReDoS attack prevention
+Version: 1.10.5
+Date: 2026-01-28
 """
 
-from .boundary_manager import ProjectBoundaryManager
-from .regex_checker import RegexSafetyChecker
-from .validator import SecurityValidator
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .boundary_manager import ProjectBoundaryManager
+    from .regex_checker import RegexSafetyChecker
+    from .validator import SecurityValidator
+else:
+    try:
+        from .boundary_manager import ProjectBoundaryManager
+        from .regex_checker import RegexSafetyChecker
+        from .validator import SecurityValidator
+    except ImportError as e:
+        import logging
+
+        logging.warning(f"Import fallback triggered in security: {e}")
 
 __all__ = [
     "SecurityValidator",

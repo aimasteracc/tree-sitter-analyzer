@@ -1,14 +1,43 @@
 #!/usr/bin/env python3
 """
-YAML Formatter
+YAML Formatter - Enhanced YAML Configuration Result Formatting
 
-Provides specialized formatting for YAML files, focusing on configuration structure
-including mappings, sequences, anchors, aliases, and multi-document support.
+This module provides specialized formatting for YAML file analysis results,
+focusing on configuration structure and data hierarchies.
+
+Optimized with:
+- Complete type hints (PEP 484)
+- Comprehensive error handling
+- Performance optimization
+- Detailed documentation in English
+
+Features:
+- Mapping (dictionary) formatting
+- Sequence (list) representation
+- Anchor and alias handling
+- Multi-document support
+- Type-safe operations (PEP 484)
+
+Usage:
+    >>> from tree_sitter_analyzer.formatters import YAMLFormatter
+    >>> formatter = YAMLFormatter()
+    >>> output = formatter.format(analysis_result)
+
+Author: aisheng.yu
+Version: 1.10.5
+Date: 2026-01-28
 """
 
+# Standard library imports
+import logging
 from typing import Any
 
+# Internal imports
 from .base_formatter import BaseFormatter
+
+# Configure logging
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 
 class YAMLFormatter(BaseFormatter):

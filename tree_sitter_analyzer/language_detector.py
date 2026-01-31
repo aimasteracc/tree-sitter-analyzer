@@ -42,37 +42,29 @@ Date: 2026-01-28
 import functools
 import hashlib
 import logging
-import os
 import re
 import threading
 import time
-from pathlib import Path
-from typing import TYPE_CHECKING, Any, Optional, List, Dict, Tuple, Union, NamedTuple
 from dataclasses import dataclass, field
-from enum import Enum
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, Protocol
 
 # Type checking setup
 if TYPE_CHECKING:
     # Utility imports
     from ..utils.logging import (
-        LoggerConfig,
-        LoggingContext,
         log_debug,
-        log_info,
-        log_warning,
         log_error,
+        log_info,
         log_performance,
-        setup_logger,
-        create_performance_logger,
     )
 else:
     # Runtime imports (when type checking is disabled)
     # Utility imports
     from ..utils.logging import (
         log_debug,
-        log_info,
-        log_warning,
         log_error,
+        log_info,
         log_performance,
     )
 
@@ -80,14 +72,10 @@ else:
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-# ============================================================================
+# =====
 # Type Definitions
-# ============================================================================
+# =====
 
-if sys.version_info >= (3, 8):
-    from typing import Protocol
-else:
-    Protocol = object
 
 class LanguageDetectorProtocol(Protocol):
     """Interface for language detector creation functions."""
@@ -104,10 +92,11 @@ class LanguageDetectorProtocol(Protocol):
         """
         ...
 
+
 class CacheProtocol(Protocol):
     """Interface for cache services."""
 
-    def get(self, key: str) -> Optional[Any]:
+    def get(self, key: str) -> Any | None:
         """
         Get value from cache.
 
@@ -133,6 +122,7 @@ class CacheProtocol(Protocol):
         """Clear all cache entries."""
         ...
 
+
 class PerformanceMonitorProtocol(Protocol):
     """Interface for performance monitoring."""
 
@@ -148,9 +138,11 @@ class PerformanceMonitorProtocol(Protocol):
         """
         ...
 
+
 # ============================================================================
 # Custom Exceptions
 # ============================================================================
+
 
 class LanguageDetectorError(Exception):
     """Base exception for language detector errors."""
@@ -162,27 +154,32 @@ class LanguageDetectorError(Exception):
 
 class InitializationError(LanguageDetectorError):
     """Exception raised when detector initialization fails."""
+
     pass
 
 
 class DetectionError(LanguageDetectorError):
     """Exception raised when language detection fails."""
+
     pass
 
 
 class CacheError(LanguageDetectorError):
     """Exception raised when caching fails."""
+
     pass
 
 
 class ValidationError(LanguageDetectorError):
     """Exception raised when validation fails."""
+
     pass
 
 
 # ============================================================================
 # Configuration
 # ============================================================================
+
 
 class LanguageDetectorConfig:
     """
@@ -241,6 +238,7 @@ class LanguageDetectorConfig:
 # Data Classes
 # ============================================================================
 
+
 @dataclass
 class LanguageInfo:
     """
@@ -256,11 +254,11 @@ class LanguageInfo:
     """
 
     name: str
-    extensions: List[str] = field(default_factory=list)
+    extensions: list[str] = field(default_factory=list)
     confidence: float = 1.0
     supported: bool = True
-    aliases: List[str] = field(default_factory=list)
-    mime_types: List[str] = field(default_factory=list)
+    aliases: list[str] = field(default_factory=list)
+    mime_types: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -282,12 +280,13 @@ class DetectionResult:
     method: str
     detection_time: float
     success: bool
-    error_message: Optional[str]
+    error_message: str | None
 
 
 # ============================================================================
 # Language Detector
 # ============================================================================
+
 
 class LanguageDetector:
     """
@@ -317,13 +316,13 @@ class LanguageDetector:
     """
 
     # Pre-compiled regex patterns for performance
-    JAVA_PATTERNS: List[re.Pattern] = None
-    C_PATTERNS: List[re.Pattern] = None
-    OBJC_PATTERNS: List[re.Pattern] = None
-    MATLAB_PATTERNS: List[re.Pattern] = None
-    PYTHON_PATTERNS: List[re.Pattern] = None
+    JAVA_PATTERNS: list[re.Pattern[Any]] | None = None
+    C_PATTERNS: list[re.Pattern[Any]] | None = None
+    OBJC_PATTERNS: list[re.Pattern[Any]] | None = None
+    MATLAB_PATTERNS: list[re.Pattern[Any]] | None = None
+    PYTHON_PATTERNS: list[re.Pattern[Any]] | None = None
 
-    def __init__(self, config: Optional[LanguageDetectorConfig] = None):
+    def __init__(self, config: LanguageDetectorConfig | None = None):
         """
         Initialize language detector with configuration.
 
@@ -333,10 +332,12 @@ class LanguageDetector:
         self._config = config or LanguageDetectorConfig()
 
         # Thread-safe lock for operations
-        self._lock = threading.RLock() if self._config.enable_thread_safety else type(None)
+        self._lock: threading.RLock | None = (
+            threading.RLock() if self._config.enable_thread_safety else None
+        )
 
         # Performance statistics
-        self._stats: Dict[str, Any] = {
+        self._stats: dict[str, Any] = {
             "total_detections": 0,
             "cache_hits": 0,
             "cache_misses": 0,
@@ -350,7 +351,7 @@ class LanguageDetector:
         self._compile_patterns()
 
         # Cache for detection results
-        self._cache: Dict[str, LanguageInfo] = {}
+        self._cache: dict[str, LanguageInfo] = {}
 
     def _compile_patterns(self) -> None:
         """
@@ -368,7 +369,9 @@ class LanguageDetector:
         self.JAVA_PATTERNS = [
             re.compile(r"^\s*package\s+[\w.]+;"),  # package statement
             re.compile(r"^\s*import\s+java\.util\."),  # Java util import
-            re.compile(r"class\s+\w+.*implements\s+Serializable"),  # Serializable interface
+            re.compile(
+                r"class\s+\w+.*implements\s+Serializable"
+            ),  # Serializable interface
             re.compile(r"@Override"),  # Annotation
         ]
 
@@ -382,7 +385,9 @@ class LanguageDetector:
 
         # Objective-C patterns
         self.OBJC_PATTERNS = [
-            re.compile(r"^\s*#import\s+<Foundation/Foundation\.h>"),  # Foundation import
+            re.compile(
+                r"^\s*#import\s+<Foundation/Foundation\.h>"
+            ),  # Foundation import
             re.compile(r"@\s*interface"),  # Interface definition
             re.compile(r"@\s*implementation"),  # Implementation
             re.compile(r"NSString\s*\*"),  # NSString usage
@@ -404,9 +409,11 @@ class LanguageDetector:
         ]
 
         end_time = time.perf_counter()
-        log_performance(f"Pre-compiled {len(self.JAVA_PATTERNS) + len(self.C_PATTERNS) + len(self.OBJC_PATTERNS)} patterns in {(end_time - start_time) * 1000:.2f}ms")
+        log_performance(
+            f"Pre-compiled {len(self.JAVA_PATTERNS) + len(self.C_PATTERNS) + len(self.OBJC_PATTERNS)} patterns in {(end_time - start_time) * 1000:.2f}ms"
+        )
 
-    def detect(self, file_path: str, content: Optional[str] = None) -> LanguageInfo:
+    def detect(self, file_path: str, content: str | None = None) -> LanguageInfo:
         """
         Detect language from file path and optional content.
 
@@ -431,7 +438,7 @@ class LanguageDetector:
         self._stats["total_detections"] += 1
 
         # Start performance monitoring
-        operation_name = f"detect_{Path(file_path).name}"
+        f"detect_{Path(file_path).name}"
         start_time = time.perf_counter()
 
         try:
@@ -456,7 +463,10 @@ class LanguageDetector:
             language_info = self._detect_by_extension(extension)
 
             # Resolve ambiguity if needed
-            if language_info.confidence < 1.0 and self._config.enable_ambiguity_resolution:
+            if (
+                language_info.confidence < 1.0
+                and self._config.enable_ambiguity_resolution
+            ):
                 if content:
                     language_info = self._resolve_ambiguity(extension, content)
 
@@ -505,12 +515,11 @@ class LanguageDetector:
             - Returns "unknown" if extension is not recognized
         """
         # Extension mappings (optimized for performance)
-        EXTENSION_MAPPING: Dict[str, Tuple[str, float]] = {
+        EXTENSION_MAPPING: dict[str, tuple[str, float]] = {
             # Java family
             ".java": ("java", 1.0),
             ".jsp": ("jsp", 0.9),
             ".jspx": ("jsp", 0.9),
-
             # JavaScript/TypeScript family
             ".js": ("javascript", 0.95),
             ".jsx": ("javascript", 0.85),  # JSX is JS with markup
@@ -518,13 +527,11 @@ class LanguageDetector:
             ".tsx": ("typescript", 0.85),
             ".mjs": ("javascript", 0.9),
             ".cjs": ("javascript", 0.9),
-
             # Python family
             ".py": ("python", 1.0),
             ".pyx": ("python", 0.9),
             ".pyi": ("python", 0.9),
             ".pyw": ("python", 0.9),
-
             # C/C++ family
             ".c": ("c", 0.9),
             ".cpp": ("cpp", 0.95),
@@ -532,7 +539,6 @@ class LanguageDetector:
             ".cc": ("cpp", 0.95),
             ".h": ("c", 0.5),  # Ambiguous
             ".hpp": ("cpp", 0.9),
-
             # Other languages
             ".rs": ("rust", 1.0),
             ".go": ("go", 1.0),
@@ -553,7 +559,6 @@ class LanguageDetector:
             ".r": ("r", 1.0),
             ".dart": ("dart", 1.0),
             ".elm": ("elm", 1.0),
-
             # Markup and data formats
             ".md": ("markdown", 0.95),
             ".markdown": ("markdown", 1.0),
@@ -578,7 +583,7 @@ class LanguageDetector:
         }
 
         # Ambiguous extensions
-        AMBIGUOUS_EXTENSIONS: Dict[str, List[Tuple[str, float]]] = {
+        AMBIGUOUS_EXTENSIONS: dict[str, list[tuple[str, float]]] = {
             ".h": [("c", 0.9), ("cpp", 0.8), ("objc", 0.7)],
             ".m": [("objc", 0.7), ("matlab", 0.8)],
             ".sql": [("sql", 0.9), ("plsql", 0.6), ("mysql", 0.5)],
@@ -619,7 +624,7 @@ class LanguageDetector:
             - Returns best-scoring language
         """
         # Ambiguity resolution mapping
-        AMBIGUITY_RESOLUTION: Dict[str, Dict[str, List[re.Pattern]]] = {
+        AMBIGUITY_RESOLUTION: dict[str, dict[str, list[re.Pattern[Any]] | None]] = {
             ".h": {
                 "c": self.C_PATTERNS,
                 "cpp": self.C_PATTERNS,
@@ -641,6 +646,8 @@ class LanguageDetector:
         # Score each candidate
         scores = {}
         for language, patterns in candidates.items():
+            if patterns is None:
+                continue
             score = 0
             for pattern in patterns:
                 if pattern.search(content):
@@ -653,7 +660,7 @@ class LanguageDetector:
 
         # Select best-scoring language
         if scores:
-            best_language = max(scores, key=scores.get)
+            best_language = max(scores, key=lambda k: scores[k])
             best_score = scores[best_language]
 
             # Return best-scoring language
@@ -689,14 +696,19 @@ class LanguageDetector:
             - Invalidates all cached language detection results
             - Next detection will re-detect files
         """
-        with self._lock:
+        if self._config.enable_thread_safety and self._lock:
+            with self._lock:
+                self._cache.clear()
+                self._stats["cache_hits"] = 0
+                self._stats["cache_misses"] = 0
+        else:
             self._cache.clear()
             self._stats["cache_hits"] = 0
             self._stats["cache_misses"] = 0
 
         log_info("Language detector cache cleared")
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         """
         Get language detector statistics.
 
@@ -707,8 +719,15 @@ class LanguageDetector:
             - Returns detection counts and cache statistics
             - Returns performance metrics
         """
-        with self._lock:
-            return {
+        if self._config.enable_thread_safety and self._lock:
+            with self._lock:
+                return self._get_stats_dict()
+        else:
+            return self._get_stats_dict()
+
+    def _get_stats_dict(self) -> dict[str, Any]:
+        """Helper method to create stats dictionary."""
+        return {
                 "total_detections": self._stats["total_detections"],
                 "cache_hits": self._stats["cache_hits"],
                 "cache_misses": self._stats["cache_misses"],
@@ -740,6 +759,7 @@ class LanguageDetector:
 # Convenience Functions with LRU Caching
 # ============================================================================
 
+
 @functools.lru_cache(maxsize=64, typed=True)
 def get_language_detector(project_root: str = ".") -> LanguageDetector:
     """
@@ -762,24 +782,20 @@ def get_language_detector(project_root: str = ".") -> LanguageDetector:
 # Module-level exports for backward compatibility
 # ============================================================================
 
-__all__: List[str] = [
+__all__: list[str] = [
     # Configuration
     "LanguageDetectorConfig",
-
     # Data classes
     "LanguageInfo",
     "DetectionResult",
-
     # Exceptions
     "LanguageDetectorError",
     "InitializationError",
     "DetectionError",
     "CacheError",
     "ValidationError",
-
     # Main class
     "LanguageDetector",
-
     # Convenience functions
     "get_language_detector",
 ]
@@ -788,6 +804,7 @@ __all__: List[str] = [
 # ============================================================================
 # Module-level exports for backward compatibility
 # ============================================================================
+
 
 def __getattr__(name: str) -> Any:
     """
@@ -820,6 +837,7 @@ def __getattr__(name: str) -> Any:
     ]:
         # Import from module
         import sys
+
         module = sys.modules[__name__]
         if module is None:
             raise ImportError(f"Module {name} not found")
@@ -833,4 +851,4 @@ def __getattr__(name: str) -> Any:
             module = __import__(f".{name}", fromlist=["__name__"])
             return module
         except ImportError:
-            raise ImportError(f"Module {name} not found")
+            raise ImportError(f"Module {name} not found") from None

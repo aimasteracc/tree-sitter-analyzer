@@ -1,15 +1,52 @@
 #!/usr/bin/env python3
 """
-JavaScript-specific table formatter.
+JavaScript Table Formatter - Enhanced JavaScript Code Result Formatting
 
-Provides specialized formatting for JavaScript code analysis results,
-handling modern JavaScript features like ES6+ syntax, async/await,
-classes, modules, and framework-specific patterns.
+This module provides specialized formatting for JavaScript code analysis results,
+handling modern ECMAScript features and generating structured output.
+
+Optimized with:
+- Complete type hints (PEP 484)
+- Comprehensive error handling
+- Performance optimization with caching
+- Detailed documentation in English
+
+Features:
+- JavaScript-specific element formatting
+- ES6+ syntax support (arrow functions, classes, modules)
+- Async/await pattern detection
+- Promise chain analysis
+- Framework-specific patterns (React, Vue, Angular, Node.js)
+- Multiple output formats (table, CSV, TOON)
+- Complexity metrics
+- Type-safe operations (PEP 484)
+
+Architecture:
+- Extends BaseTableFormatter for consistent interface
+- Layered design with format delegation
+- Performance optimization where applicable
+- Integration with analysis result models
+
+Usage:
+    >>> from tree_sitter_analyzer.formatters import JavaScriptTableFormatter
+    >>> formatter = JavaScriptTableFormatter()
+    >>> output = formatter.format(analysis_result)
+
+Author: aisheng.yu
+Version: 1.10.5
+Date: 2026-01-28
 """
 
+# Standard library imports
+import logging
 from typing import Any
 
+# Internal imports
 from .base_formatter import BaseTableFormatter
+
+# Configure logging
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 
 class JavaScriptTableFormatter(BaseTableFormatter):
@@ -474,3 +511,9 @@ class JavaScriptTableFormatter(BaseTableFormatter):
             return self._format_csv(analysis_result)
         else:
             return self._format_full_table(analysis_result)
+
+
+# Exported public API
+__all__ = [
+    "JavaScriptTableFormatter",
+]

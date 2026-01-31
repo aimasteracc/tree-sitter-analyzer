@@ -1,10 +1,21 @@
 #!/usr/bin/env python3
 """
-Kotlin Language Queries
+Kotlin Language Queries.
 
-Tree-sitter queries specific to Kotlin language constructs.
-Covers classes, functions, properties, interfaces, and other Kotlin-specific elements.
+Tree-sitter queries for Kotlin language constructs.
+
+Key Features:
+    - Classes and objects
+    - Functions and properties
+    - Interfaces and data classes
+    - Coroutines and lambdas
+    - Kotlin-specific elements
+
+Version: 1.10.5
+Date: 2026-01-28
 """
+
+from __future__ import annotations
 
 # Kotlin-specific query library
 KOTLIN_QUERIES: dict[str, str] = {
@@ -190,3 +201,13 @@ def get_available_kotlin_queries() -> list[str]:
         List of query names
     """
     return list(KOTLIN_QUERIES.keys())
+
+
+__all__: list[str] = [
+    "get_kotlin_query",
+    "get_kotlin_query_description",
+    "get_query",
+    "get_all_queries",
+    "list_queries",
+    "get_available_kotlin_queries",
+]

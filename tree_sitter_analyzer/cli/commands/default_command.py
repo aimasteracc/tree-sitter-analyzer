@@ -1,12 +1,30 @@
 #!/usr/bin/env python3
 """
-Default Command
+Default Command.
 
 Handles default analysis when no specific command is specified.
+
+Version: 1.10.5
+Date: 2026-01-28
 """
 
-from ...output_manager import output_error, output_info
-from .base_command import BaseCommand
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ...output_manager import output_error, output_info
+    from .base_command import BaseCommand
+else:
+    try:
+        from ...output_manager import output_error, output_info
+        from .base_command import BaseCommand
+    except ImportError as e:
+        import logging
+
+        logging.warning(f"Import fallback triggered in default_command: {e}")
+
+__all__ = ["DefaultCommand"]
 
 
 class DefaultCommand(BaseCommand):

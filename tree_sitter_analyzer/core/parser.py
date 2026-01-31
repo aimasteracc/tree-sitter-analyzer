@@ -34,22 +34,26 @@ Usage:
     >>> print(result.tree)
     >>> print(result.success)
     >>> print(result.parse_time)
+
+Author: aisheng.yu
+Version: 1.10.5
+Date: 2026-01-28
 """
 
 import hashlib
 import logging
 import os
 import threading
-import time
-from typing import TYPE_CHECKING, Any, Optional, List, Dict, Tuple, Union, NamedTuple
-from functools import lru_cache, wraps
+from functools import lru_cache
 from pathlib import Path
 from time import perf_counter
+from typing import TYPE_CHECKING, Any, NamedTuple, Protocol
 
 # Type checking setup
 if TYPE_CHECKING:
     # Tree-sitter imports
-    from tree_sitter import Tree, Language, Parser as TreeParser, Node
+    from tree_sitter import Language, Node, Tree
+    from tree_sitter import Parser as TreeParser
 
     # Encoding imports
     from ..encoding_utils import (
@@ -58,10 +62,6 @@ if TYPE_CHECKING:
         read_file_safe,
         safe_decode,
         safe_encode,
-        EncodingManagerType,
-        FilePath,
-        TextEncoding,
-        DecodedText,
     )
 
     # Language detector imports
@@ -70,32 +70,32 @@ if TYPE_CHECKING:
     # Utility imports
     from ..utils.logging import (
         log_debug,
-        log_info,
-        log_warning,
         log_error,
+        log_info,
         log_performance,
     )
 else:
     # Runtime imports (when type checking is disabled)
     try:
-        from tree_sitter import Tree, Language, Parser as TreeParser, Node
+        from tree_sitter import Language, Node, Tree
+        from tree_sitter import Parser as TreeParser
     except ImportError:
         Tree = Any
         Language = Any
         TreeParser = Any
         Node = Any
-    
+
     try:
         from ..encoding_utils import (
+            DecodedText,
             EncodingManager,
+            EncodingManagerType,
+            FilePath,
+            TextEncoding,
             detect_encoding,
             read_file_safe,
             safe_decode,
             safe_encode,
-            EncodingManagerType,
-            FilePath,
-            TextEncoding,
-            DecodedText,
         )
     except ImportError:
         EncodingManager = Any
@@ -107,7 +107,7 @@ else:
         FilePath = Any
         TextEncoding = Any
         DecodedText = Any
-    
+
     try:
         from ..language_detector import LanguageDetector, LanguageInfo, LanguageType
     except ImportError:
@@ -118,9 +118,8 @@ else:
     # Utility imports
     from ..utils.logging import (
         log_debug,
-        log_info,
-        log_warning,
         log_error,
+        log_info,
         log_performance,
     )
 
@@ -128,14 +127,10 @@ else:
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-# ============================================================================
+# =====
 # Type Definitions
-# ============================================================================
+# =====
 
-if sys.version_info >= (3, 8):
-    from typing import Protocol
-else:
-    Protocol = object
 
 class ParserProtocol(Protocol):
     """Interface for parser creation functions."""
@@ -156,7 +151,7 @@ class ParserProtocol(Protocol):
 class CacheProtocol(Protocol):
     """Interface for cache services."""
 
-    def get(self, key: str) -> Optional[Any]:
+    def get(self, key: str) -> Any | None:
         """
         Get value from cache.
 
@@ -182,9 +177,11 @@ class CacheProtocol(Protocol):
         """Clear all cache entries."""
         ...
 
+
 # ============================================================================
 # Custom Exceptions
 # ============================================================================
+
 
 class ParserError(Exception):
     """Base exception for parser errors."""
@@ -196,37 +193,44 @@ class ParserError(Exception):
 
 class InitializationError(ParserError):
     """Exception raised when parser initialization fails."""
+
     pass
 
 
 class FileReadError(ParserError):
     """Exception raised when file reading fails."""
+
     pass
 
 
 class ParseError(ParserError):
     """Exception raised when parsing fails."""
+
     pass
 
 
 class LanguageNotSupportedError(ParserError):
     """Exception raised when a language is not supported."""
+
     pass
 
 
 class CacheError(ParserError):
     """Exception raised when caching fails."""
+
     pass
 
 
 class SecurityValidationError(ParserError):
     """Exception raised when security validation fails."""
+
     pass
 
 
 # ============================================================================
 # Data Classes
 # ============================================================================
+
 
 class ParseResult(NamedTuple):
     """
@@ -300,6 +304,7 @@ class ParserConfig:
 # Parser Implementation
 # ============================================================================
 
+
 class Parser:
     """
     Optimized Tree-sitter parser wrapper with comprehensive caching,
@@ -329,14 +334,14 @@ class Parser:
     """
 
     # Class-level cache (shared across all instances)
-    _cache: Dict[str, ParseResult] = {}
+    _cache: dict[str, ParseResult] = {}
     _lock: threading.RLock = threading.RLock()
-    
+
     # Encoding manager instance (shared)
-    _encoding_manager: Optional[EncodingManager] = None
+    _encoding_manager: EncodingManager | None = None
 
     # Performance statistics
-    _stats: Dict[str, Any] = {
+    _stats: dict[str, Any] = {
         "total_parses": 0,
         "successful_parses": 0,
         "failed_parses": 0,
@@ -345,7 +350,7 @@ class Parser:
         "execution_times": [],
     }
 
-    def __init__(self, config: Optional[ParserConfig] = None):
+    def __init__(self, config: ParserConfig | None = None):
         """
         Initialize parser with configuration.
 
@@ -354,8 +359,10 @@ class Parser:
         """
         self._config = config or ParserConfig()
 
-        # Thread-safe lock for operations
-        self._lock = threading.RLock() if self._config.enable_thread_safety else type(None)
+        # Thread-safe lock for instance operations (different from class-level _lock)
+        self._instance_lock: threading.RLock | None = (
+            threading.RLock() if self._config.enable_thread_safety else None
+        )
 
         # Performance statistics
         self._stats = {
@@ -405,10 +412,12 @@ class Parser:
         try:
             if os.path.exists(file_path) and os.path.isfile(file_path):
                 stat = os.stat(file_path)
-                key_components.extend([
-                    str(int(stat.st_mtime)),  # Modification time
-                    str(stat.st_size),     # File size
-                ])
+                key_components.extend(
+                    [
+                        str(int(stat.st_mtime)),  # Modification time
+                        str(stat.st_size),  # File size
+                    ]
+                )
         except (OSError, FileNotFoundError):
             pass
 
@@ -420,7 +429,7 @@ class Parser:
         self,
         file_path: str,
         language: str,
-    ) -> Optional[ParseResult]:
+    ) -> ParseResult | None:
         """
         Get cached parse result.
 
@@ -471,7 +480,9 @@ class Parser:
             # Evict oldest entries if cache is too large
             if len(self._cache) >= self._config.cache_max_size:
                 # Sort by approximate insertion order (simple implementation)
-                keys_to_remove = list(self._cache.keys())[:len(self._cache) - self._config.cache_max_size + 1]
+                keys_to_remove = list(self._cache.keys())[
+                    : len(self._cache) - self._config.cache_max_size + 1
+                ]
                 for key in keys_to_remove:
                     del self._cache[key]
 
@@ -492,7 +503,7 @@ class Parser:
     def _create_tree_parser(
         self,
         language: str,
-    ) -> Optional[TreeParser]:
+    ) -> TreeParser | None:
         """
         Create Tree-sitter parser for a specific language.
 
@@ -512,14 +523,15 @@ class Parser:
         try:
             # Get language info from detector
             from ..language_detector import LanguageDetector
+
             detector = LanguageDetector()
-            language_info = detector.get_language_info(language)
-            
+            language_info = detector.detect(language)
+
             if language_info is None:
                 raise LanguageNotSupportedError(f"Language not supported: {language}")
 
             # Create parser for language
-            tree_sitter_language = language_info.tree_sitter_language
+            tree_sitter_language = language_info.tree_sitter_language  # type: ignore
             if tree_sitter_language is None:
                 raise ParseError(f"Tree-sitter language not available for: {language}")
 
@@ -528,13 +540,13 @@ class Parser:
 
         except Exception as e:
             log_error(f"Failed to create parser for {language}: {e}")
-            raise ParseError(f"Failed to create parser for {language}: {e}")
+            raise ParseError(f"Failed to create parser for {language}: {e}") from None
 
     def _read_file(
         self,
         file_path: str,
-        language: Optional[str] = None,
-    ) -> Tuple[str, str]:
+        language: str | None = None,
+    ) -> tuple[str, str]:
         """
         Read file content with encoding detection.
 
@@ -559,7 +571,7 @@ class Parser:
 
         except Exception as e:
             log_error(f"Failed to read file {file_path}: {e}")
-            raise FileReadError(f"Failed to read file {file_path}: {e}")
+            raise FileReadError(f"Failed to read file {file_path}: {e}") from None
 
     def _validate_tree(self, tree: Tree) -> bool:
         """
@@ -577,13 +589,13 @@ class Parser:
             - Returns False if tree is None
         """
         if tree is None:
-            return False
+            return False  # type: ignore
 
         try:
             # Basic validation - check if tree has a root node
             root_node = tree.root_node
             if root_node is None:
-                return False
+                return False  # type: ignore
 
             # Check for error nodes
             def has_error_nodes(node: Node) -> bool:
@@ -609,7 +621,7 @@ class Parser:
     def _extract_parse_errors(
         self,
         tree: Tree | None,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """
         Extract parse errors from a tree.
 
@@ -624,12 +636,13 @@ class Parser:
             - Includes position information
             - Includes error text
         """
-        errors = []
+        errors: list[Any] = []
 
         if tree is None:
             return errors
 
         try:
+
             def extract_error_nodes(node: Node) -> None:
                 """Recursively extract error nodes."""
                 if hasattr(node, "type") and node.type == "ERROR":
@@ -683,7 +696,7 @@ class Parser:
             - Performance monitoring is built-in
         """
         # Start performance monitoring
-        operation_name = f"parse_file_{Path(file_path).name}"
+        f"parse_file_{Path(file_path).name}"
         start_time = perf_counter()
 
         # Update statistics
@@ -730,7 +743,7 @@ class Parser:
 
             # Parse code
             try:
-                tree = tree_parser.parse(content)
+                tree = tree_parser.parse(content.encode('utf-8'))
             except Exception as e:
                 self._stats["failed_parses"] += 1
                 log_error(f"Failed to parse file {file_path}: {e}")
@@ -795,7 +808,7 @@ class Parser:
 
             # Log performance
             if self._config.enable_performance_monitoring:
-                log_performance(f"Parsed {file_path} in {parse_time:.4f}s")
+                log_performance(f"Parsed {file_path}", parse_time)
 
             return result
 
@@ -889,7 +902,6 @@ class Parser:
             - Filename is used for error messages
         """
         # Start performance monitoring
-        operation_name = f"parse_code_{filename}"
         start_time = perf_counter()
 
         # Update statistics
@@ -912,7 +924,7 @@ class Parser:
 
             # Parse code
             try:
-                tree = tree_parser.parse(code)
+                tree = tree_parser.parse(code.encode('utf-8'))
             except Exception as e:
                 self._stats["failed_parses"] += 1
                 log_error(f"Failed to parse code {filename}: {e}")
@@ -964,7 +976,7 @@ class Parser:
 
             # Log performance
             if self._config.enable_performance_monitoring:
-                log_performance(f"Parsed {filename} in {parse_time:.4f}s")
+                log_performance(f"Parsed {filename}", parse_time)
 
             return ParseResult(
                 tree=tree,
@@ -1024,7 +1036,7 @@ class Parser:
                 parse_time=parse_time,
             )
 
-    def get_cache_stats(self) -> Dict[str, Any]:
+    def get_cache_stats(self) -> dict[str, Any]:
         """
         Get parser cache statistics.
 
@@ -1041,7 +1053,8 @@ class Parser:
                 "cache_hits": self._stats["cache_hits"],
                 "cache_misses": self._stats["cache_misses"],
                 "cache_hit_ratio": (
-                    self._stats["cache_hits"] / (self._stats["cache_hits"] + self._stats["cache_misses"])
+                    self._stats["cache_hits"]
+                    / (self._stats["cache_hits"] + self._stats["cache_misses"])
                     if (self._stats["cache_hits"] + self._stats["cache_misses"]) > 0
                     else 0
                 ),
@@ -1086,6 +1099,7 @@ class Parser:
 # Convenience Functions with LRU Caching
 # ============================================================================
 
+
 @lru_cache(maxsize=64, typed=True)
 def get_parser(project_root: str = ".") -> Parser:
     """
@@ -1108,11 +1122,10 @@ def get_parser(project_root: str = ".") -> Parser:
 # Module-level exports for backward compatibility
 # ============================================================================
 
-__all__: List[str] = [
+__all__: list[str] = [
     # Data classes
     "ParseResult",
     "ParserConfig",
-
     # Exceptions
     "ParserError",
     "InitializationError",
@@ -1121,10 +1134,8 @@ __all__: List[str] = [
     "LanguageNotSupportedError",
     "CacheError",
     "SecurityValidationError",
-
     # Main class
     "Parser",
-
     # Convenience functions
     "get_parser",
 ]
@@ -1133,6 +1144,7 @@ __all__: List[str] = [
 # ============================================================================
 # Module-level exports for backward compatibility
 # ============================================================================
+
 
 def __getattr__(name: str) -> Any:
     """
@@ -1147,6 +1159,10 @@ def __getattr__(name: str) -> Any:
     Raises:
         ImportError: If requested component is not found
     """
+    # Skip Python internal attributes
+    if name.startswith("_"):
+        raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
+
     # Handle specific imports
     if name == "Parser":
         return Parser
@@ -1173,4 +1189,4 @@ def __getattr__(name: str) -> Any:
             module = __import__(f".{name}", fromlist=["__name__"])
             return module
         except ImportError:
-            raise ImportError(f"Module {name} not found")
+            raise ImportError(f"Module {name} not found") from None

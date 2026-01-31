@@ -1,15 +1,33 @@
 #!/usr/bin/env python3
 """
-Configuration dataclasses for fd and ripgrep commands.
+Configuration Dataclasses for fd and ripgrep Commands.
 
-This module defines immutable configuration objects that replace
-the previous parameter explosion (16-18 parameters per function).
+This module defines immutable configuration objects that replace the previous
+parameter explosion (16-18 parameters per function) with clean config classes.
+
+Key Features:
+    - Immutable dataclasses with frozen=True
+    - Sensible defaults to minimize required parameters
+    - SortType enum for consistent sorting options
+    - FdCommandConfig for fd file search configuration
+    - RgCommandConfig for ripgrep search configuration
+
+Classes:
+    SortType: Enum for sort types (name, path, size, modified, ext)
+    FdCommandConfig: Configuration for fd commands
+    RgCommandConfig: Configuration for ripgrep commands
+
+Version: 1.10.5
+Date: 2026-01-28
+Author: tree-sitter-analyzer team
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
+
+__all__ = ["SortType", "FdCommandConfig", "RgCommandConfig"]
 
 
 class SortType(str, Enum):

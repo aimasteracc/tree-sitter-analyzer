@@ -1,27 +1,41 @@
 #!/usr/bin/env python3
 """
-Language-specific Tree-sitter queries package.
+Language-specific Tree-sitter Queries Package.
 
-This package provides Tree-sitter queries for various programming languages.
-Each language has its own module with predefined queries for common code elements.
+Provides Tree-sitter queries for various programming languages.
 
-Supported languages:
-- Java
-- JavaScript
-- Python
-- SQL
-- TypeScript
+Key Features:
+    - Language-specific query definitions
+    - Common code element patterns
+    - Multi-language support
+    - Consistent query interface
 
-Usage:
-    from tree_sitter_analyzer.queries import get_query, list_queries
-
-    # Get a specific query
-    query = get_query('java', 'classes')
-
-    # List all queries for a language
-    queries = list_queries('python')
+Version: 1.10.5
+Date: 2026-01-28
 """
 
-from ..query_loader import get_query, is_language_supported, list_queries, query_loader
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ..query_loader import (
+        get_query,
+        is_language_supported,
+        list_queries,
+        query_loader,
+    )
+else:
+    try:
+        from ..query_loader import (
+            get_query,
+            is_language_supported,
+            list_queries,
+            query_loader,
+        )
+    except ImportError as e:
+        import logging
+
+        logging.warning(f"Import fallback triggered in queries.__init__: {e}")
 
 __all__ = ["get_query", "list_queries", "is_language_supported", "query_loader"]

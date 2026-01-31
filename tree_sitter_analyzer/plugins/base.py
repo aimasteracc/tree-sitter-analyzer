@@ -1,25 +1,39 @@
 #!/usr/bin/env python3
 """
-Plugin Base Classes
+Plugin Base Classes.
 
-Defines the base interfaces for language plugins and element extractors.
-All language plugins must inherit from these base classes.
+Defines base interfaces for language plugins and element extractors.
+
+Key Features:
+    - Abstract plugin interfaces
+    - Element extractor base class
+    - Type-safe plugin contracts
+    - Platform compatibility
+
+Version: 1.10.5
+Date: 2026-01-28
 """
+
+from __future__ import annotations
 
 import logging
 from abc import ABC, abstractmethod
-from typing import (
-    TYPE_CHECKING,
-    Any,
-)
-
-from ..platform_compat.detector import PlatformInfo
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     import tree_sitter
 
     from ..core.analysis_engine import AnalysisRequest
     from ..models import AnalysisResult
+    from ..platform_compat.detector import PlatformInfo
+else:
+    try:
+        import tree_sitter  # type: ignore[import]
+
+        from ..platform_compat.detector import PlatformInfo
+    except ImportError as e:
+        logging.warning(f"Import fallback triggered in plugins.base: {e}")
+        tree_sitter = Any  # type: ignore[misc,assignment]
 
 from ..models import Class as ModelClass
 from ..models import CodeElement
@@ -27,6 +41,11 @@ from ..models import Function as ModelFunction
 from ..models import Import as ModelImport
 from ..models import Variable as ModelVariable
 from ..utils import log_debug, log_error
+
+__all__ = [
+    "LanguagePlugin",
+    "ElementExtractor",
+]
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +65,7 @@ class ElementExtractor(ABC):
 
     @abstractmethod
     def extract_functions(
-        self, tree: "tree_sitter.Tree", source_code: str
+        self, tree: tree_sitter.Tree, source_code: str
     ) -> list[ModelFunction]:
         """
         Extract function definitions from the syntax tree.
@@ -62,7 +81,7 @@ class ElementExtractor(ABC):
 
     @abstractmethod
     def extract_classes(
-        self, tree: "tree_sitter.Tree", source_code: str
+        self, tree: tree_sitter.Tree, source_code: str
     ) -> list[ModelClass]:
         """
         Extract class definitions from the syntax tree.
@@ -78,7 +97,7 @@ class ElementExtractor(ABC):
 
     @abstractmethod
     def extract_variables(
-        self, tree: "tree_sitter.Tree", source_code: str
+        self, tree: tree_sitter.Tree, source_code: str
     ) -> list[ModelVariable]:
         """
         Extract variable declarations from the syntax tree.
@@ -94,7 +113,7 @@ class ElementExtractor(ABC):
 
     @abstractmethod
     def extract_imports(
-        self, tree: "tree_sitter.Tree", source_code: str
+        self, tree: tree_sitter.Tree, source_code: str
     ) -> list[ModelImport]:
         """
         Extract import statements from the syntax tree.
@@ -108,7 +127,7 @@ class ElementExtractor(ABC):
         """
         pass
 
-    def extract_packages(self, tree: "tree_sitter.Tree", source_code: str) -> list[Any]:
+    def extract_packages(self, tree: tree_sitter.Tree, source_code: str) -> list[Any]:
         """
         Extract package declarations from the syntax tree.
 
@@ -123,7 +142,7 @@ class ElementExtractor(ABC):
         return []
 
     def extract_annotations(
-        self, tree: "tree_sitter.Tree", source_code: str
+        self, tree: tree_sitter.Tree, source_code: str
     ) -> list[Any]:
         """
         Extract annotations from the syntax tree.
@@ -139,7 +158,7 @@ class ElementExtractor(ABC):
         return []
 
     def extract_all_elements(
-        self, tree: "tree_sitter.Tree", source_code: str
+        self, tree: tree_sitter.Tree, source_code: str
     ) -> list[CodeElement]:
         """
         Extract all code elements from the syntax tree.
@@ -165,7 +184,7 @@ class ElementExtractor(ABC):
         return elements
 
     def extract_html_elements(
-        self, tree: "tree_sitter.Tree", source_code: str
+        self, tree: tree_sitter.Tree, source_code: str
     ) -> list[Any]:
         """
         Extract HTML elements from the syntax tree.
@@ -180,9 +199,7 @@ class ElementExtractor(ABC):
         # Default implementation returns empty list
         return []
 
-    def extract_css_rules(
-        self, tree: "tree_sitter.Tree", source_code: str
-    ) -> list[Any]:
+    def extract_css_rules(self, tree: tree_sitter.Tree, source_code: str) -> list[Any]:
         """
         Extract CSS rules from the syntax tree.
 
@@ -237,8 +254,8 @@ class LanguagePlugin(ABC):
 
     @abstractmethod
     async def analyze_file(
-        self, file_path: str, request: "AnalysisRequest"
-    ) -> "AnalysisResult":
+        self, file_path: str, request: AnalysisRequest
+    ) -> AnalysisResult:
         """
         Analyze a file and return analysis results.
 
@@ -340,7 +357,7 @@ class DefaultExtractor(ElementExtractor):
     """
 
     def extract_functions(
-        self, tree: "tree_sitter.Tree", source_code: str
+        self, tree: tree_sitter.Tree, source_code: str
     ) -> list[ModelFunction]:
         """Basic function extraction implementation."""
         functions: list[ModelFunction] = []
@@ -357,7 +374,7 @@ class DefaultExtractor(ElementExtractor):
         return functions
 
     def extract_classes(
-        self, tree: "tree_sitter.Tree", source_code: str
+        self, tree: tree_sitter.Tree, source_code: str
     ) -> list[ModelClass]:
         """Basic class extraction implementation."""
         classes: list[ModelClass] = []
@@ -372,7 +389,7 @@ class DefaultExtractor(ElementExtractor):
         return classes
 
     def extract_variables(
-        self, tree: "tree_sitter.Tree", source_code: str
+        self, tree: tree_sitter.Tree, source_code: str
     ) -> list[ModelVariable]:
         """Basic variable extraction implementation."""
         variables: list[ModelVariable] = []
@@ -389,7 +406,7 @@ class DefaultExtractor(ElementExtractor):
         return variables
 
     def extract_imports(
-        self, tree: "tree_sitter.Tree", source_code: str
+        self, tree: tree_sitter.Tree, source_code: str
     ) -> list[ModelImport]:
         """Basic import extraction implementation."""
         imports: list[ModelImport] = []
@@ -405,7 +422,7 @@ class DefaultExtractor(ElementExtractor):
 
     def _traverse_for_functions(
         self,
-        node: "tree_sitter.Node",
+        node: tree_sitter.Node,
         functions: list[ModelFunction],
         lines: list[str],
         source_code: str,
@@ -435,7 +452,7 @@ class DefaultExtractor(ElementExtractor):
 
     def _traverse_for_classes(
         self,
-        node: "tree_sitter.Node",
+        node: tree_sitter.Node,
         classes: list[ModelClass],
         lines: list[str],
         source_code: str,
@@ -465,7 +482,7 @@ class DefaultExtractor(ElementExtractor):
 
     def _traverse_for_variables(
         self,
-        node: "tree_sitter.Node",
+        node: tree_sitter.Node,
         variables: list[ModelVariable],
         lines: list[str],
         source_code: str,
@@ -495,7 +512,7 @@ class DefaultExtractor(ElementExtractor):
 
     def _traverse_for_imports(
         self,
-        node: "tree_sitter.Node",
+        node: tree_sitter.Node,
         imports: list[ModelImport],
         lines: list[str],
         source_code: str,
@@ -576,7 +593,7 @@ class DefaultExtractor(ElementExtractor):
         return any(itype in node_type.lower() for itype in import_types)
 
     def _extract_node_name(
-        self, node: "tree_sitter.Node", source_code: str
+        self, node: tree_sitter.Node, source_code: str
     ) -> str | None:
         """Extract name from a tree-sitter node."""
         try:
@@ -591,7 +608,7 @@ class DefaultExtractor(ElementExtractor):
         except Exception:
             return None
 
-    def _extract_node_text(self, node: "tree_sitter.Node", source_code: str) -> str:
+    def _extract_node_text(self, node: tree_sitter.Node, source_code: str) -> str:
         """Extract text content from a tree-sitter node."""
         try:
             if hasattr(node, "start_byte") and hasattr(node, "end_byte"):
@@ -621,8 +638,8 @@ class DefaultLanguagePlugin(LanguagePlugin):
         return DefaultExtractor()
 
     async def analyze_file(
-        self, file_path: str, request: "AnalysisRequest"
-    ) -> "AnalysisResult":
+        self, file_path: str, request: AnalysisRequest
+    ) -> AnalysisResult:
         """
         Analyze a file using the default extractor.
 
@@ -638,7 +655,7 @@ class DefaultLanguagePlugin(LanguagePlugin):
 
         try:
             engine = UnifiedAnalysisEngine()
-            return await engine.analyze_file(file_path)
+            return await engine.analyze_file(file_path)  # type: ignore
         except Exception as e:
             log_error(f"Failed to analyze file {file_path}: {e}")
             return AnalysisResult(

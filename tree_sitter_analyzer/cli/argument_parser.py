@@ -1,4 +1,24 @@
+#!/usr/bin/env python3
+"""
+CLI Argument Parser.
+
+Creates and configures the ArgumentParser for tree-sitter-analyzer CLI.
+
+Key Features:
+    - File path arguments
+    - Query options (key/string)
+    - Output format selection
+    - Filtering and search options
+
+Version: 1.10.5
+Date: 2026-01-28
+"""
+
+from __future__ import annotations
+
 import argparse
+
+__all__ = ["create_argument_parser"]
 
 
 def create_argument_parser() -> argparse.ArgumentParser:

@@ -1,11 +1,31 @@
 #!/usr/bin/env python3
 """
-Optimized Encoding Utilities Module
+Optimized Encoding Utilities Module.
 
 This module provides unified encoding/decoding functionality with performance
 optimizations including file-based encoding caching to reduce redundant
 chardet.detect() calls.
+
+Key Features:
+    - Automatic encoding detection with chardet fallback
+    - File-based encoding caching for performance
+    - Safe file reading with multiple encoding attempts
+    - UTF-8 environment setup for consistent behavior
+    - Thread-safe encoding detection
+    - Async file reading support with anyio
+
+Functions:
+    read_file_safe: Safe file reading with encoding detection
+    detect_encoding: Detect file encoding with caching
+    read_file_async: Async file reading with anyio
+    _setup_encoding_environment: Setup UTF-8 environment
+
+Version: 1.10.5
+Date: 2026-01-28
+Author: tree-sitter-analyzer team
 """
+
+from __future__ import annotations
 
 import importlib.util
 import os
@@ -16,6 +36,13 @@ from pathlib import Path
 from typing import Any
 
 ANYIO_AVAILABLE = importlib.util.find_spec("anyio") is not None
+
+__all__ = [
+    "read_file_safe",
+    "detect_encoding",
+    "CHARDET_AVAILABLE",
+    "ANYIO_AVAILABLE",
+]
 
 
 # Set up encoding environment early

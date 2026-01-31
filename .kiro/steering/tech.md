@@ -198,3 +198,128 @@ uv run tree-sitter-analyzer-mcp
 - **並行処理**: 最大4倍の検索速度向上
 - **メモリ効率**: ストリーミング処理による最適化
 - **キャッシュ**: 99.8%高速化（200-400倍改善）
+
+---
+
+## Level 2-3 最適化プロセス (Session 14 追加)
+
+### 品質目標
+- **スコア基準**: >= 90/100 (PASS), 70-89 (PARTIAL), 0-69 (FAIL)
+- **自動チェッカー**: `.kiro/optimization_work/check_optimization_quality.py`
+
+### ドキュメント要件
+
+**パブリックメソッド** (必須100%):
+- `Args`: 引数説明（なしの場合は `None` と明記）
+- `Returns`: 戻り値の型と説明
+- `Note`: 重要な動作/制限事項
+
+**推奨セクション**:
+- `Raises`: 発生する例外
+- `Performance`: パフォーマンス特性
+- `Thread Safety`: スレッドセーフティ保証
+- `Example`: 使用例
+
+**プライベートメソッド** (簡易版):
+- `Args`, `Returns`, `Note` のみ
+
+### 例外クラスパターン
+
+各モジュールに3つのカスタム例外:
+``python
+class ModuleBaseException(Exception):
+    """Base exception for this module."""
+    pass
+
+class SpecificError1(ModuleBaseException):
+    """Specific error condition 1."""
+    pass
+
+class SpecificError2(ModuleBaseException):
+    """Specific error condition 2."""
+    pass
+``
+
+### パフォーマンス監視
+
+各ファイルに5-8個の監視ポイント:
+``python
+from time import perf_counter
+
+start = perf_counter()
+# ... operation ...
+elapsed = perf_counter() - start
+self._stats['operation_time'] = elapsed
+``
+
+### 統計トラッキング
+
+``python
+def __init__(self):
+    self._stats = {
+        'total_calls': 0,
+        'cache_hits': 0,
+        'errors': 0,
+        'avg_time': 0.0
+    }
+
+def get_statistics(self) -> dict[str, Any]:
+    """Get performance and usage statistics.
+    
+    Args:
+        None (instance method with no parameters)
+        
+    Returns:
+        dict[str, Any]: Statistics with derived metrics
+    """
+    return {
+        **self._stats,
+        'hit_rate': self._stats['cache_hits'] / max(1, self._stats['total_calls'])
+    }
+``
+
+### エクスポート要件
+
+``python
+__all__ = [
+    # Public classes
+    'MainClass',
+    'HelperClass',
+    # Public functions
+    'main_function',
+    # Exceptions (always exported)
+    'ModuleBaseException',
+    'SpecificError1',
+    'SpecificError2'
+]
+``
+
+### 8フェーズ最適化ワークフロー
+
+1. **Baseline**: `python check_optimization_quality.py <file>`
+2. **Module Header**: 11必須セクション追加
+3. **Exceptions**: 3クラス定義
+4. **Public Methods**: Args/Returns/Note 追加
+5. **Private Methods**: 簡易ドキュメント追加
+6. **Performance**: perf_counter 監視ポイント追加
+7. **Statistics**: _stats + get_statistics() 実装
+8. **Validate**: スコア >= 90 確認
+
+### ツール
+
+- **check_optimization_quality.py**: 品質自動チェック（スコア計算、詳細レポート）
+- **README.md**: 完全ワークフロー、コードテンプレート、トラブルシューティング
+
+### 現在のステータス
+
+| ファイル | スコア | ステータス |
+|---------|-------|----------|
+| python_formatter.py | 100/100 | ✅ PASS |
+| python_plugin.py | 97/100 | ✅ PASS |
+| 残り | - | ⏳ Phase 2-3 対象 (180 files) |
+
+**詳細**: `.kiro/optimization_work/README.md` 参照
+
+---
+
+**最終更新**: 2026-01-31 (Session 14)

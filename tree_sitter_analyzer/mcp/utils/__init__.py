@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """
-MCP Utils Module
+MCP Utilities.
 
-This module provides utility functions and classes for the MCP server
-including error handling and other utilities.
+Utility functions for MCP server operations.
 
-Note: Cache and performance monitoring functionality has been moved to
-the unified core services for better architecture.
+Version: 1.10.5
+Date: 2026-01-28
 """
+
+from __future__ import annotations
 
 from typing import Any
 
@@ -73,7 +74,7 @@ try:
 
         def get_cache_stats(self) -> dict[str, Any]:
             """Backward compatibility: get cache statistics"""
-            return self._cache_service.get_stats()
+            return self._cache_service.get_stats()  # type: ignore
 
         def __getattr__(self, name: str) -> Any:
             """Delegate other methods to the cache service"""

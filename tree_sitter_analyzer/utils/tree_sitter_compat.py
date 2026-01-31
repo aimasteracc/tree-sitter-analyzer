@@ -1,13 +1,33 @@
 #!/usr/bin/env python3
 """
-Tree-sitter API Utilities
+Tree-sitter API Compatibility Utilities.
 
-This module provides utilities for tree-sitter query execution using the modern API.
-Supports tree-sitter 0.20+ with query.matches() method only.
+This module provides utilities for tree-sitter query execution using modern API
+with fallback support for legacy versions. Supports tree-sitter 0.20+ through 0.25+
+with automatic API version detection.
+
+Key Features:
+    - Modern API support (tree-sitter 0.20+) with query.matches()
+    - Newest API support (tree-sitter 0.25+) with QueryCursor
+    - Legacy API fallback (tree-sitter < 0.20) with query.captures()
+    - Automatic API version detection
+    - Consistent return format across all versions
+    - Thread-safe query execution
+
+Classes:
+    TreeSitterQueryCompat: Query execution wrapper with API compatibility
+
+Version: 1.10.5
+Date: 2026-01-28
+Author: tree-sitter-analyzer team
 """
+
+from __future__ import annotations
 
 import logging
 from typing import Any
+
+__all__ = ["TreeSitterQueryCompat"]
 
 logger = logging.getLogger(__name__)
 

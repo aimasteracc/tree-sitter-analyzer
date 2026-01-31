@@ -1,10 +1,32 @@
 #!/usr/bin/env python3
 """
-Analysis Request Model
+Analysis Request Model.
+
+This module provides the AnalysisRequest dataclass for representing
+analysis operation parameters with validation and factory methods.
+
+Key Features:
+    - Immutable request configuration with dataclass
+    - MCP argument conversion support
+    - Query list management
+    - Include flags for selective analysis
+    - Format type specification (toon, json)
+
+Classes:
+    AnalysisRequest: Request configuration for analysis operations
+
+Version: 1.10.5
+Date: 2026-01-28
+Author: tree-sitter-analyzer team
 """
+
+from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any
+
+# Type checking imports
+__all__ = ["AnalysisRequest"]
 
 
 @dataclass(frozen=False)
@@ -33,7 +55,7 @@ class AnalysisRequest:
     format_type: str = "toon"
 
     @classmethod
-    def from_mcp_arguments(cls, arguments: dict[str, Any]) -> "AnalysisRequest":
+    def from_mcp_arguments(cls, arguments: dict[str, Any]) -> AnalysisRequest:
         """
         Create analysis request from MCP tool arguments
 

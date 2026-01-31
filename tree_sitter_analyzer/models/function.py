@@ -30,79 +30,53 @@ Version: 1.10.5
 Date: 2026-01-28
 """
 
-import hashlib
 import logging
-import os
 import threading
-import time
-from typing import TYPE_CHECKING, Any, Optional, List, Dict, Tuple, Union, Callable, Type, NamedTuple, Set
-from functools import lru_cache, wraps
 from dataclasses import dataclass, field
-from enum import Enum
-from pathlib import Path
-from time import perf_counter
+from functools import lru_cache
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Protocol,
+)
 
 # Type checking setup
 if TYPE_CHECKING:
     # Model imports
-    from .element import (
-        Element,
-        NamedElement,
-        Position,
-        TypeInfo,
-        DocstringInfo,
-        Visibility,
-        ElementType,
-    )
-
     # Utility imports
     from ..utils.logging import (
         log_debug,
-        log_info,
-        log_warning,
-        log_error,
-        log_performance,
-        setup_logger,
-        create_performance_logger,
-        safe_print,
+    )
+    from .element import (
+        ElementType,
+        NamedElement,
+        Position,
+        TypeInfo,
+        Visibility,
     )
 else:
     # Runtime imports (when type checking is disabled)
     # Model imports
-    from .element import (
-        Element,
-        NamedElement,
-        Position,
-        TypeInfo,
-        DocstringInfo,
-        Visibility,
-        ElementType,
-    )
-
     # Utility imports
     from ..utils.logging import (
         log_debug,
-        log_info,
-        log_warning,
-        log_error,
-        log_performance,
-        setup_logger,
-        create_performance_logger,
-        safe_print,
+    )
+    from .element import (
+        ElementType,
+        NamedElement,
+        Position,
+        TypeInfo,
+        Visibility,
     )
 
 # Configure logging
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-# ============================================================================
+# =====
 # Type Definitions
-# ============================================================================
+# =====
 
-if sys.version_info >= (3, 8):
-    from typing import Protocol
-else:
-    Protocol = object
 
 class FunctionModelProtocol(Protocol):
     """Interface for function model creation functions."""
@@ -119,9 +93,11 @@ class FunctionModelProtocol(Protocol):
         """
         ...
 
+
 # ============================================================================
 # Custom Exceptions
 # ============================================================================
+
 
 class FunctionModelError(Exception):
     """Base exception for function model errors."""
@@ -133,22 +109,26 @@ class FunctionModelError(Exception):
 
 class InitializationError(FunctionModelError):
     """Exception raised when function model initialization fails."""
+
     pass
 
 
 class ValidationError(FunctionModelError):
     """Exception raised when function validation fails."""
+
     pass
 
 
 class InconsistencyError(FunctionModelError):
     """Exception raised when function data is inconsistent."""
+
     pass
 
 
 # ============================================================================
 # Data Classes
 # ============================================================================
+
 
 @dataclass(frozen=True, slots=True)
 class Parameter:
@@ -169,11 +149,11 @@ class Parameter:
     name: str
     param_type: TypeInfo
     position: int
-    default_value: Optional[Any] = None
+    default_value: Any | None = None
     is_variadic: bool = False
     is_keyword_only: bool = False
-    docstring: Optional[str] = None
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    docstring: str | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
 
     def __hash__(self) -> int:
         """Hash based on name and position."""
@@ -211,8 +191,8 @@ class Function(NamedElement):
         complexity: Cyclomatic complexity score
     """
 
-    return_type: Optional[TypeInfo]
-    parameters: List[Parameter] = field(default_factory=list)
+    return_type: TypeInfo | None = None
+    parameters: list[Parameter] = field(default_factory=list)
     is_async: bool = False
     is_generator: bool = False
     is_static: bool = False
@@ -222,13 +202,13 @@ class Function(NamedElement):
     is_abstract: bool = False
     is_constructor: bool = False
     is_operator: bool = False
-    decorators: List[str] = field(default_factory=list)
+    decorators: list[str] = field(default_factory=list)
     complexity: int = 1
 
     def __hash__(self) -> int:
         """Hash based on type, name, and position."""
         element_hash = super().__hash__()
-        return_hash = hash((element_hash, tuple(sorted(self.decorators))))
+        return hash((element_hash, tuple(sorted(self.decorators))))
 
 
 @dataclass(frozen=True, slots=True)
@@ -259,6 +239,7 @@ class FunctionModelConfig:
 # Function Model
 # ============================================================================
 
+
 class FunctionModel:
     """
     Optimized function model with type safety, caching, and performance monitoring.
@@ -285,18 +266,18 @@ class FunctionModel:
     """
 
     # Class-level cache (shared across all instances)
-    _function_cache: Dict[Tuple[str, int], Function] = {}
+    _function_cache: dict[tuple[str, int], Function] = {}
     _lock: threading.RLock = threading.RLock()
-    
+
     # Performance statistics
-    _stats: Dict[str, Any] = {
+    _stats: dict[str, Any] = {
         "total_functions": 0,
         "cache_hits": 0,
         "cache_misses": 0,
         "creation_times": [],
     }
 
-    def __init__(self, config: Optional[FunctionModelConfig] = None):
+    def __init__(self, config: FunctionModelConfig | None = None):
         """
         Initialize function model with configuration.
 
@@ -305,8 +286,10 @@ class FunctionModel:
         """
         self._config = config or FunctionModelConfig()
 
-        # Thread-safe lock for operations
-        self._lock = threading.RLock() if self._config.enable_thread_safety else type(None)
+        # Thread-safe lock for instance operations (different from class-level _lock)
+        self._instance_lock: threading.RLock | None = (
+            threading.RLock() if self._config.enable_thread_safety else None
+        )
 
         # Performance statistics
         self._stats = {
@@ -320,7 +303,7 @@ class FunctionModel:
         self,
         function_name: str,
         position: int,
-    ) -> str:
+    ) -> tuple[str, int]:
         """
         Generate deterministic cache key from function name and position.
 
@@ -329,30 +312,22 @@ class FunctionModel:
             position: Function position
 
         Returns:
-            SHA-256 hash string
+            Tuple of (function_name, position)
 
         Note:
             - Includes function name and position
             - Ensures consistent hashing for cache stability
         """
-        key_components = [
-            "function",
-            function_name,
-            str(position),
-        ]
-
-        # Generate SHA-256 hash
-        key_str = ":".join(key_components)
-        return hashlib.sha256(key_str.encode("utf-8")).hexdigest()
+        return (function_name, position)
 
     def create_function(
         self,
         name: str,
         position: Position,
-        return_type: Optional[TypeInfo] = None,
-        parameters: Optional[List[Parameter]] = None,
+        return_type: TypeInfo | None = None,
+        parameters: list[Parameter] | None = None,
         visibility: Visibility = Visibility.PUBLIC,
-        docstring: Optional[str] = None,
+        docstring: str | None = None,
         is_async: bool = False,
         is_generator: bool = False,
         is_static: bool = False,
@@ -362,9 +337,9 @@ class FunctionModel:
         is_abstract: bool = False,
         is_constructor: bool = False,
         is_operator: bool = False,
-        decorators: Optional[List[str]] = None,
+        decorators: list[str] | None = None,
         complexity: int = 1,
-        metadata: Optional[Dict[str, Any]] = None,
+        metadata: dict[str, Any] | None = None,
     ) -> Function:
         """
         Create function element.
@@ -400,9 +375,11 @@ class FunctionModel:
             - Calculates complexity if not provided
             - Thread-safe if enabled
         """
-        with self._lock:
+        if self._instance_lock:
+            self._instance_lock.acquire()
+        try:
             # Check cache
-            cache_key = self._generate_cache_key(name, position)
+            cache_key = self._generate_cache_key(name, position.line if position else 0)
             if self._config.enable_caching and cache_key in self._function_cache:
                 self._stats["cache_hits"] += 1
                 log_debug(f"Function cache hit for {name}")
@@ -442,17 +419,20 @@ class FunctionModel:
             self._stats["total_functions"] += 1
 
             return function
+        finally:
+            if self._instance_lock:
+                self._instance_lock.release()
 
     def create_parameter(
         self,
         name: str,
         param_type: TypeInfo,
         position: int,
-        default_value: Optional[Any] = None,
+        default_value: Any | None = None,
         is_variadic: bool = False,
         is_keyword_only: bool = False,
-        docstring: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        docstring: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> Parameter:
         """
         Create parameter element.
@@ -477,7 +457,9 @@ class FunctionModel:
             - Creates Parameter element with all attributes
             - Thread-safe if enabled
         """
-        with self._lock:
+        if self._instance_lock:
+            self._instance_lock.acquire()
+        try:
             # Create parameter element
             parameter = Parameter(
                 name=name,
@@ -491,6 +473,9 @@ class FunctionModel:
             )
 
             return parameter
+        finally:
+            if self._instance_lock:
+                self._instance_lock.release()
 
     def calculate_complexity(self, function: Function) -> int:
         """
@@ -522,7 +507,7 @@ class FunctionModel:
 
         return max(complexity, 1)
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         """
         Get function model statistics.
 
@@ -534,13 +519,16 @@ class FunctionModel:
             - Returns performance metrics
             - Thread-safe if enabled
         """
-        with self._lock:
+        if self._instance_lock:
+            self._instance_lock.acquire()
+        try:
             return {
                 "total_functions": self._stats["total_functions"],
                 "cache_hits": self._stats["cache_hits"],
                 "cache_misses": self._stats["cache_misses"],
                 "cache_hit_rate": (
-                    self._stats["cache_hits"] / (self._stats["cache_hits"] + self._stats["cache_misses"])
+                    self._stats["cache_hits"]
+                    / (self._stats["cache_hits"] + self._stats["cache_misses"])
                     if (self._stats["cache_hits"] + self._stats["cache_misses"]) > 0
                     else 0
                 ),
@@ -560,11 +548,15 @@ class FunctionModel:
                     "enable_thread_safety": self._config.enable_thread_safety,
                 },
             }
+        finally:
+            if self._instance_lock:
+                self._instance_lock.release()
 
 
 # ============================================================================
 # Convenience Functions with LRU Caching
 # ============================================================================
+
 
 @lru_cache(maxsize=64, typed=True)
 def get_function_model(project_root: str = ".") -> FunctionModel:
@@ -626,13 +618,11 @@ def create_function_model(
 # Module-level exports for backward compatibility
 # ============================================================================
 
-__all__: List[str] = [
+__all__: list[str] = [
     # Data classes
     "FunctionModelConfig",
-
     # Main class
     "FunctionModel",
-
     # Factory functions
     "get_function_model",
     "create_function_model",
@@ -642,6 +632,7 @@ __all__: List[str] = [
 # ============================================================================
 # Module-level exports for backward compatibility
 # ============================================================================
+
 
 def __getattr__(name: str) -> Any:
     """
@@ -672,4 +663,4 @@ def __getattr__(name: str) -> Any:
             module = __import__(f".{name}", fromlist=["__name__"])
             return module
         except ImportError:
-            raise ImportError(f"Module {name} not found")
+            raise ImportError(f"Module {name} not found") from None

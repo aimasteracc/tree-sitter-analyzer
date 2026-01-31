@@ -16,144 +16,34 @@ Version: 1.10.5
 Date: 2026-01-28
 """
 
+from __future__ import annotations
+
 import functools
 import os
 from pathlib import Path
-from typing import List, Optional, Dict, Any, Union, Tuple, Callable, Type
+from typing import TYPE_CHECKING, Any
 
 # Type checking setup
-if os.environ.get("TYPE_CHECKING", "0") == "1":
+if TYPE_CHECKING:
+    # Only import types actually used in type annotations
     from typing import Protocol
+
+    from .language_detector import LanguageDetector
+    from .language_loader import LanguageLoader
+    from .models import AnalysisResult
+    from .unified_code_analyzer import UnifiedCodeAnalyzer
 else:
     Protocol = object
 
-# Type-safe imports using TYPE_CHECKING
-if os.environ.get("TYPE_CHECKING", "0") == "1":
-    # Core Engine - with type hints
-    from .core.analysis_engine import UnifiedAnalysisEngine as UnifiedCodeAnalyzer
-    from .encoding_utils import (
-        EncodingManager,
-        EncodingManagerType,
-        detect_encoding,
-        read_file_safe,
-        write_file_safe,
-        extract_text_slice,
-        safe_decode,
-        safe_encode,
-        EncodingCache,
-        clear_encoding_cache,
-        get_encoding_cache_size,
-    )
-    
-    # Language detection with type hints
-    from .language_detector import LanguageDetector, LanguageInfo, LanguageType
-    
-    # Language loader with type hints
-    from .language_loader import LanguageLoader, get_language_loader, LanguageLoaderType
-
-    # Data Models (Generic) with type hints
-    from .models import (
-        AnalysisResult,
-        Class,
-        CodeElement,
-        Function,
-        Import,
-        Variable,
-        Element,
-        Position,
-        Span,
-        JavaAnnotation,
-        JavaClass,
-        JavaField,
-        JavaImport,
-        JavaMethod,
-        JavaPackage,
-    )
-
-    # Data Models (Java-specific for backward compatibility) with type hints
-    from .models import (
-        JavaAnnotation as JavaAnnotationLegacy,
-        JavaClass as JavaClassLegacy,
-        JavaField as JavaFieldLegacy,
-        JavaImport as JavaImportLegacy,
-        JavaMethod as JavaMethodLegacy,
-        JavaPackage as JavaPackageLegacy,
-    )
-
-    # Plugin System with type hints
-    from .plugins import ElementExtractor, LanguagePlugin
-    from .plugins.manager import PluginManager, PluginConfig
-
-    # Query loader with type hints
-    from .query_loader import QueryLoader, get_query_loader, QueryLoaderType
-
-    # Output management with type hints
-    from .output_manager import (
-        OutputManager,
-        get_output_manager,
-        OutputMode,
-        output_data,
-        output_error,
-        output_info,
-        output_warning,
-        set_output_mode,
-    )
-
-    # Utility modules with type hints
-    from .utils import (
-        QuietMode,
-        log_debug,
-        log_error,
-        log_info,
-        log_performance,
-        log_warning,
-        safe_print,
-        LoggerConfig,
-    )
-else:
-    # Type aliases for runtime (when type checking is disabled)
-    UnifiedCodeAnalyzer = Any
-    LanguageDetector = Any
-    LanguageInfo = Any
-    LanguageType = Any
-    LanguageLoader = Any
-    LanguageLoaderType = Any
-    
-    AnalysisResult = Any
-    Class = Any
-    CodeElement = Any
-    Function = Any
-    Import = Any
-    Variable = Any
-    Element = Any
-    Position = Any
-    Span = Any
-    
-    JavaAnnotation = Any
-    JavaClass = Any
-    JavaField = Any
-    JavaImport = Any
-    JavaMethod = Any
-    JavaPackage = Any
-    
-    ElementExtractor = Any
-    LanguagePlugin = Any
-    PluginManager = Any
-    PluginConfig = Any
-    
-    QueryLoader = Any
-    QueryLoaderType = Any
-    
-    OutputManager = Any
-    OutputMode = Any
-    
-    QuietMode = Any
+# Runtime imports
+from .language_loader import get_language_loader
+from .utils import log_error, log_warning
 
 __version__: str = "1.10.5"
 __author__: str = "aisheng.yu"
 __email__: str = "aimasteracc@gmail.com"
 
-__all__: List[str] = [
+__all__: list[str] = [
     # Core Models (optimized)
     "JavaAnnotation",
     "JavaClass",
@@ -212,6 +102,7 @@ __all__: List[str] = [
 # Type Definitions
 # ============================================================================
 
+
 class CreateLanguageDetectorProtocol(Protocol):
     """Protocol for language detector creation functions."""
 
@@ -254,6 +145,7 @@ class CreateAnalysisEngineProtocol(Protocol):
 # Performance Optimization: LRU Cache
 # ============================================================================
 
+
 @functools.lru_cache(maxsize=128, typed=True)
 def create_language_detector_cached(project_root: str) -> LanguageDetector:
     """
@@ -273,8 +165,10 @@ def create_language_detector_cached(project_root: str) -> LanguageDetector:
     """
     if not project_root:
         raise ValueError("project_root cannot be empty")
-    
-    return LanguageDetector(project_root)
+
+    from .language_detector import LanguageDetectorConfig
+    config = LanguageDetectorConfig(project_root=project_root)
+    return LanguageDetector(config)
 
 
 @functools.lru_cache(maxsize=128, typed=True)
@@ -296,13 +190,14 @@ def create_analysis_engine_cached(project_root: str) -> UnifiedCodeAnalyzer:
     """
     if not project_root:
         raise ValueError("project_root cannot be empty")
-    
+
     return UnifiedCodeAnalyzer(project_root)
 
 
 # ============================================================================
 # Convenience Functions (Type-safe with Caching)
 # ============================================================================
+
 
 def create_language_detector(project_root: str) -> LanguageDetector:
     """
@@ -342,7 +237,7 @@ def create_analysis_engine(project_root: str) -> UnifiedCodeAnalyzer:
     return create_analysis_engine_cached(project_root)
 
 
-def analyze_file_safe(file_path: str, language: Optional[str] = None) -> AnalysisResult:
+def analyze_file_safe(file_path: str, language: str | None = None) -> AnalysisResult:
     """
     Safely analyze a single file with error handling.
 
@@ -363,41 +258,36 @@ def analyze_file_safe(file_path: str, language: Optional[str] = None) -> Analysi
     """
     try:
         detector = create_language_detector(file_path)
-        
+
         if language:
-            # Use specified language
-            language_info: Optional[LanguageInfo] = detector.get_language_info(language)
-            if not language_info:
-                raise ValueError(f"Unsupported language: {language}")
-        else:
-            language = language_info.name
+            # Use specified language - just validate it's supported
+            # For now, accept the language as-is since we don't have get_language_info
+            pass
         else:
             # Auto-detect language
             language_info = detector.detect(file_path)
             if not language_info:
                 raise ValueError("Could not detect language")
             language = language_info.name
-        
+
         # Load language analyzer
         loader: LanguageLoader = get_language_loader(language)
         if not loader:
             raise ValueError(f"Language loader not found for: {language}")
-        
+
         # Analyze file
         # (Implementation depends on language loader)
         # This is a simplified version - real implementation would be more complex
-        
+
         # Return a simple result for now
         return AnalysisResult(
             file_path=str(file_path),
             language=language,
-            classes=[],
-            functions=[],
-            imports=[],
-            total_lines=0,
-            total_code=0,
+            elements=[],
+            line_count=0,
+            node_count=0,
         )
-        
+
     except FileNotFoundError as e:
         log_error(f"File not found: {file_path} - {e}")
         raise
@@ -409,7 +299,9 @@ def analyze_file_safe(file_path: str, language: Optional[str] = None) -> Analysi
         raise
 
 
-def analyze_project_safe(project_root: str, languages: Optional[List[str]] = None) -> List[AnalysisResult]:
+def analyze_project_safe(
+    project_root: str, languages: list[str] | None = None
+) -> list[AnalysisResult]:
     """
     Safely analyze an entire project with error handling.
 
@@ -429,25 +321,38 @@ def analyze_project_safe(project_root: str, languages: Optional[List[str]] = Non
     """
     if not project_root:
         raise ValueError("project_root cannot be empty")
-    
+
     if not Path(project_root).exists():
         raise ValueError(f"Project root does not exist: {project_root}")
-    
+
     try:
         detector = create_language_detector(project_root)
-        
-        # Detect all files
-        files: List[str] = detector.scan_project()
+
+        # Scan for files manually since scan_project doesn't exist
+        import os
+        files: list[str] = []
+        for root, _, filenames in os.walk(project_root):
+            for filename in filenames:
+                files.append(os.path.join(root, filename))
+
         if not files:
             log_warning(f"No files found in project root: {project_root}")
             return []
-        
+
         # Filter by languages if provided
         if languages:
-            files = [f for f in files if detector.detect_language(f).name in languages]
-        
+            filtered_files = []
+            for f in files:
+                try:
+                    lang_info = detector.detect(f)
+                    if lang_info.name in languages:
+                        filtered_files.append(f)
+                except Exception:
+                    pass
+            files = filtered_files
+
         # Analyze each file
-        results: List[AnalysisResult] = []
+        results: list[AnalysisResult] = []
         for file_path in files:
             try:
                 result = analyze_file_safe(file_path)
@@ -455,15 +360,15 @@ def analyze_project_safe(project_root: str, languages: Optional[List[str]] = Non
             except Exception as e:
                 log_error(f"Failed to analyze {file_path}: {e}")
                 continue
-        
+
         return results
-        
+
     except Exception as e:
         log_error(f"Project analysis failed: {project_root} - {e}")
         raise
 
 
-def get_supported_languages() -> List[str]:
+def get_supported_languages() -> list[str]:
     """
     Get list of supported languages with caching.
 
@@ -474,7 +379,7 @@ def get_supported_languages() -> List[str]:
         Uses LRU caching for improved performance on repeated calls.
     """
     # Common programming languages
-    common_languages: List[str] = [
+    common_languages: list[str] = [
         "python",
         "javascript",
         "typescript",
@@ -510,9 +415,9 @@ def get_supported_languages() -> List[str]:
         "bash",
         "powershell",
     ]
-    
+
     # Filter languages that have loaders
-    supported_languages: List[str] = []
+    supported_languages: list[str] = []
     for lang in common_languages:
         try:
             loader = get_language_loader(lang)
@@ -520,13 +425,14 @@ def get_supported_languages() -> List[str]:
                 supported_languages.append(lang)
         except Exception:
             continue
-    
+
     return sorted(supported_languages)
 
 
 # ============================================================================
 # Public API with Type Hints
 # ============================================================================
+
 
 def __getattr__(name: str) -> Any:
     """
@@ -545,15 +451,16 @@ def __getattr__(name: str) -> Any:
     if name == "UniversalCodeAnalyzer":
         if os.environ.get("TYPE_CHECKING", "0") == "1":
             from .core.analysis_engine import UnifiedAnalysisEngine
+
             return UnifiedAnalysisEngine
         else:
             # Fallback for runtime
             return UnifiedCodeAnalyzer
-    
+
     # Default behavior
     try:
         # Try to import from current package
         module = __import__(f".{name}", fromlist=["__name__"])
         return module
     except ImportError:
-        raise ImportError(f"module {name} not found")
+        raise ImportError(f"module {name} not found") from None

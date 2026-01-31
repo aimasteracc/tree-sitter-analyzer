@@ -1,15 +1,41 @@
 #!/usr/bin/env python3
 """
-Command builders for fd and ripgrep.
+Command Builders for fd and ripgrep.
 
 This module implements the Builder Pattern to construct fd and rg commands
-from configuration objects, replacing the previous monolithic functions
-with 16-18 parameters.
+from configuration objects, replacing monolithic functions with clean builders.
+
+Key Features:
+    - FdCommandBuilder for fd (file discovery) command construction
+    - RgCommandBuilder for ripgrep command construction
+    - Immutable configuration objects (FdCommandConfig, RgCommandConfig)
+    - Edge case handling (pattern vs roots, flag ordering)
+    - Single Responsibility: command construction only
+
+Classes:
+    FdCommandBuilder: Builds fd commands from FdCommandConfig
+    RgCommandBuilder: Builds ripgrep commands from RgCommandConfig
+
+Version: 1.10.5
+Date: 2026-01-28
+Author: tree-sitter-analyzer team
 """
 
 from __future__ import annotations
 
-from .config import FdCommandConfig, RgCommandConfig
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .config import FdCommandConfig, RgCommandConfig
+else:
+    try:
+        from .config import FdCommandConfig, RgCommandConfig
+    except ImportError as e:
+        import logging
+
+        logging.warning(f"Import fallback triggered in command_builder: {e}")
+
+__all__ = ["FdCommandBuilder", "RgCommandBuilder"]
 
 
 class FdCommandBuilder:

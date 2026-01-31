@@ -1,8 +1,25 @@
 #!/usr/bin/env python3
 """
-find_and_grep MCP Tool (fd → ripgrep)
+find_and_grep MCP Tool (fd → ripgrep composition).
 
-First narrow files with fd, then search contents with ripgrep, with caps & meta.
+First narrow files with fd, then search contents with ripgrep, with result
+limits, metadata tracking, and comprehensive output formatting.
+
+Key Features:
+    - Two-stage search: fd for file discovery + ripgrep for content
+    - Advanced file filtering (patterns, types, sizes, dates)
+    - Content search with regex/literal support
+    - Result grouping by file with match counts
+    - Multiple output modes (matches, counts, summary)
+    - Safety limits (MAX_RESULTS_HARD_CAP)
+    - File output with TOON/JSON format support
+
+Classes:
+    FindAndGrepTool: MCP tool for composed file-and-content search
+
+Version: 1.10.5
+Date: 2026-01-28
+Author: tree-sitter-analyzer team
 """
 
 from __future__ import annotations
@@ -10,33 +27,65 @@ from __future__ import annotations
 import logging
 import os
 import time
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from ..utils.error_handler import handle_mcp_errors
-from ..utils.file_output_manager import FileOutputManager
-from ..utils.format_helper import (
-    apply_toon_format_to_response,
-    format_for_file_output,
-)
-from ..utils.gitignore_detector import get_default_detector
-from .base_tool import BaseMCPTool
-from .fd_rg import (
-    DEFAULT_RESULTS_LIMIT,
-    MAX_RESULTS_HARD_CAP,
-    FdCommandBuilder,
-    FdCommandConfig,
-    RgCommandBuilder,
-    RgCommandConfig,
-    RgResultParser,
-    RgResultTransformer,
-    SortType,
-    clamp_int,
-    get_missing_commands,
-    group_matches_by_file,
-    run_command_capture,
-    sanitize_error_message,
-    summarize_search_results,
-)
+if TYPE_CHECKING:
+    from ..utils.error_handler import handle_mcp_errors
+    from ..utils.file_output_manager import FileOutputManager
+    from ..utils.format_helper import (
+        apply_toon_format_to_response,
+        format_for_file_output,
+    )
+    from ..utils.gitignore_detector import get_default_detector
+    from .base_tool import BaseMCPTool
+    from .fd_rg import (
+        DEFAULT_RESULTS_LIMIT,
+        MAX_RESULTS_HARD_CAP,
+        FdCommandBuilder,
+        FdCommandConfig,
+        RgCommandBuilder,
+        RgCommandConfig,
+        RgResultParser,
+        RgResultTransformer,
+        SortType,
+        clamp_int,
+        get_missing_commands,
+        group_matches_by_file,
+        run_command_capture,
+        sanitize_error_message,
+        summarize_search_results,
+    )
+else:
+    try:
+        from ..utils.error_handler import handle_mcp_errors
+        from ..utils.file_output_manager import FileOutputManager
+        from ..utils.format_helper import (
+            apply_toon_format_to_response,
+            format_for_file_output,
+        )
+        from ..utils.gitignore_detector import get_default_detector
+        from .base_tool import BaseMCPTool
+        from .fd_rg import (
+            DEFAULT_RESULTS_LIMIT,
+            MAX_RESULTS_HARD_CAP,
+            FdCommandBuilder,
+            FdCommandConfig,
+            RgCommandBuilder,
+            RgCommandConfig,
+            RgResultParser,
+            RgResultTransformer,
+            SortType,
+            clamp_int,
+            get_missing_commands,
+            group_matches_by_file,
+            run_command_capture,
+            sanitize_error_message,
+            summarize_search_results,
+        )
+    except ImportError as e:
+        logging.warning(f"Import fallback triggered in find_and_grep_tool: {e}")
+
+__all__ = ["FindAndGrepTool"]
 
 logger = logging.getLogger(__name__)
 

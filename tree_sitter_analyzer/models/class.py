@@ -30,79 +30,46 @@ Version: 1.10.5
 Date: 2026-01-28
 """
 
-import hashlib
 import logging
-import os
-import threading
-import time
-from typing import TYPE_CHECKING, Any, Optional, List, Dict, Tuple, Union, Callable, Type, NamedTuple, Set
-from functools import lru_cache, wraps
 from dataclasses import dataclass, field
-from enum import Enum
-from pathlib import Path
-from time import perf_counter
+from functools import lru_cache
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Protocol,
+)
 
 # Type checking setup
 if TYPE_CHECKING:
     # Model imports
+    # Utility imports
     from .element import (
-        Element,
+        ElementType,
         NamedElement,
         Position,
         TypeInfo,
         Visibility,
-        ElementType,
-        DocstringInfo,
-    )
-
-    # Utility imports
-    from ..utils.logging import (
-        log_debug,
-        log_info,
-        log_warning,
-        log_error,
-        log_performance,
-        setup_logger,
-        create_performance_logger,
-        safe_print,
     )
 else:
     # Runtime imports (when type checking is disabled)
     # Model imports
+    # Utility imports
     from .element import (
-        Element,
+        ElementType,
         NamedElement,
         Position,
         TypeInfo,
         Visibility,
-        ElementType,
-        DocstringInfo,
-    )
-
-    # Utility imports
-    from ..utils.logging import (
-        log_debug,
-        log_info,
-        log_warning,
-        log_error,
-        log_performance,
-        setup_logger,
-        create_performance_logger,
-        safe_print,
     )
 
 # Configure logging
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-# ============================================================================
+# =====
 # Type Definitions
-# ============================================================================
+# =====
 
-if sys.version_info >= (3, 8):
-    from typing import Protocol
-else:
-    Protocol = object
 
 class ClassModelProtocol(Protocol):
     """Interface for class model creation functions."""
@@ -119,9 +86,11 @@ class ClassModelProtocol(Protocol):
         """
         ...
 
+
 # ============================================================================
 # Custom Exceptions
 # ============================================================================
+
 
 class ClassModelError(Exception):
     """Base exception for class model errors."""
@@ -133,22 +102,26 @@ class ClassModelError(Exception):
 
 class InitializationError(ClassModelError):
     """Exception raised when class model initialization fails."""
+
     pass
 
 
 class ValidationError(ClassModelError):
     """Exception raised when class validation fails."""
+
     pass
 
 
 class InconsistencyError(ClassModelError):
     """Exception raised when class data is inconsistent."""
+
     pass
 
 
 # ============================================================================
 # Data Classes
 # ============================================================================
+
 
 @dataclass(frozen=True, slots=True)
 class ClassMember:
@@ -172,9 +145,9 @@ class ClassMember:
     member_type: str  # "method", "field", "property"
     visibility: Visibility
     position: Position
-    docstring: Optional[str] = None
-    return_type: Optional[TypeInfo]
-    parameters: List[str] = field(default_factory=list)
+    docstring: str | None = None
+    return_type: TypeInfo | None = None
+    parameters: list[str] = field(default_factory=list)
     is_static: bool = False
     is_abstract: bool = False
     is_override: bool = False
@@ -200,8 +173,8 @@ class InheritanceInfo:
         is_leaf: Whether class has no subclasses
     """
 
-    base_classes: List[str] = field(default_factory=list)
-    implemented_interfaces: List[str] = field(default_factory=list)
+    base_classes: list[str] = field(default_factory=list)
+    implemented_interfaces: list[str] = field(default_factory=list)
     depth: int = 0
     is_leaf: bool = True
 
@@ -214,13 +187,13 @@ class InheritanceInfo:
         bases_str = ", ".join(self.base_classes)
         interfaces_str = ", ".join(self.implemented_interfaces)
         if bases_str and interfaces_str:
-            return f"{self.name}({bases_str}, {interfaces_str})"
+            return f"Inheritance(bases={bases_str}, interfaces={interfaces_str})"
         elif bases_str:
-            return f"{self.name}({bases_str})"
+            return f"Inheritance(bases={bases_str})"
         elif interfaces_str:
-            return f"{self.name}({interfaces_str})"
+            return f"Inheritance(interfaces={interfaces_str})"
         else:
-            return self.name
+            return "Inheritance()"
 
 
 @dataclass(frozen=True, slots=True)
@@ -238,21 +211,23 @@ class ClassMetadata:
         module: Module name where class is defined
     """
 
-    decorator_names: List[str] = field(default_factory=list)
-    annotation_names: List[str] = field(default_factory=list)
-    metaclass: Optional[str] = None
+    decorator_names: list[str] = field(default_factory=list)
+    annotation_names: list[str] = field(default_factory=list)
+    metaclass: str | None = None
     is_exception: bool = False
     is_generic: bool = False
-    type_parameters: List[str] = field(default_factory=list)
+    type_parameters: list[str] = field(default_factory=list)
     module: str = ""
 
     def __hash__(self) -> int:
         """Hash based on decorators, annotations, and metaclass."""
-        return hash((
-            tuple(self.decorator_names),
-            tuple(self.annotation_names),
-            self.metaclass or "",
-        ))
+        return hash(
+            (
+                tuple(self.decorator_names),
+                tuple(self.annotation_names),
+                self.metaclass or "",
+            )
+        )
 
     def __str__(self) -> str:
         """String representation of metadata."""
@@ -293,12 +268,12 @@ class Class(NamedElement):
         complexity: Cyclomatic complexity score
     """
 
-    base_classes: List[str] = field(default_factory=list)
-    implemented_interfaces: List[str] = field(default_factory=list)
-    methods: List[ClassMember] = field(default_factory=list)
-    fields: List[ClassMember] = field(default_factory=list)
-    properties: List[ClassMember] = field(default_factory=list)
-    inheritance_info: Optional[InheritanceInfo] = None
+    base_classes: list[str] = field(default_factory=list)
+    implemented_interfaces: list[str] = field(default_factory=list)
+    methods: list[ClassMember] = field(default_factory=list)
+    fields: list[ClassMember] = field(default_factory=list)
+    properties: list[ClassMember] = field(default_factory=list)
+    inheritance_info: InheritanceInfo | None = None
     is_abstract: bool = False
     is_final: bool = False
     is_static: bool = False
@@ -323,6 +298,7 @@ class Class(NamedElement):
 # ============================================================================
 # Class Model
 # ============================================================================
+
 
 class ClassModel:
     """
@@ -350,7 +326,7 @@ class ClassModel:
         >>> print(class_elem.methods)
     """
 
-    def __init__(self, config: Optional[Any] = None):
+    def __init__(self, config: Any | None = None):
         """
         Initialize class model.
 
@@ -358,7 +334,7 @@ class ClassModel:
             config: Optional configuration (not used in this implementation)
         """
         # Performance statistics
-        self._stats: Dict[str, Any] = {
+        self._stats: dict[str, Any] = {
             "total_classes": 0,
             "cache_hits": 0,
             "cache_misses": 0,
@@ -369,12 +345,12 @@ class ClassModel:
         self,
         name: str,
         position: Position,
-        base_classes: Optional[List[str]] = None,
-        implemented_interfaces: Optional[List[str]] = None,
-        methods: Optional[List[ClassMember]] = None,
-        fields: Optional[List[ClassMember]] = None,
-        properties: Optional[List[ClassMember]] = None,
-        inheritance_info: Optional[InheritanceInfo] = None,
+        base_classes: list[str] | None = None,
+        implemented_interfaces: list[str] | None = None,
+        methods: list[ClassMember] | None = None,
+        fields: list[ClassMember] | None = None,
+        properties: list[ClassMember] | None = None,
+        inheritance_info: InheritanceInfo | None = None,
         is_abstract: bool = False,
         is_final: bool = False,
         is_static: bool = False,
@@ -382,13 +358,13 @@ class ClassModel:
         is_exception: bool = False,
         is_enum: bool = False,
         is_mixin: bool = False,
-        decorators: Optional[List[str]] = None,
-        annotations: Optional[List[str]] = None,
-        metaclass: Optional[str] = None,
+        decorators: list[str] | None = None,
+        annotations: list[str] | None = None,
+        metaclass: str | None = None,
         module: str = "",
-        docstring: Optional[str] = None,
+        docstring: str | None = None,
         visibility: Visibility = Visibility.PUBLIC,
-        metadata: Optional[Dict[str, Any]] = None,
+        metadata: dict[str, Any] | None = None,
     ) -> Class:
         """
         Create class element.
@@ -480,10 +456,10 @@ class ClassModel:
         self,
         name: str,
         position: Position,
-        return_type: Optional[TypeInfo] = None,
-        parameters: Optional[List[str]] = None,
+        return_type: TypeInfo | None = None,
+        parameters: list[str] | None = None,
         visibility: Visibility = Visibility.PUBLIC,
-        docstring: Optional[str] = None,
+        docstring: str | None = None,
         is_static: bool = False,
         is_abstract: bool = False,
         is_override: bool = False,
@@ -539,7 +515,7 @@ class ClassModel:
         field_type: TypeInfo,
         visibility: Visibility = Visibility.PUBLIC,
         is_static: bool = False,
-        docstring: Optional[str] = None,
+        docstring: str | None = None,
     ) -> ClassMember:
         """
         Create field member.
@@ -589,7 +565,7 @@ class ClassModel:
         return_type: TypeInfo,
         visibility: Visibility = Visibility.PUBLIC,
         is_static: bool = False,
-        docstring: Optional[str] = None,
+        docstring: str | None = None,
     ) -> ClassMember:
         """
         Create property member.
@@ -632,7 +608,7 @@ class ClassModel:
 
         return member
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         """
         Get class model statistics.
 
@@ -649,8 +625,7 @@ class ClassModel:
             "cache_misses": self._stats["cache_misses"],
             "creation_times": self._stats["creation_times"],
             "average_creation_time": (
-                sum(self._stats["creation_times"])
-                / len(self._stats["creation_times"])
+                sum(self._stats["creation_times"]) / len(self._stats["creation_times"])
                 if self._stats["creation_times"]
                 else 0
             ),
@@ -660,6 +635,7 @@ class ClassModel:
 # ============================================================================
 # Convenience Functions
 # ============================================================================
+
 
 @lru_cache(maxsize=64, typed=True)
 def get_class_model() -> ClassModel:
@@ -679,16 +655,14 @@ def get_class_model() -> ClassModel:
 # Module-level exports
 # ============================================================================
 
-__all__: List[str] = [
+__all__: list[str] = [
     # Data classes
     "ClassMember",
     "InheritanceInfo",
     "ClassMetadata",
     "Class",
-
     # Main class
     "ClassModel",
-
     # Convenience functions
     "get_class_model",
 ]
@@ -697,6 +671,7 @@ __all__: List[str] = [
 # ============================================================================
 # Module-level exports for backward compatibility
 # ============================================================================
+
 
 def __getattr__(name: str) -> Any:
     """
@@ -729,4 +704,4 @@ def __getattr__(name: str) -> Any:
             module = __import__(f".{name}", fromlist=["__name__"])
             return module
         except ImportError:
-            raise ImportError(f"Module {name} not found")
+            raise ImportError(f"Module {name} not found") from None

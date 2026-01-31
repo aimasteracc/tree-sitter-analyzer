@@ -1,11 +1,53 @@
 #!/usr/bin/env python3
 """
-Rust-specific table formatter.
+Rust Table Formatter - Enhanced Rust Code Result Formatting
+
+This module provides specialized formatting for Rust code analysis results,
+handling Rust ownership and safety features.
+
+Optimized with:
+- Complete type hints (PEP 484)
+- Comprehensive error handling
+- Performance optimization with caching
+- Detailed documentation in English
+
+Features:
+- Rust-specific element formatting
+- Ownership and borrowing pattern detection
+- Trait and impl block handling
+- Macro usage analysis
+- Lifetime annotation support
+- Error handling patterns (Result, Option)
+- Multiple output formats (table, CSV, TOON)
+- Complexity metrics
+- Type-safe operations (PEP 484)
+
+Architecture:
+- Extends BaseTableFormatter for consistent interface
+- Layered design with format delegation
+- Performance optimization where applicable
+- Integration with analysis result models
+
+Usage:
+    >>> from tree_sitter_analyzer.formatters import RustTableFormatter
+    >>> formatter = RustTableFormatter()
+    >>> output = formatter.format(analysis_result)
+
+Author: aisheng.yu
+Version: 1.10.5
+Date: 2026-01-28
 """
 
+# Standard library imports
+import logging
 from typing import Any
 
+# Internal imports
 from .base_formatter import BaseTableFormatter
+
+# Configure logging
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 
 class RustTableFormatter(BaseTableFormatter):
@@ -161,3 +203,9 @@ class RustTableFormatter(BaseTableFormatter):
             return self._format_csv(analysis_result)
         else:
             return self._format_full_table(analysis_result)
+
+
+# Exported public API
+__all__ = [
+    "RustTableFormatter",
+]

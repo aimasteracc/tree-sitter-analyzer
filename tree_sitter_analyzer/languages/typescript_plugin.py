@@ -1,20 +1,62 @@
 #!/usr/bin/env python3
 """
-TypeScript Language Plugin
+TypeScript Language Plugin - Enhanced TypeScript Code Analysis
 
-Enhanced TypeScript-specific parsing and element extraction functionality.
-Provides comprehensive support for TypeScript features including interfaces,
-type aliases, enums, generics, decorators, and modern JavaScript features.
-Equivalent to JavaScript plugin capabilities with TypeScript-specific enhancements.
+This module provides comprehensive TypeScript-specific parsing and element extraction
+functionality for the tree-sitter-analyzer framework.
+
+Optimized with:
+- Complete type hints (PEP 484)
+- Comprehensive error handling and recovery
+- Performance optimization with caching
+- Thread-safe operations where applicable
+- Detailed documentation in English
+
+Features:
+- TypeScript-specific constructs (interfaces, type aliases, enums, generics)
+- Decorator support for classes and methods
+- Modern JavaScript features (ES6+, async/await, classes, modules)
+- JSX/TSX support for React components
+- Import/export analysis with type-only imports
+- Complexity scoring
+- Type-safe operations (PEP 484)
+
+Architecture:
+- Extends ProgrammingLanguageExtractor for language-specific behavior
+- Layered design with clear separation of concerns
+- Performance optimization with node text caching
+- Integration with tree-sitter TypeScript grammar
+- Framework-aware analysis patterns
+
+Usage:
+    >>> from tree_sitter_analyzer.languages import TypeScriptPlugin
+    >>> plugin = TypeScriptPlugin()
+    >>> result = await plugin.analyze(request)
+    >>> elements = result.elements
+
+Author: aisheng.yu
+Version: 1.10.5
+Date: 2026-01-28
 """
 
+# Standard library imports
+import logging
 import re
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, Optional
 
+# Type checking imports
 if TYPE_CHECKING:
     import tree_sitter
+    from tree_sitter import Language, Node, Tree
+else:
+    # Runtime fallback for type checking imports
+    tree_sitter = Any  # type: ignore[misc,assignment]
+    Tree = Any
+    Node = Any
+    Language = Any
 
+# Check tree-sitter availability at runtime
 try:
     import tree_sitter
 
@@ -22,15 +64,20 @@ try:
 except ImportError:
     TREE_SITTER_AVAILABLE = False
 
+# Internal imports
 from ..core.analysis_engine import AnalysisRequest
 from ..language_loader import loader
 from ..models import AnalysisResult, Class, CodeElement, Function, Import, Variable
 from ..plugins.base import ElementExtractor, LanguagePlugin
-from ..plugins.programming_language_extractor import ProgrammingLanguageExtractor
+from ..plugins.cached_element_extractor import CachedElementExtractor
 from ..utils import log_debug, log_error
 
+# Configure logging
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
-class TypeScriptElementExtractor(ProgrammingLanguageExtractor):
+
+class TypeScriptElementExtractor(CachedElementExtractor):
     """Enhanced TypeScript-specific element extractor with comprehensive feature support"""
 
     def __init__(self) -> None:
@@ -73,9 +120,51 @@ class TypeScriptElementExtractor(ProgrammingLanguageExtractor):
             "abstract_class_declaration": self._extract_class_optimized,
         }
 
-    # extract_functions() and extract_classes() are inherited from base class
-    # Base class implementation uses _get_function_handlers() and _get_class_handlers()
-    # and automatically calls _detect_file_characteristics() if available
+    def extract_functions(
+        self, tree: "tree_sitter.Tree", source_code: str
+    ) -> list[Function]:
+        """Extract TypeScript function definitions with full feature support"""
+        self._initialize_source(source_code)
+
+        # Detect file characteristics for framework detection
+        if hasattr(self, "_detect_file_characteristics"):
+            self._detect_file_characteristics()
+
+        functions: list[Function] = []
+
+        # Get function extractors
+        extractors = self._get_function_handlers()
+
+        # Extract functions using iterative traversal
+        self._traverse_and_extract_iterative(
+            tree.root_node, extractors, functions, "function"
+        )
+
+        log_debug(f"Extracted {len(functions)} TypeScript functions")
+        return functions
+
+    def extract_classes(
+        self, tree: "tree_sitter.Tree", source_code: str
+    ) -> list[Class]:
+        """Extract TypeScript class/interface/type definitions"""
+        self._initialize_source(source_code)
+
+        # Detect file characteristics for framework detection
+        if hasattr(self, "_detect_file_characteristics"):
+            self._detect_file_characteristics()
+
+        classes: list[Class] = []
+
+        # Get class extractors
+        extractors = self._get_class_handlers()
+
+        # Extract classes using iterative traversal
+        self._traverse_and_extract_iterative(
+            tree.root_node, extractors, classes, "class"
+        )
+
+        log_debug(f"Extracted {len(classes)} TypeScript classes/interfaces/types")
+        return classes
 
     def extract_variables(
         self, tree: "tree_sitter.Tree", source_code: str
@@ -133,9 +222,62 @@ class TypeScriptElementExtractor(ProgrammingLanguageExtractor):
         self._tsdoc_cache.clear()
         self._complexity_cache.clear()
 
+    def _traverse_and_extract_iterative(
+        self,
+        root_node: "Node",
+        extractors: dict[str, Callable],
+        results: list[Any],
+        element_type: str,
+    ) -> None:
+        """
+        Iteratively traverse AST and extract elements.
+
+        Args:
+            root_node: Root node to start traversal
+            extractors: Dictionary mapping node types to extractor functions
+            results: List to collect extracted elements
+            element_type: Type of element being extracted (for logging)
+        """
+        from collections import deque
+
+        # Use iterative traversal with a stack
+        stack: deque[tuple[Node, int]] = deque([(root_node, 0)])
+        max_depth = 100  # Prevent infinite recursion
+
+        while stack:
+            node, depth = stack.popleft()
+
+            if node is None or depth > max_depth:
+                continue
+
+            # Check if we have an extractor for this node type
+            if node.type in extractors:
+                try:
+                    extractor_func = extractors[node.type]
+                    result = extractor_func(node)
+                    if result is not None:
+                        # Handle both single results and lists
+                        if isinstance(result, list):
+                            results.extend(result)
+                        else:
+                            results.append(result)
+                except Exception as e:
+                    log_debug(f"Failed to extract {node.type}: {e}")
+
+            # Add children to stack
+            if hasattr(node, "children"):
+                for child in reversed(node.children):
+                    stack.append((child, depth + 1))
+
     def _get_container_node_types(self) -> set[str]:
         """Get TypeScript-specific container node types."""
-        return super()._get_container_node_types() | {
+        # Base container types common to most languages
+        base_types = {
+            "program",
+            "module",
+            "block",
+        }
+        return base_types | {
             "class_body",
             "interface_body",
             "object_type",
@@ -1746,3 +1888,15 @@ class TypeScriptPlugin(LanguagePlugin):
             "angular_component": ["class_declaration", "decorator"],
             "vue_component": ["class_declaration", "function_declaration"],
         }
+
+
+# ============================================================================
+# Module Exports
+# ============================================================================
+
+__all__: list[str] = [
+    # Extractor classes
+    "TypeScriptElementExtractor",
+    # Plugin classes
+    "TypeScriptPlugin",
+]

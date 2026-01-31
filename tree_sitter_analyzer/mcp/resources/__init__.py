@@ -1,22 +1,28 @@
 #!/usr/bin/env python3
 """
-MCP Resources Module
+MCP Resources.
 
-This module provides MCP (Model Context Protocol) resource implementations
-for the tree-sitter-analyzer project. Resources provide dynamic content
-access through URI-based identification.
+Resource implementations for Model Context Protocol.
 
-Resources:
-    - CodeFileResource: Access to code file content
-    - ProjectStatsResource: Access to project statistics and analysis data
-
-The resources integrate with existing analyzer components to provide
-seamless access to code analysis functionality through the MCP protocol.
+Version: 1.10.5
+Date: 2026-01-28
 """
 
-# Export main resource classes
-from .code_file_resource import CodeFileResource
-from .project_stats_resource import ProjectStatsResource
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .code_file_resource import CodeFileResource
+    from .project_stats_resource import ProjectStatsResource
+else:
+    try:
+        from .code_file_resource import CodeFileResource
+        from .project_stats_resource import ProjectStatsResource
+    except ImportError as e:
+        import logging
+
+        logging.warning(f"Import fallback triggered in mcp.resources: {e}")
 
 # Resource metadata
 __author__ = "Tree-Sitter Analyzer Team"

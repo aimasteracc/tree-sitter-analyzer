@@ -1,12 +1,44 @@
+#!/usr/bin/env python3
+"""
+Behavior Profiles.
+
+Platform-specific SQL parsing behavior profiles with caching.
+
+Key Features:
+    - Profile management
+    - Schema validation
+    - Profile caching (TTL)
+    - Migration support
+
+Version: 1.10.5
+Date: 2026-01-28
+"""
+
+from __future__ import annotations
+
 import json
 import logging
 import threading
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any
 
-import jsonschema
-from cachetools import TTLCache
+if TYPE_CHECKING:
+    import jsonschema
+    from cachetools import TTLCache
+else:
+    try:
+        import jsonschema  # type: ignore[import]
+        from cachetools import TTLCache  # type: ignore[import]
+    except ImportError as e:
+        logging.warning(f"Import fallback triggered in profiles: {e}")
+
+__all__ = [
+    "ParsingBehavior",
+    "BehaviorProfile",
+    "validate_profile",
+    "migrate_profile_schema",
+]
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +76,7 @@ class BehaviorProfile:
     @classmethod
     def load(
         cls, platform_key: str, base_path: Path | None = None
-    ) -> Optional["BehaviorProfile"]:
+    ) -> BehaviorProfile | None:
         """
         Loads a profile for the given platform key.
 

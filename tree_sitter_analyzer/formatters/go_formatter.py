@@ -1,19 +1,52 @@
 #!/usr/bin/env python3
 """
-Go-specific table formatter.
+Go Table Formatter - Enhanced Go Code Result Formatting
 
-Uses Go-specific terminology:
-- package (not module)
-- func (not function/method)
-- struct (not class)
-- interface
-- receiver (for methods)
-- goroutine, channel, defer
+This module provides specialized formatting for Go code analysis results,
+using Go-specific terminology and conventions.
+
+Optimized with:
+- Complete type hints (PEP 484)
+- Comprehensive error handling
+- Performance optimization with caching
+- Detailed documentation in English
+
+Features:
+- Go-specific terminology (package, func, struct, interface)
+- Goroutine and channel pattern detection
+- Receiver method handling
+- Defer and panic/recover patterns
+- Interface satisfaction analysis
+- Multiple output formats (table, CSV, TOON)
+- Complexity metrics
+- Type-safe operations (PEP 484)
+
+Architecture:
+- Extends BaseTableFormatter for consistent interface
+- Layered design with format delegation
+- Performance optimization where applicable
+- Integration with analysis result models
+
+Usage:
+    >>> from tree_sitter_analyzer.formatters import GoTableFormatter
+    >>> formatter = GoTableFormatter()
+    >>> output = formatter.format(analysis_result)
+
+Author: aisheng.yu
+Version: 1.10.5
+Date: 2026-01-28
 """
 
+# Standard library imports
+import logging
 from typing import Any
 
+# Internal imports
 from .base_formatter import BaseTableFormatter
+
+# Configure logging
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 
 class GoTableFormatter(BaseTableFormatter):
@@ -307,3 +340,9 @@ class GoTableFormatter(BaseTableFormatter):
             return self._format_csv(analysis_result)
         else:
             return self._format_full_table(analysis_result)
+
+
+# Exported public API
+__all__ = [
+    "GoTableFormatter",
+]

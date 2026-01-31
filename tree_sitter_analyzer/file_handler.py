@@ -1,33 +1,60 @@
 #!/usr/bin/env python3
 """
-File Handler Module
+File Handler Module.
 
-This module provides file reading functionality with encoding detection and fallback.
+Provides file reading with automatic encoding detection and partial content support.
+
+Key Features:
+    - Automatic encoding detection
+    - Streaming for large files
+    - Partial content extraction
+    - Language detection from extensions
+    - Comprehensive error handling
+
+Version: 1.10.5
+Date: 2026-01-28
 """
+
+from __future__ import annotations
 
 import itertools
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from .encoding_utils import read_file_safe, read_file_safe_streaming
-from .utils import setup_logger
+if TYPE_CHECKING:
+    from .encoding_utils import read_file_safe, read_file_safe_streaming
+    from .utils import setup_logger
+else:
+    try:
+        from .encoding_utils import read_file_safe, read_file_safe_streaming
+        from .utils import setup_logger
+    except ImportError as e:
+        import logging
+
+        logging.warning(f"Import fallback triggered in file_handler: {e}")
+
+__all__ = [
+    "read_file_partial",
+    "detect_language_from_extension",
+]
 
 # Set up logger for this module
-logger = setup_logger(__name__)
+logger = setup_logger(__name__)  # type: ignore[misc]
 
 
 def log_error(message: str, *args: object, **kwargs: object) -> None:
     """Log error message"""
-    logger.error(message, *args, **kwargs)  # type: ignore[arg-type]
+    logger.error(message, *args, **kwargs)
 
 
 def log_info(message: str, *args: object, **kwargs: object) -> None:
     """Log info message"""
-    logger.info(message, *args, **kwargs)  # type: ignore[arg-type]
+    logger.info(message, *args, **kwargs)
 
 
 def log_warning(message: str, *args: object, **kwargs: object) -> None:
     """Log warning message"""
-    logger.warning(message, *args, **kwargs)  # type: ignore[arg-type]
+    logger.warning(message, *args, **kwargs)
 
 
 def detect_language_from_extension(file_path: str) -> str:

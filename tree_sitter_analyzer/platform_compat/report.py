@@ -1,7 +1,36 @@
+#!/usr/bin/env python3
+"""
+Compatibility Reporter.
+
+Generates compatibility matrix reports from behavior profiles.
+
+Key Features:
+    - Matrix generation
+    - Cross-platform comparison
+    - Markdown formatting
+    - Profile aggregation
+
+Version: 1.10.5
+Date: 2026-01-28
+"""
+
+from __future__ import annotations
+
 import json
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from .profiles import BehaviorProfile, ParsingBehavior
+if TYPE_CHECKING:
+    from .profiles import BehaviorProfile, ParsingBehavior
+else:
+    try:
+        from .profiles import BehaviorProfile, ParsingBehavior
+    except ImportError as e:
+        import logging
+
+        logging.warning(f"Import fallback triggered in report: {e}")
+
+__all__ = ["generate_compatibility_matrix"]
 
 
 def generate_compatibility_matrix(profiles_dir: Path) -> str:

@@ -1,10 +1,8 @@
 #!/usr/bin/env python3
 """
-fd and ripgrep utilities - Modular architecture.
+fd and ripgrep Utilities.
 
-This package provides a clean, modular interface for working with fd and ripgrep
-commands. It replaces the monolithic fd_rg_utils.py module with a well-structured
-set of focused classes following SOLID principles.
+Modular interface for fd and ripgrep commands.
 
 Architecture:
     - config.py: Configuration dataclasses (FdCommandConfig, RgCommandConfig)
@@ -12,47 +10,8 @@ Architecture:
     - result_parser.py: Result parsers (FdResultParser, RgResultParser, RgResultTransformer)
     - utils.py: Shared utilities (command execution, file I/O)
 
-Usage Example:
-    >>> from tree_sitter_analyzer.mcp.tools.fd_rg import (
-    ...     FdCommandConfig,
-    ...     FdCommandBuilder,
-    ...     FdResultParser,
-    ...     run_command_capture,
-    ... )
-    >>>
-    >>> # Create configuration
-    >>> config = FdCommandConfig(
-    ...     roots=("src/",),
-    ...     pattern="*.py",
-    ...     glob=True,
-    ...     hidden=False,
-    ... )
-    >>>
-    >>> # Build command
-    >>> builder = FdCommandBuilder()
-    >>> cmd = builder.build(config)
-    >>>
-    >>> # Execute and parse
-    >>> rc, stdout, stderr = await run_command_capture(cmd)
-    >>> parser = FdResultParser()
-    >>> files = parser.parse(stdout)
-
-Migration from fd_rg_utils:
-    The old fd_rg_utils.py module is deprecated. Use this package instead:
-
-    Old:
-        from tree_sitter_analyzer.mcp.tools.fd_rg_utils import build_fd_command
-        cmd = build_fd_command(
-            pattern="*.py", glob=True, types=None, extensions=None,
-            exclude=None, depth=None, follow_symlinks=False, hidden=False,
-            no_ignore=False, size=None, changed_within=None, changed_before=None,
-            full_path_match=False, absolute=True, limit=None, roots=["src/"]
-        )  # 18 parameters!
-
-    New:
-        from tree_sitter_analyzer.mcp.tools.fd_rg import FdCommandConfig, FdCommandBuilder
-        config = FdCommandConfig(roots=("src/",), pattern="*.py", glob=True)
-        cmd = FdCommandBuilder().build(config)  # Clean and simple!
+Version: 1.10.5
+Date: 2026-01-28
 """
 
 from __future__ import annotations

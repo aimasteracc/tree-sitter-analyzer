@@ -24,81 +24,49 @@ Version: 1.10.5
 Date: 2026-01-28
 """
 
-import hashlib
 import logging
-import os
 import threading
-import time
-from typing import TYPE_CHECKING, Any, Optional, List, Dict, Tuple, Union, Callable, Type, NamedTuple, Set
-from functools import lru_cache, wraps
 from dataclasses import dataclass, field
-from enum import Enum
-from pathlib import Path
-from time import perf_counter
+from functools import lru_cache
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Protocol,
+)
 
 # Type checking setup
 if TYPE_CHECKING:
     # Model imports
-    from .element import (
-        Element,
-        NamedElement,
-        Position,
-        TypeInfo,
-        DocstringInfo,
-        Visibility,
-        ElementType,
-        Import as ImportElement,
-    )
-
     # Utility imports
-    from ..utils.logging import (
-        log_debug,
-        log_info,
-        log_warning,
-        log_error,
-        log_performance,
-        setup_logger,
-        create_performance_logger,
-        safe_print,
+    from .element import (
+        ElementType,
+        Position,
+        Visibility,
+    )
+    from .element import (
+        Import as ImportElement,
     )
 else:
     # Runtime imports (when type checking is disabled)
     # Model imports
-    from .element import (
-        Element,
-        NamedElement,
-        Position,
-        TypeInfo,
-        DocstringInfo,
-        Visibility,
-        ElementType,
-        Import as ImportElement,
-    )
-
     # Utility imports
-    from ..utils.logging import (
-        log_debug,
-        log_info,
-        log_warning,
-        log_error,
-        log_performance,
-        setup_logger,
-        create_performance_logger,
-        safe_print,
+    from .element import (
+        ElementType,
+        Position,
+        Visibility,
+    )
+    from .element import (
+        Import as ImportElement,
     )
 
 # Configure logging
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-# ============================================================================
+# =====
 # Type Definitions
-# ============================================================================
+# =====
 
-if sys.version_info >= (3, 8):
-    from typing import Protocol
-else:
-    Protocol = object
 
 class ImportModelProtocol(Protocol):
     """Interface for import model creation functions."""
@@ -115,9 +83,11 @@ class ImportModelProtocol(Protocol):
         """
         ...
 
+
 # ============================================================================
 # Custom Exceptions
 # ============================================================================
+
 
 class ImportModelError(Exception):
     """Base exception for import model errors."""
@@ -129,22 +99,26 @@ class ImportModelError(Exception):
 
 class InitializationError(ImportModelError):
     """Exception raised when import model initialization fails."""
+
     pass
 
 
 class ValidationError(ImportModelError):
     """Exception raised when import validation fails."""
+
     pass
 
 
 class InconsistencyError(ImportModelError):
     """Exception raised when import data is inconsistent."""
+
     pass
 
 
 # ============================================================================
 # Data Classes
 # ============================================================================
+
 
 @dataclass(frozen=True, slots=True)
 class ImportInfo:
@@ -171,11 +145,10 @@ class ImportInfo:
     is_relative: bool = False
     is_star_import: bool = False
     is_wildcard: bool = False
-    position: Optional[Position] = None
-    docstring: Optional[str] = None
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    position: Position | None = None
+    docstring: str | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
 
-    @property
     def __str__(self) -> str:
         """String representation of import."""
         return f"Import: {self.full_import}"
@@ -207,6 +180,7 @@ class ImportInfo:
 # Import Model
 # ============================================================================
 
+
 class ImportModel:
     """
     Optimized import model with type safety, caching, and performance monitoring.
@@ -234,11 +208,11 @@ class ImportModel:
     """
 
     # Class-level cache (shared across all instances)
-    _import_cache: Dict[str, ImportInfo] = {}
+    _import_cache: dict[str, ImportInfo] = {}
     _lock: threading.RLock = threading.RLock()
-    
+
     # Performance statistics
-    _stats: Dict[str, Any] = {
+    _stats: dict[str, Any] = {
         "total_imports": 0,
         "cache_hits": 0,
         "cache_misses": 0,
@@ -253,7 +227,7 @@ class ImportModel:
         },
     }
 
-    def __init__(self):
+    def __init__(self) -> None:
         """
         Initialize import model.
 
@@ -274,8 +248,8 @@ class ImportModel:
         is_relative: bool = False,
         is_star_import: bool = False,
         is_wildcard: bool = False,
-        docstring: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        docstring: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> ImportElement:
         """
         Create import element.
@@ -346,8 +320,8 @@ class ImportModel:
         imported_name: str,
         position: Position,
         is_star_import: bool = False,
-        docstring: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        docstring: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> ImportElement:
         """
         Create 'from' import statement.
@@ -413,8 +387,8 @@ class ImportModel:
         module_name: str,
         position: Position,
         is_wildcard: bool = False,
-        docstring: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        docstring: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> ImportElement:
         """
         Create 'import' statement (import module).
@@ -472,7 +446,7 @@ class ImportModel:
 
         return import_elem
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         """
         Get import model statistics.
 
@@ -497,6 +471,7 @@ class ImportModel:
 # Convenience Functions
 # ============================================================================
 
+
 @lru_cache(maxsize=128, typed=True)
 def get_import_model() -> ImportModel:
     """
@@ -515,19 +490,16 @@ def get_import_model() -> ImportModel:
 # Module-level exports
 # ============================================================================
 
-__all__: List[str] = [
+__all__: list[str] = [
     # Data classes
     "ImportInfo",
-
     # Exceptions
     "ImportModelError",
     "InitializationError",
     "ValidationError",
     "InconsistencyError",
-
     # Main class
     "ImportModel",
-
     # Convenience functions
     "get_import_model",
 ]

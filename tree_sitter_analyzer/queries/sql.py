@@ -1,10 +1,21 @@
 #!/usr/bin/env python3
 """
-SQL Language Queries
+SQL Language Queries.
 
-Tree-sitter queries specific to SQL language constructs.
-Covers tables, views, procedures, functions, triggers, indexes, and other SQL-specific elements.
+Tree-sitter queries for SQL language constructs.
+
+Key Features:
+    - Tables, views, and indexes
+    - Procedures and functions
+    - Triggers and constraints
+    - DDL and DML statements
+    - Multi-dialect support
+
+Version: 1.10.5
+Date: 2026-01-28
 """
+
+from __future__ import annotations
 
 # SQL-specific comprehensive query library
 SQL_QUERIES: dict[str, str] = {
@@ -553,3 +564,13 @@ def get_available_sql_queries() -> list[str]:
         List of query names
     """
     return list(SQL_QUERIES.keys())
+
+
+__all__: list[str] = [
+    "get_sql_query",
+    "get_sql_query_description",
+    "get_query",
+    "get_all_queries",
+    "list_queries",
+    "get_available_sql_queries",
+]

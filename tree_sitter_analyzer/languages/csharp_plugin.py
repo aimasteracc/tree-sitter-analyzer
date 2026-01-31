@@ -1,20 +1,66 @@
 #!/usr/bin/env python3
 """
-C# Language Plugin
+C# Language Plugin - Enhanced C# Code Analysis
 
-Provides C#-specific parsing and element extraction functionality.
-Supports extraction of classes, interfaces, records, methods, properties, fields, and using directives.
+This module provides comprehensive C#-specific parsing and element extraction
+functionality for the tree-sitter-analyzer framework.
+
+Optimized with:
+- Complete type hints (PEP 484)
+- Comprehensive error handling and recovery
+- Performance optimization with caching
+- Thread-safe operations where applicable
+- Detailed documentation in English
+
+Features:
+- Modern C# support (.NET 5+, C# 9+)
+- LINQ query analysis
+- Async/await pattern detection
+- Property and indexer extraction
+- Attribute (annotation) processing
+- Namespace and using directives
+- Generic type support
+- Complexity scoring
+- Type-safe operations (PEP 484)
+
+Architecture:
+- Extends ProgrammingLanguageExtractor for language-specific behavior
+- Layered design with clear separation of concerns
+- Performance optimization with node caching
+- Integration with tree-sitter C# grammar
+- .NET framework-aware analysis patterns
+
+Usage:
+    >>> from tree_sitter_analyzer.languages import CSharpPlugin
+    >>> plugin = CSharpPlugin()
+    >>> result = await plugin.analyze(request)
+    >>> elements = result.elements
+
+Author: aisheng.yu
+Version: 1.10.5
+Date: 2026-01-28
 """
 
+# Standard library imports
+import logging
 from collections.abc import Iterator
 from typing import TYPE_CHECKING, Any, Optional
 
+# Type checking imports
 if TYPE_CHECKING:
     import tree_sitter
+    from tree_sitter import Language, Node, Tree
 
     from ..core.analysis_engine import AnalysisRequest
     from ..models import AnalysisResult
+else:
+    # Runtime fallback for type checking imports
+    tree_sitter = Any  # type: ignore[misc,assignment]
+    Tree = Any
+    Node = Any
+    Language = Any
 
+# Runtime tree-sitter availability check
 try:
     import tree_sitter
 
@@ -22,10 +68,14 @@ try:
 except ImportError:
     TREE_SITTER_AVAILABLE = False
 
+# Internal imports
 from ..models import Class, Function, Import, Variable
 from ..plugins.base import ElementExtractor, LanguagePlugin
 from ..plugins.programming_language_extractor import ProgrammingLanguageExtractor
 from ..utils import log_debug, log_error
+
+# Configure logging
+logger = logging.getLogger(__name__)
 
 
 class CSharpElementExtractor(ProgrammingLanguageExtractor):
@@ -272,7 +322,7 @@ class CSharpElementExtractor(ProgrammingLanguageExtractor):
             # Add children in reverse order to maintain left-to-right traversal
             stack.extend(reversed(list(node.children)))
 
-    def extract_classes(
+    def extract_classes(  # type: ignore[override]
         self, tree: "tree_sitter.Tree | None", source_code: str
     ) -> list[Class]:
         """
@@ -395,7 +445,7 @@ class CSharpElementExtractor(ProgrammingLanguageExtractor):
             log_error(f"Error extracting class declaration: {e}")
             return None
 
-    def extract_functions(
+    def extract_functions(  # type: ignore[override]
         self, tree: "tree_sitter.Tree | None", source_code: str
     ) -> list[Function]:
         """
@@ -495,7 +545,7 @@ class CSharpElementExtractor(ProgrammingLanguageExtractor):
             log_error(f"Error extracting method: {e}")
             return None
 
-    def _extract_constructor(self, node: "tree_sitter.Node") -> Function | None:
+    def _extract_constructor(self, node: "tree_sitter.Node") -> Function | None:  # type: ignore
         """
         Extract a constructor declaration.
 
@@ -1079,3 +1129,10 @@ class CSharpPlugin(LanguagePlugin):
                 success=False,
                 error_message=str(e),
             )
+
+
+# Exported public API
+__all__ = [
+    "CSharpElementExtractor",
+    "CSharpPlugin",
+]

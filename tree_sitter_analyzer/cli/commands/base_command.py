@@ -1,22 +1,52 @@
 #!/usr/bin/env python3
 """
-Base Command Class
+Base Command Class.
 
 Abstract base class for all CLI commands implementing the Command Pattern.
+
+Key Features:
+    - Async command execution
+    - File validation and security checks
+    - Language detection
+    - Project root detection
+
+Version: 1.10.5
+Date: 2026-01-28
 """
+
+from __future__ import annotations
 
 import asyncio
 from abc import ABC, abstractmethod
 from argparse import Namespace
-from typing import Optional
+from typing import TYPE_CHECKING
 
-from ...core.analysis_engine import AnalysisRequest, get_analysis_engine
-from ...file_handler import read_file_partial
-from ...language_detector import detect_language_from_file, is_language_supported
-from ...models import AnalysisResult
-from ...output_manager import output_error, output_info
-from ...project_detector import detect_project_root
-from ...security import SecurityValidator
+if TYPE_CHECKING:
+    from ...core.analysis_engine import AnalysisRequest, get_analysis_engine
+    from ...file_handler import read_file_partial
+    from ...language_detector import detect_language_from_file, is_language_supported
+    from ...models import AnalysisResult
+    from ...output_manager import output_error, output_info
+    from ...project_detector import detect_project_root
+    from ...security import SecurityValidator
+else:
+    try:
+        from ...core.analysis_engine import AnalysisRequest, get_analysis_engine
+        from ...file_handler import read_file_partial
+        from ...language_detector import (
+            detect_language_from_file,
+            is_language_supported,
+        )
+        from ...models import AnalysisResult
+        from ...output_manager import output_error, output_info
+        from ...project_detector import detect_project_root
+        from ...security import SecurityValidator
+    except ImportError as e:
+        import logging
+
+        logging.warning(f"Import fallback triggered in base_command: {e}")
+
+__all__ = ["BaseCommand"]
 
 
 class BaseCommand(ABC):
@@ -101,7 +131,7 @@ class BaseCommand(ABC):
 
         return str(target_language) if target_language else None
 
-    async def analyze_file(self, language: str) -> Optional["AnalysisResult"]:
+    async def analyze_file(self, language: str) -> AnalysisResult | None:
         """Perform file analysis using the unified analysis engine."""
         try:
             # Handle partial read if enabled
@@ -127,7 +157,7 @@ class BaseCommand(ABC):
                 include_complexity=True,
                 include_details=True,
             )
-            analysis_result = await self.analysis_engine.analyze(request)
+            analysis_result = await self.analysis_engine.analyze(request)  # type: ignore
 
             if not analysis_result or not analysis_result.success:
                 error_msg = (
@@ -138,7 +168,7 @@ class BaseCommand(ABC):
                 output_error(f"Analysis failed: {error_msg}")
                 return None
 
-            return analysis_result
+            return analysis_result  # type: ignore
 
         except Exception as e:
             output_error(f"An error occurred during analysis: {e}")

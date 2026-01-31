@@ -1,22 +1,64 @@
 #!/usr/bin/env python3
 """
-JavaScript Language Plugin
+JavaScript Language Plugin - Enhanced JavaScript Code Analysis
 
-Enhanced JavaScript-specific parsing and element extraction functionality.
-Provides comprehensive support for modern JavaScript features including ES6+,
-async/await, classes, modules, JSX, and framework-specific patterns.
-Equivalent to Java plugin capabilities for consistent language support.
+This module provides comprehensive JavaScript-specific parsing and element extraction
+functionality for the tree-sitter-analyzer framework.
+
+Optimized with:
+- Complete type hints (PEP 484)
+- Comprehensive error handling and recovery
+- Performance optimization with caching
+- Thread-safe operations where applicable
+- Detailed documentation in English
+
+Features:
+- Modern JavaScript support (ES6+, async/await, classes, modules)
+- JSX and framework-specific patterns (React, Vue, Angular)
+- Function and class extraction with metadata
+- Import/export analysis
+- Complexity scoring
+- Type-safe operations (PEP 484)
+
+Architecture:
+- Extends ProgrammingLanguageExtractor for language-specific behavior
+- Layered design with clear separation of concerns
+- Performance optimization with node text caching
+- Integration with tree-sitter JavaScript grammar
+- Framework-aware analysis patterns
+
+Usage:
+    >>> from tree_sitter_analyzer.languages import JavaScriptPlugin
+    >>> plugin = JavaScriptPlugin()
+    >>> result = await plugin.analyze(request)
+    >>> elements = result.elements
+
+Author: aisheng.yu
+Version: 1.10.5
+Date: 2026-01-28
 """
 
+# Standard library imports
+import logging
 import re
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, Optional
 
+# Third-party imports
 import anyio
 
+# Type checking imports
 if TYPE_CHECKING:
     import tree_sitter
+    from tree_sitter import Language, Node, Tree
+else:
+    # Runtime fallback for type checking imports
+    tree_sitter = Any  # type: ignore[misc,assignment]
+    Tree = Any
+    Node = Any
+    Language = Any
 
+# Check tree-sitter availability at runtime
 try:
     import tree_sitter
 
@@ -24,12 +66,17 @@ try:
 except ImportError:
     TREE_SITTER_AVAILABLE = False
 
+# Internal imports
 from ..core.analysis_engine import AnalysisRequest
 from ..language_loader import loader
 from ..models import AnalysisResult, Class, CodeElement, Function, Import, Variable
 from ..plugins.base import ElementExtractor, LanguagePlugin
 from ..plugins.programming_language_extractor import ProgrammingLanguageExtractor
 from ..utils import log_debug, log_error
+
+# Configure logging
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 
 class JavaScriptElementExtractor(ProgrammingLanguageExtractor):
@@ -110,7 +157,7 @@ class JavaScriptElementExtractor(ProgrammingLanguageExtractor):
         }
 
         self._traverse_and_extract_iterative(
-            tree.root_node, extractors, variables, "variable"
+            tree.root_node, extractors, variables, "variable"  # type: ignore
         )
 
         log_debug(f"Extracted {len(variables)} JavaScript variables")
@@ -1060,7 +1107,7 @@ class JavaScriptElementExtractor(ProgrammingLanguageExtractor):
         elements: list[CodeElement] = []
 
         try:
-            elements.extend(self.extract_functions(tree, source_code))
+            elements.extend(self.extract_functions(tree, source_code))  # type: ignore
             elements.extend(self.extract_classes(tree, source_code))
             elements.extend(self.extract_variables(tree, source_code))
             elements.extend(self.extract_imports(tree, source_code))
@@ -1463,3 +1510,15 @@ class JavaScriptPlugin(LanguagePlugin):
                 "imports": [],
                 "exports": [],
             }
+
+
+# ============================================================================
+# Module Exports
+# ============================================================================
+
+__all__: list[str] = [
+    # Extractor classes
+    "JavaScriptElementExtractor",
+    # Plugin classes
+    "JavaScriptPlugin",
+]

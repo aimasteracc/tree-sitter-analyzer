@@ -1,10 +1,21 @@
 #!/usr/bin/env python3
 """
-Go Language Queries
+Go Language Queries.
 
-Tree-sitter queries specific to Go language constructs.
-Covers packages, functions, methods, structs, interfaces, and other Go-specific elements.
+Tree-sitter queries for Go language constructs.
+
+Key Features:
+    - Packages and imports
+    - Functions and methods
+    - Structs and interfaces
+    - Goroutines and channels
+    - Go-specific types
+
+Version: 1.10.5
+Date: 2026-01-28
 """
+
+from __future__ import annotations
 
 # Go-specific query library
 GO_QUERIES: dict[str, str] = {
@@ -273,3 +284,13 @@ def get_available_go_queries() -> list[str]:
         List of query names
     """
     return list(GO_QUERIES.keys())
+
+
+__all__: list[str] = [
+    "get_go_query",
+    "get_go_query_description",
+    "get_query",
+    "get_all_queries",
+    "list_queries",
+    "get_available_go_queries",
+]

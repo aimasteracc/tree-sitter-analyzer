@@ -1,17 +1,33 @@
 #!/usr/bin/env python3
 """
-Analysis Engine Singleton Management
+Analysis Engine Singleton Management.
 
-このモジュールは UnifiedAnalysisEngine のシングルトン管理を提供します。
-注意: EngineManager は UnifiedAnalysisEngine の内部インスタンス管理に委譲します。
-重複したインスタンス辞書を持たないようにしています。
+This module provides singleton management for UnifiedAnalysisEngine instances,
+delegating to UnifiedAnalysisEngine's internal instance management.
+
+Key Features:
+    - Singleton pattern delegation to UnifiedAnalysisEngine
+    - Thread-safe instance retrieval
+    - No duplicate instance dictionaries
+    - Project root-scoped instances
+
+Classes:
+    EngineManager: Manages UnifiedAnalysisEngine singleton instances
+
+Version: 1.10.5
+Date: 2026-01-28
+Author: tree-sitter-analyzer team
 """
+
+from __future__ import annotations
 
 import threading
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .analysis_engine import UnifiedAnalysisEngine
+
+__all__ = ["EngineManager"]
 
 
 class EngineManager:
@@ -27,9 +43,9 @@ class EngineManager:
     @classmethod
     def get_instance(
         cls,
-        engine_class: type["UnifiedAnalysisEngine"],
+        engine_class: type[UnifiedAnalysisEngine],
         project_root: str | None = None,
-    ) -> "UnifiedAnalysisEngine":
+    ) -> UnifiedAnalysisEngine:
         """
         Get or create singleton instance of the analysis engine.
 

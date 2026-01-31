@@ -1,8 +1,26 @@
 #!/usr/bin/env python3
 """
-list_files MCP Tool (fd wrapper)
+list_files MCP Tool (fd wrapper).
 
-Safely list files/directories based on name patterns and constraints, using fd.
+Safely list files/directories based on name patterns and constraints using fd
+with advanced filtering, sorting, and output formatting.
+
+Key Features:
+    - fd-based file discovery with pattern matching
+    - Multiple filter types (glob, extensions, file types)
+    - Size and modification time filtering
+    - Gitignore integration for intelligent exclusion
+    - Result sorting (name, size, modified time)
+    - Count-only mode and limit controls
+    - File output with TOON/JSON format support
+
+Classes:
+    ListFilesArguments: TypedDict for tool arguments
+    ListFilesTool: MCP tool for file listing
+
+Version: 1.10.5
+Date: 2026-01-28
+Author: tree-sitter-analyzer team
 """
 
 from __future__ import annotations
@@ -11,26 +29,54 @@ import logging
 import os
 import time
 from pathlib import Path
-from typing import Any, TypedDict
+from typing import TYPE_CHECKING, Any, TypedDict
 
-from ..utils.error_handler import handle_mcp_errors
-from ..utils.file_output_manager import FileOutputManager
-from ..utils.format_helper import apply_toon_format_to_response, format_for_file_output
-from ..utils.gitignore_detector import get_default_detector
-from .base_tool import BaseMCPTool
-from .fd_rg import (
-    MAX_RESULTS_HARD_CAP,
-    FdCommandBuilder,
-    FdCommandConfig,
-    SortType,
-    check_external_command,
-    clamp_int,
-    run_command_capture,
-    sanitize_error_message,
-)
+if TYPE_CHECKING:
+    from ..utils.error_handler import handle_mcp_errors
+    from ..utils.file_output_manager import FileOutputManager
+    from ..utils.format_helper import (
+        apply_toon_format_to_response,
+        format_for_file_output,
+    )
+    from ..utils.gitignore_detector import get_default_detector
+    from .base_tool import BaseMCPTool
+    from .fd_rg import (
+        MAX_RESULTS_HARD_CAP,
+        FdCommandBuilder,
+        FdCommandConfig,
+        SortType,
+        check_external_command,
+        clamp_int,
+        run_command_capture,
+        sanitize_error_message,
+    )
+else:
+    try:
+        from ..utils.error_handler import handle_mcp_errors
+        from ..utils.file_output_manager import FileOutputManager
+        from ..utils.format_helper import (
+            apply_toon_format_to_response,
+            format_for_file_output,
+        )
+        from ..utils.gitignore_detector import get_default_detector
+        from .base_tool import BaseMCPTool
+        from .fd_rg import (
+            MAX_RESULTS_HARD_CAP,
+            FdCommandBuilder,
+            FdCommandConfig,
+            SortType,
+            check_external_command,
+            clamp_int,
+            run_command_capture,
+            sanitize_error_message,
+        )
+    except ImportError as e:
+        logging.warning(f"Import fallback triggered in list_files_tool: {e}")
 
 # Constants for backward compatibility
 DEFAULT_RESULTS_LIMIT = 2000
+
+__all__ = ["ListFilesArguments", "ListFilesTool"]
 
 logger = logging.getLogger(__name__)
 

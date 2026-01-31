@@ -1,23 +1,64 @@
 #!/usr/bin/env python3
 """
-Read Code Partial MCP Tool
+Read Code Partial MCP Tool.
 
 This tool provides partial file reading functionality through the MCP protocol,
 allowing selective content extraction with line and column range support.
+
+Key Features:
+    - Selective file content reading with line/column ranges
+    - Batch mode for multiple files and sections
+    - Safety limits (max files, sections, bytes, lines)
+    - Character-level extraction support
+    - File output with TOON/JSON format support
+    - Security validation with PathResolver integration
+    - Performance monitoring with detailed metrics
+
+Classes:
+    ReadPartialTool: MCP tool for partial file reading
+
+Constants:
+    _BATCH_LIMITS: Safety limits for batch operations
+
+Version: 1.10.5
+Date: 2026-01-28
+Author: tree-sitter-analyzer team
 """
+
+from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from ...file_handler import read_file_partial
+if TYPE_CHECKING:
+    from ...file_handler import read_file_partial
+    from ..utils.file_output_manager import FileOutputManager
+    from ..utils.format_helper import (
+        apply_toon_format_to_response,
+        format_for_file_output,
+    )
+    from .base_tool import BaseMCPTool
+else:
+    try:
+        from ...file_handler import read_file_partial
+        from ..utils.file_output_manager import FileOutputManager
+        from ..utils.format_helper import (
+            apply_toon_format_to_response,
+            format_for_file_output,
+        )
+        from .base_tool import BaseMCPTool
+    except ImportError as e:
+        import logging
+
+        logging.warning(f"Import fallback triggered in read_partial_tool: {e}")
+
 from ...utils import setup_logger
-from ..utils.file_output_manager import FileOutputManager
-from ..utils.format_helper import apply_toon_format_to_response, format_for_file_output
-from .base_tool import BaseMCPTool
+
+__all__ = ["ReadPartialTool", "_BATCH_LIMITS"]
 
 # Set up logging
-logger = setup_logger(__name__)
+logger = setup_logger(__name__)  # type: ignore
 
 _BATCH_LIMITS = {
     "max_files": 20,

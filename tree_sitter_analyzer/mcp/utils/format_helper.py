@@ -1,21 +1,54 @@
 #!/usr/bin/env python3
 """
-Format Helper for MCP Tools
+Format Helper for MCP Tools.
 
 Provides utility functions for formatting MCP tool output in different formats
 (JSON, TOON) with consistent behavior across all tools.
 
+Key Features:
+    - TOON format conversion with fallback to JSON
+    - JSON formatting with proper encoding
+    - File output formatting with TOON wrapper
+    - apply_toon_format_to_response for MCP protocol responses
+    - Consistent format handling across all MCP tools
+
 Design Principles:
-- TOON format only outputs {"format": "toon", "toon_content": "..."} to avoid duplication
-- JSON format outputs the original dict structure
+    - TOON format only outputs {"format": "toon", "toon_content": "..."}
+    - JSON format outputs the original dict structure
+    - File output wraps content in appropriate format
+
+Classes:
+    JsonFormatter: Simple JSON formatter with format() interface
+
+Functions:
+    format_as_json: Format data as JSON string
+    format_as_toon: Format data as TOON string with fallback
+    format_output: Unified formatting function
+    apply_toon_format_to_response: MCP response formatting
+    format_for_file_output: File output formatting
+
+Version: 1.10.5
+Date: 2026-01-28
+Author: tree-sitter-analyzer team
 """
+
+from __future__ import annotations
 
 import json
 from typing import Any
 
 from ...utils import setup_logger
 
-logger = setup_logger(__name__)
+__all__ = [
+    "JsonFormatter",
+    "format_as_json",
+    "format_as_toon",
+    "format_output",
+    "apply_toon_format_to_response",
+    "format_for_file_output",
+]
+
+logger = setup_logger(__name__)  # type: ignore
 
 
 class JsonFormatter:

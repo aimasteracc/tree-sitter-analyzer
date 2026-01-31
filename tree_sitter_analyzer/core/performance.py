@@ -1,12 +1,42 @@
 #!/usr/bin/env python3
 """
-Performance Monitoring System for Tree-sitter Analyzer
+Performance Monitoring System for Tree-sitter Analyzer.
+
+This module provides lightweight performance monitoring with context managers
+for measuring operation durations and collecting statistics.
+
+Key Features:
+    - Context manager-based duration measurement
+    - Operation statistics tracking
+    - Last duration storage for quick access
+    - Integration with logging system
+    - Minimal overhead for production use
+
+Classes:
+    PerformanceMonitor: Main monitoring class with statistics
+    PerformanceContext: Context manager for operation measurement
+
+Version: 1.10.5
+Date: 2026-01-28
+Author: tree-sitter-analyzer team
 """
 
-import time
-from typing import Any
+from __future__ import annotations
 
-from ..utils import log_info, log_performance
+import time
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from ..utils import log_info, log_performance
+else:
+    try:
+        from ..utils import log_info, log_performance
+    except ImportError:
+        import logging
+
+        logging.warning("Import fallback triggered in performance")
+
+__all__ = ["PerformanceMonitor", "PerformanceContext"]
 
 
 class PerformanceMonitor:
@@ -18,7 +48,7 @@ class PerformanceMonitor:
         self._operation_stats: dict[str, Any] = {}
         self._total_operations: int = 0
 
-    def measure_operation(self, operation_name: str) -> "PerformanceContext":
+    def measure_operation(self, operation_name: str) -> PerformanceContext:
         """Return measurement context for operation"""
         return PerformanceContext(operation_name, self)
 
@@ -90,7 +120,7 @@ class PerformanceContext:
         self.monitor = monitor
         self.start_time: float = 0.0
 
-    def __enter__(self) -> "PerformanceContext":
+    def __enter__(self) -> PerformanceContext:
         self.start_time = time.time()
         return self
 
@@ -98,4 +128,4 @@ class PerformanceContext:
         duration = time.time() - self.start_time
         self.monitor._set_duration(duration)
         self.monitor.record_operation(self.operation_name, duration)
-        log_performance(self.operation_name, duration, "Operation completed")
+        log_performance(f"{self.operation_name} - Operation completed", duration)

@@ -1,14 +1,43 @@
-"""Result formatter for SearchContentTool.
+#!/usr/bin/env python3
+"""
+Result Formatter for SearchContentTool.
 
-This module provides formatting logic for search results.
+This module provides comprehensive formatting logic for search results,
+supporting multiple output formats and suppression modes.
+
+Key Features:
+    - TOON format conversion for structured output
+    - JSON format support for machine-readable results
+    - Minimal result creation for suppressed output
+    - File output formatting integration
+    - Integer result passthrough for total_only mode
+
+Classes:
+    SearchResultFormatter: Main formatter for search tool results
+
+Version: 1.10.5
+Date: 2026-01-28
+Author: tree-sitter-analyzer team
 """
 
-import logging
-from typing import Any
+from __future__ import annotations
 
-from tree_sitter_analyzer.mcp.utils.format_helper import (
-    apply_toon_format_to_response,
-)
+import logging
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from tree_sitter_analyzer.mcp.utils.format_helper import (
+        apply_toon_format_to_response,
+    )
+else:
+    try:
+        from tree_sitter_analyzer.mcp.utils.format_helper import (
+            apply_toon_format_to_response,
+        )
+    except ImportError as e:
+        logging.warning(f"Import fallback triggered in search_formatter: {e}")
+
+__all__ = ["SearchResultFormatter"]
 
 logger = logging.getLogger(__name__)
 

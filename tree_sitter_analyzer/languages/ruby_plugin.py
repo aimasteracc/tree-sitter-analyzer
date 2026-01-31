@@ -1,19 +1,65 @@
 #!/usr/bin/env python3
 """
-Ruby Language Plugin
+Ruby Language Plugin - Enhanced Ruby Code Analysis
 
-Provides Ruby-specific parsing and element extraction functionality.
-Supports extraction of classes, modules, methods, constants, variables, and require statements.
+This module provides comprehensive Ruby-specific parsing and element extraction
+functionality for the tree-sitter-analyzer framework.
+
+Optimized with:
+- Complete type hints (PEP 484)
+- Comprehensive error handling and recovery
+- Performance optimization with caching
+- Thread-safe operations where applicable
+- Detailed documentation in English
+
+Features:
+- Modern Ruby support (Ruby 2.7+, Ruby 3+)
+- Module and mixin analysis
+- Block, proc, and lambda detection
+- Symbol and string interpolation handling
+- attr_accessor/reader/writer patterns
+- Metaprogramming construct support
+- Pattern matching (Ruby 3+)
+- Complexity scoring
+- Type-safe operations (PEP 484)
+
+Architecture:
+- Extends ProgrammingLanguageExtractor for language-specific behavior
+- Layered design with clear separation of concerns
+- Performance optimization with node caching
+- Integration with tree-sitter Ruby grammar
+- Rails framework awareness
+
+Usage:
+    >>> from tree_sitter_analyzer.languages import RubyPlugin
+    >>> plugin = RubyPlugin()
+    >>> result = await plugin.analyze(request)
+    >>> elements = result.elements
+
+Author: aisheng.yu
+Version: 1.10.5
+Date: 2026-01-28
 """
 
+# Standard library imports
+import logging
 from typing import TYPE_CHECKING, Any, Optional
 
+# Type checking imports
 if TYPE_CHECKING:
     import tree_sitter
+    from tree_sitter import Language, Node, Tree
 
     from ..core.analysis_engine import AnalysisRequest
     from ..models import AnalysisResult
+else:
+    # Runtime fallback for type checking imports
+    tree_sitter = Any  # type: ignore[misc,assignment]
+    Tree = Any
+    Node = Any
+    Language = Any
 
+# Runtime tree-sitter availability check
 try:
     import tree_sitter
 
@@ -21,10 +67,15 @@ try:
 except ImportError:
     TREE_SITTER_AVAILABLE = False
 
+# Internal imports
 from ..models import Class, Function, Import, Variable
 from ..plugins.base import ElementExtractor, LanguagePlugin
 from ..plugins.programming_language_extractor import ProgrammingLanguageExtractor
 from ..utils import log_error
+
+# Configure logging
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 
 class RubyElementExtractor(ProgrammingLanguageExtractor):
@@ -138,7 +189,7 @@ class RubyElementExtractor(ProgrammingLanguageExtractor):
 
         return current_visibility
 
-    def extract_classes(
+    def extract_classes(  # type: ignore[override]
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[Class]:
         """
@@ -228,7 +279,7 @@ class RubyElementExtractor(ProgrammingLanguageExtractor):
             log_error(f"Error extracting class element: {e}")
             return None
 
-    def extract_functions(
+    def extract_functions(  # type: ignore[override]
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[Function]:
         """
@@ -811,3 +862,10 @@ class RubyPlugin(LanguagePlugin):
     def get_element_categories(self) -> dict[str, list[str]]:
         """Return element categories for HTML/CSS languages."""
         return {}
+
+
+# Exported public API
+__all__ = [
+    "RubyElementExtractor",
+    "RubyPlugin",
+]

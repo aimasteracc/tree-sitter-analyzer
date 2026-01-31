@@ -1,21 +1,51 @@
 #!/usr/bin/env python3
 """
-Query Service
+Query Service - Unified Tree-sitter Query Interface.
 
-Unified query service for both CLI and MCP interfaces to avoid code duplication.
-Provides core tree-sitter query functionality including predefined and custom queries.
+Unified query service for both CLI and MCP interfaces providing core
+tree-sitter query functionality with predefined and custom query support.
+
+Key Features:
+    - Predefined query execution (functions, classes, imports)
+    - Custom query string support
+    - Result filtering with QueryFilter integration
+    - Async query execution support
+    - Plugin-based language detection
+    - Parser integration for tree generation
+
+Classes:
+    QueryService: Main service class for query operations
+
+Version: 1.10.5
+Date: 2026-01-28
+Author: tree-sitter-analyzer team
 """
+
+from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from ..encoding_utils import read_file_safe
-from ..plugins.manager import PluginManager
-from ..query_loader import query_loader
-from ..utils.tree_sitter_compat import TreeSitterQueryCompat, get_node_text_safe
-from .parser import Parser
-from .query_filter import QueryFilter
+if TYPE_CHECKING:
+    from ..encoding_utils import read_file_safe
+    from ..plugins.manager import PluginManager
+    from ..query_loader import query_loader
+    from ..utils.tree_sitter_compat import TreeSitterQueryCompat, get_node_text_safe
+    from .parser import Parser
+    from .query_filter import QueryFilter
+else:
+    try:
+        from ..encoding_utils import read_file_safe
+        from ..plugins.manager import PluginManager
+        from ..query_loader import query_loader
+        from ..utils.tree_sitter_compat import TreeSitterQueryCompat, get_node_text_safe
+        from .parser import Parser
+        from .query_filter import QueryFilter
+    except ImportError as e:
+        logging.warning(f"Import fallback triggered in query_service: {e}")
+
+__all__ = ["QueryService"]
 
 logger = logging.getLogger(__name__)
 
@@ -176,7 +206,7 @@ class QueryService:
         Returns:
             List of available query keys
         """
-        return query_loader.list_queries(language)
+        return query_loader.list_queries(language)  # type: ignore
 
     def get_query_description(self, language: str, query_key: str) -> str | None:
         """
@@ -190,7 +220,7 @@ class QueryService:
             Query description, or None if not found
         """
         try:
-            return query_loader.get_query_description(language, query_key)
+            return query_loader.get_query_description(language, query_key)  # type: ignore
         except Exception:
             return None
 

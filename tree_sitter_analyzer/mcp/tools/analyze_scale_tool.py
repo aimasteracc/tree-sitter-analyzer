@@ -1,31 +1,70 @@
 #!/usr/bin/env python3
 """
-Analyze Code Scale MCP Tool
+Analyze Code Scale MCP Tool.
 
-This tool provides code scale analysis including metrics about
-complexity, size, and structure through the MCP protocol.
-Enhanced for LLM-friendly analysis workflow.
+This tool provides comprehensive code scale analysis including metrics about
+complexity, size, and structure through the MCP protocol, enhanced for
+LLM-friendly analysis workflow.
+
+Key Features:
+    - Code complexity and size metrics calculation
+    - Element count analysis (classes, functions, variables)
+    - Structure analysis with nested element tracking
+    - Multiple output formats for LLM consumption
+    - Performance optimization with caching
+    - Language-agnostic analysis with detector integration
+
+Classes:
+    AnalyzeScaleTool: MCP tool for code scale and complexity analysis
+
+Version: 1.10.5
+Date: 2026-01-28
+Author: tree-sitter-analyzer team
 """
 
-from pathlib import Path
-from typing import Any
+from __future__ import annotations
 
-from ...constants import (
-    ELEMENT_TYPE_CLASS,
-    ELEMENT_TYPE_FUNCTION,
-    ELEMENT_TYPE_IMPORT,
-    ELEMENT_TYPE_VARIABLE,
-    is_element_of_type,
-)
-from ...core.analysis_engine import AnalysisRequest, get_analysis_engine
-from ...language_detector import detect_language_from_file
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from ...constants import (
+        ELEMENT_TYPE_CLASS,
+        ELEMENT_TYPE_FUNCTION,
+        ELEMENT_TYPE_IMPORT,
+        ELEMENT_TYPE_VARIABLE,
+        is_element_of_type,
+    )
+    from ...core.analysis_engine import AnalysisRequest, get_analysis_engine
+    from ...language_detector import detect_language_from_file
+    from ..utils.file_metrics import compute_file_metrics
+    from ..utils.format_helper import apply_toon_format_to_response
+    from .base_tool import BaseMCPTool
+else:
+    try:
+        from ...constants import (
+            ELEMENT_TYPE_CLASS,
+            ELEMENT_TYPE_FUNCTION,
+            ELEMENT_TYPE_IMPORT,
+            ELEMENT_TYPE_VARIABLE,
+            is_element_of_type,
+        )
+        from ...core.analysis_engine import AnalysisRequest, get_analysis_engine
+        from ...language_detector import detect_language_from_file
+        from ..utils.file_metrics import compute_file_metrics
+        from ..utils.format_helper import apply_toon_format_to_response
+        from .base_tool import BaseMCPTool
+    except ImportError as e:
+        import logging
+
+        logging.warning(f"Import fallback triggered in analyze_scale_tool: {e}")
+
 from ...utils import setup_logger
-from ..utils.file_metrics import compute_file_metrics
-from ..utils.format_helper import apply_toon_format_to_response
-from .base_tool import BaseMCPTool
+
+__all__ = ["AnalyzeScaleTool"]
 
 # Set up logging
-logger = setup_logger(__name__)
+logger = setup_logger(__name__)  # type: ignore
 
 
 class AnalyzeScaleTool(BaseMCPTool):
@@ -424,7 +463,7 @@ class AnalyzeScaleTool(BaseMCPTool):
                         include_complexity=True,
                         include_details=True,
                     )
-                    analysis_result = await self.analysis_engine.analyze(request)
+                    analysis_result = await self.analysis_engine.analyze(request)  # type: ignore
                     if analysis_result is None:
                         raise RuntimeError(f"Failed to analyze file: {file_path}")
                     # Extract structural overview
@@ -438,7 +477,7 @@ class AnalyzeScaleTool(BaseMCPTool):
                         language=language,
                         include_details=include_details,
                     )
-                    universal_result = await self.analysis_engine.analyze(request)
+                    universal_result = await self.analysis_engine.analyze(request)  # type: ignore
                     if not universal_result or not universal_result.success:
                         error_msg = (
                             universal_result.error_message or "Unknown error"

@@ -1,26 +1,59 @@
 #!/usr/bin/env python3
 """
-search_content MCP Tool (ripgrep wrapper)
+search_content MCP Tool (ripgrep wrapper).
 
-Search content in files under roots or an explicit file list using ripgrep --json.
+Search content in files under roots or explicit file lists using ripgrep --json
+with advanced filtering, caching, and output formatting capabilities.
+
+Key Features:
+    - Ripgrep-based content search with --json output parsing
+    - Search result caching for performance optimization
+    - Multiple output formats (toon, json) with file output support
+    - Argument validation with SearchArgumentValidator
+    - ContentSearchStrategy for search execution
+    - Error handling with MCP-specific decorators
+
+Classes:
+    SearchContentTool: MCP tool for content searching
+
+Version: 1.10.5
+Date: 2026-01-28
+Author: tree-sitter-analyzer team
 """
 
 from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from ..utils.error_handler import handle_mcp_errors
-from ..utils.file_output_manager import FileOutputManager
-from ..utils.search_cache import get_default_cache
-from .base_tool import BaseMCPTool
-from .fd_rg import check_external_command
-from .formatters.search_formatter import SearchResultFormatter
-from .output_format_validator import get_default_validator
-from .search_strategies.base import SearchContext
-from .search_strategies.content_search import ContentSearchStrategy
-from .validators.search_validator import SearchArgumentValidator
+if TYPE_CHECKING:
+    from ..utils.error_handler import handle_mcp_errors
+    from ..utils.file_output_manager import FileOutputManager
+    from ..utils.search_cache import get_default_cache
+    from .base_tool import BaseMCPTool
+    from .fd_rg import check_external_command
+    from .formatters.search_formatter import SearchResultFormatter
+    from .output_format_validator import get_default_validator
+    from .search_strategies.base import SearchContext
+    from .search_strategies.content_search import ContentSearchStrategy
+    from .validators.search_validator import SearchArgumentValidator
+else:
+    try:
+        from ..utils.error_handler import handle_mcp_errors
+        from ..utils.file_output_manager import FileOutputManager
+        from ..utils.search_cache import get_default_cache
+        from .base_tool import BaseMCPTool
+        from .fd_rg import check_external_command
+        from .formatters.search_formatter import SearchResultFormatter
+        from .output_format_validator import get_default_validator
+        from .search_strategies.base import SearchContext
+        from .search_strategies.content_search import ContentSearchStrategy
+        from .validators.search_validator import SearchArgumentValidator
+    except ImportError as e:
+        logging.warning(f"Import fallback triggered in search_content_tool: {e}")
+
+__all__ = ["SearchContentTool"]
 
 logger = logging.getLogger(__name__)
 

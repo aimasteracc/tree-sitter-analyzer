@@ -1,14 +1,35 @@
 #!/usr/bin/env python3
 """
-Output Manager for CLI
+Output Manager for CLI.
 
 Handles different types of outputs: user information, errors, and structured data.
+
+Key Features:
+    - Multiple format support (yaml, csv, table, toon)
+    - Stream-based output (stdout, stderr)
+    - Structured data formatting
+    - Error and warning output
+
+Version: 1.10.5
+Date: 2026-01-28
 """
 
-import sys
-from typing import Any
+from __future__ import annotations
 
-from .utils import log_error, log_warning
+import sys
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from .utils import log_error, log_warning
+else:
+    try:
+        from .utils import log_error, log_warning
+    except ImportError as e:
+        import logging
+
+        logging.warning(f"Import fallback triggered in output_manager: {e}")
+
+__all__ = ["OutputManager"]
 
 
 class OutputManager:

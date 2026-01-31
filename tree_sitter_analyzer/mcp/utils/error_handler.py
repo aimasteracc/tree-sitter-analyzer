@@ -1,10 +1,33 @@
 #!/usr/bin/env python3
 """
-Error Handler for MCP Server
+Error Handler for MCP Server.
 
-This module provides comprehensive error handling and recovery
-mechanisms for the MCP server operations.
+This module provides comprehensive error handling and recovery mechanisms
+for the MCP server operations with classification, severity levels, and
+decorator-based error management.
+
+Key Features:
+    - MCPError exception hierarchy with category/severity
+    - Error classification (FILE_ACCESS, PARSING, ANALYSIS, etc.)
+    - Severity levels (LOW, MEDIUM, HIGH, CRITICAL)
+    - Decorator-based error handling with recovery logic
+    - Async error handling support
+    - Error logging with detailed context
+
+Classes:
+    ErrorSeverity: Enum for error severity levels
+    ErrorCategory: Enum for error classification
+    MCPError: Base exception class for MCP-specific errors
+
+Functions:
+    handle_mcp_errors: Decorator for MCP error handling
+
+Version: 1.10.5
+Date: 2026-01-28
+Author: tree-sitter-analyzer team
 """
+
+from __future__ import annotations
 
 import asyncio
 import logging
@@ -14,6 +37,13 @@ from datetime import datetime
 from enum import Enum
 from functools import wraps
 from typing import Any
+
+__all__ = [
+    "ErrorSeverity",
+    "ErrorCategory",
+    "MCPError",
+    "handle_mcp_errors",
+]
 
 logger = logging.getLogger(__name__)
 

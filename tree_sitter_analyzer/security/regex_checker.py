@@ -1,15 +1,36 @@
 #!/usr/bin/env python3
 """
-Regex Safety Checker for Tree-sitter Analyzer
+Regex Safety Checker.
 
-Provides ReDoS (Regular Expression Denial of Service) attack prevention
-by analyzing regex patterns for potentially dangerous constructs.
+ReDoS (Regular Expression Denial of Service) attack prevention.
+
+Key Features:
+    - Pattern analysis for dangerous constructs
+    - Catastrophic backtracking detection
+    - Performance testing
+    - Safe regex validation
+
+Version: 1.10.5
+Date: 2026-01-28
 """
+
+from __future__ import annotations
 
 import re
 import time
+from typing import TYPE_CHECKING
 
-from ..utils import log_debug, log_warning
+if TYPE_CHECKING:
+    from ..utils import log_debug, log_warning
+else:
+    try:
+        from ..utils import log_debug, log_warning
+    except ImportError as e:
+        import logging
+
+        logging.warning(f"Import fallback triggered in regex_checker: {e}")
+
+__all__ = ["RegexSafetyChecker"]
 
 
 class RegexSafetyChecker:

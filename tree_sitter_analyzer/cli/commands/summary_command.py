@@ -1,21 +1,50 @@
 #!/usr/bin/env python3
 """
-Summary Command
+Summary Command.
 
-Handles summary functionality with specified element types.
+Handles summary functionality with element type filtering.
+
+Key Features:
+    - Element count summaries
+    - Type-based filtering
+    - Statistical analysis
+    - TOON formatter support
+
+Version: 1.10.5
+Date: 2026-01-28
 """
+
+from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from ...constants import (
-    ELEMENT_TYPE_CLASS,
-    ELEMENT_TYPE_FUNCTION,
-    ELEMENT_TYPE_IMPORT,
-    ELEMENT_TYPE_VARIABLE,
-    is_element_of_type,
-)
-from ...output_manager import output_data, output_json, output_section
-from .base_command import BaseCommand
+if TYPE_CHECKING:
+    from ...constants import (
+        ELEMENT_TYPE_CLASS,
+        ELEMENT_TYPE_FUNCTION,
+        ELEMENT_TYPE_IMPORT,
+        ELEMENT_TYPE_VARIABLE,
+        is_element_of_type,
+    )
+    from ...output_manager import output_data, output_json, output_section
+    from .base_command import BaseCommand
+else:
+    try:
+        from ...constants import (
+            ELEMENT_TYPE_CLASS,
+            ELEMENT_TYPE_FUNCTION,
+            ELEMENT_TYPE_IMPORT,
+            ELEMENT_TYPE_VARIABLE,
+            is_element_of_type,
+        )
+        from ...output_manager import output_data, output_json, output_section
+        from .base_command import BaseCommand
+    except ImportError as e:
+        import logging
+
+        logging.warning(f"Import fallback triggered in summary_command: {e}")
+
+__all__ = ["SummaryCommand"]
 
 # TOON formatter for CLI output
 try:
@@ -40,7 +69,7 @@ class SummaryCommand(BaseCommand):
         self._output_summary_analysis(analysis_result)
         return 0
 
-    def _output_summary_analysis(self, analysis_result: "AnalysisResult") -> None:
+    def _output_summary_analysis(self, analysis_result: AnalysisResult) -> None:
         """Output summary analysis results."""
         output_section("Summary Results")
 

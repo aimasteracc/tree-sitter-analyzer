@@ -18,13 +18,15 @@ Version: 1.10.5
 Date: 2026-01-28
 """
 
-import importlib.util
-import sys
-from typing import TYPE_CHECKING, Optional, Dict, List, Any, Union, Tuple, Callable, Type
 import functools
+import importlib.util
 import threading
 import time
-from pathlib import Path
+from contextlib import nullcontext
+from typing import (
+    TYPE_CHECKING,
+    Any,
+)
 
 # Type checking setup
 if TYPE_CHECKING:
@@ -36,10 +38,7 @@ if TYPE_CHECKING:
     # Utilities
     from .utils import (
         log_debug,
-        log_info,
         log_warning,
-        log_error,
-        log_performance,
     )
 else:
     # Runtime imports (when type checking is disabled)
@@ -52,10 +51,8 @@ else:
 # Type Definitions
 # ============================================================================
 
-if sys.version_info >= (3, 8):
-    from typing import Protocol
-else:
-    Protocol = object
+from typing import Protocol
+
 
 class LanguageLoaderProtocol(Protocol):
     """Protocol for language loader creation functions."""
@@ -76,6 +73,7 @@ class LanguageLoaderProtocol(Protocol):
 # ============================================================================
 # Custom Exceptions
 # ============================================================================
+
 
 class LanguageLoaderError(Exception):
     """Base exception for language loader errors."""
@@ -104,6 +102,7 @@ class ParserCreationError(LanguageLoaderError):
 # ============================================================================
 # Language Loader Configuration
 # ============================================================================
+
 
 class LanguageLoaderConfig:
     """Configuration for language loader."""
@@ -134,6 +133,7 @@ class LanguageLoaderConfig:
 # Language Loader
 # ============================================================================
 
+
 class LanguageLoader:
     """
     Optimized language loader with enhanced caching, lazy loading, and thread safety.
@@ -152,7 +152,7 @@ class LanguageLoader:
     """
 
     # Language modules mapping
-    LANGUAGE_MODULES: Dict[str, str] = {
+    LANGUAGE_MODULES: dict[str, str] = {
         "python": "tree_sitter_python",
         "javascript": "tree_sitter_javascript",
         "typescript": "tree_sitter_typescript",
@@ -183,7 +183,7 @@ class LanguageLoader:
     # Thread-safe lock for operations
     _lock: threading.RLock
 
-    def __init__(self, config: Optional[LanguageLoaderConfig] = None):
+    def __init__(self, config: LanguageLoaderConfig | None = None):
         """
         Initialize language loader.
 
@@ -193,13 +193,13 @@ class LanguageLoader:
         self.config = config or LanguageLoaderConfig()
 
         # Loaded language modules
-        self._loaded_modules: Dict[str, Any] = {}
+        self._loaded_modules: dict[str, Any] = {}
 
         # Parser cache (LRU)
-        self._parser_cache: Dict[str, Parser] = {}
+        self._parser_cache: dict[str, Parser] = {}
 
         # Language availability cache
-        self._availability_cache: Dict[str, bool] = {}
+        self._availability_cache: dict[str, bool] = {}
 
         # Unavailable languages set (to avoid repeated checks)
         self._unavailable_languages: set = set()
@@ -299,13 +299,15 @@ class LanguageLoader:
             return module
 
         except ImportError as e:
-            raise LanguageLoadError(f"Failed to import language module {module_name}: {e}")
+            raise LanguageLoadError(
+                f"Failed to import language module {module_name}: {e}"
+            ) from None
         except Exception as e:
-            raise LanguageLoadError(f"Failed to load language module {module_name}: {e}")
+            raise LanguageLoadError(
+                f"Failed to load language module {module_name}: {e}"
+            ) from None
 
-    def create_parser(
-        self, language: str, project_root: Optional[str] = None
-    ) -> Parser:
+    def create_parser(self, language: str, project_root: str | None = None) -> Parser:
         """
         Create a parser for a specified language with caching and error handling.
 
@@ -353,9 +355,13 @@ class LanguageLoader:
                 if hasattr(module, "language"):
                     language_func = module.language
                 else:
-                    raise ParserCreationError(f"Module {module.__name__} does not have language")
+                    raise ParserCreationError(
+                        f"Module {module.__name__} does not have language"
+                    )
         except Exception as e:
-            raise ParserCreationError(f"Failed to create parser for {language}: {e}")
+            raise ParserCreationError(
+                f"Failed to create parser for {language}: {e}"
+            ) from None
 
         # Create Tree-sitter Language object
         try:
@@ -376,13 +382,15 @@ class LanguageLoader:
                 except Exception as e:
                     raise ParserCreationError(
                         f"Failed to create Language object for {language}: {e}"
-                    )
+                    ) from None
 
             # Create parser
             try:
                 parser = Parser()
             except Exception as e:
-                raise ParserCreationError(f"Failed to create Parser for {language}: {e}")
+                raise ParserCreationError(
+                    f"Failed to create Parser for {language}: {e}"
+                ) from None
 
             # Set language properly for modern API
             if hasattr(parser, "set_language"):
@@ -390,7 +398,9 @@ class LanguageLoader:
             elif hasattr(parser, "language"):
                 parser.language = tree_sitter_language
             else:
-                raise ParserCreationError(f"Parser does not have set_language or language")
+                raise ParserCreationError(
+                    "Parser does not have set_language or language"
+                )
 
             end_time = time.perf_counter()
             log_debug(
@@ -408,11 +418,11 @@ class LanguageLoader:
             return parser
 
         except Exception as e:
-            raise ParserCreationError(f"Failed to create parser for {language}: {e}")
+            raise ParserCreationError(
+                f"Failed to create parser for {language}: {e}"
+            ) from None
 
-    def get_parser(
-        self, language: str, project_root: Optional[str] = None
-    ) -> Parser:
+    def get_parser(self, language: str, project_root: str | None = None) -> Parser:
         """
         Get a parser for a specified language (alias for create_parser).
 
@@ -432,7 +442,7 @@ class LanguageLoader:
         """
         return self.create_parser(language, project_root)
 
-    def get_supported_languages(self) -> List[str]:
+    def get_supported_languages(self) -> list[str]:
         """
         Get list of supported languages with availability checking.
 
@@ -448,7 +458,7 @@ class LanguageLoader:
                 supported.append(lang)
         return sorted(supported)
 
-    def get_available_languages(self) -> List[str]:
+    def get_available_languages(self) -> list[str]:
         """
         Get list of available languages (cached).
 
@@ -462,13 +472,14 @@ class LanguageLoader:
 
     def clear_cache(self) -> None:
         """Clear all caches (parser cache, module cache, availability cache)."""
-        with self._lock if self.config.enable_thread_safety else type(None):
+        lock_context = self._lock if self.config.enable_thread_safety else nullcontext()
+        with lock_context:
             self._parser_cache.clear()
             self._loaded_modules.clear()
             self._availability_cache.clear()
             self._unavailable_languages.clear()
 
-    def get_cache_stats(self) -> Dict[str, Any]:
+    def get_cache_stats(self) -> dict[str, Any]:
         """
         Get cache statistics.
 
@@ -494,12 +505,12 @@ class LanguageLoader:
 # ============================================================================
 
 # Global language loader instance (singleton pattern)
-_loader_instance: Optional[LanguageLoader] = None
+_loader_instance: LanguageLoader | None = None
 _loader_lock: threading.RLock = threading.RLock()
 
 
 @functools.lru_cache(maxsize=128, typed=True)
-def get_language_loader(project_root: Optional[str] = None) -> LanguageLoader:
+def get_language_loader(project_root: str | None = None) -> LanguageLoader:
     """
     Get language loader instance (singleton with caching).
 
@@ -527,7 +538,7 @@ def get_language_loader(project_root: Optional[str] = None) -> LanguageLoader:
         return _loader_instance
 
 
-def create_parser(language: str, project_root: Optional[str] = None) -> Parser:
+def create_parser(language: str, project_root: str | None = None) -> Parser:
     """
     Create a parser for a specified language (convenience function).
 
@@ -549,7 +560,7 @@ def create_parser(language: str, project_root: Optional[str] = None) -> Parser:
     return loader.get_parser(language, project_root)
 
 
-def get_parser_cached(language: str, project_root: Optional[str] = None) -> Parser:
+def get_parser_cached(language: str, project_root: str | None = None) -> Parser:
     """
     Create a parser with LRU caching (alternative function).
 
@@ -566,7 +577,7 @@ def get_parser_cached(language: str, project_root: Optional[str] = None) -> Pars
     return create_parser(language, project_root)
 
 
-def get_supported_languages() -> List[str]:
+def get_supported_languages() -> list[str]:
     """
     Get list of supported languages (convenience function).
 
@@ -611,6 +622,10 @@ def __getattr__(name: str) -> Any:
     Raises:
         ImportError: If component not found
     """
+    # Allow special attributes to raise AttributeError naturally
+    if name.startswith("_"):
+        raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
+
     # Handle legacy imports
     if name == "create_parser":
         return create_parser
@@ -629,4 +644,20 @@ def __getattr__(name: str) -> Any:
         module = __import__(f".{name}", fromlist=["__name__"])
         return module
     except ImportError:
-        raise ImportError(f"module {name} not found")
+        raise ImportError(f"module {name} not found") from None
+
+
+__all__: list[str] = [
+    "LanguageLoaderProtocol",
+    "LanguageLoaderError",
+    "LanguageNotAvailableError",
+    "LanguageLoadError",
+    "ParserCreationError",
+    "LanguageLoaderConfig",
+    "LanguageLoader",
+    "get_language_loader",
+    "create_parser",
+    "get_parser_cached",
+    "get_supported_languages",
+    "check_language_availability",
+]

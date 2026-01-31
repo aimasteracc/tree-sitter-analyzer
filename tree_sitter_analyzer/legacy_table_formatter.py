@@ -1,14 +1,26 @@
 #!/usr/bin/env python3
 """
-Legacy Table Formatter for Tree-sitter Analyzer
+Legacy Table Formatter for Tree-sitter Analyzer.
 
-This module provides the restored v1.6.1.4 TableFormatter implementation
-to ensure backward compatibility for analyze_code_structure tool.
+Restored v1.6.1.4 TableFormatter implementation for backward compatibility.
+
+Key Features:
+    - Backward compatible table formatting
+    - CSV and text table output
+    - analyze_code_structure tool compatibility
+    - Specification compliance
+
+Version: 1.10.5
+Date: 2026-01-28
 """
+
+from __future__ import annotations
 
 import csv
 import io
 from typing import Any
+
+__all__ = ["LegacyTableFormatter"]
 
 
 class LegacyTableFormatter:

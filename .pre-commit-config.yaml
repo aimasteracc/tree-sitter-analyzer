@@ -1,22 +1,28 @@
 # Pre-commit hooks for Tree-sitter Analyzer
 # Install: uv add --dev pre-commit && uv run pre-commit install
+# Version: 1.0.0 (Enhanced with quality rules)
+# Date: 2026-01-31
 
 repos:
-  # Python code formatting - disabled in favor of ruff-format
-  # - repo: https://github.com/psf/black
-  #   rev: 24.10.0
-  #   hooks:
-  #     - id: black
-  #       language_version: python3
-  #       args: [--line-length=88]
-
-  # Python linting and code quality
+  # Python linting and code quality (Priority 1)
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.8.4
     hooks:
+      # Critical errors check (blocking)
       - id: ruff
+        name: Ruff Critical Errors
+        args: [--select, F821,F822,B904]
+        stages: [pre-commit]
+
+      # Auto-fix common issues
+      - id: ruff
+        name: Ruff Auto-fix
         args: [--fix, --exit-non-zero-on-fix]
+        stages: [pre-commit]
+
+      # Format code
       - id: ruff-format
+        stages: [pre-commit]
 
   # Basic file checks
   - repo: https://github.com/pre-commit/pre-commit-hooks
@@ -42,6 +48,52 @@ repos:
       - id: check-docstring-first
       - id: debug-statements
       - id: name-tests-test
+        args: [--pytest-test-first]
+
+  # Custom local checks for quality rules
+  - repo: local
+    hooks:
+      # Planning structure check (blocking) - ensures .kiro/specs/ discipline
+      - id: check-planning-structure
+        name: Check Planning File Structure
+        entry: python scripts/check_planning_structure.py
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-commit]
+
+      # Python syntax check (blocking)
+      - id: python-syntax-check
+        name: Python Syntax Check
+        entry: python -m py_compile
+        language: system
+        types: [python]
+        stages: [pre-commit]
+
+      # Check for deprecated typing imports (blocking)
+      - id: no-deprecated-typing
+        name: No Deprecated Typing Imports
+        entry: bash -c 'if git diff --cached --name-only | grep "\.py$" | xargs grep -l "from typing import.*\(Dict\|List\|Tuple\|Type\)" 2>/dev/null; then echo "❌ Use dict, list, tuple, type instead of typing.Dict, List, Tuple, Type"; exit 1; fi'
+        language: system
+        pass_filenames: false
+        stages: [pre-commit]
+
+      # Import check (blocking)
+      - id: import-check
+        name: Import Validation
+        entry: python -c "import tree_sitter_analyzer"
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
+
+      # MyPy type check (warning only, manual)
+      - id: mypy-check
+        name: MyPy Type Check (manual)
+        entry: bash -c 'uv run mypy tree_sitter_analyzer/ --strict | head -20 || echo "⚠️ MyPy warnings"'
+        language: system
+        pass_filenames: false
+        stages: [manual]
+        verbose: true
         args: [--pytest-test-first]
         exclude: ^tests/integration/formatters/(cross_version_compatibility|format_monitor|generate_compatibility_report|update_baselines|validate_golden_masters|format_assertions|integration_tests|format_contract_tests|comprehensive_test_suite|enhanced_assertions|cross_component_tests|schema_validation|specification_compliance_tests|performance_tests|generate_regression_report|golden_master|end_to_end_tests)\.py$|^tests/integration/workflows/validate_.*\.py$|^tests/fixtures/.*\.py$
 

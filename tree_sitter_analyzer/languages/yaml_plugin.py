@@ -1,27 +1,73 @@
 #!/usr/bin/env python3
 """
-YAML Language Plugin
+YAML Language Plugin - Enhanced YAML Configuration Analysis
 
-YAML-specific parsing and element extraction functionality using tree-sitter-yaml.
-Provides comprehensive support for YAML elements including mappings, sequences,
-scalars, anchors, aliases, and comments.
+This module provides comprehensive YAML-specific parsing and element extraction
+functionality for the tree-sitter-analyzer framework using tree-sitter-yaml.
+
+Optimized with:
+- Complete type hints (PEP 484)
+- Comprehensive error handling and recovery
+- Performance optimization with caching
+- Thread-safe operations where applicable
+- Detailed documentation in English
+
+Features:
+- YAML 1.2 specification support
+- Mapping (dictionary) extraction
+- Sequence (list) parsing
+- Scalar value handling
+- Anchor and alias resolution
+- Comment preservation
+- Multi-document support
+- Type-safe operations (PEP 484)
+
+Architecture:
+- Extends MarkupLanguageExtractor for configuration file patterns
+- Layered design with clear separation of concerns
+- Performance optimization with node caching
+- Integration with tree-sitter YAML grammar
+- Parser pre-initialization for test stability
+
+Usage:
+    >>> from tree_sitter_analyzer.languages import YAMLPlugin
+    >>> plugin = YAMLPlugin()
+    >>> result = await plugin.analyze(request)
+    >>> elements = result.elements
+
+Author: aisheng.yu
+Version: 1.10.5
+Date: 2026-01-28
 """
 
+# Standard library imports
 import logging
 import threading
 from typing import TYPE_CHECKING, Any, cast
 
+# Type checking imports
+if TYPE_CHECKING:
+    import tree_sitter
+    from tree_sitter import Language, Node, Tree
+
+    from ..core.analysis_engine import AnalysisRequest
+    from ..models import AnalysisResult
+else:
+    # Runtime fallback for type checking imports
+    tree_sitter = Any  # type: ignore[misc,assignment]
+    Tree = Any
+    Node = Any
+    Language = Any
+
+# Internal imports
 from ..models import AnalysisResult, Class, CodeElement, Function, Import, Variable
 from ..plugins.base import LanguagePlugin
 from ..plugins.markup_language_extractor import MarkupLanguageExtractor
 from ..utils import log_debug, log_error, log_info, log_warning
 
-if TYPE_CHECKING:
-    import tree_sitter
-
-    from ..core.analysis_engine import AnalysisRequest
-
+# Configure logging
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 # Graceful degradation for tree-sitter-yaml
 try:
@@ -786,3 +832,10 @@ class YAMLPlugin(LanguagePlugin):
                 success=False,
                 error_message=str(e),
             )
+
+
+# Exported public API
+__all__ = [
+    "YAMLElement",
+    "YAMLPlugin",
+]

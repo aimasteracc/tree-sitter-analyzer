@@ -1,11 +1,20 @@
 #!/usr/bin/env python3
 """
-Cached Element Extractor
+Cached Element Extractor.
 
-Minimal base class providing basic caching and text extraction.
-Suitable for all language types as a foundation.
-Provides only essential functionality without imposing heavy machinery.
+Minimal base class with caching and text extraction for all language types.
+
+Key Features:
+    - Basic caching support
+    - Text extraction utilities
+    - Safe encoding handling
+    - Minimal overhead
+
+Version: 1.10.5
+Date: 2026-01-28
 """
+
+from __future__ import annotations
 
 from abc import ABC
 from typing import TYPE_CHECKING
@@ -13,9 +22,23 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     import tree_sitter
 
-from ..encoding_utils import extract_text_slice, safe_encode
-from ..utils import log_error
-from .base import ElementExtractor
+    from ..encoding_utils import extract_text_slice, safe_encode
+    from ..utils import log_error
+    from .base import ElementExtractor
+else:
+    try:
+        import tree_sitter  # type: ignore[import]
+
+        from ..encoding_utils import extract_text_slice, safe_encode
+        from ..utils import log_error
+        from .base import ElementExtractor
+    except ImportError as e:
+        import logging
+
+        logging.warning(f"Import fallback triggered in cached_element_extractor: {e}")
+        tree_sitter = None  # type: ignore[assignment]
+
+__all__ = ["CachedElementExtractor"]
 
 
 class CachedElementExtractor(ElementExtractor, ABC):
@@ -57,7 +80,7 @@ class CachedElementExtractor(ElementExtractor, ABC):
 
     def _get_node_text_optimized(
         self,
-        node: "tree_sitter.Node",
+        node: tree_sitter.Node,
         use_byte_offsets: bool = True,
     ) -> str:
         """
@@ -105,7 +128,7 @@ class CachedElementExtractor(ElementExtractor, ABC):
         self._node_text_cache[cache_key] = text
         return text
 
-    def _extract_text_by_bytes(self, node: "tree_sitter.Node") -> str:
+    def _extract_text_by_bytes(self, node: tree_sitter.Node) -> str:
         """
         Extract text using byte offsets (UTF-8 optimized).
 
@@ -125,7 +148,7 @@ class CachedElementExtractor(ElementExtractor, ABC):
             self._file_encoding,
         )
 
-    def _extract_text_by_position(self, node: "tree_sitter.Node") -> str:
+    def _extract_text_by_position(self, node: tree_sitter.Node) -> str:
         """
         Extract text using line/column positions (fallback method).
 

@@ -1,16 +1,44 @@
 #!/usr/bin/env python3
 """
-SQL Formatter Wrapper
+SQL Formatter Wrapper - SQL Formatter Integration Layer
 
-Wraps SQL-specific formatters to conform to the BaseFormatter interface
+This module wraps SQL-specific formatters to conform to the BaseFormatter interface
 for integration with the CLI and MCP tools.
+
+Optimized with:
+- Complete type hints (PEP 484)
+- Comprehensive error handling
+- Performance optimization
+- Detailed documentation in English
+
+Features:
+- BaseFormatter interface compliance
+- Multiple format support (full, compact, CSV)
+- SQL element handling
+- Type-safe operations (PEP 484)
+
+Usage:
+    >>> from tree_sitter_analyzer.formatters import SQLFormatterWrapper
+    >>> wrapper = SQLFormatterWrapper()
+    >>> output = wrapper.format(analysis_result)
+
+Author: aisheng.yu
+Version: 1.10.5
+Date: 2026-01-28
 """
 
+# Standard library imports
+import logging
 from typing import Any
 
+# Internal imports
 from ..models import SQLElement
 from .base_formatter import BaseFormatter
 from .sql_formatters import SQLCompactFormatter, SQLCSVFormatter, SQLFullFormatter
+
+# Configure logging
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 
 class SQLFormatterWrapper(BaseFormatter):

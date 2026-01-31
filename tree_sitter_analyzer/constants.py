@@ -1,11 +1,41 @@
 #!/usr/bin/env python3
 """
-Constants for tree-sitter-analyzer
+Constants for Tree-sitter Analyzer.
 
-This module defines constants used throughout the project to ensure consistency.
+Defines constants for element types, mappings, and backward compatibility.
+
+Key Features:
+    - Unified element type constants
+    - SQL element types
+    - Type mapping dictionaries
+    - Legacy compatibility
+
+Version: 1.10.5
+Date: 2026-01-28
 """
 
+from __future__ import annotations
+
 from typing import Any, cast
+
+__all__ = [
+    "ELEMENT_TYPE_CLASS",
+    "ELEMENT_TYPE_FUNCTION",
+    "ELEMENT_TYPE_VARIABLE",
+    "ELEMENT_TYPE_IMPORT",
+    "ELEMENT_TYPE_PACKAGE",
+    "ELEMENT_TYPE_ANNOTATION",
+    "ELEMENT_TYPE_SQL_TABLE",
+    "ELEMENT_TYPE_SQL_VIEW",
+    "ELEMENT_TYPE_SQL_PROCEDURE",
+    "ELEMENT_TYPE_SQL_FUNCTION",
+    "ELEMENT_TYPE_SQL_TRIGGER",
+    "ELEMENT_TYPE_SQL_INDEX",
+    "ELEMENT_TYPE_MAPPING",
+    "LEGACY_CLASS_MAPPING",
+    "is_element_of_type",
+    "get_element_type",
+]
 
 # Element types for unified element management system
 ELEMENT_TYPE_CLASS = "class"

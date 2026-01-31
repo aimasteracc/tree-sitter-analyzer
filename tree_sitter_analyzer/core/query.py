@@ -38,37 +38,40 @@ Date: 2026-01-28
 
 import hashlib
 import logging
-import os
 import threading
-import time
-from typing import TYPE_CHECKING, Any, Optional, List, Dict, Tuple, Union, Callable, Type, NamedTuple
-from functools import lru_cache, wraps
-from dataclasses import dataclass, field
-from pathlib import Path
+from contextlib import nullcontext
+from dataclasses import dataclass
+from functools import lru_cache
 from time import perf_counter
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Protocol,
+)
 
 # Type checking setup
 if TYPE_CHECKING:
     # Tree-sitter imports
-    from tree_sitter import Language, Node, Tree, Query as TreeQuery
+    from tree_sitter import Language, Node, Tree
+    from tree_sitter import Query as TreeQuery
 
     # Language loader imports
     from ..language_loader import LanguageLoader, LanguageLoaderType
+
+    # Utility imports
+    from ..utils.logging import (
+        log_debug,
+        log_error,
+        log_info,
+        log_performance,
+        log_warning,
+    )
 
     # Tree-sitter compatibility layer
     from ..utils.tree_sitter_compat import (
         TreeSitterQueryCompat,
         get_node_text_safe,
         log_api_info,
-    )
-
-    # Utility imports
-    from ..utils.logging import (
-        log_debug,
-        log_info,
-        log_warning,
-        log_error,
-        log_performance,
     )
 else:
     # Runtime imports (when type checking is disabled)
@@ -86,24 +89,20 @@ else:
     # Utility imports
     from ..utils.logging import (
         log_debug,
-        log_info,
-        log_warning,
         log_error,
+        log_info,
         log_performance,
+        log_warning,
     )
 
 # Configure logging
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-# ============================================================================
+# =====
 # Type Definitions
-# ============================================================================
+# =====
 
-if sys.version_info >= (3, 8):
-    from typing import Protocol
-else:
-    Protocol = object
 
 class QueryExecutorProtocol(Protocol):
     """Interface for query executor creation functions."""
@@ -120,10 +119,11 @@ class QueryExecutorProtocol(Protocol):
         """
         ...
 
+
 class CacheProtocol(Protocol):
     """Interface for cache services."""
 
-    def get(self, key: str) -> Optional[Any]:
+    def get(self, key: str) -> Any | None:
         """
         Get value from cache.
 
@@ -165,9 +165,11 @@ class PerformanceMonitorProtocol(Protocol):
         """
         ...
 
+
 # ============================================================================
 # Custom Exceptions
 # ============================================================================
+
 
 class QueryExecutorError(Exception):
     """Base exception for query executor errors."""
@@ -179,32 +181,38 @@ class QueryExecutorError(Exception):
 
 class InitializationError(QueryExecutorError):
     """Exception raised when query executor initialization fails."""
+
     pass
 
 
 class ExecutionError(QueryExecutorError):
     """Exception raised when query execution fails."""
+
     pass
 
 
 class UnsupportedQueryError(QueryExecutorError):
     """Exception raised when a query is not supported."""
+
     pass
 
 
 class ValidationError(QueryExecutorError):
     """Exception raised when query validation fails."""
+
     pass
 
 
 class CacheError(QueryExecutorError):
     """Exception raised when caching fails."""
+
     pass
 
 
 # ============================================================================
 # Data Classes
 # ============================================================================
+
 
 @dataclass
 class QueryResult:
@@ -221,11 +229,11 @@ class QueryResult:
     """
 
     query_name: str
-    captures: List[Dict[str, Any]]
+    captures: list[dict[str, Any]]
     query_string: str
     execution_time: float
     success: bool
-    error_message: Optional[str] = None
+    error_message: str | None = None
 
     @property
     def capture_count(self) -> int:
@@ -263,6 +271,7 @@ class QueryExecutorConfig:
 # Query Executor
 # ============================================================================
 
+
 class QueryExecutor:
     """
     Optimized query executor with comprehensive caching, performance monitoring,
@@ -292,11 +301,11 @@ class QueryExecutor:
     """
 
     # Class-level cache (shared across all instances)
-    _cache: Dict[str, QueryResult] = {}
+    _cache: dict[str, QueryResult] = {}
     _lock: threading.RLock = threading.RLock()
-    
+
     # Performance statistics
-    _stats: Dict[str, Any] = {
+    _stats: dict[str, Any] = {
         "total_queries": 0,
         "successful_queries": 0,
         "failed_queries": 0,
@@ -305,7 +314,7 @@ class QueryExecutor:
         "execution_times": [],
     }
 
-    def __init__(self, config: Optional[QueryExecutorConfig] = None):
+    def __init__(self, config: QueryExecutorConfig | None = None):
         """
         Initialize query executor with configuration.
 
@@ -315,10 +324,12 @@ class QueryExecutor:
         self._config = config or QueryExecutorConfig()
 
         # Thread-safe lock for operations
-        self._lock = threading.RLock() if self._config.enable_thread_safety else type(None)
+        self._lock: threading.RLock | None = (
+            threading.RLock() if self._config.enable_thread_safety else None  # type: ignore
+        )
 
         # Language loader instance (lazy loading)
-        self._language_loader: Optional[LanguageLoader] = None
+        self._language_loader: LanguageLoader | None = None
 
         # Performance statistics
         self._stats = {
@@ -334,20 +345,26 @@ class QueryExecutor:
         """
         Ensure language loader is initialized (lazy loading).
         """
-        with self._lock:
+        with (self._lock if self._lock else nullcontext()):
             if self._language_loader is None:
                 # Initialize language loader
                 if TYPE_CHECKING:
-                    from ..language_loader import create_parser_safely, get_language_loader
+                    from ..language_loader import (
+                        get_language_loader,
+                    )
                 else:
-                    from ..language_loader import create_parser_safely, get_language_loader
+                    from ..language_loader import (
+                        get_language_loader,
+                    )
 
                 try:
                     self._language_loader = get_language_loader()
                     log_debug("Language loader initialized")
                 except Exception as e:
                     log_error(f"Failed to initialize language loader: {e}")
-                    raise InitializationError(f"Failed to initialize language loader: {e}") from e
+                    raise InitializationError(
+                        f"Failed to initialize language loader: {e}"
+                    ) from e
 
         return self._language_loader
 
@@ -355,7 +372,7 @@ class QueryExecutor:
         self,
         query_string: str,
         language: str,
-        options: Dict[str, Any],
+        options: dict[str, Any],
     ) -> str:
         """
         Generate deterministic cache key from parameters.
@@ -387,8 +404,8 @@ class QueryExecutor:
         self,
         query_string: str,
         language: str,
-        options: Dict[str, Any],
-    ) -> Optional[QueryResult]:
+        options: dict[str, Any],
+    ) -> QueryResult | None:
         """
         Get cached query result.
 
@@ -404,7 +421,7 @@ class QueryExecutor:
             - Thread-safe operation
             - Uses LRU cache with TTL support
         """
-        with self._lock:
+        with (self._lock if self._lock else nullcontext()):
             if not self._config.enable_caching:
                 return None
 
@@ -424,7 +441,7 @@ class QueryExecutor:
         self,
         query_string: str,
         language: str,
-        options: Dict[str, Any],
+        options: dict[str, Any],
         result: QueryResult,
     ) -> None:
         """
@@ -441,7 +458,7 @@ class QueryExecutor:
             - Stores result in LRU cache
             - Evicts oldest entries if cache is full
         """
-        with self._lock:
+        with (self._lock if self._lock else nullcontext()):
             if not self._config.enable_caching:
                 return
 
@@ -450,7 +467,9 @@ class QueryExecutor:
             # Evict oldest entries if cache is too large
             if len(self._cache) >= self._config.cache_max_size:
                 # Sort by approximate insertion order (simple implementation)
-                keys_to_remove = list(self._cache.keys())[:len(self._cache) - self._config.cache_max_size + 1]
+                keys_to_remove = list(self._cache.keys())[
+                    : len(self._cache) - self._config.cache_max_size + 1
+                ]
                 for key in keys_to_remove:
                     del self._cache[key]
 
@@ -500,8 +519,8 @@ class QueryExecutor:
         tree: Tree,
         query_string: str,
         language: Language,
-        options: Dict[str, Any],
-    ) -> List[Dict[str, Any]]:
+        options: dict[str, Any],
+    ) -> list[dict[str, Any]]:
         """
         Execute query implementation.
 
@@ -522,10 +541,10 @@ class QueryExecutor:
         """
         try:
             # Create query object
-            query = Query(language, query_string)
+            query = TreeQuery(language, query_string)
 
             # Execute query
-            captures = query.captures(tree.root_node)
+            captures = query.captures(tree.root_node)  # type: ignore[attr-defined]
 
             # Process captures into standardized format
             processed_captures = []
@@ -537,7 +556,7 @@ class QueryExecutor:
 
                 # Extract node information
                 node = capture[0]
-                
+
                 # Get node text
                 node_text = get_node_text_safe(node, "")
 
@@ -571,7 +590,7 @@ class QueryExecutor:
         tree: Tree,
         language: str,
         query_string: str,
-        options: Optional[Dict[str, Any]] = None,
+        options: dict[str, Any] | None = None,
     ) -> QueryResult:
         """
         Execute a query with caching and performance monitoring.
@@ -595,7 +614,7 @@ class QueryExecutor:
             - Thread-safe operations
         """
         # Start performance monitoring
-        operation_name = f"query_{language}_{hash(query_string[:20])}"
+        f"query_{language}_{hash(query_string[:20])}"
         start_time = perf_counter()
 
         # Update statistics
@@ -615,7 +634,9 @@ class QueryExecutor:
                 )
 
             # Check cache
-            cached_result = self._get_cached_result(query_string, language, options or {})
+            cached_result = self._get_cached_result(
+                query_string, language, options or {}
+            )
             if cached_result is not None:
                 end_time = perf_counter()
                 execution_time = end_time - start_time
@@ -623,16 +644,24 @@ class QueryExecutor:
                 self._stats["successful_queries"] += 1
                 self._stats["execution_times"].append(execution_time)
 
-                log_performance(f"Query cache hit for {language}:{query_string[:50]}... in {execution_time:.3f}s")
+                log_performance(
+                    f"Query cache hit for {language}:{query_string[:50]}...",
+                    execution_time
+                )
 
                 return cached_result
 
             # Execute query
             language_loader = self._ensure_language_loader()
-            tree_sitter_language = language_loader.get_parser(language)
+            tree_sitter_parser = language_loader.get_parser(language)
+
+            # Get language from parser
+            tree_sitter_language = tree_sitter_parser.language
 
             # Execute query implementation
-            captures = self._execute_query_impl(tree, query_string, tree_sitter_language, options or {})
+            captures = self._execute_query_impl(
+                tree, query_string, tree_sitter_language, options or {}  # type: ignore
+            )
 
             # Create result
             end_time = perf_counter()
@@ -654,7 +683,10 @@ class QueryExecutor:
             self._stats["successful_queries"] += 1
             self._stats["execution_times"].append(execution_time)
 
-            log_performance(f"Query executed {language}:{query_string[:50]}... in {execution_time:.3f}s")
+            log_performance(
+                f"Query executed {language}:{query_string[:50]}...",
+                execution_time
+            )
 
             return result
 
@@ -680,9 +712,9 @@ class QueryExecutor:
         self,
         tree: Tree,
         language: str,
-        query_strings: List[str],
-        options: Optional[Dict[str, Any]] = None,
-    ) -> List[QueryResult]:
+        query_strings: list[str],
+        options: dict[str, Any] | None = None,
+    ) -> list[QueryResult]:
         """
         Execute multiple queries and return combined results.
 
@@ -710,26 +742,30 @@ class QueryExecutor:
                 results.append(result)
             except Exception as e:
                 log_error(f"Query execution failed for {query_string[:50]}...: {e}")
-                results.append(QueryResult(
-                    query_name="query",
-                    captures=[],
-                    query_string=query_string,
-                    execution_time=0.0,
-                    success=False,
-                    error_message=str(e),
-                ))
+                results.append(
+                    QueryResult(
+                        query_name="query",
+                        captures=[],
+                        query_string=query_string,
+                        execution_time=0.0,
+                        success=False,
+                        error_message=str(e),
+                    )
+                )
 
         end_time = perf_counter()
         execution_time = end_time - start_time
 
-        log_performance(f"Executed {len(query_strings)} queries in {execution_time:.3f}s")
+        log_performance(  # type: ignore
+            f"Executed {len(query_strings)} queries in {execution_time:.3f}s"
+        )
 
         return results
 
     def get_available_queries(
         self,
         language: str,
-    ) -> List[str]:
+    ) -> list[str]:
         """
         Get list of available queries for a language.
 
@@ -751,7 +787,7 @@ class QueryExecutor:
         self,
         language: str,
         query_name: str,
-    ) -> Optional[str]:
+    ) -> str | None:
         """
         Get description for a query.
 
@@ -779,14 +815,14 @@ class QueryExecutor:
             - Next query execution will re-execute
             - Resets internal cache statistics
         """
-        with self._lock:
+        with (self._lock if self._lock else nullcontext()):
             self._cache.clear()
             self._stats["cache_hits"] = 0
             self._stats["cache_misses"] = 0
 
         log_info("Query executor cache cleared")
 
-    def get_cache_stats(self) -> Dict[str, Any]:
+    def get_cache_stats(self) -> dict[str, Any]:
         """
         Get query cache statistics.
 
@@ -797,13 +833,14 @@ class QueryExecutor:
             - Returns cache size and hit/miss ratios
             - Returns query execution statistics
         """
-        with self._lock:
+        with (self._lock if self._lock else nullcontext()):
             return {
                 "cache_size": len(self._cache),
                 "cache_hits": self._stats["cache_hits"],
                 "cache_misses": self._stats["cache_misses"],
                 "cache_hit_ratio": (
-                    self._stats["cache_hits"] / (self._stats["cache_hits"] + self._stats["cache_misses"])
+                    self._stats["cache_hits"]
+                    / (self._stats["cache_hits"] + self._stats["cache_misses"])
                     if (self._stats["cache_hits"] + self._stats["cache_misses"]) > 0
                     else 0
                 ),
@@ -831,6 +868,7 @@ class QueryExecutor:
 # ============================================================================
 # Convenience Functions with LRU Caching
 # ============================================================================
+
 
 @lru_cache(maxsize=64, typed=True)
 def get_query_executor(project_root: str = ".") -> QueryExecutor:
@@ -895,11 +933,10 @@ def create_query_executor(
 # Module-level exports for backward compatibility
 # ============================================================================
 
-__all__: List[str] = [
+__all__: list[str] = [
     # Data classes
     "QueryResult",
     "QueryExecutorConfig",
-
     # Exceptions
     "QueryExecutorError",
     "InitializationError",
@@ -907,10 +944,8 @@ __all__: List[str] = [
     "UnsupportedQueryError",
     "ValidationError",
     "CacheError",
-
     # Main class
     "QueryExecutor",
-
     # Convenience functions
     "get_query_executor",
     "create_query_executor",
@@ -920,6 +955,7 @@ __all__: List[str] = [
 # ============================================================================
 # Module-level exports for backward compatibility
 # ============================================================================
+
 
 def __getattr__(name: str) -> Any:
     """
@@ -934,6 +970,10 @@ def __getattr__(name: str) -> Any:
     Raises:
         ImportError: If requested component is not found
     """
+    # Skip Python internal attributes
+    if name.startswith("_"):
+        raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
+
     # Handle specific imports
     if name == "QueryExecutor":
         return QueryExecutor
@@ -966,4 +1006,4 @@ def __getattr__(name: str) -> Any:
             module = __import__(f".{name}", fromlist=["__name__"])
             return module
         except ImportError:
-            raise ImportError(f"Module {name} not found in query package")
+            raise ImportError(f"Module {name} not found in query package") from None

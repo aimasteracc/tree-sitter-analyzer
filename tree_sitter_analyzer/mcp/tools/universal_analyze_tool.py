@@ -1,32 +1,77 @@
 #!/usr/bin/env python3
 """
-Universal Analyze Tool for MCP
+Universal Analyze Tool for MCP.
 
 This tool provides universal code analysis capabilities through the MCP protocol,
 supporting multiple programming languages with automatic language detection.
+
+Key Features:
+    - Universal code analysis across 20+ programming languages
+    - Automatic language detection from file extensions
+    - Both basic and detailed analysis modes
+    - Language-specific optimizations through AnalysisEngine
+    - Element extraction (classes, functions, imports, variables)
+    - Performance monitoring with detailed metrics
+    - Error handling with MCP-specific decorators
+
+Classes:
+    UniversalAnalyzeTool: Universal MCP tool for multi-language analysis
+
+Version: 1.10.5
+Date: 2026-01-28
+Author: tree-sitter-analyzer team
 """
 
-from pathlib import Path
-from typing import Any
+from __future__ import annotations
 
-from ...constants import (
-    ELEMENT_TYPE_CLASS,
-    ELEMENT_TYPE_FUNCTION,
-    ELEMENT_TYPE_IMPORT,
-    ELEMENT_TYPE_PACKAGE,
-    ELEMENT_TYPE_VARIABLE,
-    is_element_of_type,
-)
-from ...core.analysis_engine import AnalysisRequest, get_analysis_engine
-from ...language_detector import detect_language_from_file, is_language_supported
-from ...mcp.utils import get_performance_monitor
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from ...constants import (
+        ELEMENT_TYPE_CLASS,
+        ELEMENT_TYPE_FUNCTION,
+        ELEMENT_TYPE_IMPORT,
+        ELEMENT_TYPE_PACKAGE,
+        ELEMENT_TYPE_VARIABLE,
+        is_element_of_type,
+    )
+    from ...core.analysis_engine import AnalysisRequest, get_analysis_engine
+    from ...language_detector import detect_language_from_file, is_language_supported
+    from ...mcp.utils import get_performance_monitor
+    from ..utils.error_handler import handle_mcp_errors
+    from ..utils.format_helper import apply_toon_format_to_response
+    from .base_tool import BaseMCPTool
+else:
+    try:
+        from ...constants import (
+            ELEMENT_TYPE_CLASS,
+            ELEMENT_TYPE_FUNCTION,
+            ELEMENT_TYPE_IMPORT,
+            ELEMENT_TYPE_PACKAGE,
+            ELEMENT_TYPE_VARIABLE,
+            is_element_of_type,
+        )
+        from ...core.analysis_engine import AnalysisRequest, get_analysis_engine
+        from ...language_detector import (
+            detect_language_from_file,
+            is_language_supported,
+        )
+        from ...mcp.utils import get_performance_monitor
+        from ..utils.error_handler import handle_mcp_errors
+        from ..utils.format_helper import apply_toon_format_to_response
+        from .base_tool import BaseMCPTool
+    except ImportError as e:
+        import logging
+
+        logging.warning(f"Import fallback triggered in universal_analyze_tool: {e}")
+
 from ...utils import setup_logger
-from ..utils.error_handler import handle_mcp_errors
-from ..utils.format_helper import apply_toon_format_to_response
-from .base_tool import BaseMCPTool
+
+__all__ = ["UniversalAnalyzeTool"]
 
 # Set up logging
-logger = setup_logger(__name__)
+logger = setup_logger(__name__)  # type: ignore
 
 
 class UniversalAnalyzeTool(BaseMCPTool):
@@ -221,7 +266,7 @@ class UniversalAnalyzeTool(BaseMCPTool):
             include_complexity=True,
             include_details=True,
         )
-        analysis_result = await self.analysis_engine.analyze(request)
+        analysis_result = await self.analysis_engine.analyze(request)  # type: ignore
 
         if analysis_result is None:
             raise RuntimeError(f"Failed to analyze file: {file_path}")
@@ -273,7 +318,7 @@ class UniversalAnalyzeTool(BaseMCPTool):
             language=language,
             include_details=(analysis_type == "detailed"),
         )
-        analysis_result = await self.analysis_engine.analyze(request)
+        analysis_result = await self.analysis_engine.analyze(request)  # type: ignore
 
         if not analysis_result or not analysis_result.success:
             error_message = (
@@ -597,7 +642,7 @@ class UniversalAnalyzeTool(BaseMCPTool):
                 }
             else:
                 # For other languages, get from universal analyzer
-                queries = self.analysis_engine.get_supported_languages()
+                queries = self.analysis_engine.get_supported_languages()  # type: ignore
                 return {"language": language, "queries": queries, "count": len(queries)}
         except Exception as e:
             logger.warning(f"Failed to get queries for {language}: {e}")

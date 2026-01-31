@@ -1,16 +1,36 @@
-# Scripts 管理策略
+# Scripts Management Strategy
 
-## 🎯 **原则**
+## 🎯 **Principles**
 
-**不要为每个版本创建新脚本！** 这会导致项目难以维护。脚本应该是通用的、可重用的工具。
+**Don't create new scripts for every version!** This makes the project hard to maintain. Scripts should be generic, reusable tools.
 
-## 📁 **当前脚本清单**
+## 📁 **Current Script Inventory**
 
-### 🔧 **核心工具（保留）**
+### 🔧 **Core Tools (Keep)**
 
+#### 1. `check_code_quality.py` - Code Quality Checker ⭐
+- **Purpose**: Automated quality check for Level 2-3 optimization standards
+- **When to use**: 
+  - Before committing any Python code
+  - During code review
+  - As pre-commit hook
+- **Command**: `python scripts/check_code_quality.py <file_path>`
+- **Score**: >= 90/100 = PASS, 70-89 = PARTIAL, < 70 = FAIL
+- **Reference**: See `.github/copilot-instructions.md` and `CODING_STANDARDS.md`
 
+#### 2. `check_code_compliance.py` - Compliance Checker ⭐
+- **Purpose**: Batch check recently modified files for compliance
+- **When to use**:
+  - After making multiple code changes
+  - CI/CD pipeline integration
+  - Team code review
+- **Commands**:
+  - Check recent files: `python scripts/check_code_compliance.py`
+  - Check specific files: `python scripts/check_code_compliance.py file1.py file2.py`
+  - Verbose mode: `python scripts/check_code_compliance.py --verbose`
+- **Exit codes**: 0 = all passed, 1 = failures found, 2 = error
 
-#### 1. `sync_version_minimal.py` - 版本同步工具
+#### 3. `sync_version_minimal.py` - Version Sync Tool
 - **用途**: 同步核心文件中的版本号（pyproject.toml → __init__.py）
 - **何时使用**: 
   - 发布新版本前

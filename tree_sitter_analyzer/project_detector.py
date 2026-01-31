@@ -1,12 +1,28 @@
 #!/usr/bin/env python3
 """
-Project Root Detection
+Project Root Detection.
 
-Intelligent detection of project root directories based on common project markers.
+Intelligent detection of project root directories based on common markers.
+
+Key Features:
+    - Version control markers (.git, .hg)
+    - Language-specific markers (pyproject.toml, package.json)
+    - Build system markers (Makefile, CMakeLists.txt)
+    - Configurable marker priority
+
+Version: 1.10.5
+Date: 2026-01-28
 """
+
+from __future__ import annotations
 
 import logging
 from pathlib import Path
+
+__all__ = [
+    "detect_project_root",
+    "PROJECT_MARKERS",
+]
 
 logger = logging.getLogger(__name__)
 

@@ -25,93 +25,66 @@ Version: 1.10.5
 Date: 2026-01-28
 """
 
-import sys
-from typing import TYPE_CHECKING, List, Any, Optional, Dict, Union, Tuple
+from typing import TYPE_CHECKING, Any
 
 # Type checking setup
 if TYPE_CHECKING:
     # Tree-sitter compatibility
-    from ..tree_sitter_compat import (
+    # Encoding imports
+    from ..encoding_utils import (
+        ANYIO_AVAILABLE,
+        CHARDET_AVAILABLE,
+        detect_encoding,
+        read_file_safe,
+    )
+
+    # Logging imports
+    from .logging import (
+        LoggingConfig,
+        LoggingContext,
+        create_performance_logger,
+        log_debug,
+        log_error,
+        log_info,
+        log_performance,
+        log_warning,
+        safe_print,
+        setup_logger,
+        setup_safe_logging_shutdown,
+    )
+    from .tree_sitter_compat import (
         TreeSitterQueryCompat,
         get_node_text_safe,
         log_api_info,
-    )
-    
-    # Logging imports
-    from .logging import (
-        LoggerConfig,
-        LoggingContext,
-        QuietMode,
-        log_debug,
-        log_info,
-        log_warning,
-        log_error,
-        log_performance,
-        setup_logger,
-        create_performance_logger,
-        safe_print,
-        setup_safe_logging_shutdown,
-    )
-    
-    # Encoding imports
-    from ..encoding_utils import (
-        EncodingManager,
-        detect_encoding,
-        extract_text_slice,
-        read_file_safe,
-        safe_decode,
-        safe_encode,
-        write_file_safe,
-        EncodingManagerType,
-        FilePath,
-        TextEncoding,
-        DecodedText,
-        read_file_safe_streaming,
-        clear_encoding_cache,
-        get_encoding_cache_size,
     )
 else:
     # Runtime imports (when type checking is disabled)
     # Tree-sitter compatibility
-    from ..tree_sitter_compat import (
+    # Encoding imports
+    from ..encoding_utils import (
+        ANYIO_AVAILABLE,
+        CHARDET_AVAILABLE,
+        detect_encoding,
+        read_file_safe,
+    )
+
+    # Logging imports
+    from .logging import (
+        LoggingConfig,
+        LoggingContext,
+        create_performance_logger,
+        log_debug,
+        log_error,
+        log_info,
+        log_performance,
+        log_warning,
+        setup_logger,
+        setup_safe_logging_shutdown,
+    )
+    from .tree_sitter_compat import (
         TreeSitterQueryCompat,
         get_node_text_safe,
         log_api_info,
-    )
-    
-    # Logging imports
-    from .logging import (
-        LoggerConfig,
-        LoggingContext,
-        QuietMode,
-        log_debug,
-        log_info,
-        log_warning,
-        log_error,
-        log_performance,
-        setup_logger,
-        create_performance_logger,
-        safe_print,
-        setup_safe_logging_shutdown,
-        suppress_output,
-    )
-    
-    # Encoding imports
-    from ..encoding_utils import (
-        EncodingManager,
-        detect_encoding,
-        extract_text_slice,
-        read_file_safe,
-        safe_decode,
-        safe_encode,
-        write_file_safe,
-        EncodingManagerType,
-        FilePath,
-        TextEncoding,
-        DecodedText,
-        read_file_safe_streaming,
-        clear_encoding_cache,
-        get_encoding_cache_size,
     )
 
 # Version information
@@ -124,53 +97,39 @@ __email__: str = "aimasteracc@gmail.com"
 # Public API
 # ============================================================================
 
-__all__: List[str] = [
+__all__: list[str] = [
     # Version
     "__version__",
     "__author__",
     "__email__",
-    
     # Tree-sitter compatibility
     "TreeSitterQueryCompat",
     "get_node_text_safe",
     "log_api_info",
-    
     # Logging functionality
-    "LoggerConfig",
+    "LoggingConfig",
     "LoggingContext",
-    "QuietMode",
     "log_debug",
     "log_info",
     "log_warning",
     "log_error",
     "log_performance",
+    "safe_print",
     "setup_logger",
     "create_performance_logger",
-    "safe_print",
     "setup_safe_logging_shutdown",
-    "suppress_output",
-    
     # Encoding utilities
-    "EncodingManager",
-    "detect_encoding",
-    "extract_text_slice",
     "read_file_safe",
-    "safe_decode",
-    "safe_encode",
-    "write_file_safe",
-    "EncodingManagerType",
-    "FilePath",
-    "TextEncoding",
-    "DecodedText",
-    "read_file_safe_streaming",
-    "clear_encoding_cache",
-    "get_encoding_cache_size",
+    "detect_encoding",
+    "CHARDET_AVAILABLE",
+    "ANYIO_AVAILABLE",
 ]
 
 
 # ============================================================================
 # Convenience Functions
 # ============================================================================
+
 
 def get_logging_module() -> Any:
     """
@@ -179,7 +138,8 @@ def get_logging_module() -> Any:
     Returns:
         The logging module object
     """
-    import .logging as logging_module
+    from . import logging as logging_module
+
     return logging_module
 
 
@@ -190,7 +150,8 @@ def get_tree_sitter_compat_module() -> Any:
     Returns:
         The tree-sitter compatibility module object
     """
-    import ..tree_sitter_compat as compat_module
+    from .. import tree_sitter_compat as compat_module
+
     return compat_module
 
 
@@ -201,7 +162,8 @@ def get_encoding_module() -> Any:
     Returns:
         The encoding utilities module object
     """
-    import ..encoding_utils as encoding_module
+    from .. import encoding_utils as encoding_module
+
     return encoding_module
 
 
@@ -218,6 +180,7 @@ def get_performance_logger() -> Any:
 # ============================================================================
 # Module-level exports for backward compatibility
 # ============================================================================
+
 
 def __getattr__(name: str) -> Any:
     """
@@ -238,18 +201,19 @@ def __getattr__(name: str) -> Any:
         "get_node_text_safe",
         "log_api_info",
     ]:
-        from ..tree_sitter_compat import (
+        from .tree_sitter_compat import (
             TreeSitterQueryCompat,
             get_node_text_safe,
             log_api_info,
         )
+
         if name == "TreeSitterQueryCompat":
             return TreeSitterQueryCompat
         elif name == "get_node_text_safe":
             return get_node_text_safe
         elif name == "log_api_info":
             return log_api_info
-    
+
     # Handle logging imports
     elif name in [
         "LoggerConfig",
@@ -270,17 +234,18 @@ def __getattr__(name: str) -> Any:
             LoggerConfig,
             LoggingContext,
             QuietMode,
-            log_debug,
-            log_info,
-            log_warning,
-            log_error,
-            log_performance,
-            setup_logger,
             create_performance_logger,
+            log_debug,
+            log_error,
+            log_info,
+            log_performance,
+            log_warning,
             safe_print,
+            setup_logger,
             setup_safe_logging_shutdown,
             suppress_output,
         )
+
         if name == "LoggerConfig":
             return LoggerConfig
         elif name == "LoggingContext":
@@ -307,7 +272,7 @@ def __getattr__(name: str) -> Any:
             return setup_safe_logging_shutdown
         elif name == "suppress_output":
             return suppress_output
-    
+
     # Handle encoding imports
     elif name in [
         "EncodingManager",
@@ -327,20 +292,17 @@ def __getattr__(name: str) -> Any:
     ]:
         from ..encoding_utils import (
             EncodingManager,
+            clear_encoding_cache,
             detect_encoding,
             extract_text_slice,
+            get_encoding_cache_size,
             read_file_safe,
+            read_file_safe_streaming,
             safe_decode,
             safe_encode,
             write_file_safe,
-            EncodingManagerType,
-            FilePath,
-            TextEncoding,
-            DecodedText,
-            read_file_safe_streaming,
-            clear_encoding_cache,
-            get_encoding_cache_size,
         )
+
         if name == "EncodingManager":
             return EncodingManager
         elif name == "detect_encoding":
@@ -355,25 +317,17 @@ def __getattr__(name: str) -> Any:
             return safe_encode
         elif name == "write_file_safe":
             return write_file_safe
-        elif name == "EncodingManagerType":
-            return EncodingManagerType
-        elif name == "FilePath":
-            return FilePath
-        elif name == "TextEncoding":
-            return TextEncoding
-        elif name == "DecodedText":
-            return DecodedText
         elif name == "read_file_safe_streaming":
             return read_file_safe_streaming
         elif name == "clear_encoding_cache":
             return clear_encoding_cache
         elif name == "get_encoding_cache_size":
             return get_encoding_cache_size
-    
+
     # Default behavior
     try:
         # Try to import from current package
         module = __import__(f".{name}", fromlist=["__name__"])
         return module
     except ImportError:
-        raise ImportError(f"Module {name} not found in utils package")
+        raise ImportError(f"Module {name} not found in utils package") from None

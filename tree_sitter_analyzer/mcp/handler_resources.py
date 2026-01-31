@@ -1,4 +1,27 @@
-from typing import Any
+#!/usr/bin/env python3
+"""
+Resource Handler for MCP Server.
+
+This module provides resource handling for the MCP server, managing
+resource listing and content retrieval.
+
+Key Features:
+    - Resource discovery and listing
+    - Resource content retrieval
+    - MCP Resource protocol implementation
+    - Integration with code_file and project_stats resources
+
+Classes:
+    ResourceHandler: Main handler for MCP resource operations
+
+Version: 1.10.5
+Date: 2026-01-28
+Author: tree-sitter-analyzer team
+"""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any
 
 try:
     from mcp.types import Resource
@@ -14,9 +37,19 @@ except ImportError:
             self.mimeType = mimeType
 
 
-from ..utils import setup_logger
+if TYPE_CHECKING:
+    from ..utils import setup_logger
+else:
+    try:
+        from ..utils import setup_logger
+    except ImportError as e:
+        import logging
 
-logger = setup_logger(__name__)
+        logging.warning(f"Import fallback triggered in handler_resources: {e}")
+
+__all__ = ["ResourceHandler"]
+
+logger = setup_logger(__name__)  # type: ignore
 
 
 class ResourceHandler:

@@ -1,13 +1,34 @@
-"""Base classes for search strategies.
+#!/usr/bin/env python3
+"""
+Base Classes for Search Strategies.
 
 This module defines the abstract base class for search strategies and
-the search context dataclass.
+the SearchContext dataclass that encapsulates search operation parameters.
+
+Key Features:
+    - Abstract base class for search strategy implementations
+    - SearchContext dataclass with comprehensive search parameters
+    - Support for multiple output formats (toon, json)
+    - Flexible search options (case sensitivity, regex, word matching)
+    - Path optimization and file grouping capabilities
+
+Classes:
+    SearchContext: Dataclass containing search operation parameters
+    SearchStrategy: Abstract base class for search implementations
+
+Version: 1.10.5
+Date: 2026-01-28
+Author: tree-sitter-analyzer team
 """
+
+from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+__all__ = ["SearchContext", "SearchStrategy"]
 
 
 @dataclass

@@ -1,15 +1,37 @@
 #!/usr/bin/env python3
 """
-Gitignore Detection Utility
+Gitignore Detection Utility.
 
 Intelligently detects when .gitignore rules might interfere with file searches
 and suggests using --no-ignore option when appropriate.
+
+Key Features:
+    - Automatic detection of .gitignore interference
+    - Common ignore pattern recognition (build/, dist/, node_modules/)
+    - Smart --no-ignore suggestion for root searches
+    - .gitignore file parsing and pattern analysis
+    - Thread-safe singleton instance
+    - Project-aware detection logic
+
+Classes:
+    GitignoreDetector: Main detector class for gitignore analysis
+
+Functions:
+    get_default_detector: Get singleton GitignoreDetector instance
+
+Version: 1.10.5
+Date: 2026-01-28
+Author: tree-sitter-analyzer team
 """
+
+from __future__ import annotations
 
 import logging
 import os
 import threading
 from pathlib import Path
+
+__all__ = ["GitignoreDetector", "get_default_detector"]
 
 logger = logging.getLogger(__name__)
 

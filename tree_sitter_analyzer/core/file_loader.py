@@ -1,10 +1,32 @@
 #!/usr/bin/env python3
 """
-File Loader - Responsible for loading file content with encoding detection
+File Loader - Encoding Detection and Content Loading.
+
+This module provides file loading functionality with automatic encoding detection
+and comprehensive error handling.
+
+Key Features:
+    - Automatic encoding detection with chardet
+    - UTF-8/Latin-1 fallback support
+    - Clear error messages for loading failures
+    - Path validation and existence checking
+    - Project root awareness (backward compatibility)
+
+Classes:
+    FileLoadError: Exception for file loading errors
+    FileLoader: Main file loading class with encoding detection
+
+Version: 1.10.5
+Date: 2026-01-28
+Author: tree-sitter-analyzer team
 """
+
+from __future__ import annotations
 
 import os
 from pathlib import Path
+
+__all__ = ["FileLoadError", "FileLoader"]
 
 
 class FileLoadError(Exception):

@@ -36,46 +36,40 @@ Version: 1.10.5
 Date: 2026-01-28
 """
 
-import hashlib
 import logging
-import os
-import sys
 import threading
-import time
-from typing import TYPE_CHECKING, Any, Optional, List, Dict, Tuple, Union, Callable, Type, NamedTuple, Set
-from functools import lru_cache, wraps
-from dataclasses import dataclass, field
-from enum import Enum
-from pathlib import Path
+from contextlib import nullcontext
+from dataclasses import dataclass
+from functools import lru_cache
 from time import perf_counter
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Protocol,
+)
 
 # Type checking setup
 if TYPE_CHECKING:
     # Core imports
-    from ..core.analysis_engine import AnalysisEngine, AnalysisRequest, AnalysisResult
-    from ..core.parser import Parser, ParseResult
-    from ..core.query import QueryExecutor, QueryResult
-    from ..core.cache_service import CacheService, CacheConfig
-    from ..language_detector import LanguageDetector, LanguageInfo
-    from ..plugins.manager import PluginManager, PluginInfo
-    from ..plugins.programming_language_extractor import ProgrammingLanguageExtractor, ExtractionMetrics
-
-    # CLI imports
-    from .base import Command, CommandResult, ExecutionContext, CommandMetadata
-
     # Utility imports
     from ...utils.logging import (
-        LoggerConfig,
-        LoggingContext,
         log_debug,
-        log_info,
-        log_warning,
         log_error,
-        log_performance,
-        setup_logger,
-        create_performance_logger,
-        safe_print,
+        log_info,
     )
+    from ..core.analysis_engine import AnalysisEngine, AnalysisRequest, AnalysisResult
+    from ..core.cache_service import CacheConfig, CacheService
+    from ..core.parser import Parser, ParseResult
+    from ..core.query import QueryExecutor, QueryResult
+    from ..language_detector import LanguageDetector, LanguageInfo
+    from ..plugins.manager import PluginInfo, PluginManager
+    from ..plugins.programming_language_extractor import (
+        ExtractionMetrics,
+        ProgrammingLanguageExtractor,
+    )
+
+    # CLI imports
+    from .base import Command, CommandMetadata, CommandResult, ExecutionContext
 else:
     # Runtime imports (when type checking is disabled)
     # Core imports
@@ -104,25 +98,18 @@ else:
     # Utility imports
     from ...utils.logging import (
         log_debug,
-        log_info,
-        log_warning,
         log_error,
-        log_performance,
-        safe_print,
+        log_info,
     )
 
 # Configure logging
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-# ============================================================================
+# =====
 # Type Definitions
-# ============================================================================
+# =====
 
-if sys.version_info >= (3, 8):
-    from typing import Protocol
-else:
-    Protocol = object
 
 class AnalyzePerformanceToolProtocol(Protocol):
     """Interface for analyze performance tool command creation functions."""
@@ -139,10 +126,11 @@ class AnalyzePerformanceToolProtocol(Protocol):
         """
         ...
 
+
 class CacheProtocol(Protocol):
     """Interface for cache services."""
 
-    def get(self, key: str) -> Optional[Any]:
+    def get(self, key: str) -> Any | None:
         """
         Get value from cache.
 
@@ -168,6 +156,7 @@ class CacheProtocol(Protocol):
         """Clear all cache entries."""
         ...
 
+
 class PerformanceMonitorProtocol(Protocol):
     """Interface for performance monitoring."""
 
@@ -183,9 +172,11 @@ class PerformanceMonitorProtocol(Protocol):
         """
         ...
 
+
 # ============================================================================
 # Custom Exceptions
 # ============================================================================
+
 
 class AnalyzePerformanceToolError(Exception):
     """Base exception for analyze performance tool errors."""
@@ -197,27 +188,32 @@ class AnalyzePerformanceToolError(Exception):
 
 class InitializationError(AnalyzePerformanceToolError):
     """Exception raised when analyze performance tool initialization fails."""
+
     pass
 
 
 class ExecutionError(AnalyzePerformanceToolError):
     """Exception raised when performance analysis execution fails."""
+
     pass
 
 
 class ValidationError(AnalyzePerformanceToolError):
     """Exception raised when validation fails."""
+
     pass
 
 
 class CacheError(AnalyzePerformanceToolError):
     """Exception raised when caching fails."""
+
     pass
 
 
 # ============================================================================
 # Data Classes
 # ============================================================================
+
 
 @dataclass(frozen=True, slots=True)
 class PerformanceMetrics:
@@ -364,6 +360,7 @@ class AnalyzePerformanceToolConfig:
 # Analyze Performance Tool Command
 # ============================================================================
 
+
 class AnalyzePerformanceToolCommand(Command):
     """
     Optimized command for analyzing performance.
@@ -391,7 +388,7 @@ class AnalyzePerformanceToolCommand(Command):
         >>> print(result.message)
     """
 
-    def __init__(self, config: Optional[AnalyzePerformanceToolConfig] = None):
+    def __init__(self, config: AnalyzePerformanceToolConfig | None = None):
         """
         Initialize analyze performance tool command.
 
@@ -407,14 +404,16 @@ class AnalyzePerformanceToolCommand(Command):
         self._config = config or AnalyzePerformanceToolConfig()
 
         # Thread-safe lock for operations
-        self._lock = threading.RLock() if self._config.enable_thread_safety else type(None)
+        self._lock = (
+            threading.RLock() if self._config.enable_thread_safety else None
+        )
 
         # Performance components (lazy loading)
-        self._cache_service: Optional[CacheService] = None
-        self._performance_monitor: Optional[Any] = None
+        self._cache_service: CacheService | None = None
+        self._performance_monitor: Any | None = None
 
         # Performance samples
-        self._performance_samples: List[float] = []
+        self._performance_samples: list[float] = []
 
     def _ensure_components(self) -> None:
         """
@@ -427,12 +426,12 @@ class AnalyzePerformanceToolCommand(Command):
             - Initializes all performance components
             - Thread-safe operation
         """
-        with self._lock:
+        with (self._lock if self._lock else nullcontext()):
             if self._cache_service is None:
                 if TYPE_CHECKING:
-                    from ...core.cache_service import CacheService, CacheConfig
+                    from ...core.cache_service import CacheConfig, CacheService
                 else:
-                    from ...core.cache_service import CacheService, CacheConfig
+                    from ...core.cache_service import CacheConfig, CacheService
 
                 try:
                     cache_config = CacheConfig(
@@ -444,7 +443,9 @@ class AnalyzePerformanceToolCommand(Command):
                     log_debug("Cache service initialized")
                 except Exception as e:
                     log_error(f"Failed to initialize cache service: {e}")
-                    raise InitializationError(f"Failed to initialize cache service: {e}") from e
+                    raise InitializationError(
+                        f"Failed to initialize cache service: {e}"
+                    ) from e
 
     def execute(self, context: ExecutionContext) -> CommandResult:
         """
@@ -549,10 +550,7 @@ class AnalyzePerformanceToolCommand(Command):
         # Calculate average lookup time
         execution_times = stats.get("execution_times", [])
         average_lookup_time = (
-            sum(execution_times)
-            / len(execution_times)
-            if execution_times
-            else 0.0
+            sum(execution_times) / len(execution_times) if execution_times else 0.0
         )
 
         return CacheMetrics(
@@ -614,7 +612,12 @@ class AnalyzePerformanceToolCommand(Command):
             network_io=0,
         )
 
-    def _generate_output(self, cache_metrics: CacheMetrics, performance_metrics: PerformanceMetrics, resource_usage: ResourceUsage) -> str:
+    def _generate_output(
+        self,
+        cache_metrics: CacheMetrics,
+        performance_metrics: PerformanceMetrics,
+        resource_usage: ResourceUsage,
+    ) -> str:
         """
         Generate output in human-readable format.
 
@@ -646,7 +649,7 @@ class AnalyzePerformanceToolCommand(Command):
 
         return "\n".join(lines)
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         """
         Get analyze performance tool statistics.
 
@@ -658,7 +661,7 @@ class AnalyzePerformanceToolCommand(Command):
             - Returns cache statistics
             - Returns resource usage
         """
-        with self._lock:
+        with (self._lock if self._lock else nullcontext()):
             return {
                 "config": {
                     "project_root": self._config.project_root,
@@ -677,8 +680,11 @@ class AnalyzePerformanceToolCommand(Command):
 # Convenience Functions with LRU Caching
 # ============================================================================
 
+
 @lru_cache(maxsize=64, typed=True)
-def get_analyze_performance_tool_command(project_root: str = ".") -> AnalyzePerformanceToolCommand:
+def get_analyze_performance_tool_command(
+    project_root: str = ".",
+) -> AnalyzePerformanceToolCommand:
     """
     Get analyze performance tool command instance with LRU caching.
 
@@ -746,23 +752,20 @@ def create_analyze_performance_tool_command(
 # Module-level exports for backward compatibility
 # ============================================================================
 
-__all__: List[str] = [
+__all__: list[str] = [
     # Data classes
     "PerformanceMetrics",
     "CacheMetrics",
     "ResourceUsage",
     "AnalyzePerformanceToolConfig",
-
     # Exceptions
     "AnalyzePerformanceToolError",
     "InitializationError",
     "ExecutionError",
     "ValidationError",
     "CacheError",
-
     # Main class
     "AnalyzePerformanceToolCommand",
-
     # Convenience functions
     "get_analyze_performance_tool_command",
     "create_analyze_performance_tool_command",
@@ -772,6 +775,7 @@ __all__: List[str] = [
 # ============================================================================
 # Module-level exports for backward compatibility
 # ============================================================================
+
 
 def __getattr__(name: str) -> Any:
     """
@@ -806,6 +810,7 @@ def __getattr__(name: str) -> Any:
     ]:
         # Import from module
         import sys
+
         module = sys.modules[__name__]
         if module is None:
             raise ImportError(f"Module {name} not found")
@@ -821,4 +826,4 @@ def __getattr__(name: str) -> Any:
             module = __import__(f".{name}", fromlist=["__name__"])
             return module
         except ImportError:
-            raise ImportError(f"Module {name} not found")
+            raise ImportError(f"Module {name} not found") from None

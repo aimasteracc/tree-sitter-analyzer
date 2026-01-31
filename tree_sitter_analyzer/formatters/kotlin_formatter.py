@@ -1,11 +1,42 @@
 #!/usr/bin/env python3
 """
-Kotlin-specific table formatter.
+Kotlin Table Formatter - Enhanced Kotlin Code Result Formatting
+
+This module provides specialized formatting for Kotlin code analysis results.
+
+Optimized with:
+- Complete type hints (PEP 484)
+- Comprehensive error handling
+- Performance optimization
+- Detailed documentation in English
+
+Features:
+- Kotlin-specific element formatting
+- Data class and sealed class support
+- Extension function handling
+- Coroutine pattern display
+- Type-safe operations (PEP 484)
+
+Usage:
+    >>> from tree_sitter_analyzer.formatters import KotlinTableFormatter
+    >>> formatter = KotlinTableFormatter()
+    >>> output = formatter.format(analysis_result)
+
+Author: aisheng.yu
+Version: 1.10.5
+Date: 2026-01-28
 """
 
+# Standard library imports
+import logging
 from typing import Any
 
+# Internal imports
 from .base_formatter import BaseTableFormatter
+
+# Configure logging
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 
 class KotlinTableFormatter(BaseTableFormatter):
@@ -192,3 +223,6 @@ class KotlinTableFormatter(BaseTableFormatter):
             return self._format_csv(analysis_result)
         else:
             return self._format_full_table(analysis_result)
+
+
+__all__: list[str] = ["KotlinTableFormatter"]

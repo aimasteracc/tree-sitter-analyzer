@@ -1,14 +1,26 @@
 #!/usr/bin/env python3
 """
-MCP Output Normalizer
+MCP Output Normalizer.
 
-Normalizes MCP tool output for deterministic comparison in golden master tests.
-Handles volatile fields, path normalization, and key ordering.
+Normalizes MCP tool output for deterministic comparison.
+
+Key Features:
+    - Volatile field removal
+    - Path normalization
+    - Key ordering
+    - Cross-platform compatibility
+
+Version: 1.10.5
+Date: 2026-01-28
 """
+
+from __future__ import annotations
 
 import re
 from copy import deepcopy
 from typing import Any
+
+__all__ = ["MCPOutputNormalizer"]
 
 
 class MCPOutputNormalizer:

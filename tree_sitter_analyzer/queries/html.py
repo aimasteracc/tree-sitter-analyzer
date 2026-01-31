@@ -1,10 +1,21 @@
 #!/usr/bin/env python3
 """
-HTML Language Queries
+HTML Language Queries.
 
 Comprehensive Tree-sitter queries for HTML language constructs.
-Covers elements, attributes, text content, and document structure.
+
+Key Features:
+    - Elements and tags
+    - Attributes and values
+    - Text content
+    - Document structure
+    - HTML5 features
+
+Version: 1.10.5
+Date: 2026-01-28
 """
+
+from __future__ import annotations
 
 # HTML-specific query library
 HTML_QUERIES: dict[str, str] = {
@@ -541,3 +552,13 @@ def get_available_html_queries() -> list[str]:
         List of query names
     """
     return list(HTML_QUERIES.keys())
+
+
+__all__: list[str] = [
+    "get_html_query",
+    "get_html_query_description",
+    "get_query",
+    "get_all_queries",
+    "list_queries",
+    "get_available_html_queries",
+]

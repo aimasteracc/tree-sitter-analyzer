@@ -20,9 +20,12 @@ Date: 2026-01-28
 
 import functools
 import threading
-from typing import TYPE_CHECKING, Optional, Dict, List, Any, Union, Tuple, Callable, Type
 import time
-from pathlib import Path
+from contextlib import nullcontext
+from typing import (
+    TYPE_CHECKING,
+    Any,
+)
 
 # Type checking setup
 if TYPE_CHECKING:
@@ -35,8 +38,6 @@ if TYPE_CHECKING:
     from .utils import (
         log_debug,
         log_info,
-        log_warning,
-        log_error,
         log_performance,
     )
 else:
@@ -50,10 +51,8 @@ else:
 # Type Definitions
 # ============================================================================
 
-if sys.version_info >= (3, 8):
-    from typing import Protocol
-else:
-    Protocol = object
+from typing import Protocol
+
 
 class QueryLoaderProtocol(Protocol):
     """Interface for query loader creation functions."""
@@ -70,14 +69,17 @@ class QueryLoaderProtocol(Protocol):
         """
         ...
 
+
 class QueryProtocol(Protocol):
     """Protocol for Tree-sitter query objects."""
+
     pass
 
 
 # ============================================================================
 # Custom Exceptions
 # ============================================================================
+
 
 class QueryLoaderError(Exception):
     """Base exception for query loader errors."""
@@ -107,6 +109,7 @@ class QuerySyntaxError(QueryLoaderError):
 # Query Data Classes
 # ============================================================================
 
+
 class QueryInfo:
     """
     Information about a Tree-sitter query.
@@ -126,7 +129,7 @@ class QueryInfo:
         language: str,
         query_string: str,
         description: str = "",
-        metadata: Optional[Dict[str, Any]] = None,
+        metadata: dict[str, Any] | None = None,
     ):
         self.name = name
         self.language = language
@@ -139,6 +142,7 @@ class QueryInfo:
 # ============================================================================
 # Query Loader Configuration
 # ============================================================================
+
 
 class QueryLoaderConfig:
     """Configuration for query loader."""
@@ -172,6 +176,7 @@ class QueryLoaderConfig:
 # Query Loader
 # ============================================================================
 
+
 class QueryLoader:
     """
     Optimized query loader with enhanced caching, lazy loading, and thread safety.
@@ -189,7 +194,7 @@ class QueryLoader:
         >>> print(queryInfo.query_string)
     """
 
-    def __init__(self, config: Optional[QueryLoaderConfig] = None):
+    def __init__(self, config: QueryLoaderConfig | None = None):
         """
         Initialize query loader.
 
@@ -199,19 +204,21 @@ class QueryLoader:
         self.config = config or QueryLoaderConfig()
 
         # Loaded query modules
-        self._loaded_query_modules: Dict[str, Any] = {}
+        self._loaded_query_modules: dict[str, Any] = {}
 
         # Query cache (LRU)
-        self._query_cache: Dict[str, QueryInfo] = {}
+        self._query_cache: dict[str, QueryInfo] = {}
 
         # Metadata cache (LRU)
-        self._metadata_cache: Dict[str, Dict[str, Any]] = {}
+        self._metadata_cache: dict[str, dict[str, Any]] = {}
 
         # Thread-safe lock for operations
-        self._lock = threading.RLock() if self.config.enable_thread_safety else type(None)
+        self._lock = (
+            threading.RLock() if self.config.enable_thread_safety else None
+        )
 
         # Performance statistics
-        self._stats: Dict[str, Any] = {
+        self._stats: dict[str, Any] = {
             "total_loads": 0,
             "cache_hits": 0,
             "cache_misses": 0,
@@ -219,7 +226,7 @@ class QueryLoader:
         }
 
     def load_query(
-        self, language: str, query_name: str, project_root: Optional[str] = None
+        self, language: str, query_name: str, project_root: str | None = None
     ) -> QueryInfo:
         """
         Load a specific query for a language.
@@ -239,7 +246,7 @@ class QueryLoader:
         Performance:
             Uses LRU caching and lazy loading for optimal performance.
         """
-        with self._lock if self.config.enable_thread_safety else type(None):
+        with (self._lock if self._lock else nullcontext()):
             # Update statistics
             self._stats["total_loads"] += 1
 
@@ -254,14 +261,19 @@ class QueryLoader:
             log_debug(f"Cache miss for query: {cache_key}")
 
             # Load query module (lazy loading)
-            if self.config.enable_lazy_loading and query_name not in self._loaded_query_modules:
-                self._load_query_module(language)
+            if (
+                self.config.enable_lazy_loading
+                and query_name not in self._loaded_query_modules
+            ):
+                self._load_query_module(language)  # type: ignore
 
             # Get query string from loaded module
             try:
                 query_module = self._loaded_query_modules.get(language)
                 if not query_module:
-                    raise QueryLoadError(f"Query module not loaded for language: {language}")
+                    raise QueryLoadError(
+                        f"Query module not loaded for language: {language}"
+                    )
 
                 # Get query string
                 if hasattr(query_module, "get_query"):
@@ -307,7 +319,9 @@ class QueryLoader:
                 return query_info
 
             except Exception as e:
-                raise QueryLoadError(f"Failed to load query {query_name} for {language}: {e}")
+                raise QueryLoadError(
+                    f"Failed to load query {query_name} for {language}: {e}"
+                ) from None
 
     def load_query_module(self, language: str) -> Any:
         """
@@ -336,7 +350,9 @@ class QueryLoader:
             module = __import__(module_name)
             end_time = time.perf_counter()
 
-            log_debug(f"Loaded query module {module_name} in {(end_time - start_time) * 1000:.2f}ms")
+            log_debug(
+                f"Loaded query module {module_name} in {(end_time - start_time) * 1000:.2f}ms"
+            )
 
             # Cache module
             if self.config.enable_lazy_loading:
@@ -345,11 +361,15 @@ class QueryLoader:
             return module
 
         except ImportError as e:
-            raise QueryLoadError(f"Failed to import query module {module_name}: {e}")
+            raise QueryLoadError(
+                f"Failed to import query module {module_name}: {e}"
+            ) from None
         except Exception as e:
-            raise QueryLoadError(f"Failed to load query module {module_name}: {e}")
+            raise QueryLoadError(
+                f"Failed to load query module {module_name}: {e}"
+            ) from None
 
-    def list_queries(self, language: str) -> List[str]:
+    def list_queries(self, language: str) -> list[str]:
         """
         List all available queries for a language.
 
@@ -370,7 +390,7 @@ class QueryLoader:
 
             # Get query list
             if hasattr(query_module, "list_queries"):
-                return query_module.list_queries()
+                return query_module.list_queries()  # type: ignore
             elif hasattr(query_module, "ALL_QUERIES"):
                 return list(query_module.ALL_QUERIES.keys())
             else:
@@ -384,7 +404,9 @@ class QueryLoader:
                 return queries
 
         except Exception as e:
-            raise QueryLoaderError(f"Failed to list queries for {language}: {e}")
+            raise QueryLoaderError(
+                f"Failed to list queries for {language}: {e}"
+            ) from None
 
     def get_query_description(self, language: str, query_name: str) -> str:
         """
@@ -404,9 +426,11 @@ class QueryLoader:
             query_info = self.load_query(language, query_name)
             return query_info.description
         except Exception as e:
-            raise QueryLoaderError(f"Failed to get description for {query_name}: {e}")
+            raise QueryLoaderError(
+                f"Failed to get description for {query_name}: {e}"
+            ) from None
 
-    def get_query_metadata(self, language: str, query_name: str) -> Dict[str, Any]:
+    def get_query_metadata(self, language: str, query_name: str) -> dict[str, Any]:
         """
         Get metadata for a specific query.
 
@@ -424,11 +448,13 @@ class QueryLoader:
             query_info = self.load_query(language, query_name)
             return query_info.metadata
         except Exception as e:
-            raise QueryLoaderError(f"Failed to get metadata for {query_name}: {e}")
+            raise QueryLoaderError(
+                f"Failed to get metadata for {query_name}: {e}"
+            ) from None
 
     def execute_query(
-        self, query_string: str, parser: Parser, file_path: Optional[str] = None
-    ) -> List[Any]:
+        self, query_string: str, parser: Parser, file_path: str | None = None
+    ) -> list[Any]:
         """
         Execute a query on a parser.
 
@@ -455,9 +481,9 @@ class QueryLoader:
             # This is a simplified version - real implementation would be more complex
 
             # For now, just log that we executed the query
-            log_performance(f"Executing query: {query_string[:50]}...")
+            log_performance(f"Executing query: {query_string[:50]}...", 0.0)
 
-            results = []
+            results = []  # type: ignore
             # In a real implementation, we would:
             # 1. Parse the query string
             # 2. Execute the query on the parse tree
@@ -465,12 +491,12 @@ class QueryLoader:
             # 4. Return results
 
             end_time = time.perf_counter()
-            log_performance(f"Query executed in {(end_time - start_time) * 1000:.2f}ms")
+            log_performance(f"Query executed in {(end_time - start_time) * 1000:.2f}ms")  # type: ignore
 
             return results
 
         except Exception as e:
-            raise QueryExecutionError(f"Failed to execute query: {e}")
+            raise QueryExecutionError(f"Failed to execute query: {e}") from None
 
     def clear_cache(self) -> None:
         """
@@ -478,14 +504,14 @@ class QueryLoader:
 
         This is useful for memory management and testing.
         """
-        with self._lock if self.config.enable_thread_safety else type(None):
+        with (self._lock if self._lock else nullcontext()):
             self._query_cache.clear()
             self._metadata_cache.clear()
             if self.config.enable_lazy_loading:
                 self._loaded_query_modules.clear()
             log_info("Query caches cleared")
 
-    def get_cache_stats(self) -> Dict[str, Any]:
+    def get_cache_stats(self) -> dict[str, Any]:
         """
         Get cache statistics.
 
@@ -510,6 +536,7 @@ class QueryLoader:
 # ============================================================================
 # Convenience Functions with Caching
 # ============================================================================
+
 
 @functools.lru_cache(maxsize=64, typed=True)
 def get_query_loader_cached(project_root: str) -> QueryLoader:
@@ -538,6 +565,7 @@ def get_query_loader_cached(project_root: str) -> QueryLoader:
 # ============================================================================
 # Convenience Functions (Type-safe)
 # ============================================================================
+
 
 def create_query_loader(project_root: str) -> QueryLoader:
     """
@@ -572,11 +600,13 @@ def load_query(language: str, query_name: str) -> QueryInfo:
     Performance:
         Uses LRU-cached query loader.
     """
-    loader = get_query_loader(".")
-    return loader.load_query(language, query_name)
+    from . import get_query_loader as _get_query_loader
+
+    loader = _get_query_loader(".")
+    return loader.load_query(language, query_name)  # type: ignore
 
 
-def list_queries(language: str) -> List[str]:
+def list_queries(language: str) -> list[str]:
     """
     List all available queries for a language.
 
@@ -592,13 +622,14 @@ def list_queries(language: str) -> List[str]:
     Performance:
         Uses LRU-cached query loader.
     """
-    loader = get_query_loader(".")
+    loader = get_query_loader_cached(".")
     return loader.list_queries(language)
 
 
 # ============================================================================
 # Module-level exports for backward compatibility
 # ============================================================================
+
 
 def __getattr__(name: str) -> Any:
     """
@@ -626,3 +657,20 @@ def __getattr__(name: str) -> Any:
         return getattr(module, name)
     else:
         raise ImportError(f"Module {name} not found")
+
+
+__all__: list[str] = [
+    "QueryLoaderProtocol",
+    "QueryProtocol",
+    "QueryLoaderError",
+    "QueryLoadError",
+    "QueryExecutionError",
+    "QuerySyntaxError",
+    "QueryInfo",
+    "QueryLoaderConfig",
+    "QueryLoader",
+    "get_query_loader_cached",
+    "create_query_loader",
+    "load_query",
+    "list_queries",
+]

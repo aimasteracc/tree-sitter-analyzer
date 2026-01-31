@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
 """
-MCP (Model Context Protocol) integration for Tree-sitter Analyzer
+MCP Integration.
 
-This module provides MCP server functionality that exposes the tree-sitter
-analyzer capabilities through the Model Context Protocol.
+Model Context Protocol integration for tree-sitter analyzer.
+
+Version: 1.10.5
+Date: 2026-01-28
 """
+
+from __future__ import annotations
 
 from typing import Any
 
@@ -15,7 +19,7 @@ try:
     __version__ = main_version
 except ImportError:
     # Fallback version if main package not available
-    __version__ = "1.1.1"
+    __version__ = "1.10.5"
 
 __author__ = "Tree-sitter Analyzer Team"
 

@@ -1,14 +1,52 @@
+#!/usr/bin/env python3
+"""
+Profile Comparator.
+
+Compare platform behavior profiles to identify differences.
+
+Key Features:
+    - Profile difference detection
+    - Attribute comparison
+    - Error mismatch analysis
+    - Detailed diff reports
+
+Version: 1.10.5
+Date: 2026-01-28
+"""
+
+from __future__ import annotations
+
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from deepdiff import DeepDiff
+if TYPE_CHECKING:
+    from deepdiff import DeepDiff
 
-from .profiles import (
-    BehaviorProfile,
-    ParsingBehavior,
-    migrate_profile_schema,
-    validate_profile,
-)
+    from .profiles import (
+        BehaviorProfile,
+        ParsingBehavior,
+        migrate_profile_schema,
+        validate_profile,
+    )
+else:
+    try:
+        from deepdiff import DeepDiff  # type: ignore[import]
+
+        from .profiles import (
+            BehaviorProfile,
+            ParsingBehavior,
+            migrate_profile_schema,
+            validate_profile,
+        )
+    except ImportError as e:
+        import logging
+
+        logging.warning(f"Import fallback triggered in compare: {e}")
+
+__all__ = [
+    "BehaviorDifference",
+    "ProfileComparison",
+]
 
 
 @dataclass

@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
 """
-MCP Tools package for Tree-sitter Analyzer
+MCP Tools.
 
-This package contains all MCP tools that provide specific functionality
-through the Model Context Protocol.
+Tool implementations for Model Context Protocol.
+
+Version: 1.10.5
+Date: 2026-01-28
 """
+
+from __future__ import annotations
 
 from typing import Any
 

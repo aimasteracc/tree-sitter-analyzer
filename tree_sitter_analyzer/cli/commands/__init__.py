@@ -36,59 +36,27 @@ Version: 1.10.5
 Date: 2026-01-28
 """
 
-import hashlib
+from __future__ import annotations
+
 import logging
-import os
-import sys
-import threading
-from typing import TYPE_CHECKING, Any, Optional, List, Dict, Tuple, Union, Callable, Type, NamedTuple, Set
-from functools import lru_cache, wraps
 from dataclasses import dataclass, field
-from enum import Enum
-from pathlib import Path
+from functools import lru_cache
 from time import perf_counter
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Protocol,
+)
 
 # Type checking setup
 if TYPE_CHECKING:
-    # Core imports
-    from ..core.analysis_engine import AnalysisEngine, AnalysisRequest, AnalysisResult
+    from ...core.analysis_engine import AnalysisEngine
 
-    # Utility imports
-    from ..utils.logging import (
-        LoggerConfig,
-        LoggingContext,
-        log_debug,
-        log_info,
-        log_warning,
-        log_error,
-        log_performance,
-        setup_logger,
-        create_performance_logger,
-        safe_print,
-    )
-
-    # Command imports (for type hints)
-    from .info_commands import InfoCommand
-    from .analyze_code_structure_tool import AnalyzeCodeStructureCommand
-else:
-    # Runtime imports (when type checking is disabled)
-    # Core imports
-    AnalysisEngine = Any
-    AnalysisRequest = Any
-    AnalysisResult = Any
-
-    # Utility imports
-    from ..utils.logging import (
-        log_debug,
-        log_info,
-        log_warning,
-        log_error,
-        log_performance,
-    )
-
-    # Command imports (for type hints)
-    InfoCommand = Any
-    AnalyzeCodeStructureCommand = Any
+# Runtime imports
+from ..utils.logging import (
+    log_debug,
+    log_error,
+)
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -98,15 +66,11 @@ logger.setLevel(logging.INFO)
 # Type Definitions
 # ============================================================================
 
-if sys.version_info >= (3, 8):
-    from typing import Protocol
-else:
-    Protocol = object
 
 class CommandProtocol(Protocol):
     """Interface for command creation functions."""
 
-    def __call__(self, name: str, description: str) -> "Command":
+    def __call__(self, name: str, description: str) -> Command:
         """
         Create command instance.
 
@@ -119,10 +83,11 @@ class CommandProtocol(Protocol):
         """
         ...
 
+
 class CommandFactoryProtocol(Protocol):
     """Interface for command factory functions."""
 
-    def __call__(self, engine: Any) -> "CommandRegistry":
+    def __call__(self, engine: Any) -> CommandRegistry:
         """
         Create command registry instance.
 
@@ -134,9 +99,11 @@ class CommandFactoryProtocol(Protocol):
         """
         ...
 
+
 # ============================================================================
 # Custom Exceptions
 # ============================================================================
+
 
 class CommandError(Exception):
     """Base exception for command errors."""
@@ -148,32 +115,38 @@ class CommandError(Exception):
 
 class InitializationError(CommandError):
     """Exception raised when command initialization fails."""
+
     pass
 
 
 class RegistrationError(CommandError):
     """Exception raised when command registration fails."""
+
     pass
 
 
 class ExecutionError(CommandError):
     """Exception raised when command execution fails."""
+
     pass
 
 
 class ValidationError(CommandError):
     """Exception raised when command validation fails."""
+
     pass
 
 
 class NotFoundError(CommandError):
     """Exception raised when command is not found."""
+
     pass
 
 
 # ============================================================================
 # Data Classes
 # ============================================================================
+
 
 @dataclass(frozen=True, slots=True)
 class CommandMetadata:
@@ -193,8 +166,8 @@ class CommandMetadata:
     name: str
     description: str
     category: str = "general"
-    aliases: List[str] = field(default_factory=list)
-    examples: List[str] = field(default_factory=list)
+    aliases: list[str] = field(default_factory=list)
+    examples: list[str] = field(default_factory=list)
     requires_analysis: bool = True
     output_format: str = "json"
 
@@ -216,9 +189,9 @@ class ExecutionContext:
     """
 
     engine: AnalysisEngine
-    args: List[str]
-    options: Dict[str, Any]
-    config: Dict[str, Any]
+    args: list[str]
+    options: dict[str, Any]
+    config: dict[str, Any]
 
 
 @dataclass
@@ -237,13 +210,14 @@ class CommandResult:
     command_name: str
     success: bool
     message: str
-    data: Optional[Any] = None
+    data: Any | None = None
     execution_time: float = 0.0
 
 
 # ============================================================================
 # Base Command
 # ============================================================================
+
 
 class Command:
     """
@@ -282,8 +256,8 @@ class Command:
         self._name = name
         self._description = description
         self._category = category
-        self._aliases: List[str] = []
-        self._examples: List[str] = []
+        self._aliases: list[str] = []
+        self._examples: list[str] = []
 
     @property
     def metadata(self) -> CommandMetadata:
@@ -343,7 +317,7 @@ class Command:
                 execution_time=execution_time,
             )
 
-    def validate_arguments(self, args: List[str]) -> Tuple[bool, Optional[str]]:
+    def validate_arguments(self, args: list[str]) -> tuple[bool, str | None]:
         """
         Validate command arguments.
 
@@ -399,6 +373,7 @@ class Command:
 # Command Registry
 # ============================================================================
 
+
 class CommandRegistry:
     """
     Command registry for managing and executing CLI commands.
@@ -433,8 +408,8 @@ class CommandRegistry:
             engine: AnalysisEngine instance
         """
         self._engine = engine
-        self._commands: Dict[str, Command] = {}
-        self._aliases: Dict[str, str] = {}
+        self._commands: dict[str, Command] = {}
+        self._aliases: dict[str, str] = {}
 
     def register(self, command: Command) -> None:
         """
@@ -472,7 +447,9 @@ class CommandRegistry:
         for alias in command.metadata.aliases:
             self._aliases[alias] = command_name
 
-        log_debug(f"Registered command: {command_name} (aliases: {len(command.metadata.aliases)})")
+        log_debug(
+            f"Registered command: {command_name} (aliases: {len(command.metadata.aliases)})"
+        )
 
     def unregister(self, command_name: str) -> bool:
         """
@@ -491,15 +468,14 @@ class CommandRegistry:
         if command_name not in self._commands:
             return False
 
-        command = self._commands[command_name]
+        self._commands[command_name]
 
         # Remove command
         del self._commands[command_name]
 
         # Remove aliases
         aliases_to_remove = [
-            alias for alias, cmd in self._aliases.items()
-            if cmd == command_name
+            alias for alias, cmd in self._aliases.items() if cmd == command_name
         ]
         for alias in aliases_to_remove:
             del self._aliases[alias]
@@ -508,7 +484,7 @@ class CommandRegistry:
 
         return True
 
-    def get_command(self, name: str) -> Optional[Command]:
+    def get_command(self, name: str) -> Command | None:
         """
         Get command by name or alias.
 
@@ -531,7 +507,7 @@ class CommandRegistry:
         # Get command
         return self._commands.get(command_name)
 
-    def get_all_commands(self) -> Dict[str, Command]:
+    def get_all_commands(self) -> dict[str, Command]:
         """
         Get all registered commands.
 
@@ -544,7 +520,9 @@ class CommandRegistry:
         """
         return dict(sorted(self._commands.items()))
 
-    def execute(self, command_name: str, args: List[str], options: Optional[Dict[str, Any]] = None) -> CommandResult:
+    def execute(
+        self, command_name: str, args: list[str], options: dict[str, Any] | None = None
+    ) -> CommandResult:
         """
         Execute a command.
 
@@ -621,6 +599,7 @@ class CommandRegistry:
 # Convenience Functions
 # ============================================================================
 
+
 @lru_cache(maxsize=64, typed=True)
 def get_command_registry(engine: Any) -> CommandRegistry:
     """
@@ -642,7 +621,7 @@ def get_command_registry(engine: Any) -> CommandRegistry:
 # Module-level exports
 # ============================================================================
 
-__all__: List[str] = [
+__all__: list[str] = [
     # Exceptions
     "CommandError",
     "InitializationError",
@@ -650,16 +629,13 @@ __all__: List[str] = [
     "ExecutionError",
     "ValidationError",
     "NotFoundError",
-
     # Data classes
     "CommandMetadata",
     "ExecutionContext",
     "CommandResult",
-
     # Main classes
     "Command",
     "CommandRegistry",
-
     # Convenience functions
     "get_command_registry",
 ]
@@ -668,6 +644,7 @@ __all__: List[str] = [
 # ============================================================================
 # Module-level exports for backward compatibility
 # ============================================================================
+
 
 def __getattr__(name: str) -> Any:
     """
@@ -699,6 +676,7 @@ def __getattr__(name: str) -> Any:
     ]:
         # Import from module
         import sys
+
         module = sys.modules[__name__]
         if module is None:
             raise ImportError(f"Module {name} not found")
@@ -710,4 +688,4 @@ def __getattr__(name: str) -> Any:
             module = __import__(f".{name}", fromlist=["__name__"])
             return module
         except ImportError:
-            raise ImportError(f"Module {name} not found")
+            raise ImportError(f"Module {name} not found") from None

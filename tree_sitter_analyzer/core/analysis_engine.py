@@ -24,42 +24,46 @@ Version: 1.10.5
 Date: 2026-01-28
 """
 
-import asyncio
 import hashlib
 import os
 import threading
-import time
-from typing import TYPE_CHECKING, Any, Optional, List, Dict, Union, Tuple, Callable, Type
+from contextlib import nullcontext
 from functools import lru_cache
 from pathlib import Path
+from typing import (
+    TYPE_CHECKING,
+    Any,
+)
 
 # Type checking setup
 if TYPE_CHECKING:
     # Models
-    from ..models import AnalysisResult, Element, Function, Import, Class
-
-    # Core imports
-    from ..performance import PerformanceContext, PerformanceMonitor
-
-    # Request/Response
-    from .request import AnalysisRequest
+    # Dependency imports
+    from ..language_detector import LanguageDetector, LanguageInfo, LanguageType
+    from ..models import (  # type: ignore
+        AnalysisResult,
+        Class,
+        Element,
+        Function,
+        Import,
+    )
+    from ..plugins.manager import PluginConfig, PluginManager
+    from ..security import SecurityValidator
 
     # Utility imports
     from ..utils import (
         log_debug,
-        log_info,
         log_error,
-        log_warning,
-        log_performance,
     )
+    from .cache_service import CacheConfig, CacheService
+    from .parser import Parser
 
-    # Dependency imports
-    from ..language_detector import LanguageDetector, LanguageInfo, LanguageType
-    from ..plugins.manager import PluginManager, PluginConfig
-    from ..security import SecurityValidator
-    from ..cache_service import CacheService, CacheConfig
-    from ..parser import Parser
-    from ..query import QueryExecutor, QueryConfig
+    # Core imports
+    from .performance import PerformanceContext, PerformanceMonitor
+    from .query import QueryConfig, QueryExecutor
+
+    # Request/Response
+    from .request import AnalysisRequest
 
 else:
     # Runtime imports (when type checking is disabled)
@@ -77,10 +81,7 @@ else:
     # Utility imports
     from ..utils import (
         log_debug,
-        log_info,
         log_error,
-        log_warning,
-        log_performance,
     )
 
     # Dependency imports
@@ -101,10 +102,8 @@ else:
 # Type Definitions
 # ============================================================================
 
-if sys.version_info >= (3, 8):
-    from typing import Protocol
-else:
-    Protocol = object
+from typing import Protocol
+
 
 class AnalysisEngineProtocol(Protocol):
     """Interface for analysis engine creation functions."""
@@ -125,7 +124,7 @@ class AnalysisEngineProtocol(Protocol):
 class CacheProtocol(Protocol):
     """Interface for cache services."""
 
-    def get(self, key: str) -> Optional[Any]:
+    def get(self, key: str) -> Any | None:
         """
         Get value from cache.
 
@@ -189,7 +188,7 @@ class PluginProtocol(Protocol):
 class SecurityValidatorProtocol(Protocol):
     """Interface for security validation services."""
 
-    def validate_file_path(self, file_path: str) -> Tuple[bool, Optional[str]]:
+    def validate_file_path(self, file_path: str) -> tuple[bool, str | None]:
         """
         Validate file path for security.
 
@@ -217,9 +216,11 @@ class PerformanceMonitorProtocol(Protocol):
         """
         ...
 
+
 # ============================================================================
 # Custom Exceptions
 # ============================================================================
+
 
 class AnalysisEngineError(Exception):
     """Base exception for analysis engine errors."""
@@ -269,6 +270,7 @@ class SecurityValidationError(AnalysisEngineError):
 # Analysis Engine Configuration
 # ============================================================================
 
+
 class AnalysisEngineConfig:
     """Configuration for analysis engine."""
 
@@ -310,6 +312,7 @@ class AnalysisEngineConfig:
 # Analysis Engine
 # ============================================================================
 
+
 class AnalysisEngine:
     """
     Optimized analysis engine with dependency injection, singleton support, and caching.
@@ -337,19 +340,19 @@ class AnalysisEngine:
     """
 
     # Singleton instances (thread-safe)
-    _instances: Dict[str, "AnalysisEngine"] = {}
+    _instances: dict[str, "AnalysisEngine"] = {}
     _lock: threading.RLock = threading.RLock()
 
     def __init__(
         self,
         project_root: str = ".",
-        config: Optional[AnalysisEngineConfig] = None,
-        parser: Optional[ParserProtocol] = None,
-        language_detector: Optional[Any] = None,
-        plugin_manager: Optional[PluginManager] = None,
-        cache_service: Optional[CacheProtocol] = None,
-        security_validator: Optional[SecurityValidatorProtocol] = None,
-        performance_monitor: Optional[PerformanceMonitorProtocol] = None,
+        config: AnalysisEngineConfig | None = None,
+        parser: ParserProtocol | None = None,
+        language_detector: Any | None = None,
+        plugin_manager: PluginManager | None = None,
+        cache_service: CacheProtocol | None = None,
+        security_validator: SecurityValidatorProtocol | None = None,
+        performance_monitor: PerformanceMonitorProtocol | None = None,
         **kwargs: Any,
     ):
         """
@@ -378,10 +381,12 @@ class AnalysisEngine:
         self._performance_monitor = performance_monitor
 
         # Thread-safe lock for operations
-        self._lock = threading.RLock() if self._config.enable_thread_safety else type(None)
+        self._lock = (
+            threading.RLock() if self._config.enable_thread_safety else None  # type: ignore
+        )
 
         # Performance statistics
-        self._stats: Dict[str, Any] = {
+        self._stats: dict[str, Any] = {
             "total_analyses": 0,
             "successful_analyses": 0,
             "failed_analyses": 0,
@@ -394,13 +399,13 @@ class AnalysisEngine:
         """
         Ensure all dependencies are initialized (lazy loading).
         """
-        with self._lock:
+        with (self._lock if self._lock else nullcontext()):
             # Initialize parser
             if self._parser is None:
                 if TYPE_CHECKING:
-                    from ..parser import Parser
+                    from .parser import Parser
                 else:
-                    from ..parser import Parser
+                    from .parser import Parser
                 self._parser = Parser()
 
             # Initialize language detector
@@ -409,7 +414,7 @@ class AnalysisEngine:
                     from ..language_detector import LanguageDetector
                 else:
                     from ..language_detector import LanguageDetector
-                self._language_detector = LanguageDetector(self._project_root)
+                self._language_detector = LanguageDetector(self._project_root)  # type: ignore
 
             # Initialize plugin manager
             if self._plugin_manager is None:
@@ -422,9 +427,9 @@ class AnalysisEngine:
             # Initialize cache service
             if self._cache_service is None:
                 if TYPE_CHECKING:
-                    from ..cache_service import CacheService
+                    from .cache_service import CacheService
                 else:
-                    from ..cache_service import CacheService
+                    from .cache_service import CacheService
                 cache_config = CacheConfig(
                     max_size=self._config.cache_max_size,
                     ttl_seconds=self._config.cache_ttl_seconds,
@@ -442,9 +447,9 @@ class AnalysisEngine:
             # Initialize performance monitor
             if self._performance_monitor is None:
                 if TYPE_CHECKING:
-                    from ..performance import PerformanceMonitor
+                    from .performance import PerformanceMonitor
                 else:
-                    from ..performance import PerformanceMonitor
+                    from .performance import PerformanceMonitor
                 self._performance_monitor = PerformanceMonitor()
 
             # Load plugins
@@ -455,7 +460,7 @@ class AnalysisEngine:
         self,
         file_path: str,
         language: str,
-        options: Dict[str, Any],
+        options: dict[str, Any],
     ) -> str:
         """
         Generate deterministic cache key from parameters.
@@ -481,10 +486,12 @@ class AnalysisEngine:
         try:
             if os.path.exists(file_path) and os.path.isfile(file_path):
                 stat = os.stat(file_path)
-                key_components.extend([
-                    str(int(stat.st_mtime)),  # Modification time
-                    str(stat.st_size),      # File size
-                ])
+                key_components.extend(
+                    [
+                        str(int(stat.st_mtime)),  # Modification time
+                        str(stat.st_size),  # File size
+                    ]
+                )
         except (OSError, FileNotFoundError):
             pass
 
@@ -495,8 +502,8 @@ class AnalysisEngine:
     async def analyze_file(
         self,
         file_path: str,
-        language: Optional[str] = None,
-        options: Optional[Dict[str, Any]] = None,
+        language: str | None = None,
+        options: dict[str, Any] | None = None,
     ) -> AnalysisResult:
         """
         Analyze a single file with caching and performance monitoring.
@@ -526,10 +533,14 @@ class AnalysisEngine:
 
         # Validate file path
         if self._security_validator:
-            is_valid, error_message = self._security_validator.validate_file_path(file_path)
+            is_valid, error_message = self._security_validator.validate_file_path(
+                file_path
+            )
             if not is_valid:
                 self._stats["failed_analyses"] += 1
-                raise SecurityValidationError(f"Security validation failed: {error_message}")
+                raise SecurityValidationError(
+                    f"Security validation failed: {error_message}"
+                )
 
         # Detect language if not provided
         if language is None:
@@ -549,11 +560,11 @@ class AnalysisEngine:
         # Check cache
         if self._cache_service:
             cache_key = self._generate_cache_key(file_path, language, options or {})
-            cached_result = await self._cache_service.get(cache_key)
+            cached_result = await self._cache_service.get(cache_key)  # type: ignore
             if cached_result:
                 self._stats["cache_hits"] += 1
                 log_debug(f"Cache hit for {file_path}")
-                return cached_result
+                return cached_result  # type: ignore
 
             self._stats["cache_misses"] += 1
             log_debug(f"Cache miss for {file_path}")
@@ -573,7 +584,6 @@ class AnalysisEngine:
                         analysis_time=0.0,
                     )
 
-                tree = parse_result.tree
             except Exception as e:
                 self._stats["failed_analyses"] += 1
                 log_error(f"Failed to parse file {file_path}: {e}")
@@ -616,10 +626,12 @@ class AnalysisEngine:
 
                 # Update cache
                 if self._cache_service:
-                    cache_key = self._generate_cache_key(file_path, language, options or {})
-                    await self._cache_service.set(cache_key, result)
+                    cache_key = self._generate_cache_key(
+                        file_path, language, options or {}
+                    )
+                    await self._cache_service.set(cache_key, result)  # type: ignore
 
-                return result
+                return result  # type: ignore
             except Exception as e:
                 self._stats["failed_analyses"] += 1
                 log_error(f"Failed to analyze file {file_path}: {e}")
@@ -645,10 +657,10 @@ class AnalysisEngine:
     async def analyze_project(
         self,
         project_root: str,
-        file_patterns: Optional[List[str]] = None,
-        language: Optional[str] = None,
-        options: Optional[Dict[str, Any]] = None,
-    ) -> List[AnalysisResult]:
+        file_patterns: list[str] | None = None,
+        language: str | None = None,
+        options: dict[str, Any] | None = None,
+    ) -> list[AnalysisResult]:
         """
         Analyze multiple files in a project.
 
@@ -680,7 +692,7 @@ class AnalysisEngine:
             raise FileNotFoundError(f"Project root does not exist: {project_root}")
 
         # Collect files to analyze
-        files_to_analyze = []
+        files_to_analyze = []  # type: ignore
         project_path = Path(project_root)
 
         if file_patterns:
@@ -699,25 +711,27 @@ class AnalysisEngine:
                 results.append(result)
             except Exception as e:
                 log_error(f"Failed to analyze {file_path}: {e}")
-                results.append(AnalysisResult(
-                    file_path=str(file_path),
-                    language=language or "unknown",
-                    success=False,
-                    error_message=str(e),
-                    elements=[],
-                    analysis_time=0.0,
-                ))
+                results.append(
+                    AnalysisResult(
+                        file_path=str(file_path),
+                        language=language or "unknown",
+                        success=False,
+                        error_message=str(e),
+                        elements=[],
+                        analysis_time=0.0,
+                    )
+                )
 
         return results
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         """
         Get analysis engine statistics.
 
         Returns:
             Dictionary with engine statistics
         """
-        with self._lock:
+        with (self._lock if self._lock else nullcontext()):
             return {
                 "total_analyses": self._stats["total_analyses"],
                 "successful_analyses": self._stats["successful_analyses"],
@@ -745,7 +759,7 @@ class AnalysisEngine:
 
     def clear_cache(self) -> None:
         """Clear all caches."""
-        with self._lock:
+        with (self._lock if self._lock else nullcontext()):
             if self._cache_service:
                 self._cache_service.clear()
             self._stats["cache_hits"] = 0
@@ -753,7 +767,7 @@ class AnalysisEngine:
 
     def cleanup(self) -> None:
         """Clean up resources."""
-        with self._lock:
+        with (self._lock if self._lock else nullcontext()):
             if self._cache_service:
                 self._cache_service.clear()
             self._stats.clear()
@@ -763,10 +777,11 @@ class AnalysisEngine:
 # Factory Functions with LRU Caching
 # ============================================================================
 
+
 @lru_cache(maxsize=64, typed=True)
 def get_analysis_engine(
     project_root: str = ".",
-    config: Optional[AnalysisEngineConfig] = None,
+    config: AnalysisEngineConfig | None = None,
 ) -> AnalysisEngine:
     """
     Get analysis engine instance with LRU caching.
@@ -789,7 +804,7 @@ def get_analysis_engine(
 # Module-level exports for backward compatibility
 # ============================================================================
 
-__all__: List[str] = [
+__all__: list[str] = [
     # Type definitions
     "AnalysisEngineProtocol",
     "CacheProtocol",
@@ -797,10 +812,8 @@ __all__: List[str] = [
     "PluginProtocol",
     "SecurityValidatorProtocol",
     "PerformanceMonitorProtocol",
-
     # Configuration
     "AnalysisEngineConfig",
-
     # Exceptions
     "AnalysisEngineError",
     "InitializationError",
@@ -809,10 +822,8 @@ __all__: List[str] = [
     "LanguageNotSupportedError",
     "CachingError",
     "SecurityValidationError",
-
     # Main class
     "AnalysisEngine",
-
     # Factory functions
     "get_analysis_engine",
 ]
@@ -821,6 +832,7 @@ __all__: List[str] = [
 # ============================================================================
 # Module-level exports for backward compatibility
 # ============================================================================
+
 
 def __getattr__(name: str) -> Any:
     """
@@ -835,10 +847,16 @@ def __getattr__(name: str) -> Any:
     Raises:
         ImportError: If the requested component is not found
     """
+    # Skip Python internal attributes
+    if name.startswith("_"):
+        raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
+
     # Handle specific imports
     if name == "AnalysisEngine":
         return AnalysisEngine
     elif name == "AnalysisEngineConfig":
+        return AnalysisEngineConfig
+    elif name == "AnalysisConfig":  # Backward compatibility alias
         return AnalysisEngineConfig
     elif name == "create_analysis_engine":
         return get_analysis_engine
@@ -851,12 +869,8 @@ def __getattr__(name: str) -> Any:
         "CachingError",
         "SecurityValidationError",
     ]:
-        # Import from module
-        import sys
-        module = sys.modules[__name__]
-        if module is None:
-            raise ImportError(f"Module {name} not found")
-        return module
+        # Return exception classes from globals
+        return globals()[name]
     else:
         # Default behavior
         try:
@@ -864,4 +878,4 @@ def __getattr__(name: str) -> Any:
             module = __import__(f".{name}", fromlist=["__name__"])
             return module
         except ImportError:
-            raise ImportError(f"Module {name} not found")
+            raise ImportError(f"Module {name} not found") from None

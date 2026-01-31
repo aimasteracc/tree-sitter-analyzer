@@ -1,4 +1,28 @@
+#!/usr/bin/env python3
+"""
+SQL Test Fixtures.
+
+Standard SQL test cases for platform compatibility testing.
+
+Key Features:
+    - Standard SQL constructs
+    - Edge case samples
+    - Known platform issues
+    - Comprehensive test coverage
+
+Version: 1.10.5
+Date: 2026-01-28
+"""
+
+from __future__ import annotations
+
 from dataclasses import dataclass
+
+__all__ = [
+    "SQLTestFixture",
+    "FIXTURE_SIMPLE_TABLE",
+    "ALL_FIXTURES",
+]
 
 
 @dataclass

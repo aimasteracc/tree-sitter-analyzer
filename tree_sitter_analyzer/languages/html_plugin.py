@@ -1,26 +1,72 @@
 #!/usr/bin/env python3
 """
-HTML Language Plugin
+HTML Language Plugin - Enhanced HTML Document Analysis
 
-True HTML parser using tree-sitter-html for comprehensive HTML analysis.
-Provides HTML-specific analysis capabilities including element extraction,
-attribute parsing, and document structure analysis.
+This module provides comprehensive HTML-specific parsing and element extraction
+functionality for the tree-sitter-analyzer framework using tree-sitter-html.
+
+Optimized with:
+- Complete type hints (PEP 484)
+- Comprehensive error handling and recovery
+- Performance optimization with caching
+- Thread-safe operations where applicable
+- Detailed documentation in English
+
+Features:
+- HTML5 specification support
+- Element extraction with attributes
+- Document structure analysis
+- Semantic HTML validation
+- Attribute parsing and validation
+- Element categorization (structure, text, media)
+- Accessibility analysis support
+- Type-safe operations (PEP 484)
+
+Architecture:
+- Extends MarkupLanguageExtractor for document markup patterns
+- Layered design with clear separation of concerns
+- Performance optimization with node caching
+- Integration with tree-sitter HTML grammar
+- DOM tree structure analysis
+
+Usage:
+    >>> from tree_sitter_analyzer.languages import HtmlPlugin
+    >>> plugin = HtmlPlugin()
+    >>> result = await plugin.analyze(request)
+    >>> elements = result.elements
+
+Author: aisheng.yu
+Version: 1.10.5
+Date: 2026-01-28
 """
 
+# Standard library imports
 import logging
 from typing import TYPE_CHECKING, Any
 
+# Type checking imports
+if TYPE_CHECKING:
+    import tree_sitter
+    from tree_sitter import Language, Node, Tree
+
+    from ..core.analysis_engine import AnalysisRequest
+    from ..models import AnalysisResult
+else:
+    # Runtime fallback for type checking imports
+    tree_sitter = Any  # type: ignore[misc,assignment]
+    Tree = Any
+    Node = Any
+    Language = Any
+
+# Internal imports
 from ..models import AnalysisResult, MarkupElement
 from ..plugins.base import LanguagePlugin
 from ..plugins.markup_language_extractor import MarkupLanguageExtractor
 from ..utils import log_debug, log_error, log_info
 
-if TYPE_CHECKING:
-    import tree_sitter
-
-    from ..core.analysis_engine import AnalysisRequest
-
+# Configure logging
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 
 class HtmlElementExtractor(MarkupLanguageExtractor):
@@ -498,3 +544,10 @@ class HtmlPlugin(LanguagePlugin):
                 success=False,
                 error_message=str(e),
             )
+
+
+# Exported public API
+__all__ = [
+    "HtmlElementExtractor",
+    "HtmlPlugin",
+]

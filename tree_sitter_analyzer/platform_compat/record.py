@@ -1,16 +1,42 @@
 #!/usr/bin/env python3
 """
+Behavior Recording CLI.
+
 CLI tool for recording SQL behavior profiles.
+
+Key Features:
+    - Profile recording
+    - Output directory configuration
+    - Platform detection
+    - Profile persistence
+
+Version: 1.10.5
+Date: 2026-01-28
 """
+
+from __future__ import annotations
 
 import argparse
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from tree_sitter_analyzer.platform_compat.recorder import BehaviorRecorder
-from tree_sitter_analyzer.utils import setup_logger
+if TYPE_CHECKING:
+    from tree_sitter_analyzer.platform_compat.recorder import BehaviorRecorder
+    from tree_sitter_analyzer.utils import setup_logger
+else:
+    try:
+        from tree_sitter_analyzer.platform_compat.recorder import BehaviorRecorder
+        from tree_sitter_analyzer.utils import setup_logger
+    except ImportError as e:
+        import logging
 
-logger = setup_logger(__name__)
+        logging.warning(f"Import fallback triggered in record: {e}")
+        setup_logger = None  # type: ignore[assignment]
+
+__all__ = ["main"]
+
+logger = setup_logger(__name__)  # type: ignore
 
 
 def main() -> None:

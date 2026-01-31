@@ -1,15 +1,9 @@
 #!/usr/bin/env python3
 """
-Backward compatibility shim for fd/ripgrep utilities.
+Backward Compatibility Shim for fd/ripgrep Utilities.
 
 ⚠️ DEPRECATED: This module will be removed in v3.0.0 (planned for 2026-Q3).
-Please migrate to the new modular fd_rg package:
-
-    from tree_sitter_analyzer.mcp.tools.fd_rg import (
-        FdCommandConfig, FdCommandBuilder,
-        RgCommandConfig, RgCommandBuilder,
-        run_command_capture, check_external_command,
-    )
+Please migrate to the new modular fd_rg package.
 
 Migration Guide:
     Old (18 parameters):
@@ -24,27 +18,49 @@ Migration Guide:
         config = FdCommandConfig(roots=("src/",), pattern="*.py", glob=True)
         cmd = FdCommandBuilder().build(config)
 
-This module provides ONLY the actively used functions for backward compatibility.
-All other deprecated functions have been removed. See git history for full legacy API.
+This module provides ONLY actively used functions for backward compatibility.
+All other deprecated functions have been removed. See git history for legacy API.
+
+Version: 1.10.5
+Date: 2026-01-28
+Author: tree-sitter-analyzer team
 """
 
 from __future__ import annotations
 
 import warnings
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-# Re-export from new modular package
-from .fd_rg import (
-    FdCommandBuilder,
-    FdCommandConfig,
-    RgCommandBuilder,
-    RgCommandConfig,
-    RgResultTransformer,
-    check_external_command,
-    merge_command_results,
-    run_command_capture,
-    run_parallel_commands,
-)
+if TYPE_CHECKING:
+    # Re-export from new modular package
+    from .fd_rg import (
+        FdCommandBuilder,
+        FdCommandConfig,
+        RgCommandBuilder,
+        RgCommandConfig,
+        RgResultTransformer,
+        check_external_command,
+        merge_command_results,
+        run_command_capture,
+        run_parallel_commands,
+    )
+else:
+    try:
+        from .fd_rg import (
+            FdCommandBuilder,
+            FdCommandConfig,
+            RgCommandBuilder,
+            RgCommandConfig,
+            RgResultTransformer,
+            check_external_command,
+            merge_command_results,
+            run_command_capture,
+            run_parallel_commands,
+        )
+    except ImportError as e:
+        import logging
+
+        logging.warning(f"Import fallback triggered in fd_rg_utils: {e}")
 
 # Explicit re-exports for backward compatibility
 __all__ = [

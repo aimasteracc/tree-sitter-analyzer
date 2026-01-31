@@ -1,0 +1,193 @@
+name: Quality Gate
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # Critical checks that block merging
+  blocking-checks:
+    name: Blocking Quality Checks
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Syntax Check
+        run: |
+          Get-ChildItem -Path tree_sitter_analyzer -Filter *.py -Recurse | ForEach-Object {
+            python -m py_compile $_.FullName
+            if ($LASTEXITCODE -ne 0) { exit 1 }
+          }
+        shell: pwsh
+
+      - name: Import Check
+        run: python -c "import tree_sitter_analyzer"
+
+      - name: Ruff Critical Errors (F821, F822, B904)
+        run: uv run ruff check tree_sitter_analyzer/ --select F821,F822,B904
+
+      - name: Run Unit Tests
+        run: uv run pytest tests/ -v --tb=short --no-cov -x
+        continue-on-error: false
+
+  # Warning checks that don't block but provide feedback
+  warning-checks:
+    name: Warning Quality Checks
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Ruff Full Check
+        continue-on-error: true
+        run: |
+          uv run ruff check tree_sitter_analyzer/ --statistics
+          echo "⚠️ Ruff warnings detected (non-blocking)"
+        shell: pwsh
+
+      - name: MyPy Type Check
+        continue-on-error: true
+        run: |
+          uv run mypy tree_sitter_analyzer/ --strict 2>&1 | Select-String "Found.*error"
+          echo "⚠️ MyPy warnings detected (non-blocking)"
+        shell: pwsh
+
+      - name: Check Deprecated Imports
+        continue-on-error: true
+        run: |
+          Select-String -Path tree_sitter_analyzer\**\*.py -Pattern "from typing import.*(Dict|List|Tuple|Type)" | Select-Object -First 5
+        shell: pwsh
+
+  # Quality metrics and trends
+  quality-metrics:
+    name: Quality Metrics
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Get full history for trends
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Collect Quality Metrics
+        run: |
+          Write-Host "📊 Quality Metrics Report" -ForegroundColor Cyan
+
+          # Count files
+          $FileCount = (Get-ChildItem -Path tree_sitter_analyzer -Filter *.py -Recurse).Count
+          Write-Host "Python files: $FileCount"
+
+          # Ruff errors
+          $RuffOutput = uv run ruff check tree_sitter_analyzer/ --statistics 2>&1
+          if ($RuffOutput -match "Found (\d+) error") {
+            $RuffCount = $matches[1]
+            Write-Host "Ruff errors: $RuffCount"
+            echo "RUFF_ERRORS=$RuffCount" >> $env:GITHUB_ENV
+          }
+
+          # MyPy errors
+          $MyPyOutput = uv run mypy tree_sitter_analyzer/ --strict 2>&1
+          if ($MyPyOutput -match "Found (\d+) error") {
+            $MyPyCount = $matches[1]
+            Write-Host "MyPy errors: $MyPyCount"
+            echo "MYPY_ERRORS=$MyPyCount" >> $env:GITHUB_ENV
+          }
+
+          # Test count
+          $TestCount = (Select-String -Path tests\**\*.py -Pattern "def test_").Count
+          Write-Host "Test functions: $TestCount"
+        shell: pwsh
+
+      - name: Generate Quality Badge
+        if: github.ref == 'refs/heads/main'
+        run: |
+          $RuffErrors = $env:RUFF_ERRORS
+          $MyPyErrors = $env:MYPY_ERRORS
+
+          $Color = if ([int]$RuffErrors -lt 30 -and [int]$MyPyErrors -lt 900) { "green" }
+                   elseif ([int]$RuffErrors -lt 50 -and [int]$MyPyErrors -lt 1100) { "yellow" }
+                   else { "red" }
+
+          Write-Host "Quality: $Color (Ruff: $RuffErrors, MyPy: $MyPyErrors)"
+        shell: pwsh
+
+  # Test coverage report
+  coverage:
+    name: Test Coverage
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Run Tests with Coverage
+        run: uv run pytest tests/ --cov=tree_sitter_analyzer --cov-report=xml --cov-report=term
+        continue-on-error: true
+
+      - name: Upload Coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          file: ./coverage.xml
+          fail_ci_if_error: false
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+      - name: Coverage Summary
+        run: |
+          if (Test-Path coverage.xml) {
+            [xml]$xml = Get-Content coverage.xml
+            $rate = [math]::Round([double]$xml.coverage.'line-rate' * 100, 2)
+            Write-Host "Coverage: $rate%"
+            if ($rate -lt 60) {
+              Write-Host "⚠️ Coverage below 60% target" -ForegroundColor Yellow
+            }
+          }
+        shell: pwsh

@@ -1,12 +1,53 @@
 #!/usr/bin/env python3
 """
-C/C++ specific table formatter.
-Supports files with mixed classes/structs and global functions.
+C/C++ Table Formatter - Enhanced C/C++ Code Result Formatting
+
+This module provides specialized formatting for C and C++ code analysis results,
+supporting both procedural C and modern C++ features.
+
+Optimized with:
+- Complete type hints (PEP 484)
+- Comprehensive error handling
+- Performance optimization with caching
+- Detailed documentation in English
+
+Features:
+- C/C++ mixed element formatting
+- Class, struct, and union handling
+- Template and namespace analysis
+- Global function support
+- Header/implementation separation
+- RAII pattern detection
+- Multiple output formats (table, CSV, TOON)
+- Complexity metrics
+- Type-safe operations (PEP 484)
+
+Architecture:
+- Extends BaseTableFormatter for consistent interface
+- Layered design with format delegation
+- Performance optimization where applicable
+- Integration with analysis result models
+
+Usage:
+    >>> from tree_sitter_analyzer.formatters import CppTableFormatter
+    >>> formatter = CppTableFormatter()
+    >>> output = formatter.format(analysis_result)
+
+Author: aisheng.yu
+Version: 1.10.5
+Date: 2026-01-28
 """
 
+# Standard library imports
+import logging
 from typing import Any
 
+# Internal imports
 from .base_formatter import BaseTableFormatter
+
+# Configure logging
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 
 class CppTableFormatter(BaseTableFormatter):
@@ -525,3 +566,9 @@ class CppTableFormatter(BaseTableFormatter):
             return self._format_csv(analysis_result)
         else:
             return self._format_full_table(analysis_result)
+
+
+# Exported public API
+__all__ = [
+    "CppTableFormatter",
+]

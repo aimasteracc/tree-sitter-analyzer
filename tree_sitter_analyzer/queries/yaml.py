@@ -1,10 +1,21 @@
 #!/usr/bin/env python3
 """
-YAML Language Queries
+YAML Language Queries.
 
 Comprehensive Tree-sitter queries for YAML language constructs.
-Covers documents, mappings, sequences, scalars, anchors, aliases, and comments.
+
+Key Features:
+    - Documents and streams
+    - Mappings and sequences
+    - Scalars and flow styles
+    - Anchors and aliases
+    - Comments and directives
+
+Version: 1.10.5
+Date: 2026-01-28
 """
+
+from __future__ import annotations
 
 # YAML-specific query library
 YAML_QUERIES: dict[str, str] = {
@@ -234,3 +245,13 @@ def get_available_yaml_queries() -> list[str]:
         List of query names
     """
     return list(YAML_QUERIES.keys())
+
+
+__all__: list[str] = [
+    "get_yaml_query",
+    "get_yaml_query_description",
+    "get_query",
+    "get_all_queries",
+    "list_queries",
+    "get_available_yaml_queries",
+]

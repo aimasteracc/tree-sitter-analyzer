@@ -1,8 +1,17 @@
 #!/usr/bin/env python3
 """
-Standalone CLI for find_and_grep (fd → ripgrep composition)
+Standalone CLI for find_and_grep.
 
-Maps CLI flags to the MCP FindAndGrepTool and prints JSON/text.
+Composition of fd → ripgrep for file search and content filtering.
+
+Key Features:
+    - File pattern search (fd)
+    - Content search (ripgrep)
+    - JSON/text output
+    - Project root detection
+
+Version: 1.10.5
+Date: 2026-01-28
 """
 
 from __future__ import annotations
@@ -10,11 +19,21 @@ from __future__ import annotations
 import argparse
 import asyncio
 import sys
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from ...mcp.tools.find_and_grep_tool import FindAndGrepTool
-from ...output_manager import output_data, output_error, set_output_mode
-from ...project_detector import detect_project_root
+if TYPE_CHECKING:
+    from ...mcp.tools.find_and_grep_tool import FindAndGrepTool
+    from ...output_manager import output_data, output_error, set_output_mode
+    from ...project_detector import detect_project_root
+else:
+    try:
+        from ...mcp.tools.find_and_grep_tool import FindAndGrepTool
+        from ...output_manager import output_data, output_error, set_output_mode
+        from ...project_detector import detect_project_root
+    except ImportError as e:
+        import logging
+
+        logging.warning(f"Import fallback triggered in find_and_grep_cli: {e}")
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -87,7 +106,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 async def _run(args: argparse.Namespace) -> int:
-    set_output_mode(quiet=bool(args.quiet), json_output=(args.output_format == "json"))
+    set_output_mode(quiet=bool(args.quiet), json_output=(args.output_format == "json"))  # type: ignore
 
     project_root = detect_project_root(None, args.project_root)
     tool = FindAndGrepTool(project_root)
@@ -191,3 +210,6 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+
+__all__: list[str] = ["main"]

@@ -1,16 +1,43 @@
 #!/usr/bin/env python3
 """
-Information Commands for CLI
+Information Commands for CLI.
 
 Commands that display information without requiring file analysis.
+
+Key Features:
+    - Language detection info
+    - Available query listing
+    - Supported language listing
+    - Abstract command base class
+
+Version: 1.10.5
+Date: 2026-01-28
 """
+
+from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from argparse import Namespace
+from typing import TYPE_CHECKING
 
-from ..language_detector import detect_language_from_file, detector
-from ..output_manager import output_data, output_error, output_info, output_list
-from ..query_loader import query_loader
+if TYPE_CHECKING:
+    from ..language_detector import detect_language_from_file, detector
+    from ..output_manager import output_data, output_error, output_info, output_list
+    from ..query_loader import query_loader
+else:
+    try:
+        from ..language_detector import detect_language_from_file, detector
+        from ..output_manager import output_data, output_error, output_info, output_list
+        from ..query_loader import query_loader
+    except ImportError as e:
+        import logging
+
+        logging.warning(f"Import fallback triggered in info_commands: {e}")
+
+__all__ = [
+    "InfoCommand",
+    "ListQueriesCommand",
+]
 
 
 class InfoCommand(ABC):

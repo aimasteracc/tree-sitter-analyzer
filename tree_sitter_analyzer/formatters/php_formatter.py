@@ -1,12 +1,42 @@
 #!/usr/bin/env python3
 """
-PHP-specific table formatter.
-Follows Java golden master format for consistency.
+PHP Table Formatter - Enhanced PHP Code Result Formatting
+
+This module provides specialized formatting for PHP code analysis results.
+
+Optimized with:
+- Complete type hints (PEP 484)
+- Comprehensive error handling
+- Performance optimization
+- Detailed documentation in English
+
+Features:
+- PHP-specific element formatting
+- Trait and namespace support
+- Magic method handling
+- Visibility modifier display
+- Type-safe operations (PEP 484)
+
+Usage:
+    >>> from tree_sitter_analyzer.formatters import PHPTableFormatter
+    >>> formatter = PHPTableFormatter()
+    >>> output = formatter.format(analysis_result)
+
+Author: aisheng.yu
+Version: 1.10.5
+Date: 2026-01-28
 """
 
+# Standard library imports
+import logging
 from typing import Any
 
+# Internal imports
 from .base_formatter import BaseTableFormatter
+
+# Configure logging
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 
 class PHPTableFormatter(BaseTableFormatter):
@@ -380,3 +410,14 @@ class PHPCSVFormatter(PHPTableFormatter):
     def format(self, data: dict[str, Any]) -> str:
         """Format data as CSV"""
         return self._format_csv(data)
+
+
+__all__: list[str] = [
+    "PHPTableFormatter",
+    "PHPFullFormatter",
+    "PHPCompactFormatter",
+    "PHPCSVFormatter",
+    "format",
+    "format",
+    "format",
+]

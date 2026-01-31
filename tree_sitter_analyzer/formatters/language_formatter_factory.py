@@ -1,8 +1,43 @@
 #!/usr/bin/env python3
 """
-Factory for creating language-specific formatters for different output types.
+Language Formatter Factory - Language-Specific Formatter Creation
+
+This module provides a factory for creating language-specific formatters
+for different programming languages and output types.
+
+Optimized with:
+- Complete type hints (PEP 484)
+- Comprehensive error handling
+- Performance optimization with caching
+- Detailed documentation in English
+
+Features:
+- Language-to-formatter mapping
+- Format type resolution
+- Language alias support (py, js, ts, etc.)
+- Extensible formatter registration
+- Type-safe operations (PEP 484)
+
+Architecture:
+- Factory pattern for formatter creation
+- Static formatter registry
+- Integration with all language formatters
+- Fallback to generic formatter
+
+Usage:
+    >>> from tree_sitter_analyzer.formatters import LanguageFormatterFactory
+    >>> formatter = LanguageFormatterFactory.create("python")
+    >>> output = formatter.format(analysis_result)
+
+Author: aisheng.yu
+Version: 1.10.5
+Date: 2026-01-28
 """
 
+# Standard library imports
+import logging
+
+# Internal imports - Language formatters
 from .base_formatter import BaseFormatter
 from .cpp_formatter import CppTableFormatter
 from .csharp_formatter import CSharpTableFormatter
@@ -20,6 +55,10 @@ from .rust_formatter import RustTableFormatter
 from .sql_formatter_wrapper import SQLFormatterWrapper
 from .typescript_formatter import TypeScriptTableFormatter
 from .yaml_formatter import YAMLFormatter
+
+# Configure logging
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 
 class LanguageFormatterFactory:
@@ -132,3 +171,9 @@ def create_language_formatter(language: str) -> BaseFormatter | None:
     except ValueError:
         # Return None for unsupported languages instead of raising exception
         return None
+
+
+# Exported public API
+__all__ = [
+    "LanguageFormatterFactory",
+]

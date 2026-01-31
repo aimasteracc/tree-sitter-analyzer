@@ -1,10 +1,21 @@
 #!/usr/bin/env python3
 """
-Markdown Query Definitions
+Markdown Query Definitions.
 
-Tree-sitter queries for extracting Markdown elements including headers,
-links, code blocks, lists, and other structural elements.
+Tree-sitter queries for extracting Markdown elements.
+
+Key Features:
+    - Headers (H1-H6)
+    - Code blocks and inline code
+    - Links and images
+    - Lists and blockquotes
+    - Structural elements
+
+Version: 1.10.5
+Date: 2026-01-28
 """
+
+from __future__ import annotations
 
 # Markdown element extraction queries - simplified for compatibility
 MARKDOWN_QUERIES: dict[str, str] = {

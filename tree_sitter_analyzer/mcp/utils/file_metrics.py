@@ -1,14 +1,55 @@
+#!/usr/bin/env python3
+"""
+File Metrics Computation for MCP Tools.
+
+This module provides file metrics calculation including line counts,
+token estimation, and content hashing with caching support.
+
+Key Features:
+    - FileMetrics dataclass with comprehensive metrics
+    - Line count analysis (total, code, comment, blank)
+    - Token estimation for LLM context calculation
+    - Content hashing for cache validation
+    - Language-aware comment detection
+    - Shared cache integration for performance
+
+Classes:
+    FileMetrics: Frozen dataclass containing file metrics
+
+Functions:
+    compute_file_metrics: Main function for metric calculation
+    _estimate_tokens: Token estimation from content
+    _compute_line_metrics: Line count and categorization
+
+Version: 1.10.5
+Date: 2026-01-28
+Author: tree-sitter-analyzer team
+"""
+
 from __future__ import annotations
 
 import hashlib
 import re
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
-from ...encoding_utils import read_file_safe
+if TYPE_CHECKING:
+    from ...encoding_utils import read_file_safe
+    from .shared_cache import get_shared_cache
+else:
+    try:
+        from ...encoding_utils import read_file_safe
+        from .shared_cache import get_shared_cache
+    except ImportError as e:
+        import logging
+
+        logging.warning(f"Import fallback triggered in file_metrics: {e}")
+
 from ...utils import setup_logger
-from .shared_cache import get_shared_cache
 
-logger = setup_logger(__name__)
+__all__ = ["FileMetrics", "compute_file_metrics"]
+
+logger = setup_logger(__name__)  # type: ignore
 
 
 @dataclass(frozen=True)

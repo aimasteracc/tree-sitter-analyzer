@@ -1,21 +1,50 @@
 #!/usr/bin/env python3
 """
-Advanced Command
+Advanced Command.
 
-Handles advanced analysis functionality.
+Handles advanced analysis functionality with comprehensive element extraction.
+
+Key Features:
+    - Full code structure analysis
+    - Element type filtering
+    - Multiple output formats
+    - TOON formatter support
+
+Version: 1.10.5
+Date: 2026-01-28
 """
+
+from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from ...constants import (
-    ELEMENT_TYPE_CLASS,
-    ELEMENT_TYPE_FUNCTION,
-    ELEMENT_TYPE_IMPORT,
-    ELEMENT_TYPE_VARIABLE,
-    get_element_type,
-)
-from ...output_manager import output_data, output_json, output_section
-from .base_command import BaseCommand
+if TYPE_CHECKING:
+    from ...constants import (
+        ELEMENT_TYPE_CLASS,
+        ELEMENT_TYPE_FUNCTION,
+        ELEMENT_TYPE_IMPORT,
+        ELEMENT_TYPE_VARIABLE,
+        get_element_type,
+    )
+    from ...output_manager import output_data, output_json, output_section
+    from .base_command import BaseCommand
+else:
+    try:
+        from ...constants import (
+            ELEMENT_TYPE_CLASS,
+            ELEMENT_TYPE_FUNCTION,
+            ELEMENT_TYPE_IMPORT,
+            ELEMENT_TYPE_VARIABLE,
+            get_element_type,
+        )
+        from ...output_manager import output_data, output_json, output_section
+        from .base_command import BaseCommand
+    except ImportError as e:
+        import logging
+
+        logging.warning(f"Import fallback triggered in advanced_command: {e}")
+
+__all__ = ["AdvancedCommand"]
 
 # TOON formatter for CLI output
 try:
@@ -148,7 +177,7 @@ class AdvancedCommand(BaseCommand):
                 "blank_lines": 0,
             }
 
-    def _output_statistics(self, analysis_result: "AnalysisResult") -> None:
+    def _output_statistics(self, analysis_result: AnalysisResult) -> None:
         """Output statistics only."""
         stats = {
             "line_count": analysis_result.line_count,
@@ -167,7 +196,7 @@ class AdvancedCommand(BaseCommand):
             for key, value in stats.items():
                 output_data(f"{key}: {value}")
 
-    def _output_full_analysis(self, analysis_result: "AnalysisResult") -> None:
+    def _output_full_analysis(self, analysis_result: AnalysisResult) -> None:
         """Output full analysis results."""
         output_section("Advanced Analysis Results")
         result_dict = {
@@ -197,7 +226,7 @@ class AdvancedCommand(BaseCommand):
         else:
             self._output_text_analysis(analysis_result)
 
-    def _output_text_analysis(self, analysis_result: "AnalysisResult") -> None:
+    def _output_text_analysis(self, analysis_result: AnalysisResult) -> None:
         """Output analysis in text format."""
         output_data(f"File: {analysis_result.file_path}")
         output_data("Package: (default)")

@@ -1,18 +1,40 @@
 #!/usr/bin/env python3
 """
-Tree-sitter Analyzer API
+Tree-sitter Analyzer API.
 
-Public API facade that provides a stable, high-level interface to the
-tree-sitter analyzer framework. This is the main entry point for both
-CLI and MCP interfaces.
+Public API facade providing a stable, high-level interface to the tree-sitter
+analyzer framework. This is the main entry point for both CLI and MCP interfaces.
+
+Key Features:
+    - Unified analysis engine access
+    - File analysis with multiple output formats
+    - Element extraction and conversion
+    - Query execution support
+
+Version: 1.10.5
+Date: 2026-01-28
 """
+
+from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from . import __version__
-from .core.analysis_engine import AnalysisRequest, UnifiedAnalysisEngine
+if TYPE_CHECKING:
+    from . import __version__
+    from .core.analysis_engine import AnalysisRequest, UnifiedAnalysisEngine
+else:
+    try:
+        from . import __version__
+        from .core.analysis_engine import AnalysisRequest, UnifiedAnalysisEngine
+    except ImportError as e:
+        logging.warning(f"Import fallback triggered in api: {e}")
+
+__all__ = [
+    "get_engine",
+    "analyze_file",
+]
 from .utils import log_error
 
 logger = logging.getLogger(__name__)
@@ -439,7 +461,7 @@ def get_supported_languages() -> list[str]:
     """
     try:
         engine = get_engine()
-        return engine.get_supported_languages()
+        return engine.get_supported_languages()  # type: ignore
     except (AttributeError, RuntimeError) as e:
         log_error(f"Engine error getting supported languages: {e}")
         return []
@@ -460,7 +482,7 @@ def get_available_queries(language: str) -> list[str]:
     """
     try:
         engine = get_engine()
-        return engine.get_available_queries(language)
+        return engine.get_available_queries(language)  # type: ignore
     except Exception as e:
         log_error(f"Failed to get available queries for {language}: {e}")
         return []

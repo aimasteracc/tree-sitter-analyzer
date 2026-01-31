@@ -36,45 +36,42 @@ Version: 1.10.5
 Date: 2026-01-28
 """
 
-import hashlib
 import logging
-import os
-import sys
 import threading
-import time
-from typing import TYPE_CHECKING, Any, Optional, List, Dict, Tuple, Union, Callable, Type, NamedTuple, Set
-from functools import lru_cache, wraps
+from contextlib import nullcontext
 from dataclasses import dataclass, field
-from enum import Enum
+from functools import lru_cache
 from pathlib import Path
 from time import perf_counter
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Protocol,
+)
 
 # Type checking setup
 if TYPE_CHECKING:
     # Core imports
+    # Import Class using importlib to avoid 'class' keyword issue
+    import importlib
+
+    # Model imports
+    from ...models.element import Element, ElementType, Position, TypeInfo, Visibility
+    from ...models.function import Function
     from ..core.analysis_engine import AnalysisEngine, AnalysisRequest, AnalysisResult
 
     # Utility imports
     from ..utils.logging import (
-        LoggerConfig,
-        LoggingContext,
         log_debug,
-        log_info,
-        log_warning,
         log_error,
-        log_performance,
-        setup_logger,
-        create_performance_logger,
-        safe_print,
+        log_info,
     )
 
     # Command imports
-    from .base import Command, CommandResult, ExecutionContext, CommandMetadata
+    from .base import Command, CommandMetadata, CommandResult, ExecutionContext
 
-    # Model imports
-    from ...models.element import Element, Position, TypeInfo, Visibility, ElementType
-    from ...models.function import Function
-    from ...models.class import Class
+    class_module = importlib.import_module("tree_sitter_analyzer.models.class")
+    Class = class_module.Class
 else:
     # Runtime imports (when type checking is disabled)
     # Core imports
@@ -85,11 +82,8 @@ else:
     # Utility imports
     from ..utils.logging import (
         log_debug,
-        log_info,
-        log_warning,
         log_error,
-        log_performance,
-        safe_print,
+        log_info,
     )
 
     # Command imports
@@ -111,14 +105,10 @@ else:
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-# ============================================================================
+# =====
 # Type Definitions
-# ============================================================================
+# =====
 
-if sys.version_info >= (3, 8):
-    from typing import Protocol
-else:
-    Protocol = object
 
 class AnalyzeScaleToolProtocol(Protocol):
     """Interface for analyze scale tool command creation functions."""
@@ -135,10 +125,11 @@ class AnalyzeScaleToolProtocol(Protocol):
         """
         ...
 
+
 class CacheProtocol(Protocol):
     """Interface for cache services."""
 
-    def get(self, key: str) -> Optional[Any]:
+    def get(self, key: str) -> Any | None:
         """
         Get value from cache.
 
@@ -164,6 +155,7 @@ class CacheProtocol(Protocol):
         """Clear all cache entries."""
         ...
 
+
 class PerformanceMonitorProtocol(Protocol):
     """Interface for performance monitoring."""
 
@@ -179,9 +171,11 @@ class PerformanceMonitorProtocol(Protocol):
         """
         ...
 
+
 # ============================================================================
 # Custom Exceptions
 # ============================================================================
+
 
 class AnalyzeScaleToolError(Exception):
     """Base exception for analyze scale tool errors."""
@@ -193,27 +187,32 @@ class AnalyzeScaleToolError(Exception):
 
 class InitializationError(AnalyzeScaleToolError):
     """Exception raised when analyze scale tool initialization fails."""
+
     pass
 
 
 class ExecutionError(AnalyzeScaleToolError):
     """Exception raised when analysis execution fails."""
+
     pass
 
 
 class ValidationError(AnalyzeScaleToolError):
     """Exception raised when validation fails."""
+
     pass
 
 
 class FileScanError(AnalyzeScaleToolError):
     """Exception raised when file scanning fails."""
+
     pass
 
 
 # ============================================================================
 # Data Classes
 # ============================================================================
+
 
 @dataclass(frozen=True, slots=True)
 class ProjectMetrics:
@@ -239,9 +238,9 @@ class ProjectMetrics:
     total_classes: int
     total_imports: int
     average_complexity: float
-    file_type_distribution: Dict[str, int]
-    language_distribution: Dict[str, int]
-    largest_file: Optional[str]
+    file_type_distribution: dict[str, int]
+    language_distribution: dict[str, int]
+    largest_file: str | None
     analysis_time: float
 
     @property
@@ -277,9 +276,9 @@ class FileMetrics:
     file_path: str
     file_type: str
     lines_of_code: int
-    functions: List[str]
-    classes: List[str]
-    imports: List[str]
+    functions: list[str]
+    classes: list[str]
+    imports: list[str]
     complexity: int
 
     @property
@@ -312,8 +311,10 @@ class ScaleAnalysisConfig:
 
     project_root: str = "."
     max_files: int = 0  # 0 means no limit
-    file_patterns: List[str] = field(default_factory=lambda: ["*.py", "*.js", "*.ts", "*.java", "*.kt"])
-    exclude_patterns: List[str] = field(default_factory=list)
+    file_patterns: list[str] = field(
+        default_factory=lambda: ["*.py", "*.js", "*.ts", "*.java", "*.kt"]
+    )
+    exclude_patterns: list[str] = field(default_factory=list)
     include_test_files: bool = False
     include_hidden_files: bool = False
     enable_caching: bool = True
@@ -329,6 +330,7 @@ class ScaleAnalysisConfig:
 # ============================================================================
 # Analyze Scale Tool Command
 # ============================================================================
+
 
 class AnalyzeScaleToolCommand(Command):
     """
@@ -357,7 +359,7 @@ class AnalyzeScaleToolCommand(Command):
         >>> print(result.message)
     """
 
-    def __init__(self, config: Optional[ScaleAnalysisConfig] = None):
+    def __init__(self, config: ScaleAnalysisConfig | None = None):
         """
         Initialize analyze scale tool command.
 
@@ -373,15 +375,17 @@ class AnalyzeScaleToolCommand(Command):
         self._config = config or ScaleAnalysisConfig()
 
         # Thread-safe lock for operations
-        self._lock = threading.RLock() if self._config.enable_thread_safety else type(None)
+        self._lock = (
+            threading.RLock() if self._config.enable_thread_safety else None
+        )
 
         # Analysis components (lazy loading)
-        self._engine: Optional[AnalysisEngine] = None
-        self._parser: Optional[Any] = None
-        self._language_detector: Optional[Any] = None
+        self._engine: AnalysisEngine | None = None
+        self._parser: Any | None = None
+        self._language_detector: Any | None = None
 
         # Performance statistics
-        self._stats: Dict[str, Any] = {
+        self._stats: dict[str, Any] = {
             "total_files_scanned": 0,
             "total_lines_analyzed": 0,
             "cache_hits": 0,
@@ -411,7 +415,7 @@ class AnalyzeScaleToolCommand(Command):
             - Generates detailed metrics report
         """
         # Start performance monitoring
-        operation_name = f"analyze_scale_{Path(context.args[0] if context.args else 'project').name}"
+        f"analyze_scale_{Path(context.args[0] if context.args else 'project').name}"
         start_time = perf_counter()
 
         try:
@@ -452,7 +456,9 @@ class AnalyzeScaleToolCommand(Command):
             self._stats["total_lines_analyzed"] = project_metrics.total_lines_of_code
             self._stats["analysis_times"].append(execution_time)
 
-            log_info(f"Scale analysis completed for {len(file_paths)} files in {execution_time:.3f}s")
+            log_info(
+                f"Scale analysis completed for {len(file_paths)} files in {execution_time:.3f}s"
+            )
 
             return CommandResult(
                 command_name=self._name,
@@ -486,7 +492,7 @@ class AnalyzeScaleToolCommand(Command):
             - Initializes all analysis components
             - Thread-safe operation
         """
-        with self._lock:
+        with (self._lock if self._lock else nullcontext()):
             if self._engine is None:
                 if TYPE_CHECKING:
                     from ...core.analysis_engine import create_analysis_engine
@@ -500,9 +506,11 @@ class AnalyzeScaleToolCommand(Command):
                     log_debug("Analysis engine initialized")
                 except Exception as e:
                     log_error(f"Failed to initialize analysis engine: {e}")
-                    raise InitializationError(f"Failed to initialize analysis engine: {e}") from e
+                    raise InitializationError(
+                        f"Failed to initialize analysis engine: {e}"
+                    ) from e
 
-    def _scan_files(self, target_path: str) -> List[str]:
+    def _scan_files(self, target_path: str) -> list[str]:
         """
         Scan directory for files matching patterns.
 
@@ -539,21 +547,33 @@ class AnalyzeScaleToolCommand(Command):
                         continue
 
                     # Check exclude patterns
-                    if any(exclude in str(file_path) for exclude in self._config.exclude_patterns):
+                    if any(
+                        exclude in str(file_path)
+                        for exclude in self._config.exclude_patterns
+                    ):
                         continue
 
                     # Check hidden files
-                    if not self._config.include_hidden_files and file_path.name.startswith('.'):
+                    if (
+                        not self._config.include_hidden_files
+                        and file_path.name.startswith(".")
+                    ):
                         continue
 
                     # Check test files
-                    if not self._config.include_test_files and 'test' in file_path.name.lower():
+                    if (
+                        not self._config.include_test_files
+                        and "test" in file_path.name.lower()
+                    ):
                         continue
 
                     file_paths.append(str(file_path))
 
                     # Check max files limit
-                    if self._config.max_files > 0 and len(file_paths) >= self._config.max_files:
+                    if (
+                        self._config.max_files > 0
+                        and len(file_paths) >= self._config.max_files
+                    ):
                         return file_paths
 
             return file_paths
@@ -562,7 +582,7 @@ class AnalyzeScaleToolCommand(Command):
             log_error(f"File scanning failed for {target_path}: {e}")
             raise FileScanError(f"File scanning failed: {e}") from e
 
-    def _analyze_files(self, file_paths: List[str]) -> ProjectMetrics:
+    def _analyze_files(self, file_paths: list[str]) -> ProjectMetrics:
         """
         Analyze files and compute project metrics.
 
@@ -585,8 +605,8 @@ class AnalyzeScaleToolCommand(Command):
         total_imports = 0
         total_complexity = 0
 
-        file_type_distribution: Dict[str, int] = {}
-        language_distribution: Dict[str, int] = {}
+        file_type_distribution: dict[str, int] = {}
+        language_distribution: dict[str, int] = {}
 
         largest_file = None
         max_lines = 0
@@ -615,7 +635,7 @@ class AnalyzeScaleToolCommand(Command):
                 language_distribution[language] += 1
 
                 # Read file and count lines
-                with open(file_path, 'r', encoding='utf-8') as f:
+                with open(file_path, encoding="utf-8") as f:
                     lines = f.readlines()
 
                 lines_of_code = len(lines)
@@ -631,10 +651,10 @@ class AnalyzeScaleToolCommand(Command):
                 total_complexity += complexity
 
                 # Count functions and classes (simple string matching)
-                code = ''.join(lines)
-                function_count = code.count('def ')
-                class_count = code.count('class ')
-                import_count = code.count('import ')
+                code = "".join(lines)
+                function_count = code.count("def ")
+                class_count = code.count("class ")
+                import_count = code.count("import ")
 
                 total_functions += function_count
                 total_classes += class_count
@@ -645,11 +665,7 @@ class AnalyzeScaleToolCommand(Command):
                 continue
 
         # Calculate average complexity
-        average_complexity = (
-            total_complexity / total_files
-            if total_files > 0
-            else 0.0
-        )
+        average_complexity = total_complexity / total_files if total_files > 0 else 0.0
 
         return ProjectMetrics(
             total_files=total_files,
@@ -664,7 +680,9 @@ class AnalyzeScaleToolCommand(Command):
             analysis_time=0.0,  # Will be set by caller
         )
 
-    def _generate_output(self, metrics: ProjectMetrics, config: ScaleAnalysisConfig) -> str:
+    def _generate_output(
+        self, metrics: ProjectMetrics, config: ScaleAnalysisConfig
+    ) -> str:
         """
         Generate output in specified format.
 
@@ -695,14 +713,18 @@ class AnalyzeScaleToolCommand(Command):
 
         # File type distribution
         lines.append("File Type Distribution:")
-        for file_type, count in sorted(metrics.file_type_distribution.items(), key=lambda x: x[1], reverse=True):
+        for file_type, count in sorted(
+            metrics.file_type_distribution.items(), key=lambda x: x[1], reverse=True
+        ):
             percentage = (count / metrics.total_files) * 100
             lines.append(f"  {file_type}: {count} ({percentage:.1f}%)")
         lines.append("")
 
         # Language distribution
         lines.append("Language Distribution:")
-        for language, count in sorted(metrics.language_distribution.items(), key=lambda x: x[1], reverse=True):
+        for language, count in sorted(
+            metrics.language_distribution.items(), key=lambda x: x[1], reverse=True
+        ):
             percentage = (count / metrics.total_files) * 100
             lines.append(f"  {language}: {count} ({percentage:.1f}%)")
         lines.append("")
@@ -716,12 +738,13 @@ class AnalyzeScaleToolCommand(Command):
 # Convenience Functions with LRU Caching
 # ============================================================================
 
+
 @lru_cache(maxsize=64, typed=True)
 def get_analyze_scale_tool_command(
     project_root: str = ".",
     max_files: int = 0,
-    file_patterns: Optional[List[str]] = None,
-    exclude_patterns: Optional[List[str]] = None,
+    file_patterns: list[str] | None = None,
+    exclude_patterns: list[str] | None = None,
     include_test_files: bool = False,
     include_hidden_files: bool = False,
     enable_caching: bool = True,
@@ -769,22 +792,19 @@ def get_analyze_scale_tool_command(
 # Module-level exports for backward compatibility
 # ============================================================================
 
-__all__: List[str] = [
+__all__: list[str] = [
     # Data classes
     "ProjectMetrics",
     "FileMetrics",
     "ScaleAnalysisConfig",
-
     # Exceptions
     "AnalyzeScaleToolError",
     "InitializationError",
     "ExecutionError",
     "ValidationError",
     "FileScanError",
-
     # Main class
     "AnalyzeScaleToolCommand",
-
     # Convenience functions
     "get_analyze_scale_tool_command",
 ]
@@ -793,6 +813,7 @@ __all__: List[str] = [
 # ============================================================================
 # Module-level exports for backward compatibility
 # ============================================================================
+
 
 def __getattr__(name: str) -> Any:
     """
@@ -825,6 +846,7 @@ def __getattr__(name: str) -> Any:
     ]:
         # Import from module
         import sys
+
         module = sys.modules[__name__]
         if module is None:
             raise ImportError(f"Module {name} not found")
@@ -838,4 +860,4 @@ def __getattr__(name: str) -> Any:
             module = __import__(f".{name}", fromlist=["__name__"])
             return module
         except ImportError:
-            raise ImportError(f"Module {name} not found")
+            raise ImportError(f"Module {name} not found") from None

@@ -1,11 +1,40 @@
+#!/usr/bin/env python3
+"""
+Special Commands for CLI.
+
+Handlers for special CLI commands that don't fit the standard command pattern.
+
+Key Features:
+    - MCP server start
+    - Cache operations (clear, stats)
+    - Performance monitoring
+    - Async command support
+
+Version: 1.10.5
+Date: 2026-01-28
+"""
+
+from __future__ import annotations
+
 import argparse
 import asyncio
 import json
 import os
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from ..output_manager import output_error, output_info, output_list
-from ..query_loader import query_loader
+if TYPE_CHECKING:
+    from ..output_manager import output_error, output_info, output_list
+    from ..query_loader import query_loader
+else:
+    try:
+        from ..output_manager import output_error, output_info, output_list
+        from ..query_loader import query_loader
+    except ImportError as e:
+        import logging
+
+        logging.warning(f"Import fallback triggered in special_commands: {e}")
+
+__all__ = ["SpecialCommandHandler"]
 
 
 class SpecialCommandHandler:

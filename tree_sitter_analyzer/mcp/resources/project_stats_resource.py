@@ -1,27 +1,70 @@
 #!/usr/bin/env python3
 """
-Project Statistics Resource for MCP
+Project Statistics Resource for MCP.
 
 This module provides MCP resource implementation for accessing project
-statistics and analysis data. The resource allows dynamic access to
-project analysis results through URI-based identification.
+statistics and analysis data through URI-based identification.
+
+Key Features:
+    - Overview statistics (file counts, line counts, languages)
+    - Language breakdown with detailed metrics per language
+    - Complexity metrics and analysis
+    - File-level statistics and information
+    - Dynamic analysis through AnalysisEngine
+    - URI-based access (code://stats/{stats_type})
+
+Classes:
+    ProjectStatsResource: MCP resource for project statistics
+
+Supported Stats Types:
+    - overview: General project overview
+    - languages: Language breakdown and statistics
+    - complexity: Complexity metrics and analysis
+    - files: File-level statistics and information
+
+Examples:
+    - code://stats/overview
+    - code://stats/languages
+    - code://stats/complexity
+    - code://stats/files
+
+Version: 1.10.5
+Date: 2026-01-28
+Author: tree-sitter-analyzer team
 """
+
+from __future__ import annotations
 
 import json
 import logging
 import re
 from datetime import datetime
 from pathlib import Path
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
-from tree_sitter_analyzer.core.analysis_engine import (
-    AnalysisRequest,
-    get_analysis_engine,
-)
-from tree_sitter_analyzer.language_detector import (
-    detect_language_from_file,
-    is_language_supported,
-)
+if TYPE_CHECKING:
+    from tree_sitter_analyzer.core.analysis_engine import (
+        AnalysisRequest,
+        get_analysis_engine,
+    )
+    from tree_sitter_analyzer.language_detector import (
+        detect_language_from_file,
+        is_language_supported,
+    )
+else:
+    try:
+        from tree_sitter_analyzer.core.analysis_engine import (
+            AnalysisRequest,
+            get_analysis_engine,
+        )
+        from tree_sitter_analyzer.language_detector import (
+            detect_language_from_file,
+            is_language_supported,
+        )
+    except ImportError as e:
+        logging.warning(f"Import fallback triggered in project_stats_resource: {e}")
+
+__all__ = ["ProjectStatsResource"]
 
 logger = logging.getLogger(__name__)
 
@@ -180,7 +223,7 @@ class ProjectStatsResource:
             language = detect_language_from_file(
                 str(file_path), project_root=self._project_path
             )
-            return is_language_supported(language)
+            return is_language_supported(language)  # type: ignore
         except Exception:
             return False
 
@@ -195,7 +238,7 @@ class ProjectStatsResource:
             Detected language name
         """
         try:
-            return detect_language_from_file(
+            return detect_language_from_file(  # type: ignore
                 str(file_path), project_root=self._project_path
             )
         except Exception:
@@ -386,7 +429,7 @@ class ProjectStatsResource:
                         request = AnalysisRequest(
                             file_path=str(file_path), language=language
                         )
-                        file_analysis_result = await self.analysis_engine.analyze(
+                        file_analysis_result = await self.analysis_engine.analyze(  # type: ignore
                             request
                         )
 

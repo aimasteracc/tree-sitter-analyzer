@@ -1,9 +1,30 @@
 #!/usr/bin/env python3
 """
-Utility functions for fd and ripgrep operations.
+Utility Functions for fd and ripgrep Operations.
 
-This module contains shared utility functions that don't fit into
-other specialized modules (command building, parsing, etc.).
+This module contains shared utility functions for fd/rg operations
+including command execution, caching, and result processing.
+
+Key Features:
+    - External command existence checking with caching
+    - Command execution via subprocess (sync/async)
+    - Parallel command execution for performance
+    - Result merging and aggregation
+    - Path optimization and sanitization
+    - Error message sanitization
+
+Functions:
+    check_external_command: Check command availability (cached)
+    get_missing_commands: Get list of missing commands
+    run_command_capture: Execute command and capture output
+    run_parallel_commands: Execute multiple commands in parallel
+    merge_command_results: Merge results from multiple commands
+    optimize_match_paths: Optimize file paths in results
+    sanitize_error_message: Clean error messages for display
+
+Version: 1.10.5
+Date: 2026-01-28
+Author: tree-sitter-analyzer team
 """
 
 from __future__ import annotations
@@ -17,6 +38,17 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+__all__ = [
+    "check_external_command",
+    "get_missing_commands",
+    "run_command_capture",
+    "run_parallel_commands",
+    "merge_command_results",
+    "sanitize_error_message",
+    "clamp_int",
+    "split_roots_for_parallel_processing",
+]
 
 # Command existence cache (module-level for performance)
 _COMMAND_EXISTS_CACHE: dict[str, bool] = {}

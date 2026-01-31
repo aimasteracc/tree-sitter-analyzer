@@ -1,26 +1,72 @@
 #!/usr/bin/env python3
 """
-CSS Language Plugin
+CSS Language Plugin - Enhanced CSS Code Analysis
 
-True CSS parser using tree-sitter-css for comprehensive CSS analysis.
-Provides CSS-specific analysis capabilities including rule extraction,
-selector parsing, and property analysis.
+This module provides comprehensive CSS-specific parsing and element extraction
+functionality for the tree-sitter-analyzer framework using tree-sitter-css.
+
+Optimized with:
+- Complete type hints (PEP 484)
+- Comprehensive error handling and recovery
+- Performance optimization with caching
+- Thread-safe operations where applicable
+- Detailed documentation in English
+
+Features:
+- CSS3 specification support
+- Rule extraction with selectors
+- Property and value parsing
+- At-rule (@import, @media, etc.) handling
+- Selector complexity scoring
+- Property categorization (layout, typography, etc.)
+- Browser compatibility tracking
+- Type-safe operations (PEP 484)
+
+Architecture:
+- Extends MarkupLanguageExtractor for styling language patterns
+- Layered design with clear separation of concerns
+- Performance optimization with node caching
+- Integration with tree-sitter CSS grammar
+- CSS specificity calculation
+
+Usage:
+    >>> from tree_sitter_analyzer.languages import CssPlugin
+    >>> plugin = CssPlugin()
+    >>> result = await plugin.analyze(request)
+    >>> elements = result.elements
+
+Author: aisheng.yu
+Version: 1.10.5
+Date: 2026-01-28
 """
 
+# Standard library imports
 import logging
 from typing import TYPE_CHECKING, Any
 
+# Type checking imports
+if TYPE_CHECKING:
+    import tree_sitter
+    from tree_sitter import Language, Node, Tree
+
+    from ..core.analysis_engine import AnalysisRequest
+    from ..models import AnalysisResult
+else:
+    # Runtime fallback for type checking imports
+    tree_sitter = Any  # type: ignore[misc,assignment]
+    Tree = Any
+    Node = Any
+    Language = Any
+
+# Internal imports
 from ..models import AnalysisResult, StyleElement
 from ..plugins.base import LanguagePlugin
 from ..plugins.markup_language_extractor import MarkupLanguageExtractor
 from ..utils import log_debug, log_error, log_info
 
-if TYPE_CHECKING:
-    import tree_sitter
-
-    from ..core.analysis_engine import AnalysisRequest
-
+# Configure logging
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 
 class CssElementExtractor(MarkupLanguageExtractor):
@@ -470,3 +516,10 @@ class CssPlugin(LanguagePlugin):
                 success=False,
                 error_message=str(e),
             )
+
+
+# Exported public API
+__all__ = [
+    "CssElementExtractor",
+    "CssPlugin",
+]

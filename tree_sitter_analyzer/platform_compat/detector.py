@@ -1,7 +1,27 @@
+#!/usr/bin/env python3
+"""
+Platform Detector.
+
+Detects current platform and Python version information.
+
+Key Features:
+    - OS identification
+    - Python version detection
+    - Platform key generation
+    - Cross-platform compatibility
+
+Version: 1.10.5
+Date: 2026-01-28
+"""
+
+from __future__ import annotations
+
 import platform
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+
+__all__ = ["PlatformInfo", "PlatformDetector"]
 
 
 @dataclass

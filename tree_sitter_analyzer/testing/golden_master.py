@@ -1,15 +1,32 @@
 #!/usr/bin/env python3
 """
-Golden Master Utilities
+Golden Master Utilities.
 
-Provides utilities for loading, saving, and comparing golden master files
-for regression testing of MCP tools.
+Provides utilities for loading, saving, and comparing golden master files.
+
+Key Features:
+    - Golden master management
+    - Diff generation
+    - File persistence
+    - Regression testing support
+
+Version: 1.10.5
+Date: 2026-01-28
 """
+
+from __future__ import annotations
 
 import difflib
 import json
 from pathlib import Path
 from typing import Any
+
+__all__ = [
+    "get_golden_master_path",
+    "load_golden_master",
+    "save_golden_master",
+    "generate_diff",
+]
 
 # Default golden master directory
 GOLDEN_MASTER_DIR = Path(__file__).parent.parent.parent / "tests" / "golden_masters"

@@ -1,17 +1,49 @@
 #!/usr/bin/env python3
 """
-Code File Resource for MCP
+Code File Resource for MCP.
 
-This module provides MCP resource implementation for accessing code file content.
-The resource allows dynamic access to file content through URI-based identification.
+This module provides MCP resource implementation for accessing code file content
+through URI-based identification with proper encoding detection.
+
+Key Features:
+    - URI-based file access (code://file/{file_path})
+    - Automatic encoding detection via read_file_safe
+    - Path validation and security checks
+    - Error handling for missing/inaccessible files
+    - MCP protocol integration
+
+Classes:
+    CodeFileResource: MCP resource for file content access
+
+URI Format:
+    code://file/{file_path}
+
+Examples:
+    - code://file/src/main/java/Example.java
+    - code://file/scripts/helper.py
+    - code://file/test.js
+
+Version: 1.10.5
+Date: 2026-01-28
+Author: tree-sitter-analyzer team
 """
+
+from __future__ import annotations
 
 import logging
 import re
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from tree_sitter_analyzer.encoding_utils import read_file_safe
+if TYPE_CHECKING:
+    from tree_sitter_analyzer.encoding_utils import read_file_safe
+else:
+    try:
+        from tree_sitter_analyzer.encoding_utils import read_file_safe
+    except ImportError as e:
+        logging.warning(f"Import fallback triggered in code_file_resource: {e}")
+
+__all__ = ["CodeFileResource"]
 
 logger = logging.getLogger(__name__)
 

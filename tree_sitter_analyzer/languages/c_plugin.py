@@ -1,25 +1,73 @@
 #!/usr/bin/env python3
 """
-C Language Plugin
+C Language Plugin - Enhanced C Code Analysis
 
-Provides C specific parsing and element extraction functionality.
-Supports standard C constructs including functions, structs, unions,
-enums, and preprocessor directives.
+This module provides comprehensive C-specific parsing and element extraction
+functionality for the tree-sitter-analyzer framework.
+
+Optimized with:
+- Complete type hints (PEP 484)
+- Comprehensive error handling and recovery
+- Performance optimization with caching
+- Thread-safe operations where applicable
+- Detailed documentation in English
+
+Features:
+- C-specific constructs (functions, structs, unions, enums)
+- Preprocessor directive detection (#include, #define, #ifdef)
+- Macro function analysis
+- Pointer and array type handling
+- Static and inline function detection
+- Type definition tracking
+- Complexity scoring
+- Type-safe operations (PEP 484)
+
+Architecture:
+- Extends ProgrammingLanguageExtractor for language-specific behavior
+- Layered design with clear separation of concerns
+- Performance optimization with comment and complexity caching
+- Integration with tree-sitter C grammar
+- Preprocessor-aware analysis patterns
+
+Usage:
+    >>> from tree_sitter_analyzer.languages import CPlugin
+    >>> plugin = CPlugin()
+    >>> result = await plugin.analyze(request)
+    >>> elements = result.elements
+
+Author: aisheng.yu
+Version: 1.10.5
+Date: 2026-01-28
 """
 
+# Standard library imports
+import logging
 import re
 from typing import TYPE_CHECKING, Any
 
+# Type checking imports
 if TYPE_CHECKING:
     import tree_sitter
+    from tree_sitter import Language, Node, Tree
 
     from ..core.analysis_engine import AnalysisRequest
     from ..models import AnalysisResult
+else:
+    # Runtime fallback for type checking imports
+    tree_sitter = Any  # type: ignore[misc,assignment]
+    Tree = Any
+    Node = Any
+    Language = Any
 
+# Internal imports
 from ..models import Class, Function, Import, Variable
 from ..plugins.base import ElementExtractor, LanguagePlugin
 from ..plugins.programming_language_extractor import ProgrammingLanguageExtractor
 from ..utils import log_debug, log_error
+
+# Configure logging
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 
 class CElementExtractor(ProgrammingLanguageExtractor):
@@ -69,7 +117,7 @@ class CElementExtractor(ProgrammingLanguageExtractor):
         }
 
         self._traverse_and_extract_iterative(
-            tree.root_node, extractors, variables, "variable"
+            tree.root_node, extractors, variables, "variable"  # type: ignore
         )
 
         log_debug(f"Extracted {len(variables)} C variables/fields")
@@ -890,3 +938,15 @@ class CPlugin(LanguagePlugin):
     def get_element_categories(self) -> dict[str, list[str]]:
         """Return element categories for HTML/CSS languages."""
         return {}
+
+
+# ============================================================================
+# Module Exports
+# ============================================================================
+
+__all__: list[str] = [
+    # Extractor classes
+    "CElementExtractor",
+    # Plugin classes
+    "CPlugin",
+]

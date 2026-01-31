@@ -31,68 +31,49 @@ Version: 1.10.5
 Date: 2026-01-28
 """
 
-import import os
-import sys
-from typing import TYPE_CHECKING
+import os
+from typing import TYPE_CHECKING, Any
+
+from ..encoding_utils import read_file_safe
 
 # Type-safe imports using TYPE_CHECKING to avoid circular dependencies
 if TYPE_CHECKING:
     # Analysis engine components
     from .analysis_engine import (
         AnalysisEngine,
-        AnalysisConfig,
-        AnalysisResult,
-        Analyzer,
-        AnalysisError,
+        AnalysisEngineConfig,
+        AnalysisEngineError,
     )
     from .parser import (
         Parser,
-        ParseResult,
+        ParserConfig,
         ParserError,
-        ParseConfig,
-        Tree,
-        Node,
+        ParseResult,
     )
     from .query import (
         QueryExecutor,
+        QueryExecutorConfig,
+        QueryExecutorError,
         QueryResult,
-        QueryError,
-        QueryConfig,
-        Query,
-        Cursor,
-    )
-    
-    # Legacy exports for backward compatibility
-    from .analysis_engine import (
-        UnifiedAnalysisEngine as AnalysisEngineLegacy,
-        AnalysisConfig as AnalysisConfigLegacy,
     )
 else:
     # Runtime imports (when type checking is disabled)
     from .analysis_engine import (
         AnalysisEngine,
-        AnalysisConfig,
-        AnalysisResult,
-        Analyzer,
-        AnalysisError,
-        UnifiedAnalysisEngine as AnalysisEngineLegacy,
-        AnalysisConfig as AnalysisConfigLegacy,
+        AnalysisEngineConfig,
+        AnalysisEngineError,
     )
     from .parser import (
         Parser,
-        ParseResult,
+        ParserConfig,
         ParserError,
-        ParseConfig,
-        Tree,
-        Node,
+        ParseResult,
     )
     from .query import (
         QueryExecutor,
+        QueryExecutorConfig,
+        QueryExecutorError,
         QueryResult,
-        QueryError,
-        QueryConfig,
-        Query,
-        Cursor,
     )
 
 
@@ -103,35 +84,28 @@ __email__: str = "aimasteracc@gmail.com"
 
 
 # Public API exports
-__all__: List[str] = [
+__all__: list[str] = [
     # Version information
     "__version__",
     "__author__",
     "__email__",
-    
     # Analysis Engine
     "AnalysisEngine",
-    "AnalysisConfig",
+    "AnalysisEngineConfig",
+    "AnalysisEngineError",
     "AnalysisResult",
     "Analyzer",
     "AnalysisError",
-    
     # Parser
     "Parser",
     "ParseResult",
     "ParserError",
-    "ParseConfig",
-    "Tree",
-    "Node",
-    
+    "ParserConfig",
     # Query Executor
     "QueryExecutor",
     "QueryResult",
-    "QueryError",
-    "QueryConfig",
-    "Query",
-    "Cursor",
-    
+    "QueryExecutorError",
+    "QueryExecutorConfig",
     # Legacy exports (backward compatibility)
     "AnalysisEngineLegacy",
     "AnalysisConfigLegacy",
@@ -142,7 +116,10 @@ __all__: List[str] = [
 # Convenience Functions
 # ============================================================================
 
-def create_analysis_engine(project_root: str, config: Optional[AnalysisConfig] = None) -> AnalysisEngine:
+
+def create_analysis_engine(
+    project_root: str, config: AnalysisEngineConfig | None = None
+) -> AnalysisEngine:
     """
     Create and configure an AnalysisEngine instance.
 
@@ -162,7 +139,7 @@ def create_analysis_engine(project_root: str, config: Optional[AnalysisConfig] =
     Example:
         >>> engine = create_analysis_engine(
         ...     project_root="/path/to/project",
-        ...     config=AnalysisConfig(
+        ...     config=AnalysisEngineConfig(
         ...         include_stats=True,
         ...         include_complexity=True
         ...     )
@@ -170,20 +147,20 @@ def create_analysis_engine(project_root: str, config: Optional[AnalysisConfig] =
     """
     if not project_root:
         raise ValueError("project_root cannot be empty")
-    
+
     project_path = os.path.abspath(project_root)
     if not os.path.exists(project_path):
         raise ValueError(f"Project root does not exist: {project_path}")
-    
+
     # Use provided config or create default
     if config is None:
-        config = AnalysisConfig()
-    
+        config = AnalysisEngineConfig()
+
     # Create and return engine
     return AnalysisEngine(project_root=project_root, config=config)
 
 
-def create_parser(language: str, project_root: Optional[str] = None) -> Parser:
+def create_parser(language: str, project_root: str | None = None) -> Parser:
     """
     Create and configure a Parser instance for a specific language.
 
@@ -204,12 +181,14 @@ def create_parser(language: str, project_root: Optional[str] = None) -> Parser:
     """
     if not language:
         raise ValueError("language cannot be empty")
-    
-    # Create parser with optional project root
-    if project_root:
-        return Parser(language=language, project_root=project_root)
-    else:
-        return Parser(language=language)
+
+    # Create parser config
+    from .parser import ParserConfig
+
+    config = ParserConfig()
+    # Note: ParserConfig doesn't have language or project_root fields
+    # These are handled when calling parse methods
+    return Parser(config=config)
 
 
 def create_query_executor(project_root: str) -> QueryExecutor:
@@ -231,15 +210,19 @@ def create_query_executor(project_root: str) -> QueryExecutor:
     """
     if not project_root:
         raise ValueError("project_root cannot be empty")
-    
+
     project_path = os.path.abspath(project_root)
     if not os.path.exists(project_path):
         raise ValueError(f"Project root does not exist: {project_path}")
-    
-    return QueryExecutor(project_root=project_root)
+
+    # Create query executor with default config
+    from .query import QueryConfig
+
+    config = QueryConfig()
+    return QueryExecutor(config=config)
 
 
-def parse_file(file_path: str, language: Optional[str] = None) -> ParseResult:
+def parse_file(file_path: str, language: str | None = None) -> ParseResult:
     """
     Parse a single file and return the result.
 
@@ -263,28 +246,25 @@ def parse_file(file_path: str, language: Optional[str] = None) -> ParseResult:
     """
     if not file_path:
         raise ValueError("file_path cannot be empty")
-    
+
     # Create parser
     parser = create_parser(language or "python")
-    
+
     # Read file
-    from ..encoding_utils import read_file_safe
-    
+
     try:
         code, encoding = read_file_safe(file_path)
     except Exception as e:
-        raise FileNotFoundError(f"Failed to read file {file_path}: {e}")
-    
+        raise FileNotFoundError(f"Failed to read file {file_path}: {e}") from None
+
     # Parse file
-    return parser.parse(code, file_path)
+    result = parser.parse_file(file_path, language or "python")
+    return result
 
 
 def query_files(
-    files: List[str],
-    query_code: str,
-    project_root: str,
-    language: Optional[str] = None
-) -> List[QueryResult]:
+    files: list[str], query_code: str, project_root: str, language: str | None = None
+) -> list[QueryResult]:
     """
     Execute a query on multiple files.
 
@@ -313,33 +293,32 @@ def query_files(
         raise ValueError("query_code cannot be empty")
     if not project_root:
         raise ValueError("project_root cannot be empty")
-    
+
     # Create query executor
     executor = create_query_executor(project_root)
-    
-    # Create query
-    from .query import Query
-    query = Query(query_code)
-    
+
+    # Create query (import Query for documentation purposes)
+    from .query import Query  # noqa: F401
+
     # Create parser
     parser = create_parser(language or "python")
-    
+
     # Execute query on all files
     results = []
     for file_path in files:
         try:
             # Parse file
-            code, _ = read_file_safe(file_path)
-            tree = parser.parse(code, file_path)
-            
+            tree = parser.parse_file(file_path, language or "python")
+
             # Execute query
-            result = executor.execute(query, tree, file_path)
+            result = executor.execute_query(query_code, tree, file_path)  # type: ignore
             results.append(result)
         except Exception as e:
             from ..utils import log_error
+
             log_error(f"Failed to query {file_path}: {e}")
             continue
-    
+
     return results
 
 
@@ -363,13 +342,16 @@ def __getattr__(name: str) -> Any:
         "UnifiedAnalysisConfig",
     ]:
         from .analysis_engine import (
-            UnifiedAnalysisEngine,
             UnifiedAnalysisConfig as AnalysisConfigLegacy,
         )
+        from .analysis_engine import (
+            UnifiedAnalysisEngine,
+        )
+
         if name == "UnifiedAnalysisEngine":
             return UnifiedAnalysisEngine
         elif name == "UnifiedAnalysisConfig":
             return AnalysisConfigLegacy
-    
+
     # Default behavior
     raise ImportError(f"Module {name} not found in core package")

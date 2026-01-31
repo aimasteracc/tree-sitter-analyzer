@@ -1,7 +1,21 @@
 #!/usr/bin/env python3
 """
-TypeScript Tree-sitter queries for code analysis.
+TypeScript Language Queries.
+
+Tree-sitter queries for TypeScript language constructs.
+
+Key Features:
+    - Functions and arrow functions
+    - Classes and interfaces
+    - Type annotations and generics
+    - Decorators and modules
+    - Modern TypeScript features
+
+Version: 1.10.5
+Date: 2026-01-28
 """
+
+from __future__ import annotations
 
 # Function declarations and expressions
 FUNCTIONS = """
@@ -861,11 +875,14 @@ def get_query(name: str) -> str:
     )
 
 
-def get_all_queries() -> dict:
+def get_all_queries() -> dict[str, dict[str, str]]:
     """Get all available queries."""
     return ALL_QUERIES
 
 
-def list_queries() -> list:
+def list_queries() -> list[str]:
     """List all available query names."""
     return list(ALL_QUERIES.keys())
+
+
+__all__: list[str] = ["get_query", "get_all_queries", "list_queries"]

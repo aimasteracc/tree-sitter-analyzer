@@ -1,3 +1,22 @@
+#!/usr/bin/env python3
+"""
+PHP Language Queries.
+
+Tree-sitter queries for PHP language constructs.
+
+Key Features:
+    - Classes, interfaces, and traits
+    - Methods and functions
+    - Properties and constants
+    - Namespaces and use statements
+    - Modern PHP features
+
+Version: 1.10.5
+Date: 2026-01-28
+"""
+
+from __future__ import annotations
+
 """
 PHP Tree-sitter Queries
 

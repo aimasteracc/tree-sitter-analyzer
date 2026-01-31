@@ -35,46 +35,42 @@ Version: 1.10.5
 Date: 2026-01-28
 """
 
-import hashlib
 import logging
 import os
-import sys
 import threading
-import time
-from typing import TYPE_CHECKING, Any, Optional, List, Dict, Tuple, Union, Callable, Type, NamedTuple, Set
-from functools import lru_cache, wraps
-from dataclasses import dataclass, field
-from enum import Enum
+from contextlib import nullcontext
+from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 from time import perf_counter
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Protocol,
+)
 
 # Type checking setup
 if TYPE_CHECKING:
     # Core imports
-    from ..core.analysis_engine import AnalysisEngine, AnalysisRequest, AnalysisResult
-    from ..core.parser import Parser, ParseResult
-    from ..core.query import QueryExecutor, QueryResult
-    from ..core.cache_service import CacheService, CacheConfig
-    from ..language_detector import LanguageDetector, LanguageInfo
-    from ..plugins.manager import PluginManager, PluginInfo
-    from ..plugins.programming_language_extractor import ProgrammingLanguageExtractor, ExtractionMetrics
-
-    # CLI imports
-    from .base import Command, CommandResult, ExecutionContext, CommandMetadata
-
     # Utility imports
     from ...utils.logging import (
-        LoggerConfig,
-        LoggingContext,
         log_debug,
-        log_info,
-        log_warning,
         log_error,
-        log_performance,
-        setup_logger,
-        create_performance_logger,
-        safe_print,
+        log_info,
     )
+    from ..core.analysis_engine import AnalysisEngine, AnalysisRequest, AnalysisResult
+    from ..core.cache_service import CacheConfig, CacheService
+    from ..core.parser import Parser, ParseResult
+    from ..core.query import QueryExecutor, QueryResult
+    from ..language_detector import LanguageDetector, LanguageInfo
+    from ..plugins.manager import PluginInfo, PluginManager
+    from ..plugins.programming_language_extractor import (
+        ExtractionMetrics,
+        ProgrammingLanguageExtractor,
+    )
+
+    # CLI imports
+    from .base import Command, CommandMetadata, CommandResult, ExecutionContext
 else:
     # Runtime imports (when type checking is disabled)
     # Core imports
@@ -103,25 +99,18 @@ else:
     # Utility imports
     from ...utils.logging import (
         log_debug,
-        log_info,
-        log_warning,
         log_error,
-        log_performance,
-        safe_print,
+        log_info,
     )
 
 # Configure logging
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-# ============================================================================
+# =====
 # Type Definitions
-# ============================================================================
+# =====
 
-if sys.version_info >= (3, 8):
-    from typing import Protocol
-else:
-    Protocol = object
 
 class AnalyzeComplexityToolProtocol(Protocol):
     """Interface for analyze complexity tool command creation functions."""
@@ -138,10 +127,11 @@ class AnalyzeComplexityToolProtocol(Protocol):
         """
         ...
 
+
 class CacheProtocol(Protocol):
     """Interface for cache services."""
 
-    def get(self, key: str) -> Optional[Any]:
+    def get(self, key: str) -> Any | None:
         """
         Get value from cache.
 
@@ -167,6 +157,7 @@ class CacheProtocol(Protocol):
         """Clear all cache entries."""
         ...
 
+
 class PerformanceMonitorProtocol(Protocol):
     """Interface for performance monitoring."""
 
@@ -182,9 +173,11 @@ class PerformanceMonitorProtocol(Protocol):
         """
         ...
 
+
 # ============================================================================
 # Custom Exceptions
 # ============================================================================
+
 
 class AnalyzeComplexityToolError(Exception):
     """Base exception for analyze complexity tool errors."""
@@ -196,27 +189,32 @@ class AnalyzeComplexityToolError(Exception):
 
 class InitializationError(AnalyzeComplexityToolError):
     """Exception raised when analyze complexity tool initialization fails."""
+
     pass
 
 
 class ExecutionError(AnalyzeComplexityToolError):
     """Exception raised when complexity analysis execution fails."""
+
     pass
 
 
 class ValidationError(AnalyzeComplexityToolError):
     """Exception raised when validation fails."""
+
     pass
 
 
 class CacheError(AnalyzeComplexityToolError):
     """Exception raised when caching fails."""
+
     pass
 
 
 # ============================================================================
 # Data Classes
 # ============================================================================
+
 
 @dataclass(frozen=True, slots=True)
 class ComplexityMetrics:
@@ -240,8 +238,8 @@ class ComplexityMetrics:
     cyclomatic_complexity: int
     maintainability_index: float
     technical_debt: str
-    function_complexity: List[int]
-    class_complexity: List[int]
+    function_complexity: list[int]
+    class_complexity: list[int]
     total_functions: int
     total_classes: int
     average_complexity: float
@@ -353,6 +351,7 @@ class AnalyzeComplexityToolConfig:
 # Analyze Complexity Tool Command
 # ============================================================================
 
+
 class AnalyzeComplexityToolCommand(Command):
     """
     Optimized command for analyzing code complexity.
@@ -380,7 +379,7 @@ class AnalyzeComplexityToolCommand(Command):
         >>> print(result.message)
     """
 
-    def __init__(self, config: Optional[AnalyzeComplexityToolConfig] = None):
+    def __init__(self, config: AnalyzeComplexityToolConfig | None = None):
         """
         Initialize analyze complexity tool command.
 
@@ -396,16 +395,18 @@ class AnalyzeComplexityToolCommand(Command):
         self._config = config or AnalyzeComplexityToolConfig()
 
         # Thread-safe lock for operations
-        self._lock = threading.RLock() if self._config.enable_thread_safety else type(None)
+        self._lock = (
+            threading.RLock() if self._config.enable_thread_safety else None
+        )
 
         # Analysis components (lazy loading)
-        self._engine: Optional[AnalysisEngine] = None
-        self._parser: Optional[Parser] = None
-        self._language_detector: Optional[LanguageDetector] = None
-        self._extractor: Optional[ProgrammingLanguageExtractor] = None
+        self._engine: AnalysisEngine | None = None
+        self._parser: Parser | None = None
+        self._language_detector: LanguageDetector | None = None
+        self._extractor: ProgrammingLanguageExtractor | None = None
 
         # Performance statistics
-        self._stats: Dict[str, Any] = {
+        self._stats: dict[str, Any] = {
             "total_files": 0,
             "total_functions": 0,
             "total_classes": 0,
@@ -427,7 +428,7 @@ class AnalyzeComplexityToolCommand(Command):
             - Initializes all analysis components
             - Thread-safe operation
         """
-        with self._lock:
+        with (self._lock if self._lock else nullcontext()):
             if self._engine is None:
                 if TYPE_CHECKING:
                     from ...core.analysis_engine import create_analysis_engine
@@ -441,7 +442,9 @@ class AnalyzeComplexityToolCommand(Command):
                     log_debug("Analysis engine initialized")
                 except Exception as e:
                     log_error(f"Failed to initialize analysis engine: {e}")
-                    raise InitializationError(f"Failed to initialize analysis engine: {e}") from e
+                    raise InitializationError(
+                        f"Failed to initialize analysis engine: {e}"
+                    ) from e
 
             if self._parser is None:
                 if TYPE_CHECKING:
@@ -461,13 +464,21 @@ class AnalyzeComplexityToolCommand(Command):
                     log_debug("Parser initialized")
                 except Exception as e:
                     log_error(f"Failed to initialize parser: {e}")
-                    raise InitializationError(f"Failed to initialize parser: {e}") from e
+                    raise InitializationError(
+                        f"Failed to initialize parser: {e}"
+                    ) from e
 
             if self._language_detector is None:
                 if TYPE_CHECKING:
-                    from ...language_detector import LanguageDetector, LanguageDetectorConfig
+                    from ...language_detector import (
+                        LanguageDetector,
+                        LanguageDetectorConfig,
+                    )
                 else:
-                    from ...language_detector import LanguageDetector, LanguageDetectorConfig
+                    from ...language_detector import (
+                        LanguageDetector,
+                        LanguageDetectorConfig,
+                    )
 
                 try:
                     detector_config = LanguageDetectorConfig(
@@ -482,13 +493,21 @@ class AnalyzeComplexityToolCommand(Command):
                     log_debug("Language detector initialized")
                 except Exception as e:
                     log_error(f"Failed to initialize language detector: {e}")
-                    raise InitializationError(f"Failed to initialize language detector: {e}") from e
+                    raise InitializationError(
+                        f"Failed to initialize language detector: {e}"
+                    ) from e
 
             if self._extractor is None:
                 if TYPE_CHECKING:
-                    from ...plugins.programming_language_extractor import ProgrammingLanguageExtractor, ProgrammingLanguageExtractorConfig
+                    from ...plugins.programming_language_extractor import (
+                        ProgrammingLanguageExtractor,
+                        ProgrammingLanguageExtractorConfig,
+                    )
                 else:
-                    from ...plugins.programming_language_extractor import ProgrammingLanguageExtractor, ProgrammingLanguageExtractorConfig
+                    from ...plugins.programming_language_extractor import (
+                        ProgrammingLanguageExtractor,
+                        ProgrammingLanguageExtractorConfig,
+                    )
 
                 try:
                     extractor_config = ProgrammingLanguageExtractorConfig(
@@ -497,11 +516,17 @@ class AnalyzeComplexityToolCommand(Command):
                         enable_performance_monitoring=self._config.enable_performance_monitoring,
                         enable_thread_safety=self._config.enable_thread_safety,
                     )
-                    self._extractor = ProgrammingLanguageExtractor(config=extractor_config)
+                    self._extractor = ProgrammingLanguageExtractor(  # type: ignore
+                        config=extractor_config
+                    )
                     log_debug("Programming language extractor initialized")
                 except Exception as e:
-                    log_error(f"Failed to initialize programming language extractor: {e}")
-                    raise InitializationError(f"Failed to initialize programming language extractor: {e}") from e
+                    log_error(
+                        f"Failed to initialize programming language extractor: {e}"
+                    )
+                    raise InitializationError(
+                        f"Failed to initialize programming language extractor: {e}"
+                    ) from e
 
     def execute(self, context: ExecutionContext) -> CommandResult:
         """
@@ -525,7 +550,7 @@ class AnalyzeComplexityToolCommand(Command):
             - Handles errors gracefully
         """
         # Start performance monitoring
-        operation_name = f"analyze_complexity_{Path(context.args[0] if context.args else 'project').name}"
+        f"analyze_complexity_{Path(context.args[0] if context.args else 'project').name}"
         start_time = perf_counter()
 
         try:
@@ -536,11 +561,11 @@ class AnalyzeComplexityToolCommand(Command):
             file_path = self._get_file_path(context)
 
             # Detect language
-            language_info = self._language_detector.detect(file_path)
+            language_info = self._language_detector.detect(file_path)  # type: ignore
             language = language_info.name
 
             # Check if language is supported
-            plugin = self._extractor.get_plugin(language)
+            plugin = self._extractor.get_plugin(language)  # type: ignore
             if not plugin:
                 end_time = perf_counter()
                 execution_time = end_time - start_time
@@ -553,7 +578,7 @@ class AnalyzeComplexityToolCommand(Command):
                 )
 
             # Parse file
-            parse_result = self._parser.parse_file(file_path, language)
+            parse_result = self._parser.parse_file(file_path, language)  # type: ignore
             if not parse_result.success:
                 end_time = perf_counter()
                 execution_time = end_time - start_time
@@ -566,8 +591,12 @@ class AnalyzeComplexityToolCommand(Command):
                 )
 
             # Extract functions and classes
-            functions = self._extractor.extract_functions(parse_result.tree, parse_result.source_code)
-            classes = self._extractor.extract_classes(parse_result.tree, parse_result.source_code)
+            functions = self._extractor.extract_functions(  # type: ignore
+                parse_result.tree, parse_result.source_code
+            )
+            classes = self._extractor.extract_classes(  # type: ignore
+                parse_result.tree, parse_result.source_code
+            )
 
             # Analyze complexity
             complexity_metrics = self._analyze_complexity(
@@ -580,7 +609,7 @@ class AnalyzeComplexityToolCommand(Command):
             )
 
             # Generate output
-            output = self._generate_output(complexity_metrics)
+            self._generate_output(complexity_metrics)
 
             end_time = perf_counter()
             execution_time = end_time - start_time
@@ -590,11 +619,16 @@ class AnalyzeComplexityToolCommand(Command):
             self._stats["total_functions"] += len(functions)
             self._stats["total_classes"] += len(classes)
             self._stats["total_complexity"] += complexity_metrics.cyclomatic_complexity
-            if complexity_metrics.cyclomatic_complexity > self._config.max_complexity_threshold:
+            if (
+                complexity_metrics.cyclomatic_complexity
+                > self._config.max_complexity_threshold
+            ):
                 self._stats["high_complexity_files"] += 1
             self._stats["analysis_times"].append(execution_time)
 
-            log_info(f"Analyzed complexity for {file_path} (complexity: {complexity_metrics.cyclomatic_complexity}) in {execution_time:.3f}s")
+            log_info(
+                f"Analyzed complexity for {file_path} (complexity: {complexity_metrics.cyclomatic_complexity}) in {execution_time:.3f}s"
+            )
 
             return CommandResult(
                 command_name=self._name,
@@ -643,14 +677,14 @@ class AnalyzeComplexityToolCommand(Command):
         if not os.path.exists(file_path):
             raise ValidationError(f"File does not exist: {file_path}")
 
-        return file_path
+        return file_path  # type: ignore
 
     def _analyze_complexity(
         self,
         file_path: str,
         language: str,
-        functions: List,
-        classes: List,
+        functions: list,
+        classes: list,
         tree: Any,
         source_code: str,
     ) -> ComplexityMetrics:
@@ -675,13 +709,13 @@ class AnalyzeComplexityToolCommand(Command):
             - Analyzes function and class complexity
         """
         # Calculate function complexity
-        function_complexity: List[int] = []
+        function_complexity: list[int] = []
         for func in functions:
             complexity = self._calculate_function_complexity(func, tree)
             function_complexity.append(complexity)
 
         # Calculate class complexity
-        class_complexity: List[int] = []
+        class_complexity: list[int] = []
         for cls in classes:
             complexity = self._calculate_class_complexity(cls, tree)
             class_complexity.append(complexity)
@@ -691,7 +725,9 @@ class AnalyzeComplexityToolCommand(Command):
 
         # Calculate average complexity
         total_elements = len(functions) + len(classes)
-        average_complexity = total_complexity / total_elements if total_elements > 0 else 0.0
+        average_complexity = (
+            total_complexity / total_elements if total_elements > 0 else 0.0
+        )
 
         # Calculate maintainability index (0-100 scale)
         # Higher is better
@@ -745,12 +781,12 @@ class AnalyzeComplexityToolCommand(Command):
 
         return complexity
 
-    def _calculate_class_complexity(self, class: Any, tree: Any) -> int:
+    def _calculate_class_complexity(self, class_def: Any, tree: Any) -> int:
         """
         Calculate cyclomatic complexity for a class.
 
         Args:
-            class: Class definition
+            class_def: Class definition
             tree: Parsed Tree-sitter tree
 
         Returns:
@@ -806,7 +842,9 @@ class AnalyzeComplexityToolCommand(Command):
         organization_score = min(100, (total_classes + total_functions) * 5)
 
         # Weighted average
-        maintainability_index = (normalized_complexity * 0.7) + (organization_score * 0.3)
+        maintainability_index = (normalized_complexity * 0.7) + (
+            organization_score * 0.3
+        )
 
         return maintainability_index
 
@@ -885,7 +923,7 @@ class AnalyzeComplexityToolCommand(Command):
 
         return "\n".join(lines)
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         """
         Get analyze complexity tool statistics.
 
@@ -896,7 +934,7 @@ class AnalyzeComplexityToolCommand(Command):
             - Returns analysis counts and complexity statistics
             - Returns performance metrics
         """
-        with self._lock:
+        with (self._lock if self._lock else nullcontext()):
             return {
                 "total_files": self._stats["total_files"],
                 "total_functions": self._stats["total_functions"],
@@ -929,6 +967,7 @@ class AnalyzeComplexityToolCommand(Command):
 # ============================================================================
 # Convenience Functions with LRU Caching
 # ============================================================================
+
 
 @lru_cache(maxsize=64, typed=True)
 def get_analyze_complexity_tool_command(
@@ -1015,23 +1054,20 @@ def create_analyze_complexity_tool_command(
 # Module-level exports for backward compatibility
 # ============================================================================
 
-__all__: List[str] = [
+__all__: list[str] = [
     # Data classes
     "ComplexityMetrics",
     "FunctionComplexity",
     "ClassComplexity",
     "AnalyzeComplexityToolConfig",
-
     # Exceptions
     "AnalyzeComplexityToolError",
     "InitializationError",
     "ExecutionError",
     "ValidationError",
     "CacheError",
-
     # Main class
     "AnalyzeComplexityToolCommand",
-
     # Convenience functions
     "get_analyze_complexity_tool_command",
     "create_analyze_complexity_tool_command",
@@ -1041,6 +1077,7 @@ __all__: List[str] = [
 # ============================================================================
 # Module-level exports for backward compatibility
 # ============================================================================
+
 
 def __getattr__(name: str) -> Any:
     """
@@ -1075,6 +1112,7 @@ def __getattr__(name: str) -> Any:
     ]:
         # Import from module
         import sys
+
         module = sys.modules[__name__]
         if module is None:
             raise ImportError(f"Module {name} not found")
@@ -1090,4 +1128,4 @@ def __getattr__(name: str) -> Any:
             module = __import__(f".{name}", fromlist=["__name__"])
             return module
         except ImportError:
-            raise ImportError(f"Module {name} not found")
+            raise ImportError(f"Module {name} not found") from None

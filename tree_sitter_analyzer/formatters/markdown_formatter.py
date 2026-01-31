@@ -1,14 +1,44 @@
 #!/usr/bin/env python3
 """
-Markdown Formatter
+Markdown Formatter - Enhanced Markdown Document Result Formatting
 
-Provides specialized formatting for Markdown files, focusing on document structure
-rather than programming constructs like classes and methods.
+This module provides specialized formatting for Markdown file analysis results,
+focusing on document structure and content hierarchy.
+
+Optimized with:
+- Complete type hints (PEP 484)
+- Comprehensive error handling
+- Performance optimization
+- Detailed documentation in English
+
+Features:
+- Header hierarchy formatting
+- Link and image extraction
+- Code block analysis
+- List and table formatting
+- Document structure representation
+- Type-safe operations (PEP 484)
+
+Usage:
+    >>> from tree_sitter_analyzer.formatters import MarkdownFormatter
+    >>> formatter = MarkdownFormatter()
+    >>> output = formatter.format(analysis_result)
+
+Author: aisheng.yu
+Version: 1.10.5
+Date: 2026-01-28
 """
 
+# Standard library imports
+import logging
 from typing import Any
 
+# Internal imports
 from .base_formatter import BaseFormatter
+
+# Configure logging
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 
 class MarkdownFormatter(BaseFormatter):

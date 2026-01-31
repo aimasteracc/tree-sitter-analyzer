@@ -1,12 +1,21 @@
 #!/usr/bin/env python3
 """
-Python Language Queries
+Python Language Queries.
 
 Comprehensive Tree-sitter queries for Python language constructs.
-Covers functions, classes, variables, imports, decorators, async/await,
-type hints, and modern Python features.
-Equivalent to JavaScript query coverage for consistent language support.
+
+Key Features:
+    - Function and class definitions
+    - Variable and import statements
+    - Decorators and async/await
+    - Type hints and annotations
+    - Modern Python features
+
+Version: 1.10.5
+Date: 2026-01-28
 """
+
+from __future__ import annotations
 
 # Function definitions
 FUNCTIONS = """
@@ -857,3 +866,13 @@ def get_available_python_queries() -> list[str]:
         List of query names
     """
     return list(PYTHON_QUERIES.keys())
+
+
+__all__: list[str] = [
+    "get_python_query",
+    "get_python_query_description",
+    "get_query",
+    "get_all_queries",
+    "list_queries",
+    "get_available_python_queries",
+]

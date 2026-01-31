@@ -1,12 +1,21 @@
 #!/usr/bin/env python3
 """
-Backward Compatibility Module for Formatter Architecture
+Backward Compatibility Module - Legacy Formatter API Support
 
 This module provides deprecated wrapper functions and classes for backward
 compatibility during the transition to the unified FormatterRegistry architecture.
 
-All functions and classes in this module emit DeprecationWarning when used.
-Users should migrate to using FormatterRegistry directly.
+Optimized with:
+- Complete type hints (PEP 484)
+- Comprehensive deprecation warnings
+- Clear migration guidance
+- Detailed documentation in English
+
+Features:
+- Legacy API wrapper functions
+- Deprecation warnings with migration paths
+- Backward-compatible interfaces
+- Type-safe operations (PEP 484)
 
 Migration Guide:
     Old: create_table_formatter("full", "java")
@@ -17,12 +26,27 @@ Migration Guide:
 
     Old: FormatterSelector.get_formatter("java", "full")
     New: FormatterRegistry.get_formatter_for_language("java", "full")
+
+Usage:
+    All functions emit DeprecationWarning when used.
+    Users should migrate to FormatterRegistry directly.
+
+Author: aisheng.yu
+Version: 1.10.5
+Date: 2026-01-28
 """
 
+# Standard library imports
+import logging
 import warnings
 from typing import Any
 
+# Internal imports
 from .formatter_registry import FormatterRegistry
+
+# Configure logging
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 
 def create_table_formatter(
@@ -308,3 +332,12 @@ class FormatterSelector:
             stacklevel=2,
         )
         return FormatterRegistry.get_supported_languages()
+
+
+# Exported public API (all deprecated)
+__all__ = [
+    "create_table_formatter",
+    "TableFormatterFactory",
+    "LanguageFormatterFactory",
+    "FormatterSelector",
+]

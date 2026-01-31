@@ -1,15 +1,37 @@
 #!/usr/bin/env python3
 """
-Path Resolver Utility for MCP Tools
+Path Resolver Utility for MCP Tools.
 
 This module provides unified path resolution functionality for all MCP tools,
 ensuring consistent handling of relative and absolute paths across different
-operating systems.
+operating systems with cross-platform normalization.
+
+Key Features:
+    - Cross-platform path resolution (Windows, macOS, Linux)
+    - Relative to absolute path conversion
+    - macOS path normalization (/System/Volumes/Data, /private/var)
+    - Windows short path (8.3) expansion
+    - Project root-relative path resolution
+    - Path validation and existence checking
+
+Classes:
+    PathResolver: Main class for path resolution operations
+
+Functions:
+    _normalize_path_cross_platform: Cross-platform path normalization
+
+Version: 1.10.5
+Date: 2026-01-28
+Author: tree-sitter-analyzer team
 """
+
+from __future__ import annotations
 
 import logging
 import os
 from pathlib import Path
+
+__all__ = ["PathResolver", "_normalize_path_cross_platform"]
 
 logger = logging.getLogger(__name__)
 

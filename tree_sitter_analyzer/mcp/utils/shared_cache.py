@@ -1,6 +1,34 @@
+#!/usr/bin/env python3
+"""
+Shared Cache for MCP Tools.
+
+Provides singleton shared cache to reduce redundant operations across all MCP
+tools including language detection, security validation, and path resolution.
+
+Key Features:
+    - Singleton pattern for cross-tool cache sharing
+    - Language detection caching
+    - Security validation result caching
+    - File metrics caching
+    - Resolved path caching
+    - Project-scoped cache keys to avoid cross-project pollution
+
+Classes:
+    SharedCache: Singleton cache for MCP tool operations
+
+Functions:
+    get_shared_cache: Get singleton SharedCache instance
+
+Version: 1.10.5
+Date: 2026-01-28
+Author: tree-sitter-analyzer team
+"""
+
 from __future__ import annotations
 
 from typing import Any
+
+__all__ = ["SharedCache", "get_shared_cache"]
 
 
 class SharedCache:

@@ -1,15 +1,43 @@
 #!/usr/bin/env python3
 """
-Query Command
+Query Command.
 
-Handles query execution functionality.
+Handles Tree-sitter query execution functionality.
+
+Key Features:
+    - Custom query execution
+    - Query key support
+    - Multiple output formats
+    - TOON formatter support
+
+Version: 1.10.5
+Date: 2026-01-28
 """
 
-from typing import Any
+from __future__ import annotations
 
-from ...core.query_service import QueryService
-from ...output_manager import output_data, output_error, output_info, output_json
-from .base_command import BaseCommand
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from ...core.query_service import QueryService
+    from ...output_manager import output_data, output_error, output_info, output_json
+    from .base_command import BaseCommand
+else:
+    try:
+        from ...core.query_service import QueryService
+        from ...output_manager import (
+            output_data,
+            output_error,
+            output_info,
+            output_json,
+        )
+        from .base_command import BaseCommand
+    except ImportError as e:
+        import logging
+
+        logging.warning(f"Import fallback triggered in query_command: {e}")
+
+__all__ = ["QueryCommand"]
 
 # TOON formatter for CLI output
 try:

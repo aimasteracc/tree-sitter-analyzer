@@ -39,74 +39,66 @@ Version: 1.10.5
 Date: 2026-01-28
 """
 
-import functools
-import hashlib
 import logging
-import os
 import threading
-import time
-from pathlib import Path
-from typing import TYPE_CHECKING, Any, Optional, List, Dict, Tuple, Union, Callable, Type, NamedTuple
-from functools import lru_cache, wraps
 from collections import deque
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from enum import Enum
+from functools import lru_cache
 from time import perf_counter
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Protocol,
+)
 
 # Type checking setup
 if TYPE_CHECKING:
     # Tree-sitter imports
-    from tree_sitter import Tree, Language, Node
+    from tree_sitter import Node, Tree
 
-    # Model imports
-    from ..models import (
-        CodeElement,
-        Class,
-        Function,
-        Variable,
-        Import,
-    )
+    # Model imports - Class/Function from models.py, types from models/element.py
+    from ..models import Class, Function
+    from ..models.element import ElementType, Position, TypeInfo, Visibility
 
     # Utility imports
     from ..utils.logging import (
         log_debug,
-        log_info,
-        log_warning,
         log_error,
-        log_performance,
-        setup_logger,
-        create_performance_logger,
+        log_warning,
     )
+
+    # Plugin imports
+    from .cached_element_extractor import CachedElementExtractor
 else:
     # Runtime imports (when type checking is disabled)
-    Tree = Any
-    Language = Any
-    Node = Any
-    CodeElement = Any
-    Class = Any
-    Function = Any
-    Variable = Any
-    Import = Any
-    log_debug = Any
-    log_info = Any
-    log_warning = Any
-    log_error = Any
-    log_performance = Any
-    setup_logger = Any
-    create_performance_logger = Any
+    from tree_sitter import Node, Tree
+
+    # Model imports - Class/Function from models.py, types from models/element.py
+    from ..models import Class, Function
+    from ..models.element import ElementType, Position, TypeInfo, Visibility
+
+    # Utility imports
+    from ..utils.logging import (
+        log_debug,
+        log_error,
+        log_warning,
+    )
+
+    # Plugin imports
+    try:
+        from .cached_element_extractor import CachedElementExtractor
+    except ImportError:
+        CachedElementExtractor = Any  # type: ignore[misc,assignment]
 
 # Configure logging
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-# ============================================================================
+# =====
 # Type Definitions
-# ============================================================================
+# =====
 
-if sys.version_info >= (3, 8):
-    from typing import Protocol
-else:
-    Protocol = object
 
 class ExtractorProtocol(Protocol):
     """Interface for extractor creation functions."""
@@ -123,10 +115,11 @@ class ExtractorProtocol(Protocol):
         """
         ...
 
+
 class CacheProtocol(Protocol):
     """Interface for cache services."""
 
-    def get(self, key: str) -> Optional[Any]:
+    def get(self, key: str) -> Any | None:
         """
         Get value from cache.
 
@@ -152,6 +145,7 @@ class CacheProtocol(Protocol):
         """Clear all cache entries."""
         ...
 
+
 class PerformanceMonitorProtocol(Protocol):
     """Interface for performance monitoring."""
 
@@ -167,9 +161,11 @@ class PerformanceMonitorProtocol(Protocol):
         """
         ...
 
+
 # ============================================================================
 # Custom Exceptions
 # ============================================================================
+
 
 class ProgrammingLanguageExtractorError(Exception):
     """Base exception for programming language extractor errors."""
@@ -181,27 +177,32 @@ class ProgrammingLanguageExtractorError(Exception):
 
 class InitializationError(ProgrammingLanguageExtractorError):
     """Exception raised when extractor initialization fails."""
+
     pass
 
 
 class ExtractionError(ProgrammingLanguageExtractorError):
     """Exception raised when code extraction fails."""
+
     pass
 
 
 class TraversalError(ProgrammingLanguageExtractorError):
     """Exception raised when AST traversal fails."""
+
     pass
 
 
 class ComplexityCalculationError(ProgrammingLanguageExtractorError):
     """Exception raised when complexity calculation fails."""
+
     pass
 
 
 # ============================================================================
 # Data Classes
 # ============================================================================
+
 
 @dataclass
 class ExtractionMetrics:
@@ -242,11 +243,11 @@ class ExtractionContext:
     """
 
     source_code: str
-    content_lines: List[str] = field(default_factory=list)
+    content_lines: list[str] = field(default_factory=list)
     max_depth: int = 50
     language: str = "unknown"
     extractor_name: str = "ProgrammingLanguageExtractor"
-    metrics: Optional[ExtractionMetrics] = None
+    metrics: ExtractionMetrics = field(default_factory=ExtractionMetrics)
 
     @property
     def line_count(self) -> int:
@@ -258,7 +259,8 @@ class ExtractionContext:
 # Programming Language Extractor
 # ============================================================================
 
-class ProgrammingLanguageExtractor:
+
+class ProgrammingLanguageExtractor(CachedElementExtractor):
     """
     Optimized programming language extractor with advanced features.
 
@@ -284,12 +286,12 @@ class ProgrammingLanguageExtractor:
     """
 
     # Class-level cache (shared across all instances)
-    _element_cache: Dict[Tuple[int, str], Any] = {}
-    _node_cache: Dict[int, Dict[str, Any]] = {}
+    _element_cache: dict[tuple[int, str], Any] = {}
+    _node_cache: dict[int, dict[str, Any]] = {}
     _lock: threading.RLock = threading.RLock()
 
     # Performance statistics
-    _stats: Dict[str, Any] = {
+    _stats: dict[str, Any] = {
         "total_extractions": 0,
         "total_nodes": 0,
         "total_cache_hits": 0,
@@ -297,7 +299,12 @@ class ProgrammingLanguageExtractor:
         "extraction_times": [],
     }
 
-    def __init__(self, max_depth: int = 50, enable_caching: bool = True, enable_thread_safety: bool = True):
+    def __init__(
+        self,
+        max_depth: int = 50,
+        enable_caching: bool = True,
+        enable_thread_safety: bool = True,
+    ):
         """
         Initialize programming language extractor.
 
@@ -306,12 +313,16 @@ class ProgrammingLanguageExtractor:
             enable_caching: Enable LRU caching for elements (default: True)
             enable_thread_safety: Enable thread-safe operations (default: True)
         """
+        super().__init__()
         self._max_depth = max_depth
         self._enable_caching = enable_caching
         self._enable_thread_safety = enable_thread_safety
 
         # Thread-safe lock for operations
-        self._lock = threading.RLock() if self._enable_thread_safety else type(None)
+        if self._enable_thread_safety:
+            self._instance_lock: threading.RLock | None = threading.RLock()
+        else:
+            self._instance_lock = None
 
     def _get_container_node_types(self) -> set[str]:
         """
@@ -340,13 +351,16 @@ class ProgrammingLanguageExtractor:
             "export_statement",
         }
 
-    def extract_functions(self, tree: Tree, source_code: str) -> List[Function]:
+    def extract_functions(  # type: ignore[override]
+        self, tree: Tree, source_code: str, language: str = "python"
+    ) -> list[Function]:
         """
         Extract function definitions from AST.
 
         Args:
             tree: Tree-sitter tree
             source_code: Source code string
+            language: Programming language (default: python)
 
         Returns:
             List of Function objects
@@ -362,7 +376,6 @@ class ProgrammingLanguageExtractor:
             - Performance: O(n) where n is number of nodes
         """
         # Start performance monitoring
-        operation_name = f"extract_functions_{language}"
         start_time = perf_counter()
 
         # Update statistics
@@ -381,19 +394,19 @@ class ProgrammingLanguageExtractor:
             # Define extractors for function nodes
             extractors = {
                 "function_definition": self._extract_function_definition,
-            "method_definition": self._extract_method_definition,
+                "method_definition": self._extract_method_definition,
                 "lambda_expression": self._extract_lambda_expression,
-            "async_function": self._extract_async_function,
-            "generator_function": self._extract_generator_function,
-            "constructor": self._extract_constructor,
-            "decorated_function": self._extract_decorated_function,
-            "function_overload": self._extract_function_overload,
-            "template_function": self._extract_template_function,
+                "async_function": self._extract_async_function,
+                "generator_function": self._extract_generator_function,
+                "constructor": self._extract_constructor,
+                "decorated_function": self._extract_decorated_function,
+                "function_overload": self._extract_function_overload,
+                "template_function": self._extract_template_function,
                 "inline_function": self._extract_inline_function,
                 "callback_function": self._extract_callback_function,
                 "getter_function": self._extract_getter,
                 "setter_function": self._extract_setter,
-                "property_function": self._extract_property,
+                "property_function": self._extract_property_function,
                 "static_method": self._extract_static_method,
                 "class_method": self._extract_class_method,
                 "instance_method": self._extract_instance_method,
@@ -403,8 +416,8 @@ class ProgrammingLanguageExtractor:
             }
 
             # Execute extraction
-            results = []
-            self._traverse_and_extract(tree, source_code, extractors, results, context)
+            results: list[Function] = []
+            self._traverse_and_extract(tree, source_code, extractors, results, context)  # type: ignore
 
             # Update statistics
             self._stats["total_nodes"] += context.metrics.total_nodes
@@ -435,15 +448,18 @@ class ProgrammingLanguageExtractor:
 
             log_error(f"Function extraction failed: {e}")
 
-            raise ExtractionError(f"Function extraction failed: {e}")
+            raise ExtractionError(f"Function extraction failed: {e}") from None
 
-    def extract_classes(self, tree: Tree, source_code: str) -> List[Class]:
+    def extract_classes(
+        self, tree: Tree, source_code: str, language: str = "python"
+    ) -> list[Class]:
         """
         Extract class definitions from AST.
 
         Args:
             tree: Tree-sitter tree
             source_code: Source code string
+            language: Programming language (default: python)
 
         Returns:
             List of Class objects
@@ -459,7 +475,6 @@ class ProgrammingLanguageExtractor:
             - Performance: O(n) where n is number of nodes
         """
         # Start performance monitoring
-        operation_name = f"extract_classes_{language}"
         start_time = perf_counter()
 
         # Update statistics
@@ -495,8 +510,8 @@ class ProgrammingLanguageExtractor:
             }
 
             # Execute extraction
-            results = []
-            self._traverse_and_extract(tree, source_code, extractors, results, context)
+            results: list[Class] = []
+            self._traverse_and_extract(tree, source_code, extractors, results, context)  # type: ignore
 
             # Update statistics
             self._stats["total_nodes"] += context.metrics.total_nodes
@@ -512,9 +527,16 @@ class ProgrammingLanguageExtractor:
 
             log_error(f"Class extraction failed: {e}")
 
-            raise ExtractionError(f"Class extraction failed: {e}")
+            raise ExtractionError(f"Class extraction failed: {e}") from None
 
-    def _traverse_and_extract(self, tree: Tree, source_code: str, extractors: Dict[str, Callable], results: List[Any], context: ExtractionContext) -> None:
+    def _traverse_and_extract(
+        self,
+        tree: Tree,
+        source_code: str,
+        extractors: dict[str, Callable[[Node, ExtractionContext], Any]],
+        results: list[Any],
+        context: ExtractionContext,
+    ) -> None:
         """
         Generic iterative AST traversal with element extraction.
 
@@ -533,7 +555,7 @@ class ProgrammingLanguageExtractor:
         """
         # Use iterative traversal with explicit stack (not recursive)
         node_stack = deque([(tree.root_node, 0)])
-        target_node_types = set(extractors.keys())
+        set(extractors.keys())
         container_node_types = self._get_container_node_types()
 
         while node_stack:
@@ -559,7 +581,9 @@ class ProgrammingLanguageExtractor:
                         results.append(element)
                         context.metrics.extracted_elements += 1
 
-                    log_debug(f"Extracted {current_node.type} in {extraction_time:.3f}s")
+                    log_debug(
+                        f"Extracted {current_node.type} in {extraction_time:.3f}s"
+                    )
 
                 except Exception as e:
                     log_error(f"Extraction failed for {current_node.type}: {e}")
@@ -576,7 +600,9 @@ class ProgrammingLanguageExtractor:
                     for child in reversed(current_node.children):
                         node_stack.append((child, depth + 1))
 
-    def _extract_function_definition(self, node: Node, context: ExtractionContext) -> Optional[Function]:
+    def _extract_function_definition(
+        self, node: Node, context: ExtractionContext
+    ) -> Function | None:
         """
         Extract function definition from node.
 
@@ -597,14 +623,21 @@ class ProgrammingLanguageExtractor:
             cache_key = (id(node), "function")
             if self._enable_caching and cache_key in self._element_cache:
                 context.metrics.cache_hits += 1
-                return self._element_cache[cache_key]
+                cached_result = self._element_cache[cache_key]
+                if isinstance(cached_result, Function):
+                    return cached_result
+                return None
 
             # Extract function name
             if hasattr(node, "named_child_count") and node.named_child_count > 0:
                 for i in range(node.named_child_count):
                     child = node.named_child(i)
-                    if child.type == "identifier":
-                        name = child.text.decode("utf-8", errors="replace") if child.text else ""
+                    if child and child.type == "identifier":
+                        name = (
+                            child.text.decode("utf-8", errors="replace")
+                            if child.text
+                            else ""
+                        )
                         break
             else:
                 name = ""
@@ -616,7 +649,11 @@ class ProgrammingLanguageExtractor:
                     if child.type == "parameters":
                         for param in child.children:
                             if param.type == "identifier":
-                                param_name = param.text.decode("utf-8", errors="replace") if param.text else ""
+                                param_name = (
+                                    param.text.decode("utf-8", errors="replace")
+                                    if param.text
+                                    else ""
+                                )
                                 if param_name:
                                     parameters.append(param_name)
 
@@ -625,10 +662,17 @@ class ProgrammingLanguageExtractor:
             if hasattr(node, "children"):
                 for child in node.children:
                     if child.type == "type":
-                        if hasattr(child, "named_child_count") and child.named_child_count > 0:
+                        if (
+                            hasattr(child, "named_child_count")
+                            and child.named_child_count > 0
+                        ):
                             type_node = child.named_child(0)
                             if type_node and type_node.type == "identifier":
-                                return_type = type_node.text.decode("utf-8", errors="replace") if type_node.text else ""
+                                return_type = (
+                                    type_node.text.decode("utf-8", errors="replace")
+                                    if type_node.text
+                                    else ""
+                                )
 
             # Extract docstring
             docstring = self._extract_docstring(node, context)
@@ -636,17 +680,26 @@ class ProgrammingLanguageExtractor:
             # Calculate complexity
             complexity = self._calculate_complexity(node, context)
 
+            # Create position object
+            position = Position(
+                line=node.start_point[0] + 1,
+                column=node.start_point[1],
+                end_line=node.end_point[0] + 1,
+                end_column=node.end_point[1],
+                offset=node.start_byte,
+            )
+
             # Create function object
             function = Function(
+                element_type=ElementType.FUNCTION,
                 name=name,
-                parameters=parameters,
-                return_type=return_type,
-                complexity=complexity,
+                position=position,
+                visibility=Visibility.PUBLIC,
                 docstring=docstring,
-                start_line=node.start_point[0] + 1,
-                end_line=node.end_point[0] + 1,
-                start_column=node.start_point[1] + 1,
-                end_column=node.end_point[1] + 1,
+                metadata={},
+                return_type=TypeInfo(name=return_type, module="") if return_type else None,
+                parameters=[],  # TODO: Convert string parameters to Parameter objects
+                complexity=complexity,
             )
 
             # Cache result
@@ -659,7 +712,9 @@ class ProgrammingLanguageExtractor:
             log_error(f"Function definition extraction failed: {e}")
             return None
 
-    def _extract_method_definition(self, node: Node, context: ExtractionContext) -> Optional[Function]:
+    def _extract_method_definition(
+        self, node: Node, context: ExtractionContext
+    ) -> Function | None:
         """
         Extract method definition from node.
 
@@ -677,7 +732,9 @@ class ProgrammingLanguageExtractor:
         """
         return self._extract_function_definition(node, context)
 
-    def _extract_lambda_expression(self, node: Node, context: ExtractionContext) -> Optional[Function]:
+    def _extract_lambda_expression(
+        self, node: Node, context: ExtractionContext
+    ) -> Function | None:
         """
         Extract lambda expression from node.
 
@@ -700,21 +757,34 @@ class ProgrammingLanguageExtractor:
                     if child.type == "lambda":
                         for param in child.children:
                             if param.type == "identifier":
-                                param_name = param.text.decode("utf-8", errors="replace") if param.text else ""
+                                param_name = (
+                                    param.text.decode("utf-8", errors="replace")
+                                    if param.text
+                                    else ""
+                                )
                                 if param_name:
                                     parameters.append(param_name)
 
+            # Create position object
+            position = Position(
+                line=node.start_point[0] + 1,
+                column=node.start_point[1],
+                end_line=node.end_point[0] + 1,
+                end_column=node.end_point[1],
+                offset=node.start_byte,
+            )
+
             # Create function object
             function = Function(
+                element_type=ElementType.FUNCTION,
                 name="<lambda>",
-                parameters=parameters,
-                return_type="",
-                complexity=1,  # Lambda complexity
+                position=position,
+                visibility=Visibility.PUBLIC,
                 docstring="",
-                start_line=node.start_point[0] + 1,
-                end_line=node.end_point[0] + 1,
-                start_column=node.start_point[1] + 1,
-                end_column=node.end_point[1] + 1,
+                metadata={},
+                return_type=None,
+                parameters=[],
+                complexity=1,  # Lambda complexity
             )
 
             return function
@@ -723,7 +793,9 @@ class ProgrammingLanguageExtractor:
             log_error(f"Lambda expression extraction failed: {e}")
             return None
 
-    def _extract_async_function(self, node: Node, context: ExtractionContext) -> Optional[Function]:
+    def _extract_async_function(
+        self, node: Node, context: ExtractionContext
+    ) -> Function | None:
         """
         Extract async function definition from node.
 
@@ -740,7 +812,9 @@ class ProgrammingLanguageExtractor:
         """
         return self._extract_function_definition(node, context)
 
-    def _extract_generator_function(self, node: Node, context: ExtractionContext) -> Optional[Function]:
+    def _extract_generator_function(
+        self, node: Node, context: ExtractionContext
+    ) -> Function | None:
         """
         Extract generator function from node.
 
@@ -758,7 +832,9 @@ class ProgrammingLanguageExtractor:
         """
         return self._extract_function_definition(node, context)
 
-    def _extract_constructor(self, node: Node, context: ExtractionContext) -> Optional[Function]:
+    def _extract_constructor(
+        self, node: Node, context: ExtractionContext
+    ) -> Function | None:
         """
         Extract constructor from node.
 
@@ -782,21 +858,35 @@ class ProgrammingLanguageExtractor:
                     if child.type == "parameters":
                         for param in child.children:
                             if param.type == "identifier":
-                                param_name = param.text.decode("utf-8", errors="replace") if param.text else ""
+                                param_name = (
+                                    param.text.decode("utf-8", errors="replace")
+                                    if param.text
+                                    else ""
+                                )
                                 if param_name:
                                     parameters.append(param_name)
 
+            # Create position object
+            position = Position(
+                line=node.start_point[0] + 1,
+                column=node.start_point[1],
+                end_line=node.end_point[0] + 1,
+                end_column=node.end_point[1],
+                offset=node.start_byte,
+            )
+
             # Create function object
             function = Function(
+                element_type=ElementType.FUNCTION,
                 name="<constructor>",
-                parameters=parameters,
-                return_type="",
-                complexity=self._calculate_complexity(node, context),
+                position=position,
+                visibility=Visibility.PUBLIC,
                 docstring="",
-                start_line=node.start_point[0] + 1,
-                end_line=node.end_point[0] + 1,
-                start_column=node.start_point[1] + 1,
-                end_column=node.end_point[1] + 1,
+                metadata={},
+                return_type=None,
+                parameters=[],
+                is_constructor=True,
+                complexity=self._calculate_complexity(node, context),
             )
 
             return function
@@ -805,7 +895,9 @@ class ProgrammingLanguageExtractor:
             log_error(f"Constructor extraction failed: {e}")
             return None
 
-    def _extract_decorated_function(self, node: Node, context: ExtractionContext) -> Optional[Function]:
+    def _extract_decorated_function(
+        self, node: Node, context: ExtractionContext
+    ) -> Function | None:
         """
         Extract decorated function from node.
 
@@ -842,7 +934,9 @@ class ProgrammingLanguageExtractor:
             log_error(f"Decorated function extraction failed: {e}")
             return None
 
-    def _extract_function_overload(self, node: Node, context: ExtractionContext) -> Optional[Function]:
+    def _extract_function_overload(
+        self, node: Node, context: ExtractionContext
+    ) -> Function | None:
         """
         Extract function overload from node.
 
@@ -866,13 +960,15 @@ class ProgrammingLanguageExtractor:
             log_error(f"Function overload extraction failed: {e}")
             return None
 
-    def _extract_template_function(self, node: Node, context: ExtractionContext) -> Optional[Function]:
+    def _extract_template_function(
+        self, node: Node, context: ExtractionContext | None = None
+    ) -> Function | None:
         """
         Extract template function from node.
 
         Args:
             node: AST node
-            context: Extraction context
+            context: Extraction context (optional)
 
         Returns:
             Function object or None
@@ -883,6 +979,16 @@ class ProgrammingLanguageExtractor:
             - Calculates cyclomatic complexity
         """
         try:
+            # Create context if not provided (for backward compatibility)
+            if context is None:
+                context = ExtractionContext(
+                    source_code=self.source_code,
+                    content_lines=self.content_lines,
+                    max_depth=self._max_depth,
+                    language="unknown",
+                    extractor_name="template_function",
+                )
+
             # Extract function definition
             return self._extract_function_definition(node, context)
 
@@ -890,7 +996,9 @@ class ProgrammingLanguageExtractor:
             log_error(f"Template function extraction failed: {e}")
             return None
 
-    def _extract_inline_function(self, node: Node, context: ExtractionContext) -> Optional[Function]:
+    def _extract_inline_function(
+        self, node: Node, context: ExtractionContext
+    ) -> Function | None:
         """
         Extract inline function from node.
 
@@ -908,7 +1016,9 @@ class ProgrammingLanguageExtractor:
         """
         return self._extract_function_definition(node, context)
 
-    def _extract_callback_function(self, node: Node, context: ExtractionContext) -> Optional[Function]:
+    def _extract_callback_function(
+        self, node: Node, context: ExtractionContext
+    ) -> Function | None:
         """
         Extract callback function from node.
 
@@ -926,7 +1036,9 @@ class ProgrammingLanguageExtractor:
         """
         return self._extract_function_definition(node, context)
 
-    def _extract_getter(self, node: Node, context: ExtractionContext) -> Optional[Function]:
+    def _extract_getter(
+        self, node: Node, context: ExtractionContext
+    ) -> Function | None:
         """
         Extract getter function from node.
 
@@ -953,22 +1065,39 @@ class ProgrammingLanguageExtractor:
             if hasattr(node, "return_type"):
                 if hasattr(node.return_type, "type"):
                     type_node = node.return_type.type
-                    if hasattr(type_node, "named_child_count") and type_node.named_child_count > 0:
+                    if (
+                        hasattr(type_node, "named_child_count")
+                        and type_node.named_child_count > 0
+                    ):
                         return_type_node = type_node.named_child(0)
                         if return_type_node and return_type_node.type == "identifier":
-                            return_type = return_type_node.text.decode("utf-8", errors="replace") if return_type_node.text else ""
+                            return_type = (
+                                return_type_node.text.decode("utf-8", errors="replace")
+                                if return_type_node.text
+                                else ""
+                            )
+
+            # Create position object
+            position = Position(
+                line=node.start_point[0] + 1,
+                column=node.start_point[1],
+                end_line=node.end_point[0] + 1,
+                end_column=node.end_point[1],
+                offset=node.start_byte,
+            )
 
             # Create function object
             function = Function(
+                element_type=ElementType.FUNCTION,
                 name=f"get_{property_name}",
-                parameters=[],
-                return_type=return_type,
-                complexity=self._calculate_complexity(node, context),
+                position=position,
+                visibility=Visibility.PUBLIC,
                 docstring="",
-                start_line=node.start_point[0] + 1,
-                end_line=node.end_point[0] + 1,
-                start_column=node.start_point[1] + 1,
-                end_column=node.end_point[1] + 1,
+                metadata={},
+                return_type=TypeInfo(name=return_type) if return_type else None,  # type: ignore
+                parameters=[],
+                is_property=True,
+                complexity=self._calculate_complexity(node, context),
             )
 
             return function
@@ -977,7 +1106,9 @@ class ProgrammingLanguageExtractor:
             log_error(f"Getter extraction failed: {e}")
             return None
 
-    def _extract_setter(self, node: Node, context: ExtractionContext) -> Optional[Function]:
+    def _extract_setter(
+        self, node: Node, context: ExtractionContext
+    ) -> Function | None:
         """
         Extract setter function from node.
 
@@ -999,27 +1130,45 @@ class ProgrammingLanguageExtractor:
             if hasattr(node, "property_name"):
                 property_name = node.property_name
 
-            # Extract parameter type
-            param_type = ""
+            # Extract parameter type (for future use)
+            _param_type = ""
             if hasattr(node, "parameters") and node.parameters:
                 if hasattr(node.parameters, "type"):
                     type_node = node.parameters.type
-                    if hasattr(type_node, "named_child_count") and type_node.named_child_count > 0:
+                    if (
+                        hasattr(type_node, "named_child_count")
+                        and type_node.named_child_count > 0
+                    ):
                         param_type_node = type_node.named_child(0)
                         if param_type_node and param_type_node.type == "identifier":
-                            param_type = param_type_node.text.decode("utf-8", errors="replace") if param_type_node.text else ""
+                            # Extract parameter type (stored for future use)
+                            _ = (
+                                param_type_node.text.decode("utf-8", errors="replace")
+                                if param_type_node.text
+                                else ""
+                            )
+
+            # Create position object
+            position = Position(
+                line=node.start_point[0] + 1,
+                column=node.start_point[1],
+                end_line=node.end_point[0] + 1,
+                end_column=node.end_point[1],
+                offset=node.start_byte,
+            )
 
             # Create function object
             function = Function(
+                element_type=ElementType.FUNCTION,
                 name=f"set_{property_name}",
-                parameters=[f"value: {param_type}"],
-                return_type="",
-                complexity=self._calculate_complexity(node, context),
+                position=position,
+                visibility=Visibility.PUBLIC,
                 docstring="",
-                start_line=node.start_point[0] + 1,
-                end_line=node.end_point[0] + 1,
-                start_column=node.start_point[1] + 1,
-                end_column=node.end_point[1] + 1,
+                metadata={},
+                return_type=None,
+                parameters=[],
+                is_property=True,
+                complexity=self._calculate_complexity(node, context),
             )
 
             return function
@@ -1028,7 +1177,9 @@ class ProgrammingLanguageExtractor:
             log_error(f"Setter extraction failed: {e}")
             return None
 
-    def _extract_property_function(self, node: Node, context: ExtractionContext) -> Optional[Function]:
+    def _extract_property_function(
+        self, node: Node, context: ExtractionContext
+    ) -> Function | None:
         """
         Extract property function from node.
 
@@ -1046,7 +1197,9 @@ class ProgrammingLanguageExtractor:
         """
         return self._extract_getter(node, context)
 
-    def _extract_static_method(self, node: Node, context: ExtractionContext) -> Optional[Function]:
+    def _extract_static_method(
+        self, node: Node, context: ExtractionContext
+    ) -> Function | None:
         """
         Extract static method from node.
 
@@ -1075,20 +1228,24 @@ class ProgrammingLanguageExtractor:
             base_function = self._extract_function_definition(node, context)
             if base_function:
                 return Function(
+                    element_type=base_function.element_type,
                     name=f"static_{base_function.name}",
-                    parameters=base_function.parameters,
-                    return_type=base_function.return_type,
-                    complexity=base_function.complexity,
+                    position=base_function.position,
+                    visibility=base_function.visibility,
                     docstring=base_function.docstring,
-                    start_line=base_function.start_line,
-                    end_line=base_function.end_line,
-                    start_column=base_function.start_column,
-                    end_column=base_function.end_column,
+                    metadata=base_function.metadata,
+                    return_type=base_function.return_type,
+                    parameters=base_function.parameters,
+                    is_static=True,
+                    complexity=base_function.complexity,
                 )
+            return None
 
-        return base_function
+        return self._extract_function_definition(node, context)
 
-    def _extract_class_method(self, node: Node, context: ExtractionContext) -> Optional[Function]:
+    def _extract_class_method(
+        self, node: Node, context: ExtractionContext
+    ) -> Function | None:
         """
         Extract class method from node.
 
@@ -1106,7 +1263,9 @@ class ProgrammingLanguageExtractor:
         """
         return self._extract_function_definition(node, context)
 
-    def _extract_instance_method(self, node: Node, context: ExtractionContext) -> Optional[Function]:
+    def _extract_instance_method(
+        self, node: Node, context: ExtractionContext
+    ) -> Function | None:
         """
         Extract instance method from node.
 
@@ -1124,7 +1283,9 @@ class ProgrammingLanguageExtractor:
         """
         return self._extract_function_definition(node, context)
 
-    def _extract_public_function(self, node: Node, context: ExtractionContext) -> Optional[Function]:
+    def _extract_public_function(
+        self, node: Node, context: ExtractionContext
+    ) -> Function | None:
         """
         Extract public function from node.
 
@@ -1142,7 +1303,9 @@ class ProgrammingLanguageExtractor:
         """
         return self._extract_function_definition(node, context)
 
-    def _extract_private_function(self, node: Node, context: ExtractionContext) -> Optional[Function]:
+    def _extract_private_function(
+        self, node: Node, context: ExtractionContext
+    ) -> Function | None:
         """
         Extract private function from node.
 
@@ -1160,7 +1323,9 @@ class ProgrammingLanguageExtractor:
         """
         return self._extract_function_definition(node, context)
 
-    def _extract_protected_function(self, node: Node, context: ExtractionContext) -> Optional[Function]:
+    def _extract_protected_function(
+        self, node: Node, context: ExtractionContext
+    ) -> Function | None:
         """
         Extract protected function from node.
 
@@ -1178,7 +1343,9 @@ class ProgrammingLanguageExtractor:
         """
         return self._extract_function_definition(node, context)
 
-    def _extract_class_definition(self, node: Node, context: ExtractionContext) -> Optional[Class]:
+    def _extract_class_definition(
+        self, node: Node, context: ExtractionContext
+    ) -> Class | None:
         """
         Extract class definition from node.
 
@@ -1202,12 +1369,17 @@ class ProgrammingLanguageExtractor:
             cache_key = (id(node), "class")
             if self._enable_caching and cache_key in self._element_cache:
                 context.metrics.cache_hits += 1
-                return self._element_cache[cache_key]
+                cached_result: Any = self._element_cache[cache_key]
+                return cached_result
 
             # Extract class name
             name = ""
             if hasattr(node, "name"):
-                name = node.name.text.decode("utf-8", errors="replace") if node.name else ""
+                name = (
+                    node.name.text.decode("utf-8", errors="replace")
+                    if node.name
+                    else ""
+                )
 
             # Extract parent classes
             parent_classes = []
@@ -1216,7 +1388,11 @@ class ProgrammingLanguageExtractor:
                 if hasattr(node.superclass, "type"):
                     type_node = node.superclass.type
                     if hasattr(type_node, "name"):
-                        parent_name = type_node.name.text.decode("utf-8", errors="replace") if type_node.name else ""
+                        parent_name = (
+                            type_node.name.text.decode("utf-8", errors="replace")
+                            if type_node.name
+                            else ""
+                        )
                         if parent_name:
                             parent_classes.append(parent_name)
 
@@ -1226,16 +1402,25 @@ class ProgrammingLanguageExtractor:
             # Calculate complexity
             complexity = self._calculate_complexity(node, context)
 
+            # Create position object
+            position = Position(
+                line=node.start_point[0] + 1,
+                column=node.start_point[1],
+                end_line=node.end_point[0] + 1,
+                end_column=node.end_point[1],
+                offset=node.start_byte,
+            )
+
             # Create class object
             class_obj = Class(
+                element_type=ElementType.CLASS,
                 name=name,
-                parent_classes=parent_classes,
-                complexity=complexity,
+                position=position,
+                visibility=Visibility.PUBLIC,
                 docstring=docstring,
-                start_line=node.start_point[0] + 1,
-                end_line=node.end_point[0] + 1,
-                start_column=node.start_point[1] + 1,
-                end_column=node.end_point[1] + 1,
+                metadata={},
+                base_classes=parent_classes,
+                complexity=complexity,
             )
 
             # Cache result
@@ -1248,7 +1433,9 @@ class ProgrammingLanguageExtractor:
             log_error(f"Class definition extraction failed: {e}")
             return None
 
-    def _extract_interface_definition(self, node: Node, context: ExtractionContext) -> Optional[Class]:
+    def _extract_interface_definition(
+        self, node: Node, context: ExtractionContext
+    ) -> Class | None:
         """
         Extract interface definition from node.
 
@@ -1266,7 +1453,9 @@ class ProgrammingLanguageExtractor:
         """
         return self._extract_class_definition(node, context)
 
-    def _extract_struct_definition(self, node: Node, context: ExtractionContext) -> Optional[Class]:
+    def _extract_struct_definition(
+        self, node: Node, context: ExtractionContext
+    ) -> Class | None:
         """
         Extract struct definition from node.
 
@@ -1284,7 +1473,9 @@ class ProgrammingLanguageExtractor:
         """
         return self._extract_class_definition(node, context)
 
-    def _extract_abstract_class(self, node: Node, context: ExtractionContext) -> Optional[Class]:
+    def _extract_abstract_class(
+        self, node: Node, context: ExtractionContext
+    ) -> Class | None:
         """
         Extract abstract class definition from node.
 
@@ -1309,12 +1500,25 @@ class ProgrammingLanguageExtractor:
                     break
 
         class_obj = self._extract_class_definition(node, context)
-        if class_obj:
-            class_obj.is_abstract = is_abstract
+        if class_obj and is_abstract:
+            # Create new Class with is_abstract set
+            class_obj = Class(
+                element_type=class_obj.element_type,
+                name=class_obj.name,
+                position=class_obj.position,
+                visibility=class_obj.visibility,
+                docstring=class_obj.docstring,
+                metadata=class_obj.metadata,
+                base_classes=class_obj.base_classes,
+                is_abstract=True,
+                complexity=class_obj.complexity,
+            )
 
         return class_obj
 
-    def _extract_final_class(self, node: Node, context: ExtractionContext) -> Optional[Class]:
+    def _extract_final_class(
+        self, node: Node, context: ExtractionContext
+    ) -> Class | None:
         """
         Extract final class definition from node.
 
@@ -1332,7 +1536,9 @@ class ProgrammingLanguageExtractor:
         """
         return self._extract_class_definition(node, context)
 
-    def _extract_sealed_class(self, node: Node, context: ExtractionContext) -> Optional[Class]:
+    def _extract_sealed_class(
+        self, node: Node, context: ExtractionContext
+    ) -> Class | None:
         """
         Extract sealed class definition from node.
 
@@ -1350,7 +1556,9 @@ class ProgrammingLanguageExtractor:
         """
         return self._extract_class_definition(node, context)
 
-    def _extract_inner_class(self, node: Node, context: ExtractionContext) -> Optional[Class]:
+    def _extract_inner_class(
+        self, node: Node, context: ExtractionContext
+    ) -> Class | None:
         """
         Extract inner class definition from node.
 
@@ -1368,7 +1576,9 @@ class ProgrammingLanguageExtractor:
         """
         return self._extract_class_definition(node, context)
 
-    def _extract_static_class(self, node: Node, context: ExtractionContext) -> Optional[Class]:
+    def _extract_static_class(
+        self, node: Node, context: ExtractionContext
+    ) -> Class | None:
         """
         Extract static class definition from node.
 
@@ -1393,12 +1603,25 @@ class ProgrammingLanguageExtractor:
                     break
 
         class_obj = self._extract_class_definition(node, context)
-        if class_obj:
-            class_obj.is_static = is_static
+        if class_obj and is_static:
+            # Create new Class with is_static set
+            class_obj = Class(
+                element_type=class_obj.element_type,
+                name=class_obj.name,
+                position=class_obj.position,
+                visibility=class_obj.visibility,
+                docstring=class_obj.docstring,
+                metadata=class_obj.metadata,
+                base_classes=class_obj.base_classes,
+                is_static=True,
+                complexity=class_obj.complexity,
+            )
 
         return class_obj
 
-    def _extract_public_class(self, node: Node, context: ExtractionContext) -> Optional[Class]:
+    def _extract_public_class(
+        self, node: Node, context: ExtractionContext
+    ) -> Class | None:
         """
         Extract public class definition from node.
 
@@ -1416,7 +1639,9 @@ class ProgrammingLanguageExtractor:
         """
         return self._extract_class_definition(node, context)
 
-    def _extract_private_class(self, node: Node, context: ExtractionContext) -> Optional[Class]:
+    def _extract_private_class(
+        self, node: Node, context: ExtractionContext
+    ) -> Class | None:
         """
         Extract private class definition from node.
 
@@ -1434,7 +1659,9 @@ class ProgrammingLanguageExtractor:
         """
         return self._extract_class_definition(node, context)
 
-    def _extract_protected_class(self, node: Node, context: ExtractionContext) -> Optional[Class]:
+    def _extract_protected_class(
+        self, node: Node, context: ExtractionContext
+    ) -> Class | None:
         """
         Extract protected class definition from node.
 
@@ -1452,7 +1679,9 @@ class ProgrammingLanguageExtractor:
         """
         return self._extract_class_definition(node, context)
 
-    def _extract_enum_definition(self, node: Node, context: ExtractionContext) -> Optional[Class]:
+    def _extract_enum_definition(
+        self, node: Node, context: ExtractionContext
+    ) -> Class | None:
         """
         Extract enum definition from node.
 
@@ -1472,7 +1701,11 @@ class ProgrammingLanguageExtractor:
             # Extract enum name
             name = ""
             if hasattr(node, "name"):
-                name = node.name.text.decode("utf-8", errors="replace") if node.name else ""
+                name = (
+                    node.name.text.decode("utf-8", errors="replace")
+                    if node.name
+                    else ""
+                )
 
             # Extract enum values
             enum_values = []
@@ -1480,23 +1713,35 @@ class ProgrammingLanguageExtractor:
                 for member in node.members:
                     if member.type == "enum_member":
                         if hasattr(member, "name"):
-                            value = member.name.text.decode("utf-8", errors="replace") if member.name else ""
+                            value = (
+                                member.name.text.decode("utf-8", errors="replace")
+                                if member.name
+                                else ""
+                            )
                             if value:
                                 enum_values.append(value)
 
+            # Create position object
+            position = Position(
+                line=node.start_point[0] + 1,
+                column=node.start_point[1],
+                end_line=node.end_point[0] + 1,
+                end_column=node.end_point[1],
+                offset=node.start_byte,
+            )
+
             # Create class object with enum values
             class_obj = Class(
+                element_type=ElementType.CLASS,
                 name=name,
-                parent_classes=[],
-                complexity=1,  # Enum complexity
+                position=position,
+                visibility=Visibility.PUBLIC,
                 docstring="",
-                start_line=node.start_point[0] + 1,
-                end_line=node.end_point[0] + 1,
-                start_column=node.start_point[1] + 1,
-                end_column=node.end_point[1] + 1,
+                metadata={"enum_values": enum_values},
+                base_classes=[],
+                complexity=1,  # Enum complexity
                 is_enum=True,
             )
-            class_obj.enum_values = enum_values
 
             return class_obj
 
@@ -1504,7 +1749,9 @@ class ProgrammingLanguageExtractor:
             log_error(f"Enum extraction failed: {e}")
             return None
 
-    def _extract_mixin_class(self, node: Node, context: ExtractionContext) -> Optional[Class]:
+    def _extract_mixin_class(
+        self, node: Node, context: ExtractionContext
+    ) -> Class | None:
         """
         Extract mixin class definition from node.
 
@@ -1522,7 +1769,9 @@ class ProgrammingLanguageExtractor:
         """
         return self._extract_class_definition(node, context)
 
-    def _extract_decorated_class(self, node: Node, context: ExtractionContext) -> Optional[Class]:
+    def _extract_decorated_class(
+        self, node: Node, context: ExtractionContext
+    ) -> Class | None:
         """
         Extract decorated class definition from node.
 
@@ -1540,7 +1789,9 @@ class ProgrammingLanguageExtractor:
         """
         return self._extract_class_definition(node, context)
 
-    def _extract_generic_class(self, node: Node, context: ExtractionContext) -> Optional[Class]:
+    def _extract_generic_class(
+        self, node: Node, context: ExtractionContext
+    ) -> Class | None:
         """
         Extract generic class definition from node.
 
@@ -1558,7 +1809,7 @@ class ProgrammingLanguageExtractor:
         """
         return self._extract_class_definition(node, context)
 
-    def _extract_docstring(self, node: Node, context: ExtractionContext) -> Optional[str]:
+    def _extract_docstring(self, node: Node, context: ExtractionContext) -> str | None:
         """
         Extract docstring from node.
 
@@ -1578,7 +1829,7 @@ class ProgrammingLanguageExtractor:
             if hasattr(node, "child_count") and node.child_count > 0:
                 for i in range(node.child_count):
                     child = node.child(i)
-                    if child.type == "string" and child.text:
+                    if child and child.type == "string" and child.text:
                         text = child.text.decode("utf-8", errors="replace")
                         if text.startswith('"""') or text.startswith("'''"):
                             return text[3:-3]
@@ -1626,7 +1877,9 @@ class ProgrammingLanguageExtractor:
 
             # Check node text for decision keywords
             if hasattr(node, "text"):
-                node_text = node.text.decode("utf-8", errors="replace") if node.text else ""
+                node_text = (
+                    node.text.decode("utf-8", errors="replace") if node.text else ""
+                )
                 for keyword in decision_keywords:
                     if keyword in node_text:
                         complexity += 1
@@ -1636,8 +1889,9 @@ class ProgrammingLanguageExtractor:
             if hasattr(node, "child_count") and node.child_count > 0:
                 for i in range(node.child_count):
                     child = node.child(i)
-                    child_complexity = self._calculate_complexity(child, context)
-                    complexity += child_complexity
+                    if child:
+                        child_complexity = self._calculate_complexity(child, context)
+                        complexity += child_complexity
 
             return complexity
 
@@ -1645,13 +1899,130 @@ class ProgrammingLanguageExtractor:
             log_error(f"Complexity calculation failed: {e}")
             return 1  # Default complexity on error
 
+    def _extract_common_metadata(self, node: Node) -> dict[str, Any]:
+        """
+        Extract common metadata from an AST node.
+
+        Provides a standardized way to extract basic information
+        that is common across all element types (functions, classes, etc.).
+
+        Args:
+            node: AST node to extract metadata from
+
+        Returns:
+            Dictionary containing line numbers, raw text, etc.
+
+        Note:
+            - Extracts line numbers (1-based)
+            - Extracts raw text from source code
+            - Adds node type information
+        """
+        start_line = node.start_point[0] + 1
+        end_line = node.end_point[0] + 1
+
+        # Extract raw text
+        if self.source_code:
+            lines = self.source_code.splitlines()
+            start_idx = max(0, start_line - 1)
+            end_idx = min(len(lines), end_line)
+            raw_text = "\n".join(lines[start_idx:end_idx])
+        else:
+            raw_text = ""
+
+        return {
+            "start_line": start_line,
+            "end_line": end_line,
+            "raw_text": raw_text,
+            "node_type": node.type,
+            "start_byte": node.start_byte,
+            "end_byte": node.end_byte,
+        }
+
+    def _traverse_and_extract_iterative(
+        self,
+        root_node: Node | None,
+        extractors: dict[str, Callable[[Node], Any]],
+        results: list[Any],
+        element_type: str,
+        max_depth: int = 50,
+    ) -> None:
+        """
+        Generic iterative node traversal with element extraction.
+
+        Args:
+            root_node: Root AST node to start traversal from
+            extractors: Mapping of node types to extractor functions
+            results: List to accumulate extracted elements
+            element_type: Type of element being extracted (for logging)
+            max_depth: Maximum traversal depth (default: 50)
+
+        Note:
+            - Uses iterative traversal (not recursive) to avoid stack overflow
+            - Depth-limited traversal for safety
+            - Uses caching for performance
+            - Thread-safe if enabled
+        """
+        if not root_node:
+            return
+
+        # Target node types for extraction
+        target_node_types = set(extractors.keys())
+
+        # Container node types that may contain target elements
+        container_node_types = self._get_container_node_types()
+
+        # Iterative DFS stack: (node, depth)
+        from collections import deque
+        node_stack: deque[tuple[Node, int]] = deque([(root_node, 0)])
+        processed_nodes = 0
+
+        while node_stack:
+            current_node, depth = node_stack.popleft()
+
+            # Safety check for maximum depth
+            if depth > max_depth:
+                log_warning(f"Maximum traversal depth ({max_depth}) exceeded")
+                continue
+
+            processed_nodes += 1
+            node_type = current_node.type
+
+            # Early termination: skip nodes that don't contain target elements
+            if (
+                depth > 0
+                and node_type not in target_node_types
+                and node_type not in container_node_types
+            ):
+                continue
+
+            # Execute extractor if node type matches
+            if node_type in target_node_types:
+                try:
+                    extractor = extractors[node_type]
+                    element = extractor(current_node)
+                    if element is not None:
+                        results.append(element)
+                except Exception as e:
+                    log_error(f"Extraction failed for {node_type}: {e}")
+                    continue
+
+            # Push children to stack (if any)
+            if hasattr(current_node, "children") and current_node.children:
+                for child in reversed(current_node.children):
+                    node_stack.append((child, depth + 1))
+
+        log_debug(f"Processed {processed_nodes} nodes during {element_type} extraction")
+
 
 # ============================================================================
 # Convenience Functions with LRU Caching
 # ============================================================================
 
+
 @lru_cache(maxsize=64, typed=True)
-def get_programming_language_extractor(max_depth: int = 50) -> ProgrammingLanguageExtractor:
+def get_programming_language_extractor(
+    max_depth: int = 50,
+) -> ProgrammingLanguageExtractor:
     """
     Get programming language extractor instance with LRU caching.
 
@@ -1664,28 +2035,25 @@ def get_programming_language_extractor(max_depth: int = 50) -> ProgrammingLangua
     Performance:
         LRU caching with maxsize=64 reduces overhead for repeated calls.
     """
-    return ProgrammingLanguageExtractor(max_depth=max_depth)
+    return ProgrammingLanguageExtractor(max_depth=max_depth)  # type: ignore
 
 
 # ============================================================================
 # Module-level exports for backward compatibility
 # ============================================================================
 
-__all__: List[str] = [
+__all__: list[str] = [
     # Exceptions
     "ProgrammingLanguageExtractorError",
     "InitializationError",
     "ExtractionError",
     "TraversalError",
     "ComplexityCalculationError",
-
     # Data classes
     "ExtractionMetrics",
     "ExtractionContext",
-
     # Main class
     "ProgrammingLanguageExtractor",
-
     # Convenience functions
     "get_programming_language_extractor",
 ]
@@ -1694,6 +2062,7 @@ __all__: List[str] = [
 # ============================================================================
 # Module-level exports for backward compatibility
 # ============================================================================
+
 
 def __getattr__(name: str) -> Any:
     """
@@ -1708,6 +2077,10 @@ def __getattr__(name: str) -> Any:
     Raises:
         ImportError: If requested component is not found
     """
+    # Skip module special attributes
+    if name.startswith("__") and name.endswith("__"):
+        raise AttributeError(f"module has no attribute '{name}'")
+
     # Handle specific imports
     if name == "ProgrammingLanguageExtractor":
         return ProgrammingLanguageExtractor
@@ -1724,6 +2097,7 @@ def __getattr__(name: str) -> Any:
     ]:
         # Import from module
         import sys
+
         module = sys.modules[__name__]
         if module is None:
             raise ImportError(f"Module {name} not found")
@@ -1737,4 +2111,6 @@ def __getattr__(name: str) -> Any:
             module = __import__(f".{name}", fromlist=["__name__"])
             return module
         except ImportError:
-            raise ImportError(f"Module {name} not found in programming_language_extractor package")
+            raise ImportError(
+                f"Module {name} not found in programming_language_extractor package"
+            ) from None

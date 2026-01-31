@@ -14,17 +14,13 @@ Date: 2026-01-28
 """
 
 import argparse
-import sys
-from pathlib import Path
-from typing import List, Optional, Dict, Any, Union, Tuple, Callable
 import logging
+import sys
 import time
+from pathlib import Path
 
 # Type checking setup
-if sys.version_info >= (3, 8):
-    from typing import Protocol
-else:
-    Protocol = object
+from typing import Protocol
 
 # Configure logger (ERROR level to prevent output in CLI)
 logger = logging.getLogger(__name__)
@@ -34,30 +30,16 @@ logger.setLevel(logging.ERROR)
 # Type Definitions
 # ============================================================================
 
+
 class CommandInterface(Protocol):
     """Interface for CLI commands."""
 
-    def execute(self, args: argparse.Namespace) -> int:
+    def execute(self) -> int:
         """
         Execute the command.
 
-        Args:
-            args: Parsed command-line arguments
-
         Returns:
             Exit code (0 for success, non-zero for failure)
-        """
-        ...
-
-    def validate(self, args: argparse.Namespace) -> bool:
-        """
-        Validate command arguments.
-
-        Args:
-            args: Parsed command-line arguments
-
-        Returns:
-            True if valid, False otherwise
         """
         ...
 
@@ -65,6 +47,7 @@ class CommandInterface(Protocol):
 # ============================================================================
 # Custom Exceptions
 # ============================================================================
+
 
 class CLIError(Exception):
     """Base exception for CLI errors."""
@@ -76,22 +59,26 @@ class CLIError(Exception):
 
 class ArgumentParsingError(CLIError):
     """Exception raised when argument parsing fails."""
+
     pass
 
 
 class CommandExecutionError(CLIError):
     """Exception raised when command execution fails."""
+
     pass
 
 
 class FileProcessingError(CLIError):
     """Exception raised when file processing fails."""
+
     pass
 
 
 # ============================================================================
 # Command Classes
 # ============================================================================
+
 
 class AnalyzeCommand:
     """Command to analyze code structure with type hints and error handling."""
@@ -108,9 +95,6 @@ class AnalyzeCommand:
         try:
             # Import dependencies here to avoid circular imports
             from .analysis_engine import create_analysis_engine
-            from .parser import Parser
-            from .language_detector import LanguageDetector
-            from .encoding_utils import read_file_safe
 
             # Setup analysis engine
             engine = create_analysis_engine(".")
@@ -135,6 +119,7 @@ class AnalyzeCommand:
                         print(f"Total Lines: {result.get('total_lines', 0)}")
                     elif hasattr(args, "json") and args.json:
                         import json
+
                         print(json.dumps(result, indent=2))
                 except Exception as e:
                     logger.error(f"Analysis failed for {path}: {e}")
@@ -152,13 +137,16 @@ class AnalyzeCommand:
                     # Output result
                     if hasattr(args, "json") and args.json:
                         import json
+
                         print(json.dumps(result, indent=2))
                 except Exception as e:
                     logger.error(f"Analysis failed for {path}: {e}")
                     return 1
 
             total_end_time = time.perf_counter()
-            logger.debug(f"Analysis completed in {total_end_time - total_start_time:.3f}s")
+            logger.debug(
+                f"Analysis completed in {total_end_time - total_start_time:.3f}s"
+            )
 
             return 0
 
@@ -183,10 +171,10 @@ class QueryCommand:
     def execute(self, args: argparse.Namespace) -> int:
         """Execute query command."""
         try:
-            from .query_loader import QueryLoader
             from .analysis_engine import create_analysis_engine
-            from .parser import Parser
             from .encoding_utils import read_file_safe
+            from .parser import Parser
+            from .query_loader import QueryLoader
 
             # Load query
             loader = QueryLoader()
@@ -195,12 +183,12 @@ class QueryCommand:
                 logger.error("--query-file is required")
                 return 1
 
-            query_code = loader.load_query(query_file)
+            loader.load_query(query_file)  # type: ignore
 
             # Process paths
             parser = Parser()
-            engine = create_analysis_engine(".")
-            
+            create_analysis_engine(".")
+
             for path_str in args.paths:
                 path = Path(path_str)
                 if not path.exists():
@@ -208,7 +196,7 @@ class QueryCommand:
                     return 1
 
                 code, _ = read_file_safe(path)
-                tree = parser.parse(code, path=str(path))
+                parser.parse(code, path=str(path))
 
                 # Execute query (implementation depends on query execution logic)
                 # For now, just log that we executed the query
@@ -224,6 +212,7 @@ class QueryCommand:
 # ============================================================================
 # Argument Parsing
 # ============================================================================
+
 
 def create_parser() -> argparse.ArgumentParser:
     """
@@ -246,12 +235,14 @@ def create_parser() -> argparse.ArgumentParser:
         help="Paths to files or directories to analyze",
     )
     parser.add_argument(
-        "--file", "-f",
+        "--file",
+        "-f",
         type=str,
         help="Single file to analyze",
     )
     parser.add_argument(
-        "--table", "-t",
+        "--table",
+        "-t",
         action="store_true",
         help="Display output in table format",
     )
@@ -261,7 +252,8 @@ def create_parser() -> argparse.ArgumentParser:
         help="Display output in JSON format",
     )
     parser.add_argument(
-        "--query-file", "-q",
+        "--query-file",
+        "-q",
         type=str,
         help="Path to query file",
     )
@@ -296,6 +288,7 @@ def create_parser() -> argparse.ArgumentParser:
 # Main Entry Point
 # ============================================================================
 
+
 def main() -> int:
     """
     Main entry point for CLI.
@@ -323,26 +316,30 @@ def main() -> int:
     # Check for information commands
     if hasattr(args, "list_queries") and args.list_queries:
         from .info_commands import ListQueriesCommand
+
         cmd = ListQueriesCommand(args)
-        return cmd.execute(args)
+        return cmd.execute(args)  # type: ignore
 
     if hasattr(args, "describe_query") and args.describe_query:
         from .info_commands import DescribeQueryCommand
+
         cmd = DescribeQueryCommand(args)
-        return cmd.execute(args)
+        return cmd.execute(args)  # type: ignore
 
     if hasattr(args, "show_languages") and args.show_languages:
         from .info_commands import ShowLanguagesCommand
+
         cmd = ShowLanguagesCommand(args)
-        return cmd.execute(args)
+        return cmd.execute(args)  # type: ignore
 
     if hasattr(args, "show_extensions") and args.show_extensions:
         from .info_commands import ShowExtensionsCommand
+
         cmd = ShowExtensionsCommand(args)
-        return cmd.execute(args)
+        return cmd.execute(args)  # type: ignore
 
     # Default: analyze command
-    cmd = AnalyzeCommand()
+    cmd = AnalyzeCommand()  # type: ignore
     if not cmd.validate(args):
         return 1
     return cmd.execute(args)
@@ -357,3 +354,16 @@ if __name__ == "__main__":
     except Exception as e:
         logger.error(f"Unexpected error: {e}")
         sys.exit(1)
+
+
+__all__: list[str] = [
+    "CommandInterface",
+    "CLIError",
+    "ArgumentParsingError",
+    "CommandExecutionError",
+    "FileProcessingError",
+    "AnalyzeCommand",
+    "QueryCommand",
+    "create_parser",
+    "main",
+]

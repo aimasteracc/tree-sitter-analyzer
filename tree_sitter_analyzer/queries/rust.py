@@ -1,10 +1,21 @@
 #!/usr/bin/env python3
 """
-Rust Language Queries
+Rust Language Queries.
 
-Tree-sitter queries specific to Rust language constructs.
-Covers modules, functions, structs, enums, traits, impl blocks, and other Rust-specific elements.
+Tree-sitter queries for Rust language constructs.
+
+Key Features:
+    - Modules and crates
+    - Functions and methods
+    - Structs, enums, and traits
+    - Impl blocks and macros
+    - Ownership and lifetimes
+
+Version: 1.10.5
+Date: 2026-01-28
 """
+
+from __future__ import annotations
 
 # Rust-specific query library
 RUST_QUERIES: dict[str, str] = {
@@ -221,3 +232,13 @@ def get_available_rust_queries() -> list[str]:
         List of query names
     """
     return list(RUST_QUERIES.keys())
+
+
+__all__: list[str] = [
+    "get_rust_query",
+    "get_rust_query_description",
+    "get_query",
+    "get_all_queries",
+    "list_queries",
+    "get_available_rust_queries",
+]

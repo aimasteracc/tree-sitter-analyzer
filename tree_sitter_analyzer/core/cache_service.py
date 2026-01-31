@@ -40,51 +40,43 @@ Version: 1.10.5
 Date: 2026-01-28
 """
 
-import hashlib
 import logging
-import os
 import threading
 import time
-from typing import TYPE_CHECKING, Any, Optional, List, Dict, Tuple, Union, Callable, Type, NamedTuple
-from functools import lru_cache, wraps
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timedelta
-from pathlib import Path
-from time import perf_counter
+from functools import lru_cache
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Protocol,
+)
 
 # Type checking setup
 if TYPE_CHECKING:
     # Utility imports
     from ..utils.logging import (
         log_debug,
-        log_info,
-        log_warning,
         log_error,
-        log_performance,
+        log_info,
     )
 else:
     # Runtime imports (when type checking is disabled)
     # Utility imports
     from ..utils.logging import (
         log_debug,
-        log_info,
-        log_warning,
         log_error,
-        log_performance,
+        log_info,
     )
 
 # Configure logging
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-# ============================================================================
+# =====
 # Type Definitions
-# ============================================================================
+# =====
 
-if sys.version_info >= (3, 8):
-    from typing import Protocol
-else:
-    Protocol = object
 
 class CacheServiceProtocol(Protocol):
     """Interface for cache service creation functions."""
@@ -101,10 +93,11 @@ class CacheServiceProtocol(Protocol):
         """
         ...
 
+
 class CacheProtocol(Protocol):
     """Interface for cache services."""
 
-    def get(self, key: str) -> Optional[Any]:
+    def get(self, key: str) -> Any | None:
         """
         Get value from cache.
 
@@ -142,6 +135,7 @@ class CacheProtocol(Protocol):
         """Clear all cache entries."""
         ...
 
+
 class PerformanceMonitorProtocol(Protocol):
     """Interface for performance monitoring."""
 
@@ -157,9 +151,11 @@ class PerformanceMonitorProtocol(Protocol):
         """
         ...
 
+
 # ============================================================================
 # Custom Exceptions
 # ============================================================================
+
 
 class CacheServiceError(Exception):
     """Base exception for cache service errors."""
@@ -171,32 +167,38 @@ class CacheServiceError(Exception):
 
 class InitializationError(CacheServiceError):
     """Exception raised when cache service initialization fails."""
+
     pass
 
 
 class CacheFullError(CacheServiceError):
     """Exception raised when cache is full and eviction fails."""
+
     pass
 
 
 class CacheKeyError(CacheServiceError):
     """Exception raised when cache key is invalid."""
+
     pass
 
 
 class CacheValueError(CacheServiceError):
     """Exception raised when cache value is invalid."""
+
     pass
 
 
 class CacheTimeoutError(CacheServiceError):
     """Exception raised when cache operation times out."""
+
     pass
 
 
 # ============================================================================
 # Data Classes
 # ============================================================================
+
 
 @dataclass
 class CacheEntry:
@@ -215,11 +217,11 @@ class CacheEntry:
 
     value: Any
     created_at: datetime
-    expires_at: Optional[datetime]
+    expires_at: datetime | None
     access_count: int = 0
-    last_accessed: Optional[datetime] = None
+    last_accessed: datetime | None = None
     size: int = 0
-    ttl_seconds: Optional[int] = None
+    ttl_seconds: int | None = None
 
     @property
     def is_expired(self) -> bool:
@@ -305,6 +307,7 @@ class CacheConfig:
 # Cache Service Implementation
 # ============================================================================
 
+
 class CacheService:
     """
     High-performance, thread-safe LRU cache with TTL support and
@@ -341,7 +344,7 @@ class CacheService:
 
     """
 
-    def __init__(self, config: Optional[CacheConfig] = None):
+    def __init__(self, config: CacheConfig | None = None):
         """
         Initialize cache service with configuration.
 
@@ -351,13 +354,13 @@ class CacheService:
         self._config = config or CacheConfig()
 
         # Thread-safe lock for operations
-        self._lock = threading.RLock() if self._config.enable_threading else type(None)
+        self._lock: threading.RLock | None = threading.RLock() if self._config.enable_threading else None
 
         # Cache storage (LRU)
-        self._cache: Dict[str, CacheEntry] = {}
+        self._cache: dict[str, CacheEntry] = {}
 
         # Performance statistics
-        self._stats: Dict[str, Any] = {
+        self._stats: dict[str, Any] = {
             "total_sets": 0,
             "total_gets": 0,
             "total_hits": 0,
@@ -375,7 +378,7 @@ class CacheService:
         self._created_at = datetime.now()
 
         # Start cleanup thread if enabled
-        self._cleanup_thread = None
+        self._cleanup_thread: threading.Thread | None = None
         if self._config.cleanup_interval_seconds > 0:
             self._start_cleanup_thread()
 
@@ -396,7 +399,9 @@ class CacheService:
             - Evicts expired entries automatically
             - Thread-safe operation
         """
-        with self._lock:
+        if self._lock:
+            self._lock.acquire()
+        try:
             # Update statistics
             self._stats["total_gets"] += 1
 
@@ -430,8 +435,11 @@ class CacheService:
             log_debug(f"Cache hit for {key} (accesses: {entry.access_count})")
 
             return entry.value
+        finally:
+            if self._lock:
+                self._lock.release()
 
-    def set(self, key: str, value: Any, ttl: Optional[int] = None) -> None:
+    def set(self, key: str, value: Any, ttl: int | None = None) -> None:
         """
         Set value in cache.
 
@@ -447,7 +455,9 @@ class CacheService:
             - Evicts least recently used entries if cache is full
             - Thread-safe operation
         """
-        with self._lock:
+        if self._lock:
+            self._lock.acquire()
+        try:
             # Update statistics
             self._stats["total_sets"] += 1
 
@@ -479,10 +489,13 @@ class CacheService:
                 self._evict_lru(count=len(self._cache) - self._config.max_size + 1)
 
             # Set entry
-            old_entry = self._cache.get(key)
+            self._cache.get(key)
             self._cache[key] = entry
 
             log_debug(f"Cache set for {key} (size={size} bytes)")
+        finally:
+            if self._lock:
+                self._lock.release()
 
     def delete(self, key: str) -> bool:
         """
@@ -499,7 +512,9 @@ class CacheService:
             - Updates eviction statistics
             - Thread-safe operation
         """
-        with self._lock:
+        if self._lock:
+            self._lock.acquire()
+        try:
             # Update statistics
             self._stats["total_deletes"] += 1
 
@@ -513,8 +528,10 @@ class CacheService:
             del self._cache[key]
 
             log_debug(f"Cache delete: {key}")
-
-        return True
+            return True
+        finally:
+            if self._lock:
+                self._lock.release()
 
     def clear(self) -> None:
         """
@@ -525,12 +542,17 @@ class CacheService:
             - Resets internal cache statistics
             - Resets total entries count
         """
-        with self._lock:
+        if self._lock:
+            self._lock.acquire()
+        try:
             # Update statistics
             self._stats["total_clears"] += 1
 
             # Clear cache
             self._cache.clear()
+        finally:
+            if self._lock:
+                self._lock.release()
 
         log_info("Cache cleared")
 
@@ -545,7 +567,9 @@ class CacheService:
             - Returns hit rate, size, uptime, etc.
             - Thread-safe operation
         """
-        with self._lock:
+        if self._lock:
+            self._lock.acquire()
+        try:
             total_requests = self._stats["total_sets"] + self._stats["total_gets"]
             hit_rate = (
                 self._stats["total_hits"] / total_requests
@@ -555,11 +579,7 @@ class CacheService:
 
             total_size = sum(entry.size for entry in self._cache.values())
 
-            average_size = (
-                total_size / len(self._cache)
-                if len(self._cache) > 0
-                else 0
-            )
+            average_size = total_size / len(self._cache) if len(self._cache) > 0 else 0
 
             uptime = (datetime.now() - self._created_at).total_seconds()
 
@@ -573,6 +593,9 @@ class CacheService:
                 average_size=average_size,
                 uptime=uptime,
             )
+        finally:
+            if self._lock:
+                self._lock.release()
 
     def _estimate_size(self, value: Any) -> int:
         """
@@ -595,6 +618,7 @@ class CacheService:
         try:
             # Use pickle to estimate size
             import pickle
+
             return len(pickle.dumps(value))
         except Exception:
             # Fallback to string length
@@ -612,7 +636,9 @@ class CacheService:
             - Decrements cache size
             - Updates eviction statistics
         """
-        with self._lock:
+        if self._lock:
+            self._lock.acquire()
+        try:
             entry = self._cache.get(key)
 
             if entry is None:
@@ -625,6 +651,9 @@ class CacheService:
             self._stats["total_evictions"] += 1
 
             log_debug(f"Cache {reason}: {key} (size={entry.size} bytes)")
+        finally:
+            if self._lock:
+                self._lock.release()
 
     def _evict_lru(self, count: int = 1) -> None:
         """
@@ -637,7 +666,9 @@ class CacheService:
             - Evicts entries that haven't been accessed recently
             - Updates eviction statistics
         """
-        with self._lock:
+        if self._lock:
+            self._lock.acquire()
+        try:
             if len(self._cache) == 0:
                 return
 
@@ -647,8 +678,8 @@ class CacheService:
                 key=lambda item: (
                     item[1].last_accessed
                     if item[1].last_accessed is not None
-                    else datetime.min()
-                )
+                    else datetime.min
+                ),
             )
 
             # Evict specified count
@@ -658,18 +689,23 @@ class CacheService:
                 evicted_count += 1
 
             log_debug(f"Evicted {evicted_count} LRU entries")
+        finally:
+            if self._lock:
+                self._lock.release()
 
     def _start_cleanup_thread(self) -> None:
         """Start background cleanup thread."""
         import threading
 
-        def cleanup_worker():
+        def cleanup_worker() -> None:
             """Background worker for expired entry cleanup."""
             while True:
                 time.sleep(self._config.cleanup_interval_seconds)
 
                 try:
-                    with self._lock:
+                    if self._lock:
+                        self._lock.acquire()
+                    try:
                         # Find expired entries
                         expired_keys = [
                             key
@@ -680,6 +716,9 @@ class CacheService:
                         # Evict expired entries
                         for key in expired_keys:
                             self._evict_entry(key, "expired")
+                    finally:
+                        if self._lock:
+                            self._lock.release()
 
                     if expired_keys:
                         log_info(f"Cleaned up {len(expired_keys)} expired entries")
@@ -697,6 +736,7 @@ class CacheService:
 # ============================================================================
 # Convenience Functions with LRU Caching
 # ============================================================================
+
 
 @lru_cache(maxsize=64, typed=True)
 def get_cache_service(project_root: str = ".") -> CacheService:
@@ -763,12 +803,11 @@ def create_cache_service(
 # Module-level exports for backward compatibility
 # ============================================================================
 
-__all__: List[str] = [
+__all__: list[str] = [
     # Data classes
     "CacheEntry",
     "CacheStats",
     "CacheConfig",
-
     # Exceptions
     "CacheServiceError",
     "InitializationError",
@@ -776,10 +815,8 @@ __all__: List[str] = [
     "CacheKeyError",
     "CacheValueError",
     "CacheTimeoutError",
-
     # Main class
     "CacheService",
-
     # Convenience functions
     "get_cache_service",
     "create_cache_service",
@@ -789,6 +826,7 @@ __all__: List[str] = [
 # ============================================================================
 # Module-level exports for backward compatibility
 # ============================================================================
+
 
 def __getattr__(name: str) -> Any:
     """
@@ -803,6 +841,14 @@ def __getattr__(name: str) -> Any:
     Raises:
         ImportError: If requested component is not found
     """
+    # Skip Python internal attributes
+    if name.startswith("_"):
+        raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
+
+    # Handle backward compatibility aliases
+    if name == "CacheError":
+        return CacheServiceError
+
     # Handle specific imports
     if name == "CacheService":
         return CacheService
@@ -820,24 +866,14 @@ def __getattr__(name: str) -> Any:
         "CacheValueError",
         "CacheTimeoutError",
     ]:
-        # Import from module
-        import sys
-        module = sys.modules[__name__]
-        if module is None:
-            raise ImportError(f"Module {name} not found")
-        return module
+        # Return the exception class from current module
+        return globals()[name]
     elif name in [
         "get_cache_service",
         "create_cache_service",
     ]:
-        # Import from module
-        module = __import__(f".{name}", fromlist=[f".{name}"])
-        return module
+        # Return the function from current module
+        return globals()[name]
     else:
-        # Default behavior
-        try:
-            # Try to import from current package
-            module = __import__(f".{name}", fromlist=["__name__"])
-            return module
-        except ImportError:
-            raise ImportError(f"Module {name} not found")
+        # Not found
+        raise AttributeError(f"module '{__name__}' has no attribute '{name}'")

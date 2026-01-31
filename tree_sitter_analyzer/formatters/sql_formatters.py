@@ -1,13 +1,39 @@
 #!/usr/bin/env python3
 """
-SQL-Specific Formatters
+SQL Formatters - Enhanced SQL Result Formatting
 
-Provides SQL-specific output formatting to replace generic class-based format
-with database-appropriate terminology and comprehensive element representation.
+This module provides SQL-specific output formatting with database-appropriate
+terminology and comprehensive SQL element representation.
+
+Optimized with:
+- Complete type hints (PEP 484)
+- Comprehensive error handling
+- Performance optimization
+- Detailed documentation in English
+
+Features:
+- SQL element formatting (tables, views, procedures)
+- DDL/DML statement representation
+- Index and constraint display
+- Multi-dialect support
+- Type-safe operations (PEP 484)
+
+Usage:
+    >>> from tree_sitter_analyzer.formatters import SQLFullFormatter
+    >>> formatter = SQLFullFormatter()
+    >>> output = formatter.format(elements)
+
+Author: aisheng.yu
+Version: 1.10.5
+Date: 2026-01-28
 """
+
+from __future__ import annotations
 
 from typing import Any
 
+# Type checking imports
+# Internal imports
 from ..models import (
     SQLElement,
     SQLElementType,

@@ -37,50 +37,46 @@ Version: 1.10.5
 Date: 2026-01-28
 """
 
-import hashlib
 import logging
 import os
-import sys
 import threading
-import time
-from typing import TYPE_CHECKING, Any, Optional, List, Dict, Tuple, Union, Callable, Type, NamedTuple, Set
-from functools import lru_cache, wraps
-from dataclasses import dataclass, field
-from enum import Enum
-from pathlib import Path
+from contextlib import nullcontext
+from dataclasses import dataclass
+from functools import lru_cache
 from time import perf_counter
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Protocol,
+)
 
 # Type checking setup
 if TYPE_CHECKING:
     # Core imports
-    from ..core.analysis_engine import AnalysisEngine, AnalysisRequest, AnalysisResult
-    from ..core.parser import Parser, ParseResult
-    from ..core.query import QueryExecutor, QueryResult
-    from ..core.cache_service import CacheService, CacheConfig
-    from ..language_detector import LanguageDetector, LanguageInfo
-    from ..plugins.manager import PluginManager, PluginInfo
-    from ..plugins.programming_language_extractor import ProgrammingLanguageExtractor, ExtractionMetrics
-    from ..models.element import Element, Position, TypeInfo, Visibility, ElementType
-    from ..models.function import Function
-    from ..models.class import Class
-    from ..models.import import Import as ImportModel
+    from ...core.analysis_engine import AnalysisEngine, AnalysisRequest, AnalysisResult
+    from ...core.cache_service import CacheConfig, CacheService
+    from ...core.parser import Parser, ParseResult
+    from ...core.query import QueryExecutor, QueryResult
+    from ...language_detector import LanguageDetector, LanguageInfo
+    from ...models.class_ import Class
+    from ...models.element import Element, ElementType, Position, TypeInfo, Visibility
+    from ...models.function import Function
+    from ...models.import_ import Import as ImportModel
+    from ...plugins.manager import PluginInfo, PluginManager
+    from ...plugins.programming_language_extractor import (
+        ExtractionMetrics,
+        ProgrammingLanguageExtractor,
+    )
 
     # CLI imports
-    from .base import Command, CommandResult, ExecutionContext, CommandMetadata
-
     # Utility imports
     from ...utils.logging import (
-        LoggerConfig,
-        LoggingContext,
         log_debug,
+        log_error,
         log_info,
         log_warning,
-        log_error,
-        log_performance,
-        setup_logger,
-        create_performance_logger,
-        safe_print,
     )
+    from .base import Command, CommandMetadata, CommandResult, ExecutionContext
 else:
     # Runtime imports (when type checking is disabled)
     # Core imports
@@ -105,8 +101,10 @@ else:
     Visibility = Any
     ElementType = Any
     Function = Any
-    Class = Any
-    ImportModel = Any
+
+    # Import models with correct names
+    from ...models.class_ import Class
+    from ...models.import_ import Import as ImportModel
 
     # CLI imports
     Command = Any
@@ -117,25 +115,19 @@ else:
     # Utility imports
     from ...utils.logging import (
         log_debug,
+        log_error,
         log_info,
         log_warning,
-        log_error,
-        log_performance,
-        safe_print,
     )
 
 # Configure logging
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-# ============================================================================
+# =====
 # Type Definitions
-# ============================================================================
+# =====
 
-if sys.version_info >= (3, 8):
-    from typing import Protocol
-else:
-    Protocol = object
 
 class AnalyzeCodeStructureToolProtocol(Protocol):
     """Interface for analyze code structure tool command creation functions."""
@@ -152,10 +144,11 @@ class AnalyzeCodeStructureToolProtocol(Protocol):
         """
         ...
 
+
 class CacheProtocol(Protocol):
     """Interface for cache services."""
 
-    def get(self, key: str) -> Optional[Any]:
+    def get(self, key: str) -> Any | None:
         """
         Get value from cache.
 
@@ -181,6 +174,7 @@ class CacheProtocol(Protocol):
         """Clear all cache entries."""
         ...
 
+
 class PerformanceMonitorProtocol(Protocol):
     """Interface for performance monitoring."""
 
@@ -196,9 +190,11 @@ class PerformanceMonitorProtocol(Protocol):
         """
         ...
 
+
 # ============================================================================
 # Custom Exceptions
 # ============================================================================
+
 
 class AnalyzeCodeStructureToolError(Exception):
     """Base exception for analyze code structure tool errors."""
@@ -210,27 +206,32 @@ class AnalyzeCodeStructureToolError(Exception):
 
 class InitializationError(AnalyzeCodeStructureToolError):
     """Exception raised when analyze code structure tool initialization fails."""
+
     pass
 
 
 class ExecutionError(AnalyzeCodeStructureToolError):
     """Exception raised when code structure analysis execution fails."""
+
     pass
 
 
 class ValidationError(AnalyzeCodeStructureToolError):
     """Exception raised when validation fails."""
+
     pass
 
 
 class CacheError(AnalyzeCodeStructureToolError):
     """Exception raised when caching fails."""
+
     pass
 
 
 # ============================================================================
 # Data Classes
 # ============================================================================
+
 
 @dataclass
 class CodeStructure:
@@ -249,9 +250,9 @@ class CodeStructure:
 
     file_path: str
     language: str
-    classes: List[Class]
-    functions: List[Function]
-    imports: List[ImportModel]
+    classes: list[Class]
+    functions: list[Function]
+    imports: list[ImportModel]
     lines_of_code: int
     complexity: float
 
@@ -299,6 +300,7 @@ class AnalyzeCodeStructureToolConfig:
 # Analyze Code Structure Tool Command
 # ============================================================================
 
+
 class AnalyzeCodeStructureToolCommand(Command):
     """
     Optimized command for analyzing code structure.
@@ -327,7 +329,7 @@ class AnalyzeCodeStructureToolCommand(Command):
         >>> print(result.message)
     """
 
-    def __init__(self, config: Optional[AnalyzeCodeStructureToolConfig] = None):
+    def __init__(self, config: AnalyzeCodeStructureToolConfig | None = None):
         """
         Initialize analyze code structure tool command.
 
@@ -343,17 +345,18 @@ class AnalyzeCodeStructureToolCommand(Command):
         self._config = config or AnalyzeCodeStructureToolConfig()
 
         # Thread-safe lock for operations
-        self._lock = threading.RLock() if self._config.enable_thread_safety else type(None)
+        self._lock: threading.RLock | None = (
+            threading.RLock() if self._config.enable_thread_safety else None
+        )
 
         # Analysis components (lazy loading)
-        self._engine: Optional[AnalysisEngine] = None
-        self._parser: Optional[Parser] = None
-        self._language_detector: Optional[LanguageDetector] = None
-        self._plugin_manager: Optional[PluginManager] = None
-        self._extractor: Optional[ProgrammingLanguageExtractor] = None
+        self._engine: AnalysisEngine | None = None
+        self._parser: Parser | None = None
+        self._language_detector: LanguageDetector | None = None
+        self._plugin_manager: PluginManager | None = None
 
         # Performance statistics
-        self._stats: Dict[str, Any] = {
+        self._stats: dict[str, Any] = {
             "total_files": 0,
             "total_classes": 0,
             "total_functions": 0,
@@ -375,7 +378,7 @@ class AnalyzeCodeStructureToolCommand(Command):
             - Initializes all analysis components
             - Thread-safe operation
         """
-        with self._lock:
+        with (self._lock if self._lock else nullcontext()):
             if self._engine is None:
                 if TYPE_CHECKING:
                     from ...core.analysis_engine import create_analysis_engine
@@ -389,7 +392,9 @@ class AnalyzeCodeStructureToolCommand(Command):
                     log_debug("Analysis engine initialized")
                 except Exception as e:
                     log_error(f"Failed to initialize analysis engine: {e}")
-                    raise InitializationError(f"Failed to initialize analysis engine: {e}") from e
+                    raise InitializationError(
+                        f"Failed to initialize analysis engine: {e}"
+                    ) from e
 
             if self._parser is None:
                 if TYPE_CHECKING:
@@ -409,13 +414,21 @@ class AnalyzeCodeStructureToolCommand(Command):
                     log_debug("Parser initialized")
                 except Exception as e:
                     log_error(f"Failed to initialize parser: {e}")
-                    raise InitializationError(f"Failed to initialize parser: {e}") from e
+                    raise InitializationError(
+                        f"Failed to initialize parser: {e}"
+                    ) from e
 
             if self._language_detector is None:
                 if TYPE_CHECKING:
-                    from ...language_detector import LanguageDetector, LanguageDetectorConfig
+                    from ...language_detector import (
+                        LanguageDetector,
+                        LanguageDetectorConfig,
+                    )
                 else:
-                    from ...language_detector import LanguageDetector, LanguageDetectorConfig
+                    from ...language_detector import (
+                        LanguageDetector,
+                        LanguageDetectorConfig,
+                    )
 
                 try:
                     detector_config = LanguageDetectorConfig(
@@ -430,7 +443,9 @@ class AnalyzeCodeStructureToolCommand(Command):
                     log_debug("Language detector initialized")
                 except Exception as e:
                     log_error(f"Failed to initialize language detector: {e}")
-                    raise InitializationError(f"Failed to initialize language detector: {e}") from e
+                    raise InitializationError(
+                        f"Failed to initialize language detector: {e}"
+                    ) from e
 
             if self._plugin_manager is None:
                 if TYPE_CHECKING:
@@ -453,26 +468,9 @@ class AnalyzeCodeStructureToolCommand(Command):
                     log_debug("Plugin manager initialized")
                 except Exception as e:
                     log_error(f"Failed to initialize plugin manager: {e}")
-                    raise InitializationError(f"Failed to initialize plugin manager: {e}") from e
-
-            if self._extractor is None:
-                if TYPE_CHECKING:
-                    from ...plugins.programming_language_extractor import ProgrammingLanguageExtractor, ProgrammingLanguageExtractorConfig
-                else:
-                    from ...plugins.programming_language_extractor import ProgrammingLanguageExtractor, ProgrammingLanguageExtractorConfig
-
-                try:
-                    extractor_config = ProgrammingLanguageExtractorConfig(
-                        max_depth=self._config.max_depth,
-                        enable_caching=self._config.enable_caching,
-                        enable_performance_monitoring=self._config.enable_performance_monitoring,
-                        enable_thread_safety=self._config.enable_thread_safety,
-                    )
-                    self._extractor = ProgrammingLanguageExtractor(config=extractor_config)
-                    log_debug("Programming language extractor initialized")
-                except Exception as e:
-                    log_error(f"Failed to initialize programming language extractor: {e}")
-                    raise InitializationError(f"Failed to initialize programming language extractor: {e}") from e
+                    raise InitializationError(
+                        f"Failed to initialize plugin manager: {e}"
+                    ) from e
 
     def execute(self, context: ExecutionContext) -> CommandResult:
         """
@@ -496,7 +494,6 @@ class AnalyzeCodeStructureToolCommand(Command):
             - Handles errors gracefully
         """
         # Start performance monitoring
-        operation_name = f"analyze_code_structure"
         start_time = perf_counter()
 
         try:
@@ -505,6 +502,14 @@ class AnalyzeCodeStructureToolCommand(Command):
 
             # Get file path from arguments
             file_path = self._get_file_path(context)
+
+            # Ensure components are initialized
+            if self._language_detector is None:
+                raise InitializationError("Language detector not initialized")
+            if self._plugin_manager is None:
+                raise InitializationError("Plugin manager not initialized")
+            if self._parser is None:
+                raise InitializationError("Parser not initialized")
 
             # Detect language
             language_info = self._language_detector.detect(file_path)
@@ -545,7 +550,7 @@ class AnalyzeCodeStructureToolCommand(Command):
             )
 
             # Generate output
-            output = self._generate_output(code_structure, self._config.output_format)
+            self._generate_output(code_structure, self._config.output_format)
 
             end_time = perf_counter()
             execution_time = end_time - start_time
@@ -558,7 +563,9 @@ class AnalyzeCodeStructureToolCommand(Command):
             self._stats["total_lines"] += code_structure.lines_of_code
             self._stats["analysis_times"].append(execution_time)
 
-            log_info(f"Analyzed code structure for {file_path} ({code_structure.lines_of_code} lines, {len(code_structure.classes)} classes, {len(code_structure.functions)} functions) in {execution_time:.3f}s")
+            log_info(
+                f"Analyzed code structure for {file_path} ({code_structure.lines_of_code} lines, {len(code_structure.classes)} classes, {len(code_structure.functions)} functions) in {execution_time:.3f}s"
+            )
 
             return CommandResult(
                 command_name=self._name,
@@ -601,7 +608,7 @@ class AnalyzeCodeStructureToolCommand(Command):
         if not context.args or len(context.args) < 2:
             raise ValidationError("File path is required")
 
-        file_path = context.args[1]
+        file_path = str(context.args[1])
 
         # Check if file exists
         if not os.path.exists(file_path):
@@ -629,19 +636,27 @@ class AnalyzeCodeStructureToolCommand(Command):
             CodeStructure with extracted elements
 
         Note:
-            - Uses programming language extractor
+            - Uses plugin manager to get language-specific extractor
             - Extracts classes, functions, imports
             - Calculates overall complexity
             - Handles errors gracefully
         """
         try:
+            # Get plugin for language
+            if self._plugin_manager is None:
+                raise InitializationError("Plugin manager not initialized")
+
+            plugin = self._plugin_manager.get_plugin(language)
+            if plugin is None:
+                raise ValueError(f"No plugin found for language: {language}")
+
             # Extract classes
-            classes = self._extractor.extract_classes(tree, source_code)
+            classes = plugin.extract_classes(tree, source_code)
             if not classes:
                 classes = []
 
             # Extract functions
-            functions = self._extractor.extract_functions(tree, source_code)
+            functions = plugin.extract_functions(tree, source_code)
             if not functions:
                 functions = []
 
@@ -679,7 +694,7 @@ class AnalyzeCodeStructureToolCommand(Command):
                 complexity=0.0,
             )
 
-    def _extract_imports(self, tree: Any, source_code: str) -> List[ImportModel]:
+    def _extract_imports(self, tree: Any, source_code: str) -> list[ImportModel]:
         """
         Extract import statements from tree.
 
@@ -694,7 +709,7 @@ class AnalyzeCodeStructureToolCommand(Command):
             - Simple extraction of import statements
             - Does not parse import hierarchy
         """
-        imports = []
+        imports: list[Any] = []
 
         try:
             # Simple import extraction (language-specific)
@@ -706,7 +721,9 @@ class AnalyzeCodeStructureToolCommand(Command):
             log_error(f"Failed to extract imports: {e}")
             return []
 
-    def _calculate_overall_complexity(self, classes: List[Class], functions: List[Function]) -> float:
+    def _calculate_overall_complexity(
+        self, classes: list[Class], functions: list[Function]
+    ) -> float:
         """
         Calculate overall code complexity.
 
@@ -733,7 +750,9 @@ class AnalyzeCodeStructureToolCommand(Command):
 
         return total_complexity
 
-    def _generate_output(self, code_structure: CodeStructure, output_format: str) -> str:
+    def _generate_output(
+        self, code_structure: CodeStructure, output_format: str
+    ) -> str:
         """
         Generate output in specified format.
 
@@ -752,6 +771,7 @@ class AnalyzeCodeStructureToolCommand(Command):
         """
         if output_format == "json":
             import json
+
             return json.dumps(code_structure.__dict__, indent=2)
         elif output_format == "text":
             return self._generate_text_output(code_structure)
@@ -760,6 +780,7 @@ class AnalyzeCodeStructureToolCommand(Command):
         else:
             log_warning(f"Unsupported output format: {output_format}, using JSON")
             import json
+
             return json.dumps(code_structure.__dict__, indent=2)
 
     def _generate_text_output(self, code_structure: CodeStructure) -> str:
@@ -794,7 +815,9 @@ class AnalyzeCodeStructureToolCommand(Command):
         if code_structure.classes:
             lines.append("Classes:")
             for cls in code_structure.classes[:10]:  # Show first 10
-                lines.append(f"  - {cls.name} (line {cls.start_line}, complexity {cls.complexity})")
+                lines.append(
+                    f"  - {cls.name} (line {cls.start_line}, complexity {cls.complexity})"
+                )
             if len(code_structure.classes) > 10:
                 lines.append(f"  ... and {len(code_structure.classes) - 10} more")
             lines.append("")
@@ -802,7 +825,9 @@ class AnalyzeCodeStructureToolCommand(Command):
         if code_structure.functions:
             lines.append("Functions:")
             for func in code_structure.functions[:10]:  # Show first 10
-                lines.append(f"  - {func.name} (line {func.start_line}, complexity {func.complexity})")
+                lines.append(
+                    f"  - {func.name} (line {func.position.line}, complexity {func.complexity})"
+                )
             if len(code_structure.functions) > 10:
                 lines.append(f"  ... and {len(code_structure.functions) - 10} more")
             lines.append("")
@@ -835,17 +860,21 @@ class AnalyzeCodeStructureToolCommand(Command):
         lines.append("type,name,line,column,complexity")
 
         for cls in code_structure.classes:
-            lines.append(f"class,{cls.name},{cls.start_line},{cls.start_column},{cls.complexity}")
+            lines.append(
+                f"class,{cls.name},{cls.position.line},{cls.position.column},{cls.complexity}"
+            )
 
         for func in code_structure.functions:
-            lines.append(f"function,{func.name},{func.start_line},{func.start_column},{func.complexity}")
+            lines.append(
+                f"function,{func.name},{func.position.line},{func.position.column},{func.complexity}"
+            )
 
         for imp in code_structure.imports:
             lines.append(f"import,{imp.full_import},0,0,0")
 
         return "\n".join(lines)
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         """
         Get analyze code structure tool statistics.
 
@@ -856,7 +885,7 @@ class AnalyzeCodeStructureToolCommand(Command):
             - Returns analysis counts and cache statistics
             - Returns performance metrics
         """
-        with self._lock:
+        with (self._lock if self._lock else nullcontext()):
             return {
                 "total_files": self._stats["total_files"],
                 "total_classes": self._stats["total_classes"],
@@ -890,6 +919,7 @@ class AnalyzeCodeStructureToolCommand(Command):
 # ============================================================================
 # Convenience Functions with LRU Caching
 # ============================================================================
+
 
 @lru_cache(maxsize=64, typed=True)
 def get_analyze_code_structure_tool_command(
@@ -997,21 +1027,18 @@ def create_analyze_code_structure_tool_command(
 # Module-level exports for backward compatibility
 # ============================================================================
 
-__all__: List[str] = [
+__all__: list[str] = [
     # Data classes
     "CodeStructure",
     "AnalyzeCodeStructureToolConfig",
-
     # Exceptions
     "AnalyzeCodeStructureToolError",
     "InitializationError",
     "ExecutionError",
     "ValidationError",
     "CacheError",
-
     # Main class
     "AnalyzeCodeStructureToolCommand",
-
     # Convenience functions
     "get_analyze_code_structure_tool_command",
     "create_analyze_code_structure_tool_command",
@@ -1021,6 +1048,7 @@ __all__: List[str] = [
 # ============================================================================
 # Module-level exports for backward compatibility
 # ============================================================================
+
 
 def __getattr__(name: str) -> Any:
     """
@@ -1051,6 +1079,7 @@ def __getattr__(name: str) -> Any:
     ]:
         # Import from module
         import sys
+
         module = sys.modules[__name__]
         if module is None:
             raise ImportError(f"Module {name} not found")
@@ -1066,4 +1095,4 @@ def __getattr__(name: str) -> Any:
             module = __import__(f".{name}", fromlist=["__name__"])
             return module
         except ImportError:
-            raise ImportError(f"Module {name} not found")
+            raise ImportError(f"Module {name} not found") from None

@@ -1,10 +1,21 @@
 #!/usr/bin/env python3
 """
-CSS Language Queries
+CSS Language Queries.
 
 Comprehensive Tree-sitter queries for CSS language constructs.
-Covers selectors, properties, rules, at-rules, and CSS features.
+
+Key Features:
+    - Selectors and rules
+    - Properties and values
+    - At-rules and media queries
+    - Pseudo-classes and elements
+    - CSS3+ features
+
+Version: 1.10.5
+Date: 2026-01-28
 """
+
+from __future__ import annotations
 
 # CSS-specific query library
 CSS_QUERIES: dict[str, str] = {
@@ -613,3 +624,13 @@ def get_available_css_queries() -> list[str]:
         List of query names
     """
     return list(CSS_QUERIES.keys())
+
+
+__all__: list[str] = [
+    "get_css_query",
+    "get_css_query_description",
+    "get_query",
+    "get_all_queries",
+    "list_queries",
+    "get_available_css_queries",
+]

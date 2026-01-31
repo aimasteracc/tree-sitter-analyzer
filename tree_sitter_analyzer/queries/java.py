@@ -1,10 +1,21 @@
 #!/usr/bin/env python3
 """
-Java Language Queries
+Java Language Queries.
 
-Tree-sitter queries specific to Java language constructs.
-Covers classes, methods, annotations, imports, and other Java-specific elements.
+Tree-sitter queries for Java language constructs.
+
+Key Features:
+    - Classes, interfaces, and enums
+    - Methods and constructors
+    - Annotations and imports
+    - Packages and modifiers
+    - Java-specific elements
+
+Version: 1.10.5
+Date: 2026-01-28
 """
+
+from __future__ import annotations
 
 # Java-specific query library
 JAVA_QUERIES: dict[str, str] = {
@@ -420,3 +431,13 @@ def get_available_java_queries() -> list[str]:
         List of query names
     """
     return list(JAVA_QUERIES.keys())
+
+
+__all__: list[str] = [
+    "get_java_query",
+    "get_java_query_description",
+    "get_query",
+    "get_all_queries",
+    "list_queries",
+    "get_available_java_queries",
+]

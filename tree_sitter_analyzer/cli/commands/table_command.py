@@ -1,29 +1,83 @@
 #!/usr/bin/env python3
 """
-Table Command
+Table Command.
 
-Handles table format output generation.
+Handles table format output generation for code analysis.
+
+Key Features:
+    - Full/simple table output modes
+    - SQL element support
+    - CSV export
+    - Summary statistics
+
+Version: 1.10.5
+Date: 2026-01-28
 """
 
-import sys
-from typing import Any
+from __future__ import annotations
 
-from ...constants import (
-    ELEMENT_TYPE_CLASS,
-    ELEMENT_TYPE_FUNCTION,
-    ELEMENT_TYPE_IMPORT,
-    ELEMENT_TYPE_PACKAGE,
-    ELEMENT_TYPE_SQL_FUNCTION,
-    ELEMENT_TYPE_SQL_INDEX,
-    ELEMENT_TYPE_SQL_PROCEDURE,
-    ELEMENT_TYPE_SQL_TABLE,
-    ELEMENT_TYPE_SQL_TRIGGER,
-    ELEMENT_TYPE_SQL_VIEW,
-    ELEMENT_TYPE_VARIABLE,
-    get_element_type,
-)
-from ...output_manager import output_error
-from .base_command import BaseCommand
+import sys
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from ...constants import (
+        ELEMENT_TYPE_CLASS,
+        ELEMENT_TYPE_FUNCTION,
+        ELEMENT_TYPE_IMPORT,
+        ELEMENT_TYPE_PACKAGE,
+        ELEMENT_TYPE_SQL_FUNCTION,
+        ELEMENT_TYPE_SQL_INDEX,
+        ELEMENT_TYPE_SQL_PROCEDURE,
+        ELEMENT_TYPE_SQL_TABLE,
+        ELEMENT_TYPE_SQL_TRIGGER,
+    )
+else:
+    try:
+        from ...constants import (
+            ELEMENT_TYPE_CLASS,
+            ELEMENT_TYPE_FUNCTION,
+            ELEMENT_TYPE_IMPORT,
+            ELEMENT_TYPE_PACKAGE,
+            ELEMENT_TYPE_SQL_FUNCTION,
+            ELEMENT_TYPE_SQL_INDEX,
+            ELEMENT_TYPE_SQL_PROCEDURE,
+            ELEMENT_TYPE_SQL_TABLE,
+            ELEMENT_TYPE_SQL_TRIGGER,
+        )
+    except ImportError as e:
+        import logging
+
+        logging.warning(f"Import fallback triggered in table_command: {e}")
+
+__all__ = ["TableCommand"]
+
+# TOON formatter for CLI output
+try:
+    _toon_available = True
+except ImportError:
+    _toon_available = False
+
+if TYPE_CHECKING:
+    from ...constants import (
+        ELEMENT_TYPE_SQL_VIEW,
+        ELEMENT_TYPE_VARIABLE,
+        get_element_type,
+    )
+    from ...output_manager import output_error
+    from .base_command import BaseCommand
+else:
+    try:
+        from ...constants import (
+            ELEMENT_TYPE_SQL_VIEW,
+            ELEMENT_TYPE_VARIABLE,
+            get_element_type,
+        )
+        from ...output_manager import output_error
+        from .base_command import BaseCommand
+    except ImportError as e:
+        import logging
+
+        logging.warning(f"Import fallback triggered in table_command (2): {e}")
 
 
 class TableCommand(BaseCommand):

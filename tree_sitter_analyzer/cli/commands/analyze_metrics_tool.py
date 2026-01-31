@@ -36,45 +36,43 @@ Version: 1.10.5
 Date: 2026-01-28
 """
 
-import hashlib
 import logging
 import os
-import sys
 import threading
-import time
-from typing import TYPE_CHECKING, Any, Optional, List, Dict, Tuple, Union, Callable, Type, NamedTuple, Set
-from functools import lru_cache, wraps
+from contextlib import nullcontext
 from dataclasses import dataclass, field
-from enum import Enum
+from functools import lru_cache
 from pathlib import Path
 from time import perf_counter
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Protocol,
+)
 
 # Type checking setup
 if TYPE_CHECKING:
     # Core imports
+    # Import Class using importlib to avoid 'class' keyword issue
+    import importlib
+
+    # Model imports
+    from ...models.element import Element, ElementType, Position, TypeInfo, Visibility
+    from ...models.function import Function
     from ..core.analysis_engine import AnalysisEngine, AnalysisRequest, AnalysisResult
 
     # Utility imports
     from ..utils.logging import (
-        LoggerConfig,
-        LoggingContext,
         log_debug,
-        log_info,
-        log_warning,
         log_error,
-        log_performance,
-        setup_logger,
-        create_performance_logger,
-        safe_print,
+        log_info,
     )
 
     # Command imports
-    from .base import Command, CommandResult, ExecutionContext, CommandMetadata
+    from .base import Command, CommandMetadata, CommandResult, ExecutionContext
 
-    # Model imports
-    from ...models.element import Element, Position, TypeInfo, Visibility, ElementType
-    from ...models.function import Function
-    from ...models.class import Class
+    class_module = importlib.import_module("tree_sitter_analyzer.models.class")
+    Class = class_module.Class
 
 else:
     # Runtime imports (when type checking is disabled)
@@ -86,11 +84,8 @@ else:
     # Utility imports
     from ..utils.logging import (
         log_debug,
-        log_info,
-        log_warning,
         log_error,
-        log_performance,
-        safe_print,
+        log_info,
     )
 
     # Command imports
@@ -112,14 +107,10 @@ else:
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-# ============================================================================
+# =====
 # Type Definitions
-# ============================================================================
+# =====
 
-if sys.version_info >= (3, 8):
-    from typing import Protocol
-else:
-    Protocol = object
 
 class AnalyzeMetricsToolProtocol(Protocol):
     """Interface for analyze metrics tool command creation functions."""
@@ -136,10 +127,11 @@ class AnalyzeMetricsToolProtocol(Protocol):
         """
         ...
 
+
 class CacheProtocol(Protocol):
     """Interface for cache services."""
 
-    def get(self, key: str) -> Optional[Any]:
+    def get(self, key: str) -> Any | None:
         """
         Get value from cache.
 
@@ -165,6 +157,7 @@ class CacheProtocol(Protocol):
         """Clear all cache entries."""
         ...
 
+
 class PerformanceMonitorProtocol(Protocol):
     """Interface for performance monitoring."""
 
@@ -180,9 +173,11 @@ class PerformanceMonitorProtocol(Protocol):
         """
         ...
 
+
 # ============================================================================
 # Custom Exceptions
 # ============================================================================
+
 
 class AnalyzeMetricsToolError(Exception):
     """Base exception for analyze metrics tool errors."""
@@ -194,27 +189,32 @@ class AnalyzeMetricsToolError(Exception):
 
 class InitializationError(AnalyzeMetricsToolError):
     """Exception raised when analyze metrics tool initialization fails."""
+
     pass
 
 
 class ExecutionError(AnalyzeMetricsToolError):
     """Exception raised when analysis execution fails."""
+
     pass
 
 
 class ValidationError(AnalyzeMetricsToolError):
     """Exception raised when validation fails."""
+
     pass
 
 
 class CacheError(AnalyzeMetricsToolError):
     """Exception raised when caching fails."""
+
     pass
 
 
 # ============================================================================
 # Data Classes
 # ============================================================================
+
 
 @dataclass(frozen=True, slots=True)
 class MetricsData:
@@ -290,7 +290,7 @@ class MetricsReport:
     comment_ratio: float
     organization_score: float
     analysis_time: float
-    most_complex_files: List[str]
+    most_complex_files: list[str]
 
     @property
     def summary(self) -> str:
@@ -329,8 +329,10 @@ class MetricsConfig:
 
     project_root: str = "."
     max_files: int = 0  # 0 means no limit
-    file_patterns: List[str] = field(default_factory=lambda: ["*.py", "*.js", "*.ts", "*.java", "*.kt"])
-    exclude_patterns: List[str] = field(default_factory=list)
+    file_patterns: list[str] = field(
+        default_factory=lambda: ["*.py", "*.js", "*.ts", "*.java", "*.kt"]
+    )
+    exclude_patterns: list[str] = field(default_factory=list)
     include_test_files: bool = False
     include_hidden_files: bool = False
     enable_caching: bool = True
@@ -347,6 +349,7 @@ class MetricsConfig:
 # ============================================================================
 # Analyze Metrics Tool Command
 # ============================================================================
+
 
 class AnalyzeMetricsToolCommand(Command):
     """
@@ -374,7 +377,7 @@ class AnalyzeMetricsToolCommand(Command):
         >>> print(result.message)
     """
 
-    def __init__(self, config: Optional[MetricsConfig] = None):
+    def __init__(self, config: MetricsConfig | None = None):
         """
         Initialize analyze metrics tool command.
 
@@ -390,16 +393,18 @@ class AnalyzeMetricsToolCommand(Command):
         self._config = config or MetricsConfig()
 
         # Thread-safe lock for operations
-        self._lock = threading.RLock() if self._config.enable_thread_safety else type(None)
+        self._lock = (
+            threading.RLock() if self._config.enable_thread_safety else None
+        )
 
         # Analysis components (lazy loading)
-        self._engine: Optional[AnalysisEngine] = None
-        self._parser: Optional[Any] = None
-        self._language_detector: Optional[Any] = None
-        self._extractor: Optional[Any] = None
+        self._engine: AnalysisEngine | None = None
+        self._parser: Any | None = None
+        self._language_detector: Any | None = None
+        self._extractor: Any | None = None
 
         # Performance statistics
-        self._stats: Dict[str, Any] = {
+        self._stats: dict[str, Any] = {
             "total_files": 0,
             "total_lines": 0,
             "total_complexity": 0,
@@ -419,7 +424,7 @@ class AnalyzeMetricsToolCommand(Command):
             - Initializes all analysis components
             - Thread-safe operation
         """
-        with self._lock:
+        with (self._lock if self._lock else nullcontext()):
             if self._engine is None:
                 if TYPE_CHECKING:
                     from ...core.analysis_engine import create_analysis_engine
@@ -433,7 +438,9 @@ class AnalyzeMetricsToolCommand(Command):
                     log_debug("Analysis engine initialized")
                 except Exception as e:
                     log_error(f"Failed to initialize analysis engine: {e}")
-                    raise InitializationError(f"Failed to initialize analysis engine: {e}") from e
+                    raise InitializationError(
+                        f"Failed to initialize analysis engine: {e}"
+                    ) from e
 
     def execute(self, context: ExecutionContext) -> CommandResult:
         """
@@ -456,7 +463,7 @@ class AnalyzeMetricsToolCommand(Command):
             - Handles errors gracefully
         """
         # Start performance monitoring
-        operation_name = f"analyze_metrics_{Path(context.args[0] if context.args else 'project').name}"
+        f"analyze_metrics_{Path(context.args[0] if context.args else 'project').name}"
         start_time = perf_counter()
 
         try:
@@ -493,7 +500,7 @@ class AnalyzeMetricsToolCommand(Command):
             metrics = self._analyze_file(file_path)
 
             # Generate output
-            output = self._generate_output(metrics)
+            self._generate_output(metrics)
 
             end_time = perf_counter()
             execution_time = end_time - start_time
@@ -504,7 +511,9 @@ class AnalyzeMetricsToolCommand(Command):
             self._stats["total_complexity"] += metrics.complexity
             self._stats["analysis_times"].append(execution_time)
 
-            log_info(f"Metrics analysis completed for {file_path} in {execution_time:.3f}s")
+            log_info(
+                f"Metrics analysis completed for {file_path} in {execution_time:.3f}s"
+            )
 
             return CommandResult(
                 command_name=self._name,
@@ -546,30 +555,32 @@ class AnalyzeMetricsToolCommand(Command):
         start_time = perf_counter()
 
         # Read file
-        with open(file_path, 'r', encoding='utf-8') as f:
+        with open(file_path, encoding="utf-8") as f:
             lines = f.readlines()
 
         # Count lines
         total_lines = len(lines)
 
         # Filter out blank lines
-        code_lines = [line for line in lines if line.strip() and not line.strip().startswith('#')]
+        code_lines = [
+            line for line in lines if line.strip() and not line.strip().startswith("#")
+        ]
         lines_of_code = len(code_lines)
 
         # Count comment lines
-        comment_lines = [line for line in lines if line.strip().startswith('#')]
+        comment_lines = [line for line in lines if line.strip().startswith("#")]
         comment_line_count = len(comment_lines)
 
         # Count functions (simple string matching)
         function_count = 0
         for line in code_lines:
-            if 'def ' in line:
+            if "def " in line:
                 function_count += 1
 
         # Count classes (simple string matching)
         class_count = 0
         for line in code_lines:
-            if 'class ' in line:
+            if "class " in line:
                 class_count += 1
 
         # Calculate complexity (simple estimation)
@@ -595,7 +606,9 @@ class AnalyzeMetricsToolCommand(Command):
         # Higher comment ratio = better documentation = better organization
         organization_density_score = max(0, 100 - (code_density * 5))
         organization_comment_score = min(100, comment_ratio * 20)
-        organization_score = (organization_density_score + organization_comment_score) / 2
+        organization_score = (
+            organization_density_score + organization_comment_score
+        ) / 2
 
         end_time = perf_counter()
         analysis_time = end_time - start_time
@@ -650,7 +663,7 @@ class AnalyzeMetricsToolCommand(Command):
 
         return "\n".join(lines)
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         """
         Get analyze metrics tool statistics.
 
@@ -661,7 +674,7 @@ class AnalyzeMetricsToolCommand(Command):
             - Returns analysis counts and cache statistics
             - Returns performance metrics
         """
-        with self._lock:
+        with (self._lock if self._lock else nullcontext()):
             return {
                 "total_files": self._stats["total_files"],
                 "total_lines": self._stats["total_lines"],
@@ -694,12 +707,13 @@ class AnalyzeMetricsToolCommand(Command):
 # Convenience Functions with LRU Caching
 # ============================================================================
 
+
 @lru_cache(maxsize=64, typed=True)
 def get_analyze_metrics_tool_command(
     project_root: str = ".",
     max_files: int = 0,
-    file_patterns: Optional[List[str]] = None,
-    exclude_patterns: Optional[List[str]] = None,
+    file_patterns: list[str] | None = None,
+    exclude_patterns: list[str] | None = None,
     include_test_files: bool = False,
     include_hidden_files: bool = False,
     enable_caching: bool = True,
@@ -737,8 +751,8 @@ def get_analyze_metrics_tool_command(
 def create_analyze_metrics_tool_command(
     project_root: str = ".",
     max_files: int = 0,
-    file_patterns: Optional[List[str]] = None,
-    exclude_patterns: Optional[List[str]] = None,
+    file_patterns: list[str] | None = None,
+    exclude_patterns: list[str] | None = None,
     include_test_files: bool = False,
     include_hidden_files: bool = False,
     enable_caching: bool = True,
@@ -791,22 +805,19 @@ def create_analyze_metrics_tool_command(
 # Module-level exports for backward compatibility
 # ============================================================================
 
-__all__: List[str] = [
+__all__: list[str] = [
     # Data classes
     "MetricsData",
     "MetricsReport",
     "MetricsConfig",
-
     # Exceptions
     "AnalyzeMetricsToolError",
     "InitializationError",
     "ExecutionError",
     "ValidationError",
     "CacheError",
-
     # Main class
     "AnalyzeMetricsToolCommand",
-
     # Convenience functions
     "get_analyze_metrics_tool_command",
     "create_analyze_metrics_tool_command",
@@ -816,6 +827,7 @@ __all__: List[str] = [
 # ============================================================================
 # Module-level exports for backward compatibility
 # ============================================================================
+
 
 def __getattr__(name: str) -> Any:
     """
@@ -848,6 +860,7 @@ def __getattr__(name: str) -> Any:
     ]:
         # Import from module
         import sys
+
         module = sys.modules[__name__]
         if module is None:
             raise ImportError(f"Module {name} not found")
@@ -863,4 +876,4 @@ def __getattr__(name: str) -> Any:
             module = __import__(f".{name}", fromlist=["__name__"])
             return module
         except ImportError:
-            raise ImportError(f"Module {name} not found")
+            raise ImportError(f"Module {name} not found") from None

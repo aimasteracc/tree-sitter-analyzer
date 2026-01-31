@@ -40,46 +40,39 @@ Version: 1.10.5
 Date: 2026-01-28
 """
 
-import functools
 import hashlib
 import importlib
 import importlib.metadata
 import logging
-import os
 import threading
-import time
-from pathlib import Path
-from typing import TYPE_CHECKING, Any, Optional, List, Dict, Tuple, Union, Callable, Type, NamedTuple
-from functools import lru_cache, wraps
+from contextlib import nullcontext
 from dataclasses import dataclass, field
-from enum import Enum
+from functools import lru_cache
+from pathlib import Path
 from time import perf_counter
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Protocol,
+)
 
 # Type checking setup
 if TYPE_CHECKING:
     # Plugin imports
-    from .base import LanguagePlugin, ElementExtractor
-
     # Cache imports
     from ..core.cache_service import (
-        CacheService,
-        CacheServiceProtocol,
-        CacheConfig,
         CacheError,
+        CacheService,
     )
 
     # Utility imports
     from ..utils.logging import (
-        LoggerConfig,
-        LoggingContext,
         log_debug,
-        log_info,
-        log_warning,
         log_error,
+        log_info,
         log_performance,
-        setup_logger,
-        create_performance_logger,
     )
+    from .base import ElementExtractor, LanguagePlugin
 
 else:
     # Runtime imports (when type checking is disabled)
@@ -89,18 +82,15 @@ else:
 
     # Cache imports
     from ..core.cache_service import (
-        CacheService,
-        CacheServiceProtocol,
-        CacheConfig,
         CacheError,
+        CacheService,
     )
 
     # Utility imports
     from ..utils.logging import (
         log_debug,
-        log_info,
-        log_warning,
         log_error,
+        log_info,
         log_performance,
     )
 
@@ -108,14 +98,10 @@ else:
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-# ============================================================================
+# =====
 # Type Definitions
-# ============================================================================
+# =====
 
-if sys.version_info >= (3, 8):
-    from typing import Protocol
-else:
-    Protocol = object
 
 class PluginManagerProtocol(Protocol):
     """Interface for plugin manager creation functions."""
@@ -132,10 +118,11 @@ class PluginManagerProtocol(Protocol):
         """
         ...
 
+
 class CacheProtocol(Protocol):
     """Interface for cache services."""
 
-    def get(self, key: str) -> Optional[Any]:
+    def get(self, key: str) -> Any | None:
         """
         Get value from cache.
 
@@ -161,6 +148,7 @@ class CacheProtocol(Protocol):
         """Clear all cache entries."""
         ...
 
+
 class PerformanceMonitorProtocol(Protocol):
     """Interface for performance monitoring."""
 
@@ -176,9 +164,11 @@ class PerformanceMonitorProtocol(Protocol):
         """
         ...
 
+
 # ============================================================================
 # Custom Exceptions
 # ============================================================================
+
 
 class PluginManagerError(Exception):
     """Base exception for plugin manager errors."""
@@ -212,8 +202,8 @@ class ValidationError(PluginManagerError):
     pass
 
 
-class CacheError(PluginManagerError):
-    """Exception raised when caching fails."""
+class PluginNotFoundError(PluginManagerError):
+    """Exception raised when plugin is not found."""
 
     pass
 
@@ -221,6 +211,7 @@ class CacheError(PluginManagerError):
 # ============================================================================
 # Data Classes
 # ============================================================================
+
 
 @dataclass
 class PluginInfo:
@@ -244,14 +235,14 @@ class PluginInfo:
     name: str
     type: str
     state: str
-    version: Optional[str] = None
+    language: str = ""
+    version: str | None = None
     description: str = ""
-    language: str
-    extensions: List[str] = field(default_factory=list)
+    extensions: list[str] = field(default_factory=list)
     module: str = ""
     load_time: float = 0.0
     is_valid: bool = True
-    error_message: Optional[str] = None
+    error_message: str | None = None
 
     @property
     def is_loaded(self) -> bool:
@@ -294,6 +285,7 @@ class PluginManagerConfig:
 # Plugin Manager
 # ============================================================================
 
+
 class PluginManager:
     """
     Optimized plugin manager with comprehensive caching, lazy loading, and
@@ -323,7 +315,7 @@ class PluginManager:
         >>> print(plugin.name)
     """
 
-    def __init__(self, config: Optional[PluginManagerConfig] = None):
+    def __init__(self, config: PluginManagerConfig | None = None):
         """
         Initialize plugin manager with configuration.
 
@@ -333,19 +325,21 @@ class PluginManager:
         self._config = config or PluginManagerConfig()
 
         # Thread-safe lock for operations
-        self._lock = threading.RLock() if self._config.enable_thread_safety else type(None)
+        self._lock: threading.RLock | None = (
+            threading.RLock() if self._config.enable_thread_safety else None
+        )
 
         # Plugin cache (LRU)
-        self._plugin_cache: Dict[str, PluginInfo] = {}
+        self._plugin_cache: dict[str, PluginInfo] = {}
 
         # Plugin modules (lazy loading)
-        self._plugin_modules: Dict[str, str] = {}
+        self._plugin_modules: dict[str, str] = {}
 
         # Cache service
-        self._cache_service: Optional[CacheService] = None
+        self._cache_service: CacheService | None = None
 
         # Performance statistics
-        self._stats: Dict[str, Any] = {
+        self._stats: dict[str, Any] = {
             "total_plugins": 0,
             "loaded_plugins": 0,
             "failed_plugins": 0,
@@ -358,12 +352,12 @@ class PluginManager:
         """
         Ensure cache service is initialized (lazy loading).
         """
-        with self._lock:
+        with (self._lock if self._lock else nullcontext()):
             if self._cache_service is None:
                 if TYPE_CHECKING:
-                    from ..core.cache_service import CacheService, CacheConfig
+                    from ..core.cache_service import CacheConfig, CacheService
                 else:
-                    from ..core.cache_service import CacheService, CacheConfig
+                    from ..core.cache_service import CacheConfig, CacheService
 
                 cache_config = CacheConfig(
                     max_size=self._config.cache_max_size,
@@ -397,7 +391,7 @@ class PluginManager:
         key_str = ":".join(key_components)
         return hashlib.sha256(key_str.encode("utf-8")).hexdigest()
 
-    def _get_cached_plugin(self, plugin_name: str) -> Optional[PluginInfo]:
+    def _get_cached_plugin(self, plugin_name: str) -> PluginInfo | None:
         """
         Get cached plugin information.
 
@@ -411,7 +405,7 @@ class PluginManager:
             - Thread-safe operation
             - Uses LRU cache with TTL support
         """
-        with self._lock:
+        with (self._lock if self._lock else nullcontext()):
             if not self._config.enable_caching:
                 return None
 
@@ -440,7 +434,7 @@ class PluginManager:
             - Stores result in LRU cache
             - Evicts oldest entries if cache is full
         """
-        with self._lock:
+        with (self._lock if self._lock else nullcontext()):
             if not self._config.enable_caching:
                 return
 
@@ -449,14 +443,16 @@ class PluginManager:
             # Evict oldest entries if cache is too large
             if len(self._plugin_cache) >= self._config.cache_max_size:
                 # Sort by approximate insertion order (simple implementation)
-                keys_to_remove = list(self._plugin_cache.keys())[:len(self._plugin_cache) - self._config.cache_max_size + 1]
+                keys_to_remove = list(self._plugin_cache.keys())[
+                    : len(self._plugin_cache) - self._config.cache_max_size + 1
+                ]
                 for key in keys_to_remove:
                     del self._plugin_cache[key]
 
             # Store plugin info
             self._plugin_cache[cache_key] = plugin_info
 
-    def _discover_plugins(self) -> List[PluginInfo]:
+    def _discover_plugins(self) -> list[PluginInfo]:
         """
         Discover available plugins (lightweight metadata scan).
 
@@ -479,9 +475,7 @@ class PluginManager:
             local_plugins = self._discover_from_local_directory()
 
             # Combine and deduplicate
-            all_plugins = self._deduplicate_plugins(
-                entry_point_plugins + local_plugins
-            )
+            all_plugins = self._deduplicate_plugins(entry_point_plugins + local_plugins)
 
             end_time = perf_counter()
             discovery_time = end_time - start_time
@@ -489,7 +483,8 @@ class PluginManager:
             self._stats["total_plugins"] = len(all_plugins)
 
             log_performance(
-                f"Discovered {len(all_plugins)} plugins in {discovery_time:.3f}s"
+                f"Discovered {len(all_plugins)} plugins",
+                discovery_time
             )
 
             return all_plugins
@@ -498,7 +493,7 @@ class PluginManager:
             log_error(f"Failed to discover plugins: {e}")
             raise DiscoveryError(f"Plugin discovery failed: {e}") from e
 
-    def _discover_from_entry_points(self) -> List[PluginInfo]:
+    def _discover_from_entry_points(self) -> list[PluginInfo]:
         """
         Discover plugins from setuptools entry points.
 
@@ -514,15 +509,17 @@ class PluginManager:
 
         try:
             # Get entry points for our plugin group
-            entry_points = importlib.metadata.entry_points()
+            eps = importlib.metadata.entry_points()
 
             # Handle different entry point API versions
-            if hasattr(entry_points, "select"):
+            entry_points: list[Any] = []
+            if hasattr(eps, "select"):
                 # New API
-                entry_points = entry_points.select(group="tree_sitter_analyzer.plugins")
-            elif hasattr(entry_points, "get"):
+                selected = eps.select(group="tree_sitter_analyzer.plugins")
+                entry_points = list(selected)
+            elif hasattr(eps, "get"):
                 # Old API
-                result = entry_points.get("tree_sitter_analyzer.plugins")
+                result = eps.get("tree_sitter_analyzer.plugins")
                 entry_points = list(result) if result else []
             else:
                 # Fallback
@@ -562,7 +559,7 @@ class PluginManager:
 
         return plugins
 
-    def _discover_from_local_directory(self) -> List[PluginInfo]:
+    def _discover_from_local_directory(self) -> list[PluginInfo]:
         """
         Discover plugins from local languages directory.
 
@@ -618,7 +615,7 @@ class PluginManager:
 
         return plugins
 
-    def _load_plugin(self, plugin_info: PluginInfo) -> Optional[Any]:
+    def _load_plugin(self, plugin_info: PluginInfo) -> Any | None:
         """
         Load plugin class from module name.
 
@@ -633,7 +630,7 @@ class PluginManager:
             - Thread-safe if enabled
             - Performance: Medium (class loading)
         """
-        with self._lock:
+        with (self._lock if self._lock else nullcontext()):
             # Check if already loaded
             if plugin_info.name in self._plugin_modules:
                 return self._plugin_modules[plugin_info.name]
@@ -663,7 +660,7 @@ class PluginManager:
                 self._stats["loaded_plugins"] += 1
                 self._stats["execution_times"].append(load_time)
 
-                log_performance(
+                log_performance(  # type: ignore
                     f"Loaded plugin: {plugin_info.name} ({plugin_info.module}) "
                     f"in {load_time:.3f}s"
                 )
@@ -687,7 +684,7 @@ class PluginManager:
 
                 return None
 
-    def _find_plugin_class(self, module: Any) -> Optional[Any]:
+    def _find_plugin_class(self, module: Any) -> Any | None:
         """
         Find plugin class in a module.
 
@@ -736,7 +733,7 @@ class PluginManager:
         # Remove common suffixes
         for suffix in ["_plugin", "Plugin", ".py"]:
             if name.endswith(suffix):
-                name = name[:-len(suffix)]
+                name = name[: -len(suffix)]
 
         # Convert to lowercase
         language = name.lower().strip()
@@ -767,7 +764,7 @@ class PluginManager:
         # Default to programming
         return "programming"
 
-    def _deduplicate_plugins(self, plugins: List[PluginInfo]) -> List[PluginInfo]:
+    def _deduplicate_plugins(self, plugins: list[PluginInfo]) -> list[PluginInfo]:
         """
         Deduplicate plugins by name.
 
@@ -796,7 +793,7 @@ class PluginManager:
 
         return unique
 
-    def discover_plugins(self) -> List[PluginInfo]:
+    def discover_plugins(self) -> list[PluginInfo]:
         """
         Discover available plugins without loading them.
 
@@ -817,20 +814,18 @@ class PluginManager:
         local_plugins = self._discover_from_local_directory()
 
         # Combine and deduplicate
-        all_plugins = self._deduplicate_plugins(
-            entry_point_plugins + local_plugins
-        )
+        all_plugins = self._deduplicate_plugins(entry_point_plugins + local_plugins)
 
         end_time = perf_counter()
         discovery_time = end_time - start_time
 
-        log_performance(
+        log_performance(  # type: ignore
             f"Discovered {len(all_plugins)} plugins in {discovery_time:.3f}s"
         )
 
         return all_plugins
 
-    def load_plugins(self) -> List[PluginInfo]:
+    def load_plugins(self) -> list[PluginInfo]:
         """
         Discover and load all available plugins.
 
@@ -888,14 +883,14 @@ class PluginManager:
         end_time = perf_counter()
         load_time = end_time - start_time
 
-        log_performance(
+        log_performance(  # type: ignore
             f"Loaded {len(plugins)} plugins in {load_time:.3f}s "
             f"(valid: {sum(1 for p in plugins if p.is_valid)})"
         )
 
         return plugins
 
-    def get_plugin(self, plugin_name: str) -> Optional[Any]:
+    def get_plugin(self, plugin_name: str) -> Any | None:
         """
         Get a plugin for a specific language.
 
@@ -977,7 +972,7 @@ class PluginManager:
                 return False
 
         # Register plugin
-        with self._lock:
+        with (self._lock if self._lock else nullcontext()):
             self._plugin_modules[plugin_name_lower] = plugin.__class__.__module__
             log_info(f"Registered plugin: {plugin_name_lower}")
 
@@ -999,7 +994,7 @@ class PluginManager:
         """
         plugin_name_lower = plugin_name.lower().strip()
 
-        with self._lock:
+        with (self._lock if self._lock else nullcontext()):
             if plugin_name_lower in self._plugin_modules:
                 del self._plugin_modules[plugin_name_lower]
 
@@ -1016,7 +1011,7 @@ class PluginManager:
 
         return False
 
-    def get_all_plugins(self) -> Dict[str, Any]:
+    def get_all_plugins(self) -> dict[str, Any]:
         """
         Get all loaded plugins.
 
@@ -1028,10 +1023,10 @@ class PluginManager:
             - Does not load plugins on-demand
             - Thread-safe if enabled
         """
-        with self._lock:
+        with (self._lock if self._lock else nullcontext()):
             return self._plugin_modules.copy()
 
-    def get_supported_languages(self) -> List[str]:
+    def get_supported_languages(self) -> list[str]:
         """
         Get list of supported languages.
 
@@ -1042,7 +1037,7 @@ class PluginManager:
             - Returns languages with loaded plugins
             - Sorted alphabetically
         """
-        with self._lock:
+        with (self._lock if self._lock else nullcontext()):
             return sorted(self._plugin_modules.keys())
 
     def clear_cache(self) -> None:
@@ -1053,7 +1048,7 @@ class PluginManager:
             - Invalidates all cached plugin instances
             - Next plugin retrieval will reload plugins
         """
-        with self._lock:
+        with (self._lock if self._lock else nullcontext()):
             self._plugin_cache.clear()
             self._plugin_modules.clear()
             self._stats["cache_hits"] = 0
@@ -1061,7 +1056,7 @@ class PluginManager:
 
         log_info("Plugin manager cache cleared")
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         """
         Get plugin manager statistics.
 
@@ -1074,7 +1069,7 @@ class PluginManager:
             - Returns performance metrics
             - Thread-safe if enabled
         """
-        with self._lock:
+        with (self._lock if self._lock else nullcontext()):
             return {
                 "cache_size": len(self._plugin_cache),
                 "module_cache_size": len(self._plugin_modules),
@@ -1106,6 +1101,7 @@ class PluginManager:
 # ============================================================================
 # Convenience Functions with LRU Caching
 # ============================================================================
+
 
 @lru_cache(maxsize=64, typed=True)
 def get_plugin_manager(project_root: str = ".") -> PluginManager:
@@ -1176,11 +1172,10 @@ def create_plugin_manager(
 # Module-level exports for backward compatibility
 # ============================================================================
 
-__all__: List[str] = [
+__all__: list[str] = [
     # Data classes
     "PluginInfo",
     "PluginManagerConfig",
-
     # Exceptions
     "PluginManagerError",
     "InitializationError",
@@ -1188,10 +1183,8 @@ __all__: List[str] = [
     "LoadError",
     "ValidationError",
     "CacheError",
-
     # Main class
     "PluginManager",
-
     # Convenience functions
     "get_plugin_manager",
     "create_plugin_manager",
@@ -1201,6 +1194,7 @@ __all__: List[str] = [
 # ============================================================================
 # Module-level exports for backward compatibility
 # ============================================================================
+
 
 def __getattr__(name: str) -> Any:
     """
@@ -1232,6 +1226,7 @@ def __getattr__(name: str) -> Any:
     ]:
         # Import from module
         import sys
+
         module = sys.modules[__name__]
         if module is None:
             raise ImportError(f"Module {name} not found")
@@ -1250,4 +1245,4 @@ def __getattr__(name: str) -> Any:
             module = __import__(f".{name}", fromlist=["__name__"])
             return module
         except ImportError:
-            raise ImportError(f"Module {name} not found")
+            raise ImportError(f"Module {name} not found") from None

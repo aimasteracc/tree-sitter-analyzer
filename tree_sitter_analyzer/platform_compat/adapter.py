@@ -1,15 +1,50 @@
+#!/usr/bin/env python3
+"""
+Platform Adapter.
+
+Adaptation rules for platform-specific SQL parsing behavior.
+
+Key Features:
+    - Behavior adaptation rules
+    - SQL element transformation
+    - Platform-specific handling
+    - Type-safe adaptation
+
+Version: 1.10.5
+Date: 2026-01-28
+"""
+
+from __future__ import annotations
+
 import logging
 import re
-from typing import Protocol, TypeVar
+from typing import TYPE_CHECKING, Protocol, TypeVar
 
-from tree_sitter_analyzer.models import (
-    SQLElement,
-    SQLElementType,
-    SQLFunction,
-    SQLTrigger,
-    SQLView,
-)
-from tree_sitter_analyzer.platform_compat.profiles import BehaviorProfile
+if TYPE_CHECKING:
+    from tree_sitter_analyzer.models import (
+        SQLElement,
+        SQLElementType,
+        SQLFunction,
+        SQLTrigger,
+        SQLView,
+    )
+    from tree_sitter_analyzer.platform_compat.profiles import BehaviorProfile
+else:
+    try:
+        from tree_sitter_analyzer.models import (
+            SQLElement,
+            SQLElementType,
+            SQLFunction,
+            SQLTrigger,
+            SQLView,
+        )
+        from tree_sitter_analyzer.platform_compat.profiles import BehaviorProfile
+    except ImportError as e:
+        logging.warning(f"Import fallback triggered in adapter: {e}")
+
+__all__ = [
+    "AdaptationRule",
+]
 
 logger = logging.getLogger(__name__)
 

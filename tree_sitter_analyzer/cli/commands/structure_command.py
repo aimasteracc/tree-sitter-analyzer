@@ -1,22 +1,52 @@
 #!/usr/bin/env python3
 """
-Structure Command
+Structure Command.
 
-Handles structure analysis functionality with appropriate Japanese output.
+Handles structure analysis functionality with hierarchical output.
+
+Key Features:
+    - Hierarchical structure analysis
+    - Element type categorization
+    - Multiple output formats
+    - Summary statistics
+
+Version: 1.10.5
+Date: 2026-01-28
 """
+
+from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from ...constants import (
-    ELEMENT_TYPE_CLASS,
-    ELEMENT_TYPE_FUNCTION,
-    ELEMENT_TYPE_IMPORT,
-    ELEMENT_TYPE_PACKAGE,
-    ELEMENT_TYPE_VARIABLE,
-    is_element_of_type,
-)
-from ...output_manager import output_data, output_json, output_section
-from .base_command import BaseCommand
+if TYPE_CHECKING:
+    from ...constants import (
+        ELEMENT_TYPE_CLASS,
+        ELEMENT_TYPE_FUNCTION,
+        ELEMENT_TYPE_IMPORT,
+        ELEMENT_TYPE_PACKAGE,
+        ELEMENT_TYPE_VARIABLE,
+        is_element_of_type,
+    )
+    from ...output_manager import output_data, output_json, output_section
+    from .base_command import BaseCommand
+else:
+    try:
+        from ...constants import (
+            ELEMENT_TYPE_CLASS,
+            ELEMENT_TYPE_FUNCTION,
+            ELEMENT_TYPE_IMPORT,
+            ELEMENT_TYPE_PACKAGE,
+            ELEMENT_TYPE_VARIABLE,
+            is_element_of_type,
+        )
+        from ...output_manager import output_data, output_json, output_section
+        from .base_command import BaseCommand
+    except ImportError as e:
+        import logging
+
+        logging.warning(f"Import fallback triggered in structure_command: {e}")
+
+__all__ = ["StructureCommand"]
 
 # TOON formatter for CLI output
 try:
@@ -41,7 +71,7 @@ class StructureCommand(BaseCommand):
         self._output_structure_analysis(analysis_result)
         return 0
 
-    def _output_structure_analysis(self, analysis_result: "AnalysisResult") -> None:
+    def _output_structure_analysis(self, analysis_result: AnalysisResult) -> None:
         """Output structure analysis results with appropriate header."""
         output_section("Structure Analysis Results")
 
@@ -57,7 +87,7 @@ class StructureCommand(BaseCommand):
         else:
             self._output_text_format(structure_dict)
 
-    def _convert_to_legacy_format(self, analysis_result: "AnalysisResult") -> dict:
+    def _convert_to_legacy_format(self, analysis_result: AnalysisResult) -> dict:
         """Convert AnalysisResult to legacy structure format expected by tests."""
         import time
 

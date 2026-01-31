@@ -1,13 +1,27 @@
 #!/usr/bin/env python3
 """
-File Output Manager for MCP Tools
+File Output Manager for MCP Tools.
 
 This module provides functionality to save analysis results to files with
-appropriate extensions based on content type, with security validation.
+automatic extension detection, security validation, and managed singleton pattern.
 
-Enhanced with Managed Singleton Factory Pattern support for consistent
-instance management across MCP tools.
+Key Features:
+    - Automatic file extension detection (TOON, JSON)
+    - Security validation for output paths
+    - Managed Singleton Factory Pattern for consistent instances
+    - Project root-aware fallback paths
+    - Atomic file writing with error handling
+    - Backward compatibility with direct instantiation
+
+Classes:
+    FileOutputManager: Manages file output with security and consistency
+
+Version: 1.10.5
+Date: 2026-01-28
+Author: tree-sitter-analyzer team
 """
+
+from __future__ import annotations
 
 import json
 import os
@@ -15,8 +29,10 @@ from pathlib import Path
 
 from ...utils import setup_logger
 
+__all__ = ["FileOutputManager"]
+
 # Set up logging
-logger = setup_logger(__name__)
+logger = setup_logger(__name__)  # type: ignore
 
 
 class FileOutputManager:
@@ -40,9 +56,7 @@ class FileOutputManager:
         self._initialize_output_path()
 
     @classmethod
-    def get_managed_instance(
-        cls, project_root: str | None = None
-    ) -> "FileOutputManager":
+    def get_managed_instance(cls, project_root: str | None = None) -> FileOutputManager:
         """
         Get a managed FileOutputManager instance using the factory pattern.
 
@@ -72,7 +86,7 @@ class FileOutputManager:
             return cls(project_root)
 
     @classmethod
-    def create_instance(cls, project_root: str | None = None) -> "FileOutputManager":
+    def create_instance(cls, project_root: str | None = None) -> FileOutputManager:
         """
         Create a new FileOutputManager instance directly (bypass factory).
 

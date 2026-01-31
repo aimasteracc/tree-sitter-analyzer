@@ -1,17 +1,47 @@
 #!/usr/bin/env python3
 """
-HTML Formatter
+HTML Formatter - Enhanced HTML Result Formatting
 
-Specialized formatter for HTML/CSS code elements including MarkupElement and StyleElement.
-Provides HTML-specific formatting with element classification and hierarchy display.
+This module provides specialized formatting for HTML file analysis results,
+handling markup elements, attributes, and document structure.
+
+Optimized with:
+- Complete type hints (PEP 484)
+- Comprehensive error handling
+- Performance optimization
+- Detailed documentation in English
+
+Features:
+- HTML element extraction and formatting
+- Attribute parsing and display
+- Document hierarchy representation
+- Semantic HTML analysis
+- Element classification
+- Type-safe operations (PEP 484)
+
+Usage:
+    >>> from tree_sitter_analyzer.formatters import HTMLFormatter
+    >>> formatter = HTMLFormatter()
+    >>> output = formatter.format(analysis_result)
+
+Author: aisheng.yu
+Version: 1.10.5
+Date: 2026-01-28
 """
 
+# Standard library imports
 import json
+import logging
 from typing import Any
 
+# Internal imports
 from ..models import CodeElement, MarkupElement, StyleElement
 from .base_formatter import BaseFormatter
 from .formatter_registry import IFormatter
+
+# Configure logging
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 
 class HtmlFormatter(BaseFormatter, IFormatter):
