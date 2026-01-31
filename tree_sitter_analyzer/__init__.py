@@ -167,6 +167,7 @@ def create_language_detector_cached(project_root: str) -> LanguageDetector:
         raise ValueError("project_root cannot be empty")
 
     from .language_detector import LanguageDetectorConfig
+
     config = LanguageDetectorConfig(project_root=project_root)
     return LanguageDetector(config)
 
@@ -330,6 +331,7 @@ def analyze_project_safe(
 
         # Scan for files manually since scan_project doesn't exist
         import os
+
         files: list[str] = []
         for root, _, filenames in os.walk(project_root):
             for filename in filenames:

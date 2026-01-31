@@ -351,9 +351,7 @@ class QueryToolCommand(Command):
         self._config = config or QueryToolConfig()
 
         # Thread-safe lock for operations
-        self._lock = (
-            threading.RLock() if self._config.enable_thread_safety else None
-        )
+        self._lock = threading.RLock() if self._config.enable_thread_safety else None
 
         # Query executor (lazy loading)
         self._query_executor: QueryExecutor | None = None
@@ -483,7 +481,7 @@ class QueryToolCommand(Command):
             - Initializes all analysis components
             - Thread-safe operation
         """
-        with (self._lock if self._lock else nullcontext()):
+        with self._lock if self._lock else nullcontext():
             if self._query_executor is None:
                 if TYPE_CHECKING:
                     from ...core.query import QueryExecutor, QueryExecutorConfig
@@ -767,7 +765,7 @@ class QueryToolCommand(Command):
             - Invalidates all cached query results
             - Resets internal cache statistics
         """
-        with (self._lock if self._lock else nullcontext()):
+        with self._lock if self._lock else nullcontext():
             self._query_cache.clear()
             self._stats["cache_hits"] = 0
             self._stats["cache_misses"] = 0
@@ -786,7 +784,7 @@ class QueryToolCommand(Command):
             - Returns query execution statistics
             - Returns performance metrics
         """
-        with (self._lock if self._lock else nullcontext()):
+        with self._lock if self._lock else nullcontext():
             return {
                 "total_queries": self._stats["total_queries"],
                 "successful_queries": self._stats["successful_queries"],

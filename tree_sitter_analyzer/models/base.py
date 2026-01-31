@@ -354,7 +354,9 @@ class TypeInfo:
             base = type_str[: type_str.index("[")]
             params_str = type_str[type_str.index("[") + 1 : type_str.rindex("]")]
             params = tuple(p.strip() for p in params_str.split(","))
-            return cls(name=base, parameters=params, is_generic=True, is_primitive=False)
+            return cls(
+                name=base, parameters=params, is_generic=True, is_primitive=False
+            )
         return cls(name=type_str)
 
 

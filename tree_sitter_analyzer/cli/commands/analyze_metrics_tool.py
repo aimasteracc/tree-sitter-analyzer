@@ -393,9 +393,7 @@ class AnalyzeMetricsToolCommand(Command):
         self._config = config or MetricsConfig()
 
         # Thread-safe lock for operations
-        self._lock = (
-            threading.RLock() if self._config.enable_thread_safety else None
-        )
+        self._lock = threading.RLock() if self._config.enable_thread_safety else None
 
         # Analysis components (lazy loading)
         self._engine: AnalysisEngine | None = None
@@ -424,7 +422,7 @@ class AnalyzeMetricsToolCommand(Command):
             - Initializes all analysis components
             - Thread-safe operation
         """
-        with (self._lock if self._lock else nullcontext()):
+        with self._lock if self._lock else nullcontext():
             if self._engine is None:
                 if TYPE_CHECKING:
                     from ...core.analysis_engine import create_analysis_engine
@@ -674,7 +672,7 @@ class AnalyzeMetricsToolCommand(Command):
             - Returns analysis counts and cache statistics
             - Returns performance metrics
         """
-        with (self._lock if self._lock else nullcontext()):
+        with self._lock if self._lock else nullcontext():
             return {
                 "total_files": self._stats["total_files"],
                 "total_lines": self._stats["total_lines"],

@@ -375,9 +375,7 @@ class AnalyzeScaleToolCommand(Command):
         self._config = config or ScaleAnalysisConfig()
 
         # Thread-safe lock for operations
-        self._lock = (
-            threading.RLock() if self._config.enable_thread_safety else None
-        )
+        self._lock = threading.RLock() if self._config.enable_thread_safety else None
 
         # Analysis components (lazy loading)
         self._engine: AnalysisEngine | None = None
@@ -492,7 +490,7 @@ class AnalyzeScaleToolCommand(Command):
             - Initializes all analysis components
             - Thread-safe operation
         """
-        with (self._lock if self._lock else nullcontext()):
+        with self._lock if self._lock else nullcontext():
             if self._engine is None:
                 if TYPE_CHECKING:
                     from ...core.analysis_engine import create_analysis_engine

@@ -117,7 +117,10 @@ class CppElementExtractor(ProgrammingLanguageExtractor):
         }
 
         self._traverse_and_extract_iterative(
-            tree.root_node, extractors, variables, "variable"  # type: ignore
+            tree.root_node,
+            extractors,
+            variables,
+            "variable",  # type: ignore
         )
 
         log_debug(f"Extracted {len(variables)} C++ variables/fields")

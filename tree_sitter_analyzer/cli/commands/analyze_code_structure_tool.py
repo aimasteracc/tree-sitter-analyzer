@@ -378,7 +378,7 @@ class AnalyzeCodeStructureToolCommand(Command):
             - Initializes all analysis components
             - Thread-safe operation
         """
-        with (self._lock if self._lock else nullcontext()):
+        with self._lock if self._lock else nullcontext():
             if self._engine is None:
                 if TYPE_CHECKING:
                     from ...core.analysis_engine import create_analysis_engine
@@ -885,7 +885,7 @@ class AnalyzeCodeStructureToolCommand(Command):
             - Returns analysis counts and cache statistics
             - Returns performance metrics
         """
-        with (self._lock if self._lock else nullcontext()):
+        with self._lock if self._lock else nullcontext():
             return {
                 "total_files": self._stats["total_files"],
                 "total_classes": self._stats["total_classes"],

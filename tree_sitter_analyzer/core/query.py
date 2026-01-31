@@ -345,7 +345,7 @@ class QueryExecutor:
         """
         Ensure language loader is initialized (lazy loading).
         """
-        with (self._lock if self._lock else nullcontext()):
+        with self._lock if self._lock else nullcontext():
             if self._language_loader is None:
                 # Initialize language loader
                 if TYPE_CHECKING:
@@ -421,7 +421,7 @@ class QueryExecutor:
             - Thread-safe operation
             - Uses LRU cache with TTL support
         """
-        with (self._lock if self._lock else nullcontext()):
+        with self._lock if self._lock else nullcontext():
             if not self._config.enable_caching:
                 return None
 
@@ -458,7 +458,7 @@ class QueryExecutor:
             - Stores result in LRU cache
             - Evicts oldest entries if cache is full
         """
-        with (self._lock if self._lock else nullcontext()):
+        with self._lock if self._lock else nullcontext():
             if not self._config.enable_caching:
                 return
 
@@ -646,7 +646,7 @@ class QueryExecutor:
 
                 log_performance(
                     f"Query cache hit for {language}:{query_string[:50]}...",
-                    execution_time
+                    execution_time,
                 )
 
                 return cached_result
@@ -660,7 +660,10 @@ class QueryExecutor:
 
             # Execute query implementation
             captures = self._execute_query_impl(
-                tree, query_string, tree_sitter_language, options or {}  # type: ignore
+                tree,
+                query_string,
+                tree_sitter_language,
+                options or {},  # type: ignore
             )
 
             # Create result
@@ -684,8 +687,7 @@ class QueryExecutor:
             self._stats["execution_times"].append(execution_time)
 
             log_performance(
-                f"Query executed {language}:{query_string[:50]}...",
-                execution_time
+                f"Query executed {language}:{query_string[:50]}...", execution_time
             )
 
             return result
@@ -815,7 +817,7 @@ class QueryExecutor:
             - Next query execution will re-execute
             - Resets internal cache statistics
         """
-        with (self._lock if self._lock else nullcontext()):
+        with self._lock if self._lock else nullcontext():
             self._cache.clear()
             self._stats["cache_hits"] = 0
             self._stats["cache_misses"] = 0
@@ -833,7 +835,7 @@ class QueryExecutor:
             - Returns cache size and hit/miss ratios
             - Returns query execution statistics
         """
-        with (self._lock if self._lock else nullcontext()):
+        with self._lock if self._lock else nullcontext():
             return {
                 "cache_size": len(self._cache),
                 "cache_hits": self._stats["cache_hits"],

@@ -192,6 +192,7 @@ class CLIConfig:
         """
         # Check environment variable
         import os
+
         env_language = os.environ.get("DEFAULT_LANGUAGE", "")
         if env_language:
             return env_language

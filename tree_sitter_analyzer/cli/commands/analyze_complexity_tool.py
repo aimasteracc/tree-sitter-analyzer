@@ -395,9 +395,7 @@ class AnalyzeComplexityToolCommand(Command):
         self._config = config or AnalyzeComplexityToolConfig()
 
         # Thread-safe lock for operations
-        self._lock = (
-            threading.RLock() if self._config.enable_thread_safety else None
-        )
+        self._lock = threading.RLock() if self._config.enable_thread_safety else None
 
         # Analysis components (lazy loading)
         self._engine: AnalysisEngine | None = None
@@ -428,7 +426,7 @@ class AnalyzeComplexityToolCommand(Command):
             - Initializes all analysis components
             - Thread-safe operation
         """
-        with (self._lock if self._lock else nullcontext()):
+        with self._lock if self._lock else nullcontext():
             if self._engine is None:
                 if TYPE_CHECKING:
                     from ...core.analysis_engine import create_analysis_engine
@@ -934,7 +932,7 @@ class AnalyzeComplexityToolCommand(Command):
             - Returns analysis counts and complexity statistics
             - Returns performance metrics
         """
-        with (self._lock if self._lock else nullcontext()):
+        with self._lock if self._lock else nullcontext():
             return {
                 "total_files": self._stats["total_files"],
                 "total_functions": self._stats["total_functions"],

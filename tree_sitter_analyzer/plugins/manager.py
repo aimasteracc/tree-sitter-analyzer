@@ -352,7 +352,7 @@ class PluginManager:
         """
         Ensure cache service is initialized (lazy loading).
         """
-        with (self._lock if self._lock else nullcontext()):
+        with self._lock if self._lock else nullcontext():
             if self._cache_service is None:
                 if TYPE_CHECKING:
                     from ..core.cache_service import CacheConfig, CacheService
@@ -405,7 +405,7 @@ class PluginManager:
             - Thread-safe operation
             - Uses LRU cache with TTL support
         """
-        with (self._lock if self._lock else nullcontext()):
+        with self._lock if self._lock else nullcontext():
             if not self._config.enable_caching:
                 return None
 
@@ -434,7 +434,7 @@ class PluginManager:
             - Stores result in LRU cache
             - Evicts oldest entries if cache is full
         """
-        with (self._lock if self._lock else nullcontext()):
+        with self._lock if self._lock else nullcontext():
             if not self._config.enable_caching:
                 return
 
@@ -482,10 +482,7 @@ class PluginManager:
 
             self._stats["total_plugins"] = len(all_plugins)
 
-            log_performance(
-                f"Discovered {len(all_plugins)} plugins",
-                discovery_time
-            )
+            log_performance(f"Discovered {len(all_plugins)} plugins", discovery_time)
 
             return all_plugins
 
@@ -630,7 +627,7 @@ class PluginManager:
             - Thread-safe if enabled
             - Performance: Medium (class loading)
         """
-        with (self._lock if self._lock else nullcontext()):
+        with self._lock if self._lock else nullcontext():
             # Check if already loaded
             if plugin_info.name in self._plugin_modules:
                 return self._plugin_modules[plugin_info.name]
@@ -972,7 +969,7 @@ class PluginManager:
                 return False
 
         # Register plugin
-        with (self._lock if self._lock else nullcontext()):
+        with self._lock if self._lock else nullcontext():
             self._plugin_modules[plugin_name_lower] = plugin.__class__.__module__
             log_info(f"Registered plugin: {plugin_name_lower}")
 
@@ -994,7 +991,7 @@ class PluginManager:
         """
         plugin_name_lower = plugin_name.lower().strip()
 
-        with (self._lock if self._lock else nullcontext()):
+        with self._lock if self._lock else nullcontext():
             if plugin_name_lower in self._plugin_modules:
                 del self._plugin_modules[plugin_name_lower]
 
@@ -1023,7 +1020,7 @@ class PluginManager:
             - Does not load plugins on-demand
             - Thread-safe if enabled
         """
-        with (self._lock if self._lock else nullcontext()):
+        with self._lock if self._lock else nullcontext():
             return self._plugin_modules.copy()
 
     def get_supported_languages(self) -> list[str]:
@@ -1037,7 +1034,7 @@ class PluginManager:
             - Returns languages with loaded plugins
             - Sorted alphabetically
         """
-        with (self._lock if self._lock else nullcontext()):
+        with self._lock if self._lock else nullcontext():
             return sorted(self._plugin_modules.keys())
 
     def clear_cache(self) -> None:
@@ -1048,7 +1045,7 @@ class PluginManager:
             - Invalidates all cached plugin instances
             - Next plugin retrieval will reload plugins
         """
-        with (self._lock if self._lock else nullcontext()):
+        with self._lock if self._lock else nullcontext():
             self._plugin_cache.clear()
             self._plugin_modules.clear()
             self._stats["cache_hits"] = 0
@@ -1069,7 +1066,7 @@ class PluginManager:
             - Returns performance metrics
             - Thread-safe if enabled
         """
-        with (self._lock if self._lock else nullcontext()):
+        with self._lock if self._lock else nullcontext():
             return {
                 "cache_size": len(self._plugin_cache),
                 "module_cache_size": len(self._plugin_modules),

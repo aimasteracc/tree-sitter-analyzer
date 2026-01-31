@@ -354,7 +354,9 @@ class CacheService:
         self._config = config or CacheConfig()
 
         # Thread-safe lock for operations
-        self._lock: threading.RLock | None = threading.RLock() if self._config.enable_threading else None
+        self._lock: threading.RLock | None = (
+            threading.RLock() if self._config.enable_threading else None
+        )
 
         # Cache storage (LRU)
         self._cache: dict[str, CacheEntry] = {}

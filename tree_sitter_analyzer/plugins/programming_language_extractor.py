@@ -697,7 +697,9 @@ class ProgrammingLanguageExtractor(CachedElementExtractor):
                 visibility=Visibility.PUBLIC,
                 docstring=docstring,
                 metadata={},
-                return_type=TypeInfo(name=return_type, module="") if return_type else None,
+                return_type=TypeInfo(name=return_type, module="")
+                if return_type
+                else None,
                 parameters=[],  # TODO: Convert string parameters to Parameter objects
                 complexity=complexity,
             )
@@ -1973,6 +1975,7 @@ class ProgrammingLanguageExtractor(CachedElementExtractor):
 
         # Iterative DFS stack: (node, depth)
         from collections import deque
+
         node_stack: deque[tuple[Node, int]] = deque([(root_node, 0)])
         processed_nodes = 0
 

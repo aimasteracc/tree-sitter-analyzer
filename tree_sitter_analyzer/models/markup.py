@@ -173,7 +173,9 @@ class MarkupElement(CodeElement):
     attributes: dict[str, str] = field(default_factory=dict)
     parent: MarkupElement | None = None
     children: list[MarkupElement] = field(default_factory=list)
-    element_class: str = ""  # Classification category (e.g., 'structure', 'media', 'form')
+    element_class: str = (
+        ""  # Classification category (e.g., 'structure', 'media', 'form')
+    )
     element_type: str = "html_element"
 
     def __post_init__(self) -> None:
@@ -252,7 +254,9 @@ class StyleElement(CodeElement):
 
     selector: str = ""
     properties: dict[str, str] = field(default_factory=dict)
-    element_class: str = ""  # Classification category (e.g., 'layout', 'typography', 'color')
+    element_class: str = (
+        ""  # Classification category (e.g., 'layout', 'typography', 'color')
+    )
     element_type: str = "css_rule"
 
     def __post_init__(self) -> None:

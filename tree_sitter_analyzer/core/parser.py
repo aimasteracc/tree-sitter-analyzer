@@ -743,7 +743,7 @@ class Parser:
 
             # Parse code
             try:
-                tree = tree_parser.parse(content.encode('utf-8'))
+                tree = tree_parser.parse(content.encode("utf-8"))
             except Exception as e:
                 self._stats["failed_parses"] += 1
                 log_error(f"Failed to parse file {file_path}: {e}")
@@ -924,7 +924,7 @@ class Parser:
 
             # Parse code
             try:
-                tree = tree_parser.parse(code.encode('utf-8'))
+                tree = tree_parser.parse(code.encode("utf-8"))
             except Exception as e:
                 self._stats["failed_parses"] += 1
                 log_error(f"Failed to parse code {filename}: {e}")

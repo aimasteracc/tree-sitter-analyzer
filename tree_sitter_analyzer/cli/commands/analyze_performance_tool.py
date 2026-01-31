@@ -404,9 +404,7 @@ class AnalyzePerformanceToolCommand(Command):
         self._config = config or AnalyzePerformanceToolConfig()
 
         # Thread-safe lock for operations
-        self._lock = (
-            threading.RLock() if self._config.enable_thread_safety else None
-        )
+        self._lock = threading.RLock() if self._config.enable_thread_safety else None
 
         # Performance components (lazy loading)
         self._cache_service: CacheService | None = None
@@ -426,7 +424,7 @@ class AnalyzePerformanceToolCommand(Command):
             - Initializes all performance components
             - Thread-safe operation
         """
-        with (self._lock if self._lock else nullcontext()):
+        with self._lock if self._lock else nullcontext():
             if self._cache_service is None:
                 if TYPE_CHECKING:
                     from ...core.cache_service import CacheConfig, CacheService
@@ -661,7 +659,7 @@ class AnalyzePerformanceToolCommand(Command):
             - Returns cache statistics
             - Returns resource usage
         """
-        with (self._lock if self._lock else nullcontext()):
+        with self._lock if self._lock else nullcontext():
             return {
                 "config": {
                     "project_root": self._config.project_root,

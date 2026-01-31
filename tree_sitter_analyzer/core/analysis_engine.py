@@ -399,7 +399,7 @@ class AnalysisEngine:
         """
         Ensure all dependencies are initialized (lazy loading).
         """
-        with (self._lock if self._lock else nullcontext()):
+        with self._lock if self._lock else nullcontext():
             # Initialize parser
             if self._parser is None:
                 if TYPE_CHECKING:
@@ -731,7 +731,7 @@ class AnalysisEngine:
         Returns:
             Dictionary with engine statistics
         """
-        with (self._lock if self._lock else nullcontext()):
+        with self._lock if self._lock else nullcontext():
             return {
                 "total_analyses": self._stats["total_analyses"],
                 "successful_analyses": self._stats["successful_analyses"],
@@ -759,7 +759,7 @@ class AnalysisEngine:
 
     def clear_cache(self) -> None:
         """Clear all caches."""
-        with (self._lock if self._lock else nullcontext()):
+        with self._lock if self._lock else nullcontext():
             if self._cache_service:
                 self._cache_service.clear()
             self._stats["cache_hits"] = 0
@@ -767,7 +767,7 @@ class AnalysisEngine:
 
     def cleanup(self) -> None:
         """Clean up resources."""
-        with (self._lock if self._lock else nullcontext()):
+        with self._lock if self._lock else nullcontext():
             if self._cache_service:
                 self._cache_service.clear()
             self._stats.clear()

@@ -213,9 +213,7 @@ class QueryLoader:
         self._metadata_cache: dict[str, dict[str, Any]] = {}
 
         # Thread-safe lock for operations
-        self._lock = (
-            threading.RLock() if self.config.enable_thread_safety else None
-        )
+        self._lock = threading.RLock() if self.config.enable_thread_safety else None
 
         # Performance statistics
         self._stats: dict[str, Any] = {
@@ -246,7 +244,7 @@ class QueryLoader:
         Performance:
             Uses LRU caching and lazy loading for optimal performance.
         """
-        with (self._lock if self._lock else nullcontext()):
+        with self._lock if self._lock else nullcontext():
             # Update statistics
             self._stats["total_loads"] += 1
 
@@ -504,7 +502,7 @@ class QueryLoader:
 
         This is useful for memory management and testing.
         """
-        with (self._lock if self._lock else nullcontext()):
+        with self._lock if self._lock else nullcontext():
             self._query_cache.clear()
             self._metadata_cache.clear()
             if self.config.enable_lazy_loading:

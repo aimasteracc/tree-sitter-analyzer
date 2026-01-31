@@ -159,7 +159,10 @@ class GoElementExtractor(ProgrammingLanguageExtractor):
         }
 
         self._traverse_and_extract_iterative(
-            tree.root_node, extractors, variables, "variable"  # type: ignore
+            tree.root_node,
+            extractors,
+            variables,
+            "variable",  # type: ignore
         )
 
         log_debug(f"Extracted {len(variables)} Go const/var declarations")
@@ -178,7 +181,10 @@ class GoElementExtractor(ProgrammingLanguageExtractor):
         }
 
         self._traverse_and_extract_iterative(
-            tree.root_node, extractors, imports, "import"  # type: ignore
+            tree.root_node,
+            extractors,
+            imports,
+            "import",  # type: ignore
         )
 
         log_debug(f"Extracted {len(imports)} Go imports")

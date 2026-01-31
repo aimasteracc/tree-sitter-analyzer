@@ -353,6 +353,7 @@ class AnalysisResult:
         Note:
             Includes serialized elements - may be large.
         """
+
         def safe_get_attr(obj: Any, attr: str, default: Any = "") -> Any:
             if hasattr(obj, attr):
                 return getattr(obj, attr)
@@ -449,7 +450,9 @@ class AnalysisResult:
         for element in self.elements:
             if hasattr(element, "to_summary_item"):
                 item = element.to_summary_item()
-                if item.get("type") in types or any(t in str(item.get("type", "")) for t in types):
+                if item.get("type") in types or any(
+                    t in str(item.get("type", "")) for t in types
+                ):
                     summary["summary_elements"].append(item)
 
         return summary

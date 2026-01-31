@@ -728,31 +728,31 @@ class LanguageDetector:
     def _get_stats_dict(self) -> dict[str, Any]:
         """Helper method to create stats dictionary."""
         return {
-                "total_detections": self._stats["total_detections"],
-                "cache_hits": self._stats["cache_hits"],
-                "cache_misses": self._stats["cache_misses"],
-                "extension_detections": self._stats["extension_detections"],
-                "content_detections": self._stats["content_detections"],
-                "ambiguous_detections": self._stats["ambiguous_detections"],
-                "cache_size": len(self._cache),
-                "execution_times": self._stats["execution_times"],
-                "average_execution_time": (
-                    sum(self._stats["execution_times"])
-                    / len(self._stats["execution_times"])
-                    if self._stats["execution_times"]
-                    else 0
-                ),
-                "config": {
-                    "project_root": self._config.project_root,
-                    "enable_caching": self._config.enable_caching,
-                    "cache_max_size": self._config.cache_max_size,
-                    "cache_ttl_seconds": self._config.cache_ttl_seconds,
-                    "enable_performance_monitoring": self._config.enable_performance_monitoring,
-                    "enable_thread_safety": self._config.enable_thread_safety,
-                    "enable_content_analysis": self._config.enable_content_analysis,
-                    "enable_ambiguity_resolution": self._config.enable_ambiguity_resolution,
-                },
-            }
+            "total_detections": self._stats["total_detections"],
+            "cache_hits": self._stats["cache_hits"],
+            "cache_misses": self._stats["cache_misses"],
+            "extension_detections": self._stats["extension_detections"],
+            "content_detections": self._stats["content_detections"],
+            "ambiguous_detections": self._stats["ambiguous_detections"],
+            "cache_size": len(self._cache),
+            "execution_times": self._stats["execution_times"],
+            "average_execution_time": (
+                sum(self._stats["execution_times"])
+                / len(self._stats["execution_times"])
+                if self._stats["execution_times"]
+                else 0
+            ),
+            "config": {
+                "project_root": self._config.project_root,
+                "enable_caching": self._config.enable_caching,
+                "cache_max_size": self._config.cache_max_size,
+                "cache_ttl_seconds": self._config.cache_ttl_seconds,
+                "enable_performance_monitoring": self._config.enable_performance_monitoring,
+                "enable_thread_safety": self._config.enable_thread_safety,
+                "enable_content_analysis": self._config.enable_content_analysis,
+                "enable_ambiguity_resolution": self._config.enable_ambiguity_resolution,
+            },
+        }
 
 
 # ============================================================================
