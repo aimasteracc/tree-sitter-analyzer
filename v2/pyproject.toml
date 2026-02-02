@@ -57,6 +57,7 @@ all = [
 
 [project.scripts]
 tree-sitter-analyzer-v2 = "tree_sitter_analyzer_v2.cli.main:main"
+tsa = "tree_sitter_analyzer_v2.cli.main:main"  # Short alias for daily use
 
 [project.urls]
 Homepage = "https://github.com/aimasteracc/tree-sitter-analyzer"

@@ -17,6 +17,7 @@ from tree_sitter_analyzer_v2.languages.java_parser import JavaParser
 from tree_sitter_analyzer_v2.languages.python_parser import PythonParser
 from tree_sitter_analyzer_v2.languages.typescript_parser import TypeScriptParser
 from tree_sitter_analyzer_v2.search import SearchEngine
+from tree_sitter_analyzer_v2.utils.encoding import EncodingDetector
 
 
 def create_parser() -> argparse.ArgumentParser:
@@ -69,9 +70,13 @@ def cmd_analyze(args: argparse.Namespace) -> int:
         print(f"Error: File not found: {file_path}", file=sys.stderr)
         return 1
 
+    # Read file with encoding detection
+    encoding_detector = EncodingDetector()
+    content = encoding_detector.read_file_safe(file_path)
+
     # Detect language
     detector = LanguageDetector()
-    detection = detector.detect_from_content(file_path.read_text(), filename=file_path.name)
+    detection = detector.detect_from_content(content, filename=file_path.name)
 
     if not detection or detection["language"] is None:
         print(f"Error: Unsupported or undetected language: {file_path}", file=sys.stderr)
@@ -94,8 +99,7 @@ def cmd_analyze(args: argparse.Namespace) -> int:
     parser = parsers[language]
 
     try:
-        # Parse file
-        content = file_path.read_text(encoding="utf-8")
+        # Parse file (content already read with encoding detection)
         result = parser.parse(content, str(file_path))
 
         # Format output
