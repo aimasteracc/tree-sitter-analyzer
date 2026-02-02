@@ -22,7 +22,9 @@ classifiers = [
 ]
 
 dependencies = [
+    "chardet>=5.2.0",
     "tree-sitter>=0.20.0",
+    "networkx>=3.0",
 ]
 
 [project.optional-dependencies]
@@ -42,12 +44,14 @@ languages = [
     # Start with core 3 languages for MVP
     "tree-sitter-python>=0.20.0",
     "tree-sitter-javascript>=0.20.0",
+    "tree-sitter-typescript>=0.20.0",
     "tree-sitter-java>=0.20.0",
 ]
 all = [
     # Will add more languages incrementally in Phase 6
     "tree-sitter-python>=0.20.0",
     "tree-sitter-javascript>=0.20.0",
+    "tree-sitter-typescript>=0.20.0",
     "tree-sitter-java>=0.20.0",
 ]
 

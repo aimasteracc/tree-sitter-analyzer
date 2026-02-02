@@ -1,29 +1,46 @@
 """
 MCP Server implementation for tree-sitter-analyzer v2.
 
-Provides a minimal MCP server that responds to initialize, ping, and shutdown.
-This is Phase 0 - just the protocol skeleton. Tools will be added in Phase 3.
+Provides a full-featured MCP server with auto-registered tools.
+Includes Code Graph tools for AI-powered code analysis.
 """
 
 from pathlib import Path
 from typing import Any
 
+from tree_sitter_analyzer_v2.mcp.tools import (
+    AnalyzeCodeGraphTool,
+    AnalyzeTool,
+    CheckCodeScaleTool,
+    ExtractCodeSectionTool,
+    FindAndGrepTool,
+    FindFilesTool,
+    FindFunctionCallersTool,
+    QueryCallChainTool,
+    QueryTool,
+    SearchContentTool,
+    VisualizeCodeGraphTool,
+)
+from tree_sitter_analyzer_v2.mcp.tools.registry import ToolRegistry
+
 
 class MCPServer:
     """
-    Minimal MCP server for tree-sitter-analyzer v2.
+    Full-featured MCP server for tree-sitter-analyzer v2.
 
     This implements the MCP protocol specification with:
     - initialize: Server initialization
     - ping: Health check
     - shutdown: Graceful shutdown
+    - tools/list: List available tools
+    - tools/call: Execute tool
 
-    Tools will be added in Phase 3.
+    Tools are auto-registered on initialization including Code Graph tools.
     """
 
     def __init__(self, project_root: str) -> None:
         """
-        Initialize MCP server.
+        Initialize MCP server with auto-registered tools.
 
         Args:
             project_root: Root directory of the project to analyze
@@ -33,15 +50,38 @@ class MCPServer:
         self.version = "2.0.0-alpha.1"
         self.is_initialized = False
 
+        # Initialize tool registry and auto-register all tools
+        self.tool_registry = ToolRegistry()
+        self._register_tools()
+
+    def _register_tools(self) -> None:
+        """Auto-register all available MCP tools."""
+        # Core analysis tools
+        self.tool_registry.register(AnalyzeTool())
+        self.tool_registry.register(QueryTool())
+        self.tool_registry.register(CheckCodeScaleTool())
+        self.tool_registry.register(ExtractCodeSectionTool())
+
+        # Search tools
+        self.tool_registry.register(FindFilesTool())
+        self.tool_registry.register(SearchContentTool())
+        self.tool_registry.register(FindAndGrepTool())
+
+        # Code Graph tools (NEW in Phase 9!)
+        self.tool_registry.register(AnalyzeCodeGraphTool())
+        self.tool_registry.register(FindFunctionCallersTool())
+        self.tool_registry.register(QueryCallChainTool())
+        self.tool_registry.register(VisualizeCodeGraphTool())  # NEW in E4!
+
     def get_capabilities(self) -> dict[str, Any]:
         """
         Get server capabilities.
 
         Returns:
-            Dictionary of server capabilities
+            Dictionary of server capabilities including all registered tools
         """
         return {
-            "tools": [],  # No tools yet - Phase 0
+            "tools": self.tool_registry.get_all_schemas(),
         }
 
     def handle_request(self, request: dict[str, Any]) -> dict[str, Any]:
@@ -71,13 +111,11 @@ class MCPServer:
         request_id = request.get("id")
 
         # Define known methods
-        known_methods = {"initialize", "ping", "shutdown"}
+        known_methods = {"initialize", "ping", "shutdown", "tools/list", "tools/call"}
 
         # Check if method is known
         if method not in known_methods:
-            return self._error_response(
-                request_id, -32601, f"Method not found: {method}"
-            )
+            return self._error_response(request_id, -32601, f"Method not found: {method}")
 
         # Initialize is always allowed
         if method == "initialize":
@@ -99,14 +137,16 @@ class MCPServer:
         if method == "ping":
             return self._handle_ping(request_id)
 
-        # Should never reach here (all known methods handled above)
-        return self._error_response(
-            request_id, -32601, f"Method not found: {method}"
-        )
+        if method == "tools/list":
+            return self._handle_tools_list(request_id)
 
-    def _handle_initialize(
-        self, request_id: Any, params: dict[str, Any]
-    ) -> dict[str, Any]:
+        if method == "tools/call":
+            return self._handle_tools_call(request_id, request.get("params", {}))
+
+        # Should never reach here (all known methods handled above)
+        return self._error_response(request_id, -32601, f"Method not found: {method}")
+
+    def _handle_initialize(self, request_id: Any, params: dict[str, Any]) -> dict[str, Any]:
         """Handle initialize request."""
         self.is_initialized = True
 
@@ -132,9 +172,45 @@ class MCPServer:
         self.is_initialized = False
         return {"jsonrpc": "2.0", "id": request_id, "result": None}
 
-    def _error_response(
-        self, request_id: Any, code: int, message: str
-    ) -> dict[str, Any]:
+    def _handle_tools_list(self, request_id: Any) -> dict[str, Any]:
+        """Handle tools/list request."""
+        return {
+            "jsonrpc": "2.0",
+            "id": request_id,
+            "result": {"tools": self.tool_registry.get_all_schemas()},
+        }
+
+    def _handle_tools_call(self, request_id: Any, params: dict[str, Any]) -> dict[str, Any]:
+        """
+        Handle tools/call request.
+
+        Args:
+            request_id: Request ID
+            params: Tool call parameters containing:
+                - name: Tool name
+                - arguments: Tool-specific arguments
+
+        Returns:
+            Tool execution result or error
+        """
+        if "name" not in params:
+            return self._error_response(request_id, -32602, "Missing required parameter: name")
+
+        tool_name = params["name"]
+        tool_arguments = params.get("arguments", {})
+
+        try:
+            tool = self.tool_registry.get(tool_name)
+            result = tool.execute(tool_arguments)
+            return {"jsonrpc": "2.0", "id": request_id, "result": result}
+        except ValueError as e:
+            # Tool not found
+            return self._error_response(request_id, -32602, str(e))
+        except Exception as e:
+            # Tool execution error
+            return self._error_response(request_id, -32603, f"Tool execution failed: {e}")
+
+    def _error_response(self, request_id: Any, code: int, message: str) -> dict[str, Any]:
         """
         Create JSON-RPC error response.
 

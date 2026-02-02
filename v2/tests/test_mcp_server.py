@@ -5,10 +5,7 @@ Following TDD: Write tests FIRST, then implement MCP server.
 This is T0.3: MCP Hello World
 """
 
-import json
 from pathlib import Path
-
-import pytest
 
 
 class TestMCPServerBasics:
@@ -66,15 +63,20 @@ class TestMCPServerCapabilities:
         assert "tools" in capabilities
         assert isinstance(capabilities["tools"], list)
 
-    def test_server_has_no_tools_initially(self):
-        """Test that server starts with no tools (will add in Phase 3)."""
+    def test_server_has_tools_auto_registered(self):
+        """Test that server auto-registers tools (E1 enhancement)."""
         from tree_sitter_analyzer_v2.mcp.server import MCPServer
 
         server = MCPServer(project_root=".")
         capabilities = server.get_capabilities()
 
-        # For now, no tools implemented yet (Phase 0)
-        assert capabilities["tools"] == []
+        # After E1, tools are auto-registered (11 tools)
+        assert len(capabilities["tools"]) == 11
+
+        # Verify some key tools are present
+        tool_names = [t["name"] for t in capabilities["tools"]]
+        assert "analyze_code_graph" in tool_names
+        assert "visualize_code_graph" in tool_names
 
 
 class TestMCPServerProtocol:
