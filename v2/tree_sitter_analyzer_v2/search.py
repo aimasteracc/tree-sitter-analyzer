@@ -85,6 +85,8 @@ class SearchEngine:
                 cmd,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",  # Explicitly specify UTF-8 encoding
+                errors="replace",  # Replace invalid characters instead of failing
                 check=True,
                 timeout=10,  # 10 second timeout
             )
@@ -165,6 +167,8 @@ class SearchEngine:
                 cmd,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",  # Explicitly specify UTF-8 encoding (Issue #11)
+                errors="replace",  # Replace invalid characters instead of failing
                 check=False,  # Don't raise on non-zero exit
                 timeout=10,  # 10 second timeout
             )
