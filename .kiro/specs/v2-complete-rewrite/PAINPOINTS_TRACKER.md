@@ -20,8 +20,58 @@ content = encoding_detector.read_file_safe(file_path)  # ✅ 自动检测编码
 ```
 
 **文件**: `tree_sitter_analyzer_v2/cli/main.py`
-**状态**: ✅ 已修复
+**状态**: ✅ 已修复 (2026-02-02)
 **验证**: 成功分析 symbols.py
+
+---
+
+#### 痛点 #10: search_content API 返回错误结果
+**发现时间**: 2026-02-03
+**严重程度**: 🔴 Critical
+**解决时间**: 2026-02-03
+
+**问题**: `api.search_content()` 找到 0 个匹配，但 CLI 的 `tsa search-content` 找到了 11 个匹配
+
+**根本原因**: subprocess.run() 使用系统默认编码（Windows cp932），与 ripgrep 的 UTF-8 输出不匹配
+
+**解决方案**:
+```python
+# 修改前
+result = subprocess.run(cmd, capture_output=True, text=True, ...)
+
+# 修改后
+result = subprocess.run(
+    cmd,
+    capture_output=True,
+    text=True,
+    encoding='utf-8',  # 显式指定 UTF-8
+    errors='replace',   # 替换无效字符
+    ...
+)
+```
+
+**文件**: `tree_sitter_analyzer_v2/search.py` (L87, L170)
+**状态**: ✅ 已修复
+**验证**: API 现在返回正确的 11 个匹配
+**Commit**: 6a9ae61
+
+---
+
+#### 痛点 #11: search_content 后台线程编码错误
+**发现时间**: 2026-02-03
+**严重程度**: 🔴 Critical
+**解决时间**: 2026-02-03
+
+**问题**: 执行 `search_content` 后，后台线程抛出 `UnicodeDecodeError: 'cp932' codec can't decode...`
+
+**根本原因**: subprocess 使用系统默认编码读取 stderr，Windows 默认 cp932 无法解码 UTF-8
+
+**解决方案**: 同痛点 #10（显式指定 UTF-8 编码）
+
+**文件**: `tree_sitter_analyzer_v2/search.py` (L87, L170)
+**状态**: ✅ 已修复
+**验证**: 无 UnicodeDecodeError，后台线程正常工作
+**Commit**: 6a9ae61
 
 ---
 

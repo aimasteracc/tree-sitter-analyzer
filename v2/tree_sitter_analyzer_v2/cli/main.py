@@ -34,9 +34,14 @@ def create_parser() -> argparse.ArgumentParser:
     analyze_parser.add_argument("file_path", help="Path to file to analyze")
     analyze_parser.add_argument(
         "--format",
-        choices=["toon", "markdown"],
+        choices=["toon", "markdown", "summary"],
         default="markdown",
         help="Output format (default: markdown for CLI readability)",
+    )
+    analyze_parser.add_argument(
+        "--summary",
+        action="store_true",
+        help="Show concise summary (overrides --format, faster than full analysis)",
     )
 
     # Search files command
@@ -102,9 +107,36 @@ def cmd_analyze(args: argparse.Namespace) -> int:
         # Parse file (content already read with encoding detection)
         result = parser.parse(content, str(file_path))
 
+        # Add language and file info to result for summary formatter
+        result["language"] = language
+        result["file_path"] = str(file_path)
+
+        # Add line count statistics for summary mode
+        if args.summary:
+            lines = content.splitlines()
+            total_lines = len(lines)
+            code_lines = sum(
+                1 for line in lines if line.strip() and not line.strip().startswith("#")
+            )
+            comment_lines = sum(1 for line in lines if line.strip().startswith("#"))
+            blank_lines = sum(1 for line in lines if not line.strip())
+
+            if "metadata" not in result:
+                result["metadata"] = {}
+            result["metadata"]["total_lines"] = total_lines
+            result["metadata"]["code_lines"] = code_lines
+            result["metadata"]["comment_lines"] = comment_lines
+            result["metadata"]["blank_lines"] = blank_lines
+
         # Format output
         formatter_registry = get_default_registry()
-        formatter = formatter_registry.get(args.format)
+
+        # --summary takes precedence over --format
+        if args.summary:
+            formatter = formatter_registry.get("summary")
+        else:
+            formatter = formatter_registry.get(args.format)
+
         formatted_output = formatter.format(result)
 
         # Print to stdout

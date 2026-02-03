@@ -28,14 +28,15 @@ class FormatterRegistry:
     Manages registration and retrieval of formatters by name.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize formatter registry."""
         self._formatters: dict[str, Formatter] = {}
         self._register_default_formatters()
 
     def _register_default_formatters(self) -> None:
-        """Register default formatters (TOON and Markdown)."""
+        """Register default formatters (TOON, Markdown, and Summary)."""
         from tree_sitter_analyzer_v2.formatters.markdown_formatter import MarkdownFormatter
+        from tree_sitter_analyzer_v2.formatters.summary_formatter import SummaryFormatter
         from tree_sitter_analyzer_v2.formatters.toon_formatter import ToonFormatter
 
         # Register TOON formatter
@@ -43,6 +44,9 @@ class FormatterRegistry:
 
         # Register Markdown formatter
         self._formatters["markdown"] = MarkdownFormatter()
+
+        # Register Summary formatter
+        self._formatters["summary"] = SummaryFormatter()
 
     def register(self, name: str, formatter: Formatter) -> None:
         """
