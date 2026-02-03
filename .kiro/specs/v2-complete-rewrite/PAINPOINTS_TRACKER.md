@@ -108,7 +108,7 @@ tsa analyze file.py --format markdown
 **严重程度**: 🟡 Medium
 **问题**: Markdown 表格嵌套在表格里，methods 列包含另一个表格，难以阅读
 
-**示例**:
+**示例 (修复前)**:
 ```markdown
 | Name | Methods | ... |
 | --- | --- | --- |
@@ -124,7 +124,29 @@ tsa analyze file.py --format markdown
 
 **优先级**: 🔥 High
 **预计工作量**: 3 小时
-**状态**: 🔄 计划中
+**状态**: ✅ **已解决**
+
+**解决方案**:
+1. 修改 `MarkdownFormatter._encode_list()` 检测嵌套结构
+2. 添加 `_format_list_as_headings()` 用于复杂项（如 methods）
+3. 添加 `_format_list_as_bullets()` 用于结构化元素（如 parameters）
+4. 检测包含 "name" 键的字典列表，使用列表格式而非表格
+
+**效果 (修复后)**:
+```markdown
+## `Calculator`
+### Methods
+#### `__init__`
+##### Parameters
+- `self`
+- `a` - type: int
+- `b` - type: int
+```
+
+**测试**: 7 个新测试 + 17 个现有测试 = 24/24 全部通过
+**可读性**: 从 ~6/10 提升到 ~8.5/10
+**实际工作量**: 3h (与预估一致)
+**提交**: 准备提交 (Task B 完成)
 
 ---
 

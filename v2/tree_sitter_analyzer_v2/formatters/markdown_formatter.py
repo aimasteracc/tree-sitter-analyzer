@@ -58,7 +58,7 @@ class MarkdownFormatter:
             return "_null_"
         elif isinstance(data, bool):
             return "Yes" if data else "No"
-        elif isinstance(data, (int, float)):
+        elif isinstance(data, int | float):
             return str(data)
         elif isinstance(data, str):
             return data
@@ -87,7 +87,7 @@ class MarkdownFormatter:
 
         for key, value in data.items():
             # Format key as heading or bold
-            if isinstance(value, (dict, list)):
+            if isinstance(value, dict | list):
                 # Complex value: use heading
                 heading_prefix = "#" * min(level, 6)
                 key_display = key.replace("_", " ").title()
@@ -119,8 +119,25 @@ class MarkdownFormatter:
             return "_empty list_"
 
         # Check if it's a list of dicts with same keys (table format)
+        # BUT: avoid tables if the dicts contain complex nested data OR
+        # if they represent structural elements (have 'name' key)
         if self._is_homogeneous_dict_list(data):
-            return self._encode_table(data)
+            # Check if any dict has nested structures (lists, dicts)
+            has_nested = any(isinstance(v, dict | list) for item in data for v in item.values())
+
+            # Check if this looks like structural elements (parameters, attributes, etc.)
+            # These have a 'name' key and should be formatted as lists, not tables
+            is_structural = all("name" in item for item in data if isinstance(item, dict))
+
+            if has_nested:
+                # Use heading format for complex nested data (e.g., methods with parameters)
+                return self._format_list_as_headings(data, level)
+            elif is_structural:
+                # Use bullet list format for structural elements (e.g., parameters)
+                return self._format_list_as_bullets(data)
+            else:
+                # Use table for simple homogeneous data
+                return self._encode_table(data)
 
         # Otherwise, use bullet list
         lines: list[str] = []
@@ -192,3 +209,90 @@ class MarkdownFormatter:
             rows.append(row)
 
         return "\n".join(rows)
+
+    def _format_list_as_headings(self, data: list[dict[str, Any]], level: int) -> str:
+        """
+        Format a list of dictionaries as hierarchical headings instead of table.
+
+        This is used when the dictionaries contain nested structures (lists, dicts)
+        which would create unreadable nested tables.
+
+        Args:
+            data: List of dictionaries to format
+            level: Current heading level
+
+        Returns:
+            Markdown with hierarchical headings
+        """
+        if not data:
+            return "_empty list_"
+
+        lines: list[str] = []
+
+        for item in data:
+            # Create heading for this item (use "name" if available)
+            item_name = item.get("name", "Item")
+            heading_prefix = "#" * min(level, 6)
+            lines.append(f"{heading_prefix} `{item_name}`\n")
+
+            # Format other properties
+            for key, value in item.items():
+                if key == "name":
+                    continue  # Already used in heading
+
+                key_display = key.replace("_", " ").title()
+
+                if isinstance(value, dict | list):
+                    # Nested structure: add sub-heading
+                    sub_heading_prefix = "#" * min(level + 1, 6)
+                    lines.append(f"{sub_heading_prefix} {key_display}\n")
+                    value_str = self._encode(value, level + 2)
+                    lines.append(value_str)
+                else:
+                    # Simple value: key-value format
+                    value_str = self._encode(value, level)
+                    lines.append(f"**{key_display}:** {value_str}\n")
+
+            lines.append("")  # Blank line between items
+
+        return "\n".join(lines)
+
+    def _format_list_as_bullets(self, data: list[dict[str, Any]]) -> str:
+        """
+        Format a list of dictionaries as bullet points.
+
+        This is used for structural elements like parameters, attributes, etc.
+        that have a 'name' key and simple values.
+
+        Args:
+            data: List of dictionaries to format
+
+        Returns:
+            Markdown bullet list
+        """
+        if not data:
+            return "_empty list_"
+
+        lines: list[str] = []
+
+        for item in data:
+            # Get the name (required)
+            item_name = item.get("name", "unknown")
+
+            # Build bullet item with name and other properties
+            parts = [f"`{item_name}`"]
+
+            # Add other properties inline
+            for key, value in item.items():
+                if key == "name":
+                    continue  # Already used
+
+                if value is not None and value != "_null_":
+                    # Add as inline property
+                    value_str = self._encode(value, 0)
+                    parts.append(f"{key}: {value_str}")
+
+            bullet = " - ".join(parts)
+            lines.append(f"- {bullet}")
+
+        return "\n".join(lines)
