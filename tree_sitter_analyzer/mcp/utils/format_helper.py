@@ -151,54 +151,31 @@ def apply_toon_format_to_response(
     result: dict[str, Any], output_format: str = "json"
 ) -> dict[str, Any]:
     """
-    Apply TOON format to MCP tool response if requested.
+    Apply output format to MCP tool response.
 
-    When output_format is 'toon', formats the result as TOON and removes
-    redundant data fields (results, matches, content, etc.) to maximize
-    token savings. Only metadata fields are preserved alongside toon_content.
+    When output_format='toon':
+      Returns pure TOON format with only format marker and toon_content.
+      All data is contained in toon_content to avoid duplication.
 
     Args:
         result: Original result dictionary from MCP tool
         output_format: Output format ('json' or 'toon')
 
     Returns:
-        Modified result dict with TOON content if requested, otherwise original
+        Formatted result dict with only format and toon_content fields
     """
     if output_format != "toon":
         return result
 
     try:
-        # Format the full result as TOON
+        # Generate TOON content from full result
         toon_content = format_as_toon(result)
 
-        # Create minimal response with only metadata and TOON content
-        # Remove redundant data fields to maximize token savings
-        # These fields are already included in toon_content, so keeping them
-        # would duplicate data and waste tokens
-        redundant_fields = {
-            "results",  # Search/query results
-            "matches",  # Search matches
-            "content",  # File content
-            "partial_content_result",  # Partial read results
-            "analysis_result",  # Code analysis results
-            "data",  # Generic data field
-            "items",  # List items
-            "files",  # File listings
-            "lines",  # Line content
-            "table_output",  # Formatted table output
-        }
-
-        toon_response: dict[str, Any] = {
+        # Return pure TOON format (no redundant fields)
+        return {
             "format": "toon",
             "toon_content": toon_content,
         }
-
-        # Preserve only metadata fields (not redundant data)
-        for key, value in result.items():
-            if key not in redundant_fields:
-                toon_response[key] = value
-
-        return toon_response
 
     except Exception as e:
         logger.warning(f"Failed to apply TOON format, returning JSON: {e}")
