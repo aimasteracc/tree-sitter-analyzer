@@ -108,7 +108,7 @@ repos:
     rev: 1.7.10
     hooks:
       - id: bandit
-        exclude: ^tests/|^openspec/changes/archive/|^scripts/|^build_standalone\.py$|^check_quality\.py$|^run_regression_tests\.py$|^test_fixes\.py$|^upload_interactive\.py$|^upload_to_pypi\.py$|^examples/
+        exclude: ^tests/|^v2/tests/|^openspec/changes/archive/|^scripts/|^build_standalone\.py$|^check_quality\.py$|^run_regression_tests\.py$|^test_fixes\.py$|^upload_interactive\.py$|^upload_to_pypi\.py$|^examples/
         args: [--format, json]
 
   # Type checking

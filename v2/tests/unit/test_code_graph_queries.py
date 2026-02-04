@@ -16,7 +16,7 @@ from pathlib import Path
 class TestCallRelationshipAnalysis:
     """Tests for function call extraction and CALLS edge construction."""
 
-    def test_extract_function_calls(self):
+    def test_extract_function_calls(self) -> None:
         """Test extraction of function calls from code."""
         from tree_sitter_analyzer_v2.graph.builder import CodeGraphBuilder
 
@@ -53,7 +53,7 @@ def main():
         finally:
             Path(temp_path).unlink()
 
-    def test_resolve_method_call(self):
+    def test_resolve_method_call(self) -> None:
         """Test resolving method calls on objects."""
         from tree_sitter_analyzer_v2.graph.builder import CodeGraphBuilder
 
@@ -78,7 +78,8 @@ def compute():
 
             # compute() should call Calculator.add()
             compute_node = [n for n, d in graph.nodes(data=True) if d.get("name") == "compute"][0]
-            add_node = [
+            # Verify add node exists
+            _ = [
                 n
                 for n, d in graph.nodes(data=True)
                 if d.get("name") == "add" and d["type"] == "FUNCTION"
@@ -98,7 +99,7 @@ def compute():
         finally:
             Path(temp_path).unlink()
 
-    def test_handle_import_aliases(self):
+    def test_handle_import_aliases(self) -> None:
         """Test handling of import aliases in call resolution."""
         from tree_sitter_analyzer_v2.graph.builder import CodeGraphBuilder
 
@@ -129,7 +130,7 @@ def use_path():
         finally:
             Path(temp_path).unlink()
 
-    def test_get_callers_query(self):
+    def test_get_callers_query(self) -> None:
         """Test get_callers() query to find who calls a function."""
         from tree_sitter_analyzer_v2.graph.builder import CodeGraphBuilder
         from tree_sitter_analyzer_v2.graph.queries import get_callers
@@ -167,7 +168,7 @@ def execute():
         finally:
             Path(temp_path).unlink()
 
-    def test_get_call_chain_query(self):
+    def test_get_call_chain_query(self) -> None:
         """Test get_call_chain() query to trace call paths."""
         from tree_sitter_analyzer_v2.graph.builder import CodeGraphBuilder
         from tree_sitter_analyzer_v2.graph.queries import get_call_chain
@@ -214,7 +215,7 @@ def main():
         finally:
             Path(temp_path).unlink()
 
-    def test_call_resolution_accuracy(self):
+    def test_call_resolution_accuracy(self) -> None:
         """Test that call resolution handles multiple call types."""
         from tree_sitter_analyzer_v2.graph.builder import CodeGraphBuilder
 
@@ -267,7 +268,7 @@ def module_func():
 class TestEdgeCases:
     """Tests for edge cases and error handling."""
 
-    def test_find_definition_existing(self):
+    def test_find_definition_existing(self) -> None:
         """Test finding existing function and class definitions."""
         from tree_sitter_analyzer_v2.graph.builder import CodeGraphBuilder
         from tree_sitter_analyzer_v2.graph.queries import find_definition
@@ -308,7 +309,7 @@ def another_function():
         finally:
             Path(temp_path).unlink()
 
-    def test_find_definition_nonexistent(self):
+    def test_find_definition_nonexistent(self) -> None:
         """Test finding nonexistent definition returns empty list."""
         from tree_sitter_analyzer_v2.graph.builder import CodeGraphBuilder
         from tree_sitter_analyzer_v2.graph.queries import find_definition
@@ -333,7 +334,7 @@ def existing_function():
         finally:
             Path(temp_path).unlink()
 
-    def test_get_call_chain_no_path(self):
+    def test_get_call_chain_no_path(self) -> None:
         """Test get_call_chain when no path exists between functions."""
         from tree_sitter_analyzer_v2.graph.builder import CodeGraphBuilder
         from tree_sitter_analyzer_v2.graph.queries import get_call_chain
@@ -365,7 +366,7 @@ def isolated_b():
         finally:
             Path(temp_path).unlink()
 
-    def test_get_call_chain_node_not_found(self):
+    def test_get_call_chain_node_not_found(self) -> None:
         """Test get_call_chain with nonexistent node IDs."""
         from tree_sitter_analyzer_v2.graph.builder import CodeGraphBuilder
         from tree_sitter_analyzer_v2.graph.queries import get_call_chain
@@ -390,7 +391,7 @@ def some_function():
         finally:
             Path(temp_path).unlink()
 
-    def test_get_callers_no_callers(self):
+    def test_get_callers_no_callers(self) -> None:
         """Test get_callers when function has no callers."""
         from tree_sitter_analyzer_v2.graph.builder import CodeGraphBuilder
         from tree_sitter_analyzer_v2.graph.queries import get_callers
@@ -429,8 +430,9 @@ class TestQueryMethods:
 
     def test_query_methods_basic(self) -> None:
         """Test querying methods of a class."""
-        from tree_sitter_analyzer_v2.graph.queries import query_methods
         import networkx as nx
+
+        from tree_sitter_analyzer_v2.graph.queries import query_methods
 
         # Create test graph
         graph = nx.DiGraph()
@@ -469,8 +471,9 @@ class TestQueryMethods:
 
     def test_query_methods_empty_class(self) -> None:
         """Test querying methods of a class with no methods."""
-        from tree_sitter_analyzer_v2.graph.queries import query_methods
         import networkx as nx
+
+        from tree_sitter_analyzer_v2.graph.queries import query_methods
 
         graph = nx.DiGraph()
 
@@ -491,8 +494,9 @@ class TestQueryMethods:
 
     def test_query_methods_nonexistent_class(self) -> None:
         """Test querying methods of a non-existent class."""
-        from tree_sitter_analyzer_v2.graph.queries import query_methods
         import networkx as nx
+
+        from tree_sitter_analyzer_v2.graph.queries import query_methods
 
         graph = nx.DiGraph()
 
@@ -504,8 +508,9 @@ class TestQueryMethods:
 
     def test_query_methods_with_parameters(self) -> None:
         """Test that query returns method parameters."""
-        from tree_sitter_analyzer_v2.graph.queries import query_methods
         import networkx as nx
+
+        from tree_sitter_analyzer_v2.graph.queries import query_methods
 
         graph = nx.DiGraph()
 
@@ -542,8 +547,9 @@ class TestFilterNodes:
 
     def test_filter_by_node_type(self) -> None:
         """Test filtering graph by node type."""
-        from tree_sitter_analyzer_v2.graph.queries import filter_nodes
         import networkx as nx
+
+        from tree_sitter_analyzer_v2.graph.queries import filter_nodes
 
         graph = nx.DiGraph()
 
@@ -563,8 +569,9 @@ class TestFilterNodes:
 
     def test_filter_by_file_pattern(self) -> None:
         """Test filtering graph by file pattern."""
-        from tree_sitter_analyzer_v2.graph.queries import filter_nodes
         import networkx as nx
+
+        from tree_sitter_analyzer_v2.graph.queries import filter_nodes
 
         graph = nx.DiGraph()
 
@@ -596,8 +603,9 @@ class TestFilterNodes:
 
     def test_filter_empty_result(self) -> None:
         """Test filtering that matches nothing."""
-        from tree_sitter_analyzer_v2.graph.queries import filter_nodes
         import networkx as nx
+
+        from tree_sitter_analyzer_v2.graph.queries import filter_nodes
 
         graph = nx.DiGraph()
         graph.add_node("module:test", type="MODULE", name="test")
@@ -614,8 +622,9 @@ class TestFocusSubgraph:
 
     def test_focus_depth_1(self) -> None:
         """Test focusing on a node with depth 1."""
-        from tree_sitter_analyzer_v2.graph.queries import focus_subgraph
         import networkx as nx
+
+        from tree_sitter_analyzer_v2.graph.queries import focus_subgraph
 
         graph = nx.DiGraph()
 
@@ -640,8 +649,9 @@ class TestFocusSubgraph:
 
     def test_focus_depth_0(self) -> None:
         """Test focusing with depth 0 (only the node itself)."""
-        from tree_sitter_analyzer_v2.graph.queries import focus_subgraph
         import networkx as nx
+
+        from tree_sitter_analyzer_v2.graph.queries import focus_subgraph
 
         graph = nx.DiGraph()
         graph.add_node("A", type="FUNCTION", name="A")
@@ -658,8 +668,9 @@ class TestFocusSubgraph:
 
     def test_focus_nonexistent_node(self) -> None:
         """Test focusing on a non-existent node."""
-        from tree_sitter_analyzer_v2.graph.queries import focus_subgraph
         import networkx as nx
+
+        from tree_sitter_analyzer_v2.graph.queries import focus_subgraph
 
         graph = nx.DiGraph()
         graph.add_node("A", type="FUNCTION", name="A")
@@ -673,8 +684,9 @@ class TestFocusSubgraph:
 
     def test_focus_preserves_node_data(self) -> None:
         """Test that focus preserves node attributes."""
-        from tree_sitter_analyzer_v2.graph.queries import focus_subgraph
         import networkx as nx
+
+        from tree_sitter_analyzer_v2.graph.queries import focus_subgraph
 
         graph = nx.DiGraph()
         graph.add_node("A", type="FUNCTION", name="func_a", parameters=["x", "y"])

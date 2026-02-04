@@ -24,7 +24,7 @@ def get_callers(graph: nx.DiGraph, function_id: str) -> list[str]:
     callers = []
 
     # Find all edges pointing to this function with type='CALLS'
-    for source, target, edge_data in graph.in_edges(function_id, data=True):
+    for source, _target, edge_data in graph.in_edges(function_id, data=True):
         if edge_data.get("type") == "CALLS":
             callers.append(source)
 
@@ -75,9 +75,8 @@ def find_definition(graph: nx.DiGraph, name: str) -> list[str]:
     matches = []
 
     for node_id, node_data in graph.nodes(data=True):
-        if node_data.get("name") == name:
-            if node_data["type"] in ("FUNCTION", "CLASS"):
-                matches.append(node_id)
+        if node_data.get("name") == name and node_data["type"] in ("FUNCTION", "CLASS"):
+            matches.append(node_id)
 
     return matches
 
@@ -165,9 +164,8 @@ def filter_nodes(
         include = True
 
         # Filter by node type
-        if node_types is not None:
-            if node_data.get("type") not in node_types:
-                include = False
+        if node_types is not None and node_data.get("type") not in node_types:
+            include = False
 
         # Filter by file pattern (for nodes with file_path or module_id)
         if include and file_pattern is not None:
@@ -192,9 +190,9 @@ def filter_nodes(
                     # Convert ** to *
                     pattern_normalized = pattern_normalized.replace("**/", "")
                     # Match if pattern is contained in path
-                    include = pattern_normalized.replace("*", "") in file_path_normalized or fnmatch(
-                        file_path_normalized, pattern_normalized
-                    )
+                    include = pattern_normalized.replace(
+                        "*", ""
+                    ) in file_path_normalized or fnmatch(file_path_normalized, pattern_normalized)
                 else:
                     include = fnmatch(file_path_normalized, pattern_normalized)
             else:
