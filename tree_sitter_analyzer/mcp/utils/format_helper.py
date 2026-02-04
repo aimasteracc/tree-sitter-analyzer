@@ -119,47 +119,25 @@ def apply_toon_format_to_response(
     Apply output format to MCP tool response.
 
     When output_format='toon':
-      1. Formats the full result as TOON.
-      2. Removes large redundant data fields to save tokens.
-      3. Preserves core metadata (success, file_path, etc.) for compatibility.
+      Returns pure TOON format with only format marker and toon_content.
+      All data is contained in toon_content to avoid duplication.
 
     Args:
         result: Original result dictionary from MCP tool
         output_format: 'toon' (default)
 
     Returns:
-        Formatted result dict
+        Formatted result dict with only format and toon_content fields
     """
     try:
-        # 1. Generate TOON content first while we have all data
+        # Generate TOON content from full result
         toon_content = format_as_toon(result)
 
-        # 2. Define large fields that are redundant because they are in toon_content
-        redundant_fields = {
-            "results",
-            "matches",
-            "content",
-            "partial_content_result",
-            "data",
-            "items",
-            "files",
-            "lines",
-            "table_output",
-            "structural_overview",
-            "llm_guidance",
-            "ast_info",
-            "available_queries",
-            "analysis_result",
-            "detailed_analysis",
+        # Return pure TOON format (no redundant fields)
+        return {
+            "format": "toon",
+            "toon_content": toon_content,
         }
-
-        # 3. Create response by removing redundant large fields
-        # Keep metadata like success, file_path, language, status, etc.
-        toon_response = {k: v for k, v in result.items() if k not in redundant_fields}
-        toon_response["format"] = "toon"
-        toon_response["toon_content"] = toon_content
-
-        return toon_response
 
     except Exception as e:
         logger.warning(f"Failed to apply TOON format, returning JSON: {e}")

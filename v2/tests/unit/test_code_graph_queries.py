@@ -422,3 +422,268 @@ def main():
             assert callers == []
         finally:
             Path(temp_path).unlink()
+
+
+class TestQueryMethods:
+    """Test query_methods() function - Task C new functionality."""
+
+    def test_query_methods_basic(self) -> None:
+        """Test querying methods of a class."""
+        from tree_sitter_analyzer_v2.graph.queries import query_methods
+        import networkx as nx
+
+        # Create test graph
+        graph = nx.DiGraph()
+
+        # Add class node
+        class_id = "module:test:class:Calculator"
+        graph.add_node(
+            class_id,
+            type="CLASS",
+            name="Calculator",
+            module_id="module:test",
+            methods=["add", "subtract", "multiply"],
+        )
+
+        # Add method nodes
+        for method_name in ["add", "subtract", "multiply"]:
+            method_id = f"{class_id}:method:{method_name}"
+            graph.add_node(
+                method_id,
+                type="FUNCTION",
+                name=method_name,
+                class_id=class_id,
+                parameters=["self", "a", "b"],
+            )
+            graph.add_edge(class_id, method_id, type="CONTAINS")
+
+        # Query methods
+        methods = query_methods(graph, "Calculator")
+
+        # Should return all 3 methods
+        assert len(methods) == 3
+        method_names = [m["name"] for m in methods]
+        assert "add" in method_names
+        assert "subtract" in method_names
+        assert "multiply" in method_names
+
+    def test_query_methods_empty_class(self) -> None:
+        """Test querying methods of a class with no methods."""
+        from tree_sitter_analyzer_v2.graph.queries import query_methods
+        import networkx as nx
+
+        graph = nx.DiGraph()
+
+        # Add class with no methods
+        class_id = "module:test:class:EmptyClass"
+        graph.add_node(
+            class_id,
+            type="CLASS",
+            name="EmptyClass",
+            module_id="module:test",
+            methods=[],
+        )
+
+        methods = query_methods(graph, "EmptyClass")
+
+        assert len(methods) == 0
+        assert methods == []
+
+    def test_query_methods_nonexistent_class(self) -> None:
+        """Test querying methods of a non-existent class."""
+        from tree_sitter_analyzer_v2.graph.queries import query_methods
+        import networkx as nx
+
+        graph = nx.DiGraph()
+
+        # Empty graph
+        methods = query_methods(graph, "NonExistentClass")
+
+        assert len(methods) == 0
+        assert methods == []
+
+    def test_query_methods_with_parameters(self) -> None:
+        """Test that query returns method parameters."""
+        from tree_sitter_analyzer_v2.graph.queries import query_methods
+        import networkx as nx
+
+        graph = nx.DiGraph()
+
+        class_id = "module:test:class:Service"
+        graph.add_node(
+            class_id,
+            type="CLASS",
+            name="Service",
+            methods=["process"],
+        )
+
+        method_id = f"{class_id}:method:process"
+        graph.add_node(
+            method_id,
+            type="FUNCTION",
+            name="process",
+            class_id=class_id,
+            parameters=["self", "data", "options"],
+            return_type="dict",
+        )
+        graph.add_edge(class_id, method_id, type="CONTAINS")
+
+        methods = query_methods(graph, "Service")
+
+        assert len(methods) == 1
+        method = methods[0]
+        assert method["name"] == "process"
+        assert method["parameters"] == ["self", "data", "options"]
+        assert method.get("return_type") == "dict"
+
+
+class TestFilterNodes:
+    """Test filter_nodes() function - Task C new functionality."""
+
+    def test_filter_by_node_type(self) -> None:
+        """Test filtering graph by node type."""
+        from tree_sitter_analyzer_v2.graph.queries import filter_nodes
+        import networkx as nx
+
+        graph = nx.DiGraph()
+
+        # Add various nodes
+        graph.add_node("module:test", type="MODULE", name="test")
+        graph.add_node("module:test:class:A", type="CLASS", name="A")
+        graph.add_node("module:test:function:f1", type="FUNCTION", name="f1")
+        graph.add_node("module:test:function:f2", type="FUNCTION", name="f2")
+
+        # Filter for functions only
+        filtered = filter_nodes(graph, node_types=["FUNCTION"])
+
+        # Should have 2 function nodes
+        assert len(filtered["nodes"]) == 2
+        node_types = [filtered["nodes"][n]["type"] for n in filtered["nodes"]]
+        assert all(t == "FUNCTION" for t in node_types)
+
+    def test_filter_by_file_pattern(self) -> None:
+        """Test filtering graph by file pattern."""
+        from tree_sitter_analyzer_v2.graph.queries import filter_nodes
+        import networkx as nx
+
+        graph = nx.DiGraph()
+
+        # Add modules from different files
+        graph.add_node(
+            "module:core",
+            type="MODULE",
+            name="core",
+            file_path="src/core/main.py",
+        )
+        graph.add_node(
+            "module:utils",
+            type="MODULE",
+            name="utils",
+            file_path="src/utils/helper.py",
+        )
+        graph.add_node(
+            "module:test",
+            type="MODULE",
+            name="test",
+            file_path="tests/test_core.py",
+        )
+
+        # Filter for files in src/ directory
+        filtered = filter_nodes(graph, file_pattern="src/**/*.py")
+
+        # Should have 2 modules from src/
+        assert len(filtered["nodes"]) >= 2
+
+    def test_filter_empty_result(self) -> None:
+        """Test filtering that matches nothing."""
+        from tree_sitter_analyzer_v2.graph.queries import filter_nodes
+        import networkx as nx
+
+        graph = nx.DiGraph()
+        graph.add_node("module:test", type="MODULE", name="test")
+
+        # Filter for non-existent type
+        filtered = filter_nodes(graph, node_types=["INTERFACE"])
+
+        assert len(filtered["nodes"]) == 0
+        assert len(filtered["edges"]) == 0
+
+
+class TestFocusSubgraph:
+    """Test focus_subgraph() function - Task C new functionality."""
+
+    def test_focus_depth_1(self) -> None:
+        """Test focusing on a node with depth 1."""
+        from tree_sitter_analyzer_v2.graph.queries import focus_subgraph
+        import networkx as nx
+
+        graph = nx.DiGraph()
+
+        # Create a simple call chain: A -> B -> C
+        graph.add_node("A", type="FUNCTION", name="A")
+        graph.add_node("B", type="FUNCTION", name="B")
+        graph.add_node("C", type="FUNCTION", name="C")
+        graph.add_edge("A", "B", type="CALLS")
+        graph.add_edge("B", "C", type="CALLS")
+
+        # Focus on B with depth 1
+        subgraph = focus_subgraph(graph, "B", depth=1)
+
+        # Should include B, A (predecessor), and C (successor)
+        assert len(subgraph["nodes"]) == 3
+        assert "A" in subgraph["nodes"]
+        assert "B" in subgraph["nodes"]
+        assert "C" in subgraph["nodes"]
+
+        # Should include edges A->B and B->C
+        assert len(subgraph["edges"]) == 2
+
+    def test_focus_depth_0(self) -> None:
+        """Test focusing with depth 0 (only the node itself)."""
+        from tree_sitter_analyzer_v2.graph.queries import focus_subgraph
+        import networkx as nx
+
+        graph = nx.DiGraph()
+        graph.add_node("A", type="FUNCTION", name="A")
+        graph.add_node("B", type="FUNCTION", name="B")
+        graph.add_edge("A", "B", type="CALLS")
+
+        # Focus on A with depth 0
+        subgraph = focus_subgraph(graph, "A", depth=0)
+
+        # Should only include A
+        assert len(subgraph["nodes"]) == 1
+        assert "A" in subgraph["nodes"]
+        assert len(subgraph["edges"]) == 0
+
+    def test_focus_nonexistent_node(self) -> None:
+        """Test focusing on a non-existent node."""
+        from tree_sitter_analyzer_v2.graph.queries import focus_subgraph
+        import networkx as nx
+
+        graph = nx.DiGraph()
+        graph.add_node("A", type="FUNCTION", name="A")
+
+        # Focus on non-existent node
+        subgraph = focus_subgraph(graph, "Z", depth=1)
+
+        # Should return empty subgraph
+        assert len(subgraph["nodes"]) == 0
+        assert len(subgraph["edges"]) == 0
+
+    def test_focus_preserves_node_data(self) -> None:
+        """Test that focus preserves node attributes."""
+        from tree_sitter_analyzer_v2.graph.queries import focus_subgraph
+        import networkx as nx
+
+        graph = nx.DiGraph()
+        graph.add_node("A", type="FUNCTION", name="func_a", parameters=["x", "y"])
+        graph.add_node("B", type="FUNCTION", name="func_b")
+        graph.add_edge("A", "B", type="CALLS")
+
+        subgraph = focus_subgraph(graph, "A", depth=1)
+
+        # Check that node data is preserved
+        assert subgraph["nodes"]["A"]["type"] == "FUNCTION"
+        assert subgraph["nodes"]["A"]["name"] == "func_a"
+        assert subgraph["nodes"]["A"]["parameters"] == ["x", "y"]
