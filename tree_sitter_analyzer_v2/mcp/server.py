@@ -30,18 +30,27 @@ except ImportError:
     ToolsCapability = None  # type: ignore
 
 from tree_sitter_analyzer_v2.mcp.tools import (
+    APIDocTool,
     AnalyzeCodeGraphTool,
     AnalyzeTool,
     BatchOperationsTool,
     CheckCodeScaleTool,
     CodeQualityTool,
     DeleteFileTool,
+    DependencyAnalyzerTool,
+    DependencyGraphTool,
+    DocGeneratorTool,
     ExtractCodeSectionTool,
     FindAndGrepTool,
     FindFilesTool,
     FindFunctionCallersTool,
     FormatterTool,
+    GitCommitTool,
+    GitDiffTool,
+    GitStatusTool,
     LinterTool,
+    ProjectAnalyzerTool,
+    ProjectInitTool,
     QueryCallChainTool,
     QueryTool,
     RefactorRenameTool,
@@ -111,6 +120,23 @@ class MCPServer:
         self.tool_registry.register(LinterTool())
         self.tool_registry.register(FormatterTool())
         self.tool_registry.register(TestRunnerTool())
+
+        # Dependency tools
+        self.tool_registry.register(DependencyAnalyzerTool())
+        self.tool_registry.register(DependencyGraphTool())
+
+        # Documentation tools
+        self.tool_registry.register(DocGeneratorTool())
+        self.tool_registry.register(APIDocTool())
+
+        # Git tools
+        self.tool_registry.register(GitStatusTool())
+        self.tool_registry.register(GitDiffTool())
+        self.tool_registry.register(GitCommitTool())
+
+        # Project management tools
+        self.tool_registry.register(ProjectInitTool())
+        self.tool_registry.register(ProjectAnalyzerTool())
 
         # Code Graph tools (NEW in Phase 9!)
         self.tool_registry.register(AnalyzeCodeGraphTool())

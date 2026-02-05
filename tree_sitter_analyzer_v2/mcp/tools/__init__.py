@@ -31,8 +31,12 @@ from tree_sitter_analyzer_v2.mcp.tools.registry import ToolRegistry
 from tree_sitter_analyzer_v2.mcp.tools.scale import CheckCodeScaleTool
 from tree_sitter_analyzer_v2.mcp.tools.batch import BatchOperationsTool
 from tree_sitter_analyzer_v2.mcp.tools.delete import DeleteFileTool
+from tree_sitter_analyzer_v2.mcp.tools.dependencies import DependencyAnalyzerTool, DependencyGraphTool
+from tree_sitter_analyzer_v2.mcp.tools.documentation import APIDocTool, DocGeneratorTool
 from tree_sitter_analyzer_v2.mcp.tools.formatter import FormatterTool
+from tree_sitter_analyzer_v2.mcp.tools.git_tools import GitCommitTool, GitDiffTool, GitStatusTool
 from tree_sitter_analyzer_v2.mcp.tools.linter import LinterTool
+from tree_sitter_analyzer_v2.mcp.tools.project import ProjectAnalyzerTool, ProjectInitTool
 from tree_sitter_analyzer_v2.mcp.tools.quality import CodeQualityTool
 from tree_sitter_analyzer_v2.mcp.tools.refactor import RefactorRenameTool
 from tree_sitter_analyzer_v2.mcp.tools.test_runner import TestRunnerTool
@@ -63,4 +67,13 @@ __all__ = [
     "LinterTool",
     "FormatterTool",
     "TestRunnerTool",
+    "DependencyAnalyzerTool",
+    "DependencyGraphTool",
+    "DocGeneratorTool",
+    "APIDocTool",
+    "GitStatusTool",
+    "GitDiffTool",
+    "GitCommitTool",
+    "ProjectInitTool",
+    "ProjectAnalyzerTool",
 ]
