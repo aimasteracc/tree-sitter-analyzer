@@ -151,11 +151,12 @@ git pull  # 拉取 V2 的修改
 
 ## ✅ 成功标准
 
-- [ ] v2-separated 分支只包含 V2 代码
-- [ ] workspace 父仓库创建成功
-- [ ] 两个 submodule 都可以独立运行测试
-- [ ] V2 可以通过 git 修改 V1（共享同一个远程仓库）
-- [ ] 目录结构清晰，v1 和 v2 平等独立
+- [x] v2-separated 分支只包含 V2 代码
+- [x] workspace 父仓库创建成功（`C:\git-private\tree-sitter-analyzer-workspace`）
+- [x] 两个 submodule 已添加（v1-stable → tree-sitter-analyzer-v1，v2-separated → tree-sitter-analyzer-v2）
+- [ ] 两个 submodule 都可以独立运行测试（V2 需 `uv sync --extra dev` 后运行；部分既有测试失败）
+- [x] V2 与 V1 共享同一远程仓库，不同分支
+- [x] 目录结构清晰，v1 和 v2 平等独立
 
 ---
 
