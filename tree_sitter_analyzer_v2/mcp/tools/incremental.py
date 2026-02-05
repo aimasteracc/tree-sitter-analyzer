@@ -20,7 +20,7 @@ class ChangeDetectorTool(BaseTool):
         return "change_detector"
 
     def get_description(self) -> str:
-        return "检测目录中文件的变更（新增、修改、删除）"
+        return "Detect file changes in directory (added, modified, deleted)"
 
     def get_schema(self) -> dict[str, Any]:
         return {
@@ -28,12 +28,12 @@ class ChangeDetectorTool(BaseTool):
             "properties": {
                 "directory": {
                     "type": "string",
-                    "description": "要检测的目录路径",
+                    "description": "Directory path to detect",
                 },
                 "extensions": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "要检测的文件扩展名（如 ['.py', '.js']）",
+                    "description": "File extensions to detect (e.g. ['.py', '.js'])",
                 },
             },
             "required": ["directory"],
@@ -44,7 +44,7 @@ class ChangeDetectorTool(BaseTool):
         extensions = arguments.get("extensions", [".py"])
 
         if not directory.exists():
-            return {"success": False, "error": f"目录不存在: {directory}"}
+            return {"success": False, "error": f"Directory not found: {directory}"}
 
         # 扫描当前文件状态
         current_states: dict[str, dict[str, Any]] = {}
@@ -107,7 +107,7 @@ class CacheManagerTool(BaseTool):
         return "cache_manager"
 
     def get_description(self) -> str:
-        return "管理分析结果缓存（设置、获取、删除、清除）"
+        return "Manage analysis result cache (set, get, delete, clear)"
 
     def get_schema(self) -> dict[str, Any]:
         return {
@@ -116,15 +116,15 @@ class CacheManagerTool(BaseTool):
                 "operation": {
                     "type": "string",
                     "enum": ["set", "get", "delete", "clear"],
-                    "description": "缓存操作类型",
+                    "description": "Cache operation type",
                 },
                 "key": {
                     "type": "string",
-                    "description": "缓存键",
+                    "description": "Cache key",
                 },
                 "value": {
                     "type": "object",
-                    "description": "缓存值（仅用于 set 操作）",
+                    "description": "Cache value (for set operation only)",
                 },
             },
             "required": ["operation"],
@@ -137,14 +137,14 @@ class CacheManagerTool(BaseTool):
             key = arguments.get("key")
             value = arguments.get("value")
             if not key:
-                return {"success": False, "error": "缺少 key 参数"}
+                return {"success": False, "error": "Missing key parameter"}
             self._cache[key] = {"value": value, "timestamp": time.time()}
-            return {"success": True, "message": f"缓存已设置: {key}"}
+            return {"success": True, "message": f"Cache set: {key}"}
 
         elif operation == "get":
             key = arguments.get("key")
             if not key:
-                return {"success": False, "error": "缺少 key 参数"}
+                return {"success": False, "error": "Missing key parameter"}
             cache_entry = self._cache.get(key)
             if cache_entry:
                 return {
@@ -157,18 +157,18 @@ class CacheManagerTool(BaseTool):
         elif operation == "delete":
             key = arguments.get("key")
             if not key:
-                return {"success": False, "error": "缺少 key 参数"}
+                return {"success": False, "error": "Missing key parameter"}
             if key in self._cache:
                 del self._cache[key]
-                return {"success": True, "message": f"缓存已删除: {key}"}
-            return {"success": True, "message": f"缓存不存在: {key}"}
+                return {"success": True, "message": f"Cache deleted: {key}"}
+            return {"success": True, "message": f"Cache not found: {key}"}
 
         elif operation == "clear":
             count = len(self._cache)
             self._cache.clear()
-            return {"success": True, "message": f"已清除 {count} 个缓存"}
+            return {"success": True, "message": f"Cleared {count} cache entries"}
 
-        return {"success": False, "error": f"未知操作: {operation}"}
+        return {"success": False, "error": f"Unknown operation: {operation}"}
 
 
 class IncrementalAnalyzerTool(BaseTool):
@@ -183,7 +183,7 @@ class IncrementalAnalyzerTool(BaseTool):
         return "incremental_analyzer"
 
     def get_description(self) -> str:
-        return "增量分析：只分析变更的文件，未变更的文件使用缓存"
+        return "Incremental analysis: analyze only changed files, use cache for unchanged files"
 
     def get_schema(self) -> dict[str, Any]:
         return {
@@ -191,16 +191,16 @@ class IncrementalAnalyzerTool(BaseTool):
             "properties": {
                 "directory": {
                     "type": "string",
-                    "description": "要分析的目录路径",
+                    "description": "Directory path to analyze",
                 },
                 "extensions": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "要分析的文件扩展名",
+                    "description": "File extensions to analyze",
                 },
                 "force": {
                     "type": "boolean",
-                    "description": "强制重新分析所有文件（忽略缓存）",
+                    "description": "Force re-analyze all files (ignore cache)",
                 },
             },
             "required": ["directory"],
@@ -211,7 +211,7 @@ class IncrementalAnalyzerTool(BaseTool):
         force = arguments.get("force", False)
 
         if not directory.exists():
-            return {"success": False, "error": f"目录不存在: {directory}"}
+            return {"success": False, "error": f"Directory not found: {directory}"}
 
         # 检测变更
         changes_result = self._change_detector.execute(arguments)

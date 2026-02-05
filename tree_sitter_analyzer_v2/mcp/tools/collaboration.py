@@ -1,4 +1,4 @@
-"""协作工具"""
+"""Collaboration Tools"""
 
 import ast
 import re
@@ -9,13 +9,13 @@ from tree_sitter_analyzer_v2.mcp.tools.base import BaseTool
 
 
 class CodeReviewTool(BaseTool):
-    """代码审查工具"""
+    """Code review tool"""
 
     def get_name(self) -> str:
         return "code_reviewer"
 
     def get_description(self) -> str:
-        return "自动代码审查，检查常见问题"
+        return "Automatic code review, check common issues"
 
     def get_schema(self) -> dict[str, Any]:
         return {
@@ -23,12 +23,12 @@ class CodeReviewTool(BaseTool):
             "properties": {
                 "file_path": {
                     "type": "string",
-                    "description": "要审查的文件路径",
+                    "description": "File path to review",
                 },
                 "checks": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "要执行的检查类型",
+                    "description": "Check types to perform",
                 },
             },
             "required": ["file_path"],
@@ -38,7 +38,7 @@ class CodeReviewTool(BaseTool):
         file_path = Path(arguments["file_path"])
 
         if not file_path.exists():
-            return {"success": False, "error": f"文件不存在: {file_path}"}
+            return {"success": False, "error": f"File not found: {file_path}"}
 
         try:
             content = file_path.read_text(encoding="utf-8")
@@ -46,7 +46,7 @@ class CodeReviewTool(BaseTool):
 
             issues = []
 
-            # 检查命名规范
+            # Check naming conventions
             for node in ast.walk(tree):
                 if isinstance(node, ast.FunctionDef):
                     if not node.name.islower():
@@ -54,7 +54,7 @@ class CodeReviewTool(BaseTool):
                             {
                                 "severity": "warning",
                                 "type": "naming",
-                                "message": f"函数名 {node.name} 应使用小写和下划线",
+                                "message": f"Function name {node.name} should use lowercase and underscores",
                             }
                         )
 
@@ -64,11 +64,11 @@ class CodeReviewTool(BaseTool):
                             {
                                 "severity": "warning",
                                 "type": "naming",
-                                "message": f"类名 {node.name} 应使用 PascalCase",
+                                "message": f"Class name {node.name} should use PascalCase",
                             }
                         )
 
-            # 检查复杂度
+            # Check complexity
             for node in ast.walk(tree):
                 if isinstance(node, ast.FunctionDef):
                     if len(node.body) > 50:
@@ -76,7 +76,7 @@ class CodeReviewTool(BaseTool):
                             {
                                 "severity": "error",
                                 "type": "complexity",
-                                "message": f"函数 {node.name} 过于复杂（{len(node.body)} 行）",
+                                "message": f"Function {node.name} is too complex ({len(node.body)} lines)",
                             }
                         )
 
@@ -91,13 +91,13 @@ class CodeReviewTool(BaseTool):
 
 
 class CommentManagerTool(BaseTool):
-    """注释管理工具"""
+    """Comment management tool"""
 
     def get_name(self) -> str:
         return "comment_manager"
 
     def get_description(self) -> str:
-        return "管理代码注释（提取、分析、生成）"
+        return "Manage code comments (extract, analyze, generate)"
 
     def get_schema(self) -> dict[str, Any]:
         return {
@@ -105,12 +105,12 @@ class CommentManagerTool(BaseTool):
             "properties": {
                 "file_path": {
                     "type": "string",
-                    "description": "要处理的文件路径",
+                    "description": "File path to process",
                 },
                 "operation": {
                     "type": "string",
                     "enum": ["extract", "analyze", "suggest"],
-                    "description": "操作类型",
+                    "description": "Operation type",
                 },
             },
             "required": ["file_path", "operation"],
@@ -121,7 +121,7 @@ class CommentManagerTool(BaseTool):
         operation = arguments["operation"]
 
         if not file_path.exists():
-            return {"success": False, "error": f"文件不存在: {file_path}"}
+            return {"success": False, "error": f"File not found: {file_path}"}
 
         try:
             content = file_path.read_text(encoding="utf-8")
@@ -133,12 +133,12 @@ class CommentManagerTool(BaseTool):
             elif operation == "suggest":
                 return self._suggest_comments(content, file_path)
 
-            return {"success": False, "error": f"未知操作: {operation}"}
+            return {"success": False, "error": f"Unknown operation: {operation}"}
         except Exception as e:
             return {"success": False, "error": str(e)}
 
     def _extract_comments(self, content: str) -> dict[str, Any]:
-        """提取注释"""
+        """Extract comments"""
         comments = []
         for i, line in enumerate(content.splitlines(), 1):
             if "#" in line:
@@ -148,7 +148,7 @@ class CommentManagerTool(BaseTool):
         return {"success": True, "comments": comments, "count": len(comments)}
 
     def _analyze_comments(self, content: str) -> dict[str, Any]:
-        """分析注释质量"""
+        """Analyze comment quality"""
         lines = content.splitlines()
         total_lines = len(lines)
         comment_lines = sum(1 for line in lines if "#" in line)
@@ -166,7 +166,7 @@ class CommentManagerTool(BaseTool):
         }
 
     def _suggest_comments(self, content: str, file_path: Path) -> dict[str, Any]:
-        """建议添加注释的位置"""
+        """Suggest where to add comments"""
         tree = ast.parse(content)
         suggestions = []
 
@@ -178,7 +178,7 @@ class CommentManagerTool(BaseTool):
                             "line": node.lineno,
                             "type": "function",
                             "name": node.name,
-                            "suggestion": f"为函数 {node.name} 添加文档字符串",
+                            "suggestion": f"Add docstring for function {node.name}",
                         }
                     )
 
@@ -189,7 +189,7 @@ class CommentManagerTool(BaseTool):
                             "line": node.lineno,
                             "type": "class",
                             "name": node.name,
-                            "suggestion": f"为类 {node.name} 添加文档字符串",
+                            "suggestion": f"Add docstring for class {node.name}",
                         }
                     )
 
@@ -201,13 +201,13 @@ class CommentManagerTool(BaseTool):
 
 
 class TaskManagerTool(BaseTool):
-    """任务管理工具"""
+    """Task management tool"""
 
     def get_name(self) -> str:
         return "task_manager"
 
     def get_description(self) -> str:
-        return "管理代码中的 TODO/FIXME/HACK 标记"
+        return "Manage TODO/FIXME/HACK markers in code"
 
     def get_schema(self) -> dict[str, Any]:
         return {
@@ -215,12 +215,12 @@ class TaskManagerTool(BaseTool):
             "properties": {
                 "directory": {
                     "type": "string",
-                    "description": "要扫描的目录路径",
+                    "description": "Directory path to scan",
                 },
                 "task_types": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "要查找的任务类型（TODO, FIXME, HACK, NOTE）",
+                    "description": "Task types to find (TODO, FIXME, HACK, NOTE)",
                 },
             },
             "required": ["directory"],
@@ -231,7 +231,7 @@ class TaskManagerTool(BaseTool):
         task_types = arguments.get("task_types", ["TODO", "FIXME", "HACK"])
 
         if not directory.exists():
-            return {"success": False, "error": f"目录不存在: {directory}"}
+            return {"success": False, "error": f"Directory not found: {directory}"}
 
         tasks = []
         pattern = re.compile(r"#\s*(" + "|".join(task_types) + r"):\s*(.+)")
@@ -253,7 +253,7 @@ class TaskManagerTool(BaseTool):
             except Exception:
                 continue
 
-        # 按类型分组
+        # Group by type
         by_type = {}
         for task in tasks:
             task_type = task["type"]
@@ -270,13 +270,13 @@ class TaskManagerTool(BaseTool):
 
 
 class NotebookEditorTool(BaseTool):
-    """Notebook 编辑工具"""
+    """Notebook editor tool"""
 
     def get_name(self) -> str:
         return "notebook_editor"
 
     def get_description(self) -> str:
-        return "编辑 Jupyter Notebook 文件"
+        return "Edit Jupyter Notebook files"
 
     def get_schema(self) -> dict[str, Any]:
         return {
@@ -284,25 +284,25 @@ class NotebookEditorTool(BaseTool):
             "properties": {
                 "notebook_path": {
                     "type": "string",
-                    "description": "Notebook 文件路径",
+                    "description": "Notebook file path",
                 },
                 "operation": {
                     "type": "string",
                     "enum": ["read", "add_cell", "delete_cell", "execute"],
-                    "description": "操作类型",
+                    "description": "Operation type",
                 },
                 "cell_index": {
                     "type": "integer",
-                    "description": "单元格索引（用于 delete_cell）",
+                    "description": "Cell index (for delete_cell)",
                 },
                 "cell_content": {
                     "type": "string",
-                    "description": "单元格内容（用于 add_cell）",
+                    "description": "Cell content (for add_cell)",
                 },
                 "cell_type": {
                     "type": "string",
                     "enum": ["code", "markdown"],
-                    "description": "单元格类型（用于 add_cell）",
+                    "description": "Cell type (for add_cell)",
                 },
             },
             "required": ["notebook_path", "operation"],
@@ -313,7 +313,7 @@ class NotebookEditorTool(BaseTool):
         operation = arguments["operation"]
 
         if operation != "read" and not notebook_path.exists():
-            return {"success": False, "error": f"Notebook 不存在: {notebook_path}"}
+            return {"success": False, "error": f"Notebook not found: {notebook_path}"}
 
         try:
             import json
@@ -326,7 +326,7 @@ class NotebookEditorTool(BaseTool):
                         "cells": len(content.get("cells", [])),
                         "metadata": content.get("metadata", {}),
                     }
-                return {"success": False, "error": "文件不存在"}
+                return {"success": False, "error": "File not found"}
 
             elif operation == "add_cell":
                 content = json.loads(notebook_path.read_text(encoding="utf-8"))
@@ -347,7 +347,7 @@ class NotebookEditorTool(BaseTool):
                     json.dumps(content, indent=2), encoding="utf-8"
                 )
 
-                return {"success": True, "message": "单元格已添加"}
+                return {"success": True, "message": "Cell added"}
 
             elif operation == "delete_cell":
                 content = json.loads(notebook_path.read_text(encoding="utf-8"))
@@ -358,22 +358,22 @@ class NotebookEditorTool(BaseTool):
                     notebook_path.write_text(
                         json.dumps(content, indent=2), encoding="utf-8"
                     )
-                    return {"success": True, "message": "单元格已删除"}
-                return {"success": False, "error": "单元格索引无效"}
+                    return {"success": True, "message": "Cell deleted"}
+                return {"success": False, "error": "Invalid cell index"}
 
-            return {"success": False, "error": f"未知操作: {operation}"}
+            return {"success": False, "error": f"Unknown operation: {operation}"}
         except Exception as e:
             return {"success": False, "error": str(e)}
 
 
 class ShellExecutorTool(BaseTool):
-    """安全 Shell 执行工具"""
+    """Safe shell executor tool"""
 
     def get_name(self) -> str:
         return "shell_executor"
 
     def get_description(self) -> str:
-        return "在安全沙箱中执行 Shell 命令"
+        return "Execute shell commands in a safe sandbox"
 
     def get_schema(self) -> dict[str, Any]:
         return {
@@ -381,15 +381,15 @@ class ShellExecutorTool(BaseTool):
             "properties": {
                 "command": {
                     "type": "string",
-                    "description": "要执行的命令",
+                    "description": "Command to execute",
                 },
                 "working_directory": {
                     "type": "string",
-                    "description": "工作目录",
+                    "description": "Working directory",
                 },
                 "timeout": {
                     "type": "integer",
-                    "description": "超时时间（秒）",
+                    "description": "Timeout in seconds",
                     "default": 30,
                 },
             },
@@ -403,10 +403,10 @@ class ShellExecutorTool(BaseTool):
         working_directory = arguments.get("working_directory")
         timeout = arguments.get("timeout", 30)
 
-        # 安全检查：禁止危险命令
+        # Safety check: block dangerous commands
         dangerous_commands = ["rm -rf", "del /f", "format", "mkfs"]
         if any(cmd in command.lower() for cmd in dangerous_commands):
-            return {"success": False, "error": "检测到危险命令，已拒绝执行"}
+            return {"success": False, "error": "Dangerous command detected, execution blocked"}
 
         try:
             result = subprocess.run(
@@ -425,6 +425,6 @@ class ShellExecutorTool(BaseTool):
                 "stderr": result.stderr,
             }
         except subprocess.TimeoutExpired:
-            return {"success": False, "error": "命令执行超时"}
+            return {"success": False, "error": "Command execution timeout"}
         except Exception as e:
             return {"success": False, "error": str(e)}

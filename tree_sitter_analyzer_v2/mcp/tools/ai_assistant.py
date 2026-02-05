@@ -1,4 +1,4 @@
-"""AI 辅助工具"""
+"""AI Assistant Tools"""
 
 import ast
 import re
@@ -10,13 +10,13 @@ from tree_sitter_analyzer_v2.mcp.tools.base import BaseTool
 
 
 class PatternRecognizerTool(BaseTool):
-    """代码模式识别工具"""
+    """Code pattern recognition tool"""
 
     def get_name(self) -> str:
         return "pattern_recognizer"
 
     def get_description(self) -> str:
-        return "识别代码中的常见模式（设计模式、反模式等）"
+        return "Recognize common patterns in code (design patterns, anti-patterns, idioms)"
 
     def get_schema(self) -> dict[str, Any]:
         return {
@@ -24,12 +24,12 @@ class PatternRecognizerTool(BaseTool):
             "properties": {
                 "file_path": {
                     "type": "string",
-                    "description": "要分析的文件路径",
+                    "description": "File path to analyze",
                 },
                 "pattern_types": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "要识别的模式类型（design_patterns, anti_patterns, idioms）",
+                    "description": "Pattern types to recognize (design_patterns, anti_patterns, idioms)",
                 },
             },
             "required": ["file_path"],
@@ -40,7 +40,7 @@ class PatternRecognizerTool(BaseTool):
         pattern_types = arguments.get("pattern_types", ["design_patterns", "anti_patterns"])
 
         if not file_path.exists():
-            return {"success": False, "error": f"文件不存在: {file_path}"}
+            return {"success": False, "error": f"File not found: {file_path}"}
 
         try:
             content = file_path.read_text(encoding="utf-8")
@@ -63,19 +63,19 @@ class PatternRecognizerTool(BaseTool):
             return {"success": False, "error": str(e)}
 
     def _detect_design_patterns(self, tree: ast.AST) -> list[dict[str, Any]]:
-        """检测设计模式"""
+        """Detect design patterns"""
         patterns = []
 
         for node in ast.walk(tree):
             if isinstance(node, ast.ClassDef):
-                # 检测单例模式
+                # Detect Singleton pattern
                 if any(
                     isinstance(n, ast.FunctionDef) and n.name == "__new__"
                     for n in node.body
                 ):
                     patterns.append({"type": "Singleton", "name": node.name})
 
-                # 检测工厂模式
+                # Detect Factory pattern
                 if any(
                     isinstance(n, ast.FunctionDef) and "create" in n.name.lower()
                     for n in node.body
@@ -85,11 +85,11 @@ class PatternRecognizerTool(BaseTool):
         return patterns
 
     def _detect_anti_patterns(self, tree: ast.AST) -> list[dict[str, Any]]:
-        """检测反模式"""
+        """Detect anti-patterns"""
         anti_patterns = []
 
         for node in ast.walk(tree):
-            # 检测上帝类（方法过多）
+            # Detect God Class (too many methods)
             if isinstance(node, ast.ClassDef):
                 methods = [n for n in node.body if isinstance(n, ast.FunctionDef)]
                 if len(methods) > 20:
@@ -97,7 +97,7 @@ class PatternRecognizerTool(BaseTool):
                         {"type": "God Class", "name": node.name, "methods": len(methods)}
                     )
 
-            # 检测长方法
+            # Detect Long Method
             if isinstance(node, ast.FunctionDef):
                 if len(node.body) > 50:
                     anti_patterns.append(
@@ -107,15 +107,15 @@ class PatternRecognizerTool(BaseTool):
         return anti_patterns
 
     def _detect_idioms(self, tree: ast.AST) -> list[dict[str, Any]]:
-        """检测 Python 惯用法"""
+        """Detect Python idioms"""
         idioms = []
 
         for node in ast.walk(tree):
-            # 检测列表推导式
+            # Detect list comprehension
             if isinstance(node, ast.ListComp):
                 idioms.append({"type": "List Comprehension"})
 
-            # 检测上下文管理器
+            # Detect context manager
             if isinstance(node, ast.With):
                 idioms.append({"type": "Context Manager"})
 
@@ -123,13 +123,13 @@ class PatternRecognizerTool(BaseTool):
 
 
 class DuplicateDetectorTool(BaseTool):
-    """高级重复代码检测工具"""
+    """Advanced duplicate code detection tool"""
 
     def get_name(self) -> str:
         return "duplicate_detector_advanced"
 
     def get_description(self) -> str:
-        return "检测代码中的重复片段（基于 AST 结构相似性）"
+        return "Detect duplicate code fragments (based on AST structure similarity)"
 
     def get_schema(self) -> dict[str, Any]:
         return {
@@ -137,11 +137,11 @@ class DuplicateDetectorTool(BaseTool):
             "properties": {
                 "directory": {
                     "type": "string",
-                    "description": "要分析的目录路径",
+                    "description": "Directory path to analyze",
                 },
                 "min_lines": {
                     "type": "integer",
-                    "description": "最小重复行数",
+                    "description": "Minimum duplicate lines",
                     "default": 5,
                 },
             },
@@ -153,18 +153,18 @@ class DuplicateDetectorTool(BaseTool):
         min_lines = arguments.get("min_lines", 5)
 
         if not directory.exists():
-            return {"success": False, "error": f"目录不存在: {directory}"}
+            return {"success": False, "error": f"Directory not found: {directory}"}
 
         duplicates = []
         file_hashes: dict[str, list[tuple[Path, int]]] = {}
 
-        # 扫描所有 Python 文件
+        # Scan all Python files
         for file_path in directory.rglob("*.py"):
             try:
                 content = file_path.read_text(encoding="utf-8")
                 lines = content.splitlines()
 
-                # 计算每个代码块的哈希
+                # Calculate hash for each code block
                 for i in range(len(lines) - min_lines + 1):
                     block = "\n".join(lines[i : i + min_lines])
                     block_hash = hash(block)
@@ -175,7 +175,7 @@ class DuplicateDetectorTool(BaseTool):
             except Exception:
                 continue
 
-        # 找出重复的代码块
+        # Find duplicate code blocks
         for block_hash, locations in file_hashes.items():
             if len(locations) > 1:
                 duplicates.append(
@@ -189,19 +189,19 @@ class DuplicateDetectorTool(BaseTool):
 
         return {
             "success": True,
-            "duplicates": duplicates[:50],  # 限制返回数量
+            "duplicates": duplicates[:50],  # Limit return count
             "total_duplicates": len(duplicates),
         }
 
 
 class SmellDetectorTool(BaseTool):
-    """高级代码异味检测工具"""
+    """Advanced code smell detection tool"""
 
     def get_name(self) -> str:
         return "smell_detector_advanced"
 
     def get_description(self) -> str:
-        return "检测代码异味（长方法、长参数列表、深度嵌套、循环依赖等）"
+        return "Detect code smells (long methods, long parameter lists, deep nesting, cyclic dependencies, etc.)"
 
     def get_schema(self) -> dict[str, Any]:
         return {
@@ -209,12 +209,12 @@ class SmellDetectorTool(BaseTool):
             "properties": {
                 "file_path": {
                     "type": "string",
-                    "description": "要分析的文件路径",
+                    "description": "File path to analyze",
                 },
                 "smell_types": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "要检测的异味类型",
+                    "description": "Smell types to detect",
                 },
             },
             "required": ["file_path"],
@@ -224,7 +224,7 @@ class SmellDetectorTool(BaseTool):
         file_path = Path(arguments["file_path"])
 
         if not file_path.exists():
-            return {"success": False, "error": f"文件不存在: {file_path}"}
+            return {"success": False, "error": f"File not found: {file_path}"}
 
         try:
             content = file_path.read_text(encoding="utf-8")
@@ -246,7 +246,7 @@ class SmellDetectorTool(BaseTool):
             return {"success": False, "error": str(e)}
 
     def _detect_long_methods(self, tree: ast.AST) -> list[dict[str, Any]]:
-        """检测长方法"""
+        """Detect long methods"""
         long_methods = []
         for node in ast.walk(tree):
             if isinstance(node, ast.FunctionDef):
@@ -255,7 +255,7 @@ class SmellDetectorTool(BaseTool):
         return long_methods
 
     def _detect_long_parameters(self, tree: ast.AST) -> list[dict[str, Any]]:
-        """检测长参数列表"""
+        """Detect long parameter lists"""
         long_params = []
         for node in ast.walk(tree):
             if isinstance(node, ast.FunctionDef):
@@ -266,7 +266,7 @@ class SmellDetectorTool(BaseTool):
         return long_params
 
     def _detect_deep_nesting(self, tree: ast.AST) -> list[dict[str, Any]]:
-        """检测深度嵌套"""
+        """Detect deep nesting"""
         def get_nesting_depth(node: ast.AST, depth: int = 0) -> int:
             max_depth = depth
             for child in ast.iter_child_nodes(node):
@@ -284,23 +284,23 @@ class SmellDetectorTool(BaseTool):
         return deep_nesting
 
     def _detect_magic_numbers(self, tree: ast.AST) -> list[dict[str, Any]]:
-        """检测魔法数字"""
+        """Detect magic numbers"""
         magic_numbers = []
         for node in ast.walk(tree):
             if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)):
-                if node.value not in (0, 1, -1):  # 排除常见的数字
+                if node.value not in (0, 1, -1):  # Exclude common numbers
                     magic_numbers.append({"value": node.value})
-        return magic_numbers[:20]  # 限制数量
+        return magic_numbers[:20]  # Limit count
 
 
 class ImprovementSuggesterTool(BaseTool):
-    """改进建议生成工具"""
+    """Improvement suggestion generation tool"""
 
     def get_name(self) -> str:
         return "improvement_suggester"
 
     def get_description(self) -> str:
-        return "基于代码分析生成改进建议"
+        return "Generate improvement suggestions based on code analysis"
 
     def get_schema(self) -> dict[str, Any]:
         return {
@@ -308,7 +308,7 @@ class ImprovementSuggesterTool(BaseTool):
             "properties": {
                 "file_path": {
                     "type": "string",
-                    "description": "要分析的文件路径",
+                    "description": "File path to analyze",
                 },
             },
             "required": ["file_path"],
@@ -318,7 +318,7 @@ class ImprovementSuggesterTool(BaseTool):
         file_path = Path(arguments["file_path"])
 
         if not file_path.exists():
-            return {"success": False, "error": f"文件不存在: {file_path}"}
+            return {"success": False, "error": f"File not found: {file_path}"}
 
         try:
             content = file_path.read_text(encoding="utf-8")
@@ -326,7 +326,7 @@ class ImprovementSuggesterTool(BaseTool):
 
             suggestions = []
 
-            # 检查是否有文档字符串
+            # Check for docstrings
             for node in ast.walk(tree):
                 if isinstance(node, (ast.FunctionDef, ast.ClassDef)):
                     if not ast.get_docstring(node):
@@ -334,11 +334,11 @@ class ImprovementSuggesterTool(BaseTool):
                             {
                                 "type": "missing_docstring",
                                 "target": node.name,
-                                "suggestion": f"为 {node.name} 添加文档字符串",
+                                "suggestion": f"Add docstring for {node.name}",
                             }
                         )
 
-            # 检查函数复杂度
+            # Check function complexity
             for node in ast.walk(tree):
                 if isinstance(node, ast.FunctionDef):
                     if len(node.body) > 20:
@@ -346,27 +346,27 @@ class ImprovementSuggesterTool(BaseTool):
                             {
                                 "type": "refactor",
                                 "target": node.name,
-                                "suggestion": f"函数 {node.name} 过长，考虑拆分",
+                                "suggestion": f"Function {node.name} is too long, consider splitting",
                             }
                         )
 
             return {
                 "success": True,
                 "file": str(file_path),
-                "suggestions": suggestions[:20],  # 限制数量
+                "suggestions": suggestions[:20],  # Limit count
             }
         except Exception as e:
             return {"success": False, "error": str(e)}
 
 
 class BestPracticeCheckerTool(BaseTool):
-    """最佳实践检查工具"""
+    """Best practice checker tool"""
 
     def get_name(self) -> str:
         return "best_practice_checker"
 
     def get_description(self) -> str:
-        return "检查代码是否符合 Python 最佳实践"
+        return "Check if code follows Python best practices"
 
     def get_schema(self) -> dict[str, Any]:
         return {
@@ -374,7 +374,7 @@ class BestPracticeCheckerTool(BaseTool):
             "properties": {
                 "file_path": {
                     "type": "string",
-                    "description": "要检查的文件路径",
+                    "description": "File path to check",
                 },
             },
             "required": ["file_path"],
@@ -384,7 +384,7 @@ class BestPracticeCheckerTool(BaseTool):
         file_path = Path(arguments["file_path"])
 
         if not file_path.exists():
-            return {"success": False, "error": f"文件不存在: {file_path}"}
+            return {"success": False, "error": f"File not found: {file_path}"}
 
         try:
             content = file_path.read_text(encoding="utf-8")
@@ -392,7 +392,7 @@ class BestPracticeCheckerTool(BaseTool):
 
             violations = []
 
-            # 检查是否使用 list/dict 作为默认参数
+            # Check for list/dict as default argument
             for node in ast.walk(tree):
                 if isinstance(node, ast.FunctionDef):
                     for default in node.args.defaults:
@@ -401,18 +401,18 @@ class BestPracticeCheckerTool(BaseTool):
                                 {
                                     "rule": "mutable_default_argument",
                                     "function": node.name,
-                                    "message": "不要使用可变对象作为默认参数",
+                                    "message": "Do not use mutable objects as default arguments",
                                 }
                             )
 
-            # 检查是否使用 bare except
+            # Check for bare except
             for node in ast.walk(tree):
                 if isinstance(node, ast.ExceptHandler):
                     if node.type is None:
                         violations.append(
                             {
                                 "rule": "bare_except",
-                                "message": "避免使用裸 except，应指定具体异常类型",
+                                "message": "Avoid bare except, specify exception type",
                             }
                         )
 
