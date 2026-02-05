@@ -34,6 +34,8 @@ from tree_sitter_analyzer_v2.mcp.tools import (
     AnalyzeCodeGraphTool,
     AnalyzeTool,
     BatchOperationsTool,
+    CacheManagerTool,
+    ChangeDetectorTool,
     CheckCodeScaleTool,
     ClassGeneratorTool,
     CodeMetricsTool,
@@ -50,6 +52,7 @@ from tree_sitter_analyzer_v2.mcp.tools import (
     GitCommitTool,
     GitDiffTool,
     GitStatusTool,
+    IncrementalAnalyzerTool,
     LinterTool,
     MockGeneratorTool,
     PerformanceMonitorTool,
@@ -159,6 +162,11 @@ class MCPServer:
 
         # Metrics tools
         self.tool_registry.register(CodeMetricsTool())
+
+        # Incremental analysis tools
+        self.tool_registry.register(ChangeDetectorTool())
+        self.tool_registry.register(CacheManagerTool())
+        self.tool_registry.register(IncrementalAnalyzerTool())
 
         # Code Graph tools (NEW in Phase 9!)
         self.tool_registry.register(AnalyzeCodeGraphTool())

@@ -36,6 +36,11 @@ from tree_sitter_analyzer_v2.mcp.tools.documentation import APIDocTool, DocGener
 from tree_sitter_analyzer_v2.mcp.tools.formatter import FormatterTool
 from tree_sitter_analyzer_v2.mcp.tools.generator import ClassGeneratorTool, MockGeneratorTool, TestGeneratorTool
 from tree_sitter_analyzer_v2.mcp.tools.git_tools import GitCommitTool, GitDiffTool, GitStatusTool
+from tree_sitter_analyzer_v2.mcp.tools.incremental import (
+    CacheManagerTool,
+    ChangeDetectorTool,
+    IncrementalAnalyzerTool,
+)
 from tree_sitter_analyzer_v2.mcp.tools.linter import LinterTool
 from tree_sitter_analyzer_v2.mcp.tools.metrics import CodeMetricsTool
 from tree_sitter_analyzer_v2.mcp.tools.performance import PerformanceMonitorTool, ProfileCodeTool
@@ -87,4 +92,7 @@ __all__ = [
     "MockGeneratorTool",
     "ClassGeneratorTool",
     "CodeMetricsTool",
+    "ChangeDetectorTool",
+    "CacheManagerTool",
+    "IncrementalAnalyzerTool",
 ]

@@ -25,6 +25,7 @@ dependencies = [
     "chardet>=5.2.0",
     "tree-sitter>=0.20.0",
     "networkx>=3.0",
+    "psutil>=7.2.2",
 ]
 
 [project.optional-dependencies]
