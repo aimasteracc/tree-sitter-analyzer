@@ -85,9 +85,9 @@ public class Sample {
         return str(file_path)
 
     @pytest.mark.asyncio
-    async def test_execute_basic_analysis(self, tool, sample_python_file):
+    async def test_execute_basic_analysis(self, tool, sample_python_file, mcp_tool_json_args):
         """Test basic analysis type."""
-        args = {"file_path": sample_python_file, "analysis_type": "basic", "output_format": "json"}
+        args = {**mcp_tool_json_args, "file_path": sample_python_file, "analysis_type": "basic"}
         result = await tool.execute(args)
 
         assert isinstance(result, dict)
@@ -96,9 +96,9 @@ public class Sample {
         assert "metrics" in result
 
     @pytest.mark.asyncio
-    async def test_execute_detailed_analysis(self, tool, sample_python_file):
+    async def test_execute_detailed_analysis(self, tool, sample_python_file, mcp_tool_json_args):
         """Test detailed analysis type."""
-        args = {"file_path": sample_python_file, "analysis_type": "detailed", "output_format": "json"}
+        args = {**mcp_tool_json_args, "file_path": sample_python_file, "analysis_type": "detailed"}
         result = await tool.execute(args)
 
         assert isinstance(result, dict)
@@ -106,9 +106,9 @@ public class Sample {
         assert result.get("analysis_type") == "detailed"
 
     @pytest.mark.asyncio
-    async def test_execute_structure_analysis(self, tool, sample_python_file):
+    async def test_execute_structure_analysis(self, tool, sample_python_file, mcp_tool_json_args):
         """Test structure analysis type."""
-        args = {"file_path": sample_python_file, "analysis_type": "structure", "output_format": "json"}
+        args = {**mcp_tool_json_args, "file_path": sample_python_file, "analysis_type": "structure"}
         result = await tool.execute(args)
 
         assert isinstance(result, dict)
@@ -116,9 +116,9 @@ public class Sample {
         assert result.get("analysis_type") == "structure"
 
     @pytest.mark.asyncio
-    async def test_execute_metrics_analysis(self, tool, sample_python_file):
+    async def test_execute_metrics_analysis(self, tool, sample_python_file, mcp_tool_json_args):
         """Test metrics analysis type."""
-        args = {"file_path": sample_python_file, "analysis_type": "metrics", "output_format": "json"}
+        args = {**mcp_tool_json_args, "file_path": sample_python_file, "analysis_type": "metrics"}
         result = await tool.execute(args)
 
         assert isinstance(result, dict)
@@ -126,9 +126,9 @@ public class Sample {
         assert result.get("analysis_type") == "metrics"
 
     @pytest.mark.asyncio
-    async def test_execute_with_include_ast(self, tool, sample_python_file):
+    async def test_execute_with_include_ast(self, tool, sample_python_file, mcp_tool_json_args):
         """Test analysis with include_ast option."""
-        args = {"file_path": sample_python_file, "include_ast": True, "output_format": "json"}
+        args = {**mcp_tool_json_args, "file_path": sample_python_file, "include_ast": True}
         result = await tool.execute(args)
 
         assert isinstance(result, dict)
@@ -136,9 +136,9 @@ public class Sample {
         # AST info may or may not be present depending on analyzer
 
     @pytest.mark.asyncio
-    async def test_execute_with_include_queries(self, tool, sample_python_file):
+    async def test_execute_with_include_queries(self, tool, sample_python_file, mcp_tool_json_args):
         """Test analysis with include_queries option."""
-        args = {"file_path": sample_python_file, "include_queries": True, "output_format": "json"}
+        args = {**mcp_tool_json_args, "file_path": sample_python_file, "include_queries": True}
         result = await tool.execute(args)
 
         assert isinstance(result, dict)
@@ -146,9 +146,9 @@ public class Sample {
         assert "available_queries" in result
 
     @pytest.mark.asyncio
-    async def test_execute_java_file_basic(self, tool, sample_java_file):
+    async def test_execute_java_file_basic(self, tool, sample_java_file, mcp_tool_json_args):
         """Test Java file analysis with basic type."""
-        args = {"file_path": sample_java_file, "analysis_type": "basic", "output_format": "json"}
+        args = {**mcp_tool_json_args, "file_path": sample_java_file, "analysis_type": "basic"}
         result = await tool.execute(args)
 
         assert isinstance(result, dict)
@@ -156,45 +156,45 @@ public class Sample {
         assert result.get("language") == "java"
 
     @pytest.mark.asyncio
-    async def test_execute_java_file_detailed(self, tool, sample_java_file):
+    async def test_execute_java_file_detailed(self, tool, sample_java_file, mcp_tool_json_args):
         """Test Java file analysis with detailed type."""
-        args = {"file_path": sample_java_file, "analysis_type": "detailed", "output_format": "json"}
+        args = {**mcp_tool_json_args, "file_path": sample_java_file, "analysis_type": "detailed"}
         result = await tool.execute(args)
 
         assert isinstance(result, dict)
         assert "file_path" in result
 
     @pytest.mark.asyncio
-    async def test_execute_java_file_structure(self, tool, sample_java_file):
+    async def test_execute_java_file_structure(self, tool, sample_java_file, mcp_tool_json_args):
         """Test Java file analysis with structure type."""
-        args = {"file_path": sample_java_file, "analysis_type": "structure", "output_format": "json"}
+        args = {**mcp_tool_json_args, "file_path": sample_java_file, "analysis_type": "structure"}
         result = await tool.execute(args)
 
         assert isinstance(result, dict)
         assert "file_path" in result
 
     @pytest.mark.asyncio
-    async def test_execute_java_file_metrics(self, tool, sample_java_file):
+    async def test_execute_java_file_metrics(self, tool, sample_java_file, mcp_tool_json_args):
         """Test Java file analysis with metrics type."""
-        args = {"file_path": sample_java_file, "analysis_type": "metrics", "output_format": "json"}
+        args = {**mcp_tool_json_args, "file_path": sample_java_file, "analysis_type": "metrics"}
         result = await tool.execute(args)
 
         assert isinstance(result, dict)
         assert "file_path" in result
 
     @pytest.mark.asyncio
-    async def test_execute_java_with_include_ast(self, tool, sample_java_file):
+    async def test_execute_java_with_include_ast(self, tool, sample_java_file, mcp_tool_json_args):
         """Test Java file analysis with include_ast option."""
-        args = {"file_path": sample_java_file, "include_ast": True, "output_format": "json"}
+        args = {**mcp_tool_json_args, "file_path": sample_java_file, "include_ast": True}
         result = await tool.execute(args)
 
         assert isinstance(result, dict)
         assert "file_path" in result
 
     @pytest.mark.asyncio
-    async def test_execute_java_with_include_queries(self, tool, sample_java_file):
+    async def test_execute_java_with_include_queries(self, tool, sample_java_file, mcp_tool_json_args):
         """Test Java file analysis with include_queries option."""
-        args = {"file_path": sample_java_file, "include_queries": True, "output_format": "json"}
+        args = {**mcp_tool_json_args, "file_path": sample_java_file, "include_queries": True}
         result = await tool.execute(args)
 
         assert isinstance(result, dict)
@@ -367,12 +367,12 @@ class TestUniversalAnalyzeToolErrorHandling:
             await tool.execute(args)
 
     @pytest.mark.asyncio
-    async def test_execute_with_explicit_language(self, tool, temp_dir):
+    async def test_execute_with_explicit_language(self, tool, temp_dir, mcp_tool_json_args):
         """Test execute with explicitly specified language."""
         file_path = Path(temp_dir) / "test.txt"
         file_path.write_text("def hello(): pass")
 
-        args = {"file_path": str(file_path), "language": "python", "output_format": "json"}
+        args = {**mcp_tool_json_args, "file_path": str(file_path), "language": "python"}
 
         result = await tool.execute(args)
         assert isinstance(result, dict)

@@ -63,6 +63,14 @@ def test_data_dir():
 
 
 @pytest.fixture
+def mcp_tool_json_args():
+    """Default args for MCP tool tests that assert on full JSON (file_path, analysis_type, etc.).
+    Merge with test-specific args: {**mcp_tool_json_args, \"file_path\": path, ...}.
+    Avoids repeating \"output_format\": \"json\" in 50+ tests (V2-guided dedup)."""
+    return {"output_format": "json"}
+
+
+@pytest.fixture
 def temp_project_dir(tmp_path):
     """Create a temporary project directory with sample files."""
     # Create sample Python files
