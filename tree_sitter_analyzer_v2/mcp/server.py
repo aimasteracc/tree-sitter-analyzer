@@ -34,15 +34,20 @@ from tree_sitter_analyzer_v2.mcp.tools import (
     AnalyzeTool,
     BatchOperationsTool,
     CheckCodeScaleTool,
+    CodeQualityTool,
     DeleteFileTool,
     ExtractCodeSectionTool,
     FindAndGrepTool,
     FindFilesTool,
     FindFunctionCallersTool,
+    FormatterTool,
+    LinterTool,
     QueryCallChainTool,
     QueryTool,
+    RefactorRenameTool,
     ReplaceInFileTool,
     SearchContentTool,
+    TestRunnerTool,
     VisualizeCodeGraphTool,
     WriteFileTool,
 )
@@ -97,6 +102,15 @@ class MCPServer:
         self.tool_registry.register(ReplaceInFileTool())
         self.tool_registry.register(DeleteFileTool())
         self.tool_registry.register(BatchOperationsTool())
+
+        # Refactoring tools
+        self.tool_registry.register(RefactorRenameTool())
+
+        # Quality tools
+        self.tool_registry.register(CodeQualityTool())
+        self.tool_registry.register(LinterTool())
+        self.tool_registry.register(FormatterTool())
+        self.tool_registry.register(TestRunnerTool())
 
         # Code Graph tools (NEW in Phase 9!)
         self.tool_registry.register(AnalyzeCodeGraphTool())

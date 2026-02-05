@@ -31,6 +31,11 @@ from tree_sitter_analyzer_v2.mcp.tools.registry import ToolRegistry
 from tree_sitter_analyzer_v2.mcp.tools.scale import CheckCodeScaleTool
 from tree_sitter_analyzer_v2.mcp.tools.batch import BatchOperationsTool
 from tree_sitter_analyzer_v2.mcp.tools.delete import DeleteFileTool
+from tree_sitter_analyzer_v2.mcp.tools.formatter import FormatterTool
+from tree_sitter_analyzer_v2.mcp.tools.linter import LinterTool
+from tree_sitter_analyzer_v2.mcp.tools.quality import CodeQualityTool
+from tree_sitter_analyzer_v2.mcp.tools.refactor import RefactorRenameTool
+from tree_sitter_analyzer_v2.mcp.tools.test_runner import TestRunnerTool
 from tree_sitter_analyzer_v2.mcp.tools.replace import ReplaceInFileTool
 from tree_sitter_analyzer_v2.mcp.tools.search import FindFilesTool, SearchContentTool
 from tree_sitter_analyzer_v2.mcp.tools.write import WriteFileTool
@@ -53,4 +58,9 @@ __all__ = [
     "ReplaceInFileTool",
     "DeleteFileTool",
     "BatchOperationsTool",
+    "RefactorRenameTool",
+    "CodeQualityTool",
+    "LinterTool",
+    "FormatterTool",
+    "TestRunnerTool",
 ]
