@@ -1,4 +1,4 @@
-"""增量分析和缓存工具"""
+"""Incremental analysis and cache tools"""
 
 import hashlib
 import json
@@ -10,7 +10,7 @@ from tree_sitter_analyzer_v2.mcp.tools.base import BaseTool
 
 
 class ChangeDetectorTool(BaseTool):
-    """文件变更检测工具"""
+    """File change detection tool"""
 
     def __init__(self):
         super().__init__()
@@ -46,7 +46,7 @@ class ChangeDetectorTool(BaseTool):
         if not directory.exists():
             return {"success": False, "error": f"Directory not found: {directory}"}
 
-        # 扫描当前文件状态
+        # Scan current file states
         current_states: dict[str, dict[str, Any]] = {}
         for ext in extensions:
             for file_path in directory.rglob(f"*{ext}"):
@@ -58,24 +58,24 @@ class ChangeDetectorTool(BaseTool):
                         "hash": self._compute_hash(file_path),
                     }
 
-        # 检测变更
+        # Detect changes
         added = []
         modified = []
         deleted = []
 
-        # 检测新增和修改
+        # Detect added and modified
         for path, state in current_states.items():
             if path not in self._file_states:
                 added.append(path)
             elif state["hash"] != self._file_states[path]["hash"]:
                 modified.append(path)
 
-        # 检测删除
+        # Detect deleted
         for path in self._file_states:
             if path not in current_states:
                 deleted.append(path)
 
-        # 更新状态
+        # Update state
         self._file_states = current_states
 
         return {
@@ -89,7 +89,7 @@ class ChangeDetectorTool(BaseTool):
         }
 
     def _compute_hash(self, file_path: Path) -> str:
-        """计算文件哈希"""
+        """Calculate file hash"""
         hasher = hashlib.md5()
         with open(file_path, "rb") as f:
             hasher.update(f.read())
@@ -97,7 +97,7 @@ class ChangeDetectorTool(BaseTool):
 
 
 class CacheManagerTool(BaseTool):
-    """缓存管理工具"""
+    """Cache management tool"""
 
     def __init__(self):
         super().__init__()
@@ -172,7 +172,7 @@ class CacheManagerTool(BaseTool):
 
 
 class IncrementalAnalyzerTool(BaseTool):
-    """增量分析工具"""
+    """Incremental analysis tool"""
 
     def __init__(self):
         super().__init__()
@@ -213,30 +213,30 @@ class IncrementalAnalyzerTool(BaseTool):
         if not directory.exists():
             return {"success": False, "error": f"Directory not found: {directory}"}
 
-        # 检测变更
+        # Detect changes
         changes_result = self._change_detector.execute(arguments)
         if not changes_result["success"]:
             return changes_result
 
         changes = changes_result["changes"]
 
-        # 如果强制分析，分析所有文件
+        # If force analyze, analyze all files
         if force:
             files_to_analyze = list(Path(directory).rglob("*.py"))
         else:
-            # 只分析变更的文件
+            # Only analyze changed files
             files_to_analyze = [
                 Path(f) for f in changes["added"] + changes["modified"]
             ]
 
-        # 分析文件
+        # Analyze files
         analyzed_files = []
         for file_path in files_to_analyze:
-            # 这里简化处理，实际应该调用真正的分析工具
+            # Simplified handling, should call real analysis tool in production
             analysis_result = self._analyze_file(file_path)
             analyzed_files.append(str(file_path))
 
-            # 缓存结果
+            # Cache results
             cache_key = f"analysis:{file_path}"
             self._cache_manager.execute(
                 {"operation": "set", "key": cache_key, "value": analysis_result}
@@ -250,7 +250,7 @@ class IncrementalAnalyzerTool(BaseTool):
         }
 
     def _analyze_file(self, file_path: Path) -> dict[str, Any]:
-        """分析单个文件（简化版）"""
+        """Analyze single file (simplified version)"""
         try:
             content = file_path.read_text(encoding="utf-8")
             return {
