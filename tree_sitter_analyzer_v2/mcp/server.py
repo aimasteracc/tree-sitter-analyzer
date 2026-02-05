@@ -33,6 +33,7 @@ from tree_sitter_analyzer_v2.mcp.tools import (
     AnalyzeCodeGraphTool,
     AnalyzeTool,
     CheckCodeScaleTool,
+    DeleteFileTool,
     ExtractCodeSectionTool,
     FindAndGrepTool,
     FindFilesTool,
@@ -93,6 +94,7 @@ class MCPServer:
         # File operation tools
         self.tool_registry.register(WriteFileTool())
         self.tool_registry.register(ReplaceInFileTool())
+        self.tool_registry.register(DeleteFileTool())
 
         # Code Graph tools (NEW in Phase 9!)
         self.tool_registry.register(AnalyzeCodeGraphTool())

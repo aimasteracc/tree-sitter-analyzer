@@ -134,6 +134,7 @@ class SearchEngine:
         is_regex: bool = False,
         limit: int | None = None,
         offset: int = 0,
+        multiline: bool = False,
     ) -> list[dict[str, Any]]:
         """
         Search file content using ripgrep.
@@ -146,6 +147,7 @@ class SearchEngine:
             is_regex: Whether pattern is a regex (default: False)
             limit: Maximum number of results to return (None = unlimited)
             offset: Number of results to skip (default: 0)
+            multiline: Enable multiline mode where . matches newlines (default: False)
 
         Returns:
             List of dicts with keys: file, line_number, line_content
@@ -189,6 +191,11 @@ class SearchEngine:
         # Add file type filter if specified
         if file_type:
             cmd.extend(["--type", file_type])
+
+        # Add multiline support
+        if multiline:
+            cmd.append("--multiline")
+            cmd.append("--multiline-dotall")
 
         # Add pattern
         cmd.append(pattern)

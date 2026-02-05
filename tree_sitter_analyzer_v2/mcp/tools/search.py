@@ -204,6 +204,11 @@ class SearchContentTool(BaseTool):
                     "minimum": 0,
                     "default": 0,
                 },
+                "multiline": {
+                    "type": "boolean",
+                    "description": "Enable multiline mode where . matches newlines and patterns can span lines (default: false)",
+                    "default": False,
+                },
             },
             "required": ["root_dir", "pattern"],
         }
@@ -244,6 +249,7 @@ class SearchContentTool(BaseTool):
             context_before = arguments.get("context_before", 0)
             context_after = arguments.get("context_after", 0)
             context = arguments.get("context", 0)
+            multiline = arguments.get("multiline", False)
 
             # If context is set, it overrides context_before and context_after
             if context > 0:
@@ -263,6 +269,7 @@ class SearchContentTool(BaseTool):
                 is_regex=use_regex,
                 limit=limit,
                 offset=offset,
+                multiline=multiline,
             )
 
             # Format matches for output with context
