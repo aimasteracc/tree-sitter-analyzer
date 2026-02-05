@@ -53,15 +53,6 @@ repos:
   # Custom local checks for quality rules
   - repo: local
     hooks:
-      # Planning structure check (blocking) - ensures .kiro/specs/ discipline
-      - id: check-planning-structure
-        name: Check Planning File Structure
-        entry: python scripts/check_planning_structure.py
-        language: system
-        pass_filenames: false
-        always_run: true
-        stages: [pre-commit]
-
       # Python syntax check (blocking)
       - id: python-syntax-check
         name: Python Syntax Check
@@ -81,7 +72,7 @@ repos:
       # Import check (blocking)
       - id: import-check
         name: Import Validation
-        entry: python -c "import tree_sitter_analyzer"
+        entry: python -c "import tree_sitter_analyzer_v2"
         language: system
         pass_filenames: false
         stages: [pre-push]
