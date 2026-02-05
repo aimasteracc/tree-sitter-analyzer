@@ -29,6 +29,7 @@ from tree_sitter_analyzer_v2.mcp.tools.find_and_grep import FindAndGrepTool
 from tree_sitter_analyzer_v2.mcp.tools.query import QueryTool
 from tree_sitter_analyzer_v2.mcp.tools.registry import ToolRegistry
 from tree_sitter_analyzer_v2.mcp.tools.scale import CheckCodeScaleTool
+from tree_sitter_analyzer_v2.mcp.tools.batch import BatchOperationsTool
 from tree_sitter_analyzer_v2.mcp.tools.delete import DeleteFileTool
 from tree_sitter_analyzer_v2.mcp.tools.replace import ReplaceInFileTool
 from tree_sitter_analyzer_v2.mcp.tools.search import FindFilesTool, SearchContentTool
@@ -51,4 +52,5 @@ __all__ = [
     "WriteFileTool",
     "ReplaceInFileTool",
     "DeleteFileTool",
+    "BatchOperationsTool",
 ]

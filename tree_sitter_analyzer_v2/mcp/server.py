@@ -32,6 +32,7 @@ except ImportError:
 from tree_sitter_analyzer_v2.mcp.tools import (
     AnalyzeCodeGraphTool,
     AnalyzeTool,
+    BatchOperationsTool,
     CheckCodeScaleTool,
     DeleteFileTool,
     ExtractCodeSectionTool,
@@ -95,6 +96,7 @@ class MCPServer:
         self.tool_registry.register(WriteFileTool())
         self.tool_registry.register(ReplaceInFileTool())
         self.tool_registry.register(DeleteFileTool())
+        self.tool_registry.register(BatchOperationsTool())
 
         # Code Graph tools (NEW in Phase 9!)
         self.tool_registry.register(AnalyzeCodeGraphTool())
