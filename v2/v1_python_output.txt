@@ -1,6 +1,0 @@
-usage: tree-sitter-analyzer [-h] [--file FILE] [--table] [--json]
-                            [--query-file QUERY_FILE] [--list-queries]
-                            [--describe-query QUERY_NAME] [--show-languages]
-                            [--show-extensions]
-                            [paths ...]
-tree-sitter-analyzer: error: unrecognized arguments: full
