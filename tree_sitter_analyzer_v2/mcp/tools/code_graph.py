@@ -114,6 +114,21 @@ generating documentation, analyzing entire projects."""
                     "description": "Enable cross-file call resolution (resolves calls across file boundaries)",
                     "default": False,
                 },
+                "page": {
+                    "type": "integer",
+                    "description": "Page number for paginated results (1-based, for directory analysis)",
+                    "default": 1,
+                },
+                "page_size": {
+                    "type": "integer",
+                    "description": "Number of files per page (for directory analysis)",
+                    "default": 10,
+                },
+                "timeout": {
+                    "type": "integer",
+                    "description": "Timeout in seconds (default: 300s for large projects)",
+                    "default": 300,
+                },
             },
         }
 
@@ -126,6 +141,9 @@ generating documentation, analyzing entire projects."""
         max_tokens = arguments.get("max_tokens", 4000)
         cross_file = arguments.get("cross_file", False)
         language = arguments.get("language", "auto")
+        page = arguments.get("page", 1)
+        page_size = arguments.get("page_size", 10)
+        timeout = arguments.get("timeout", 300)
 
         # Validate mutually exclusive parameters
         if file_path and directory:
@@ -173,12 +191,51 @@ generating documentation, analyzing entire projects."""
                 exclude_patterns = arguments.get("exclude_patterns", [])
                 max_files = arguments.get("max_files")
 
+                # Apply pagination by adjusting max_files
+                # Calculate effective max_files based on page and page_size
+                if page > 1 or page_size < 1000:  # Only paginate if requested
+                    # First pass: count total files
+                    import fnmatch
+                    all_files = []
+                    dir_path = Path(directory)
+                    for file in dir_path.rglob(pattern):
+                        if file.is_file():
+                            excluded = False
+                            for exclude_pattern in exclude_patterns:
+                                if fnmatch.fnmatch(str(file), exclude_pattern):
+                                    excluded = True
+                                    break
+                            if not excluded:
+                                all_files.append(str(file))
+                    
+                    total_files = len(all_files)
+                    total_pages = (total_files + page_size - 1) // page_size
+                    start_idx = (page - 1) * page_size
+                    end_idx = min(start_idx + page_size, total_files)
+                    
+                    # Adjust max_files for pagination
+                    effective_max_files = end_idx
+                    
+                    # Store pagination info for later
+                    pagination_info = {
+                        "page": page,
+                        "page_size": page_size,
+                        "total_files": total_files,
+                        "total_pages": total_pages,
+                        "files_in_page": end_idx - start_idx,
+                        "has_next": page < total_pages,
+                        "has_prev": page > 1,
+                    }
+                else:
+                    effective_max_files = max_files
+                    pagination_info = None
+
                 graph = builder.build_from_directory(
                     directory,
                     pattern=pattern,
                     exclude_patterns=exclude_patterns,
-                    max_files=max_files,
-                    cross_file=cross_file,  # NEW: Pass cross_file parameter
+                    max_files=effective_max_files,
+                    cross_file=cross_file,
                 )
                 target = directory
 
@@ -231,6 +288,9 @@ generating documentation, analyzing entire projects."""
                 result["file_path"] = file_path
             else:
                 result["directory"] = directory
+                # Add pagination info for directory analysis if available
+                if pagination_info:
+                    result["pagination"] = pagination_info
                 result["files_analyzed"] = graph.graph.get("files_analyzed", 0)
                 if "pattern" in graph.graph:
                     result["pattern"] = graph.graph["pattern"]
