@@ -750,7 +750,7 @@ class TestAnalyzeScaleToolExecute:
             assert "formatted" in result
 
     @pytest.mark.asyncio
-    async def test_execute_with_json_output_format(self, tool):
+    async def test_execute_with_json_output_format(self, tool, mcp_tool_json_args):
         """Test execute with output_format='json'."""
         mock_analysis_result = MagicMock()
         mock_analysis_result.elements = []
@@ -792,7 +792,7 @@ class TestAnalyzeScaleToolExecute:
                 return_value={"formatted": True},
             ),
         ):
-            arguments = {"file_path": "test.py", "output_format": "json"}
+            arguments = {**mcp_tool_json_args, "file_path": "test.py"}
             result = await tool.execute(arguments)
             assert "formatted" in result
 

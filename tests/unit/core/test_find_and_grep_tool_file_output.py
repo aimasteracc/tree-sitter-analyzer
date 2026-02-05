@@ -79,7 +79,9 @@ def nested_hello():
         return FindAndGrepTool(project_root=temp_project_dir)
 
     @pytest.mark.asyncio
-    async def test_basic_file_output(self, find_and_grep_tool, temp_project_dir):
+    async def test_basic_file_output(
+        self, find_and_grep_tool, temp_project_dir, mcp_tool_json_args
+    ):
         """Test basic file output functionality"""
         with patch(
             "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture"
@@ -98,12 +100,12 @@ def nested_hello():
             ]
 
             arguments = {
+                **mcp_tool_json_args,
                 "roots": [temp_project_dir],
                 "query": "hello",
                 "extensions": ["py", "js"],
                 "output_file": "find_grep_basic",
                 "suppress_output": False,
-                "output_format": "json",
             }
 
             result = await find_and_grep_tool.execute(arguments)
@@ -137,7 +139,7 @@ def nested_hello():
 
     @pytest.mark.asyncio
     async def test_suppress_output_functionality(
-        self, find_and_grep_tool, temp_project_dir
+        self, find_and_grep_tool, temp_project_dir, mcp_tool_json_args
     ):
         """Test suppress_output functionality"""
         with patch(
@@ -150,11 +152,11 @@ def nested_hello():
             mock_run.side_effect = [(0, fd_output.encode(), b""), (0, rg_output, b"")]
 
             arguments = {
+                **mcp_tool_json_args,
                 "roots": [temp_project_dir],
                 "query": "hello",
                 "output_file": "find_grep_suppressed",
                 "suppress_output": True,
-                "output_format": "json",
             }
 
             result = await find_and_grep_tool.execute(arguments)
@@ -180,7 +182,7 @@ def nested_hello():
 
     @pytest.mark.asyncio
     async def test_group_by_file_with_output(
-        self, find_and_grep_tool, temp_project_dir
+        self, find_and_grep_tool, temp_project_dir, mcp_tool_json_args
     ):
         """Test group_by_file mode with file output"""
         with patch(
@@ -195,12 +197,12 @@ def nested_hello():
             mock_run.side_effect = [(0, fd_output.encode(), b""), (0, rg_output, b"")]
 
             arguments = {
+                **mcp_tool_json_args,
                 "roots": [temp_project_dir],
                 "query": "hello",
                 "group_by_file": True,
                 "output_file": "find_grep_grouped",
                 "suppress_output": False,
-                "output_format": "json",
             }
 
             result = await find_and_grep_tool.execute(arguments)
@@ -225,7 +227,9 @@ def nested_hello():
             assert isinstance(saved_content["files"], list)
 
     @pytest.mark.asyncio
-    async def test_summary_only_with_output(self, find_and_grep_tool, temp_project_dir):
+    async def test_summary_only_with_output(
+        self, find_and_grep_tool, temp_project_dir, mcp_tool_json_args
+    ):
         """Test summary_only mode with file output"""
         with patch(
             "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture"
@@ -239,12 +243,12 @@ def nested_hello():
             mock_run.side_effect = [(0, fd_output.encode(), b""), (0, rg_output, b"")]
 
             arguments = {
+                **mcp_tool_json_args,
                 "roots": [temp_project_dir],
                 "query": "hello",
                 "summary_only": True,
                 "output_file": "find_grep_summary",
                 "suppress_output": True,
-                "output_format": "json",
             }
 
             result = await find_and_grep_tool.execute(arguments)
@@ -325,7 +329,9 @@ def nested_hello():
             assert result >= 0
 
     @pytest.mark.asyncio
-    async def test_file_filtering_options(self, find_and_grep_tool, temp_project_dir):
+    async def test_file_filtering_options(
+        self, find_and_grep_tool, temp_project_dir, mcp_tool_json_args
+    ):
         """Test various file filtering options with output"""
         with patch(
             "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture"
@@ -337,6 +343,7 @@ def nested_hello():
             mock_run.side_effect = [(0, fd_output.encode(), b""), (0, rg_output, b"")]
 
             arguments = {
+                **mcp_tool_json_args,
                 "roots": [temp_project_dir],
                 "query": "hello",
                 "pattern": "*.py",
@@ -346,7 +353,6 @@ def nested_hello():
                 "exclude": ["*.md"],
                 "output_file": "find_grep_filtered",
                 "suppress_output": False,
-                "output_format": "json",
             }
 
             result = await find_and_grep_tool.execute(arguments)
@@ -357,7 +363,7 @@ def nested_hello():
 
     @pytest.mark.asyncio
     async def test_error_handling_with_output(
-        self, find_and_grep_tool, temp_project_dir
+        self, find_and_grep_tool, temp_project_dir, mcp_tool_json_args
     ):
         """Test error handling when file output fails"""
         with patch(
@@ -376,11 +382,11 @@ def nested_hello():
                 mock_save.side_effect = Exception("File save error")
 
                 arguments = {
+                    **mcp_tool_json_args,
                     "roots": [temp_project_dir],
                     "query": "hello",
                     "output_file": "error_test",
                     "suppress_output": False,
-                    "output_format": "json",
                 }
 
                 result = await find_and_grep_tool.execute(arguments)
@@ -465,7 +471,9 @@ def nested_hello():
             assert result["meta"]["searched_file_count"] == 0
 
     @pytest.mark.asyncio
-    async def test_sorting_options(self, find_and_grep_tool, temp_project_dir):
+    async def test_sorting_options(
+        self, find_and_grep_tool, temp_project_dir, mcp_tool_json_args
+    ):
         """Test file sorting options"""
         with patch(
             "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture"
@@ -478,11 +486,11 @@ def nested_hello():
 
             # Test path sorting
             arguments = {
+                **mcp_tool_json_args,
                 "roots": [temp_project_dir],
                 "query": "hello",
                 "sort": "path",
                 "output_file": "sorted_results",
-                "output_format": "json",
             }
 
             result = await find_and_grep_tool.execute(arguments)
@@ -515,7 +523,7 @@ def nested_hello():
 
     @pytest.mark.asyncio
     async def test_complex_workflow_with_output(
-        self, find_and_grep_tool, temp_project_dir
+        self, find_and_grep_tool, temp_project_dir, mcp_tool_json_args
     ):
         """Test complex workflow combining multiple features with file output"""
         with patch(
@@ -532,6 +540,7 @@ def nested_hello():
             mock_run.side_effect = [(0, fd_output.encode(), b""), (0, rg_output, b"")]
 
             arguments = {
+                **mcp_tool_json_args,
                 "roots": [temp_project_dir],
                 "query": "hello",
                 "pattern": "*.py",
@@ -544,7 +553,6 @@ def nested_hello():
                 "summary_only": True,
                 "output_file": "complex_workflow",
                 "suppress_output": True,
-                "output_format": "json",
             }
 
             result = await find_and_grep_tool.execute(arguments)

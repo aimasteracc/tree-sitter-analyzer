@@ -295,7 +295,7 @@ class CoreClass:
 
     @pytest.mark.asyncio
     async def test_workflow_find_and_grep_then_extract(
-        self, all_tools, comprehensive_project
+        self, all_tools, comprehensive_project, mcp_tool_json_args
     ):
         """Test workflow: find files with patterns, then extract relevant sections"""
 
@@ -333,13 +333,13 @@ class CoreClass:
         main_py = Path(comprehensive_project) / "main.py"
 
         extract_args = {
+            **mcp_tool_json_args,
             "file_path": str(main_py),
             "start_line": 15,
             "end_line": 25,
             "format": "raw",
             "output_file": "extracted_class",
             "suppress_output": False,
-            "output_format": "json",
         }
 
         extract_result = await all_tools["read_partial"].execute(extract_args)

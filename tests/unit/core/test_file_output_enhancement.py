@@ -82,19 +82,19 @@ console.log(MathUtils.add(5, 3));
 
     @pytest.mark.asyncio
     async def test_extract_code_section_with_file_output(
-        self, sample_python_file, temp_dir
+        self, sample_python_file, temp_dir, mcp_tool_json_args
     ):
         """Test extract_code_section tool with file output functionality"""
         tool = ReadPartialTool(temp_dir)
 
         # Test with file output enabled (use JSON output_format for test assertions)
         arguments = {
+            **mcp_tool_json_args,
             "file_path": sample_python_file,
             "start_line": 1,
             "end_line": 4,
             "output_file": "extract_test",
             "suppress_output": False,
-            "output_format": "json",
         }
 
         result = await tool.execute(arguments)
@@ -121,19 +121,19 @@ console.log(MathUtils.add(5, 3));
 
     @pytest.mark.asyncio
     async def test_extract_code_section_with_suppress_output(
-        self, sample_python_file, temp_dir
+        self, sample_python_file, temp_dir, mcp_tool_json_args
     ):
         """Test extract_code_section tool with output suppression"""
         tool = ReadPartialTool(temp_dir)
 
         # Test with output suppressed (use JSON output_format for test assertions)
         arguments = {
+            **mcp_tool_json_args,
             "file_path": sample_python_file,
             "start_line": 6,
             "end_line": 10,
             "output_file": "extract_suppressed",
             "suppress_output": True,
-            "output_format": "json",
         }
 
         result = await tool.execute(arguments)
@@ -152,7 +152,9 @@ console.log(MathUtils.add(5, 3));
         assert Path(output_file_path).exists()
 
     @pytest.mark.asyncio
-    async def test_query_code_with_file_output(self, sample_javascript_file, temp_dir):
+    async def test_query_code_with_file_output(
+        self, sample_javascript_file, temp_dir, mcp_tool_json_args
+    ):
         """Test query_code tool with file output functionality"""
         tool = QueryTool(temp_dir)
 
@@ -176,9 +178,9 @@ console.log(MathUtils.add(5, 3));
 
             # Test with file output enabled
             arguments = {
+                **mcp_tool_json_args,
                 "file_path": sample_javascript_file,
                 "query_key": "functions",
-                "output_format": "json",
                 "output_file": "query_test",
                 "suppress_output": False,
             }
@@ -209,7 +211,9 @@ console.log(MathUtils.add(5, 3));
             assert len(saved_data["results"]) == 1
 
     @pytest.mark.asyncio
-    async def test_query_code_with_suppress_output(self, sample_python_file, temp_dir):
+    async def test_query_code_with_suppress_output(
+        self, sample_python_file, temp_dir, mcp_tool_json_args
+    ):
         """Test query_code tool with output suppression"""
         tool = QueryTool(temp_dir)
 
@@ -233,9 +237,9 @@ console.log(MathUtils.add(5, 3));
 
             # Test with output suppressed
             arguments = {
+                **mcp_tool_json_args,
                 "file_path": sample_python_file,
                 "query_key": "functions",
-                "output_format": "json",
                 "output_file": "query_suppressed",
                 "suppress_output": True,
             }
@@ -259,7 +263,7 @@ console.log(MathUtils.add(5, 3));
 
     @pytest.mark.asyncio
     async def test_query_code_summary_format_with_file_output(
-        self, sample_python_file, temp_dir
+        self, sample_python_file, temp_dir, mcp_tool_json_args
     ):
         """Test query_code tool with summary format and file output"""
         tool = QueryTool(temp_dir)
@@ -293,12 +297,12 @@ console.log(MathUtils.add(5, 3));
 
             # Test with summary format and file output (use JSON output_format for assertions)
             arguments = {
+                **mcp_tool_json_args,
                 "file_path": sample_python_file,
                 "query_key": "functions",
                 "result_format": "summary",  # result_format, not output_format
                 "output_file": "query_summary",
                 "suppress_output": False,
-                "output_format": "json",
             }
 
             result = await tool.execute(arguments)
@@ -374,7 +378,9 @@ console.log(MathUtils.add(5, 3));
             tool.validate_arguments(arguments)
 
     @pytest.mark.asyncio
-    async def test_file_output_error_handling(self, sample_python_file, temp_dir):
+    async def test_file_output_error_handling(
+        self, sample_python_file, temp_dir, mcp_tool_json_args
+    ):
         """Test error handling when file output fails"""
         tool = ReadPartialTool(temp_dir)
 
@@ -383,12 +389,12 @@ console.log(MathUtils.add(5, 3));
             mock_save.side_effect = OSError("Permission denied")
 
             arguments = {
+                **mcp_tool_json_args,
                 "file_path": sample_python_file,
                 "start_line": 1,
                 "end_line": 4,
                 "output_file": "error_test",
                 "suppress_output": False,
-                "output_format": "json",  # Use JSON format for test assertions
             }
 
             result = await tool.execute(arguments)
@@ -403,7 +409,9 @@ console.log(MathUtils.add(5, 3));
             assert "partial_content_result" in result
 
     @pytest.mark.asyncio
-    async def test_automatic_extension_detection(self, sample_python_file, temp_dir):
+    async def test_automatic_extension_detection(
+        self, sample_python_file, temp_dir, mcp_tool_json_args
+    ):
         """Test automatic file extension detection"""
         tool = QueryTool(temp_dir)
 
@@ -416,9 +424,9 @@ console.log(MathUtils.add(5, 3));
             mock_execute.return_value = mock_results
 
             arguments = {
+                **mcp_tool_json_args,
                 "file_path": sample_python_file,
                 "query_key": "functions",
-                "output_format": "json",
                 "output_file": "auto_extension_test",  # No extension
                 "suppress_output": True,
             }

@@ -95,7 +95,7 @@ public class Test {
 
     @pytest.mark.asyncio
     async def test_search_content_output_file_basic(
-        self, search_content_tool, temp_project_dir
+        self, search_content_tool, temp_project_dir, mcp_tool_json_args
     ):
         """Test basic file output functionality for search_content"""
         with patch(
@@ -106,11 +106,11 @@ public class Test {
             mock_run.return_value = (0, mock_output, b"")
 
             arguments = {
+                **mcp_tool_json_args,
                 "roots": [temp_project_dir],
                 "query": "hello",
                 "output_file": "search_results",
                 "suppress_output": False,
-                "output_format": "json",  # Use JSON format for test assertions
             }
 
             result = await search_content_tool.execute(arguments)
@@ -134,7 +134,7 @@ public class Test {
 
     @pytest.mark.asyncio
     async def test_search_content_suppress_output(
-        self, search_content_tool, temp_project_dir
+        self, search_content_tool, temp_project_dir, mcp_tool_json_args
     ):
         """Test suppress_output functionality for search_content"""
         with patch(
@@ -145,6 +145,7 @@ public class Test {
             mock_run.return_value = (0, mock_output, b"")
 
             arguments = {
+                **mcp_tool_json_args,
                 "roots": [temp_project_dir],
                 "query": "hello",
                 "output_file": "search_results_suppressed",
@@ -193,7 +194,7 @@ public class Test {
 
     @pytest.mark.asyncio
     async def test_find_and_grep_output_file(
-        self, find_and_grep_tool, temp_project_dir
+        self, find_and_grep_tool, temp_project_dir, mcp_tool_json_args
     ):
         """Test file output functionality for find_and_grep"""
         with patch(
@@ -211,13 +212,13 @@ public class Test {
             ]
 
             arguments = {
+                **mcp_tool_json_args,
                 "roots": [temp_project_dir],
                 "query": "hello",
                 "pattern": "*.py",
                 "glob": True,
                 "output_file": "find_grep_results",
                 "suppress_output": False,
-                "output_format": "json",  # Use JSON format for test assertions
             }
 
             result = await find_and_grep_tool.execute(arguments)
@@ -269,20 +270,20 @@ public class Test {
 
     @pytest.mark.asyncio
     async def test_read_partial_output_file_formats(
-        self, read_partial_tool, temp_project_dir
+        self, read_partial_tool, temp_project_dir, mcp_tool_json_args
     ):
         """Test different output formats for read_partial"""
         test_file = Path(temp_project_dir) / "test.py"
 
         # Test text format (default) - use JSON output_format for file format
         arguments = {
+            **mcp_tool_json_args,
             "file_path": str(test_file),
             "start_line": 1,
             "end_line": 5,
             "format": "text",
             "output_file": "partial_text",
             "suppress_output": False,
-            "output_format": "json",  # Use JSON format for test assertions
         }
 
         result = await read_partial_tool.execute(arguments)
@@ -314,18 +315,18 @@ public class Test {
 
     @pytest.mark.asyncio
     async def test_read_partial_suppress_output(
-        self, read_partial_tool, temp_project_dir
+        self, read_partial_tool, temp_project_dir, mcp_tool_json_args
     ):
         """Test suppress_output functionality for read_partial"""
         test_file = Path(temp_project_dir) / "test.py"
 
         arguments = {
+            **mcp_tool_json_args,
             "file_path": str(test_file),
             "start_line": 1,
             "end_line": 5,
             "output_file": "partial_suppressed",
             "suppress_output": True,
-            "output_format": "json",  # Use JSON format for test assertions
         }
 
         result = await read_partial_tool.execute(arguments)
@@ -337,7 +338,9 @@ public class Test {
         assert "output_file_path" in result
 
     @pytest.mark.asyncio
-    async def test_query_tool_output_file(self, query_tool, temp_project_dir):
+    async def test_query_tool_output_file(
+        self, query_tool, temp_project_dir, mcp_tool_json_args
+    ):
         """Test file output functionality for query_tool"""
         test_file = Path(temp_project_dir) / "test.py"
 
@@ -355,11 +358,11 @@ public class Test {
             mock_query.return_value = mock_results
 
             arguments = {
+                **mcp_tool_json_args,
                 "file_path": str(test_file),
                 "query_key": "functions",
                 "output_file": "query_results",
                 "suppress_output": False,
-                "output_format": "json",  # Use JSON format for test assertions
             }
 
             result = await query_tool.execute(arguments)
@@ -414,7 +417,7 @@ public class Test {
 
     @pytest.mark.asyncio
     async def test_file_output_error_handling(
-        self, search_content_tool, temp_project_dir
+        self, search_content_tool, temp_project_dir, mcp_tool_json_args
     ):
         """Test error handling for file output"""
         with patch(
@@ -431,11 +434,11 @@ public class Test {
                 mock_save.side_effect = Exception("File save error")
 
                 arguments = {
+                    **mcp_tool_json_args,
                     "roots": [temp_project_dir],
                     "query": "hello",
                     "output_file": "error_test",
                     "suppress_output": False,
-                    "output_format": "json",  # Use JSON format for test assertions
                 }
 
                 try:
@@ -475,7 +478,9 @@ public class Test {
             assert "suppress" in properties["suppress_output"]["description"].lower()
 
     @pytest.mark.asyncio
-    async def test_cross_tool_file_output_consistency(self, temp_project_dir):
+    async def test_cross_tool_file_output_consistency(
+        self, temp_project_dir, mcp_tool_json_args
+    ):
         """Test that file output behavior is consistent across tools"""
         test_file = Path(temp_project_dir) / "test.py"
 
@@ -484,44 +489,44 @@ public class Test {
             (
                 SearchContentTool(temp_project_dir),
                 {
+                    **mcp_tool_json_args,
                     "roots": [temp_project_dir],
                     "query": "hello",
                     "output_file": "search_consistency",
                     "suppress_output": True,
-                    "output_format": "json",  # Use JSON format for test assertions
                 },
             ),
             (
                 FindAndGrepTool(temp_project_dir),
                 {
+                    **mcp_tool_json_args,
                     "roots": [temp_project_dir],
                     "query": "hello",
                     "pattern": "*.py",
                     "glob": True,
                     "output_file": "find_consistency",
                     "suppress_output": True,
-                    "output_format": "json",  # Use JSON format for test assertions
                 },
             ),
             (
                 ReadPartialTool(temp_project_dir),
                 {
+                    **mcp_tool_json_args,
                     "file_path": str(test_file),
                     "start_line": 1,
                     "end_line": 5,
                     "output_file": "read_consistency",
                     "suppress_output": True,
-                    "output_format": "json",  # Use JSON format for test assertions
                 },
             ),
             (
                 QueryTool(temp_project_dir),
                 {
+                    **mcp_tool_json_args,
                     "file_path": str(test_file),
                     "query_key": "functions",
                     "output_file": "query_consistency",
                     "suppress_output": True,
-                    "output_format": "json",  # Use JSON format for test assertions
                 },
             ),
         ]

@@ -26,7 +26,7 @@ class DummyProc:
 
 @pytest.mark.asyncio
 async def test_search_content_with_output_file_and_suppress_output(
-    monkeypatch, tmp_path
+    monkeypatch, tmp_path, mcp_tool_json_args
 ):
     """Test SearchContentTool with output_file and suppress_output parameters."""
     tool = SearchContentTool(str(tmp_path))
@@ -66,11 +66,11 @@ async def test_search_content_with_output_file_and_suppress_output(
     output_file = "search_results.json"
     result = await tool.execute(
         {
+            **mcp_tool_json_args,
             "roots": [str(tmp_path)],
             "query": "calculate_total",
             "output_file": output_file,
             "suppress_output": True,
-            "output_format": "json",
         }
     )
 
@@ -95,7 +95,7 @@ async def test_search_content_with_output_file_and_suppress_output(
 
 @pytest.mark.asyncio
 async def test_find_and_grep_with_output_file_and_suppress_output(
-    monkeypatch, tmp_path
+    monkeypatch, tmp_path, mcp_tool_json_args
 ):
     """Test FindAndGrepTool with output_file and suppress_output parameters."""
     tool = FindAndGrepTool(str(tmp_path))
@@ -145,13 +145,13 @@ async def test_find_and_grep_with_output_file_and_suppress_output(
     output_file = "find_and_grep_results.json"
     result = await tool.execute(
         {
+            **mcp_tool_json_args,
             "roots": [str(tmp_path)],
             "pattern": "*calc*",
             "glob": True,
             "query": "calculate_total",
             "output_file": output_file,
             "suppress_output": True,
-            "output_format": "json",
         }
     )
 
@@ -176,7 +176,7 @@ async def test_find_and_grep_with_output_file_and_suppress_output(
 
 @pytest.mark.asyncio
 async def test_search_content_output_file_without_suppress_output(
-    monkeypatch, tmp_path
+    monkeypatch, tmp_path, mcp_tool_json_args
 ):
     """Test SearchContentTool with output_file but without suppress_output."""
     tool = SearchContentTool(str(tmp_path))
@@ -216,11 +216,11 @@ async def test_search_content_output_file_without_suppress_output(
     output_file = "search_results_full.json"
     result = await tool.execute(
         {
+            **mcp_tool_json_args,
             "roots": [str(tmp_path)],
             "query": "process_data",
             "output_file": output_file,
             "suppress_output": False,
-            "output_format": "json",
         }
     )
 
@@ -238,7 +238,7 @@ async def test_search_content_output_file_without_suppress_output(
 
 @pytest.mark.asyncio
 async def test_find_and_grep_output_file_auto_extension_detection(
-    monkeypatch, tmp_path
+    monkeypatch, tmp_path, mcp_tool_json_args
 ):
     """Test FindAndGrepTool with output_file auto-extension detection."""
     tool = FindAndGrepTool(str(tmp_path))
@@ -284,13 +284,13 @@ async def test_find_and_grep_output_file_auto_extension_detection(
     output_file = "analysis_results"
     result = await tool.execute(
         {
+            **mcp_tool_json_args,
             "roots": [str(tmp_path)],
             "pattern": "*.txt",
             "glob": True,
             "query": "data",
             "output_file": output_file,
             "suppress_output": True,
-            "output_format": "json",
         }
     )
 
@@ -318,7 +318,9 @@ async def test_find_and_grep_output_file_auto_extension_detection(
 
 
 @pytest.mark.asyncio
-async def test_search_content_large_results_token_optimization(monkeypatch, tmp_path):
+async def test_search_content_large_results_token_optimization(
+    monkeypatch, tmp_path, mcp_tool_json_args
+):
     """Test SearchContentTool token optimization with large results."""
     tool = SearchContentTool(str(tmp_path))
 
@@ -362,11 +364,11 @@ async def test_search_content_large_results_token_optimization(monkeypatch, tmp_
     # Test with suppress_output to save tokens (use JSON output_format)
     result = await tool.execute(
         {
+            **mcp_tool_json_args,
             "roots": [str(tmp_path)],
             "query": "function",
             "output_file": "large_results.json",
             "suppress_output": True,
-            "output_format": "json",
         }
     )
 
@@ -390,7 +392,9 @@ async def test_search_content_large_results_token_optimization(monkeypatch, tmp_
 
 
 @pytest.mark.asyncio
-async def test_find_and_grep_combined_optimization_features(monkeypatch, tmp_path):
+async def test_find_and_grep_combined_optimization_features(
+    monkeypatch, tmp_path, mcp_tool_json_args
+):
     """Test FindAndGrepTool with multiple optimization features combined."""
     tool = FindAndGrepTool(str(tmp_path))
 
@@ -444,6 +448,7 @@ async def test_find_and_grep_combined_optimization_features(monkeypatch, tmp_pat
     # Test with multiple optimization features (use JSON output_format)
     result = await tool.execute(
         {
+            **mcp_tool_json_args,
             "roots": [str(tmp_path)],
             "pattern": "module_*",
             "glob": True,
@@ -455,7 +460,6 @@ async def test_find_and_grep_combined_optimization_features(monkeypatch, tmp_pat
             "summary_only": True,
             "output_file": "optimized_search.json",
             "suppress_output": True,
-            "output_format": "json",
         }
     )
 
@@ -548,7 +552,9 @@ def test_find_and_grep_validation_with_new_parameters(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_list_files_with_output_file_and_suppress_output(monkeypatch, tmp_path):
+async def test_list_files_with_output_file_and_suppress_output(
+    monkeypatch, tmp_path, mcp_tool_json_args
+):
     """Test ListFilesTool with output_file and suppress_output parameters."""
     tool = ListFilesTool(str(tmp_path))
 
@@ -580,11 +586,11 @@ async def test_list_files_with_output_file_and_suppress_output(monkeypatch, tmp_
     output_file = "file_list_results.json"
     result = await tool.execute(
         {
+            **mcp_tool_json_args,
             "roots": [str(tmp_path)],
             "extensions": ["py", "txt"],
             "output_file": output_file,
             "suppress_output": True,
-            "output_format": "json",
         }
     )
 
@@ -608,7 +614,9 @@ async def test_list_files_with_output_file_and_suppress_output(monkeypatch, tmp_
 
 
 @pytest.mark.asyncio
-async def test_list_files_count_only_with_output_file(monkeypatch, tmp_path):
+async def test_list_files_count_only_with_output_file(
+    monkeypatch, tmp_path, mcp_tool_json_args
+):
     """Test ListFilesTool count_only mode with output_file and suppress_output."""
     tool = ListFilesTool(str(tmp_path))
 
@@ -633,12 +641,12 @@ async def test_list_files_count_only_with_output_file(monkeypatch, tmp_path):
     output_file = "count_results.json"
     result = await tool.execute(
         {
+            **mcp_tool_json_args,
             "roots": [str(tmp_path)],
             "extensions": ["json"],
             "count_only": True,
             "output_file": output_file,
             "suppress_output": True,
-            "output_format": "json",
         }
     )
 
@@ -662,7 +670,9 @@ async def test_list_files_count_only_with_output_file(monkeypatch, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_list_files_output_file_without_suppress_output(monkeypatch, tmp_path):
+async def test_list_files_output_file_without_suppress_output(
+    monkeypatch, tmp_path, mcp_tool_json_args
+):
     """Test ListFilesTool with output_file but without suppress_output."""
     tool = ListFilesTool(str(tmp_path))
 
@@ -685,11 +695,11 @@ async def test_list_files_output_file_without_suppress_output(monkeypatch, tmp_p
     output_file = "list_results_full.json"
     result = await tool.execute(
         {
+            **mcp_tool_json_args,
             "roots": [str(tmp_path)],
             "extensions": ["md"],
             "output_file": output_file,
             "suppress_output": False,
-            "output_format": "json",
         }
     )
 
@@ -705,7 +715,9 @@ async def test_list_files_output_file_without_suppress_output(monkeypatch, tmp_p
 
 
 @pytest.mark.asyncio
-async def test_list_files_large_results_token_optimization(monkeypatch, tmp_path):
+async def test_list_files_large_results_token_optimization(
+    monkeypatch, tmp_path, mcp_tool_json_args
+):
     """Test ListFilesTool token optimization with large results."""
     tool = ListFilesTool(str(tmp_path))
 
@@ -729,13 +741,13 @@ async def test_list_files_large_results_token_optimization(monkeypatch, tmp_path
     # Test with suppress_output to save tokens (use JSON output_format)
     result = await tool.execute(
         {
+            **mcp_tool_json_args,
             "roots": [str(tmp_path)],
             "pattern": "large_file_*",
             "glob": True,
             "extensions": ["txt"],
             "output_file": "large_file_list.json",
             "suppress_output": True,
-            "output_format": "json",
         }
     )
 
