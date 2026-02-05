@@ -16,8 +16,22 @@ This module provides MCP tool implementations:
 - QueryCallChainTool: Find call paths between functions (NEW!)
 """
 
+from tree_sitter_analyzer_v2.mcp.tools.ai_assistant import (
+    BestPracticeCheckerTool,
+    DuplicateDetectorTool,
+    ImprovementSuggesterTool,
+    PatternRecognizerTool,
+    SmellDetectorTool,
+)
 from tree_sitter_analyzer_v2.mcp.tools.analyze import AnalyzeTool
 from tree_sitter_analyzer_v2.mcp.tools.base import BaseTool
+from tree_sitter_analyzer_v2.mcp.tools.collaboration import (
+    CodeReviewTool,
+    CommentManagerTool,
+    NotebookEditorTool,
+    ShellExecutorTool,
+    TaskManagerTool,
+)
 from tree_sitter_analyzer_v2.mcp.tools.code_graph import (
     AnalyzeCodeGraphTool,
     FindFunctionCallersTool,
@@ -95,4 +109,14 @@ __all__ = [
     "ChangeDetectorTool",
     "CacheManagerTool",
     "IncrementalAnalyzerTool",
+    "PatternRecognizerTool",
+    "DuplicateDetectorTool",
+    "SmellDetectorTool",
+    "ImprovementSuggesterTool",
+    "BestPracticeCheckerTool",
+    "CodeReviewTool",
+    "CommentManagerTool",
+    "TaskManagerTool",
+    "NotebookEditorTool",
+    "ShellExecutorTool",
 ]

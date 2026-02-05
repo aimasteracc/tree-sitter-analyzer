@@ -34,16 +34,20 @@ from tree_sitter_analyzer_v2.mcp.tools import (
     AnalyzeCodeGraphTool,
     AnalyzeTool,
     BatchOperationsTool,
+    BestPracticeCheckerTool,
     CacheManagerTool,
     ChangeDetectorTool,
     CheckCodeScaleTool,
     ClassGeneratorTool,
     CodeMetricsTool,
     CodeQualityTool,
+    CodeReviewTool,
+    CommentManagerTool,
     DeleteFileTool,
     DependencyAnalyzerTool,
     DependencyGraphTool,
     DocGeneratorTool,
+    DuplicateDetectorTool,
     ExtractCodeSectionTool,
     FindAndGrepTool,
     FindFilesTool,
@@ -52,9 +56,12 @@ from tree_sitter_analyzer_v2.mcp.tools import (
     GitCommitTool,
     GitDiffTool,
     GitStatusTool,
+    ImprovementSuggesterTool,
     IncrementalAnalyzerTool,
     LinterTool,
     MockGeneratorTool,
+    NotebookEditorTool,
+    PatternRecognizerTool,
     PerformanceMonitorTool,
     ProfileCodeTool,
     ProjectAnalyzerTool,
@@ -65,6 +72,9 @@ from tree_sitter_analyzer_v2.mcp.tools import (
     ReplaceInFileTool,
     SearchContentTool,
     SecurityScannerTool,
+    ShellExecutorTool,
+    SmellDetectorTool,
+    TaskManagerTool,
     TestGeneratorTool,
     TestRunnerTool,
     VisualizeCodeGraphTool,
@@ -167,6 +177,20 @@ class MCPServer:
         self.tool_registry.register(ChangeDetectorTool())
         self.tool_registry.register(CacheManagerTool())
         self.tool_registry.register(IncrementalAnalyzerTool())
+
+        # AI assistant tools
+        self.tool_registry.register(PatternRecognizerTool())
+        self.tool_registry.register(DuplicateDetectorTool())
+        self.tool_registry.register(SmellDetectorTool())
+        self.tool_registry.register(ImprovementSuggesterTool())
+        self.tool_registry.register(BestPracticeCheckerTool())
+
+        # Collaboration tools
+        self.tool_registry.register(CodeReviewTool())
+        self.tool_registry.register(CommentManagerTool())
+        self.tool_registry.register(TaskManagerTool())
+        self.tool_registry.register(NotebookEditorTool())
+        self.tool_registry.register(ShellExecutorTool())
 
         # Code Graph tools (NEW in Phase 9!)
         self.tool_registry.register(AnalyzeCodeGraphTool())
