@@ -108,7 +108,7 @@ public class TestClass {
         "tree_sitter_analyzer.mcp.tools.analyze_code_structure_tool.get_performance_monitor"
     )
     async def test_suppress_output_false_includes_table_output(
-        self, mock_monitor, mock_detect_lang, mock_engine, temp_java_file
+        self, mock_monitor, mock_detect_lang, mock_engine, temp_java_file, mcp_tool_json_args
     ):
         """Test that suppress_output=False includes table_output in response."""
         # Setup mocks
@@ -130,10 +130,10 @@ public class TestClass {
         tool = TableFormatTool()
 
         args = {
+            **mcp_tool_json_args,
             "file_path": temp_java_file,
             "format_type": "compact",
             "suppress_output": False,
-            "output_format": "json",
         }
 
         result = await tool.execute(args)
@@ -154,7 +154,7 @@ public class TestClass {
         "tree_sitter_analyzer.mcp.tools.analyze_code_structure_tool.get_performance_monitor"
     )
     async def test_suppress_output_true_without_output_file_includes_table_output(
-        self, mock_monitor, mock_detect_lang, mock_engine, temp_java_file
+        self, mock_monitor, mock_detect_lang, mock_engine, temp_java_file, mcp_tool_json_args
     ):
         """Test that suppress_output=True without output_file still includes table_output."""
         # Setup mocks
@@ -176,10 +176,10 @@ public class TestClass {
         tool = TableFormatTool()
 
         args = {
+            **mcp_tool_json_args,
             "file_path": temp_java_file,
             "format_type": "compact",
             "suppress_output": True,
-            "output_format": "json",
             # No output_file specified
         }
 
@@ -210,6 +210,7 @@ public class TestClass {
         mock_detect_lang,
         mock_engine,
         temp_java_file,
+        mcp_tool_json_args,
     ):
         """Test that suppress_output=True with output_file excludes table_output from response."""
         # Setup mocks
@@ -236,11 +237,11 @@ public class TestClass {
         tool = TableFormatTool()
 
         args = {
+            **mcp_tool_json_args,
             "file_path": temp_java_file,
             "format_type": "compact",
             "output_file": "test_output.md",
             "suppress_output": True,
-            "output_format": "json",
         }
 
         result = await tool.execute(args)
@@ -272,6 +273,7 @@ public class TestClass {
         mock_detect_lang,
         mock_engine,
         temp_java_file,
+        mcp_tool_json_args,
     ):
         """Test that suppress_output=False with output_file still includes table_output."""
         # Setup mocks
@@ -298,11 +300,11 @@ public class TestClass {
         tool = TableFormatTool()
 
         args = {
+            **mcp_tool_json_args,
             "file_path": temp_java_file,
             "format_type": "compact",
             "output_file": "test_output.md",
             "suppress_output": False,
-            "output_format": "json",
         }
 
         result = await tool.execute(args)

@@ -212,7 +212,7 @@ if (typeof module !== 'undefined') {
             return []
 
     @pytest.mark.asyncio
-    async def test_basic_file_output_json_format(self, query_tool, temp_project_dir):
+    async def test_basic_file_output_json_format(self, query_tool, temp_project_dir, mcp_tool_json_args):
         """Test basic file output with JSON format"""
         python_file = Path(temp_project_dir) / "sample.py"
 
@@ -220,9 +220,9 @@ if (typeof module !== 'undefined') {
             mock_query.return_value = self.create_mock_query_results("functions")
 
             arguments = {
+                **mcp_tool_json_args,
                 "file_path": str(python_file),
                 "query_key": "functions",
-                "output_format": "json",
                 "output_file": "query_functions_json",
                 "suppress_output": False,
             }
@@ -258,7 +258,7 @@ if (typeof module !== 'undefined') {
             assert len(saved_content["results"]) == 3
 
     @pytest.mark.asyncio
-    async def test_summary_format_output(self, query_tool, temp_project_dir):
+    async def test_summary_format_output(self, query_tool, temp_project_dir, mcp_tool_json_args):
         """Test file output with summary format"""
         python_file = Path(temp_project_dir) / "sample.py"
 
@@ -266,12 +266,12 @@ if (typeof module !== 'undefined') {
             mock_query.return_value = self.create_mock_query_results("functions")
 
             arguments = {
+                **mcp_tool_json_args,
                 "file_path": str(python_file),
                 "query_key": "functions",
                 "result_format": "summary",
                 "output_file": "query_functions_summary",
                 "suppress_output": False,
-                "output_format": "json",  # Use JSON format for test assertions
             }
 
             result = await query_tool.execute(arguments)
@@ -300,7 +300,7 @@ if (typeof module !== 'undefined') {
             assert "total_count" in saved_content
 
     @pytest.mark.asyncio
-    async def test_suppress_output_functionality(self, query_tool, temp_project_dir):
+    async def test_suppress_output_functionality(self, query_tool, temp_project_dir, mcp_tool_json_args):
         """Test suppress_output functionality"""
         python_file = Path(temp_project_dir) / "sample.py"
 
@@ -308,11 +308,11 @@ if (typeof module !== 'undefined') {
             mock_query.return_value = self.create_mock_query_results("classes")
 
             arguments = {
+                **mcp_tool_json_args,
                 "file_path": str(python_file),
                 "query_key": "classes",
                 "output_file": "query_classes_suppressed",
                 "suppress_output": True,
-                "output_format": "json",  # Use JSON format for test assertions
             }
 
             result = await query_tool.execute(arguments)
@@ -342,7 +342,7 @@ if (typeof module !== 'undefined') {
             assert len(saved_content["results"]) == 1
 
     @pytest.mark.asyncio
-    async def test_custom_query_string(self, query_tool, temp_project_dir):
+    async def test_custom_query_string(self, query_tool, temp_project_dir, mcp_tool_json_args):
         """Test custom query string with file output"""
         python_file = Path(temp_project_dir) / "sample.py"
 
@@ -350,11 +350,11 @@ if (typeof module !== 'undefined') {
             mock_query.return_value = self.create_mock_query_results("functions")
 
             arguments = {
+                **mcp_tool_json_args,
                 "file_path": str(python_file),
                 "query_string": "(function_definition) @function",
                 "output_file": "query_custom_string",
                 "suppress_output": False,
-                "output_format": "json",  # Use JSON format for test assertions
             }
 
             result = await query_tool.execute(arguments)
@@ -389,7 +389,7 @@ if (typeof module !== 'undefined') {
             assert result["count"] == 0
 
     @pytest.mark.asyncio
-    async def test_automatic_base_name_generation(self, query_tool, temp_project_dir):
+    async def test_automatic_base_name_generation(self, query_tool, temp_project_dir, mcp_tool_json_args):
         """Test automatic base name generation"""
         python_file = Path(temp_project_dir) / "sample.py"
 
@@ -397,11 +397,11 @@ if (typeof module !== 'undefined') {
             mock_query.return_value = self.create_mock_query_results("functions")
 
             arguments = {
+                **mcp_tool_json_args,
                 "file_path": str(python_file),
                 "query_key": "functions",
                 "output_file": "",  # Empty string
                 "suppress_output": False,
-                "output_format": "json",  # Use JSON format for test assertions
             }
 
             result = await query_tool.execute(arguments)
@@ -421,7 +421,7 @@ if (typeof module !== 'undefined') {
                 assert "functions" in output_file.name
 
     @pytest.mark.asyncio
-    async def test_java_file_query(self, query_tool, temp_project_dir):
+    async def test_java_file_query(self, query_tool, temp_project_dir, mcp_tool_json_args):
         """Test querying Java file"""
         java_file = Path(temp_project_dir) / "Sample.java"
 
@@ -446,12 +446,12 @@ if (typeof module !== 'undefined') {
             mock_query.return_value = java_results
 
             arguments = {
+                **mcp_tool_json_args,
                 "file_path": str(java_file),
                 "query_key": "methods",
                 "language": "java",
                 "output_file": "java_query_methods",
                 "suppress_output": False,
-                "output_format": "json",  # Use JSON format for test assertions
             }
 
             result = await query_tool.execute(arguments)
@@ -466,7 +466,7 @@ if (typeof module !== 'undefined') {
             assert output_file.exists()
 
     @pytest.mark.asyncio
-    async def test_javascript_file_query(self, query_tool, temp_project_dir):
+    async def test_javascript_file_query(self, query_tool, temp_project_dir, mcp_tool_json_args):
         """Test querying JavaScript file"""
         js_file = Path(temp_project_dir) / "sample.js"
 
@@ -491,11 +491,11 @@ if (typeof module !== 'undefined') {
             mock_query.return_value = js_results
 
             arguments = {
+                **mcp_tool_json_args,
                 "file_path": str(js_file),
                 "query_key": "functions",
                 "output_file": "js_query_functions",
                 "suppress_output": False,
-                "output_format": "json",  # Use JSON format for test assertions
             }
 
             result = await query_tool.execute(arguments)
@@ -506,7 +506,7 @@ if (typeof module !== 'undefined') {
             assert result["count"] == 2
 
     @pytest.mark.asyncio
-    async def test_error_handling_file_save_failure(self, query_tool, temp_project_dir):
+    async def test_error_handling_file_save_failure(self, query_tool, temp_project_dir, mcp_tool_json_args):
         """Test error handling when file save fails"""
         python_file = Path(temp_project_dir) / "sample.py"
 
@@ -520,11 +520,11 @@ if (typeof module !== 'undefined') {
                 mock_save.side_effect = Exception("File save error")
 
                 arguments = {
+                    **mcp_tool_json_args,
                     "file_path": str(python_file),
                     "query_key": "functions",
                     "output_file": "error_test",
                     "suppress_output": False,
-                    "output_format": "json",  # Use JSON format for test assertions
                 }
 
                 result = await query_tool.execute(arguments)
@@ -657,7 +657,7 @@ if (typeof module !== 'undefined') {
         )  # Default is toon for token optimization
 
     @pytest.mark.asyncio
-    async def test_language_auto_detection(self, query_tool, temp_project_dir):
+    async def test_language_auto_detection(self, query_tool, temp_project_dir, mcp_tool_json_args):
         """Test automatic language detection"""
         python_file = Path(temp_project_dir) / "sample.py"
 
@@ -665,11 +665,11 @@ if (typeof module !== 'undefined') {
             mock_query.return_value = self.create_mock_query_results("functions")
 
             arguments = {
+                **mcp_tool_json_args,
                 "file_path": str(python_file),
                 "query_key": "functions",
                 # No language specified - should auto-detect
                 "output_file": "auto_detect_test",
-                "output_format": "json",  # Use JSON format for test assertions
             }
 
             result = await query_tool.execute(arguments)
@@ -679,7 +679,7 @@ if (typeof module !== 'undefined') {
             assert result["success"] is True
 
     @pytest.mark.asyncio
-    async def test_filter_parameter(self, query_tool, temp_project_dir):
+    async def test_filter_parameter(self, query_tool, temp_project_dir, mcp_tool_json_args):
         """Test filter parameter functionality"""
         python_file = Path(temp_project_dir) / "sample.py"
 
@@ -697,12 +697,12 @@ if (typeof module !== 'undefined') {
             mock_query.return_value = filtered_results
 
             arguments = {
+                **mcp_tool_json_args,
                 "file_path": str(python_file),
                 "query_key": "functions",
                 "filter": "name=~get*",
                 "output_file": "filtered_query",
                 "suppress_output": False,
-                "output_format": "json",
             }
 
             result = await query_tool.execute(arguments)
@@ -717,7 +717,7 @@ if (typeof module !== 'undefined') {
             assert call_args[4] == "name=~get*"  # filter_expression parameter
 
     @pytest.mark.asyncio
-    async def test_comprehensive_workflow(self, query_tool, temp_project_dir):
+    async def test_comprehensive_workflow(self, query_tool, temp_project_dir, mcp_tool_json_args):
         """Test comprehensive workflow with all features"""
         python_file = Path(temp_project_dir) / "sample.py"
 
@@ -725,6 +725,7 @@ if (typeof module !== 'undefined') {
             mock_query.return_value = self.create_mock_query_results("functions")
 
             arguments = {
+                **mcp_tool_json_args,
                 "file_path": str(python_file),
                 "language": "python",
                 "query_key": "functions",
@@ -732,7 +733,6 @@ if (typeof module !== 'undefined') {
                 "result_format": "summary",
                 "output_file": "comprehensive_query",
                 "suppress_output": True,
-                "output_format": "json",  # Use JSON format for test assertions
             }
 
             result = await query_tool.execute(arguments)

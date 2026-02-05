@@ -224,7 +224,7 @@ class TestExecution:
         "tree_sitter_analyzer.mcp.tools.universal_analyze_tool.is_language_supported"
     )
     async def test_execute_basic_analysis_python(
-        self, mock_supported, mock_detect, tmp_path
+        self, mock_supported, mock_detect, tmp_path, mcp_tool_json_args
     ):
         """Test basic analysis execution for Python"""
         test_file = tmp_path / "test.py"
@@ -247,7 +247,7 @@ class TestExecution:
         with patch.object(
             tool.analysis_engine, "analyze", AsyncMock(return_value=mock_result)
         ):
-            args = {"file_path": str(test_file), "analysis_type": "basic", "output_format": "json"}
+            args = {**mcp_tool_json_args, "file_path": str(test_file), "analysis_type": "basic"}
             result = await tool.execute(args)
 
             assert "file_path" in result
@@ -264,7 +264,7 @@ class TestExecution:
         "tree_sitter_analyzer.mcp.tools.universal_analyze_tool.is_language_supported"
     )
     async def test_execute_detailed_analysis(
-        self, mock_supported, mock_detect, tmp_path
+        self, mock_supported, mock_detect, tmp_path, mcp_tool_json_args
     ):
         """Test detailed analysis execution"""
         test_file = tmp_path / "test.py"
@@ -286,7 +286,7 @@ class TestExecution:
         with patch.object(
             tool.analysis_engine, "analyze", AsyncMock(return_value=mock_result)
         ):
-            args = {"file_path": str(test_file), "analysis_type": "detailed", "output_format": "json"}
+            args = {**mcp_tool_json_args, "file_path": str(test_file), "analysis_type": "detailed"}
             result = await tool.execute(args)
 
             assert result["analysis_type"] == "detailed"
@@ -300,7 +300,7 @@ class TestExecution:
         "tree_sitter_analyzer.mcp.tools.universal_analyze_tool.is_language_supported"
     )
     async def test_execute_with_include_ast(
-        self, mock_supported, mock_detect, tmp_path
+        self, mock_supported, mock_detect, tmp_path, mcp_tool_json_args
     ):
         """Test execution with include_ast option"""
         test_file = tmp_path / "test.py"
@@ -323,10 +323,10 @@ class TestExecution:
             tool.analysis_engine, "analyze", AsyncMock(return_value=mock_result)
         ):
             args = {
+                **mcp_tool_json_args,
                 "file_path": str(test_file),
                 "analysis_type": "basic",
                 "include_ast": True,
-                "output_format": "json",
             }
             result = await tool.execute(args)
 
@@ -340,7 +340,7 @@ class TestExecution:
         "tree_sitter_analyzer.mcp.tools.universal_analyze_tool.is_language_supported"
     )
     async def test_execute_with_include_queries(
-        self, mock_supported, mock_detect, tmp_path
+        self, mock_supported, mock_detect, tmp_path, mcp_tool_json_args
     ):
         """Test execution with include_queries option"""
         test_file = tmp_path / "test.py"
@@ -362,10 +362,10 @@ class TestExecution:
             tool.analysis_engine, "analyze", AsyncMock(return_value=mock_result)
         ):
             args = {
+                **mcp_tool_json_args,
                 "file_path": str(test_file),
                 "analysis_type": "basic",
                 "include_queries": True,
-                "output_format": "json",
             }
             result = await tool.execute(args)
 
@@ -379,7 +379,7 @@ class TestExecution:
         "tree_sitter_analyzer.mcp.tools.universal_analyze_tool.is_language_supported"
     )
     async def test_execute_structure_analysis(
-        self, mock_supported, mock_detect, tmp_path
+        self, mock_supported, mock_detect, tmp_path, mcp_tool_json_args
     ):
         """Test structure analysis type"""
         test_file = tmp_path / "test.py"
@@ -401,7 +401,7 @@ class TestExecution:
         with patch.object(
             tool.analysis_engine, "analyze", AsyncMock(return_value=mock_result)
         ):
-            args = {"file_path": str(test_file), "analysis_type": "structure", "output_format": "json"}
+            args = {**mcp_tool_json_args, "file_path": str(test_file), "analysis_type": "structure"}
             result = await tool.execute(args)
 
             assert result["analysis_type"] == "structure"
@@ -415,7 +415,7 @@ class TestExecution:
         "tree_sitter_analyzer.mcp.tools.universal_analyze_tool.is_language_supported"
     )
     async def test_execute_metrics_analysis(
-        self, mock_supported, mock_detect, tmp_path
+        self, mock_supported, mock_detect, tmp_path, mcp_tool_json_args
     ):
         """Test metrics analysis type"""
         test_file = tmp_path / "test.py"
@@ -437,7 +437,7 @@ class TestExecution:
         with patch.object(
             tool.analysis_engine, "analyze", AsyncMock(return_value=mock_result)
         ):
-            args = {"file_path": str(test_file), "analysis_type": "metrics", "output_format": "json"}
+            args = {**mcp_tool_json_args, "file_path": str(test_file), "analysis_type": "metrics"}
             result = await tool.execute(args)
 
             assert result["analysis_type"] == "metrics"
@@ -547,7 +547,7 @@ class TestEdgeCases:
     """Test edge cases and error handling"""
 
     @pytest.mark.asyncio
-    async def test_execute_with_special_characters_in_path(self, tmp_path):
+    async def test_execute_with_special_characters_in_path(self, tmp_path, mcp_tool_json_args):
         """Test execution with special characters in file path"""
         # Create file with special characters
         test_file = tmp_path / "test file (1).py"
@@ -574,13 +574,13 @@ class TestEdgeCases:
                 with patch.object(
                     tool.analysis_engine, "analyze", AsyncMock(return_value=mock_result)
                 ):
-                    args = {"file_path": str(test_file), "output_format": "json"}
+                    args = {**mcp_tool_json_args, "file_path": str(test_file)}
                     result = await tool.execute(args)
 
                     assert result["language"] == "python"
 
     @pytest.mark.asyncio
-    async def test_execute_with_empty_file(self, tmp_path):
+    async def test_execute_with_empty_file(self, tmp_path, mcp_tool_json_args):
         """Test execution with empty file"""
         test_file = tmp_path / "empty.py"
         test_file.write_text("")
@@ -606,7 +606,7 @@ class TestEdgeCases:
                 with patch.object(
                     tool.analysis_engine, "analyze", AsyncMock(return_value=mock_result)
                 ):
-                    args = {"file_path": str(test_file), "output_format": "json"}
+                    args = {**mcp_tool_json_args, "file_path": str(test_file)}
                     result = await tool.execute(args)
 
                     assert result["language"] == "python"
