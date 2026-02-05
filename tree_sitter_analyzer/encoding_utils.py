@@ -56,12 +56,16 @@ except ImportError:
 try:
     from .utils import log_debug, log_warning
 except ImportError:
-    # Fallback logging functions with compatible signatures
+    # Fallback: use stdlib logging so output is controlled by log level
+    import logging
+
+    _fallback_log = logging.getLogger("tree_sitter_analyzer.encoding_utils")
+
     def log_debug(message: str, *args: Any, **kwargs: Any) -> None:
-        print(f"DEBUG: {message}")
+        _fallback_log.debug(message, *args, **kwargs)
 
     def log_warning(message: str, *args: Any, **kwargs: Any) -> None:
-        print(f"WARNING: {message}")
+        _fallback_log.warning(message, *args, **kwargs)
 
 
 class EncodingCache:

@@ -368,8 +368,6 @@ class CppTableFormatter(BaseTableFormatter):
             else:
                 type_str = "Any"
 
-            # DEBUG
-            # print(f"DEBUG: type_str='{type_str}' shortened='{self._shorten_type(type_str)}'")
             param_types.append(self._shorten_type(type_str))
 
         params_str = ",".join(param_types)

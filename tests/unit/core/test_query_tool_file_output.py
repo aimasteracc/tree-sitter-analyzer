@@ -702,6 +702,7 @@ if (typeof module !== 'undefined') {
                 "filter": "name=~get*",
                 "output_file": "filtered_query",
                 "suppress_output": False,
+                "output_format": "json",
             }
 
             result = await query_tool.execute(arguments)

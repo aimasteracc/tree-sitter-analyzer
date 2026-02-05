@@ -133,6 +133,7 @@ public class TestClass {
             "file_path": temp_java_file,
             "format_type": "compact",
             "suppress_output": False,
+            "output_format": "json",
         }
 
         result = await tool.execute(args)
@@ -178,6 +179,7 @@ public class TestClass {
             "file_path": temp_java_file,
             "format_type": "compact",
             "suppress_output": True,
+            "output_format": "json",
             # No output_file specified
         }
 
@@ -238,6 +240,7 @@ public class TestClass {
             "format_type": "compact",
             "output_file": "test_output.md",
             "suppress_output": True,
+            "output_format": "json",
         }
 
         result = await tool.execute(args)
@@ -299,6 +302,7 @@ public class TestClass {
             "format_type": "compact",
             "output_file": "test_output.md",
             "suppress_output": False,
+            "output_format": "json",
         }
 
         result = await tool.execute(args)

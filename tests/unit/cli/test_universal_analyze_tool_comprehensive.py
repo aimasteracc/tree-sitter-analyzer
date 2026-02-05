@@ -247,7 +247,7 @@ class TestExecution:
         with patch.object(
             tool.analysis_engine, "analyze", AsyncMock(return_value=mock_result)
         ):
-            args = {"file_path": str(test_file), "analysis_type": "basic"}
+            args = {"file_path": str(test_file), "analysis_type": "basic", "output_format": "json"}
             result = await tool.execute(args)
 
             assert "file_path" in result
@@ -286,7 +286,7 @@ class TestExecution:
         with patch.object(
             tool.analysis_engine, "analyze", AsyncMock(return_value=mock_result)
         ):
-            args = {"file_path": str(test_file), "analysis_type": "detailed"}
+            args = {"file_path": str(test_file), "analysis_type": "detailed", "output_format": "json"}
             result = await tool.execute(args)
 
             assert result["analysis_type"] == "detailed"
@@ -326,6 +326,7 @@ class TestExecution:
                 "file_path": str(test_file),
                 "analysis_type": "basic",
                 "include_ast": True,
+                "output_format": "json",
             }
             result = await tool.execute(args)
 
@@ -364,6 +365,7 @@ class TestExecution:
                 "file_path": str(test_file),
                 "analysis_type": "basic",
                 "include_queries": True,
+                "output_format": "json",
             }
             result = await tool.execute(args)
 
@@ -399,7 +401,7 @@ class TestExecution:
         with patch.object(
             tool.analysis_engine, "analyze", AsyncMock(return_value=mock_result)
         ):
-            args = {"file_path": str(test_file), "analysis_type": "structure"}
+            args = {"file_path": str(test_file), "analysis_type": "structure", "output_format": "json"}
             result = await tool.execute(args)
 
             assert result["analysis_type"] == "structure"
@@ -435,7 +437,7 @@ class TestExecution:
         with patch.object(
             tool.analysis_engine, "analyze", AsyncMock(return_value=mock_result)
         ):
-            args = {"file_path": str(test_file), "analysis_type": "metrics"}
+            args = {"file_path": str(test_file), "analysis_type": "metrics", "output_format": "json"}
             result = await tool.execute(args)
 
             assert result["analysis_type"] == "metrics"
@@ -572,7 +574,7 @@ class TestEdgeCases:
                 with patch.object(
                     tool.analysis_engine, "analyze", AsyncMock(return_value=mock_result)
                 ):
-                    args = {"file_path": str(test_file)}
+                    args = {"file_path": str(test_file), "output_format": "json"}
                     result = await tool.execute(args)
 
                     assert result["language"] == "python"
@@ -604,7 +606,7 @@ class TestEdgeCases:
                 with patch.object(
                     tool.analysis_engine, "analyze", AsyncMock(return_value=mock_result)
                 ):
-                    args = {"file_path": str(test_file)}
+                    args = {"file_path": str(test_file), "output_format": "json"}
                     result = await tool.execute(args)
 
                     assert result["language"] == "python"

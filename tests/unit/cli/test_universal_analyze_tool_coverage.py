@@ -87,7 +87,7 @@ public class Sample {
     @pytest.mark.asyncio
     async def test_execute_basic_analysis(self, tool, sample_python_file):
         """Test basic analysis type."""
-        args = {"file_path": sample_python_file, "analysis_type": "basic"}
+        args = {"file_path": sample_python_file, "analysis_type": "basic", "output_format": "json"}
         result = await tool.execute(args)
 
         assert isinstance(result, dict)
@@ -98,7 +98,7 @@ public class Sample {
     @pytest.mark.asyncio
     async def test_execute_detailed_analysis(self, tool, sample_python_file):
         """Test detailed analysis type."""
-        args = {"file_path": sample_python_file, "analysis_type": "detailed"}
+        args = {"file_path": sample_python_file, "analysis_type": "detailed", "output_format": "json"}
         result = await tool.execute(args)
 
         assert isinstance(result, dict)
@@ -108,7 +108,7 @@ public class Sample {
     @pytest.mark.asyncio
     async def test_execute_structure_analysis(self, tool, sample_python_file):
         """Test structure analysis type."""
-        args = {"file_path": sample_python_file, "analysis_type": "structure"}
+        args = {"file_path": sample_python_file, "analysis_type": "structure", "output_format": "json"}
         result = await tool.execute(args)
 
         assert isinstance(result, dict)
@@ -118,7 +118,7 @@ public class Sample {
     @pytest.mark.asyncio
     async def test_execute_metrics_analysis(self, tool, sample_python_file):
         """Test metrics analysis type."""
-        args = {"file_path": sample_python_file, "analysis_type": "metrics"}
+        args = {"file_path": sample_python_file, "analysis_type": "metrics", "output_format": "json"}
         result = await tool.execute(args)
 
         assert isinstance(result, dict)
@@ -128,7 +128,7 @@ public class Sample {
     @pytest.mark.asyncio
     async def test_execute_with_include_ast(self, tool, sample_python_file):
         """Test analysis with include_ast option."""
-        args = {"file_path": sample_python_file, "include_ast": True}
+        args = {"file_path": sample_python_file, "include_ast": True, "output_format": "json"}
         result = await tool.execute(args)
 
         assert isinstance(result, dict)
@@ -138,7 +138,7 @@ public class Sample {
     @pytest.mark.asyncio
     async def test_execute_with_include_queries(self, tool, sample_python_file):
         """Test analysis with include_queries option."""
-        args = {"file_path": sample_python_file, "include_queries": True}
+        args = {"file_path": sample_python_file, "include_queries": True, "output_format": "json"}
         result = await tool.execute(args)
 
         assert isinstance(result, dict)
@@ -148,7 +148,7 @@ public class Sample {
     @pytest.mark.asyncio
     async def test_execute_java_file_basic(self, tool, sample_java_file):
         """Test Java file analysis with basic type."""
-        args = {"file_path": sample_java_file, "analysis_type": "basic"}
+        args = {"file_path": sample_java_file, "analysis_type": "basic", "output_format": "json"}
         result = await tool.execute(args)
 
         assert isinstance(result, dict)
@@ -158,7 +158,7 @@ public class Sample {
     @pytest.mark.asyncio
     async def test_execute_java_file_detailed(self, tool, sample_java_file):
         """Test Java file analysis with detailed type."""
-        args = {"file_path": sample_java_file, "analysis_type": "detailed"}
+        args = {"file_path": sample_java_file, "analysis_type": "detailed", "output_format": "json"}
         result = await tool.execute(args)
 
         assert isinstance(result, dict)
@@ -167,7 +167,7 @@ public class Sample {
     @pytest.mark.asyncio
     async def test_execute_java_file_structure(self, tool, sample_java_file):
         """Test Java file analysis with structure type."""
-        args = {"file_path": sample_java_file, "analysis_type": "structure"}
+        args = {"file_path": sample_java_file, "analysis_type": "structure", "output_format": "json"}
         result = await tool.execute(args)
 
         assert isinstance(result, dict)
@@ -176,7 +176,7 @@ public class Sample {
     @pytest.mark.asyncio
     async def test_execute_java_file_metrics(self, tool, sample_java_file):
         """Test Java file analysis with metrics type."""
-        args = {"file_path": sample_java_file, "analysis_type": "metrics"}
+        args = {"file_path": sample_java_file, "analysis_type": "metrics", "output_format": "json"}
         result = await tool.execute(args)
 
         assert isinstance(result, dict)
@@ -185,7 +185,7 @@ public class Sample {
     @pytest.mark.asyncio
     async def test_execute_java_with_include_ast(self, tool, sample_java_file):
         """Test Java file analysis with include_ast option."""
-        args = {"file_path": sample_java_file, "include_ast": True}
+        args = {"file_path": sample_java_file, "include_ast": True, "output_format": "json"}
         result = await tool.execute(args)
 
         assert isinstance(result, dict)
@@ -194,7 +194,7 @@ public class Sample {
     @pytest.mark.asyncio
     async def test_execute_java_with_include_queries(self, tool, sample_java_file):
         """Test Java file analysis with include_queries option."""
-        args = {"file_path": sample_java_file, "include_queries": True}
+        args = {"file_path": sample_java_file, "include_queries": True, "output_format": "json"}
         result = await tool.execute(args)
 
         assert isinstance(result, dict)
@@ -372,7 +372,7 @@ class TestUniversalAnalyzeToolErrorHandling:
         file_path = Path(temp_dir) / "test.txt"
         file_path.write_text("def hello(): pass")
 
-        args = {"file_path": str(file_path), "language": "python"}
+        args = {"file_path": str(file_path), "language": "python", "output_format": "json"}
 
         result = await tool.execute(args)
         assert isinstance(result, dict)
