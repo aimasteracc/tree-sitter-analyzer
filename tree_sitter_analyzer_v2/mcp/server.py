@@ -5,8 +5,29 @@ Provides a full-featured MCP server with auto-registered tools.
 Includes Code Graph tools for AI-powered code analysis.
 """
 
+import asyncio
+import json
+import os
+import sys
 from pathlib import Path
 from typing import Any
+
+try:
+    from mcp.server import Server
+    from mcp.server.models import InitializationOptions, ServerCapabilities
+    from mcp.server.stdio import stdio_server
+    from mcp.types import TextContent, Tool, ToolsCapability
+
+    MCP_AVAILABLE = True
+except ImportError:
+    MCP_AVAILABLE = False
+    Server = None  # type: ignore
+    InitializationOptions = None  # type: ignore
+    ServerCapabilities = None  # type: ignore
+    stdio_server = None  # type: ignore
+    TextContent = None  # type: ignore
+    Tool = None  # type: ignore
+    ToolsCapability = None  # type: ignore
 
 from tree_sitter_analyzer_v2.mcp.tools import (
     AnalyzeCodeGraphTool,
@@ -227,3 +248,122 @@ class MCPServer:
             "id": request_id,
             "error": {"code": code, "message": message},
         }
+
+
+class TreeSitterAnalyzerMCPServer:
+    """
+    MCP Server wrapper using the official MCP SDK.
+
+    This wraps the MCPServer class to provide stdio-based communication
+    compatible with Claude Desktop, Cursor, and other MCP clients.
+    """
+
+    def __init__(self, project_root: str | None = None) -> None:
+        """
+        Initialize MCP server with project root.
+
+        Args:
+            project_root: Root directory of the project to analyze.
+                         If None, uses TREE_SITTER_PROJECT_ROOT env var or current directory.
+        """
+        if not MCP_AVAILABLE:
+            raise ImportError(
+                "MCP SDK not installed. Install with: uv pip install -e '.[mcp]'"
+            )
+
+        # Determine project root
+        if project_root is None:
+            project_root = os.getenv("TREE_SITTER_PROJECT_ROOT", os.getcwd())
+
+        self.project_root = Path(project_root).resolve()
+        self.mcp_server = Server("tree-sitter-analyzer-v2")
+        self.core_server = MCPServer(str(self.project_root))
+
+        # Register handlers
+        self._register_handlers()
+
+    def _register_handlers(self) -> None:
+        """Register MCP protocol handlers."""
+
+        @self.mcp_server.list_tools()
+        async def list_tools() -> list[Tool]:
+            """List all available tools."""
+            tools_data = self.core_server.tool_registry.get_all_schemas()
+            return [
+                Tool(
+                    name=tool["name"],
+                    description=tool["description"],
+                    inputSchema=tool["inputSchema"],
+                )
+                for tool in tools_data
+            ]
+
+        @self.mcp_server.call_tool()
+        async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
+            """Execute a tool and return results."""
+            try:
+                tool = self.core_server.tool_registry.get(name)
+                result = tool.execute(arguments)
+
+                # Format result as TextContent
+                if isinstance(result, dict):
+                    text = json.dumps(result, indent=2)
+                else:
+                    text = str(result)
+
+                return [TextContent(type="text", text=text)]
+            except Exception as e:
+                error_msg = f"Tool execution failed: {str(e)}"
+                return [TextContent(type="text", text=error_msg)]
+
+    async def run(self) -> None:
+        """Run the MCP server with stdio transport."""
+        # Create server capabilities
+        capabilities = ServerCapabilities(
+            tools=ToolsCapability(listChanged=True),
+        )
+
+        # Create initialization options
+        options = InitializationOptions(
+            server_name="tree-sitter-analyzer-v2",
+            server_version="2.0.0-alpha.1",
+            capabilities=capabilities,
+        )
+
+        # Run server with stdio transport
+        async with stdio_server() as (read_stream, write_stream):
+            await self.mcp_server.run(read_stream, write_stream, options)
+
+
+async def main() -> None:
+    """Main entry point for MCP server."""
+    if not MCP_AVAILABLE:
+        print(
+            "Error: MCP SDK not installed. Install with: uv pip install -e '.[mcp]'",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    try:
+        # Get project root from environment or use current directory
+        project_root = os.getenv("TREE_SITTER_PROJECT_ROOT", os.getcwd())
+
+        # Create and run server
+        server = TreeSitterAnalyzerMCPServer(project_root)
+        await server.run()
+
+        sys.exit(0)
+    except KeyboardInterrupt:
+        sys.exit(0)
+    except Exception as e:
+        print(f"Server failed: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
+def main_sync() -> None:
+    """Synchronous entry point for setuptools scripts."""
+    asyncio.run(main())
+
+
+if __name__ == "__main__":
+    main_sync()

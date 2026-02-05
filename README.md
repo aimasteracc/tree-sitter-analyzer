@@ -47,6 +47,37 @@ uv pip install -e ".[dev]"
 uv run pytest tests/ -v
 ```
 
+### 🎯 Use in Cursor (MCP Integration)
+
+**Quick Setup (3 steps):**
+
+1. **Install MCP dependencies:**
+   ```bash
+   uv pip install -e ".[mcp]"
+   ```
+
+2. **Add to Cursor MCP settings:**
+   ```json
+   {
+     "mcpServers": {
+       "tree-sitter-analyzer-v2": {
+         "command": "uv",
+         "args": ["run", "--directory", "YOUR_PROJECT_PATH", "python", "-m", "tree_sitter_analyzer_v2.mcp.server"],
+         "env": {"TREE_SITTER_PROJECT_ROOT": "YOUR_PROJECT_PATH"}
+       }
+     }
+   }
+   ```
+
+3. **Restart Cursor** and start using!
+
+**📚 Detailed guides:**
+- [快速配置.txt](./快速配置.txt) - Quick reference (Chinese)
+- [CURSOR配置说明.md](./CURSOR配置说明.md) - Detailed setup guide (Chinese)
+- [README_CURSOR_INTEGRATION.md](../README_CURSOR_INTEGRATION.md) - Complete integration guide (English)
+
+**✅ Status:** MCP server tested and working with 11 tools available!
+
 ### Basic Usage
 
 ```python

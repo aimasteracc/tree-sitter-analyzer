@@ -29,7 +29,10 @@ class SearchEngine:
         root_dir: str,
         pattern: str,
         file_type: str | None = None,
-    ) -> list[str]:
+        limit: int | None = None,
+        offset: int = 0,
+        group_by_directory: bool = False,
+    ) -> list[str] | dict[str, Any]:
         """
         Find files using fd.
 
@@ -37,14 +40,25 @@ class SearchEngine:
             root_dir: Root directory to search in
             pattern: File pattern to match (e.g., "*.py", "sample*")
             file_type: Optional file type filter (e.g., "py", "ts", "java")
+            limit: Maximum number of results to return (None = unlimited)
+            offset: Number of results to skip (default: 0)
+            group_by_directory: Group results by directory (default: False)
 
         Returns:
-            List of absolute file paths matching the pattern
+            If group_by_directory=False: List of absolute file paths
+            If group_by_directory=True: Dict with:
+                - by_directory: Dict mapping directory paths to file lists
+                - summary: Dict with total_files and directories count
 
         Raises:
-            ValueError: If root_dir does not exist
+            ValueError: If root_dir does not exist, or limit/offset are negative
             RuntimeError: If fd binary not found
         """
+        # Validate limit and offset
+        if limit is not None and limit < 0:
+            raise ValueError("limit must be non-negative")
+        if offset < 0:
+            raise ValueError("offset must be non-negative")
         # Validate directory exists
         root_path = Path(root_dir)
         if not root_path.exists():
@@ -90,7 +104,19 @@ class SearchEngine:
                 check=True,
                 timeout=10,  # 10 second timeout
             )
-            return self._parse_fd_output(result.stdout)
+            files = self._parse_fd_output(result.stdout)
+
+            # Apply offset and limit
+            if offset > 0:
+                files = files[offset:]
+            if limit is not None:
+                files = files[:limit]
+
+            # Group by directory if requested
+            if group_by_directory:
+                return self._group_files_by_directory(files, root_dir)
+
+            return files
         except subprocess.CalledProcessError as e:
             # fd returns non-zero if no files found, which is not an error
             if e.returncode == 1:
@@ -106,6 +132,8 @@ class SearchEngine:
         file_type: str | None = None,
         case_sensitive: bool = True,
         is_regex: bool = False,
+        limit: int | None = None,
+        offset: int = 0,
     ) -> list[dict[str, Any]]:
         """
         Search file content using ripgrep.
@@ -116,14 +144,21 @@ class SearchEngine:
             file_type: Optional file type filter (e.g., "py", "ts", "java")
             case_sensitive: Whether search is case-sensitive (default: True)
             is_regex: Whether pattern is a regex (default: False)
+            limit: Maximum number of results to return (None = unlimited)
+            offset: Number of results to skip (default: 0)
 
         Returns:
             List of dicts with keys: file, line_number, line_content
 
         Raises:
-            ValueError: If root_dir does not exist
+            ValueError: If root_dir does not exist, or limit/offset are negative
             RuntimeError: If ripgrep binary not found
         """
+        # Validate limit and offset
+        if limit is not None and limit < 0:
+            raise ValueError("limit must be non-negative")
+        if offset < 0:
+            raise ValueError("offset must be non-negative")
         # Validate directory exists
         root_path = Path(root_dir)
         if not root_path.exists():
@@ -175,7 +210,15 @@ class SearchEngine:
 
             # ripgrep returns 0 if matches found, 1 if no matches, >1 for errors
             if result.returncode == 0:
-                return self._parse_rg_output(result.stdout)
+                results = self._parse_rg_output(result.stdout)
+
+                # Apply offset and limit
+                if offset > 0:
+                    results = results[offset:]
+                if limit is not None:
+                    results = results[:limit]
+
+                return results
             elif result.returncode == 1:
                 # No matches found
                 return []
@@ -205,6 +248,51 @@ class SearchEngine:
 
         lines = output.strip().split("\n")
         return [line.strip() for line in lines if line.strip()]
+
+    def _group_files_by_directory(
+        self, files: list[str], root_dir: str
+    ) -> dict[str, Any]:
+        """
+        Group files by their directory.
+
+        Args:
+            files: List of absolute file paths
+            root_dir: Root directory (for calculating relative paths)
+
+        Returns:
+            Dict with:
+                - by_directory: Dict mapping relative directory paths to file lists
+                - summary: Dict with total_files and directories count
+        """
+        from collections import defaultdict
+
+        root_path = Path(root_dir).resolve()
+        by_directory: dict[str, list[str]] = defaultdict(list)
+
+        for file_path in files:
+            file_path_obj = Path(file_path).resolve()
+
+            # Get directory relative to root
+            try:
+                dir_relative = file_path_obj.parent.relative_to(root_path)
+                dir_key = str(dir_relative) if str(dir_relative) != "." else "."
+            except ValueError:
+                # File is outside root_dir, use absolute directory
+                dir_key = str(file_path_obj.parent)
+
+            # Store just the filename (not full path)
+            by_directory[dir_key].append(file_path_obj.name)
+
+        # Convert defaultdict to regular dict
+        by_directory_dict = dict(by_directory)
+
+        return {
+            "by_directory": by_directory_dict,
+            "summary": {
+                "total_files": len(files),
+                "directories": len(by_directory_dict),
+            },
+        }
 
     def _parse_rg_output(self, output: str) -> list[dict[str, Any]]:
         r"""

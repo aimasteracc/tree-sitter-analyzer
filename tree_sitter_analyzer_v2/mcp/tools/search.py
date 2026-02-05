@@ -52,6 +52,22 @@ class FindFilesTool(BaseTool):
                     "type": "string",
                     "description": "Optional file type filter (e.g., 'py', 'ts', 'java')",
                 },
+                "limit": {
+                    "type": "integer",
+                    "description": "Maximum number of results to return (optional, no limit by default)",
+                    "minimum": 0,
+                },
+                "offset": {
+                    "type": "integer",
+                    "description": "Number of results to skip (default: 0, for pagination)",
+                    "minimum": 0,
+                    "default": 0,
+                },
+                "group_by_directory": {
+                    "type": "boolean",
+                    "description": "Group results by directory (default: false). Returns dict with by_directory and summary.",
+                    "default": False,
+                },
             },
             "required": ["root_dir", "pattern"],
         }
@@ -65,6 +81,8 @@ class FindFilesTool(BaseTool):
                 - root_dir: Root directory to search
                 - pattern: Glob pattern (e.g., "*.py")
                 - file_type: Optional file type filter (e.g., "py")
+                - limit: Optional maximum number of results
+                - offset: Optional number of results to skip
 
         Returns:
             Dictionary with:
@@ -78,17 +96,29 @@ class FindFilesTool(BaseTool):
             root_dir = arguments["root_dir"]
             pattern = arguments["pattern"]
             file_type = arguments.get("file_type")
+            limit = arguments.get("limit")
+            offset = arguments.get("offset", 0)
+            group_by_directory = arguments.get("group_by_directory", False)
 
             # Validate root directory exists
             if not Path(root_dir).exists():
                 return {"success": False, "error": f"Directory does not exist: {root_dir}"}
 
             # Execute search
-            files = self._search_engine.find_files(
-                root_dir=root_dir, pattern=pattern, file_type=file_type
+            result = self._search_engine.find_files(
+                root_dir=root_dir,
+                pattern=pattern,
+                file_type=file_type,
+                limit=limit,
+                offset=offset,
+                group_by_directory=group_by_directory,
             )
 
-            return {"success": True, "files": files, "count": len(files)}
+            # Format response based on grouping
+            if group_by_directory:
+                return {"success": True, **result}
+            else:
+                return {"success": True, "files": result, "count": len(result)}
 
         except RuntimeError as e:
             # Binary not found or command failed
@@ -145,6 +175,17 @@ class SearchContentTool(BaseTool):
                     "type": "boolean",
                     "description": "Whether pattern is a regex (default: false)",
                 },
+                "limit": {
+                    "type": "integer",
+                    "description": "Maximum number of results to return (optional, no limit by default)",
+                    "minimum": 0,
+                },
+                "offset": {
+                    "type": "integer",
+                    "description": "Number of results to skip (default: 0, for pagination)",
+                    "minimum": 0,
+                    "default": 0,
+                },
             },
             "required": ["root_dir", "pattern"],
         }
@@ -160,6 +201,8 @@ class SearchContentTool(BaseTool):
                 - file_type: Optional file type filter (e.g., "py")
                 - case_sensitive: Case-sensitive search (default: True)
                 - use_regex: Use regex pattern (default: False)
+                - limit: Optional maximum number of results
+                - offset: Optional number of results to skip
 
         Returns:
             Dictionary with:
@@ -175,6 +218,8 @@ class SearchContentTool(BaseTool):
             file_type = arguments.get("file_type")
             case_sensitive = arguments.get("case_sensitive", True)
             use_regex = arguments.get("use_regex", False)
+            limit = arguments.get("limit")
+            offset = arguments.get("offset", 0)
 
             # Validate root directory exists
             if not Path(root_dir).exists():
@@ -187,6 +232,8 @@ class SearchContentTool(BaseTool):
                 file_type=file_type,
                 case_sensitive=case_sensitive,
                 is_regex=use_regex,
+                limit=limit,
+                offset=offset,
             )
 
             # Format matches for output
