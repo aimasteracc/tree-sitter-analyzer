@@ -35,6 +35,8 @@ from tree_sitter_analyzer_v2.mcp.tools import (
     AnalyzeTool,
     BatchOperationsTool,
     CheckCodeScaleTool,
+    ClassGeneratorTool,
+    CodeMetricsTool,
     CodeQualityTool,
     DeleteFileTool,
     DependencyAnalyzerTool,
@@ -49,6 +51,9 @@ from tree_sitter_analyzer_v2.mcp.tools import (
     GitDiffTool,
     GitStatusTool,
     LinterTool,
+    MockGeneratorTool,
+    PerformanceMonitorTool,
+    ProfileCodeTool,
     ProjectAnalyzerTool,
     ProjectInitTool,
     QueryCallChainTool,
@@ -56,6 +61,8 @@ from tree_sitter_analyzer_v2.mcp.tools import (
     RefactorRenameTool,
     ReplaceInFileTool,
     SearchContentTool,
+    SecurityScannerTool,
+    TestGeneratorTool,
     TestRunnerTool,
     VisualizeCodeGraphTool,
     WriteFileTool,
@@ -137,6 +144,21 @@ class MCPServer:
         # Project management tools
         self.tool_registry.register(ProjectInitTool())
         self.tool_registry.register(ProjectAnalyzerTool())
+
+        # Security tools
+        self.tool_registry.register(SecurityScannerTool())
+
+        # Performance tools
+        self.tool_registry.register(PerformanceMonitorTool())
+        self.tool_registry.register(ProfileCodeTool())
+
+        # Code generation tools
+        self.tool_registry.register(TestGeneratorTool())
+        self.tool_registry.register(MockGeneratorTool())
+        self.tool_registry.register(ClassGeneratorTool())
+
+        # Metrics tools
+        self.tool_registry.register(CodeMetricsTool())
 
         # Code Graph tools (NEW in Phase 9!)
         self.tool_registry.register(AnalyzeCodeGraphTool())
