@@ -41,6 +41,7 @@ from tree_sitter_analyzer_v2.mcp.tools import (
     QueryTool,
     SearchContentTool,
     VisualizeCodeGraphTool,
+    WriteFileTool,
 )
 from tree_sitter_analyzer_v2.mcp.tools.registry import ToolRegistry
 
@@ -87,6 +88,9 @@ class MCPServer:
         self.tool_registry.register(FindFilesTool())
         self.tool_registry.register(SearchContentTool())
         self.tool_registry.register(FindAndGrepTool())
+
+        # File operation tools
+        self.tool_registry.register(WriteFileTool())
 
         # Code Graph tools (NEW in Phase 9!)
         self.tool_registry.register(AnalyzeCodeGraphTool())

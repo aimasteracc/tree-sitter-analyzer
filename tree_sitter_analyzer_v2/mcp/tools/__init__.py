@@ -30,6 +30,7 @@ from tree_sitter_analyzer_v2.mcp.tools.query import QueryTool
 from tree_sitter_analyzer_v2.mcp.tools.registry import ToolRegistry
 from tree_sitter_analyzer_v2.mcp.tools.scale import CheckCodeScaleTool
 from tree_sitter_analyzer_v2.mcp.tools.search import FindFilesTool, SearchContentTool
+from tree_sitter_analyzer_v2.mcp.tools.write import WriteFileTool
 
 __all__ = [
     "BaseTool",
@@ -45,4 +46,5 @@ __all__ = [
     "FindFunctionCallersTool",
     "QueryCallChainTool",
     "VisualizeCodeGraphTool",
+    "WriteFileTool",
 ]

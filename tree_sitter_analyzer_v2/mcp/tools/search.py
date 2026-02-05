@@ -186,6 +186,24 @@ class SearchContentTool(BaseTool):
                     "minimum": 0,
                     "default": 0,
                 },
+                "context_before": {
+                    "type": "integer",
+                    "description": "Number of lines to show before each match (like grep -B, default: 0)",
+                    "minimum": 0,
+                    "default": 0,
+                },
+                "context_after": {
+                    "type": "integer",
+                    "description": "Number of lines to show after each match (like grep -A, default: 0)",
+                    "minimum": 0,
+                    "default": 0,
+                },
+                "context": {
+                    "type": "integer",
+                    "description": "Number of lines to show before and after each match (like grep -C, default: 0)",
+                    "minimum": 0,
+                    "default": 0,
+                },
             },
             "required": ["root_dir", "pattern"],
         }
@@ -203,11 +221,14 @@ class SearchContentTool(BaseTool):
                 - use_regex: Use regex pattern (default: False)
                 - limit: Optional maximum number of results
                 - offset: Optional number of results to skip
+                - context_before: Lines before match (default: 0)
+                - context_after: Lines after match (default: 0)
+                - context: Lines before and after match (default: 0)
 
         Returns:
             Dictionary with:
                 - success: True if successful, False otherwise
-                - matches: List of matches with file, line_number, line (if success=True)
+                - matches: List of matches with file, line_number, line, context_before, context_after (if success=True)
                 - count: Number of matches found
                 - error: Error message (if success=False)
         """
@@ -220,6 +241,14 @@ class SearchContentTool(BaseTool):
             use_regex = arguments.get("use_regex", False)
             limit = arguments.get("limit")
             offset = arguments.get("offset", 0)
+            context_before = arguments.get("context_before", 0)
+            context_after = arguments.get("context_after", 0)
+            context = arguments.get("context", 0)
+
+            # If context is set, it overrides context_before and context_after
+            if context > 0:
+                context_before = context
+                context_after = context
 
             # Validate root directory exists
             if not Path(root_dir).exists():
@@ -236,16 +265,8 @@ class SearchContentTool(BaseTool):
                 offset=offset,
             )
 
-            # Format matches for output
-            matches = []
-            for match in raw_matches:
-                matches.append(
-                    {
-                        "file": match["file"],
-                        "line_number": match["line_number"],
-                        "line": match["line_content"],
-                    }
-                )
+            # Format matches for output with context
+            matches = self._add_context_to_matches(raw_matches, context_before, context_after)
 
             return {"success": True, "matches": matches, "count": len(matches)}
 
@@ -255,3 +276,90 @@ class SearchContentTool(BaseTool):
         except Exception as e:
             # Unexpected error
             return {"success": False, "error": f"Unexpected error: {str(e)}"}
+
+    def _add_context_to_matches(
+        self, matches: list[dict[str, Any]], context_before: int, context_after: int
+    ) -> list[dict[str, Any]]:
+        """
+        Add context lines to matches.
+
+        Args:
+            matches: List of matches from search_engine
+            context_before: Number of lines before match
+            context_after: Number of lines after match
+
+        Returns:
+            List of matches with context_before and context_after fields
+        """
+        if context_before == 0 and context_after == 0:
+            # No context requested, return matches without context fields
+            return [
+                {
+                    "file": match["file"],
+                    "line_number": match["line_number"],
+                    "line": match["line_content"],
+                }
+                for match in matches
+            ]
+
+        # Group matches by file for efficient context extraction
+        matches_by_file: dict[str, list[dict[str, Any]]] = {}
+        for match in matches:
+            file_path = match["file"]
+            if file_path not in matches_by_file:
+                matches_by_file[file_path] = []
+            matches_by_file[file_path].append(match)
+
+        # Read files and add context
+        result_matches = []
+        for file_path, file_matches in matches_by_file.items():
+            try:
+                # Read file content
+                with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+                    lines = f.readlines()
+
+                # Add context to each match
+                for match in file_matches:
+                    line_num = match["line_number"]
+                    match_dict = {
+                        "file": file_path,
+                        "line_number": line_num,
+                        "line": match["line_content"],
+                    }
+
+                    # Add context before
+                    if context_before > 0:
+                        start_line = max(0, line_num - context_before - 1)
+                        end_line = line_num - 1
+                        match_dict["context_before"] = [
+                            lines[i].rstrip("\n") for i in range(start_line, end_line)
+                        ]
+                    else:
+                        match_dict["context_before"] = []
+
+                    # Add context after
+                    if context_after > 0:
+                        start_line = line_num
+                        end_line = min(len(lines), line_num + context_after)
+                        match_dict["context_after"] = [
+                            lines[i].rstrip("\n") for i in range(start_line, end_line)
+                        ]
+                    else:
+                        match_dict["context_after"] = []
+
+                    result_matches.append(match_dict)
+
+            except Exception:
+                # If we can't read the file, skip context for this file
+                for match in file_matches:
+                    result_matches.append(
+                        {
+                            "file": file_path,
+                            "line_number": match["line_number"],
+                            "line": match["line_content"],
+                            "context_before": [],
+                            "context_after": [],
+                        }
+                    )
+
+        return result_matches
