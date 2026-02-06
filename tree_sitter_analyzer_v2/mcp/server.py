@@ -84,7 +84,13 @@ from tree_sitter_analyzer_v2.mcp.tools import (
     VisualizeCodeGraphTool,
     WriteFileTool,
 )
+from tree_sitter_analyzer_v2.mcp.tools.refactoring_safety import (
+    CheckRefactoringSafetyTool,
+    ProjectKnowledgeTool,
+)
 from tree_sitter_analyzer_v2.mcp.tools.registry import ToolRegistry
+from tree_sitter_analyzer_v2.features.project_knowledge import ProjectKnowledgeEngine
+from tree_sitter_analyzer_v2.mcp.resources import KnowledgeResourceProvider
 
 
 class MCPServer:
@@ -97,13 +103,16 @@ class MCPServer:
     - shutdown: Graceful shutdown
     - tools/list: List available tools
     - tools/call: Execute tool
+    - resources/list: List available resources
+    - resources/read: Read resource content
 
     Tools are auto-registered on initialization including Code Graph tools.
+    Resources provide instant access to project knowledge without tool calls.
     """
 
     def __init__(self, project_root: str) -> None:
         """
-        Initialize MCP server with auto-registered tools.
+        Initialize MCP server with auto-registered tools and resources.
 
         Args:
             project_root: Root directory of the project to analyze
@@ -116,6 +125,13 @@ class MCPServer:
         # Initialize tool registry and auto-register all tools
         self.tool_registry = ToolRegistry()
         self._register_tools()
+        
+        # Initialize knowledge engine and resource provider
+        self.knowledge_engine = ProjectKnowledgeEngine(self.project_root)
+        self.resource_provider = KnowledgeResourceProvider(self.knowledge_engine)
+        
+        # Auto-build snapshot in background if needed
+        self._init_knowledge_snapshot()
 
     def _register_tools(self) -> None:
         """Auto-register all available MCP tools."""
@@ -207,6 +223,10 @@ class MCPServer:
         self.tool_registry.register(FindFunctionCallersTool())
         self.tool_registry.register(QueryCallChainTool())
         self.tool_registry.register(VisualizeCodeGraphTool())  # NEW in E4!
+        
+        # Project Knowledge tools (NEW! For instant project understanding)
+        self.tool_registry.register(CheckRefactoringSafetyTool())
+        self.tool_registry.register(ProjectKnowledgeTool())
 
     def get_capabilities(self) -> dict[str, Any]:
         """
@@ -246,7 +266,7 @@ class MCPServer:
         request_id = request.get("id")
 
         # Define known methods
-        known_methods = {"initialize", "ping", "shutdown", "tools/list", "tools/call"}
+        known_methods = {"initialize", "ping", "shutdown", "tools/list", "tools/call", "resources/list", "resources/read"}
 
         # Check if method is known
         if method not in known_methods:
@@ -277,6 +297,12 @@ class MCPServer:
 
         if method == "tools/call":
             return self._handle_tools_call(request_id, request.get("params", {}))
+        
+        if method == "resources/list":
+            return self._handle_resources_list(request_id)
+        
+        if method == "resources/read":
+            return self._handle_resources_read(request_id, request.get("params", {}))
 
         # Should never reach here (all known methods handled above)
         return self._error_response(request_id, -32601, f"Method not found: {method}")
@@ -344,6 +370,56 @@ class MCPServer:
         except Exception as e:
             # Tool execution error
             return self._error_response(request_id, -32603, f"Tool execution failed: {e}")
+    
+    def _handle_resources_list(self, request_id: Any) -> dict[str, Any]:
+        """Handle resources/list request."""
+        return {
+            "jsonrpc": "2.0",
+            "id": request_id,
+            "result": {"resources": self.resource_provider.list_resources()},
+        }
+    
+    def _handle_resources_read(self, request_id: Any, params: dict[str, Any]) -> dict[str, Any]:
+        """
+        Handle resources/read request.
+        
+        Args:
+            request_id: Request ID
+            params: Resource read parameters containing:
+                - uri: Resource URI
+        
+        Returns:
+            Resource content or error
+        """
+        if "uri" not in params:
+            return self._error_response(request_id, -32602, "Missing required parameter: uri")
+        
+        uri = params["uri"]
+        
+        try:
+            content = self.resource_provider.read_resource(uri)
+            return {
+                "jsonrpc": "2.0",
+                "id": request_id,
+                "result": {"contents": [{"uri": uri, "mimeType": "text/plain", "text": content}]}
+            }
+        except Exception as e:
+            return self._error_response(request_id, -32603, f"Resource read failed: {e}")
+    
+    def _init_knowledge_snapshot(self):
+        """Initialize knowledge snapshot in background if needed."""
+        try:
+            # Try to load from cache first
+            if self.knowledge_engine._load_from_cache():
+                print("✅ Knowledge snapshot loaded from cache")
+            else:
+                # Build snapshot if no cache exists
+                print("🔧 Building initial knowledge snapshot...")
+                self.knowledge_engine.build_snapshot()
+                print("✅ Knowledge snapshot built successfully")
+        except Exception as e:
+            print(f"⚠️  Failed to initialize knowledge snapshot: {e}")
+            print("   Snapshot will be built on first use")
 
     def _error_response(self, request_id: Any, code: int, message: str) -> dict[str, Any]:
         """
