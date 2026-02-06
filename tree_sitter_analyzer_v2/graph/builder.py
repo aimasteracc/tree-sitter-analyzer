@@ -14,38 +14,46 @@ from typing import Any
 
 import networkx as nx
 
-from tree_sitter_analyzer_v2.languages.python_parser import PythonParser
+from tree_sitter_analyzer_v2.core.parser import TreeSitterParser
 
 
 class CodeGraphBuilder:
     """Builds code graphs from source files (multi-language support)."""
 
-    def __init__(self, language: str = "python") -> None:
+    # Configuration constants - easy to modify without hardcoding
+    DEFAULT_LANGUAGE = "python"
+    SUPPORTED_LANGUAGES = {"python", "java"}
+    
+    def __init__(self, language: str = DEFAULT_LANGUAGE) -> None:
         """
         Initialize code graph builder for specified language.
 
         Args:
-            language: Programming language ('python' or 'java', default: 'python')
+            language: Programming language ('python' or 'java')
 
         Raises:
             ValueError: If language is not supported
         """
         self.language = language.lower()
+        
+        # Validate language support
+        if self.language not in self.SUPPORTED_LANGUAGES:
+            supported = ", ".join(sorted(self.SUPPORTED_LANGUAGES))
+            raise ValueError(
+                f"Unsupported language: {language}. "
+                f"Supported: {supported}"
+            )
 
-        # Initialize language-specific parser and call extractor
+        # Initialize tree-sitter parser
+        self.parser = TreeSitterParser(self.language)
+        
+        # Initialize language-specific call extractor
         if self.language == "python":
             from tree_sitter_analyzer_v2.graph.extractors import PythonCallExtractor
-
-            self.parser = PythonParser()
             self.call_extractor = PythonCallExtractor()
         elif self.language == "java":
             from tree_sitter_analyzer_v2.graph.extractors import JavaCallExtractor
-            from tree_sitter_analyzer_v2.languages.java_parser import JavaParser
-
-            self.parser = JavaParser()
-            self.call_extractor = JavaCallExtractor()  # Will implement in T2.1
-        else:
-            raise ValueError(f"Unsupported language: {language}. Supported languages: python, java")
+            self.call_extractor = JavaCallExtractor()
 
     def build_from_file(self, file_path: str) -> nx.DiGraph:
         """

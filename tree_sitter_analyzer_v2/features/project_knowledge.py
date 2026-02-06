@@ -1,13 +1,13 @@
 """
-Project Knowledge Engine - 项目知识图谱系统
+Project Knowledge Engine - Instant project understanding system
 
-核心功能:
-1. 构建项目知识快照 (全量扫描, 初始化时1次)
-2. 超压缩格式存储 (<500 tokens覆盖整个项目)
-3. 增量更新机制 (基于MD5, 只更新变更文件)
-4. 毫秒级查询 (从缓存读取)
+Core Features:
+1. Build project knowledge snapshot (full scan, once on init)
+2. Ultra-compact format storage (<500 tokens covering entire project)
+3. Incremental update mechanism (MD5-based, update only changed files)
+4. Millisecond-level queries (cached reads)
 
-格式示例:
+Format Example:
 PROJECT_SNAPSHOT v1.0 | Files:156 | Functions:892 | Updated:2026-02-06T12:00:00
 
 FILE::FUNC → CALLS[func1,func2] ← CALLED_BY[func3,func4] | I:high
@@ -22,39 +22,49 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 
 from tree_sitter_analyzer_v2.features.refactoring_analyzer import RefactoringAnalyzer
-from tree_sitter_analyzer_v2.graph.builder import CodeGraphBuilder
+
+
+# Configuration constants - flexible, no hardcoding
+DEFAULT_CACHE_DIR = ".analysis"
+DEFAULT_CACHE_FILE = "project_snapshot.json"
+DEFAULT_MAX_FUNCTIONS = 50
+IMPACT_THRESHOLD_HIGH = 20
+IMPACT_THRESHOLD_MEDIUM = 10
+IMPACT_WEIGHT_CALLER = 2
+IMPACT_WEIGHT_CROSS_FILE = 3
+IMPACT_WEIGHT_DEPTH = 1
 
 
 @dataclass
 class FunctionInfo:
-    """函数信息"""
+    """Function information data structure"""
     name: str
     file: Path
-    calls: List[str] = field(default_factory=list)  # 调用的函数
-    called_by: List[str] = field(default_factory=list)  # 被谁调用
-    impact_score: int = 0  # 影响度分数
+    calls: List[str] = field(default_factory=list)  # Functions called
+    called_by: List[str] = field(default_factory=list)  # Called by whom
+    impact_score: int = 0  # Impact score
     impact_level: str = "low"  # high/medium/low
 
 
 @dataclass
 class ProjectSnapshot:
-    """项目知识快照"""
+    """Project knowledge snapshot"""
     version: str = "1.0"
     timestamp: str = ""
     total_files: int = 0
     total_functions: int = 0
     functions: Dict[str, FunctionInfo] = field(default_factory=dict)
-    file_hashes: Dict[str, str] = field(default_factory=dict)  # 文件MD5缓存
+    file_hashes: Dict[str, str] = field(default_factory=dict)  # File MD5 cache
     
-    def to_compact_format(self, max_functions: int = 50) -> str:
+    def to_compact_format(self, max_functions: int = DEFAULT_MAX_FUNCTIONS) -> str:
         """
-        转换为超压缩格式
+        Convert to ultra-compact format
         
         Args:
-            max_functions: 最多包含多少个函数 (按影响度排序)
+            max_functions: Maximum functions to include (sorted by impact)
         
         Returns:
-            压缩后的字符串 (<500 tokens)
+            Compressed string (<500 tokens)
         """
         lines = [
             f"PROJECT_SNAPSHOT v{self.version} | Files:{self.total_files} | "
@@ -62,76 +72,77 @@ class ProjectSnapshot:
             ""
         ]
         
-        # 按影响度排序
+        # Sort by impact score
         sorted_funcs = sorted(
             self.functions.values(),
             key=lambda f: f.impact_score,
             reverse=True
         )[:max_functions]
         
-        # 分组输出
-        high_impact = [f for f in sorted_funcs if f.impact_level == "high"]
-        medium_impact = [f for f in sorted_funcs if f.impact_level == "medium"]
-        low_impact = [f for f in sorted_funcs if f.impact_level == "low"]
+        # Group by impact level
+        impact_groups = {
+            "high": [],
+            "medium": [],
+            "low": []
+        }
+        for func in sorted_funcs:
+            impact_groups[func.impact_level].append(func)
         
-        if high_impact:
-            lines.append("# HIGH IMPACT")
-            for func in high_impact:
-                lines.append(self._format_function(func))
-            lines.append("")
-        
-        if medium_impact:
-            lines.append("# MEDIUM IMPACT")
-            for func in medium_impact:
-                lines.append(self._format_function(func))
-            lines.append("")
-        
-        if low_impact:
-            lines.append("# LOW IMPACT")
-            for func in low_impact:
-                lines.append(self._format_function(func))
+        # Output grouped functions
+        for level in ["high", "medium", "low"]:
+            if impact_groups[level]:
+                lines.append(f"# {level.upper()} IMPACT")
+                for func in impact_groups[level]:
+                    lines.append(self._format_function(func))
+                lines.append("")
         
         return "\n".join(lines)
     
     def _format_function(self, func: FunctionInfo) -> str:
-        """格式化单个函数信息"""
+        """
+        Format single function information
+        
+        Only shows cross-file calls to reduce noise
+        """
         file_name = func.file.name
         
-        # 只显示跨文件调用
+        # Only show cross-file calls
         calls = [c for c in func.calls if not c.startswith(file_name)]
         called_by = [c for c in func.called_by if not c.startswith(file_name)]
         
-        calls_str = f"[{','.join(calls[:5])}]" if calls else "[]"
-        called_by_str = f"[{','.join(called_by[:5])}]" if called_by else "[]"
+        # Limit to first 5 to keep compact
+        max_display = 5
+        calls_str = f"[{','.join(calls[:max_display])}]" if calls else "[]"
+        called_by_str = f"[{','.join(called_by[:max_display])}]" if called_by else "[]"
         
         return f"{file_name}::{func.name} → {calls_str} ← {called_by_str} | I:{func.impact_level}"
 
 
 class ProjectKnowledgeEngine:
     """
-    项目知识引擎
+    Project Knowledge Engine - Core component for instant project understanding
     
-    核心功能:
-    - build_snapshot(): 构建完整项目快照
-    - get_function_impact(): 获取函数影响范围
-    - get_hotspots(): 获取热点函数
-    - incremental_update(): 增量更新
+    Key Features:
+    - build_snapshot(): Build complete project snapshot
+    - get_function_impact(): Get function impact analysis
+    - get_hotspots(): Get hotspot functions
+    - incremental_update(): Incremental cache update
     """
     
     def __init__(self, project_root: Path):
         """
-        初始化知识引擎
+        Initialize knowledge engine
         
         Args:
-            project_root: 项目根目录
+            project_root: Project root directory
         """
         self.project_root = Path(project_root).resolve()
-        self.cache_dir = self.project_root / ".analysis"
-        self.cache_file = self.cache_dir / "knowledge_snapshot.json"
+        self.cache_dir = self.project_root / DEFAULT_CACHE_DIR
+        self.cache_file = self.cache_dir / DEFAULT_CACHE_FILE
         self.snapshot_text_file = self.cache_dir / "knowledge_snapshot.txt"
         
+        # Use refactoring analyzer for call chain analysis
         self.analyzer = RefactoringAnalyzer(max_depth=10)
-        self.graph_builder = CodeGraphBuilder(language="python")
         
         self.snapshot: Optional[ProjectSnapshot] = None
     
@@ -141,32 +152,32 @@ class ProjectKnowledgeEngine:
         force: bool = False
     ) -> ProjectSnapshot:
         """
-        构建项目知识快照
+        Build project knowledge snapshot
         
         Args:
-            pattern: 文件匹配模式
-            force: 强制重新构建 (忽略缓存)
+            pattern: File matching pattern
+            force: Force rebuild (ignore cache)
         
         Returns:
-            ProjectSnapshot: 项目快照
+            ProjectSnapshot: Project snapshot
         """
-        # 检查缓存
+        # Check cache first
         if not force and self._load_from_cache():
             return self.snapshot
         
-        print("构建项目知识快照...")
+        print("Building project knowledge snapshot...")
         
-        # 1. 扫描所有Python文件
+        # 1. Scan all Python files
         files = list(self.project_root.glob(pattern))
-        print(f"发现 {len(files)} 个文件")
+        print(f"Found {len(files)} files")
         
-        # 2. 使用RefactoringAnalyzer分析
+        # 2. Analyze using RefactoringAnalyzer
         self.analyzer.analyze_directory(self.project_root, pattern)
         
-        # 3. 提取函数信息
+        # 3. Extract function information
         functions: Dict[str, FunctionInfo] = {}
         
-        # 从analyzer中提取函数定义
+        # Extract function definitions from analyzer
         for func_name, file_list in self.analyzer.function_defs.items():
             for file_path in file_list:
                 key = f"{file_path.name}::{func_name}"
@@ -175,14 +186,14 @@ class ProjectKnowledgeEngine:
                     file=file_path
                 )
         
-        # 提取调用关系
+        # Extract call relationships
         for file_path, calls_dict in self.analyzer.function_calls.items():
             for called_func, call_sites in calls_dict.items():
                 for call_site in call_sites:
                     caller_key = f"{file_path.name}::{call_site.function_name}"
                     callee_key = f"{call_site.file.name}::{called_func}"
                     
-                    # 记录调用关系
+                    # Record call relationship
                     if caller_key in functions:
                         if callee_key not in functions[caller_key].calls:
                             functions[caller_key].calls.append(callee_key)
@@ -191,12 +202,12 @@ class ProjectKnowledgeEngine:
                         if caller_key not in functions[callee_key].called_by:
                             functions[callee_key].called_by.append(caller_key)
         
-        # 4. 计算影响度
+        # 4. Calculate impact scores
         for func in functions.values():
             func.impact_score = self._calculate_impact_score(func)
             func.impact_level = self._calculate_impact_level(func.impact_score)
         
-        # 5. 计算文件哈希
+        # 5. Calculate file hashes for incremental updates
         file_hashes = {}
         for file_path in files:
             try:
@@ -205,7 +216,7 @@ class ProjectKnowledgeEngine:
             except Exception:
                 pass
         
-        # 6. 创建快照
+        # 6. Create snapshot
         self.snapshot = ProjectSnapshot(
             timestamp=datetime.now().isoformat(),
             total_files=len(files),
@@ -214,21 +225,21 @@ class ProjectKnowledgeEngine:
             file_hashes=file_hashes
         )
         
-        # 7. 保存缓存
+        # 7. Save to cache
         self._save_to_cache()
         
-        print(f"✅ 快照构建完成: {len(functions)} 个函数")
+        print(f"✅ Snapshot built: {len(functions)} functions")
         return self.snapshot
     
     def get_function_impact(self, function_name: str) -> Optional[Dict[str, Any]]:
         """
-        获取函数影响范围
+        Get function impact analysis
         
         Args:
-            function_name: 函数名 (支持 "file::func" 或 "func")
+            function_name: Function name (supports "file::func" or "func")
         
         Returns:
-            影响信息字典
+            Impact information dict or None if function not found
         """
         if not self.snapshot:
             self._load_from_cache()
@@ -236,13 +247,13 @@ class ProjectKnowledgeEngine:
         if not self.snapshot:
             return None
         
-        # 查找函数
+        # Find function
         func_info = None
         if "::" in function_name:
-            # 精确匹配
+            # Exact match
             func_info = self.snapshot.functions.get(function_name)
         else:
-            # 模糊匹配 (只根据函数名)
+            # Fuzzy match (by function name only)
             for key, info in self.snapshot.functions.items():
                 if info.name == function_name:
                     func_info = info
@@ -251,7 +262,7 @@ class ProjectKnowledgeEngine:
         if not func_info:
             return None
         
-        # 统计影响范围
+        # Calculate affected files
         affected_files = set()
         for caller in func_info.called_by:
             file_name = caller.split("::")[0]
@@ -260,7 +271,7 @@ class ProjectKnowledgeEngine:
         return {
             "function": func_info.name,
             "file": func_info.file.name,
-            "callers": func_info.called_by,
+            "called_by": func_info.called_by,  # Use called_by for consistency
             "callees": func_info.calls,
             "impact_score": func_info.impact_score,
             "impact_level": func_info.impact_level,
@@ -270,13 +281,13 @@ class ProjectKnowledgeEngine:
     
     def get_hotspots(self, top_n: int = 20) -> List[Dict[str, Any]]:
         """
-        获取热点函数 (被调用最多的N个)
+        Get hotspot functions (most frequently called)
         
         Args:
-            top_n: 返回前N个热点
+            top_n: Return top N hotspots
         
         Returns:
-            热点函数列表
+            List of hotspot functions
         """
         if not self.snapshot:
             self._load_from_cache()
@@ -284,7 +295,7 @@ class ProjectKnowledgeEngine:
         if not self.snapshot:
             return []
         
-        # 按影响度排序
+        # Sort by impact score
         sorted_funcs = sorted(
             self.snapshot.functions.values(),
             key=lambda f: f.impact_score,
@@ -303,15 +314,15 @@ class ProjectKnowledgeEngine:
             for f in sorted_funcs
         ]
     
-    def load_snapshot(self, max_functions: int = 50) -> str:
+    def load_snapshot(self, max_functions: int = DEFAULT_MAX_FUNCTIONS) -> str:
         """
-        加载快照的压缩文本格式
+        Load snapshot in compressed text format
         
         Args:
-            max_functions: 最多包含多少个函数
+            max_functions: Maximum functions to include
         
         Returns:
-            压缩文本
+            Compressed text representation
         """
         if not self.snapshot:
             self._load_from_cache()
@@ -323,25 +334,25 @@ class ProjectKnowledgeEngine:
     
     def incremental_update(self, changed_files: List[Path]) -> bool:
         """
-        增量更新 (只重新分析变更的文件)
+        Incremental update (re-analyze only changed files)
         
         Args:
-            changed_files: 变更的文件列表
+            changed_files: List of changed files
         
         Returns:
-            是否更新成功
+            Whether update succeeded
         """
         if not self.snapshot:
             self._load_from_cache()
         
         if not self.snapshot:
-            # 没有快照, 执行全量构建
+            # No snapshot exists, do full build
             self.build_snapshot()
             return True
         
-        print(f"增量更新: {len(changed_files)} 个文件")
+        print(f"Incremental update: {len(changed_files)} files")
         
-        # 检查哪些文件真正变更了 (MD5)
+        # Check which files actually changed (MD5)
         actually_changed = []
         for file_path in changed_files:
             try:
@@ -356,62 +367,68 @@ class ProjectKnowledgeEngine:
                 pass
         
         if not actually_changed:
-            print("✅ 无实质变更")
+            print("✅ No actual changes")
             return True
         
-        print(f"实际变更: {len(actually_changed)} 个文件")
+        print(f"Actually changed: {len(actually_changed)} files")
         
-        # 重新构建快照 (简化版: 全量重建)
-        # TODO: 实现真正的增量更新
+        # Rebuild snapshot (simplified: full rebuild)
+        # TODO: Implement true incremental update
         self.build_snapshot(force=True)
         
         return True
     
     def _calculate_impact_score(self, func: FunctionInfo) -> int:
         """
-        计算影响度分数
+        Calculate impact score
         
-        算法:
-        impact_score = 被调用次数 * 2 + 调用该函数的文件数 * 3 + 调用链深度 * 1
+        Algorithm:
+        impact_score = (callers * weight) + (cross_file_count * weight) + (depth * weight)
+        
+        Weights are configurable via module constants.
         """
         called_by_count = len(func.called_by)
         
-        # 计算跨文件调用数
+        # Calculate cross-file callers
         cross_file_callers = set()
         for caller in func.called_by:
             caller_file = caller.split("::")[0]
             if caller_file != func.file.name:
                 cross_file_callers.add(caller_file)
         
-        # 简化的深度计算 (基于调用者数量)
+        # Simplified depth calculation (based on caller count)
         depth = min(len(func.called_by), 10)
         
         score = (
-            called_by_count * 2 +
-            len(cross_file_callers) * 3 +
-            depth * 1
+            called_by_count * IMPACT_WEIGHT_CALLER +
+            len(cross_file_callers) * IMPACT_WEIGHT_CROSS_FILE +
+            depth * IMPACT_WEIGHT_DEPTH
         )
         
         return score
     
     def _calculate_impact_level(self, score: int) -> str:
-        """计算影响等级"""
-        if score > 20:
+        """
+        Calculate impact level based on score
+        
+        Uses configurable thresholds from module constants.
+        """
+        if score > IMPACT_THRESHOLD_HIGH:
             return "high"
-        elif score > 10:
+        elif score > IMPACT_THRESHOLD_MEDIUM:
             return "medium"
         else:
             return "low"
     
     def _save_to_cache(self):
-        """保存快照到缓存"""
+        """Save snapshot to cache"""
         if not self.snapshot:
             return
         
-        # 确保目录存在
+        # Ensure cache directory exists
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         
-        # 保存JSON格式 (用于程序读取)
+        # Save JSON format (for programmatic access)
         cache_data = {
             "version": self.snapshot.version,
             "timestamp": self.snapshot.timestamp,
@@ -436,14 +453,14 @@ class ProjectKnowledgeEngine:
             encoding='utf-8'
         )
         
-        # 保存文本格式 (用于Agent快速读取)
-        compact_text = self.snapshot.to_compact_format(max_functions=50)
+        # Save text format (for Agent quick access)
+        compact_text = self.snapshot.to_compact_format(max_functions=DEFAULT_MAX_FUNCTIONS)
         self.snapshot_text_file.write_text(compact_text, encoding='utf-8')
         
-        print(f"💾 快照已缓存: {self.cache_file}")
+        print(f"💾 Snapshot cached: {self.cache_file}")
     
     def _load_from_cache(self) -> bool:
-        """从缓存加载快照"""
+        """Load snapshot from cache"""
         if not self.cache_file.exists():
             return False
         
@@ -470,14 +487,14 @@ class ProjectKnowledgeEngine:
                 file_hashes=cache_data["file_hashes"]
             )
             
-            print(f"✅ 从缓存加载快照: {self.snapshot.total_functions} 个函数")
+            print(f"✅ Loaded snapshot from cache: {self.snapshot.total_functions} functions")
             return True
         except Exception as e:
-            print(f"❌ 加载缓存失败: {e}")
+            print(f"❌ Failed to load cache: {e}")
             return False
 
 
-# 便捷函数
+# Convenience functions for easy API access
 def build_project_knowledge(
     project_root: Path,
     force: bool = False
@@ -516,21 +533,29 @@ def get_function_safety(
     if not impact:
         return None
     
-    # 添加安全性建议
+    # Add safety recommendations
     level = impact["impact_level"]
     
-    if level == "high":
-        recommendation = "⚠️  需要谨慎: 高影响函数,可能影响多个模块"
-        safe = False
-    elif level == "medium":
-        recommendation = "⚡ 中等影响: 建议充分测试"
-        safe = True
-    else:
-        recommendation = "✅ 安全: 低影响函数"
-        safe = True
+    # Recommendation messages based on impact level
+    recommendations = {
+        "high": {
+            "message": "⚠️  Caution needed: High-impact function, may affect multiple modules",
+            "safe": False
+        },
+        "medium": {
+            "message": "⚡ Medium impact: Thorough testing recommended",
+            "safe": True
+        },
+        "low": {
+            "message": "✅ Safe: Low-impact function",
+            "safe": True
+        }
+    }
+    
+    rec_info = recommendations.get(level, recommendations["low"])
     
     return {
         **impact,
-        "safe_to_refactor": safe,
-        "recommendation": recommendation
+        "safe_to_refactor": rec_info["safe"],
+        "recommendation": rec_info["message"]
     }
