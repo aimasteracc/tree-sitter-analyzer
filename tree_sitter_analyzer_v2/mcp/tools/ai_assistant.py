@@ -1,8 +1,6 @@
 """AI Assistant Tools"""
 
 import ast
-import re
-from collections import Counter
 from pathlib import Path
 from typing import Any
 
@@ -98,11 +96,10 @@ class PatternRecognizerTool(BaseTool):
                     )
 
             # Detect Long Method
-            if isinstance(node, ast.FunctionDef):
-                if len(node.body) > 50:
-                    anti_patterns.append(
-                        {"type": "Long Method", "name": node.name, "lines": len(node.body)}
-                    )
+            if isinstance(node, ast.FunctionDef) and len(node.body) > 50:
+                anti_patterns.append(
+                    {"type": "Long Method", "name": node.name, "lines": len(node.body)}
+                )
 
         return anti_patterns
 
@@ -249,20 +246,18 @@ class SmellDetectorTool(BaseTool):
         """Detect long methods"""
         long_methods = []
         for node in ast.walk(tree):
-            if isinstance(node, ast.FunctionDef):
-                if len(node.body) > 30:
-                    long_methods.append({"name": node.name, "lines": len(node.body)})
+            if isinstance(node, ast.FunctionDef) and len(node.body) > 30:
+                long_methods.append({"name": node.name, "lines": len(node.body)})
         return long_methods
 
     def _detect_long_parameters(self, tree: ast.AST) -> list[dict[str, Any]]:
         """Detect long parameter lists"""
         long_params = []
         for node in ast.walk(tree):
-            if isinstance(node, ast.FunctionDef):
-                if len(node.args.args) > 5:
-                    long_params.append(
-                        {"name": node.name, "params": len(node.args.args)}
-                    )
+            if isinstance(node, ast.FunctionDef) and len(node.args.args) > 5:
+                long_params.append(
+                    {"name": node.name, "params": len(node.args.args)}
+                )
         return long_params
 
     def _detect_deep_nesting(self, tree: ast.AST) -> list[dict[str, Any]]:
@@ -340,15 +335,14 @@ class ImprovementSuggesterTool(BaseTool):
 
             # Check function complexity
             for node in ast.walk(tree):
-                if isinstance(node, ast.FunctionDef):
-                    if len(node.body) > 20:
-                        suggestions.append(
-                            {
-                                "type": "refactor",
-                                "target": node.name,
-                                "suggestion": f"Function {node.name} is too long, consider splitting",
-                            }
-                        )
+                if isinstance(node, ast.FunctionDef) and len(node.body) > 20:
+                    suggestions.append(
+                        {
+                            "type": "refactor",
+                            "target": node.name,
+                            "suggestion": f"Function {node.name} is too long, consider splitting",
+                        }
+                    )
 
             return {
                 "success": True,
@@ -407,14 +401,13 @@ class BestPracticeCheckerTool(BaseTool):
 
             # Check for bare except
             for node in ast.walk(tree):
-                if isinstance(node, ast.ExceptHandler):
-                    if node.type is None:
-                        violations.append(
-                            {
-                                "rule": "bare_except",
-                                "message": "Avoid bare except, specify exception type",
-                            }
-                        )
+                if isinstance(node, ast.ExceptHandler) and node.type is None:
+                    violations.append(
+                        {
+                            "rule": "bare_except",
+                            "message": "Avoid bare except, specify exception type",
+                        }
+                    )
 
             return {
                 "success": True,

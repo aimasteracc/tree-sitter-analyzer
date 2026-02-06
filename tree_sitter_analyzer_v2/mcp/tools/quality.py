@@ -6,7 +6,6 @@ and identifying code smells.
 """
 
 import ast
-import re
 from pathlib import Path
 from typing import Any
 

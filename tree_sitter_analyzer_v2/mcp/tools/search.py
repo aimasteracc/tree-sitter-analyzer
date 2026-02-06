@@ -322,7 +322,7 @@ class SearchContentTool(BaseTool):
         for file_path, file_matches in matches_by_file.items():
             try:
                 # Read file content
-                with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+                with open(file_path, encoding="utf-8", errors="ignore") as f:
                     lines = f.readlines()
 
                 # Add context to each match

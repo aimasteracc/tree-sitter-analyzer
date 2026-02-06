@@ -2,6 +2,7 @@
 import subprocess
 from pathlib import Path
 from typing import Any
+
 from tree_sitter_analyzer_v2.mcp.tools.base import BaseTool
 
 
@@ -62,10 +63,10 @@ class GitDiffTool(BaseTool):
         try:
             directory = Path(arguments["directory"])
             cmd = ["git", "diff"]
-            
+
             if arguments.get("staged"):
                 cmd.append("--staged")
-            
+
             if arguments.get("file_path"):
                 cmd.append(arguments["file_path"])
 

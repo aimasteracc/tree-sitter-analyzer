@@ -2,6 +2,7 @@
 import subprocess
 from pathlib import Path
 from typing import Any
+
 from tree_sitter_analyzer_v2.mcp.tools.base import BaseTool
 
 

@@ -186,11 +186,7 @@ class TreeSitterParser:
             return True
 
         # Check children recursively
-        for child in node.children:
-            if self._check_tree_has_errors(child):
-                return True
-
-        return False
+        return any(self._check_tree_has_errors(child) for child in node.children)
 
     def _convert_node(self, ts_node: Any, source_bytes: bytes) -> ASTNode:
         """

@@ -327,7 +327,7 @@ def export_to_call_flow(graph: nx.DiGraph, start_function: str, max_depth: int =
         # Find who current calls
         for _, target, edge_data in graph.out_edges(current_id, data=True):
             if edge_data.get("type") == "CALLS":
-                target_name = graph.nodes[target].get("name", "unknown")
+                # target_name = graph.nodes[target].get("name", "unknown")  # Reserved for future use
                 safe_target = _safe_node_id(target)
 
                 # Add edge

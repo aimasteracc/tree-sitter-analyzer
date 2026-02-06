@@ -2,6 +2,7 @@
 import ast
 from pathlib import Path
 from typing import Any
+
 from tree_sitter_analyzer_v2.mcp.tools.base import BaseTool
 
 
@@ -46,7 +47,7 @@ class DocGeneratorTool(BaseTool):
                     docs.append(f"\n## Class: {node.name}\n")
                     if ast.get_docstring(node):
                         docs.append(f"{ast.get_docstring(node)}\n")
-                
+
                 elif isinstance(node, ast.FunctionDef):
                     docs.append(f"\n### Function: {node.name}\n")
                     if ast.get_docstring(node):

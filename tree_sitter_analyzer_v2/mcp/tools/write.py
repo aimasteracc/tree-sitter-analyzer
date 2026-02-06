@@ -84,7 +84,7 @@ class WriteFileTool(BaseTool):
 
             return {"success": True, "path": str(file_path.absolute())}
 
-        except (OSError, IOError) as e:
+        except OSError as e:
             # File system errors (permission denied, disk full, etc.)
             return {"success": False, "error": f"Failed to write file: {str(e)}"}
         except Exception as e:

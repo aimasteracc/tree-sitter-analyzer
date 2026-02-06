@@ -1,6 +1,7 @@
 """MCP Tools for project management."""
 from pathlib import Path
 from typing import Any
+
 from tree_sitter_analyzer_v2.mcp.tools.base import BaseTool
 
 
@@ -28,7 +29,7 @@ class ProjectInitTool(BaseTool):
         try:
             directory = Path(arguments["directory"])
             name = arguments["name"]
-            template = arguments.get("template", "basic")
+            # template = arguments.get("template", "basic")  # Reserved for future use
 
             directory.mkdir(parents=True, exist_ok=True)
 

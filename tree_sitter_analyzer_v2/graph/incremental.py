@@ -30,7 +30,7 @@ def detect_changes(graph: nx.DiGraph, file_path: str) -> list[str]:
 
     # Check if graph has metadata for this file
     # Look for module nodes with this file_path
-    for node_id, node_data in graph.nodes(data=True):
+    for _node_id, node_data in graph.nodes(data=True):
         if node_data.get("type") == "MODULE":
             stored_path = node_data.get("file_path")
             if stored_path and Path(stored_path).resolve() == Path(file_path).resolve():

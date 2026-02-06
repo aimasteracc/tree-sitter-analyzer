@@ -1,8 +1,8 @@
 """MCP Tools for dependency analysis."""
 import ast
-import subprocess
 from pathlib import Path
 from typing import Any
+
 from tree_sitter_analyzer_v2.mcp.tools.base import BaseTool
 
 
@@ -38,7 +38,7 @@ class DependencyAnalyzerTool(BaseTool):
                 try:
                     content = file_path.read_text(encoding="utf-8")
                     tree = ast.parse(content)
-                    
+
                     for node in ast.walk(tree):
                         if isinstance(node, ast.Import):
                             for alias in node.names:
@@ -51,7 +51,7 @@ class DependencyAnalyzerTool(BaseTool):
 
             return {
                 "success": True,
-                "dependencies": sorted(list(imports)),
+                "dependencies": sorted(imports),
                 "count": len(imports),
                 "files_analyzed": len(py_files),
             }
@@ -93,7 +93,7 @@ class DependencyGraphTool(BaseTool):
                     module_name = file_path.stem
                     content = file_path.read_text(encoding="utf-8")
                     tree = ast.parse(content)
-                    
+
                     imports = []
                     for node in ast.walk(tree):
                         if isinstance(node, (ast.Import, ast.ImportFrom)):
@@ -102,7 +102,7 @@ class DependencyGraphTool(BaseTool):
                                     imports.append(alias.name.split(".")[0])
                             elif node.module:
                                 imports.append(node.module.split(".")[0])
-                    
+
                     dependencies[module_name] = list(set(imports))
                 except Exception:
                     continue

@@ -1,7 +1,6 @@
 """Incremental analysis and cache tools"""
 
 import hashlib
-import json
 import time
 from pathlib import Path
 from typing import Any

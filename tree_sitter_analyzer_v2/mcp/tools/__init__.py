@@ -16,6 +16,12 @@ This module provides MCP tool implementations:
 - QueryCallChainTool: Find call paths between functions (NEW!)
 """
 
+from tree_sitter_analyzer_v2.mcp.tools.advanced_codemap import (
+    CodeQueryTool,
+    GraphStorageTool,
+    GraphVisualizeTool,
+    RealtimeWatchTool,
+)
 from tree_sitter_analyzer_v2.mcp.tools.ai_assistant import (
     BestPracticeCheckerTool,
     DuplicateDetectorTool,
@@ -25,6 +31,13 @@ from tree_sitter_analyzer_v2.mcp.tools.ai_assistant import (
 )
 from tree_sitter_analyzer_v2.mcp.tools.analyze import AnalyzeTool
 from tree_sitter_analyzer_v2.mcp.tools.base import BaseTool
+from tree_sitter_analyzer_v2.mcp.tools.batch import BatchOperationsTool
+from tree_sitter_analyzer_v2.mcp.tools.code_graph import (
+    AnalyzeCodeGraphTool,
+    FindFunctionCallersTool,
+    QueryCallChainTool,
+    VisualizeCodeGraphTool,
+)
 from tree_sitter_analyzer_v2.mcp.tools.collaboration import (
     CodeReviewTool,
     CommentManagerTool,
@@ -32,23 +45,20 @@ from tree_sitter_analyzer_v2.mcp.tools.collaboration import (
     ShellExecutorTool,
     TaskManagerTool,
 )
-from tree_sitter_analyzer_v2.mcp.tools.code_graph import (
-    AnalyzeCodeGraphTool,
-    FindFunctionCallersTool,
-    QueryCallChainTool,
-    VisualizeCodeGraphTool,
+from tree_sitter_analyzer_v2.mcp.tools.delete import DeleteFileTool
+from tree_sitter_analyzer_v2.mcp.tools.dependencies import (
+    DependencyAnalyzerTool,
+    DependencyGraphTool,
 )
+from tree_sitter_analyzer_v2.mcp.tools.documentation import APIDocTool, DocGeneratorTool
 from tree_sitter_analyzer_v2.mcp.tools.extract import ExtractCodeSectionTool
 from tree_sitter_analyzer_v2.mcp.tools.find_and_grep import FindAndGrepTool
-from tree_sitter_analyzer_v2.mcp.tools.query import QueryTool
-from tree_sitter_analyzer_v2.mcp.tools.registry import ToolRegistry
-from tree_sitter_analyzer_v2.mcp.tools.scale import CheckCodeScaleTool
-from tree_sitter_analyzer_v2.mcp.tools.batch import BatchOperationsTool
-from tree_sitter_analyzer_v2.mcp.tools.delete import DeleteFileTool
-from tree_sitter_analyzer_v2.mcp.tools.dependencies import DependencyAnalyzerTool, DependencyGraphTool
-from tree_sitter_analyzer_v2.mcp.tools.documentation import APIDocTool, DocGeneratorTool
 from tree_sitter_analyzer_v2.mcp.tools.formatter import FormatterTool
-from tree_sitter_analyzer_v2.mcp.tools.generator import ClassGeneratorTool, MockGeneratorTool, TestGeneratorTool
+from tree_sitter_analyzer_v2.mcp.tools.generator import (
+    ClassGeneratorTool,
+    MockGeneratorTool,
+    TestGeneratorTool,
+)
 from tree_sitter_analyzer_v2.mcp.tools.git_tools import GitCommitTool, GitDiffTool, GitStatusTool
 from tree_sitter_analyzer_v2.mcp.tools.incremental import (
     CacheManagerTool,
@@ -60,11 +70,14 @@ from tree_sitter_analyzer_v2.mcp.tools.metrics import CodeMetricsTool
 from tree_sitter_analyzer_v2.mcp.tools.performance import PerformanceMonitorTool, ProfileCodeTool
 from tree_sitter_analyzer_v2.mcp.tools.project import ProjectAnalyzerTool, ProjectInitTool
 from tree_sitter_analyzer_v2.mcp.tools.quality import CodeQualityTool
+from tree_sitter_analyzer_v2.mcp.tools.query import QueryTool
 from tree_sitter_analyzer_v2.mcp.tools.refactor import RefactorRenameTool
+from tree_sitter_analyzer_v2.mcp.tools.registry import ToolRegistry
+from tree_sitter_analyzer_v2.mcp.tools.replace import ReplaceInFileTool
+from tree_sitter_analyzer_v2.mcp.tools.scale import CheckCodeScaleTool
+from tree_sitter_analyzer_v2.mcp.tools.search import FindFilesTool, SearchContentTool
 from tree_sitter_analyzer_v2.mcp.tools.security import SecurityScannerTool
 from tree_sitter_analyzer_v2.mcp.tools.test_runner import TestRunnerTool
-from tree_sitter_analyzer_v2.mcp.tools.replace import ReplaceInFileTool
-from tree_sitter_analyzer_v2.mcp.tools.search import FindFilesTool, SearchContentTool
 from tree_sitter_analyzer_v2.mcp.tools.write import WriteFileTool
 
 __all__ = [
@@ -119,4 +132,8 @@ __all__ = [
     "TaskManagerTool",
     "NotebookEditorTool",
     "ShellExecutorTool",
+    "GraphStorageTool",
+    "CodeQueryTool",
+    "RealtimeWatchTool",
+    "GraphVisualizeTool",
 ]

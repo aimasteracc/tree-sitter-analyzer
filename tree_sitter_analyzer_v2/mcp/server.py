@@ -30,9 +30,9 @@ except ImportError:
     ToolsCapability = None  # type: ignore
 
 from tree_sitter_analyzer_v2.mcp.tools import (
-    APIDocTool,
     AnalyzeCodeGraphTool,
     AnalyzeTool,
+    APIDocTool,
     BatchOperationsTool,
     BestPracticeCheckerTool,
     CacheManagerTool,
@@ -41,6 +41,7 @@ from tree_sitter_analyzer_v2.mcp.tools import (
     ClassGeneratorTool,
     CodeMetricsTool,
     CodeQualityTool,
+    CodeQueryTool,
     CodeReviewTool,
     CommentManagerTool,
     DeleteFileTool,
@@ -56,6 +57,8 @@ from tree_sitter_analyzer_v2.mcp.tools import (
     GitCommitTool,
     GitDiffTool,
     GitStatusTool,
+    GraphStorageTool,
+    GraphVisualizeTool,
     ImprovementSuggesterTool,
     IncrementalAnalyzerTool,
     LinterTool,
@@ -68,6 +71,7 @@ from tree_sitter_analyzer_v2.mcp.tools import (
     ProjectInitTool,
     QueryCallChainTool,
     QueryTool,
+    RealtimeWatchTool,
     RefactorRenameTool,
     ReplaceInFileTool,
     SearchContentTool,
@@ -191,6 +195,12 @@ class MCPServer:
         self.tool_registry.register(TaskManagerTool())
         self.tool_registry.register(NotebookEditorTool())
         self.tool_registry.register(ShellExecutorTool())
+
+        # Advanced code map tools (Beyond Neo4j)
+        self.tool_registry.register(GraphStorageTool())
+        self.tool_registry.register(CodeQueryTool())
+        self.tool_registry.register(RealtimeWatchTool())
+        self.tool_registry.register(GraphVisualizeTool())
 
         # Code Graph tools (NEW in Phase 9!)
         self.tool_registry.register(AnalyzeCodeGraphTool())
@@ -407,13 +417,13 @@ class TreeSitterAnalyzerMCPServer:
             """Execute a tool and return results."""
             try:
                 tool = self.core_server.tool_registry.get(name)
-                result = tool.execute(arguments)
+
+                # Execute tool in thread pool to avoid blocking event loop
+                loop = asyncio.get_event_loop()
+                result = await loop.run_in_executor(None, tool.execute, arguments)
 
                 # Format result as TextContent
-                if isinstance(result, dict):
-                    text = json.dumps(result, indent=2)
-                else:
-                    text = str(result)
+                text = json.dumps(result, indent=2) if isinstance(result, dict) else str(result)
 
                 return [TextContent(type="text", text=text)]
             except Exception as e:

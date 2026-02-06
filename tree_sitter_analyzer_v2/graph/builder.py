@@ -397,7 +397,7 @@ class CodeGraphBuilder:
         # For each function call, try to resolve it to a function definition
         for call in function_calls:
             call_name = call.get("name", "")
-            caller_context = call.get("context", "")  # Which function contains this call
+            # caller_context = call.get("context", "")  # Which function contains this call (reserved for future use)
 
             # Find the caller function node
             caller_nodes = [

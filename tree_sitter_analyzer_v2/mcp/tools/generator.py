@@ -1,6 +1,7 @@
 """MCP Tools for code generation."""
 from pathlib import Path
 from typing import Any
+
 from tree_sitter_analyzer_v2.mcp.tools.base import BaseTool
 
 
@@ -38,10 +39,10 @@ class TestGeneratorTool(BaseTool):
 
             # Read source to extract functions/classes
             content = source_file.read_text(encoding="utf-8")
-            
+
             import ast
             tree = ast.parse(content)
-            
+
             functions = []
             classes = []
             for node in ast.walk(tree):
@@ -57,11 +58,11 @@ from {source_file.stem} import *
 
 
 '''
-            
+
             for cls in classes:
                 test_content += f'''class Test{cls}:
     """Test cases for {cls}."""
-    
+
     def test_{cls.lower()}_creation(self):
         """Test {cls} creation."""
         # TODO: Implement test
@@ -120,10 +121,10 @@ from unittest.mock import Mock, MagicMock
 
 class Mock{class_name}:
     """Mock implementation of {class_name}."""
-    
+
     def __init__(self):
 '''
-            
+
             for method in methods:
                 mock_code += f'''        self.{method} = Mock(return_value=None)
 '''
@@ -170,7 +171,7 @@ from dataclasses import dataclass
 @dataclass
 class {class_name}:
     """Data class {class_name}."""
-    
+
     # Add fields here
     pass
 '''
@@ -180,9 +181,9 @@ class {class_name}:
 
 class {class_name}:
     """Singleton {class_name}."""
-    
+
     _instance = None
-    
+
     def __new__(cls):
         if cls._instance is None:
             cls._instance = super().__new__(cls)
@@ -194,7 +195,7 @@ class {class_name}:
 
 class {class_name}:
     """Class {class_name}."""
-    
+
     def __init__(self):
         pass
 '''

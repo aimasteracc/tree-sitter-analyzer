@@ -58,15 +58,14 @@ class CodeReviewTool(BaseTool):
                             }
                         )
 
-                if isinstance(node, ast.ClassDef):
-                    if not node.name[0].isupper():
-                        issues.append(
-                            {
-                                "severity": "warning",
-                                "type": "naming",
-                                "message": f"Class name {node.name} should use PascalCase",
-                            }
-                        )
+                if isinstance(node, ast.ClassDef) and not node.name[0].isupper():
+                    issues.append(
+                        {
+                            "severity": "warning",
+                            "type": "naming",
+                            "message": f"Class name {node.name} should use PascalCase",
+                        }
+                    )
 
             # Check complexity
             for node in ast.walk(tree):
@@ -171,27 +170,25 @@ class CommentManagerTool(BaseTool):
         suggestions = []
 
         for node in ast.walk(tree):
-            if isinstance(node, ast.FunctionDef):
-                if not ast.get_docstring(node):
-                    suggestions.append(
-                        {
-                            "line": node.lineno,
-                            "type": "function",
-                            "name": node.name,
-                            "suggestion": f"Add docstring for function {node.name}",
-                        }
-                    )
+            if isinstance(node, ast.FunctionDef) and not ast.get_docstring(node):
+                suggestions.append(
+                    {
+                        "line": node.lineno,
+                        "type": "function",
+                        "name": node.name,
+                        "suggestion": f"Add docstring for function {node.name}",
+                    }
+                )
 
-            if isinstance(node, ast.ClassDef):
-                if not ast.get_docstring(node):
-                    suggestions.append(
-                        {
-                            "line": node.lineno,
-                            "type": "class",
-                            "name": node.name,
-                            "suggestion": f"Add docstring for class {node.name}",
-                        }
-                    )
+            if isinstance(node, ast.ClassDef) and not ast.get_docstring(node):
+                suggestions.append(
+                    {
+                        "line": node.lineno,
+                        "type": "class",
+                        "name": node.name,
+                        "suggestion": f"Add docstring for class {node.name}",
+                    }
+                )
 
         return {
             "success": True,

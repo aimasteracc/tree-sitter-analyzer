@@ -1,8 +1,9 @@
 """MCP Tools for performance monitoring."""
-import time
-import psutil
 from pathlib import Path
 from typing import Any
+
+import psutil
+
 from tree_sitter_analyzer_v2.mcp.tools.base import BaseTool
 
 
@@ -76,7 +77,7 @@ class ProfileCodeTool(BaseTool):
             # Simple profiling: count lines and functions
             content = file_path.read_text(encoding="utf-8")
             lines = content.splitlines()
-            
+
             import ast
             tree = ast.parse(content)
             functions = [node.name for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)]

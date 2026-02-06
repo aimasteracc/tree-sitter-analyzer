@@ -143,7 +143,7 @@ generating documentation, analyzing entire projects."""
         language = arguments.get("language", "auto")
         page = arguments.get("page", 1)
         page_size = arguments.get("page_size", 10)
-        timeout = arguments.get("timeout", 300)
+        # timeout = arguments.get("timeout", 300)  # Reserved for future use
 
         # Validate mutually exclusive parameters
         if file_path and directory:
@@ -179,7 +179,7 @@ generating documentation, analyzing entire projects."""
                     return {"success": False, "error": f"File not found: {file_path}"}
 
                 graph = builder.build_from_file(file_path)
-                target = file_path
+                # target = file_path  # Reserved for future use
 
             # Directory analysis
             else:
@@ -207,15 +207,15 @@ generating documentation, analyzing entire projects."""
                                     break
                             if not excluded:
                                 all_files.append(str(file))
-                    
+
                     total_files = len(all_files)
                     total_pages = (total_files + page_size - 1) // page_size
                     start_idx = (page - 1) * page_size
                     end_idx = min(start_idx + page_size, total_files)
-                    
+
                     # Adjust max_files for pagination
                     effective_max_files = end_idx
-                    
+
                     # Store pagination info for later
                     pagination_info = {
                         "page": page,
@@ -237,7 +237,7 @@ generating documentation, analyzing entire projects."""
                     max_files=effective_max_files,
                     cross_file=cross_file,
                 )
-                target = directory
+                # target = directory  # Reserved for future use
 
             # Statistics
             nodes = graph.number_of_nodes()

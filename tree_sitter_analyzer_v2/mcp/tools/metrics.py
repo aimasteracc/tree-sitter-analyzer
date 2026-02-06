@@ -2,6 +2,7 @@
 import ast
 from pathlib import Path
 from typing import Any
+
 from tree_sitter_analyzer_v2.mcp.tools.base import BaseTool
 
 
@@ -41,12 +42,12 @@ class CodeMetricsTool(BaseTool):
         try:
             content = file_path.read_text(encoding="utf-8")
             lines = content.splitlines()
-            
+
             # Count lines
             total_lines = len(lines)
-            code_lines = len([l for l in lines if l.strip() and not l.strip().startswith("#")])
-            comment_lines = len([l for l in lines if l.strip().startswith("#")])
-            blank_lines = len([l for l in lines if not l.strip()])
+            code_lines = len([line for line in lines if line.strip() and not line.strip().startswith("#")])
+            comment_lines = len([line for line in lines if line.strip().startswith("#")])
+            blank_lines = len([line for line in lines if not line.strip()])
 
             # Parse AST
             tree = ast.parse(content)
@@ -75,7 +76,7 @@ class CodeMetricsTool(BaseTool):
         """Analyze directory."""
         try:
             py_files = list(directory.rglob("*.py"))
-            
+
             total_lines = 0
             total_functions = 0
             total_classes = 0
@@ -84,7 +85,7 @@ class CodeMetricsTool(BaseTool):
                 try:
                     content = file_path.read_text(encoding="utf-8")
                     total_lines += len(content.splitlines())
-                    
+
                     tree = ast.parse(content)
                     total_functions += len([n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)])
                     total_classes += len([n for n in ast.walk(tree) if isinstance(n, ast.ClassDef)])
