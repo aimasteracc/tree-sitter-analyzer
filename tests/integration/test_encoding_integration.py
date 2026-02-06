@@ -48,9 +48,9 @@ class 日本語クラス:
         )
 
         assert result["success"] is True
-        assert len(result["files"]) >= 1
+        assert len(result["matches"]) >= 1
         # Normalize paths for comparison (handle Windows vs Unix path separators)
-        result_paths = [Path(p).resolve() for p in result["files"]]
+        result_paths = [Path(m["file"]).resolve() for m in result["matches"]]
         assert test_file.resolve() in result_paths
 
     def test_search_chinese_gbk_file(self, encoding_fixtures_dir):
@@ -78,9 +78,9 @@ class 中文类:
         )
 
         assert result["success"] is True
-        assert len(result["files"]) >= 1
+        assert len(result["matches"]) >= 1
         # Normalize paths for comparison (handle Windows vs Unix path separators)
-        result_paths = [Path(p).resolve() for p in result["files"]]
+        result_paths = [Path(m["file"]).resolve() for m in result["matches"]]
         assert test_file.resolve() in result_paths
 
 

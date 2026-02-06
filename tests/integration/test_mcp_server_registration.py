@@ -264,12 +264,12 @@ def main():
 
         tool_names = server.tool_registry.list_tools()
 
-        # Expected tools:
-        # Core: analyze_code_structure, query_code, check_code_scale, extract_code_section
-        # Search: find_files, search_content, find_and_grep
-        # Code Graph: analyze_code_graph, find_function_callers, query_call_chain, visualize_code_graph
-        # Total: 11 tools
-        expected_count = 11
+        # All tools are now auto-registered including core, search, file ops,
+        # refactoring, quality, dependency, documentation, git, project,
+        # security, performance, code generation, metrics, incremental,
+        # AI assistant, collaboration, advanced codemap, code graph,
+        # project knowledge, and instant understanding tools.
+        expected_count = 57
         assert len(tool_names) == expected_count
 
         # Verify all expected tools are present

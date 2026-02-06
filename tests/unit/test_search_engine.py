@@ -365,3 +365,79 @@ class TestSearchResultParsing:
         results = search._parse_rg_output("")
 
         assert results == []
+
+
+class TestSearchValidation:
+    """Test input validation for search methods."""
+
+    def test_find_files_negative_limit(self) -> None:
+        """Test that find_files raises ValueError for negative limit."""
+        from tree_sitter_analyzer_v2.search import SearchEngine
+
+        search = SearchEngine()
+        fixtures_dir = Path(__file__).parent.parent / "fixtures" / "search_fixtures"
+
+        with pytest.raises(ValueError, match="limit must be non-negative"):
+            search.find_files(root_dir=str(fixtures_dir), pattern="*.py", limit=-1)
+
+    def test_find_files_negative_offset(self) -> None:
+        """Test that find_files raises ValueError for negative offset."""
+        from tree_sitter_analyzer_v2.search import SearchEngine
+
+        search = SearchEngine()
+        fixtures_dir = Path(__file__).parent.parent / "fixtures" / "search_fixtures"
+
+        with pytest.raises(ValueError, match="offset must be non-negative"):
+            search.find_files(root_dir=str(fixtures_dir), pattern="*.py", offset=-1)
+
+    def test_search_content_negative_limit(self) -> None:
+        """Test that search_content raises ValueError for negative limit."""
+        from tree_sitter_analyzer_v2.search import SearchEngine
+
+        search = SearchEngine()
+        fixtures_dir = Path(__file__).parent.parent / "fixtures" / "search_fixtures"
+
+        with pytest.raises(ValueError, match="limit must be non-negative"):
+            search.search_content(root_dir=str(fixtures_dir), pattern="test", limit=-1)
+
+    def test_search_content_negative_offset(self) -> None:
+        """Test that search_content raises ValueError for negative offset."""
+        from tree_sitter_analyzer_v2.search import SearchEngine
+
+        search = SearchEngine()
+        fixtures_dir = Path(__file__).parent.parent / "fixtures" / "search_fixtures"
+
+        with pytest.raises(ValueError, match="offset must be non-negative"):
+            search.search_content(root_dir=str(fixtures_dir), pattern="test", offset=-1)
+
+    def test_find_files_with_offset(self) -> None:
+        """Test find_files with offset."""
+        from tree_sitter_analyzer_v2.search import SearchEngine
+
+        search = SearchEngine()
+        fixtures_dir = Path(__file__).parent.parent / "fixtures" / "search_fixtures"
+
+        # Get all files first
+        all_files = search.find_files(root_dir=str(fixtures_dir), pattern="*")
+
+        # Get files with offset
+        if len(all_files) > 1:
+            offset_files = search.find_files(root_dir=str(fixtures_dir), pattern="*", offset=1)
+            assert len(offset_files) == len(all_files) - 1
+
+    def test_search_content_with_offset(self) -> None:
+        """Test search_content with offset."""
+        from tree_sitter_analyzer_v2.search import SearchEngine
+
+        search = SearchEngine()
+        fixtures_dir = Path(__file__).parent.parent / "fixtures" / "search_fixtures"
+
+        # Get all matches first
+        all_matches = search.search_content(root_dir=str(fixtures_dir), pattern="def")
+
+        # Get matches with offset
+        if len(all_matches) > 1:
+            offset_matches = search.search_content(
+                root_dir=str(fixtures_dir), pattern="def", offset=1
+            )
+            assert len(offset_matches) == len(all_matches) - 1

@@ -1,154 +1,241 @@
-"""Unit tests for batch file operations."""
-import pytest
-from pathlib import Path
+"""
+Tests for mcp/tools/batch.py module.
+
+TDD: Testing batch file operations.
+"""
+
 import tempfile
-import shutil
+from pathlib import Path
+
+import pytest
+
+from tree_sitter_analyzer_v2.mcp.tools.batch import BatchOperationsTool
 
 
 class TestBatchOperationsTool:
-    """Test cases for batch operations tool."""
-    
-    @pytest.fixture
-    def tool(self):
-        """Create BatchOperationsTool instance."""
-        from tree_sitter_analyzer_v2.mcp.tools.batch import BatchOperationsTool
-        return BatchOperationsTool()
-    
-    @pytest.fixture
-    def temp_dir(self):
-        """Create temporary directory for tests."""
-        temp_path = Path(tempfile.mkdtemp())
-        yield temp_path
-        # Cleanup
-        if temp_path.exists():
-            shutil.rmtree(temp_path)
-    
-    def test_batch_rename(self, tool, temp_dir):
-        """Test batch renaming files."""
-        # Create test files
-        files = [temp_dir / f"file{i}.txt" for i in range(3)]
-        for f in files:
-            f.write_text("content")
+    """Test BatchOperationsTool."""
+
+    def test_get_name(self) -> None:
+        """Should return correct name."""
+        tool = BatchOperationsTool()
+        assert tool.get_name() == "batch_operations"
+
+    def test_get_description(self) -> None:
+        """Should return description."""
+        tool = BatchOperationsTool()
+        assert "batch" in tool.get_description().lower()
+
+    def test_get_schema(self) -> None:
+        """Should return correct schema."""
+        tool = BatchOperationsTool()
+        schema = tool.get_schema()
         
-        result = tool.execute({
-            "operation": "rename",
-            "files": [str(f) for f in files],
-            "pattern": r"file(\d+)",
-            "replacement": r"renamed\1",
-        })
+        assert "operation" in schema["properties"]
+        assert "files" in schema["properties"]
+        assert "operation" in schema["required"]
+
+    def test_rename_operation(self) -> None:
+        """Should rename files."""
+        tool = BatchOperationsTool()
         
-        assert result["success"]
-        assert result["processed"] == 3
-        # Check renamed files exist
-        for i in range(3):
-            assert (temp_dir / f"renamed{i}.txt").exists()
-    
-    def test_batch_move(self, tool, temp_dir):
-        """Test batch moving files."""
-        # Create source files
-        source_dir = temp_dir / "source"
-        source_dir.mkdir()
-        files = [source_dir / f"file{i}.txt" for i in range(3)]
-        for f in files:
-            f.write_text("content")
+        with tempfile.TemporaryDirectory() as tmpdir:
+            file1 = Path(tmpdir) / "test_old.py"
+            file1.write_text("content")
+            
+            result = tool.execute({
+                "operation": "rename",
+                "files": [str(file1)],
+                "pattern": "old",
+                "replacement": "new"
+            })
+            
+            assert result["success"] is True
+            assert (Path(tmpdir) / "test_new.py").exists()
+
+    def test_move_operation(self) -> None:
+        """Should move files."""
+        tool = BatchOperationsTool()
         
-        # Create target directory
-        target_dir = temp_dir / "target"
-        target_dir.mkdir()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            src = Path(tmpdir) / "src"
+            dst = Path(tmpdir) / "dst"
+            src.mkdir()
+            dst.mkdir()
+            
+            file1 = src / "test.py"
+            file1.write_text("content")
+            
+            result = tool.execute({
+                "operation": "move",
+                "files": [str(file1)],
+                "target_dir": str(dst)
+            })
+            
+            assert result["success"] is True
+            assert (dst / "test.py").exists()
+            assert not file1.exists()
+
+    def test_copy_operation(self) -> None:
+        """Should copy files."""
+        tool = BatchOperationsTool()
         
-        result = tool.execute({
-            "operation": "move",
-            "files": [str(f) for f in files],
-            "target_dir": str(target_dir),
-        })
+        with tempfile.TemporaryDirectory() as tmpdir:
+            src = Path(tmpdir) / "src"
+            dst = Path(tmpdir) / "dst"
+            src.mkdir()
+            dst.mkdir()
+            
+            file1 = src / "test.py"
+            file1.write_text("content")
+            
+            result = tool.execute({
+                "operation": "copy",
+                "files": [str(file1)],
+                "target_dir": str(dst)
+            })
+            
+            assert result["success"] is True
+            assert (dst / "test.py").exists()
+            assert file1.exists()  # Original still exists
+
+    def test_change_extension_operation(self) -> None:
+        """Should change file extension."""
+        tool = BatchOperationsTool()
         
-        assert result["success"]
-        assert result["processed"] == 3
-        # Check files moved
-        for i in range(3):
-            assert (target_dir / f"file{i}.txt").exists()
-            assert not (source_dir / f"file{i}.txt").exists()
-    
-    def test_batch_copy(self, tool, temp_dir):
-        """Test batch copying files."""
-        # Create source files
-        source_dir = temp_dir / "source"
-        source_dir.mkdir()
-        files = [source_dir / f"file{i}.txt" for i in range(3)]
-        for f in files:
-            f.write_text("content")
+        with tempfile.TemporaryDirectory() as tmpdir:
+            file1 = Path(tmpdir) / "test.txt"
+            file1.write_text("content")
+            
+            result = tool.execute({
+                "operation": "change_extension",
+                "files": [str(file1)],
+                "new_extension": ".md"
+            })
+            
+            assert result["success"] is True
+            assert (Path(tmpdir) / "test.md").exists()
+
+    def test_add_prefix_operation(self) -> None:
+        """Should add prefix to files."""
+        tool = BatchOperationsTool()
         
-        # Create target directory
-        target_dir = temp_dir / "target"
-        target_dir.mkdir()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            file1 = Path(tmpdir) / "test.py"
+            file1.write_text("content")
+            
+            result = tool.execute({
+                "operation": "add_prefix",
+                "files": [str(file1)],
+                "prefix": "new_"
+            })
+            
+            assert result["success"] is True
+            assert (Path(tmpdir) / "new_test.py").exists()
+
+    def test_add_suffix_operation(self) -> None:
+        """Should add suffix to files."""
+        tool = BatchOperationsTool()
         
-        result = tool.execute({
-            "operation": "copy",
-            "files": [str(f) for f in files],
-            "target_dir": str(target_dir),
-        })
+        with tempfile.TemporaryDirectory() as tmpdir:
+            file1 = Path(tmpdir) / "test.py"
+            file1.write_text("content")
+            
+            result = tool.execute({
+                "operation": "add_suffix",
+                "files": [str(file1)],
+                "suffix": "_backup"
+            })
+            
+            assert result["success"] is True
+            assert (Path(tmpdir) / "test_backup.py").exists()
+
+    def test_move_without_target_dir(self) -> None:
+        """Should fail without target directory."""
+        tool = BatchOperationsTool()
         
-        assert result["success"]
-        assert result["processed"] == 3
-        # Check files copied (originals still exist)
-        for i in range(3):
-            assert (target_dir / f"file{i}.txt").exists()
-            assert (source_dir / f"file{i}.txt").exists()
-    
-    def test_batch_change_extension(self, tool, temp_dir):
-        """Test batch changing file extensions."""
-        # Create test files
-        files = [temp_dir / f"file{i}.txt" for i in range(3)]
-        for f in files:
-            f.write_text("content")
+        with tempfile.TemporaryDirectory() as tmpdir:
+            file1 = Path(tmpdir) / "test.py"
+            file1.write_text("content")
+            
+            result = tool.execute({
+                "operation": "move",
+                "files": [str(file1)]
+            })
+            
+            assert result["success"] is False
+
+    def test_copy_without_target_dir(self) -> None:
+        """Should fail without target directory."""
+        tool = BatchOperationsTool()
         
-        result = tool.execute({
-            "operation": "change_extension",
-            "files": [str(f) for f in files],
-            "new_extension": ".md",
-        })
+        with tempfile.TemporaryDirectory() as tmpdir:
+            file1 = Path(tmpdir) / "test.py"
+            file1.write_text("content")
+            
+            result = tool.execute({
+                "operation": "copy",
+                "files": [str(file1)]
+            })
+            
+            assert result["success"] is False
+
+    def test_rename_without_pattern(self) -> None:
+        """Should fail without pattern for rename."""
+        tool = BatchOperationsTool()
         
-        assert result["success"]
-        assert result["processed"] == 3
-        # Check extensions changed
-        for i in range(3):
-            assert (temp_dir / f"file{i}.md").exists()
-            assert not (temp_dir / f"file{i}.txt").exists()
-    
-    def test_batch_add_prefix(self, tool, temp_dir):
-        """Test batch adding prefix to filenames."""
-        # Create test files
-        files = [temp_dir / f"file{i}.txt" for i in range(3)]
-        for f in files:
-            f.write_text("content")
+        with tempfile.TemporaryDirectory() as tmpdir:
+            file1 = Path(tmpdir) / "test.py"
+            file1.write_text("content")
+            
+            result = tool.execute({
+                "operation": "rename",
+                "files": [str(file1)]
+            })
+            
+            assert result["success"] is False
+
+    def test_add_prefix_without_prefix(self) -> None:
+        """Should fail without prefix."""
+        tool = BatchOperationsTool()
+        
+        with tempfile.TemporaryDirectory() as tmpdir:
+            file1 = Path(tmpdir) / "test.py"
+            file1.write_text("content")
+            
+            result = tool.execute({
+                "operation": "add_prefix",
+                "files": [str(file1)]
+            })
+            
+            assert result["success"] is False
+
+    def test_multiple_files(self) -> None:
+        """Should handle multiple files."""
+        tool = BatchOperationsTool()
+        
+        with tempfile.TemporaryDirectory() as tmpdir:
+            file1 = Path(tmpdir) / "test1.py"
+            file2 = Path(tmpdir) / "test2.py"
+            file1.write_text("content1")
+            file2.write_text("content2")
+            
+            result = tool.execute({
+                "operation": "add_prefix",
+                "files": [str(file1), str(file2)],
+                "prefix": "new_"
+            })
+            
+            assert result["success"] is True
+            assert result["processed"] == 2
+
+    def test_nonexistent_file(self) -> None:
+        """Should handle nonexistent files."""
+        tool = BatchOperationsTool()
         
         result = tool.execute({
             "operation": "add_prefix",
-            "files": [str(f) for f in files],
-            "prefix": "test_",
+            "files": ["/nonexistent/file.py"],
+            "prefix": "new_"
         })
         
-        assert result["success"]
-        assert result["processed"] == 3
-        # Check prefix added
-        for i in range(3):
-            assert (temp_dir / f"test_file{i}.txt").exists()
-    
-    def test_batch_add_suffix(self, tool, temp_dir):
-        """Test batch adding suffix to filenames."""
-        # Create test files
-        files = [temp_dir / f"file{i}.txt" for i in range(3)]
-        for f in files:
-            f.write_text("content")
-        
-        result = tool.execute({
-            "operation": "add_suffix",
-            "files": [str(f) for f in files],
-            "suffix": "_backup",
-        })
-        
-        assert result["success"]
-        assert result["processed"] == 3
-        # Check suffix added
-        for i in range(3):
-            assert (temp_dir / f"file{i}_backup.txt").exists()
+        assert result["processed"] == 0

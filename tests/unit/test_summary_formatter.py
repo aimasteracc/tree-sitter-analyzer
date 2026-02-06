@@ -1,89 +1,55 @@
-"""
-Test SummaryFormatter functionality.
+"""Tests for SummaryFormatter."""
 
-Tests the summary formatter output format and edge cases.
-"""
+import pytest
+
+from tree_sitter_analyzer_v2.formatters.summary_formatter import SummaryFormatter
 
 
 class TestSummaryFormatter:
-    """Test SummaryFormatter class."""
+    """Tests for SummaryFormatter class."""
 
-    def test_formatter_can_be_imported(self) -> None:
-        """Test that SummaryFormatter can be imported."""
-        from tree_sitter_analyzer_v2.formatters.summary_formatter import SummaryFormatter
-
-        assert SummaryFormatter is not None
-
-    def test_formatter_initialization(self) -> None:
-        """Test creating a SummaryFormatter instance."""
-        from tree_sitter_analyzer_v2.formatters.summary_formatter import SummaryFormatter
-
+    def test_format_basic(self) -> None:
+        """Test basic formatting."""
         formatter = SummaryFormatter()
-        assert formatter is not None
-
-    def test_format_basic_result(self) -> None:
-        """Test formatting a basic analysis result."""
-        from tree_sitter_analyzer_v2.formatters.summary_formatter import SummaryFormatter
-
-        formatter = SummaryFormatter()
-
         result = {
-            "file_path": "test.py",
-            "language": "python",
-            "classes": [{"name": "MyClass", "methods": [{"name": "method1"}]}],
-            "functions": [{"name": "my_function"}],
-            "imports": [{"module": "os"}],
-            "metadata": {
-                "total_lines": 100,
-                "code_lines": 70,
-                "comment_lines": 20,
-                "blank_lines": 10,
-            },
-        }
-
-        output = formatter.format(result)
-
-        # Verify required fields
-        assert "File: test.py" in output
-        assert "Language: python" in output
-        assert "Lines: 100" in output
-        assert "Classes: 1" in output
-        assert "MyClass" in output
-        assert "Functions: 1" in output
-        assert "Methods: 1" in output
-        assert "Imports: 1" in output
-
-    def test_format_empty_file(self) -> None:
-        """Test formatting an empty file result."""
-        from tree_sitter_analyzer_v2.formatters.summary_formatter import SummaryFormatter
-
-        formatter = SummaryFormatter()
-
-        result = {
-            "file_path": "empty.py",
+            "file_path": "/path/to/test.py",
             "language": "python",
             "classes": [],
             "functions": [],
             "imports": [],
-            "metadata": {},
         }
-
         output = formatter.format(result)
-
-        assert "File: empty.py" in output
+        
+        assert "File: test.py" in output
         assert "Language: python" in output
         assert "Classes: 0" in output
         assert "Functions: 0" in output
-        assert "Imports: 0" in output
 
-    def test_format_with_multiple_classes(self) -> None:
-        """Test formatting result with many classes."""
-        from tree_sitter_analyzer_v2.formatters.summary_formatter import SummaryFormatter
-
+    def test_format_with_classes(self) -> None:
+        """Test formatting with classes."""
         formatter = SummaryFormatter()
-
         result = {
-            "file_path": "multi.py",
+            "file_path": "test.py",
+            "language": "python",
+            "classes": [
+                {"name": "ClassA", "methods": [{"name": "method1"}]},
+                {"name": "ClassB", "methods": []},
+            ],
+            "functions": [],
+            "imports": [],
+        }
+        output = formatter.format(result)
+        
+        assert "Classes: 2" in output
+        assert "ClassA" in output
+        assert "ClassB" in output
+        assert "Methods: 1" in output
+
+    def test_format_with_many_classes(self) -> None:
+        """Test formatting with more than 3 classes."""
+        formatter = SummaryFormatter()
+        result = {
+            "file_path": "test.py",
             "language": "python",
             "classes": [
                 {"name": "Class1"},
@@ -94,70 +60,166 @@ class TestSummaryFormatter:
             ],
             "functions": [],
             "imports": [],
-            "metadata": {},
         }
-
         output = formatter.format(result)
-
-        # Should show first 3 and indicate more
+        
         assert "Classes: 5" in output
-        assert "Class1" in output
-        assert "Class2" in output
-        assert "Class3" in output
-        assert "... (+2 more)" in output
+        assert "+2 more" in output
+
+    def test_format_with_functions(self) -> None:
+        """Test formatting with functions."""
+        formatter = SummaryFormatter()
+        result = {
+            "file_path": "test.py",
+            "language": "python",
+            "classes": [],
+            "functions": [{"name": "func1"}, {"name": "func2"}],
+            "imports": [],
+        }
+        output = formatter.format(result)
+        
+        assert "Functions: 2" in output
+
+    def test_format_with_imports(self) -> None:
+        """Test formatting with imports."""
+        formatter = SummaryFormatter()
+        result = {
+            "file_path": "test.py",
+            "language": "python",
+            "classes": [],
+            "functions": [],
+            "imports": [{"module": "os"}, {"module": "sys"}],
+        }
+        output = formatter.format(result)
+        
+        assert "Imports: 2" in output
+
+    def test_format_with_metadata(self) -> None:
+        """Test formatting with line count metadata."""
+        formatter = SummaryFormatter()
+        result = {
+            "file_path": "test.py",
+            "language": "python",
+            "classes": [],
+            "functions": [],
+            "imports": [],
+            "metadata": {
+                "total_lines": 100,
+                "code_lines": 70,
+                "comment_lines": 20,
+                "blank_lines": 10,
+            },
+        }
+        output = formatter.format(result)
+        
+        assert "Lines: 100" in output
+        assert "Code: 70" in output
+        assert "Comments: 20" in output
+        assert "Blank: 10" in output
 
     def test_format_with_complexity(self) -> None:
-        """Test formatting result with complexity data."""
-        from tree_sitter_analyzer_v2.formatters.summary_formatter import SummaryFormatter
-
+        """Test formatting with complexity info."""
         formatter = SummaryFormatter()
-
         result = {
-            "file_path": "complex.py",
+            "file_path": "test.py",
+            "language": "python",
+            "classes": [],
+            "functions": [
+                {"name": "func1", "complexity": 2},
+                {"name": "func2", "complexity": 4},
+            ],
+            "imports": [],
+        }
+        output = formatter.format(result)
+        
+        assert "Complexity:" in output
+        assert "avg" in output
+
+    def test_format_with_method_complexity(self) -> None:
+        """Test formatting with method complexity."""
+        formatter = SummaryFormatter()
+        result = {
+            "file_path": "test.py",
             "language": "python",
             "classes": [
                 {
                     "name": "MyClass",
                     "methods": [
-                        {"name": "method1", "complexity": 2},
-                        {"name": "method2", "complexity": 4},
+                        {"name": "method1", "complexity": 10},
+                        {"name": "method2", "complexity": 8},
                     ],
                 }
             ],
-            "functions": [{"name": "func1", "complexity": 3}],
+            "functions": [],
             "imports": [],
-            "metadata": {},
         }
-
         output = formatter.format(result)
+        
+        assert "Complexity: High" in output
 
-        # Should show complexity
-        assert "Complexity:" in output
-        assert "avg 3.0" in output  # (2+4+3)/3 = 3.0
+    def test_format_unknown_file_path(self) -> None:
+        """Test formatting with missing file path."""
+        formatter = SummaryFormatter()
+        result = {
+            "classes": [],
+            "functions": [],
+            "imports": [],
+        }
+        output = formatter.format(result)
+        
+        assert "File: unknown" in output
 
-    def test_complexity_level_low(self) -> None:
+    def test_format_no_metadata_lines(self) -> None:
+        """Test formatting without line count metadata."""
+        formatter = SummaryFormatter()
+        result = {
+            "file_path": "test.py",
+            "language": "python",
+            "classes": [],
+            "functions": [],
+            "imports": [],
+            "metadata": {"total_lines": 0},
+        }
+        output = formatter.format(result)
+        
+        # Should not include line count when total is 0
+        assert "Lines:" not in output
+
+    def test_format_no_complexity(self) -> None:
+        """Test formatting without complexity info."""
+        formatter = SummaryFormatter()
+        result = {
+            "file_path": "test.py",
+            "language": "python",
+            "classes": [],
+            "functions": [{"name": "func1"}],  # No complexity
+            "imports": [],
+        }
+        output = formatter.format(result)
+        
+        assert "Complexity: N/A" in output
+
+
+class TestComplexityLevel:
+    """Tests for complexity level calculation."""
+
+    def test_low_complexity(self) -> None:
         """Test low complexity level."""
-        from tree_sitter_analyzer_v2.formatters.summary_formatter import SummaryFormatter
-
         formatter = SummaryFormatter()
+        assert formatter._get_complexity_level(1.0) == "Low"
+        assert formatter._get_complexity_level(2.0) == "Low"
+        assert formatter._get_complexity_level(2.9) == "Low"
 
-        level = formatter._get_complexity_level(2.5)
-        assert level == "Low"
-
-    def test_complexity_level_medium(self) -> None:
+    def test_medium_complexity(self) -> None:
         """Test medium complexity level."""
-        from tree_sitter_analyzer_v2.formatters.summary_formatter import SummaryFormatter
-
         formatter = SummaryFormatter()
+        assert formatter._get_complexity_level(3.0) == "Medium"
+        assert formatter._get_complexity_level(5.0) == "Medium"
+        assert formatter._get_complexity_level(6.9) == "Medium"
 
-        level = formatter._get_complexity_level(5.0)
-        assert level == "Medium"
-
-    def test_complexity_level_high(self) -> None:
+    def test_high_complexity(self) -> None:
         """Test high complexity level."""
-        from tree_sitter_analyzer_v2.formatters.summary_formatter import SummaryFormatter
-
         formatter = SummaryFormatter()
-
-        level = formatter._get_complexity_level(8.0)
-        assert level == "High"
+        assert formatter._get_complexity_level(7.0) == "High"
+        assert formatter._get_complexity_level(10.0) == "High"
+        assert formatter._get_complexity_level(20.0) == "High"

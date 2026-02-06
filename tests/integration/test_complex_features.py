@@ -33,7 +33,7 @@ class TestComplexFeatures:
         result = parser.parse(content, str(complex_sample))
 
         assert result is not None
-        assert result["errors"] is False  # Should parse successfully
+        assert result["metadata"]["has_errors"] is False  # Should parse successfully
 
     def test_decorator_extraction(self, complex_sample):
         """Test extraction of various decorator types."""
@@ -141,8 +141,11 @@ class TestComplexFeatures:
         content = complex_sample.read_text(encoding="utf-8")
         result = parser.parse(content, str(complex_sample))
 
-        # Should find nested Transaction class
-        nested_class = next((c for c in result["classes"] if c["name"] == "Transaction"), None)
+        # Should find nested Transaction class inside DataStore
+        datastore_class = next((c for c in result["classes"] if c["name"] == "DataStore"), None)
+        assert datastore_class is not None
+        nested_classes = datastore_class.get("nested_classes", [])
+        nested_class = next((c for c in nested_classes if c["name"] == "Transaction"), None)
         assert nested_class is not None
 
     def test_multiple_inheritance(self, complex_sample):
@@ -178,8 +181,8 @@ class TestComplexFeatures:
         content = complex_sample.read_text(encoding="utf-8")
         result = parser.parse(content, str(complex_sample))
 
-        # Should have multiple classes
-        assert result["metadata"]["total_classes"] >= 7
+        # Should have multiple classes (6 top-level, nested classes not counted in metadata)
+        assert result["metadata"]["total_classes"] >= 6
 
         # Should have multiple functions
         assert result["metadata"]["total_functions"] >= 4
@@ -203,13 +206,13 @@ class TestCheckCodeScaleWithComplexFile:
 
         # Check structure counts
         structure = result["structure"]
-        assert structure["total_classes"] >= 7
+        assert structure["total_classes"] >= 6
         assert structure["total_functions"] >= 4
 
         # Check details included
         assert "classes" in structure
         assert "functions" in structure
-        assert len(structure["classes"]) >= 7
+        assert len(structure["classes"]) >= 6
         assert len(structure["functions"]) >= 4
 
     def test_complex_file_size_category(self, complex_sample):

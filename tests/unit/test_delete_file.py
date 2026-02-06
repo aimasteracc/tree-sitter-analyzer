@@ -125,3 +125,60 @@ class TestDeleteFileTool:
         assert result["deleted_count"] == 3
         for f in files:
             assert not f.exists()
+
+    def test_delete_without_confirm(self, tool, temp_dir):
+        """Test delete without confirmation."""
+        test_file = temp_dir / "test.txt"
+        test_file.write_text("test")
+        
+        result = tool.execute({
+            "path": str(test_file),
+            "confirm": False,
+        })
+        
+        assert not result["success"]
+        assert "confirmation" in result["error"].lower()
+        # File should still exist
+        assert test_file.exists()
+
+    def test_delete_no_path_or_paths(self, tool, temp_dir):
+        """Test delete without path or paths."""
+        result = tool.execute({
+            "confirm": True,
+        })
+        
+        assert not result["success"]
+        assert "path" in result["error"].lower()
+
+    def test_delete_multiple_with_errors(self, tool, temp_dir):
+        """Test batch delete with some failures."""
+        # Create one real file
+        real_file = temp_dir / "real.txt"
+        real_file.write_text("content")
+        
+        # Try to delete real file and non-existent file
+        result = tool.execute({
+            "paths": [str(real_file), str(temp_dir / "nonexistent.txt")],
+        })
+        
+        assert not result["success"]
+        assert result["deleted_count"] == 1
+        assert "errors" in result
+        assert len(result["errors"]) == 1
+
+    def test_delete_tool_name(self, tool):
+        """Test tool name."""
+        assert tool.get_name() == "delete_file"
+
+    def test_delete_tool_description(self, tool):
+        """Test tool description."""
+        desc = tool.get_description()
+        assert "delete" in desc.lower()
+
+    def test_delete_tool_schema(self, tool):
+        """Test tool schema."""
+        schema = tool.get_schema()
+        assert schema["type"] == "object"
+        assert "path" in schema["properties"]
+        assert "paths" in schema["properties"]
+        assert "recursive" in schema["properties"]

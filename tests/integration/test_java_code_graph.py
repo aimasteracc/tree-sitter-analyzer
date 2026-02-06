@@ -70,9 +70,8 @@ def test_java_graph_has_method_nodes(java_builder, java_fixture_dir):
     # Find FUNCTION nodes (methods)
     function_nodes = [n for n, d in graph.nodes(data=True) if d.get("type") == "FUNCTION"]
 
-    # User.java has: getName, getAge, validate
-    # Note: JavaParser doesn't extract constructors as methods currently
-    assert len(function_nodes) == 3
+    # User.java has: User (constructor), getName, getAge, validate
+    assert len(function_nodes) == 4
 
     # Verify method names
     method_names = {graph.nodes[n]["name"] for n in function_nodes}

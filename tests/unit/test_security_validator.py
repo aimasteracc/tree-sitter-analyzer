@@ -322,6 +322,71 @@ class TestSecurityValidatorIntegration:
         assert len(result2["error"]) > 20  # Should have detailed message
 
 
+class TestRegexWithTestString:
+    """Tests for regex validation with test strings."""
+
+    def test_safe_regex_with_test_string(self):
+        """Test safe regex with test string passes."""
+        from tree_sitter_analyzer_v2.security.validator import SecurityValidator
+
+        validator = SecurityValidator(project_root="/tmp")
+
+        result = validator.validate_regex("hello", test_string="hello world")
+
+        assert result["valid"] is True
+
+    def test_regex_execution_with_long_string(self):
+        """Test regex execution with longer test string."""
+        from tree_sitter_analyzer_v2.security.validator import SecurityValidator
+
+        validator = SecurityValidator(project_root="/tmp")
+
+        result = validator.validate_regex("[a-z]+", test_string="a" * 1000)
+
+        assert result["valid"] is True
+
+    def test_no_match_regex_still_valid(self):
+        """Test regex that doesn't match is still valid."""
+        from tree_sitter_analyzer_v2.security.validator import SecurityValidator
+
+        validator = SecurityValidator(project_root="/tmp")
+
+        result = validator.validate_regex("xyz", test_string="abc")
+
+        assert result["valid"] is True
+
+
+class TestPathValidationErrors:
+    """Tests for path validation error handling."""
+
+    def test_nonexistent_path_valid(self, tmp_path):
+        """Test nonexistent path within project is valid."""
+        from tree_sitter_analyzer_v2.security.validator import SecurityValidator
+
+        project_root = tmp_path / "project"
+        project_root.mkdir()
+
+        validator = SecurityValidator(project_root=str(project_root))
+        result = validator.validate_file_path("nonexistent.py")
+
+        # Nonexistent file is valid (just doesn't exist yet)
+        assert result["valid"] is True
+
+    def test_directory_path_valid(self, tmp_path):
+        """Test directory path is valid."""
+        from tree_sitter_analyzer_v2.security.validator import SecurityValidator
+
+        project_root = tmp_path / "project"
+        project_root.mkdir()
+        subdir = project_root / "subdir"
+        subdir.mkdir()
+
+        validator = SecurityValidator(project_root=str(project_root))
+        result = validator.validate_file_path(str(subdir))
+
+        assert result["valid"] is True
+
+
 class TestSecurityException:
     """Tests for security exception."""
 
@@ -343,3 +408,5 @@ class TestSecurityException:
 
         assert "Path traversal" in str(exception)
         assert hasattr(exception, "details")
+
+

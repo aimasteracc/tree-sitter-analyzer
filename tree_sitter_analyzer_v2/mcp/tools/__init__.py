@@ -65,6 +65,10 @@ from tree_sitter_analyzer_v2.mcp.tools.incremental import (
     ChangeDetectorTool,
     IncrementalAnalyzerTool,
 )
+from tree_sitter_analyzer_v2.mcp.tools.instant_understand import (
+    CompareProjectsTool,
+    InstantUnderstandTool,
+)
 from tree_sitter_analyzer_v2.mcp.tools.linter import LinterTool
 from tree_sitter_analyzer_v2.mcp.tools.metrics import CodeMetricsTool
 from tree_sitter_analyzer_v2.mcp.tools.performance import PerformanceMonitorTool, ProfileCodeTool
@@ -136,4 +140,6 @@ __all__ = [
     "CodeQueryTool",
     "RealtimeWatchTool",
     "GraphVisualizeTool",
+    "InstantUnderstandTool",
+    "CompareProjectsTool",
 ]

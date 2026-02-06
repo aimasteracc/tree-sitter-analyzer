@@ -65,9 +65,9 @@ class TestFindAndGrepTool:
         result = tool.execute({"roots": [str(tmp_path)], "pattern": "*.py", "query": "def "})
 
         assert result["success"] is True
-        assert "files" in result
-        # Should find test1.py and test2.py (have "def")
-        assert len(result["files"]) >= 2
+        assert "matches" in result
+        # Should find matches in test1.py and test2.py (have "def")
+        assert len(result["matches"]) >= 2
 
     def test_extension_filter(self, tmp_path):
         """Test filtering by file extension."""
@@ -99,7 +99,7 @@ class TestFindAndGrepTool:
         )
 
         assert result["success"] is True
-        assert len(result["files"]) >= 1
+        assert len(result["matches"]) >= 1
 
     def test_regex_search(self, tmp_path):
         """Test regex pattern in content search."""
@@ -119,7 +119,7 @@ class TestFindAndGrepTool:
         )
 
         assert result["success"] is True
-        assert len(result["files"]) >= 1
+        assert len(result["matches"]) >= 1
 
     def test_multiple_roots(self, tmp_path):
         """Test searching in multiple root directories."""
@@ -244,7 +244,7 @@ class TestRealWorldScenarios:
 
         assert result["success"] is True
         # Should find UtilityClass in utils.py
-        assert len(result["files"]) >= 1
+        assert len(result["matches"]) >= 1
 
     def test_search_test_files_only(self, sample_project):
         """Test searching only in test files."""
@@ -257,4 +257,4 @@ class TestRealWorldScenarios:
         )
 
         assert result["success"] is True
-        assert len(result["files"]) >= 1
+        assert len(result["matches"]) >= 1

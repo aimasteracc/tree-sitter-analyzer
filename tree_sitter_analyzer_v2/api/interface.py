@@ -12,9 +12,6 @@ from typing import Any
 
 from tree_sitter_analyzer_v2.core.detector import LanguageDetector
 from tree_sitter_analyzer_v2.formatters import get_default_registry
-from tree_sitter_analyzer_v2.languages.java_parser import JavaParser
-from tree_sitter_analyzer_v2.languages.python_parser import PythonParser
-from tree_sitter_analyzer_v2.languages.typescript_parser import TypeScriptParser
 from tree_sitter_analyzer_v2.search import SearchEngine
 
 
@@ -36,12 +33,14 @@ class TreeSitterAnalyzerAPI:
 
     def __init__(self) -> None:
         """Initialize API with parsers and search engine."""
-        # Initialize parsers
+        # Initialize language-specific parsers
+        from tree_sitter_analyzer_v2.languages import PythonParser, JavaParser, TypeScriptParser
+
         self._parsers = {
             "python": PythonParser(),
-            "typescript": TypeScriptParser(),
-            "javascript": TypeScriptParser(),  # TS parser handles JS too
             "java": JavaParser(),
+            "typescript": TypeScriptParser(),
+            "javascript": TypeScriptParser(),
         }
 
         # Initialize detector and formatters
@@ -92,18 +91,18 @@ class TreeSitterAnalyzerAPI:
 
             language = detection["language"].lower()
 
-            # Get appropriate parser
+            # Check parser exists for this language
             if language not in self._parsers:
                 return {"success": False, "error": f"Language '{language}' not supported yet"}
 
             parser = self._parsers[language]
 
-            # Parse file
-            result = parser.parse(content, str(path))
+            # Parse file - language-specific parsers return dicts
+            parse_result = parser.parse(content, str(path))
 
             # Format output
             formatter = self._formatter_registry.get(output_format)
-            formatted_data = formatter.format(result)
+            formatted_data = formatter.format(parse_result)
 
             return {
                 "success": True,

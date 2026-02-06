@@ -44,6 +44,7 @@ from tree_sitter_analyzer_v2.mcp.tools import (
     CodeQueryTool,
     CodeReviewTool,
     CommentManagerTool,
+    CompareProjectsTool,
     DeleteFileTool,
     DependencyAnalyzerTool,
     DependencyGraphTool,
@@ -61,6 +62,7 @@ from tree_sitter_analyzer_v2.mcp.tools import (
     GraphVisualizeTool,
     ImprovementSuggesterTool,
     IncrementalAnalyzerTool,
+    InstantUnderstandTool,
     LinterTool,
     MockGeneratorTool,
     NotebookEditorTool,
@@ -227,6 +229,10 @@ class MCPServer:
         # Project Knowledge tools (NEW! For instant project understanding)
         self.tool_registry.register(CheckRefactoringSafetyTool())
         self.tool_registry.register(ProjectKnowledgeTool())
+        
+        # Instant Understanding tools (NEW! Pure MCP data-driven solution)
+        self.tool_registry.register(InstantUnderstandTool())
+        self.tool_registry.register(CompareProjectsTool())
 
     def get_capabilities(self) -> dict[str, Any]:
         """

@@ -78,7 +78,7 @@ class CheckRefactoringSafetyTool(BaseTool):
 - 规划代码改动顺序
 """
     
-    def get_input_schema(self) -> Dict[str, Any]:
+    def get_schema(self) -> Dict[str, Any]:
         return {
             "type": "object",
             "properties": {
@@ -180,7 +180,7 @@ class ProjectKnowledgeTool(BaseTool):
 - 评估项目规模和复杂度
 """
     
-    def get_input_schema(self) -> Dict[str, Any]:
+    def get_schema(self) -> Dict[str, Any]:
         return {
             "type": "object",
             "properties": {

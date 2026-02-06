@@ -11,7 +11,6 @@ from typing import Any
 
 from tree_sitter_analyzer_v2.core.detector import LanguageDetector
 from tree_sitter_analyzer_v2.formatters import get_default_registry
-from tree_sitter_analyzer_v2.languages import JavaParser, PythonParser, TypeScriptParser
 from tree_sitter_analyzer_v2.mcp.tools.base import BaseTool
 
 
@@ -28,12 +27,19 @@ class QueryTool(BaseTool):
         self._detector = LanguageDetector()
         self._formatter_registry = get_default_registry()
 
-        # Language parsers
-        self._parsers = {
+        # Initialize language-specific parsers
+        self._parsers = self._create_parsers()
+
+    @staticmethod
+    def _create_parsers() -> dict:
+        """Create language-specific parsers."""
+        from tree_sitter_analyzer_v2.languages import PythonParser, JavaParser, TypeScriptParser
+
+        return {
             "python": PythonParser(),
-            "typescript": TypeScriptParser(),
-            "javascript": TypeScriptParser(),  # TS parser handles both
             "java": JavaParser(),
+            "typescript": TypeScriptParser(),
+            "javascript": TypeScriptParser(),
         }
 
     def get_name(self) -> str:

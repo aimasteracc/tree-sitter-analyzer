@@ -14,9 +14,6 @@ from typing import Any
 
 import networkx as nx
 
-from tree_sitter_analyzer_v2.core.parser import TreeSitterParser
-
-
 class CodeGraphBuilder:
     """Builds code graphs from source files (multi-language support)."""
 
@@ -44,8 +41,13 @@ class CodeGraphBuilder:
                 f"Supported: {supported}"
             )
 
-        # Initialize tree-sitter parser
-        self.parser = TreeSitterParser(self.language)
+        # Initialize language-specific parser (returns dict, not ParseResult)
+        if self.language == "python":
+            from tree_sitter_analyzer_v2.languages.python_parser import PythonParser
+            self.parser = PythonParser()
+        elif self.language == "java":
+            from tree_sitter_analyzer_v2.languages.java_parser import JavaParser
+            self.parser = JavaParser()
         
         # Initialize language-specific call extractor
         if self.language == "python":
@@ -243,18 +245,18 @@ class CodeGraphBuilder:
                     imports.append(imp)
                 # Python imports are dictionaries
                 elif isinstance(imp, dict):
-                    if imp.get("type") == "import" and "module" in imp:
-                        # Simple import: import pathlib
-                        imports.append(imp["module"])
-                    elif imp.get("type") == "from_import" and "names" in imp:
-                        # From import: from typing import Dict
-                        module = imp.get("module", "")
-                        for name in imp["names"]:
-                            # names is a list of strings
+                    module = imp.get("module", "")
+                    names = imp.get("names")
+                    if names:
+                        # From import: from typing import Dict -> "typing.Dict"
+                        for name in names:
                             if module:
                                 imports.append(f"{module}.{name}")
                             else:
                                 imports.append(name)
+                    elif module:
+                        # Simple import: import pathlib -> "pathlib"
+                        imports.append(module)
 
         node_data = {
             "type": "MODULE",
@@ -428,7 +430,11 @@ class CodeGraphBuilder:
                     if target_id != caller_id:
                         # Add CALLS edge: caller → callee
                         if not graph.has_edge(caller_id, target_id):
-                            graph.add_edge(caller_id, target_id, type="CALLS")
+                            graph.add_edge(
+                                caller_id, target_id,
+                                type="CALLS",
+                                cross_file=False,
+                            )
 
     def _extract_function_calls_from_ast(self, ast_node: Any) -> list[dict[str, Any]]:
         """

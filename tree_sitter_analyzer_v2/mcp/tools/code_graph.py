@@ -191,10 +191,15 @@ generating documentation, analyzing entire projects."""
                 exclude_patterns = arguments.get("exclude_patterns", [])
                 max_files = arguments.get("max_files")
 
-                # Apply pagination by adjusting max_files
-                # Calculate effective max_files based on page and page_size
-                if page > 1 or page_size < 1000:  # Only paginate if requested
-                    # First pass: count total files
+                # Determine effective max_files:
+                # 1. Explicit max_files from user takes highest priority
+                # 2. Pagination (page > 1) applies if no explicit max_files
+                # 3. Otherwise, no limit
+                if max_files is not None:
+                    effective_max_files = max_files
+                    pagination_info = None
+                elif page > 1:
+                    # Apply pagination only when explicitly navigating pages
                     import fnmatch
                     all_files = []
                     dir_path = Path(directory)
@@ -213,10 +218,8 @@ generating documentation, analyzing entire projects."""
                     start_idx = (page - 1) * page_size
                     end_idx = min(start_idx + page_size, total_files)
 
-                    # Adjust max_files for pagination
                     effective_max_files = end_idx
 
-                    # Store pagination info for later
                     pagination_info = {
                         "page": page,
                         "page_size": page_size,
@@ -227,7 +230,7 @@ generating documentation, analyzing entire projects."""
                         "has_prev": page > 1,
                     }
                 else:
-                    effective_max_files = max_files
+                    effective_max_files = None
                     pagination_info = None
 
                 graph = builder.build_from_directory(

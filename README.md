@@ -16,7 +16,7 @@ Tree-Sitter Analyzer v2 is a **ground-up rewrite** focusing on:
 
 ## ✨ Key Features
 
-- **17 Language Support**: Python, TypeScript/JavaScript, Java, C/C++, C#, Go, Rust, Kotlin, PHP, Ruby, SQL, HTML, CSS, YAML, Markdown
+- **4 Language Support**: Python, TypeScript, JavaScript, Java (more languages planned)
 - **MCP Integration**: Seamless integration with Claude Desktop, Cursor, Roo Code
 - **Fast Search**: fd (file search) + ripgrep (content search) - 10-20x faster
 - **Token Optimization**: TOON + Markdown output formats
@@ -109,9 +109,9 @@ matches = api.search_content("def main")
 - ✅ T0.6: Development Documentation
 
 **Current Stats:**
-- 38 tests passing
-- 86% code coverage
-- 100% TDD methodology
+- 1650+ tests passing
+- 89% code coverage
+- TDD methodology
 
 ### Upcoming Phases
 
@@ -120,7 +120,7 @@ matches = api.search_content("def main")
 - **Phase 3**: Output Formatters (Week 4)
 - **Phase 4**: MCP Integration (Week 4-5)
 - **Phase 5**: CLI + API (Week 5)
-- **Phase 6**: All 17 Languages (Week 6-7)
+- **Phase 6**: Additional Languages (Week 6-7)
 - **Phase 7**: Optimization (Week 7-8)
 
 See [tasks.md](../.kiro/specs/v2-complete-rewrite/tasks.md) for detailed plan.
@@ -154,18 +154,19 @@ See [docs/tdd-workflow.md](docs/tdd-workflow.md) for detailed TDD guide.
 ### Project Structure
 
 ```
-v2/
+tree-sitter-analyzer-v2/
 ├── tree_sitter_analyzer_v2/     # Source code
-│   ├── core/                    # Core engine
-│   ├── plugins/languages/       # Language plugins
-│   ├── formatters/              # TOON + Markdown
-│   ├── mcp/tools/               # MCP server
+│   ├── core/                    # Core parser and types
+│   ├── languages/               # Language-specific parsers
+│   ├── features/                # Analysis features
+│   ├── formatters/              # TOON + Markdown output
+│   ├── mcp/                     # MCP server and tools
 │   ├── cli/                     # CLI interface
-│   └── api/                     # Python API
+│   ├── api/                     # Python API
+│   └── security/                # Security validation
 ├── tests/                       # Test suite
 │   ├── unit/                    # Unit tests
 │   ├── integration/             # Integration tests
-│   ├── e2e/                     # End-to-end tests
 │   └── fixtures/                # Test data
 ├── docs/                        # Documentation
 └── examples/                    # Usage examples
@@ -240,7 +241,7 @@ uv run mypy tree_sitter_analyzer_v2/
 
 ### What v2 Preserves from v1
 
-- ✅ 17 language support
+- ✅ Multi-language support (4 languages currently, more planned)
 - ✅ Tree-sitter query patterns
 - ✅ fd + ripgrep integration
 - ✅ MCP server capability

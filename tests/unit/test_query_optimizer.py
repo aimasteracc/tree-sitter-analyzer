@@ -192,3 +192,127 @@ class TestQueryOptimizer:
         assert all(r['file'] == 'file_0.py' for r in results)
         assert all(r['complexity'] > 10 for r in results)
         assert all(r['lines'] < 20 for r in results)
+
+    def test_query_plan_has_join_false(self):
+        """Test has_join returns False for simple queries."""
+        storage = CodeGraphStorage()
+        storage.add_node('f1', 'function', {'name': 'main'})
+        
+        optimizer = QueryOptimizer(storage)
+        plan = optimizer.optimize("find functions")
+        
+        # Simple query should not have join
+        assert plan.has_join() is False
+
+    def test_query_plan_has_join_with_filter(self):
+        """Test has_join with filter chain."""
+        storage = CodeGraphStorage()
+        storage.add_node('f1', 'function', {'name': 'main', 'file': 'test.py'})
+        
+        optimizer = QueryOptimizer(storage)
+        plan = optimizer.optimize("find functions in file:test.py")
+        
+        # Filter query should not have join
+        assert plan.has_join() is False
+
+    def test_index_scan_by_name(self):
+        """Test index scan by name."""
+        storage = CodeGraphStorage()
+        storage.add_node('f1', 'function', {'name': 'main'})
+        storage.add_node('f2', 'function', {'name': 'helper'})
+        
+        # Direct test of IndexScanNode
+        node = IndexScanNode(storage, 'by_name', 'main', cost=5)
+        results = node.execute()
+        
+        # Should find node by name
+        assert len(results) >= 1
+
+    def test_index_scan_unknown_type(self):
+        """Test index scan with unknown index type returns empty."""
+        storage = CodeGraphStorage()
+        storage.add_node('f1', 'function', {'name': 'main'})
+        
+        node = IndexScanNode(storage, 'unknown_index', 'key', cost=5)
+        results = node.execute()
+        
+        assert results == []
+
+    def test_query_plan_string_with_filter(self):
+        """Test query plan string with filter node."""
+        storage = CodeGraphStorage()
+        storage.add_node('f1', 'function', {'name': 'main', 'file': 'main.py'})
+        
+        optimizer = QueryOptimizer(storage)
+        plan = optimizer.optimize("find functions in file:main.py")
+        
+        plan_str = str(plan)
+        assert 'Filter' in plan_str
+        assert 'cost=' in plan_str
+
+    def test_filter_node_execution(self):
+        """Test FilterNode direct execution."""
+        storage = CodeGraphStorage()
+        storage.add_node('f1', 'function', {'name': 'main', 'complexity': 5})
+        storage.add_node('f2', 'function', {'name': 'helper', 'complexity': 15})
+        
+        # Create a simple filter chain - use '>' operator not '$gt'
+        index_node = IndexScanNode(storage, 'by_type', 'function')
+        filter_node = FilterNode(storage, index_node, {'complexity': {'>': 10}})
+        
+        results = filter_node.execute()
+        
+        # Should filter to only high complexity
+        assert len(results) == 1
+        assert results[0]['complexity'] == 15
+
+
+class TestJoinNode:
+    """Tests for JoinNode class."""
+
+    def test_join_node_execution(self):
+        """Test JoinNode execution."""
+        storage = CodeGraphStorage()
+        storage.add_node('f1', 'function', {'name': 'main'})
+        storage.add_node('f2', 'function', {'name': 'helper'})
+        storage.add_edge('f1', 'f2', 'calls', {})
+        
+        optimizer = QueryOptimizer(storage)
+        plan = optimizer.optimize("find functions called_by main")
+        
+        # Should have a join
+        assert plan.has_join() is True
+        
+        results = plan.execute()
+        # Should find helper function (called by main)
+        assert any(r['name'] == 'helper' for r in results)
+
+
+class TestQueryPlanRecursive:
+    """Tests for recursive query plan operations."""
+
+    def test_has_join_recursive_with_nested_filters(self):
+        """Test _has_join_recursive with nested structure."""
+        storage = CodeGraphStorage()
+        storage.add_node('f1', 'function', {'name': 'main', 'file': 'test.py', 'complexity': 5})
+        
+        optimizer = QueryOptimizer(storage)
+        plan = optimizer.optimize("find functions in file:test.py with complexity > 3")
+        
+        # Nested filters but no join
+        assert plan.has_join() is False
+
+    def test_node_to_string_with_all_types(self):
+        """Test _node_to_string covers different node types."""
+        storage = CodeGraphStorage()
+        storage.add_node('f1', 'function', {'name': 'main', 'file': 'main.py'})
+        
+        optimizer = QueryOptimizer(storage)
+        plan = optimizer.optimize("find functions in file:main.py")
+        
+        plan_str = str(plan)
+        
+        # Should include node class names
+        assert 'Node' in plan_str
+        # Should include cost
+        assert 'cost=' in plan_str

@@ -13,9 +13,6 @@ from pathlib import Path
 
 from tree_sitter_analyzer_v2.core.detector import LanguageDetector
 from tree_sitter_analyzer_v2.formatters import get_default_registry
-from tree_sitter_analyzer_v2.languages.java_parser import JavaParser
-from tree_sitter_analyzer_v2.languages.python_parser import PythonParser
-from tree_sitter_analyzer_v2.languages.typescript_parser import TypeScriptParser
 from tree_sitter_analyzer_v2.search import SearchEngine
 from tree_sitter_analyzer_v2.utils.encoding import EncodingDetector
 
@@ -89,25 +86,28 @@ def cmd_analyze(args: argparse.Namespace) -> int:
 
     language = detection["language"].lower()
 
-    # Get appropriate parser
-    parsers = {
-        "python": PythonParser(),
-        "typescript": TypeScriptParser(),
-        "javascript": TypeScriptParser(),  # TS parser handles JS too
-        "java": JavaParser(),
+    # Get appropriate language-specific parser
+    from tree_sitter_analyzer_v2.languages import PythonParser, JavaParser, TypeScriptParser
+
+    parser_classes = {
+        "python": PythonParser,
+        "java": JavaParser,
+        "typescript": TypeScriptParser,
+        "javascript": TypeScriptParser,  # TS parser handles JS too
     }
 
-    if language not in parsers:
+    if language not in parser_classes:
         print(f"Error: Language '{language}' not supported yet", file=sys.stderr)
         return 1
 
-    parser = parsers[language]
+    parser = parser_classes[language]()
 
     try:
         # Parse file (content already read with encoding detection)
+        # Language-specific parsers return dicts with keys: ast, metadata, functions, classes, imports
         result = parser.parse(content, str(file_path))
-
-        # Add language and file info to result for summary formatter
+        
+        # Add language and file path to result
         result["language"] = language
         result["file_path"] = str(file_path)
 

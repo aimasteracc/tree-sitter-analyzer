@@ -10,11 +10,12 @@ Core Features:
 Format Example:
 PROJECT_SNAPSHOT v1.0 | Files:156 | Functions:892 | Updated:2026-02-06T12:00:00
 
-FILE::FUNC → CALLS[func1,func2] ← CALLED_BY[func3,func4] | I:high
+FILE::FUNC -> CALLS[func1,func2] <- CALLED_BY[func3,func4] | I:high
 """
 
 import hashlib
 import json
+import logging
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -23,6 +24,8 @@ from typing import Any, Dict, List, Optional, Set
 
 from tree_sitter_analyzer_v2.features.refactoring_analyzer import RefactoringAnalyzer
 
+# Setup logging
+logger = logging.getLogger(__name__)
 
 # Configuration constants - flexible, no hardcoding
 DEFAULT_CACHE_DIR = ".analysis"
@@ -115,7 +118,7 @@ class ProjectSnapshot:
         calls_str = f"[{','.join(calls[:max_display])}]" if calls else "[]"
         called_by_str = f"[{','.join(called_by[:max_display])}]" if called_by else "[]"
         
-        return f"{file_name}::{func.name} → {calls_str} ← {called_by_str} | I:{func.impact_level}"
+        return f"{file_name}::{func.name} -> {calls_str} <- {called_by_str} | I:{func.impact_level}"
 
 
 class ProjectKnowledgeEngine:
@@ -165,11 +168,11 @@ class ProjectKnowledgeEngine:
         if not force and self._load_from_cache():
             return self.snapshot
         
-        print("Building project knowledge snapshot...")
+        logger.info("Building project knowledge snapshot...")
         
         # 1. Scan all Python files
         files = list(self.project_root.glob(pattern))
-        print(f"Found {len(files)} files")
+        logger.info(f"Found {len(files)} files")
         
         # 2. Analyze using RefactoringAnalyzer
         self.analyzer.analyze_directory(self.project_root, pattern)
@@ -228,7 +231,7 @@ class ProjectKnowledgeEngine:
         # 7. Save to cache
         self._save_to_cache()
         
-        print(f"✅ Snapshot built: {len(functions)} functions")
+        logger.info(f"Snapshot built: {len(functions)} functions")
         return self.snapshot
     
     def get_function_impact(self, function_name: str) -> Optional[Dict[str, Any]]:
@@ -350,7 +353,7 @@ class ProjectKnowledgeEngine:
             self.build_snapshot()
             return True
         
-        print(f"Incremental update: {len(changed_files)} files")
+        logger.info(f"Incremental update: {len(changed_files)} files")
         
         # Check which files actually changed (MD5)
         actually_changed = []
@@ -367,10 +370,10 @@ class ProjectKnowledgeEngine:
                 pass
         
         if not actually_changed:
-            print("✅ No actual changes")
+            logger.info("No actual changes")
             return True
         
-        print(f"Actually changed: {len(actually_changed)} files")
+        logger.info(f"Actually changed: {len(actually_changed)} files")
         
         # Rebuild snapshot (simplified: full rebuild)
         # TODO: Implement true incremental update
@@ -457,7 +460,7 @@ class ProjectKnowledgeEngine:
         compact_text = self.snapshot.to_compact_format(max_functions=DEFAULT_MAX_FUNCTIONS)
         self.snapshot_text_file.write_text(compact_text, encoding='utf-8')
         
-        print(f"💾 Snapshot cached: {self.cache_file}")
+        logger.debug(f"Snapshot cached: {self.cache_file}")
     
     def _load_from_cache(self) -> bool:
         """Load snapshot from cache"""
@@ -487,10 +490,10 @@ class ProjectKnowledgeEngine:
                 file_hashes=cache_data["file_hashes"]
             )
             
-            print(f"✅ Loaded snapshot from cache: {self.snapshot.total_functions} functions")
+            logger.info(f"Loaded snapshot from cache: {self.snapshot.total_functions} functions")
             return True
         except Exception as e:
-            print(f"❌ Failed to load cache: {e}")
+            logger.error(f"Failed to load cache: {e}")
             return False
 
 
