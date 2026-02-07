@@ -164,15 +164,23 @@ class ProjectRootDetector:
                 break
             current_dir = str(parent_path)
 
-        # Return the best candidate if any found
+        # Return the best candidate if any found with sufficient confidence.
+        # Require at least one high-priority (score 100) or medium-priority
+        # (score 50) marker. Low-priority markers alone (README.md, LICENSE,
+        # etc.) are too common in non-project directories like user home dirs.
+        MIN_PROJECT_SCORE = 50
         if candidates:
             # Sort by score (descending) and return the best
             candidates.sort(key=lambda x: x[1], reverse=True)
             best_candidate = candidates[0]
+            if best_candidate[1] >= MIN_PROJECT_SCORE:
+                logger.debug(
+                    f"Selected project root: {best_candidate[0]} (score: {best_candidate[1]}, markers: {best_candidate[2]})"
+                )
+                return best_candidate[0]
             logger.debug(
-                f"Selected project root: {best_candidate[0]} (score: {best_candidate[1]}, markers: {best_candidate[2]})"
+                f"Best candidate {best_candidate[0]} score {best_candidate[1]} below threshold {MIN_PROJECT_SCORE}, ignoring"
             )
-            return best_candidate[0]
 
         logger.debug(f"No project root detected from {start_dir}")
         return None
@@ -228,7 +236,7 @@ class ProjectRootDetector:
             "Cargo.toml",
             "go.mod",
         ]
-        medium_priority = ["setup.py", "requirements.txt", "CMakeLists.txt", "Makefile"]
+        medium_priority = ["setup.py", "CMakeLists.txt", "Makefile", "build.gradle", "gradlew"]
 
         for marker in markers:
             if marker in high_priority:
