@@ -49,10 +49,10 @@ class TestMCPIntegration:
         server = MCPServer(project_root=temp_project)
         tools = server.tool_registry.get_all_schemas()
         
-        assert len(tools) > 50  # Should have 50+ tools
+        assert len(tools) == 11  # 11 core tree-sitter + search + graph tools
         tool_names = [t['name'] for t in tools]
         assert 'analyze_code_graph' in tool_names
-        assert 'code_query' in tool_names
+        assert 'analyze_code_structure' in tool_names
         assert 'find_files' in tool_names
 
     @pytest.mark.asyncio

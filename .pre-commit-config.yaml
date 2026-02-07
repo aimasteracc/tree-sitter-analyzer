@@ -53,6 +53,15 @@ repos:
   # Custom local checks for quality rules
   - repo: local
     hooks:
+      # Quality Gate - blocks stub code and missing tests (blocking)
+      - id: quality-gate
+        name: Quality Gate (stub/fake detection)
+        entry: uv run python scripts/quality_gate.py --pre-commit
+        language: system
+        pass_filenames: false
+        stages: [pre-commit]
+        always_run: true
+
       # Python syntax check (blocking)
       - id: python-syntax-check
         name: Python Syntax Check

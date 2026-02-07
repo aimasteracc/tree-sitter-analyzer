@@ -30,65 +30,20 @@ except ImportError:
     ToolsCapability = None  # type: ignore
 
 from tree_sitter_analyzer_v2.mcp.tools import (
-    AnalyzeCodeGraphTool,
+    # Core tree-sitter analysis (4 tools)
     AnalyzeTool,
-    APIDocTool,
-    BatchOperationsTool,
-    BestPracticeCheckerTool,
-    CacheManagerTool,
-    ChangeDetectorTool,
     CheckCodeScaleTool,
-    ClassGeneratorTool,
-    CodeMetricsTool,
-    CodeQualityTool,
-    CodeQueryTool,
-    CodeReviewTool,
-    CommentManagerTool,
-    CompareProjectsTool,
-    DeleteFileTool,
-    DependencyAnalyzerTool,
-    DependencyGraphTool,
-    DocGeneratorTool,
-    DuplicateDetectorTool,
     ExtractCodeSectionTool,
+    QueryTool,
+    # Search tools using fd/ripgrep (3 tools)
     FindAndGrepTool,
     FindFilesTool,
-    FindFunctionCallersTool,
-    FormatterTool,
-    GitCommitTool,
-    GitDiffTool,
-    GitStatusTool,
-    GraphStorageTool,
-    GraphVisualizeTool,
-    ImprovementSuggesterTool,
-    IncrementalAnalyzerTool,
-    InstantUnderstandTool,
-    LinterTool,
-    MockGeneratorTool,
-    NotebookEditorTool,
-    PatternRecognizerTool,
-    PerformanceMonitorTool,
-    ProfileCodeTool,
-    ProjectAnalyzerTool,
-    ProjectInitTool,
-    QueryCallChainTool,
-    QueryTool,
-    RealtimeWatchTool,
-    RefactorRenameTool,
-    ReplaceInFileTool,
     SearchContentTool,
-    SecurityScannerTool,
-    ShellExecutorTool,
-    SmellDetectorTool,
-    TaskManagerTool,
-    TestGeneratorTool,
-    TestRunnerTool,
+    # Code graph - unique value (4 tools)
+    AnalyzeCodeGraphTool,
+    FindFunctionCallersTool,
+    QueryCallChainTool,
     VisualizeCodeGraphTool,
-    WriteFileTool,
-)
-from tree_sitter_analyzer_v2.mcp.tools.refactoring_safety import (
-    CheckRefactoringSafetyTool,
-    ProjectKnowledgeTool,
 )
 from tree_sitter_analyzer_v2.mcp.tools.registry import ToolRegistry
 from tree_sitter_analyzer_v2.features.project_knowledge import ProjectKnowledgeEngine
@@ -136,103 +91,23 @@ class MCPServer:
         self._init_knowledge_snapshot()
 
     def _register_tools(self) -> None:
-        """Auto-register all available MCP tools."""
-        # Core analysis tools
+        """Register core MCP tools. Only tree-sitter and fd/rg based tools."""
+        # Core tree-sitter analysis (the reason this project exists)
         self.tool_registry.register(AnalyzeTool())
         self.tool_registry.register(QueryTool())
         self.tool_registry.register(CheckCodeScaleTool())
         self.tool_registry.register(ExtractCodeSectionTool())
 
-        # Search tools
+        # Fast search using fd + ripgrep
         self.tool_registry.register(FindFilesTool())
         self.tool_registry.register(SearchContentTool())
         self.tool_registry.register(FindAndGrepTool())
 
-        # File operation tools
-        self.tool_registry.register(WriteFileTool())
-        self.tool_registry.register(ReplaceInFileTool())
-        self.tool_registry.register(DeleteFileTool())
-        self.tool_registry.register(BatchOperationsTool())
-
-        # Refactoring tools
-        self.tool_registry.register(RefactorRenameTool())
-
-        # Quality tools
-        self.tool_registry.register(CodeQualityTool())
-        self.tool_registry.register(LinterTool())
-        self.tool_registry.register(FormatterTool())
-        self.tool_registry.register(TestRunnerTool())
-
-        # Dependency tools
-        self.tool_registry.register(DependencyAnalyzerTool())
-        self.tool_registry.register(DependencyGraphTool())
-
-        # Documentation tools
-        self.tool_registry.register(DocGeneratorTool())
-        self.tool_registry.register(APIDocTool())
-
-        # Git tools
-        self.tool_registry.register(GitStatusTool())
-        self.tool_registry.register(GitDiffTool())
-        self.tool_registry.register(GitCommitTool())
-
-        # Project management tools
-        self.tool_registry.register(ProjectInitTool())
-        self.tool_registry.register(ProjectAnalyzerTool())
-
-        # Security tools
-        self.tool_registry.register(SecurityScannerTool())
-
-        # Performance tools
-        self.tool_registry.register(PerformanceMonitorTool())
-        self.tool_registry.register(ProfileCodeTool())
-
-        # Code generation tools
-        self.tool_registry.register(TestGeneratorTool())
-        self.tool_registry.register(MockGeneratorTool())
-        self.tool_registry.register(ClassGeneratorTool())
-
-        # Metrics tools
-        self.tool_registry.register(CodeMetricsTool())
-
-        # Incremental analysis tools
-        self.tool_registry.register(ChangeDetectorTool())
-        self.tool_registry.register(CacheManagerTool())
-        self.tool_registry.register(IncrementalAnalyzerTool())
-
-        # AI assistant tools
-        self.tool_registry.register(PatternRecognizerTool())
-        self.tool_registry.register(DuplicateDetectorTool())
-        self.tool_registry.register(SmellDetectorTool())
-        self.tool_registry.register(ImprovementSuggesterTool())
-        self.tool_registry.register(BestPracticeCheckerTool())
-
-        # Collaboration tools
-        self.tool_registry.register(CodeReviewTool())
-        self.tool_registry.register(CommentManagerTool())
-        self.tool_registry.register(TaskManagerTool())
-        self.tool_registry.register(NotebookEditorTool())
-        self.tool_registry.register(ShellExecutorTool())
-
-        # Advanced code map tools (Beyond Neo4j)
-        self.tool_registry.register(GraphStorageTool())
-        self.tool_registry.register(CodeQueryTool())
-        self.tool_registry.register(RealtimeWatchTool())
-        self.tool_registry.register(GraphVisualizeTool())
-
-        # Code Graph tools (NEW in Phase 9!)
+        # Code graph - unique cross-file analysis using tree-sitter + networkx
         self.tool_registry.register(AnalyzeCodeGraphTool())
         self.tool_registry.register(FindFunctionCallersTool())
         self.tool_registry.register(QueryCallChainTool())
-        self.tool_registry.register(VisualizeCodeGraphTool())  # NEW in E4!
-        
-        # Project Knowledge tools (NEW! For instant project understanding)
-        self.tool_registry.register(CheckRefactoringSafetyTool())
-        self.tool_registry.register(ProjectKnowledgeTool())
-        
-        # Instant Understanding tools (NEW! Pure MCP data-driven solution)
-        self.tool_registry.register(InstantUnderstandTool())
-        self.tool_registry.register(CompareProjectsTool())
+        self.tool_registry.register(VisualizeCodeGraphTool())
 
     def get_capabilities(self) -> dict[str, Any]:
         """
@@ -417,15 +292,15 @@ class MCPServer:
         try:
             # Try to load from cache first
             if self.knowledge_engine._load_from_cache():
-                print("✅ Knowledge snapshot loaded from cache")
+                print("[OK] Knowledge snapshot loaded from cache", file=sys.stderr)
             else:
                 # Build snapshot if no cache exists
-                print("🔧 Building initial knowledge snapshot...")
+                print("[INFO] Building initial knowledge snapshot...", file=sys.stderr)
                 self.knowledge_engine.build_snapshot()
-                print("✅ Knowledge snapshot built successfully")
+                print("[OK] Knowledge snapshot built successfully", file=sys.stderr)
         except Exception as e:
-            print(f"⚠️  Failed to initialize knowledge snapshot: {e}")
-            print("   Snapshot will be built on first use")
+            print(f"[WARN] Failed to initialize knowledge snapshot: {e}", file=sys.stderr)
+            print("   Snapshot will be built on first use", file=sys.stderr)
 
     def _error_response(self, request_id: Any, code: int, message: str) -> dict[str, Any]:
         """

@@ -1,0 +1,430 @@
+{
+  "_metadata": {
+    "generated": "2026-02-07",
+    "description": "Authenticity audit of all MCP tools in tree-sitter-analyzer v2",
+    "categories": {
+      "REAL": "Core functionality works, uses real backends (tree-sitter/fd/rg/git/etc), returns meaningful results",
+      "PARTIAL": "Basic functionality works but has significant limitations, misleading name, or incomplete logic",
+      "STUB": "Fake implementation - pass-only body, NotImplementedError, or only returns hardcoded data"
+    },
+    "total_tools": 55,
+    "real": 35,
+    "partial": 20,
+    "stub": 0
+  },
+  "tools": {
+    "analyze_code_structure": {
+      "class": "AnalyzeTool",
+      "file": "mcp/tools/analyze.py",
+      "status": "REAL",
+      "backend": "tree-sitter parsers (Python/Java/TypeScript)",
+      "notes": "Full multi-language code structure analysis with TOON/JSON output"
+    },
+    "find_files": {
+      "class": "FindFilesTool",
+      "file": "mcp/tools/search.py",
+      "status": "REAL",
+      "backend": "fd command-line tool",
+      "notes": "Fast file search with glob patterns, extensions, size filters"
+    },
+    "search_content": {
+      "class": "SearchContentTool",
+      "file": "mcp/tools/search.py",
+      "status": "REAL",
+      "backend": "ripgrep (rg) command-line tool",
+      "notes": "Full-featured content search with regex, context, grouping, total_only"
+    },
+    "query_code": {
+      "class": "QueryTool",
+      "file": "mcp/tools/query.py",
+      "status": "REAL",
+      "backend": "tree-sitter queries",
+      "notes": "Supports predefined keys (methods, classes) and custom query strings"
+    },
+    "check_code_scale": {
+      "class": "CheckCodeScaleTool",
+      "file": "mcp/tools/scale.py",
+      "status": "REAL",
+      "backend": "tree-sitter parsing + metrics calculation",
+      "notes": "Complexity analysis, structural overview, LLM guidance, batch mode"
+    },
+    "find_and_grep": {
+      "class": "FindAndGrepTool",
+      "file": "mcp/tools/find_and_grep.py",
+      "status": "REAL",
+      "backend": "fd + ripgrep two-stage search",
+      "notes": "Combines file finding with content search"
+    },
+    "extract_code_section": {
+      "class": "ExtractCodeSectionTool",
+      "file": "mcp/tools/extract.py",
+      "status": "REAL",
+      "backend": "File I/O with line/column extraction",
+      "notes": "Supports batch extraction, multiple output formats, file saving"
+    },
+    "analyze_code_graph": {
+      "class": "AnalyzeCodeGraphTool",
+      "file": "mcp/tools/code_graph.py",
+      "status": "REAL",
+      "backend": "networkx graph + tree-sitter parsing",
+      "notes": "Python/Java support, single-file and directory analysis, cross-file resolution"
+    },
+    "find_function_callers": {
+      "class": "FindFunctionCallersTool",
+      "file": "mcp/tools/code_graph.py",
+      "status": "REAL",
+      "backend": "networkx graph queries",
+      "notes": "Finds callers of a function across files"
+    },
+    "query_call_chain": {
+      "class": "QueryCallChainTool",
+      "file": "mcp/tools/code_graph.py",
+      "status": "REAL",
+      "backend": "networkx shortest_path",
+      "notes": "Finds call paths between functions"
+    },
+    "visualize_code_graph": {
+      "class": "VisualizeCodeGraphTool",
+      "file": "mcp/tools/code_graph.py",
+      "status": "REAL",
+      "backend": "Mermaid diagram generation from code graph",
+      "notes": "Generates Mermaid flowcharts for code relationships"
+    },
+    "write_file": {
+      "class": "WriteFileTool",
+      "file": "mcp/tools/write.py",
+      "status": "REAL",
+      "backend": "pathlib file I/O",
+      "notes": "Safe file writing with directory creation"
+    },
+    "replace_in_file": {
+      "class": "ReplaceInFileTool",
+      "file": "mcp/tools/replace.py",
+      "status": "REAL",
+      "backend": "String replacement with file I/O",
+      "notes": "Single or multiple occurrence replacement"
+    },
+    "delete_file": {
+      "class": "DeleteFileTool",
+      "file": "mcp/tools/delete.py",
+      "status": "REAL",
+      "backend": "pathlib + shutil",
+      "notes": "Supports files, directories, recursive deletion, batch operations"
+    },
+    "batch_operations": {
+      "class": "BatchOperationsTool",
+      "file": "mcp/tools/batch.py",
+      "status": "REAL",
+      "backend": "shutil + pathlib",
+      "notes": "Rename, move, copy, change_extension, add_prefix, add_suffix"
+    },
+    "refactor_rename": {
+      "class": "RefactorRenameTool",
+      "file": "mcp/tools/refactor.py",
+      "status": "REAL",
+      "backend": "regex-based symbol renaming",
+      "notes": "Single-file and cross-file renaming. Regex-based, not tree-sitter-aware"
+    },
+    "check_code_quality": {
+      "class": "CodeQualityTool",
+      "file": "mcp/tools/quality.py",
+      "status": "REAL",
+      "backend": "Python AST analysis",
+      "notes": "Complexity, duplicates, code smells detection"
+    },
+    "run_linter": {
+      "class": "LinterTool",
+      "file": "mcp/tools/linter.py",
+      "status": "REAL",
+      "backend": "subprocess: ruff check",
+      "notes": "Simple wrapper around ruff linter"
+    },
+    "format_code": {
+      "class": "FormatterTool",
+      "file": "mcp/tools/formatter.py",
+      "status": "REAL",
+      "backend": "subprocess: ruff format",
+      "notes": "Simple wrapper around ruff formatter"
+    },
+    "run_tests": {
+      "class": "TestRunnerTool",
+      "file": "mcp/tools/test_runner.py",
+      "status": "REAL",
+      "backend": "subprocess: pytest",
+      "notes": "Wraps pytest with coverage option"
+    },
+    "analyze_dependencies": {
+      "class": "DependencyAnalyzerTool",
+      "file": "mcp/tools/dependencies.py",
+      "status": "REAL",
+      "backend": "Python AST import analysis",
+      "notes": "Scans all .py files for import statements"
+    },
+    "dependency_graph": {
+      "class": "DependencyGraphTool",
+      "file": "mcp/tools/dependencies.py",
+      "status": "REAL",
+      "backend": "AST import analysis + Mermaid generation",
+      "notes": "Generates internal module dependency graph"
+    },
+    "generate_docs": {
+      "class": "DocGeneratorTool",
+      "file": "mcp/tools/documentation.py",
+      "status": "REAL",
+      "backend": "Python AST docstring extraction",
+      "notes": "Extracts module/class/function docstrings to Markdown"
+    },
+    "generate_api_docs": {
+      "class": "APIDocTool",
+      "file": "mcp/tools/documentation.py",
+      "status": "REAL",
+      "backend": "Python AST recursive analysis",
+      "notes": "Generates API docs for entire packages"
+    },
+    "git_status": {
+      "class": "GitStatusTool",
+      "file": "mcp/tools/git_tools.py",
+      "status": "REAL",
+      "backend": "subprocess: git status --short",
+      "notes": "Simple git status wrapper"
+    },
+    "git_diff": {
+      "class": "GitDiffTool",
+      "file": "mcp/tools/git_tools.py",
+      "status": "REAL",
+      "backend": "subprocess: git diff",
+      "notes": "Supports staged changes and file-specific diffs"
+    },
+    "git_commit": {
+      "class": "GitCommitTool",
+      "file": "mcp/tools/git_tools.py",
+      "status": "REAL",
+      "backend": "subprocess: git add + git commit",
+      "notes": "Stages files and creates commits"
+    },
+    "init_project": {
+      "class": "ProjectInitTool",
+      "file": "mcp/tools/project.py",
+      "status": "REAL",
+      "backend": "pathlib file creation",
+      "notes": "Creates basic Python project structure with pyproject.toml"
+    },
+    "analyze_project": {
+      "class": "ProjectAnalyzerTool",
+      "file": "mcp/tools/project.py",
+      "status": "REAL",
+      "backend": "File counting and line analysis",
+      "notes": "Basic project statistics (files, lines, test ratio)"
+    },
+    "security_scan": {
+      "class": "SecurityScannerTool",
+      "file": "mcp/tools/security.py",
+      "status": "REAL",
+      "backend": "Regex patterns + Python AST",
+      "notes": "Detects hardcoded secrets and dangerous functions (eval/exec)"
+    },
+    "monitor_performance": {
+      "class": "PerformanceMonitorTool",
+      "file": "mcp/tools/performance.py",
+      "status": "REAL",
+      "backend": "psutil system monitoring",
+      "notes": "CPU, memory, disk usage monitoring"
+    },
+    "calculate_metrics": {
+      "class": "CodeMetricsTool",
+      "file": "mcp/tools/metrics.py",
+      "status": "REAL",
+      "backend": "Python AST + line counting",
+      "notes": "LOC breakdown, function/class counts, maintainability index"
+    },
+    "change_detector": {
+      "class": "ChangeDetectorTool",
+      "file": "mcp/tools/incremental.py",
+      "status": "REAL",
+      "backend": "File stat + SHA256 hashing",
+      "notes": "Detects added, modified, deleted files between scans"
+    },
+    "check_refactoring_safety": {
+      "class": "CheckRefactoringSafetyTool",
+      "file": "mcp/tools/refactoring_safety.py",
+      "status": "REAL",
+      "backend": "ProjectKnowledgeEngine call graph",
+      "notes": "Impact analysis for refactoring decisions"
+    },
+    "code_reviewer": {
+      "class": "CodeReviewTool",
+      "file": "mcp/tools/collaboration.py",
+      "status": "REAL",
+      "backend": "Python AST analysis",
+      "notes": "Automated code review checking naming, complexity, docstrings"
+    },
+    "profile_code": {
+      "class": "ProfileCodeTool",
+      "file": "mcp/tools/performance.py",
+      "status": "PARTIAL",
+      "backend": "Python AST (only counts lines/functions)",
+      "notes": "Misleading name: claims profiling but only counts lines and function names. Does NOT run cProfile or any real profiler.",
+      "improvement": "Use cProfile or py-spy for actual profiling"
+    },
+    "generate_tests": {
+      "class": "TestGeneratorTool",
+      "file": "mcp/tools/generator.py",
+      "status": "PARTIAL",
+      "backend": "Python AST + template generation",
+      "notes": "Generates basic pytest templates from source. Templates are generic.",
+      "improvement": "Generate more specific tests based on function signatures and types"
+    },
+    "generate_mocks": {
+      "class": "MockGeneratorTool",
+      "file": "mcp/tools/generator.py",
+      "status": "PARTIAL",
+      "backend": "Python AST + template generation",
+      "notes": "Generates basic mock class templates",
+      "improvement": "Use unittest.mock patterns, generate from protocol/interface"
+    },
+    "generate_class": {
+      "class": "ClassGeneratorTool",
+      "file": "mcp/tools/generator.py",
+      "status": "PARTIAL",
+      "backend": "Template string generation",
+      "notes": "Generates basic class boilerplate",
+      "improvement": "Add dataclass support, method stubs from interface"
+    },
+    "pattern_recognizer": {
+      "class": "PatternRecognizerTool",
+      "file": "mcp/tools/ai_assistant.py",
+      "status": "PARTIAL",
+      "backend": "Python AST heuristics",
+      "notes": "Basic detection of singleton, factory, observer patterns via AST. Heuristic-based, not comprehensive.",
+      "improvement": "Use tree-sitter for multi-language support, add more patterns"
+    },
+    "duplicate_detector": {
+      "class": "DuplicateDetectorTool",
+      "file": "mcp/tools/ai_assistant.py",
+      "status": "PARTIAL",
+      "backend": "Python AST hash comparison",
+      "notes": "Compares function AST dumps for exact duplicates. Won't detect near-duplicates.",
+      "improvement": "Add fuzzy matching, cross-file detection"
+    },
+    "smell_detector": {
+      "class": "SmellDetectorTool",
+      "file": "mcp/tools/ai_assistant.py",
+      "status": "PARTIAL",
+      "backend": "Python AST analysis",
+      "notes": "Detects long methods, deep nesting, too many parameters. Basic heuristics.",
+      "improvement": "Add more smell types, configurable thresholds"
+    },
+    "improvement_suggester": {
+      "class": "ImprovementSuggesterTool",
+      "file": "mcp/tools/ai_assistant.py",
+      "status": "PARTIAL",
+      "backend": "Python AST analysis",
+      "notes": "Basic suggestions based on code patterns",
+      "improvement": "More actionable suggestions with code examples"
+    },
+    "best_practice_checker": {
+      "class": "BestPracticeCheckerTool",
+      "file": "mcp/tools/ai_assistant.py",
+      "status": "PARTIAL",
+      "backend": "Python AST analysis",
+      "notes": "Checks basic practices (docstrings, type hints, naming)",
+      "improvement": "Add configurable rulesets per language"
+    },
+    "comment_manager": {
+      "class": "CommentManagerTool",
+      "file": "mcp/tools/collaboration.py",
+      "status": "PARTIAL",
+      "backend": "Regex-based comment extraction",
+      "notes": "Manages TODO/FIXME comments in code. Basic extraction only.",
+      "improvement": "Track comment resolution, integrate with issue trackers"
+    },
+    "task_manager": {
+      "class": "TaskManagerTool",
+      "file": "mcp/tools/collaboration.py",
+      "status": "PARTIAL",
+      "backend": "JSON file-based task storage",
+      "notes": "In-memory task tracking, no persistence between sessions",
+      "improvement": "Add persistence, integrate with project management tools"
+    },
+    "notebook_editor": {
+      "class": "NotebookEditorTool",
+      "file": "mcp/tools/collaboration.py",
+      "status": "PARTIAL",
+      "backend": "JSON notebook file manipulation",
+      "notes": "Basic Jupyter notebook cell editing",
+      "improvement": "Add cell execution, output handling"
+    },
+    "shell_executor": {
+      "class": "ShellExecutorTool",
+      "file": "mcp/tools/collaboration.py",
+      "status": "PARTIAL",
+      "backend": "subprocess execution",
+      "notes": "Executes shell commands with timeout. Security concern: no sandboxing.",
+      "improvement": "Add command whitelist, sandboxing, output size limits"
+    },
+    "graph_storage": {
+      "class": "GraphStorageTool",
+      "file": "mcp/tools/advanced_codemap.py",
+      "status": "PARTIAL",
+      "backend": "CodeGraphStorage (in-memory graph)",
+      "notes": "CRUD operations on graph nodes/edges. No persistence.",
+      "improvement": "Add persistence, transaction support"
+    },
+    "code_query": {
+      "class": "CodeQueryTool",
+      "file": "mcp/tools/advanced_codemap.py",
+      "status": "PARTIAL",
+      "backend": "GraphQuery CQL-like interface",
+      "notes": "Custom query language for graph. Limited query capabilities.",
+      "improvement": "Support more complex queries, add documentation"
+    },
+    "realtime_watch": {
+      "class": "RealtimeWatchTool",
+      "file": "mcp/tools/advanced_codemap.py",
+      "status": "PARTIAL",
+      "backend": "RealtimeUpdateEngine with file watching",
+      "notes": "Has stub method _update_file_in_graph (pass-only body). Watch mechanism incomplete.",
+      "improvement": "Implement _update_file_in_graph, add proper file watcher"
+    },
+    "graph_visualize": {
+      "class": "GraphVisualizeTool",
+      "file": "mcp/tools/advanced_codemap.py",
+      "status": "PARTIAL",
+      "backend": "Mermaid diagram generation from graph",
+      "notes": "Basic visualization from graph storage",
+      "improvement": "Add more visualization formats, interactive output"
+    },
+    "instant_understand": {
+      "class": "InstantUnderstandTool",
+      "file": "mcp/tools/instant_understand.py",
+      "status": "PARTIAL",
+      "backend": "InstantUnderstandingEngine",
+      "notes": "Has stub __init__ (pass-only). Delegates to engine which may work but tool initialization is incomplete.",
+      "improvement": "Implement proper __init__ with engine initialization"
+    },
+    "compare_projects": {
+      "class": "CompareProjectsTool",
+      "file": "mcp/tools/instant_understand.py",
+      "status": "PARTIAL",
+      "backend": "InstantUnderstandingEngine comparison",
+      "notes": "Has stub __init__ (pass-only). Cross-project comparison feature.",
+      "improvement": "Implement proper __init__, add meaningful comparison metrics"
+    },
+    "cache_manager": {
+      "class": "CacheManagerTool",
+      "file": "mcp/tools/incremental.py",
+      "status": "PARTIAL",
+      "backend": "In-memory cache with JSON persistence",
+      "notes": "Basic file-level caching. Cache invalidation may not be reliable.",
+      "improvement": "Add TTL, proper invalidation, cache size limits"
+    },
+    "incremental_analyzer": {
+      "class": "IncrementalAnalyzerTool",
+      "file": "mcp/tools/incremental.py",
+      "status": "PARTIAL",
+      "backend": "Combines ChangeDetector + CodeMetrics",
+      "notes": "Analyzes only changed files. Depends on ChangeDetectorTool state.",
+      "improvement": "Add proper state management, integrate with code graph"
+    }
+  }
+}

@@ -25,9 +25,9 @@ class TestMCPServerInit:
         """Test that initialization registers tools."""
         with tempfile.TemporaryDirectory() as tmpdir:
             server = MCPServer(tmpdir)
-            # Should have many tools registered
+            # Should have core tools registered
             tools = server.tool_registry.get_all_schemas()
-            assert len(tools) > 30  # We have many tools
+            assert len(tools) == 11  # 11 core tree-sitter + search + graph tools
 
     def test_get_capabilities(self) -> None:
         """Test get_capabilities returns tool schemas."""

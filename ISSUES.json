@@ -1,0 +1,92 @@
+[
+  {
+    "source": "quality_gate",
+    "severity": "CRITICAL",
+    "file": "tree_sitter_analyzer_v2\\search.py",
+    "line": 23,
+    "category": "stub",
+    "message": "Function `__init__` has empty body (pass only)",
+    "action": "Implement `__init__` or remove it"
+  },
+  {
+    "source": "quality_gate",
+    "severity": "CRITICAL",
+    "file": "tree_sitter_analyzer_v2\\features\\security_scanner.py",
+    "line": 43,
+    "category": "stub",
+    "message": "Function `check` raises NotImplementedError",
+    "action": "Implement `check` or mark as @abstractmethod"
+  },
+  {
+    "source": "quality_gate",
+    "severity": "CRITICAL",
+    "file": "tree_sitter_analyzer_v2\\features\\semantic_search.py",
+    "line": 29,
+    "category": "stub",
+    "message": "Function `matches` raises NotImplementedError",
+    "action": "Implement `matches` or mark as @abstractmethod"
+  },
+  {
+    "source": "quality_gate",
+    "severity": "CRITICAL",
+    "file": "tree_sitter_analyzer_v2\\graph\\realtime.py",
+    "line": 160,
+    "category": "stub",
+    "message": "Function `_update_file_in_graph` has empty body (pass only)",
+    "action": "Implement `_update_file_in_graph` or remove it"
+  },
+  {
+    "source": "quality_gate",
+    "severity": "CRITICAL",
+    "file": "tree_sitter_analyzer_v2\\mcp\\tools\\instant_understand.py",
+    "line": 34,
+    "category": "stub",
+    "message": "Function `__init__` has empty body (pass only)",
+    "action": "Implement `__init__` or remove it"
+  },
+  {
+    "source": "quality_gate",
+    "severity": "CRITICAL",
+    "file": "tree_sitter_analyzer_v2\\mcp\\tools\\instant_understand.py",
+    "line": 226,
+    "category": "stub",
+    "message": "Function `__init__` has empty body (pass only)",
+    "action": "Implement `__init__` or remove it"
+  },
+  {
+    "source": "quality_gate",
+    "severity": "CRITICAL",
+    "file": "C:\\git-private\\tree-sitter-analyzer-workspace\\tree-sitter-analyzer-v2\\tree_sitter_analyzer_v2\\mcp\\tools\\dependencies.py",
+    "line": 1,
+    "category": "missing_test",
+    "message": "Tool `dependencies.py` has no corresponding test file",
+    "action": "Create tests/unit/test_dependencies.py with real behavior tests"
+  },
+  {
+    "source": "quality_gate",
+    "severity": "CRITICAL",
+    "file": "C:\\git-private\\tree-sitter-analyzer-workspace\\tree-sitter-analyzer-v2\\tree_sitter_analyzer_v2\\mcp\\tools\\test_runner.py",
+    "line": 1,
+    "category": "missing_test",
+    "message": "Tool `test_runner.py` has no corresponding test file",
+    "action": "Create tests/unit/test_test_runner.py with real behavior tests"
+  },
+  {
+    "source": "cross_analysis",
+    "severity": "WARNING",
+    "file": "",
+    "line": 0,
+    "category": "architecture",
+    "message": "v2 has 6 files over 500 lines",
+    "action": "Split large files into focused modules"
+  },
+  {
+    "source": "cross_analysis",
+    "severity": "INFO",
+    "file": "",
+    "line": 0,
+    "category": "capability_gap",
+    "message": "v1 tool 'set_project_path' has no equivalent in v2",
+    "action": "Evaluate if 'set_project_path' should be added to v2"
+  }
+]

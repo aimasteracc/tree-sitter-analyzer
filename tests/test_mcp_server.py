@@ -70,8 +70,8 @@ class TestMCPServerCapabilities:
         server = MCPServer(project_root=".")
         capabilities = server.get_capabilities()
 
-        # All tools are now auto-registered (57 tools total)
-        assert len(capabilities["tools"]) == 57
+        # Core tools only (11 tree-sitter + search + graph tools)
+        assert len(capabilities["tools"]) == 11
 
         # Verify some key tools are present
         tool_names = [t["name"] for t in capabilities["tools"]]
