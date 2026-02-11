@@ -13,60 +13,13 @@ This module provides high-level parsing for Java code, extracting:
 from typing import Any
 
 from tree_sitter_analyzer_v2.core.parser import TreeSitterParser
-from tree_sitter_analyzer_v2.core.types import ASTNode
-
-# Framework-specific annotation sets
-SPRING_ANNOTATIONS = {
-    "RestController",
-    "Controller",
-    "Service",
-    "Repository",
-    "Component",
-    "Configuration",
-    "Bean",
-    "Autowired",
-    "RequestMapping",
-    "GetMapping",
-    "PostMapping",
-    "PutMapping",
-    "DeleteMapping",
-    "PatchMapping",
-}
-
-JPA_ANNOTATIONS = {
-    "Entity",
-    "Table",
-    "Id",
-    "GeneratedValue",
-    "Column",
-    "OneToMany",
-    "ManyToOne",
-    "ManyToMany",
-    "OneToOne",
-}
-
-LOMBOK_ANNOTATIONS = {
-    "Data",
-    "Getter",
-    "Setter",
-    "Builder",
-    "Value",
-    "NoArgsConstructor",
-    "AllArgsConstructor",
-    "RequiredArgsConstructor",
-}
-
-# Spring web-specific annotations (subset of SPRING_ANNOTATIONS)
-SPRING_WEB_ANNOTATIONS = {
-    "RestController",
-    "Controller",
-    "RequestMapping",
-    "GetMapping",
-    "PostMapping",
-    "PutMapping",
-    "DeleteMapping",
-    "PatchMapping",
-}
+from tree_sitter_analyzer_v2.core.types import ASTNode, LanguageParseResult
+from tree_sitter_analyzer_v2.languages.java_constants import (
+    JPA_ANNOTATIONS,
+    LOMBOK_ANNOTATIONS,
+    SPRING_ANNOTATIONS,
+    SPRING_WEB_ANNOTATIONS,
+)
 
 
 class JavaParser:
@@ -80,7 +33,7 @@ class JavaParser:
         """Initialize Java parser."""
         self._parser = TreeSitterParser("java")
 
-    def parse(self, source_code: str, file_path: str | None = None) -> dict[str, Any]:
+    def parse(self, source_code: str, file_path: str = "") -> LanguageParseResult:
         """
         Parse Java source code and extract structured information.
 
@@ -629,7 +582,7 @@ class JavaParser:
 
             elif child.type == "dimensions":
                 # Count [] pairs
-                dimensions = child.text.count("[")
+                dimensions = (child.text or "").count("[")
 
         if element_type:
             return element_type + "[]" * dimensions

@@ -13,7 +13,7 @@ This module provides high-level parsing for TypeScript code, extracting:
 from typing import Any
 
 from tree_sitter_analyzer_v2.core.parser import TreeSitterParser
-from tree_sitter_analyzer_v2.core.types import ASTNode
+from tree_sitter_analyzer_v2.core.types import ASTNode, LanguageParseResult
 
 
 class TypeScriptParser:
@@ -27,7 +27,7 @@ class TypeScriptParser:
         """Initialize TypeScript parser."""
         self._parser = TreeSitterParser("typescript")
 
-    def parse(self, source_code: str, file_path: str | None = None) -> dict[str, Any]:
+    def parse(self, source_code: str, file_path: str = "") -> LanguageParseResult:
         """
         Parse TypeScript source code and extract structured information.
 
@@ -200,7 +200,7 @@ class TypeScriptParser:
                         prop_info["type"] = grandchild.text
 
         # Check if property is optional (name contains '?')
-        if "?" in node.text or "":
+        if node.text and "?" in node.text:
             prop_info["optional"] = True
 
         return prop_info if prop_info["name"] else None
@@ -561,14 +561,14 @@ class TypeScriptParser:
 
     def _detect_framework_type(self, decorators: list[dict[str, Any]]) -> str | None:
         """Detect framework type from decorators."""
-        ANGULAR_DECORATORS = {
+        angular_decorators = {
             "Component",
             "Directive",
             "Pipe",
             "Injectable",
             "NgModule",
         }
-        NESTJS_DECORATORS = {
+        nestjs_decorators = {
             "Controller",
             "Injectable",
             "Module",
@@ -578,7 +578,7 @@ class TypeScriptParser:
             "Delete",
             "Patch",
         }
-        TYPEORM_DECORATORS = {
+        typeorm_decorators = {
             "Entity",
             "Column",
             "PrimaryGeneratedColumn",
@@ -589,11 +589,11 @@ class TypeScriptParser:
         decorator_names = {d["name"] for d in decorators}
 
         # Priority: angular > nestjs > typeorm
-        if decorator_names & ANGULAR_DECORATORS:
+        if decorator_names & angular_decorators:
             return "angular"
-        elif decorator_names & NESTJS_DECORATORS:
+        elif decorator_names & nestjs_decorators:
             return "nestjs"
-        elif decorator_names & TYPEORM_DECORATORS:
+        elif decorator_names & typeorm_decorators:
             return "typeorm"
 
         return None

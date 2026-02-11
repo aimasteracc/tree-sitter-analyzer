@@ -10,6 +10,8 @@ Provides tools for:
 from pathlib import Path
 from typing import Any
 
+import networkx as nx
+
 from tree_sitter_analyzer_v2.graph import (
     CodeGraphBuilder,
     export_for_llm,
@@ -118,129 +120,104 @@ generating documentation, analyzing entire projects."""
         }
 
     def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
-        """Execute code graph analysis"""
-        file_path = arguments.get("file_path")
-        directory = arguments.get("directory")
-        detail_level = arguments.get("detail_level", "summary")
-        include_private = arguments.get("include_private", False)
-        max_tokens = arguments.get("max_tokens", 4000)
-        cross_file = arguments.get("cross_file", False)
-        language = arguments.get("language", "auto")
+        """Execute code graph analysis."""
+        file_path: str | None = arguments.get("file_path")
+        directory: str | None = arguments.get("directory")
 
-        # Validate mutually exclusive parameters
         if file_path and directory:
-            return {
-                "success": False,
-                "error": "Cannot specify both file_path and directory. Choose one.",
-            }
-
+            return self._error(
+                "Cannot specify both file_path and directory. Choose one.",
+                error_code="INVALID_ARGUMENT",
+            )
         if not file_path and not directory:
-            return {"success": False, "error": "Must specify either file_path or directory"}
+            return self._error("Must specify either file_path or directory", error_code="INVALID_ARGUMENT")
 
         try:
-            # Auto-detect language from file extension if needed
+            language = arguments.get("language", "auto")
             if language == "auto":
-                if file_path:
-                    ext = Path(file_path).suffix.lower()
-                    if ext == ".java":
-                        language = "java"
-                    elif ext == ".py":
-                        language = "python"
-                    else:
-                        language = "python"  # Default to Python
-                else:
-                    language = "python"  # Default for directory analysis
+                language = self._detect_language_from_path(file_path)
 
-            # Create builder for detected language
-            builder = CodeGraphBuilder(language=language)
-
-            # Single file analysis
-            if file_path:
-                # Validate file exists
-                if not Path(file_path).exists():
-                    return {"success": False, "error": f"File not found: {file_path}"}
-
-                graph = builder.build_from_file(file_path)
-                target = file_path
-
-            # Directory analysis
-            else:
-                # Validate directory exists
-                if not Path(directory).exists():
-                    return {"success": False, "error": f"Directory not found: {directory}"}
-
-                pattern = arguments.get("pattern", "**/*.py")
-                exclude_patterns = arguments.get("exclude_patterns", [])
-                max_files = arguments.get("max_files")
-
-                graph = builder.build_from_directory(
-                    directory,
-                    pattern=pattern,
-                    exclude_patterns=exclude_patterns,
-                    max_files=max_files,
-                    cross_file=cross_file,  # NEW: Pass cross_file parameter
-                )
-                target = directory
-
-            # Statistics
-            nodes = graph.number_of_nodes()
-            edges = graph.number_of_edges()
-            functions = len([n for n, d in graph.nodes(data=True) if d["type"] == "FUNCTION"])
-            classes = len([n for n, d in graph.nodes(data=True) if d["type"] == "CLASS"])
-            modules = len([n for n, d in graph.nodes(data=True) if d["type"] == "MODULE"])
-
-            # Calculate cross-file calls count (only when cross_file is enabled)
-            cross_file_calls = 0
-            if cross_file:
-                cross_file_calls = len(
-                    [
-                        (u, v)
-                        for u, v, d in graph.edges(data=True)
-                        if d.get("type") == "CALLS" and d.get("cross_file") is True
-                    ]
-                )
-
-            # Export as TOON
-            toon_output = export_for_llm(
-                graph,
-                max_tokens=max_tokens,
-                detail_level=detail_level,
-                include_private=include_private,
-            )
-
-            result = {
-                "success": True,
-                "language": language,
-                "statistics": {
-                    "nodes": nodes,
-                    "edges": edges,
-                    "modules": modules,
-                    "classes": classes,
-                    "functions": functions,
-                },
-                "structure": toon_output,
-                "format": "toon",
-            }
-
-            # Add cross_file_calls to statistics if cross_file is enabled
-            if cross_file:
-                result["statistics"]["cross_file_calls"] = cross_file_calls
-
-            # Add source information
-            if file_path:
-                result["file_path"] = file_path
-            else:
-                result["directory"] = directory
-                result["files_analyzed"] = graph.graph.get("files_analyzed", 0)
-                if "pattern" in graph.graph:
-                    result["pattern"] = graph.graph["pattern"]
-                if "exclude_patterns" in graph.graph:
-                    result["exclude_patterns"] = graph.graph["exclude_patterns"]
-
-            return result
-
+            graph = self._build_graph(arguments, language, file_path, directory)
+            return self._build_result(graph, arguments, language, file_path, directory)
         except Exception as e:
-            return {"success": False, "error": str(e)}
+            return self._error(str(e), error_code="GRAPH_ERROR")
+
+    def _build_graph(
+        self, arguments: dict[str, Any], language: str,
+        file_path: str | None, directory: str | None,
+    ) -> nx.DiGraph:
+        """Build the code graph from file or directory."""
+        builder = CodeGraphBuilder(language=language)
+
+        if file_path:
+            if not Path(file_path).exists():
+                raise FileNotFoundError(f"File not found: {file_path}")
+            return builder.build_from_file(file_path)
+
+        if directory is None:
+            raise ValueError("Either file_path or directory must be provided")
+        if not Path(directory).exists():
+            raise FileNotFoundError(f"Directory not found: {directory}")
+
+        return builder.build_from_directory(
+            directory,
+            pattern=arguments.get("pattern", "**/*.py"),
+            exclude_patterns=arguments.get("exclude_patterns", []),
+            max_files=arguments.get("max_files"),
+            cross_file=arguments.get("cross_file", False),
+        )
+
+    def _build_result(
+        self, graph: nx.DiGraph, arguments: dict[str, Any], language: str,
+        file_path: str | None, directory: str | None,
+    ) -> dict[str, Any]:
+        """Build the result dict from a completed graph."""
+        cross_file = arguments.get("cross_file", False)
+
+        stats = self._graph_statistics(graph, cross_file)
+        toon_output = export_for_llm(
+            graph,
+            max_tokens=arguments.get("max_tokens", 4000),
+            detail_level=arguments.get("detail_level", "summary"),
+            include_private=arguments.get("include_private", False),
+        )
+
+        result: dict[str, Any] = {
+            "success": True,
+            "language": language,
+            "statistics": stats,
+            "structure": toon_output,
+            "format": "toon",
+        }
+
+        if file_path:
+            result["file_path"] = file_path
+        else:
+            result["directory"] = directory
+            result["files_analyzed"] = graph.graph.get("files_analyzed", 0)
+            if "pattern" in graph.graph:
+                result["pattern"] = graph.graph["pattern"]
+            if "exclude_patterns" in graph.graph:
+                result["exclude_patterns"] = graph.graph["exclude_patterns"]
+
+        return result
+
+    @staticmethod
+    def _graph_statistics(graph: nx.DiGraph, cross_file: bool) -> dict[str, Any]:
+        """Extract statistics from a built graph."""
+        stats: dict[str, Any] = {
+            "nodes": graph.number_of_nodes(),
+            "edges": graph.number_of_edges(),
+            "modules": len([n for n, d in graph.nodes(data=True) if d["type"] == "MODULE"]),
+            "classes": len([n for n, d in graph.nodes(data=True) if d["type"] == "CLASS"]),
+            "functions": len([n for n, d in graph.nodes(data=True) if d["type"] == "FUNCTION"]),
+        }
+        if cross_file:
+            stats["cross_file_calls"] = len([
+                (u, v) for u, v, d in graph.edges(data=True)
+                if d.get("type") == "CALLS" and d.get("cross_file") is True
+            ])
+        return stats
 
 
 class FindFunctionCallersTool(BaseTool):
@@ -302,18 +279,12 @@ Returns: List of caller functions with their names and types."""
 
         # Validate file exists
         if not Path(file_path).exists():
-            return {"success": False, "error": f"File not found: {file_path}"}
+            return self._error(f"File not found: {file_path}", error_code="FILE_NOT_FOUND")
 
         try:
             # Auto-detect language from file extension if needed
             if language == "auto":
-                ext = Path(file_path).suffix.lower()
-                if ext == ".java":
-                    language = "java"
-                elif ext == ".py":
-                    language = "python"
-                else:
-                    language = "python"  # Default to Python
+                language = self._detect_language_from_path(file_path)
 
             # Build graph
             builder = CodeGraphBuilder(language=language)
@@ -323,10 +294,10 @@ Returns: List of caller functions with their names and types."""
             defs = find_definition(graph, function_name)
 
             if not defs:
-                return {
-                    "success": False,
-                    "error": f"Function '{function_name}' not found in {file_path}",
-                }
+                return self._error(
+                    f"Function '{function_name}' not found in {file_path}",
+                    error_code="NOT_FOUND",
+                )
 
             results = []
             for func_id in defs:
@@ -365,7 +336,7 @@ Returns: List of caller functions with their names and types."""
             }
 
         except Exception as e:
-            return {"success": False, "error": str(e)}
+            return self._error(str(e), error_code="GRAPH_ERROR")
 
 
 class QueryCallChainTool(BaseTool):
@@ -439,18 +410,12 @@ performance analysis."""
 
         # Validate file exists
         if not Path(file_path).exists():
-            return {"success": False, "error": f"File not found: {file_path}"}
+            return self._error(f"File not found: {file_path}", error_code="FILE_NOT_FOUND")
 
         try:
             # Auto-detect language from file extension if needed
             if language == "auto":
-                ext = Path(file_path).suffix.lower()
-                if ext == ".java":
-                    language = "java"
-                elif ext == ".py":
-                    language = "python"
-                else:
-                    language = "python"  # Default to Python
+                language = self._detect_language_from_path(file_path)
 
             # Build graph
             builder = CodeGraphBuilder(language=language)
@@ -461,10 +426,10 @@ performance analysis."""
             end_defs = find_definition(graph, end_function)
 
             if not start_defs:
-                return {"success": False, "error": f"Start function '{start_function}' not found"}
+                return self._error(f"Start function '{start_function}' not found", error_code="NOT_FOUND")
 
             if not end_defs:
-                return {"success": False, "error": f"End function '{end_function}' not found"}
+                return self._error(f"End function '{end_function}' not found", error_code="NOT_FOUND")
 
             # Find call chains
             all_chains = []
@@ -489,7 +454,7 @@ performance analysis."""
             }
 
         except Exception as e:
-            return {"success": False, "error": str(e)}
+            return self._error(str(e), error_code="GRAPH_ERROR")
 
 
 class VisualizeCodeGraphTool(BaseTool):
@@ -573,113 +538,81 @@ documentation generation, debugging call paths."""
         }
 
     def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
-        """Execute code graph visualization"""
-        file_path = arguments.get("file_path")
-        directory = arguments.get("directory")
+        """Execute code graph visualization."""
         viz_type = arguments.get("visualization_type", "flowchart")
-        start_function = arguments.get("start_function")
-        max_nodes = arguments.get("max_nodes", 50)
-        max_depth = arguments.get("max_depth", 5)
-        show_classes = arguments.get("show_classes", True)
-        direction = arguments.get("direction", "TD")
         language = arguments.get("language", "auto")
 
         try:
-            # Auto-detect language from file extension if needed
             if language == "auto":
-                if file_path:
-                    ext = Path(file_path).suffix.lower()
-                    if ext == ".java":
-                        language = "java"
-                    elif ext == ".py":
-                        language = "python"
-                    else:
-                        language = "python"  # Default to Python
-                else:
-                    language = "python"  # Default for directory analysis
-
+                language = self._detect_language_from_path(arguments.get("file_path"))
             builder = CodeGraphBuilder(language=language)
 
-            # Different visualization types have different requirements
             if viz_type == "flowchart":
-                if not file_path and not directory:
-                    return {"success": False, "error": "flowchart requires file_path or directory"}
-
-                # Build graph
-                if file_path:
-                    if not Path(file_path).exists():
-                        return {"success": False, "error": f"File not found: {file_path}"}
-                    graph = builder.build_from_file(file_path)
-                    source = file_path
-                else:
-                    if not Path(directory).exists():
-                        return {"success": False, "error": f"Directory not found: {directory}"}
-                    graph = builder.build_from_directory(directory)
-                    source = directory
-
-                # Generate Mermaid diagram
-                mermaid = export_to_mermaid(
-                    graph, max_nodes=max_nodes, show_classes=show_classes, direction=direction
-                )
-
-                return {
-                    "success": True,
-                    "visualization_type": "flowchart",
-                    "source": source,
-                    "mermaid": mermaid,
-                    "format": "mermaid",
-                }
-
+                return self._viz_flowchart(arguments, builder)
             elif viz_type == "call_flow":
-                if not file_path:
-                    return {"success": False, "error": "call_flow requires file_path"}
-
-                if not start_function:
-                    return {"success": False, "error": "call_flow requires start_function"}
-
-                if not Path(file_path).exists():
-                    return {"success": False, "error": f"File not found: {file_path}"}
-
-                # Build graph
-                graph = builder.build_from_file(file_path)
-
-                # Generate call flow diagram
-                mermaid = export_to_call_flow(
-                    graph, start_function=start_function, max_depth=max_depth
-                )
-
-                return {
-                    "success": True,
-                    "visualization_type": "call_flow",
-                    "file_path": file_path,
-                    "start_function": start_function,
-                    "mermaid": mermaid,
-                    "format": "mermaid",
-                }
-
+                return self._viz_call_flow(arguments, builder)
             elif viz_type == "dependency":
-                if not directory:
-                    return {"success": False, "error": "dependency requires directory"}
-
-                if not Path(directory).exists():
-                    return {"success": False, "error": f"Directory not found: {directory}"}
-
-                # Build graph from directory
-                graph = builder.build_from_directory(directory)
-
-                # Generate dependency diagram
-                mermaid = export_to_dependency_graph(graph, max_modules=max_nodes)
-
-                return {
-                    "success": True,
-                    "visualization_type": "dependency",
-                    "directory": directory,
-                    "mermaid": mermaid,
-                    "format": "mermaid",
-                }
-
+                return self._viz_dependency(arguments, builder)
             else:
-                return {"success": False, "error": f"Unknown visualization type: {viz_type}"}
-
+                return self._error(f"Unknown visualization type: {viz_type}", error_code="INVALID_ARGUMENT")
         except Exception as e:
-            return {"success": False, "error": str(e)}
+            return self._error(str(e), error_code="GRAPH_ERROR")
+
+    def _viz_flowchart(self, args: dict[str, Any], builder: CodeGraphBuilder) -> dict[str, Any]:
+        """Generate flowchart visualization."""
+        file_path = args.get("file_path")
+        directory = args.get("directory")
+        if not file_path and not directory:
+            return self._error("flowchart requires file_path or directory", error_code="INVALID_ARGUMENT")
+
+        if file_path:
+            if not Path(file_path).exists():
+                return self._error(f"File not found: {file_path}", error_code="FILE_NOT_FOUND")
+            graph = builder.build_from_file(file_path)
+            source = file_path
+        else:
+            if directory is None:
+                return self._error("Either file_path or directory must be provided", error_code="INVALID_ARGUMENT")
+            if not Path(directory).exists():
+                return self._error(f"Directory not found: {directory}", error_code="FILE_NOT_FOUND")
+            graph = builder.build_from_directory(directory)
+            source = directory
+
+        mermaid = export_to_mermaid(
+            graph, max_nodes=args.get("max_nodes", 50),
+            show_classes=args.get("show_classes", True),
+            direction=args.get("direction", "TD"),
+        )
+        return {"success": True, "visualization_type": "flowchart", "source": source,
+                "mermaid": mermaid, "format": "mermaid"}
+
+    def _viz_call_flow(self, args: dict[str, Any], builder: CodeGraphBuilder) -> dict[str, Any]:
+        """Generate call flow visualization."""
+        file_path = args.get("file_path")
+        start_function = args.get("start_function")
+        if not file_path:
+            return self._error("call_flow requires file_path", error_code="INVALID_ARGUMENT")
+        if not start_function:
+            return self._error("call_flow requires start_function", error_code="INVALID_ARGUMENT")
+        if not Path(file_path).exists():
+            return self._error(f"File not found: {file_path}", error_code="FILE_NOT_FOUND")
+
+        graph = builder.build_from_file(file_path)
+        mermaid = export_to_call_flow(
+            graph, start_function=start_function, max_depth=args.get("max_depth", 5),
+        )
+        return {"success": True, "visualization_type": "call_flow", "file_path": file_path,
+                "start_function": start_function, "mermaid": mermaid, "format": "mermaid"}
+
+    def _viz_dependency(self, args: dict[str, Any], builder: CodeGraphBuilder) -> dict[str, Any]:
+        """Generate dependency visualization."""
+        directory = args.get("directory")
+        if not directory:
+            return self._error("dependency requires directory", error_code="INVALID_ARGUMENT")
+        if not Path(directory).exists():
+            return self._error(f"Directory not found: {directory}", error_code="FILE_NOT_FOUND")
+
+        graph = builder.build_from_directory(directory)
+        mermaid = export_to_dependency_graph(graph, max_modules=args.get("max_nodes", 50))
+        return {"success": True, "visualization_type": "dependency", "directory": directory,
+                "mermaid": mermaid, "format": "mermaid"}

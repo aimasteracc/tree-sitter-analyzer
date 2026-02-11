@@ -6,7 +6,34 @@ This module defines all data structures and types used in parsing and analysis.
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Optional
+from typing import Any, Optional, Protocol, TypedDict, runtime_checkable
+
+
+# ── Shared Protocol (bridges code_map.SymbolInfo and graph node dicts) ──
+
+
+@runtime_checkable
+class SymbolProtocol(Protocol):
+    """Minimal protocol satisfied by both code_map.SymbolInfo and graph node dicts.
+
+    Any object exposing these read-only properties can participate in
+    cross-subsystem analysis (e.g., unified dead-code detection).
+    """
+
+    @property
+    def name(self) -> str: ...
+
+    @property
+    def kind(self) -> str: ...
+
+    @property
+    def file(self) -> str: ...
+
+    @property
+    def line_start(self) -> int: ...
+
+    @property
+    def line_end(self) -> int: ...
 
 
 @dataclass
@@ -37,11 +64,7 @@ class ASTNode:
 
     def __repr__(self) -> str:
         """String representation for debugging."""
-        return (
-            f"ASTNode(type={self.type!r}, "
-            f"text={self.text!r}, "
-            f"children={len(self.children)})"
-        )
+        return f"ASTNode(type={self.type!r}, text={self.text!r}, children={len(self.children)})"
 
 
 @dataclass
@@ -105,7 +128,7 @@ class SupportedLanguage(Enum):
         self._file_extensions = file_extensions
 
     @property
-    def name(self) -> str:  # type: ignore[override]
+    def name(self) -> str:
         """Get language name."""
         return self._language_name
 
@@ -146,3 +169,77 @@ class SupportedLanguage(Enum):
             if lang.name == name_lower:
                 return lang
         return None
+
+
+# ── Domain model TypedDicts ──
+# These replace raw dict[str, Any] in language parser return types.
+
+
+class FunctionInfo(TypedDict, total=False):
+    """Structured function/method information from language parsers."""
+
+    name: str
+    start_line: int
+    end_line: int
+    visibility: str
+    is_static: bool
+    is_constructor: bool
+    is_async: bool
+    return_type: str
+    parameters: list[dict[str, Any]]
+    decorators: list[str]
+    docstring: str
+
+
+class ClassInfo(TypedDict, total=False):
+    """Structured class information from language parsers."""
+
+    name: str
+    start_line: int
+    end_line: int
+    visibility: str
+    bases: list[str]
+    interfaces: list[str]
+    methods: list[FunctionInfo]
+    fields: list[dict[str, Any]]
+    decorators: list[str]
+    docstring: str
+    is_abstract: bool
+    is_interface: bool
+
+
+class ImportInfo(TypedDict, total=False):
+    """Structured import information from language parsers."""
+
+    module: str
+    names: list[str]
+    alias: str
+    line: int
+    is_from_import: bool
+
+
+class ParseMetadata(TypedDict, total=False):
+    """Metadata about a parse operation."""
+
+    total_functions: int
+    total_classes: int
+    total_imports: int
+    has_main_block: bool
+    package: str
+    total_lines: int
+
+
+class LanguageParseResult(TypedDict, total=False):
+    """Structured result from language-specific parsers (replaces dict[str, Any]).
+
+    This is the canonical return type for PythonParser.parse(),
+    JavaParser.parse(), TypeScriptParser.parse(), etc.
+    """
+
+    ast: Any  # ASTNode — kept as Any for tree-sitter compatibility
+    functions: list[FunctionInfo]
+    classes: list[ClassInfo]
+    imports: list[ImportInfo]
+    metadata: ParseMetadata
+    errors: bool
+    fields: list[dict[str, Any]]  # Java-specific: top-level fields

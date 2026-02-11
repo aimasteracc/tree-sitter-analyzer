@@ -7,9 +7,10 @@ Features:
 - Formatter registration
 - Formatter retrieval by name
 - List available formats
-- Singleton default registry
+- Thread-safe singleton default registry
 """
 
+import threading
 from typing import Any, Protocol
 
 
@@ -26,10 +27,12 @@ class FormatterRegistry:
     Registry for output formatters.
 
     Manages registration and retrieval of formatters by name.
+    Thread-safe for concurrent access.
     """
 
     def __init__(self) -> None:
         """Initialize formatter registry."""
+        self._lock = threading.Lock()
         self._formatters: dict[str, Formatter] = {}
         self._register_default_formatters()
 
@@ -64,7 +67,8 @@ class FormatterRegistry:
         if formatter is None:
             raise ValueError("Formatter cannot be None")
 
-        self._formatters[name.lower()] = formatter
+        with self._lock:
+            self._formatters[name.lower()] = formatter
 
     def get(self, format_name: str) -> Formatter:
         """
@@ -84,11 +88,11 @@ class FormatterRegistry:
 
         format_key = format_name.lower()
 
-        if format_key not in self._formatters:
-            available = ", ".join(self.list_formats())
-            raise ValueError(f"Unknown format: {format_name}. Available formats: {available}")
-
-        return self._formatters[format_key]
+        with self._lock:
+            if format_key not in self._formatters:
+                available = ", ".join(sorted(self._formatters.keys()))
+                raise ValueError(f"Unknown format: {format_name}. Available formats: {available}")
+            return self._formatters[format_key]
 
     def list_formats(self) -> list[str]:
         """
@@ -97,21 +101,26 @@ class FormatterRegistry:
         Returns:
             List of format names
         """
-        return list(self._formatters.keys())
+        with self._lock:
+            return list(self._formatters.keys())
 
 
-# Singleton default registry
+# Thread-safe singleton default registry
 _default_registry: FormatterRegistry | None = None
+_singleton_lock = threading.Lock()
 
 
 def get_default_registry() -> FormatterRegistry:
     """
-    Get the default formatter registry singleton.
+    Get the default formatter registry singleton (thread-safe).
 
     Returns:
         Default FormatterRegistry instance
     """
     global _default_registry
     if _default_registry is None:
-        _default_registry = FormatterRegistry()
+        with _singleton_lock:
+            # Double-checked locking
+            if _default_registry is None:
+                _default_registry = FormatterRegistry()
     return _default_registry

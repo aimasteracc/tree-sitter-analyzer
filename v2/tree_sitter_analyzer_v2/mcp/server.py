@@ -5,23 +5,31 @@ Provides a full-featured MCP server with auto-registered tools.
 Includes Code Graph tools for AI-powered code analysis.
 """
 
+import logging
+import time
 from pathlib import Path
 from typing import Any
 
-from tree_sitter_analyzer_v2.mcp.tools import (
-    AnalyzeCodeGraphTool,
-    AnalyzeTool,
-    CheckCodeScaleTool,
-    ExtractCodeSectionTool,
-    FindAndGrepTool,
-    FindFilesTool,
-    FindFunctionCallersTool,
-    QueryCallChainTool,
-    QueryTool,
-    SearchContentTool,
-    VisualizeCodeGraphTool,
-)
+logger = logging.getLogger(__name__)
+
+from tree_sitter_analyzer_v2 import __version__
+from tree_sitter_analyzer_v2.mcp.tools.base import BaseTool
 from tree_sitter_analyzer_v2.mcp.tools.registry import ToolRegistry
+
+# ── Tool module paths for auto-import ──
+# Importing these modules triggers __init_subclass__ registration on BaseTool.
+# To add a new tool: create a class inheriting BaseTool in a new module
+# and add the module path here. No class name needed!
+_TOOL_MODULES: list[str] = [
+    "tree_sitter_analyzer_v2.mcp.tools.analyze",
+    "tree_sitter_analyzer_v2.mcp.tools.query",
+    "tree_sitter_analyzer_v2.mcp.tools.scale",
+    "tree_sitter_analyzer_v2.mcp.tools.extract",
+    "tree_sitter_analyzer_v2.mcp.tools.search",
+    "tree_sitter_analyzer_v2.mcp.tools.find_and_grep",
+    "tree_sitter_analyzer_v2.mcp.tools.code_graph",
+    "tree_sitter_analyzer_v2.mcp.tools.intelligence",
+]
 
 
 class MCPServer:
@@ -35,43 +43,49 @@ class MCPServer:
     - tools/list: List available tools
     - tools/call: Execute tool
 
-    Tools are auto-registered on initialization including Code Graph tools.
+    Tools are auto-discovered via __init_subclass__ on BaseTool.
+    To add a new tool, create a concrete BaseTool subclass and add
+    its module to _TOOL_MODULES.
     """
 
     def __init__(self, project_root: str) -> None:
         """
-        Initialize MCP server with auto-registered tools.
+        Initialize MCP server with auto-discovered tools.
 
         Args:
             project_root: Root directory of the project to analyze
         """
         self.project_root = Path(project_root).resolve()
         self.name = "tree-sitter-analyzer-v2"
-        self.version = "2.0.0-alpha.1"
+        self.version = __version__
         self.is_initialized = False
 
-        # Initialize tool registry and auto-register all tools
+        # Initialize tool registry and auto-discover all tools
         self.tool_registry = ToolRegistry()
         self._register_tools()
 
     def _register_tools(self) -> None:
-        """Auto-register all available MCP tools."""
-        # Core analysis tools
-        self.tool_registry.register(AnalyzeTool())
-        self.tool_registry.register(QueryTool())
-        self.tool_registry.register(CheckCodeScaleTool())
-        self.tool_registry.register(ExtractCodeSectionTool())
+        """Auto-discover and register all MCP tools via __init_subclass__.
 
-        # Search tools
-        self.tool_registry.register(FindFilesTool())
-        self.tool_registry.register(SearchContentTool())
-        self.tool_registry.register(FindAndGrepTool())
+        Step 1: Import all tool modules (triggers __init_subclass__ registration).
+        Step 2: Instantiate every registered concrete BaseTool subclass.
+        """
+        import importlib
 
-        # Code Graph tools (NEW in Phase 9!)
-        self.tool_registry.register(AnalyzeCodeGraphTool())
-        self.tool_registry.register(FindFunctionCallersTool())
-        self.tool_registry.register(QueryCallChainTool())
-        self.tool_registry.register(VisualizeCodeGraphTool())  # NEW in E4!
+        # Step 1: ensure all tool modules are imported
+        for module_path in _TOOL_MODULES:
+            try:
+                importlib.import_module(module_path)
+            except Exception as exc:
+                logger.warning("Failed to import tool module %s: %s", module_path, exc)
+
+        # Step 2: instantiate all auto-registered tool classes
+        for tool_cls in BaseTool.registered_tool_classes():
+            try:
+                tool_instance: BaseTool = tool_cls()
+                self.tool_registry.register(tool_instance)
+            except Exception as exc:
+                logger.warning("Failed to instantiate tool %s: %s", tool_cls.__name__, exc)
 
     def get_capabilities(self) -> dict[str, Any]:
         """
@@ -201,8 +215,29 @@ class MCPServer:
 
         try:
             tool = self.tool_registry.get(tool_name)
+
+            # S4-1: validate arguments against the tool's JSON schema
+            validation_errors = tool.validate_arguments(tool_arguments)
+            if validation_errors:
+                return self._error_response(
+                    request_id, -32602, f"Invalid arguments: {'; '.join(validation_errors)}"
+                )
+
+            t0 = time.perf_counter()
             result = tool.execute(tool_arguments)
-            return {"jsonrpc": "2.0", "id": request_id, "result": result}
+            elapsed_ms = (time.perf_counter() - t0) * 1000
+            logger.info(
+                "tool_execution",
+                extra={"tool": tool_name, "elapsed_ms": round(elapsed_ms, 1),
+                       "success": result.get("success") if isinstance(result, dict) else None},
+            )
+            # S4-2: timing metadata in _meta envelope (not in business result)
+            return {
+                "jsonrpc": "2.0",
+                "id": request_id,
+                "result": result,
+                "_meta": {"timing_ms": round(elapsed_ms, 1)},
+            }
         except ValueError as e:
             # Tool not found
             return self._error_response(request_id, -32602, str(e))

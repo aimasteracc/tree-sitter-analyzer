@@ -21,7 +21,7 @@ class ToolRegistry:
     Manages registration and retrieval of tools.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize tool registry."""
         self._tools: dict[str, BaseTool] = {}
 
@@ -77,17 +77,7 @@ class ToolRegistry:
         Get schemas for all registered tools.
 
         Returns:
-            List of tool schemas in MCP format
+            List of tool schemas in MCP format.
+            Uses BaseTool.get_tool_definition() as the single source of truth.
         """
-        schemas: list[dict[str, Any]] = []
-
-        for tool in self._tools.values():
-            schemas.append(
-                {
-                    "name": tool.get_name(),
-                    "description": tool.get_description(),
-                    "inputSchema": tool.get_schema(),
-                }
-            )
-
-        return schemas
+        return [tool.get_tool_definition() for tool in self._tools.values()]

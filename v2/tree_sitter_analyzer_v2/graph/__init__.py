@@ -25,6 +25,25 @@ from tree_sitter_analyzer_v2.graph.queries import (
     get_callers,
 )
 
+def register_extractors() -> None:
+    """Register graph-layer call extractors with the core registry.
+
+    This is the canonical entry-point called by
+    ``core.language_registry._register_builtin_extractors``,
+    keeping the dependency direction graph → core.
+    """
+    from tree_sitter_analyzer_v2.core.language_registry import (
+        register_call_extractor,
+    )
+    from tree_sitter_analyzer_v2.graph.extractors import (
+        JavaCallExtractor,
+        PythonCallExtractor,
+    )
+
+    register_call_extractor("python", PythonCallExtractor())
+    register_call_extractor("java", JavaCallExtractor())
+
+
 __all__ = [
     "CodeGraphBuilder",
     "get_callers",
@@ -36,4 +55,5 @@ __all__ = [
     "export_to_dependency_graph",
     "detect_changes",
     "update_graph",
+    "register_extractors",
 ]

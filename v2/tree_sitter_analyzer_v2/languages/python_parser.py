@@ -11,7 +11,7 @@ This module provides high-level parsing for Python code, extracting:
 from typing import Any
 
 from tree_sitter_analyzer_v2.core.parser import TreeSitterParser
-from tree_sitter_analyzer_v2.core.types import ASTNode
+from tree_sitter_analyzer_v2.core.types import ASTNode, LanguageParseResult
 
 
 class PythonParser:
@@ -25,7 +25,7 @@ class PythonParser:
         """Initialize Python parser."""
         self._parser = TreeSitterParser("python")
 
-    def parse(self, source_code: str, file_path: str | None = None) -> dict[str, Any]:
+    def parse(self, source_code: str, file_path: str = "") -> LanguageParseResult:
         """
         Parse Python source code and extract structured information.
 
@@ -34,13 +34,8 @@ class PythonParser:
             file_path: Optional file path for metadata
 
         Returns:
-            Dict containing:
-            - ast: Raw AST from tree-sitter
-            - functions: List of function definitions
-            - classes: List of class definitions
-            - imports: List of import statements
-            - metadata: File metadata
-            - errors: Whether parsing had errors
+            LanguageParseResult containing ast, functions, classes,
+            imports, metadata, and errors.
         """
         # Parse with tree-sitter
         parse_result = self._parser.parse(source_code, file_path)
@@ -89,17 +84,11 @@ class PythonParser:
 
     def _traverse_for_main_block(self, node: ASTNode) -> bool:
         """Recursively traverse AST to find main block pattern."""
-        if node.type == "if_statement":
-            # Check if this is the main block pattern
-            if self._is_main_block_pattern(node):
-                return True
+        if node.type == "if_statement" and self._is_main_block_pattern(node):
+            return True
 
         # Recursively check children
-        for child in node.children:
-            if self._traverse_for_main_block(child):
-                return True
-
-        return False
+        return any(self._traverse_for_main_block(child) for child in node.children)
 
     def _is_main_block_pattern(self, if_node: ASTNode) -> bool:
         """
@@ -305,10 +294,7 @@ class PythonParser:
             True if async function, False otherwise
         """
         # Check for "async" keyword before "def"
-        for child in node.children:
-            if child.text == "async":
-                return True
-        return False
+        return any(child.text == "async" for child in node.children)
 
     def _extract_function_definition(self, node: ASTNode) -> dict[str, Any] | None:
         """Extract information from a function definition node."""
