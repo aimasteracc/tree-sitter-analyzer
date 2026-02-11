@@ -12,6 +12,9 @@ from tree_sitter_analyzer_v2.languages.profiles import (
     CPP_PROFILE,
     C_PROFILE,
     GO_PROFILE,
+    KOTLIN_PROFILE,
+    PHP_PROFILE,
+    RUBY_PROFILE,
     RUST_PROFILE,
     get_profile,
     get_profile_by_extension,
@@ -66,11 +69,9 @@ class TestLanguageProfile:
         assert get_profile_by_extension(".unknown") is None
 
     def test_all_profiles_populated(self) -> None:
-        assert len(ALL_PROFILES) >= 4
-        assert "go" in ALL_PROFILES
-        assert "rust" in ALL_PROFILES
-        assert "c" in ALL_PROFILES
-        assert "cpp" in ALL_PROFILES
+        assert len(ALL_PROFILES) >= 7
+        for lang in ("go", "rust", "c", "cpp", "kotlin", "php", "ruby"):
+            assert lang in ALL_PROFILES
 
 
 # ── Go parser tests ──
@@ -454,3 +455,183 @@ int main() { return 0; }
 """
         result = parser.parse(source, "point.cpp")
         assert len(result["classes"]) >= 1
+
+
+# ── Kotlin parser tests ──
+
+
+class TestKotlinParser:
+    """Tests for Kotlin language parsing via GenericLanguageParser."""
+
+    @pytest.fixture
+    def parser(self) -> GenericLanguageParser:
+        return GenericLanguageParser(KOTLIN_PROFILE)
+
+    def test_parse_function(self, parser: GenericLanguageParser) -> None:
+        source = """fun add(a: Int, b: Int): Int {
+    return a + b
+}
+"""
+        result = parser.parse(source, "main.kt")
+        assert len(result["functions"]) == 1
+        func = result["functions"][0]
+        assert func["name"] == "add"
+
+    def test_parse_class(self, parser: GenericLanguageParser) -> None:
+        source = """class Calculator {
+    fun add(a: Int, b: Int): Int = a + b
+    fun sub(a: Int, b: Int): Int = a - b
+}
+"""
+        result = parser.parse(source, "calc.kt")
+        assert len(result["classes"]) >= 1
+
+    def test_parse_import(self, parser: GenericLanguageParser) -> None:
+        source = """import java.util.List
+import kotlin.collections.Map
+
+fun main() {}
+"""
+        result = parser.parse(source, "main.kt")
+        assert len(result["imports"]) == 2
+
+    def test_parse_data_class(self, parser: GenericLanguageParser) -> None:
+        source = """data class User(val name: String, val age: Int)
+"""
+        result = parser.parse(source, "models.kt")
+        assert len(result["classes"]) >= 1
+
+    def test_empty_file(self, parser: GenericLanguageParser) -> None:
+        result = parser.parse("", "empty.kt")
+        assert result["functions"] == []
+
+    def test_metadata(self, parser: GenericLanguageParser) -> None:
+        source = "fun a() {}\nfun b() {}\n"
+        result = parser.parse(source, "test.kt")
+        assert result["metadata"]["total_functions"] == 2
+
+
+# ── PHP parser tests ──
+
+
+class TestPhpParser:
+    """Tests for PHP language parsing via GenericLanguageParser."""
+
+    @pytest.fixture
+    def parser(self) -> GenericLanguageParser:
+        return GenericLanguageParser(PHP_PROFILE)
+
+    def test_parse_function(self, parser: GenericLanguageParser) -> None:
+        source = """<?php
+function add($a, $b) {
+    return $a + $b;
+}
+?>"""
+        result = parser.parse(source, "math.php")
+        assert len(result["functions"]) == 1
+        func = result["functions"][0]
+        assert func["name"] == "add"
+
+    def test_parse_class(self, parser: GenericLanguageParser) -> None:
+        source = """<?php
+class Calculator {
+    public function add($a, $b) {
+        return $a + $b;
+    }
+}
+?>"""
+        result = parser.parse(source, "calc.php")
+        assert len(result["classes"]) == 1
+        cls = result["classes"][0]
+        assert cls["name"] == "Calculator"
+
+    def test_parse_use(self, parser: GenericLanguageParser) -> None:
+        source = """<?php
+use App\\Models\\User;
+use App\\Services\\AuthService;
+
+function main() {}
+?>"""
+        result = parser.parse(source, "main.php")
+        assert len(result["imports"]) == 2
+
+    def test_multiple_functions(self, parser: GenericLanguageParser) -> None:
+        source = """<?php
+function a() {}
+function b() {}
+function c() {}
+?>"""
+        result = parser.parse(source, "funcs.php")
+        assert len(result["functions"]) == 3
+
+    def test_empty_file(self, parser: GenericLanguageParser) -> None:
+        result = parser.parse("", "empty.php")
+        assert result["functions"] == []
+
+
+# ── Ruby parser tests ──
+
+
+class TestRubyParser:
+    """Tests for Ruby language parsing via GenericLanguageParser."""
+
+    @pytest.fixture
+    def parser(self) -> GenericLanguageParser:
+        return GenericLanguageParser(RUBY_PROFILE)
+
+    def test_parse_method(self, parser: GenericLanguageParser) -> None:
+        source = """def add(a, b)
+  a + b
+end
+"""
+        result = parser.parse(source, "math.rb")
+        assert len(result["functions"]) == 1
+        func = result["functions"][0]
+        assert func["name"] == "add"
+
+    def test_parse_class(self, parser: GenericLanguageParser) -> None:
+        source = """class Calculator
+  def add(a, b)
+    a + b
+  end
+
+  def sub(a, b)
+    a - b
+  end
+end
+"""
+        result = parser.parse(source, "calc.rb")
+        assert len(result["classes"]) == 1
+        cls = result["classes"][0]
+        assert cls["name"] == "Calculator"
+
+    def test_multiple_methods(self, parser: GenericLanguageParser) -> None:
+        source = """def a; end
+def b; end
+def c; end
+"""
+        result = parser.parse(source, "funcs.rb")
+        assert len(result["functions"]) == 3
+
+    def test_class_with_methods(self, parser: GenericLanguageParser) -> None:
+        source = """class Dog
+  def bark
+    puts "Woof!"
+  end
+end
+"""
+        result = parser.parse(source, "dog.rb")
+        assert len(result["classes"]) == 1
+        cls = result["classes"][0]
+        assert len(cls.get("methods", [])) >= 1
+
+    def test_empty_file(self, parser: GenericLanguageParser) -> None:
+        result = parser.parse("", "empty.rb")
+        assert result["functions"] == []
+
+    def test_metadata(self, parser: GenericLanguageParser) -> None:
+        source = "def a; end\ndef b; end\nclass C; end\n"
+        result = parser.parse(source, "test.rb")
+        meta = result["metadata"]
+        assert meta["total_functions"] == 2
+        assert meta["total_classes"] == 1

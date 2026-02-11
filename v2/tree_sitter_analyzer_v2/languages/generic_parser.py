@@ -102,7 +102,7 @@ class GenericLanguageParser:
                 functions.append(func)
             return
 
-        if node.type in p.class_node_types:
+        if node.type in p.class_node_types and len(node.children) > 0:
             cls = self._extract_class(node, source_code)
             if cls:
                 classes.append(cls)
@@ -323,7 +323,8 @@ class GenericLanguageParser:
     def _find_identifier_text(self, node: ASTNode) -> str:
         """Find the first identifier child and return its text."""
         for child in node.children:
-            if child.type in ("identifier", "type_identifier", "name", "field_identifier"):
+            if child.type in ("identifier", "type_identifier", "name",
+                              "field_identifier", "constant"):
                 return child.text or ""
             # C/C++: function_declarator wraps the identifier
             if child.type in ("function_declarator", "pointer_declarator"):

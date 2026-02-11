@@ -90,6 +90,66 @@ CPP_PROFILE = LanguageProfile(
 )
 
 
+# ── Kotlin ──
+
+KOTLIN_PROFILE = LanguageProfile(
+    name="kotlin",
+    extensions=(".kt", ".kts"),
+    tree_sitter_name="kotlin",
+    function_node_types=("function_declaration",),
+    method_node_types=("function_declaration",),  # inside class_body
+    class_node_types=("class_declaration",),
+    import_node_types=("import",),  # import_header node type is 'import'
+    name_field="identifier",
+    params_field="function_value_parameters",
+    body_field="function_body",
+    return_type_field="user_type",
+    has_packages=True,
+    package_node_type="package_header",
+    has_interfaces=True,
+    interface_node_types=("class_declaration",),  # Kotlin uses class_declaration for interfaces too
+    default_visibility="public",
+)
+
+
+# ── PHP ──
+
+PHP_PROFILE = LanguageProfile(
+    name="php",
+    extensions=(".php",),
+    tree_sitter_name="php",
+    function_node_types=("function_definition",),
+    method_node_types=("method_declaration",),
+    class_node_types=("class_declaration",),
+    import_node_types=("namespace_use_declaration",),
+    name_field="name",
+    params_field="formal_parameters",
+    body_field="compound_statement",
+    public_keywords=("public",),
+    default_visibility="public",
+    has_interfaces=True,
+    interface_node_types=("interface_declaration",),
+)
+
+
+# ── Ruby ──
+
+RUBY_PROFILE = LanguageProfile(
+    name="ruby",
+    extensions=(".rb",),
+    tree_sitter_name="ruby",
+    function_node_types=("method",),
+    method_node_types=("method",),
+    class_node_types=("class",),
+    import_node_types=(),  # Ruby uses require/require_relative (call nodes)
+    name_field="identifier",
+    params_field="method_parameters",
+    body_field="body_statement",
+    default_visibility="public",
+    has_interfaces=False,  # Ruby uses modules/mixins instead
+)
+
+
 # ── Registry of all profile-driven languages ──
 
 ALL_PROFILES: dict[str, LanguageProfile] = {
@@ -97,6 +157,9 @@ ALL_PROFILES: dict[str, LanguageProfile] = {
     "rust": RUST_PROFILE,
     "c": C_PROFILE,
     "cpp": CPP_PROFILE,
+    "kotlin": KOTLIN_PROFILE,
+    "php": PHP_PROFILE,
+    "ruby": RUBY_PROFILE,
 }
 
 

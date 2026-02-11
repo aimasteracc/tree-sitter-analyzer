@@ -119,6 +119,9 @@ class SupportedLanguage(Enum):
     RUST = ("rust", [".rs"])
     C = ("c", [".c", ".h"])
     CPP = ("cpp", [".cpp", ".cc", ".cxx", ".hpp", ".hxx", ".hh"])
+    KOTLIN = ("kotlin", [".kt", ".kts"])
+    PHP = ("php", [".php"])
+    RUBY = ("ruby", [".rb"])
 
     def __init__(self, language_name: str, file_extensions: list[str]) -> None:
         """

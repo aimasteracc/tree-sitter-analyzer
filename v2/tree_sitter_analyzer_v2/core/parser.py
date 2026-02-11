@@ -205,6 +205,36 @@ class TreeSitterParser:
                     "tree-sitter-cpp not installed. Install with: pip install tree-sitter-cpp"
                 ) from e
 
+        elif lang_name == "kotlin":
+            try:
+                from tree_sitter_kotlin import language
+
+                return tree_sitter.Language(language())
+            except ImportError as e:
+                raise ImportError(
+                    "tree-sitter-kotlin not installed. Install with: pip install tree-sitter-kotlin"
+                ) from e
+
+        elif lang_name == "php":
+            try:
+                from tree_sitter_php import language_php
+
+                return tree_sitter.Language(language_php())
+            except ImportError as e:
+                raise ImportError(
+                    "tree-sitter-php not installed. Install with: pip install tree-sitter-php"
+                ) from e
+
+        elif lang_name == "ruby":
+            try:
+                from tree_sitter_ruby import language
+
+                return tree_sitter.Language(language())
+            except ImportError as e:
+                raise ImportError(
+                    "tree-sitter-ruby not installed. Install with: pip install tree-sitter-ruby"
+                ) from e
+
         # Should not reach here due to validation in __init__
         raise UnsupportedLanguageError(lang_name)
 

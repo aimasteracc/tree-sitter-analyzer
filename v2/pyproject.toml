@@ -51,6 +51,9 @@ languages = [
     "tree-sitter-rust>=0.20.0",
     "tree-sitter-c>=0.20.0",
     "tree-sitter-cpp>=0.20.0",
+    "tree-sitter-kotlin>=1.0.0",
+    "tree-sitter-php>=0.20.0",
+    "tree-sitter-ruby>=0.20.0",
 ]
 all = [
     "tree-sitter-python>=0.20.0",
@@ -61,6 +64,9 @@ all = [
     "tree-sitter-rust>=0.20.0",
     "tree-sitter-c>=0.20.0",
     "tree-sitter-cpp>=0.20.0",
+    "tree-sitter-kotlin>=1.0.0",
+    "tree-sitter-php>=0.20.0",
+    "tree-sitter-ruby>=0.20.0",
 ]
 
 [project.scripts]
