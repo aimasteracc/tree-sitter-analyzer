@@ -41,18 +41,26 @@ mcp = [
     "mcp>=0.1.0",
 ]
 languages = [
-    # Start with core 3 languages for MVP
+    # Core 4 languages (hand-written parsers)
     "tree-sitter-python>=0.20.0",
     "tree-sitter-javascript>=0.20.0",
     "tree-sitter-typescript>=0.20.0",
     "tree-sitter-java>=0.20.0",
+    # Profile-driven languages (GenericLanguageParser)
+    "tree-sitter-go>=0.20.0",
+    "tree-sitter-rust>=0.20.0",
+    "tree-sitter-c>=0.20.0",
+    "tree-sitter-cpp>=0.20.0",
 ]
 all = [
-    # Will add more languages incrementally in Phase 6
     "tree-sitter-python>=0.20.0",
     "tree-sitter-javascript>=0.20.0",
     "tree-sitter-typescript>=0.20.0",
     "tree-sitter-java>=0.20.0",
+    "tree-sitter-go>=0.20.0",
+    "tree-sitter-rust>=0.20.0",
+    "tree-sitter-c>=0.20.0",
+    "tree-sitter-cpp>=0.20.0",
 ]
 
 [project.scripts]
@@ -158,3 +166,8 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]  # Allow unused imports in __init__.py
 "tests/*" = ["D"]  # Don't require docstrings in tests
+
+[dependency-groups]
+dev = [
+    "types-networkx>=3.6.1.20260210",
+]

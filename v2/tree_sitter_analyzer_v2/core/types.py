@@ -115,6 +115,10 @@ class SupportedLanguage(Enum):
     TYPESCRIPT = ("typescript", [".ts", ".tsx"])
     JAVASCRIPT = ("javascript", [".js", ".jsx", ".mjs", ".cjs"])
     JAVA = ("java", [".java"])
+    GO = ("go", [".go"])
+    RUST = ("rust", [".rs"])
+    C = ("c", [".c", ".h"])
+    CPP = ("cpp", [".cpp", ".cc", ".cxx", ".hpp", ".hxx", ".hh"])
 
     def __init__(self, language_name: str, file_extensions: list[str]) -> None:
         """
@@ -243,3 +247,66 @@ class LanguageParseResult(TypedDict, total=False):
     metadata: ParseMetadata
     errors: bool
     fields: list[dict[str, Any]]  # Java-specific: top-level fields
+
+
+# ── Language Profile (data-driven language adapter) ──
+
+
+@dataclass(frozen=True)
+class LanguageProfile:
+    """Data-driven language configuration for the generic parser.
+
+    Instead of writing a full parser class (300-700 LOC) for each language,
+    define a LanguageProfile with AST node type mappings and let
+    GenericLanguageParser handle the extraction.
+
+    Example:
+        GO_PROFILE = LanguageProfile(
+            name="go", extensions=(".go",), tree_sitter_name="go",
+            function_node_types=("function_declaration",),
+            class_node_types=("type_declaration",),
+            import_node_types=("import_declaration",),
+        )
+    """
+
+    # Identity
+    name: str
+    extensions: tuple[str, ...]
+    tree_sitter_name: str  # tree-sitter grammar name
+
+    # AST node type mappings — which node types represent each construct
+    function_node_types: tuple[str, ...] = ()
+    method_node_types: tuple[str, ...] = ()
+    class_node_types: tuple[str, ...] = ()
+    import_node_types: tuple[str, ...] = ()
+
+    # Field child names in AST (how to locate name, params, body, etc.)
+    name_field: str = "name"
+    params_field: str = "parameters"
+    body_field: str = "body"
+    return_type_field: str = "return_type"
+
+    # Visibility / modifier detection
+    visibility_node_type: str = ""
+    public_keywords: tuple[str, ...] = ("public",)
+    default_visibility: str = "public"
+
+    # Import extraction
+    import_path_field: str = "path"
+
+    # Comment / docstring
+    comment_node_types: tuple[str, ...] = ("comment",)
+    docstring_position: str = "before"  # "before" or "first_child"
+
+    # Language-specific feature flags
+    has_interfaces: bool = False
+    has_packages: bool = False
+    has_decorators: bool = False
+    has_async: bool = False
+    async_keyword: str = "async"
+
+    # Package node type (for Go, Java, etc.)
+    package_node_type: str = ""
+
+    # Interface / trait node types
+    interface_node_types: tuple[str, ...] = ()

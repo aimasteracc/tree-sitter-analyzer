@@ -99,8 +99,7 @@ class TreeSitterParser:
             import tree_sitter
         except ImportError as e:
             raise ImportError(
-                "tree-sitter library not installed. "
-                "Install with: pip install tree-sitter>=0.20.0"
+                "tree-sitter library not installed. Install with: pip install tree-sitter>=0.20.0"
             ) from e
 
         # Load language-specific tree-sitter library
@@ -131,8 +130,7 @@ class TreeSitterParser:
                 return tree_sitter.Language(language())
             except ImportError as e:
                 raise ImportError(
-                    "tree-sitter-python not installed. "
-                    "Install with: pip install tree-sitter-python"
+                    "tree-sitter-python not installed. Install with: pip install tree-sitter-python"
                 ) from e
 
         elif lang_name == "typescript":
@@ -164,7 +162,47 @@ class TreeSitterParser:
                 return tree_sitter.Language(language())
             except ImportError as e:
                 raise ImportError(
-                    "tree-sitter-java not installed. " "Install with: pip install tree-sitter-java"
+                    "tree-sitter-java not installed. Install with: pip install tree-sitter-java"
+                ) from e
+
+        elif lang_name == "go":
+            try:
+                from tree_sitter_go import language
+
+                return tree_sitter.Language(language())
+            except ImportError as e:
+                raise ImportError(
+                    "tree-sitter-go not installed. Install with: pip install tree-sitter-go"
+                ) from e
+
+        elif lang_name == "rust":
+            try:
+                from tree_sitter_rust import language
+
+                return tree_sitter.Language(language())
+            except ImportError as e:
+                raise ImportError(
+                    "tree-sitter-rust not installed. Install with: pip install tree-sitter-rust"
+                ) from e
+
+        elif lang_name == "c":
+            try:
+                from tree_sitter_c import language
+
+                return tree_sitter.Language(language())
+            except ImportError as e:
+                raise ImportError(
+                    "tree-sitter-c not installed. Install with: pip install tree-sitter-c"
+                ) from e
+
+        elif lang_name == "cpp":
+            try:
+                from tree_sitter_cpp import language
+
+                return tree_sitter.Language(language())
+            except ImportError as e:
+                raise ImportError(
+                    "tree-sitter-cpp not installed. Install with: pip install tree-sitter-cpp"
                 ) from e
 
         # Should not reach here due to validation in __init__
@@ -186,11 +224,7 @@ class TreeSitterParser:
             return True
 
         # Check children recursively
-        for child in node.children:
-            if self._check_tree_has_errors(child):
-                return True
-
-        return False
+        return any(self._check_tree_has_errors(child) for child in node.children)
 
     def _convert_node(self, ts_node: Any, source_bytes: bytes) -> ASTNode:
         """

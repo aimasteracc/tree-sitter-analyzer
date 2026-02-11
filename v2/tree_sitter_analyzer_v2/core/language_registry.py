@@ -166,6 +166,27 @@ class LanguageRegistry:
         except ImportError:
             pass
 
+        # Register profile-driven languages (Go, Rust, C, C++)
+        self._register_profile_languages()
+
+    def _register_profile_languages(self) -> None:
+        """Register languages using the data-driven LanguageProfile system."""
+        try:
+            from tree_sitter_analyzer_v2.languages.generic_parser import GenericLanguageParser
+            from tree_sitter_analyzer_v2.languages.profiles import ALL_PROFILES
+
+            for lang_name, profile in ALL_PROFILES.items():
+                try:
+                    parser = GenericLanguageParser(profile)
+                    self._parsers[lang_name] = parser
+                    for ext in profile.extensions:
+                        self._ext_lang_map[ext] = lang_name
+                    logger.debug("Registered profile-driven parser: %s", lang_name)
+                except Exception:
+                    logger.debug("Failed to register %s (tree-sitter lib missing?)", lang_name)
+        except ImportError:
+            logger.debug("generic_parser or profiles not available")
+
     def _register_builtin_extractors(self) -> None:
         """Register all built-in call extractors.
 

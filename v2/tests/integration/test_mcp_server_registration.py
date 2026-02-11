@@ -268,8 +268,9 @@ def main():
         # Core: analyze_code_structure, query_code, check_code_scale, extract_code_section
         # Search: find_files, search_content, find_and_grep
         # Code Graph: analyze_code_graph, find_function_callers, query_call_chain, visualize_code_graph
-        # Total: 11 tools
-        expected_count = 11
+        # Code Intelligence: code_intelligence
+        # Total: 13 tools
+        expected_count = 13
         assert len(tool_names) == expected_count
 
         # Verify all expected tools are present
@@ -285,6 +286,7 @@ def main():
             "find_function_callers",
             "query_call_chain",
             "visualize_code_graph",
+            "code_intelligence",
         ]
 
         for tool_name in expected_tools:

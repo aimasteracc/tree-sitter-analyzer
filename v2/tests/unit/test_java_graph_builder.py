@@ -21,8 +21,8 @@ def test_builder_accepts_java_language():
 
 def test_builder_raises_error_for_unsupported_language():
     """Test that CodeGraphBuilder raises ValueError for unsupported language."""
-    with pytest.raises(ValueError, match="Unsupported language: rust"):
-        CodeGraphBuilder(language="rust")
+    with pytest.raises(ValueError, match="Unsupported language: brainfuck"):
+        CodeGraphBuilder(language="brainfuck")
 
 
 def test_builder_default_language_is_python():
